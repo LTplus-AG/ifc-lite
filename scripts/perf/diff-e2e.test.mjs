@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
-import { protocol, validateProtocol, digest, stress, nonempty, resultProof,
+import { protocol, validateProtocol, digest, nonempty, resultProof,
   assertPair, distribution, fixtureInvariant, endpointVerdict, cohortVerdict } from './diff-e2e-protocol.mjs';
 import { fileReceipt, readJson, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt } from './diff-e2e-receipts.mjs';
 import { measure } from './diff-e2e-sample.mjs';
@@ -29,6 +29,7 @@ test('#8042 protocol requires six pairs, reproducible balanced interleaving and 
   for (const pairs of [0, 1, 5, 7, 26, Infinity, NaN, 5.5]) assert.throws(() => protocol({ pairs }));
   for (const retained of [0, 11, Infinity]) assert.throws(() => protocol({ retained }));
   assert.throws(() => protocol({ largeBase: '/a' }));
+  assert.throws(() => protocol({ seed: 42 }));
   assert.throws(() => validateProtocol({ ...p, options: [{ scope: 'geometry' }] }));
   assert.throws(() => validateProtocol({ ...p, limits: { ...p.limits, rows: Infinity } }));
   assert.throws(() => validateProtocol({ ...p, cases: p.cases.slice(0, 1) }));
@@ -36,19 +37,10 @@ test('#8042 protocol requires six pairs, reproducible balanced interleaving and 
 
 test('#8042 empty input cannot yield a vacuous identity/performance result', () => {
   assert.throws(() => nonempty([]), /fingerprint count/);
-  assert.throws(() => stress([], 5, false), /fingerprint count/);
   const input = [{ key: 'a', ref: 7, ifcType: 'IfcWall', dataHash: 'hash', components: { p: 'x' } }];
-  const base = stress(input, 100, false), head = stress(input, 100, true);
-  assert.equal(new Set(base.map(r => r.key)).size, 100);
-  assert.equal(new Set(head.map(r => r.key)).size, 100);
-  assert.notEqual(digest(base), digest(head));
-  assert.equal(base[1].components, input[0].components);
-  assert.equal(head[23].dataHash, 'hash/tile:23/edit');
-  assert.notEqual(base[29].key, head[29].key);
-  assert.equal(input[0].key, 'a');
   const unchanged = { counts: { unchanged: 1, added: 0, deleted: 0, modified: 0 } };
   fixtureInvariant({ id: 'haus' }, unchanged, input, input);
-  assert.throws(() => fixtureInvariant({ id: 'haus' }, unchanged, base, head), /lost entities/);
+  assert.throws(() => fixtureInvariant({ id: 'haus' }, unchanged, [...input, ...input], input), /lost entities/);
   assert.throws(() => fixtureInvariant({ id: 'demo' }, unchanged, input, input), /real change/);
   assert.throws(() => fixtureInvariant({ id: 'large' }, unchanged, input, input), /real change/);
   // #8042: controlled IFC revisions may exercise edits or rekey/content paths.
@@ -56,7 +48,6 @@ test('#8042 empty input cannot yield a vacuous identity/performance result', () 
     { unchanged: 0, added: 0, deleted: 0, modified: 1 },
     { unchanged: 0, added: 1, deleted: 1, modified: 0 },
   ]) fixtureInvariant({ id: 'large' }, { counts }, input, input);
-  assert.throws(() => fixtureInvariant({ id: 'stress' }, unchanged, input, input), /real change/);
   assert.throws(() => resultProof({ entries: [] }, input, input), /nonempty diff/);
 });
 
@@ -267,8 +258,7 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     for (const file of files) await writeFile(file, 'unit input');
     await writeFile(originalPath, '{"exclusive":"unit"}');
     const bindings = { runtime: await runtimeReceipt(), harnessSource: inventories.base.source,
-      measurement: { hostname: hostname(), idleProbes: { scope: 'linux-and-physical-host',
-        commands: ['unit probe'], intervalMs: 1000, requiredIdle: 'no unrelated runnable work' } },
+      measurement: { hostname: hostname() },
       harness: digest(await harnessReceipt()), base: digest(inventories.base), branch: digest(inventories.branch),
       fixtures: { demo: await Promise.all(files.map(p => fileReceipt(p))) } };
     const save = async p => {

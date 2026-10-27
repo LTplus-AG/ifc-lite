@@ -7,7 +7,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { LIMITS, nonempty, stress, resultProof, digest, fixtureInvariant } from './diff-e2e-protocol.mjs';
+import { LIMITS, nonempty, resultProof, digest, fixtureInvariant } from './diff-e2e-protocol.mjs';
 
 // Injecting a module loader permits behavioral lifecycle tests with tiny inert
 // modules; production execution always imports the built public entry points.
@@ -61,9 +61,7 @@ export async function measure({ root, fixture, options, retained, implementation
       });
       let store = await phase('parseMs', () => parser.parseIfcBytes(bytes, path));
       assert.deepEqual(parser.scanCompletenessWarnings(store), [], 'incomplete IFC scan cannot qualify');
-      let fingerprints = await phase('fingerprintsMs', () => nonempty(builder.buildFileFingerprints(store)));
-      if (fixture.kind === 'derived') fingerprints = await phase('stressConstructionMs',
-        () => stress(fingerprints, fixture.rows, rows.length === 1));
+      const fingerprints = await phase('fingerprintsMs', () => nonempty(builder.buildFileFingerprints(store)));
       rows.push(fingerprints);
       store = undefined;
     }

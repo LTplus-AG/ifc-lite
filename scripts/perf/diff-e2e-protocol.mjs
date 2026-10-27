@@ -47,7 +47,7 @@ export function protocol({ pairs = 6, seed = 8042, dryRun = false,
   retained = 3, largeBase, largeHead, bindings = null } = {}) {
   integer(pairs, dryRun ? 1 : 6, dryRun ? 1 : 6, 'pairs');
   assert.equal(typeof dryRun, 'boolean');
-  integer(seed, 0, 0xffff_ffff, 'seed');
+  assert.equal(seed, 8042, 'protocol seed is fixed');
   integer(retained, 1, LIMITS.retained, 'retained');
   assert.equal(Boolean(largeBase), Boolean(largeHead), 'supply both large paths');
   const demo = 'apps/viewer/public/samples/';
@@ -119,22 +119,6 @@ export function nonempty(rows) {
   return rows;
 }
 
-// Derived rows retain real type/data/component distributions, but are NOT a
-// representative large IFC. Per-tile hashes avoid quadratic ambiguous buckets.
-export function stress(source, count, head) {
-  nonempty(source);
-  integer(count, 1, LIMITS.rows, 'stress rows');
-  return Array.from({ length: count }, (_, i) => {
-    const row = source[i % source.length];
-    const tile = Math.floor(i / source.length);
-    return { ...row,
-      key: `${row.key}/tile:${tile}${head && i % 29 === 0 ? '/replacement' : ''}`,
-      dataHash: `${row.dataHash}/tile:${tile}${head && i % 23 === 0 ? '/edit' : ''}`,
-      ref: { source: row.ref, row: i },
-    };
-  });
-}
-
 export function resultProof(result, base, head) {
   assert.ok(result.entries.length > 0, 'nonempty input must produce a nonempty diff');
   assert.equal(result.byKey.size, result.entries.length, 'byKey must contain exactly the entries');
@@ -168,9 +152,9 @@ export function fixtureInvariant(fixture, result, base, head) {
     assert.equal(result.counts.unchanged, base.length, 'Haus self-comparison lost entities');
     assert.equal(head.length, base.length);
     for (const key of ['added', 'modified', 'deleted']) assert.equal(result.counts[key], 0);
-  } else if (fixture.id === 'demo' || fixture.id === 'large' || fixture.id === 'stress') {
+  } else if (fixture.id === 'demo' || fixture.id === 'large') {
     assert.ok(result.counts.added + result.counts.modified + result.counts.deleted > 0,
-      'revision/stress pair must demonstrate a real change');
+      'revision pair must demonstrate a real change');
   }
 }
 

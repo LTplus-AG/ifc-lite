@@ -1,0 +1,60 @@
+diff --git a/dist/wkt.cjs b/dist/wkt.cjs
+index 6b5903bc8f6b3d6d7c384112d9c01d92cd7bdae0..384185d05670ad88a7cfd3a5176a65502707f01c 100644
+--- a/dist/wkt.cjs
++++ b/dist/wkt.cjs
+@@ -942,6 +942,25 @@ function transformPROJJSON(projjson, result = {}) {
+     result.rectified_grid_angle = result.angle_from_rectified_to_skew_grid;
+   }
+ 
++  // WKT2 PARAMETER names are not limited to the EPSG names mapped above: PROJ
++  // also accepts the WKT1/ESRI spellings (central_meridian, latitude_of_origin,
++  // scale_factor, ...). Map them only where no EPSG-named parameter already did.
++  if (result.long0 === undefined && result.central_meridian !== undefined) {
++    result.long0 = result.central_meridian;
++  }
++  if (result.lat0 === undefined && result.latitude_of_origin !== undefined) {
++    result.lat0 = result.latitude_of_origin;
++  }
++  if (result.lat0 === undefined && result.latitude_of_center !== undefined) {
++    result.lat0 = result.latitude_of_center;
++  }
++  if (result.longc === undefined && result.longitude_of_center !== undefined) {
++    result.longc = result.longitude_of_center;
++  }
++  if (result.k0 === undefined && result.scale_factor !== undefined) {
++    result.k0 = result.scale_factor;
++  }
++
+   // Apply projection defaults
+   applyProjectionDefaults(result);
+ 
+diff --git a/transformPROJJSON.js b/transformPROJJSON.js
+index f6a7a0de1429215dcdf01af9f3d9606c7b474d27..848853bdd58953ef383c953cd1f8c0fe4f860584 100644
+--- a/transformPROJJSON.js
++++ b/transformPROJJSON.js
+@@ -271,6 +271,25 @@ export function transformPROJJSON(projjson, result = {}) {
+     result.rectified_grid_angle = result.angle_from_rectified_to_skew_grid;
+   }
+ 
++  // WKT2 PARAMETER names are not limited to the EPSG names mapped above: PROJ
++  // also accepts the WKT1/ESRI spellings (central_meridian, latitude_of_origin,
++  // scale_factor, ...). Map them only where no EPSG-named parameter already did.
++  if (result.long0 === undefined && result.central_meridian !== undefined) {
++    result.long0 = result.central_meridian;
++  }
++  if (result.lat0 === undefined && result.latitude_of_origin !== undefined) {
++    result.lat0 = result.latitude_of_origin;
++  }
++  if (result.lat0 === undefined && result.latitude_of_center !== undefined) {
++    result.lat0 = result.latitude_of_center;
++  }
++  if (result.longc === undefined && result.longitude_of_center !== undefined) {
++    result.longc = result.longitude_of_center;
++  }
++  if (result.k0 === undefined && result.scale_factor !== undefined) {
++    result.k0 = result.scale_factor;
++  }
++
+   // Apply projection defaults
+   applyProjectionDefaults(result);
+ 

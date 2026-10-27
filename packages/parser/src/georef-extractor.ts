@@ -30,18 +30,30 @@ export {
 
 import type { IfcEntity } from './entity-extractor.js';
 import {
-  getString,
   getNumber,
   getReference,
   isUnrepresentableNumericValue,
 } from './attribute-helpers.js';
 import { extractMapConversion } from './georef-map-conversion.js';
 import { extractEPSetMapConversion } from './georef-epset.js';
-import { CONVERSION_BASED_UNIT_FACTORS, SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
+import {
+  extractGeographicCRS,
+  extractRigidOperation,
+  planeAngleUnitToDegrees,
+  projectPlaneAngleUnitToDegrees,
+  wellKnownTextFor,
+} from './georef-coordinate-operation.js';
+import { extractProjectedCRS } from './georef-projected-crs.js';
 import { getAttributeNames } from './ifc-schema.js';
 
 export interface MapConversion {
   id: number;
+  /**
+   * Set when read from an `IfcRigidOperation` (a pure translation: the source
+   * coordinates already are target-CRS coordinates, offset). Absent for
+   * `IfcMapConversion` and its subtypes.
+   */
+  operation?: 'rigidOperation';
   sourceCRS: number;  // GeometricRepresentationContext ID
   targetCRS: number;  // ProjectedCRS ID
   eastings: number;   // False easting (X offset)
@@ -73,6 +85,9 @@ export function computeAngleToGridNorth(
 
 export interface ProjectedCRS {
   id: number;
+  /** `'geographic'` when read from an `IfcGeographicCRS` (lon/lat degrees). */
+  kind?: 'geographic';
+  /** Name is mandatory for `IfcProjectedCRS` but may be blank when `wellKnownText` defines the CRS. */
   name: string;
   description?: string;
   geodeticDatum?: string;     // e.g., "WGS84", "NAD83"
@@ -86,13 +101,19 @@ export interface ProjectedCRS {
    * If undefined, the project's length unit applies (IFC spec default).
    */
   mapUnitScale?: number;
+  /**
+   * `IfcWellKnownText.WellKnownText` attached to this CRS (WKT1 or WKT2,
+   * ISO 19125-1 / ISO 19162). When present it is the authoritative definition;
+   * `name` may then be a placeholder (WHERE NameOrWKT).
+   */
+  wellKnownText?: string;
 }
 
 export interface GeoreferenceInfo {
   hasGeoreference: boolean;
   mapConversion?: MapConversion;
   projectedCRS?: ProjectedCRS;
-  source?: 'mapConversion' | 'ePSetMapConversion' | 'siteLocation';
+  source?: 'mapConversion' | 'rigidOperation' | 'ePSetMapConversion' | 'siteLocation';
   // Computed transformation matrix (4x4) from local to world coordinates
   transformMatrix?: number[];
 }
@@ -127,7 +148,9 @@ export function withGeoreferenceFallbacks(
 }
 
 /**
- * IfcMapConversion and IfcProjectedCRS only. `hasGeoreference: false` is the one
+ * IFC4+ entities only: IfcMapConversion (else IFC4X3 IfcRigidOperation), its
+ * TargetCRS (IfcProjectedCRS or IfcGeographicCRS, with any IfcWellKnownText
+ * definition). `hasGeoreference: false` is the one
  * rule for "the fallbacks run": a loader supplying fallback entities asks this (#4695).
  */
 export function extractIfc4Georeferencing(entities: Map<number, IfcEntity>, entitiesByType: Map<string, number[]>): GeoreferenceInfo {
@@ -160,24 +183,66 @@ export function extractIfc4Georeferencing(entities: Map<number, IfcEntity>, enti
     }
   }
 
-  // Extract IfcProjectedCRS
-  const projectedCRSIds = entitiesByType.get('IfcProjectedCRS') || [];
-  if (projectedCRSIds.length > 0) {
-    const entity = entities.get(projectedCRSIds[0]);
-    if (entity) {
-      info.projectedCRS = extractProjectedCRS(entity, (id) => entities.get(id));
-      // A CRS whose mandatory Name is unset or blank declares none: it still scales
-      // a parsed conversion, but neither claims presence nor holds back the fallbacks (#4695).
-      if (info.projectedCRS.name.trim() !== '') info.hasGeoreference = true;
+  // IFC4X3 IfcRigidOperation, when no map conversion was read. Its plane-angle
+  // form needs the geographic target's angle unit before it can be read, so
+  // the target CRS is resolved first.
+  const resolve = (id: number) => entities.get(id);
+  let rigidOperationId: number | undefined;
+  if (!info.mapConversion) {
+    rigidOperationId = (entitiesByType.get('IfcRigidOperation') ?? [])[0];
+  }
+  const operationEntity = info.mapConversion
+    ? entities.get(info.mapConversion.id)
+    : rigidOperationId === undefined ? undefined : entities.get(rigidOperationId);
+
+  // The operation's own TargetCRS, else the file's first IfcProjectedCRS, else
+  // its first IfcGeographicCRS.
+  const targetId = getReference(operationEntity?.attributes?.[1]);
+  const target = targetId === undefined ? undefined : entities.get(targetId);
+  const crsEntity = isCrsEntity(target, 'IfcProjectedCRS') || isCrsEntity(target, 'IfcGeographicCRS')
+    ? target
+    : entities.get((entitiesByType.get('IfcProjectedCRS') ?? [])[0] as number)
+      ?? entities.get((entitiesByType.get('IfcGeographicCRS') ?? [])[0] as number);
+  if (crsEntity) {
+    const crs = isCrsEntity(crsEntity, 'IfcGeographicCRS')
+      ? extractGeographicCRS(crsEntity)
+      : extractProjectedCRS(crsEntity, resolve);
+    const wellKnownText = wellKnownTextFor(crsEntity.expressId, entitiesByType.get('IfcWellKnownText') ?? [], resolve);
+    if (wellKnownText) crs.wellKnownText = wellKnownText;
+    info.projectedCRS = crs;
+    // A CRS without a non-blank Name declares none on its own: it still scales
+    // a parsed operation, but neither claims presence nor holds back the
+    // fallbacks (#4695). A WKT-only CRS is claimed by its parsed operation.
+    if (crs.name.trim() !== '') info.hasGeoreference = true;
+  }
+
+  if (rigidOperationId !== undefined && operationEntity) {
+    const geographic = info.projectedCRS?.kind === 'geographic';
+    const rigid = extractRigidOperation(operationEntity, {
+      geographic,
+      angleUnitToDegrees: geographic && crsEntity
+        ? planeAngleUnitToDegrees(crsEntity.attributes?.[4], resolve)
+          ?? (getReference(crsEntity.attributes?.[4]) === undefined
+            ? projectPlaneAngleUnitToDegrees(entitiesByType.get('IfcProject') ?? [], resolve)
+            : undefined)
+        : undefined,
+    });
+    if (rigid) {
+      info.mapConversion = rigid;
+      info.hasGeoreference = true;
     }
   }
 
   // Compute transformation matrix if we have map conversion
   if (info.mapConversion) {
-    info.source = 'mapConversion';
+    info.source = info.mapConversion.operation ?? 'mapConversion';
     info.transformMatrix = computeTransformMatrix(info.mapConversion);
   }
   return info;
+}
+
+function isCrsEntity(entity: IfcEntity | undefined, typeName: string): entity is IfcEntity {
+  return (entity?.type ?? '').toUpperCase() === typeName.toUpperCase();
 }
 
 function getAttributeValueByName(entity: IfcEntity, attributeName: string): unknown {
@@ -274,125 +339,4 @@ function extractLegacySiteGeoreference(
   }
 
   return null;
-}
-
-/**
- * Resolve an `IfcMeasureWithUnit` reference to metres.
- *
- * `IFCMEASUREWITHUNIT: [0] ValueComponent, [1] UnitComponent` — the value is
- * expressed IN the unit component, so a prefixed SI component multiplies it
- * (0.3048 expressed in millimetres is not 0.3048 metres).
- */
-function resolveMeasureWithUnit(
-  ref: unknown,
-  resolveEntity: (id: number) => IfcEntity | undefined,
-): number | undefined {
-  const measureRef = getReference(ref);
-  if (measureRef === undefined) return undefined;
-  const measure = resolveEntity(measureRef);
-  if (!measure) return undefined;
-
-  const valueAttr = measure.attributes?.[0];
-  let value: number | undefined;
-  if (typeof valueAttr === 'number') {
-    value = valueAttr;
-  } else if (Array.isArray(valueAttr) && valueAttr.length === 2 && typeof valueAttr[1] === 'number') {
-    // Typed value, e.g. ['IFCLENGTHMEASURE', 0.3048]
-    value = valueAttr[1];
-  }
-  if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
-
-  let componentScale = 1;
-  const componentRef = getReference(measure.attributes?.[1]);
-  if (componentRef !== undefined) {
-    const component = resolveEntity(componentRef);
-    if (component && (component.type ?? '').toUpperCase() === 'IFCSIUNIT') {
-      const prefix = component.attributes?.[2];
-      if (typeof prefix === 'string' && prefix !== '$') {
-        const prefixScale = SI_PREFIX_MULTIPLIERS[prefix.replace(/\./g, '').toUpperCase()];
-        if (prefixScale !== undefined) componentScale = prefixScale;
-      }
-    }
-  }
-
-  return value * componentScale;
-}
-
-function extractProjectedCRS(
-  entity: IfcEntity,
-  resolveEntity?: (id: number) => IfcEntity | undefined,
-): ProjectedCRS {
-  // IfcProjectedCRS attributes (IFC4):
-  // [0] Name (IfcLabel)
-  // [1] Description (OPTIONAL IfcText)
-  // [2] GeodeticDatum (OPTIONAL IfcIdentifier)
-  // [3] VerticalDatum (OPTIONAL IfcIdentifier)
-  // [4] MapProjection (OPTIONAL IfcIdentifier)
-  // [5] MapZone (OPTIONAL IfcIdentifier)
-  // [6] MapUnit (OPTIONAL IfcNamedUnit)
-
-  // Resolve MapUnit reference to determine actual unit + scale
-  let mapUnit: string | undefined;
-  let mapUnitScale: number | undefined;
-  const mapUnitRef = getReference(entity.attributes[6]);
-  if (mapUnitRef) {
-    mapUnit = 'METRE'; // default if we can't resolve
-    mapUnitScale = 1;
-    if (resolveEntity) {
-      const unitEntity = resolveEntity(mapUnitRef);
-      if (unitEntity) {
-        // MapUnit is an IfcNamedUnit, which is IfcSIUnit OR
-        // IfcConversionBasedUnit. Attribute 2 means something different in
-        // each: `Prefix` on the SI unit, `Name` on the conversion-based one.
-        // Reading slot 2 as a prefix unconditionally means a foot-based
-        // MapUnit ('FOOT' is not an SI prefix) misses every lookup and falls
-        // through to the METRE/1.0 default — so a georeference in feet reads
-        // back 3.28x wrong, silently. ifc-lite's own exporter writes exactly
-        // that IFCCONVERSIONBASEDUNIT form for FOOT and US SURVEY FOOT
-        // (packages/export/src/step-georeferencing.ts), and no fixture ever
-        // set a non-metre map unit, so the round trip only ever saw METRE.
-        if ((unitEntity.type ?? '').toUpperCase() === 'IFCCONVERSIONBASEDUNIT') {
-          // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType, [2] Name,
-          // [3] ConversionFactor (IfcMeasureWithUnit)
-          const rawName = getString(unitEntity.attributes?.[2]);
-          const name = rawName?.replace(/^'|'$/g, '').trim().toUpperCase();
-          // The name table first (it carries the exact defined ratios, e.g.
-          // the US survey foot's 1200/3937), then the file's own declared
-          // conversion factor for a unit name we do not know.
-          const scale = (name ? CONVERSION_BASED_UNIT_FACTORS[name] : undefined)
-            ?? resolveMeasureWithUnit(unitEntity.attributes?.[3], resolveEntity);
-          if (scale !== undefined && Number.isFinite(scale) && scale > 0) {
-            mapUnitScale = scale;
-            if (name) mapUnit = name;
-          }
-        } else {
-          // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
-          const prefix = unitEntity.attributes?.[2];
-          if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
-            const prefixStr = prefix.replace(/\./g, '').toUpperCase();
-            const prefixScale = SI_PREFIX_MULTIPLIERS[prefixStr];
-            if (prefixScale !== undefined) {
-              mapUnitScale = prefixScale;
-              mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';
-            }
-          }
-          // No prefix → base METRE → scale = 1
-        }
-      }
-    }
-  }
-  // If mapUnitRef is absent → mapUnit stays undefined, mapUnitScale stays undefined
-  // → per IFC spec, MapConversion uses the project's length unit
-
-  return {
-    id: entity.expressId,
-    name: getString(entity.attributes[0]) || '',
-    description: getString(entity.attributes[1]),
-    geodeticDatum: getString(entity.attributes[2]),
-    verticalDatum: getString(entity.attributes[3]),
-    mapProjection: getString(entity.attributes[4]),
-    mapZone: getString(entity.attributes[5]),
-    mapUnit,
-    mapUnitScale,
-  };
 }

@@ -75,11 +75,10 @@ mod write;
 
 pub use add_assoc_types::{
     ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, NewClassification, NewClassificationReference,
-    NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
+    NewLayerSet, NewMaterial, NewMaterialLayer, NewProperty, NewPropertySet, PropertyValue, ValueUnit,
 };
 pub use add_types::{
-    ClassSpec, Extrusion, GlobalId, IfcClass, MappedBody, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
-    PropertyValue, Representation, TypeLink,
+    ClassSpec, Extrusion, GlobalId, IfcClass, MappedBody, NewObject, NewOpening, NewPlacement, NewType, Representation, TypeLink,
 };
 pub use placement::IDENTITY;
 pub use removal::{Removal, RemovalReason};

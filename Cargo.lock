@@ -1650,6 +1650,7 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.21",
  "tracing",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1692,6 +1693,18 @@ dependencies = [
  "serde_json",
  "sha2",
  "tracing",
+]
+
+[[package]]
+name = "ifc-lite-retained-native"
+version = "24.6.2"
+dependencies = [
+ "ifc-lite-core",
+ "ifc-lite-geometry",
+ "ifc-lite-geometry-runtime",
+ "ifc-lite-processing",
+ "libc",
+ "serde_json",
 ]
 
 [[package]]

@@ -76,6 +76,19 @@ fn terminal_scope() -> Option<TerminalScope> {
     })
 }
 
+/// Keep terminal stops visible for a complete consumer operation, including
+/// compatibility callers without an execution account. Nested calls share the
+/// existing terminal domain; a fresh domain is restored on return or unwind.
+pub fn with_terminal_scope<T>(
+    operation: impl FnOnce() -> Result<T, ProgramStop>,
+) -> Result<T, ProgramStop> {
+    let _terminal = terminal_scope();
+    check_current()?;
+    let result = operation();
+    check_current()?;
+    result
+}
+
 pub fn current_account() -> Option<ExecutionAccount> {
     CURRENT.with(|slot| slot.borrow().clone())
 }
@@ -98,7 +111,7 @@ pub fn check_current() -> Result<(), ProgramStop> {
     if let Err(error) = account {
         return Err(stop(error));
     }
-    if let Some(error) = TERMINAL.with(|slot| slot.get().flatten()) {
+    if let Some(error) = current_terminal() {
         return Err(error);
     }
     #[cfg(feature = "retained-runtime")]
@@ -106,6 +119,27 @@ pub fn check_current() -> Result<(), ProgramStop> {
         account.check_allowance().map_err(stop)?;
     }
     Ok(())
+}
+fn current_terminal() -> Option<ProgramStop> {
+    TERMINAL.with(|slot| slot.get().flatten())
+}
+
+/// Poll live stop state without constructing an aggregate result when no
+/// authorities are installed. Presence is observed afresh on every call.
+pub fn is_stopped() -> bool {
+    if SOURCE_STOP.with(|slot| slot.borrow().is_none())
+        && CURRENT.with(|slot| slot.borrow().is_none())
+    {
+        current_terminal().is_some()
+    } else {
+        check_active_stop()
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn check_active_stop() -> bool {
+    check_current().is_err()
 }
 
 /// Check controlled source iterations under the opt-in retained budget.
@@ -187,6 +221,8 @@ pub fn allocation_failure() -> ProgramStop {
     refused(Dimension::LiveBytes, 0, 0, RefusalReason::Allocation)
 }
 
+#[cfg(test)]
+mod boolean_tests;
 #[cfg(test)]
 mod tests;
 
@@ -302,3 +338,6 @@ pub fn with_source_stop<T>(
     // its stops; consumers capture them before leaving their work epoch.
     operation()
 }
+
+#[cfg(all(feature = "retained-runtime", any(target_arch = "wasm32", test)))]
+mod budget_monotonic;

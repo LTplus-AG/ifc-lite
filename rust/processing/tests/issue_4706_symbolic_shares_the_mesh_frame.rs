@@ -145,7 +145,12 @@ fn grid_endpoints(data: &ifc_lite_processing::SymbolicData) -> Vec<(&str, (f32, 
         out.push((axis.tag.as_str(), (axis.endpoints[0], axis.endpoints[1])));
         out.push((axis.tag.as_str(), (axis.endpoints[2], axis.endpoints[3])));
     }
-    assert_eq!(out.len(), 4, "two axes, two endpoints each: {:?}", data.grid_axes);
+    assert_eq!(
+        out.len(),
+        4,
+        "two axes, two endpoints each: {:?}",
+        data.grid_axes
+    );
     out
 }
 
@@ -169,6 +174,7 @@ fn native_streams(ifc: &str) -> (ProcessingResult, ifc_lite_processing::Symbolic
         "the site translation is what the meshes had subtracted"
     );
     let symbolic = extract_symbolic_data_with_provenance_in_frame(ifc, result.frame)
+        .expect("symbolic extraction must complete")
         .into_parts()
         .0;
     (result, symbolic)
@@ -258,7 +264,8 @@ fn a_rotated_site_comes_out_of_the_text_baseline_too() {
 #[test]
 fn the_overlay_entry_point_still_answers_in_the_browser_frame() {
     let ifc = model(ROTATED_SITE);
-    let overlay = ifc_lite_processing::extract_symbolic_data(&ifc);
+    let overlay = ifc_lite_processing::extract_symbolic_data(&ifc)
+        .expect("symbolic extraction must complete");
     let axis_a = overlay
         .grid_axes
         .iter()

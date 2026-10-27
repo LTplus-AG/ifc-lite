@@ -61,8 +61,28 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
         ['IFCMAPCONVERSION', 'IfcMapConversion'],
         ['IFCMAPCONVERSIONSCALED', 'IfcMapConversion'],
         ['IFCPROJECTEDCRS', 'IfcProjectedCRS'],
+        ['IFCRIGIDOPERATION', 'IfcRigidOperation'],
+        ['IFCGEOGRAPHICCRS', 'IfcGeographicCRS'],
+        ['IFCWELLKNOWNTEXT', 'IfcWellKnownText'],
         ['IFCSITE', 'IfcSite'],
     ];
+    /** Pull an entity and what it references (to `depth` hops) into the map. */
+    const include = (id: number | null, depth: number): void => {
+        if (id === null || depth < 0) return;
+        let entity = entityMap.get(id);
+        if (!entity) {
+            const ref = byId.get(id);
+            const extracted = ref ? extractor.extractEntity(ref) : null;
+            if (!extracted) return;
+            entity = extracted;
+            entityMap.set(id, entity);
+        }
+        const visit = (value: unknown): void => {
+            if (typeof value === 'number' && Number.isInteger(value)) include(value, depth - 1);
+            else if (Array.isArray(value)) value.forEach(visit);
+        };
+        if (depth > 0) entity.attributes?.forEach(visit);
+    };
     for (const [typeName, displayName] of GEOREF_TYPES) {
         const ids = byType.get(typeName);
         if (!ids?.length) continue;
@@ -76,6 +96,20 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
             const entity = extractor.extractEntity(ref);
             if (entity) {
                 entityMap.set(id, entity);
+
+                // A geographic CRS's AngleUnit/HeightUnit chain (unit →
+                // IfcMeasureWithUnit → its SI unit) reads a plane-angle
+                // IfcRigidOperation; a rigid operation's TargetCRS may be either CRS.
+                if (typeName === 'IFCGEOGRAPHICCRS' && entity.attributes) {
+                    for (const slot of [4, 5]) {
+                        const unitAttr = entity.attributes[slot];
+                        include(typeof unitAttr === 'number' ? unitAttr : null, 3);
+                    }
+                }
+                if (typeName === 'IFCRIGIDOPERATION' && entity.attributes) {
+                    const targetAttr = entity.attributes[1];
+                    include(typeof targetAttr === 'number' ? targetAttr : null, 0);
+                }
 
                 // For IfcProjectedCRS, also resolve the MapUnit reference (attribute [6])
                 // so the georef extractor can determine the actual unit scale
@@ -91,6 +125,19 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
                     }
                 }
             }
+        }
+    }
+
+    // A plane-angle IfcRigidOperation against a geographic CRS without its own
+    // AngleUnit is in the project's plane-angle unit: IfcProject →
+    // IfcUnitAssignment → unit → IfcMeasureWithUnit → SI unit.
+    if (typeMap.has('IfcRigidOperation') && typeMap.has('IfcGeographicCRS')) {
+        const projectIds = byType.get('IFCPROJECT') ?? [];
+        if (projectIds.length) {
+            typeMap.set('IfcProject', projectIds);
+            const project = (include(projectIds[0], 0), entityMap.get(projectIds[0]));
+            const unitsAttr = project?.attributes?.[8];
+            include(typeof unitsAttr === 'number' ? unitsAttr : null, 4);
         }
     }
 

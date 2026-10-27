@@ -91,3 +91,22 @@ impl Drop for TriangleOrderScope<'_> {
         }
     }
 }
+
+impl Stage<'_> {
+    pub(super) fn next_kind(&mut self) -> Option<super::session_protocol::WorkKind> {
+        use super::session_protocol::WorkKind;
+        Some(match self {
+            Stage::Complete => return None,
+            Stage::Primary { strategy, layer_class } => WorkKind::Primary { strategy: *strategy, layer_class: *layer_class },
+            Stage::VoidedParts => WorkKind::VoidedParts,
+            Stage::PlainParts => WorkKind::PlainParts,
+            Stage::TypeMaps(maps) => match maps.next() {
+                Some(&(map_id, class)) => WorkKind::TypeMap { map_id, class },
+                None => {
+                    *self = Stage::Complete;
+                    return None;
+                }
+            },
+        })
+    }
+}

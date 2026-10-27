@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Opaque controller bridge consumed by processing's private native adapter.
+//! Opaque controller bridge consumed by processing's retained executor.
 //! Logical annotations grant neither numerical receipts nor final geometry.
 use super::inner::retained_program as controller;
 use super::retained as logical;

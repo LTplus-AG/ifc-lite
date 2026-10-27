@@ -32,7 +32,19 @@
     "",
     "`source: null` asserts the provenance is ABSENT: no conversion, ePSet or",
     "site supplied the data (a CRS-only file, or a refused conversion that a",
-    "named IfcProjectedCRS stands in for). Omitting `source` skips the check."
+    "named IfcProjectedCRS stands in for). Omitting `source` skips the check.",
+    "",
+    "IfcRigidOperation (IFC4X3_ADD1): SourceCRS, TargetCRS, FirstCoordinate,",
+    "SecondCoordinate (IfcMeasureValue: both IfcLengthMeasure or both",
+    "IfcPlaneAngleMeasure, WHERE SameCoordinateType), Height? -- a pure",
+    "translation: no rotation, no scale. Plane angles translate (lambda, phi) =",
+    "(longitude, latitude) of an IfcGeographicCRS, in its AngleUnit else the",
+    "project plane-angle unit (radian when none is assigned), reported in degrees.",
+    "IfcMapConversion takes precedence when both are authored. The CRS read is",
+    "the operation's TargetCRS. IfcWellKnownText(WellKnownText, CoordinateReferenceSystem)",
+    "attaches by inverse; `wellKnownText: null` asserts none is attached.",
+    "IfcGeographicCRS: Name, Description?, GeodeticDatum?, PrimeMeridian?,",
+    "AngleUnit?, HeightUnit? -- reported with mapUnit DEGREE."
   ],
   "requiredCases": [
     "map_conversion_metre_no_rotation",
@@ -92,7 +104,18 @@
     "map_conversion_refused_with_crs_reports_crs_without_source",
     "map_conversion_refused_nameless_crs_falls_back_to_site",
     "projected_crs_only_nameless_falls_back_to_site",
-    "projected_crs_only_blank_name_falls_back_to_site"
+    "projected_crs_only_blank_name_falls_back_to_site",
+    "rigid_operation_length_translation",
+    "rigid_operation_follows_its_target_crs",
+    "map_conversion_takes_precedence_over_rigid_operation",
+    "rigid_operation_plane_angles_in_geographic_angle_unit",
+    "rigid_operation_plane_angles_in_project_unit",
+    "rigid_operation_plane_angles_default_to_radians",
+    "rigid_operation_mixed_measure_types_refused_keeps_crs",
+    "rigid_operation_lengths_against_geographic_crs_refused",
+    "rigid_operation_crs_defined_only_by_well_known_text",
+    "well_known_text_attaches_only_to_its_crs",
+    "well_known_text_only_crs_without_operation_falls_back_to_site"
   ],
   "cases": [
     {
@@ -1066,6 +1089,144 @@
         "eastings": 14.466666666666667,
         "northings": 51.5,
         "orthogonalHeight": 0.0
+      }
+    },
+    {
+      "name": "rigid_operation_length_translation",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:25833','ETRS89 / UTM zone 33N','ETRS89',$,$,'33N',$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCLENGTHMEASURE(390000.),IFCLENGTHMEASURE(5800000.),34.5);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "rigidOperation",
+        "crsName": "EPSG:25833",
+        "eastings": 390000.0,
+        "northings": 5800000.0,
+        "orthogonalHeight": 34.5,
+        "xAxisAbscissa": 1.0,
+        "xAxisOrdinate": 0.0,
+        "scale": 1.0,
+        "wellKnownText": null,
+        "localToMap": [
+          {
+            "local": [
+              10.0,
+              20.0,
+              1.0
+            ],
+            "map": [
+              390010.0,
+              5800020.0,
+              35.5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "rigid_operation_follows_its_target_crs",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:25832',$,$,$,$,$,$);\n#3=IFCPROJECTEDCRS('EPSG:25833',$,$,$,$,$,$);\n#4=IFCRIGIDOPERATION(#1,#3,IFCLENGTHMEASURE(1.),IFCLENGTHMEASURE(2.),$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "rigidOperation",
+        "crsName": "EPSG:25833",
+        "eastings": 1.0,
+        "northings": 2.0,
+        "orthogonalHeight": 0.0
+      }
+    },
+    {
+      "name": "map_conversion_takes_precedence_over_rigid_operation",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:25833',$,$,$,$,$,$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCLENGTHMEASURE(1.),IFCLENGTHMEASURE(2.),$);\n#4=IFCMAPCONVERSION(#1,#2,100.,200.,0.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "eastings": 100.0,
+        "northings": 200.0
+      }
+    },
+    {
+      "name": "rigid_operation_plane_angles_in_geographic_angle_unit",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#20=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n#21=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(0.0174532925199433),#20);\n#22=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);\n#23=IFCCONVERSIONBASEDUNIT(#22,.PLANEANGLEUNIT.,'DEGREE',#21);\n#2=IFCGEOGRAPHICCRS('EPSG:4326','WGS 84','WGS84',$,#23,$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCPLANEANGLEMEASURE(13.3),IFCPLANEANGLEMEASURE(52.4),12.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "rigidOperation",
+        "crsName": "EPSG:4326",
+        "crsDescription": "WGS 84",
+        "geodeticDatum": "WGS84",
+        "mapUnit": "DEGREE",
+        "eastings": 13.3,
+        "northings": 52.4,
+        "orthogonalHeight": 12.0
+      }
+    },
+    {
+      "name": "rigid_operation_plane_angles_in_project_unit",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#20=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n#21=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(0.0174532925199433),#20);\n#22=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);\n#23=IFCCONVERSIONBASEDUNIT(#22,.PLANEANGLEUNIT.,'DEGREE',#21);\n#5=IFCUNITASSIGNMENT((#23));\n#6=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,(#1),#5);\n#2=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,$,$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCPLANEANGLEMEASURE(13.3),IFCPLANEANGLEMEASURE(52.4),$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "rigidOperation",
+        "eastings": 13.3,
+        "northings": 52.4
+      }
+    },
+    {
+      "name": "rigid_operation_plane_angles_default_to_radians",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCUNITASSIGNMENT(());\n#6=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,(#1),#5);\n#2=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,$,$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCPLANEANGLEMEASURE(0.25),IFCPLANEANGLEMEASURE(0.5),$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "rigidOperation",
+        "eastings": 14.32394487827058,
+        "northings": 28.64788975654116
+      }
+    },
+    {
+      "name": "rigid_operation_mixed_measure_types_refused_keeps_crs",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:25833',$,$,$,$,$,$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCLENGTHMEASURE(1.),IFCPLANEANGLEMEASURE(2.),$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": null,
+        "crsName": "EPSG:25833"
+      }
+    },
+    {
+      "name": "rigid_operation_lengths_against_geographic_crs_refused",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,$,$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCLENGTHMEASURE(1.),IFCLENGTHMEASURE(2.),$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": null,
+        "crsName": "EPSG:4326"
+      }
+    },
+    {
+      "name": "rigid_operation_crs_defined_only_by_well_known_text",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('',$,'EPSG:5681',$,$,$,$);\n#3=IFCRIGIDOPERATION(#1,#2,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),0.);\n#4=IFCWELLKNOWNTEXT('PROJCRS[\"Local TM\",BASEGEOGCRS[\"DB_REF\",DATUM[\"Deutsche Bahn Reference System\",ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128]],ID[\"EPSG\",5681]],CONVERSION[\"Local Projection\",METHOD[\"Transverse_Mercator\"],PARAMETER[\"central_meridian\",10.4521],PARAMETER[\"false_easting\",20000]],CS[Cartesian,2],AXIS[\"e\",east],AXIS[\"n\",north],LENGTHUNIT[\"metre\",1]]',#2);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "rigidOperation",
+        "geodeticDatum": "EPSG:5681",
+        "wellKnownText": "PROJCRS[\"Local TM\",BASEGEOGCRS[\"DB_REF\",DATUM[\"Deutsche Bahn Reference System\",ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128]],ID[\"EPSG\",5681]],CONVERSION[\"Local Projection\",METHOD[\"Transverse_Mercator\"],PARAMETER[\"central_meridian\",10.4521],PARAMETER[\"false_easting\",20000]],CS[Cartesian,2],AXIS[\"e\",east],AXIS[\"n\",north],LENGTHUNIT[\"metre\",1]]",
+        "eastings": 0.0,
+        "northings": 0.0
+      }
+    },
+    {
+      "name": "well_known_text_attaches_only_to_its_crs",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:25833',$,$,$,$,$,$);\n#3=IFCPROJECTEDCRS('EPSG:25832',$,$,$,$,$,$);\n#4=IFCMAPCONVERSION(#1,#2,0.,0.,0.,$,$,$);\n#5=IFCWELLKNOWNTEXT('PROJCRS[\"other\"]',#3);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:25833",
+        "wellKnownText": null
+      }
+    },
+    {
+      "name": "well_known_text_only_crs_without_operation_falls_back_to_site",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('',$,$,$,$,$,$);\n#4=IFCWELLKNOWNTEXT('PROJCRS[\"x\"]',#2);\n#9=IFCLOCALPLACEMENT($,$);\n#10=IFCSITE('2YvctVUKr0kugbFTf53O9L',$,'S',$,$,#9,$,$,.ELEMENT.,(47,22,0,0),(8,32,0,0),400.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "siteLocation",
+        "northings": 47.36666666666667,
+        "eastings": 8.533333333333333,
+        "orthogonalHeight": 400.0
       }
     }
   ]

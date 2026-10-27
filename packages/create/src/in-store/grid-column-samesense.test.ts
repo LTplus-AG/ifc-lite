@@ -63,10 +63,10 @@ describe('grid column on reversed axes (#8159)', () => {
 
   it('writes signed offsets exactly as given, in axis order, independent of axis sense', async () => {
     const s = await session();
-    const axes = [s.grid.uAxisIds[1], s.grid.vAxisIds[1]];
+    const axes: [number, number] = [s.grid.uAxisIds[1], s.grid.vAxisIds[1]];
     s.editor.setPositionalAttribute(axes[0], 2, false);
     for (const offsets of [[0.25, -0.5], [-0.25, 0.5]] as const) {
-      const placed = gridIntersectionPlacement(s.editor, s.anchor, { Axes: axes, Offsets: [...offsets] }, s.store);
+      const placed = gridIntersectionPlacement(s.editor, s.anchor, { Axes: axes, Offsets: [offsets[0], offsets[1]] }, s.store);
       const intersection = s.reader.entity(placed.intersectionId)!;
       expect(intersection.attributes[0]).toEqual(axes.map((id) => `#${id}`));
       expect((intersection.attributes[1] as Array<{ real: number }>).map((v) => v.real)).toEqual([...offsets]);

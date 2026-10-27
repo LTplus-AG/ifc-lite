@@ -77,11 +77,12 @@ fn m2_a_retained_view_preserves_local_precision_axes_and_outward_flat_faces() {
     assert_eq!(js.vertex_count(), 36);
     assert_eq!(js.triangle_count(), 12);
     assert_eq!(indices, (0..36).collect::<Vec<_>>());
-    let m = part.world_from_object;
     for (corner, &index) in part.indices.iter().enumerate() {
         let p = &part.positions[index as usize * 3..][..3];
-        let world: [f64; 3] =
-            std::array::from_fn(|a| m[a] * p[0] + m[4 + a] * p[1] + m[8 + a] * p[2] + m[12 + a]);
+        // Hand-derived, independent of the column-major product under test:
+        // a 90° rotation about IFC Z maps (x, y, z) to (-y, x, z), then the
+        // placement translates by (2_600_000.125, 1_200_000.25, 73.5).
+        let world = [-p[1] + 2_600_000.125, p[0] + 1_200_000.25, p[2] + 73.5];
         let expected = zup_to_yup(world);
         let rtc_yup = zup_to_yup(rtc);
         for axis in 0..3 {

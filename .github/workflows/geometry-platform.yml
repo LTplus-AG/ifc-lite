@@ -208,7 +208,11 @@ jobs:
             --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
           # The SMLib-free runtime test uses its own transport; real-Worker
           # tests continue to use the untouched SDK assets under /smlib/.
-          cp "$RUNNER_TEMP/m3-native-openings.json" rust/wasm-bindings/smlib/m3-native-openings.json
+          # m3-native is continue-on-error: a missing reference must not abort the
+          # later independent lanes; m3-browser then fails with its own message.
+          if [ -f "$RUNNER_TEMP/m3-native-openings.json" ]; then
+            cp "$RUNNER_TEMP/m3-native-openings.json" rust/wasm-bindings/smlib/m3-native-openings.json
+          fi
           node scripts/stage-retained-runtime-peer.mjs
           echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"
       - name: Actual module-Worker retained browser executor (ifc-lite-wasm)

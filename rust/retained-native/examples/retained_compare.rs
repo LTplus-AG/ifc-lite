@@ -231,9 +231,11 @@ fn compare(
                         RetainedProductRefusal::KernelFailure { status } => status.to_string(),
                         _ => String::new(),
                     };
+                    // A refused product carries no consumed-part count: leave the
+                    // column empty rather than report 0 for a consumed host.
                     let message = message.replace(['\t', '\n', '\r'], " ");
                     report.rows.push(format!(
-                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t{cuts}\t{cut_ms}\t0\t",
+                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t{cuts}\t{cut_ms}\t\t",
                         ifc_type.name(), origin.map_or("", |o| o.cause),
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),

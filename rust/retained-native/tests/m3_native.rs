@@ -226,6 +226,7 @@ fn issue_7955_m3_kernel_failure_is_atomic_and_next_product_succeeds() {
 #[test]
 fn issue_7955_m3_survey_rotation_preserves_oracle_volume() {
     let text = ISSUE.replace("#8= IFCLOCALPLACEMENT($,#5);", "#301=IFCCARTESIANPOINT((100000.,200000.,0.));\n#302=IFCDIRECTION((0.8660254037844386,0.5,0.));\n#303=IFCAXIS2PLACEMENT3D(#301,#4,#302);\n#8=IFCLOCALPLACEMENT($,#303);");
+    assert_ne!(text, ISSUE, "survey placement edit must match the fixture");
     let Some(outcomes) = run(&text, &[30]) else { return; };
     oracle(&text, &outcomes, 30, &[50, 70, 100]);
     let original = run(ISSUE, &[30]).unwrap();

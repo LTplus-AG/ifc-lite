@@ -570,63 +570,21 @@ impl Mesh {
     /// (mullions, braces) sit far below that. Only `indices` change; the vertex
     /// buffer and per-vertex data are left intact, so the operation is
     /// deterministic and keeps vertex indices stable.
+    ///
+    /// The aspect test reads edge lengths only, so it also matches a genuine
+    /// needle whose every edge is shared with a neighbour; dropping that one
+    /// opens the mesh. The per-element funnel therefore calls
+    /// [`Self::drop_degenerate_triangles_unless_closed`] (#8156).
     pub fn drop_degenerate_triangles(&mut self) {
         if self.indices.len() < 3 {
             return;
         }
-        const MAX_ASPECT: f64 = 1.0e5;
-        let vertex_count = self.positions.len() / 3;
-        let vert = |i: u32| -> Option<[f64; 3]> {
-            let i = i as usize;
-            if i >= vertex_count {
-                return None;
-            }
-            Some([
-                self.positions[i * 3] as f64,
-                self.positions[i * 3 + 1] as f64,
-                self.positions[i * 3 + 2] as f64,
-            ])
-        };
-        let bits = |i: u32| -> [u32; 3] {
-            let i = i as usize;
-            [
-                self.positions[i * 3].to_bits(),
-                self.positions[i * 3 + 1].to_bits(),
-                self.positions[i * 3 + 2].to_bits(),
-            ]
-        };
-        let dist = |a: [f64; 3], b: [f64; 3]| -> f64 {
-            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-        };
         // #3988: compact only after a drop; bound retained capacity as before.
         let original_len = self.indices.len();
         let mut kept = 0;
         for read in (0..original_len / 3 * 3).step_by(3) {
             let tri = [self.indices[read], self.indices[read + 1], self.indices[read + 2]];
-            let (ia, ib, ic) = (tri[0], tri[1], tri[2]);
-            // Guard before bits() indexes positions; invalid triangles are dropped.
-            if ia as usize >= vertex_count
-                || ib as usize >= vertex_count
-                || ic as usize >= vertex_count
-            {
-                continue;
-            }
-            // Bit-identical f32 vertex pair → exact zero-area collapse.
-            let (ba, bb, bc) = (bits(ia), bits(ib), bits(ic));
-            if ba == bb || bb == bc || ba == bc {
-                continue;
-            }
-            let (va, vb, vc) = match (vert(ia), vert(ib), vert(ic)) {
-                (Some(a), Some(b), Some(c)) => (a, b, c),
-                _ => continue, // out-of-range index: drop (matches validate_indices)
-            };
-            let e0 = dist(va, vb);
-            let e1 = dist(vb, vc);
-            let e2 = dist(vc, va);
-            let min_edge = e0.min(e1).min(e2);
-            let max_edge = e0.max(e1).max(e2);
-            // Drop catastrophic needles; bit-identical zero edges were handled above.
-            if min_edge > 0.0 && max_edge / min_edge > MAX_ASPECT {
+            if self.is_degenerate_triangle(tri) {
                 continue;
             }
             if kept != read { self.indices[kept..kept + 3].copy_from_slice(&tri); }
@@ -634,6 +592,55 @@ impl Mesh {
         }
         self.indices.truncate(kept);
         self.indices.shrink_to(original_len);
+    }
+
+    /// [`Self::drop_degenerate_triangles`], except that a mesh whose every
+    /// edge is used exactly once in each direction is left untouched (#8156).
+    ///
+    /// Every edge of such a mesh is shared, bit for bit, with a neighbour, so
+    /// none of its triangles is an f32-collapse leftover that the neighbours
+    /// already cover: removing any one of them opens its three edges. The
+    /// incidence test also refuses bit-identical vertex pairs and exactly
+    /// zero-area triangles, so a mesh carrying the collapse this backstop is for
+    /// is not exempt. The same exemption guards the void-output hygiene
+    /// (`clean_void_output`, #7292).
+    pub fn drop_degenerate_triangles_unless_closed(&mut self) {
+        let candidate = self
+            .indices
+            .chunks_exact(3)
+            .any(|t| self.is_degenerate_triangle([t[0], t[1], t[2]]));
+        if candidate && !crate::exact_topology::strict_closed_mesh(self) {
+            self.drop_degenerate_triangles();
+        }
+    }
+
+    /// The backstop's test: an out-of-range index, a bit-identical f32 vertex
+    /// pair (exact zero area), or a longest/shortest edge ratio above 1e5.
+    fn is_degenerate_triangle(&self, [ia, ib, ic]: [u32; 3]) -> bool {
+        const MAX_ASPECT: f64 = 1.0e5;
+        let vertex_count = self.positions.len() / 3;
+        // Guard before indexing positions; invalid triangles are dropped.
+        if [ia, ib, ic].iter().any(|&i| i as usize >= vertex_count) {
+            return true;
+        }
+        let at = |i: u32| -> [f32; 3] {
+            let i = i as usize * 3;
+            [self.positions[i], self.positions[i + 1], self.positions[i + 2]]
+        };
+        let (pa, pb, pc) = (at(ia), at(ib), at(ic));
+        // Bit-identical f32 vertex pair → exact zero-area collapse.
+        let bits = |p: [f32; 3]| p.map(f32::to_bits);
+        if bits(pa) == bits(pb) || bits(pb) == bits(pc) || bits(pa) == bits(pc) {
+            return true;
+        }
+        let dist = |a: [f32; 3], b: [f32; 3]| -> f64 {
+            (0..3).map(|k| (a[k] as f64 - b[k] as f64).powi(2)).sum::<f64>().sqrt()
+        };
+        let (e0, e1, e2) = (dist(pa, pb), dist(pb, pc), dist(pc, pa));
+        let min_edge = e0.min(e1).min(e2);
+        let max_edge = e0.max(e1).max(e2);
+        // Catastrophic needles; bit-identical zero edges were handled above.
+        min_edge > 0.0 && max_edge / min_edge > MAX_ASPECT
     }
     /// Check if mesh is empty
     #[inline]

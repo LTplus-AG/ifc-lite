@@ -23,6 +23,13 @@
 //! DISTINCT vertices and the pre-cleanup shell really is a closed, orientable,
 //! single-component solid — the verdict is not wrong when it is taken, it is
 //! wrong by the time it is read.
+//!
+//! The backstop leaves a mesh alone when every edge is used exactly once in
+//! each direction, bit for bit (#8156), so the retraction fixture splits one
+//! corner: face BCD names its own copy of D, 2 µm higher. The shell is closed
+//! for the orienter, whose 10 µm weld merges the two copies, but not bit for
+//! bit, so the backstop still runs. The unsplit tetrahedron is the control for
+//! #8156: its needle faces are kept and its volume ships.
 
 use ifc_lite_core::{build_entity_index, has_geometry_by_name, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{orient_mesh_outward_verdict, GeometryRouter, Mesh, OrientVerdict};
@@ -65,6 +72,54 @@ DATA;
 #131=IFCFACEOUTERBOUND(#130,.T.);
 #132=IFCFACE((#131));
 #140=IFCPOLYLOOP((#101,#102,#103));
+#141=IFCFACEOUTERBOUND(#140,.T.);
+#142=IFCFACE((#141));
+#170=IFCCLOSEDSHELL((#112,#122,#132,#142));
+#171=IFCFACETEDBREP(#170);
+#18=IFCSHAPEREPRESENTATION(#6,'Body','Brep',(#171));
+#19=IFCPRODUCTDEFINITIONSHAPE($,$,(#18));
+#20=IFCCARTESIANPOINT((0.,0.,0.));
+#21=IFCAXIS2PLACEMENT3D(#20,$,$);
+#22=IFCLOCALPLACEMENT($,#21);
+#23=IFCBUILDINGELEMENTPROXY('36FTsOKg956eWgO6DwnT8U',$,'needle',$,$,#22,#19,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"##;
+
+/// [`NEEDLE_TETRA`] with face BCD naming its own copy of D, 2 µm above the
+/// shared one: one f32 step apart at z = 20, inside one cell of the orienter's
+/// 10 µm weld (both round to 2_000_000 cells). Closed for the orienter, not bit
+/// for bit, so the #8156 exemption does not apply and the backstop drops the
+/// two needle faces.
+const NEEDLE_TETRA_SPLIT_CORNER: &str = r##"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('','2026-01-01T00:00:00',(''),(''),'test','test','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCAXIS2PLACEMENT3D(#3,$,$);
+#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-06,#4,$);
+#6=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#5,$,.MODEL_VIEW.,$);
+#7=IFCPROJECT('11tEAnIV5BixApwp1YzpwS',$,'t',$,$,$,$,(#5),#2);
+#100=IFCCARTESIANPOINT((0.,0.,0.));
+#101=IFCCARTESIANPOINT((0.0001,0.,0.));
+#102=IFCCARTESIANPOINT((10.,20.,0.));
+#103=IFCCARTESIANPOINT((10.,5.,20.));
+#104=IFCCARTESIANPOINT((10.,5.,20.000002));
+#110=IFCPOLYLOOP((#100,#102,#101));
+#111=IFCFACEOUTERBOUND(#110,.T.);
+#112=IFCFACE((#111));
+#120=IFCPOLYLOOP((#100,#101,#103));
+#121=IFCFACEOUTERBOUND(#120,.T.);
+#122=IFCFACE((#121));
+#130=IFCPOLYLOOP((#100,#103,#102));
+#131=IFCFACEOUTERBOUND(#130,.T.);
+#132=IFCFACE((#131));
+#140=IFCPOLYLOOP((#101,#102,#104));
 #141=IFCFACEOUTERBOUND(#140,.T.);
 #142=IFCFACE((#141));
 #170=IFCCLOSEDSHELL((#112,#122,#132,#142));
@@ -232,7 +287,7 @@ fn only_element(content: &str) -> ProducedElementMeshes {
 /// verdict claims a trustworthy solid, the RETURNED mesh has to be one.
 #[test]
 fn a_shipped_volume_describes_the_returned_mesh_not_the_pre_cleanup_one() {
-    let p = only_element(NEEDLE_TETRA);
+    let p = only_element(NEEDLE_TETRA_SPLIT_CORNER);
 
     // The premise: the backstop really did fire on this element, and it really
     // did open the shell. Without both, the test proves nothing.
@@ -286,5 +341,29 @@ fn an_untouched_brep_still_ships_its_volume() {
     assert!(
         (volume - 1.0).abs() < 1e-6,
         "unit cube reported {volume} m³"
+    );
+}
+
+/// #8156: a strictly closed mesh keeps its needle faces. Every edge of the
+/// unsplit tetrahedron is shared bit for bit, so dropping a needle face would
+/// open it; the backstop now leaves it alone and the volume ships.
+#[test]
+fn issue_8156_a_strictly_closed_needle_keeps_its_faces_and_its_volume() {
+    let p = only_element(NEEDLE_TETRA);
+
+    assert_eq!(
+        p.degenerate_triangles_dropped, 0,
+        "the backstop must not open a strictly closed shell"
+    );
+    assert!(
+        returned_verdict(&p).is_single_closed_solid(),
+        "the needle tetrahedron must come back a single closed solid"
+    );
+    // |det(B-A, C-A, D-A)| / 6 = 1e-4 * (20 * 20) / 6.
+    let expected = 1.0e-4 * 400.0 / 6.0;
+    let volume = p.geometry_volume.expect("the closed needle's volume must ship");
+    assert!(
+        (volume - expected).abs() < 1e-3 * expected,
+        "needle tetrahedron reported {volume} m3, expected {expected} m3"
     );
 }

@@ -40,6 +40,27 @@ pub fn expectations(
     }
     Ok(result)
 }
+/// A published voided host is checked against its source cut expectation.
+/// The pre-cut host volume no longer applies to it, so a host the source
+/// oracle cannot model fails closed rather than recording no check at all.
+pub fn check_opened(
+    label: &str,
+    actual: &super::metrics::Metrics,
+    e: Option<&OpeningExpectation>,
+    t: &Value,
+    violations: &mut Vec<String>,
+) -> Option<f64> {
+    match e {
+        Some(e) => check(label, actual, e, t, violations),
+        None => {
+            violations.push(format!(
+                "{label}: published voided host has no source cut expectation; \
+                 extend oracle::openings to model it before it may publish unverified"
+            ));
+            None
+        }
+    }
+}
 pub fn check(
     label: &str,
     actual: &super::metrics::Metrics,
@@ -115,5 +136,22 @@ mod tests {
         m.bbox[0] = -1.;
         check("bad", &m, &e, &t, &mut violations);
         assert_eq!(violations.len(), 3); // prism, lower bound and containment all act.
+    }
+    #[test]
+    fn m3_unverifiable_voided_host_fails_closed() {
+        let t: Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/cli-retained/tolerances.json"
+        ))
+        .unwrap();
+        let m = super::super::metrics::Metrics {
+            volume: 22.,
+            area: 0.,
+            bbox: [0., 0., 0., 4., 2., 3.],
+            defects: 0,
+        };
+        let mut violations = Vec::new();
+        assert_eq!(check_opened("brep", &m, None, &t, &mut violations), None);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("no source cut expectation"));
     }
 }

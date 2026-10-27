@@ -48,8 +48,15 @@ impl Report {
             if opening.is_some() { None } else { source },
             tolerances,
         );
-        let cut_rel = opening.and_then(|e| e.as_ref()).and_then(|e|
-            super::openings::check(&format!("{model}:{}", shape.product_id), actual, e, tolerances, &mut self.violations));
+        let cut_rel = opening.and_then(|e| {
+            super::openings::check_opened(
+                &format!("{model}:{}", shape.product_id),
+                actual,
+                e.as_ref(),
+                tolerances,
+                &mut self.violations,
+            )
+        });
         let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
         self.rows.push(format!(
             "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t\t0\t0\t0\t{}",

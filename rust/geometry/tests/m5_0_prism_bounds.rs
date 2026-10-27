@@ -134,3 +134,28 @@ fn halfspace_dispatch_keeps_all_three_current_refusals() {
         assert_eq!(error.origin_view(),Some(("boolean_second_operand",Some(9),"recipe")));
     }
 }
+
+// #7955: bounds come from the actual analytic extrusion lowering, not a prism
+// test double; densely sample its circular profile and oblique sweep surface.
+#[test]
+fn analytic_arc_extrusion_bounds_contain_dense_surface_samples() {
+    use ifc_lite_geometry::{analytic::{extract_analytic_extrusion, with_source_capture, AnalyticCurveSegment}, document::RetainedExtrusion};
+    let text=SOURCE.replace("IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,6.)","IFCCIRCLEPROFILEDEF(.AREA.,$,$,1000.)")
+        .replace("#3=IFCDIRECTION((0.,0.,1.))","#3=IFCDIRECTION((0.6,0.,0.8))")
+        .replace("#5=IFCEXTRUDEDAREASOLID(#4,#2,#3,2.)","#5=IFCEXTRUDEDAREASOLID(#4,#2,#3,3000.)");
+    let bundle=SourceBundle::new(text.as_bytes().to_vec());let mut decoder=bundle.decoder();
+    let entity=decoder.decode_by_id(5).unwrap();
+    let source=with_source_capture(||extract_analytic_extrusion(&entity,&mut decoder));
+    let AnalyticCurveSegment::Arc{center,normal,x_axis,radius,start_angle,sweep_angle}=source.profile.as_ref().unwrap().loops[0].segments[0] else{panic!("circle must be analytic")};
+    let mut document=GeometryDocument::new();
+    let handle=document.add_retained_extrusion(RetainedExtrusion{source,length_unit_scale:0.001}).unwrap();
+    let payload=document.retained_payload(handle).unwrap();let b=payload.evaluation_bounds.unwrap().0;
+    let frame=nalgebra::Matrix4::from_column_slice(&payload.evaluation_from_source);
+    let u=nalgebra::Vector3::from(x_axis);let v=nalgebra::Vector3::from(normal).cross(&u);
+    for i in 0..=4096 { for depth in [0.,1500.,3000.] {
+        let angle=start_angle+sweep_angle*i as f64/4096.;
+        let p=nalgebra::Vector3::from(center)+radius*(u*angle.cos()+v*angle.sin())+nalgebra::Vector3::new(0.6*depth,0.,0.8*depth);
+        let local=frame.transform_point(&nalgebra::Point3::from(p));
+        for k in 0..3 {assert!(local[k]>=b[k] && local[k]<=b[k+3],"surface {local:?} outside {b:?}");}
+    } }
+}

@@ -171,6 +171,15 @@ impl GeometryRouter {
         }
     }
 
+    /// The canonical product placement in metres; absent placement is identity.
+    pub(super) fn element_world_placement(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Matrix4<f64>> {
+        Ok(self.resolve_object_placement(element, decoder)?.transform)
+    }
+
     /// Get placement transform from element without applying it
     pub(super) fn get_placement_transform_from_element(
         &self,

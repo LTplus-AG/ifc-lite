@@ -14,7 +14,7 @@ use super::inner::{ProgramError, ProgramStage};
 use super::inner_cache::{CacheControl, CacheReply};
 use super::mapping::{MappingControl, MappingReply};
 use crate::processors::texture::ResolvedTextureMap;
-use crate::representation::{product_shape, rep_items, ProductShape};
+use crate::representation::product_budget::ProductItems;
 use crate::router::annotation::{admit_fill, AnnotationRings};
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::ObjectPlacement;
@@ -22,9 +22,10 @@ use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 
+mod accept;
+mod admission;
 mod retained;
 mod retained_structure;
-mod accept;
 use super::item::{ItemControl, ItemStep};
 use super::retained::{RetainedSelection, LogicalRetainedValue};
 mod merged;
@@ -114,7 +115,7 @@ enum Action {
 pub(super) enum ProductReply {
     Item(ItemStep),
     Alignment(Option<Mesh>),
-    Shape(Result<Option<ProductShape>>),
+    Shape(Result<ProductItems>),
     Items(Result<Vec<DecodedEntity>>),
     Annotation(Result<AnnotationRings>),
     AnnotationMesh(u32, Result<Mesh>),
@@ -172,9 +173,8 @@ pub(super) struct ProductControl<'a> {
     hygiene: SourceHygiene,
     /// `None` for the merged walk.
     styled: Option<Styled<'a>>,
-    shape: Option<ProductShape>,
-    /// Whether the shape carries direct body geometry (read once).
-    direct: bool,
+    plan: Option<ProductItems>,
+    allowance: u32,
     /// The next representation index the cursor examines.
     next_rep: usize,
     items: std::vec::IntoIter<DecodedEntity>,
@@ -204,8 +204,8 @@ impl<'a> ProductControl<'a> {
             element,
             hygiene,
             styled,
-            shape: None,
-            direct: false,
+            plan: None,
+            allowance: crate::representation::MAX_WALK_LEVELS,
             next_rep: 0,
             items: Vec::new().into_iter(),
             fill_only: false,
@@ -250,25 +250,24 @@ impl<'a> ProductControl<'a> {
 
     pub(super) fn execute(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> std::result::Result<ProductReply, ProgramError> {
+        if let Some(plan) = &self.plan {
+            if let Err(error) = plan.validate(router, decoder) {
+                return Ok(ProductReply::Items(Err(error)));
+            }
+        }
         // Source steps keep their action in place: the accept consumes it.
         let (element, styled) = (self.element, self.styled);
         match &mut self.action {
             Action::Item { item, control } => return control.execute(item, router, decoder).map(ProductReply::Item),
             Action::Alignment => return Ok(ProductReply::Alignment(router.alignment_mesh(element, decoder))),
-            Action::Shape => {
-                if let Some(selection) = &self.retained {
-                    return Ok(ProductReply::Shape(retained_structure::validated_product_shape(element, decoder)
-                        .map_err(|error| error.into_common(selection))));
-                }
-                return Ok(ProductReply::Shape(product_shape(element, decoder).map_err(Into::into)));
-            }
+            Action::Shape => return Ok(ProductReply::Shape(self.admit(router, decoder))),
             Action::Items(index) => {
-                let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(*index));
-                let rep = rep.ok_or(ProgramError::StaleRequest)?;
-                return Ok(ProductReply::Items(match &self.retained {
-                    Some(selection) => retained_structure::retained_items(rep, decoder, selection),
-                    None => rep_items(rep, decoder).map_err(Into::into),
-                }));
+                let (_, items) = self
+                    .plan
+                    .as_ref()
+                    .and_then(|plan| plan.representations.get(*index))
+                    .ok_or(ProgramError::StaleRequest)?;
+                return Ok(ProductReply::Items(Ok(items.clone())));
             }
             Action::Annotation(item) => return Ok(ProductReply::Annotation(admit_fill(item, decoder))),
             Action::Raw(item) => {

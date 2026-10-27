@@ -109,8 +109,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<(f64, f64, f64)>> {
-        let mut placement = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut placement);
+        let placement = self.element_world_placement(element, decoder)?;
         let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
         Ok(linear.try_inverse().map(|inverse| {
             let (x, y, z) = self.rtc_offset();

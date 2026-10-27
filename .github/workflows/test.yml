@@ -941,6 +941,11 @@ jobs:
           # #7955 M1 F: keep added CLI modules; restore zero-publication success.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/cli/src/commands/export-retained.ts | grep -Fxq 'packages/cli/src/commands/export-retained.ts'; then
             oracle_args+=(--mutation tests/evidence/m1-f-cli-retained/behaviour.oracle.patch --test packages/cli/src/commands/export-retained.test.ts)
+          # C2 lane #7781: preserve new modules and test wiring while disturbing
+          # reporting, balanced leaves, controller debits, root retention and
+          # profile publication. These mutations remain bounded.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- native/smlib-adapter/node/client.mjs | grep -Fxq 'native/smlib-adapter/node/client.mjs'; then
             # #7955 M1 F: preserve the added modules so inert tests still load;
             # break captured-owner retirement and engine asset digest recording.

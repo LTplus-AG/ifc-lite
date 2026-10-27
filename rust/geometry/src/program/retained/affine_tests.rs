@@ -147,7 +147,9 @@ fn s2_r2_reached_singular_map_with_nan_determinant_refuses_whole_plan() {
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(&bytes, &mut decoder);
     let target = decoder.decode_by_id(82).unwrap();
-    let matrix = router.parse_cartesian_transformation_operator(&target, &mut decoder).unwrap();
+    let matrix =
+        crate::router::transforms::operator::parse_transformation_operator(&target, &mut decoder)
+            .unwrap();
     assert!(matrix.iter().all(|value| value.is_finite()));
     assert_eq!([matrix[(0, 0)], matrix[(1, 1)], matrix[(2, 2)]], [0., 1e200, 1e200]);
     assert!(matrix.fixed_view::<3, 3>(0, 0).determinant().is_nan());

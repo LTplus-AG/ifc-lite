@@ -148,9 +148,3 @@ fn shape_error(entity: u32, error: ShapeError) -> StructureError {
     };
     StructureError::Origin { site: FailureSite::ProductShape, entity, cause: OriginCause::Shape(error), diagnostic }
 }
-
-pub(super) fn retained_items(rep: &DecodedEntity, decoder: &mut EntityDecoder,
-    selection: &RetainedSelection) -> crate::Result<Vec<DecodedEntity>> {
-    crate::representation::rep_items(rep, decoder)
-        .map_err(|error| shape_error(rep.id, error).into_common(selection))
-}

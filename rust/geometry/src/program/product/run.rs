@@ -2,7 +2,6 @@
 //! The product walk's synchronous driver: every step applied in place.
 use super::{merged, Action, Body, Child, ProductControl, Sink};
 use crate::program::inner::ProgramError;
-use crate::representation::{product_shape, rep_items};
 use crate::GeometryRouter;
 use ifc_lite_core::EntityDecoder;
 
@@ -15,22 +14,28 @@ impl ProductControl<'_> {
         -> std::result::Result<(), ProgramError> {
         let element = self.element;
         loop {
+            if let Some(plan) = &self.plan {
+                if let Err(error) = plan.validate(router, decoder) {
+                    self.action = Action::Complete(Err(error));
+                    return Ok(());
+                }
+            }
             let next = match &mut self.action {
                 Action::Item { .. } => return Err(ProgramError::UnsupportedRetained),
                 Action::Complete(_) => return Ok(()),
                 Action::Taken => return Err(ProgramError::Outstanding),
-                Action::Shape => match product_shape(element, decoder) {
-                    Ok(shape) => self.shape_done(shape),
-                    Err(error) => Action::Complete(Err(error.into())),
+                Action::Shape => match self.admit(router, decoder) {
+                    Ok(shape) => self.shape_done(shape, router),
+                    Err(error) => Action::Complete(Err(error)),
                 },
                 Action::Items(index) => {
                     let index = *index;
-                    let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(index));
-                    let rep = rep.ok_or(ProgramError::StaleRequest)?;
-                    match rep_items(rep, decoder) {
-                        Ok(items) => self.items_done(index, items),
-                        Err(error) => Action::Complete(Err(error.into())),
-                    }
+                    let (_, items) = self
+                        .plan
+                        .as_ref()
+                        .and_then(|plan| plan.representations.get(index))
+                        .ok_or(ProgramError::StaleRequest)?;
+                    self.items_done(index, items.clone())
                 }
                 Action::Raw(item) => {
                     let offset = router.raw_item_element_offset(item, element, decoder);

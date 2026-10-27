@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The mapping controller's numerical merge/close steps and its accept side:
 //! each validated reply is installed and the next step selected.
-use super::{Action, ChildControl, Event, MappingControl, MappingOutput, MappingReply, Merged, Merging, Placeholder,
-    Place, Placing, Reached, Sink, Walk};
 use super::super::inner::ProgramError;
+use super::{Action, ChildControl, Event, MappingControl, MappingOutput, MappingValue, Merged, Merging, Placeholder, Place, Placing, Reached, Sink, Walk};
 use crate::router::mapped_item::MappedOccurrence;
 use crate::{Error, GeometryRouter, Result};
 
-type Step = std::result::Result<MappingReply, ProgramError>;
+type Step = std::result::Result<MappingValue, ProgramError>;
 
 impl<'a> MappingControl<'a> {
     /// Merge into the innermost accumulator. A styled walk's root plain item
@@ -15,7 +14,7 @@ impl<'a> MappingControl<'a> {
     pub(super) fn merge(&mut self, merging: Merging, router: &GeometryRouter) -> Step {
         let nested = !self.levels.is_empty();
         let type_map = matches!(self.levels.last(), Some(level) if matches!(level.sink, Sink::TypeMap));
-        Ok(MappingReply::Merged(match merging {
+        Ok(MappingValue::Merged(match merging {
             Merging::Item(mut mesh) => {
                 let level = self.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
                 let mut parts = std::mem::take(&mut level.parts);
@@ -71,7 +70,9 @@ impl<'a> MappingControl<'a> {
         if self.retained.is_some() { return self.finish_retained_level(); }
         let level = self.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
         let Sink::Styled { start, template } = &level.sink else {
-            return Ok(MappingReply::Finished(std::mem::take(&mut level.parts).into_parts()));
+            return Ok(MappingValue::Finished(
+                std::mem::take(&mut level.parts).into_parts(),
+            ));
         };
         let mut meshes = std::mem::take(&mut self.meshes);
         let produced = meshes.sub_meshes.get_mut(*start..).unwrap_or_default();
@@ -81,11 +82,11 @@ impl<'a> MappingControl<'a> {
         if template.is_some() {
             GeometryRouter::retag_dont_bake_template(produced, level.source_id, level.transform.as_ref());
         }
-        Ok(MappingReply::StyledFinished(meshes))
+        Ok(MappingValue::StyledFinished(meshes))
     }
 
     /// Place an occurrence's source-coords parts by its mapping.
-    pub(super) fn place(place: Place, router: &GeometryRouter) -> MappingReply {
+    pub(super) fn place(place: Place, router: &GeometryRouter) -> MappingValue {
         let Place { parts, item_id, source_id, transform, truncated } = place;
         let value = match parts {
             Placing::Retained(values) => return Self::place_retained_mapping(item_id, source_id, transform, *values),
@@ -96,50 +97,39 @@ impl<'a> MappingControl<'a> {
             router.place_mapped_parts(source_id, &mut parts, transform.as_ref());
             parts
         });
-        MappingReply::Placed { item_id, truncated, value }
+        MappingValue::Placed {
+            item_id,
+            truncated,
+            value,
+        }
     }
 
     /// Push a don't-bake occurrence's placeholder directly:
     /// `SubMeshCollection::add` drops empty meshes, and this one is
     /// intentionally empty (its InstanceMeta is the payload).
-    pub(super) fn push_placeholder(&mut self, placeholder: Placeholder) -> MappingReply {
+    pub(super) fn push_placeholder(&mut self, placeholder: Placeholder) -> MappingValue {
         let Placeholder { solid_id, source_id, transform } = placeholder;
         let mut meshes = std::mem::take(&mut self.meshes);
         let mesh = GeometryRouter::dont_bake_placeholder(source_id, transform.as_ref());
         meshes.sub_meshes.push(crate::SubMesh::new(solid_id, mesh));
-        MappingReply::Placeholder(meshes)
+        MappingValue::Placeholder(meshes)
     }
 
-    pub(in crate::program) fn accept(&mut self, reply: MappingReply, router: &GeometryRouter) {
+    pub(in crate::program) fn accept(
+        &mut self,
+        reply: super::MappingReply,
+        router: &GeometryRouter,
+    ) {
+        self.budget = reply.budget;
+        let reply = reply.value;
+        if let MappingValue::Refused { item_id, refusal } = reply {
+            self.stop_logical(item_id, refusal, router);
+            return;
+        }
         if self.accept_retained_reply(&reply) { self.accept_retained(reply, router); return; }
-        // A child step drives its control in place: the action, which holds
-        // the child's whole state, moves only once the child completes.
-        let reply = match (&mut self.action, reply) {
-            (Action::Child(item, control), reply @ (MappingReply::Child(_) | MappingReply::CacheChild(_))) => {
-                let policy = self.levels.last().is_none_or(|level| level.policy);
-                let result = {
-                    let _policy = router.enter_unsupported_policy(policy);
-                    match (control, reply) {
-                        (ChildControl::Item(control), MappingReply::Child(step)) => {
-                            control.accept(step, router);
-                            control.take_result()
-                        }
-                        (ChildControl::Cache(control), MappingReply::CacheChild(reply)) => {
-                            control.accept(item.item(), reply, router);
-                            control.take_result()
-                        }
-                        _ => None,
-                    }
-                };
-                if let Some(result) = result {
-                    self.accept_child_result(result, router);
-                }
-                return;
-            }
-            (_, reply) => reply,
-        };
+        let Some(reply) = self.accept_child_reply(reply, router) else { return };
         let event = match (std::mem::replace(&mut self.action, Action::Taken), reply) {
-            (Action::Taken, MappingReply::Entered { item_id, value }) => match value {
+            (Action::Taken, MappingValue::Entered { item_id, value }) => match value {
                 Err(error) => Event::Deliver { item_id, truncated: false, value: Err(error) },
                 Ok((source_id, MappedOccurrence::Cached { mesh, transform })) => {
                     let parts = Placing::Cached(mesh);
@@ -151,12 +141,22 @@ impl<'a> MappingControl<'a> {
                     Event::Advance
                 }
             },
-            (Action::SharedItems(representation, source_id, placeholder), MappingReply::SharedItems(items)) => {
+            (
+                Action::SharedItems(representation, source_id, placeholder),
+                MappingValue::SharedItems(Ok(items)),
+            ) => {
                 let sink = Sink::Shared(placeholder);
                 self.enter_source(u32::MAX, source_id, None, representation.item(), items, sink, router);
                 Event::Advance
             }
-            (Action::Texture(item), MappingReply::Textured(built)) => match built {
+            (Action::SharedItems(representation, ..), MappingValue::SharedItems(Err(error))) => {
+                Event::Deliver {
+                    item_id: representation.item().id,
+                    truncated: false,
+                    value: Err(error),
+                }
+            }
+            (Action::Texture(item), MappingValue::Textured(built)) => match built {
                 Some((mesh, uvs)) => {
                     self.action = Action::Merge(Merging::Textured(item.item().id, mesh, uvs));
                     return;
@@ -167,7 +167,7 @@ impl<'a> MappingControl<'a> {
                     None => return,
                 },
             },
-            (Action::Taken, MappingReply::Merged(merged)) => match merged {
+            (Action::Taken, MappingValue::Merged(merged)) => match merged {
                 Merged::Styled(meshes) => {
                     self.meshes = meshes;
                     Event::Advance
@@ -185,46 +185,73 @@ impl<'a> MappingControl<'a> {
                     None => return,
                 },
             },
-            (Action::Taken, MappingReply::Finished(value)) => match self.levels.pop() {
+            (Action::Taken, MappingValue::Finished(value)) => match self.levels.pop() {
                 Some(level) => self.finish_level(level, value, router),
                 None => return,
             },
-            (Action::Taken, MappingReply::Placed { item_id, truncated, value }) => {
-                Event::Deliver { item_id, truncated, value }
+            (
+                Action::Taken,
+                MappingValue::Placed {
+                    item_id,
+                    truncated,
+                    value,
+                },
+            ) => Event::Deliver {
+                item_id,
+                truncated,
+                value,
+            },
+            (Action::Taken, MappingValue::StyledEntered { item_id, value }) => {
+                self.enter_styled(item_id, value, router)
             }
-            (Action::Taken, MappingReply::StyledEntered { item_id, value }) => self.enter_styled(item_id, value, router),
-            (Action::StyledItems(pending), MappingReply::StyledItems(items)) => self.open_styled(pending, items, router),
-            (Action::Taken, MappingReply::StyledFinished(meshes)) => {
+            (Action::StyledItems(pending), MappingValue::StyledItems(items)) => {
+                self.open_styled(pending, items, router)
+            }
+            (Action::Taken, MappingValue::StyledFinished(meshes)) => {
                 self.meshes = meshes;
                 self.close_styled(router)
             }
-            (Action::Taken, MappingReply::Placeholder(meshes)) => {
+            (Action::Taken, MappingValue::Placeholder(meshes)) => {
                 self.action = Action::Complete(Ok(MappingOutput::Styled(meshes)));
                 return;
             }
-            (Action::Taken, MappingReply::TypeMapEntered(value)) => match (value, self.rep_map.as_ref().map(Reached::item)) {
-                (Ok((representation, items)), Some(rep_map)) => {
-                    // Whether a dropped item here is a real content gap, or this
-                    // router declining a 2D map it was never meant to mesh: the
-                    // TYPE path selects maps by reference/instantiation only, so a
-                    // Revit/ArchiCAD 'FootPrint' or 'Annotation' map reaches here
-                    // carrying items no processor handles, CORRECTLY absent from a
-                    // 3D view. Only the counting is gated, once per SOURCE, not
-                    // the walk: see `GeometryRouter::claim_unsupported_source`.
-                    self.enter_source(u32::MAX, rep_map.id, None, &representation, items, Sink::TypeMap, router);
-                    Event::Advance
+            (Action::Taken, MappingValue::TypeMapEntered(value)) => {
+                match (value, self.rep_map.as_ref().map(Reached::item)) {
+                    (Ok((representation, items)), Some(rep_map)) => {
+                        // Whether a dropped item here is a real content gap, or this
+                        // router declining a 2D map it was never meant to mesh: the
+                        // TYPE path selects maps by reference/instantiation only, so a
+                        // Revit/ArchiCAD 'FootPrint' or 'Annotation' map reaches here
+                        // carrying items no processor handles, CORRECTLY absent from a
+                        // 3D view. Only the counting is gated, once per SOURCE, not
+                        // the walk: see `GeometryRouter::claim_unsupported_source`.
+                        self.enter_source(
+                            u32::MAX,
+                            rep_map.id,
+                            None,
+                            &representation,
+                            items,
+                            Sink::TypeMap,
+                            router,
+                        );
+                        Event::Advance
+                    }
+                    (Err(error), _) => Event::Deliver {
+                        item_id: u32::MAX,
+                        truncated: false,
+                        value: Err(error),
+                    },
+                    (Ok(_), None) => return,
                 }
-                (Err(error), _) => Event::Deliver { item_id: u32::MAX, truncated: false, value: Err(error) },
-                (Ok(_), None) => return,
-            },
-            (Action::Taken, MappingReply::Origin(origin)) => match origin {
+            }
+            (Action::Taken, MappingValue::Origin(origin)) => match origin {
                 Ok(origin) => {
                     self.action = Action::TypeFinish(origin);
                     return;
                 }
                 Err(error) => self.fail_level(error, router),
             },
-            (Action::Taken, MappingReply::TypeFinished(parts)) => {
+            (Action::Taken, MappingValue::TypeFinished(parts)) => {
                 self.levels.pop();
                 self.action = Action::Complete(parts.map(MappingOutput::Type));
                 return;
@@ -236,6 +263,38 @@ impl<'a> MappingControl<'a> {
             }
         };
         self.reduce(event, router);
+    }
+
+    fn accept_child_reply(&mut self, reply: MappingValue, router: &GeometryRouter) -> Option<MappingValue> {
+        // A child step drives its control in place: the action, which holds
+        // the child's whole state, moves only once the child completes.
+        match (&mut self.action, reply) {
+            (
+                Action::Child(item, control),
+                reply @ (MappingValue::Child(_) | MappingValue::CacheChild(_)),
+            ) => {
+                let policy = self.levels.last().is_none_or(|level| level.policy);
+                let result = {
+                    let _policy = router.enter_unsupported_policy(policy);
+                    match (control, reply) {
+                        (ChildControl::Item(control), MappingValue::Child(step)) => {
+                            control.accept(step, router);
+                            control.take_result()
+                        }
+                        (ChildControl::Cache(control), MappingValue::CacheChild(reply)) => {
+                            control.accept(item.item(), reply, router);
+                            control.take_result()
+                        }
+                        _ => None,
+                    }
+                };
+                if let Some(result) = result {
+                    self.accept_child_result(result, router);
+                }
+                None
+            }
+            (_, reply) => Some(reply),
+        }
     }
 
     /// A completed child: its mesh merges next, in item order; a failure is

@@ -23,7 +23,7 @@ class FakeWorker implements RetainedWorker {
 }
 const start: RetainedHostEvent = {
   kind: 'start', candidateIds: new Uint32Array([10, 20, 30, 40]),
-  frame: { x: 2600000, y: 0, z: 0, needsShift: true },
+  frame: { rtcOffset: new Float64Array([2600000, 0, 0]), needsShift: true },
 };
 async function collect(events: AsyncIterable<RetainedHostEvent>) {
   const result: RetainedHostEvent[] = [];

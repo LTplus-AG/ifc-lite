@@ -2,16 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { MeshCollection, RtcFrame } from '@ifc-lite/wasm';
+import type { MeshCollection } from '@ifc-lite/wasm';
 import type { MeshData } from '@ifc-lite/geometry';
 
 // TEMPORARY M2-B boundary: replace the session/event interfaces with generated
 // pkg-retained d.ts imports when M2-A lands. This is §3.2's view-only contract;
-// the unchanged default MeshCollection/RtcFrame types describe shared storage.
+// the unchanged default MeshCollection type describes shared storage. The start
+// frame is NOT the default RtcFrame {x,y,z}: M2-A emits RetainedRtcFrame.
+export interface RetainedRtcFrame { rtcOffset: Float64Array; needsShift: boolean }
 export interface RetainedStart {
   kind: 'start';
   candidateIds: Uint32Array;
-  frame: RtcFrame;
+  frame: RetainedRtcFrame;
 }
 export interface RetainedPublished {
   kind: 'published';

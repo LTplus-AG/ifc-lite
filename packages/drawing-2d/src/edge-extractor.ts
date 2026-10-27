@@ -13,10 +13,9 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Vec3, EdgeData, DrawingLine, SectionPlaneConfig } from './types.js';
+import { weldVertices, computeFaceNormal } from './edge-weld.js';
 import {
   vec3,
-  vec3Sub,
-  vec3Cross,
   vec3Normalize,
   vec3Dot,
   vec3Lerp,
@@ -94,11 +93,6 @@ const WINDING_VOLUME_EPSILON = 1e-6;
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface EdgeKey {
-  minIdx: number;
-  maxIdx: number;
-}
-
 interface EdgeInfo {
   v0Idx: number;
   v1Idx: number;
@@ -123,32 +117,39 @@ export class EdgeExtractor {
   extractEdges(mesh: MeshData): EdgeData[] {
     const { positions, indices, expressId, ifcType, modelIndex, origin } = mesh;
 
-    // Build edge-to-face adjacency map
-    const edgeMap = new Map<string, EdgeInfo>();
-    const faceNormals: Vec3[] = [];
+    // Weld coincident vertices first (issue #8161): adjacency is keyed by the
+    // weld representative, so per-face duplicates share their edges.
+    const { rep, tolerance } = weldVertices(positions);
 
-    const triangleCount = indices.length / 3;
+    // Build edge-to-face adjacency map
+    const edgeMap = new Map<number, EdgeInfo>();
+    const faceNormals: Vec3[] = [];
+    const vertexCount = positions.length / 3;
+
+    const triangleCount = Math.floor(indices.length / 3);
 
     // First pass: compute face normals and build edge adjacency
     for (let t = 0; t < triangleCount; t++) {
-      const i0 = indices[t * 3];
-      const i1 = indices[t * 3 + 1];
-      const i2 = indices[t * 3 + 2];
+      const r0 = rep[indices[t * 3]];
+      const r1 = rep[indices[t * 3 + 1]];
+      const r2 = rep[indices[t * 3 + 2]];
 
-      // Get vertices in WORLD space (positions are stored in the element's
-      // local frame; world = origin + local) — see section-cutter.ts.
-      const v0 = this.getVertex(positions, i0, origin);
-      const v1 = this.getVertex(positions, i1, origin);
-      const v2 = this.getVertex(positions, i2, origin);
+      // A triangle that welds down to a segment or a point has no face.
+      if (r0 === r1 || r1 === r2 || r2 === r0) continue;
 
-      // Compute face normal
-      const faceNormal = this.computeFaceNormal(v0, v1, v2);
+      // Face normal from the triangle's own (welded) corners, in the LOCAL
+      // frame: `origin` is a translation and cannot change a normal.
+      const faceNormal = computeFaceNormal(positions, r0, r1, r2, tolerance);
+      // Zero-area (collinear within tolerance) triangle: skip it rather than
+      // let it register as a second face with a meaningless normal.
+      if (!faceNormal) continue;
+
+      const face = faceNormals.length;
       faceNormals.push(faceNormal);
 
-      // Register edges
-      this.registerEdge(edgeMap, i0, i1, t);
-      this.registerEdge(edgeMap, i1, i2, t);
-      this.registerEdge(edgeMap, i2, i0, t);
+      this.registerEdge(edgeMap, vertexCount, r0, r1, face);
+      this.registerEdge(edgeMap, vertexCount, r1, r2, face);
+      this.registerEdge(edgeMap, vertexCount, r2, r0, face);
     }
 
     // Orient the face normals OUTWARD before classification (issue #2682).
@@ -397,32 +398,24 @@ export class EdgeExtractor {
     return volume6 / 6 < -floor ? -1 : 1;
   }
 
-  private computeFaceNormal(v0: Vec3, v1: Vec3, v2: Vec3): Vec3 {
-    const edge1 = vec3Sub(v1, v0);
-    const edge2 = vec3Sub(v2, v0);
-    const cross = vec3Cross(edge1, edge2);
-    return vec3Normalize(cross);
-  }
-
   private registerEdge(
-    edgeMap: Map<string, EdgeInfo>,
-    idx0: number,
-    idx1: number,
+    edgeMap: Map<number, EdgeInfo>,
+    vertexCount: number,
+    rep0: number,
+    rep1: number,
     faceIndex: number
   ): void {
-    // Use canonical edge key (smaller index first)
-    const minIdx = Math.min(idx0, idx1);
-    const maxIdx = Math.max(idx0, idx1);
-    const key = `${minIdx}:${maxIdx}`;
+    // Canonical key over weld representatives (smaller first). Exact for any
+    // vertex count below 2^26.5, far beyond a single element's mesh.
+    const minIdx = Math.min(rep0, rep1);
+    const maxIdx = Math.max(rep0, rep1);
+    const key = minIdx * vertexCount + maxIdx;
 
-    if (!edgeMap.has(key)) {
-      edgeMap.set(key, {
-        v0Idx: minIdx,
-        v1Idx: maxIdx,
-        faceIndices: [],
-      });
+    let info = edgeMap.get(key);
+    if (!info) {
+      info = { v0Idx: minIdx, v1Idx: maxIdx, faceIndices: [] };
+      edgeMap.set(key, info);
     }
-    edgeMap.get(key)!.faceIndices.push(faceIndex);
+    info.faceIndices.push(faceIndex);
   }
 }
-

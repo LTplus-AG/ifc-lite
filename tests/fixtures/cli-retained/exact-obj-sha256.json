@@ -1,0 +1,4 @@
+{
+  "tests/fixtures/synthetic-retained/f-c-extrusion.ifc": "559e9a991642c362bed615f114285540af9a080d623988bc3863f2deccc32116",
+  "rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc": "8dece06ed7b8a845774ee0f6aaf5e29af4864a1dc77dc1364c075f72796bb32c"
+}

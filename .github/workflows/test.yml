@@ -268,6 +268,9 @@ jobs:
               - 'rust/**'
               - 'scripts/retained-browser-runtime-tests.mjs'
               - 'scripts/stage-retained-runtime-peer.mjs'
+              - 'scripts/retained-compare/**'
+              - 'packages/cli/src/retained/**'
+              - 'packages/cli/src/commands/export-retained.ts'
               - 'scripts/lib/__fixtures__/retained-driver/**'
               - 'apps/server/**'
               - 'Cargo.toml'
@@ -448,6 +451,9 @@ jobs:
               # line a gitignore-only PR skips Node tests and the gate never
               # sees the change that moved its own verdict.
               - '.gitignore'
+              # #7955: inert transport tests import both clients and the shared
+              # Worker fixtures; native-only edits must run those Node tests.
+              - 'native/smlib-adapter/**'
               # The offset file itself. `node-tests` carries the Rust
               # major-offset gate, and `scripts/**` above already brings the
               # gate's own sources into this lane -- but the ONE file whose
@@ -921,8 +927,19 @@ jobs:
           # production revert removes types imported by the changed tests.
           # #7711: preserve the new independent probe module so its tests load;
           # disable only placement/fill checks and require assertion failures.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
+          # #7955 M1 F: keep added CLI modules; restore zero-publication success.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/cli/src/commands/export-retained.ts | grep -Fxq 'packages/cli/src/commands/export-retained.ts'; then
+            oracle_args+=(--mutation tests/evidence/m1-f-cli-retained/behaviour.oracle.patch --test packages/cli/src/commands/export-retained.test.ts)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- native/smlib-adapter/node/client.mjs | grep -Fxq 'native/smlib-adapter/node/client.mjs'; then
+            # #7955 M1 F: preserve the added modules so inert tests still load;
+            # break captured-owner retirement and engine asset digest recording.
+            oracle_args+=(--mutation tests/evidence/m1-f1/behaviour.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
+          # Exact globe placement: preserve the new modules so the tests load;
+          # Auto never resolves to Exact, so the placement witnesses turn RED.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/globe-placement/behaviour.oracle.patch | grep -Fxq 'tests/evidence/globe-placement/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/globe-placement/behaviour.oracle.patch)
           # GeoWarp: preserve new modules/exports so the tests load; drop k_c
           # from true-length mapping so the PROJ witnesses turn RED.
           # Once geo-warp.ts is on main, this clause can go.
@@ -3161,6 +3178,16 @@ jobs:
           cache-prefix: rust-retained-runtime
       - name: SMLib-free retained runtime in a real WASM module
         run: node scripts/retained-browser-runtime-tests.mjs
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - name: SMLib-free CLI report over the real retained WASM boundary
+        run: |
+          BUILD_RETAINED=1 bash scripts/build-wasm.sh
+          pnpm build --filter=@ifc-lite/cli
+          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs
 
       - name: Rust tests and Clippy (retained controller and executor)
         # #7955 M1: the opt-in `retained-runtime` feature is outside the

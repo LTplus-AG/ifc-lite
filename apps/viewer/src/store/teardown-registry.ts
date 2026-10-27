@@ -72,6 +72,7 @@ import { compareRunsTeardown } from './slices/compareRunsSlice.js';
 import { scriptTeardown } from './slices/scriptSlice.teardown.js';
 import { chatTeardown } from './slices/chatSlice.teardown.js';
 import { cesiumTeardown } from './slices/cesiumSlice.teardown.js';
+import { globePlacementTeardown } from './slices/globePlacementSlice.teardown.js';
 import { scheduleTeardown } from './slices/scheduleSlice.teardown.js';
 import { playbackTeardown } from './slices/playbackSlice.js';
 import { searchTeardown } from './slices/searchSlice.teardown.js';
@@ -118,6 +119,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   scriptTeardown,
   chatTeardown,
   cesiumTeardown,
+  globePlacementTeardown,
   scheduleTeardown,
   playbackTeardown,
   searchTeardown,

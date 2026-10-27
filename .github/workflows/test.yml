@@ -1708,6 +1708,10 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)
+          # #7779 recovered P1/P2 retain the new transform API and regress only
+          # the projected conic behavior, so public geometry tests still build.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/symbolic/projected_conic_tests.rs | grep -Fxq 'rust/processing/src/symbolic/projected_conic_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/f3b-recovered-symbolic-7779/behaviour.oracle.patch)
           # #7779 recovered P4/E1 keep the validator API and restore only
           # unchecked Linear source admission/default axes and uncached suffixes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/placement/validated_chain.rs | grep -Fxq 'rust/geometry/src/placement/validated_chain.rs'; then
@@ -2365,6 +2369,8 @@ jobs:
         run: node scripts/check-rust-api-surface.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
+      - name: Check F3b copied leaf-reader spelling
+        run: node scripts/check-leaf-reader-copies.mjs
       - name: Check for non-total float sort comparators
         run: node scripts/check-float-sort-comparators.mjs
       - name: Check for new raw entity enumeration

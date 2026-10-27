@@ -20,6 +20,9 @@ mod profile;
 mod profile_topology;
 #[cfg(feature = "retained-runtime")]
 mod profile_retrace;
+#[cfg(all(feature = "retained-runtime", feature = "test-support"))]
+#[doc(hidden)]
+pub use profile_retrace::retrace_cancellations;
 mod topology_interval;
 mod walk_error;
 pub use profile::{

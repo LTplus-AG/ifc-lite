@@ -32,12 +32,16 @@ fn collinear(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {
 }
 
 pub(super) fn cancel(boundary: &AnalyticProfileLoop) -> Result<Option<Vec<AnalyticCurveSegment>>, WalkError> {
+    cancel_segments(&boundary.segments, |_| {})
+}
+
+fn cancel_segments(segments: &[AnalyticCurveSegment], mut removed: impl FnMut(usize)) -> Result<Option<Vec<AnalyticCurveSegment>>, WalkError> {
     let mut points = Vec::new();
-    let _points_storage = crate::resource::reserve_headers(&mut points, boundary.segments.len()).map_err(WalkError::Stopped)?;
-    for (i, segment) in boundary.segments.iter().enumerate() {
+    let _points_storage = crate::resource::reserve_headers(&mut points, segments.len()).map_err(WalkError::Stopped)?;
+    for (i, segment) in segments.iter().enumerate() {
         let AnalyticCurveSegment::Line { start, end } = segment else { return Ok(None) };
         // Never turn a tolerated join/gap into an interpolated source vertex.
-        let AnalyticCurveSegment::Line { start: next, .. } = &boundary.segments[(i + 1) % boundary.segments.len()] else { return Ok(None) };
+        let AnalyticCurveSegment::Line { start: next, .. } = &segments[(i + 1) % segments.len()] else { return Ok(None) };
         if end != next || start.iter().any(|v| !v.is_finite()) { return Ok(None); }
         points.push(*start);
     }
@@ -61,8 +65,8 @@ pub(super) fn cancel(boundary: &AnalyticProfileLoop) -> Result<Option<Vec<Analyt
             }
         }
         let Some((i, equal)) = found else { break };
-        points.remove(i);
-        if equal { let next = i % points.len(); points.remove(next); }
+        points.remove(i); removed(i);
+        if equal { let next = i % points.len(); points.remove(next); removed(next); }
     }
     if points.len() < 3 || points.len() == original_len { return Ok(None); }
     let mut segments = Vec::new();
@@ -71,6 +75,18 @@ pub(super) fn cancel(boundary: &AnalyticProfileLoop) -> Result<Option<Vec<Analyt
         start: points[i], end: points[(i + 1) % points.len()],
     }));
     Ok(Some(segments))
+}
+
+/// Harness report of removed authored vertex indices (before revalidation).
+/// Call outside an active ProductBudget; a budget stop is a failed report.
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub fn retrace_cancellations(segments: &[AnalyticCurveSegment]) -> Vec<usize> {
+    let mut indices: Vec<_> = (0..segments.len()).collect();
+    let mut cancelled = Vec::new();
+    let _ = cancel_segments(segments, |i| cancelled.push(indices.remove(i)))
+        .expect("retrace report interrupted by product budget");
+    cancelled
 }
 
 pub(super) fn repair(

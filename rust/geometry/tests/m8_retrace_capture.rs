@@ -51,3 +51,14 @@ fn issue_3641_self_crossing_residual_must_remain_unsupported() {
         .replace("IFCLINEINDEX((1,2,3,4,5,1))", "IFCLINEINDEX((1,2,3,4,5,6,1))");
     assert!(accepted(&crossed).is_err(), "cancelling a spur cannot certify a self-crossing region");
 }
+
+#[test]
+#[cfg(feature = "test-support")]
+fn issue_3641_report_identifies_the_authored_seam_vertex() {
+    use ifc_lite_geometry::analytic::{AnalyticCurveSegment, retrace_cancellations};
+    let points = [[0.,0.,0.],[870.,0.,0.],[1400.,-900.,0.],[4500.,-900.00001,0.],[4500.,0.,0.]];
+    let segments: Vec<_> = (0..5).map(|i| AnalyticCurveSegment::Line {
+        start: points[i], end: points[(i+1)%5],
+    }).collect();
+    assert_eq!(retrace_cancellations(&segments), vec![0]);
+}

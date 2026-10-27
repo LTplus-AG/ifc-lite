@@ -65,11 +65,22 @@ async function middleware(directory?: string): Promise<Connect.NextHandleFunctio
 export function retainedEngine(options: RetainedEngineOptions): Plugin | false {
   if (!options.enabled) return false;
   if (options.vercel !== undefined) throw new Error('Retained geometry is forbidden in Vercel builds');
+  // Validate in configResolved, which Vite awaits BEFORE it creates the
+  // watcher, HTTP and WebSocket servers. Throwing from configureServer left
+  // those running: a refused `vite dev` printed the error and never exited.
+  let serve: Connect.NextHandleFunction | undefined;
+  const use = (server: { middlewares: Connect.Server }) => {
+    if (!serve) throw new Error('Retained engine middleware was not prepared');
+    server.middlewares.use(serve);
+  };
   return {
     name: 'viewer-retained-engine',
     enforce: 'pre',
-    async configureServer(server) { server.middlewares.use(await middleware(options.directory)); },
-    async configurePreviewServer(server) { server.middlewares.use(await middleware(options.directory)); },
+    async configResolved(config) {
+      if (config.command === 'serve') serve = await middleware(options.directory);
+    },
+    configureServer: use,
+    configurePreviewServer: use,
     transform(source, id) {
       if (!id.replaceAll('\\', '/').endsWith('/packages/wasm/retained.js')) return;
       // Vite otherwise treats the shared loader's default URL as an asset,

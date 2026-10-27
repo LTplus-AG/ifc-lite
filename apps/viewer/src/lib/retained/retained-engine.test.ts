@@ -9,6 +9,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { request } from 'node:http';
+import { spawnSync } from 'node:child_process';
 import { createServer, preview, build } from 'vite';
 import { retainedEngine } from '../../../vite-plugins/retained-engine';
 
@@ -94,6 +95,23 @@ for (const mode of ['dev', 'preview'] as const) {
     }
   });
 }
+
+test('#7955 a refused dev start exits instead of leaving Vite servers running', async (t) => {
+  const f = await fixture(t);
+  // In a child process: a leaked watcher/server would keep THIS runner alive.
+  const plugin = new URL('../../../vite-plugins/retained-engine.ts', import.meta.url).href;
+  const script = join(f.root, 'refused-dev.mjs');
+  const vite = import.meta.resolve('vite');
+  await writeFile(script, `import { createServer } from ${JSON.stringify(vite)};
+import { retainedEngine } from ${JSON.stringify(plugin)};
+await createServer({ root: ${JSON.stringify(f.root)}, configFile: false, logLevel: 'silent',
+  plugins: [retainedEngine({ enabled: true })] }).then(() => process.exit(2), (error) =>
+  { if (!/IFCLITE_RETAINED_ENGINE/.test(String(error))) process.exit(3); });`);
+  const result = spawnSync(process.execPath, [...process.execArgv, script],
+    { cwd: process.cwd(), timeout: 30_000, encoding: 'utf8' });
+  assert.equal(result.signal, null, 'refused dev start never exited: Vite servers were left running');
+  assert.equal(result.status, 0, result.stderr);
+});
 
 test('#7955 retained is off by default and forbidden under VERCEL=1', () => {
   assert.equal(retainedEngine({ enabled: false, vercel: '1' }), false);

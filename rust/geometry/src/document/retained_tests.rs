@@ -271,3 +271,22 @@ fn invalid_tessellations_are_refused_and_kept() {
     assert!(collapsing.tessellation.positions[3] > collapsing.tessellation.positions[0]);
     assert_eq!(document.revision(), 1);
 }
+
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+#[test]
+fn s3_admission_identity_requires_source_allocation_revision_definition_and_worker() {
+    // #7955: actual extracted source plus independently substituted identity axes.
+    let (mut document, handle) = admitted();
+    let original = document.prepare_retained(handle, 7).unwrap();
+    assert!(original.same_admission(&original.clone()));
+    assert!(!original.same_admission(&document.prepare_retained(handle, 8).unwrap()));
+    let mut replaced = original.clone();
+    let (replacement_document, replacement_handle) = admitted();
+    replaced.entry = replacement_document.prepare_retained(replacement_handle, 7).unwrap().entry;
+    assert!(!original.same_admission(&replaced), "equal data is not original admission allocation");
+    let next = document.add_retained_extrusion(recipe(true)).unwrap();
+    assert!(!original.same_admission(&document.prepare_retained(handle, 7).unwrap()), "revision changed");
+    assert!(!document.prepare_retained(handle, 7).unwrap().same_admission(&document.prepare_retained(next, 7).unwrap()));
+    let (foreign, foreign_handle) = admitted();
+    assert!(!original.same_admission(&foreign.prepare_retained(foreign_handle, 7).unwrap()));
+}

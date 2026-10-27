@@ -33,6 +33,7 @@ impl Walk {
             depth: self.depth,
             mesh,
             empty_recorded,
+            retained: None,
         }
     }
 }
@@ -44,6 +45,7 @@ pub(super) struct Steps {
     pub solo_step: bool,
     pub mesh: Mesh,
     pub empty_recorded: bool,
+    pub retained: Option<Box<crate::program::retained::LogicalRetainedValue>>,
 }
 
 impl Steps {
@@ -82,6 +84,10 @@ pub(super) struct Batch {
 pub(super) enum Frame {
     /// Enter a boolean node: charge, path-admit, depth-check, then walk it.
     Boolean(DecodedEntity, u32),
+    RetainedMapping(Box<crate::program::mapping::MappingControl<'static>>),
+    RetainedMappingReply { control: Box<crate::program::mapping::MappingControl<'static>>, reply: Box<crate::program::mapping::MappingReply> },
+    RetainedReady { operation: Box<crate::program::retained::RetainedPlanOperation>, steps: Option<Box<Steps>> },
+    RetainedAfterStep { steps: Box<Steps>, operator: BoolOp, host: Box<crate::program::retained::LogicalRetainedValue> },
     /// Enter an `IfcCsgSolid`; `guarded` admits its id to the operand path.
     Csg { entity: DecodedEntity, depth: u32, guarded: bool },
     /// Mesh one operand with the given operator attribution.
@@ -130,7 +136,7 @@ impl Frame {
     pub(super) fn is_numerical(&self) -> bool {
         matches!(
             self,
-            Self::Solid { .. } | Self::HalfSpace { .. } | Self::Polygonal { .. } | Self::PolygonalCut { .. }
+            Self::RetainedReady { .. } | Self::Solid { .. } | Self::HalfSpace { .. } | Self::Polygonal { .. } | Self::PolygonalCut { .. }
                 | Self::BatchBuild(..) | Self::BatchGroup(_)
         )
     }

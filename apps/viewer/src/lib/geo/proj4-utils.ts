@@ -3,8 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import proj4 from 'proj4';
+import { isWktDefinition, registeredWktDefinition, wktDefinitionInMetres } from './wkt-projection';
 
+/** Also answers for a WKT definition registered by `resolveWktProjection`. */
 export function isGeographicProj4(definition: string): boolean {
+  if (isWktDefinition(definition)) return registeredWktDefinition(definition)?.projName === 'longlat';
   return /\+proj=longlat\b/.test(definition);
 }
 
@@ -25,6 +28,7 @@ export function utmProj4String(zone: string): string | null {
  */
 export function projectedDefinitionInMetres(definition: string): string {
   if (isGeographicProj4(definition)) return definition;
+  if (isWktDefinition(definition)) return wktDefinitionInMetres(definition);
   return `${definition.replace(/(?:^|\s)\+(?:units|to_meter)=\S+/g, '').trim()} +units=m`;
 }
 
@@ -53,7 +57,7 @@ export function computeGridConvergence(
   lat: number,
 ): number {
   // Geographic CRS: lat/lon is already true-north aligned.
-  if (/\+proj=longlat\b/.test(projDef)) return 0;
+  if (isGeographicProj4(projDef)) return 0;
   // Near the poles the local east/metre scale degenerates; skip.
   if (Math.abs(lat) > 89.9) return 0;
 

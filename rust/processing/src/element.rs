@@ -192,3 +192,18 @@ mod session_publication_tests;
 
 #[cfg(test)]
 mod session_steal_tests;
+
+#[cfg(feature = "retained-runtime")]
+mod session_retained;
+/// Experimental transport seam; it grants no final-product authority.
+#[doc(hidden)]
+#[cfg(feature = "retained-runtime")]
+pub mod retained_runtime {
+    pub use super::session_retained::runtime::{
+        RetainedRuntime, AsyncRetainedExecutor, NumericalReceipt,
+        ReceiptDomain, ReceiptEvidence, Invocation, Operand, NumericalLimits,
+        RuntimeFault,
+    };
+    pub use super::session_retained::refusal::RetainedProductRefusal;
+    pub use super::session_retained::admission::{admit_product, RetainedAdmissionError};
+}

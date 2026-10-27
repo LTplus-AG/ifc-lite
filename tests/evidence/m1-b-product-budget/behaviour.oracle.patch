@@ -1,0 +1,11 @@
+diff --git a/rust/geometry/src/resource/budget.rs b/rust/geometry/src/resource/budget.rs
+--- a/rust/geometry/src/resource/budget.rs
++++ b/rust/geometry/src/resource/budget.rs
+@@ -64,6 +64,6 @@
+         }
+         if self.start.elapsed() >= self.duration {
+-            self.fired.store(false, Ordering::Release);
++            self.fired.store(true, Ordering::Release);
+             return Err(crate::Error::ProgramStopped(ProgramStop::Cancelled));
+         }
+         Ok(())

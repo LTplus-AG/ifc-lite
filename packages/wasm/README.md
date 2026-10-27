@@ -409,3 +409,24 @@ failures. It has no parts. A failed part refuses the entire product. There is no
 exact fallback. One independently qualified worker is reused; worker failures
 retire it, contract faults preserve it, and replacement is capped at three.
 The worker is released before the completed run is returned.
+
+For progressive display, the same opt-in bundle exports `RetainedModelSession`.
+Create one session per retained host Worker and call
+`await session.run(bytes, { detail: 'view', ids }, onEvent)`. `ids` is an optional
+`Uint32Array`; `detail: 'shape'` returns the M1 shape parts instead of view meshes.
+The synchronous callback receives `start` (canonical `candidateIds` and a
+`frame` containing `rtcOffset` and `needsShift`), followed by one `published` or
+`refused` event per candidate. Frame selection uses the same resolver as
+`buildPrePassOnce`, regardless of the ID filter.
+
+View events own a `MeshCollection`: extract its meshes and free every mesh
+handle and collection in `finally` blocks. Positions, flat normals and f64
+origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
+Z-up metres. Colours are type defaults, and the shape-only marker still applies.
+The returned summary counts candidates, publications, refusals, restarts and
+worker acquisitions, plus controller product/acquisition milliseconds. A warm
+run acquires no new worker and reuses its completed qualification. `session.free()`
+releases the worker; terminate the host Worker for immediate cancellation.
+Callback exceptions reject after controller cleanup, rather than cancel work.
+The source buffer moves into the Rust source bundle without a second Rust copy.
+`IfcAPI.retainedModel` and the default WASM engine remain unchanged.

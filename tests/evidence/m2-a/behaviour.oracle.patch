@@ -1,0 +1,11 @@
+--- a/rust/wasm-bindings/src/retained_view.rs
++++ b/rust/wasm-bindings/src/retained_view.rs
+@@ -16,7 +16,7 @@
+ pub(crate) fn view_part(part: &ShapePart, rtc: [f64; 3]) -> Mesh {
+     let m = &part.world_from_object;
+     let translation = [m[12], m[13], m[14]];
+-    let origin = translation;
++    let origin = std::array::from_fn(|axis| translation[axis] - rtc[axis]);
+     let mut mesh = Mesh::with_capacity(part.indices.len(), part.indices.len());
+     mesh.origin = origin;
+     mesh.rtc_applied = true;

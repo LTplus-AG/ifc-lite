@@ -3,6 +3,7 @@
 use super::IfcAPI;
 use crate::{retained_browser::model::ModelWorker, retained_model_refusal::RefusedProduct};
 use ifc_lite_core::SourceBundle;
+use ifc_lite_geometry::program::transactions::Requirement;
 use ifc_lite_processing::element::retained_runtime::{run_model, ModelOptions, ProductOutcome};
 use js_sys::{Array, Float64Array, Object, Reflect, Uint32Array};
 use wasm_bindgen::prelude::*;
@@ -23,7 +24,7 @@ export interface RetainedShapeProduct {
     ifcType: string;
     parts: RetainedShapePart[];
     marker: 'PresentationObligationsUnmet';
-    obligationsUnmet: string[];
+    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces'>;
 }
 export interface RetainedProductRefusal {
     status: 'refused';
@@ -123,7 +124,7 @@ fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
             set(&result, "marker", &"PresentationObligationsUnmet".into())?;
             let obligations = Array::new();
             for obligation in &product.obligations.0 {
-                obligations.push(&format!("{obligation:?}").into());
+                obligations.push(&obligation_name(*obligation).into());
             }
             set(&result, "obligationsUnmet", &obligations)?;
             let parts = Array::new();
@@ -156,3 +157,15 @@ fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
 #[cfg(test)]
 #[path = "retained_model_tests.rs"]
 mod tests;
+
+/// Stable JavaScript names for unmet presentation obligations. An exhaustive
+/// match, so a new or renamed requirement cannot change the API silently.
+fn obligation_name(requirement: Requirement) -> &'static str {
+    match requirement {
+        Requirement::ProductPlacement => "ProductPlacement",
+        Requirement::OpeningClosure => "OpeningClosure",
+        Requirement::MaterialLayers => "MaterialLayers",
+        Requirement::IfcAppearance => "IfcAppearance",
+        Requirement::PersistentFaces => "PersistentFaces",
+    }
+}

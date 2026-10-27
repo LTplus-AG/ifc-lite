@@ -211,7 +211,7 @@ export interface RetainedShapeProduct {
     ifcType: string;
     parts: RetainedShapePart[];
     marker: 'PresentationObligationsUnmet';
-    obligationsUnmet: string[];
+    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces'>;
 }
 export interface RetainedProductRefusal {
     status: 'refused';

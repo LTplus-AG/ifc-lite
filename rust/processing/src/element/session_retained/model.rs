@@ -123,14 +123,14 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
             continue;
         }
         summary.candidates += 1;
-        let product_start = std::time::Instant::now();
+        let product_start = resource::BudgetStart::now();
         let mut acquire_ms = 0.;
         let mut bounded_acquire = || {
             if attempts >= max_attempts {
                 return Err(RuntimeFault::transport("worker restart budget exhausted"));
             }
             attempts += 1;
-            let start = std::time::Instant::now();
+            let start = resource::BudgetStart::now();
             let result = acquire();
             acquire_ms += start.elapsed().as_secs_f64() * 1000.;
             result

@@ -35,7 +35,8 @@ impl BudgetStart {
             clock: test_clock::capture(),
         }
     }
-    fn elapsed(&self) -> Duration {
+    /// Elapsed time in the same monotonic domain used for retained deadlines.
+    pub fn elapsed(&self) -> Duration {
         #[cfg(test)]
         if let Some((clock, start)) = &self.clock {
             return Duration::from_millis(clock.elapsed().saturating_sub(*start));

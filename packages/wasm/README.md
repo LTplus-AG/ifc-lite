@@ -316,3 +316,28 @@ These bindings are the staged backend for issue #8042. The public `@ifc-lite/dif
 The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from `rust/diff-wasm` by `scripts/build-wasm.sh`. Its `DiffModel`, canonical fingerprint, sidecar and lineage bindings are loaded by explicit diff initialization; they are excluded from both geometry bundles. The committed `pkg-diff/ifc-lite-diff.d.ts` supports wasm-free typechecking.
 
 The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports executed/total pairs. Missing fixtures are skipped with a `pnpm fixtures` hint; zero executed pairs exits with status 2 (incomplete), rather than claiming parity.
+
+### Experimental retained whole-model engine
+
+Build the separate `pkg-retained` bundle with `BUILD_RETAINED=1 bash scripts/build-wasm.sh`
+and stage the SMLib transport at `/smlib/`. Its `IfcAPI.retainedModel(bytes, ids?)`
+returns a `Promise<RetainedModelRun>`. The default `pkg` does not expose this method.
+
+The run buffers results until completion. Call `run.next()` until it returns
+`undefined`, then `run.free()`. Results follow the canonical processor's file
+order; `ids` filters products, and an empty ID array selects none. Type products
+and representationless jobs are skipped (orphan type geometry remains exact-only).
+
+A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
+Each part has object-local metre `Float64Array` positions, `Uint32Array` indices,
+a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
+and `curved`. Every publication carries `marker: 'PresentationObligationsUnmet'`
+and a nonempty `obligationsUnmet` list; consumers must display that marker. This
+is shape-only output, without opening, layer, appearance or persistent-face authority.
+
+A refusal has `status: 'refused'`, `expressId`, `ifcType`, a typed snake-case
+`code`, optional `{site, entity?, cause}` `origin`, and `kernelStatus` for kernel
+failures. It has no parts. A failed part refuses the entire product. There is no
+exact fallback. One independently qualified worker is reused; worker failures
+retire it, contract faults preserve it, and replacement is capped at three.
+The worker is released before the completed run is returned.

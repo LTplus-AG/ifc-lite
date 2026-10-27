@@ -22,7 +22,11 @@ use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 
+mod retained;
+mod retained_structure;
 mod accept;
+use super::item::{ItemControl, ItemStep};
+use super::retained::{RetainedSelection, LogicalRetainedValue};
 mod merged;
 mod run;
 use merged::{Merged, Prepared};
@@ -35,6 +39,9 @@ enum Sink {
     /// would otherwise size every program and move with every step.
     Merged(Box<Merged>),
     Styled(SubMeshCollection),
+    // RetainedSelection is uninhabited on default wasm; the common walk stays shared.
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
+    Retained(Vec<LogicalRetainedValue>, RetainedSelection),
 }
 
 /// The walk's geometry: its accumulators, then the finished geometry
@@ -51,6 +58,7 @@ enum Body {
 pub(super) enum ProductOutput {
     Parts(Vec<Mesh>),
     Styled(SubMeshCollection),
+    Retained(Vec<LogicalRetainedValue>, RetainedSelection),
 }
 
 /// What a mapping child's output becomes.
@@ -65,6 +73,9 @@ enum Role {
 }
 
 enum Action {
+    // Only retained admission constructs this action; default wasm cannot admit it.
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
+    Item { item: DecodedEntity, control: Box<ItemControl> },
     /// Read an `IfcAlignment`'s axis through the alignment processor.
     Alignment,
     /// Resolve the product's `IfcProductDefinitionShape`.
@@ -101,6 +112,7 @@ enum Action {
 }
 
 pub(super) enum ProductReply {
+    Item(ItemStep),
     Alignment(Option<Mesh>),
     Shape(Result<Option<ProductShape>>),
     Items(Result<Vec<DecodedEntity>>),
@@ -119,6 +131,7 @@ pub(super) enum ProductReply {
 impl ProductReply {
     pub(super) fn tag(&self) -> u8 {
         match self {
+            Self::Item(_) => 11,
             Self::Alignment(_) => 0,
             Self::Shape(_) => 1,
             Self::Items(_) => 2,
@@ -154,6 +167,7 @@ enum Child<'a> {
 }
 
 pub(super) struct ProductControl<'a> {
+    retained: Option<RetainedSelection>,
     element: &'a DecodedEntity,
     hygiene: SourceHygiene,
     /// `None` for the merged walk.
@@ -186,6 +200,7 @@ impl<'a> ProductControl<'a> {
             Action::Shape
         };
         Self {
+            retained: None,
             element,
             hygiene,
             styled,
@@ -214,6 +229,7 @@ impl<'a> ProductControl<'a> {
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
         Ok(match &self.action {
             // The alignment processor's own source-and-mesh callback.
+            Action::Item { control, .. } => return control.stage(),
             Action::Alignment => Some(ProgramStage::Extension),
             Action::Shape | Action::Items(_) | Action::Annotation(_) | Action::Raw(_)
             | Action::Texture(_) | Action::Placement => Some(ProgramStage::Source),
@@ -237,14 +253,22 @@ impl<'a> ProductControl<'a> {
         // Source steps keep their action in place: the accept consumes it.
         let (element, styled) = (self.element, self.styled);
         match &mut self.action {
+            Action::Item { item, control } => return control.execute(item, router, decoder).map(ProductReply::Item),
             Action::Alignment => return Ok(ProductReply::Alignment(router.alignment_mesh(element, decoder))),
             Action::Shape => {
+                if let Some(selection) = &self.retained {
+                    return Ok(ProductReply::Shape(retained_structure::validated_product_shape(element, decoder)
+                        .map_err(|error| error.into_common(selection))));
+                }
                 return Ok(ProductReply::Shape(product_shape(element, decoder).map_err(Into::into)));
             }
             Action::Items(index) => {
                 let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(*index));
                 let rep = rep.ok_or(ProgramError::StaleRequest)?;
-                return Ok(ProductReply::Items(rep_items(rep, decoder).map_err(Into::into)));
+                return Ok(ProductReply::Items(match &self.retained {
+                    Some(selection) => retained_structure::retained_items(rep, decoder, selection),
+                    None => rep_items(rep, decoder).map_err(Into::into),
+                }));
             }
             Action::Annotation(item) => return Ok(ProductReply::Annotation(admit_fill(item, decoder))),
             Action::Raw(item) => {
@@ -275,6 +299,8 @@ impl<'a> ProductControl<'a> {
                 Body::Sink(Sink::Merged(merged)) => ProductReply::Merged(merged.merge(parts)),
                 _ => return Err(ProgramError::StaleRequest),
             },
+            Action::Finish if self.retained.is_some() => ProductReply::Finished(Ok(())),
+            Action::Place(placement) if self.retained.is_some() => ProductReply::Placed(self.place_retained(&placement)),
             Action::Finish => match std::mem::replace(&mut self.body, Body::Empty) {
                 Body::Sink(sink) => ProductReply::Finished(merged::finish(sink, self.hygiene.for_router(router))
                     .map(|prepared| self.body = Body::Prepared(Box::new(prepared)))),

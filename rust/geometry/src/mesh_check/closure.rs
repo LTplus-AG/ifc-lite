@@ -68,7 +68,7 @@ pub fn directed_closed(mesh: &Mesh) -> bool {
     let ledger = EdgeLedger::build(mesh, CLOSURE_GRID, Degenerate::SkipTriangle);
     !ledger.is_empty() && ledger.directed_closed()
 }
-
+#[allow(dead_code, reason = "Shared test oracle alias")]
 /// Closed-surface audit with a HAIRLINE tolerance: the surface passes when
 /// every unpaired directed edge (0.1 mm grid) is collinearly COVERED by
 /// unpaired edges of the opposite net sign, the signature of two adjacent faces

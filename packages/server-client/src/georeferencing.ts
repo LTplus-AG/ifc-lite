@@ -49,6 +49,6 @@ export interface Georeferencing {
   map_unit?: string;
   /** Scale converting MapConversion values to metres (0.001 for mm). */
   map_unit_scale?: number;
-  /** Provenance: "mapConversion" | "ePSetMapConversion" | "siteLocation". */
+  /** Provenance: "mapConversion" | "rigidOperation" | "ePSetMapConversion" | "siteLocation". */
   source?: string;
 }

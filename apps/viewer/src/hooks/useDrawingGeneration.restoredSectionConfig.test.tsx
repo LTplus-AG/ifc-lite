@@ -258,3 +258,37 @@ describe('restore feeding generation — MUTATION TARGET: issue #4153 gap', () =
     );
   });
 });
+
+// #8162: a saved cut outside the model bounds (a plan cut above the model top,
+// or below its base) used to be clamped onto the bound face on restore.
+describe('restore keeps an out-of-bounds saved cut (#8162)', () => {
+  for (const [world, expected] of [[12, 120], [-2, -20]] as const) {
+    it(`a saved x=${world} cut restores to ${expected} % of the [0,10] bounds`, async () => {
+      const file = fileWithBytes(world + 40, `restored-cut-${world}.ifc`);
+      const hash = (await placementSourceIdentity(file))!;
+      saveDrawing2DEntry(hash, {
+        measure2DResults: [],
+        polygonArea2DResults: [],
+        textAnnotations2D: [],
+        cloudAnnotations2D: [],
+        drawing2DDisplayOptions: useViewerStore.getState().drawing2DDisplayOptions,
+        sectionConfig: {
+          plane: { axis: 'x', position: world, flipped: false },
+          projectionDepth: 10,
+          includeHiddenLines: false,
+          creaseAngle: 30,
+          scale: 100,
+        },
+      });
+
+      useViewerStore.setState({ models: new Map([['model-a', stubModel('model-a', file)]]) });
+      await mount();
+      await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+      await restoreDecided('model-a');
+      await waitFor(() => useViewerStore.getState().sectionPlane.axis === 'side', 'the restored cut reached the store');
+
+      const plane = useViewerStore.getState().sectionPlane;
+      assert.ok(Math.abs(plane.position - expected) < 1e-9, `restored to ${plane.position} %, not ${expected} %`);
+    });
+  }
+});

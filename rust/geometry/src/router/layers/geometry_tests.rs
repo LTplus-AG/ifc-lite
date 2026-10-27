@@ -8,26 +8,34 @@ use crate::{GeometryRouter, Mesh};
 use ifc_lite_core::EntityDecoder;
 use rustc_hash::FxHashMap;
 
-fn wall(scale: f64, translation: [f64; 3], rotated: bool) -> String {
+/// `shifted` builds the SAME solid with its half-thickness moved out of the
+/// centred profile into a translated extrusion Position (#8168).
+fn wall(scale: f64, translation: [f64; 3], rotated: bool, shifted: bool) -> String {
     let length = 4. / scale;
     let width = 0.3 / scale;
     let depth = 3. / scale;
     let [x, y, z] = translation.map(|v| v / scale);
     let reference = if rotated { "(0.,1.,0.)" } else { "(1.,0.,0.)" };
+    let half = 0.15 / scale;
+    let (profile, solid) = if shifted { ("#13", "#15") } else { ("$", "#2") };
     format!(
         "DATA;
 #1=IFCCARTESIANPOINT((0.,0.,0.));
 #2=IFCAXIS2PLACEMENT3D(#1,$,$);
 #3=IFCLOCALPLACEMENT($,#11);
-#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,{length},{width});
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,{profile},{length},{width});
 #5=IFCDIRECTION((0.,0.,1.));
-#6=IFCEXTRUDEDAREASOLID(#4,#2,#5,{depth});
+#6=IFCEXTRUDEDAREASOLID(#4,{solid},#5,{depth});
 #7=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#6));
 #8=IFCPRODUCTDEFINITIONSHAPE($,$,(#7));
 #9=IFCWALL('wall',$,$,$,$,#3,#8,$,$);
 #10=IFCCARTESIANPOINT(({x},{y},{z}));
 #11=IFCAXIS2PLACEMENT3D(#10,$,#12);
 #12=IFCDIRECTION({reference});
+#13=IFCAXIS2PLACEMENT2D(#14,$);
+#14=IFCCARTESIANPOINT((0.,{half}));
+#15=IFCAXIS2PLACEMENT3D(#16,$,$);
+#16=IFCCARTESIANPOINT((0.,-{half},0.));
 ENDSEC;"
     )
 }
@@ -67,8 +75,14 @@ fn local_point(mesh: &Mesh, index: u32, rotated: bool) -> crate::Vector3<f64> {
     }
 }
 
-fn assert_partition(scale: f64, translation: [f64; 3], rotated: bool, opening: bool) {
-    let mut content = wall(scale, translation, rotated);
+fn assert_partition(
+    scale: f64,
+    translation: [f64; 3],
+    rotated: bool,
+    opening: bool,
+    shifted: bool,
+) {
+    let mut content = wall(scale, translation, rotated, shifted);
     let mut voids = FxHashMap::default();
     if opening {
         // A unit square window passes through the wall thickness, between
@@ -153,15 +167,25 @@ ENDSEC;"
 
 #[test]
 fn layer_gateway_partitions_outer_shell_without_interface_caps() {
-    assert_partition(1., [0.; 3], false, false);
+    assert_partition(1., [0.; 3], false, false, false);
 }
 
 #[test]
 fn layer_gateway_preserves_mm_rotated_survey_frame() {
-    assert_partition(0.001, [5_000_000., 1_000_000., 300.], true, false);
+    assert_partition(0.001, [5_000_000., 1_000_000., 300.], true, false, false);
 }
 
 #[test]
 fn layer_gateway_partitions_the_actual_window_cut_host() {
-    assert_partition(1., [0.; 3], false, true);
+    assert_partition(1., [0.; 3], false, true, false);
+}
+
+/// The layer usage is measured in the element's object frame, so a solid
+/// whose extrusion Position only translates slices exactly like the same
+/// solid built from an offset profile (#8168).
+#[test]
+fn layer_gateway_slices_a_translated_extrusion_position() {
+    assert_partition(1., [0.; 3], false, false, true);
+    assert_partition(1., [0.; 3], false, true, true);
+    assert_partition(0.001, [5_000_000., 1_000_000., 300.], true, false, true);
 }

@@ -142,6 +142,13 @@ const state = extractViewpointState(viewpoint);
 // state.coloredGuids - entities with color overrides
 ```
 
+A clipping plane comes back as a `position` percentage of the bounds you pass
+along its dominant axis, and it is not clamped: a location outside the bounds
+gives a position below 0 or above 100, so a cut above the model's top (a plan
+cut through the top storey, for example) stays where the viewpoint put it. A
+non-finite location gives 50, the midpoint. Clamp it yourself if your viewer's
+section control only accepts 0-100.
+
 ### Coordinate frames
 
 BCF positions (`CameraViewPoint`, clipping-plane and bitmap locations, line

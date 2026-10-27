@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/model.rs
++++ b/rust/processing/src/element/session_retained/model.rs
+@@ -110,7 +110,7 @@
+     {
+         *worker = None;
+     }
+-    let max_attempts = usize::from(options.max_restarts.min(0)) + 1;
++    let max_attempts = usize::from(options.max_restarts.min(3)) + 1;
+     let mut summary = ModelSummary::default();
+     for (product_id, ifc_type) in jobs {
+         if options

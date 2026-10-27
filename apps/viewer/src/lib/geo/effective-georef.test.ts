@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import {
+  offersCesium,
   detectScaleUnitMismatch,
   getEffectiveGeoreference,
   getEffectiveHorizontalScale,
@@ -722,5 +723,13 @@ END-ISO-10303-21;
         true,
       );
     });
+  });
+
+  it('offers Cesium for a named CRS, but for a WKT-only CRS only with its operation (#8174 review)', () => {
+    const mc = { id: 2, sourceCRS: 1, targetCRS: 3, eastings: 0, northings: 0, orthogonalHeight: 0 };
+    assert.equal(offersCesium({ projectedCRS: { id: 3, name: 'EPSG:25832' } }), true);
+    assert.equal(offersCesium({ projectedCRS: { id: 3, name: '', wellKnownText: 'PROJCRS["x"]' } }), false);
+    assert.equal(offersCesium({ projectedCRS: { id: 3, name: '', wellKnownText: 'PROJCRS["x"]' }, mapConversion: mc }), true);
+    assert.equal(offersCesium({ source: 'siteLocation', projectedCRS: { id: 3, name: 'EPSG:4326' }, mapConversion: mc }), false);
   });
 });

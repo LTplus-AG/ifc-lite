@@ -602,6 +602,11 @@ fn candidate_classification_ignores_keyword_case() {
         ("ifcmapconversion", Some(IfcType::IfcMapConversion)),
         ("IfcMapConversionScaled", Some(IfcType::IfcMapConversion)),
         ("ifcprojectedcrs", Some(IfcType::IfcProjectedCRS)),
+        ("IfcRigidOperation", Some(IfcType::IfcRigidOperation)),
+        ("ifcgeographiccrs", Some(IfcType::IfcGeographicCRS)),
+        ("IFCWELLKNOWNTEXT", Some(IfcType::IfcWellKnownText)),
+        ("ifcproject", Some(IfcType::IfcProject)),
+        ("IfcProjectLibrary", None),
         ("IfcPropertySet", Some(IfcType::IfcPropertySet)),
         ("ifcsite", Some(IfcType::IfcSite)),
         ("IfcWall", None),
@@ -685,4 +690,31 @@ fn lowercase_step_keywords(source: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+/// End-to-end through the candidate scan: an angular `IfcRigidOperation`
+/// against an `IfcGeographicCRS` resolves its angles through the project's
+/// plane-angle unit (so `IFCPROJECT` must be a candidate), preserving the
+/// precise source label even though the compatible core source is MapConversion.
+#[test]
+fn rigid_operation_with_project_angle_unit_reaches_the_payload() {
+    let ifc = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n\
+        #1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n\
+        #20=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
+        #21=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(0.0174532925199433),#20);\n\
+        #23=IFCCONVERSIONBASEDUNIT(*,.PLANEANGLEUNIT.,'DEGREE',#21);\n\
+        #5=IFCUNITASSIGNMENT((#23));\n\
+        #6=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,(#1),#5);\n\
+        #2=IFCGEOGRAPHICCRS('EPSG:4326',$,'WGS84',$,$,$);\n\
+        #3=IFCRIGIDOPERATION(#1,#2,IFCPLANEANGLEMEASURE(13.3),IFCPLANEANGLEMEASURE(52.4),7.);\n\
+        #4=IFCWELLKNOWNTEXT(' GEOGCRS[\"WGS 84\"] ',#2);\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let geo = extract_georeferencing(ifc).expect("rigid operation is a georeference");
+    assert_eq!(geo.source.as_deref(), Some("rigidOperation"));
+    assert_eq!(geo.crs_name.as_deref(), Some("EPSG:4326"));
+    assert_eq!(geo.map_unit.as_deref(), Some("DEGREE"));
+    assert!((geo.eastings - 13.3).abs() < 1e-9, "eastings {}", geo.eastings);
+    assert!((geo.northings - 52.4).abs() < 1e-9, "northings {}", geo.northings);
+    assert_eq!(geo.orthogonal_height, 7.0);
+    assert_eq!((geo.x_axis_abscissa, geo.x_axis_ordinate, geo.scale), (1.0, 0.0, 1.0));
 }

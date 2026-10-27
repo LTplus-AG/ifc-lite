@@ -109,15 +109,7 @@ pub(super) fn parse_control_points(
             let point_id = col.as_entity_ref().ok_or_else(|| {
                 Error::geometry("BSplineSurface control point is not a reference".to_string())
             })?;
-            let point = decoder.decode_by_id(point_id)?;
-            let coords = point.get(slot::IfcCartesianPoint::COORDINATES.index()).and_then(|v| v.as_list()).ok_or_else(|| {
-                Error::geometry("CartesianPoint missing coordinates".to_string())
-            })?;
-
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-
+            let [x, y, z] = decoder.point3(point_id)?;
             row_points.push(Point3::new(x, y, z));
         }
         result.push(row_points);
@@ -214,3 +206,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "bspline_leaf_tests.rs"]
+mod leaf_tests;

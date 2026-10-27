@@ -415,6 +415,17 @@ jobs:
               # job. Without it here the test cannot trigger its own execution:
               # a PR editing only the integration harness skips the only lane
               # that runs it.
+              # The ifc-git revision corpus and its generator. `node-guards` runs
+              # `derive-revisions.mts --check` against the COMMITTED manifest, and
+              # that job is gated on `frontend || rust`. `tools/**` appears only in
+              # the license-header filter, so without this entry a PR changing
+              # nothing but the corpus -- a hand-edited `revisions.json` being the
+              # exact case -- leaves `frontend` false, skips `node-guards`, and
+              # bypasses the one gate that checks the manifest. Same trap this
+              # filter block already warns about for `apps/`, `examples/` and the
+              # integration harness: a guard that the PR it should catch can skip
+              # is not a guard.
+              - 'tools/ifc-git-corpus/**'
               - 'tests/integration.test.ts'
               # The tsconfig BOTH `pnpm test:integration` and `pnpm test:api`
               # compile against (`tsx --tsconfig tests/tsconfig.json`). Same
@@ -2404,6 +2415,33 @@ jobs:
       # (possibly-repeating) sets, so the next lookup can't reintroduce it.
       - name: Check for the same-named-property-set .find() shape
         run: node scripts/check-pset-name-find.mjs
+      # The ifc-git revision corpus checks its COMMITTED manifest against a
+      # fresh derivation (#8128). `--check` and never a plain run: a plain run
+      # rewrites revisions.json, so in CI it would let a drifting engine rewrite
+      # its own expectations and still report green.
+      #
+      # Output goes to a job-local temp directory via IFC_GIT_CORPUS_OUT, so the
+      # ~2 MB of derived revisions never lands in the workspace and cannot
+      # collide with another step or be mistaken for a tracked file.
+      #
+      # Exit 3 means the built output it derives from is absent -- nothing was
+      # derived, so nothing was checked, and that is not a failure of this gate.
+      # Exit 1 means the derivation CONTRADICTS the manifest and must fail. The
+      # two are separated in the script precisely so this step does not need
+      # `|| true`, which would hide the second along with the first.
+      - name: Check the ifc-git revision corpus manifest is current
+        env:
+          IFC_GIT_CORPUS_OUT: ${{ runner.temp }}/ifc-git-corpus
+        run: |
+          set +e
+          pnpm tsx tools/ifc-git-corpus/derive-revisions.mts --check
+          status=$?
+          set -e
+          if [ "$status" -eq 3 ]; then
+            echo "::notice title=ifc-git corpus::Skipped: the built output it derives from is absent (exit 3). A manifest mismatch would exit 1 and fail."
+            exit 0
+          fi
+          exit "$status"
       - name: Check Rust crate version matches the declared major offset
         run: node scripts/check-rust-major-offset.mjs
       # A hidden tab never delivers an animation frame, so an unbounded

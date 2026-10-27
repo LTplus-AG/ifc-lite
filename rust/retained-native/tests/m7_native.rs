@@ -21,7 +21,7 @@ const SOURCE: &str =
     include_str!("../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
 const ADVERSARIAL: &str =
     include_str!("../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans-adversarial.ifc");
-const POSITIVE: [(u32, f64); 9] = [
+const POSITIVE: [(u32, f64); 10] = [
     (38, 5.25),
     (46, 5.25),
     (54, 5.25),
@@ -29,6 +29,7 @@ const POSITIVE: [(u32, f64); 9] = [
     (78, 10.5),
     (96, 9.),
     (107, 3.),
+    (181, 5.25 - 0.064),
     (190, 0.064),
     (219, 6. - 0.12 * std::f64::consts::PI),
 ];
@@ -43,10 +44,21 @@ fn tolerances() -> serde_json::Value {
 // compared with a kernel. B=2*1*3=6; H intersection B=.5*.5*3=.75.
 // Union=6+6-1*1*3=9; intersection=3; half-scale H=.25*.25*2=.125.
 // Opening=.4³=.064; circular through-cut=pi*.2²*3=.12*pi.
+// e13's opening is [.1,.5]x[.3,.7]x[0,.4], wholly inside B and
+// disjoint from H (whose x starts at .75): net=5.25-.064=5.186.
+// The mapped oracle evaluates the body; compose its independent opening volume
+// here rather than asking it to interpret relationships outside its contract.
+fn expectation(id: u32) -> mapped::MappedExpectation {
+    let mut expected = mapped::expected(SOURCE.as_bytes(), id).unwrap();
+    if id == 181 {
+        expected.volume -= mapped::expected(SOURCE.as_bytes(), 190).unwrap().volume;
+    }
+    expected
+}
 #[test]
 fn m7_source_oracle_matches_hand_arithmetic() {
     for (id, hand) in POSITIVE {
-        let expectation = mapped::expected(SOURCE.as_bytes(), id).unwrap();
+        let expectation = expectation(id);
         assert!(
             (expectation.volume - hand).abs() < 1e-12,
             "#{id}: {expectation:?} != {hand}"
@@ -70,7 +82,7 @@ fn m7_sdk_oracle_closed_shapes() {
     let tolerance = tolerances();
     let mut reference = Vec::new();
     for (id, _) in POSITIVE {
-        let expected = mapped::expected(SOURCE.as_bytes(), id).unwrap();
+        let expected = expectation(id);
         let product = shape(&outcomes, id);
         let actual = geometry_assertions::measured(product);
         let relative = tolerance["mappedBooleanVolumeRelative"]
@@ -100,7 +112,6 @@ fn m7_sdk_oracle_closed_shapes() {
         (141, "incomplete"),
         (156, "operation_unsupported"),
         (173, "operation_unsupported"),
-        (181, "opening_strategy"),
         (202, "empty_result"),
         (231, "operation_unsupported"),
     ] {

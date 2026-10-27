@@ -2,7 +2,7 @@
 """SYNTHETIC qualification M7, #7955. No authoring-tool provenance.
 
 17 cases plus e13's opening = 18 products across two fixtures.
-The schema-valid coverage fixture excludes e8/e17: 16 candidates, 9 published.
+The schema-valid coverage fixture excludes e8/e17: 16 candidates, 10 published after M3-A.
 The 2 adversarial products pin controller behaviour, not IFC qualification.
 B=[0,2]x[0,1]x[0,3], H=[.75,1.25]x[.25,.75]x[-.5,3.5].
 e1 identity difference: 6-.5*.5*3=5.25; e2 rotates 30 degrees;
@@ -12,7 +12,8 @@ e6 union with B+(1,0,0): 6+6-1*1*3=9; e7 intersection=3.
 e8 half-scale H about its centre: .25*.25*2=.125 removed, V=5.875.
 e9 mirror and e10 scale2: incomplete final-affine boundary.
 e11 plain and e12 bounded halfspace: unsupported at the halfspace.
-e13 host with .4 cube opening: opening_strategy; opening V=.4^3=.064.
+e13 host: 5.25-.4^3=5.186 after M3-A; opening V=.4^3=.064.
+The opening [.1,.5]x[.3,.7]x[0,.4] is inside B and disjoint from H.
 e14 B-B: authenticated empty_result. e15 radius.2 through-hole: 6-.12*pi.
 e16 chained halfspaces: unsupported. e17 multi-item mapped operand: refused.
 

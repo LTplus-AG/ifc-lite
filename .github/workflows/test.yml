@@ -3128,11 +3128,17 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): keep one
-      # warm target dir per job outside the workspace, which checkout cleans.
+      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
+      # target dir per job on the runner's rust-target volume, outside the
+      # workspace that the runner wipes. A job killed mid-compile (reboot) can
+      # leave truncated dep-info, so an unfinished marker discards the dir.
       - name: Warm target dir (self-hosted Rust runner)
         if: runner.environment == 'self-hosted'
-        run: echo "CARGO_TARGET_DIR=/cache/target-${GITHUB_JOB}" >> "$GITHUB_ENV"
+        run: |
+          dir="/cache/rust-target/${GITHUB_JOB}"
+          if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
+          mkdir -p "$dir" && touch "$dir/.unfinished"
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Use lld for host links
@@ -3257,6 +3263,10 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
 
+      - name: Mark warm target dir finished
+        if: always() && runner.environment == 'self-hosted'
+        run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
+
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,
       # ON push to main and in the merge queue, where the aggregate judges
@@ -3278,11 +3288,17 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): keep one
-      # warm target dir per job outside the workspace, which checkout cleans.
+      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
+      # target dir per job on the runner's rust-target volume, outside the
+      # workspace that the runner wipes. A job killed mid-compile (reboot) can
+      # leave truncated dep-info, so an unfinished marker discards the dir.
       - name: Warm target dir (self-hosted Rust runner)
         if: runner.environment == 'self-hosted'
-        run: echo "CARGO_TARGET_DIR=/cache/target-${GITHUB_JOB}" >> "$GITHUB_ENV"
+        run: |
+          dir="/cache/rust-target/${GITHUB_JOB}"
+          if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
+          mkdir -p "$dir" && touch "$dir/.unfinished"
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Use lld for host links
@@ -3332,6 +3348,9 @@ jobs:
           cargo test -p ifc-lite-retained-native --features retained-runtime
           cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
+      - name: Mark warm target dir finished
+        if: always() && runner.environment == 'self-hosted'
+        run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
 
   # THE FULL RUST LANE, OFF THE PR (CI redesign, step 5). Everything here is
   # an off-by-default feature build: the workspace never compiles these, so a

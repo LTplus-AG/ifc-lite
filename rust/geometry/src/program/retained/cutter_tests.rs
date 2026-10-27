@@ -42,7 +42,11 @@ fn cut0_placements_leave_bounds_local_and_affine_bake_maps_all_corners() {
     host.place_in_place(&transform,host.slot.program,RetainedPlacementStage::Mapping { source_id:99 }).unwrap();
     assert_eq!(host.bounds,Some(original));
     let frame=host.world_from_evaluation(); let baked=host.bake().unwrap().unwrap();
-    let expected=bounds::EvaluationBounds::points(original.corners().map(|p| frame.transform_point(&nalgebra::Point3::from(p)).into())).unwrap();
-    assert_eq!(baked.value.bounds,Some(expected)); assert_eq!(host.bounds,Some(expected));
+    let bounds=baked.value.bounds.unwrap().0;
+    for p in original.corners() {
+        let p=frame.transform_point(&nalgebra::Point3::from(p));
+        for i in 0..3 { assert!(p[i]>=bounds[i] && p[i]<=bounds[i+3]); }
+    }
+    assert_eq!(host.bounds,baked.value.bounds);
     assert_eq!(host.object_frame,crate::math::mat4::col_major_array(&Matrix4::identity()));
 }

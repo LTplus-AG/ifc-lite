@@ -33,7 +33,7 @@ pub struct RetainedExtrusion {
     pub length_unit_scale: f64,
 }
 
-/// The captured authored source a retained definition owns, unchanged.
+/// The captured authored source or derived cutter a retained definition owns.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum RetainedRecipe {
@@ -53,7 +53,7 @@ impl RetainedRecipe {
         }
     }
 
-    /// STEP id of the authored solid; a published display is attributed to it.
+    /// Attributed STEP source id; a published display retains that attribution.
     pub fn solid_id(&self) -> u32 {
         match self {
             Self::Extrusion(recipe) => recipe.source.solid_id,

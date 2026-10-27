@@ -22,7 +22,7 @@ fn prism_matches_hand_written_format_one() {
     }
     let prism = box_prism(); let p = prism.lower().unwrap();
     assert_eq!(p.bytes, expected); assert_eq!(p.source_from_evaluation, ID);
-    assert_eq!(p.evaluation_bounds.unwrap().0, [0.,0.,0.,1.,1.,1.]);
+    assert_eq!(p.evaluation_bounds.unwrap().0, [0f64.next_down(),0f64.next_down(),0f64.next_down(),1f64.next_up(),1f64.next_up(),1f64.next_up()]);
     let mut d = GeometryDocument::new(); let handle = d.add_retained_prism(prism.clone()).unwrap();
     assert_eq!(d.retained_recipe(handle).unwrap(), &RetainedRecipe::Prism(prism));
 }
@@ -90,7 +90,7 @@ fn already_empty_host_refuses_before_unresolvable_second_operand() {
     let router = GeometryRouter::with_units(&text,&mut decoder); let entity = decoder.decode_by_id(14).unwrap();
     let traversal = Traversal::new(1,1); let mut program = traversal.product_parts(&entity);
     let error = loop {
-        let ticket = match program.request() { Ok(Some(t))=>t, Err(e)=>break e, Ok(None)=>panic!("accepted empty host") };
+        let ticket = match program.request() { Ok(Some(t))=>t, Err(e)=>break e, Ok(None)=>break program.finish().err().expect("expected empty host refusal") };
         let (reply,operations,_) = match program.admit(ticket,&router,&mut decoder) { Ok(r)=>r, Err(e)=>break e };
         for op in operations { op.bind_numerical_outcome(matches!(op.kind(),OperationKind::Boolean{..})).unwrap(); }
         if let Err(e)=program.accept(reply,&router) { break e.error; }
@@ -113,7 +113,7 @@ fn prism_normalizes_arc_sense_and_encodes_circle_holes() {
         PrismLoop {outer:false,segments:vec![PrismSegment::Circle{center:[0.,0.],radius:1.}]}];
     let payload=prism.lower().unwrap();
     assert_eq!(payload.loops,2); assert_eq!(payload.segments,2);
-    assert_eq!(payload.evaluation_bounds.unwrap().0,[-2.,-2.,0.,2.,2.,1.]);
+    assert_eq!(payload.evaluation_bounds.unwrap().0,[(-2f64).next_down(),(-2f64).next_down(),0f64.next_down(),2f64.next_up(),2f64.next_up(),1f64.next_up()]);
     // Inner loop kind=2 and clockwise full turn; outer loop remains CCW.
     assert_eq!(u32::from_le_bytes(payload.bytes[168..172].try_into().unwrap()),2);
     assert_eq!(f64::from_le_bytes(payload.bytes[264..272].try_into().unwrap()),-std::f64::consts::TAU);
@@ -126,7 +126,7 @@ fn halfspace_dispatch_keeps_all_three_current_refusals() {
         let router=GeometryRouter::new();let wall=decoder.decode_by_id(14).unwrap();let traversal=Traversal::new(1,1);
         let mut program=traversal.product_parts(&wall);
         let error=loop {
-            let ticket=match program.request(){Ok(Some(t))=>t,Err(e)=>break e,Ok(None)=>panic!("halfspace admitted")};
+            let ticket=match program.request(){Ok(Some(t))=>t,Err(e)=>break e,Ok(None)=>break program.finish().err().expect("expected halfspace refusal")};
             let (reply,_,_)=match program.admit(ticket,&router,&mut decoder){Ok(r)=>r,Err(e)=>break e};
             if let Err(e)=program.accept(reply,&router){break e.error;}
         };

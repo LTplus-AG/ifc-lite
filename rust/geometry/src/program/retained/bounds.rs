@@ -19,13 +19,20 @@ impl EvaluationBounds {
     pub fn corners(self) -> [[f64; 3]; 8] {
         std::array::from_fn(|j| std::array::from_fn(|i| self.0[i + if j & (1 << i) == 0 { 0 } else { 3 }]))
     }
+    // Bounds enclose floating-point arithmetic, rather than using an acceptance
+    // tolerance. Keep the adjacent representable value on the outside: e.g.
+    // scaling a swept source point can round above (scaled base + scaled sweep).
+    fn outward(self) -> Option<Self> {
+        let b = Self(std::array::from_fn(|i| if i < 3 { self.0[i].next_down() } else { self.0[i].next_up() }));
+        b.valid().then_some(b)
+    }
     pub(crate) fn transformed(self, frame: &Matrix4<f64>) -> Option<Self> {
         if !self.valid() { return None; }
-        Self::points(self.corners().map(|p| frame.transform_point(&Point3::from(p)).into()))
+        Self::points(self.corners().map(|p| frame.transform_point(&Point3::from(p)).into()))?.outward()
     }
     pub(crate) fn expanded(self, radius: f64) -> Option<Self> {
         let b = Self(std::array::from_fn(|i| self.0[i] + if i < 3 { -radius } else { radius }));
-        b.valid().then_some(b)
+        b.outward()
     }
     pub(crate) fn region(curves: impl IntoIterator<Item = (u32, [f64; 12])>, direction: [f64; 3], depth: f64) -> Option<Self> {
         let points = curves.into_iter().flat_map(|(kind, v)| {
@@ -37,7 +44,7 @@ impl EvaluationBounds {
             }
         });
         let base = Self::points(points)?;
-        Self::points(base.corners().into_iter().flat_map(|p| [p, std::array::from_fn(|i| p[i] + direction[i] * depth)]))
+        Self::points(base.corners().into_iter().flat_map(|p| [p, std::array::from_fn(|i| p[i] + direction[i] * depth)]))?.outward()
     }
 }
 pub(super) fn boolean_bounds(inputs: &[LogicalRetainedValue; 2], operation: crate::BoolOp) -> Option<EvaluationBounds> {

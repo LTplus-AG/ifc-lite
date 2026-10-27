@@ -22,6 +22,8 @@ arcs use full supporting-circle boxes; positive-weight rational disk sweeps
 use their control hull expanded by radius. Difference and Intersection retain
 the left bound. Union maps the right corners into the left frame. Placement
 keeps bounds local; an affine bake maps every corner into the baked frame.
+Computed endpoints round outward to their adjacent representable f64 value;
+this is arithmetic enclosure, not an acceptance tolerance or changed wire data.
 Unknown bounds stay unknown. Finite halfspace cutters use the specified 1 cm /
 5% diagonal padding. `halfspace_box` also takes the halfspace source id so its
 new Source definition preserves attribution.

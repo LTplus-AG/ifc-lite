@@ -56,7 +56,7 @@ it('releases a first model when attachment queues supersession before publicatio
   let installed = 0;
   await loadCesiumModel({
     Cesium, viewer, lifetime,
-    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1 } as CesiumBridge,
+    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1, placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null } as CesiumBridge,
     coordinateInfo: geometry.coordinateInfo,
     glbInput: { geometryResult: geometry, geometryContentVersion: 0, placementKey: 'first', hiddenIds: new Set(), isolatedIds: null, visibilityVersion: 0, ghostExceptIds: null, selectedIds: null, ghostVersion: 0 },
     glbCacheRef: { current: null }, modelRef, loadedKey: null,
@@ -110,7 +110,7 @@ it('keeps a completed replacement swap as the next build\'s predecessor (#4807)'
 
   await loadCesiumModel({
     Cesium, viewer, lifetime,
-    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1 } as CesiumBridge,
+    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1, placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null } as CesiumBridge,
     coordinateInfo: geometry.coordinateInfo,
     glbInput: { geometryResult: geometry, geometryContentVersion: 1, placementKey: 'replacement', hiddenIds: new Set(), isolatedIds: null, visibilityVersion: 0, ghostExceptIds: null, selectedIds: null, ghostVersion: 0 },
     glbCacheRef: { current: null }, modelRef, loadedKey: 'previous',
@@ -165,7 +165,7 @@ it('lets geometry teardown remove the synchronously published replacement (#4807
 
   await loadCesiumModel({
     Cesium, viewer, lifetime,
-    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1 } as CesiumBridge,
+    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1, placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null } as CesiumBridge,
     coordinateInfo: geometry.coordinateInfo,
     glbInput: { geometryResult: geometry, geometryContentVersion: 2, placementKey: 'removed', hiddenIds: new Set(), isolatedIds: null, visibilityVersion: 0, ghostExceptIds: null, selectedIds: null, ghostVersion: 0 },
     glbCacheRef: { current: null }, modelRef, loadedKey: 'previous',
@@ -205,7 +205,7 @@ it('releases the loaded opaque child if the glazing load fails before attachment
   const modelRef = { current: null };
   await loadCesiumModel({
     Cesium, viewer, lifetime,
-    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1 } as CesiumBridge,
+    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1, placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null } as CesiumBridge,
     coordinateInfo: geometry.coordinateInfo,
     glbInput: { geometryResult: geometry, geometryContentVersion: 0, hiddenIds: null, isolatedIds: null, visibilityVersion: 0, ghostExceptIds: null, selectedIds: null, ghostVersion: 0 },
     glbCacheRef: { current: null }, modelRef, loadedKey: null,

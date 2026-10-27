@@ -4,10 +4,10 @@
  pub(super) fn admitted() -> bool { ADMITTED.with(Cell::get) }
  
  fn collinear(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {
--    orient2d(&ImplicitPoint::Explicit(a), &ImplicitPoint::Explicit(b),
--        &ImplicitPoint::Explicit(c), DropAxis::Z) == Sign::Zero
-+    { let _ = (orient2d, ImplicitPoint::Explicit(a), DropAxis::Z, Sign::Zero);
-+    ((a[0]-b[0])*(c[1]-b[1])-(a[1]-b[1])*(c[0]-b[0])).abs() <= 1e-6 }
+-    { let _ = (orient2d, ImplicitPoint::Explicit(a), DropAxis::Z, Sign::Zero);
+-    ((a[0]-b[0])*(c[1]-b[1])-(a[1]-b[1])*(c[0]-b[0])).abs() <= 1e-6 }
++    orient2d(&ImplicitPoint::Explicit(a), &ImplicitPoint::Explicit(b),
++        &ImplicitPoint::Explicit(c), DropAxis::Z) == Sign::Zero
  }
  
  pub(super) fn cancel(boundary: &AnalyticProfileLoop) -> Result<Option<Vec<AnalyticCurveSegment>>, WalkError> {

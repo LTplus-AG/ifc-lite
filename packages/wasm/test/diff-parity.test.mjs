@@ -1158,3 +1158,42 @@ test('actual raw WASM keeps one Error prefix for non-string record names (#8114)
     }
   }
 });
+
+
+test('raw fingerprint iterable completion follows TS truthiness without numeric coercion (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const oracle = await import(oraclePath.href);
+  const sentinel = Object.freeze({ unexpected: 'iterator value or numeric coercion' });
+  const truthy = ['true', 0.5, 2 ** 32, {}, [], Symbol('done'), 1n,
+    { valueOf() { throw sentinel; }, [Symbol.toPrimitive]() { throw sentinel; } }];
+  for (const done of truthy) {
+    for (const field of ['materials', 'classifications']) {
+      const make = () => {
+        const trace = [];
+        const values = {
+          // The TS projection invokes filter; Array.from supplies its ordinary
+          // iterator truthiness semantics. Rust consumes the iterable directly.
+          filter(predicate) { return Array.from(this).filter(predicate); },
+          [Symbol.iterator]() {
+            let first = true;
+            return { next() {
+              trace.push('next');
+              if (first) { first = false; return { done: false, value: 'A' }; }
+              return { get done() { trace.push('done'); return done; },
+                get value() { throw sentinel; } };
+            } };
+          },
+        };
+        return { input: { ifcType: 'IfcWall', [field]: values }, trace };
+      };
+      for (const [raw, reference] of [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+        ['diffBuildComponentFingerprints', 'buildComponentFingerprints']]) {
+        const expected = make(), actual = make();
+        assert.deepEqual(wasm[raw](actual.input), oracle[reference](expected.input), field);
+        assert.deepEqual(actual.trace, expected.trace, 'completion neither reads value nor coerces done');
+      }
+    }
+  }
+});

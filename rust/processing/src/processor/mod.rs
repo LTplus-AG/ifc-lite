@@ -24,7 +24,7 @@ mod csg_summary_tests;
 mod diagnostics;
 mod entity_index;
 use entity_index::{IndexBuilder, ProcessingIndex};
-mod entry_points;
+pub(crate) mod entry_points;
 #[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use entry_points::{
     process_geometry, process_geometry_filtered, process_geometry_filtered_with_quality,
@@ -629,7 +629,7 @@ pub fn process(
 
     // Every request-local diagnostic sink for this pass, declared and drained as
     // one subject — see `diagnostics::DiagnosticCollectors`.
-    let diag_collectors = diagnostics::DiagnosticCollectors::new();
+    let diag_collectors = diagnostics::DiagnosticCollectors::new(sink.product_geometry_audit());
 
     // Shared content-dedup cache for the whole model: every per-job router dedups
     // against it, so byte-identical geometry the exporter failed to share via

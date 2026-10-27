@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/lib/geo/geo-warp.ts b/apps/viewer/src/lib/geo/geo-warp.ts
+--- a/apps/viewer/src/lib/geo/geo-warp.ts
++++ b/apps/viewer/src/lib/geo/geo-warp.ts
+@@ -138,7 +138,7 @@
+       + `conversion as ${gridSource ?? 'true-length'}; pass the authored conversion the origin was computed from.`);
+     return null;
+   }
+-  const k = 1;
++  const k = gridSource ? 1 : kc;
+   const e0 = conversion.eastings * mapScale;
+   const n0 = conversion.northings * mapScale;
+   const h0 = conversion.orthogonalHeight * mapScale;

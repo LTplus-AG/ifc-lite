@@ -6,6 +6,9 @@ import { describe, it, expect } from 'vitest';
 import { createBCFFromIDSReport } from './ids-reporter.js';
 import type { IDSReportInput, EntityBoundsInput } from './ids-reporter.js';
 import { FRAMING_PADDING } from './ids-camera.js';
+import { fillMissingSnapshots, isPlaceholderSnapshot, placeholderSnapshotPng } from './placeholder-snapshot.js';
+import { writeBCF } from './writer.js';
+import { readBCF } from './reader.js';
 
 type Vec3 = { x: number; y: number; z: number };
 const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -764,7 +767,7 @@ describe('IDS BCF Reporter', () => {
       expect(vp.snapshot).toBe('data:image/png;base64,iVBOR...');
     });
 
-    it('should not attach snapshot for entities without one', () => {
+    it('gives entities without a snapshot the placeholder PNG (#7974)', () => {
       const report = createMockReport();
       const snapshots = new Map<string, string>();
       // Only snapshot for entity 100
@@ -774,7 +777,11 @@ describe('IDS BCF Reporter', () => {
 
       const topics = [...project.topics.values()];
       expect(topics[0].viewpoints[0].snapshot).toBe('data:image/png;base64,AAAA');
+      expect(topics[0].viewpoints[0].snapshotData).toBeUndefined();
       expect(topics[1].viewpoints[0].snapshot).toBeUndefined();
+      expect(topics[1].viewpoints[0].snapshotData).toEqual(placeholderSnapshotPng());
+      expect(isPlaceholderSnapshot(topics[0].viewpoints[0])).toBe(false);
+      expect(isPlaceholderSnapshot(topics[1].viewpoints[0])).toBe(true);
     });
 
     it('should support both bounds and snapshots together', () => {
@@ -791,6 +798,39 @@ describe('IDS BCF Reporter', () => {
       expect(vp.perspectiveCamera).toBeDefined();
       expect(vp.snapshot).toBe('data:image/png;base64,BBBB');
     });
+  });
+
+  it('replaces empty or unusable snapshots with the placeholder (#7974)', () => {
+    const unusable = [
+      { snapshotData: new Uint8Array() },
+      { snapshot: 'data:image/png;base64,' },
+      { snapshot: 'data:image/png;base64,%%%' },
+    ];
+    for (const image of unusable) {
+      const project = createBCFFromIDSReport(createMockReport(), { topicGrouping: 'per-specification' });
+      const viewpoint = [...project.topics.values()][0].viewpoints[0];
+      delete viewpoint.snapshotData;
+      Object.assign(viewpoint, image);
+      expect(fillMissingSnapshots(project)).toBe(1);
+      expect(viewpoint.snapshotData).toEqual(placeholderSnapshotPng());
+    }
+  });
+
+  // BIMcollab Zoom (Windows) reports "no viewpoint to zoom to" for any
+  // viewpoint written without a <Snapshot>, camera or not (#7974).
+  describe('every exported viewpoint carries a snapshot (#7974)', () => {
+    for (const topicGrouping of ['per-entity', 'per-specification', 'per-requirement'] as const) {
+      it(`writes a snapshot for each ${topicGrouping} viewpoint`, async () => {
+        const project = createBCFFromIDSReport(createMockReport(), { topicGrouping });
+        const read = await readBCF(await writeBCF(project));
+        const viewpoints = [...read.topics.values()].flatMap(topic => topic.viewpoints);
+        expect(viewpoints.length).toBeGreaterThan(0);
+        for (const viewpoint of viewpoints) {
+          expect(viewpoint.snapshotData?.slice(0, 4)).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+          expect(isPlaceholderSnapshot(viewpoint)).toBe(true);
+        }
+      });
+    }
   });
 
   // ==========================================================================

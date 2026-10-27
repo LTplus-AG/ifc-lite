@@ -1,5 +1,33 @@
 # @ifc-lite/diff
 
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [[`b40187e`](https://github.com/LTplus-AG/ifc-lite/commit/b40187ee85e2a72ed772072b06a22f22594963fe), [`97abc5b`](https://github.com/LTplus-AG/ifc-lite/commit/97abc5bc0124ee3f13b50c3c5ac2d544245d6196), [`ce55b3d`](https://github.com/LTplus-AG/ifc-lite/commit/ce55b3d3df7839acd1986e5d862a39cfa4a1f187), [`1d6aa49`](https://github.com/LTplus-AG/ifc-lite/commit/1d6aa494af31ae62f9ad33611cacdfc1e7483796), [`2d7ccb7`](https://github.com/LTplus-AG/ifc-lite/commit/2d7ccb7a4bd947dd0485c15de4bbbf2a552d892d), [`86d818c`](https://github.com/LTplus-AG/ifc-lite/commit/86d818cbb3d417f541948d0569099b221c330313), [`eaf210f`](https://github.com/LTplus-AG/ifc-lite/commit/eaf210fe63caa9a96f5a2c7869833b6feef78aa7), [`a656bff`](https://github.com/LTplus-AG/ifc-lite/commit/a656bff6863b177d3fe63a43d8faeb480030aae8), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d)]:
+  - @ifc-lite/wasm@11.0.0
+
+## 0.11.0
+
+### Minor Changes
+
+- [#8130](https://github.com/LTplus-AG/ifc-lite/pull/8130) [`97d8add`](https://github.com/LTplus-AG/ifc-lite/commit/97d8add207104d5801c0c8d62e40fa7066e848f8) Thanks [@louistrue](https://github.com/louistrue)! - Preserve distinct identity and lineage sidecar claims containing NUL or U+0001 key code units, and reject conflicts previously hidden by deduplication ([#8088](https://github.com/LTplus-AG/ifc-lite/issues/8088)).
+  
+  Conflicting claims that delimiter collisions previously hid now reach validation and throw.
+
+### Patch Changes
+
+- [#8131](https://github.com/LTplus-AG/ifc-lite/pull/8131) [`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac) Thanks [@louistrue](https://github.com/louistrue)! - Orphan largest-share split migrations with non-finite, negative, missing or mismatched share evidence instead of selecting an arbitrary successor. Match TypeScript and Rust validation; tied maxima also orphan without throwing.
+- Updated dependencies [[`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6), [`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac), [`bc9cc44`](https://github.com/LTplus-AG/ifc-lite/commit/bc9cc44ca449a43b66ea125644f17d362e4b19b2), [`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6)]:
+  - @ifc-lite/wasm@10.6.2
+
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [[`cf892ea`](https://github.com/LTplus-AG/ifc-lite/commit/cf892ea4cfefb06b6f864dbe2c72899da27b0553), [`60a505e`](https://github.com/LTplus-AG/ifc-lite/commit/60a505e9141f6f028ba47a65505275169fc84b5a), [`f5d871f`](https://github.com/LTplus-AG/ifc-lite/commit/f5d871ffc1a349e7d06e1102dbb42c6605c7ae58)]:
+  - @ifc-lite/wasm@10.6.1
+
 ## 0.10.1
 
 ### Patch Changes

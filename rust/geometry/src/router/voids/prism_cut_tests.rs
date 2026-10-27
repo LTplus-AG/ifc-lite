@@ -100,7 +100,7 @@ fn mesh_volume(m: &Mesh) -> f64 {
 }
 
 fn watertight(m: &Mesh) -> bool {
-    super::super::geom::param_cut_watertight(m)
+    crate::exact_topology::strict_closed_mesh(m)
 }
 
 /// An L-shaped (non-convex) cutter: two glued boxes sharing a face, welded to

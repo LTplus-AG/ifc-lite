@@ -52,13 +52,8 @@ fn select(value: &Value, required: &[&str], optional: &[&str]) -> Value {
     Value::Object(fields)
 }
 fn key(value: &Value) -> &[u16] { value.as_string().map(JsString::units).unwrap_or(&[]) }
-fn joined(value: &Value) -> Vec<u16> {
-    let mut out = vec![];
-    for (index, item) in value.as_array().into_iter().flatten().enumerate() {
-        if index > 0 { out.push(1); }
-        out.extend_from_slice(key(item));
-    }
-    out
+fn keys(value: &Value) -> Vec<Vec<u16>> {
+    value.as_array().into_iter().flatten().map(|item| key(item).to_vec()).collect()
 }
 /// Native scalar callers retain the existing input and error types.
 pub fn create_sidecar(init: &serde_json::Value, kind: SidecarKind, valid_date: impl Fn(&str) -> bool) -> Result<Value, String> {
@@ -73,15 +68,13 @@ pub fn create_sidecar_document(init: &Value, kind: SidecarKind, valid_date: impl
     let mut seen = HashSet::new();
     let mut entries = vec![];
     for entry in input {
-        let mut signature = if lineage { key(&entry["relation"]).to_vec() } else { key(&entry["base"]).to_vec() };
-        signature.push(0);
-        if lineage {
-            signature.extend(joined(&entry["base"]));
-            signature.push(0);
-            signature.extend(joined(&entry["head"]));
-        } else { signature.extend_from_slice(key(&entry["here"])); }
-        // Match existing JS separator semantics, including the shared collision
-        // defect tracked in #8088. First occurrence retains its provenance.
+        // Structural tuples retain field/array boundaries and lossless UTF-16
+        // keys, including delimiter code units (#8088). Provenance is first-wins.
+        let signature = if lineage {
+            (key(&entry["relation"]).to_vec(), keys(&entry["base"]), keys(&entry["head"]))
+        } else {
+            (key(&entry["base"]).to_vec(), vec![key(&entry["here"]).to_vec()], vec![])
+        };
         if !seen.insert(signature) { continue; }
         entries.push(if lineage { select(entry, &["base", "head", "relation", "reason"], &["shares"]) }
             else { select(entry, &["base", "here", "reason"], &[]) });

@@ -37,6 +37,10 @@ pub struct FrameEvent {
 
 /// Events of one [`process`](super::process) pass. See the module docs.
 pub trait ProcessingSink {
+    /// Opt in to per-job refusal receipts without changing the mesh pipeline.
+    /// The returned handle belongs to this request; ordinary sinks allocate none.
+    fn product_geometry_audit(&self) -> Option<crate::ProductGeometryAudit> { None }
+
     /// The lightweight spatial bootstrap, when `Features::quick_metadata_bootstrap` is on.
     fn on_bootstrap(&mut self, _bootstrap: &QuickMetadataBootstrap) {}
     /// The frame this pass bakes vertices in.

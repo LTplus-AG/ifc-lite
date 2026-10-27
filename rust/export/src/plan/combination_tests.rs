@@ -32,6 +32,7 @@ fn prop(pset: &str, prop: &str, measure: &str, literal: &str) -> PropWrite {
         unit: None,
         kind: PsetKind::Property,
         scope: PropScope::Occurrence,
+        target: None,
     }
 }
 
@@ -40,7 +41,7 @@ fn patch(id: u32, psets: Vec<PropWrite>) -> (ObjectRef, Disposition) {
 }
 
 fn run(content: &[u8], dispositions: Vec<(ObjectRef, Disposition)>) -> (WriteReport, HashMap<u32, String>) {
-    let plan = ExportPlan { dispositions, context: PlanContext::default() };
+    let plan = ExportPlan { dispositions, context: PlanContext::attributed() };
     let mut out = Vec::new();
     let report = execute(content, &plan, &mut out).unwrap();
     (report, entity_lines(&out))

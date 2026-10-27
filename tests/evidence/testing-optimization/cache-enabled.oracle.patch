@@ -1,0 +1,12 @@
+diff --git a/scripts/test-cache.mjs b/scripts/test-cache.mjs
+--- a/scripts/test-cache.mjs
++++ b/scripts/test-cache.mjs
+@@ -62,7 +62,7 @@
+     if (config.tasks[`${name}#test`]) continue;
+     config.tasks[`${name}#test`] = {
+       ...config.tasks.test,
+-      cache: false,
++      cache: true,
+       outputs: [],
+       inputs: ['$TURBO_DEFAULT$', 'src/**', 'test/**', 'tests/**', '*.json', '*config.*', '.env*',
+         '$TURBO_ROOT$/scripts/test-cache.mjs'],

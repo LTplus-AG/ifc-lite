@@ -947,7 +947,9 @@ export class IfcAPI {
      * `renderer.setLineOverlay('alignment', ...)`.
      *
      * Returns an empty array when the file has no alignments (or none with a
-     * resolvable Axis curve), so the caller can clear the overlay cheaply.
+     * resolvable Axis curve and placement), so the caller can clear the
+     * overlay cheaply. An alignment whose authored placement cannot be
+     * resolved is omitted (#7779).
      */
     parseAlignmentLines(content: string): Float32Array;
     /**
@@ -971,7 +973,8 @@ export class IfcAPI {
      * straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
      *
      * Returns an empty array when the file has no grids, so the caller can
-     * clear the overlay cheaply.
+     * clear the overlay cheaply. An axis with a malformed endpoint, or a grid
+     * whose authored placement cannot be resolved, is omitted (#7779).
      */
     parseGridLines(content: string): Float32Array;
     /**
@@ -1079,6 +1082,10 @@ export class IfcAPI {
      * `planMeshTransfer`; `transfer.source` records the orientation used.
      */
     planPointTransfer(content: Uint8Array, request_json: string, rgba: Uint8Array, positions: Float64Array, colors: Uint8Array, normals: Float32Array, stations: Uint32Array): Uint8Array;
+    /**
+     * Export-only exact section intersections in IFC world metres.
+     */
+    planSectionExport(content: Uint8Array, planes_json: string, trim: boolean): string;
     /**
      * Prepare bounded ordered PDF vector graphics states and the page fidelity
      * report (convertible paths, omissions with extent, exact/raster-only).
@@ -2722,7 +2729,7 @@ export interface InitOutput {
     readonly ifcapi_parseLandXmlSourceBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseLandXmlSourceBytesWithOptions: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
-    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -2732,6 +2739,7 @@ export interface InitOutput {
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
+    readonly ifcapi_planSectionExport: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtStation: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;

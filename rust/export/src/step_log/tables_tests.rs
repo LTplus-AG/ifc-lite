@@ -11,7 +11,7 @@ fn sorted<T: PartialOrd>(v: &[T]) -> bool {
 #[test]
 fn every_binary_searched_table_is_strictly_sorted() {
     assert!(sorted(&SLOT_ROWS.iter().map(|r| r.0).collect::<Vec<_>>()));
-    assert!(sorted(&NOMINAL_VALUE_LEAVES.iter().map(|r| r.0).collect::<Vec<_>>()));
+    assert!(sorted(&IFC_VALUE_MEMBERS.iter().map(|m| m.token).collect::<Vec<_>>()));
     assert!(sorted(TYPE_OBJECT_CLASSES));
     assert!(sorted(&RETYPE_ROWS.iter().map(|r| (r.0, r.1)).collect::<Vec<_>>()));
     assert!(sorted(&DEFINED_TYPE_BASES.iter().map(|r| r.0).collect::<Vec<_>>()));

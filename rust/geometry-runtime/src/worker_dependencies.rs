@@ -25,6 +25,10 @@ pub enum RetainedDependency<'a> {
     },
     /// An earlier result, in its own unchanged world frame.
     Result(&'a RetainedDependencyResult),
+    /// Reuse an earlier result at this explicit proper-rigid placement. Replaces
+    /// the evaluation-to-world frame; does not compose another occurrence twice.
+    #[cfg(feature = "retained-runtime")]
+    PlacedResult { result: &'a RetainedDependencyResult, world_from_result: [f64; 16] },
     /// A baked affine copy placed by an explicit proper rigid
     /// `world_from_affine` (column-major, copy metres -> world metres). Never
     /// inferred from authored units or a relative-to-centre origin.
@@ -68,6 +72,18 @@ pub enum RetainedLineage {
     },
 }
 
+/// Read-only identity sealed from the actual ordered numerical invocation.
+/// This metadata cannot create a result or acquire an object lease.
+#[cfg(feature = "retained-runtime")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct RetainedBooleanIdentity {
+    pub operation: BooleanOperation,
+    pub left: BrepHandle,
+    pub right: BrepHandle,
+    pub world_from_left: [f64; 16],
+    pub world_from_right: [f64; 16],
+}
+
 /// One retained Boolean output, owned by its own object lease. Dropping it
 /// releases only this solid; its operands' receipts are unaffected. This is a
 /// numerical result, not a final product receipt.
@@ -78,12 +94,17 @@ pub struct RetainedDependencyResult {
     _lease: Arc<super::objects::ManagedObjectLease>,
     object_live: Arc<AtomicBool>,
     mesh: TessellatedMesh,
+    #[cfg(feature = "retained-runtime")]
+    identity: RetainedBooleanIdentity,
     world_from_evaluation: [f64; 16],
     lineage: Arc<RetainedLineage>,
     operations: usize,
 }
 
 impl RetainedDependencyResult {
+    /// Immutable actual ordered inputs and their bit-preserved invocation frames.
+    #[cfg(feature = "retained-runtime")]
+    pub fn operation_identity(&self) -> &RetainedBooleanIdentity { &self.identity }
     pub fn solid(&self) -> BrepHandle {
         self.solid
     }
@@ -151,6 +172,13 @@ impl RetainedDependency<'_> {
                 let (solid, lineage, operations) = result.parts()?;
                 Ok((solid, result.world_from_evaluation, lineage, operations))
             }
+            #[cfg(feature = "retained-runtime")]
+            Self::PlacedResult { result, world_from_result } => {
+                let (solid, value, operations) = result.parts()?;
+                rigid(*world_from_result).map_err(WorkerError::InvalidArgument)?;
+                let lineage = RetainedLineage::Placed { value, world_from_evaluation: *world_from_result };
+                Ok((solid, *world_from_result, Arc::new(lineage), operations))
+            }
             Self::Affine {
                 copy,
                 world_from_affine,
@@ -213,6 +241,9 @@ impl SmlibWorker {
             solid,
             owner: self.retained_owner(),
             mesh,
+            #[cfg(feature = "retained-runtime")]
+            identity: RetainedBooleanIdentity { operation, left: a, right: b,
+                world_from_left: frame, world_from_right: right_frame },
             world_from_evaluation: frame,
             lineage: Arc::new(RetainedLineage::Boolean {
                 operation,

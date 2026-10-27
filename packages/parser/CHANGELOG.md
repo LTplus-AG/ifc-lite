@@ -1,5 +1,18 @@
 # @ifc-lite/parser
 
+## 9.7.0
+
+### Minor Changes
+
+- [#8170](https://github.com/LTplus-AG/ifc-lite/pull/8170) [`8260d88`](https://github.com/LTplus-AG/ifc-lite/commit/8260d88c72c6857a585f90b816468d227d8e6042) Thanks [@louistrue](https://github.com/louistrue)! - Georeferencing reads the IFC4X3 coordinate operations beside `IfcMapConversion`. An `IfcRigidOperation` (a pure translation) is read into `mapConversion` with `operation: 'rigidOperation'`, an identity axis and unit scale, and `source: 'rigidOperation'`. Length measures translate map coordinates. Plane-angle measures translate (longitude, latitude) of an `IfcGeographicCRS` in its AngleUnit, else the project plane-angle unit. An `IfcMapConversion` still takes precedence when both are authored. The CRS read is now the operation's own TargetCRS (`IfcProjectedCRS` or `IfcGeographicCRS`, the latter with `kind: 'geographic'`), falling back to the first CRS in the file as before. An `IfcWellKnownText` attached to that CRS is exposed as `projectedCRS.wellKnownText`, and a CRS defined only by its WKT counts as georeferenced together with a parsed coordinate operation (on its own it places nothing, and the IfcSite/ePSet fallbacks run as before). `@ifc-lite/pointcloud` adds `extractWktHorizontalCrs` and `extractWktBoundingBox`.
+
+### Patch Changes
+
+- Updated dependencies [[`b40187e`](https://github.com/LTplus-AG/ifc-lite/commit/b40187ee85e2a72ed772072b06a22f22594963fe), [`4aff432`](https://github.com/LTplus-AG/ifc-lite/commit/4aff4322c8b789006229103da539f3e311afff46), [`97abc5b`](https://github.com/LTplus-AG/ifc-lite/commit/97abc5bc0124ee3f13b50c3c5ac2d544245d6196), [`ce55b3d`](https://github.com/LTplus-AG/ifc-lite/commit/ce55b3d3df7839acd1986e5d862a39cfa4a1f187), [`1d6aa49`](https://github.com/LTplus-AG/ifc-lite/commit/1d6aa494af31ae62f9ad33611cacdfc1e7483796), [`2d7ccb7`](https://github.com/LTplus-AG/ifc-lite/commit/2d7ccb7a4bd947dd0485c15de4bbbf2a552d892d), [`86d818c`](https://github.com/LTplus-AG/ifc-lite/commit/86d818cbb3d417f541948d0569099b221c330313), [`eaf210f`](https://github.com/LTplus-AG/ifc-lite/commit/eaf210fe63caa9a96f5a2c7869833b6feef78aa7), [`a656bff`](https://github.com/LTplus-AG/ifc-lite/commit/a656bff6863b177d3fe63a43d8faeb480030aae8), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d)]:
+  - @ifc-lite/wasm@11.0.0
+  - @ifc-lite/data@6.3.1
+  - @ifc-lite/ifcx@4.5.1
+
 ## 9.6.0
 
 ### Minor Changes

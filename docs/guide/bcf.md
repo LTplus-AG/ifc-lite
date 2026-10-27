@@ -142,6 +142,13 @@ const state = extractViewpointState(viewpoint);
 // state.coloredGuids - entities with color overrides
 ```
 
+A clipping plane comes back as a `position` percentage of the bounds you pass
+along its dominant axis, and it is not clamped: a location outside the bounds
+gives a position below 0 or above 100, so a cut above the model's top (a plan
+cut through the top storey, for example) stays where the viewpoint put it. A
+non-finite location gives 50, the midpoint. Clamp it yourself if your viewer's
+section control only accepts 0-100.
+
 ### Coordinate frames
 
 BCF positions (`CameraViewPoint`, clipping-plane and bitmap locations, line
@@ -216,7 +223,7 @@ const blob = await writeBCF(project);
 
 The viewer's Data validation panel (IDS validation entry) uses this to export validation failures as BCF, with optional camera viewpoints and snapshots. See [IDS Validation](ids.md).
 
-`createBCFFromIDSReport` stops at `maxTopics` (default 1,000) and adds one Info topic saying how many items were left out. The viewer's export dialog defaults to one topic per failing specification, because one topic per entity grows with the model. It also shows how many topics the chosen grouping makes and warns before an export would pass the cap. Requested snapshots are captured once per exported topic, including grouped specifications, using that topic's camera.
+`createBCFFromIDSReport` stops at `maxTopics` (default 1,000) and adds one Info topic saying how many items were left out. The viewer's export dialog defaults to one topic per failing specification, because one topic per entity grows with the model. It also shows how many topics the chosen grouping makes and warns before an export would pass the cap. Every exported viewpoint carries a snapshot, because BIMcollab Zoom and other BCF tools treat a viewpoint without one as missing ("This issue has no viewpoint to zoom to"). Grouped specification topics are always captured, once per topic, using that topic's camera; if the 3D view is unavailable or a capture fails, they get the placeholder instead of failing the export. Per-entity and per-requirement topics are captured when snapshots are enabled; otherwise, and in headless `createBCFFromIDSReport` exports, they get a plain placeholder image. `fillMissingSnapshots(project)` applies the same placeholder to any other project.
 
 The viewer frames assemblies using their geometry-bearing descendants and includes those descendants in the BCF visibility and coloring. If complete bounds are unavailable, enabling cameras preserves the current viewer camera and records that limitation in the topic description. A failure with no renderable geometry retains visible model context. Spatial containers without direct geometry also retain model context in the viewpoint and snapshot, because aggregate descendants alone do not include their spatially contained elements. Requested cameras or snapshots that cannot be obtained produce an export error instead of a silently incomplete download.
 

@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "10.6.0",
+  "version": "11.0.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -25,7 +25,7 @@
     "fixtures:list-missing": "node scripts/fixtures/fetch-fixtures.mjs --list",
     "fixtures:manifest": "node scripts/fixtures/build-manifest.mjs",
     "fixtures:upload": "node scripts/fixtures/upload-fixtures.mjs",
-    "test": "turbo test",
+    "test": "node scripts/test-cache.mjs",
     "test:revert-oracle-selfcheck": "node scripts/revert-oracle-selfcheck.mjs",
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",
     "test:e2e": "playwright test --project=viewer-e2e",
@@ -188,7 +188,8 @@
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
-      "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch"
+      "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
+      "wkt-parser@1.5.6": "patches/wkt-parser@1.5.6.patch"
     }
   }
 }

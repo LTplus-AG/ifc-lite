@@ -16,7 +16,11 @@ use crate::plan::types::*;
 /// map, as a file from another tool could carry them.
 fn type_with_maps(schema: &str) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
-        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        let mut fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        // IFC2X3 requires an owner history: the fixture preamble's.
+        if schema == "IFC2X3" {
+            fields.push(("OwnerHistory", "#5".into()));
+        }
         build_record(schema, id, entity, &fields) + "\n"
     };
     let records = [
@@ -40,31 +44,10 @@ fn type_with_maps(schema: &str) -> Vec<u8> {
     text.replacen("ENDSEC;\nEND-ISO", &format!("{records}ENDSEC;\nEND-ISO"), 1).into_bytes()
 }
 
-fn translated(x: f64) -> [[f64; 4]; 4] {
-    let mut m = IDENTITY;
-    m[0][3] = x;
-    m
-}
-
 fn mapped_wall(n: u128, type_link: TypeLink, transform: [[f64; 4]; 4]) -> NewObject {
     let mut w = object(IfcClass::Wall, gid(n), Some(ObjectRef::Id(70)), Representation::Mapped(MappedBody::new(transform)));
     w.type_link = Some(type_link);
     w
-}
-
-/// `(min, max)` of every axis of the meshes the engine made for `id`.
-fn bounds(result: &ifc_lite_processing::ProcessingResult, id: u32) -> [(f64, f64); 3] {
-    let meshes: Vec<_> = result.meshes.iter().filter(|m| m.express_id == id).collect();
-    assert!(!meshes.is_empty(), "#{id} not meshed");
-    let mut b = [(f64::INFINITY, f64::NEG_INFINITY); 3];
-    for m in meshes {
-        for v in m.positions.chunks_exact(3) {
-            for axis in 0..3 {
-                b[axis] = (b[axis].0.min(f64::from(v[axis])), b[axis].1.max(f64::from(v[axis])));
-            }
-        }
-    }
-    b
 }
 
 fn extents(b: [(f64, f64); 3]) -> Vec<f64> {
@@ -264,7 +247,11 @@ fn copies_at_the_same_transform_share_one_operator() {
 /// `#330`, listed first, as a type keeping one body per level of detail does.
 fn type_with_two_bodies(schema: &str) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
-        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        let mut fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        // IFC2X3 requires an owner history: the fixture preamble's.
+        if schema == "IFC2X3" {
+            fields.push(("OwnerHistory", "#5".into()));
+        }
         build_record(schema, id, entity, &fields) + "\n"
     };
     let extra = [

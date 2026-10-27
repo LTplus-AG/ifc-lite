@@ -42,6 +42,14 @@ pub enum RetainedRecipe {
 }
 
 impl RetainedRecipe {
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn lower(&self) -> Result<SweepPayload, RetainedRefusal> {
+        match self {
+            Self::Extrusion(recipe) => retained_sweep::lower(recipe),
+            Self::SweptDisk(recipe) => retained_disk::lower(recipe),
+        }
+    }
+
     /// STEP id of the authored solid; a published display is attributed to it.
     pub fn solid_id(&self) -> u32 {
         match self {
@@ -124,6 +132,16 @@ pub struct RetainedRequest {
 }
 
 impl RetainedRequest {
+    /// Same immutable admission, including the original source allocation.
+    // Refs #7955: private receipt comparison.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn same_admission(&self, other: &Self) -> bool {
+        self.document == other.document && self.revision == other.revision
+            && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
+            && Arc::ptr_eq(&self.entry, &other.entry)
+    }
+
     pub fn definition(&self) -> RetainedDefinitionHandle {
         self.definition
     }

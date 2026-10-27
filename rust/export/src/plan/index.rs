@@ -89,6 +89,8 @@ pub(crate) struct FileIndex<'a> {
     pub(crate) first_owner_history: Option<u32>,
     /// Every `IfcProject`, in file order.
     pub(crate) projects: Vec<u32>,
+    /// Every `IfcApplication`, in file order.
+    pub(crate) applications: Vec<u32>,
     /// Every `IfcGeometricRepresentationContext` and subcontext, in file
     /// order.
     pub(crate) contexts: Vec<u32>,
@@ -111,6 +113,7 @@ impl<'a> FileIndex<'a> {
         // resolves to, so a declaration a later one replaces counts for nothing.
         let mut owner_histories = Vec::new();
         let mut projects = Vec::new();
+        let mut applications = Vec::new();
         let mut contexts = Vec::new();
         let mut ascending = true;
 
@@ -121,6 +124,8 @@ impl<'a> FileIndex<'a> {
                 owner_histories.push((id, start));
             } else if type_name.eq_ignore_ascii_case("IFCPROJECT") {
                 projects.push((id, start));
+            } else if type_name.eq_ignore_ascii_case("IFCAPPLICATION") {
+                applications.push((id, start));
             } else if type_name.eq_ignore_ascii_case("IFCGEOMETRICREPRESENTATIONCONTEXT")
                 || type_name.eq_ignore_ascii_case("IFCGEOMETRICREPRESENTATIONSUBCONTEXT")
             {
@@ -158,6 +163,7 @@ impl<'a> FileIndex<'a> {
         let kept = |&(id, start): &(u32, usize)| !duplicates.contains(&id) || spans.lookup(id).is_some_and(|(s, _)| s == start);
         let first_owner_history = owner_histories.iter().find(|r| kept(r)).map(|&(id, _)| id);
         let projects = projects.iter().filter(|r| kept(r)).map(|&(id, _)| id).collect();
+        let applications = applications.iter().filter(|r| kept(r)).map(|&(id, _)| id).collect();
         let contexts = contexts.iter().filter(|r| kept(r)).map(|&(id, _)| id).collect();
         let mut kept_guids = FxHashMap::default();
         for (guid, id, start) in guids {
@@ -174,6 +180,7 @@ impl<'a> FileIndex<'a> {
             max_id,
             first_owner_history,
             projects,
+            applications,
             contexts,
             referrers: Referrers::default(),
         }
@@ -201,6 +208,11 @@ impl<'a> FileIndex<'a> {
             super::types::ObjectRef::Id(id) => self.contains(*id).then_some(*id),
             super::types::ObjectRef::Guid(g) => self.guids.get(g).copied(),
         }
+    }
+
+    /// The source bytes of record `id`.
+    pub(crate) fn record_bytes(&self, id: u32) -> Option<&'a [u8]> {
+        self.spans.lookup(id).map(|(s, e)| &self.content[s..e])
     }
 
     pub(crate) fn raw_line(&self, id: u32) -> Option<Cow<'a, str>> {

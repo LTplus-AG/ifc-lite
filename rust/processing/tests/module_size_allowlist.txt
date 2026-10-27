@@ -73,7 +73,7 @@
 # step_text_tests.rs (ratchet-exempt via the _tests.rs suffix), leaving
 # step_text.rs at 196 lines of production code (under 400, no row needed).
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
-    1170 rust/geometry/src/alignment.rs
+    1061 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
 # +48: triangulate_pslg — conforming CDT over an arbitrary PSLG (open seam
 # polylines as constraints, all hull triangles emitted, caller classifies);
@@ -147,8 +147,8 @@
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
      758 rust/geometry/src/profile_extractor.rs
-     598 rust/geometry/src/profiles/curves_2d.rs
-     495 rust/geometry/src/profiles/curves_3d.rs
+     496 rust/geometry/src/profiles/curves_2d.rs
+     466 rust/geometry/src/profiles/curves_3d.rs
 # +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).
 # +55: #2866 follow-up — MAX_CURVE_DEPTH = 50 WAS the weakest bound in the tree,
 # exactly as suspected. It caps one PATH's length and says nothing about the
@@ -170,7 +170,7 @@
 # The cohort also includes the 4-line `#[cfg(test)] #[path] mod
 # curve_fanout_tests;` registration, so the number accounts for that too; the
 # tests themselves live in the sibling file and are exempt.
-     810 rust/geometry/src/profiles/mod.rs
+     768 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs

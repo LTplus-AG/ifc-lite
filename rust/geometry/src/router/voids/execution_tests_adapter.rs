@@ -7,6 +7,10 @@
 use super::*;
 use crate::program::openings::execute::execute;
 
+// Declared here, not in `mod.rs`, which is at its size budget.
+#[path = "host_frame_tests.rs"]
+mod host_frame_tests;
+
 impl GeometryRouter {
     fn test_execution<T>(&self, run: impl FnOnce(&Execution) -> T) -> T {
         let execution = Execution::new(self.tessellation_quality);

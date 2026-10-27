@@ -81,7 +81,6 @@ fn unknown_keywords_use_fallbacks_without_growing_the_catalog_cache() {
     assert_eq!(classifications().len(), before);
 }
 
-
 /// Regression test for #5180: retiring the legacy IFC type table
 /// (`rust/core/src/legacy_entities.rs`, removed by #5073) re-resolved every
 /// legacy STEP keyword through the generated per-schema registry instead of
@@ -182,9 +181,122 @@ fn legacy_keyword_geometry_predicates_match_pre_retirement_intent_5180() {
     // retirement flipped both to `true` (eager first-frame batch) with no
     // decision behind it. The pre-retirement value `false` (deferred, like
     // IfcBuildingElementProxy and IfcDistributionElement) is the intended one.
-    assert!(!is_simple_geometry_type("IFCPROXY"), "IFCPROXY: is_simple_geometry_type");
+    assert!(
+        !is_simple_geometry_type("IFCPROXY"),
+        "IFCPROXY: is_simple_geometry_type"
+    );
     assert!(
         !is_simple_geometry_type("IFCEQUIPMENTELEMENT"),
         "IFCEQUIPMENTELEMENT: is_simple_geometry_type"
     );
+}
+
+/// #7914: `from_canonical_name` picks one candidate slot by a perfect hash;
+/// the slot's own spelling, not the hash, decides a hit. Every generated registry must
+/// resolve each of its keywords, in either case, to exactly itself. `ALL`
+/// covers only the registry's own schema; the canonical registry also
+/// resolves the names only a supplemental schema declares (IFCDOORSTYLE,
+/// IFCALIGNMENT2DVERTICAL, ...), so the sweep takes `SUPPLEMENTAL` too and
+/// proves it reached as many distinct types as there are dispatch arms.
+#[test]
+fn every_generated_registry_resolves_its_own_keywords() {
+    struct Registry<T: 'static> {
+        all: &'static [T],
+        supplemental: &'static [T],
+        arms: usize,
+        name: fn(&T) -> &str,
+        parse: fn(&str) -> T,
+        declared: fn(&T) -> bool,
+    }
+    fn check<T: Eq + std::hash::Hash + std::fmt::Debug>(registry: Registry<T>) {
+        let Registry {
+            all,
+            supplemental,
+            arms,
+            name,
+            parse,
+            declared,
+        } = registry;
+        assert!(all.iter().all(declared) && !supplemental.iter().any(declared));
+        let universe: Vec<&T> = all.iter().chain(supplemental).collect();
+        let distinct: std::collections::HashSet<&T> = universe.iter().copied().collect();
+        assert_eq!((universe.len(), distinct.len()), (arms, arms));
+        let names: std::collections::HashSet<&str> = universe.iter().map(|&t| name(t)).collect();
+        for ifc_type in universe {
+            let keyword = name(ifc_type);
+            assert_eq!(&parse(keyword), ifc_type, "{keyword}");
+            assert_eq!(&parse(&keyword.to_ascii_lowercase()), ifc_type, "{keyword}");
+            // Near misses resolve only if they are themselves schema names.
+            for near in [
+                format!("{keyword}X"),
+                keyword[..keyword.len() - 1].to_owned(),
+            ] {
+                if !names.contains(near.as_str()) {
+                    assert!(!distinct.contains(&parse(&near)), "{near}");
+                }
+            }
+        }
+    }
+    use crate::generated::{ifc2x3, ifc4, ifc4x1, ifc4x2};
+    check(Registry {
+        all: crate::generated::IFC_TYPES,
+        supplemental: crate::generated::SUPPLEMENTAL_IFC_TYPES,
+        arms: IfcType::CANONICAL_NAME_ARMS,
+        name: IfcType::as_str,
+        parse: IfcType::from_str,
+        declared: IfcType::declared_by_canonical_schema,
+    });
+    macro_rules! check_schema {
+        ($($schema:ident),*) => {$(
+            check(Registry {
+                all: $schema::ALL,
+                supplemental: $schema::SUPPLEMENTAL,
+                arms: $schema::IfcType::CANONICAL_NAME_ARMS,
+                name: $schema::IfcType::as_str,
+                parse: $schema::IfcType::from_str,
+                declared: $schema::IfcType::declared_by_canonical_schema,
+            });
+        )*};
+    }
+    check_schema!(ifc2x3, ifc4, ifc4x1, ifc4x2);
+}
+
+/// The name table is minimal (every slot holds a schema name), so every
+/// foreign keyword whose length is in range lands on some schema name's slot.
+/// It must stay unknown and keep its own spelling, as must keywords outside
+/// the hashed length range and non-ASCII ones.
+#[test]
+fn a_foreign_keyword_on_an_occupied_slot_is_not_that_type() {
+    let longest = "IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM";
+    let too_long = format!("{longest}X");
+    for foreign in [
+        "IFCVENDORCKRFBAA",
+        "IFCVENDORCHPRSBA",
+        "IFCWAL",
+        "IFCWALLS",
+        "IFCWALLSTANDARDCASEX",
+        "IFCCARTESIANTRANSFORMATIONOPERATOR4DNONUNIFORM",
+        "IFC",
+        "",
+        too_long.as_str(),
+    ] {
+        let parsed = IfcType::from_str(foreign);
+        assert!(
+            matches!(parsed, IfcType::Unknown(_)),
+            "{foreign:?} parsed as {parsed:?}"
+        );
+        assert_eq!(parsed.as_str(), foreign);
+        assert!(matches!(
+            IfcType::from_str(&foreign.to_ascii_lowercase()),
+            IfcType::Unknown(_)
+        ));
+    }
+    assert_eq!(
+        IfcType::from_str(longest),
+        IfcType::IfcCartesianTransformationOperator3DnonUniform
+    );
+    // Non-ASCII bytes hash like any others and are rejected by the compare.
+    let accented = IfcType::from_str("IFCWÄLL");
+    assert!(matches!(accented, IfcType::Unknown(_)), "{accented:?}");
+    assert_eq!(accented.as_str(), "IFCWÄLL");
 }

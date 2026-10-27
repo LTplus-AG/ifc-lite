@@ -12,7 +12,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::jsval::{js_to_number, json_to_js_string, to_step_real, JsVal};
 use super::pass::Pass;
@@ -187,7 +187,7 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), 
     if let (Some(crs), true) = (&g.projected_crs, crs_ids.is_empty()) {
         let crs_id = pass.allocate()?;
         let text = |key: &str| match crs.get(key).filter(|v| truthy(v)) {
-            Some(v) => format!("'{}'", escape(&json_to_js_string(v))),
+            Some(v) => quoted(&json_to_js_string(v)),
             None => "$".to_string(),
         };
         let fields = ["name", "description", "geodeticDatum", "verticalDatum", "mapProjection", "mapZone"].map(text);

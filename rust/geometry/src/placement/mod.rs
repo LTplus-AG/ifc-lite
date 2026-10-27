@@ -19,9 +19,15 @@ mod chain;
 mod chain_walk;
 mod grid;
 mod grid_frame;
+mod heading;
 pub(crate) mod linear;
 mod validate;
+mod validated_chain;
+#[cfg(test)]
+mod validated_chain_tests;
 
+#[cfg(test)]
+mod axis_frame_tests;
 #[cfg(test)]
 mod chain_policy_tests;
 #[cfg(test)]
@@ -36,7 +42,9 @@ mod leaf_policy_tests;
 mod mod_tests;
 
 pub use chain::{chain, resolve_chain, resolve_object_placement, Link, LinkKind};
-pub use validate::{validate_chain, ChainPolicy};
+pub use heading::rotation_angle_about_z;
+pub use validate::{validate_chain, validate_spatial_frame, ChainPolicy};
+pub use validated_chain::ChainValidator;
 
 use crate::math::tol;
 use crate::axis_projection::perpendicular_x_axis;

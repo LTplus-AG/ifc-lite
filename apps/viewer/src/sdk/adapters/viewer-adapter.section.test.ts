@@ -109,3 +109,22 @@ describe('SDK setSection() without `flipped` after a face pick (#5644 follow-up)
     assert.equal(after.flipped, true);
   });
 });
+
+// #8162 lets the store hold a cut beyond the bounds (a plan cut above the
+// model top); the SDK's section commands keep their bounded 0..100 input.
+describe('SDK section commands keep a bounded 0..100 position (#8162)', () => {
+  const position = () => useViewerStore.getState().sectionPlane.position;
+
+  for (const [input, expected] of [[150, 100], [-10, 0], [Infinity, 100], [-Infinity, 0], [NaN, 0], [42, 42]] as const) {
+    it(`setSection / setSections / addSection clamp ${input} to ${expected}`, () => {
+      viewer.setSection({ axis: 'y', position: input, enabled: true, flipped: false });
+      assert.equal(position(), expected, 'setSection (enabled)');
+      viewer.setSections?.([{ axis: 'y', position: input, enabled: true, flipped: false }, { axis: 'x', position: input, enabled: true, flipped: false }]);
+      assert.deepEqual(viewer.getSections?.().map((p) => p.position), [expected, expected], 'setSections creates each plane bounded');
+      viewer.setSections?.([]);
+      const id = viewer.addSection?.({ axis: 'z', position: input, enabled: true, flipped: false });
+      assert.ok(id, 'a plane was added');
+      assert.equal(position(), expected, 'addSection');
+    });
+  }
+});

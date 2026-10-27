@@ -18,6 +18,7 @@ fn write(pset: &str, prop: &str, measure: &str, literal: &str, scope: PropScope,
         unit: None,
         kind,
         scope,
+        target: None,
     }
 }
 
@@ -413,10 +414,11 @@ fn an_in_place_quantity_write_must_match_the_existing_quantity_kind() {
     let content = wall_with_type_owned_quantity_set(schema);
     let index = FileIndex::complete(&content);
     let area = write("Qto_WallBaseQuantities", "Length", "IFCAREAMEASURE", "3.5", PropScope::Type, PsetKind::Quantity);
-    let err = super::in_place_edits(&index, schema, 41, &area).unwrap_err();
+    let target = super::WriteTarget::read(&index, schema, 10);
+    let err = super::in_place_edits(&target, 41, &area).unwrap_err();
     assert!(err.contains("IFCQUANTITYAREA"), "{err}");
     let length = write("Qto_WallBaseQuantities", "Length", "IFCLENGTHMEASURE", "3.5", PropScope::Type, PsetKind::Quantity);
-    assert!(super::in_place_edits(&index, schema, 41, &length).is_ok());
+    assert!(super::in_place_edits(&target, 41, &length).is_ok());
 }
 
 /// The other direction: a type-scoped write to a set an occurrence
@@ -490,5 +492,121 @@ fn a_copied_value_inherits_only_a_matching_unit() {
             assert!(value.1.ends_with(",$);"), "another measure takes no unit: {}", value.1);
         }
         other => panic!("expected a copy-on-write, got {other:?}"),
+    }
+}
+
+/// "No unit" on an occurrence override of a type-owned value means the unit
+/// the effective (type's) value has.
+/// (#8142)
+#[test]
+fn an_override_of_a_type_owned_value_keeps_the_types_unit() {
+    let schema = "IFC4";
+    let content = String::from_utf8(wall_with_type_owned_pset(schema)).unwrap().replace("IFCLABEL('2HR'),$);", "IFCLABEL('2HR'),#51);");
+    assert!(content.contains(",#51);"));
+    let index = FileIndex::complete(content.as_bytes());
+    let mut ids = IdAllocator::after(index.max_id);
+    let w = write("Pset_WallCommon", "FireRating", "IFCLABEL", "'3HR'", PropScope::Occurrence, PsetKind::Property);
+    match resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => {
+            let value = new_records.iter().find(|(_, r)| r.contains("IFCPROPERTYSINGLEVALUE")).expect("a new value");
+            assert!(value.1.ends_with(",#51);"), "{}", value.1);
+        }
+        other => panic!("expected an append, got {other:?}"),
+    }
+}
+
+/// A value is checked against its measure type in one place, before any
+/// record is built.
+/// (#8142)
+#[test]
+fn a_value_of_the_wrong_type_for_its_measure_is_refused() {
+    let schema = "IFC4";
+    let content = wall_with_own_pset(schema);
+    let index = FileIndex::complete(&content);
+    let cases = [
+        ("IFCLENGTHMEASURE", "'abc'", PsetKind::Property, "not a valid"),
+        ("IFCLENGTHMEASURE", "5.x", PsetKind::Property, "not one STEP value"), ("IFCLENGTHMEASURE", "1.2.3", PsetKind::Property, "not one STEP value"),
+        ("IFCLABEL", "5.", PsetKind::Property, "not a valid"),
+        ("IFCLABEL", "'a'b'", PsetKind::Property, "not one STEP value"),
+        ("IFCBOOLEAN", "'T'", PsetKind::Property, "not a valid"),
+        ("IFCPOSITIVELENGTHMEASURE", "-1.", PsetKind::Property, "outside"),
+        ("IFCLENGTHMEASURE", "-5.", PsetKind::Quantity, "cannot be negative"),
+        ("IFCNOSUCHMEASURE", "5.", PsetKind::Property, "not an IFC measure"),
+        ("IFCLENGHTMEASURE", "5.", PsetKind::Property, "not an IFC measure"),
+    ];
+    for (measure, literal, kind, expect) in cases {
+        let mut ids = IdAllocator::after(index.max_id);
+        let w = write("Pset_X", "P", measure, literal, PropScope::Occurrence, kind);
+        let err = resolve_prop_write(&index, schema, 10, &w, &mut ids, None).expect_err(literal);
+        assert!(err.contains(expect), "{measure} {literal}: {err}");
+    }
+    for (measure, literal) in [("IFCLENGTHMEASURE", "5."), ("IFCLENGTHMEASURE", "-1.5E-3"), ("IFCLABEL", "'it''s'"), ("IFCBOOLEAN", ".T."), ("IFCINTEGER", "7")] {
+        let mut ids = IdAllocator::after(index.max_id);
+        let w = write("Pset_X", "P", measure, literal, PropScope::Occurrence, PsetKind::Property);
+        resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap_or_else(|e| panic!("{measure} {literal}: {e}"));
+    }
+}
+
+/// STEP REAL needs a decimal point: an integer given for a real measure is
+/// written as `3.`, in a new record, an in-place edit and a quantity.
+/// (#8142)
+#[test]
+fn an_integer_for_a_real_measure_is_written_with_a_decimal_point() {
+    let schema = "IFC4";
+    let content = wall_with_own_pset(schema);
+    let index = FileIndex::complete(&content);
+    let new = write("Pset_X", "L", "IFCLENGTHMEASURE", "3", PropScope::Occurrence, PsetKind::Property);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &new, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCLENGTHMEASURE(3.)")), "{new_records:?}"),
+        other => panic!("{other:?}"),
+    }
+    let quantity = write("Qto_X", "L", "IFCLENGTHMEASURE", "-3", PropScope::Occurrence, PsetKind::Property);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &quantity, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCLENGTHMEASURE(-3.)"))),
+        other => panic!("{other:?}"),
+    }
+    let q = write("Qto_X", "Len", "IFCLENGTHMEASURE", "7", PropScope::Occurrence, PsetKind::Quantity);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &q, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCQUANTITYLENGTH") && r.contains(",7.,")), "{new_records:?}"),
+        other => panic!("{other:?}"),
+    }
+    let integer = write("Pset_X", "N", "IFCINTEGER", "3", PropScope::Occurrence, PsetKind::Property);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &integer, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCINTEGER(3)"))),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// (#8142) A measure name must be an entity of the file's schema; a real one
+/// the literal table lacks is passed unchecked, and an unknown schema refuses.
+#[test]
+fn a_measure_must_exist_in_the_files_schema_8142() {
+    let content = wall_with_own_pset("IFC4");
+    let index = FileIndex::complete(&content);
+    let one = |schema: &str, measure: &str, literal: &str| {
+        let mut ids = IdAllocator::after(index.max_id);
+        let w = write("Pset_X", "P", measure, literal, PropScope::Occurrence, PsetKind::Property);
+        resolve_prop_write(&index, schema, 10, &w, &mut ids, None)
+    };
+    assert!(one("IFC2X3", "IFCPOSITIVEINTEGER", "5").unwrap_err().contains("not an IFC measure"));
+    assert!(one("IFC99", "IFCLENGTHMEASURE", "5.").unwrap_err().contains("schema"));
+    // Only the IfcValue select's members are measures: an entity or an enum
+    // the schema declares is not.
+    for not_a_measure in ["IFCWALL", "IFCWALLTYPEENUM"] {
+        assert!(one("IFC4", not_a_measure, "5.").unwrap_err().contains("not an IFC measure"), "{not_a_measure}");
+    }
+    assert!(one("IFC4", "IFCBINARY", "\"0A\"").is_ok());
+    // IfcURIReference is an IfcSimpleValue member in IFC4X3 only.
+    assert!(one("IFC4X3", "IFCURIREFERENCE", "'http://example.org/a'").is_ok());
+    for schema in ["IFC2X3", "IFC4"] {
+        assert!(one(schema, "IFCURIREFERENCE", "'http://example.org/a'").unwrap_err().contains("not an IFC measure"), "{schema}");
+    }
+    // IFC2X3's IfcValue lacks IFC4's later members.
+    for later in ["IFCBINARY", "IFCDATE", "IFCDATETIME", "IFCDURATION", "IFCTIME", "IFCNONNEGATIVELENGTHMEASURE"] {
+        assert!(one("IFC2X3", later, "5").is_err(), "{later}");
     }
 }

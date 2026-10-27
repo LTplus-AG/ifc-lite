@@ -295,20 +295,49 @@ worker when used by the viewer, so releasing the tool also releases WASM pages.
 
 ## Rust diff bindings
 
-After initializing `@ifc-lite/wasm/diff`, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. Column dictionary strings must be well-formed Unicode; the internal TypeScript column adapter explicitly rejects lone surrogates rather than replacing them. Arbitrary UTF-16 entity-key transport remains a requirement for the public facade cutover in #8042; the public TypeScript comparison API continues to accept those keys. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
+After initializing `@ifc-lite/wasm/diff`, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. Raw column dictionary strings, comparison options and result keys preserve arbitrary UTF-16 code units. The internal TypeScript column adapter still rejects lone surrogates; the public TypeScript comparison API remains unchanged until the later facade cutover in #8042. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
+
+Class matching uses the running JavaScript host's Unicode version for `trim().toUpperCase()`, including Node 22's older casing tables. Each model retains its unique non-ASCII IFC class names in Rust. After decoding comparison options, the boundary normalizes those names and non-ASCII exclusion/family members once per unique string, catching host exceptions before entering the pure Rust comparison. A scoped map also preserves normalized outputs as fixed points and is restored before result conversion. Native Rust callers retain their toolchain's Unicode mappings. ASCII IFC names require no JavaScript normalization calls.
+
+This normalization contract assumes standard, idempotent string intrinsics. The boundary looks up the host methods at comparison time, but does not reproduce the TypeScript engine's per-entity method observation count or order for custom `String.prototype` overrides. Host exceptions from normalization retain their original thrown value, and the same models can be reused after a caught failure. Runtime parity regressions are in `test/diff-runtime-unicode-parity.test.mjs`; set `IFC_LITE_REQUIRE_UNICODE_WASM=1` to fail on missing built artifacts instead of skipping, and run against both Node 22 and Node 24.
 
 `DiffModel.compare` returns row indices instead of JavaScript references. Keep the original fingerprint arrays and restore those references on the JavaScript side; opaque references never cross into WASM. The model can be reused for more comparisons before freeing it.
 
 `diffStableHash` accepts UTF-16 code units, including unpaired surrogates. `diffBuildDataFingerprint` and `diffBuildComponentFingerprints` accept IFC adapter projections directly.
 
-These two raw typed boundaries preserve arbitrary UTF-16 code units, including lone surrogates in typed names, material/classification strings, property/quantity object keys and recursively nested values. Only known record fields are read; ignored extras (including assigned-type `globalId`) are not observed or hashed. Each known field and nested value is read once. Property-value objects are content, so their keys and values participate in the fingerprint. The decoder mirrors the Rust input schema and must be kept in sync when that schema changes. Scalar strings use a checked bulk copy; non-scalar strings use original code units. The public `@ifc-lite/diff` index still uses the unchanged TypeScript engine. Column and lineage scalar guards remain until their corresponding lossless transports land.
+These two raw typed boundaries preserve arbitrary UTF-16 code units, including lone surrogates in typed names, material/classification strings, property/quantity object keys and recursively nested values. Only known record fields are read; ignored extras (including assigned-type `globalId`) are not observed or hashed. Each known field and nested value is read once. Property-value objects are content, so their keys and values participate in the fingerprint. The decoder mirrors the Rust input schema and must be kept in sync when that schema changes. Scalar strings use a checked bulk copy; non-scalar strings use original code units. The public `@ifc-lite/diff` index still uses the unchanged TypeScript engine. The TypeScript column adapter and raw lineage scalar guards remain until their corresponding lossless cutovers land.
 
 `diffCreateSidecar`, `diffValidateSidecar`, and `diffSerializeSidecar` handle the small JSON sidecar documents; date validation uses the host's `Date.parse`. Sidecar serialization includes the trailing newline.
 
-`diffLineageConflicts(entries)` returns ordered conflict diagnostics, and `diffKeyAliasesFromLineage(entries)` returns head/base pairs in insertion order for constructing a JavaScript `Map`. `diffRekeyByLineage(keys, entries, deleted, policy)` migrates external keys using `copy-to-all`, `largest-share`, or `orphan-on-split`. These helpers accept lineage objects directly, preserving non-finite share values and the existing TypeScript policy behavior. Deleted keys have no `relation` field in their result. Invalid-share policy changes are tracked separately in #8084. In this staging payload, every raw lineage string (base/head keys, reason, relation, rekey keys, deleted keys, and policy) must be well-formed UTF-16. The bindings reject unpaired surrogates before serde or wasm-bindgen can replace them; literal U+FFFD and valid surrogate pairs remain accepted. This limited scalar domain is temporary: the full lossless `JsString` engine/facade followup removes the rejection before public cutover.
+`diffLineageConflicts(entries)` returns ordered conflict diagnostics, and `diffKeyAliasesFromLineage(entries)` returns head/base pairs in insertion order for constructing a JavaScript `Map`. `diffRekeyByLineage(keys, entries, deleted, policy)` migrates external keys using `copy-to-all`, `largest-share`, or `orphan-on-split`. These helpers accept lineage objects directly, preserving non-finite share values for policy validation. Deleted keys have no `relation` field in their result. `largest-share` orphans splits with missing, empty, mismatched, non-finite or negative shares, or a tied maximum; invalid evidence does not throw. Zero is valid and shares need not sum to one. In this staging payload, every raw lineage string (base/head keys, reason, relation, rekey keys, deleted keys, and policy) must be well-formed UTF-16. The bindings reject unpaired surrogates before serde or wasm-bindgen can replace them; literal U+FFFD and valid surrogate pairs remain accepted. This limited scalar domain is temporary: the full lossless `JsString` engine/facade followup removes the rejection before public cutover.
 
 These bindings are the staged backend for issue #8042. The public `@ifc-lite/diff` facade has not switched to them yet; existing consumers keep their current initialization contract until integration and performance qualification complete.
 
 The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from `rust/diff-wasm` by `scripts/build-wasm.sh`. Its `DiffModel`, canonical fingerprint, sidecar and lineage bindings are loaded by explicit diff initialization; they are excluded from both geometry bundles. The committed `pkg-diff/ifc-lite-diff.d.ts` supports wasm-free typechecking.
 
 The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports executed/total pairs. Missing fixtures are skipped with a `pnpm fixtures` hint; zero executed pairs exits with status 2 (incomplete), rather than claiming parity.
+
+### Experimental retained whole-model engine
+
+Build the separate `pkg-retained` bundle with `BUILD_RETAINED=1 bash scripts/build-wasm.sh`
+and stage the SMLib transport at `/smlib/`. Its `IfcAPI.retainedModel(bytes, ids?)`
+returns a `Promise<RetainedModelRun>`. The default `pkg` does not expose this method.
+
+The run buffers results until completion. Call `run.next()` until it returns
+`undefined`, then `run.free()`. Results follow the canonical processor's file
+order; `ids` filters products, and an empty ID array selects none. Type products
+and representationless jobs are skipped (orphan type geometry remains exact-only).
+
+A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
+Each part has object-local metre `Float64Array` positions, `Uint32Array` indices,
+a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
+and `curved`. Every publication carries `marker: 'PresentationObligationsUnmet'`
+and a nonempty `obligationsUnmet` list; consumers must display that marker. This
+is shape-only output, without opening, layer, appearance or persistent-face authority.
+
+A refusal has `status: 'refused'`, `expressId`, `ifcType`, a typed snake-case
+`code`, optional `{site, entity?, cause}` `origin`, and `kernelStatus` for kernel
+failures. It has no parts. A failed part refuses the entire product. There is no
+exact fallback. One independently qualified worker is reused; worker failures
+retire it, contract faults preserve it, and replacement is capped at three.
+The worker is released before the completed run is returned.

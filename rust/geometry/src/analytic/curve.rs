@@ -21,7 +21,10 @@ pub(super) struct CurveWalk {
 
 impl CurveWalk {
     pub(super) fn with_source() -> Self {
-        Self { source: super::source::SourceCapture::enabled(), ..Self::default() }
+        Self {
+            source: super::source::SourceCapture::enabled(),
+            ..Self::default()
+        }
     }
 
     pub(super) fn extract(
@@ -29,6 +32,8 @@ impl CurveWalk {
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         self.visits += 1;
         if self.visits > MAX_VISITS || self.path.len() >= MAX_DEPTH {
             return Err(Error::geometry(
@@ -58,7 +63,9 @@ impl CurveWalk {
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
-        self.source.record(curve, decoder);
+        self.source.record(curve, decoder)?;
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         match curve.ifc_type {
             IfcType::IfcPolyline => self.polyline(curve, decoder).map(Some),
             IfcType::IfcIndexedPolyCurve => self.indexed(curve, decoder),
@@ -95,6 +102,8 @@ impl CurveWalk {
         }
         let mut points = Vec::with_capacity(refs.len());
         for reference in refs {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             points.push(point_from_ref(reference, decoder)?);
         }
         Ok(points
@@ -121,6 +130,8 @@ impl CurveWalk {
         let points: Vec<_> = coords
             .iter()
             .map(|coord| {
+                #[cfg(feature = "retained-runtime")]
+                crate::resource::source_step()?;
                 let values = coord
                     .as_list()
                     .ok_or_else(|| invalid("invalid point list coordinate"))?;
@@ -130,6 +141,8 @@ impl CurveWalk {
         let mut out = Vec::new();
         if curve.get(1).is_none_or(AttributeValue::is_null) {
             for w in points.windows(2) {
+                #[cfg(feature = "retained-runtime")]
+                crate::resource::source_step()?;
                 out.push(Segment::Line {
                     start: w[0],
                     end: w[1],
@@ -141,6 +154,8 @@ impl CurveWalk {
             .get_list(1)
             .ok_or_else(|| invalid("invalid IndexedPolyCurve Segments"))?;
         for item in items {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             self.visits += 1;
             if self.visits > MAX_VISITS {
                 return Err(invalid("IndexedPolyCurve exceeds work bound"));
@@ -154,6 +169,8 @@ impl CurveWalk {
             let indexed: Vec<_> = indices
                 .iter()
                 .map(|value| {
+                    #[cfg(feature = "retained-runtime")]
+                    crate::resource::source_step()?;
                     let i = value
                         .as_float()
                         .ok_or_else(|| invalid("invalid indexed vertex"))?;
@@ -166,6 +183,8 @@ impl CurveWalk {
             match kind {
                 "IFCLINEINDEX" => {
                     for w in indexed.windows(2) {
+                        #[cfg(feature = "retained-runtime")]
+                        crate::resource::source_step()?;
                         out.push(Segment::Line {
                             start: w[0],
                             end: w[1],
@@ -195,7 +214,9 @@ impl CurveWalk {
         end: Option<f64>,
     ) -> Result<Option<Vec<Segment>>> {
         // This walk does not enter `extract` for the composite itself.
-        self.source.record(curve, decoder);
+        self.source.record(curve, decoder)?;
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         let refs = curve
             .get_list(0)
             .ok_or_else(|| invalid("CompositeCurve missing Segments"))?;
@@ -205,19 +226,21 @@ impl CurveWalk {
         let mut pieces_with_spans = Vec::new();
         let mut total = 0.0;
         for (index, reference) in refs.iter().enumerate() {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
-                self.source_rest(&refs[index..], decoder);
+                self.source_rest(&refs[index..], decoder)?;
                 return Ok(None);
             }
-            self.source.record(&segment, decoder);
+            self.source.record(&segment, decoder)?;
             let parent = resolve(segment.get(2), decoder)?;
             let Some(pieces) = self.extract(&parent, decoder)? else {
-                self.source_rest(&refs[index + 1..], decoder);
+                self.source_rest(&refs[index + 1..], decoder)?;
                 return Ok(None);
             };
             let Some(mut spans) = parent_piece_spans(&parent, &pieces, decoder)? else {
-                self.source_rest(&refs[index + 1..], decoder);
+                self.source_rest(&refs[index + 1..], decoder)?;
                 return Ok(None);
             };
             let same_sense = segment.get_bool(1).unwrap_or(true);
@@ -228,8 +251,10 @@ impl CurveWalk {
                 pieces.into_iter().rev().map(|p| p.reversed()).collect()
             };
             for (piece, span) in pieces.into_iter().zip(spans) {
+                #[cfg(feature = "retained-runtime")]
+                crate::resource::source_step()?;
                 if !span.is_finite() || span <= 0.0 {
-                    self.source_rest(&refs[index + 1..], decoder);
+                    self.source_rest(&refs[index + 1..], decoder)?;
                     return Ok(None);
                 }
                 total += span;
@@ -247,6 +272,8 @@ impl CurveWalk {
         let mut out = Vec::new();
         let mut cursor = 0.0;
         for (piece, span) in pieces_with_spans {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             let left = a.max(cursor);
             let right = b.min(cursor + span);
             if right > left {
@@ -270,16 +297,18 @@ impl CurveWalk {
         }
         let mut out = Vec::new();
         for (index, reference) in refs.iter().enumerate() {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
-                self.source_rest(&refs[index..], decoder);
+                self.source_rest(&refs[index..], decoder)?;
                 return Ok(None);
             }
-            self.source.record(&segment, decoder);
+            self.source.record(&segment, decoder)?;
             let same_sense = segment.get_bool(1).unwrap_or(true);
             let parent = resolve(segment.get(2), decoder)?;
             let Some(mut pieces) = self.extract(&parent, decoder)? else {
-                self.source_rest(&refs[index + 1..], decoder);
+                self.source_rest(&refs[index + 1..], decoder)?;
                 return Ok(None);
             };
             if !same_sense {
@@ -294,24 +323,30 @@ impl CurveWalk {
     /// authored source of its remaining segments, so captured provenance never
     /// looks complete while missing them. Interpretation errors here refuse the
     /// capture instead of changing the already-decided `None` result.
-    fn source_rest(&mut self, refs: &[AttributeValue], decoder: &mut EntityDecoder) {
+    fn source_rest(&mut self, refs: &[AttributeValue], decoder: &mut EntityDecoder) -> Result<()> {
         if !self.source.is_enabled() {
-            return;
+            return Ok(());
         }
         for reference in refs {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             let segment = match resolve(Some(reference), decoder) {
                 Ok(segment) if segment.ifc_type == IfcType::IfcCompositeCurveSegment => segment,
-                Ok(_) => return self.source.fail("unsupported composite member".to_owned()),
-                Err(error) => return self.source.fail(error.to_string()),
+                Ok(_) => {
+                    self.source.fail("unsupported composite member".to_owned());
+                    return Ok(());
+                }
+                Err(error) => return self.source.fail_error(error),
             };
-            self.source.record(&segment, decoder);
+            self.source.record(&segment, decoder)?;
             let parent = ifc_lite_core::slot::IfcCompositeCurveSegment::PARENT_CURVE.index();
             let walked = resolve(segment.get(parent), decoder)
                 .and_then(|parent| self.extract(&parent, decoder));
             if let Err(error) = walked {
-                return self.source.fail(error.to_string());
+                return self.source.fail_error(error);
             }
         }
+        Ok(())
     }
 
     fn trimmed(
@@ -321,7 +356,7 @@ impl CurveWalk {
     ) -> Result<Option<Vec<Segment>>> {
         let basis = resolve(curve.get(0), decoder)?;
         if matches!(basis.ifc_type, IfcType::IfcLine | IfcType::IfcCircle) {
-            self.source.record(&basis, decoder);
+            self.source.record(&basis, decoder)?;
         } else if self.source.is_enabled() {
             // Other leaf bases (e.g. a rational B-spline) are not line/arc
             // geometry, but their original records are the authored source.
@@ -330,18 +365,36 @@ impl CurveWalk {
             if basis.ifc_type.is_subtype_of(IfcType::IfcCompositeCurve)
                 || basis.ifc_type == IfcType::IfcTrimmedCurve
             {
-                self.source.fail("unsupported trimmed-curve basis source".to_owned());
+                self.source
+                    .fail("unsupported trimmed-curve basis source".to_owned());
             } else {
-                self.source.record(&basis, decoder);
+                self.source.record(&basis, decoder)?;
             }
         }
-        Ok(decode_trimmed_primitive(curve, &basis, decoder, TrimRecovery::RequireBoth)?
-            .map(|primitive| vec![match primitive {
-                TrimmedPrimitive::Line { start, end } => Segment::Line { start, end },
-                TrimmedPrimitive::Circle { center, normal, x_axis, radius,
-                    start_angle, sweep_angle, .. } => Segment::Arc {
-                    center, normal, x_axis, radius, start_angle, sweep_angle,
+        Ok(
+            decode_trimmed_primitive(curve, &basis, decoder, TrimRecovery::RequireBoth)?.map(
+                |primitive| {
+                    vec![match primitive {
+                        TrimmedPrimitive::Line { start, end } => Segment::Line { start, end },
+                        TrimmedPrimitive::Circle {
+                            center,
+                            normal,
+                            x_axis,
+                            radius,
+                            start_angle,
+                            sweep_angle,
+                            ..
+                        } => Segment::Arc {
+                            center,
+                            normal,
+                            x_axis,
+                            radius,
+                            start_angle,
+                            sweep_angle,
+                        },
+                    }]
                 },
-            }]))
+            ),
+        )
     }
 }

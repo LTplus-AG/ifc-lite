@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 pub(super) fn validate(
     records: &[Record<'_>],
     products: &HashSet<u32>,
-    placements: &HashMap<u32, (u32, usize)>,
+    placements: &HashMap<u32, u32>,
     decoder: &mut EntityDecoder,
 ) -> Result<(), String> {
     let connections: HashSet<_> = records

@@ -14,6 +14,7 @@ use crate::plan::attrs::attribute_index;
 use crate::plan::types::{ObjectRef, SurfaceColour};
 use super::assoc::{CheckedClassification, CheckedMaterial};
 use super::mapped::MapPlan;
+use super::same_as::ReusedRepresentation;
 use super::units::CheckedUnits;
 use super::AddState;
 
@@ -34,9 +35,11 @@ pub(super) struct Checked {
     pub(super) units: CheckedUnits,
     /// Where a mapped body's maps come from.
     pub(super) mapped: Option<MapPlan>,
+    /// The source representations reused geometry repeats.
+    pub(super) same_as: Option<Vec<ReusedRepresentation>>,
 }
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     pub(super) fn is_a(&self, class: &str, parent: &str) -> bool {
         is_subtype_of_for_schema(self.schema, class, parent)
     }
@@ -56,18 +59,52 @@ impl AddState<'_> {
     /// names the type its class takes and `type_class` is not one.
     fn check_type_pairing(&self, class: &str, type_class: &str, what: &str) -> Result<(), String> {
         let Some(wanted) = self.type_class_for(class) else { return Ok(()) };
-        // IFC4 keeps IFC2X3's door and window styles, deprecated but valid.
-        let style = wanted.strip_suffix("TYPE").map(|base| format!("{base}STYLE"));
-        if self.is_a(type_class, &wanted) || style.as_deref() == Some(type_class) {
+        // IFC4 keeps IfcDoorStyle and IfcWindowStyle, but CorrectStyleAssigned
+        // requires an IfcDoorType / IfcWindowType there. In IFC2X3 there is no
+        // such type, so `type_class_for` is None and this is not reached.
+        if self.is_a(type_class, &wanted) {
             return Ok(());
         }
         Err(format!("{what} is {type_class}, but a {class} is typed by an {wanted}"))
     }
 
-    /// A spatial element (`IfcSpatialStructureElement` in IFC2X3, its
-    /// `IfcSpatialElement` supertype later).
     fn is_spatial(&self, class: &str) -> bool {
-        self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT") || self.is_a(class, "IFCSPATIALELEMENT")
+        crate::plan::attrs::is_spatial(self.schema, class)
+    }
+
+    /// A spatial structure element: what the site, building, storey, space
+    /// hierarchy under the project is made of. Spatial zones and external
+    /// spatial elements are spatial but not structure elements: they are
+    /// contained in one, and a zone may only be aggregated under a zone.
+    /// Unlike `attrs::in_structure` (a place in the tree), this excludes the
+    /// project: it classifies what is being added, and a project is never added.
+    fn is_structure_element(&self, class: &str) -> bool {
+        self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT")
+    }
+
+    /// Whether a `parent` (UPPERCASE class) may aggregate a new structure
+    /// element `child`. Each rule names a kind and the kinds that may hold
+    /// it; a child follows every rule for a kind it is (in IFC4X3 an
+    /// `IfcBuilding` is an `IfcFacility`, so it may sit wherever one may).
+    fn can_aggregate(&self, parent: &str, child: &str) -> bool {
+        const RULES: [(&str, &[&str]); 6] = [
+            ("IFCSITE", &["IFCPROJECT", "IFCSITE"]),
+            ("IFCBUILDING", &["IFCPROJECT", "IFCSITE", "IFCBUILDING"]),
+            ("IFCBUILDINGSTOREY", &["IFCBUILDING", "IFCBUILDINGSTOREY"]),
+            ("IFCSPACE", &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]),
+            ("IFCFACILITYPART", &["IFCFACILITY", "IFCFACILITYPART"]),
+            ("IFCFACILITY", &["IFCPROJECT", "IFCSITE", "IFCFACILITY", "IFCFACILITYPART"]),
+        ];
+        let mut ruled = false;
+        for (kind, parents) in RULES {
+            if self.is_a(child, kind) {
+                ruled = true;
+                if parents.iter().any(|p| self.is_a(parent, p)) {
+                    return true;
+                }
+            }
+        }
+        !ruled && self.is_structure_element(parent)
     }
 
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
@@ -112,11 +149,6 @@ impl AddState<'_> {
                 if upper.is_empty() || !upper.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
                     return Err(format!("'{value}' is not an enumeration value"));
                 }
-                // USERDEFINED obliges an ObjectType or ElementType naming the
-                // kind, which an Add does not write.
-                if upper == "USERDEFINED" {
-                    return Err("PredefinedType USERDEFINED needs a type name, which an Add does not write".into());
-                }
                 let members = crate::step_log::predefined_type_members(schema, &class).unwrap_or(&[]);
                 if !members.is_empty() && !members.contains(&upper.as_str()) {
                     return Err(format!("'{value}' is not a PredefinedType of {class} in {schema}"));
@@ -125,6 +157,23 @@ impl AddState<'_> {
             }
         };
         Ok((class, predefined))
+    }
+
+    /// Refuse a value for a string attribute `class` lacks in the schema,
+    /// and a `USERDEFINED` `PredefinedType` without a non-blank `kind`
+    /// (`ObjectType` or `ElementType`) naming what it is.
+    fn check_string_attributes<'v>(&self, class: &str, predefined: Option<&str>, attrs: impl Iterator<Item = (&'static str, &'v str)>, kind: &str) -> Result<(), String> {
+        let mut named = false;
+        for (name, value) in attrs {
+            if attribute_index(self.schema, class, name).is_none() {
+                return Err(format!("{class} has no {name} in {}", self.schema));
+            }
+            named |= name == kind && !value.trim().is_empty();
+        }
+        if predefined == Some(".USERDEFINED.") && !named {
+            return Err(format!("PredefinedType USERDEFINED needs an {kind} naming the kind"));
+        }
+        Ok(())
     }
 
     /// Refuse a plan key that names something already there, a GlobalId key
@@ -160,8 +209,12 @@ impl AddState<'_> {
         }
         validate_psets(self.schema, &t.psets)?;
         let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+        self.check_string_attributes(&class, predefined.as_deref(), t.string_attributes(), "ElementType")?;
         if matches!(t.representation, Representation::Mapped(_)) {
             return Err("a type's representation cannot itself be mapped".into());
+        }
+        if matches!(t.representation, Representation::SameAs(_)) {
+            return Err("a type's representation cannot reuse a product's".into());
         }
         check_representation(&t.representation, t.style.as_ref()).map_err(|e| format!("type: {e}"))?;
         Ok((class, predefined, self.check_units(&t.psets)?))
@@ -172,6 +225,7 @@ impl AddState<'_> {
         self.check_new_identity(key, &encoded)?;
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
+        self.check_string_attributes(&class, predefined.as_deref(), obj.string_attributes(), "ObjectType")?;
         if let Some(e) = obj.elevation {
             if !self.is_a(&class, "IFCBUILDINGSTOREY") {
                 return Err(format!("{class} has no Elevation; only a storey takes one"));
@@ -180,19 +234,46 @@ impl AddState<'_> {
                 return Err(format!("storey elevation {e} is not finite"));
             }
         }
-        let spatial = self.is_spatial(&class);
+        let spatial = self.is_structure_element(&class);
 
         let container = match &obj.container {
+            None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
             None => None,
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
-                // A new site, building or (IFC4X3) other facility is
-                // aggregated into the project.
-                let top_level = || ["IFCSITE", "IFCBUILDING", "IFCFACILITY"].iter().any(|t| self.is_a(&class, t));
-                if !(self.is_spatial(&c) || (c == "IFCPROJECT" && top_level())) {
-                    return Err(format!("container {r} is {c}, not a spatial element"));
+                // When the new object is itself a spatial zone or external spatial
+                // element: it is not part of the project/site/building/storey/space
+                // decomposition. buildingSMART
+                // IFC4.3 (Spatial Decomposition): an IfcSpatialZone is "included
+                // into the hierarchy using the Spatial Containment concept
+                // (IfcRelContainedInSpatialStructure) and can be aggregated into a
+                // functional hierarchy ... an IfcSpatialZone can only be composed
+                // under another IfcSpatialZone". IfcExternalSpatialElement's
+                // definition gives only PredefinedType and BoundedBy; its place is
+                // fixed by IfcRelContainedInSpatialStructure.RelatingStructure
+                // (an IfcSpatialElement in IFC4), so it is contained likewise.
+                if !spatial && self.is_spatial(&class) {
+                    let kind = if self.is_structure_element(&c) {
+                        RelKind::Contained
+                    } else if self.is_a(&class, "IFCSPATIALZONE") && self.is_a(&c, "IFCSPATIALZONE") {
+                        RelKind::Aggregates
+                    } else {
+                        return Err(format!("container {r} is {c}, which cannot hold a {class}: it is contained in a spatial structure element (or, for a zone, composed under a zone)"));
+                    };
+                    Some((id, kind, c))
+                } else {
+                    // IfcRelContainedInSpatialStructure.RelatingStructure is an
+                    // IfcSpatialElement, a spatial zone included. A structure
+                    // element goes under the project or a structure element.
+                    let is_container = if spatial { crate::plan::attrs::in_structure(self.schema, &c) } else { self.is_spatial(&c) };
+                    if !is_container {
+                        return Err(format!("container {r} is {c}, not a spatial element"));
+                    }
+                    if spatial && !self.can_aggregate(&c, &class) {
+                        return Err(format!("container {r} is {c}, which cannot aggregate a {class} in {}", self.schema));
+                    }
+                    Some((id, if spatial { RelKind::Aggregates } else { RelKind::Contained }, c))
                 }
-                Some((id, if spatial { RelKind::Aggregates } else { RelKind::Contained }, c))
             }
         };
 
@@ -250,6 +331,7 @@ impl AddState<'_> {
         let classifications = self.check_classifications(&obj.classifications)?;
         check_representation(&obj.representation, obj.style.as_ref())?;
         let mapped = self.check_mapped(obj, existing_type)?;
+        let same_as = self.check_same_as(obj)?;
 
         let host = match &obj.opening {
             None => None,
@@ -278,15 +360,17 @@ impl AddState<'_> {
             classifications,
             units,
             mapped,
+            same_as,
         })
     }
 }
 
 /// Refuse geometry that cannot be written validly, and a colour with
-/// nothing to apply to. A mapped body's own rules are `check_mapped`'s.
+/// nothing to apply to. A mapped body's own rules are `check_mapped`'s, a
+/// reused one's `check_same_as`'s.
 fn check_representation(rep: &Representation, style: Option<&SurfaceColour>) -> Result<(), String> {
     match rep {
-        Representation::None | Representation::Mapped(_) => {}
+        Representation::None | Representation::Mapped(_) | Representation::SameAs(_) => {}
         Representation::Extrusion(e) => validate_extrusion(e)?,
         Representation::Extrusions(es) => {
             if es.is_empty() {

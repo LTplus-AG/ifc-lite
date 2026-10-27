@@ -16,7 +16,7 @@ pub use crate::step_api::{
 
 use crate::schema_detect::detect_schema;
 use crate::step_text::{
-    apply_attr_mutations_counted, escape, merge_edits, refs_in_line_counted, renumber,
+    apply_attr_mutations_counted, merge_edits, quoted, refs_in_line_counted, renumber,
 };
 
 /// Export the parsed model in `content` as a STEP/IFC string.
@@ -297,7 +297,7 @@ fn emit<W: std::io::Write>(
         };
         let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
         for (pname, value) in props {
-            let line = format!("#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);", escape(pname), value);
+            let line = format!("#{next}=IFCPROPERTYSINGLEVALUE({},$,{},$);", quoted(pname), value);
             write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
             prop_refs.push(next);
             next += 1;
@@ -306,9 +306,9 @@ fn emit<W: std::io::Write>(
         let (psid, rid) = (next, next + 1);
         let refs_str = prop_refs.iter().map(|r| format!("#{r}")).collect::<Vec<_>>().join(",");
         let line = format!(
-            "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));",
+            "#{psid}=IFCPROPERTYSET('{}',$,{},$,({}));",
             crate::schema_convert::placeholder_guid(psid),
-            escape(pset_name),
+            quoted(pset_name),
             refs_str
         );
         write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;

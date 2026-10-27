@@ -36,8 +36,10 @@ and resolver auditing never enter timing children. Source, binary, runtime,
 fixture and preparation receipt checks remain intact. Missing large fixtures
 make a full cohort incomplete; a smoke run cannot pass performance acceptance.
 The Rust arm must expose the final public facade and actual Node WASM resolver;
-the performance-harness branch alone deliberately still exports the TS facade.
-Prepare a clean public-cutover source as the measured branch.
+do not infer implementation from the harness branch name. Inspect the public
+entry point and select a TS commit before cutover as base; the sample rejects
+a Rust facade masquerading as the TS arm. Prepare a clean public-cutover source
+as the measured branch.
 
 ## Timing verdict fixed before measurement
 

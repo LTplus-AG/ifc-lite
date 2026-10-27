@@ -10,6 +10,8 @@ on:
       - 'native/**'
       - 'rust/geometry-runtime/**'
       - 'rust/retained-native/**'
+      - 'rust/processing/tests/fixtures/issue_2019_*'
+      - 'rust/processing/tests/fixtures/issue_3641_*'
       - 'rust/processing/src/processor/**'
       - 'rust/processing/src/element/session_retained/**'
       - 'rust/processing/src/element.rs'
@@ -48,6 +50,9 @@ on:
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
       - 'rust/wasm-bindings/src/retained_browser/**'
+      # M2-A streaming session and view meshes.
+      - 'rust/wasm-bindings/src/api/retained_*.rs'
+      - 'rust/wasm-bindings/src/retained_view.rs'
       - 'rust/wasm-bindings/js/**'
       # Feature wiring for the retained-browser build (the wasm32 path
       # only these actual-Worker lanes exercise).

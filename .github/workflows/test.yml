@@ -712,6 +712,12 @@ jobs:
           fi
           echo "✅ committed wasm types match the Rust source"
 
+      # A separate feature bundle exposes only the test ownership probe.
+      # Do not overwrite pkg-diff or its committed production declarations.
+      - name: Fingerprint getter ownership (actual WASM, no skips)
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        run: pnpm test:diff-decode-leaks
+
       # The generated IFCX imported-geometry kernel must match the Rust crate it
       # is built from. Regenerates into a temp dir and diffs; not a build gate for
       # packages (their --verify is Rust-free). Needs cargo, so 'Setup WASM build toolchain'
@@ -736,6 +742,11 @@ jobs:
           node scripts/diff-lineage-vectors.mjs --check
           node scripts/diff-sidecar-vectors.mjs --check
           node scripts/diff-sidecar-validation-vectors.mjs --check
+
+      # #7955 M2-B: the default (flag-off) viewer dist built above must not
+      # contain retained/SMLib code or assets.
+      - name: Verify default viewer is retained-free
+        run: node scripts/check-viewer-retained-free.mjs
 
       # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
       # built the engine wasm and the viewer's dist/ (turbo builds apps/*
@@ -946,6 +957,14 @@ jobs:
           # profile publication. These mutations remain bounded.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/lib/retained/retained-client.ts | grep -Fxq 'apps/viewer/src/lib/retained/retained-client.ts'; then
+            # #7955 M2-B: keep the protocol APIs; Cancel no longer terminates.
+            oracle_args+=(--mutation tests/evidence/m2-b/behaviour.oracle.patch --test apps/viewer/src/lib/retained/retained-client.test.ts)
+          # #7955 M3-0: preserve the added oracle API and feature-gated witness;
+          # invert only pairwise inclusion-exclusion, which must fail assertions.
+          # Drop this clause once openings.rs is on main.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/retained-native/src/oracle/openings.rs | grep -Fxq 'rust/retained-native/src/oracle/openings.rs'; then
+            oracle_args+=(--mutation tests/evidence/m3-0-opening-oracle/behaviour.oracle.patch --test rust/retained-native/tests/m3_opening_oracle.rs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- native/smlib-adapter/node/client.mjs | grep -Fxq 'native/smlib-adapter/node/client.mjs'; then
             # #7955 M1 F: preserve the added modules so inert tests still load;
             # break captured-owner retirement and engine asset digest recording.
@@ -961,6 +980,9 @@ jobs:
           # Once geo-warp.ts is on main, this clause can go.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/lib/geo/geo-warp.ts | grep -Fxq 'apps/viewer/src/lib/geo/geo-warp.ts'; then
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
+          # #7955 M2 A: retain APIs; lose local f32 storage by keeping RTC in the origin.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/retained_view.rs | grep -Fxq 'rust/wasm-bindings/src/retained_view.rs'; then
+            oracle_args+=(--mutation tests/evidence/m2-a/behaviour.oracle.patch --test rust/wasm-bindings/tests/m2_retained_view.rs)
           # #7955 M1 E2: preserve APIs; erase the typed host refusal code.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/api/retained_model.rs | grep -Fxq 'rust/wasm-bindings/src/api/retained_model.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-e2-retained-model/behaviour.oracle.patch --test rust/wasm-bindings/tests/m1_retained_model.rs)
@@ -979,12 +1001,26 @@ jobs:
           # #7955 M1 A: preserve added controller types; break one unmet obligation.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/completion.rs | grep -Fxq 'rust/geometry/src/program/retained/completion.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-a-controller-core/behaviour.oracle.patch)
+          # #8114: restore the pre-sparse slot/encoding expressions; keep the seams the tests enter through.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/sparse-fingerprints-8114/behaviour.oracle.patch | grep -Fxq 'tests/evidence/sparse-fingerprints-8114/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/sparse-fingerprints-8114/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/j5-presentation/behaviour.oracle.patch | grep -Fxq 'tests/evidence/j5-presentation/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/j5-presentation/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/e3b-followups/behaviour.oracle.patch | grep -Fxq 'tests/evidence/e3b-followups/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/src/wasm-projections.ts | grep -Fxq 'packages/diff/src/wasm-projections.ts'; then
+            # #8042/#8109: a whole-change revert deletes wasm-projections.ts,
+            # which diff-lineage-parity.test.mjs imports (REVERT-BROKE-BUILD).
+            # Keep the module and its exports; swap the content-match and
+            # successor sides and drop split pieces, so the parity corpus
+            # must fail its identity/lineage assertions. This observes the
+            # TypeScript projection layer through the prebuilt WASM only:
+            # pkg-diff is not rebuilt here, so the Rust host bindings are
+            # proven out of band. Once wasm-projections.ts is on main,
+            # whole-change reverts resume automatically.
+            oracle_args+=(--mutation tests/evidence/diff-8042/host-projections.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/ifctype-lookup-8119/lookup.oracle.patch | grep -Fxq 'tests/evidence/ifctype-lookup-8119/lookup.oracle.patch'; then
             # #8119: a whole-change revert deletes buildNameTable, SUPPLEMENTAL
             # and CANONICAL_NAME_ARMS, which the changed tests import. Keep them
@@ -3229,6 +3265,40 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
 
+      # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
+      # all-features clippy) run in `rust-full` below -- OFF the PR lane,
+      # ON push to main and in the merge queue, where the aggregate judges
+      # them. See that job for why each exists.
+
+  # #7955: the opt-in retained legs, in their own job. They were steps at the
+  # end of `rust-tests` and pushed that lane past its 45 min cap (cancelled
+  # on main and PRs, 2026-10-27). Same trigger as `rust-tests`, run in
+  # parallel, own cache prefix (feature builds differ from the default tree),
+  # and in the aggregate's `needs:` and results map, so nothing got weaker.
+  rust-retained:
+    name: Rust tests (retained)
+    needs: changes
+    if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+      - name: Use lld for host links
+        run: |
+          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-retained
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: rust-retained-runtime
@@ -3255,6 +3325,7 @@ jobs:
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
           cargo test -p ifc-lite-processing --features retained-runtime --test m1_executor
           cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
+          cargo test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
           cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser
           cargo clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
           # Match geometry-platform's wasm test target: testkit exposes the
@@ -3263,11 +3334,6 @@ jobs:
           cargo test -p ifc-lite-retained-native --features retained-runtime
           cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
-
-      # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
-      # all-features clippy) run in `rust-full` below -- OFF the PR lane,
-      # ON push to main and in the merge queue, where the aggregate judges
-      # them. See that job for why each exists.
 
   # THE FULL RUST LANE, OFF THE PR (CI redesign, step 5). Everything here is
   # an off-by-default feature build: the workspace never compiles these, so a
@@ -4028,7 +4094,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -4090,6 +4156,7 @@ jobs:
             [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [rust-retained]="${{ needs.rust-retained.result }}"
             [rust-full]="${{ needs.rust-full.result }}"
             [rust-semver]="${{ needs.rust-semver.result }}"
             [geometry-census]="${{ needs.geometry-census.result }}"

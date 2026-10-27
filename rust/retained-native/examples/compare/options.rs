@@ -55,8 +55,10 @@ pub fn options() -> Result<Options, Box<dyn std::error::Error>> {
         bless,
     })
 }
-fn committed_models() -> Vec<&'static str> {
+pub fn committed_models() -> Vec<&'static str> {
     vec![
+        "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+        "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",
         "tests/fixtures/synthetic-retained/f-c-extrusion.ifc",
         "tests/fixtures/synthetic-retained/f-c-brep.ifc",
         "tests/fixtures/synthetic-retained/f-a-curved.ifc",

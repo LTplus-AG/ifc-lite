@@ -6,6 +6,22 @@ use ifc_lite_diff::{DocumentValue as Value, JsString, document_serde};
 use serde::{Serialize, de::DeserializeOwned};
 use wasm_bindgen::{prelude::*, JsCast};
 
+// Live projection exports also use this DTO reader. Array proxies and object
+// enumeration can execute caller code; catch it before returning to Rust.
+#[wasm_bindgen(inline_js = r#"
+export function diffTransportArray(value) { return Array.isArray(value); }
+export function diffTransportLength(value) { return value.length >>> 0; }
+export function diffTransportKeys(value) { return Object.keys(value); }
+"#)]
+extern "C" {
+    #[wasm_bindgen(catch, js_name = diffTransportArray)]
+    fn is_array(value: &JsValue) -> Result<bool, JsValue>;
+    #[wasm_bindgen(catch, js_name = diffTransportLength)]
+    fn array_length(value: &JsValue) -> Result<u32, JsValue>;
+    #[wasm_bindgen(catch, js_name = diffTransportKeys)]
+    fn object_keys(value: &JsValue) -> Result<js_sys::Array, JsValue>;
+}
+
 pub(crate) fn string(value: &JsValue) -> Result<JsString, JsValue> {
     if !value.is_string() { return Err(JsValue::from_str("expected a string")); }
     // The scalar copy is fast for ordinary IFC strings. A strict round-trip
@@ -33,15 +49,16 @@ fn read(value: JsValue, depth: usize) -> Result<Value, JsValue> {
     if let Some(b) = value.as_bool() { return Ok(Value::Bool(b)); }
     if let Some(n) = value.as_f64() { return Ok(Value::Number(n)); }
     if value.is_string() { return string(&value).map(Value::String); }
-    if js_sys::Array::is_array(&value) {
-        let array: js_sys::Array = value.unchecked_into();
-        return (0..array.length()).map(|i| read(array.get(i), depth + 1))
+    if is_array(&value)? {
+        return (0..array_length(&value)?).map(|i| {
+            read(js_sys::Reflect::get(&value, &JsValue::from_f64(f64::from(i)))?, depth + 1)
+        })
             .collect::<Result<Vec<_>, _>>().map(Value::Array);
     }
     if value.is_object() {
         let object: js_sys::Object = value.unchecked_into();
         let mut entries = Vec::new();
-        for key in js_sys::Object::keys(&object).iter() {
+        for key in object_keys(object.as_ref())?.iter() {
             entries.push((string(&key)?, read(js_sys::Reflect::get(&object, &key)?, depth + 1)?));
         }
         return Ok(Value::Object(entries));

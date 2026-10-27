@@ -10,7 +10,16 @@ let pending: Promise<void> | undefined;
 export async function initDiff(input?: Parameters<typeof initialize>[0]): Promise<void> {
   if (ready) return;
   if (!pending) {
-    pending = initialize(input).then(() => { ready = true; }).catch((error: unknown) => {
+    pending = (async () => {
+      // Node's fetch does not load file: URLs. Resolve the published asset
+      // subpath here so applications share one initialization/retry boundary.
+      if (input === undefined && typeof process !== 'undefined' && process.versions?.node) {
+        const { readFile } = await import('node:fs/promises');
+        input = { module_or_path: await readFile(new URL(import.meta.resolve('@ifc-lite/wasm/diff_bg.wasm'))) };
+      }
+      await initialize(input);
+      ready = true;
+    })().catch((error: unknown) => {
       pending = undefined;
       throw error;
     });
@@ -18,9 +27,12 @@ export async function initDiff(input?: Parameters<typeof initialize>[0]): Promis
   await pending;
 }
 
-/** Initialize synchronously from preloaded bytes or a compiled WebAssembly.Module. */
+/** Initialize synchronously from preloaded bytes or a compiled WebAssembly.Module.
+ * If asynchronous initialization is in progress, await initDiff() instead.
+ */
 export function initDiffSync(input: Parameters<typeof initSync>[0]): void {
   if (ready) return;
+  if (pending) throw new Error('Asynchronous diff initialization is in progress; await initDiff() before calling synchronous diff APIs.');
   initSync(input);
   ready = true;
 }

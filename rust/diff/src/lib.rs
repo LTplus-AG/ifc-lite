@@ -34,6 +34,7 @@
 
 pub mod fingerprint;
 pub mod input;
+pub mod sparse_collection;
 mod input_decode;
 pub mod model;
 pub mod engine;

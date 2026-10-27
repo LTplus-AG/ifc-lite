@@ -991,6 +991,9 @@ jobs:
           # #7955 M1 A: preserve added controller types; break one unmet obligation.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/completion.rs | grep -Fxq 'rust/geometry/src/program/retained/completion.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-a-controller-core/behaviour.oracle.patch)
+          # #8114: restore the pre-sparse slot/encoding expressions; keep the seams the tests enter through.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/sparse-fingerprints-8114/behaviour.oracle.patch | grep -Fxq 'tests/evidence/sparse-fingerprints-8114/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/sparse-fingerprints-8114/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/j5-presentation/behaviour.oracle.patch | grep -Fxq 'tests/evidence/j5-presentation/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/j5-presentation/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/e3b-followups/behaviour.oracle.patch | grep -Fxq 'tests/evidence/e3b-followups/behaviour.oracle.patch'; then

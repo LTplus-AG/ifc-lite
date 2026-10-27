@@ -30,7 +30,7 @@ pub(in crate::program) fn prism_operation(host: &LogicalRetainedValue, prism: Re
         placements: Vec::new(), presentation: Vec::new(), product_placed: false, outcome: outcome::new()?,
     };
     value.validate_identity()?;
-    Ok(RetainedPlanOperation { value, kind: RetainedOperationKind::Construction(RetainedRecipe::Prism(prism)) })
+    Ok(RetainedPlanOperation { opening: None, value, kind: RetainedOperationKind::Construction(RetainedRecipe::Prism(prism)) })
 }
 /// `source_id` is the halfspace's id, so the derived Source retains its attribution.
 pub(in crate::program) fn halfspace_box(host: &LogicalRetainedValue, source_id: u32, p_e: [f64; 3], r_e: [f64; 3])

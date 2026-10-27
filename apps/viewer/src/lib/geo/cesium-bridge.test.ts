@@ -191,4 +191,17 @@ describe('createCesiumBridge with map-absolute geometry (#2526)', () => {
     // grid-sized model is drawn 34 ppm smaller, less the height reduction.
     assert.ok(origin.groundScale < 1 && origin.groundScale > 1 - 4e-5, `groundScale ${origin.groundScale}`);
   });
+
+  it('applies that ground scale in the real bridge, not only in computeCesiumModelOrigin (#8174 review)', async () => {
+    // createCesiumBridge neutralises the conversion for its rotation; the
+    // origin must still see the authored anchor, or map-absolute geometry is
+    // drawn at grid size again.
+    const origin = await computeCesiumModelOrigin(vwConversion, vwCrs, vwCoordinateInfo, 0.001);
+    const bridge = await createCesiumBridge(vwConversion, vwCrs, vwCoordinateInfo, 0.001);
+    assert.ok(origin && bridge);
+    assert.ok(origin.groundScale < 1);
+    assert.deepEqual(bridge.viewerRotation, viewerToEnuRotation(
+      origin.scaleX * origin.groundScale, 1, 0, origin.gamma, origin.scaleY * origin.groundScale,
+    ));
+  });
 });

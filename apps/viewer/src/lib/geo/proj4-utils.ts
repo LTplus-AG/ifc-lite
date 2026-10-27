@@ -142,7 +142,7 @@ export function computeGridFrame(projDef: string, easting: number, northing: num
   // Geographic CRS: lat/lon is already true-north aligned.
   if (isGeographicProj4(projDef)) return neutral;
   // Near the poles the local east/metre scale degenerates; skip.
-  if (Math.abs(lat) > 89.9) return neutral;
+  if (Math.abs(lat) >= 89.9) return neutral;
   try {
     return computeGridPointFactors(projDef, easting, northing) ?? neutral;
   } catch (err) {

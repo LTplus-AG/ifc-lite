@@ -236,6 +236,10 @@ export async function createCesiumBridge(
   // same neutralised conversion as `computeCesiumModelOrigin`, or the model
   // spins by the double-applied XAxis rotation around a correct origin.
   const geographic = isGeographicProj4(projDef);
+  // `computeCesiumModelOrigin` needs the AUTHORED conversion: it detects
+  // map-absolute geometry from the authored anchor (a neutralised copy has
+  // zero offsets, so the grid-to-ground scale never applied in the bridge).
+  const authoredConversion = mapConversion;
   if (!geographic) mapConversion = effectiveMapConversionForGeometry(
     mapConversion,
     resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale),
@@ -249,7 +253,7 @@ export async function createCesiumBridge(
   const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
   const rtcYup = ifcToViewerAxes(coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
   const origin = await computeCesiumModelOrigin(
-    mapConversion,
+    authoredConversion,
     projectedCRS,
     coordinateInfo,
     lengthUnitScale,

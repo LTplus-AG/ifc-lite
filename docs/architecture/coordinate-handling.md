@@ -33,6 +33,8 @@ Whether to divide by k_c depends on what the model's coordinates are:
 
 Before this, such a conversion was drawn at Scale·Factor, the size of the model on the map grid, and rigid-operation and map-absolute models were drawn at grid size. Treating a unit-scale `IfcMapConversion` as true length is a reading of practice, not of the equations alone: the spec's formula would make its output map coordinates too. In practice Scale = 1 means the model is in ground lengths, and dividing by k_c would shrink a correctly drawn model.
 
+### Large coordinates and rendering problems
+
 Large coordinates in geometry are a **bad practice** that has unfortunately become common. They cause rendering issues:
 
 | Issue | Description |

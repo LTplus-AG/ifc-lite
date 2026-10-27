@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { legacyManualChunk } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
@@ -274,6 +275,7 @@ export default defineConfig(({ mode }) => {
       allow: ['../..'],
     },
     proxy: {
+      ...(env.VITE_REGISTRY_ENABLED === 'true' ? registryProxy(env.IFC_REGISTRY_TARGET || 'http://127.0.0.1:5000') : {}),
       '/api/autodesk': { target: 'http://127.0.0.1:3002', changeOrigin: false },
       '/api/chat': {
         // Single API source of truth lives at repo-root `api/chat.ts`.

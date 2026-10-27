@@ -1,0 +1,116 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { RegistryError, RegistryTransport, releaseName, responseBytes } from './transport';
+
+export const IFC_ARTIFACT_TYPE = 'application/vnd.ifcx-oci.ifc.v1';
+export const OCI_MANIFEST_TYPE = 'application/vnd.oci.image.manifest.v1+json';
+const MAX_IFC_BYTES = 512 * 1024 * 1024;
+const SHA256 = /^sha256:[a-f0-9]{64}$/;
+interface Descriptor { mediaType: string; digest: string; size: number; annotations?: Record<string, string> }
+interface Manifest { schemaVersion: 2; mediaType: string; artifactType?: string; config: Descriptor; layers: Descriptor[] }
+export interface ReceivedIfc {
+  bytes: Uint8Array<ArrayBuffer>;
+  filename: string;
+  digest: string;
+  reference: string;
+}
+
+export async function sha256(bytes: Uint8Array): Promise<string> {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes.slice().buffer));
+  return `sha256:${Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function descriptor(value: unknown): Descriptor {
+  if (!value || typeof value !== 'object' || !('mediaType' in value) || typeof value.mediaType !== 'string' ||
+    !('digest' in value) || typeof value.digest !== 'string' || !SHA256.test(value.digest) ||
+    !('size' in value) || typeof value.size !== 'number' || !Number.isSafeInteger(value.size) || value.size < 0 || value.size > MAX_IFC_BYTES) {
+    throw new RegistryError('The release contains an invalid file descriptor.');
+  }
+  const annotations: Record<string, string> = {};
+  if ('annotations' in value && value.annotations && typeof value.annotations === 'object') {
+    for (const [key, item] of Object.entries(value.annotations)) if (typeof item === 'string') annotations[key] = item;
+  }
+  return { mediaType: value.mediaType, digest: value.digest, size: value.size, annotations };
+}
+
+function manifest(bytes: Uint8Array): Manifest {
+  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (!value || typeof value !== 'object' || !('schemaVersion' in value) || value.schemaVersion !== 2 ||
+    !('mediaType' in value) || value.mediaType !== OCI_MANIFEST_TYPE || !('config' in value) ||
+    !('layers' in value) || !Array.isArray(value.layers)) throw new RegistryError('This is not a supported OCI artifact manifest.');
+  return { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config: descriptor(value.config), layers: value.layers.map(descriptor) };
+}
+
+/** Plain IFC source inside an OCI artifact. Also reads a derived release's optional source/model.ifc. */
+export class RegistryArtifacts {
+  constructor(readonly transport: RegistryTransport) {}
+
+  async tags(repository: string, signal?: AbortSignal): Promise<string[]> {
+    const response = await this.transport.request(this.transport.path(repository, 'tags/list'), { signal });
+    const value: unknown = await response.json();
+    if (!value || typeof value !== 'object' || !('tags' in value) || !Array.isArray(value.tags)) {
+      throw new RegistryError('The registry returned an invalid release list.');
+    }
+    return value.tags.filter((tag): tag is string => typeof tag === 'string');
+  }
+
+  async pull(repository: string, reference: string, signal?: AbortSignal): Promise<ReceivedIfc> {
+    if (!SHA256.test(reference)) releaseName(reference);
+    const response = await this.transport.request(this.transport.path(repository, `manifests/${encodeURIComponent(reference)}`), {
+      signal, headers: { Accept: OCI_MANIFEST_TYPE },
+    });
+    const raw = await responseBytes(response, 1024 * 1024);
+    const digest = await sha256(raw);
+    const advertised = response.headers.get('docker-content-digest');
+    if ((advertised && advertised !== digest) || (SHA256.test(reference) && reference !== digest)) {
+      throw new RegistryError('The release fingerprint does not match its manifest.');
+    }
+    const candidates = manifest(raw).layers.filter(layer =>
+      layer.mediaType === 'application/x-step' || /\.ifc$/i.test(layer.annotations?.['org.opencontainers.image.title'] ?? ''));
+    if (candidates.length !== 1) throw new RegistryError('Choose a release containing exactly one editable IFC source file.');
+    const source = candidates[0];
+    const blob = await this.transport.request(this.transport.path(repository, `blobs/${source.digest}`), { signal });
+    const bytes = await responseBytes(blob, source.size);
+    if (bytes.length !== source.size || await sha256(bytes) !== source.digest) throw new RegistryError('The IFC file failed its integrity check.');
+    const filename = source.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop() || 'model.ifc';
+    return { bytes, filename, digest, reference: `${repository}@${digest}` };
+  }
+
+  private async upload(repository: string, bytes: Uint8Array<ArrayBuffer>, mediaType: string, signal?: AbortSignal): Promise<Descriptor> {
+    if (bytes.length > MAX_IFC_BYTES) throw new RegistryError('This local registry supports files up to 512 MiB.');
+    const file = { mediaType, digest: await sha256(bytes), size: bytes.length };
+    const existing = await this.transport.request(this.transport.path(repository, `blobs/${file.digest}`), { method: 'HEAD', signal }, true);
+    if (existing.status !== 404) return file;
+    const start = await this.transport.request(this.transport.path(repository, 'blobs/uploads/'), { method: 'POST', signal });
+    const location = start.headers.get('location');
+    if (!location) throw new RegistryError('The registry did not return an upload location.');
+    const target = this.transport.url(location);
+    if (!target.pathname.startsWith(`/v2/${repository}/blobs/uploads/`)) throw new RegistryError('The registry returned an unexpected upload location.');
+    target.searchParams.set('digest', file.digest);
+    await this.transport.request(target, { method: 'PUT', signal, headers: { 'Content-Type': 'application/octet-stream' }, body: bytes });
+    return file;
+  }
+
+  async publish(repository: string, tag: string, bytes: Uint8Array<ArrayBuffer>, filename: string, signal?: AbortSignal): Promise<string> {
+    releaseName(tag);
+    if (!this.transport.can('push')) throw new RegistryError('This account can receive releases but cannot publish them.', 403);
+    if (!new TextDecoder().decode(bytes.subarray(0, 64)).trimStart().startsWith('ISO-10303-21;')) {
+      throw new RegistryError('Publish an IFC STEP source model for this demo.');
+    }
+    const path = this.transport.path(repository, `manifests/${encodeURIComponent(tag)}`);
+    const current = await this.transport.request(path, { method: 'HEAD', signal }, true);
+    if (current.status !== 404) throw new RegistryError('That version already exists. Choose a new version name.');
+    const config = await this.upload(repository, new TextEncoder().encode('{}'), 'application/vnd.oci.empty.v1+json', signal);
+    const layer = await this.upload(repository, bytes, 'application/x-step', signal);
+    layer.annotations = { 'org.opencontainers.image.title': filename };
+    const value: Manifest = { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, artifactType: IFC_ARTIFACT_TYPE, config, layers: [layer] };
+    const raw = new TextEncoder().encode(JSON.stringify(value));
+    const digest = await sha256(raw);
+    const response = await this.transport.request(path, { method: 'PUT', signal, headers: { 'Content-Type': OCI_MANIFEST_TYPE }, body: raw });
+    const advertised = response.headers.get('docker-content-digest');
+    if (advertised && advertised !== digest) throw new RegistryError('The registry returned a different release fingerprint.');
+    return digest;
+  }
+}

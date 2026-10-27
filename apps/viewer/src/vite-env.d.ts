@@ -6,6 +6,8 @@
 /// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
+  /** Local OCI registry demo, using the development server's same-origin proxy. */
+  readonly VITE_REGISTRY_ENABLED?: string;
   /** Enable reviewed model reports only after the report service is deployed and qualified. */
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
   /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */

@@ -251,7 +251,7 @@ describe('IDSPanel localization (#4918)', () => {
     const ui = render(<IDSPanel />);
     const text = ui.textContent ?? '';
     assert.match(text, /⟦idsPanel\.specificationsPassed⟧/);
-    assert.match(text, /⟦idsPanel\.checked⟧/);
+    assert.match(text, /⟦idsPanel\.entityResults⟧/);
     assert.match(text, /⟦idsPanel\.filter\.all⟧/);
     assert.match(text, /⟦idsPanel\.scope\.wholeIds⟧/);
     assert.match(text, /⟦idsPanel\.onSelect⟧/);

@@ -19,6 +19,16 @@ const environment = () => ({ hostname: hostname(), platform: platform(), release
   totalmem: totalmem(), freemem: freemem(), loadavg: loadavg(),
   timestamp: new Date().toISOString(), cpuTimes: cpus().map(cpu => cpu.times) });
 
+export function cpuUtilization(before, after) {
+  const sum = snapshot => snapshot.cpuTimes.reduce((acc, times) => {
+    acc.idle += times.idle;
+    acc.total += Object.values(times).reduce((a, b) => a + b, 0);
+    return acc;
+  }, { idle: 0, total: 0 });
+  const b = sum(before), a = sum(after), total = a.total - b.total;
+  return total > 0 ? 100 * (1 - (a.idle - b.idle) / total) : null;
+}
+
 export function sample(payload, timeoutMs = LIMITS.timeoutMs) {
   return new Promise((accept, reject) => {
     const start = performance.now();
@@ -189,6 +199,7 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
             pair[arm] = compact;
           }
           pair.after = environment();
+          pair.hostCpuBusyPercent = cpuUtilization(pair.before, pair.after);
           workload.pairs.push(pair);
           await persist();
           assert.deepEqual(pair.base.rows, entry.proof.base.rows);
@@ -267,7 +278,8 @@ export async function dryRun({ baseRoot, branchRoot, fixtureRoot, out }, sampleF
   await mkdir(out, { recursive: false });
   const start = performance.now();
   const report = { state: 'running', performanceVerdict: 'dry-run-only',
-    fullIssue8042Accepted: false, protocol: p, environment: environment(), cases: [] };
+    fullIssue8042Accepted: false, protocol: p, environment: environment(),
+    sources: { base: sourceReceipt(baseRoot), branch: sourceReceipt(branchRoot) }, cases: [] };
   try {
     for (const definition of p.cases) {
       const fixture = { ...definition, paths: definition.paths.map(path => resolve(fixtureRoot, path)) };
@@ -281,6 +293,7 @@ export async function dryRun({ baseRoot, branchRoot, fixtureRoot, out }, sampleF
         const pair = { order: p.order[0], before: environment() };
         for (const arm of pair.order) pair[arm] = await sampleFn({ ...payload(arm), mode });
         pair.after = environment();
+          pair.hostCpuBusyPercent = cpuUtilization(pair.before, pair.after);
         entry.workloads.push({ mode, pair, summary: summary([pair]) });
       }
     }
@@ -334,7 +347,7 @@ export async function main(args) {
       baseRoot: v['base-root'], branchRoot: v['branch-root'], fixtureRoot: v['fixture-root'], out: resolve(v.out) });
     console.log(JSON.stringify({ state: report.state, performanceVerdict: report.performanceVerdict,
       cases: report.cases.map(c => ({ id: c.id, state: c.state })), result: resolve(v.out, 'result.json') }));
-    if (report.state !== 'measured') process.exitCode = 2;
+    if (report.state !== 'measured' || !['pass', 'dry-run-only'].includes(report.performanceVerdict)) process.exitCode = 2;
   }
 }
 

@@ -14,9 +14,9 @@ import { protocol, validateProtocol, digest, stress, nonempty, resultProof,
   assertPair, distribution, fixtureInvariant, endpointVerdict, cohortVerdict } from './diff-e2e-protocol.mjs';
 import { fileReceipt, readJson, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt } from './diff-e2e-receipts.mjs';
 import { measure } from './diff-e2e-sample.mjs';
-import { main, run, summary, audit } from './diff-e2e.mjs';
+import { main, run, summary, audit, cpuUtilization } from './diff-e2e.mjs';
 
-test('#8042 protocol requires five pairs, reproducible balanced interleaving and finite bounds', () => {
+test('#8042 protocol requires six pairs, reproducible balanced interleaving and finite bounds', () => {
   const p = protocol();
   assert.equal(p.pairs, 6);
   assert.deepEqual(p.cases.map(c => c.id), ['demo', 'haus', 'large']);
@@ -369,4 +369,11 @@ test('#8042 paired intervals enforce margin, uncertainty, spread and minimum rou
   assert.equal(cohortVerdict([passing, noisy]), 'noisy');
   assert.equal(cohortVerdict([passing, uncertain]), 'inconclusive');
   assert.equal(cohortVerdict([passing]), 'pass');
+});
+
+
+test('#8042 round CPU utilization is a counter delta, not a process classifier', () => {
+  const snapshot = (idle, user) => ({ cpuTimes: [{ idle, user, sys: 0, nice: 0, irq: 0 }] });
+  assert.equal(cpuUtilization(snapshot(100, 100), snapshot(175, 125)), 25);
+  assert.equal(cpuUtilization(snapshot(100, 100), snapshot(100, 100)), null);
 });

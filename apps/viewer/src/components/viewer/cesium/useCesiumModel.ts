@@ -37,6 +37,7 @@ import type { CesiumModelPrimitive } from './cesium-model-renderable';
 import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
 import {
   buildCesiumModelMatrix,
+  cesiumGlobeBake,
   loadCesiumModel,
   type CesiumModelGlbCache,
 } from './cesium-model-load';
@@ -235,7 +236,10 @@ export function useCesiumModel({
     const lifetime = viewerLifetimeRef.current;
     const Cesium = getCesiumModule();
     if (!model || !bridge || !viewer || !lifetime?.isLive(viewer) || !Cesium) return;
-    if (loadedBakedRef.current) return;
+    // Either side baked: a baked model is rebuilt by the load effect, and the
+    // Exact matrix is wrong for an unbaked GLB that is still installed while
+    // that rebuild is pending.
+    if (loadedBakedRef.current || cesiumGlobeBake(bridge)) return;
 
     const newMatrix = buildCesiumModelMatrix(Cesium, bridge, coordinateInfo);
     model.modelMatrix = newMatrix;

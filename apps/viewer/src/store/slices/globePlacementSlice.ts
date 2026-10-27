@@ -31,7 +31,8 @@ function loadMode(): GlobePlacementMode {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored === 'anchor' || stored === 'exact' ? stored : 'auto';
-  } catch {
+  } catch (error) {
+    console.warn('[cesium] globe placement setting not restored', error);
     return 'auto';
   }
 }

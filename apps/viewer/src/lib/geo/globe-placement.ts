@@ -9,7 +9,7 @@
  *
  * The estimate adds the terms an anchor cannot represent, at the model's
  * farthest horizontal corner r from the anchor (Earth radius R):
- *   - curvature r²/(2R), vertical (1 cm at 500 m, 1 m at 5 km);
+ *   - curvature r²/(2R), vertical (2 cm at 500 m, 2 m at 5 km);
  *   - parallel plumb lines |dH|·r/R, horizontal, for the model's height span dH;
  *   - geoid slope |N(corner) − N(anchor)|, vertical (zero with ellipsoidal heights);
  *   - for grid-coordinate sources only, scale variation |k(corner)/k(anchor) − 1|·r.

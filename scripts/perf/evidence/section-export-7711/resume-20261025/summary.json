@@ -1,0 +1,224 @@
+{
+  "issue": 7711,
+  "status": "Current functional, native, type/API/docs/lint/Clippy and bundle qualification passed; fresh performance and hosted review pending",
+  "source": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+  "base": "97d8add207104d5801c0c8d62e40fa7066e848f8",
+  "combinedPrHead": "7a9e055033d56761844d0580b1ee47215117601a",
+  "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+  "runtime": {
+    "ifc-lite_bg.wasm": "cb599aa061cddc841467f3a6e8f8503506bd0a6bb38bf2bf288dfe3d2948c4f2",
+    "ifc-lite.js": "0efc9079eb1903c0db6e45e6ce3099c4dfa793c8353c94cc34dab53bbdf1370e",
+    "ifc-lite.d.ts": "3790fd33554cc8939753518404c28b67ac45200cffd01e97de02f684445fee9f"
+  },
+  "functional": {
+    "export": {
+      "passed": 1999,
+      "skipped": 15,
+      "featureTestsPassed": 7,
+      "receipt": {
+        "id": "1c24b050-12e5-441c-812c-4f8c63fccbdd",
+        "receiptSha256": "e4a9dc8b7459f78574a1ab5a37ae54a8c65d66979474bc71d1042bdd24ca5c37",
+        "exitCode": 1,
+        "sourceBefore": {
+          "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+          "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+          "clean": true,
+          "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "toolchainInputs": {
+            "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+            "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+            "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+            "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+          }
+        },
+        "sourceAfter": {
+          "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+          "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+          "clean": true,
+          "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "toolchainInputs": {
+            "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+            "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+            "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+            "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+          }
+        },
+        "outputSha256": "8cf75524df99fb2541faf8615eeb0051de90fa7804b51bce55e7139eaf17ce82"
+      },
+      "scope": "Full export suite passed; later boundary invocation failed at import because renderer declarations/runtime were not built. This original job remains failed."
+    },
+    "boundaryAndViewer": {
+      "contractsPassed": 229,
+      "contractsSkipped": 1,
+      "contractsSkip": "matched historical fingerprint fallback",
+      "mountedViewerPassed": 7,
+      "mountedViewerSkipped": 0,
+      "receipt": {
+        "id": "5d354d84-8711-42d9-8911-87fd392a9b42",
+        "receiptSha256": "59aa2b8a66702b66fe4734fe1d73186dbb2007ffd95e681e189591be373e8318",
+        "exitCode": 0,
+        "sourceBefore": {
+          "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+          "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+          "clean": true,
+          "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "toolchainInputs": {
+            "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+            "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+            "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+            "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+          }
+        },
+        "sourceAfter": {
+          "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+          "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+          "clean": true,
+          "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "toolchainInputs": {
+            "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+            "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+            "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+            "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+          }
+        },
+        "outputSha256": "d69da8efcdd094c69d592e5f441ed32742ee0bff5e22a8392b2283cc0240ba74"
+      }
+    },
+    "oracle": {
+      "receipt": {
+        "id": "f36da868-50ab-4b73-801a-ae23cf92f4b5",
+        "receiptSha256": "989716894a01cf229e85b36c26d82989ee6931db27a28a5b16f4936ce67678bc",
+        "exitCode": 0,
+        "sourceBefore": {
+          "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+          "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+          "clean": true,
+          "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "toolchainInputs": {
+            "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+            "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+            "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+            "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+          }
+        },
+        "sourceAfter": {
+          "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+          "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+          "clean": true,
+          "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "toolchainInputs": {
+            "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+            "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+            "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+            "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+          }
+        },
+        "outputSha256": "0da40abe362641fae30ee7eaacd1a231550b50766921283b64d2f0275702ed60"
+      },
+      "result": "ifcopenshell-result.json",
+      "scope": "Source/output hashes, world crop bounds, product identity and semantic/opening/fill links. No full EXPRESS, watertight-cap or colour oracle claim."
+    }
+  },
+  "coverage": "All 182 catalogued fixtures restored from managed storage before the functional run; reported skips remain skips. Checksum freshness explicitly enabled and observed before current consumer compilation.",
+  "files": {
+    "README.md": {
+      "bytes": 3039,
+      "sha256": "b4b0a99aaec2e138c9843b5ba3f17ef93ffe94c8f42966ebf088b1c4698744bf"
+    },
+    "bundle.json": {
+      "bytes": 7659,
+      "sha256": "5a16d4e9de60662cc96f5197aab2c601bdc429d641c20e3a2918c493145b93f1"
+    },
+    "haus-cropped.ifc.gz": {
+      "bytes": 196405,
+      "sha256": "112b06ff5062fb760ba70ecd79c3e1c52819973126a500a0c172d846a4b3fae6"
+    },
+    "haus-evidence.json": {
+      "bytes": 897,
+      "sha256": "9334fe3ce86310673167db743664e386c817a1b17704c3960b29ec69c3b4d430"
+    },
+    "ifcopenshell-result.json": {
+      "bytes": 473,
+      "sha256": "b6b6832ee95414297e62468456d4f096e9352d5a63c924614e061835ec61ddee"
+    },
+    "native-tests.json": {
+      "bytes": 2533,
+      "sha256": "49ef105f759b26e686090fd67d29472b4e99c10b30944134f206d0cbbbae9723"
+    },
+    "pop-gates.json": {
+      "bytes": 5585,
+      "sha256": "5d3817707a40597077196b37b87502dd64b58f9312d8346b4c9ba209ac8a0a8a"
+    },
+    "stale-local-wasm-types.patch": {
+      "bytes": 1917,
+      "sha256": "0ac5a2104ebb0ce702095c40003a710ad7481517eeb4bcdcb9fd109ddc864c52"
+    },
+    "stale-local-wasm.json": {
+      "bytes": 620,
+      "sha256": "4fcd2556733958a8fafa75dbae16ba37b532adafdc66873b04a8af8914f5b9aa"
+    },
+    "unqualified-preparation.json": {
+      "bytes": 923,
+      "sha256": "3005141c8be0fe0e5cc12845ab698cb8b33f94a82c77058ed2a194c98f734a73"
+    }
+  },
+  "bundle": {
+    "status": "passed unchanged ceilings",
+    "job": "a099cdbc-21cb-4cf1-8fd7-65a4b2033810",
+    "measurement": "bundle.json",
+    "scope": "Local WSL Node 24 measurement; hosted CI size is separate. Comparison to committed ceilings is not a base-versus-branch speedup claim."
+  },
+  "native": {
+    "status": "passed",
+    "request": "auto-435747e8f9fe4e0a8a7b4d45660818c9",
+    "receipt": "14d8a342-553b-4c65-9585-356022795f53",
+    "results": "native-tests.json",
+    "passed": 6805,
+    "failed": 0,
+    "ignored": 46,
+    "scope": "cargo test --workspace; detached Python and csg-thread-bench consumers are outside this command."
+  },
+  "otherGates": {
+    "receipts": "pop-gates.json",
+    "rootTypecheck": "passed, including tail and 4284 test-file audit",
+    "apiSurface": "passed",
+    "generatedStepTables": "passed",
+    "docsSamples": {
+      "compiled": 479,
+      "skipped": 12
+    },
+    "generatedDocs": "passed",
+    "rootLint": "passed",
+    "strictWorkspaceClippy": "passed"
+  },
+  "failedAttempts": [
+    {
+      "request": "auto-c86b0aa93e3b400a9895c109879af1f4",
+      "outcome": "Root tail failed on accidentally forwarded concurrency argument; no source defect inferred."
+    },
+    {
+      "request": "auto-2d31f040e47b4046b7adc521cbf02c67",
+      "outcome": "Storage job-open failed before project execution."
+    },
+    {
+      "job": "2bae620a-3917-4cd8-9edb-acb01b09755b",
+      "outcome": "Stale shared Cargo WASM lacked section planner; failed before tests. Retained hashes and declaration diff."
+    },
+    {
+      "request": "auto-8b0835798fb14d89ae5979dbe529428f",
+      "outcome": "Cancelled while queued, before execution, to replace unproven cache freshness."
+    },
+    {
+      "cohort": "issue7711-resume-20261025-perf",
+      "outcome": "Unqualified preparation; no measurement submitted. See unqualified-preparation.json."
+    },
+    {
+      "cohort": "issue7711-resume-20261025-perf-fresh",
+      "outcome": "Cancelled base preparation while queued: ambient checksum environment was absent in worker. No measurement."
+    },
+    {
+      "job": "492097d8-8376-47bc-8cf9-08f5e2cfeb4a",
+      "outcome": "Oracle storage job-open failed before project execution; later independent task passed."
+    }
+  ]
+}

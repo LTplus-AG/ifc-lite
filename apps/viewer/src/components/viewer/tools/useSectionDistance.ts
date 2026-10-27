@@ -8,10 +8,14 @@
  * Three shapes, one control:
  *  - a face-picked plane's signed `custom.distance` (metres along its normal);
  *  - a cardinal cut as a world coordinate in metres along its axis, converted
- *    to and from the store's 0..100 `position` against the bounds the
+ *    to and from the store's percentage `position` against the bounds the
  *    renderer cuts against (`mergedSectionBounds`, then the same placement
  *    adjustment `usePlacementCoordinateInfo` applies for the viewport);
  *  - the raw percentage while no usable bounds exist yet (nothing loaded).
+ *
+ * The store may hold a cut beyond the bounds (a plan cut above the model top,
+ * #8162); the field shows it as it is, and a drag, step or typed value
+ * commits back within 0..100 (`worldToPercent`, `clampSectionPercent`).
  *
  * A `down` cut also carries the storeys as scrub snaps: a plan cut through a
  * storey sits `PLAN_CUT_HEIGHT_M` above its floor, the floor-plan convention.
@@ -26,8 +30,10 @@ import {
   collectStoreys,
   mergedSectionBounds,
   percentToWorld,
+  clampSectionPercent,
   sectionAxisRange,
   storeyCutElevation,
+  storeyCutPosition,
   worldToPercent,
   type AxisBounds,
   type AxisRange,
@@ -90,7 +96,7 @@ export function useSectionDistance(): SectionDistance {
     const state = useViewerStore.getState();
     if (state.sectionPlane.custom || state.sectionPlane.axis !== 'down') setSectionPlaneAxis('down');
     const r = sectionAxisRange(placed?.shiftedBounds ?? null, 'down');
-    if (r) setSectionPlanePosition(worldToPercent(storeyCutElevation(storey), r));
+    if (r) setSectionPlanePosition(storeyCutPosition(storey, r));
   }, [placed, setSectionPlaneAxis, setSectionPlanePosition]);
 
   const bounds = placed?.shiftedBounds ?? null;
@@ -98,6 +104,9 @@ export function useSectionDistance(): SectionDistance {
   const onChangeWorld = useCallback((next: number) => {
     if (range) setSectionPlanePosition(worldToPercent(next, range));
   }, [range, setSectionPlanePosition]);
+  const onChangePercent = useCallback((next: number) => {
+    setSectionPlanePosition(clampSectionPercent(next));
+  }, [setSectionPlanePosition]);
 
   if (custom) {
     if (custom.alignment) return {
@@ -120,7 +129,7 @@ export function useSectionDistance(): SectionDistance {
     };
   }
   return {
-    kind: 'percent', value: sectionPlane.position, onChange: setSectionPlanePosition,
+    kind: 'percent', value: sectionPlane.position, onChange: onChangePercent,
     step: 1, min: 0, max: 100, snaps: [], storeys, range, bounds, cutAtStorey,
   };
 }

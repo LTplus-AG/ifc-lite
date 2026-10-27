@@ -1,0 +1,19 @@
+diff --git a/tools/ifcopenshell_reference/probe_section_export.py b/tools/ifcopenshell_reference/probe_section_export.py
+--- a/tools/ifcopenshell_reference/probe_section_export.py
++++ b/tools/ifcopenshell_reference/probe_section_export.py
+@@ -20,7 +20,6 @@
+ 
+ 
+ def check_placement(old, new):
+-    return
+     """#7908: unchanged EXPRESS ids do not imply unchanged placement values."""
+     before = old.ObjectPlacement
+     after = new.ObjectPlacement
+@@ -35,7 +34,6 @@
+ 
+ 
+ def check_fill_links(source, output, retained_ids):
+-    return
+     """#7908: derive required links from source, including missing output rows."""
+     expected = {r.id() for r in source.by_type("IfcRelFillsElement")
+                 if r.RelatingOpeningElement.id() in retained_ids

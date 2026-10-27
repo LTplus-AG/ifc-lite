@@ -1,0 +1,268 @@
+{
+  "base": "8e2778ca041f027ab95d59532ce43d18bb42dab6",
+  "branch": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+  "fixtures": [
+    {
+      "fixture": "fixture-0.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 14,
+          "branchMedianMs": 14,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 8,
+          "branchMedianMs": 8,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 2,
+          "branchMedianMs": 2,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 3,
+          "branchMedianMs": 3,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 45,
+          "branchMedianMs": 46,
+          "deltaPct": 2.2222222222222223,
+          "noisePct": 17.77777777777778,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 60,
+          "branchMedianMs": 61,
+          "deltaPct": 1.6666666666666667,
+          "noisePct": 13.333333333333334,
+          "real": false,
+          "direction": "slower"
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            285
+          ],
+          "branch": [
+            285
+          ]
+        },
+        "vertices": {
+          "base": [
+            35940
+          ],
+          "branch": [
+            35940
+          ]
+        },
+        "triangles": {
+          "base": [
+            20322
+          ],
+          "branch": [
+            20322
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "fixture-1.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 88,
+          "branchMedianMs": 87,
+          "deltaPct": -1.1363636363636365,
+          "noisePct": 2.272727272727273,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 39,
+          "branchMedianMs": 39,
+          "deltaPct": 0,
+          "noisePct": 2.564102564102564,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 46,
+          "branchMedianMs": 45,
+          "deltaPct": -2.1739130434782608,
+          "noisePct": 2.1739130434782608,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 1,
+          "branchMedianMs": 1,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 469,
+          "branchMedianMs": 462,
+          "deltaPct": -1.4925373134328357,
+          "noisePct": 3.8379530916844353,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 557,
+          "branchMedianMs": 550,
+          "deltaPct": -1.2567324955116697,
+          "noisePct": 3.4111310592459607,
+          "real": false,
+          "direction": "faster"
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            4111
+          ],
+          "branch": [
+            4111
+          ]
+        },
+        "vertices": {
+          "base": [
+            389733
+          ],
+          "branch": [
+            389733
+          ]
+        },
+        "triangles": {
+          "base": [
+            196959
+          ],
+          "branch": [
+            196959
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "fixture-2.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 852,
+          "branchMedianMs": 825,
+          "deltaPct": -3.169014084507042,
+          "noisePct": 13.732394366197184,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 657,
+          "branchMedianMs": 639,
+          "deltaPct": -2.73972602739726,
+          "noisePct": 14.45966514459665,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 179,
+          "branchMedianMs": 173,
+          "deltaPct": -3.35195530726257,
+          "noisePct": 11.731843575418994,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 10,
+          "branchMedianMs": 9,
+          "deltaPct": -10,
+          "noisePct": 10,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 2685,
+          "branchMedianMs": 2688,
+          "deltaPct": 0.11173184357541899,
+          "noisePct": 7.4487895716946,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 3530,
+          "branchMedianMs": 3515,
+          "deltaPct": -0.424929178470255,
+          "noisePct": 8.86685552407932,
+          "real": false,
+          "direction": "faster"
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            109514
+          ],
+          "branch": [
+            109514
+          ]
+        },
+        "vertices": {
+          "base": [
+            4515161
+          ],
+          "branch": [
+            4515161
+          ]
+        },
+        "triangles": {
+          "base": [
+            2895362
+          ],
+          "branch": [
+            2895362
+          ]
+        }
+      }
+    }
+  ],
+  "verdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": false,
+    "inconclusive": false,
+    "zeroBaselineIncrease": false
+  }
+}

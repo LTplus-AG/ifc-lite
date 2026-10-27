@@ -44,8 +44,7 @@ import {
   type ModelSpatialReference,
   DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
-import { resolveResourceRetryTier } from '../lib/resource-retry.js';
-import { prepareResourceRetry, warmEngineForLoad } from '../lib/engine-warmup.js';
+import { notifyResourceRetry, resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
@@ -280,7 +279,6 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
-    if (!options?.isResourceRetry) warmEngineForLoad(file); // #7036: never refill during a memory-pressure retry
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
     // Federated additions capture this hook's session and remain independent.
@@ -425,7 +423,7 @@ export function useIfcLoader() {
         is_retry: options?.isResourceRetry === true,
         resource_retry: retryTier,
       });
-      prepareResourceRetry(file.name);
+      notifyResourceRetry(file.name);
       setGeometryStreamingActive(false);
       // Awaited, not fire-and-forget: callers await loadFile to know the load
       // finished, so the original promise must stay pending until the

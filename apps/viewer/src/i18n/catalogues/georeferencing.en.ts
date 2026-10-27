@@ -44,6 +44,8 @@ export const georeferencingEn = {
   'properties.georef.later': 'Later',
   'properties.georef.legacySiteNotice': 'Showing legacy IfcSite geolocation from IFC2X3. This view is read-only.',
   'properties.georef.unsupportedSchemaNotice': 'Georeferencing editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.',
+  'properties.georef.showFullWellKnownText': 'Show full WKT definition',
+  'properties.georef.coordinateOperationReadOnlyNotice': 'Georeferenced by an IFC4X3 IfcRigidOperation or IfcWellKnownText CRS definition. This view is read-only.',
   'properties.georef.noProjectedCrs': 'No projected CRS',
   'properties.georef.epsgButton': 'EPSG',
   'properties.georef.doubleGeorefHeading': 'This model is georeferenced twice. ifc-lite corrected it.',
@@ -97,6 +99,15 @@ export const georeferencingEn = {
   'properties.georef.heightsEllipsoidalLabel': 'Heights are ellipsoidal (skip geoid correction)',
   'properties.georef.heightsEllipsoidalHelp':
     'Off by default: OrthogonalHeight is treated as orthometric and the geoid undulation is added so the model is not buried under terrain.',
+  'properties.georef.globePlacement.label': 'Globe placement',
+  'properties.georef.globePlacement.auto': 'Auto',
+  'properties.georef.globePlacement.anchor': 'Anchor',
+  'properties.georef.globePlacement.exact': 'Exact',
+  'properties.georef.globePlacement.resolvedAnchor': 'Placed by one anchor point.',
+  'properties.georef.globePlacement.resolvedExact': 'Every vertex placed through the map projection.',
+  'properties.georef.globePlacement.estimate': 'Anchor error estimate: {value} cm',
+  'properties.georef.globePlacement.help':
+    'Auto places every vertex once one anchor point would be more than 1 cm off (Earth curvature, projection scale, geoid slope).',
   'properties.georef.setOrthogonalHeightTooltip': 'Set OrthogonalHeight to sampled terrain height ({value} m)',
   'properties.georef.setOrthogonalHeightTooltipViaSource': 'Set OrthogonalHeight to sampled terrain height ({value} m via {source})',
 } as const satisfies Record<string, TranslationValue>;

@@ -46,9 +46,10 @@ export function fpIterator(value) {
         ? iterator : undefined;
 }
 export function fpNext(iterator) { return iterator.next(); }
-// js-sys's typed bool getter crosses the wasm i32 ABI, then tests != 0.
-// Perform that coercion inside the catch too (a supplied value can coerce).
-export function fpDone(step) { return step.done >>> 0; }
+// Iterator completion follows JavaScript truthiness, as in the TS oracle.
+// Coerce before crossing the integer ABI: ToUint32 would turn truthy strings,
+// fractional numbers and objects into false (and invoke user coercions).
+export function fpDone(step) { return !!step.done; }
 export function fpEntries(value) { return Object.entries(value); }
 export function fpBytes(value) {
     if (instance(value, Uint8Array)) {

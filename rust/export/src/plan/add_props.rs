@@ -13,10 +13,11 @@ use std::collections::HashSet;
 use ifc_lite_core::SchemaFamily;
 
 use crate::step_log::MeasureNumber;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::tessellation::Emit;
-use super::add_types::{GlobalId, NewPropertySet, PropertyValue};
+use super::add_assoc_types::{NewPropertySet, PropertyValue};
+use super::add_types::GlobalId;
 use super::props_synth::{build_value_record, quantity_entity_for_measure, set_record};
 use super::types::PsetKind;
 
@@ -67,9 +68,9 @@ pub(crate) fn validate_psets(schema: &str, psets: &[NewPropertySet]) -> Result<(
 fn lower(family: Option<SchemaFamily>, kind: PsetKind, value: &PropertyValue) -> Result<(String, String), String> {
     let finite = |v: f64| if v.is_finite() { Ok(v) } else { Err(format!("{v} is not finite")) };
     Ok(match value {
-        PropertyValue::Label(s) => ("IFCLABEL".into(), format!("'{}'", escape(s))),
-        PropertyValue::Text(s) => ("IFCTEXT".into(), format!("'{}'", escape(s))),
-        PropertyValue::Identifier(s) => ("IFCIDENTIFIER".into(), format!("'{}'", escape(s))),
+        PropertyValue::Label(s) => ("IFCLABEL".into(), quoted(s)),
+        PropertyValue::Text(s) => ("IFCTEXT".into(), quoted(s)),
+        PropertyValue::Identifier(s) => ("IFCIDENTIFIER".into(), quoted(s)),
         PropertyValue::Boolean(b) => ("IFCBOOLEAN".into(), if *b { ".T." } else { ".F." }.into()),
         PropertyValue::Integer(i) => ("IFCINTEGER".into(), i.to_string()),
         PropertyValue::Real(v) => ("IFCREAL".into(), super::placement::fmt(finite(*v)?)),

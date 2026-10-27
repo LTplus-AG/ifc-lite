@@ -4,13 +4,12 @@
 
 //! Shared helper functions for geometry processors.
 //!
-//! These functions are used by multiple processor implementations to parse
-//! common IFC entities (IfcAxis2Placement3D, IfcCartesianPoint, IfcDirection, etc.).
+//! The face types and the polyloop reader the surface-model processors share.
+//! Placements and directions are not read here: they go through
+//! `crate::placement::Axis2Placement` and `EntityDecoder::direction3`.
 
-use crate::placement::Axis2Placement;
-use crate::{Point3, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
-use nalgebra::Matrix4;
+use crate::Point3;
+use ifc_lite_core::EntityDecoder;
 
 /// Face data extracted from IFC for parallel triangulation
 pub(super) struct FaceData {
@@ -42,18 +41,6 @@ pub(super) fn push_rebased<'a>(
     }
 }
 
-/// Parse IfcAxis2Placement3D into transformation matrix, through the one
-/// reader ([`Axis2Placement`]): a `$` Location, an unreadable point or
-/// direction and a wrong record type are refused and counted (D30), never a
-/// placement at the origin.
-#[inline]
-pub(super) fn parse_axis2_placement_3d(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    Ok(Axis2Placement::read_3d(placement, decoder)?.matrix())
-}
-
 /// Every point of an `IfcPolyLoop`, however few. `None` means the loop or
 /// one of its points does not decode, which is not a loop of under three
 /// points; a face bound reader refuses the face on the former and skips the
@@ -67,51 +54,8 @@ pub(super) fn read_loop_points_by_id(
 
     let mut points = Vec::with_capacity(point_ids.len());
     for point_id in point_ids {
-        let (x, y, z) = match decoder.get_cartesian_point_fast(point_id) {
-            Some(point) => point,
-            None => refused_point_as_before(point_id, decoder)?,
-        };
+        let [x, y, z] = decoder.point3(point_id).ok()?;
         points.push(Point3::new(x, y, z));
     }
     Some(points)
-}
-
-/// D14 seam (#7678): a loop point refused by input admission (`1.E400`) is
-/// read losslessly, as the signed infinity it decoded to before, instead of
-/// failing the whole loop.
-///
-/// Both callers (`advanced_face::bounds`, `brep::surface_model`) SKIP a loop
-/// they cannot read, so a refused hole loop would be dropped and the face
-/// drawn filled in, where the infinity made its triangulation fail the face.
-/// Until those readers fail the face on an unreadable loop (D14, the B6c and
-/// B6b lanes), this keeps main's behaviour for exactly this case; the refusal
-/// is still counted. Any other unreadable point stays `None`, as before.
-fn refused_point_as_before(point_id: u32, decoder: &mut EntityDecoder) -> Option<(f64, f64, f64)> {
-    let point = decoder.decode_by_id_lossless(point_id).ok()?;
-    let coords = point.get(0)?.as_list()?;
-    let x = coords.first()?.as_float()?;
-    let y = coords.get(1)?.as_float()?;
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-    // Only an overflowing literal reads as non-finite here; a point the fast
-    // path refused for any other reason stays unreadable, as before.
-    if [x, y, z].iter().all(|v| v.is_finite()) {
-        return None;
-    }
-    if decoder.strict_reals() {
-        let _counted = decoder.refuse_record(point_id);
-    }
-    Some((x, y, z))
-}
-
-/// Get transform from an `IfcAxis2Placement3D` (or 2D) by entity ID, through
-/// [`Axis2Placement::read_id`]. Shared by SurfaceOfLinearExtrusionProcessor
-/// and AdvancedBrepProcessor.
-///
-/// An unreadable placement is an error: this used to snap to the origin on a
-/// fast-path miss and swallow every error, placing the surface at the origin.
-pub(super) fn get_axis2_placement_transform_by_id(
-    placement_id: u32,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    Ok(Axis2Placement::read_id(placement_id, decoder)?.matrix())
 }

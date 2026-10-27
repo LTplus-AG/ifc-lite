@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import vm from 'node:vm';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { startMimeDriverProxy, repairWorkerBootstrap } from './wasm-test-mime-driver.mjs';
 
 async function serve(handler) {
@@ -96,4 +99,25 @@ test('runner bootstrap keeps real worker loading static and preserves classic wo
   assert.equal(vm.runInNewContext(repaired, { ...values, isModule: false }),
     vm.runInNewContext(fixture, { ...values, isModule: false }));
   assert.throws(() => repairWorkerBootstrap('unknown runner'), /unrecognized/);
+});
+
+// #8188: harness startup/module failures SIGKILL the proxy. Its native child
+// must release inherited output pipes so the harness can print the real error.
+test('native driver closes when its proxy parent is killed', { timeout: 10_000 }, async () => {
+  const adapter = fileURLToPath(new URL('./wasm-test-mime-driver.mjs', import.meta.url));
+  const native = 'console.log("native ready"); setInterval(() => {}, 1000);';
+  const parent = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { fork } from 'node:child_process';
+    fork(${JSON.stringify(adapter)}, ['--native-driver', process.execPath, '-e', ${JSON.stringify(native)}],
+      { stdio: ['ignore', 'inherit', 'inherit', 'ipc'], execArgv: [] });
+  `], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const closed = once(parent, 'close');
+  try {
+    const [chunk] = await once(parent.stdout, 'data');
+    assert.match(chunk.toString(), /native ready/);
+    parent.kill('SIGKILL');
+    // close waits for all inherited stdout/stderr handles, unlike exit.
+    const [, signal] = await closed;
+    assert.equal(signal, 'SIGKILL');
+  } finally { parent.kill('SIGKILL'); }
 });

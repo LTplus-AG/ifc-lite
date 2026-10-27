@@ -13,7 +13,8 @@ use super::types::SurfaceColour;
 
 /// Build the product's shape, returning the `IfcProductDefinitionShape` id,
 /// or `None` for [`Representation::None`]. A [`Representation::Mapped`] body
-/// is built from its type's maps instead (`add_mapped.rs`).
+/// is built from its type's maps instead (`add_mapped.rs`), a
+/// [`Representation::SameAs`] one from its source's (`add_same_as.rs`).
 pub(crate) fn product_shape(
     emit: &mut Emit,
     context: u32,
@@ -44,7 +45,7 @@ pub(crate) fn body_representation_of(
 /// holding them declares; `None` when it has no geometry of its own.
 fn body_items(emit: &mut Emit, rep: &Representation) -> Result<Option<(Vec<u32>, &'static str)>, String> {
     Ok(Some(match rep {
-        Representation::None | Representation::Mapped(_) => return Ok(None),
+        Representation::None | Representation::Mapped(_) | Representation::SameAs(_) => return Ok(None),
         Representation::Mesh(m) => mesh_item(emit, m).map(|(item, rep_type)| (vec![item], rep_type))?,
         Representation::Extrusion(_) | Representation::Extrusions(_) => {
             let solids = rep.extrusions().iter().map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?;

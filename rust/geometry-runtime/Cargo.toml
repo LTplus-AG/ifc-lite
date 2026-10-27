@@ -8,6 +8,9 @@ repository.workspace = true
 publish = false
 description = "Explicit isolated native geometry worker client for IFC-Lite (opt-in, not published)"
 
+[features]
+retained-runtime = ["ifc-lite-geometry/retained-runtime"]
+
 [dependencies]
 # Retained requests and completions are GeometryDocument types. Nothing in
 # geometry depends back on this crate.

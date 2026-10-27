@@ -1,5 +1,15 @@
 # @ifc-lite/query
 
+## 2.5.3
+
+### Patch Changes
+
+- Updated dependencies [[`4aff432`](https://github.com/LTplus-AG/ifc-lite/commit/4aff4322c8b789006229103da539f3e311afff46), [`585c04b`](https://github.com/LTplus-AG/ifc-lite/commit/585c04b8c9f6bb74a88922714a6778989b1a3c76), [`8260d88`](https://github.com/LTplus-AG/ifc-lite/commit/8260d88c72c6857a585f90b816468d227d8e6042), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d)]:
+  - @ifc-lite/data@6.3.1
+  - @ifc-lite/geometry@8.0.0
+  - @ifc-lite/parser@9.7.0
+  - @ifc-lite/spatial@1.15.1
+
 ## 2.5.2
 
 ### Patch Changes

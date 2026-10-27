@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""One exclusive #7711 identity/timing cohort; original timing helper unchanged."""
+import argparse
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+RELEASE = Path('/home/louistrue/build-workers/storage-releases/ffe7dab2f71a5b9753ab')
+sys.path.insert(0, str(RELEASE))
+import benchmark_workflow as bw
+
+ROOT = Path.home()/'build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3'
+
+def main():
+    assert os.environ.get('IFC_WORKER_KIND') == 'benchmark'
+    original = Path('/tmp/issue7711-backend-v3-controller.py')
+    plan = json.loads((ROOT/'plan.json').read_text())
+    assert bw.digest(original) == plan['controllerSha256']
+    spec = importlib.util.spec_from_file_location('original_qualification_controller', original)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    frozen = json.loads((ROOT/'bundle-result.json').read_text())
+    bw.verify(ROOT/'bundle', frozen['manifestSha256'])
+    status = 'failed'
+    try:
+        # Verification is untimed. Its child processes exit before the original
+        # helper performs its own whole-host readiness and timing guards.
+        subprocess.run([sys.executable,'-c',module.IDENTITY,str(ROOT/'bundle'),str(ROOT/'identity/result.json')],check=True)
+        bw.verify(ROOT/'bundle', frozen['manifestSha256'])
+        bw.measure(argparse.Namespace(bundle=str(ROOT/'bundle'),manifest_sha256=frozen['manifestSha256'],
+                                      output=str(ROOT/'measurement'),iters=5))
+        status = 'qualified'
+    finally:
+        bw.write(ROOT/'cohort-result.json', {'status':status,'source':plan['source'],'base':plan['base'],
+                 'manifestSha256':frozen['manifestSha256'],'controllerSha256':bw.digest(Path(__file__)),
+                 'scope':'Ordered geometry FNV verification before the unchanged original five-round timing helper. All original host/noise/thermal/throttle/identity guards remain binding.'})
+
+if __name__ == '__main__': main()

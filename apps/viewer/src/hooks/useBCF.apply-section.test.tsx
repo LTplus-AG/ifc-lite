@@ -132,6 +132,27 @@ describe('useBCF applyViewpoint — section cut (#4910)', () => {
     assert.equal(again.clippingPlanes?.length, 1, 'capturing the applied view keeps its cut');
   });
 
+  // #8162: a cut beyond the bounds (a plan cut above the model top, or a
+  // legal BCF location below the model) survives export and import instead
+  // of being clamped onto the nearest bound face.
+  for (const position of [125, -20]) {
+    it(`an out-of-bounds cut at ${position} % round-trips through export and import (#8162)`, async () => {
+      await cutInSectionTool('down', position);
+      const viewpoint = await capture();
+      const location = viewpoint.clippingPlanes?.[0]?.location;
+      assert.ok(location, 'the cut is exported');
+      // Viewer Y [0, 12] is BCF Z: 125 % is 15 m, -20 % is -2.4 m.
+      assert.ok(Math.abs(location.z - (position / 100) * 12) < 1e-6, `exported at z=${location.z}`);
+
+      await cutInSectionTool('side', 50);
+      await act(async () => api!.applyViewpoint(viewpoint, false));
+      const shown = activeSectionPlane(s());
+      assert.ok(shown, 'the viewpoint cut is on screen');
+      assert.equal(shown.axis, 'down');
+      assert.ok(Math.abs(shown.position - position) < 1e-6, `imported at ${shown.position} %, not clamped`);
+    });
+  }
+
   it('a viewpoint without clipping planes clears an on-screen cut', async () => {
     await cutInSectionTool('down', 40);
     const uncut: BCFViewpoint = { guid: '44444444-4444-4444-8444-444444444444' };

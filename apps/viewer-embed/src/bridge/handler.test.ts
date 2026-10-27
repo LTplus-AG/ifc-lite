@@ -1143,6 +1143,14 @@ describe('camera and section commands', () => {
     expect(called(state, 'setSectionPlanePosition')).toBe(false);
   });
 
+  // The viewer store holds a cut beyond the bounds since #8162; the embed's
+  // SET_SECTION keeps its bounded 0..100 input.
+  it.each([[150, 100], [-10, 0], [Infinity, 100], [Number.NaN, 0], [42.5, 42.5]])('SET_SECTION clamps position %s to %s (#8162)', async (input, expected) => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('SET_SECTION', { position: input }, 'r1'));
+    expect(argsOf(state, 'setSectionPlanePosition')).toEqual([expected]);
+  });
+
   it('SET_SECTION accepts position 0 and enabled false as real values', async () => {
     state.sectionPlane = { enabled: true, flipped: false };
     initBridge(makeCtx(state));

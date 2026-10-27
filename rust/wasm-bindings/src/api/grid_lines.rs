@@ -75,11 +75,9 @@ pub(crate) fn extract_grid_axes(content: &str, frame: Option<MeshFrame>) -> Vec<
         };
         // Full placement chain for the grid, translation scaled to metres.
         // Does NOT subtract RTC — we do that per point below.
-        let matrix = router
-            .resolve_scaled_placement(&grid, &mut decoder)
-            .unwrap_or([
-                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-            ]);
+        let Ok(matrix) = router.resolve_scaled_placement(&grid, &mut decoder) else {
+            continue; // #7779 W1: an unreadable placement cannot draw at the origin.
+        };
         append_grid_axes(&grid, id, &mut decoder, unit_scale, &matrix, rtc, &mut out);
     }
     out
@@ -141,7 +139,8 @@ fn append_grid_axes(
 
 /// First and last `IfcCartesianPoint` of an axis curve, in raw file units
 /// (3D — the Z component is kept, unlike the 2D symbolic path). Returns `None`
-/// for non-polyline curves or fewer than two points.
+/// for non-polyline curves, fewer than two points, or an endpoint that is not
+/// a readable `IfcCartesianPoint` (#7779).
 fn sample_axis_endpoints(
     curve: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -154,19 +153,10 @@ fn sample_axis_endpoints(
     if points.len() < 2 {
         return None;
     }
-    let extract = |pe: &DecodedEntity| -> Option<[f64; 3]> {
-        if pe.ifc_type != IfcType::IfcCartesianPoint {
-            return None;
-        }
-        let coords = pe.get(0)?.as_list()?;
-        let x = coords.first()?.as_float()?;
-        let y = coords.get(1)?.as_float()?;
-        // 2D grid axis points are common; default Z to 0.
-        let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-        Some([x, y, z])
-    };
-    let first = extract(&points[0])?;
-    let last = extract(&points[points.len() - 1])?;
+    // #7779 W1: canonical admission retains 2D z=0, but rejects a malformed
+    // authored third component instead of turning it into ground-level geometry.
+    let first = decoder.point3(points[0].id).ok()?;
+    let last = decoder.point3(points[points.len() - 1].id).ok()?;
     Some((first, last))
 }
 
@@ -303,7 +293,8 @@ impl IfcAPI {
     /// straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
     ///
     /// Returns an empty array when the file has no grids, so the caller can
-    /// clear the overlay cheaply.
+    /// clear the overlay cheaply. An axis with a malformed endpoint, or a grid
+    /// whose authored placement cannot be resolved, is omitted (#7779).
     #[wasm_bindgen(js_name = parseGridLines)]
     pub fn parse_grid_lines(&self, content: String) -> js_sys::Float32Array {
         let axes = extract_grid_axes(&content, None);

@@ -163,7 +163,7 @@ pub async fn parse_parquet(
             symbolic_data,
         ),
         admission,
-    ) = tokio::task::spawn_blocking(move || {
+    ) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
             // First: extract geometry and the data model in parallel.
             // #5984: the finish index is a third independent read of the bytes.
             let (mut geometry_result, (mut data_model, mut finishes)) = rayon::join(
@@ -216,16 +216,16 @@ pub async fn parse_parquet(
                 ),
             );
 
-            (
+            Ok((
                 (
                     ((geometry_result, meshes.len()), geo_parquet),
                     (dm_stats, dm_parquet),
-                    symbolic_data,
+                    symbolic_data?,
                 ),
                 admission_guard,
-            )
+            ))
         })
-        .await?;
+        .await??;
 
     // Unwrap serialization results
     let combined_parquet = combined_parquet?;

@@ -42,7 +42,7 @@ export function hasStandardGeoreferencing(
   return Boolean(
     georef
     && georef.source !== 'siteLocation'
-    && georef.projectedCRS?.name
+    && hasDeclaredCrs(georef.projectedCRS)
     && georef.mapConversion
     // PR #1965 review: presence alone isn't enough -- a malformed
     // IfcMapConversion with a NaN eastings/northings/orthogonalHeight must
@@ -98,7 +98,7 @@ export function supportsStandardGeoreferencing(
   if (
     georef
     && georef.source !== 'siteLocation'
-    && (georef.projectedCRS?.name || georef.mapConversion)
+    && (hasDeclaredCrs(georef.projectedCRS) || georef.mapConversion)
   ) {
     return true;
   }
@@ -150,7 +150,29 @@ export function mergeProjectedCRS(
     mapZone: mutations?.mapZone ?? original?.mapZone,
     mapUnit,
     mapUnitScale,
+    // An edited Name replaces the authored CRS, including its WKT definition
+    // (which would otherwise stay authoritative in `resolveProjection`).
+    ...(mutations?.name === undefined && original?.wellKnownText ? { wellKnownText: original.wellKnownText } : {}),
+    ...(mutations?.name === undefined && original?.kind ? { kind: original.kind } : {}),
   };
+}
+
+/**
+ * Whether the Cesium globe can be offered for a model. A named CRS is enough:
+ * a missing conversion can still be added in the editor. A CRS defined only
+ * by IfcWellKnownText is read-only and places nothing without its parsed
+ * coordinate operation, so it needs one.
+ */
+export function offersCesium(
+  georef: Pick<GeoreferenceInfo, 'source' | 'projectedCRS' | 'mapConversion'> | null | undefined,
+): boolean {
+  if (!georef || georef.source === 'siteLocation') return false;
+  return Boolean(georef.projectedCRS?.name?.trim() || (hasDeclaredCrs(georef.projectedCRS) && georef.mapConversion));
+}
+
+/** A CRS is declared by a non-blank Name or, in IFC4X3, an IfcWellKnownText (WHERE NameOrWKT). */
+export function hasDeclaredCrs(crs: Pick<ProjectedCRS, 'name' | 'wellKnownText'> | null | undefined): boolean {
+  return Boolean(crs?.name?.trim() || crs?.wellKnownText?.trim());
 }
 
 /**
@@ -175,6 +197,8 @@ export function mergeMapConversion(
   if (!original && !mutations) return undefined;
   return {
     id: original?.id ?? 0,
+    // Still a pure translation only while nothing was edited.
+    ...(original?.operation && !mutations ? { operation: original.operation } : {}),
     sourceCRS: original?.sourceCRS ?? 0,
     targetCRS: original?.targetCRS ?? 0,
     eastings: finiteOr0(mutations?.eastings ?? original?.eastings),

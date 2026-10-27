@@ -1,0 +1,78 @@
+diff --git b/packages/codegen/src/rust-type-name-parser.ts a/packages/codegen/src/rust-type-name-parser.ts
+index 6735aa7414..65449429b5 100644
+--- b/packages/codegen/src/rust-type-name-parser.ts
++++ a/packages/codegen/src/rust-type-name-parser.ts
+@@ -153,7 +153,7 @@ export function generateTypeNameParser(schema: ExpressSchema): string {
+ ${slots.map((name, slot) => `            ${slot} => Self::${variants.get(name)},`).join('\n')}
+             _ => return None,
+         };
+-        Some(ifc_type)
++        (ifc_type.as_str() == s).then_some(ifc_type)
+     }
+ 
+     /// Slots in \`from_canonical_name\`, one per schema name. The registry
+diff --git b/rust/core/src/generated/ifc2x3/schema.rs a/rust/core/src/generated/ifc2x3/schema.rs
+index 1af8896cc9..0c90d28147 100644
+--- b/rust/core/src/generated/ifc2x3/schema.rs
++++ a/rust/core/src/generated/ifc2x3/schema.rs
+@@ -1511,7 +1511,7 @@ impl IfcType {
+             652 => Self::IfcFaceOuterBound,
+             _ => return None,
+         };
+-        Some(ifc_type)
++        (ifc_type.as_str() == s).then_some(ifc_type)
+     }
+ 
+     /// Slots in `from_canonical_name`, one per schema name. The registry
+diff --git b/rust/core/src/generated/ifc4/schema.rs a/rust/core/src/generated/ifc4/schema.rs
+index 6bbc96d747..1e33eb5b9c 100644
+--- b/rust/core/src/generated/ifc4/schema.rs
++++ a/rust/core/src/generated/ifc4/schema.rs
+@@ -1783,7 +1783,7 @@ impl IfcType {
+             775 => Self::IfcConnectionGeometry,
+             _ => return None,
+         };
+-        Some(ifc_type)
++        (ifc_type.as_str() == s).then_some(ifc_type)
+     }
+ 
+     /// Slots in `from_canonical_name`, one per schema name. The registry
+diff --git b/rust/core/src/generated/ifc4x1/schema.rs a/rust/core/src/generated/ifc4x1/schema.rs
+index ad26fe88f9..220c339e45 100644
+--- b/rust/core/src/generated/ifc4x1/schema.rs
++++ a/rust/core/src/generated/ifc4x1/schema.rs
+@@ -1840,7 +1840,7 @@ impl IfcType {
+             800 => Self::IfcMechanicalFastener,
+             _ => return None,
+         };
+-        Some(ifc_type)
++        (ifc_type.as_str() == s).then_some(ifc_type)
+     }
+ 
+     /// Slots in `from_canonical_name`, one per schema name. The registry
+diff --git b/rust/core/src/generated/ifc4x2/schema.rs a/rust/core/src/generated/ifc4x2/schema.rs
+index d4b99dab71..709d69f75e 100644
+--- b/rust/core/src/generated/ifc4x2/schema.rs
++++ a/rust/core/src/generated/ifc4x2/schema.rs
+@@ -1869,7 +1869,7 @@ impl IfcType {
+             815 => Self::IfcApprovalRelationship,
+             _ => return None,
+         };
+-        Some(ifc_type)
++        (ifc_type.as_str() == s).then_some(ifc_type)
+     }
+ 
+     /// Slots in `from_canonical_name`, one per schema name. The registry
+diff --git b/rust/core/src/generated/schema.rs a/rust/core/src/generated/schema.rs
+index d0d5b402a1..66f168f4f9 100644
+--- b/rust/core/src/generated/schema.rs
++++ a/rust/core/src/generated/schema.rs
+@@ -2303,7 +2303,7 @@ impl IfcType {
+             1020 => Self::IfcBuildingElementComponent,
+             _ => return None,
+         };
+-        Some(ifc_type)
++        (ifc_type.as_str() == s).then_some(ifc_type)
+     }
+ 
+     /// Slots in `from_canonical_name`, one per schema name. The registry

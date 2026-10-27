@@ -18,74 +18,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { applyProj4Overrides } from './epsg-proj4-overrides.js';
-
-type RegistryLink = {
-  rel?: string;
-  href?: string;
-};
-
-type RegistrySummary = {
-  Code: number;
-  Name: string;
-  Type?: string;
-  Area?: string;
-  Remarks?: string;
-  Deprecated?: boolean;
-  Superseded?: boolean;
-  Links?: RegistryLink[];
-};
-
-type RegistryUsage = {
-  Name?: string;
-  ScopeDetails?: string;
-};
-
-type RegistryAlias = {
-  Alias?: string;
-};
-
-type RegistryNamedRef = {
-  Name?: string;
-};
-
-type RegistryDetail = {
-  Code: number;
-  Name: string;
-  Kind?: string;
-  Usage?: RegistryUsage[];
-  Alias?: RegistryAlias[];
-  Datum?: RegistryNamedRef;
-  DatumEnsemble?: RegistryNamedRef;
-  BaseCoordRefSystem?: RegistryNamedRef;
-  Projection?: RegistryNamedRef;
-  Conversion?: RegistryNamedRef;
-  CoordSys?: RegistryNamedRef;
-  HorizontalCrs?: RegistryNamedRef;
-  VerticalCrs?: RegistryNamedRef;
-};
-
-type RegistryPage = {
-  Results: RegistrySummary[];
-  Count: number;
-  Page: number;
-  PageSize: number;
-  TotalResults: number;
-};
-
-type EpsgIndexEntry = {
-  code: string;
-  name: string;
-  kind: string;
-  area: string;
-  scope: string;
-  datum: string;
-  projection: string;
-  unit: string;
-  deprecated: boolean;
-  aliases: string[];
-  searchText: string;
-  proj4?: string;
-};
+import { summarizeEntry, inheritCompoundProj4, indexJson, type EpsgIndexEntry, type RegistrySummary, type RegistryDetail, type RegistryPage } from './epsg-registry.js';
 
 type CliOptions = {
   concurrency: number;
@@ -150,85 +83,12 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function normalizeKind(kind: string | undefined): string {
-  const value = (kind ?? '').toLowerCase();
-  if (value.includes('projected')) return 'Projected';
-  if (value.includes('geographic') || value.includes('geodetic')) return 'Geographic';
-  if (value.includes('compound')) return 'Compound';
-  if (value.includes('vertical')) return 'Vertical';
-  if (value.includes('engineering')) return 'Engineering';
-  if (value.includes('geocentric')) return 'Geocentric';
-  if (value.includes('derived')) return 'Derived';
-  return kind?.trim() || 'Unknown';
-}
-
-function extractUnit(coordSysName: string | undefined): string {
-  if (!coordSysName) return '';
-  const match = /UoM:\s*([^.,]+)/i.exec(coordSysName);
-  return match?.[1]?.trim() ?? '';
-}
-
-function buildSearchText(parts: Array<string | undefined>): string {
-  return parts
-    .flatMap(part => (part ?? '').split(/\s+/))
-    .map(token => token.trim().toLowerCase())
-    .filter(Boolean)
-    .join(' ');
-}
-
-function summarizeEntry(summary: RegistrySummary, detail: RegistryDetail): EpsgIndexEntry {
-  const usage = detail.Usage?.[0];
-  const aliases = (detail.Alias ?? [])
-    .map(alias => alias.Alias?.trim() ?? '')
-    .filter(Boolean);
-  const kind = normalizeKind(detail.Kind ?? summary.Type);
-
-  const datum =
-    detail.Datum?.Name?.trim() ??
-    detail.DatumEnsemble?.Name?.trim() ??
-    detail.BaseCoordRefSystem?.Name?.trim() ??
-    detail.HorizontalCrs?.Name?.trim() ??
-    detail.VerticalCrs?.Name?.trim() ??
-    '';
-
-  const projection = kind === 'Projected'
-    ? (detail.Projection?.Name?.trim() ?? detail.Conversion?.Name?.trim() ?? '')
-    : '';
-
-  const area = usage?.Name?.trim() || summary.Area?.trim() || '';
-  const scope = usage?.ScopeDetails?.trim() || summary.Remarks?.trim() || '';
-  const unit = extractUnit(detail.CoordSys?.Name);
-
-  return {
-    code: String(detail.Code),
-    name: detail.Name.trim(),
-    kind,
-    area,
-    scope,
-    datum,
-    projection,
-    unit,
-    deprecated: Boolean(summary.Deprecated),
-    aliases,
-    searchText: buildSearchText([
-      String(detail.Code),
-      detail.Name,
-      area,
-      scope,
-      datum,
-      projection,
-      unit,
-      ...aliases,
-    ]),
-  };
-}
-
 async function fetchAllSummaries(pageSize: number): Promise<RegistrySummary[]> {
-  const firstPage = await fetchJson<RegistryPage>(`${API_BASE_URL}/CoordRefSystem?pageSize=${pageSize}&page=0`);
+  const firstPage = await fetchJson<RegistryPage>(`${API_BASE_URL}/CoordRefSystem?includeDeprecated=true&pageSize=${pageSize}&page=0`);
   const totalPages = Math.ceil(firstPage.TotalResults / pageSize);
   const remainingPages = await Promise.all(
     Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
-      fetchJson<RegistryPage>(`${API_BASE_URL}/CoordRefSystem?pageSize=${pageSize}&page=${index + 1}`),
+      fetchJson<RegistryPage>(`${API_BASE_URL}/CoordRefSystem?includeDeprecated=true&pageSize=${pageSize}&page=${index + 1}`),
     ),
   );
 
@@ -260,6 +120,7 @@ async function fetchEntries(summaries: RegistrySummary[], concurrency: number): 
       if (!summary) return;
       try {
         const detailUrl =
+          (summary.Type?.toLowerCase().includes('compound') ? `${API_BASE_URL}/CompoundCoordRefSystem/${summary.Code}` : undefined) ??
           summary.Links?.find(link => link.rel === 'result')?.href ??
           `${API_BASE_URL}/CoordRefSystem/${summary.Code}`;
         const detail = await fetchJsonWithRetry<RegistryDetail>(detailUrl);
@@ -337,6 +198,7 @@ async function fetchProj4Definitions(entries: EpsgIndexEntry[], concurrency: num
         }
       }
     }
+    console.warn(`EPSG:${code}: proj4 lookup failed after ${attempts} attempts`, lastError);
     return null;
   }
 
@@ -364,7 +226,7 @@ async function fetchProj4Definitions(entries: EpsgIndexEntry[], concurrency: num
 }
 
 function renderModule(entries: EpsgIndexEntry[]): string {
-  const json = JSON.stringify(entries);
+  const json = indexJson(entries);
   const stringLiteral = JSON.stringify(json);
 
   return `/* This Source Code Form is subject to the terms of the Mozilla Public
@@ -392,7 +254,7 @@ export const EPSG_INDEX: readonly EpsgIndexEntry[] = JSON.parse(EPSG_INDEX_JSON)
 }
 
 function printSummary(entries: EpsgIndexEntry[], elapsedMs: number, outPath: string): void {
-  const json = JSON.stringify(entries);
+  const json = indexJson(entries);
   console.log(`Generated ${entries.length} EPSG CRS entries in ${elapsedMs}ms`);
   console.log(`JSON size: ${Buffer.byteLength(json)} bytes`);
   console.log(`Gzip size: ${gzipSync(json).byteLength} bytes`);
@@ -405,8 +267,10 @@ async function main(): Promise<void> {
   const summaries = await fetchAllSummaries(options.pageSize);
   const selected = options.limit == null ? summaries : summaries.slice(0, options.limit);
   const entries = await fetchEntries(selected, options.concurrency);
-  await fetchProj4Definitions(entries, options.concurrency);
+  await fetchProj4Definitions(entries.filter(entry => entry.kind !== 'Compound'), options.concurrency);
   console.error(applyProj4Overrides(entries));
+  inheritCompoundProj4(entries);
+  await fetchProj4Definitions(entries.filter(entry => !entry.proj4), options.concurrency);
   const moduleSource = renderModule(entries);
 
   if (options.stdout) {

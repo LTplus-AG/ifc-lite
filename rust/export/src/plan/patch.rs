@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::attribution::Histories;
 use super::index::FileIndex;
@@ -86,7 +86,7 @@ fn write_patch(
         let entity_type = index.type_of(object_id).unwrap_or_default();
         match attrs::attribute_index(schema, &entity_type, "Name") {
             Some(idx) => {
-                out.edit(vec![(object_id, idx, format!("'{}'", escape(name)))]);
+                out.edit(vec![(object_id, idx, quoted(name))]);
                 wrote = true;
             }
             None => out.refusals.push(Refusal {

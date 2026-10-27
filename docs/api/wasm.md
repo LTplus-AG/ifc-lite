@@ -24,6 +24,24 @@ flowchart LR
     Bindings --> Geo
 ```
 
+## Symbolic extraction errors and raw ABI migration
+
+`IfcAPI.parseSymbolicRepresentations(content)` and
+`IfcAPI.parseSymbolicRepresentationsInFrame(content, frame)` throw when extraction
+is cancelled or a resource admission is refused. They discard staged symbols
+and provenance instead of returning an empty successful collection. A genuinely
+empty collection still means no symbols were found, and ordinary geometric
+truncation remains available on the returned collection.
+
+The high-level method signatures and successful collection format are unchanged.
+The exported `InitOutput.ifcapi_parseSymbolicRepresentations` raw WASM function
+changes from three numeric arguments returning `number` to four numeric arguments
+returning `void`, to support wasm-bindgen error propagation. This is a breaking
+low-level ABI change, released with a major `@ifc-lite/wasm` changeset. Call
+`IfcAPI.parseSymbolicRepresentations(content)` rather than constructing the raw
+out-pointer call. Rust consumers also need to handle the extraction APIs' new
+`Result<_, ProgramStop>` return values; see [the Rust API](./rust.md#symbolic-fill-provenance).
+
 ## Loading the WASM Module
 
 ### Automatic Loading
@@ -253,6 +271,8 @@ parseAlignmentLines(content: string): Float32Array;
 parseSymbolicRepresentations(content: string): SymbolicRepresentationCollection;
 diagnoseGeometry(content: Uint8Array): any;                           // CSG / opening diagnostics
 ```
+
+Grid endpoints must be `IfcCartesianPoint` records with two or three finite numeric coordinates; two-dimensional points use zero elevation. A malformed endpoint omits that axis. Grid and alignment overlays omit an item whose authored placement cannot be resolved. A genuinely absent placement keeps the identity transform. Omitted items are not reported; the result simply has fewer entries.
 
 Grid, alignment, and symbolic parsing can instead reuse the exact effective
 mesh-producer RTC frame (after any federation override):

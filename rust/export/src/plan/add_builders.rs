@@ -4,11 +4,10 @@
 
 use super::add_assoc_types::{
     ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, NewClassification, NewClassificationReference,
-    NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
+    NewLayerSet, NewMaterial, NewMaterialLayer, NewProperty, NewPropertySet, PropertyValue, ValueUnit,
 };
 use super::add_types::{
-    ClassSpec, Extrusion, GlobalId, IfcClass, MappedBody, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
-    PropertyValue, Representation, TypeLink,
+    ClassSpec, Extrusion, GlobalId, IfcClass, MappedBody, NewObject, NewOpening, NewPlacement, NewType, Representation, TypeLink,
 };
 use super::types::{ObjectRef, PsetKind, SurfaceColour};
 impl ClassSpec {
@@ -95,7 +94,7 @@ impl NewType {
     /// A type of `class`, its GlobalId derived from the occurrence that
     /// creates it.
     pub fn new(class: impl Into<ClassSpec>) -> Self {
-        Self { global_id: None, class: class.into(), name: None, psets: Vec::new(), representation: Representation::None, style: None }
+        Self { global_id: None, class: class.into(), name: None, tag: None, element_type: None, psets: Vec::new(), representation: Representation::None, style: None }
     }
 
     pub fn with_global_id(mut self, global_id: GlobalId) -> Self {
@@ -105,6 +104,16 @@ impl NewType {
 
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
+        self
+    }
+
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = Some(tag.into());
+        self
+    }
+
+    pub fn with_element_type(mut self, element_type: impl Into<String>) -> Self {
+        self.element_type = Some(element_type.into());
         self
     }
 
@@ -146,6 +155,9 @@ impl NewObject {
             global_id,
             class: class.into(),
             name: None,
+            long_name: None,
+            tag: None,
+            object_type: None,
             placement,
             container: None,
             type_link: None,
@@ -161,6 +173,21 @@ impl NewObject {
 
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
+        self
+    }
+
+    pub fn with_long_name(mut self, long_name: impl Into<String>) -> Self {
+        self.long_name = Some(long_name.into());
+        self
+    }
+
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = Some(tag.into());
+        self
+    }
+
+    pub fn with_object_type(mut self, object_type: impl Into<String>) -> Self {
+        self.object_type = Some(object_type.into());
         self
     }
 

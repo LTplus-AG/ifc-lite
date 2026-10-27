@@ -55,7 +55,7 @@ END-ISO-10303-21;
 
 #[test]
 fn genuine_zero_elevation_stays_finite_zero() {
-    let data = extract_symbolic_data(FIXTURE);
+    let data = extract_symbolic_data(FIXTURE).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -71,7 +71,7 @@ fn genuine_zero_elevation_stays_finite_zero() {
 
 #[test]
 fn dangling_placement_ref_is_not_finite() {
-    let data = extract_symbolic_data(FIXTURE);
+    let data = extract_symbolic_data(FIXTURE).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()

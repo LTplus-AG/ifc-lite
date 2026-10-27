@@ -15,7 +15,6 @@ use super::super::arrangement::Tri;
 use super::super::mesh_bridge::SNAP_GRID;
 use crate::union_find::UnionFind;
 use std::borrow::Cow;
-use std::collections::HashMap;
 
 /// Whether some axis carries a facing plane pair between the two components.
 ///
@@ -43,7 +42,6 @@ fn faces_across(plus: &[AxisPlane], minus: &[AxisPlane]) -> bool {
 
 /// An axis-aligned face plane of one component: its constant coordinate and the
 /// extent of its triangles over the other two axes.
-#[derive(Clone, Copy)]
 struct AxisPlane {
     c: f64,
     lo: [f64; 2],
@@ -55,10 +53,28 @@ struct AxisPlane {
 /// coordinate.
 type AxisPlanes = (Vec<AxisPlane>, Vec<AxisPlane>);
 
+/// The plane whose coordinate is `c`, appended empty when `c` is new. Linear
+/// rather than hashed: the scan runs once per axis-constant triangle, and a
+/// cutter carries few enough distinct planes per axis (one on the extrusion
+/// axis, a few tens for a re-extruded coaxial prism) that it stays ahead of a
+/// `u64` hash map. An authored brep void shell can carry hundreds, where it
+/// does not.
+fn plane_at(planes: &mut Vec<AxisPlane>, c: f64) -> &mut AxisPlane {
+    if let Some(i) = planes.iter().position(|p| p.c.to_bits() == c.to_bits()) {
+        return &mut planes[i];
+    }
+    planes.push(AxisPlane {
+        c,
+        lo: [f64::INFINITY; 2],
+        hi: [f64::NEG_INFINITY; 2],
+    });
+    planes.last_mut().expect("just pushed")
+}
+
 fn axis_planes(tris: &[Tri], k: usize) -> AxisPlanes {
     let (a, b) = ((k + 1) % 3, (k + 2) % 3);
-    let mut plus: HashMap<u64, AxisPlane> = HashMap::new();
-    let mut minus: HashMap<u64, AxisPlane> = HashMap::new();
+    let mut plus: Vec<AxisPlane> = Vec::new();
+    let mut minus: Vec<AxisPlane> = Vec::new();
     for t in tris {
         let c = t[0][k];
         if t[1][k].to_bits() != c.to_bits() || t[2][k].to_bits() != c.to_bits() {
@@ -73,18 +89,14 @@ fn axis_planes(tris: &[Tri], k: usize) -> AxisPlanes {
             [t[2][a] - t[0][a], t[2][b] - t[0][b]],
         );
         let nk = e1[0] * e2[1] - e1[1] * e2[0];
-        let side = if nk > 0.0 {
+        let side_planes = if nk > 0.0 {
             &mut plus
         } else if nk < 0.0 {
             &mut minus
         } else {
             continue;
         };
-        let p = side.entry(c.to_bits()).or_insert(AxisPlane {
-            c,
-            lo: [f64::INFINITY; 2],
-            hi: [f64::NEG_INFINITY; 2],
-        });
+        let p = plane_at(side_planes, c);
         for v in t {
             p.lo[0] = p.lo[0].min(v[a]);
             p.hi[0] = p.hi[0].max(v[a]);
@@ -94,12 +106,9 @@ fn axis_planes(tris: &[Tri], k: usize) -> AxisPlanes {
     }
     // Deterministic order: by coordinate. Distinct planes have distinct
     // coordinates, so this is a total order.
-    let sorted = |m: HashMap<u64, AxisPlane>| {
-        let mut v: Vec<AxisPlane> = m.into_values().collect();
-        v.sort_by(|x, y| x.c.total_cmp(&y.c));
-        v
-    };
-    (sorted(plus), sorted(minus))
+    plus.sort_by(|x, y| x.c.total_cmp(&y.c));
+    minus.sort_by(|x, y| x.c.total_cmp(&y.c));
+    (plus, minus)
 }
 
 /// Positive overlap on both in-plane axes: a shared corner or edge does not count.
@@ -113,12 +122,37 @@ struct CoordFaces {
     /// Components with a `+k` face plane at `c`, and with a `-k` one.
     plus: Vec<usize>,
     minus: Vec<usize>,
+    /// Of `minus`, those whose face is MATCHED: some `+k` face within a cell
+    /// below `c` has an overlapping footprint, by the same coarse per-plane
+    /// bounds `faces_across` and grouping use. Only these may move. Sharing the
+    /// coordinate is not enough, because a component that reached the group
+    /// through another axis can carry a face here with nothing across from it,
+    /// and moving that face widens its solid by a cell nobody authored, where
+    /// the volume gate cannot see it (it reads the operands after the weld).
+    matched: Vec<usize>,
+}
+
+/// Index of `c` in the census, appending it when `c` is new. Linear for the
+/// same reason as [`plane_at`].
+fn coord_at(coords: &mut Vec<CoordFaces>, c: f64) -> usize {
+    if let Some(i) = coords.iter().position(|x| x.c.to_bits() == c.to_bits()) {
+        return i;
+    }
+    coords.push(CoordFaces {
+        c,
+        plus: Vec::new(),
+        minus: Vec::new(),
+        matched: Vec::new(),
+    });
+    coords.len() - 1
 }
 
 /// Plan and apply ALL of one axis's welds against ONE census of the group.
 ///
 /// Returns whether anything moved, and whether some facing pair was already
-/// coincident — that needs no weld but still needs the union.
+/// coincident — that needs no weld but still needs the union. A class exists
+/// only because a facing pair was recorded, and that pair's `-k` holder is
+/// matched, so an accepted class always moves something.
 ///
 /// Planning globally is what bounds the result. Welding pair by pair, each pair
 /// re-reading the geometry the last one left, let a coordinate move a cell per
@@ -131,18 +165,10 @@ fn weld_axis(ops: &mut [Cow<'_, [Tri]>], k: usize) -> (bool, bool) {
     let censuses: Vec<AxisPlanes> = ops.iter().map(|o| axis_planes(o, k)).collect();
     // Every distinct coordinate the group's axis planes sit on.
     let mut coords: Vec<CoordFaces> = Vec::new();
-    let mut index: HashMap<u64, usize> = HashMap::new();
     for (comp, (plus, minus)) in censuses.iter().enumerate() {
         for (planes, is_plus) in [(plus, true), (minus, false)] {
             for p in planes {
-                let at = *index.entry(p.c.to_bits()).or_insert(coords.len());
-                if at == coords.len() {
-                    coords.push(CoordFaces {
-                        c: p.c,
-                        plus: Vec::new(),
-                        minus: Vec::new(),
-                    });
-                }
+                let at = coord_at(&mut coords, p.c);
                 if is_plus {
                     coords[at].plus.push(comp);
                 } else {
@@ -169,7 +195,13 @@ fn weld_axis(ops: &mut [Cow<'_, [Tri]>], k: usize) -> (bool, bool) {
                         coincident = true;
                         continue;
                     }
-                    classes.union(index[&p.c.to_bits()] as u32, index[&m.c.to_bits()] as u32);
+                    // Both coordinates were added by the census loop above,
+                    // so neither of these appends and `classes` stays in size.
+                    let (lo, hi) = (coord_at(&mut coords, p.c), coord_at(&mut coords, m.c));
+                    if !coords[hi].matched.contains(&j) {
+                        coords[hi].matched.push(j);
+                    }
+                    classes.union(lo as u32, hi as u32);
                 }
             }
         }
@@ -200,7 +232,7 @@ fn weld_axis(ops: &mut [Cow<'_, [Tri]>], k: usize) -> (bool, bool) {
             continue;
         }
         let (to, from) = (coords[lo].c, coords[hi].c.to_bits());
-        for &comp in &coords[hi].minus {
+        for &comp in coords[hi].minus.iter().filter(|c| coords[hi].matched.contains(c)) {
             for t in ops[comp].to_mut().iter_mut() {
                 for v in t.iter_mut() {
                     if v[k].to_bits() == from {
@@ -208,8 +240,8 @@ fn weld_axis(ops: &mut [Cow<'_, [Tri]>], k: usize) -> (bool, bool) {
                     }
                 }
             }
+            welded = true;
         }
-        welded = true;
     }
     (welded, coincident)
 }

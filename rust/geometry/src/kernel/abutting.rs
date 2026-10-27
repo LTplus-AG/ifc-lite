@@ -31,9 +31,11 @@
 //! itself a multiple of the cell and the snap is INERT ([`SNAP_GRID`]'s own
 //! doc), so from about 256 units out two roundings of ONE true coordinate sit
 //! two cells apart, eight at 1.3 km, sixty-four at 8.7 km. There this gate
-//! declines to weld a gap the quantisation created and the prepass is inert;
-//! `host_frame_tests::the_seam_still_stands_10km_out` measures it rather than
-//! arguing it.
+//! declines to weld a gap the quantisation created.
+//! `tests::the_one_cell_rule_declines_an_f32_step_in_the_far_field` is where
+//! those cell counts are measured rather than argued: ONE axis-aligned abutting
+//! pair at 0.8 m, 1.3 km and 10 km, the gap read off the snapped operands,
+//! merged where the snap still reaches it and untouched where it does not.
 //!
 //! The direction is safe — a threshold tighter than the real noise never welds
 //! a feature that is really there, it only fails to close a seam — but it is not
@@ -44,9 +46,11 @@
 //!
 //! ## Limits, all of them conservative
 //!
-//! - Only planes whose normal is exactly an axis of the cut frame are welded, so
-//!   a plan-rotated wall far from the origin has none (`frame_snap` measures the
-//!   spread) and the prepass does not fire.
+//! - Only axis-aligned planes are welded: the census takes a triangle only when
+//!   its three vertices share the coordinate bit for bit, read off the operand
+//!   as the snap left it. A plan-rotated wall still has its top and bottom
+//!   faces, since the rotation is about z, but its SEAM faces are off-axis and
+//!   no distance makes them weldable.
 //! - Grouping is by the facing-pair relation, not proximity, so a merely nearby
 //!   OVERLAPPING component cannot drag a pair into a group its own overlap would
 //!   then refuse. A pair that both abuts and overlaps still refuses.
@@ -54,7 +58,13 @@
 //!   just the matched face's: the operand is an unindexed soup, so moving one
 //!   face's triangles alone would tear them off the side walls sharing those
 //!   positions. An unrelated face of the same component at that coordinate moves
-//!   too, by at most one cell.
+//!   too, by at most one cell. What a component DOES need to move at all is a
+//!   `+k` face matched within the cell below, so a member that reached the
+//!   group through another axis is not dragged along by a coordinate it merely
+//!   shares; it still welds on the axis it does abut on. The match is per
+//!   component and per coordinate, and it reads per-plane footprint BOUNDS, so
+//!   both coarsenesses stay inside the one-cell growth bound rather than being
+//!   excluded by it.
 //! - Each axis is planned whole, and a class of coordinates is welded only in
 //!   the shape a snap can produce from ONE authored plane: exactly two
 //!   coordinates, at most a cell apart, the lower carrying `+k` faces only and

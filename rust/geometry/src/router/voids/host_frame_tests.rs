@@ -12,14 +12,19 @@
 //! Whatever path the pair takes, the cut must leave no face on the seam plane
 //! and stay watertight.
 //!
-//! These are PINS, not regression tests for #8156: every case here passes with
-//! the `kernel::abutting` prepass stubbed out, because on these fixtures an
-//! earlier stage (the analytic prism cut, or the cutter-to-host weld) already
-//! closes the seam. What they hold still is the far-field placement path —
-//! a plan-rotated wall at 230 m, 1.5 km and 10 km, where one absolute f32 step
-//! is 15 um, 122 um and 977 um. The tests that do observe the prepass are
-//! `kernel::abutting::tests::subtract_many_cuts_abutting_cutters_without_a_sheet`
-//! and `coaxial_union::tests::abutting_boxes_a_snap_cell_apart_cut_as_one_void`;
+//! These are PINS, not regression tests for #8156, and the `kernel::abutting`
+//! prepass is not on this route at all: `merge_abutting_components` is called
+//! zero times on every fixture here, measured with a probe at its entry, so
+//! nothing it welds or declines decides these seams. The route is the prism cut and the coaxial union, and where the
+//! seam comes out clean that is what closed it; every case passes with the
+//! prepass stubbed out.
+//! What they hold still is the far-field placement path: a plan-rotated wall at
+//! 230 m, 1.5 km and 10 km, where one absolute f32 step is 15 um, 122 um and
+//! 977 um. The tests that do observe the prepass are
+//! `kernel::abutting::tests::subtract_many_cuts_abutting_cutters_without_a_sheet`,
+//! `kernel::abutting::tests::the_one_cell_rule_declines_an_f32_step_in_the_far_field`
+//! (the one-cell threshold itself, on axis-aligned operands) and
+//! `coaxial_union::tests::abutting_boxes_a_snap_cell_apart_cut_as_one_void`;
 //! the end-to-end evidence is the corpus row in the PR.
 
 use super::super::*;
@@ -271,12 +276,17 @@ fn abutting_openings_at_1500m_cut_without_a_sheet() {
     );
 }
 
-/// 10 km is the far-field limit, MEASURED rather than argued: one absolute f32
-/// step there is 811 um along the wall, about 53 lattice cells, so the two
-/// cutters' seam corners land far outside the one-cell rule, the prepass is
-/// inert and the strip of host between them stands. `kernel::abutting`'s module
-/// doc derives that bound from the snap going inert past 128 caller units; this
-/// is the number.
+/// The far end of the placement path: one absolute f32 step at 10 km is 811 um
+/// along the wall, about 53 lattice cells, so the two cutters' seam corners
+/// land that far apart and the strip of host between them stands.
+///
+/// This pins the placement, NOT the one-cell threshold. The prepass declines
+/// nothing here because it is never reached: `merge_abutting_components` is
+/// called zero times on this fixture. It could not weld this seam anyway, since
+/// the wall is rotated in plan and the plane census takes a face only when its
+/// three vertices share a coordinate. The threshold itself is measured on
+/// axis-aligned operands in
+/// `kernel::abutting::tests::the_one_cell_rule_declines_an_f32_step_in_the_far_field`.
 ///
 /// The cut is still watertight and still removes the authored volume — the
 /// sliver is a closed shell inside the opening, which is exactly why #8156 was

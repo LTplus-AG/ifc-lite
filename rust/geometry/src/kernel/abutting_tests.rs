@@ -5,12 +5,14 @@
 //! Tests for `abutting` (ratchet-exempt sibling).
 
 use super::super::arrangement::{box_mesh, Tri};
+use super::super::broadphase::tris_aabb;
 use super::super::mesh_bridge::{
     mesh_to_tris, subtract_many, tris_to_mesh, BatchSubtract, SNAP_GRID,
 };
 use super::super::signed_volume::signed_volume_of;
 use super::merge_abutting_components;
 use crate::mesh::Mesh;
+use crate::world_frame_fixture::ulp32;
 
 fn mesh_box(lo: [f64; 3], hi: [f64; 3]) -> Mesh {
     tris_to_mesh(&box_mesh(lo, hi))
@@ -234,6 +236,74 @@ fn subtract_many_keeps_a_pier_wider_than_a_snap_cell() {
     );
 }
 
+/// An axis-aligned abutting pair centred on `x`: a 1 m cutter up to a plane the
+/// f32 cast represents exactly, and its neighbour starting at the NEXT f32
+/// above it. That is ONE authored plane read through two independent roundings,
+/// which is all the quantisation can produce.
+fn pair_abutting_at(x: f64) -> Vec<Vec<Tri>> {
+    let seam = f64::from(x as f32);
+    let next = seam + ulp32(x);
+    vec![
+        lattice_box([seam - 1.0, 0.0, 0.0], [seam, 0.3, 1.2]),
+        lattice_box([next, 0.0, 0.0], [next + 1.0, 0.3, 1.2]),
+    ]
+}
+
+/// The gap between the pair's facing seam coordinates in lattice cells, read
+/// off the snapped operands through the same bounds helper the candidate gate
+/// reads them off.
+fn seam_gap_cells(comps: &[Vec<Tri>]) -> f64 {
+    (tris_aabb(&comps[1]).0[0] - tris_aabb(&comps[0]).1[0]) / SNAP_GRID
+}
+
+/// Where the one-cell rule stops reaching, measured on the same authored pair
+/// at three distances.
+///
+/// Near the origin the snap absorbs an f32 step, so two independent roundings
+/// of one plane land on one lattice plane and the pair merges.
+/// Past 128 caller units one f32 step is itself a multiple of the cell, the
+/// snap cannot pull the two roundings together, and the gap arrives at eight
+/// cells at 1.3 km and sixty-four at 10 km. The gate declines there: a gap that
+/// wide is indistinguishable from a pier the caller authored, and welding it
+/// would shrink a solid.
+#[test]
+fn the_one_cell_rule_declines_an_f32_step_in_the_far_field() {
+    // At 0.8 m the step is a 256th of a cell, so the snap puts both roundings
+    // on ONE lattice plane and the pair merges on coincident faces. Without
+    // this the far cases below would pass for any reason.
+    let pair = pair_abutting_at(0.8);
+    assert_eq!(seam_gap_cells(&pair), 0.0, "the snap absorbs the step at 0.8 m");
+    assert_eq!(
+        merge_abutting_components(pair).len(),
+        1,
+        "the pair merges where the snap reaches"
+    );
+
+    for (at, x, cells) in [("1.3 km", 1_300.0, 8.0), ("10 km", 10_000.0, 64.0)] {
+        let comps = pair_abutting_at(x);
+        // The number the far-field argument rests on: the snap is inert here,
+        // so the f32 step survives it whole.
+        assert_eq!(seam_gap_cells(&comps), cells, "{at}: one f32 step in cells");
+        let before = bits(&comps);
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::take();
+        assert_eq!(
+            bits(&merge_abutting_components(comps)),
+            before,
+            "{at}: the operands must come back untouched"
+        );
+        #[cfg(feature = "opening-perf-trace")]
+        {
+            // Declined by the padded-AABB gate, whose pad IS the one cell, so
+            // the pair never reaches the facing-plane census. Bit-identical
+            // output alone cannot tell that from a group that formed and was
+            // refused.
+            let w = crate::opening_perf_trace::take();
+            assert_eq!((w.abutting_no_facing_pair, w.abutting_groups), (0, 0), "{at}");
+        }
+    }
+}
+
 /// A neighbouring component that OVERLAPS one of the pair must not join their
 /// group: its overlap would fail the group-wide volume gate and refuse the
 /// merge for the pair that really does abut. Grouping on the facing-pair
@@ -333,6 +403,43 @@ fn a_coordinate_pulled_two_ways_from_two_components_is_left_alone() {
         let w = crate::opening_perf_trace::take();
         assert_eq!((w.abutting_groups, w.abutting_merges), (1, 0));
     }
+}
+
+/// A component that shares the upper coordinate without a facing partner under
+/// it must not be welded. `c` reaches the group through its `-z` abutment with
+/// `b`, and its `-x` face happens to sit on the same coordinate as `b`'s, but
+/// nothing on x = 1.0 faces it: it is above `a` entirely. Moving it would widen
+/// `c` by a cell nobody authored, and the volume gate cannot see that, because
+/// it reads the operands AFTER the weld.
+#[test]
+fn an_unanchored_face_sharing_the_coordinate_is_not_welded() {
+    let g = SNAP_GRID;
+    let comps = vec![
+        lattice_box(LEFT.0, LEFT.1),
+        lattice_box([1.0 + g, 0.0, 0.0], [2.0, 0.3, 1.2]),
+        lattice_box([1.0 + g, 0.0, 1.2 + g], [2.0, 0.3, 2.0]),
+    ];
+    let authored: f64 = comps.iter().map(|c| signed_volume_of(c)).sum();
+    let merged = merge_abutting_components(comps);
+    assert_eq!(merged.len(), 1, "all three are one group");
+    assert!(closed(&merged[0]), "the merged cutter is closed");
+    // The two welds this group is for: `b`'s `-x` onto x = 1.0 across `a`'s
+    // 0.3 x 1.2 face, and `c`'s `-z` onto z = 1.2 across `b`'s 1.0 x 0.3 face.
+    let anchored = g * 0.3 * 1.2 + g * 1.0 * 0.3;
+    let growth = signed_volume_of(&merged[0]) - authored;
+    // The residual is the lattice snap of the authored edges, about 2e-11. The
+    // unanchored weld this excludes is 3.7e-6, five orders larger.
+    assert!(
+        (growth - anchored).abs() < 1e-9,
+        "grew {growth} m3; the anchored welds account for {anchored} m3"
+    );
+    assert!(
+        !merged[0]
+            .iter()
+            .flatten()
+            .any(|v| v[0] == 1.0 && v[2] > 1.2),
+        "`c`'s `-x` face was welded onto x = 1.0 with nothing facing it"
+    );
 }
 
 /// Two anchors in a chain must not move one cutter face twice. An earlier

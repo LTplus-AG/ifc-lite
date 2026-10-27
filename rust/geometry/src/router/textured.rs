@@ -30,32 +30,6 @@ pub(crate) type TexturedPart = (Mesh, Vec<f32>, TextureAttachment);
 pub(crate) type TypeParts = Vec<(Mesh, Vec<f32>, Option<TextureAttachment>)>;
 
 impl GeometryRouter {
-    /// Whether an orphan map has an item the exact type-map walk can mesh.
-    /// This only applies exact's dispatch selection; it never executes geometry.
-    /// Invalid sources remain candidates so the retained walk reports their fault.
-    #[cfg(feature = "retained-runtime")]
-    #[doc(hidden)]
-    pub fn type_map_has_exact_mesh_items(&self, map_id: u32, decoder: &mut EntityDecoder)
-        -> Result<bool> {
-        let mut pending = vec![map_id];
-        let mut visited = rustc_hash::FxHashSet::default();
-        while let Some(id) = pending.pop() {
-            if !visited.insert(id) {
-                return Err(Error::geometry("cyclic or repeated type-map source"));
-            }
-            let map = decoder.decode_by_id(id)?;
-            let (_, items) = self.admit_type_map(&map, decoder)?;
-            for item in items {
-                if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
-                    pending.push(item.get_ref(0).ok_or_else(|| Error::geometry("missing MappingSource"))?);
-                } else if self.processor_for(&item.ifc_type).is_some() {
-                    return Ok(true);
-                }
-            }
-        }
-        Ok(false)
-    }
-
     /// Texture-aware [`Self::process_element_with_submeshes`] (#1781): a face
     /// set listed in `texture_index` becomes its own textured sub-mesh carrying
     /// per-vertex UVs + the texture attachment. The void path never passes an
@@ -188,5 +162,33 @@ impl GeometryRouter {
             out.push((mesh, Vec::new(), None));
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "retained-runtime")]
+impl GeometryRouter {
+    /// Whether an orphan map has an item the exact type-map walk can mesh.
+    /// This only applies exact's dispatch selection; it never executes geometry.
+    /// Invalid sources remain candidates so the retained walk reports their fault.
+    #[doc(hidden)]
+    pub fn type_map_has_exact_mesh_items(&self, map_id: u32, decoder: &mut EntityDecoder)
+        -> Result<bool> {
+        let mut pending = vec![map_id];
+        let mut visited = rustc_hash::FxHashSet::default();
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id) {
+                return Err(Error::geometry("cyclic or repeated type-map source"));
+            }
+            let map = decoder.decode_by_id(id)?;
+            let (_, items) = self.admit_type_map(&map, decoder)?;
+            for item in items {
+                if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
+                    pending.push(item.get_ref(0).ok_or_else(|| Error::geometry("missing MappingSource"))?);
+                } else if self.processor_for(&item.ifc_type).is_some() {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
 }

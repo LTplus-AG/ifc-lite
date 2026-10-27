@@ -38,6 +38,45 @@ impl Report {
     ) {
         self.published += 1;
         let curved = shape.parts.iter().any(|p| p.curved);
+        let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
+            &format!("{model}:{}", shape.product_id),
+            curved,
+            actual,
+            rounded,
+            exact,
+            source,
+            tolerances,
+        );
+        let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
+        self.rows.push(format!(
+            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t",
+            shape.product_id,
+            shape.ifc_type.name(),
+            format(source_rel),
+            format(vol),
+            format(area),
+            format(bbox),
+            actual.defects == 0,
+            actual.volume,
+            shape.obligations.0,
+            format(source_bbox)
+        ));
+        self.coverage
+            .push(format!("{model}\t{}\tpublished\t", shape.product_id));
+    }
+    // Keep numerical gate decisions independent of publication ownership, so
+    // hostile measurements can be exercised without fabricating a witness.
+    #[allow(clippy::too_many_arguments)]
+    fn check_measurements(
+        &mut self,
+        label: &str,
+        curved: bool,
+        actual: &Metrics,
+        rounded: Option<&Metrics>,
+        exact: Option<&Metrics>,
+        source: Option<(f64, Option<[f64; 6]>)>,
+        tolerances: &Value,
+    ) -> [Option<f64>; 5] {
         let source_rel = source.as_ref().map(|(v, _)| relative(actual.volume, *v));
         let vol = exact
             .zip(rounded)
@@ -50,7 +89,6 @@ impl Report {
             .as_ref()
             .and_then(|(_, b)| b.as_ref())
             .map(|b| bbox_deviation(&actual.bbox, b));
-        let label = format!("{model}:{}", shape.product_id);
         for (i, value) in [source_rel, vol, area, bbox].into_iter().enumerate() {
             if let Some(value) = value {
                 self.maxima[i] = self.maxima[i].max(value);
@@ -103,22 +141,7 @@ impl Report {
                 }
             }
         }
-        let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
-        self.rows.push(format!(
-            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t",
-            shape.product_id,
-            shape.ifc_type.name(),
-            format(source_rel),
-            format(vol),
-            format(area),
-            format(bbox),
-            actual.defects == 0,
-            actual.volume,
-            shape.obligations.0,
-            format(source_bbox)
-        ));
-        self.coverage
-            .push(format!("{model}\t{}\tpublished\t", shape.product_id));
+        [source_rel, vol, area, bbox, source_bbox]
     }
     pub fn summary(&self) -> Value {
         json!({"schema":"ifc-lite.native-retained-comparison/1", "candidates":self.candidates,
@@ -156,3 +179,7 @@ pub fn rss(children: bool) -> Result<i64, std::io::Error> {
     let usage = unsafe { usage.assume_init() };
     Ok(usage.ru_maxrss)
 }
+
+#[cfg(test)]
+#[path = "report_tests.rs"]
+mod tests;

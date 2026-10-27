@@ -358,3 +358,44 @@ fn acquired_retired_worker_never_invokes_and_still_spends_restart_budget() {
         ]
     );
 }
+
+// #8183: a preflight worker is the initial slot, not a replacement. With zero
+// replacements, contract returns keep serving products; transport retires once.
+#[test]
+fn zero_restarts_reuses_contract_fault_worker_but_never_replaces_transport() {
+    for contract in [true, false] {
+        let mut transport = peer();
+        transport.contract = contract;
+        let calls = transport.calls.clone();
+        let mut worker = Some(transport);
+        let acquisitions = Cell::new(0);
+        let summary = block_on(run_model_with_worker(
+            six_authored_box_products(),
+            &ModelOptions {
+                max_restarts: 0,
+                ..Default::default()
+            },
+            &mut worker,
+            || {
+                acquisitions.set(acquisitions.get() + 1);
+                Ok(peer())
+            },
+            |outcome, _| {
+                assert!(matches!(outcome, ProductOutcome::Refused { .. }));
+            },
+        ))
+        .unwrap();
+        assert_eq!(acquisitions.get(), 0);
+        assert_eq!(summary.restarts, 0);
+        assert_eq!(calls.get(), if contract { 6 } else { 1 });
+        assert_eq!(worker.is_some(), contract);
+        assert_eq!(
+            summary.by_code.get(if contract {
+                "contract_breach"
+            } else {
+                "worker_fault"
+            }),
+            Some(&6)
+        );
+    }
+}

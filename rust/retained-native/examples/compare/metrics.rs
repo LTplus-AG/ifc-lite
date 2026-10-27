@@ -99,3 +99,7 @@ pub fn bbox_deviation(a: &[f64; 6], b: &[f64; 6]) -> f64 {
         .map(|(a, b)| (a - b).abs())
         .fold(0., f64::max)
 }
+
+#[cfg(test)]
+#[path = "metrics_tests.rs"]
+mod tests;

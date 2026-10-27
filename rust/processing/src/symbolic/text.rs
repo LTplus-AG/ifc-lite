@@ -87,7 +87,7 @@ pub(super) fn extract_text_literal(
     let text_scale = if raw_scale.is_finite() { raw_scale } else { 1.0 };
     // Only the X-axis column (m00, m10) feeds the direction — NOT the Y
     // column, which is where a mirroring MappingTarget's reflection lives
-    // (see `parse_cartesian_transformation_operator`). Glyphs therefore stay
+    // (see `resolve_mapping_target`). Glyphs therefore stay
     // readable (non-mirrored) under a mirroring transform, same as before
     // #1994: Axis1 is unaffected by an Axis2 mirror by construction, so this
     // is not a special case — it falls out of reading only the X column.
@@ -98,8 +98,9 @@ pub(super) fn extract_text_literal(
     // would have the glyphs running across a wall that is no longer parallel
     // to them (#4706). It applies the handedness flip this used to spell
     // inline as the minus on `m10`.
-    let dir = if raw_scale.is_finite() && raw_scale > 0.0 {
-        rebase.plan_direction(composed.m00 / raw_scale, composed.m10 / raw_scale)
+    let baseline_length = composed.m00.hypot(composed.m10);
+    let dir = if baseline_length.is_finite() && baseline_length > 0.0 {
+        rebase.plan_direction(composed.m00 / baseline_length, composed.m10 / baseline_length)
     } else {
         // The degenerate-transform fallback is a RENDER-frame default ("read
         // left to right"), not a world direction, so it is not re-based.

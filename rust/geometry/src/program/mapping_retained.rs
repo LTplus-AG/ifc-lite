@@ -78,24 +78,10 @@ impl<'a> MappingControl<'a> {
     {
         if let Action::Child(_, ChildControl::Item(control)) = &mut self.action {
             return control.admit_retained().map(|(reply, operations)| {
-                (
-                    super::MappingReply {
-                        value: MappingValue::Child(reply),
-                        budget: self.budget,
-                    },
-                    operations,
-                )
+                (MappingValue::Child(reply), operations)
             });
         }
-        self.admit_retained_affine().map(|(value, operations)| {
-            (
-                super::MappingReply {
-                    value,
-                    budget: self.budget,
-                },
-                operations,
-            )
-        })
+        self.admit_retained_affine()
     }
     pub(super) fn admit_retained_mapping(
         &mut self,
@@ -106,6 +92,7 @@ impl<'a> MappingControl<'a> {
     ) -> MappingValue {
         let Some(state) = &self.retained else {
             return MappingValue::Entered {
+                budget: *budget,
                 item_id: item.id,
                 value: Err(crate::Error::geometry("missing retained selection")),
             };
@@ -133,18 +120,20 @@ impl<'a> MappingControl<'a> {
                 source.solid_id.is_none() || cached.is_none())
         });
         match admitted {
-            Err(error) => super::execute::source_reply(Err(error), item.id, |value| MappingValue::Entered {
+            Err(error) => super::execute::source_reply(Err(error), item.id, *budget, |value| MappingValue::Entered {
+                budget: *budget,
                 item_id: item.id, value,
             }),
             Ok((source, Some(values), _)) => MappingValue::RetainedCached(Place {
                 parts: Placing::Retained(Box::new((values, selection, binding))),
                 item_id: item.id, source_id: source.source_id, transform: source.transform, truncated: false,
-            }),
+            }, *budget),
             Ok((source, None, items)) => {
                 if let Some(state) = &mut self.retained {
                     state.pending_binding = binding;
                 }
                 MappingValue::Entered {
+                    budget: *budget,
                     item_id: item.id,
                     value: Ok((source.source_id, MappedOccurrence::Source {
                         representation: source.representation,
@@ -192,7 +181,7 @@ impl<'a> MappingControl<'a> {
                 reply,
                 MappingValue::Child(_)
                     | MappingValue::RetainedTypeFinished(_)
-                    | MappingValue::RetainedCached(_)
+                    | MappingValue::RetainedCached(..)
                     | MappingValue::RetainedFinished(_)
                     | MappingValue::RetainedPlaced { .. }
             )
@@ -221,7 +210,10 @@ impl<'a> MappingControl<'a> {
                 });
                 self.append_retained(value, router);
             }
-            MappingValue::RetainedCached(place) => self.action = Action::Place(place),
+            MappingValue::RetainedCached(place, budget) => {
+                self.budget = budget;
+                self.action = Action::Place(place);
+            }
             MappingValue::RetainedFinished(value) => {
                 let Some(level) = self.levels.pop() else { return };
                 let Some(state) = &mut self.retained else { return };

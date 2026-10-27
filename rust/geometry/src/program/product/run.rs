@@ -14,10 +14,23 @@ impl ProductControl<'_> {
         -> std::result::Result<(), ProgramError> {
         let element = self.element;
         loop {
-            if let Some(plan) = &self.plan {
-                if let Err(error) = plan.validate(router, decoder) {
-                    self.action = Action::Complete(Err(error));
-                    return Ok(());
+            // Validate each admitted root before source work, including paths
+            // bypassing Raw, then guard final placement and publication after
+            // the last callback. Numerical/transfer steps consume owned values;
+            // their children retain their own source and resource boundaries.
+            if matches!(
+                self.action,
+                Action::Raw(_)
+                    | Action::Annotation(_)
+                    | Action::Texture(_)
+                    | Action::Placement
+                    | Action::Complete(_)
+            ) {
+                if let Some(plan) = &self.plan {
+                    if let Err(error) = plan.validate(router, decoder) {
+                        self.action = Action::Complete(Err(error));
+                        return Ok(());
+                    }
                 }
             }
             let next = match &mut self.action {
@@ -32,10 +45,11 @@ impl ProductControl<'_> {
                     let index = *index;
                     let (_, items) = self
                         .plan
-                        .as_ref()
-                        .and_then(|plan| plan.representations.get(index))
+                        .as_mut()
+                        .and_then(|plan| plan.representations.get_mut(index))
                         .ok_or(ProgramError::StaleRequest)?;
-                    self.items_done(index, items.clone())
+                    let items = std::mem::take(items);
+                    self.items_done(index, items)
                 }
                 Action::Raw(item) => {
                     let offset = router.raw_item_element_offset(item, element, decoder);

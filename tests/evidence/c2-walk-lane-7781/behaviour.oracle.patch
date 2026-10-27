@@ -49,15 +49,15 @@
          *used = next;
 --- a/rust/geometry/src/representation/product_budget.rs
 +++ b/rust/geometry/src/representation/product_budget.rs
-@@ -143,7 +143,7 @@
-         {
-             if let Some(root) = self.pending.take() {
-                 if self.refusal.is_none() && self.terminal.is_none() {
--                    let _ = root;
-+                    self.push(root);
-                 }
+@@ -196,7 +196,7 @@
+         if self.pending == Some(level.item.id) {
+             self.pending = None;
+             if self.refusal.is_none() && self.terminal.is_none() {
+-                let _ = level;
++                self.push(level.item.clone());
              }
          }
+     }
 --- a/rust/geometry/src/profile_extractor/sink.rs
 +++ b/rust/geometry/src/profile_extractor/sink.rs
 @@ -151,7 +151,7 @@

@@ -141,7 +141,7 @@ impl<'a> ProductControl<'a> {
                 Some(_) => ProductOutput::Styled(SubMeshCollection::new()),
             }));
         }
-        self.plan = Some(plan);
+        self.plan = Some(plan.into_admitted());
         self.advance()
     }
 

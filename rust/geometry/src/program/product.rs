@@ -14,7 +14,7 @@ use super::inner::{ProgramError, ProgramStage};
 use super::inner_cache::{CacheControl, CacheReply};
 use super::mapping::{MappingControl, MappingReply};
 use crate::processors::texture::ResolvedTextureMap;
-use crate::representation::product_budget::ProductItems;
+use crate::representation::product_budget::{AdmittedProduct, ProductItems};
 use crate::router::annotation::{admit_fill, AnnotationRings};
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::ObjectPlacement;
@@ -173,7 +173,7 @@ pub(super) struct ProductControl<'a> {
     hygiene: SourceHygiene,
     /// `None` for the merged walk.
     styled: Option<Styled<'a>>,
-    plan: Option<ProductItems>,
+    plan: Option<AdmittedProduct>,
     allowance: u32,
     /// The next representation index the cursor examines.
     next_rep: usize,

@@ -70,6 +70,9 @@ impl GeometryRouter {
     /// caches: inject the shared ones (`enable_content_dedup_shared`,
     /// `enable_shared_mapped_item_cache`, ...) afterwards, before the first
     /// product leases the router.
+    // Let constructor delegates initialize their destination in place instead
+    // of copying the full router through a second configuration return slot.
+    #[inline(always)]
     pub fn from_config(config: RouterConfig) -> Self {
         // Destructured so a new field cannot be added without being applied.
         let RouterConfig {

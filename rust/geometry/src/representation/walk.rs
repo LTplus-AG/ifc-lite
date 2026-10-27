@@ -137,7 +137,7 @@ struct Run<'a, V> {
     element: Option<&'a DecodedEntity>,
     /// The levels entered, outermost first: also the path-scoped visited set
     /// (at most `max_depth` entries, so a scan is the cheapest set).
-    path: Vec<MappedLevel>,
+    path: smallvec::SmallVec<[MappedLevel; 1]>,
     /// Mapped-level attempts admitted after depth/cycle checks (Expand only).
     levels: u32,
     /// Items members admitted before allocating/decoding a list, per occurrence.
@@ -152,13 +152,43 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) -> Result<(), ShapeError> {
+        self.product_lists(
+            element,
+            decoder,
+            visitor,
+            |walk, run, rep, items, decoder| walk.items(run, Some(rep), &items, decoder),
+        )
+    }
+
+    pub(crate) fn product_admission(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        visitor: &mut super::product_budget::ProductItems,
+    ) -> Result<(), ShapeError> {
+        self.product_lists(element, decoder, visitor, Self::admit_roots)
+    }
+
+    fn product_lists<V: WalkVisitor>(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        visitor: &mut V,
+        mut visit: impl FnMut(
+            &Self,
+            &mut Run<'_, V>,
+            &DecodedEntity,
+            Vec<DecodedEntity>,
+            &mut EntityDecoder,
+        ) -> Flow,
+    ) -> Result<(), ShapeError> {
         let Some(shape) = product_shape(element, decoder)? else {
             return Ok(());
         };
         let mut run = Run {
             visitor,
             element: Some(element),
-            path: Vec::new(),
+            path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
         };
@@ -169,7 +199,7 @@ impl RepresentationWalk {
             let Some(items) = self.root_items(&mut run, rep, decoder)? else {
                 break;
             };
-            if self.items(&mut run, Some(rep), &items, decoder) == Flow::Stop {
+            if visit(self, &mut run, rep, items, decoder) == Flow::Stop {
                 break;
             }
         }
@@ -178,26 +208,43 @@ impl RepresentationWalk {
 
     /// Continue strict retained root admission without decoding or charging
     /// those members twice. Skipped representations have already paid too.
-    pub(crate) fn admitted_product<V: WalkVisitor>(
+    pub(crate) fn admitted_product(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        visitor: &mut V,
+        visitor: &mut super::product_budget::ProductItems,
         roots: super::product_budget::AdmittedRoots,
     ) {
         let mut run = Run {
             visitor,
             element: Some(element),
-            path: Vec::new(),
+            path: smallvec::SmallVec::new(),
             levels: 0,
             items: roots.items,
         };
         for (rep, items) in roots.representations {
             if run.visitor.shape_rep(&rep) == Flow::Stop
-                || self.items(&mut run, Some(&rep), &items, decoder) == Flow::Stop
+                || self.admit_roots(&mut run, &rep, items, decoder) == Flow::Stop
             {
                 break;
             }
+        }
+    }
+
+    fn admit_roots(
+        &self,
+        run: &mut Run<'_, super::product_budget::ProductItems>,
+        rep: &DecodedEntity,
+        items: Vec<DecodedEntity>,
+        decoder: &mut EntityDecoder,
+    ) -> Flow {
+        if items
+            .iter()
+            .all(|item| item.ifc_type != ifc_lite_core::IfcType::IfcMappedItem)
+        {
+            run.visitor.direct_items(items)
+        } else {
+            self.items(run, Some(rep), &items, decoder)
         }
     }
 
@@ -220,7 +267,7 @@ impl RepresentationWalk {
         let mut run = Run {
             visitor,
             element: None,
-            path: Vec::new(),
+            path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
         };
@@ -241,7 +288,7 @@ impl RepresentationWalk {
         let mut run = Run {
             visitor,
             element: None,
-            path: Vec::new(),
+            path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
         };
@@ -260,7 +307,7 @@ impl RepresentationWalk {
         let mut run = Run {
             visitor,
             element: None,
-            path: Vec::new(),
+            path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
         };

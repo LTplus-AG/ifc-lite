@@ -28,16 +28,38 @@ impl RepresentationWalk {
         items: &[DecodedEntity],
         decoder: &mut EntityDecoder,
     ) -> Flow {
-        let owned_items = items.to_vec();
-        self.execute(
-            run,
-            Task::List {
-                rep: rep.cloned(),
-                items: owned_items.into_iter(),
-                first_mapped: None,
-            },
-            decoder,
-        )
+        // The usual representation is flat. Visit its borrowed prefix without
+        // cloning a list or allocating continuation storage. A mapped suffix
+        // still enters the same iterative engine with the same shared meters.
+        for (index, item) in items.iter().enumerate() {
+            if item.ifc_type == IfcType::IfcMappedItem && !matches!(self.nested, NestedMaps::Leaf) {
+                // A final mapped member has no sibling continuation. Enter it
+                // directly, as mapped_item does, without cloning a one-item list.
+                if index + 1 == items.len() {
+                    return self.execute(run, Task::Enter(item.clone()), decoder);
+                }
+                // Suspended continuations own their suffix across mapped descent.
+                let remaining = items[index..].to_vec();
+                return self.execute(
+                    run,
+                    Task::List {
+                        rep: rep.cloned(),
+                        items: remaining.into_iter(),
+                        first_mapped: None,
+                    },
+                    decoder,
+                );
+            }
+            let at = WalkCtx {
+                element: run.element,
+                shape_rep: rep,
+                path: &run.path,
+            };
+            if run.visitor.item(item, &at, decoder) == Flow::Stop {
+                return Flow::Stop;
+            }
+        }
+        Flow::Continue
     }
 
     pub(super) fn execute<V: WalkVisitor>(
@@ -46,7 +68,7 @@ impl RepresentationWalk {
         initial: Task,
         decoder: &mut EntityDecoder,
     ) -> Flow {
-        let mut tasks = vec![initial];
+        let mut tasks = smallvec::smallvec![initial];
         let chain = matches!(self.nested, NestedMaps::FirstChain { .. });
         while let Some(task) = tasks.pop() {
             let flow = match task {
@@ -57,41 +79,9 @@ impl RepresentationWalk {
                 Task::Enter(item) => self.enter(run, &item, decoder, &mut tasks),
                 Task::List {
                     rep,
-                    mut items,
-                    mut first_mapped,
-                } => {
-                    if let Some(item) = items.next() {
-                        let mapped = item.ifc_type == IfcType::IfcMappedItem
-                            && !matches!(self.nested, NestedMaps::Leaf);
-                        let flow = if mapped {
-                            if chain && first_mapped.is_none() {
-                                first_mapped = Some(item.clone());
-                            }
-                            Flow::Continue
-                        } else {
-                            let at = WalkCtx {
-                                element: run.element,
-                                shape_rep: rep.as_ref(),
-                                path: &run.path,
-                            };
-                            run.visitor.item(&item, &at, decoder)
-                        };
-                        tasks.push(Task::List {
-                            rep,
-                            items,
-                            first_mapped,
-                        });
-                        if mapped && !chain {
-                            tasks.push(Task::Enter(item));
-                        }
-                        flow
-                    } else {
-                        if let Some(item) = first_mapped {
-                            tasks.push(Task::Enter(item));
-                        }
-                        Flow::Continue
-                    }
-                }
+                    items,
+                    first_mapped,
+                } => self.list(run, rep, items, first_mapped, chain, decoder, &mut tasks),
             };
             if flow == Flow::Stop {
                 // Remaining lists are discarded, but every entered level leaves
@@ -101,6 +91,49 @@ impl RepresentationWalk {
                 }
                 return Flow::Stop;
             }
+        }
+        Flow::Continue
+    }
+
+    #[allow(clippy::too_many_arguments)] // one suspended list and its walk context
+    fn list<V: WalkVisitor>(
+        &self,
+        run: &mut Run<'_, V>,
+        rep: Option<DecodedEntity>,
+        mut items: std::vec::IntoIter<DecodedEntity>,
+        mut first_mapped: Option<DecodedEntity>,
+        chain: bool,
+        decoder: &mut EntityDecoder,
+        tasks: &mut smallvec::SmallVec<[Task; 3]>,
+    ) -> Flow {
+        while let Some(item) = items.next() {
+            if item.ifc_type == IfcType::IfcMappedItem && !matches!(self.nested, NestedMaps::Leaf) {
+                if chain {
+                    if first_mapped.is_none() {
+                        first_mapped = Some(item);
+                    }
+                    continue;
+                }
+                // Suspend only when descending, never once per plain item.
+                tasks.push(Task::List {
+                    rep,
+                    items,
+                    first_mapped,
+                });
+                tasks.push(Task::Enter(item));
+                return Flow::Continue;
+            }
+            let at = WalkCtx {
+                element: run.element,
+                shape_rep: rep.as_ref(),
+                path: &run.path,
+            };
+            if run.visitor.item(&item, &at, decoder) == Flow::Stop {
+                return Flow::Stop;
+            }
+        }
+        if let Some(item) = first_mapped {
+            tasks.push(Task::Enter(item));
         }
         Flow::Continue
     }
@@ -116,7 +149,7 @@ impl RepresentationWalk {
         run: &mut Run<'_, V>,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        tasks: &mut Vec<Task>,
+        tasks: &mut smallvec::SmallVec<[Task; 3]>,
     ) -> Flow {
         let max_depth = match self.nested {
             NestedMaps::Expand { max_depth, .. } | NestedMaps::FirstChain { max_depth } => {

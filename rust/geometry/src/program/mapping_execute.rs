@@ -4,25 +4,24 @@ use super::*;
 use crate::program::mapping_budget::{LogicalBudget, SourceFailure, SourceResult};
 use ifc_lite_core::EntityDecoder;
 
-pub(in crate::program) struct MappingReply {
-    pub(in crate::program::mapping) value: MappingValue,
-    pub(in crate::program::mapping) budget: LogicalBudget,
-}
-impl MappingReply {
-    pub(in crate::program) fn tag(&self) -> u8 {
-        self.value.tag()
-    }
-}
+// Only source replies carry a speculative debit. Numerical/child replies do
+// not copy a large enum into and out of a second, budget-bearing envelope.
+pub(in crate::program) type MappingReply = MappingValue;
 
 pub(super) fn source_reply<T>(
     result: SourceResult<T>,
     item_id: u32,
+    budget: LogicalBudget,
     reply: impl FnOnce(Result<T>) -> MappingValue,
 ) -> MappingValue {
     match result {
         Ok(value) => reply(Ok(value)),
         Err(SourceFailure::Content(error)) => reply(Err(error)),
-        Err(SourceFailure::Budget(refusal)) => MappingValue::Refused { item_id, refusal },
+        Err(SourceFailure::Budget(refusal)) => MappingValue::Refused {
+            item_id,
+            refusal,
+            budget,
+        },
     }
 }
 
@@ -33,29 +32,6 @@ impl MappingControl<'_> {
         decoder: &mut EntityDecoder,
     ) -> std::result::Result<MappingReply, ProgramError> {
         let mut budget = self.budget;
-        // Nested path/depth checks have already selected this action. A root
-        // attempt pays too, including an eventual cache hit or placeholder.
-        if let Action::Enter(item) | Action::EnterStyled(item) = &self.action {
-            if let Err(refusal) = budget.mapped_attempt() {
-                return Ok(MappingReply {
-                    value: MappingValue::Refused {
-                        item_id: item.item().id,
-                        refusal,
-                    },
-                    budget,
-                });
-            }
-        }
-        let value = self.execute_step(router, decoder, &mut budget)?;
-        Ok(MappingReply { value, budget })
-    }
-
-    fn execute_step(
-        &mut self,
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder,
-        budget: &mut LogicalBudget,
-    ) -> std::result::Result<MappingValue, ProgramError> {
         // Steps that keep their action in place: the accept consumes it.
         match &mut self.action {
             Action::Child(item, ChildControl::Item(control)) => {
@@ -70,19 +46,25 @@ impl MappingControl<'_> {
             }
             Action::SharedItems(representation, ..) => {
                 return Ok(source_reply(
-                    GeometryRouter::shared_source_items(representation.item(), decoder, budget),
+                    GeometryRouter::shared_source_items(
+                        representation.item(),
+                        decoder,
+                        &mut budget,
+                    ),
                     representation.item().id,
-                    MappingValue::SharedItems,
+                    budget,
+                    |items| MappingValue::SharedItems(items, budget),
                 ));
             }
             Action::StyledItems(pending) => {
-                let items =
-                    GeometryRouter::styled_source_items(&pending.representation, decoder, budget);
-                return Ok(source_reply(
-                    items,
-                    pending.item_id,
-                    MappingValue::StyledItems,
-                ));
+                let items = GeometryRouter::styled_source_items(
+                    &pending.representation,
+                    decoder,
+                    &mut budget,
+                );
+                return Ok(source_reply(items, pending.item_id, budget, |items| {
+                    MappingValue::StyledItems(items, budget)
+                }));
             }
             Action::Texture(item) => {
                 let item = item.item();
@@ -97,30 +79,41 @@ impl MappingControl<'_> {
                     Some(router.rtc_offset()),
                 )));
             }
+            Action::Enter(item) | Action::EnterStyled(item) => {
+                // A root attempt pays too, including cache hits/placeholders.
+                // A refused attempt leaves its action intact until acceptance.
+                if let Err(refusal) = budget.mapped_attempt() {
+                    return Ok(MappingValue::Refused {
+                        item_id: item.item().id,
+                        refusal,
+                        budget,
+                    });
+                }
+            }
             _ => {}
         }
         Ok(match std::mem::replace(&mut self.action, Action::Taken) {
             Action::Enter(entering) => {
                 let item = entering.item();
                 if self.retained.is_some() {
-                    return Ok(self.admit_retained_mapping(item, router, decoder, budget));
+                    return Ok(self.admit_retained_mapping(item, router, decoder, &mut budget));
                 }
-                let value = router.admit_mapped_occurrence(item, decoder, budget);
-                source_reply(value, item.id, |value| MappingValue::Entered {
+                let value = router.admit_mapped_occurrence(item, decoder, &mut budget);
+                source_reply(value, item.id, budget, |value| MappingValue::Entered {
+                    budget,
                     item_id: item.id,
                     value,
                 })
             }
             Action::EnterStyled(entering) => {
                 let item = entering.item();
-                // Only the top-level occurrence is independent: a nested map is
-                // part of its parent's shared geometry, never don't-baked.
-                // Eligibility decodes at most one member. This is the root's
-                // first action: Items usage is zero, and mapped_attempt above
-                // proved limit >= 1. No additional debit or meter is needed.
+                // Only root occurrences are independently instanced. Eligibility
+                // reads at most one member: Items usage is zero here, and the
+                // attempt above proved limit >= 1, so no second debit is needed.
                 let eligible = self.allow_instancing && self.levels.is_empty();
                 let value = router.admit_styled_occurrence(item, eligible, self.textures, decoder);
                 MappingValue::StyledEntered {
+                    budget,
                     item_id: item.id,
                     value,
                 }
@@ -133,15 +126,22 @@ impl MappingControl<'_> {
                     .ok_or(ProgramError::StaleRequest)?;
                 if let Some(state) = &self.retained {
                     return Ok(source_reply(
-                        Self::validate_retained_map(rep_map, decoder, &state.selection, budget),
+                        Self::validate_retained_map(
+                            rep_map,
+                            decoder,
+                            &state.selection,
+                            &mut budget,
+                        ),
                         rep_map.id,
-                        MappingValue::TypeMapEntered,
+                        budget,
+                        |value| MappingValue::TypeMapEntered(value, budget),
                     ));
                 }
                 source_reply(
-                    router.admit_type_map(rep_map, decoder, budget),
+                    router.admit_type_map(rep_map, decoder, &mut budget),
                     rep_map.id,
-                    MappingValue::TypeMapEntered,
+                    budget,
+                    |value| MappingValue::TypeMapEntered(value, budget),
                 )
             }
             Action::Origin => {

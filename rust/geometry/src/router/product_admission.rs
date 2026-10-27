@@ -13,7 +13,7 @@ use ifc_lite_core::EntityDecoder;
 
 impl GeometryRouter {
     pub(crate) fn report_product_admission(&self, plan: &ProductItems) -> Result<()> {
-        if let Some((item, WalkRefusal::Budget { max_levels })) = &plan.refusal {
+        if let Some((item, WalkRefusal::Budget { max_levels })) = plan.refusal.as_deref() {
             // A product refusal belongs to this request, even beneath a caller's
             // source suppression scope. No source/template claim is made here.
             crate::resource::check_current()?;

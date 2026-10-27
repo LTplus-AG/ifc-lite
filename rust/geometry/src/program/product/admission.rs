@@ -5,13 +5,14 @@ use crate::{GeometryRouter, Result};
 use ifc_lite_core::EntityDecoder;
 
 impl ProductControl<'_> {
+    #[inline(always)]
     pub(super) fn admit(
         &self,
         router: &GeometryRouter,
         decoder: &mut EntityDecoder,
     ) -> Result<ProductItems> {
-        crate::resource::check_current()?;
         let mut plan = if let Some(selection) = &self.retained {
+            crate::resource::check_current()?;
             // Strict validation charges all raw root lists before reading their
             // members, including skipped representations. Reuse selected roots.
             let roots =
@@ -33,10 +34,11 @@ impl ProductControl<'_> {
             )
         };
         plan.strict()?;
-        plan.validate(router, decoder)?;
+        // The plan just sealed these owners, with no intervening callback.
+        // Execution validates them again before consuming admitted roots.
         // Retained output is complete-or-refused, never a partial exact success.
         if self.retained.is_some() {
-            if let Some((item, why)) = plan.refusal.take() {
+            if let Some((item, why)) = plan.refusal.take().map(|failure| *failure) {
                 return Err(why.into_error(item.id));
             }
         }

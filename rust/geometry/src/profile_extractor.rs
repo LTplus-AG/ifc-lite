@@ -256,7 +256,7 @@ fn extract_product(
         }
     }
     plan.validate(router, decoder)?;
-    if let Some((item, why)) = plan.refusal {
+    if let Some((item, why)) = plan.refusal.map(|failure| *failure) {
         sink.refused(
             &item,
             why,

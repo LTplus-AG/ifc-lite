@@ -399,3 +399,38 @@ fn zero_restarts_reuses_contract_fault_worker_but_never_replaces_transport() {
         );
     }
 }
+
+// #8183 / #7678: even an otherwise unused representation attribute must not
+// smuggle an unrepresentable REAL past exact's strict geometry admission.
+#[test]
+fn unrepresentable_representation_real_is_source_invalid_before_acquire() {
+    assert!(!ifc_lite_processing::process_geometry(BOX.as_bytes())
+        .meshes
+        .is_empty());
+    let text = BOX.replace(
+        "#25=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19));",
+        "#25=IFCSHAPEREPRESENTATION(#4,1.E400,'SweptSolid',(#19));",
+    );
+    assert_ne!(text, BOX);
+    let exact = ifc_lite_processing::process_geometry(text.as_bytes());
+    assert!(exact.meshes.is_empty());
+    assert_eq!(exact.stats.refused_input_elements, 1);
+    let acquired = Cell::new(0);
+    let mut outcomes = Vec::new();
+    let summary = block_on(run_model(
+        SourceBundle::new(text.into_bytes()),
+        &ModelOptions::default(),
+        || {
+            acquired.set(acquired.get() + 1);
+            Ok(peer())
+        },
+        |outcome| outcomes.push(outcome),
+    ))
+    .unwrap();
+    assert_eq!(
+        refusal(&outcomes, 27),
+        RetainedProductRefusal::SourceInvalid
+    );
+    assert_eq!(acquired.get(), 0);
+    assert_eq!(summary.restarts, 0);
+}

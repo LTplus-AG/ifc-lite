@@ -111,18 +111,7 @@ export function effectiveMapConversionForGeometry(
   mapUnitScale: number,
   coordinateInfo: CoordinateInfo | undefined,
 ): MapConversion {
-  if (!coordinateInfo) return conversion;
-  const anchorE = conversion.eastings * mapUnitScale;
-  const anchorN = conversion.northings * mapUnitScale;
-  const anchorDistance = Math.hypot(anchorE, anchorN);
-  if (!Number.isFinite(anchorDistance) || anchorDistance < MAP_ABSOLUTE_MIN_ANCHOR_METERS) {
-    return conversion;
-  }
-  const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
-  const centerDistance = Math.hypot(ifcX - anchorE, ifcY - anchorN);
-  if (!Number.isFinite(centerDistance) || centerDistance >= MAP_ABSOLUTE_MAX_CENTER_DISTANCE_METERS) {
-    return conversion;
-  }
+  if (!isMapAbsoluteGeometry(conversion, mapUnitScale, coordinateInfo)) return conversion;
   return {
     ...conversion,
     eastings: 0,
@@ -136,4 +125,25 @@ export function effectiveMapConversionForGeometry(
     factorY: undefined,
     factorZ: undefined,
   };
+}
+
+/**
+ * The #2526 signature {@link effectiveMapConversionForGeometry} neutralises
+ * on: the geometry already sits at absolute map (grid) coordinates. Exposed
+ * on its own because such geometry is drawn in GRID lengths, which the globe
+ * placement must scale to ground lengths (`ground-scale.ts`).
+ */
+export function isMapAbsoluteGeometry(
+  conversion: Pick<MapConversion, 'eastings' | 'northings'>,
+  mapUnitScale: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): boolean {
+  if (!coordinateInfo) return false;
+  const anchorE = conversion.eastings * mapUnitScale;
+  const anchorN = conversion.northings * mapUnitScale;
+  const anchorDistance = Math.hypot(anchorE, anchorN);
+  if (!Number.isFinite(anchorDistance) || anchorDistance < MAP_ABSOLUTE_MIN_ANCHOR_METERS) return false;
+  const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
+  const centerDistance = Math.hypot(ifcX - anchorE, ifcY - anchorN);
+  return Number.isFinite(centerDistance) && centerDistance < MAP_ABSOLUTE_MAX_CENTER_DISTANCE_METERS;
 }

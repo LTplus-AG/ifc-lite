@@ -61,7 +61,7 @@ export interface SectionPlane {
   /** Draw this plane's quad and outline in the scene; independent of `enabled` (cutting). */
   showGizmo: boolean;
   axis: SectionPlaneAxis;
-  /** 0-100 percentage of model bounds */
+  /** Percentage of the model bounds along `axis`: 0-100 spans them; any finite value outside is a cut beyond them (#8162). */
   position: number;
   enabled: boolean; // the cut is defined and turned on; ON SCREEN also requires `sceneState.section.visible` (#5893)
   parked?: boolean; // enabled, but hidden by the visibility toggle (`sceneState.section.visible === false`, #5893)

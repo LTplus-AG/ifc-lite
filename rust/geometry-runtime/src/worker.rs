@@ -35,7 +35,7 @@ pub use sweep::RetainedRealization;
 mod objects;
 #[path = "worker_dependencies.rs"]
 mod dependencies;
-pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage};
+pub use dependencies::{ RetainedDependency, RetainedDependencyResult, RetainedLineage};
 #[path = "worker_affine.rs"]
 mod affine;
 pub use affine::{AffineCertificate, AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};
@@ -367,3 +367,6 @@ fn rigid(m: [f64; 16]) -> Result<(), &'static str> {
         Err("transform must be a proper rigid metre frame")
     }
 }
+
+#[cfg(all(feature = "retained-runtime", not(target_arch = "wasm32")))]
+pub use dependencies::RetainedBooleanIdentity;

@@ -15,6 +15,8 @@ categories = ["parsing", "algorithms"]
 readme = "../../README.md"
 
 [features]
+# Off-by-default retained product controller (#7955).
+retained-runtime = ["ifc-lite-geometry/retained-runtime"]
 # Opt-in alternate triangulator oracle for canonical producer regression tests.
 triangulation-alt = ["ifc-lite-geometry/triangulation-alt"]
 # Fixed-size work counters for the diagnostic example, never enabled by default.

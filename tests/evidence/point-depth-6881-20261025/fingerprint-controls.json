@@ -1,0 +1,49 @@
+{
+  "scope": "Fingerprint algorithm invariants on a stated triangle fixture; not native GPU qualification",
+  "controls": [
+    {
+      "name": "position",
+      "passed": true
+    },
+    {
+      "name": "index",
+      "passed": true
+    },
+    {
+      "name": "normal",
+      "passed": true
+    },
+    {
+      "name": "color",
+      "passed": true
+    },
+    {
+      "name": "origin",
+      "passed": true
+    },
+    {
+      "name": "signed-zero",
+      "passed": true
+    },
+    {
+      "name": "instance-hash",
+      "passed": true
+    },
+    {
+      "name": "item-identity",
+      "passed": true
+    },
+    {
+      "name": "map-insertion-order",
+      "passed": true
+    },
+    {
+      "name": "mesh-order-and-multiplicity",
+      "passed": true
+    },
+    {
+      "name": "loading-failed-and-empty-publications-refused",
+      "passed": true
+    }
+  ]
+}

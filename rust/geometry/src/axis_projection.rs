@@ -32,6 +32,22 @@ pub(crate) fn perpendicular_x_axis(z_axis: Vector3<f64>, x_axis: Vector3<f64>) -
     }
 }
 
+/// Canonical operator X/Z derivation, including normalization recovery before
+/// projection. Retained omitted-axis admission uses these same realized axes;
+/// authored rank is checked separately on untouched direction ratios (#7955).
+pub(crate) fn operator_xz_axes(
+    z_axis_raw: Vector3<f64>,
+    x_axis_raw: Vector3<f64>,
+) -> [Vector3<f64>; 2] {
+    let z_axis = z_axis_raw
+        .try_normalize(crate::math::tol::AXIS_MIN_LEN)
+        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
+    let x_norm = x_axis_raw
+        .try_normalize(crate::math::tol::AXIS_MIN_LEN)
+        .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
+    [perpendicular_x_axis(z_axis, x_norm), z_axis]
+}
+
 /// The local frame `(x, y, z)` of an `IfcAxis2PlacementLinear` (IFC4X3), given
 /// the curve frame `(tangent, left, vertical)` at its `Location` and the
 /// authored `Axis` / `RefDirection` (#7791). Both directions are expressed IN

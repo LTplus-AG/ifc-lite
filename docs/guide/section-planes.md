@@ -14,6 +14,7 @@ Remove and Clear all offer **Undo** for a few seconds: it gives back the planes 
 ## Placing a plane
 
 - **Offset** is the distance of the plane, in the project's own length unit, to the millimetre. A face-picked plane reads from its face (a fresh pick is `0.000`; negative goes into the solid), a level plane reads its elevation. Type a value, drag it, use `−` / `+`, the arrow keys, or the **mouse wheel** over the field: one notch is one step.
+- **Cut at a storey** (the `▾` beside the offset of a Down plane) cuts 1.2 m above the chosen storey's floor, as the storey floorplan button in the model tree does. When that is above the top of the model but the storey's floor is within it, the plane stays there and the top storey shows below it (when the floor itself lies outside the model's height, the cut is kept within the model); stepping, dragging or typing brings the plane back within the model.
 - **Step** (the `10 cm ▾` control) is how far one notch, key or click moves the plane: 1 cm to 1 m, or a value in millimetres. It is remembered between sessions.
 - **Direction** (in the plane's `⋯` menu) changes what the selected plane is, keeping its name and place: Down, Front, Side, or **Face…** to pick a face again.
 - **Flip** keeps the other side. The arrow on the plane in the scene points to the side that stays.

@@ -197,6 +197,37 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 
+export interface RetainedShapePart {
+    /** Object-local metres. */
+    positions: Float64Array;
+    indices: Uint32Array;
+    /** Column-major object metres to absolute IFC Z-up world metres. */
+    worldFromObject: Float64Array;
+    curved: boolean;
+}
+export interface RetainedShapeProduct {
+    status: 'published';
+    expressId: number;
+    ifcType: string;
+    parts: RetainedShapePart[];
+    marker: 'PresentationObligationsUnmet';
+    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces'>;
+}
+export interface RetainedProductRefusal {
+    status: 'refused';
+    expressId: number;
+    ifcType: string;
+    code: 'opening_strategy' | 'material_layer_strategy' | 'operation_unsupported'
+    | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
+    | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
+    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';
+    origin?: { site: string; entity?: number; cause: string };
+    kernelStatus?: number;
+}
+export type RetainedProductOutcome = RetainedShapeProduct | RetainedProductRefusal;
+
+
+
 export type AnalyticStatusJs = { type: "complete" } | { type: "unsupported"; reason: string };
 export type AnalyticSourceContextJs =
 | { kind: "direct"; representation_id: number }
@@ -947,7 +978,9 @@ export class IfcAPI {
      * `renderer.setLineOverlay('alignment', ...)`.
      *
      * Returns an empty array when the file has no alignments (or none with a
-     * resolvable Axis curve), so the caller can clear the overlay cheaply.
+     * resolvable Axis curve and placement), so the caller can clear the
+     * overlay cheaply. An alignment whose authored placement cannot be
+     * resolved is omitted (#7779).
      */
     parseAlignmentLines(content: string): Float32Array;
     /**
@@ -971,7 +1004,8 @@ export class IfcAPI {
      * straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
      *
      * Returns an empty array when the file has no grids, so the caller can
-     * clear the overlay cheaply.
+     * clear the overlay cheaply. An axis with a malformed endpoint, or a grid
+     * whose authored placement cannot be resolved, is omitted (#7779).
      */
     parseGridLines(content: string): Float32Array;
     /**
@@ -1080,6 +1114,10 @@ export class IfcAPI {
      */
     planPointTransfer(content: Uint8Array, request_json: string, rgba: Uint8Array, positions: Float64Array, colors: Uint8Array, normals: Float32Array, stations: Uint32Array): Uint8Array;
     /**
+     * Export-only exact section intersections in IFC world metres.
+     */
+    planSectionExport(content: Uint8Array, planes_json: string, trim: boolean): string;
+    /**
      * Prepare bounded ordered PDF vector graphics states and the page fidelity
      * report (convertible paths, omissions with extent, exact/raster-only).
      */
@@ -1179,6 +1217,14 @@ export class IfcAPI {
      * Resolve styled-item spans against the installed source and entity index.
      */
     resolveStyledItemsShardFromSource(spans: Uint32Array): any;
+    /**
+     * Run the opt-in retained engine, with no exact fallback. Buffers outcomes
+     * until completion; next() then consumes them in canonical file order.
+     * Type products and representationless jobs are skipped. Some(empty ids)
+     * selects no products. One qualified worker is reused, with at most three
+     * replacements, and a failed product is never retried.
+     */
+    retainedModel(content: Uint8Array, ids?: Uint32Array | null): Promise<RetainedModelRun>;
     /**
      * Read-only walk of the model's authored extrusions and swept disks that
      * the retained route can represent. Starts no Worker and fetches nothing.
@@ -1992,6 +2038,20 @@ export class RetainedBrowserSources {
 }
 
 /**
+ * Completed model run in canonical job order. Consume with next(), then free().
+ * Holds copied JS results, no live Worker or WASM geometry handles.
+ */
+export class RetainedModelRun {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Returns one atomic shape-only product or typed refusal, undefined at end.
+     */
+    next(): RetainedProductOutcome | undefined;
+}
+
+/**
  * The traced outline. Owns wasm memory: call `free()`.
  */
 export class ScanOutlineJs {
@@ -2690,6 +2750,7 @@ export interface InitOutput {
     readonly __wbg_retainedbrowsercancellation_free: (a: number, b: number) => void;
     readonly __wbg_retainedbrowserexecutor_free: (a: number, b: number) => void;
     readonly __wbg_retainedbrowsersources_free: (a: number, b: number) => void;
+    readonly __wbg_retainedmodelrun_free: (a: number, b: number) => void;
     readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -2790,7 +2851,7 @@ export interface InitOutput {
     readonly ifcapi_parseLandXmlSourceBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseLandXmlSourceBytesWithOptions: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
-    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -2800,6 +2861,7 @@ export interface InitOutput {
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
+    readonly ifcapi_planSectionExport: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtStation: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
@@ -2812,6 +2874,7 @@ export interface InitOutput {
     readonly ifcapi_registerScanCorrespondences: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_retainedModel: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_retainedSources: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
@@ -2916,6 +2979,7 @@ export interface InitOutput {
     readonly retainedbrowsersources_execute: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly retainedbrowsersources_refused: (a: number, b: number) => void;
     readonly retainedbrowsersources_sources: (a: number, b: number) => void;
+    readonly retainedmodelrun_next: (a: number) => number;
     readonly scanoutlinejs_coords: (a: number) => number;
     readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
     readonly scanoutlinejs_ringCount: (a: number) => number;

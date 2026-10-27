@@ -691,3 +691,68 @@ fn issue_6940_depth_slice_seams_do_not_become_host_jambs() {
         p, Point3::new(0.85, 0.02, 0.85),
     ) == Some(false)), "the shallow cutter must keep its authored depth");
 }
+
+// ---------------------------------------------------------------------------
+// abutting footprints (the kernel merges the prisms, #8156)
+// ---------------------------------------------------------------------------
+
+/// Triangles whose three vertices lie within `tol` of the plane `x = at`.
+fn triangles_on_plane_x(m: &Mesh, at: f64, tol: f64) -> usize {
+    m.indices
+        .chunks_exact(3)
+        .filter(|t| {
+            t.iter().all(|&i| {
+                let x = m.positions[i as usize * 3] as f64 + m.origin[0];
+                (x - at).abs() < tol
+            })
+        })
+        .count()
+}
+
+/// Two openings that abut in the file reach the 2D union a few micrometres
+/// apart, so it hands the kernel two prisms that land one snap cell apart. The
+/// kernel merges them; no sliver of host stands on the seam.
+#[test]
+fn abutting_boxes_a_snap_cell_apart_cut_as_one_void() {
+    const GAP: f64 = 8e-6;
+    let openings = [
+        box_opening_y([-1.0, -0.4, -0.6], [0.2, 0.4, 0.6]),
+        box_opening_y([0.2 + GAP, -0.4, -0.6], [1.0, 0.4, 0.6]),
+    ];
+    let host_v = vol(&host_wall());
+    let (result, consumed, mutated) = run_prepass(&openings);
+    assert!(mutated, "prepass must cut the abutting cluster");
+    assert!(consumed.iter().all(|&c| c), "both openings consumed by the union");
+    assert!(watertight(&result), "union cut must be watertight");
+    let removed = host_v - vol(&result);
+    assert!((removed - 0.72).abs() < 5e-3, "removed {removed}, expected 0.72");
+    // The tolerance must exceed a snap cell (1.53e-5): the sheet this test
+    // guards against sits at the kernel grid's 0.1999969 / 0.2000122, which a
+    // 1e-6 probe walks straight past.
+    assert_eq!(
+        triangles_on_plane_x(&result, 0.2, 3e-5) + triangles_on_plane_x(&result, 0.2 + GAP, 3e-5),
+        0,
+        "triangles left on the seam plane"
+    );
+}
+
+/// A 160 um pier is ten snap cells wide: both of its faces stand.
+#[test]
+fn a_pier_wider_than_a_snap_cell_between_boxes_is_kept() {
+    const PIER: f64 = 160e-6;
+    let openings = [
+        box_opening_y([-1.0, -0.4, -0.6], [0.2, 0.4, 0.6]),
+        box_opening_y([0.2 + PIER, -0.4, -0.6], [1.0, 0.4, 0.6]),
+    ];
+    let (result, consumed, mutated) = run_prepass(&openings);
+    assert!(mutated, "prepass must cut the cluster");
+    assert!(consumed.iter().all(|&c| c), "both openings consumed by the union");
+    assert!(watertight(&result), "union cut must be watertight");
+    // The kernel grid puts the pier faces at 0.199997 and 0.200165, so the
+    // tolerance has to be wider than a snap cell but under half the pier.
+    assert!(
+        triangles_on_plane_x(&result, 0.2, 3e-5) > 0
+            && triangles_on_plane_x(&result, 0.2 + PIER, 3e-5) > 0,
+        "both pier faces must remain"
+    );
+}

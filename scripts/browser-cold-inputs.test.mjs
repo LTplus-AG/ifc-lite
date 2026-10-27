@@ -4,7 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { tsImport } from 'tsx/esm/api';
 const { browserStaticPath } = await tsImport('./perf/browser-cold-server-path.ts', import.meta.url);
 
@@ -31,10 +33,16 @@ for (const [flag, value, expected] of [['--port', '65536', /port must be an inte
 // --dist-branch check, proving they cleared --close-timeout-ms cleanly).
 for (const value of ['30000', '1', '2147483647']) {
   test(`#4134 accepts --close-timeout-ms ${value} and fails later only on --dist-branch`, () => {
-    const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', '--close-timeout-ms', value], { encoding: 'utf8' });
-    assert.notEqual(result.status, 0);
-    assert.doesNotMatch(result.stderr, /close-timeout-ms must/);
-    assert.match(result.stderr, /--dist-branch not found/);
+    const tempDir = mkdtempSync(join(tmpdir(), 'browser-cold-inputs-'));
+    try {
+      const missingDist = join(tempDir, `missing-dist-${value}`);
+      const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', '--close-timeout-ms', value, '--dist-branch', missingDist], { encoding: 'utf8' });
+      assert.notEqual(result.status, 0);
+      assert.doesNotMatch(result.stderr, /close-timeout-ms must/);
+      assert.match(result.stderr, /--dist-branch not found/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 }
 

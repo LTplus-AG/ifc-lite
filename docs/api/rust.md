@@ -20,6 +20,26 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
+## Placement readers
+
+Use `ifc_lite_geometry::placement::Axis2Placement::{read_3d, read_2d, read_id}`
+and call `.matrix()` on the returned placement for a frame in file units.
+`EntityDecoder::{point3, direction3}` read point coordinates or raw direction
+ratios by id; `point3_at` and `direction3_at` read a referenced attribute.
+`point3_decoded` applies the same counted point rule to a record already
+decoded by that decoder from the same immutable source; propagate decode
+errors before calling it. It avoids parsing coordinates a second time.
+These leaf readers accept two or three finite numbers, promote two dimensions
+with `z = 0`, and count malformed-input refusals. For an already decoded
+direction when no decoder is available, `EntityDecoder::direction3_of` returns
+`Option<[f64; 3]>` and cannot count refusals.
+
+The geometry crate's former `parse_axis2_placement_3d`,
+`parse_axis2_placement_3d_from_id`, `parse_cartesian_point`,
+`parse_cartesian_point_from_id`, `parse_direction`, and `parse_direction_from_id`
+exports are removed in the pending Rust major. `rotation_angle_about_z` remains
+available at the crate root and through `placement`.
+
 ## ifc-lite-core
 
 Core parsing functionality.
@@ -1570,18 +1590,29 @@ and paint-order composition.
 
 ### Symbolic fill provenance
 
-`extract_symbolic_data_with_provenance(&source)` returns an opaque
+`extract_symbolic_data_with_provenance(&source)?` returns an opaque
 `SymbolicDataWithProvenance`. Its `data()` accessor exposes the unchanged
 `SymbolicData`; `fill_items()` supplies one optional direct representation-item
 ID per fill ordinal. `into_parts()` consumes both together. Unknown, repeated,
-or mapped occurrences have no item identity. The legacy `extract_symbolic_data`
-and publicly constructible primitive/aggregate structs remain compatible.
+or mapped occurrences have no item identity. All three extraction entry points,
+including `extract_symbolic_data` and the explicit-frame variant, now return
+`Result<_, ifc_lite_core::resource_stop::ProgramStop>`: Rust callers must propagate
+or handle cancellation/resource refusal. This is a Rust API signature change;
+the publicly constructible primitive/aggregate structs and successful serialized
+shape remain unchanged. An empty `Ok` means no symbols, while ordinary geometric
+truncation remains an `Ok` with `truncated`. A stop returns `Err` and discards
+all staged symbols and provenance.
+
+`ifc_lite_geometry::resource::is_stopped()` polls live source, account and
+terminal stop state when a consumer needs a boolean. It reconciles detected stops
+through the same policy as `check_current()`; a healthy result must not be cached
+across later polls or used in place of handling the extraction API's typed error.
 
 Serializing the enriched result adds optional `geometry_item_id` to each known
 fill while retaining the existing symbol JSON shape. Deserialization accepts
 older symbol JSON and leaves missing provenance unknown. WASM and the server
 consume the enriched extraction; callers that only need 2D data can keep using
-the legacy API.
+`extract_symbolic_data(&source)?`.
 
 ### Analytic arbitrary-profile topology
 

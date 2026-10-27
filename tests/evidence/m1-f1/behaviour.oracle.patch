@@ -1,0 +1,33 @@
+diff --git a/native/smlib-adapter/node/client.mjs b/native/smlib-adapter/node/client.mjs
+--- a/native/smlib-adapter/node/client.mjs
++++ b/native/smlib-adapter/node/client.mjs
+@@ -68,7 +68,7 @@
+   }
+   // Retire only the captured owner; stale cleanup cannot kill a replacement.
+   retire(incarnation) {
+-    if (this.#worker) {
++    if (incarnation !== undefined && incarnation === this.#incarnation) {
+       this.#poison(new Error('worker incarnation retired'));
+     }
+   }
+diff --git a/scripts/stage-cli-retained-engine.mjs b/scripts/stage-cli-retained-engine.mjs
+--- a/scripts/stage-cli-retained-engine.mjs
++++ b/scripts/stage-cli-retained-engine.mjs
+@@ -27,7 +27,7 @@
+     if (entry.isDirectory()) files.push(...await inventory(root, path));
+     else {
+       const bytes = await regular(join(root, path));
+-      files.push({ path: path.split('\\').join('/'), bytes: bytes.length, sha256: '0'.repeat(64) });
++      files.push({ path: path.split('\\').join('/'), bytes: bytes.length, sha256: sha256(bytes) });
+     }
+   }
+   return files;
+@@ -86,7 +86,7 @@
+       const path = `LICENSES/toolchain/${name}`;
+       await mkdir(dirname(join(temporary, path)), { recursive: true });
+       await writeFile(join(temporary, path), bytes, { flag: 'wx' });
+-      toolchainInventory.push({ name, path, bytes: bytes.length, sha256: '0'.repeat(64) });
++      toolchainInventory.push({ name, path, bytes: bytes.length, sha256: sha256(bytes) });
+     }
+     const manifest = {
+       format: 'ifc-lite.retained-engine/1',

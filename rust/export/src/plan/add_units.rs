@@ -6,8 +6,7 @@
 
 use ifc_lite_core::project_units::{measure_unit, MeasureUnit};
 
-use crate::plan::add_assoc_types::ValueUnit;
-use crate::plan::add_types::{NewPropertySet, PropertyValue};
+use crate::plan::add_assoc_types::{NewPropertySet, PropertyValue, ValueUnit};
 use crate::plan::attrs::attribute_index;
 use crate::plan::tessellation::Emit;
 use crate::plan::types::PsetKind;

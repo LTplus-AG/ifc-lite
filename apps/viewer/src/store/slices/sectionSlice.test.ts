@@ -105,6 +105,15 @@ describe('SectionSlice', () => {
       };
     }
 
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      it(`a rejected ${bad} leaves the picked distance finite and unchanged (#8162)`, () => {
+        state.sectionPlane = { ...state.sectionPlane, position: 40, custom: pickedPlane() };
+        state.setSectionPlanePosition(bad);
+        assert.strictEqual(state.sectionPlane.custom?.distance, 2);
+        assert.strictEqual(state.sectionPlane.position, 40);
+      });
+    }
+
     it('shifts the picked distance ALONG the normal as the slider rises', () => {
       // github.com/LTplus-AG/ifc-lite/issues/2765: flipping this formula's sign
       // left 73 tests green. The only custom-mode test asserted what got
@@ -143,20 +152,27 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPlane.position, 75);
     });
 
-    it('should clamp position to minimum 0', () => {
+    // #8162: the store holds any finite percentage; outside 0..100 is a cut
+    // beyond the bounds (a plan cut above the model top). Bounded inputs clamp
+    // before they reach the store (`clampSectionPercent`).
+    it('keeps a finite position below 0 (#8162)', () => {
       state.setSectionPlanePosition(-10);
-      assert.strictEqual(state.sectionPlane.position, 0);
+      assert.strictEqual(state.sectionPlane.position, -10);
     });
 
-    it('should clamp position to maximum 100', () => {
-      state.setSectionPlanePosition(150);
-      assert.strictEqual(state.sectionPlane.position, 100);
+    it('keeps a finite position above 100 (#8162)', () => {
+      state.setSectionPlanePosition(123.5);
+      assert.strictEqual(state.sectionPlane.position, 123.5);
     });
 
-    it('should handle NaN by defaulting to 0', () => {
-      state.setSectionPlanePosition(NaN);
-      assert.strictEqual(state.sectionPlane.position, 0);
-    });
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      it(`rejects ${bad} and keeps the current position (#8162)`, () => {
+        state.setSectionPlanePosition(130);
+        state.setSectionPlanePosition(bad);
+        assert.strictEqual(state.sectionPlane.position, 130);
+        assert.strictEqual(state.sectionPlane.enabled, true, 'the plane is still cutting');
+      });
+    }
 
     it('should coerce string numbers', () => {
       state.setSectionPlanePosition('50' as any);

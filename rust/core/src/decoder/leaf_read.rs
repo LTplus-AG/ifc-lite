@@ -30,7 +30,7 @@ const DIRECTION_KEYWORD: &[u8] = b"IFCDIRECTION";
 /// decode cannot disagree about a literal. An `INTEGER` is `v as f64`, as
 /// [`slow_leaf`] reads it; an out-of-`i64` integer or a `REAL` `f64` cannot
 /// hold is a miss.
-#[inline]
+#[inline(always)]
 fn coordinate(bytes: &[u8], i: usize) -> Option<(f64, usize)> {
     let start = skip_step_trivia(bytes, i)?;
     let (number, len) = read_step_number(&bytes[start..])?;
@@ -49,16 +49,20 @@ fn coordinate(bytes: &[u8], i: usize) -> Option<(f64, usize)> {
 /// value [`slow_leaf`] would give and a miss falls through to it.
 #[inline]
 fn fast_leaf(bytes: &[u8], keyword: &[u8]) -> Option<[f64; 3]> {
-    let eq = bytes.iter().position(|&b| b == b'=')?;
+    let eq = memchr::memchr(b'=', bytes)?;
     let start = skip_step_trivia(bytes, eq + 1)?;
     let end = start + keyword.len();
-    if !bytes.get(start..end)?.eq_ignore_ascii_case(keyword) {
+    // Exporters normally emit uppercase keywords. Exact equality avoids the
+    // scalar case-folding walk; mixed-case records still use the same rule.
+    let found = bytes.get(start..end)?;
+    if found != keyword && !found.eq_ignore_ascii_case(keyword) {
         return None;
     }
-    let mut i = skip_step_trivia(bytes, end)?;
+    let mut i = end;
     for _ in 0..2 {
+        i = skip_step_trivia(bytes, i)?;
         (*bytes.get(i)? == b'(').then_some(())?;
-        i = skip_step_trivia(bytes, i + 1)?;
+        i += 1;
     }
     let (x, i) = coordinate(bytes, i)?;
     (*bytes.get(i)? == b',').then_some(())?;
@@ -73,7 +77,10 @@ fn fast_leaf(bytes: &[u8], keyword: &[u8]) -> Option<[f64; 3]> {
     (*bytes.get(i)? == b')').then_some(())?;
     let i = skip_step_trivia(bytes, i + 1)?;
     let closed = matches!(bytes.get(i), None | Some(b';'));
-    (closed && x.is_finite() && y.is_finite() && z.is_finite()).then_some([x, y, z])
+    // read_step_number admits only finite REALs; coordinate rejects its
+    // Unrepresentable variant. INTEGER conversion and the 2D zero are finite
+    // too, so checking the three components again would duplicate admission.
+    closed.then_some([x, y, z])
 }
 
 /// The rule applied to a decoded entity (the fast-path miss).
@@ -115,6 +122,15 @@ impl EntityDecoder<'_> {
     /// [`Error::MalformedRecord`].
     pub fn point3(&mut self, id: u32) -> Result<[f64; 3]> {
         self.leaf3(id, POINT_KEYWORD, IfcType::IfcCartesianPoint)
+    }
+
+    /// Apply the counted point rule to a record already decoded by this
+    /// decoder from the same immutable source. This avoids parsing its bytes
+    /// again after an eager reference-list decode. Decode failures (including
+    /// strict-real admission) must be propagated before calling this method.
+    pub fn point3_decoded(&self, entity: &DecodedEntity) -> Result<[f64; 3]> {
+        slow_leaf(entity, IfcType::IfcCartesianPoint)
+            .ok_or_else(|| self.refuse_malformed(entity.id))
     }
 
     /// `IfcDirection` `id` under the same rule: raw ratios, not normalised,

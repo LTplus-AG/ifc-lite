@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-10-26T14:22:33.483733+00:00",
+  "measurementRequest": "3a7b16cc-4049-46c0-9476-15aa6d1466cc",
+  "requestStateAtRecording": "queued",
+  "resultsInspected": false,
+  "protocol": "native-cold-ab-angle-r1-protocol.json",
+  "timingDecision": "Use the unchanged repository scripts/perf/browser-ab-report.mjs noise and comparability verdicts. A qualifying result must improve end-to-end first-batch or first-visible geometry beyond that noise on at least one fixture, with no beyond-noise first-visible or total-load regression on any fixture. Earlier worker initialization alone is not a win. Report M2 long-frame attribution separately.",
+  "correctness": "Five complete paired rounds on each of the four fixtures, hardware nonfallback GPU, zero uncaptured GPU errors or device losses/replacements, stable and equal mesh counts per arm, no missing readiness metric, clean owned cleanup. Separate real-repeat/federation reset-ack/zero-geometry-construction guard and idle-booking/recycle tests must pass.",
+  "memory": "Record existing perfMem JS/WASM phase peaks and geometry/source bytes; retain the distinction from actual resident memory. Existing ledger also requires resident-memory acceptance; do not call booked heap+estimated overhead actual RSS.",
+  "noWin": "If a valid recorded-build A/B fails to establish the required end-to-end win, obey the existing warmPool removalCondition: do not merge revived pool merely because it is default-off. Record the verdict/lesson and remove the candidate path through reviewed code changes. No automatic reruns hoping for a win.",
+  "invalidRun": "Queue/admission failures, missing samples, contaminated GPU runs, or unqualified noise are not proof of a speedup or of equality. Preserve failures and do not substitute samples silently.",
+  "parser": "A standalone unflagged parser PR must have evidence applicable to that source/flag configuration. Do not claim combined pool-on A/B isolates parser-only performance."
+}

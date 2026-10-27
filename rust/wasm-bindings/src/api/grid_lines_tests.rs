@@ -362,7 +362,56 @@ fn overlays_are_rebased_by_the_bounds_fallback_frame_the_meshes_use() {
     assert!(!alignment.is_empty(), "alignment must emit centerline vertices");
     assert_in_mesh_frame("alignment start", alignment[0]);
 
-    let symbolic = ifc_lite_processing::extract_symbolic_data(content);
+    let symbolic = ifc_lite_processing::extract_symbolic_data(content).expect("symbolic extraction must complete");
     let grid_line = symbolic.polylines.iter().find(|p| p.express_id == 70).expect("the symbolic overlay emits the grid axis");
     assert_in_mesh_frame("symbolic grid axis", grid_line.points[0]);
+}
+
+// #7779 W1: endpoint leaf policy is the same finite 2D/3D rule as meshes.
+#[test]
+fn issue_7779_grid_endpoint_admission_uses_canonical_points() {
+    let frame = Some(MeshFrame::ModelRtc { anchor: (0., 0., 0.) });
+    for (record, elevation) in [
+        ("#11=IFCCARTESIANPOINT((10.,0.));", 0.),
+        ("#11=IFCCARTESIANPOINT((10.,0.,2.));", 2.),
+    ] {
+        let content = LOCAL_GRID.replace("#11=IFCCARTESIANPOINT((10.,0.));", record);
+        let axes = extract_grid_axes(&content, frame);
+        assert_eq!(axes.len(), 1);
+        assert_eq!(axes[0].end, [10., elevation, 0.]);
+    }
+    for record in [
+        "#11=IFCCARTESIANPOINT((10.,0.,'bad'));",
+        "#11=IFCCARTESIANPOINT((10.,0.,1.E400));",
+        "#11=IFCCARTESIANPOINT((10.,0.,2.,3.));",
+        "#11=IFCDIRECTION((10.,0.,2.));",
+    ] {
+        let content = LOCAL_GRID.replace("#11=IFCCARTESIANPOINT((10.,0.));", record);
+        assert!(extract_grid_axes(&content, frame).is_empty(), "{record}");
+    }
+    // The first endpoint takes the same rule; a lenient read of only the
+    // start point must not survive.
+    for record in [
+        "#10=IFCCARTESIANPOINT((0.,0.,'bad'));",
+        "#10=IFCCARTESIANPOINT((0.,0.,0.,1.));",
+    ] {
+        let content = LOCAL_GRID.replace("#10=IFCCARTESIANPOINT((0.,0.));", record);
+        assert!(extract_grid_axes(&content, frame).is_empty(), "{record}");
+    }
+}
+
+#[test]
+fn issue_7779_grid_bad_placement_skips_only_its_grid() {
+    let frame = Some(MeshFrame::ModelRtc { anchor: (0., 0., 0.) });
+    let grid = "#20=IFCGRID('0aBcDeFgHiJkLmNoPqRsT0',$,'Grid',$,$,#5,$,(#13),$,$);";
+    let sibling = "#21=IFCGRID('0aBcDeFgHiJkLmNoPqRsT1',$,'Valid',$,$,$,$,(#13),$,$);";
+    for placement in ["#5=IFCLOCALPLACEMENT(#5,#4);", "#5=IFCLOCALPLACEMENT($,#999);",
+        "#5=IFCCARTESIANPOINT((0.,0.,0.));", "#5=IFCLOCALPLACEMENT($,$);"] {
+        let content = LOCAL_GRID.replace("#5=IFCLOCALPLACEMENT($,#4);", placement)
+            .replace(grid, &format!("{grid}\n{sibling}"));
+        let axes = extract_grid_axes(&content, frame);
+        assert_eq!(axes.len(), 1, "{placement}");
+        assert_eq!(axes[0].grid_id, 21);
+        assert_eq!(axes[0].end, [10., 0., 0.]);
+    }
 }

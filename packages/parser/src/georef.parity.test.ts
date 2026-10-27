@@ -43,6 +43,8 @@ interface Expect {
   mapZone?: string | null;
   mapUnit?: string | null;
   mapUnitScale?: number | null;
+  /** `null` asserts no IfcWellKnownText is attached to the CRS read. */
+  wellKnownText?: string | null;
   eastings?: number;
   northings?: number;
   orthogonalHeight?: number;
@@ -261,6 +263,7 @@ describe.skipIf(!existsSync(fixturePath))('extractGeoreferencing shared parity v
         ['mapProjection', crs?.mapProjection],
         ['mapZone', crs?.mapZone],
         ['mapUnit', crs?.mapUnit],
+        ['wellKnownText', crs?.wellKnownText],
       ];
       for (const [key, actual] of strings) {
         if (!(key in want)) continue;

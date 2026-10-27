@@ -128,13 +128,7 @@ pub(crate) fn parse_transformation_operator(
     // Axis3 falls back to +Z; a zero-or-parallel Axis1 keeps the valid Z and
     // takes a deterministic perpendicular X (mirrors build_axis2_matrix). Only
     // the truly degenerate operator reorients, and it always stays finite.
-    let z_axis = z_axis_raw
-        .try_normalize(tol::AXIS_MIN_LEN)
-        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
-    let x_norm = x_axis_raw
-        .try_normalize(tol::AXIS_MIN_LEN)
-        .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
-    let x_axis = crate::axis_projection::perpendicular_x_axis(z_axis, x_norm);
+    let [x_axis, z_axis] = crate::axis_projection::operator_xz_axes(z_axis_raw, x_axis_raw);
     // Y = Z × X (IfcSecondProjAxis' result whenever Axis2 agrees with the
     // right-handed frame, which is every well-formed operator). A supplied
     // Axis2 that DISAGREES — the mirroring/left-handed frames some exporters

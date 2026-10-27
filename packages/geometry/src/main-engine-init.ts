@@ -3,16 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The main thread's ONE wasm-bindgen engine init (#7036), shared by
- * `IfcLiteBridge.init()` and a host that starts it early (as soon as a load is
- * requested, so the instantiation overlaps the file read instead of following
- * it).
- *
- * One in-flight promise, not one call each: wasm-bindgen's `init` checks
- * "already initialized" only before its first await, so two overlapping calls
- * would both instantiate and the later one would replace the instance that
- * handles created in between point into. Only the in-flight call is shared, so
- * after a failure the next `init()` retries exactly as before.
+ * Serialize concurrent main-thread wasm-bindgen initialization (#7036).
+ * wasm-bindgen checks its initialized state before its first await, so separate
+ * concurrent calls could replace an instance after handles have been created.
+ * Only the in-flight attempt is shared; a failed attempt remains retryable.
  */
 
 import init from '@ifc-lite/wasm';
@@ -36,11 +30,4 @@ export function initMainThreadEngine(): Promise<void> {
   });
   pending = attempt;
   return attempt;
-}
-
-/** Start the main-thread engine init without waiting for it; a failure is left to the load's own init to retry and report. */
-export function prewarmMainThreadEngine(): void {
-  initMainThreadEngine().catch((error: unknown) => {
-    console.warn('[engine] early main-thread init failed; the load will retry:', error);
-  });
 }

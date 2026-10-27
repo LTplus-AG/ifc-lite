@@ -29,9 +29,11 @@ commit is computed from the **diff against its parent** rather than from the
 file bytes, so an unchanged re-export creates no new history — it is recorded as
 pointing at the commit that already exists.
 
-It is used the way git is used — on the CLI to ingest files, and headlessly to
-diff — and it exposes the operations people already know: `status`, `commit`,
-`branch`, `diff <a> <b>`, `log`, `pull`, `push`.
+It is used on the CLI to ingest files and headlessly to diff. **It does not
+expose a git verb surface of its own** — an earlier version of this paragraph
+promised `status`, `commit`, `branch`, `log`, `pull` and `push`, which §4 struck
+on 2026-10-27 (#8203): those belong to Layer PRs, and ifc-git hands its output
+there as a delta layer rather than operating a second history.
 
 It is written in **Rust**, because the work is per-entity hashing and graph
 comparison over models with hundreds of thousands of entities, and that is where
@@ -143,9 +145,38 @@ the only thing that says what changed. The two meet at the component-key
 vocabulary, which is already shared between `@ifc-lite/diff` and
 `@ifc-lite/merge` and which ifc-git keeps.
 
-**ifc-git supersedes `@ifc-lite/merge` once mature.** Per the anti-cruft rule in
-`AGENTS.md`, that means the old path is deleted when the new one lands, not left
-alongside it. Until then `@ifc-lite/merge` is untouched.
+**Reversed on 2026-10-27 (#8203). ifc-git does not supersede
+`@ifc-lite/merge` — it feeds it.** An earlier version of this section said the
+opposite, and the maintainer's ruling is that there is **one** version-control
+story and it is Layer PRs. Layer PRs owns history, refs, merge and review.
+
+So ifc-git's role is narrower and better defined than "a version-control system
+for IFC": it is the **adapter that turns whole files into layers.** Ingesting a
+delivery produces a **delta layer against that party's previous delivery**, with
+the GUID-agnostic matching recorded in `identity_map` — the same
+`identity_map` Layer PRs already specifies (`04-identity.md`). Everything after
+that hand-over is Layer PRs' concern.
+
+What stays ifc-git's own work is exactly what Layer PRs lacks: **whole-file
+diffing and GUID-agnostic identity.** Those are the two things that cannot be
+done by a system which assumes an overlay authored against a known base, and
+they are hard enough to be a spec set on their own.
+
+Three consequences worth stating, because they shrink this document rather than
+grow it:
+
+- **No second object store, no second ref model, no second merge.** §8's rows
+  for an object store, refs, a verb surface and a source-control view are
+  Layer PRs' surface, not ifc-git's, and are struck below.
+- **Conversion fidelity is a different spec set** (#8203), which *uses* the diff
+  engine rather than living here.
+- **A prerequisite ifc-git does not currently meet:** change tracking has to
+  work **per property**, not per property set. The component-key vocabulary this
+  document shares with `@ifc-lite/diff` is `pset:<Name>` — set-level — and
+  authority over `Pset_WallCommon.FireRating` can belong to a fire consultant
+  while the architect owns the rest of `Pset_WallCommon`. Until tracking is
+  per-property, a layer produced from a delivery cannot carry authority
+  correctly. Recorded as open in §6.
 
 The commit-aware source work stays parked and is **not a dependency**.
 
@@ -160,11 +191,16 @@ planned, and land one per PR in roughly this order.
 | [`02-graph-object-model.md`](02-graph-object-model.md) | The node DAG. Node kinds and component keys. Canonical encoding. Why this is GUID-agnostic. |
 | `03-diff.md` | Diff as the commit computer. Graph diff and change localisation. The Rust port and its parity contract. |
 | `04-authorship.md` | The schema-neutral authorship record and its per-schema adapters. Resolution ladder, warning codes, and the rule against fabricated attribution. |
-| `05-operations.md` | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log`, `pull`, `push`. What each means for a graph rather than a tree of text files. |
-| `06-refs-and-history.md` | Branches, compare-and-swap on the head, rebase, revert, tags. |
-| `07-storage.md` | Object store interface, loose and packed tiers, on-disk layout. |
-| `08-ui.md` | A source-control view in the viewer, modelled on the one developers already use. |
-| `09-relationship-to-layer-prs.md` | The boundary in detail, and what superseding `@ifc-lite/merge` requires. |
+| `05-layer-adapter.md` | The hand-over: emitting a delta layer against a party's previous delivery, and recording the match in `identity_map`. |
+| `06-relationship-to-layer-prs.md` | The boundary in detail, and what ifc-git owes Layer PRs at the hand-over. |
+
+**Struck on 2026-10-27 (#8203):** `05-operations.md` (the verb surface),
+`06-refs-and-history.md` (branches, compare-and-swap, rebase, revert, tags),
+`07-storage.md` (object store, loose and packed tiers) and `08-ui.md` (a
+source-control view). All four are Layer PRs' surface. Writing them here would
+have specified a second version-control stack, and the old
+`09-relationship-to-layer-prs.md` entry — "what *superseding* `@ifc-lite/merge`
+requires" — had the direction backwards.
 
 ## 6. Open decisions
 
@@ -336,7 +372,8 @@ references between objects (§2.5). So under §6.1's BLAKE3 decision gix's objec
 ref and pack plumbing is unusable for a *format* reason, not a licence one, and
 not for want of a 256-bit hash.
 
-**Position, to be written into `07-storage.md`:**
+**Position.** `07-storage.md` was to carry this and is struck (§5), so it is
+recorded here and belongs with whoever specifies storage for Layer PRs:
 
 - Reuse git's **designs**, which are not themselves copyrightable expression:
   the loose-object plus packfile two-tier store, ref updates via lockfiles, the
@@ -348,6 +385,26 @@ not for want of a 256-bit hash.
 §6.1 landed on BLAKE3, so the format objection stands and this position holds.
 Had it landed on SHA-256 the objection would have disappeared, and this section
 would have needed revisiting rather than reapplying.
+
+### 6.3 Per-property change tracking — OPEN, and a prerequisite
+
+The component-key vocabulary shared with `@ifc-lite/diff` localises change to a
+property **set**: `pset:<Name>`. Authority, as #8203 frames it, is per property —
+`Pset_WallCommon.FireRating` may belong to a fire consultant while the architect
+owns the rest of `Pset_WallCommon`.
+
+So a delta layer produced from a delivery cannot carry authority correctly while
+tracking is set-level: the layer would claim the architect changed `FireRating`
+whenever anything in that set moved, or would have to over-claim the whole set.
+
+What needs deciding is the key shape and its cost. `pset:<Name>.<Property>` is
+the obvious form, and it multiplies the number of component keys per element by
+the number of properties — which bears on the fingerprint layer, the diff
+output, and every consumer that switches on a key. It also has to stay
+compatible with the existing vocabulary rather than forking it (§6.1's lesson).
+
+Not a decision this document can take alone; it changes `@ifc-lite/diff`'s
+output shape.
 
 ## 7. Research
 
@@ -406,10 +463,19 @@ pinned by parity fixtures.
 | 4 | `03-diff.md`, documenting the engine that landed in 2 | next |
 | 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 4; §6.1 answered |
 | 6 | Authorship extraction across the four schemas | after 5 |
-| 7 | Object store and refs: commit, branch, compare-and-swap on the head | after 5; needs §6.2 answered |
-| 8 | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log` | after 7 |
-| 9 | `pull` / `push` against a remote | after 8 |
-| 10 | Source-control view in the viewer | after 8 |
+| 7 | **Per-property change tracking**, replacing set-level `pset:<Name>` keys | after 5; prerequisite for authority (§4) |
+| 8 | **Delivery → layer adapter**: emit a delta layer against the party's previous delivery, with the match recorded in `identity_map` | after 7; the hand-over point to Layer PRs |
+
+**Struck on 2026-10-27 (#8203), because they are Layer PRs' surface and not
+ifc-git's:** an object store and refs, the verb surface (`status`, `commit`,
+`branch`, `log`), `pull` / `push` against a remote, and a source-control view in
+the viewer. Keeping them here would have built a second version-control stack
+beside the one that already exists, which is the duplication the anti-cruft rule
+exists to prevent — and the earlier plan had it pointed the wrong way round.
+
+Conversion fidelity — migrating IFC2X3 and IFC4 into IFCX as reviewable
+changes — is its own spec set per the same ruling, and uses the diff engine
+rather than extending this plan.
 
 Two defects found while scoping this spec set were filed separately and are
 both now closed: a viewer Compare scope gap that hid any change confined to a

@@ -177,7 +177,9 @@ Worth stating explicitly, because the temptation is to invent vocabulary:
 - **An append-only history DAG.** Any version is reproducible from its ancestry.
 - **Branches, tags, fork and upstream.** Unchanged in meaning.
 - **`status`, `commit`, `log`, `branch`, `diff`, `revert`.** Same questions, new
-  unit. To be specified in `05-operations.md` (planned, index §5).
+  unit — but **ifc-git does not implement them.** The vocabulary is how to think
+  about the problem; the surface belongs to Layer PRs (#8203, index §4), and
+  `05-operations.md` is struck.
 
 The vocabulary carries because the *workflow* carries. Someone who has reviewed
 a pull request knows what a delivery proposal is; the cost of teaching a new
@@ -196,6 +198,10 @@ once written, `09-relationship-to-layer-prs.md` (planned, index §5).
   *file revisions* from a document management system that already has them.
   ifc-git computes versions that nothing else has computed.
 
-ifc-git is independent of both by design, and supersedes `@ifc-lite/merge` once
-mature — which, under the anti-cruft rule, means deleting that path in the same
-change rather than running two version-control stacks side by side.
+ifc-git is independent of both in what it *computes*, and **subordinate to Layer
+PRs in what it produces.** An earlier version of this paragraph said ifc-git
+supersedes `@ifc-lite/merge`; the maintainer reversed that on 2026-10-27
+(#8203). There is one history and merge model, and it is Layer PRs. ifc-git
+ingests a whole-file delivery and emits a **delta layer** against that party's
+previous delivery, with the GUID-agnostic match recorded in `identity_map`;
+merge, refs and review take it from there. See index §4.

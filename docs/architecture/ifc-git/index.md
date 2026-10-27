@@ -174,11 +174,19 @@ assuming an answer, and neither blocks the documents written so far.**
 §6.1 is **decided** as of 2026-10-26 and kept here with its reasoning rather
 than deleted, because the argument is what a later reader needs. §6.2 is open.
 
-### 6.1 The digest, and where the encoding lives — DECIDED
+### 6.1 The digest — DECIDED. Where the encoding lives — PROPOSED
 
-**Decided 2026-10-26: BLAKE3, and the encoding is specified and implemented in
-`rust/git` rather than as a `node-hash-v1.md` under `@ifc-lite/provenance`.
-Node-hash v0 stays frozen and untouched.** The reasoning that led there follows,
+**Decided 2026-10-26: BLAKE3**, which matches the maintainer's stated
+preference of 23 October and the measurement below.
+
+**Proposed, not decided: that the encoding lives in `rust/git`** rather than as
+a `node-hash-v1.md` under `@ifc-lite/provenance`. An earlier version of this
+heading said "DECIDED" for both halves. That was an overreach: the second half
+asserts where a format lives in someone else's published package, on the
+evidence of a crate that is **not proposed upstream**, and it is not mine to
+settle. It stays a proposal with its argument attached until it is accepted.
+
+Either way, **node-hash v0 stays frozen and untouched.** The reasoning follows,
 including the part of it that changed.
 
 `packages/provenance/SPEC.md` already specifies most of the primitive ifc-git
@@ -289,12 +297,13 @@ It would also put the normative spec in a TypeScript package with no runtime
 dependencies, for a format implemented only in Rust, and charge that package a
 major version bump for the privilege.
 
-**Decided: one format, specified where it is implemented.** `rust/git` owns the
-encoding, with its own magic bytes and version byte (`IGN1`, `IGT1`, version 0)
-so it can evolve on its own clock, and the normative description lives in this
-spec set beside the reasoning for it. `packages/provenance/SPEC.md` should gain
-a pointer to it, so that nobody writes a third encoding for want of knowing this
-one exists.
+**Proposed: one format, specified where it is implemented.** `rust/git` would
+own the encoding, with its own magic bytes and version byte (`IGN1`, `IGT1`,
+version 0) so it can evolve on its own clock, and the normative description
+would live in this spec set beside the reasoning for it. A one-line pointer from
+`packages/provenance/SPEC.md` would stop a third encoding being written for want
+of knowing this one exists — offered for separate consideration rather than
+assumed, since that file is frozen and not mine to edit.
 
 **Still open, and genuinely a maintainer call:** whether `@ifc-lite/provenance`
 should later *adopt* this encoding and retire v0. That is a migration of a frozen

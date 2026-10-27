@@ -111,15 +111,16 @@ wanted:
   deliberately so: those are the engine saying it could not tell, and a claim
   derived from an abstention is a fabrication. So where two coincident
   duplicates both change key, the matcher abstains rather than guessing which
-  new key belongs to which old one — see the last bullet of §2.8, where the same
-  case is measured. The new keys do change the tree's own address; §2.7 says why
-  that is still not a commit.
+  new key belongs to which old one — see §2.8, where the same case is measured.
+  The new keys do change the tree's own address; §2.7 says why that is still not
+  a commit, and under what condition that claim holds.
 - Two genuinely distinct elements with byte-identical content collapse to one
   node address. That is correct — it is what deduplication means — and nothing
   is lost at the tree layer, because the tree still carries both keys pointing
   at it. Entry cardinality lives in the tree, where it belongs. What that costs
   a `relationship` node, whose endpoints are node addresses rather than keys, is
-  resolved in §2.8 by measurement, with one limit stated there.
+  **open** — §2.8 records what has been measured, what an earlier draft got
+  wrong, and the equivalence policy still to be decided.
 - `GlobalId` becomes **evidence used for pairing**, never identity. It makes
   pairing fast when it is stable and costs nothing when it is not.
 
@@ -234,6 +235,19 @@ Two rules:
   is recorded as pointing at the existing commit, so a scheduled sync is
   idempotent without inventing history. git refuses empty commits by default;
   here it matters more, because an unchanged re-export is the *common* case.
+
+  **This rule is conditional on §2.8's open equivalence policy, and must not be
+  read as unconditional.** Review supplied the counter-case: retarget a void
+  from occurrence A to its coincident twin B, and both occurrences keep their
+  keys and their shared node address, the relationship node's endpoint set does
+  not move, every tree entry is identical, and the diff is empty — so this rule
+  as stated writes no commit for a model that changed. That is a real hole, not
+  a tolerable edge: it is silent, and it is silent in the direction of losing
+  history. Until §2.8's equivalence policy is decided, "empty diff ⇒ no commit"
+  holds **only** for models containing no coincident duplicates, and an
+  implementation must either detect that condition or refuse to claim
+  idempotence. Whichever way §2.8 resolves, this rule has to be restated against
+  it rather than inherited.
 - **Diff before writing the tree.** An earlier draft called the unreferenced
   tree and chunks "mostly free", on the grounds that an unchanged chunk
   deduplicates against the one already stored. That reasoning does not hold for
@@ -260,39 +274,62 @@ Two rules:
   whether a tier is one node or several, and how it relates to the geometry
   pass's existing hashes, needs the geometry pipeline's view and is deferred to
   `03-diff.md`.
-- **Relationship endpoints under deduplication — resolved, with one stated
-  limit.** A `relationship` node names its endpoints by node address, which is
-  what keeps it content-only. A review raised the consequence: where §2.4
-  collapses two distinct elements to one address, a relationship naming one
-  names both. Measured in `rust/git/tests/dedup_boundary.rs` at
+- **Relationship endpoints under deduplication — OPEN. The equivalence policy
+  is undecided, and an earlier draft of this bullet both overstated the
+  resolution and rested on a false premise.**
+
+  A `relationship` node names its endpoints by node address, which is what
+  keeps it content-only. Review raised the consequence: where §2.4 collapses two
+  distinct elements to one address, a relationship naming one names both.
+
+  What the measurement does establish, in
+  `rust/git/tests/dedup_boundary.rs` at
   [`bruadam/ifc-lite@65b5982b7`](https://github.com/bruadam/ifc-lite/commit/65b5982b77c0794df588734c59cdd22c8e950c58)
-  — an external branch, not this docs change, so the measurement is not
-  reviewable from this PR — the boundary is narrower than it reads, and entry
-  cardinality survives:
+  — an external branch, not this docs change, so it is not reviewable from this
+  PR:
 
     - Two occurrences differing **only in placement** do not deduplicate, so
       the ordinary case — two openings in one wall — has no ambiguity at all.
       Deduplication needs identity in *every* component, placement included.
-    - What remains is genuinely coincident duplicates: two entities identical
-      in everything a model records, which is a modelling defect rather than a
-      representation worth preserving. Their relationships do collapse to one
-      node.
+    - What remains is genuinely coincident duplicates. Their relationships do
+      collapse to one node.
     - **The tree still names both.** Four keys over two distinct nodes, exactly
       as two identical files in git are two tree entries pointing at one blob.
       Entry cardinality lives in the tree, which is the layer §2.4 claims it
       at. This preserves *how many* occurrences there are; it does not recover
       *which* of them a collapsed relationship named, and the two are not the
       same guarantee.
-    - The residual question — which of two indistinguishable coincident
-      openings a given void targets — has no observable answer, because the two
-      differ in nothing a model records.
 
-  The limit worth writing down: **a consumer reconstructing from nodes alone,
-  bypassing the tree, sees one occurrence where there are two.** Reconstruction
-  goes through the tree, because that is where keys live, so this constrains
-  implementations rather than the format. Keying endpoints by tree key would
-  separate them, but it puts `GlobalId` back into the hash — which §2.4 exists
-  to avoid — and is not worth paying for a case with no observable answer.
+  **The correction.** An earlier draft said the residual question "has no
+  observable answer, because the two differ in nothing a model records". That is
+  wrong, and it mattered, because the whole justification for not paying for
+  tree-key endpoints was built on it. Coincident duplicates have **distinct
+  `GlobalId`s**, and the source relationships name one or the other. **The model
+  does record the association.** It is this encoding — endpoints as node
+  addresses — that discards it. The information is not absent from the source;
+  it is dropped in projection, which is a different and more serious thing.
+
+  **A consequence that reaches §2.7.** Retargeting a void from occurrence A to
+  its coincident twin B changes the model and changes nothing this encoding can
+  see: both occurrences keep their keys, both keep the same node address, the
+  relationship node's endpoint set is unchanged, so every tree entry is
+  identical and the diff is empty. Under §2.7's rule as first written, that
+  edit produces **no commit at all**. §2.7 now states the rule conditionally
+  for exactly this reason.
+
+  **What stays, and what is open.** Node-address endpoints remain the current
+  **proposal**, and the reason is unchanged: tree-key endpoints put `GlobalId`
+  back inside the hash, which is what §2.4 exists to prevent. What is *not*
+  settled is the equivalence policy — whether two coincident occurrences are
+  one node or must be separated, and if separated, by what that is not a
+  `GlobalId`. A third option neither explored nor dismissed here is an
+  occurrence discriminator derived from the relationship's own position rather
+  than from the element's identity. This needs a decision and does not have one.
+
+  The implementation limit is still worth writing down: **a consumer
+  reconstructing from nodes alone, bypassing the tree, sees one occurrence where
+  there are two.** Reconstruction goes through the tree, because that is where
+  keys live.
 
 - **Authorship fields.** The `author` and `committer` shapes are
   `04-authorship.md`'s subject; this document only says the commit carries

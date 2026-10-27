@@ -129,8 +129,9 @@ fn extract_profile(
                 if matches!(curve.ifc_type, IfcType::IfcPolyline | IfcType::IfcIndexedPolyCurve) {
                     if let Err(original) = super::profile_topology::validate(&result.loops, clearance, join_precision) {
                         if let WalkError::Stopped(_) = original { return Err(original); }
-                        if let Some(residual) = super::profile_retrace::repair(&result.loops[0], clearance, join_precision,
+                        if let Some(mut residual) = super::profile_retrace::repair(&result.loops[0], clearance, join_precision,
                             |segments| loop_from_segments(ProfileLoopKind::Outer, segments))? {
+                            residual.source = result.loops[0].source.take();
                             result.loops[0] = residual;
                             return Ok(());
                         }

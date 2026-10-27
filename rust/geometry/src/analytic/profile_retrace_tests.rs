@@ -42,7 +42,7 @@ fn issue_3641_seam_retrace_preserves_authored_source_and_exact_status() {
 fn issue_3641_equal_retrace_and_two_spurs_cancel() {
     for (points, indices) in [
         ("((0.,0.),(4.,0.),(4.,4.),(2.,4.),(2.,6.),(2.,4.),(0.,4.))", "1,2,3,4,5,6,7,1"),
-        ("((0.,0.),(4.,0.),(4.,4.),(2.,4.),(2.,6.),(2.,4.),(0.,4.),(-2.,4.))", "1,2,3,4,5,6,7,8,1"),
+        ("((0.,0.),(4.,0.),(4.,4.),(2.,4.),(2.,6.),(2.,4.),(0.,4.),(-2.,4.),(0.,4.))", "1,2,3,4,5,6,7,8,9,1"),
     ] {
         let text = altered(points, indices);
         let result = extrusion(&text, true);

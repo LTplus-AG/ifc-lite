@@ -1,5 +1,5 @@
 {
-  "status": "preregistered; never widen on failure",
+  "m8Status": "preregistered; never widen on failure",
   "retraceAreaRelative": 1e-12,
   "convexDifferenceVolumeRelative": {
     "linear": 1e-06

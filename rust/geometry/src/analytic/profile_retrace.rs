@@ -64,7 +64,7 @@ pub(super) fn repair(
     rebuild: impl FnOnce(Vec<AnalyticCurveSegment>) -> Result<AnalyticProfileLoop, WalkError>,
 ) -> Result<Option<AnalyticProfileLoop>, WalkError> {
     let Some(segments) = cancel(boundary)? else { return Ok(None) };
-    let mut residual = match rebuild(segments) {
+    let residual = match rebuild(segments) {
         Ok(value) => value,
         Err(WalkError::Unsupported(_)) => return Ok(None),
         Err(stop @ WalkError::Stopped(_)) => return Err(stop),
@@ -78,7 +78,6 @@ pub(super) fn repair(
         Err(WalkError::Unsupported(_)) => return Ok(None),
         Err(stop @ WalkError::Stopped(_)) => return Err(stop),
     }
-    residual.source = boundary.source.clone();
     Ok(Some(residual))
 }
 

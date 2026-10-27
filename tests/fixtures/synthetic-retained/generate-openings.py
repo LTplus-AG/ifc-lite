@@ -14,8 +14,8 @@ def generate():
     m = Model('f-d-openings-unreviewed')
     cases = []
 
-    def product(name, items, placement, entity='IFCWALL', label='Body'):
-        shape = m.add('IFCPRODUCTDEFINITIONSHAPE', '$', '$', seq([m.shape(items, label=label)]))
+    def product(name, items, placement, entity='IFCWALL', label='Body', kind='SweptSolid'):
+        shape = m.add('IFCPRODUCTDEFINITIONSHAPE', '$', '$', seq([m.shape(items, kind=kind, label=label)]))
         result = m.add(entity, m.gid(name), '$', repr(name), '$', '$', placement, shape, '$',
                        '.OPENING.' if entity == 'IFCOPENINGELEMENT' else '.NOTDEFINED.')
         if entity != 'IFCOPENINGELEMENT':
@@ -37,9 +37,10 @@ def generate():
             host_items = [mapped(host_items)]
         if case == 'd':
             host_items = [m.box((1, 0.2, 3), (0.5, 0.1)), m.box((1, 0.2, 3), (3.5, 0.1))]
-        host = product(case + '-host', host_items, placement, 'IFCSLAB' if case == 'e' else 'IFCWALL')
+        host = product(case + '-host', host_items, placement, 'IFCSLAB' if case == 'e' else 'IFCWALL',
+                       kind='MappedRepresentation' if case == 'b' else 'SweptSolid')
         # Nonidentity PlacementRelTo for (a) exercises both relative rotation and translation.
-        opening_place = m.place((0.5, 0, 0.3), x=(0.8, 0.6, 0), parent=placement) if case == 'a' else placement
+        opening_place = m.place((0.5, -1.2, 0.3), x=(0.8, 0.6, 0), parent=placement) if case == 'a' else placement
         size, center = (1, 0.4, 2), (2, 0.1)
         if case == 'd':
             size, center = (2, 1, 4), (0.5, 0.1)
@@ -56,7 +57,8 @@ def generate():
         if case in 'ci':
             cutter_items = [mapped(cutter_items, '2.' if case == 'i' else '1.')]
         opening = product(case + '-opening', cutter_items, opening_place, 'IFCOPENINGELEMENT',
-                          'Reference' if case == 'g' else ('Axis' if case == 'h' else 'Body'))
+                          'Reference' if case == 'g' else ('Axis' if case == 'h' else 'Body'),
+                          kind='MappedRepresentation' if case in 'ci' else 'SweptSolid')
         m.add('IFCRELVOIDSELEMENT', m.gid(case + '-void'), '$', '$', '$', host, opening)
         if case == 'j':
             material = m.add('IFCMATERIAL', "'synthetic'", '$', '$')

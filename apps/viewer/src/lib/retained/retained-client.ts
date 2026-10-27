@@ -93,8 +93,12 @@ export class RetainedClient {
     run.wake?.();
   }
 
-  /** Called when the retained model is unloaded; pagehide also uses this. */
-  unload(): void { this.cancel(); }
+  /** Called when the retained model is unloaded; pagehide also uses this.
+   * Releases the host and its idle timer directly, not only through cancel(). */
+  unload(): void {
+    this.cancel();
+    this.stopWorker();
+  }
 
   private stopWorker(): void {
     clearTimeout(this.idle);

@@ -43,6 +43,7 @@ impl Report {
         ms: f64,
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
         sources: &ifc_lite_processing::AnalyticQuantitySources,
+        exact_report_only: bool,
     ) {
         self.published += 1;
         self.cuts += shape.cuts;
@@ -59,6 +60,7 @@ impl Report {
             exact,
             if opening.is_some() { None } else { source },
             tolerances,
+            exact_report_only,
         );
         let cut_rel = opening.and_then(|e| {
             super::openings::check_opened(
@@ -110,6 +112,7 @@ impl Report {
         exact: Option<&Metrics>,
         source: Option<(f64, Option<[f64; 6]>)>,
         tolerances: &Value,
+        exact_report_only: bool,
     ) -> [Option<f64>; 5] {
         let source_rel = source.as_ref().map(|(v, _)| relative(actual.volume, *v));
         let exact_source_rel = exact.zip(source).map(|(e, (v, _))| relative(e.volume, v));
@@ -218,7 +221,7 @@ impl Report {
                 "sourceVolumeRelativeLimit": source_limit, "exactVolumeRelativeLimit": exact_limit,
             }));
         }
-        if !curved && !type_product && !exact_defect {
+        if !curved && !type_product && !exact_defect && !exact_report_only {
             for (value, key) in [
                 (vol, "volumeRelative"),
                 (area, "areaRelative"),

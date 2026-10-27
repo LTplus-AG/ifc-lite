@@ -152,6 +152,7 @@ fn compare(
     let type_expectations: BTreeMap<_, _> = type_maps.iter().map(|(&id, maps)| {
         ifc_lite_retained_native::oracle::type_maps::expected(&bytes, &sources, maps).map(|value| (id, value))
     }).collect::<Result<_, _>>()?;
+    let retraced = source::retraced(path, &sources, &mut source.decoder(), tolerances)?;
     let opening_expectations = openings::expectations(&bytes, &sources)?;
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
@@ -188,12 +189,13 @@ fn compare(
                             Err(error) => { report.violations.push(format!("{model}:{id}: {error}")); None }
                         }
                     });
+                    let retraced = (shape.product_id == 72245).then_some(retraced).flatten();
                     let expectation = if let Some(value) = type_expectations.get(&id) {
                         if value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
                             report.violations.push(format!("{model}:{id}: missing or incomplete type source oracle"));
                         }
                         value.as_ref().map(|v| (v.volume, v.bbox))
-                    } else { source::expected(&sources, id, shape.parts.len()) };
+                    } else { retraced.or_else(|| source::expected(&sources, id, shape.parts.len())) };
                     report.published(
                         &model,
                         &shape,
@@ -205,6 +207,7 @@ fn compare(
                         ms,
                         opening_expectations.get(&id),
                         &sources,
+                        retraced.is_some(),
                     );
                 }
                 ProductOutcome::Refused {

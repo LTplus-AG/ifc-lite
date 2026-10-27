@@ -56,7 +56,6 @@ function iteratorCase(raised, failure) {
       if (failure === 'next') throw raised;
       const step = { done: cursor++ > 0, value: text };
       if (failure === 'done' || failure === 'value') reject(step, failure, raised);
-      if (failure === 'done conversion') step.done = { valueOf() { throw raised; } };
       return step;
     },
   };
@@ -101,7 +100,7 @@ function cases(raised) {
     }) }]);
     result.push([`${field} iterator getter`, { ...prefix(), [field]: reject({}, Symbol.iterator, raised) }]);
     result.push([`${field} iterator call`, { ...prefix(), [field]: { [Symbol.iterator]() { throw raised; } } }]);
-    for (const failure of ['next getter', 'next', 'done', 'done conversion', 'value']) {
+    for (const failure of ['next getter', 'next', 'done', 'value']) {
       result.push([`${field} iterator ${failure}`, { ...prefix(), [field]: {
         [Symbol.iterator]() { return iteratorCase(raised, failure); },
       } }]);
@@ -140,7 +139,7 @@ function cases(raised) {
   result.push(['nested diagnostic function name', nested([text, reject(() => {}, 'name', raised)])]);
   result.push(['nested diagnostic tag', nested([text, reject(new Set(), Symbol.toStringTag, raised)])]);
   result.push(['nested Map iterator getter', nested([text, reject(new Map(), Symbol.iterator, raised)])]);
-  for (const failure of ['next getter', 'next', 'done', 'done conversion', 'value', 'pair key', 'pair value']) {
+  for (const failure of ['next getter', 'next', 'done', 'value', 'pair key', 'pair value']) {
     const map = new Map();
     map[Symbol.iterator] = () => {
       if (!failure.startsWith('pair')) return iteratorCase(raised, failure);
@@ -171,6 +170,45 @@ test('getter rejection releases owned handles after decoded strings, then reuses
           assert.deepEqual(wasm[method](valid), expected[methodIndex], `${method}/${location}: same-module reuse`);
           assert.equal(wasm.diffTestExternrefLiveCount(), baseline,
             `${method}/${location}/${iteration}: valid reuse must release all owned externrefs`);
+        }
+      }
+    }
+  }
+});
+
+// #8114: ToBoolean does not call valueOf/@@toPrimitive and accepts Symbols.
+// These are successful terminal observations, not getter-rejection cases.
+// Keep the separate throwing `done` getter in the rejection matrix above.
+test('truthy iterator completion releases owned handles without coercion and permits reuse (#8114)', () => {
+  const raised = Symbol('numeric coercion or terminal value must not run');
+  const completions = ['true', 0.5, 2 ** 32, {}, [], Symbol('done'), 1n,
+    { valueOf() { throw raised; }, [Symbol.toPrimitive]() { throw raised; } }];
+  for (const done of completions) {
+    const terminal = () => {
+      let calls = 0;
+      return { next() {
+        assert.equal(++calls, 1, 'truthy done must terminate on the first step');
+        return { done, get value() { throw raised; } };
+      } };
+    };
+    const emptyMap = new Map();
+    emptyMap[Symbol.iterator] = terminal;
+    const samples = [
+      ...['materials', 'classifications'].map(field => [
+        { ...prefix(), [field]: { [Symbol.iterator]: terminal } }, prefix(),
+      ]),
+      [nested([text, emptyMap]), nested([text, {}])],
+    ];
+    for (const [input, control] of samples) {
+      for (const [methodIndex, method] of methods.entries()) {
+        const wanted = wasm[method](control);
+        for (let warm = 0; warm < 4; warm++) assert.deepEqual(wasm[method](input), wanted);
+        const baseline = wasm.diffTestExternrefLiveCount();
+        for (let iteration = 0; iteration < 64; iteration++) {
+          assert.deepEqual(wasm[method](input), wanted);
+          assert.equal(wasm.diffTestExternrefLiveCount(), baseline, 'successful completion releases owned externrefs');
+          assert.deepEqual(wasm[method](valid), expected[methodIndex]);
+          assert.equal(wasm.diffTestExternrefLiveCount(), baseline, 'same-module reuse releases owned externrefs');
         }
       }
     }

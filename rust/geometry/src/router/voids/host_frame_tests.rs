@@ -101,7 +101,7 @@ struct Opening {
 
 impl Opening {
     /// The placed, classified cutter.
-    fn classify(&self, router: &GeometryRouter, wall: &Matrix4<f64>) -> OpeningType {
+    fn classify(&self, router: &GeometryRouter, wall: &Matrix4<f64>) -> CutterKind {
         let item = GeometryRouter::make_box_mesh(
             Point3::new(self.x[0] + self.item_offset, -CUTTER_HALF_DEPTH, self.z[0]),
             Point3::new(self.x[1] + self.item_offset, CUTTER_HALF_DEPTH, self.z[1]),
@@ -114,7 +114,7 @@ impl Opening {
         let depth = wall.transform_vector(&Vector3::new(0.0, 1.0, 0.0));
         let frame = infer_opening_frame(&mesh, Some(&depth)).expect("a box has a frame");
         assert!(!frame.is_axis_aligned(), "the wall is plan-rotated");
-        OpeningType::DiagonalRectangular(mesh, frame)
+        CutterKind::DiagonalRectangular(mesh, frame)
     }
 
     fn volume(&self) -> f64 {
@@ -209,7 +209,7 @@ fn cut_and_count_seam(wall: &Matrix4<f64>, openings: &[Opening], at: &str) -> us
     let router = GeometryRouter::with_scale_and_local_frame(1.0, false);
     let host = host(&router, wall);
     let host_volume = volume(&host);
-    let classified: Vec<OpeningType> = openings.iter().map(|o| o.classify(&router, wall)).collect();
+    let classified: Vec<CutterKind> = openings.iter().map(|o| o.classify(&router, wall)).collect();
     let ctx = VoidContext {
         merged_openings: GeometryRouter::merge_rectangular_openings(&classified),
         openings: classified,

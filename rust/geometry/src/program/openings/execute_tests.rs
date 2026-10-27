@@ -5,7 +5,7 @@
 use super::{execute, Execution, NumericalOutcome};
 use crate::kernel::budget;
 use crate::resource::{self, ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
-use crate::router::voids::{OpeningType, ParamRectCut, RectParam, VoidContext};
+use crate::router::voids::{CutterKind, ParamRectCut, RectParam, VoidContext};
 use crate::{Error, GeometryRouter, Mesh, Point3, TessellationQuality, Vector3};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, PoisonError};
@@ -55,7 +55,7 @@ fn capped_fixture() -> (Mesh, VoidContext) {
     let mut cutter = box_mesh(-0.8, [0.5, 0.15 + 1.3e-4, 1.0 + 1.7e-4]);
     cutter.merge(&box_mesh(0.8, [0.5, 0.15 + 1.3e-4, 1.0 + 1.7e-4]));
     let (lo, hi) = cutter.bounds();
-    let opening = OpeningType::NonRectangular(cutter, lo.cast(), hi.cast(), None);
+    let opening = CutterKind::NonRectangular(cutter, lo.cast(), hi.cast(), None);
     let context = VoidContext {
         openings: vec![opening.clone()],
         merged_openings: vec![opening],
@@ -168,7 +168,7 @@ fn root_capped_failure_survives_a_stop_that_rejects_the_geometry() {
 fn root_capped_failure_drains_on_unwind_and_resumes_the_original_payload() {
     let router = GeometryRouter::new();
     let (host, context) = capped_fixture();
-    let OpeningType::NonRectangular(cutter, ..) = &context.openings[0] else {
+    let CutterKind::NonRectangular(cutter, ..) = &context.openings[0] else {
         unreachable!()
     };
     let execution = Execution::new(TessellationQuality::default());
@@ -235,7 +235,7 @@ fn parametric_fixture() -> (Mesh, VoidContext) {
         center: Point3::origin(),
         half,
     };
-    let opening = OpeningType::Rectangular(
+    let opening = CutterKind::Rectangular(
         Point3::new(-1., -1., -1.),
         Point3::new(1., 1., 1.),
         Some(Vector3::z()),

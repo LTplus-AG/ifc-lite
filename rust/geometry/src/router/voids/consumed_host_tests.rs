@@ -17,20 +17,28 @@ fn wall() -> Mesh {
     GeometryRouter::make_box_mesh(Point3::new(-2.0, -0.1, 0.0), Point3::new(2.0, 0.1, 3.0))
 }
 
-fn rect(mn: [f64; 3], mx: [f64; 3]) -> OpeningType {
-    OpeningType::Rectangular(
+fn rect(mn: [f64; 3], mx: [f64; 3]) -> CutterKind {
+    CutterKind::Rectangular(
         Point3::new(mn[0], mn[1], mn[2]),
         Point3::new(mx[0], mx[1], mx[2]),
         Some(Vector3::y()),
     )
 }
 
-fn boxed(mn: [f64; 3], mx: [f64; 3]) -> OpeningType {
-    let (mn, mx) = (Point3::new(mn[0], mn[1], mn[2]), Point3::new(mx[0], mx[1], mx[2]));
-    OpeningType::NonRectangular(GeometryRouter::make_box_mesh(mn, mx), mn, mx, Some(Vector3::y()))
+fn boxed(mn: [f64; 3], mx: [f64; 3]) -> CutterKind {
+    let (mn, mx) = (
+        Point3::new(mn[0], mn[1], mn[2]),
+        Point3::new(mx[0], mx[1], mx[2]),
+    );
+    CutterKind::NonRectangular(
+        GeometryRouter::make_box_mesh(mn, mx),
+        mn,
+        mx,
+        Some(Vector3::y()),
+    )
 }
 
-fn context(openings: Vec<OpeningType>, param: Option<ParamRectCut>) -> VoidContext {
+fn context(openings: Vec<CutterKind>, param: Option<ParamRectCut>) -> VoidContext {
     VoidContext {
         merged_openings: GeometryRouter::merge_rectangular_openings(&openings),
         openings,
@@ -147,8 +155,11 @@ fn web_boxes(gap: f64) -> Vec<([f64; 3], [f64; 3])> {
     vec![([-2.0, -0.3, -0.5], [-gap, 0.3, 3.5]), ([gap, -0.3, -0.5], [2.0, 0.3, 3.5])]
 }
 
-fn web_openings(gap: f64) -> Vec<OpeningType> {
-    web_boxes(gap).into_iter().map(|(a, b)| rect(a, b)).collect()
+fn web_openings(gap: f64) -> Vec<CutterKind> {
+    web_boxes(gap)
+        .into_iter()
+        .map(|(a, b)| rect(a, b))
+        .collect()
 }
 
 #[test]

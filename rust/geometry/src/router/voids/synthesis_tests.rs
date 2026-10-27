@@ -69,7 +69,7 @@ fn issue_7292_cleaned_item_cannot_be_resurrected_by_rectangular_fallback() {
             router.set_preserve_triangle_order(preserve_order);
             let classified = crate::program::openings::classify(&opening, &[20], true, &router, &mut decoder).unwrap();
             assert_eq!(classified.len(), 1, "only the valid item may supply a cut");
-            let OpeningType::Rectangular(min, max, _) = &classified[0] else {
+            let CutterKind::Rectangular(min, max, _) = &classified[0] else {
                 panic!("the valid box retains its ordinary rectangular bounds path");
             };
             assert_eq!(*min, Point3::origin());
@@ -503,7 +503,7 @@ fn an_inward_wound_host_is_read_the_same_as_an_outward_one() {
 // (weld-invariant) triangle count stays over 100 is exactly the fixture that
 // tells the two gates apart: reverting the fix (back to `vertex_count > 100`)
 // silently swaps which of those two meshes — and hence which vertex count —
-// the returned `OpeningType::NonRectangular` carries, even though the
+// the returned `CutterKind::NonRectangular` carries, even though the
 // diagnostic `kind` label is `NonRectangular` either way.
 mod issue_4119_triangle_count_gate {
     use super::*;
@@ -787,14 +787,14 @@ DATA;
             assert_eq!(openings.len(), 1, "n={n}: exactly one opening classified");
 
             let mesh = match &openings[0] {
-                OpeningType::NonRectangular(mesh, ..) => mesh,
+                CutterKind::NonRectangular(mesh, ..) => mesh,
                 other => panic!(
                     "n={n}: expected NonRectangular (a zigzag strip is never a \
-                     clean box), got a different OpeningType variant: {}",
+                     clean box), got a different CutterKind variant: {}",
                     match other {
-                        OpeningType::Rectangular(..) => "Rectangular",
-                        OpeningType::DiagonalRectangular(..) => "DiagonalRectangular",
-                        OpeningType::NonRectangular(..) => unreachable!(),
+                        CutterKind::Rectangular(..) => "Rectangular",
+                        CutterKind::DiagonalRectangular(..) => "DiagonalRectangular",
+                        CutterKind::NonRectangular(..) => unreachable!(),
                     }
                 ),
             };
@@ -858,14 +858,14 @@ DATA;
         assert_eq!(openings.len(), 1, "exactly one opening classified");
 
         let mesh = match &openings[0] {
-            OpeningType::NonRectangular(mesh, ..) => mesh,
+            CutterKind::NonRectangular(mesh, ..) => mesh,
             other => panic!(
                 "expected NonRectangular (128 triangles, no inferable box/frame), \
-                 got a different OpeningType variant: {}",
+                 got a different CutterKind variant: {}",
                 match other {
-                    OpeningType::Rectangular(..) => "Rectangular",
-                    OpeningType::DiagonalRectangular(..) => "DiagonalRectangular",
-                    OpeningType::NonRectangular(..) => unreachable!(),
+                    CutterKind::Rectangular(..) => "Rectangular",
+                    CutterKind::DiagonalRectangular(..) => "DiagonalRectangular",
+                    CutterKind::NonRectangular(..) => unreachable!(),
                 }
             ),
         };
@@ -960,10 +960,10 @@ mod issue_4611_far_field_threshold {
 
 #[test]
 fn issue_6940_rectangular_merge_preserves_small_gaps_and_steps() {
-    let rect = |lo: [f64; 3], hi: [f64; 3]| OpeningType::Rectangular(
+    let rect = |lo: [f64; 3], hi: [f64; 3]| CutterKind::Rectangular(
         Point3::from(lo), Point3::from(hi), Some(Vector3::z()));
-    let covered = |openings: &[OpeningType], p: [f64; 3]| openings.iter().any(|o| {
-        let OpeningType::Rectangular(lo, hi, _) = o else { panic!("rectangular fixture") };
+    let covered = |openings: &[CutterKind], p: [f64; 3]| openings.iter().any(|o| {
+        let CutterKind::Rectangular(lo, hi, _) = o else { panic!("rectangular fixture") };
         (0..3).all(|k| p[k] >= lo[k] && p[k] <= hi[k])
     });
     for (original, witness) in [

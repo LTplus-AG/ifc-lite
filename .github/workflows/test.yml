@@ -944,6 +944,8 @@ jobs:
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
           # #7711: preserve the new independent probe module so its tests load;
           # disable only placement/fill checks and require assertion failures.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
           # Exact globe placement: preserve the new modules so the tests load;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 pub use ifc_lite_retained_native::oracle::quantities::expected;
+type SourceExpectation = (f64, Option<[f64; 6]>);
 
 /// The authored #3641 spur has no ordinary analytic quantity. Its independent
 /// region oracle is mandatory before exact metrics become report-only (M8).
@@ -8,7 +9,7 @@ pub fn retraced(
     sources: &ifc_lite_processing::AnalyticQuantitySources,
     decoder: &mut ifc_lite_core::EntityDecoder,
     tolerances: &serde_json::Value,
-) -> Result<Option<(f64, Option<[f64; 6]>)>, &'static str> {
+) -> Result<Option<SourceExpectation>, &'static str> {
     if model != std::path::Path::new("rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc") {
         return Ok(None);
     }

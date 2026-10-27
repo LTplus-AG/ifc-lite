@@ -21,7 +21,8 @@ try {
   const fixture = await (await fetch('/fixtures/mapped_instances_synthetic.ifc')).text();
   const { runSessionContract } = await import('/contract/session-contract.mjs');
   const manifest = await (await fetch('/manifests/cli-retained-coverage.tsv')).text();
-  const session = await runSessionContract(wasm, fixture, manifest);
+  const { RetainedDriver } = await import(__DRIVER_URL__);
+  const session = await runSessionContract(wasm, fixture, manifest, RetainedDriver);
   window.contractResult = { ...await runRetainedBrowserContract(wasm, fixture), session };
 } catch (error) { window.contractResult = { passed: false, error: String(error), stack: error?.stack }; }
 </script>`;
@@ -30,7 +31,10 @@ export async function runRetainedBrowserContract({ build, sdk, timeout = 300_000
   const { temporary, root } = await stageTemporary({ build, sdk });
   let server, browser;
   try {
-    await writeFile(join(temporary, 'index.html'), PAGE);
+    const bindings = await readFile(join(ROOT, 'packages/wasm/pkg-retained/ifc-lite.js'), 'utf8');
+    const driver = bindings.match(/from ['"](\.\/snippets\/[^'"]+\/retained-driver\.mjs)['"]/);
+    if (!driver) throw new Error('Built retained package has no driver import to observe');
+    await writeFile(join(temporary, 'index.html'), PAGE.replace('__DRIVER_URL__', JSON.stringify(`/pkg/${driver[1].slice(2)}`)));
     server = serveRoots({
       '/smlib/': root,
       '/pkg/': join(ROOT, 'packages/wasm/pkg-retained'),

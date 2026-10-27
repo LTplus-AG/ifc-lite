@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 // #7955 M2-A: real controller + actual qualified SMLib Worker, never a kernel fake.
-export async function runSessionContract(wasm, fixture, manifest) {
+export async function runSessionContract(wasm, fixture, manifest, RetainedDriver) {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const sameIds = (actual, expected) => [...actual].sort((a, b) => a - b).join(',') === [...expected].sort((a, b) => a - b).join(',');
   const rows = manifest.split('\n').map(line => line.split('\t'))
@@ -12,6 +12,13 @@ export async function runSessionContract(wasm, fixture, manifest) {
   const session = new wasm.RetainedModelSession();
   const prepass = api.buildPrePassOnce(bytes);
   const summaries = [];
+  let qualifications = 0;
+  const qualify = RetainedDriver.prototype.qualify;
+  // Pass through to the real SDK witnesses; observe calls without substituting results.
+  RetainedDriver.prototype.qualify = function (...args) {
+    qualifications++;
+    return qualify.apply(this, args);
+  };
   try {
     for (const detail of ['view', 'shape']) {
       let start;
@@ -49,13 +56,15 @@ export async function runSessionContract(wasm, fixture, manifest) {
       assert(start && sameIds(published, ids), 'every candidate published once');
       assert(summary.candidates === ids.length && summary.published === ids.length && summary.refused === 0, 'summary agrees with outcomes');
       assert(summary.workersAcquired === (detail === 'view' ? 1 : 0) && summary.restarts === 0, 'warm run reuses the qualified worker');
-      summaries.push(summary);
+      assert(qualifications === 1, 'only the cold run qualifies; warm reuse never requalifies');
+      summaries.push({ ...summary, qualifications: detail === 'view' ? qualifications : 0 });
     }
     const events = [];
     const empty = await session.run(bytes, { detail: 'shape', ids: new Uint32Array() }, event => events.push(event));
     assert(empty.candidates === 0 && events.length === 1 && events[0].candidateIds.length === 0, 'empty ids selects nothing');
     return { passed: true, summaries };
   } finally {
+    RetainedDriver.prototype.qualify = qualify;
     api.clearPrePassCache();
     session.free();
     api.free();

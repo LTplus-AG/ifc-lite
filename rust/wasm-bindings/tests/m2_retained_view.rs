@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #![cfg(feature = "retained-browser")]
+// The product wrapper requires private publication authority; this witness uses ShapePart.
+#[allow(dead_code)]
 #[path = "../src/retained_view.rs"]
 mod retained_view;
 

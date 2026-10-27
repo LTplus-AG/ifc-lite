@@ -59,3 +59,18 @@ Committed expectations: `issue_1985_scaled_kinds` #74 is `incomplete`; #81, #88,
 #109 are `operation_unsupported`; #99 publishes. For `issue_098_wall_W`, only wall
 #928204 is `opening_strategy`; its seven windows publish and its seven opening
 elements are `operation_unsupported`.
+
+M3-0 adds source-only opening oracles under `oracle::openings`: exact line/arc
+Green integrals, height bands and inclusion–exclusion for up to eight convex
+cutter values with parallel world extrusion axes; nominal volume bounds and
+linear-host bbox containment. Unsupported prism families return no prism
+expectation. The oracle never changes a product outcome. The opened-product
+exact comparison is report-only; f64 source measurements are the gate.
+
+The comparison TSV adds `cuts`, `cutMs`, `consumedParts`, `src_cut_vol_rel`.
+The first three are zero in M3-0 because the controller refuses opened products
+before cutting; they are not estimates from general Boolean timings. The cut
+volume field is empty when no published cut can be compared. `summary.json`
+lists supported extrusion openings and every opening without analytic
+quantities. The committed universe adds issue_2019 and issue_3641; the latter
+observes current codes only. `f-d-openings.ifc` is unreviewed and does not count.

@@ -8,6 +8,8 @@ import { roundOrder, seededRand } from './ab-order.mjs';
 
 export const VERSION = 'ifc-diff-e2e/3';
 export const OPTIONS = [
+  { scope: 'data' },
+  { scope: 'data', matchUnpairedByContent: true },
   { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true },
 ];
 export const LIMITS = Object.freeze({ pairs: 6, rows: 1_000_000,
@@ -17,7 +19,7 @@ export const LIMITS = Object.freeze({ pairs: 6, rows: 1_000_000,
 export const ACCEPTANCE = Object.freeze({
   status: 'premeasurement-rule',
   primaryEndpoints: ['cold lifecycleTotalMs', 'warm per-process median public-call totalMs'],
-  primaryCases: ['demo', 'haus', 'large'], options: [0],
+  primaryCases: ['demo', 'haus', 'large'], options: [2],
   noninferiorityRatio: 1.10,
   statisticalMethod: 'paired percentile bootstrap median branch/base ratio; 95% pointwise CI; 10000 resamples; fixed seed 8042; no familywise speedup claim',
   inferenceUnit: 'fresh process pair; repeats summarized by process median',
@@ -58,7 +60,7 @@ export function protocol({ pairs = 6, seed = 8042, dryRun = false,
       cold: 'fresh process, one option, continuous imports/init/read/parse/fingerprints/call/release+GC',
       warm: 'separate fresh process, one untimed conditioning call, retained JS rows, repeated public calls',
       proof: 'separate audited processes before timing each fixture; no hashes in timing processes',
-      optionOrder: [0], modeOrder: ['cold', 'warm'],
+      optionOrder: [2], modeOrder: ['cold', 'warm'],
       caches: 'cold JS/WASM process; uncontrolled warm OS filesystem cache; no cache eviction',
     }, pairs, seed, retained, limits: LIMITS, options: OPTIONS,
     order: roundOrder(pairs, seededRand(seed)),

@@ -14,7 +14,8 @@ The replacement uses six paired rounds with fixed seed 8042 and balanced
 randomized order. It covers the demo revision pair, AC20-FZK-Haus and the
 preserved large controlled IFC revision (head SHA256
 f8e748cf1f2128609257c939aac9df40c6f62f70bbca6813ff5a67bb06ac853a), with one full
-public-call configuration. That gives six primary endpoints and 72 timing
+timed public-call configuration (all three configurations remain in untimed
+identity proofs). That gives six primary endpoints and 72 timing
 children. Cold lifecycle includes initialization and fingerprint construction;
 warm public calls retain inputs and include marshaling, comparison, result
 restoration and per-call handle release. Warm repeats run within one process.

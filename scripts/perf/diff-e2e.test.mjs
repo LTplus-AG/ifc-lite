@@ -20,7 +20,8 @@ test('#8042 protocol requires six pairs, reproducible balanced interleaving and 
   const p = protocol();
   assert.equal(p.pairs, 6);
   assert.deepEqual(p.cases.map(c => c.id), ['demo', 'haus', 'large']);
-  assert.equal(p.options.length, 1);
+  assert.equal(p.options.length, 3);
+  assert.deepEqual(p.execution.optionOrder, [2]);
   assert.equal(protocol({ pairs: 1, dryRun: true }).cases.length, 2);
   assert.deepEqual(validateProtocol(p), p);
   assert.deepEqual(protocol(), p);

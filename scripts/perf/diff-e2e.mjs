@@ -184,7 +184,7 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
       entry.workloads = [];
       // Fixed option order is declared in protocol; each option/mode gets its
       // own fresh process pairs, so no prior option warms a cold endpoint.
-      for (const mode of ['cold', 'warm']) for (let optionIndex = 0; optionIndex < p.options.length; optionIndex++) {
+      for (const mode of ['cold', 'warm']) for (const optionIndex of p.execution.optionOrder) {
         const workload = { mode, optionIndex, pairs: [] };
         entry.workloads.push(workload);
         for (let round = 0; round < p.pairs; round++) {
@@ -286,7 +286,7 @@ export async function dryRun({ baseRoot, branchRoot, fixtureRoot, out }, sampleF
       const entry = { id: fixture.id, fixtures: await Promise.all(fixture.paths.map(path => fileReceipt(path))), proof: {}, workloads: [] };
       report.cases.push(entry);
       const payload = arm => ({ root: arm === 'base' ? baseRoot : branchRoot, fixture,
-        options: p.options, retained: p.retained, implementation: arm === 'base' ? 'typescript' : 'rust-wasm' });
+        options: p.options, optionIndex: p.execution.optionOrder[0], retained: p.retained, implementation: arm === 'base' ? 'typescript' : 'rust-wasm' });
       for (const arm of p.order[0]) entry.proof[arm] = await sampleFn({ ...payload(arm), mode: 'proof' });
       assertPair(entry.proof.base, entry.proof.branch);
       for (const mode of ['cold', 'warm']) {

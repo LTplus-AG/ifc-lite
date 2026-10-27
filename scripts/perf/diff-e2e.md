@@ -15,7 +15,7 @@ large controlled revision pair. The large head SHA256 is enforced:
 `f8e748cf1f2128609257c939aac9df40c6f62f70bbca6813ff5a67bb06ac853a`.
 Both large file paths and receipts are bound before measurement. Keep its
 existing source/recipe/expected-output evidence; do not regenerate it. The
-750k synthetic expansion is removed. The single public-call configuration
+750k synthetic expansion is removed. The single timed public-call configuration
 has content matching, split/merge and successor detection enabled. CLI rows
 are data-only; this is not a geometry coverage claim.
 
@@ -28,7 +28,8 @@ public facade. Warm repetitions stay in that process; their median is one
 observation, never three independent samples. Fingerprint construction and final
 release remain in the warm lifecycle report, outside warm call latency.
 
-Proofs run separately before timing. Full input/output hashes, Map order,
+Proofs run separately before timing and retain all three original option
+configurations, including disabled versus enabled optional results. Full input/output hashes, Map order,
 optional-versus-empty/absent values, secondary claims, original row references
 and byKey entry identity remain a **hard gate independent of timing**. Hashing
 and resolver auditing never enter timing children. Source, binary, runtime,

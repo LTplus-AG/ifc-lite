@@ -12,8 +12,9 @@ there are at most three replacements, even if a larger limit is requested.
 
 Published parts contain f64 object-local metres and column-major placement
 matrices into absolute IFC Z-up world metres. Every product carries
-`PresentationObligationsUnmet`. Shape publication grants no opening, material,
-appearance, or persistent-face authority. Final affine-only values remain
+`PresentationObligationsUnmet`. Completed opening cuts and plan-proven unvoided
+products discharge `OpeningClosure`; material, appearance, and persistent-face
+obligations remain. Final affine-only values remain
 `incomplete` in M1. `require_final_product` still refuses.
 
 Build the real worker using `native/smlib-adapter/README.md`, then run from the
@@ -61,7 +62,7 @@ origin site/entity/cause, and the original error message.
 
 Committed expectations: `issue_1985_scaled_kinds` #74 is `incomplete`; #81, #88,
 #109 are `operation_unsupported`; #99 publishes. For `issue_098_wall_W`, only wall
-#928204 is `opening_strategy`; its seven windows publish and its seven opening
+#928204 is `opening_unsupported`; its seven windows publish and its seven opening
 elements are `operation_unsupported`.
 
 M3-0 adds source-only opening oracles under `oracle::openings`: exact line/arc
@@ -72,8 +73,10 @@ expectation. The oracle never changes a product outcome. The opened-product
 exact comparison is report-only; f64 source measurements are the gate.
 
 The comparison TSV adds `cuts`, `cutMs`, `consumedParts`, `src_cut_vol_rel`.
-The first three are zero in M3-0 because the controller refuses opened products
-before cutting; they are not estimates from general Boolean timings. The cut
+M3-A records each admitted Difference separately, with elapsed cut times in
+`summary.json`; published rows report their cut count and total cut time.
+Certified consumption refuses the whole product with `empty_result` and an
+`opening_cut` origin. Material layers refuse before host or opening work. The cut
 volume field is empty when no published cut can be compared. `summary.json`
 lists supported extrusion openings and every opening without analytic
 quantities. The committed universe adds issue_2019 and issue_3641; the latter

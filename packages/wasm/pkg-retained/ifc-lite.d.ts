@@ -205,7 +205,8 @@ export type RetainedSessionEvent =
 | (RetainedProductRefusal & { kind: 'refused' })
 | { kind: 'published'; expressId: number; ifcType: string;
 marker: 'PresentationObligationsUnmet';
-obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; meshes: MeshCollection };
+obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
+meshes: MeshCollection };
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
@@ -223,6 +224,11 @@ export interface RetainedShapePart {
 }
 export interface RetainedShapeProduct {
     status: 'published';
+    /** Opening cuts applied (M3). Always set by retainedModel/RetainedModelSession;
+     * optional so consumer-built literals stay valid across minor versions. */
+    cuts?: number;
+    /** Host parts consumed by a cut; always 0 on a published product. */
+    consumedParts?: number;
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
@@ -233,7 +239,7 @@ export interface RetainedProductRefusal {
     status: 'refused';
     expressId: number;
     ifcType: string;
-    code: 'opening_strategy' | 'material_layer_strategy' | 'operation_unsupported'
+    code: 'opening_strategy' | 'opening_unsupported' | 'material_layer_strategy' | 'operation_unsupported'
     | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
     | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
     | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';

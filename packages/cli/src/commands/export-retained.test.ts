@@ -14,7 +14,7 @@ import type { RetainedShapeProduct } from '../../../wasm/pkg-retained/ifc-lite.j
 const dirs: string[] = [];
 afterEach(async () => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true }); });
 const engine: RetainedEngine = { directory: '/unused', url: new URL('file:///unused/'), sdk: 'protocol-test', capabilities: null, manifestSha256: '0'.repeat(64) };
-const shape: RetainedShapeProduct = { status: 'published', expressId: 27, ifcType: 'IfcBuildingElementProxy', marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'],
+const shape: RetainedShapeProduct = { status: 'published', cuts: 0, consumedParts: 0, expressId: 27, ifcType: 'IfcBuildingElementProxy', marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'],
   parts: [{ positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0), indices: Uint32Array.of(0, 1, 2),
     worldFromObject: Float64Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1), curved: false }] };
 

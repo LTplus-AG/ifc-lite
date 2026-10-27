@@ -1806,7 +1806,15 @@ Retained publishes complete products only, with no exact fallback. OBJ headers c
 `PresentationObligationsUnmet`: output is shape-only and does not meet the display contract.
 The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
-refusal code/origin or part metrics and unmet obligations. Volumes use unrounded f64
+refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
+
+Retained opening subtraction runs each opening body value separately in relationship order.
+A consumed host part refuses the complete product with `empty_result`; partial or whole-product
+removal is not published. Unsupported opening geometry reports `opening_unsupported`, while
+material-layer hosts report `material_layer_strategy` before opening execution. Successful
+opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their OBJ marker
+lists `IfcAppearance, MaterialLayers, PersistentFaces`. Layer, appearance, and face identity
+obligations still prevent final display-contract publication.

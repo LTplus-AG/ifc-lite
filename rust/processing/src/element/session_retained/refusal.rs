@@ -10,6 +10,7 @@ use ifc_lite_geometry::program::transactions::TransactionFailureKind as Kind;
 #[non_exhaustive]
 pub enum RetainedProductRefusal {
     OpeningStrategy,
+    OpeningUnsupported,
     MaterialLayerStrategy,
     OperationUnsupported,
     SourceInvalid,
@@ -36,6 +37,7 @@ pub struct RefusalOrigin {
 impl RetainedProductRefusal {
     pub fn code(&self) -> &'static str {
         match self {
+            Self::OpeningUnsupported => "opening_unsupported",
             Self::OpeningStrategy => "opening_strategy",
             Self::MaterialLayerStrategy => "material_layer_strategy",
             Self::OperationUnsupported => "operation_unsupported",
@@ -70,6 +72,11 @@ impl RetainedExecutionError {
                     Refusal::Incomplete
                 }
             },
+            Self::Opening { inner, .. } => {
+                let (code, inner_origin) = inner.refusal();
+                origin = inner_origin;
+                if code == Refusal::OperationUnsupported { Refusal::OpeningUnsupported } else { code }
+            }
             Self::Common(error) => {
                 origin = error
                     .origin_view()
@@ -120,6 +127,7 @@ pub(super) fn common_kind_refusal(kind: Kind, stop: Option<ProgramStop>) -> Reta
     match kind {
         Kind::OperationUnsupported => Refusal::OperationUnsupported,
         Kind::Source | Kind::Unsupported => Refusal::SourceInvalid,
+        Kind::Empty => Refusal::EmptyResult,
         Kind::Incomplete => Refusal::Incomplete,
         Kind::DeadlineExceeded => Refusal::DeadlineExceeded,
         Kind::Cancelled => Refusal::Cancelled,

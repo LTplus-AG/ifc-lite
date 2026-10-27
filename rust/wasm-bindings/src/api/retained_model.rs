@@ -20,6 +20,11 @@ export interface RetainedShapePart {
 }
 export interface RetainedShapeProduct {
     status: 'published';
+    /** Opening cuts applied (M3). Always set by retainedModel/RetainedModelSession;
+     * optional so consumer-built literals stay valid across minor versions. */
+    cuts?: number;
+    /** Host parts consumed by a cut; always 0 on a published product. */
+    consumedParts?: number;
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
@@ -30,7 +35,7 @@ export interface RetainedProductRefusal {
     status: 'refused';
     expressId: number;
     ifcType: string;
-    code: 'opening_strategy' | 'material_layer_strategy' | 'operation_unsupported'
+    code: 'opening_strategy' | 'opening_unsupported' | 'material_layer_strategy' | 'operation_unsupported'
         | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
         | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
         | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';
@@ -121,6 +126,8 @@ pub(super) fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
             set(&result, "status", &"published".into())?;
             set(&result, "expressId", &product.product_id.into())?;
             set(&result, "ifcType", &product.ifc_type.name().into())?;
+            set(&result, "cuts", &(product.cuts as f64).into())?;
+            set(&result, "consumedParts", &(product.consumed_parts as f64).into())?;
             set(&result, "marker", &"PresentationObligationsUnmet".into())?;
             let obligations = Array::new();
             for obligation in &product.obligations.0 {

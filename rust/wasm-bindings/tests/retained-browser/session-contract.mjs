@@ -38,6 +38,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
           assert(event.marker === 'PresentationObligationsUnmet' && event.obligationsUnmet.length > 0, 'shape-only marker retained');
           published.push(event.expressId);
           if (detail === 'view') {
+            assert(event.cuts === 0 && event.consumedParts === 0, 'view event carries the M3 cut diagnostics (no openings here)');
             const collection = event.meshes;
             assert(collection.length > 0, 'view publishes a real mesh collection');
             assert([collection.rtcOffsetX, collection.rtcOffsetY, collection.rtcOffsetZ].every((v, i) => Object.is(v, start.frame.rtcOffset[i])), 'collection uses start frame');

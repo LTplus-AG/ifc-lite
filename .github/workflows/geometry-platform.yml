@@ -14,6 +14,10 @@ on:
       - 'rust/processing/tests/fixtures/issue_3641_*'
       - 'rust/processing/src/processor/**'
       - 'rust/processing/src/element/session_retained/**'
+      - 'rust/geometry/src/program/retained/**'
+      - 'rust/geometry/tests/m3_*'
+      - 'rust/geometry/tests/support/m3_opening_fixtures.rs'
+      - 'rust/processing/tests/m3_*'
       - 'rust/processing/src/element.rs'
       - 'rust/processing/Cargo.toml'
       - 'tests/fixtures/cli-retained/**'
@@ -126,6 +130,17 @@ jobs:
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$IFCLITE_SMLIB_WORKER" --out "$RUNNER_TEMP/native-compare" --committed --gate
+      - name: M3 native opening witnesses
+        id: m3-native
+        continue-on-error: true
+        run: |
+          export IFCLITE_REQUIRE_SMLIB=1
+          export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
+          export IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json"
+          cargo test --locked -p ifc-lite-retained-native --features retained-runtime --test m3_native -- --nocapture | tee "$RUNNER_TEMP/m3-native.log"
+          for witness in m3_prism_curved m3_synthetic_empty m3_scaled_cutter m3_nonbakeable_cutter m3_unsupported m3_kernel_failure m3_frames m3_lineage m3_reference m3_two_parts_two_openings m3_empty_opening_body; do
+            grep -Fx "sdk witness executed: $witness" "$RUNNER_TEMP/m3-native.log"
+          done
       - name: Download optional corpus
         if: inputs.corpus == true
         run: corepack enable && pnpm fixtures
@@ -193,6 +208,11 @@ jobs:
             --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
           # The SMLib-free runtime test uses its own transport; real-Worker
           # tests continue to use the untouched SDK assets under /smlib/.
+          # m3-native is continue-on-error: a missing reference must not abort the
+          # later independent lanes; m3-browser then fails with its own message.
+          if [ -f "$RUNNER_TEMP/m3-native-openings.json" ]; then
+            cp "$RUNNER_TEMP/m3-native-openings.json" rust/wasm-bindings/smlib/m3-native-openings.json
+          fi
           node scripts/stage-retained-runtime-peer.mjs
           echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"
       - name: Actual module-Worker retained browser executor (ifc-lite-wasm)
@@ -204,6 +224,15 @@ jobs:
           wasm-pack test --headless --chrome \
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
             --features retained-browser -- retained_browser
+      - name: M3 native and browser opening parity
+        id: m3-browser
+        continue-on-error: true
+        env:
+          WASM_BINDGEN_TEST_TIMEOUT: 300
+        run: |
+          wasm-pack test --headless --chrome \
+            --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
+            --features retained-browser -- retained_browser_m3_opening_parity
       - name: Build the canonical WASM package and the opt-in retained bundle
         run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
       - name: Committed declarations match both bundles
@@ -234,11 +263,14 @@ jobs:
             node --test scripts/cli-retained-engine/real-kernel.test.mjs
           IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
             IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
+            IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()
         env:
+          M3_NATIVE: ${{ steps.m3-native.outcome }}
+          M3_BROWSER: ${{ steps.m3-browser.outcome }}
           NATIVE_COMPARE: ${{ steps.native-compare.outcome }}
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
@@ -252,7 +284,7 @@ jobs:
           CLI_RETAINED: ${{ steps.cli-retained.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED; do
+          for lane in M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

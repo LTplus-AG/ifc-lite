@@ -39,8 +39,8 @@ fn h2_operations_preserve_tickets_across_exact_foreign_and_cancelled_calls() {
         let mut program = RetainedProgram::product_parts(&entity, contract());
         let mut observed = 0;
         while let Some(ticket) = program.request().unwrap() {
-            if matches!(&program.inner.control, Control::Product(c) if c.retained_ready()) {
-                assert_eq!(program.inner.execute(ticket.0, &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
+            if matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()) {
+                assert_eq!(program.geometry_mut().execute(ticket.geometry_request(), &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
                 assert_eq!(program.admit(ticket, &router, &mut foreign_decoder).err(), Some(RetainedProgramError::WrongOwner));
             }
             let (reply, operations) = program.admit(ticket, &router, &mut decoder).unwrap();

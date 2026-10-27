@@ -64,7 +64,9 @@ export async function runRetainedBrowserContract(wasm, fixture) {
     assert(after.live, 'publishing released the object and kept the Worker');
     fresh.retire();
     await rejects(() => sources.execute(entry.index, fresh, 0.001, 5, 16 << 20), /retired|foreign/i, 'retired Worker runs nothing');
-    return { passed: true, volume: Math.abs(six / 6), triangles: indices.length / 3, world, capabilities,
+    const { openingCutsContract } = await import('./openings.mjs');
+    const openings = await openingCutsContract();
+    return { passed: true, openings, volume: Math.abs(six / 6), triangles: indices.length / 3, world, capabilities,
       sourceOnly: true, fullProductQualification: false };
   } finally {
     for (const value of owned.reverse()) { try { value.free(); } catch { /* already consumed */ } }

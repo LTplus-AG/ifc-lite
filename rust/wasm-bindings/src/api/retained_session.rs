@@ -21,7 +21,8 @@ export type RetainedSessionEvent =
     | (RetainedProductRefusal & { kind: 'refused' })
     | { kind: 'published'; expressId: number; ifcType: string;
         marker: 'PresentationObligationsUnmet';
-        obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; meshes: MeshCollection };
+        obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
+        meshes: MeshCollection };
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
@@ -165,6 +166,8 @@ fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, 
                 obligations.push(&obligation_name(*obligation).into());
             }
             set(&result, "obligationsUnmet", &obligations)?;
+            set(&result, "cuts", &(product.cuts as f64).into())?;
+            set(&result, "consumedParts", &(product.consumed_parts as f64).into())?;
             let mut meshes = MeshCollection::with_capacity(product.parts.len());
             meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
             let color =

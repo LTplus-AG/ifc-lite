@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Atomic shape-only publication; no opening, layer, or display authority.
+//! Atomic shape-only publication; layer and display obligations remain.
 use super::runtime::ReceiptEvidence;
 use super::*;
 use ifc_lite_geometry::program::transactions::Requirement;
@@ -9,6 +9,9 @@ pub struct ShapeOnlyProduct {
     pub product_id: u32,
     pub ifc_type: IfcType,
     pub parts: Vec<ShapePart>,
+    pub cuts: u64,
+    pub consumed_parts: usize,
+    pub cut_times_ms: Vec<f64>,
     pub obligations: PresentationObligationsUnmet,
     _storage: Storage,
 }
@@ -94,15 +97,19 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         )?;
         remaining.extend(self.plan.requirements());
         let obligations = PresentationObligationsUnmet(remaining);
-        // M1 plan completion always retains opening/layer/appearance/face
-        // obligations; the public plan exposes no way to discharge them. This
+        // Layer/appearance/face obligations remain after opening completion. This
         // guards the shape-only invariant, not a supported fully discharged
         // path: final-product publication needs separate authority, and
         // require_final_product deliberately still refuses (M1 spec section 3).
         if obligations.0.is_empty() {
             return Err(incomplete());
         }
+        let (_, cuts, consumed_parts) = self.plan.opening().unwrap_or_default();
+        let mut cut_times_ms = Vec::new();
+        storage.reserve(&self.resources, &mut cut_times_ms, self.cut_times_ms.len())?;
+        cut_times_ms.extend_from_slice(&self.cut_times_ms);
         Ok(ShapeOnlyProduct {
+            cuts, consumed_parts, cut_times_ms,
             product_id: self.product_id,
             ifc_type: self.ifc_type.clone(),
             parts,

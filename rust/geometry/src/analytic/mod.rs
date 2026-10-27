@@ -18,6 +18,8 @@ mod helpers;
 mod owned_directrix_tests;
 mod profile;
 mod profile_topology;
+#[cfg(feature = "retained-runtime")]
+mod profile_retrace;
 mod topology_interval;
 mod walk_error;
 pub use profile::{

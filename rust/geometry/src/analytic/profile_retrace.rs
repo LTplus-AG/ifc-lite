@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Retained-only nonzero-winding interpretation of exact, adjacent retraces.
+use super::{walk_error::WalkError, AnalyticCurveSegment, AnalyticProfileLoop};
+use crate::kernel::{predicates::orient2d, DropAxis, ImplicitPoint, Sign};
+use std::cell::Cell;
+
+thread_local! { static ADMITTED: Cell<bool> = const { Cell::new(false) }; }
+
+pub(super) fn admitting<T>(f: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) { ADMITTED.with(|flag| flag.set(self.0)); }
+    }
+    let _restore = Restore(ADMITTED.with(|flag| flag.replace(true)));
+    f()
+}
+pub(super) fn admitted() -> bool { ADMITTED.with(Cell::get) }
+
+fn collinear(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {
+    orient2d(&ImplicitPoint::Explicit(a), &ImplicitPoint::Explicit(b),
+        &ImplicitPoint::Explicit(c), DropAxis::Z) == Sign::Zero
+}
+
+pub(super) fn cancel(boundary: &AnalyticProfileLoop) -> Result<Option<Vec<AnalyticCurveSegment>>, WalkError> {
+    let mut points = Vec::with_capacity(boundary.segments.len());
+    for (i, segment) in boundary.segments.iter().enumerate() {
+        let AnalyticCurveSegment::Line { start, end } = segment else { return Ok(None) };
+        // Never turn a tolerated join/gap into an interpolated source vertex.
+        let AnalyticCurveSegment::Line { start: next, .. } = &boundary.segments[(i + 1) % boundary.segments.len()] else { return Ok(None) };
+        if end != next || start.iter().any(|v| !v.is_finite()) { return Ok(None); }
+        points.push(*start);
+    }
+    let original_len = points.len();
+    // Each successful pass removes a vertex; at most n passes of at most n
+    // predicates. source_step preserves the enclosing ProductBudget stop.
+    while points.len() >= 3 {
+        let mut found = None;
+        for i in 0..points.len() {
+            crate::resource::source_step()?;
+            let a = points[(i + points.len() - 1) % points.len()];
+            let b = points[i];
+            let c = points[(i + 1) % points.len()];
+            if !collinear(a, b, c) { continue; }
+            let axis = usize::from((a[1] - b[1]).abs() > (a[0] - b[0]).abs());
+            // Coordinate comparisons, not a rounded dot product or tolerance.
+            if (a[axis] < b[axis] && c[axis] < b[axis])
+                || (a[axis] > b[axis] && c[axis] > b[axis]) {
+                found = Some((i, a == c));
+                break;
+            }
+        }
+        let Some((i, equal)) = found else { break };
+        points.remove(i);
+        if equal { let next = i % points.len(); points.remove(next); }
+    }
+    if points.len() < 3 || points.len() == original_len { return Ok(None); }
+    Ok(Some((0..points.len()).map(|i| AnalyticCurveSegment::Line {
+        start: points[i], end: points[(i + 1) % points.len()],
+    }).collect()))
+}
+
+pub(super) fn repair(
+    boundary: &AnalyticProfileLoop, clearance: f64, join: f64,
+    rebuild: impl FnOnce(Vec<AnalyticCurveSegment>) -> Result<AnalyticProfileLoop, WalkError>,
+) -> Result<Option<AnalyticProfileLoop>, WalkError> {
+    let Some(segments) = cancel(boundary)? else { return Ok(None) };
+    let mut residual = match rebuild(segments) {
+        Ok(value) => value,
+        Err(WalkError::Unsupported(_)) => return Ok(None),
+        Err(stop @ WalkError::Stopped(_)) => return Err(stop),
+    };
+    // Preregistered sanity check only: collinearity above is always exact.
+    if (residual.signed_area - boundary.signed_area).abs() > 1e-12 * boundary.signed_area.abs() {
+        return Ok(None);
+    }
+    match super::profile_topology::validate(std::slice::from_ref(&residual), clearance, join) {
+        Ok(()) => {},
+        Err(WalkError::Unsupported(_)) => return Ok(None),
+        Err(stop @ WalkError::Stopped(_)) => return Err(stop),
+    }
+    residual.source = boundary.source.clone();
+    Ok(Some(residual))
+}
+
+#[cfg(test)]
+#[path = "profile_retrace_tests.rs"]
+mod tests;

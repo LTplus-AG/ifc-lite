@@ -18,11 +18,16 @@ Emitted primitives still own their labels. This reduces extraction instructions
 on Holter, Haus, duplex and ISSUE_129, preserving each P2 payload byte for byte
 and Holter's base payload. Placement, projection and refusal semantics stay intact.
 
-Verdict: a small allocation reduction, not qualification of symbolic wall time.
-Pinned local timing pairs remain noisy and do not clear the required per-fixture
-confidence bound. Do not replace P2's geometry corrections with approximate
-identity shortcuts to chase that bound. The source-pinned local diagnosis is
-`p2-holter-overhead-r1.json`; instruction savings do not waive the perf hold.
+A registered paired symbolic wall-time cohort on Pop (hash dispatch in both
+arms) was voided by its own host monitor: agent sessions and the T3 server were
+active on the host for most of the run. It is recorded as invalid, not as a
+pass or a fail. The maintainer accepted P2 on 2026-10-27 on the instruction
+evidence: extraction instructions are lower than the base on all four fixtures,
+Holter's payload is byte-identical, and pinned local timing pairs show no
+regression beyond their noise. This is not a measured wall-time qualification.
+Do not replace P2's geometry corrections with approximate identity shortcuts to
+chase a wall-time bound. The source-pinned local diagnosis is
+`p2-holter-overhead-r1.json`.
 
 One place to answer "where does load time go, and what is the biggest lever?"
 for both the **native** Rust pipeline (CLI/server/exporter) and the **WASM**

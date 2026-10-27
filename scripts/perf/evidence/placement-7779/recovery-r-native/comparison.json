@@ -1,0 +1,734 @@
+{
+  "tests/models/ara3d/AC20-FZK-Haus.ifc": {
+    "stockIdentity": {
+      "entities": {
+        "values": {
+          "base": [
+            44249
+          ],
+          "branch": [
+            44249
+          ]
+        },
+        "matches": true
+      },
+      "meshes": {
+        "values": {
+          "base": [
+            285
+          ],
+          "branch": [
+            285
+          ]
+        },
+        "matches": true
+      },
+      "vertices": {
+        "values": {
+          "base": [
+            35940
+          ],
+          "branch": [
+            35940
+          ]
+        },
+        "matches": true
+      },
+      "triangles": {
+        "values": {
+          "base": [
+            20322
+          ],
+          "branch": [
+            20322
+          ]
+        },
+        "matches": true
+      },
+      "csgFailures": {
+        "values": {
+          "base": [
+            0
+          ],
+          "branch": [
+            0
+          ]
+        },
+        "matches": true
+      },
+      "degenerateDropped": {
+        "values": {
+          "base": [
+            0
+          ],
+          "branch": [
+            0
+          ]
+        },
+        "matches": true
+      },
+      "meshFingerprintsFnv1a64": {
+        "values": {
+          "base": [
+            "7377db33331a3523"
+          ],
+          "branch": [
+            "7377db33331a3523"
+          ]
+        },
+        "matches": true
+      }
+    },
+    "allIterationPhaseAndWall": {
+      "fullCallWallMs": {
+        "outerBlockMedians": {
+          "base": [
+            42.838578000000005,
+            42.629901999999994,
+            42.15873,
+            42.657478,
+            45.111132999999995
+          ],
+          "branch": [
+            42.550787,
+            43.274060000000006,
+            43.404546,
+            53.253976,
+            47.400788999999996
+          ]
+        },
+        "median": {
+          "base": 42.657478,
+          "branch": 43.404546
+        },
+        "deltaPercent": 1.7513177877042096
+      },
+      "parseMs": {
+        "outerBlockMedians": {
+          "base": [
+            12,
+            12,
+            12,
+            12,
+            12
+          ],
+          "branch": [
+            13,
+            13,
+            13,
+            13,
+            13
+          ]
+        },
+        "median": {
+          "base": 12,
+          "branch": 13
+        },
+        "deltaPercent": 8.333333333333325
+      },
+      "entityScanMs": {
+        "outerBlockMedians": {
+          "base": [
+            6,
+            6,
+            6,
+            6,
+            6
+          ],
+          "branch": [
+            6,
+            7,
+            6,
+            6,
+            6
+          ]
+        },
+        "median": {
+          "base": 6,
+          "branch": 6
+        },
+        "deltaPercent": 0.0
+      },
+      "lookupMs": {
+        "outerBlockMedians": {
+          "base": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "branch": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        "median": {
+          "base": 2,
+          "branch": 2
+        },
+        "deltaPercent": 0.0
+      },
+      "preprocessMs": {
+        "outerBlockMedians": {
+          "base": [
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "branch": [
+            3,
+            3,
+            3,
+            3,
+            3
+          ]
+        },
+        "median": {
+          "base": 3,
+          "branch": 3
+        },
+        "deltaPercent": 0.0
+      },
+      "geometryMs": {
+        "outerBlockMedians": {
+          "base": [
+            27,
+            27,
+            26,
+            27,
+            30
+          ],
+          "branch": [
+            26,
+            26,
+            27,
+            35,
+            30
+          ]
+        },
+        "median": {
+          "base": 27,
+          "branch": 27
+        },
+        "deltaPercent": 0.0
+      },
+      "totalMs": {
+        "outerBlockMedians": {
+          "base": [
+            39,
+            40,
+            39,
+            40,
+            42
+          ],
+          "branch": [
+            39,
+            39,
+            40,
+            50,
+            44
+          ]
+        },
+        "median": {
+          "base": 40,
+          "branch": 40
+        },
+        "deltaPercent": 0.0
+      }
+    }
+  },
+  "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+    "stockIdentity": {
+      "entities": {
+        "values": {
+          "base": [
+            202661
+          ],
+          "branch": [
+            202661
+          ]
+        },
+        "matches": true
+      },
+      "meshes": {
+        "values": {
+          "base": [
+            1402
+          ],
+          "branch": [
+            1402
+          ]
+        },
+        "matches": true
+      },
+      "vertices": {
+        "values": {
+          "base": [
+            218966
+          ],
+          "branch": [
+            218966
+          ]
+        },
+        "matches": true
+      },
+      "triangles": {
+        "values": {
+          "base": [
+            136257
+          ],
+          "branch": [
+            136257
+          ]
+        },
+        "matches": true
+      },
+      "csgFailures": {
+        "values": {
+          "base": [
+            9
+          ],
+          "branch": [
+            9
+          ]
+        },
+        "matches": true
+      },
+      "degenerateDropped": {
+        "values": {
+          "base": [
+            7
+          ],
+          "branch": [
+            7
+          ]
+        },
+        "matches": true
+      },
+      "meshFingerprintsFnv1a64": {
+        "values": {
+          "base": [
+            "e96e7e6149ccd77b"
+          ],
+          "branch": [
+            "e96e7e6149ccd77b"
+          ]
+        },
+        "matches": true
+      }
+    },
+    "allIterationPhaseAndWall": {
+      "fullCallWallMs": {
+        "outerBlockMedians": {
+          "base": [
+            4055.422611,
+            4004.088147,
+            4098.66744,
+            4059.6368729999995,
+            4045.0956519999995
+          ],
+          "branch": [
+            4003.4263670000005,
+            4093.6616240000003,
+            4021.689489,
+            4034.2609119999997,
+            4078.8974580000004
+          ]
+        },
+        "median": {
+          "base": 4055.422611,
+          "branch": 4034.2609119999997
+        },
+        "deltaPercent": -0.5218124232626464
+      },
+      "parseMs": {
+        "outerBlockMedians": {
+          "base": [
+            35,
+            35,
+            35,
+            35,
+            34
+          ],
+          "branch": [
+            35,
+            34,
+            35,
+            35,
+            35
+          ]
+        },
+        "median": {
+          "base": 35,
+          "branch": 35
+        },
+        "deltaPercent": 0.0
+      },
+      "entityScanMs": {
+        "outerBlockMedians": {
+          "base": [
+            34,
+            34,
+            33,
+            33,
+            33
+          ],
+          "branch": [
+            34,
+            33,
+            34,
+            34,
+            34
+          ]
+        },
+        "median": {
+          "base": 33,
+          "branch": 34
+        },
+        "deltaPercent": 3.0303030303030276
+      },
+      "lookupMs": {
+        "outerBlockMedians": {
+          "base": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "branch": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "median": {
+          "base": 0,
+          "branch": 0
+        },
+        "deltaPercent": null
+      },
+      "preprocessMs": {
+        "outerBlockMedians": {
+          "base": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "branch": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "median": {
+          "base": 1,
+          "branch": 1
+        },
+        "deltaPercent": 0.0
+      },
+      "geometryMs": {
+        "outerBlockMedians": {
+          "base": [
+            4000,
+            3949,
+            4045,
+            4005,
+            3990
+          ],
+          "branch": [
+            3948,
+            4039,
+            3966,
+            3978,
+            4025
+          ]
+        },
+        "median": {
+          "base": 4000,
+          "branch": 3978
+        },
+        "deltaPercent": -0.5499999999999949
+      },
+      "totalMs": {
+        "outerBlockMedians": {
+          "base": [
+            4035,
+            3985,
+            4080,
+            4041,
+            4026
+          ],
+          "branch": [
+            3983,
+            4074,
+            4002,
+            4013,
+            4060
+          ]
+        },
+        "median": {
+          "base": 4035,
+          "branch": 4013
+        },
+        "deltaPercent": -0.5452292441139983
+      }
+    }
+  },
+  "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc": {
+    "stockIdentity": {
+      "entities": {
+        "values": {
+          "base": [
+            2807815
+          ],
+          "branch": [
+            2807815
+          ]
+        },
+        "matches": true
+      },
+      "meshes": {
+        "values": {
+          "base": [
+            109515
+          ],
+          "branch": [
+            109515
+          ]
+        },
+        "matches": true
+      },
+      "vertices": {
+        "values": {
+          "base": [
+            4515185
+          ],
+          "branch": [
+            4515185
+          ]
+        },
+        "matches": true
+      },
+      "triangles": {
+        "values": {
+          "base": [
+            2895374
+          ],
+          "branch": [
+            2895374
+          ]
+        },
+        "matches": true
+      },
+      "csgFailures": {
+        "values": {
+          "base": [
+            0
+          ],
+          "branch": [
+            0
+          ]
+        },
+        "matches": true
+      },
+      "degenerateDropped": {
+        "values": {
+          "base": [
+            0
+          ],
+          "branch": [
+            0
+          ]
+        },
+        "matches": true
+      },
+      "meshFingerprintsFnv1a64": {
+        "values": {
+          "base": [
+            "9af337ef8f713ce5"
+          ],
+          "branch": [
+            "9af337ef8f713ce5"
+          ]
+        },
+        "matches": true
+      }
+    },
+    "allIterationPhaseAndWall": {
+      "fullCallWallMs": {
+        "outerBlockMedians": {
+          "base": [
+            3052.2827239999997,
+            3013.921202,
+            3118.907889,
+            3061.740914,
+            3060.1086259999997
+          ],
+          "branch": [
+            3080.680138,
+            3039.115695,
+            3112.941322,
+            3099.094857,
+            3069.7564079999997
+          ]
+        },
+        "median": {
+          "base": 3060.1086259999997,
+          "branch": 3080.680138
+        },
+        "deltaPercent": 0.672247770069867
+      },
+      "parseMs": {
+        "outerBlockMedians": {
+          "base": [
+            755,
+            754,
+            762,
+            768,
+            759
+          ],
+          "branch": [
+            781,
+            781,
+            766,
+            782,
+            764
+          ]
+        },
+        "median": {
+          "base": 759,
+          "branch": 781
+        },
+        "deltaPercent": 2.898550724637672
+      },
+      "entityScanMs": {
+        "outerBlockMedians": {
+          "base": [
+            590,
+            590,
+            595,
+            605,
+            595
+          ],
+          "branch": [
+            616,
+            616,
+            600,
+            616,
+            600
+          ]
+        },
+        "median": {
+          "base": 595,
+          "branch": 616
+        },
+        "deltaPercent": 3.529411764705892
+      },
+      "lookupMs": {
+        "outerBlockMedians": {
+          "base": [
+            157,
+            159,
+            159,
+            157,
+            157
+          ],
+          "branch": [
+            159,
+            161,
+            160,
+            160,
+            158
+          ]
+        },
+        "median": {
+          "base": 157,
+          "branch": 160
+        },
+        "deltaPercent": 1.9108280254777066
+      },
+      "preprocessMs": {
+        "outerBlockMedians": {
+          "base": [
+            4,
+            5,
+            5,
+            5,
+            5
+          ],
+          "branch": [
+            5,
+            5,
+            5,
+            5,
+            5
+          ]
+        },
+        "median": {
+          "base": 5,
+          "branch": 5
+        },
+        "deltaPercent": 0.0
+      },
+      "geometryMs": {
+        "outerBlockMedians": {
+          "base": [
+            1889,
+            1874,
+            1921,
+            1889,
+            1863
+          ],
+          "branch": [
+            1911,
+            1876,
+            1919,
+            1902,
+            1902
+          ]
+        },
+        "median": {
+          "base": 1889,
+          "branch": 1902
+        },
+        "deltaPercent": 0.6881948120698755
+      },
+      "totalMs": {
+        "outerBlockMedians": {
+          "base": [
+            2643,
+            2629,
+            2686,
+            2657,
+            2631
+          ],
+          "branch": [
+            2688,
+            2661,
+            2710,
+            2684,
+            2666
+          ]
+        },
+        "median": {
+          "base": 2643,
+          "branch": 2684
+        },
+        "deltaPercent": 1.5512674990540987
+      }
+    }
+  }
+}

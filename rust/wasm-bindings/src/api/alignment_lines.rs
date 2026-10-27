@@ -44,7 +44,9 @@ impl IfcAPI {
     /// `renderer.setLineOverlay('alignment', ...)`.
     ///
     /// Returns an empty array when the file has no alignments (or none with a
-    /// resolvable Axis curve), so the caller can clear the overlay cheaply.
+    /// resolvable Axis curve and placement), so the caller can clear the
+    /// overlay cheaply. An alignment whose authored placement cannot be
+    /// resolved is omitted (#7779).
     #[wasm_bindgen(js_name = parseAlignmentLines)]
     pub fn parse_alignment_lines(&self, content: String) -> js_sys::Float32Array {
         let verts = extract_alignment_line_vertices(&content, None);
@@ -104,10 +106,12 @@ pub(crate) fn extract_alignment_line_vertices(
             continue;
         };
         // Curve coordinates are relative to the alignment's ObjectPlacement
-        // (metres, column-major); identity when it has none.
-        let placement = router
-            .resolve_scaled_placement(&entity, &mut decoder)
-            .unwrap_or(IDENTITY);
+        // (metres, column-major); identity when it has none (`$`). An
+        // authored placement that cannot be resolved skips this alignment
+        // rather than drawing it at the origin (#7779 W1).
+        let Ok(placement) = router.resolve_scaled_placement(&entity, &mut decoder) else {
+            continue;
+        };
         append_alignment_segments(&alignment, unit_scale, &placement, rtc, &mut out);
     }
     out
@@ -115,10 +119,6 @@ pub(crate) fn extract_alignment_line_vertices(
 
 /// Sample one alignment's centerline and append its line-list segments to
 /// `out`, in renderer Y-up / RTC-subtracted / metres space.
-const IDENTITY: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-];
-
 fn append_alignment_segments(
     alignment: &AlignmentCurve,
     unit_scale: f64,

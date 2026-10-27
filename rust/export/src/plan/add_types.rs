@@ -11,8 +11,8 @@
 //! `IfcTriangulatedFaceSet` in IFC4 and an `IfcFacetedBrep` in IFC2X3, which
 //! has no tessellated geometry).
 
-use super::add_assoc_types::{ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, ValueUnit};
-use super::types::{ObjectRef, PsetKind, SurfaceColour, TriangleMesh};
+use super::add_assoc_types::{ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, NewPropertySet, ValueUnit};
+use super::types::{ObjectRef, SurfaceColour, TriangleMesh};
 
 /// The 128 bits of an `IfcGloballyUniqueId`, supplied by the caller so the
 /// executor never has to invent an identity (no clock, no RNG: the output of
@@ -131,6 +131,18 @@ pub enum Representation {
     /// maps, or a new type with a `representation`. The colour is the
     /// type's.
     Mapped(MappedBody),
+    /// Every representation of a product in the source (`Body`, `Axis`,
+    /// `FootPrint`, `Box`, ...): the object gets its own
+    /// `IfcProductDefinitionShape` and one representation per representation
+    /// of that product (same context, identifier and type) listing the
+    /// product's own items, so anything attached to an item, such as a style
+    /// or an item-level layer, applies to both. Items are positioned relative
+    /// to the object placement, so the object shows the same geometry at its
+    /// own placement. The colour is the product's. Openings that void the
+    /// product, its projections and the layer assignments of its
+    /// representations are not carried; an object that needs openings
+    /// declares its own.
+    SameAs(ObjectRef),
 }
 
 /// How an object places its type's mapped representation: `transform`
@@ -151,46 +163,9 @@ impl Representation {
         match self {
             Representation::Extrusion(e) => std::slice::from_ref(e),
             Representation::Extrusions(es) => es,
-            Representation::None | Representation::Mesh(_) | Representation::Mapped(_) => &[],
+            Representation::None | Representation::Mesh(_) | Representation::Mapped(_) | Representation::SameAs(_) => &[],
         }
     }
-}
-
-/// A property value, typed the way IFC types it.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub enum PropertyValue {
-    Label(String),
-    Text(String),
-    Identifier(String),
-    Boolean(bool),
-    Integer(i64),
-    Real(f64),
-    /// A numeric measure by its IFC defined-type name, e.g. `IfcLengthMeasure`.
-    /// Values are in the file's project units.
-    #[non_exhaustive]
-    Measure { measure_type: String, value: f64 },
-}
-
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct NewProperty {
-    pub name: String,
-    pub value: PropertyValue,
-    /// The unit a [`PropertyValue::Measure`] is in, when it is not the
-    /// project's unit for that measure. The value is then in this unit.
-    pub unit: Option<ValueUnit>,
-}
-
-/// A property set (`kind: Property`) or quantity set (`kind: Quantity`,
-/// every value a [`PropertyValue::Measure`] with a quantity entity) to
-/// attach. Properties are written in the order given.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct NewPropertySet {
-    pub name: String,
-    pub kind: PsetKind,
-    pub properties: Vec<NewProperty>,
 }
 
 /// A type object created alongside the occurrence. Types carry no placement
@@ -211,6 +186,12 @@ pub struct NewType {
     /// Required: `IfcTypeObject` needs a name, so a new type without one is
     /// refused.
     pub name: Option<String>,
+    /// `Tag`, an identifier such as the authoring tool's id for the type.
+    pub tag: Option<String>,
+    /// `ElementType`: what kind of type it is, required with a `USERDEFINED`
+    /// `PredefinedType`. Refused where the class has no `ElementType` in the
+    /// file's schema, such as an `IfcDoorStyle` or `IfcWindowStyle`.
+    pub element_type: Option<String>,
     pub psets: Vec<NewPropertySet>,
     /// The type's shared geometry, written once as an `IfcRepresentationMap`
     /// that every occurrence with a [`Representation::Mapped`] body
@@ -244,6 +225,11 @@ impl NewType {
     /// Every existing record this type names: the units of its values.
     pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
         unit_refs(&self.psets)
+    }
+
+    /// The optional string attributes that are set, by EXPRESS name.
+    pub(crate) fn string_attributes(&self) -> impl Iterator<Item = (&'static str, &str)> + '_ {
+        [("Tag", &self.tag), ("ElementType", &self.element_type)].into_iter().filter_map(|(a, v)| Some((a, v.as_deref()?)))
     }
 
     /// The GlobalId this type is written with when `occurrence` creates it.
@@ -290,6 +276,15 @@ pub struct NewObject {
     pub global_id: GlobalId,
     pub class: ClassSpec,
     pub name: Option<String>,
+    /// `LongName`, such as a space's room name beside the number in `name`.
+    /// Refused where the class has no `LongName` in the file's schema.
+    pub long_name: Option<String>,
+    /// `Tag`, an identifier such as the authoring tool's id. Refused where
+    /// the class has no `Tag` in the file's schema.
+    pub tag: Option<String>,
+    /// `ObjectType`: what kind of object it is, required with a
+    /// `USERDEFINED` `PredefinedType`.
+    pub object_type: Option<String>,
     pub placement: NewPlacement,
     /// The spatial element the object belongs to. An element is contained
     /// through `IfcRelContainedInSpatialStructure`; a spatial element (a new
@@ -310,6 +305,11 @@ pub struct NewObject {
 }
 
 impl NewObject {
+    /// The optional string attributes that are set, by EXPRESS name.
+    pub(crate) fn string_attributes(&self) -> impl Iterator<Item = (&'static str, &str)> + '_ {
+        [("LongName", &self.long_name), ("Tag", &self.tag), ("ObjectType", &self.object_type)].into_iter().filter_map(|(a, v)| Some((a, v.as_deref()?)))
+    }
+
     /// Every existing object this Add names: its container, placement parent,
     /// type, opening host, material, classifications and units.
     pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
@@ -361,6 +361,11 @@ impl NewObject {
             ObjectRef::Guid(g) => Some(g.clone()),
             ObjectRef::Id(_) => None,
         }));
+        // Not one of `references`: those are kept from the delete cascade,
+        // and reused geometry is read from what the deletes leave.
+        if let Representation::SameAs(ObjectRef::Guid(g)) = &self.representation {
+            out.push(g.clone());
+        }
         out
     }
 }

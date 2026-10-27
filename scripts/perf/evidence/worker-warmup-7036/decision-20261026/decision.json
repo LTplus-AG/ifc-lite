@@ -1,0 +1,411 @@
+{
+  "schemaVersion": 1,
+  "issue": 7036,
+  "verdict": "Reject the combined persistent-pool and parser-memo candidate: full metadata/render readiness regressed beyond the predeclared noise rule on the largest fixture, despite earlier first geometry on the smallest. No layer-specific cause is established.",
+  "disposition": "Retire the existing held main warmPool experiment per its removal condition; decline revived pool and parser proposals. Parser-only performance was not measured and remains unqualified.",
+  "source": {
+    "base": {
+      "source": "beb5d928ed85de41540032785ec35b4bd2fc9de6",
+      "buildJob": "3873c9f7-b76d-470b-9357-68b502e52f6d",
+      "wasmSha256": "c56682e93819a6bd7108d4431b08b1f43d119252966905a800260065b84b8dd6"
+    },
+    "candidate": {
+      "source": "e47ea729ece91b1655b8753c53d9ab1662bb1aba",
+      "buildJob": "b0ff5915-8383-49b5-a6b5-02cf36ea1ac5",
+      "wasmSha256": "c56682e93819a6bd7108d4431b08b1f43d119252966905a800260065b84b8dd6"
+    }
+  },
+  "publishedCandidateHeads": {
+    "lower": "fb16e9d8da0c48b7706fed4c8d7be7e90fcf2e25",
+    "upper": "8afd6b5ce3f35acd0c3000697bb83ff8d8885b27"
+  },
+  "runtimeApplicability": "Recorded e47 and published upper8afd apps/packages/rust trees are identical; upper adds a GLB test-only readiness repair. This is not a measurement of lower-only, parser-only, or the removal PR.",
+  "measurement": {
+    "job": "8d19dd6a-dc67-426a-8550-772688fb266e",
+    "kind": "benchmark",
+    "host": "pop-os",
+    "cpu": 8,
+    "memoryGiB": 24,
+    "state": "completed",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "receiptSha256": "bd22ce692fa0cdf221367c31e3ff428a0a64c978a99fb5ca642a3b982a160932",
+    "startedAt": 1793029468.357842,
+    "finishedAt": 1793029803.4877975,
+    "tools": {
+      "git": {
+        "path": "/usr/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.43.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "exitCode": 0,
+        "version": "v24.22.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "samples": 40,
+    "gpuErrors": 0,
+    "deviceLosses": 0,
+    "cleanupErrors": 0,
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "lovelace",
+      "isFallbackAdapter": false
+    },
+    "rawRowsSha256": "b6c025335e41a2972cf3ea99eb6d3703079204a74acd62a404b609a07730f297"
+  },
+  "decisionRuleRecordedBeforeSamples": "2026-10-26T14:22:33.483733+00:00",
+  "reporter": {
+    "path": "scripts/perf/browser-ab-report.mjs",
+    "sha256": "5db86d54aba4861f7887e8d6950e5a318322c6292d890bb9f6c4f5283ee760a7",
+    "sameAsRecordedSource": true
+  },
+  "fixtures": [
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "sides": {
+        "base": {
+          "meshCount": 317,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              54.3
+            ],
+            "jsPeakLoggedMiB": [
+              88.9,
+              88.4,
+              86.9,
+              89.2,
+              83.8
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              54.5,
+              40.7,
+              29.6,
+              23.5,
+              71.9
+            ],
+            "longtaskBlockingMs": [
+              81,
+              66,
+              56,
+              61,
+              88
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        },
+        "candidate": {
+          "meshCount": 317,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              54.3
+            ],
+            "jsPeakLoggedMiB": [
+              86.7,
+              79.4,
+              81.6,
+              82,
+              90.3
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              58.6,
+              137.6,
+              109.5,
+              33.7,
+              81.6
+            ],
+            "longtaskBlockingMs": [
+              98,
+              173,
+              82,
+              99,
+              73
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4",
+      "sides": {
+        "base": {
+          "meshCount": 17380,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              168.7
+            ],
+            "jsPeakLoggedMiB": [
+              183.4,
+              140.8,
+              141.6,
+              180.7,
+              141.2
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              385.2,
+              394.3,
+              430.7,
+              407.7,
+              418.3
+            ],
+            "longtaskBlockingMs": [
+              230,
+              244,
+              331,
+              246,
+              264
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        },
+        "candidate": {
+          "meshCount": 17380,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              168.7
+            ],
+            "jsPeakLoggedMiB": [
+              149.2,
+              167.1,
+              151.2,
+              195.3,
+              163
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              528.4,
+              508,
+              428.2,
+              430.6,
+              452.1
+            ],
+            "longtaskBlockingMs": [
+              314,
+              331,
+              225,
+              253,
+              278
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+      "sha256": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121",
+      "sides": {
+        "base": {
+          "meshCount": 16775,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              424.8
+            ],
+            "jsPeakLoggedMiB": [
+              334.2,
+              325,
+              333.6,
+              345.8,
+              336.6
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              1157,
+              1097.8,
+              1045.3,
+              1188.3,
+              1051.6
+            ],
+            "longtaskBlockingMs": [
+              889,
+              774,
+              774,
+              872,
+              798
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        },
+        "candidate": {
+          "meshCount": 16775,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              424.8
+            ],
+            "jsPeakLoggedMiB": [
+              331.4,
+              337.7,
+              346.9,
+              350.8,
+              332.2
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              1131.6,
+              1098.7,
+              1099.1,
+              1162.4,
+              1136.4
+            ],
+            "longtaskBlockingMs": [
+              777,
+              701,
+              723,
+              802,
+              752
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+      "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df",
+      "sides": {
+        "base": {
+          "meshCount": 55577,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              1678.4
+            ],
+            "jsPeakLoggedMiB": [
+              653.5,
+              641.8,
+              641.6,
+              642.5,
+              654.4
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              2851.3,
+              2783.7,
+              2887.4,
+              2839.7,
+              2816.6
+            ],
+            "longtaskBlockingMs": [
+              2560,
+              2538,
+              2620,
+              2563,
+              2572
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        },
+        "candidate": {
+          "meshCount": 55577,
+          "memory": {
+            "metric": "Existing perfMem logged MiB, rounded by app; not RSS",
+            "wasmPeakLoggedMiB": [
+              1678.4
+            ],
+            "jsPeakLoggedMiB": [
+              671.5,
+              645,
+              649.1,
+              669.4,
+              671.9
+            ]
+          },
+          "frames": {
+            "loafSupported": true,
+            "longtaskSupported": true,
+            "loafBlockingMs": [
+              2810.9,
+              2894.9,
+              2835.5,
+              2795.5,
+              2783.2
+            ],
+            "longtaskBlockingMs": [
+              2632,
+              2618,
+              2606,
+              2619,
+              2626
+            ]
+          },
+          "actualWorkerCounts": [
+            4
+          ]
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Mesh counts are coarse output evidence, not ordered byte/vertex/payload identity.",
+    "Logged WASM/JS phase peaks are not actual resident process memory; no RSS acceptance or idle-memory acceptance is claimed.",
+    "Repeat/federation request bf0240c0-5334-4b78-aee5-8293df69078e was refused by its disk guard before execution.",
+    "Earlier queue, AC/disk admission and invalid-GPU attempts produced no accepted replacement samples.",
+    "First-visible and legacy app-summary timings remain separate from full observed metadata/render readiness.",
+    "No attribution cohort or repeat-until-win campaign was run."
+  ],
+  "readinessMetricInterpretation": "The rule recorded before measurement used total-load without naming a field. During result review it was mapped to the reporter's pre-existing METADATA + RENDER (observed) full-readiness boundary. That mapping was not separately preregistered by field name. The reporter already labels totalWallClockMs as a legacy app summary, not full readiness; it is preserved separately and was not substituted to avoid the regression.",
+  "mixedResults": "FZK first-batch/first-visible geometry and Snowdon full readiness improved beyond the reporter noise thresholds. BWK full readiness and spatial readiness regressed beyond those thresholds. These mixed results fail the no-regression adoption gate; no causal effect is attributed to either implementation layer."
+}

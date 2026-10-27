@@ -4,7 +4,9 @@
 
 import type { MutableRefObject } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { buildCesiumModelGLBParts, cesiumModelGLBKey, type CesiumModelGLBInput, type CesiumModelGLBPart } from '@/lib/geo/cesium-model-glb';
+import {
+  buildCesiumModelGLBParts, cesiumModelGLBKey, type CesiumGlobeBake, type CesiumModelGLBInput, type CesiumModelGLBPart,
+} from '@/lib/geo/cesium-model-glb';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { buildViewerToEcefMatrix } from '@/lib/geo/cesium-viewer-frame';
 import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
@@ -15,11 +17,22 @@ import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
 export type CesiumModelGlbCache = { key: string; parts: CesiumModelGLBPart[] } | null;
 type ModelOwnership = 'standalone' | 'collection' | 'released';
 
+/** The bake an Exact bridge asks for; null in Anchor mode. */
+export function cesiumGlobeBake(bridge: CesiumBridge): CesiumGlobeBake | null {
+  return bridge.placement.mode === 'exact' && bridge.geoMapping
+    ? { mapping: bridge.geoMapping, key: bridge.placement.key } : null;
+}
+
 export function buildCesiumModelMatrix(
   Cesium: typeof import('cesium'),
   bridge: CesiumBridge,
   coordinateInfo: CoordinateInfo | undefined,
 ) {
+  // Exact: the GLB already holds anchor-ENU positions (`globe-glb.ts`).
+  if (cesiumGlobeBake(bridge)) {
+    const { longitude, latitude, height } = bridge.modelOrigin;
+    return Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(longitude, latitude, height));
+  }
   return buildViewerToEcefMatrix(
     Cesium, bridge.modelOrigin, bridge.viewerRotation, bridge.viewerUpScale, coordinateInfo,
   );
@@ -36,7 +49,8 @@ export interface LoadCesiumModelParams {
   modelRef: MutableRefObject<CesiumModelPrimitive | null>;
   loadedKey: string | null;
   isSuperseded: () => boolean;
-  onInstalled(model: CesiumModelPrimitive, key: string): void;
+  /** `baked`: the GLB carries an Exact placement, so its matrix is not the bridge's anchor frame. */
+  onInstalled(model: CesiumModelPrimitive, key: string, baked: boolean): void;
 }
 
 /** Build and install one model while making its current owner explicit (#4807). */
@@ -47,7 +61,8 @@ export async function loadCesiumModel({
   let model: CesiumModelOwner | null = null;
   let ownership: ModelOwnership = 'released';
   try {
-    const key = cesiumModelGLBKey(glbInput);
+    const globe = cesiumGlobeBake(bridge);
+    const key = cesiumModelGLBKey(glbInput, globe);
     if (modelRef.current && loadedKey === key) return;
     let parts: CesiumModelGLBPart[];
     if (glbCacheRef.current?.key === key) {
@@ -55,7 +70,7 @@ export async function loadCesiumModel({
     } else {
       await new Promise((resolve) => setTimeout(resolve, 50));
       if (isSuperseded()) return;
-      const built = buildCesiumModelGLBParts(glbInput);
+      const built = buildCesiumModelGLBParts(glbInput, globe);
       parts = built.parts;
       glbCacheRef.current = built;
     }
@@ -109,7 +124,7 @@ export async function loadCesiumModel({
         // predecessor or a null ref.
         ownership = 'released';
         modelRef.current = next;
-        onInstalled(next, key);
+        onInstalled(next, key, globe !== null);
         published = true;
         if (lifetime.isLive(viewer) && !primitives.isDestroyed()) scene.requestRender();
       },

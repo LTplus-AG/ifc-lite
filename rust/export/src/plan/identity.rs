@@ -16,11 +16,12 @@
 use std::collections::HashSet;
 
 use crate::step_ids::IdAllocator;
+use crate::step_text::quoted;
 
 use super::attrs::{attribute_index, build_record};
 use super::index::FileIndex;
 use super::props_lookup::scalar_attr;
-use super::owner_history::{epoch_seconds, quoted};
+use super::owner_history::epoch_seconds;
 use super::types::ExportingApplication;
 
 /// What the person, organization, user and application records say.

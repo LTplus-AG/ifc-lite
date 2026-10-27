@@ -536,7 +536,7 @@ impl IfcAPI {
         // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
         // per-element warning (id + reason) when a sliceable wall fails to slice
         // — so future regressions surface without spamming healthy loads. Reasons:
-        // not-single-unshifted-item / thin-layers-collapsed-to-1 /
+        // not-single-unrotated-item / thin-layers-collapsed-to-1 /
         // placement-unresolved / cut-produced-<2 / base-mesh-error.
         let layer_diag = router.take_layer_slice_diag();
         if !layer_diag.is_empty() {

@@ -12,6 +12,11 @@
  * Usage:
  *   npx tsx scripts/augment-epsg-proj4.ts
  *   npx tsx scripts/augment-epsg-proj4.ts --concurrency=30
+ *   pnpm exec tsx scripts/augment-epsg-proj4.ts --compound-codes=5832,5833,5834,5835
+ *
+ * --compound-codes refreshes only those registry compound records, including
+ * deprecated codes absent from the index. Their XY definitions come from the
+ * bundled horizontal components; no epsg.io fetch or full index refresh occurs.
  *
  * Alternative (when epsg.io is unavailable):
  *   pnpm add -D epsg epsg-index
@@ -21,34 +26,26 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { applyProj4Overrides } from './epsg-proj4-overrides.js';
+import { summarizeEntry, inheritCompoundProj4, indexJson, type EpsgIndexEntry as EpsgEntry, type RegistryDetail } from './epsg-registry.js';
 
 const DEFAULT_CONCURRENCY = 30;
 const GENERATED_PATH = path.resolve('packages/data/src/generated/epsg-index.generated.ts');
 
-type EpsgEntry = {
-  code: string;
-  name: string;
-  kind: string;
-  area: string;
-  scope: string;
-  datum: string;
-  projection: string;
-  unit: string;
-  deprecated: boolean;
-  aliases: string[];
-  searchText: string;
-  proj4?: string;
-};
-
-function parseArgs(argv: string[]): { concurrency: number } {
+function parseArgs(argv: string[]): { concurrency: number; compoundCodes: string[] } {
   let concurrency = DEFAULT_CONCURRENCY;
+  let compoundCodes: string[] = [];
   for (const arg of argv) {
+    if (arg === '--compound-codes') throw new Error('Expected --compound-codes=CODE[,CODE...]');
+    if (arg.startsWith('--compound-codes=')) {
+      compoundCodes = [...new Set(arg.slice('--compound-codes='.length).split(','))];
+      if (!compoundCodes.every(code => /^\d+$/.test(code))) throw new Error('Expected numeric compound codes');
+    }
     if (arg.startsWith('--concurrency=')) {
       const value = Number.parseInt(arg.slice('--concurrency='.length), 10);
       if (Number.isFinite(value) && value > 0) concurrency = value;
     }
   }
-  return { concurrency };
+  return { concurrency, compoundCodes };
 }
 
 function readExistingEntries(): { entries: EpsgEntry[]; version: string } {
@@ -141,7 +138,7 @@ async function fetchProj4(code: string, attempts = 3): Promise<string | null> {
 }
 
 function renderModule(entries: EpsgEntry[], version: string): string {
-  const json = JSON.stringify(entries);
+  const json = indexJson(entries);
   const stringLiteral = JSON.stringify(json);
 
   return `/* This Source Code Form is subject to the terms of the Mozilla Public
@@ -169,8 +166,36 @@ export const EPSG_INDEX: readonly EpsgIndexEntry[] = JSON.parse(EPSG_INDEX_JSON)
 }
 
 async function main(): Promise<void> {
-  const { concurrency } = parseArgs(process.argv.slice(2));
+  const { concurrency, compoundCodes } = parseArgs(process.argv.slice(2));
   const { entries, version } = readExistingEntries();
+
+  if (compoundCodes.length) {
+    const refreshed = await Promise.all(compoundCodes.map(async code => {
+      const url = `https://apps.epsg.org/api/v1/CompoundCoordRefSystem/${code}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+      const detail = await response.json() as RegistryDetail & { Deprecations?: unknown[] };
+      if (String(detail.Code) !== code || detail.Kind !== 'compound' || !detail.HorizontalCrs?.Code) {
+        throw new Error(`EPSG:${code} is not a compound CRS with a horizontal component`);
+      }
+      return summarizeEntry({ Code: detail.Code, Name: detail.Name, Deprecated: Boolean(detail.Deprecations?.length) }, detail);
+    }));
+    // Correct horizontal datum operations first; never accept a compound export
+    // from epsg.io when its horizontal component is already bundled (#7658).
+    console.error(applyProj4Overrides(entries));
+    inheritCompoundProj4(refreshed, entries);
+    // Override codes skip inheritance and take their pinned definition here.
+    console.error(applyProj4Overrides(refreshed));
+    for (const entry of refreshed) {
+      if (!entry.proj4) throw new Error(`EPSG:${entry.code}: horizontal EPSG:${entry.horizontalCode} has no bundled proj4`);
+    }
+    const refreshedCodes = new Set(refreshed.map(entry => entry.code));
+    const merged = [...entries.filter(entry => !refreshedCodes.has(entry.code)), ...refreshed]
+      .sort((a, b) => Number(a.code) - Number(b.code));
+    fs.writeFileSync(GENERATED_PATH, `${renderModule(merged, version)}\n`, 'utf8');
+    console.log(`Refreshed ${refreshed.length} compound CRS entries from their bundled horizontal components`);
+    return;
+  }
 
   // Filter to entries that don't already have proj4
   const needsProj4 = entries.filter(e => !e.proj4);

@@ -31,8 +31,18 @@ fn legitimate_bspline_curve_still_samples() {
     let mut decoder = EntityDecoder::new(&content);
     let curve = decoder.decode_by_id(10).unwrap();
     let start = Point3::new(0.0, 0.0, 0.0);
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
-    assert!(pts.len() > 1, "a real B-spline edge must sample interior points, got {pts:?}");
+    let pts = sample_bspline_edge_curve(
+        &curve,
+        &start,
+        true,
+        &mut decoder,
+        TessellationQuality::Medium,
+    )
+    .unwrap();
+    assert!(
+        pts.len() > 1,
+        "a real B-spline edge must sample interior points, got {pts:?}"
+    );
 }
 
 /// #4901: a file-supplied `Degree` far past any practical NURBS must degrade
@@ -46,10 +56,21 @@ fn pathological_curve_degree_fails_fast_not_hangs() {
     let start = Point3::new(0.0, 0.0, 0.0);
 
     let begin = Instant::now();
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
+    let pts = sample_bspline_edge_curve(
+        &curve,
+        &start,
+        true,
+        &mut decoder,
+        TessellationQuality::Medium,
+    )
+    .unwrap();
     let elapsed = begin.elapsed();
 
-    assert_eq!(pts, vec![start], "a degree past MAX_BSPLINE_DEGREE must degrade to the start vertex");
+    assert_eq!(
+        pts,
+        vec![start],
+        "a degree past MAX_BSPLINE_DEGREE must degrade to the start vertex"
+    );
     assert!(
         elapsed < Duration::from_secs(2),
         "pathological curve degree must fail within the deterministic bound, took {elapsed:?}"
@@ -66,8 +87,19 @@ fn degree_one_past_the_bound_is_rejected() {
     let curve = decoder.decode_by_id(10).unwrap();
     let start = Point3::new(0.0, 0.0, 0.0);
 
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
-    assert_eq!(pts, vec![start], "degree 65 (MAX_BSPLINE_DEGREE + 1) must be rejected");
+    let pts = sample_bspline_edge_curve(
+        &curve,
+        &start,
+        true,
+        &mut decoder,
+        TessellationQuality::Medium,
+    )
+    .unwrap();
+    assert_eq!(
+        pts,
+        vec![start],
+        "degree 65 (MAX_BSPLINE_DEGREE + 1) must be rejected"
+    );
 }
 
 /// #4901 review: a `ControlPointsList` naming ONE MILLION points must be
@@ -78,16 +110,25 @@ fn degree_one_past_the_bound_is_rejected() {
 /// proving the raw (undecoded) list length is what trips it.
 #[test]
 fn one_million_control_points_rejected_before_decode() {
-    let refs: String = (1..=1_000_000).map(|i| format!("#{i}")).collect::<Vec<_>>().join(",");
-    let content = format!(
-        "#10=IFCBSPLINECURVEWITHKNOTS(2,({refs}),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.));\n"
-    );
+    let refs: String = (1..=1_000_000)
+        .map(|i| format!("#{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let content =
+        format!("#10=IFCBSPLINECURVEWITHKNOTS(2,({refs}),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.));\n");
     let mut decoder = EntityDecoder::new(&content);
     let curve = decoder.decode_by_id(10).unwrap();
     let start = Point3::new(0.0, 0.0, 0.0);
 
     let begin = Instant::now();
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
+    let pts = sample_bspline_edge_curve(
+        &curve,
+        &start,
+        true,
+        &mut decoder,
+        TessellationQuality::Medium,
+    )
+    .unwrap();
     let elapsed = begin.elapsed();
 
     assert_eq!(
@@ -122,16 +163,23 @@ fn rational_curve_is_sampled_with_its_weights_7750() {
     let content = rational_content("(1.,2.,1.)");
     let mut decoder = EntityDecoder::new(&content);
     let curve = decoder.decode_by_id(10).unwrap();
-    let parsed = parse_bspline_curve(&curve, &mut decoder).ok().flatten().expect("readable rational curve");
+    let parsed = parse_bspline_curve(&curve, &mut decoder)
+        .ok()
+        .flatten()
+        .expect("readable rational curve");
     let mid = parsed.at(0.5);
-    assert!((mid - Point3::new(1.0, 2.0 / 3.0, 0.0)).norm() < 1e-12, "midpoint {mid:?}");
+    assert!(
+        (mid - Point3::new(1.0, 2.0 / 3.0, 0.0)).norm() < 1e-12,
+        "midpoint {mid:?}"
+    );
     // The clamped ends are interpolated either way.
     assert!((parsed.at(0.0) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-12);
     assert!((parsed.at(1.0) - Point3::new(2.0, 0.0, 0.0)).norm() < 1e-12);
 
     // Every sampled point lies on the weighted curve, which the unweighted
     // parabola fails.
-    let pts = sample_bspline_curve_polyline(&curve, &mut decoder, TessellationQuality::Medium).unwrap();
+    let pts =
+        sample_bspline_curve_polyline(&curve, &mut decoder, TessellationQuality::Medium).unwrap();
     assert!(pts.len() > 4);
     for p in &pts {
         // Rational Bezier with weights (1,w,1) over (0,0),(1,1),(2,0):
@@ -150,7 +198,10 @@ fn rational_curve_is_sampled_with_its_weights_7750() {
             .unwrap();
         let d = (1.0 - t).powi(2) + 2.0 * w * t * (1.0 - t) + t * t;
         let y = 2.0 * w * t * (1.0 - t) / d;
-        assert!((p.y - y).abs() < 1e-4, "{p:?} is off the weighted curve (y {y})");
+        assert!(
+            (p.y - y).abs() < 1e-4,
+            "{p:?} is off the weighted curve (y {y})"
+        );
     }
 }
 
@@ -159,7 +210,15 @@ fn rational_curve_is_sampled_with_its_weights_7750() {
 /// sampling it unweighted.
 #[test]
 fn malformed_rational_weights_refuse_the_curve_7750() {
-    for weights in ["(1.,2.)", "(1.,2.,1.,1.)", "(1.,0.,1.)", "(1.,-2.,1.)", "(1.,$,1.)", "(1.,1.E999,1.)", "$"] {
+    for weights in [
+        "(1.,2.)",
+        "(1.,2.,1.,1.)",
+        "(1.,0.,1.)",
+        "(1.,-2.,1.)",
+        "(1.,$,1.)",
+        "(1.,1.E999,1.)",
+        "$",
+    ] {
         let content = rational_content(weights);
         let mut decoder = EntityDecoder::new(&content);
         let curve = decoder.decode_by_id(10).unwrap();
@@ -176,7 +235,10 @@ fn plain_curve_needs_no_weights_7750() {
     let content = curve_content(2);
     let mut decoder = EntityDecoder::new(&content);
     let curve = decoder.decode_by_id(10).unwrap();
-    assert!(matches!(parse_bspline_curve(&curve, &mut decoder), Ok(Some(_))));
+    assert!(matches!(
+        parse_bspline_curve(&curve, &mut decoder),
+        Ok(Some(_))
+    ));
 }
 
 /// Review of #7803: a NURBS is invariant under a uniform weight scale, and
@@ -197,10 +259,65 @@ fn uniformly_tiny_weights_draw_the_same_curve_7750() {
         );
         let mut decoder = EntityDecoder::new(&content);
         let curve = decoder.decode_by_id(10).unwrap();
-        let parsed = parse_bspline_curve(&curve, &mut decoder).ok().flatten().expect("readable");
+        let parsed = parse_bspline_curve(&curve, &mut decoder)
+            .ok()
+            .flatten()
+            .expect("readable");
         for i in 0..=100 {
             let p = parsed.at(i as f64 / 100.0);
-            assert!((p.coords.norm() - 1.0).abs() < 1e-14, "scale {scale:e}: {p:?} is off the unit circle");
+            assert!(
+                (p.coords.norm() - 1.0).abs() < 1e-14,
+                "scale {scale:e}: {p:?} is off the unit circle"
+            );
         }
+    }
+}
+
+// #7779: an unreadable control/vertex point cannot become a zero coordinate.
+#[test]
+fn issue_7779_curve_and_vertex_leaf_admission() {
+    for record in [
+        "IFCCARTESIANPOINT((1.,2.))",
+        "IFCCARTESIANPOINT((1.,2.,0.))",
+    ] {
+        let content = format!("#1=IFCCARTESIANPOINT((0.,0.,0.));#2={record};#3=IFCVERTEXPOINT(#2);#10=IFCBSPLINECURVEWITHKNOTS(1,(#1,#2),.UNSPECIFIED.,.F.,.F.,(2,2),(0.,1.),.UNSPECIFIED.);");
+        let mut decoder = EntityDecoder::new(&content);
+        let vertex = decoder.decode_by_id(3).unwrap();
+        assert_eq!(
+            extract_vertex_coords(&vertex, &mut decoder),
+            Some(Point3::new(1., 2., 0.))
+        );
+        let curve = decoder.decode_by_id(10).unwrap();
+        let parsed = parse_bspline_curve(&curve, &mut decoder)
+            .ok()
+            .flatten()
+            .unwrap();
+        assert_eq!(
+            parsed.control_points,
+            [Point3::new(0., 0., 0.), Point3::new(1., 2., 0.)]
+        );
+        assert_eq!(decoder.refused_records(), 0);
+    }
+    for record in [
+        "IFCDIRECTION((1.,2.,3.))",
+        "IFCCARTESIANPOINT((1.,2.,'bad'))",
+        "IFCCARTESIANPOINT((1.,2.,1.E400))",
+        "IFCCARTESIANPOINT((1.))",
+        "IFCCARTESIANPOINT((1.,2.,3.,4.))",
+        "IFCCARTESIANPOINT((IFCLENGTHMEASURE(1.),2.))",
+    ] {
+        let content = format!("#1=IFCCARTESIANPOINT((0.,0.,0.));#2={record};#3=IFCVERTEXPOINT(#2);#10=IFCBSPLINECURVEWITHKNOTS(1,(#1,#2),.UNSPECIFIED.,.F.,.F.,(2,2),(0.,1.),.UNSPECIFIED.);");
+        let mut decoder = EntityDecoder::new(&content);
+        let vertex = decoder.decode_by_id(3).unwrap();
+        assert!(
+            extract_vertex_coords(&vertex, &mut decoder).is_none(),
+            "{record}"
+        );
+        let curve = decoder.decode_by_id(10).unwrap();
+        assert!(
+            parse_bspline_curve(&curve, &mut decoder).is_err(),
+            "{record}"
+        );
+        assert_eq!(decoder.refused_record_ids(), [2]);
     }
 }

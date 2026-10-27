@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer",
-  "version": "5.2.1",
+  "version": "5.2.2",
   "description": "IFC-Lite viewer application",
   "private": true,
   "type": "module",
@@ -118,6 +118,7 @@
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3",
     "three": "^0.186.1",
+    "wkt-parser": "1.5.6",
     "zustand": "^5.0.15",
     "@ifc-lite/semantic": "workspace:*",
     "@ifc-lite/source-autodesk": "workspace:^",

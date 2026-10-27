@@ -19,7 +19,7 @@
 //! both sides.
 
 use ifc_lite_core::{
-    EntityDecoder, EntityScanner, GeoRefExtractor, GeoRefSource, GeoReference, IfcType,
+    EntityDecoder, EntityScanner, GeoRefExtractor, GeoReference, GeoReferenceDetails, IfcType,
 };
 
 /// Scan the fixture into the `(id, IfcType)` pairs `GeoRefExtractor::extract`
@@ -55,7 +55,7 @@ fn opt_str<'a>(v: &'a serde_json::Value, key: &str) -> Option<Option<&'a str>> {
     Some(Some(field.as_str().expect("string or null")))
 }
 
-fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReference>) {
+fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&(GeoReference, GeoReferenceDetails)>) {
     let want_has = expect["hasGeoreference"].as_bool().expect("hasGeoreference");
     if !want_has {
         assert!(
@@ -64,13 +64,13 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReferen
         );
         return;
     }
-    let g = georef.unwrap_or_else(|| {
+    let (g, details) = georef.unwrap_or_else(|| {
         panic!("case `{name}`: expected a georeference, extractor returned None")
     });
 
     // `"source": null` asserts the provenance is absent; omitting it skips.
     if let Some(want) = opt_str(expect, "source") {
-        assert_eq!(g.source.map(GeoRefSource::label), want, "case `{name}`: source");
+        assert_eq!(details.source_label(g.source), want, "case `{name}`: source");
     }
     for (key, got) in [
         ("crsName", &g.crs_name),
@@ -80,6 +80,7 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReferen
         ("mapProjection", &g.map_projection),
         ("mapZone", &g.map_zone),
         ("mapUnit", &g.map_unit),
+        ("wellKnownText", &details.well_known_text),
     ] {
         if let Some(want) = opt_str(expect, key) {
             assert_eq!(
@@ -177,7 +178,7 @@ fn rust_georef_matches_shared_vectors() {
 
         let entity_types = scan_entity_types(ifc);
         let mut decoder = EntityDecoder::new(ifc);
-        let georef = GeoRefExtractor::extract(&mut decoder, &entity_types)
+        let georef = GeoRefExtractor::extract_with_details(&mut decoder, &entity_types)
             .unwrap_or_else(|e| panic!("case `{name}`: extraction failed: {e:?}"));
 
         check_case(name, &case["expect"], georef.as_ref());

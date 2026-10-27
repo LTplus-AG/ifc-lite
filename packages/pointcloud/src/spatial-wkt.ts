@@ -108,3 +108,30 @@ export function extractWktCrsIdentifiers(wkt: string): WktCrsIdentifiers {
   const { horizontalId, verticalId } = extractWktSpatialMetadata(wkt);
   return { ...(horizontalId ? { horizontalId } : {}), ...(verticalId ? { verticalId } : {}) };
 }
+
+/**
+ * The horizontal CRS a WKT describes, as WKT text: a COMPOUNDCRS/COMPD_CS's
+ * BOUNDCRS/PROJCRS/GEOGCRS child (or an adjacent top-level one), else the root itself.
+ * Lets a projection library that reads only single CRSs take a compound one.
+ */
+export function extractWktHorizontalCrs(wkt: string): string | undefined {
+  const document = root(wkt);
+  if (!document) return undefined;
+  const compound = ['COMPOUNDCRS', 'COMPD_CS'].includes(document.name) ? document : undefined;
+  // A BOUNDCRS is kept whole: its ABRIDGEDTRANSFORMATION is the datum shift.
+  const horizontal = direct(compound?.body ?? wkt, ['BOUNDCRS', 'PROJCRS', 'PROJCS', 'GEOGCRS', 'GEOGCS', 'PROJECTEDCRS', 'GEODCRS']);
+  return horizontal ? `${horizontal.name}[${horizontal.body}]` : undefined;
+}
+
+/** WKT2 extent `BBOX[south, west, north, east]` (degrees), owned by the root CRS or its USAGE. */
+export interface WktBoundingBox { south: number; west: number; north: number; east: number }
+export function extractWktBoundingBox(wkt: string): WktBoundingBox | undefined {
+  const document = root(wkt);
+  if (!document) return undefined;
+  const owner = direct(document.body, ['USAGE'])?.body ?? document.body;
+  const box = direct(owner, ['BBOX']);
+  const values = box?.body.split(',').map((value) => Number(value.trim()));
+  if (!values || values.length !== 4 || !values.every(Number.isFinite)) return undefined;
+  const [south, west, north, east] = values;
+  return south <= north ? { south, west, north, east } : undefined;
+}

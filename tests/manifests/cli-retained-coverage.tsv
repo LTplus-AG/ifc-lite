@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: MPL-2.0
+model	id	status	code
+rust/geometry/tests/fixtures/bath_csg_solid.ifc	225	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1459222	published	
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1459256	published	
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1952597	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1952768	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1952954	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953140	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953326	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953512	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953698	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928204	refused	opening_strategy
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928638	published	
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928672	published	
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928894	published	
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928928	published	
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928962	published	
+rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	109	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	74	refused	incomplete
+rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	81	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	88	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	99	published	
+rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc	40	published	
+rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc	47	published	
+rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc	54	published	
+rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc	61	published	
+rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc	33	published	
+rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc	40	published	
+rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc	47	published	
+rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc	54	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	101	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	108	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	115	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	122	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	129	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	136	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	143	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	150	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	157	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	164	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	171	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	178	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	185	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	192	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	199	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	206	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	213	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	220	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	227	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	234	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	241	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	248	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	255	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	262	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	269	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	276	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	283	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	290	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	297	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	304	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	31	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	311	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	318	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	325	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	332	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	339	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	346	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	353	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	360	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	367	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	374	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	38	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	381	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	388	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	395	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	402	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	409	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	416	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	423	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	430	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	437	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	444	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	45	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	451	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	458	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	465	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	472	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	52	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	59	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	66	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	73	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	80	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	87	published	
+rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	94	published	
+rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc	50	published	
+tests/fixtures/cli-retained/layered-wall.ifc	27	refused	material_layer_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	122	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	129	published	
+tests/fixtures/synthetic-retained/f-a-curved.ifc	159	published	
+tests/fixtures/synthetic-retained/f-a-curved.ifc	188	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	195	published	
+tests/fixtures/synthetic-retained/f-a-curved.ifc	225	published	
+tests/fixtures/synthetic-retained/f-a-curved.ifc	254	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	261	published	
+tests/fixtures/synthetic-retained/f-a-curved.ifc	55	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	63	published	
+tests/fixtures/synthetic-retained/f-a-curved.ifc	93	published	
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	113	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	128	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	135	published	
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	153	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	160	published	
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	172	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	183	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	53	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	68	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	83	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	98	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-c-brep.ifc	1051	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-c-extrusion.ifc	27	published	

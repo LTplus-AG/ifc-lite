@@ -9,6 +9,8 @@
 //! with a hand-counted arg list would be wrong for two of the three schemas
 //! every test in this module runs against.
 
+use crate::step_text::quoted;
+
 /// A 22-char GlobalId, distinct per `n`, using only digits (a valid
 /// `IfcGloballyUniqueId` alphabet member).
 pub(super) fn gid(n: u32) -> String {
@@ -29,10 +31,6 @@ fn entity_line(schema: &str, id: u32, entity_type: &str, fields: &[(&str, &str)]
         }
     }
     format!("#{id}={entity_type}({});\n", slots.join(","))
-}
-
-fn quoted(s: &str) -> String {
-    format!("'{s}'")
 }
 
 /// One `IfcProject` + unit assignment + geometric context: the header every

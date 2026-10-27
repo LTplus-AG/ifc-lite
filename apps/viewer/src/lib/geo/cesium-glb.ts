@@ -26,7 +26,15 @@ import { OPAQUE_ALPHA_CUTOFF } from '@ifc-lite/renderer';
  * The split is per source mesh, which is exact here: the merge below assigns
  * one colour — and therefore one alpha — to every vertex of a given mesh.
  */
-export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
+export function buildMergedGLB(
+  meshes: MeshData[],
+  /**
+   * Node translation (glTF doubles) the positions are relative to: the Exact
+   * globe placement's tile centre (`globe-glb.ts`). Omitted, the GLB is
+   * byte-for-byte what it was before tiles existed.
+   */
+  translation?: readonly [number, number, number],
+): Uint8Array {
   // Pass 1: calculate total sizes, splitting the index count by alpha bucket.
   const isBlended = (m: MeshData) => (m.color?.[3] ?? 1) < OPAQUE_ALPHA_CUTOFF;
   let totalVerts = 0;
@@ -171,7 +179,7 @@ export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
     asset: { version: '2.0', generator: 'IFC-Lite-Cesium' },
     scene: 0,
     scenes: [{ nodes: empty ? [] : [0] }],
-    nodes: empty ? [] : [{ mesh: 0 }],
+    nodes: empty ? [] : [translation ? { mesh: 0, translation: [...translation] } : { mesh: 0 }],
     materials,
     meshes: empty ? [] : [{ primitives }],
     accessors,

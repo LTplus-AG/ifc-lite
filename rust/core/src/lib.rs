@@ -111,7 +111,7 @@ pub use generated::{
     attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, IfcType,
     SchemaEntityInfo, SchemaVersion, UnknownIfcType, IFC_TYPES,
 };
-pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
+pub use georef::{CoordinateOperationKind, GeoRefExtractor, GeoRefSource, GeoReference, GeoReferenceDetails};
 pub use limits::{RtcVerdict, MAX_CONTEXT_DEPTH, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{

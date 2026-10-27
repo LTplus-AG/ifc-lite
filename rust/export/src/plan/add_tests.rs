@@ -4,6 +4,7 @@
 
 use ifc_lite_core::EntityDecoder;
 
+use crate::plan::add_assoc_types::{NewProperty, NewPropertySet, PropertyValue};
 use crate::plan::add_test_support::*;
 use crate::plan::add_types::*;
 use crate::plan::test_fixtures::{gid as fixture_gid, storey_with_headroom, storey_with_typed_wall};
@@ -169,6 +170,8 @@ fn a_new_type_with_property_sets_is_shared_by_a_later_add() {
             global_id: None,
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: Some("standard".into()) },
             name: Some("Generic 200".into()),
+            tag: None,
+            element_type: None,
             psets: vec![wall_common("W200")],
             representation: Representation::None,
             style: None,
@@ -261,6 +264,8 @@ fn same_plan_produces_byte_identical_output_twice() {
             global_id: None,
                 class: ClassSpec { class: IfcClass::Named(door_type.into()), predefined_type: None },
                 name: Some("Type".into()),
+                tag: None,
+                element_type: None,
                 psets: vec![wall_common("T")],
                 representation: Representation::None,
                 style: None,
@@ -396,6 +401,8 @@ fn a_new_type_with_its_own_global_id_keeps_it_and_later_adds_name_it() {
             global_id: Some(type_gid),
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
             name: Some("Own id".into()),
+            tag: None,
+            element_type: None,
             psets: vec![wall_common("W1")],
             representation: Representation::None,
             style: None,
@@ -419,6 +426,8 @@ fn a_new_type_sharing_its_occurrences_global_id_is_refused() {
         global_id: Some(gid(24)),
         class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
         name: Some("Type".into()),
+        tag: None,
+        element_type: None,
         psets: Vec::new(),
         representation: Representation::None,
         style: None,
@@ -464,6 +473,8 @@ fn a_furniture_type_gets_its_mandatory_assembly_place() {
             global_id: None,
             class: ClassSpec { class: IfcClass::Named("IfcFurnitureType".into()), predefined_type: None },
             name: Some("Chair".into()),
+            tag: None,
+            element_type: None,
             psets: Vec::new(),
             representation: Representation::None,
             style: None,

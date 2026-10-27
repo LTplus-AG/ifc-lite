@@ -79,3 +79,10 @@ export function resolveResourceRetryTier(
   if (inputs.attemptedTier === 'lowest') return null;
   return 'lowest';
 }
+
+/** Report the existing lower-detail retry without delaying the load. */
+export function notifyResourceRetry(fileName: string): void {
+  void import('@/components/ui/toast')
+    .then(({ toast }) => toast.info(`"${fileName}" was too detailed for this device — retrying at lower detail…`))
+    .catch((error: unknown) => console.warn('[resource-retry] retry notice unavailable:', error));
+}

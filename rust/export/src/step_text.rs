@@ -92,6 +92,11 @@ pub fn escape(s: &str) -> String {
     out
 }
 
+/// A STEP string literal: `s` escaped and single-quoted.
+pub(crate) fn quoted(s: &str) -> String {
+    format!("'{}'", escape(s))
+}
+
 /// Collect outgoing `#<digits>` references in a STEP entity line, skipping the
 /// contents of single-quoted strings (where a `#` is literal text).
 pub(crate) fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {

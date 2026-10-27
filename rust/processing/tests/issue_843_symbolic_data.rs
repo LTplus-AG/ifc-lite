@@ -54,7 +54,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_grid_axes_from_ifcgrid() {
-    let data = extract_symbolic_data(SYNTHETIC_IFC);
+    let data = extract_symbolic_data(SYNTHETIC_IFC).expect("symbolic extraction must complete");
     assert_eq!(
         data.grid_axes.len(),
         4,
@@ -86,7 +86,7 @@ fn extracts_grid_axes_from_ifcgrid() {
 
 #[test]
 fn extracts_polylines_from_ifcannotation() {
-    let data = extract_symbolic_data(SYNTHETIC_IFC);
+    let data = extract_symbolic_data(SYNTHETIC_IFC).expect("symbolic extraction must complete");
 
     // Post #843 full-parity refactor, the server-side extractor matches
     // the browser pipeline 1:1 and emits axis lines as polylines too
@@ -158,6 +158,6 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-    let data = extract_symbolic_data(minimal);
+    let data = extract_symbolic_data(minimal).expect("symbolic extraction must complete");
     assert!(data.is_empty(), "empty IFC should produce no symbol data");
 }

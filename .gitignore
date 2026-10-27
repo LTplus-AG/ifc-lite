@@ -180,3 +180,4 @@ __pycache__/
 # Staged SMLib browser bundles (scripts/stage-retained-browser-assets.mjs)
 apps/viewer/public/smlib/
 rust/*/smlib/
+rust/wasm-bindings/retained-test/

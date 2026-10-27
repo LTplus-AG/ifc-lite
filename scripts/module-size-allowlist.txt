@@ -81,7 +81,7 @@
    594 apps/viewer/src/components/viewer/measureHandlers.ts
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
-   652 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
+   594 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
    825 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
@@ -191,7 +191,7 @@
    507 packages/drawing-2d/src/dxf/convert.ts
    898 packages/drawing-2d/src/dxf/parser.ts
    413 packages/drawing-2d/src/dxf/writer.ts
-   428 packages/drawing-2d/src/edge-extractor.ts
+   421 packages/drawing-2d/src/edge-extractor.ts
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    499 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
@@ -305,7 +305,6 @@
    499 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
    506 scripts/generate-coverage-ledger.mjs
-   422 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs
    460 scripts/lib/pr-green-sweep.mjs
   1113 scripts/lib/pr-review-signal.mjs

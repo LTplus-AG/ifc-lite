@@ -98,3 +98,39 @@ fn already_empty_host_refuses_before_unresolvable_second_operand() {
     assert_eq!(error.kind(),TransactionFailureKind::EmptyResult);
     assert_eq!(error.origin_view(),Some(("boolean_step",Some(11),"boolean")));
 }
+
+#[test]
+fn prism_normalizes_arc_sense_and_encodes_circle_holes() {
+    let mut prism=box_prism();
+    prism.loops[0].segments=vec![PrismSegment::Arc { center:[0.,0.], radius:1., start_angle:std::f64::consts::FRAC_PI_2,
+        sweep_angle:-std::f64::consts::FRAC_PI_2 }, PrismSegment::Line { start:[1.,0.],end:[0.,0.] },
+        PrismSegment::Line { start:[0.,0.],end:[0.,1.] }];
+    let payload=prism.lower().unwrap();
+    let arc=payload.bytes[56..].chunks_exact(104).find(|b| u32::from_le_bytes(b[..4].try_into().unwrap())==3).unwrap();
+    let sweep=f64::from_le_bytes(arc[96..104].try_into().unwrap());
+    assert_eq!(sweep,std::f64::consts::FRAC_PI_2);
+    prism.loops=vec![PrismLoop {outer:true,segments:vec![PrismSegment::Circle{center:[0.,0.],radius:2.}]},
+        PrismLoop {outer:false,segments:vec![PrismSegment::Circle{center:[0.,0.],radius:1.}]}];
+    let payload=prism.lower().unwrap();
+    assert_eq!(payload.loops,2); assert_eq!(payload.segments,2);
+    assert_eq!(payload.evaluation_bounds.unwrap().0,[-2.,-2.,0.,2.,2.,1.]);
+    // Inner loop kind=2 and clockwise full turn; outer loop remains CCW.
+    assert_eq!(u32::from_le_bytes(payload.bytes[168..172].try_into().unwrap()),2);
+    assert_eq!(f64::from_le_bytes(payload.bytes[264..272].try_into().unwrap()),-std::f64::consts::TAU);
+}
+#[test]
+fn halfspace_dispatch_keeps_all_three_current_refusals() {
+    for (kind,args) in [("IFCHALFSPACESOLID","#2,.T."),("IFCBOXEDHALFSPACE","#2,.T.,$"),("IFCPOLYGONALBOUNDEDHALFSPACE","#2,.T.,$,$")] {
+        let text=SOURCE.replace("#9=IFCEXTRUDEDAREASOLID(#6,#8,#3,1.)",&format!("#9={kind}({args})"));
+        let source=SourceBundle::new(text.as_bytes().to_vec());let mut decoder=source.decoder();
+        let router=GeometryRouter::new();let wall=decoder.decode_by_id(14).unwrap();let traversal=Traversal::new(1,1);
+        let mut program=traversal.product_parts(&wall);
+        let error=loop {
+            let ticket=match program.request(){Ok(Some(t))=>t,Err(e)=>break e,Ok(None)=>panic!("halfspace admitted")};
+            let (reply,_,_)=match program.admit(ticket,&router,&mut decoder){Ok(r)=>r,Err(e)=>break e};
+            if let Err(e)=program.accept(reply,&router){break e.error;}
+        };
+        assert_eq!(error.kind(),TransactionFailureKind::OperationUnsupported);
+        assert_eq!(error.origin_view(),Some(("boolean_second_operand",Some(9),"recipe")));
+    }
+}

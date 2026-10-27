@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile, readdir } from 'node:fs/promises';
 import { tsv } from './metrics.mjs';
-export async function coverageRows() {
-  const base = 'tests/manifests/cli-retained-coverage';
+export async function coverageRows(base = 'tests/manifests/cli-retained-coverage') {
   let entries;
   try { entries = await readdir(`${base}.d`); }
   catch (error) { if (error.code !== 'ENOENT') throw error; entries = []; }

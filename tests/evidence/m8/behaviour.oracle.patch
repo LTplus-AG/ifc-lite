@@ -1,7 +1,7 @@
 --- a/rust/geometry/src/analytic/profile_retrace.rs
 +++ b/rust/geometry/src/analytic/profile_retrace.rs
-@@ -17,8 +17,8 @@
- pub(super) fn admitted() -> bool { ADMITTED.with(Cell::get) }
+@@ -27,8 +27,8 @@
+ }
  
  fn collinear(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {
 -    { let _ = (orient2d, ImplicitPoint::Explicit(a), DropAxis::Z, Sign::Zero);

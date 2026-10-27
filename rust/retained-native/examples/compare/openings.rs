@@ -61,6 +61,13 @@ pub fn check_opened(
         }
     }
 }
+/// A preregistered tolerance; a missing or renamed key is a harness bug, never
+/// a silent zero.
+fn tolerance(t: &Value, key: &str, field: &str) -> f64 {
+    t[key][field]
+        .as_f64()
+        .unwrap_or_else(|| panic!("tolerances.json lacks preregistered {key}.{field}"))
+}
 pub fn check(
     label: &str,
     actual: &super::metrics::Metrics,
@@ -72,31 +79,19 @@ pub fn check(
     let rel = e
         .result_volume
         .map(|v| super::metrics::relative(actual.volume, v));
-    if rel.is_some_and(|v| {
-        !v.is_finite() || v > t["openingPrismVolumeRelative"][kind].as_f64().unwrap_or(0.)
-    }) {
+    if rel.is_some_and(|v| !v.is_finite() || v > tolerance(t, "openingPrismVolumeRelative", kind)) {
         violations.push(format!("{label}: opening prism volume deviation {rel:?}"));
     }
     let bounds = openings::volume_bounds_relative(actual.volume, e.volume_bounds);
-    if !bounds.is_finite()
-        || bounds
-            > t["openingVolumeBoundsRelative"][kind]
-                .as_f64()
-                .unwrap_or(0.)
-    {
+    if !bounds.is_finite() || bounds > tolerance(t, "openingVolumeBoundsRelative", kind) {
         violations.push(format!(
             "{label}: opening volume outside nominal bounds {bounds}"
         ));
     }
     if let Some(host) = e.host_bbox {
         let extent = (0..3).map(|i| host[i + 3] - host[i]).fold(0., f64::max);
-        let limit = t["openingResultBboxWithinHost"]["absolute"]
-            .as_f64()
-            .unwrap_or(0.)
-            + extent
-                * t["openingResultBboxWithinHost"]["extentFactor"]
-                    .as_f64()
-                    .unwrap_or(0.);
+        let limit = tolerance(t, "openingResultBboxWithinHost", "absolute")
+            + extent * tolerance(t, "openingResultBboxWithinHost", "extentFactor");
         let excess = openings::bbox_excess(&actual.bbox, &host);
         if !excess.is_finite() || excess > limit {
             violations.push(format!(

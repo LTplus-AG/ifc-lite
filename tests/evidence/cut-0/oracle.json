@@ -3,5 +3,5 @@
   "key": "rust/geometry/src/program/retained/bounds.rs",
   "mutation": "tests/evidence/cut-0/behaviour.oracle.patch",
   "test": "rust/geometry/tests/m5_0_prism_bounds.rs",
-  "why": "Difference taking the right operand bounds must fail the retained-runtime host-bound witness."
+  "why": "Reverse-applying this patch makes Difference take the right operand bounds and must fail the retained-runtime host-bound witness."
 }

@@ -21,6 +21,7 @@ on:
       - 'rust/processing/src/element.rs'
       - 'rust/processing/Cargo.toml'
       - 'tests/fixtures/cli-retained/**'
+      - 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc'
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
       - 'tests/models/manifest.json'

@@ -4,8 +4,9 @@ use std::{collections::{BTreeMap, BTreeSet}, path::{Path, PathBuf}};
 type Error = Box<dyn std::error::Error>;
 const BASE: &str = "tests/manifests/cli-retained-coverage.tsv";
 const HEADER: &str = "# SPDX-License-Identifier: MPL-2.0\nmodel\tid\tstatus\tcode\n";
-pub fn fragments(root: &str, extension: &str) -> Result<Vec<PathBuf>, Error> {
-    if !Path::new(root).exists() { return Ok(Vec::new()); }
+pub fn fragments(root: impl AsRef<Path>, extension: &str) -> Result<Vec<PathBuf>, Error> {
+    let root = root.as_ref();
+    if !root.exists() { return Ok(Vec::new()); }
     let mut paths = std::fs::read_dir(root)?.map(|e| e.map(|e| e.path())).collect::<Result<Vec<_>, _>>()?;
     paths.retain(|p| p.extension().is_some_and(|e| e == extension)); paths.sort(); Ok(paths)
 }

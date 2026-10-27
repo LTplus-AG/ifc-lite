@@ -22,6 +22,8 @@ impl Convex {
     pub fn extrusion(vertices: &[Point], direction: Point) -> Option<Self> {
         if vertices.len() < 3 || vertices.len() > 4096
             || vertices.iter().flatten().chain(direction.iter()).any(|v| !v.is_finite()) { return None; }
+        let cap = plane(vertices)?;
+        if vertices.iter().any(|p| cap.distance(*p).abs() > 1e-10) { return None; }
         let top: Vec<_> = vertices.iter().map(|v| add(*v, direction)).collect();
         let center = add(mean(vertices), direction.map(|v| v / 2.));
         let mut faces = vec![vertices.to_vec(), top.clone()];

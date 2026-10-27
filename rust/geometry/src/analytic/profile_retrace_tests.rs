@@ -87,3 +87,12 @@ fn issue_3641_admission_restores_on_unwind_and_nested_call() {
     assert!(unwind.is_err());
     assert!(!admitted());
 }
+
+#[test]
+fn issue_3641_valid_profile_is_unchanged_and_predicates_charge_work() {
+    let valid = FIXTURE.replace("IFCLINEINDEX((1,2,3,4,5,1))", "IFCLINEINDEX((2,3,4,5,2))");
+    assert_eq!(serde_json::to_value(extrusion(&valid,true)).unwrap(), serde_json::to_value(extrusion(&valid,false)).unwrap());
+    let original = extrusion(&valid,false).profile.unwrap().loops.remove(0);
+    let budget = crate::resource::ProductBudget::new(crate::resource::BudgetStart::now(), 1, 1_000_000, 10000);
+    budget.scope(|| assert!(matches!(cancel(&original),Err(WalkError::Stopped(_)))));
+}

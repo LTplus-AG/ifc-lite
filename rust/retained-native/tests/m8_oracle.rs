@@ -59,3 +59,17 @@ fn issue_3641_oracle_fails_closed_on_zero_or_multiple_omissions() {
     let zero = [[0.,0.,0.],[2.,0.,0.],[3.,1.,0.],[2.,2.,0.],[0.,2.,0.]];
     assert_eq!(retrace::region(&zero,1e-12), Err("oracle cannot model this profile"));
 }
+
+#[test]
+fn issue_3641_ordinary_quantity_sources_match_default_snapshot() {
+    let bytes = include_bytes!("../../processing/tests/fixtures/issue_3641_voiding_trap.ifc");
+    let actual = serde_json::to_value(ifc_lite_processing::extract_analytic_quantity_sources(bytes,None)).unwrap();
+    if let Some(output) = std::env::var_os("IFCLITE_M8_QUANTITIES") {
+        std::fs::write(output,serde_json::to_vec_pretty(&actual).unwrap()).unwrap();
+        eprintln!("M8 quantity snapshot generation only; rerun without IFCLITE_M8_QUANTITIES to qualify");
+        return;
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/m8-quantities.json");
+    let expected: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(actual,expected);
+}

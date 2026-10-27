@@ -63,7 +63,9 @@ fn issue_3641_oracle_fails_closed_on_zero_or_multiple_omissions() {
 #[test]
 fn issue_3641_ordinary_quantity_sources_match_default_snapshot() {
     let bytes = include_bytes!("../../processing/tests/fixtures/issue_3641_voiding_trap.ifc");
-    let actual = serde_json::to_value(ifc_lite_processing::extract_analytic_quantity_sources(bytes,None)).unwrap();
+    let sources = ifc_lite_processing::extract_analytic_quantity_sources(bytes,None);
+    let actual = serde_json::json!({"swept_disk_descriptions":sources.swept_disk_descriptions,
+        "swept_disk_definitions":sources.swept_disk_definitions,"extrusion_definitions":sources.extrusion_definitions});
     if let Some(output) = std::env::var_os("IFCLITE_M8_QUANTITIES") {
         std::fs::write(output,serde_json::to_vec_pretty(&actual).unwrap()).unwrap();
         eprintln!("M8 quantity snapshot generation only; rerun without IFCLITE_M8_QUANTITIES to qualify");

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use ifc_lite_core::IfcType;
 
 const HEADER: &str = r#"ISO-10303-21;
 HEADER;
@@ -116,11 +117,16 @@ fn operator_local_origin_z_reaches_tz() {
     let body = "\
 #1=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2,$,$);
 #2=IFCCARTESIANPOINT((1.,2.,3.));
+#3=IFCMAPPEDITEM(#9,#1);
 ";
-    let entity = decode(body, 1);
+    let entity = decode(body, 3);
     let content = format!("{HEADER}{body}{FOOTER}");
     let mut decoder = EntityDecoder::new(&content);
-    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 1.0);
+    let result = resolve_mapping_target(
+        &entity,
+        &mut decoder,
+        &ifc_lite_geometry::GeometryRouter::with_scale(1.0),
+    );
 
     assert!((result.tx - 1.0).abs() < 1e-4, "tx: {result:?}");
     assert!((result.ty - 2.0).abs() < 1e-4, "ty: {result:?}");
@@ -134,11 +140,16 @@ fn operator_local_origin_z_is_unit_scaled_like_x_and_y() {
     let body = "\
 #1=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2,$,$);
 #2=IFCCARTESIANPOINT((1000.,2000.,3000.));
+#3=IFCMAPPEDITEM(#9,#1);
 ";
-    let entity = decode(body, 1);
+    let entity = decode(body, 3);
     let content = format!("{HEADER}{body}{FOOTER}");
     let mut decoder = EntityDecoder::new(&content);
-    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 0.001);
+    let result = resolve_mapping_target(
+        &entity,
+        &mut decoder,
+        &ifc_lite_geometry::GeometryRouter::with_scale(0.001),
+    );
 
     assert!((result.tx - 1.0).abs() < 1e-4, "tx: {result:?}");
     assert!((result.ty - 2.0).abs() < 1e-4, "ty: {result:?}");
@@ -152,13 +163,140 @@ fn operator_2d_local_origin_leaves_tz_zero() {
     let body = "\
 #1=IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#2,$);
 #2=IFCCARTESIANPOINT((4.,5.));
+#3=IFCMAPPEDITEM(#9,#1);
 ";
-    let entity = decode(body, 1);
+    let entity = decode(body, 3);
     let content = format!("{HEADER}{body}{FOOTER}");
     let mut decoder = EntityDecoder::new(&content);
-    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 1.0);
+    let result = resolve_mapping_target(
+        &entity,
+        &mut decoder,
+        &ifc_lite_geometry::GeometryRouter::with_scale(1.0),
+    );
 
     assert!((result.tx - 4.0).abs() < 1e-4, "tx: {result:?}");
     assert!((result.ty - 5.0).abs() < 1e-4, "ty: {result:?}");
     assert!(result.tz.abs() < 1e-6, "2D operator must leave tz at 0: {result:?}");
+}
+
+/// PROCESSING-SYM-16 (#7779): `links` chained `IfcLocalPlacement`s, each
+/// translating +1 in X, under a product whose `ObjectPlacement` is the leaf.
+fn chained_product(links: usize) -> String {
+    let mut body = String::from("#1=IFCAXIS2PLACEMENT3D(#2,$,$);\n#2=IFCCARTESIANPOINT((1.,0.,0.));\n#10=IFCLOCALPLACEMENT($,#1);\n");
+    for i in 1..links {
+        body.push_str(&format!("#{}=IFCLOCALPLACEMENT(#{},#1);\n", 10 + i, 9 + i));
+    }
+    body.push_str(&format!(
+        "#900=IFCWALL('0000000000000000000000',$,$,$,$,#{},$,$,$);\n",
+        9 + links
+    ));
+    body
+}
+
+#[test]
+fn a_chain_past_fifty_links_resolves_like_the_mesh_path_sym_16() {
+    // Base capped the recursion at `depth > 50` (51 links) and returned
+    // `unresolved()` (tz = NaN, the symbol kept at the origin).
+    for links in [40, 51, 80, ifc_lite_core::MAX_PLACEMENT_DEPTH] {
+        let content = format!("{HEADER}{}{FOOTER}", chained_product(links));
+        let mut decoder = EntityDecoder::new(&content);
+        let product = decoder.decode_by_id(900).unwrap();
+        let t = resolve_object_placement(&product, &mut decoder, 1.0);
+        assert!(t.tz.is_finite(), "{links} links must resolve");
+        assert_eq!(t.tx, links as f64, "{links} links compose in full");
+    }
+}
+
+fn resolve(body: &str, product: u32) -> Transform2D {
+    let content = format!("{HEADER}{body}{FOOTER}");
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(product).unwrap();
+    resolve_object_placement(&entity, &mut decoder, 1.0)
+}
+
+/// F3b P2 (D27): the chain is the shared iterative walk, so there is no cap
+/// at all (SYM-16's 50 and then 100 are both gone) and no recursion to
+/// overflow.
+#[test]
+fn a_very_deep_chain_resolves_without_a_cap() {
+    let links = ifc_lite_core::MAX_PLACEMENT_DEPTH * 3;
+    let content = format!("{HEADER}{}{FOOTER}", chained_product(links));
+    let mut decoder = EntityDecoder::new(&content);
+    let product = decoder.decode_by_id(900).unwrap();
+    let t = resolve_object_placement(&product, &mut decoder, 1.0);
+    assert!(t.tz.is_finite());
+    assert_eq!(t.tx, links as f64);
+}
+
+/// §3.8: a cycle is `unresolved()` (kept at the origin, tz NaN). Base composed
+/// about 51 locals around the loop and drew the symbol displaced.
+#[test]
+fn a_placement_cycle_is_unresolved_not_a_displaced_symbol() {
+    let body = "#1=IFCAXIS2PLACEMENT3D(#2,$,$);\n#2=IFCCARTESIANPOINT((1.,0.,0.));\n\
+                #10=IFCLOCALPLACEMENT(#11,#1);\n#11=IFCLOCALPLACEMENT(#10,#1);\n\
+                #900=IFCWALL('0000000000000000000000',$,$,$,$,#10,$,$,$);\n";
+    let t = resolve(body, 900);
+    assert!(t.tz.is_nan(), "{t:?}");
+    assert_eq!((t.tx, t.ty), (0.0, 0.0), "{t:?}");
+}
+
+/// §3.9 (user-visible): symbols under an `IfcLinearPlacement` product draw in
+/// place. Base only walked `IfcLocalPlacement` and returned `unresolved()`.
+#[test]
+fn a_linear_placement_resolves_through_the_shared_chain() {
+    let body = "#1=IFCAXIS2PLACEMENT3D(#2,$,$);\n#2=IFCCARTESIANPOINT((3.,4.,0.));\n\
+                #10=IFCLINEARPLACEMENT($,$,#1);\n\
+                #900=IFCWALL('0000000000000000000000',$,$,$,$,#10,$,$,$);\n";
+    let t = resolve(body, 900);
+    assert!(t.tz.is_finite(), "{t:?}");
+    assert_eq!((t.tx, t.ty), (3.0, 4.0));
+}
+
+/// §3.11 (user-visible, rare): Axis is honoured, so a tilted parent projects
+/// foreshortened. Base ignored Axis (m11 = 1).
+#[test]
+fn a_tilted_placement_is_projected_foreshortened() {
+    // Axis tilted 60 degrees about X: local Y = Z x X has y component cos(60).
+    let (s, c) = (60f64.to_radians().sin(), 60f64.to_radians().cos());
+    let body = format!(
+        "#1=IFCAXIS2PLACEMENT3D(#2,#3,$);\n#2=IFCCARTESIANPOINT((0.,0.,0.));\n\
+         #3=IFCDIRECTION((0.,{:?},{:?}));\n#10=IFCLOCALPLACEMENT($,#1);\n\
+         #900=IFCWALL('0000000000000000000000',$,$,$,$,#10,$,$,$);\n",
+        -s, c
+    );
+    let t = resolve(&body, 900);
+    assert!(
+        (t.m00 - 1.0).abs() < 1e-12 && (t.m11 - c).abs() < 1e-12,
+        "{t:?}"
+    );
+}
+
+/// §3.17: one epsilon. A RefDirection of length 5e-5 is read as authored
+/// (the canonical repair is for a zero vector), where symbolic's own 1e-4
+/// threshold snapped it to +X.
+#[test]
+fn a_short_ref_direction_is_read_not_snapped_to_x() {
+    let body = "#1=IFCAXIS2PLACEMENT2D(#2,#3);\n#2=IFCCARTESIANPOINT((0.,0.));\n\
+                #3=IFCDIRECTION((0.,0.00005));\n";
+    let entity = decode(body, 1);
+    let content = format!("{HEADER}{body}{FOOTER}");
+    let mut decoder = EntityDecoder::new(&content);
+    let t = parse_axis2_placement_2d(&entity, &mut decoder, 1.0);
+    assert!((t.m10 - 1.0).abs() < 1e-12 && t.m00.abs() < 1e-12, "{t:?}");
+}
+
+/// D30/D15: a `$` mandatory Location or a malformed component anywhere in the
+/// chain DROPS the symbol (`refused()`, NaN translation), where base kept it
+/// at the origin (`$` Location) or read the component as 0.
+#[test]
+fn an_admission_refusal_inside_the_chain_drops_the_symbol() {
+    for (point, what) in [("$", "`$` Location"), ("#2", "malformed component")] {
+        let body = format!(
+            "#1=IFCAXIS2PLACEMENT3D({point},$,$);\n#2=IFCCARTESIANPOINT((1.,'x',0.));\n\
+             #10=IFCLOCALPLACEMENT($,#1);\n#11=IFCLOCALPLACEMENT(#10,#1);\n\
+             #900=IFCWALL('0000000000000000000000',$,$,$,$,#11,$,$,$);\n"
+        );
+        let t = resolve(&body, 900);
+        assert!(t.tx.is_nan() && t.ty.is_nan(), "{what}: {t:?}");
+    }
 }

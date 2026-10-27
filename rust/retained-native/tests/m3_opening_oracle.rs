@@ -167,9 +167,13 @@ fn green_integral_full_circles_holes_and_tangencies() {
     let hollow = text
         .replace(
             "IFCCIRCLEPROFILEDEF(.AREA.,'Disk',#22,1.)",
-            "IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,'Ring',#22,2.,1.)",
+            "IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,'Ring',#1700,(#1701))",
         )
-        .replace("#42,2.,4.)", "#42,2.,6.)");
+        .replace("#42,2.,4.)", "#42,2.,6.)")
+        .replace(
+            "#20=",
+            "#1700=IFCCIRCLE(#22,2.);\n#1701=IFCCIRCLE(#22,1.);\n#20=",
+        );
     // Outer r2, inner r1, height3 => 9*pi total, right half cut => 9*pi/2.
     close(
         prism_result_volume(

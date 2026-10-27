@@ -72,6 +72,7 @@ fn issue_3641_ordinary_quantity_sources_match_default_snapshot() {
         return;
     }
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/m8-quantities.json");
-    let expected: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
-    assert_eq!(actual,expected);
+    // Compare the unchanged serialization directly: serde_json without
+    // float_roundtrip can move a saved f64 by one ULP when parsing it (#7955).
+    assert_eq!(serde_json::to_vec_pretty(&actual).unwrap(), std::fs::read(path).unwrap());
 }

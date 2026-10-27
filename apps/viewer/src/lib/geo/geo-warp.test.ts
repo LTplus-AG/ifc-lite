@@ -191,7 +191,8 @@ describe('GeoWarp with IfcWellKnownText definitions', () => {
     const c = PROJ_ORACLE.warp[2];
     const crs: ProjectedCRS = { id: 3, name: 'WKT', wellKnownText: DHDN_GK4_WKT1, mapUnitScale: 1 };
     const projDef = await resolveProjection(crs);
-    assert.ok(projDef?.startsWith('IFC-WKT:'), projDef ?? 'unresolved');
+    assert.ok(projDef, 'the WKT resolves');
+    assert.ok(projDef.startsWith('IFC-WKT:'), projDef);
     const line = rigidLine(c);
     const origin = await bridgeOrigin(line.mapConversion, crs, line.coordinateInfo, c.anchor.h);
     const m = createGeoMapping({ ...line, projectedCRS: crs, projDef, origin, geoid: geoidPlane(c.anchor) });
@@ -204,7 +205,8 @@ describe('GeoWarp with IfcWellKnownText definitions', () => {
     const c = PROJ_ORACLE.warp[0];
     const crs: ProjectedCRS = { id: 3, name: 'WKT', wellKnownText: UTM32_WKT2_BOXED, mapUnitScale: 1 };
     const projDef = await resolveProjection(crs);
-    assert.ok(projDef?.startsWith('IFC-WKT:'), 'the extent-carrying alias');
+    assert.ok(projDef, 'the WKT resolves');
+    assert.ok(projDef.startsWith('IFC-WKT:'), `the extent-carrying alias, got ${projDef}`);
     const line = rigidLine(c);
     const origin = await bridgeOrigin(line.mapConversion, crs, line.coordinateInfo, c.anchor.h);
     const m = createGeoMapping({ ...line, projectedCRS: crs, projDef, origin, geoid: geoidPlane(c.anchor) });

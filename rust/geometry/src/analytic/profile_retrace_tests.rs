@@ -25,7 +25,7 @@ fn issue_3641_seam_retrace_preserves_authored_source_and_exact_status() {
     assert_eq!(boundary.segments.len(), 4);
     // Shoelace: (870*-900 + 1400*-900.00001 - (-900*4500)
     // + 4500*900.00001)/2 = 3028500.0155, not 3028499.5155.
-    assert!((boundary.signed_area - 3_028_500.0155).abs() < 1e-6);
+    assert!((boundary.signed_area - 3028500.0155).abs() < 1e-6);
     assert!(matches!(boundary.segments[0], AnalyticCurveSegment::Line { start: [870., 0., 0.], .. }));
     let source = boundary.source.as_ref().unwrap();
     assert_eq!(source.root_entity_id, 61273);

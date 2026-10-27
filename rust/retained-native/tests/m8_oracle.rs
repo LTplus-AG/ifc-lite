@@ -7,7 +7,7 @@ fn issue_3641_hand_derived_quadrilateral_and_spur() {
     // Rectangle 3630*900 minus triangle 530*900/2 plus
     // the 3100-wide, 0.00001-high triangular sliver.
     let hand = 3630.*900. - 530.*900./2. + 3100.*0.00001/2.;
-    assert!((hand - 3_028_500.0155_f64).abs() < 1e-9);
+    assert!((hand - 3028500.0155_f64).abs() < 1e-9);
     assert!((retrace::area(&points)-hand).abs() < 1e-9);
     let polygon = retrace::region(&points, 1e-12).unwrap();
     assert_eq!(polygon.len(), 4);
@@ -29,7 +29,7 @@ fn convex_inclusion_exclusion_and_oblique_prisms_have_hand_volumes() {
     // Three half boxes leave only [1,2]^3, including triple overlap.
     assert!((difference_volume(&host,&[a,b,c]).unwrap()-1.).abs() < 1e-12);
     assert!((difference_volume(&host,&[box_([3.;3],[4.;3])]).unwrap()-8.).abs()<1e-12);
-    assert!((difference_volume(&host,&[host.clone()]).unwrap()).abs()<1e-12);
+    assert!((difference_volume(&host,std::slice::from_ref(&host)).unwrap()).abs()<1e-12);
     // Oblique unit-square prism: height is the normal component, 3.
     let oblique = Convex::extrusion(&[[0.,0.,0.],[1.,0.,0.],[1.,1.,0.],[0.,1.,0.]], [0.7,0.2,3.]).unwrap();
     assert!((oblique.volume()-3.).abs()<1e-12);
@@ -46,7 +46,7 @@ fn issue_3641_source_oracle_supports_all_arbitrarily_oriented_cutters() {
     let a = ifc_lite_retained_native::oracle::convex::source(&sources,72216,origin).unwrap();
     let b = ifc_lite_retained_native::oracle::convex::source(&sources,72230,origin).unwrap();
     let c = retrace::source(&sources,&mut decoder,origin,1e-12).unwrap();
-    assert!((c.volume()-3_028_500.0155*25632.*1e-9).abs()<1e-8);
+    assert!((c.volume()-3028500.0155*25632.*1e-9).abs()<1e-8);
     let remaining = difference_volume(&host,&[a,b,c]).unwrap();
     assert!(remaining>0. && remaining<host.volume());
     eprintln!("M8 independent slab oracle: {remaining:.15} m3");

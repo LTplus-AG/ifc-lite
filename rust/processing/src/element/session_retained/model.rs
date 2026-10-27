@@ -86,7 +86,7 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
     mut sink: impl FnMut(ProductOutcome, f64),
 ) -> Result<ModelSummary, RetainedExecutionError> {
     options.limits.validate()?;
-    let mut decoder = source.decoder();
+    let mut decoder = source.decoder().with_strict_reals();
     let mut spans = crate::prepass::PrepassSpans::default();
     let mut scanner = ifc_lite_core::EntityScanner::new(source.bytes());
     while let Some((id, name, start, end)) = scanner.next_entity() {

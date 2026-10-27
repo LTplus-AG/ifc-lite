@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Opt-in local limits layered onto the original account and pool identity.
+#[cfg(target_arch = "wasm32")]
+use super::budget_monotonic::Instant;
 use super::*;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Captured once at the public bounded entry, before option/source work.
@@ -36,7 +40,14 @@ impl BudgetStart {
         if let Some((clock, start)) = &self.clock {
             return Duration::from_millis(clock.elapsed().saturating_sub(*start));
         }
-        self.instant.elapsed()
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.instant.elapsed()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.instant.elapsed().unwrap_or(Duration::MAX)
+        }
     }
 }
 

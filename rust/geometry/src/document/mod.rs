@@ -194,3 +194,7 @@ impl GeometryDocument {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[doc(hidden)]
+#[cfg(feature = "retained-runtime")]
+pub mod retained_wire;

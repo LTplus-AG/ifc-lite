@@ -2,7 +2,10 @@
 //! The mapping controller's numerical merge/close steps and its accept side:
 //! each validated reply is installed and the next step selected.
 use super::super::inner::ProgramError;
-use super::{Action, ChildControl, Event, MappingControl, MappingOutput, MappingValue, Merged, Merging, Placeholder, Place, Placing, Reached, Sink, Walk};
+use super::{
+    Action, ChildControl, Event, MappingControl, MappingOutput, MappingValue, Merged, Merging,
+    Place, Placeholder, Placing, Reached, Sink, Walk,
+};
 use crate::router::mapped_item::MappedOccurrence;
 use crate::{Error, GeometryRouter, Result};
 
@@ -120,7 +123,12 @@ impl<'a> MappingControl<'a> {
         reply: super::MappingReply,
         router: &GeometryRouter,
     ) {
-        if let MappingValue::Refused { item_id, refusal, budget } = &reply {
+        if let MappingValue::Refused {
+            item_id,
+            refusal,
+            budget,
+        } = &reply
+        {
             self.budget = *budget;
             self.stop_logical(*item_id, *refusal, router);
             return;
@@ -259,30 +267,62 @@ impl<'a> MappingControl<'a> {
         self.reduce(event, router);
     }
 
-    fn accept_shared_items(&mut self, rep: Reached<'a>, source: u32, placeholder: Option<Placeholder>,
-        items: Result<Vec<ifc_lite_core::DecodedEntity>>, router: &GeometryRouter) -> Event {
+    fn accept_shared_items(
+        &mut self,
+        rep: Reached<'a>,
+        source: u32,
+        placeholder: Option<Placeholder>,
+        items: Result<Vec<ifc_lite_core::DecodedEntity>>,
+        router: &GeometryRouter,
+    ) -> Event {
         match items {
             Ok(items) => {
-                self.enter_source(u32::MAX, source, None, rep.item(), items, Sink::Shared(placeholder), router);
+                self.enter_source(
+                    u32::MAX,
+                    source,
+                    None,
+                    rep.item(),
+                    items,
+                    Sink::Shared(placeholder),
+                    router,
+                );
                 Event::Advance
             }
             Err(error) => Event::Deliver {
-                item_id: rep.item().id, truncated: false, value: Err(error),
+                item_id: rep.item().id,
+                truncated: false,
+                value: Err(error),
             },
         }
     }
 
-    fn accept_type_map(&mut self, value: Result<(ifc_lite_core::DecodedEntity, Vec<ifc_lite_core::DecodedEntity>)>,
-        router: &GeometryRouter) -> Option<Event> {
+    fn accept_type_map(
+        &mut self,
+        value: Result<(
+            ifc_lite_core::DecodedEntity,
+            Vec<ifc_lite_core::DecodedEntity>,
+        )>,
+        router: &GeometryRouter,
+    ) -> Option<Event> {
         match (value, self.rep_map.as_ref().map(Reached::item)) {
             (Ok((representation, items)), Some(rep_map)) => {
                 // Type maps select by reference, not 3D membership. Keep the
                 // canonical source diagnostic policy, including 2D sources.
-                self.enter_source(u32::MAX, rep_map.id, None, &representation, items, Sink::TypeMap, router);
+                self.enter_source(
+                    u32::MAX,
+                    rep_map.id,
+                    None,
+                    &representation,
+                    items,
+                    Sink::TypeMap,
+                    router,
+                );
                 Some(Event::Advance)
             }
             (Err(error), _) => Some(Event::Deliver {
-                item_id: u32::MAX, truncated: false, value: Err(error),
+                item_id: u32::MAX,
+                truncated: false,
+                value: Err(error),
             }),
             (Ok(_), None) => None,
         }

@@ -956,6 +956,9 @@ jobs:
           # Once geo-warp.ts is on main, this clause can go.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/lib/geo/geo-warp.ts | grep -Fxq 'apps/viewer/src/lib/geo/geo-warp.ts'; then
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
+          # #7955 M2 A: retain APIs; lose local f32 storage by keeping RTC in the origin.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/retained_view.rs | grep -Fxq 'rust/wasm-bindings/src/retained_view.rs'; then
+            oracle_args+=(--mutation tests/evidence/m2-a/behaviour.oracle.patch --test rust/wasm-bindings/tests/m2_retained_view.rs)
           # #7955 M1 E2: preserve APIs; erase the typed host refusal code.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/api/retained_model.rs | grep -Fxq 'rust/wasm-bindings/src/api/retained_model.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-e2-retained-model/behaviour.oracle.patch --test rust/wasm-bindings/tests/m1_retained_model.rs)
@@ -3277,6 +3280,7 @@ jobs:
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
           cargo test -p ifc-lite-processing --features retained-runtime --test m1_executor
           cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
+          cargo test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
           cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser
           cargo clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
           # Match geometry-platform's wasm test target: testkit exposes the

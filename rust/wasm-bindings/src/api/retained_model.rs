@@ -98,10 +98,10 @@ impl IfcAPI {
     }
 }
 
-fn set(object: &Object, key: &str, value: &JsValue) -> Result<(), JsValue> {
+pub(super) fn set(object: &Object, key: &str, value: &JsValue) -> Result<(), JsValue> {
     Reflect::set(object, &JsValue::from_str(key), value).map(|_| ())
 }
-fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
+pub(super) fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
     match outcome {
         ProductOutcome::Refused {
             product_id,
@@ -160,7 +160,7 @@ mod tests;
 
 /// Stable JavaScript names for unmet presentation obligations. An exhaustive
 /// match, so a new or renamed requirement cannot change the API silently.
-fn obligation_name(requirement: Requirement) -> &'static str {
+pub(super) fn obligation_name(requirement: Requirement) -> &'static str {
     match requirement {
         Requirement::ProductPlacement => "ProductPlacement",
         Requirement::OpeningClosure => "OpeningClosure",

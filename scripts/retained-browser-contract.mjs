@@ -19,7 +19,10 @@ try {
   await wasm.default();
   const { runRetainedBrowserContract } = await import('/contract/contract.mjs');
   const fixture = await (await fetch('/fixtures/mapped_instances_synthetic.ifc')).text();
-  window.contractResult = await runRetainedBrowserContract(wasm, fixture);
+  const { runSessionContract } = await import('/contract/session-contract.mjs');
+  const manifest = await (await fetch('/manifests/cli-retained-coverage.tsv')).text();
+  const session = await runSessionContract(wasm, fixture, manifest);
+  window.contractResult = { ...await runRetainedBrowserContract(wasm, fixture), session };
 } catch (error) { window.contractResult = { passed: false, error: String(error), stack: error?.stack }; }
 </script>`;
 
@@ -33,6 +36,7 @@ export async function runRetainedBrowserContract({ build, sdk, timeout = 300_000
       '/pkg/': join(ROOT, 'packages/wasm/pkg-retained'),
       '/contract/': join(ROOT, 'rust/wasm-bindings/tests/retained-browser'),
       '/fixtures/': join(ROOT, 'rust/geometry/tests/fixtures'),
+      '/manifests/': join(ROOT, 'tests/manifests'),
       '/page/': temporary, // index.html only
     });
     await new Promise((done) => server.listen(0, '127.0.0.1', done));

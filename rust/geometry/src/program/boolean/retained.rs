@@ -145,6 +145,11 @@ impl BooleanMachine {
         let operator = crate::processors::boolean::boolean_operator(&node)
             .map_err(|_| self.source_refusal(FailureSite::BooleanOperator, node.id,
                 BooleanReason::UnknownOperator, "unknown retained Boolean operator"))?;
+        // A certified-empty host cannot be stepped; do not even decode the RHS.
+        if matches!(operator, BoolOp::Difference | BoolOp::Intersection) && host.is_empty() {
+            return Err(self.source_refusal(FailureSite::BooleanStep, node.id,
+                BooleanReason::EmptyHost, "retained Boolean host is already empty"));
+        }
         let second = recorder.second_operand_result_or_record(operator, &node, decoder);
         crate::resource::check_current()?;
         let attr = node.get(slot::IfcBooleanResult::SECOND_OPERAND.index());
@@ -153,6 +158,20 @@ impl BooleanMachine {
             .ok_or_else(|| self.source_refusal(FailureSite::BooleanSecondOperand, node.id,
                 if attr.is_none() { BooleanReason::OperandAttributeMissing }
                 else { BooleanReason::OperandReferenceRequired }, "missing retained Boolean operand"))?;
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        if second.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {
+            use crate::program::retained::{halfspace, cutter::CutterStep};
+            let selection = self.retained_selection().ok_or_else(stale)?;
+            match halfspace::step(halfspace::Context { host: &host, second: &second, operator, decoder,
+                failure: &selection.failure_handle() })? {
+                CutterStep::Skip => { steps.retained = Some(host); self.frames.push(Frame::Steps(steps)); }
+                CutterStep::Cutter(operation) => {
+                    self.frames.push(Frame::RetainedAfterStep { steps: boxed(steps)?, operator, host });
+                    self.frames.push(Frame::RetainedReady { operation: boxed(operation)?, steps: None });
+                }
+            }
+            return Ok(());
+        }
         let depth = steps.depth;
         self.frames.push(Frame::RetainedAfterStep { steps: boxed(steps)?, operator, host });
         self.frames.push(Frame::Operand { entity: second, operator, depth });

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
+rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc
+rust/geometry/tests/fixtures/issue_5314_halfspace_edge.ifc
+tests/models/ara3d/AC20-FZK-Haus.ifc

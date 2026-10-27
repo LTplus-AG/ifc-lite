@@ -32,6 +32,7 @@ pub(in crate::program) enum FailureSite {
     BooleanOperator,
     BooleanFirstOperand,
     BooleanSecondOperand,
+    BooleanStep,
     ProductPlacement,
     MappingPlacement,
     TypeMapPlacement,
@@ -73,6 +74,7 @@ pub(in crate::program) enum BooleanReason {
     UnknownOperator,
     OperandAttributeMissing,
     OperandReferenceRequired,
+    EmptyHost,
 }
 #[derive(Debug)]
 pub(in crate::program) enum OriginCause {

@@ -1,0 +1,6 @@
+diff --git a/rust/geometry/src/program/retained/bounds.rs b/rust/geometry/src/program/retained/bounds.rs
+--- a/rust/geometry/src/program/retained/bounds.rs
++++ b/rust/geometry/src/program/retained/bounds.rs
+@@ -52,1 +52,1 @@
+-        crate::BoolOp::Difference => inputs[0].bounds,
++        crate::BoolOp::Difference => inputs[1].bounds,

@@ -15,6 +15,7 @@ pub struct Report {
     pub maxima: [f64; 4],
     pub cuts: u64,
     pub cut_times_ms: Vec<f64>,
+    pub oracle_maxima: BTreeMap<String, f64>,
     pub exact_ms: f64,
     pub retained_ms: f64,
     pub startup_ms: f64,
@@ -38,6 +39,7 @@ impl Report {
         tolerances: &Value,
         ms: f64,
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
+        sources: &ifc_lite_processing::AnalyticQuantitySources,
     ) {
         self.published += 1;
         self.cuts += shape.cuts;
@@ -77,6 +79,15 @@ impl Report {
             shape.cuts, shape.cut_times_ms.iter().sum::<f64>(), shape.consumed_parts,
             format(cut_rel)
         ));
+        let results = super::checks::check(shape, sources, tolerances);
+        for result in &results {
+            let maximum = self.oracle_maxima.entry(result.family.into()).or_default();
+            *maximum = maximum.max(if result.value.is_finite() { result.value } else { f64::INFINITY });
+            if result.gated && (!result.pass || !result.value.is_finite() || !result.limit.is_finite()) {
+                self.violations.push(format!("{model}:{}: {} source oracle failed", shape.product_id, result.family));
+            }
+        }
+        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated})).collect::<Vec<_>>()).expect("oracle results serialize")));
         self.coverage
             .push(format!("{model}\t{}\tpublished\t", shape.product_id));
     }
@@ -199,6 +210,7 @@ impl Report {
             "published":self.published, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
+            "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
             "violations":self.violations,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
             "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }

@@ -157,7 +157,8 @@ impl RetainedExecutionError {
                 | Self::Transition(CANCELLED)
                 | Self::Owner(WorkError::StaleSource | WorkError::Aborted)
         ) || matches!(self, Self::Common(error) if matches!(error.kind(),
-                ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
+                ifc_lite_geometry::program::transactions::TransactionFailureKind::EmptyResult
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::OperationUnsupported
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::DeadlineExceeded
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Unsupported

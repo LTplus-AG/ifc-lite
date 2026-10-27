@@ -28,6 +28,11 @@ on:
       - 'Cargo.lock'
       # Retained requests the worker executes are lowered here.
       - 'rust/geometry/src/document/**'
+      - 'rust/geometry/src/program/**'
+      - 'rust/geometry/tests/m*'
+      - 'rust/processing/tests/m*'
+      - 'tests/manifests/cli-retained-coverage.d/**'
+      - 'tests/evidence/*/witnesses.txt'
       - 'rust/geometry/src/analytic/**'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
@@ -127,7 +132,14 @@ jobs:
         run: |
           export IFCLITE_REQUIRE_SMLIB=1
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
-          cargo test --locked -p ifc-lite-retained-native --features retained-runtime
+          cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
+          for file in tests/evidence/*/witnesses.txt; do
+            [[ -f "$file" ]] || continue
+            while IFS= read -r witness; do
+              [[ -z "$witness" || "$witness" == \#* ]] && continue
+              grep -Fqx "sdk witness executed: $witness" "$RUNNER_TEMP/native-witnesses.log"
+            done < "$file"
+          done
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$IFCLITE_SMLIB_WORKER" --out "$RUNNER_TEMP/native-compare" --committed --gate
       - name: M3 native opening witnesses

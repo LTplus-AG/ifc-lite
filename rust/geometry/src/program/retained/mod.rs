@@ -16,6 +16,12 @@ pub(in crate::program) mod value_error;
 use frame::compose_frame;
 pub(in crate::program) use frame::{validate_affine, proper_rigid};
 mod outcome;
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub(crate) mod bounds;
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub(in crate::program) mod cutter;
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub(in crate::program) mod halfspace;
 pub(in crate::program) mod boolean;
 #[cfg(any(test, feature = "retained-runtime"))]
 pub(in crate::program) mod openings;
@@ -69,6 +75,8 @@ pub(crate) struct RetainedPlacement {
 }
 #[derive(Debug, PartialEq)]
 pub(crate) struct LogicalRetainedValue {
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) bounds: Option<bounds::EvaluationBounds>,
     definition: LogicalRetainedDefinition,
     length_unit_scale: f64,
     contract: RetainedContract,
@@ -233,6 +241,8 @@ pub(super) fn copy_values(
 impl LogicalRetainedValue {
     fn clone_without_placements(&self) -> Self {
         Self {
+            #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+            bounds: self.bounds,
             definition: self.definition.clone(),
             length_unit_scale: self.length_unit_scale,
             contract: self.contract,

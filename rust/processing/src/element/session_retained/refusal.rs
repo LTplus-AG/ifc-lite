@@ -129,6 +129,7 @@ pub(super) fn common_kind_refusal(kind: Kind, stop: Option<ProgramStop>) -> Reta
         Kind::Source | Kind::Unsupported => Refusal::SourceInvalid,
         Kind::Empty => Refusal::EmptyResult,
         Kind::Incomplete => Refusal::Incomplete,
+        Kind::EmptyResult => Refusal::EmptyResult,
         Kind::DeadlineExceeded => Refusal::DeadlineExceeded,
         Kind::Cancelled => Refusal::Cancelled,
         Kind::Stopped => match stop {

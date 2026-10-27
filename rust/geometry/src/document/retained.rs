@@ -39,6 +39,8 @@ pub struct RetainedExtrusion {
 pub enum RetainedRecipe {
     Extrusion(RetainedExtrusion),
     SweptDisk(RetainedSweptDisk),
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    Prism(super::RetainedPrism),
 }
 
 impl RetainedRecipe {
@@ -47,6 +49,7 @@ impl RetainedRecipe {
         match self {
             Self::Extrusion(recipe) => retained_sweep::lower(recipe),
             Self::SweptDisk(recipe) => retained_disk::lower(recipe),
+            Self::Prism(recipe) => recipe.lower(),
         }
     }
 
@@ -55,6 +58,8 @@ impl RetainedRecipe {
         match self {
             Self::Extrusion(recipe) => recipe.source.solid_id,
             Self::SweptDisk(recipe) => recipe.solid_id,
+            #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+            Self::Prism(recipe) => recipe.source_id,
         }
     }
 }
@@ -230,6 +235,13 @@ impl GeometryDocument {
     ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
         let payload = retained_disk::lower(&recipe)?;
         self.retain(RetainedRecipe::SweptDisk(recipe), payload)
+    }
+
+    /// Retain a derived cutter in its own metre evaluation frame (#7955 CUT-0).
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub fn add_retained_prism(&mut self, recipe: super::RetainedPrism) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
+        let payload = recipe.lower()?;
+        self.retain(RetainedRecipe::Prism(recipe), payload)
     }
 
     fn retain(

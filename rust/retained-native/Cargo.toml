@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MPL-2.0
+[package]
+name = "ifc-lite-retained-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+default = []
+retained-runtime = ["ifc-lite-processing/retained-runtime", "ifc-lite-geometry-runtime/retained-runtime"]
+
+[dependencies]
+ifc-lite-core.workspace = true
+ifc-lite-geometry.workspace = true
+ifc-lite-processing.workspace = true
+ifc-lite-geometry-runtime = { path = "../geometry-runtime" }
+
+[dev-dependencies]
+ifc-lite-geometry = { workspace = true, features = ["test-support"] }
+serde_json.workspace = true
+libc = "0.2"
+
+[[example]]
+name = "retained_compare"
+required-features = ["retained-runtime"]
+
+[lints]
+workspace = true

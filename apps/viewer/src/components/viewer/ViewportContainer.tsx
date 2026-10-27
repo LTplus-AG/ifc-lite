@@ -70,7 +70,7 @@ import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
-import { getEffectiveGeoreference, hasDeclaredCrs } from '@/lib/geo/effective-georef';
+import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/geo/effective-georef';
 import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 
 /**
@@ -283,7 +283,7 @@ export function ViewportContainer() {
           model.geometryResult?.coordinateInfo,
           georefMutations.get(modelId),
         );
-        if (hasDeclaredCrs(effective?.projectedCRS) && effective?.source !== 'siteLocation') return true;
+        if (offersCesium(effective)) return true;
       }
       // Fallback to legacy single-model
       if (ifcDataStore) {
@@ -292,7 +292,7 @@ export function ViewportContainer() {
           mergedGeometryResult?.coordinateInfo,
           georefMutations.get('__legacy__'),
         );
-        if (hasDeclaredCrs(effective?.projectedCRS) && effective?.source !== 'siteLocation') return true;
+        if (offersCesium(effective)) return true;
       }
       return false;
     }

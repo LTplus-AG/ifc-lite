@@ -148,6 +148,26 @@ function resolveUncached(wkt: string): WktProjection | null {
 }
 
 /**
+ * A registry definition chosen for a WKT that names an EPSG code, wrapped so
+ * the WKT's declared extent still guards it: registered under an alias that
+ * carries the extent, else returned unchanged when the WKT declares none.
+ */
+export function withWktExtent(wkt: string, definition: string): string {
+  const extent = extractWktBoundingBox(wkt.trim());
+  if (!extent) return definition;
+  const name = `${WKT_DEFINITION_PREFIX}${hash(`${wkt.trim()}\n${definition}`)}`;
+  if (!registered.has(name)) {
+    const geographic = /\+proj=longlat\b/.test(definition);
+    proj4.defs(name, definition);
+    proj4.defs(`${name}${METRES_SUFFIX}`, geographic
+      ? definition
+      : `${definition.replace(/(?:^|\s)\+(?:units|to_meter)=\S+/g, '').trim()} +units=m`);
+    registered.set(name, { parsed: proj4.defs(name) as unknown as ParsedWktDefinition, extent });
+  }
+  return name;
+}
+
+/**
  * Whether a WGS84 position lies within the declared extent of validity
  * (WKT2 `USAGE/BBOX`) of the WKT behind `definition`, widened by
  * `marginDegrees`. `true` for any other definition or a WKT without an extent.

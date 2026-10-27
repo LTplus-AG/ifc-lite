@@ -258,6 +258,8 @@ ${options.rustSlotSchemaPaths?.length ? 'pub(crate) mod slots;\n#[cfg(test)]\npu
 
 pub use type_ids::*;
 pub use schema::{IfcType, UnknownIfcType, ALL as IFC_TYPES};
+#[cfg(test)]
+pub(crate) use schema::SUPPLEMENTAL as SUPPLEMENTAL_IFC_TYPES;
 pub use schema_registry::{
     attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, SchemaEntityInfo,
     SchemaVersion,

@@ -28,6 +28,14 @@ import { describe, it, expect } from 'vitest';
 import { parseExpressSchema } from '../src/express-parser.js';
 import { generateRust } from '../src/rust-generator.js';
 import { crc32 } from '../src/crc32.js';
+import {
+  buildNameTable,
+  canonicalNameHash,
+  generateTypeNameParser,
+  nameBucket,
+  nameSlot,
+} from '../src/rust-type-name-parser.js';
+import { mergeTypeUniverse } from '../src/rust-schema-queries.js';
 
 const SCHEMA_SRC = `
   SCHEMA TEST_RUST;
@@ -106,10 +114,46 @@ describe('generateRust — schema.rs IfcType enum', () => {
     expect(rust.schema).not.toContain('    IFCWALL,\n');
   });
 
-  it('emits uppercase schema match arms', () => {
-    expect(rust.schema).toContain('"IFCWALL" => Self::IfcWall,');
-    // Both directions: a PascalCase match arm would be dead code.
-    expect(rust.schema).not.toContain('"IfcWall" => Self::IfcWall,');
+  it('emits one perfect-hash slot per uppercase schema name', () => {
+    const { slots } = buildNameTable(['IFCRELAGGREGATES', 'IFCROOT', 'IFCWALL']);
+    expect(rust.schema).toContain(`            ${slots.indexOf('IFCWALL')} => Self::IfcWall,`);
+    // The slot's own UPPERCASE spelling, not the hash, decides a hit.
+    expect(rust.schema).toContain('(ifc_type.as_str() == s).then_some(ifc_type)');
+    expect(rust.schema).toContain('if !(7..=16).contains(&s.len()) {');
+  });
+
+  it('hashes names with the same word hash the Rust twin uses (#7914)', () => {
+    // Pinned values, checked against the Rust twin: the short (<8 bytes),
+    // one-word, multi-word and longest-keyword paths.
+    expect(canonicalNameHash('IFCWALL')).toBe(0x11910e62d26b7d80n);
+    expect(canonicalNameHash('IFCSLAB1')).toBe(0x64e05037afdcfc42n);
+    expect(canonicalNameHash('IFCCARTESIANPOINT')).toBe(0x890facf81f35a55n);
+    expect(canonicalNameHash('IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM')).toBe(0x5212d2e531bf5494n);
+    expect(rust.schema).toContain('fn canonical_name_hash(bytes: &[u8]) -> u64 {');
+    expect(rust.schema).toContain('const K: u64 = 0x9e37_79b9_7f4a_7c15;');
+    expect(() => canonicalNameHash('IFC')).toThrow(/at least 4 bytes/);
+    expect(() => canonicalNameHash('IFCWÄLL')).toThrow(/ASCII/);
+  });
+
+  it('places every name on the slot the generated lookup computes', () => {
+    // Many similar names stress the displacement search like a real schema.
+    const names = Array.from({ length: 1200 }, (_, i) => `IFC${'ABCDEFGH'[i % 8]}NAME${i}${'XYZ'.repeat(i % 7)}`);
+    const { displacements, slots } = buildNameTable(names);
+    expect(new Set(slots).size).toBe(names.length);
+    expect(slots).toHaveLength(names.length);
+    for (const name of names) {
+      const hash = canonicalNameHash(name);
+      const displacement = displacements[nameBucket(hash, displacements.length)];
+      expect(displacement).toBeLessThanOrEqual(0xffff);
+      expect(slots[nameSlot(hash, displacement, names.length)]).toBe(name);
+    }
+  });
+
+  it('refuses to generate two names that share a hash', () => {
+    expect(() => generateTypeNameParser({
+      ...schema,
+      entities: [schema.entities[0], schema.entities[0]],
+    })).toThrow(/canonical_name_hash collision/);
   });
 
   it('maps from_id on the CRC32 id', () => {
@@ -163,9 +207,8 @@ describe('generateRust — supported schema type universe (#4203)', () => {
 
   it('resolves an entity that exists only in a supplemental schema by exact name', () => {
     expect(universeRust.schema).toContain('    IfcLegacyDoorStyle,\n');
-    expect(universeRust.schema).toContain(
-      '"IFCLEGACYDOORSTYLE" => Self::IfcLegacyDoorStyle,'
-    );
+    expect(universeRust.schema).toMatch(/^ {12}\d+ => Self::IfcLegacyDoorStyle,$/m);
+    expect(universeRust.schema).toContain('Self::IfcLegacyDoorStyle => "IFCLEGACYDOORSTYLE",');
     expect(universeRust.schema).toContain(
       'Self::IfcLegacyDoorStyle => "IfcLegacyDoorStyle",'
     );
@@ -179,9 +222,20 @@ describe('generateRust — supported schema type universe (#4203)', () => {
   });
 
   it('keeps the canonical per-schema catalog scoped to the canonical schema', () => {
-    const all = universeRust.schema.slice(universeRust.schema.indexOf('pub static ALL:'));
+    const all = universeRust.schema.slice(universeRust.schema.indexOf('pub static ALL:')).split('];')[0];
     expect(all).toContain('IfcType::IfcWall,');
     expect(all).not.toContain('IfcType::IfcLegacyDoorStyle,');
+  });
+
+  it('lists the supplemental-only names so tests can reach every dispatch arm (#7914)', () => {
+    const supplemental = universeRust.schema
+      .split('pub(crate) static SUPPLEMENTAL: &[IfcType] = &[')[1]
+      .split('];')[0];
+    expect(supplemental).toContain('IfcType::IfcLegacyDoorStyle,');
+    expect(supplemental).not.toContain('IfcType::IfcWall,');
+    const universe = mergeTypeUniverse(schema, [legacySchema]).entities.length;
+    expect(universeRust.schema).toContain(`pub(crate) const CANONICAL_NAME_ARMS: usize = ${universe};`);
+    expect(universeRust.schema.match(/^ {12}\d+ => Self::\w+,$/gm)).toHaveLength(universe);
   });
 });
 

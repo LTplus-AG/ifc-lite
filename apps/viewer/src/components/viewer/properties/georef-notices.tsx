@@ -55,8 +55,18 @@ export function GeorefReadOnlyNotices({ georef, schemaNotice }: {
   );
 }
 
-/** `IfcWellKnownText` of the CRS, truncated for display. */
+/** `IfcWellKnownText` of the CRS: truncated in the row, in full behind a disclosure. */
 export function WellKnownTextRow({ wkt }: { wkt: string | undefined }) {
+  const { t } = useTranslation();
   if (!wkt) return null;
-  return <GeorefRow label="WellKnownText" value={wkt.length > 96 ? `${wkt.slice(0, 96)}…` : wkt} />;
+  if (wkt.length <= 96) return <GeorefRow label="WellKnownText" value={wkt} />;
+  return (
+    <>
+      <GeorefRow label="WellKnownText" value={`${wkt.slice(0, 96)}…`} />
+      <details className="px-3 py-1.5 text-xs">
+        <summary className="cursor-pointer text-zinc-500 dark:text-zinc-400">{t('properties.georef.showFullWellKnownText')}</summary>
+        <pre className="mt-1 whitespace-pre-wrap break-all font-mono text-2xs text-teal-700 dark:text-teal-400">{wkt}</pre>
+      </details>
+    </>
+  );
 }

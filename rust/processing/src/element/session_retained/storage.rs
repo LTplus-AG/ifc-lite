@@ -36,3 +36,9 @@ impl Drop for Storage {
         while let Some(mut node) = self.0.take() { self.0 = node.next.take(); }
     }
 }
+
+impl std::fmt::Debug for Storage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Storage").finish_non_exhaustive()
+    }
+}

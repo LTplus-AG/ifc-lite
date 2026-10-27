@@ -12,6 +12,8 @@ struct ProcessState {
 }
 
 impl ProcessControl {
+    #[cfg(feature = "retained-runtime")]
+    pub(crate) fn same_domain(&self, other: &Self) -> bool { Arc::ptr_eq(&self.0, &other.0) }
     pub(crate) fn new(child: Child) -> Self {
         let id = child.id();
         Self(

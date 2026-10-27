@@ -104,6 +104,19 @@ describe('IfcWellKnownText projections', () => {
     assert.ok(offset < 0.05, `lands ${offset.toFixed(3)} m off`);
   });
 
+  it('keeps the WKT extent guard when the WKT names an EPSG code (#8174 review)', async () => {
+    const wkt = (bbox: string) => `PROJCRS["ETRS89 / UTM zone 33N",ID["EPSG",25833],USAGE[SCOPE["x"],AREA["x"],BBOX[${bbox}]]]`;
+    const inside = await reprojectPointToLatLon(390000, 5800000, crs(wkt('52.0,12.5,52.8,14.0')));
+    assert.ok(inside && Math.abs(inside.lat - 52.33) < 0.05 && Math.abs(inside.lon - 13.39) < 0.05, JSON.stringify(inside));
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      assert.equal(await reprojectPointToLatLon(390000, 5800000, crs(wkt('47.5,7.5,48.0,8.0'))), null);
+    } finally {
+      console.warn = warn;
+    }
+  });
+
   it('treats a geographic WKT as geographic', async () => {
     const definition = await resolveProjection(crs('GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563]],CS[ellipsoidal,2],AXIS["latitude",north],AXIS["longitude",east],ANGLEUNIT["degree",0.0174532925199433]]'));
     assert.ok(definition);

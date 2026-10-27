@@ -3133,7 +3133,7 @@ jobs:
       # workspace that the runner wipes. A job killed mid-compile (reboot) can
       # leave truncated dep-info, so an unfinished marker discards the dir.
       - name: Warm target dir (self-hosted Rust runner)
-        if: runner.environment == 'self-hosted'
+        if: startsWith(runner.name, 'ifclite-rust')
         run: |
           dir="/cache/rust-target/${GITHUB_JOB}"
           if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
@@ -3152,7 +3152,8 @@ jobs:
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
-        if: runner.environment == 'github-hosted'
+        # Skipped only where the warm target dir above was set.
+        if: env.CARGO_TARGET_DIR == ''
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           # `-o1-lt`: the test steps below build at opt-level 1 with line-tables
@@ -3264,7 +3265,7 @@ jobs:
         run: cargo test --workspace --doc
 
       - name: Mark warm target dir finished
-        if: always() && runner.environment == 'self-hosted'
+        if: always() && env.CARGO_TARGET_DIR != ''
         run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
@@ -3293,7 +3294,7 @@ jobs:
       # workspace that the runner wipes. A job killed mid-compile (reboot) can
       # leave truncated dep-info, so an unfinished marker discards the dir.
       - name: Warm target dir (self-hosted Rust runner)
-        if: runner.environment == 'self-hosted'
+        if: startsWith(runner.name, 'ifclite-rust')
         run: |
           dir="/cache/rust-target/${GITHUB_JOB}"
           if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
@@ -3307,7 +3308,8 @@ jobs:
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
-        if: runner.environment == 'github-hosted'
+        # Skipped only where the warm target dir above was set.
+        if: env.CARGO_TARGET_DIR == ''
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-retained
@@ -3349,7 +3351,7 @@ jobs:
           cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
       - name: Mark warm target dir finished
-        if: always() && runner.environment == 'self-hosted'
+        if: always() && env.CARGO_TARGET_DIR != ''
         run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
 
   # THE FULL RUST LANE, OFF THE PR (CI redesign, step 5). Everything here is

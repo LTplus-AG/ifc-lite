@@ -35,8 +35,10 @@ export class SmlibWorkerTransport {
     return owned.map((frame) => {
       const view = new DataView(frame), op = view.getUint32(8, true);
       this.commands.push({ op, slot: frame.byteLength >= 32 ? view.getUint32(28, true) : undefined });
+      const occurrence = this.commands.filter(command => command.op === op).length;
+      const fails = op === this.failOpcode && (!this.failAtOccurrence || occurrence === this.failAtOccurrence);
       let bytes = new Uint8Array();
-      if (op === this.failOpcode) { /* Typed kernel refusal has no success payload. */ }
+      if (fails) { /* Typed kernel refusal has no success payload. */ }
       else if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, this.session, true); }
       else if (op === 12) {
         bytes = new Uint8Array(8); const capabilities = new DataView(bytes.buffer);
@@ -58,7 +60,7 @@ export class SmlibWorkerTransport {
       const response = new Uint8Array(12 + bytes.length), envelope = new DataView(response.buffer);
       envelope.setUint32(0, 1, true);
       envelope.setUint32(4, this.wrongReply ? 0 : view.getUint32(4, true), true);
-      if (op === this.failOpcode) envelope.setInt32(8, this.kernelStatus, true);
+      if (fails) envelope.setInt32(8, this.kernelStatus, true);
       response.set(bytes, 12);
       return response.buffer;
     });

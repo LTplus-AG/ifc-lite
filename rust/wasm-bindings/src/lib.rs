@@ -121,3 +121,6 @@ pub fn init() {
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
+
+#[cfg(feature = "retained-browser")]
+mod retained_model_refusal;

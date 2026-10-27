@@ -908,3 +908,21 @@ The experimental `prewarmMainThreadEngine`, `prewarmGeometryWorkers`,
 `GeometryWorkerPoolStats` exports, and the `ProcessParallelOptions.workerPool`
 option, have been removed. Custom hosts should let the normal loader initialize
 its engine and workers.
+
+## Experimental retained model output
+
+The separate opt-in WASM `pkg-retained` bundle exposes
+`await api.retainedModel(bytes, ids?)`. Consume the completed run with `next()`
+(one outcome in canonical file order, `undefined` at end) and release it with
+`free()`. Results are buffered for the whole model, so memory includes all
+returned meshes. An empty ID filter selects no jobs; type products and jobs
+without representations are skipped.
+
+Published outcomes contain `expressId`, `ifcType`, and atomic `parts` with f64
+object-local metre positions, u32 indices, and column-major `worldFromObject`
+matrices into IFC Z-up world metres. Consumers must show the
+`PresentationObligationsUnmet` marker and its `obligationsUnmet` list. Openings,
+layers, appearance and persistent faces remain unmet. Refused outcomes carry
+an ID, typed code and optional origin, with no partial product or exact fallback.
+See the [WASM package contract](../../packages/wasm/README.md#experimental-retained-whole-model-engine)
+for lifecycle, transport and result details. The default engine is unchanged.

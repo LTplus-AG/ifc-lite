@@ -15,8 +15,8 @@
 //!
 //! The Worker constructor and its async operations exist on wasm32 alone;
 //! natively only the ownership bookkeeping compiles, for its unit tests.
-//! Crate-private: the JavaScript host contract (`api::retained_browser`) is
-//! its only consumer.
+//! Crate-private: consumed by the retained source and whole-model JavaScript
+//! host contracts (`api::retained_browser` and `api::retained_model`).
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -27,6 +27,8 @@ use std::sync::{
 mod bridge;
 #[cfg(target_arch = "wasm32")]
 mod runtime;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod model;
 #[cfg(target_arch = "wasm32")]
 mod runtime_mesh;
 #[cfg(target_arch = "wasm32")]

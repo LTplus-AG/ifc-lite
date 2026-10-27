@@ -304,3 +304,27 @@ test('#7955 E Boolean known refusals keep the worker and release temporary handl
     driver.retire();
   }
 });
+
+
+test('#7955 E2 construction faults clean unpublished handles and preserve typed evidence', async () => {
+  for (const fault of ['kernel', 'resource', 'retiring']) {
+    const driver = new RetainedDriver();
+    const original = await evaluate(driver), peer = peers.at(-1);
+    const before = peer.objects.size;
+    if (fault !== 'resource') {
+      peer.failOpcode = 10;
+      peer.kernelStatus = fault === 'retiring' ? 8 : 4;
+    }
+    await assert.rejects(evaluate(driver, 0, fault === 'resource' ? 8 : 4096),
+      error => fault === 'resource' ? error.resourceLimit === true : error.kernelStatus === peer.kernelStatus);
+    assert.equal(driver.live(), fault !== 'retiring');
+    assert.equal(driver.objectLive(original.object), fault !== 'retiring');
+    if (fault !== 'retiring') {
+      assert.equal(peer.objects.size, before, 'both unpublished mesh and solid released');
+      peer.failOpcode = 0;
+      const next = await evaluate(driver);
+      assert.equal(driver.objectLive(next.object), true);
+    }
+    driver.retire();
+  }
+});

@@ -197,6 +197,37 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 
+export interface RetainedShapePart {
+    /** Object-local metres. */
+    positions: Float64Array;
+    indices: Uint32Array;
+    /** Column-major object metres to absolute IFC Z-up world metres. */
+    worldFromObject: Float64Array;
+    curved: boolean;
+}
+export interface RetainedShapeProduct {
+    status: 'published';
+    expressId: number;
+    ifcType: string;
+    parts: RetainedShapePart[];
+    marker: 'PresentationObligationsUnmet';
+    obligationsUnmet: string[];
+}
+export interface RetainedProductRefusal {
+    status: 'refused';
+    expressId: number;
+    ifcType: string;
+    code: 'opening_strategy' | 'material_layer_strategy' | 'operation_unsupported'
+    | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
+    | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
+    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';
+    origin?: { site: string; entity?: number; cause: string };
+    kernelStatus?: number;
+}
+export type RetainedProductOutcome = RetainedShapeProduct | RetainedProductRefusal;
+
+
+
 export type AnalyticStatusJs = { type: "complete" } | { type: "unsupported"; reason: string };
 export type AnalyticSourceContextJs =
 | { kind: "direct"; representation_id: number }
@@ -1187,6 +1218,14 @@ export class IfcAPI {
      */
     resolveStyledItemsShardFromSource(spans: Uint32Array): any;
     /**
+     * Run the opt-in retained engine, with no exact fallback. Buffers outcomes
+     * until completion; next() then consumes them in canonical file order.
+     * Type products and representationless jobs are skipped. Some(empty ids)
+     * selects no products. One qualified worker is reused, with at most three
+     * replacements, and a failed product is never retried.
+     */
+    retainedModel(content: Uint8Array, ids?: Uint32Array | null): Promise<RetainedModelRun>;
+    /**
      * Read-only walk of the model's authored extrusions and swept disks that
      * the retained route can represent. Starts no Worker and fetches nothing.
      * `ids` filters by product STEP ID as `extrusionDefinitions` does.
@@ -1999,6 +2038,20 @@ export class RetainedBrowserSources {
 }
 
 /**
+ * Completed model run in canonical job order. Consume with next(), then free().
+ * Holds copied JS results, no live Worker or WASM geometry handles.
+ */
+export class RetainedModelRun {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Returns one atomic shape-only product or typed refusal, undefined at end.
+     */
+    next(): RetainedProductOutcome | undefined;
+}
+
+/**
  * The traced outline. Owns wasm memory: call `free()`.
  */
 export class ScanOutlineJs {
@@ -2697,6 +2750,7 @@ export interface InitOutput {
     readonly __wbg_retainedbrowsercancellation_free: (a: number, b: number) => void;
     readonly __wbg_retainedbrowserexecutor_free: (a: number, b: number) => void;
     readonly __wbg_retainedbrowsersources_free: (a: number, b: number) => void;
+    readonly __wbg_retainedmodelrun_free: (a: number, b: number) => void;
     readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -2820,6 +2874,7 @@ export interface InitOutput {
     readonly ifcapi_registerScanCorrespondences: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_retainedModel: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_retainedSources: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
@@ -2924,6 +2979,7 @@ export interface InitOutput {
     readonly retainedbrowsersources_execute: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly retainedbrowsersources_refused: (a: number, b: number) => void;
     readonly retainedbrowsersources_sources: (a: number, b: number) => void;
+    readonly retainedmodelrun_next: (a: number) => number;
     readonly scanoutlinejs_coords: (a: number) => number;
     readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
     readonly scanoutlinejs_ringCount: (a: number) => number;

@@ -265,6 +265,7 @@ impl<'a, 'h> AddState<'a, 'h> {
         if let Some(name) = &obj.name {
             fields.push(("Name", quoted(name)));
         }
+        fields.extend(obj.string_attributes().map(|(attr, value)| (attr, quoted(value))));
         if let Some(shape) = shape {
             fields.push(("Representation", format!("#{shape}")));
         }
@@ -373,3 +374,7 @@ mod refusal_tests;
 #[cfg(test)]
 #[path = "add_assoc_tests.rs"]
 mod assoc_tests;
+
+#[cfg(test)]
+#[path = "add_string_attrs_tests.rs"]
+mod string_attrs_tests;

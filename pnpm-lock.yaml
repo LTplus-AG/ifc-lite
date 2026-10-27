@@ -42,6 +42,9 @@ patchedDependencies:
   vite-plugin-top-level-await@1.6.0:
     hash: 623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce
     path: patches/vite-plugin-top-level-await@1.6.0.patch
+  wkt-parser@1.5.6:
+    hash: d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b
+    path: patches/wkt-parser@1.5.6.patch
 
 importers:
 
@@ -492,6 +495,9 @@ importers:
       three:
         specifier: ^0.186.1
         version: 0.186.1
+      wkt-parser:
+        specifier: 1.5.6
+        version: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
       zustand:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
@@ -11299,7 +11305,7 @@ snapshots:
   proj4@2.22.0(geotiff@3.0.5):
     dependencies:
       mgrs: 1.0.0
-      wkt-parser: 1.5.6
+      wkt-parser: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
     optionalDependencies:
       geotiff: 3.0.5
 
@@ -12059,7 +12065,7 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
-  wkt-parser@1.5.6: {}
+  wkt-parser@1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b): {}
 
   wordwrapjs@5.1.1: {}
 

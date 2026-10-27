@@ -12,7 +12,7 @@ readme = "../../README.md"
 
 [features]
 # Off-by-default retained product controller (#7955).
-retained-runtime = ["wasm_source_capture"]
+retained-runtime = ["wasm_source_capture", "dep:wasm-bindgen"]
 # Opt-in #6516 route-work diagnostic; absent from shipping builds.
 opening-perf-trace = []
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel
@@ -198,3 +198,6 @@ too_many_arguments = "allow"
 large_enum_variant = "allow"
 needless_range_loop = "allow"
 should_implement_trait = "allow"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "=0.2.126", optional = true }

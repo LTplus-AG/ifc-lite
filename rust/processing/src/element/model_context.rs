@@ -184,4 +184,4 @@ impl std::error::Error for ProductionContextError {}
 #[cfg(any(test, feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]
 #[path = "model_context_retained.rs"]
-mod retained;
+pub(super) mod retained;

@@ -338,3 +338,6 @@ pub fn with_source_stop<T>(
     // its stops; consumers capture them before leaving their work epoch.
     operation()
 }
+
+#[cfg(all(feature = "retained-runtime", any(target_arch = "wasm32", test)))]
+mod budget_monotonic;

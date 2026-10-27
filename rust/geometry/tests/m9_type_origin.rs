@@ -42,8 +42,8 @@ fn issue_7955_m9_orphan_maps_discharge_both_obligations_atomically() {
     assert_eq!(plan.requirements().collect::<Vec<_>>(), [Requirement::MaterialLayers,
         Requirement::IfcAppearance, Requirement::PersistentFaces]);
     assert_eq!(plan.values().map(|v| *v.object_frame()).collect::<Vec<_>>(), frames);
-    // Three maps each hold a near and a far 1 m cube. Placement remains f64.
-    assert_eq!(frames.iter().filter(|m| (m[12] - 5_000_000.123456).abs() < 1e-9).count(), 3);
+    // Discharge must not rewrite the logical frame. Numeric world coordinates
+    // also depend on evaluation frames; m9_native checks all six world-space cubes.
 }
 
 #[test]

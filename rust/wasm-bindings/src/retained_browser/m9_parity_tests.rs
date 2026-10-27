@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955 M9: real module Worker parity and the streaming candidate event.
-use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen::{prelude::*};
 use wasm_bindgen_test::*;
 #[wasm_bindgen(inline_js = "export async function m9Reference() { const r = await fetch('/smlib/m9-native-types.json'); if (!r.ok) throw new Error('M9 native reference missing'); return r.json(); }
 export function m9Measure(outcome) {
@@ -22,7 +22,7 @@ extern "C" {
     #[wasm_bindgen(catch, js_name = m9Reference)]
     async fn reference() -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_name = m9Measure)]
-    fn measure(outcome: &JsValue) -> Result<JsValue, JsValue>;
+    pub(crate) fn measure(outcome: &JsValue) -> Result<JsValue, JsValue>;
 }
 #[derive(serde::Deserialize)]
 struct Row { id: u32, code: String, volume: Option<f64> }
@@ -48,25 +48,4 @@ async fn retained_browser_m9_type_product_parity() {
         }
         assert!(run.next_outcome().is_undefined());
     }
-}
-#[wasm_bindgen_test(async)]
-async fn retained_browser_m9_session_announces_and_publishes_orphan_type() {
-    use std::{cell::RefCell, rc::Rc};
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let captured = events.clone();
-    let callback = Closure::<dyn FnMut(JsValue)>::new(move |value| captured.borrow_mut().push(value));
-    let options = js_sys::Object::new();
-    js_sys::Reflect::set(&options, &"detail".into(), &"shape".into()).unwrap();
-    js_sys::Reflect::set(&options, &"ids".into(), &js_sys::Uint32Array::from([105u32].as_slice())).unwrap();
-    let mut session = crate::api::retained_session::RetainedModelSession::new();
-    session.run(MIXED.to_vec(), options.unchecked_into(), callback.as_ref().unchecked_ref()).await.unwrap();
-    let events = events.borrow();
-    assert_eq!(events.len(), 2);
-    assert_eq!(js_sys::Reflect::get(&events[0], &"kind".into()).unwrap().as_string().as_deref(), Some("start"));
-    let ids = js_sys::Uint32Array::new(&js_sys::Reflect::get(&events[0], &"candidateIds".into()).unwrap()).to_vec();
-    assert_eq!(ids, [105]);
-    assert_eq!(js_sys::Reflect::get(&events[1], &"kind".into()).unwrap().as_string().as_deref(), Some("published"));
-    let actual: Row = serde_wasm_bindgen::from_value(measure(&events[1]).unwrap()).unwrap();
-    assert_eq!(actual.id, 105);
-    assert!((actual.volume.unwrap()-6.).abs() <= 1e-9);
 }

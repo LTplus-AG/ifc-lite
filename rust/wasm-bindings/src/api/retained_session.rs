@@ -190,3 +190,7 @@ fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, 
     Reflect::set(&value, &"kind".into(), &kind)?;
     Ok(value)
 }
+
+#[cfg(test)]
+#[path = "../retained_browser/m9_session_tests.rs"]
+mod m9_session_tests;

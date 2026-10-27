@@ -42,6 +42,10 @@ fn sections_circle_segment_and_partial_arc_green_integrals() {
     close(section_volume(&h,&[([1.,0.,0.],0.5)]),2.*std::f64::consts::PI/3.+3f64.sqrt()/4.);
     // Moving x<=t: integral[0,1] (pi/2 + asin t + t sqrt(1-t²)) dt = pi - 2/3.
     close(section_volume(&h,&[([1.,0.,-1.],0.)]),std::f64::consts::PI-2./3.);
+    // #7955: start at the empty tangent. A(-x)=pi-A(x), hence the integral
+    // of A(t-1) over [0,1] is 2/3. Per-leaf relative convergence cannot handle
+    // this t^(3/2) endpoint; convergence must compare whole refinement levels.
+    close(section_volume(&h,&[([1.,0.,-1.],-1.)]),2./3.);
     let sector=SOURCE.replace("IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,2.)","IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#20)")
         .replace("#12=", "#20=IFCINDEXEDPOLYCURVE(#21,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,4,1))),.F.);\n#21=IFCCARTESIANPOINTLIST2D(((1.,0.),(0.7071067811865476,0.7071067811865476),(0.,1.),(0.,0.)));\n#12=");
     let h=host(&sector); close(section_volume(&h,&[]),std::f64::consts::PI/4.);

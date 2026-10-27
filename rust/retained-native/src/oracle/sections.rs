@@ -54,19 +54,29 @@ fn gauss(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, work: &
     Some(sum * half)
 }
 fn integrate(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, work: &mut usize) -> Option<f64> {
-    let coarse = gauss(area, a, b, work)?;
-    let mut stack = vec![(a, b, coarse, 0u8)];
-    let mut sum = 0.;
-    while let Some((a, b, coarse, level)) = stack.pop() {
-        let mid = a + (b - a) / 2.;
-        let left = gauss(area, a, mid, work)?; let right = gauss(area, mid, b, work)?;
-        let fine = left + right;
-        if (fine - coarse).abs() <= RELATIVE * fine.abs().max(coarse.abs()) {
-            sum += fine;
-        } else {
-            if level >= 48 || mid == a || mid == b { return None; }
-            stack.push((mid, b, right, level + 1)); stack.push((a, mid, left, level + 1));
+    let mut coarse = gauss(area, a, b, work)?;
+    let mut pieces = 1usize;
+    loop {
+        pieces = pieces.checked_mul(2)?;
+        let width = (b - a) / pieces as f64;
+        if width <= 0. || a + width == a { return None; }
+        // Compare whole levels, not each leaf's relative error. At a circular
+        // tangency, area grows like t^(3/2): a leaf touching zero has the same
+        // relative quadrature error however small it gets, while its absolute
+        // contribution to this span converges. Compensate the level's sum.
+        let (mut fine, mut correction) = (0., 0.);
+        for i in 0..pieces {
+            let low = a + (b - a) * (i as f64 / pieces as f64);
+            let high = a + (b - a) * ((i + 1) as f64 / pieces as f64);
+            let term = gauss(area, low, high, work)? - correction;
+            let next = fine + term;
+            correction = (next - fine) - term;
+            fine = next;
         }
+        if !fine.is_finite() || !coarse.is_finite() { return None; }
+        if (fine - coarse).abs() <= RELATIVE * fine.abs().max(coarse.abs()) {
+            return Some(fine);
+        }
+        coarse = fine;
     }
-    Some(sum)
 }

@@ -32,18 +32,22 @@ fn hull(points: &[Point]) -> Vec<Point> {
 /// This fixture has one extraneous vertex. The full hull includes its spur;
 /// test each single-vertex omission and require a unique area-matched hull.
 /// No exact predicate, cyclic reversal test or repair implementation is used.
-pub fn region(points: &[Point], relative: f64) -> Option<Vec<Point>> {
-    if points.len() != 5 || !relative.is_finite() || relative < 0. { return None; }
+pub fn region(points: &[Point], relative: f64) -> Result<Vec<Point>, &'static str> {
+    const REFUSAL: &str = "oracle cannot model this profile";
+    if points.len() != 5 || points.iter().flatten().any(|v| !v.is_finite()) || !relative.is_finite() || relative < 0. { return Err(REFUSAL); }
     let authored = area(points).abs();
-    if !authored.is_finite() || authored == 0. { return None; }
+    if !authored.is_finite() || authored == 0. { return Err(REFUSAL); }
     let mut matches = Vec::new();
     for omit in 0..points.len() {
-        let candidate = hull(&points.iter().enumerate().filter(|(i,_)| *i != omit).map(|(_,p)| *p).collect::<Vec<_>>());
-        if (area(&candidate).abs()-authored).abs() <= relative*authored && !matches.contains(&candidate) {
+        let remaining: Vec<_> = points.iter().enumerate().filter(|(i,_)| *i != omit).map(|(_,p)| *p).collect();
+        let candidate = hull(&remaining);
+        let contains = candidate.len() >= 3 && (0..candidate.len()).all(|i|
+            remaining.iter().all(|p| turn(candidate[i], candidate[(i+1)%candidate.len()], *p) >= 0.));
+        if (area(&candidate).abs()-authored).abs() <= relative*authored && contains {
             matches.push(candidate);
         }
     }
-    if matches.len() == 1 { matches.pop() } else { None }
+    if matches.len() == 1 { Ok(matches.remove(0)) } else { Err(REFUSAL) }
 }
 pub fn authored_region(decoder: &mut EntityDecoder, relative: f64) -> Option<Vec<Point>> {
     let curve = decoder.decode_by_id(61273).ok()?;
@@ -62,7 +66,7 @@ pub fn authored_region(decoder: &mut EntityDecoder, relative: f64) -> Option<Vec
     let indices = value.as_list()?;
     let order: Option<Vec<_>> = indices.iter().map(|v| v.as_int()).collect();
     if order? != [1,2,3,4,5,1] { return None; }
-    region(&points, relative)
+    region(&points, relative).ok()
 }
 /// Placement comes from the quantity-source view; extrusion leaves are decoded
 /// directly because the ordinary extractor intentionally rejects this profile.

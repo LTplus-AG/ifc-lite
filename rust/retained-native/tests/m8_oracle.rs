@@ -15,7 +15,7 @@ fn issue_3641_hand_derived_quadrilateral_and_spur() {
     let solid = Convex::extrusion(&polygon, [0.,0.,25632.]).unwrap();
     assert!((solid.volume() - hand*25632.).abs() < hand*25632.*1e-14);
     let mut near = points; near[0][1] = 0.001;
-    assert!(retrace::region(&near, 1e-12).is_none());
+    assert!(retrace::region(&near, 1e-12).is_err());
 }
 fn box_(a: [f64;3], b: [f64;3]) -> Convex {
     Convex::extrusion(&[[a[0],a[1],a[2]],[b[0],a[1],a[2]],[b[0],b[1],a[2]],[a[0],b[1],a[2]]], [0.,0.,b[2]-a[2]]).unwrap()
@@ -50,4 +50,12 @@ fn issue_3641_source_oracle_supports_all_arbitrarily_oriented_cutters() {
     let remaining = difference_volume(&host,&[a,b,c]).unwrap();
     assert!(remaining>0. && remaining<host.volume());
     eprintln!("M8 independent slab oracle: {remaining:.15} m3");
+}
+
+#[test]
+fn issue_3641_oracle_fails_closed_on_zero_or_multiple_omissions() {
+    let multiple = [[0.,0.,0.],[2.,0.,0.],[2.,0.,0.],[2.,2.,0.],[0.,2.,0.]];
+    assert_eq!(retrace::region(&multiple,1e-12), Err("oracle cannot model this profile"));
+    let zero = [[0.,0.,0.],[2.,0.,0.],[3.,1.,0.],[2.,2.,0.],[0.,2.,0.]];
+    assert_eq!(retrace::region(&zero,1e-12), Err("oracle cannot model this profile"));
 }

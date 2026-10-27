@@ -737,6 +737,11 @@ jobs:
           node scripts/diff-sidecar-vectors.mjs --check
           node scripts/diff-sidecar-validation-vectors.mjs --check
 
+      # #7955 M2-B: the default (flag-off) viewer dist built above must not
+      # contain retained/SMLib code or assets.
+      - name: Verify default viewer is retained-free
+        run: node scripts/check-viewer-retained-free.mjs
+
       # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
       # built the engine wasm and the viewer's dist/ (turbo builds apps/*
       # too), so this only reads them: no second build. It MEASURES here and
@@ -744,9 +749,6 @@ jobs:
       # check instead of failing `build` and skipping every lane that needs it.
       # continue-on-error for the same reason: a measurer fault uploads no
       # artifact, and `perf-ratchet` then fails on the missing download.
-      - name: Verify default viewer is retained-free
-        run: node scripts/check-viewer-retained-free.mjs
-
       - name: Measure perf-ratchet bundle family
         id: perf-ratchet-measure
         continue-on-error: true

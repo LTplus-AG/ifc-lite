@@ -74,7 +74,7 @@ fn h2b_affine_copy_budget_stop_is_typed_and_sticky_at_common_admission() {
     let mut program = RetainedProgram::type_map(map, None, contract());
     let mut constructions = 0;
     while let Some(ticket) = program.request().unwrap() {
-        let ready = matches!(&program.inner.control,
+        let ready = matches!(&program.geometry_ref().control,
             Control::Mapping(control) if control.retained_ready());
         if constructions > 0 && ready {
             let account = crate::resource::ExecutionAccount::new(
@@ -113,8 +113,8 @@ fn h2b_nested_nonuniform_affines_preserve_order_and_cached_inner_definition() {
     let mut program = RetainedProgram::product_submeshes(&entity, true, None, contract());
     let mut operations = Vec::new();
     while let Some(ticket) = program.request().unwrap() {
-        if matches!(&program.inner.control, Control::Product(c) if c.retained_ready()) {
-            assert_eq!(program.inner.execute(ticket.0, &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
+        if matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()) {
+            assert_eq!(program.geometry_mut().execute(ticket.geometry_request(), &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
         }
         let (reply, reached) = program.admit(ticket, &router, &mut decoder).unwrap();
         operations.extend(reached);

@@ -13,7 +13,7 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
     }
     const parts = p.parts.map(part => ({ vertices: part.positions.length / 3, triangles: part.indices.length / 3,
       curved: part.curved, volumeM3: partVolume(part) }));
-    return { ...common, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
+    return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker };
   });
   const published = outcomes.filter(p => p.status === 'published').length;

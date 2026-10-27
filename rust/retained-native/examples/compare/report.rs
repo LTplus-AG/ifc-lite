@@ -13,6 +13,8 @@ pub struct Report {
     pub universe_mismatch: Vec<String>,
     pub skipped: Vec<String>,
     pub maxima: [f64; 4],
+    pub cuts: u64,
+    pub cut_times_ms: Vec<f64>,
     pub exact_ms: f64,
     pub retained_ms: f64,
     pub startup_ms: f64,
@@ -38,6 +40,8 @@ impl Report {
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
     ) {
         self.published += 1;
+        self.cuts += shape.cuts;
+        self.cut_times_ms.extend_from_slice(&shape.cut_times_ms);
         let curved = shape.parts.iter().any(|p| p.curved);
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             &format!("{model}:{}", shape.product_id),
@@ -59,7 +63,7 @@ impl Report {
         });
         let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
         self.rows.push(format!(
-            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t\t0\t0\t0\t{}",
+            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t\t{}\t{}\t{}\t{}",
             shape.product_id,
             shape.ifc_type.name(),
             format(source_rel),
@@ -70,6 +74,7 @@ impl Report {
             actual.volume,
             shape.obligations.0,
             format(source_bbox),
+            shape.cuts, shape.cut_times_ms.iter().sum::<f64>(), shape.consumed_parts,
             format(cut_rel)
         ));
         self.coverage
@@ -192,7 +197,7 @@ impl Report {
     pub fn summary(&self) -> Value {
         json!({"schema":"ifc-lite.native-retained-comparison/1", "candidates":self.candidates,
             "published":self.published, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
-            "byCode":self.histogram, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
+            "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "violations":self.violations,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
             "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})

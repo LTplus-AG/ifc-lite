@@ -17,6 +17,8 @@ use frame::compose_frame;
 pub(in crate::program) use frame::{validate_affine, proper_rigid};
 mod outcome;
 pub(in crate::program) mod boolean;
+#[cfg(any(test, feature = "retained-runtime"))]
+pub(in crate::program) mod openings;
 pub(crate) use presentation::RetainedPresentation;
 mod select;
 pub(in crate::program) mod failure;
@@ -133,6 +135,8 @@ impl LogicalRetainedValue {
 pub(crate) struct RetainedPlanOperation {
     pub(super) value: LogicalRetainedValue,
     pub(super) kind: RetainedOperationKind,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    pub(super) opening: Option<(u32, usize, usize)>,
 }
 impl RetainedPlanOperation {
     #[cfg(feature = "retained-runtime")]
@@ -177,6 +181,17 @@ pub(crate) struct RetainedProductPlan {
     /// Conservatively unchecked obligations until a consumer proves them
     /// unnecessary or discharges them; traversal alone does neither.
     pub(crate) remaining: Vec<RetainedRequirement>,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    pub(crate) opening: Option<OpeningCompletion>,
+}
+#[cfg(any(test, feature = "retained-runtime"))]
+#[derive(Debug)]
+// Only the retained-runtime publication facade reads opening completion facts.
+#[cfg_attr(not(feature = "retained-runtime"), allow(dead_code))]
+pub(crate) struct OpeningCompletion {
+    pub(crate) related: usize,
+    pub(crate) cuts: u64,
+    pub(crate) consumed: usize,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RetainedRequirement {

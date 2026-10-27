@@ -397,7 +397,12 @@ Each part has object-local metre `Float64Array` positions, `Uint32Array` indices
 a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
 and `curved`. Every publication carries `marker: 'PresentationObligationsUnmet'`
 and a nonempty `obligationsUnmet` list; consumers must display that marker. This
-is shape-only output, without opening, layer, appearance or persistent-face authority.
+is shape-only output. Supported openings are cut individually; completed cuts and
+plan-proven unvoided products discharge `OpeningClosure`. `cuts` reports completed
+cuts and `consumedParts` is zero: a consumed part refuses the entire product with
+`empty_result`. Layer, appearance and persistent-face obligations remain unmet.
+Unsupported opening bodies report `opening_unsupported`; hosts with internal
+material-layer boundaries refuse `material_layer_strategy` before opening work.
 
 A refusal has `status: 'refused'`, `expressId`, `ifcType`, a typed snake-case
 `code`, optional `{site, entity?, cause}` `origin`, and `kernelStatus` for kernel

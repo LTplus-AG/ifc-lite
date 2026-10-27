@@ -213,9 +213,14 @@ fn compare(
                     refusal,
                     origin,
                     message,
+                    cut_times_ms,
                     ..
                 } => {
                     let code = refusal.code();
+                    let cuts = cut_times_ms.len();
+                    let cut_ms = cut_times_ms.iter().sum::<f64>();
+                    report.cuts += cuts as u64;
+                    report.cut_times_ms.extend_from_slice(&cut_times_ms);
                     *report.histogram.entry(code.into()).or_default() += 1;
                     if code == "contract_breach" {
                         report
@@ -226,9 +231,11 @@ fn compare(
                         RetainedProductRefusal::KernelFailure { status } => status.to_string(),
                         _ => String::new(),
                     };
+                    // A refused product carries no consumed-part count: leave the
+                    // column empty rather than report 0 for a consumed host.
                     let message = message.replace(['\t', '\n', '\r'], " ");
                     report.rows.push(format!(
-                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t0\t0\t0\t",
+                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t{cuts}\t{cut_ms}\t\t",
                         ifc_type.name(), origin.map_or("", |o| o.cause),
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),
@@ -252,7 +259,7 @@ fn compare(
     report.models.push(json!({"model":model,"exact":{"milliseconds":exact_ms,"processMaxRssKiB":exact_rss,"phases":exact.stats},
         "retained":{"milliseconds":retained_ms,"productMilliseconds":timings.product_ms,"acquireMilliseconds":summary.acquire_ms,"phasesMs":{"startupAndQualification":timings.startup_and_qualification_ms,"construction":timings.construction_ms,"affine":timings.affine_ms,"boolean":timings.boolean_ms,"controllerAndPublication":timings.controller_and_publication_ms},"processMaxRssKiB":report::rss(false)?,"childrenMaxRssKiB":report::rss(true)?,"restarts":summary.restarts},
         "openingSources":{"supportedExtrusions":opening_inventory.supported_extrusions,"noAnalyticQuantities":opening_inventory.no_analytic_quantities},
-        "openingCounters":"M3-0: cuts/cutMs/consumedParts are zero because opened products refuse before cutting",
+        "openingCounters":"M3-A: cuts/cutMs include attempted cuts of refused products; any consumed part refuses the whole product",
         "memorySemantics":"getrusage process lifetime high-water marks; children includes reaped workers"}));
     Ok(())
 }

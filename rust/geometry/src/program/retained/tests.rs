@@ -102,14 +102,14 @@ fn exact_execute_refuses_retained_numerical_step_without_taking_it() {
     let mut program = RetainedProgram::product_parts(&entity, contract());
     let mut refused = 0;
     while let Some(ticket) = program.request().unwrap() {
-        if matches!(&program.inner.control, Control::Product(c) if c.retained_ready()) {
+        if matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()) {
             assert_eq!(
-                program.inner.execute(ticket.0, &router, &mut decoder).err(),
+                program.geometry_mut().execute(ticket.geometry_request(), &router, &mut decoder).err(),
                 Some(ProgramError::UnsupportedRetained)
             );
             assert_eq!(program.validate_ticket(ticket), Ok(()));
-            assert_eq!(program.inner.pending, Some((ticket.0, false)));
-            assert!(matches!(&program.inner.control, Control::Product(c) if c.retained_ready()));
+            assert_eq!(program.geometry_ref().pending, Some((ticket.geometry_request(), false)));
+            assert!(matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()));
             refused += 1;
         }
         let (reply, _) = program.admit(ticket, &router, &mut decoder).unwrap();
@@ -130,7 +130,7 @@ fn retained_numerical_rejects_foreign_execution_owners_without_consuming_recipe(
     let mut program = RetainedProgram::product_parts(&entity, contract());
     let mut tested = false;
     while let Some(ticket) = program.request().unwrap() {
-        if matches!(&program.inner.control, Control::Product(c) if c.retained_ready()) {
+        if matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()) {
             assert_eq!(
                 program.admit(ticket, &router, &mut foreign).err(),
                 Some(RetainedProgramError::WrongOwner)

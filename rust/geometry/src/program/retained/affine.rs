@@ -15,7 +15,7 @@ impl LogicalRetainedValue {
         self.outcome = outcome;
         self.definition = LogicalRetainedDefinition::Operation(self.slot);
         self.object_frame = crate::math::mat4::col_major_array(&nalgebra::Matrix4::identity());
-        Ok(Some(RetainedPlanOperation { value: self.try_copy()?,
+        Ok(Some(RetainedPlanOperation { #[cfg(any(test, feature = "retained-runtime"))] opening: None, value: self.try_copy()?,
             kind: RetainedOperationKind::Affine { input, matrix: crate::math::mat4::col_major_array(&matrix) } }))
     }
 }

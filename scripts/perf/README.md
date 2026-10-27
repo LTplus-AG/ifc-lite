@@ -5166,3 +5166,31 @@ plan small and measure the whole driver after each storage change. Unchanged
 parser sources and equal keyword call counts also produced small instruction
 deltas in libc comparisons, so distinguish layout-sensitive comparison costs
 from extra decoding before changing the parser.
+
+### Retained opening cuts (M3-A, #7955)
+
+Retained hosts subtract each cutter in order and keep every intermediate
+tessellation for certified emptiness. Real SDK source-oracle checks and
+native/Node/browser parity pass. Per-cut timings describe the cost of those
+invocations; they do not establish browser worker-pool performance.
+
+Verdict: default exact OBJ goldens and ordered native geometry fingerprints
+remain identical on Haus and ISSUE_129, the default WASM bytes are identical,
+and the default instruction gate stays within its unchanged ceilings. The
+final paired native wall-time cohort is unqualified because ISSUE_129 has
+phases below timer resolution. Haus medians are unchanged; ISSUE_129's geometry
+and total medians are slower within measured spread. An earlier source cohort
+also exceeded the Haus spread limit. Preserve both observations; neither
+establishes a speedup or performance-neutrality claim.
+
+Lesson: a successful chained kernel operation does not prove publication.
+Whole-model parity caught a browser receipt that held a sealed mesh but did
+not expose it through the publication trait. Keep both boundary and model
+checks, and measure the complete worker pool before changing cut grouping,
+bounds pruning or intermediate tessellation.
+
+Feature isolation also applies to data layout. Adding retained-only fields or
+enum variants to default-compiled types changed the default WASM bytes even
+when their operations were unreachable. Gate the state as well as its entry
+points, and qualify fresh base/branch builds at the same source path; preserved
+archive mtimes can otherwise make Cargo reuse the wrong side of a comparison.

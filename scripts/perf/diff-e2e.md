@@ -87,19 +87,25 @@ acceptance or fabricated exclusive/preparation receipts:
   --storage-task issue8042-rightsized-smoke --cwd /absolute/clean/harness -- \
   node scripts/perf/diff-e2e.mjs dry-run --base-root /absolute/prepared-ts \
   --branch-root /absolute/prepared-public-rust --fixture-root /absolute/fixtures \
-  --out /absolute/task-output/smoke
+  --out /absolute/task-output/smoke \
+  --large-base /absolute/frozen/source.ifc \
+  --large-head /absolute/frozen/controlled-revision.ifc
 ```
 
 It executes real proof children and cold/warm children on demo and Haus, checks
 identity and writes `dry-run.json`, including wall and per-pair process costs.
+The optional large paths are statted only for a byte-linear planning projection;
+they are never parsed by the smoke. `planning` records the assumption, full
+estimate and twice-estimate timeout rounded up to a minute.
 It does not require full-cohort preparation inventories, does not audit resolver
 coverage, and never produces a performance verdict. This distinction keeps a
 small functional smoke possible without weakening measurement admission.
 
-Budget the full cohort from the smoke's process costs, plus a separately stated
-scale assumption for the large case and its proof cost. Target under two hours;
-use a launcher timeout approximately twice the estimate, initially 14,400 s
-for a two-hour budget. A timeout is a failed cohort, never permission to remove
+Budget the full cohort from the smoke's process costs and its explicitly stated
+scale assumption for the large case and proof cost. Target under two hours;
+set the launcher timeout to `planning.timeoutSeconds` (twice the estimate).
+The example below uses 14,400 s only as a two-hour-budget placeholder; replace
+it with the smoke projection before freezing the full command. A timeout is a failed cohort, never permission to remove
 the large case. Do not run the full cohort during harness implementation.
 
 ## Parent preparation and receipts

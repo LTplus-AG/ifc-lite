@@ -4,13 +4,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile, appendFile, rename, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, appendFile, rename, readFile, stat } from 'node:fs/promises';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hostname, cpus, loadavg, freemem, totalmem, platform, release } from 'node:os';
 import { parseArgs } from 'node:util';
 import { performance } from 'node:perf_hooks';
-import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest, endpointVerdict, cohortVerdict } from './diff-e2e-protocol.mjs';
+import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest, endpointVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
 import { readJson, fileReceipt, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt, sourceReceipt } from './diff-e2e-receipts.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -273,7 +273,7 @@ export async function audit({ p, root, implementation, fixtureRoot, out }, sampl
 // Ordinary admitted smoke only. No preparation/admission attestation is invented;
 // this exercises real child IPC, parsing, public engines and identity, but cannot
 // issue a performance verdict or replace the source-pinned exclusive cohort.
-export async function dryRun({ baseRoot, branchRoot, fixtureRoot, out }, sampleFn = sample) {
+export async function dryRun({ baseRoot, branchRoot, fixtureRoot, out, largeBase, largeHead }, sampleFn = sample) {
   const p = protocol({ pairs: 1, dryRun: true });
   await mkdir(out, { recursive: false });
   const start = performance.now();
@@ -298,6 +298,11 @@ export async function dryRun({ baseRoot, branchRoot, fixtureRoot, out }, sampleF
       }
     }
     report.state = 'completed';
+    assert.equal(Boolean(largeBase), Boolean(largeHead), 'supply both large paths for planning');
+    if (largeBase) {
+      const sizes = await Promise.all([largeBase, largeHead].map(async path => (await stat(path)).size));
+      report.planning = planningEstimate(report, sizes[0] + sizes[1]);
+    }
   } catch (error) {
     report.state = 'failed'; report.error = error.stack ?? String(error);
     throw error;
@@ -324,7 +329,8 @@ export async function main(args) {
   if (positionals[0] === 'dry-run') {
     for (const key of ['base-root', 'branch-root', 'fixture-root']) assert.ok(v[key], `--${key} required`);
     await dryRun({ baseRoot: resolve(v['base-root']), branchRoot: resolve(v['branch-root']),
-      fixtureRoot: resolve(v['fixture-root']), out: resolve(v.out) });
+      fixtureRoot: resolve(v['fixture-root']), out: resolve(v.out),
+      largeBase: v['large-base'], largeHead: v['large-head'] });
   } else if (positionals[0] === 'plan') {
     const p = protocol({ pairs: Number(v.pairs ?? (v['dry-run'] === 'true' ? 1 : 6)), seed: Number(v.seed ?? 8042),
       dryRun: v['dry-run'] === 'true', retained: Number(v.retained ?? 3),

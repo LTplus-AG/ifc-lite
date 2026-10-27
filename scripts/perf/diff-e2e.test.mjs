@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { protocol, validateProtocol, digest, nonempty, resultProof,
-  assertPair, distribution, fixtureInvariant, endpointVerdict, cohortVerdict } from './diff-e2e-protocol.mjs';
+  assertPair, distribution, fixtureInvariant, endpointVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
 import { fileReceipt, readJson, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt } from './diff-e2e-receipts.mjs';
 import { measure } from './diff-e2e-sample.mjs';
 import { main, run, summary, audit, cpuUtilization } from './diff-e2e.mjs';
@@ -367,4 +367,18 @@ test('#8042 round CPU utilization is a counter delta, not a process classifier',
   const snapshot = (idle, user) => ({ cpuTimes: [{ idle, user, sys: 0, nice: 0, irq: 0 }] });
   assert.equal(cpuUtilization(snapshot(100, 100), snapshot(175, 125)), 25);
   assert.equal(cpuUtilization(snapshot(100, 100), snapshot(100, 100)), null);
+});
+
+
+test('#8042 planning extrapolates complete pairs and proofs without claiming scale measurements', () => {
+  const c = (id, bytes, wall) => ({ id, fixtures: [{ bytes }, { bytes }],
+    workloads: [{ pair: { base: { processWallMs: wall }, branch: { processWallMs: wall } } }],
+    proof: { base: { processWallMs: wall }, branch: { processWallMs: wall } } });
+  const estimate = planningEstimate({ state: 'completed', cases: [c('demo', 1, 1), c('haus', 10, 10)] }, 200);
+  assert.equal(estimate.scale, 10);
+  assert.equal(estimate.perPairMs, 222);
+  assert.equal(estimate.proofMs, 222);
+  assert.equal(estimate.fullMs, 1554);
+  assert.equal(estimate.timeoutSeconds, 60);
+  assert.equal(estimate.withinTwoHourTarget, true);
 });

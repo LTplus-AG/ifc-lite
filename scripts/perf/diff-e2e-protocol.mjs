@@ -205,3 +205,22 @@ export function cohortVerdict(endpoints) {
   if (endpoints.some(e => e.noisy)) return 'noisy';
   return endpoints.length && endpoints.every(e => e.verdict === 'pass') ? 'pass' : 'inconclusive';
 }
+
+// Planning only: a small smoke cannot measure the scale case. Keep the size
+// assumption explicit and include separate proof work in the projected budget.
+export function planningEstimate(report, largeBytes) {
+  assert.equal(report.state, 'completed');
+  assert.ok(Number.isFinite(largeBytes) && largeBytes > 0);
+  const timing = c => c.workloads.reduce((sum, w) =>
+    sum + w.pair.base.processWallMs + w.pair.branch.processWallMs, 0);
+  const proof = c => c.proof.base.processWallMs + c.proof.branch.processWallMs;
+  const haus = report.cases.find(c => c.id === 'haus');
+  const scale = largeBytes / haus.fixtures.reduce((sum, f) => sum + f.bytes, 0);
+  const perPairMs = report.cases.reduce((sum, c) => sum + timing(c), 0) + timing(haus) * scale;
+  const proofMs = report.cases.reduce((sum, c) => sum + proof(c), 0) + proof(haus) * scale;
+  const fullMs = 6 * perPairMs + proofMs;
+  return { assumption: 'large timing/proof cost scales linearly with total IFC bytes relative to Haus; not a measured large-case result',
+    scale, largeBytes, perPairMs, proofMs, fullMs,
+    timeoutSeconds: Math.ceil(2 * fullMs / 60000) * 60,
+    withinTwoHourTarget: fullMs < 2 * 60 * 60 * 1000 };
+}

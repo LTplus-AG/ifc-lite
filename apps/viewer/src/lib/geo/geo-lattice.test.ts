@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * GeoWarp's lattice interpolation (#PR_NUMBER) against PROJ: the oracle's
+ * GeoWarp's lattice interpolation (#8189) against PROJ: the oracle's
  * 20 km lines (`__fixtures__/proj-oracle.json`, `warp`) through a 100 m
  * lattice, compared with PROJ's ECEF, not with the exact mapping alone.
  */

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * GeoWarp's exact per-point mapping against PROJ (#PR_NUMBER). Expected
+ * GeoWarp's exact per-point mapping against PROJ (#8189). Expected
  * positions are `__fixtures__/proj-oracle.json` (`warp*`, written by
  * `scripts/geo/generate-proj-oracle.py`): PROJ's lon, lat, h and ECEF, with
  * the stated geoid plane `warpGeoid` both sides apply.

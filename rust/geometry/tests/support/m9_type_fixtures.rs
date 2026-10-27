@@ -25,7 +25,7 @@ pub fn boolean() -> String {
 }
 pub fn mirrored() -> String {
     insert(&SOURCE.replace("'SweptSolid',(#8)", "'MappedRepresentation',(#34)"),
-        "#30=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#8));#31=IFCREPRESENTATIONMAP(#2,#30);#32=IFCDIRECTION((-1.,0.,0.));#33=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#32,$,#1,1.,#6);#34=IFCMAPPEDITEM(#31,#33);")
+        "#30=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#8));#31=IFCREPRESENTATIONMAP(#2,#30);#32=IFCDIRECTION((-1.,0.,0.));#35=IFCDIRECTION((0.,1.,0.));#33=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#32,#35,#1,1.,#6);#34=IFCMAPPEDITEM(#31,#33);")
 }
 pub fn unsupported_second() -> String {
     insert(&SOURCE.replace("(#10),$,$,.NOTDEFINED.", "(#10,#32),$,$,.NOTDEFINED."),

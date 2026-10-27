@@ -222,10 +222,10 @@ async fn product<W: AsyncRetainedExecutor>(
     let entity = budget
         .scope(|| decoder.decode_by_id(id))
         .map_err(RetainedExecutionError::Core)?;
-    let kind = budget.scope(|| {
+    let kind = budget.scope(|| -> Result<_, RetainedExecutionError> {
         type_maps.map_or(Ok(ElementJobKind::Product), |maps| {
             let mut rep_maps = Vec::new();
-            resource::reserve_headers(&mut rep_maps, maps.len())
+            OwnedResourceContext::capture_current().reserve_headers(&mut rep_maps, maps.len())
                 .map_err(RetainedExecutionError::Stopped)?.retain();
             rep_maps.extend_from_slice(maps);
             Ok(ElementJobKind::TypeProduct { rep_maps })

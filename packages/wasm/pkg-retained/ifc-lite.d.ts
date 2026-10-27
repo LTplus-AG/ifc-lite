@@ -198,9 +198,9 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 export interface RetainedRunOptions { ids?: Uint32Array; detail: 'view' | 'shape'; }
-export interface RtcFrame { rtcOffset: Float64Array; needsShift: boolean; }
+export interface RetainedRtcFrame { rtcOffset: Float64Array; needsShift: boolean; }
 export type RetainedSessionEvent =
-| { kind: 'start'; candidateIds: Uint32Array; frame: RtcFrame }
+| { kind: 'start'; candidateIds: Uint32Array; frame: RetainedRtcFrame }
 | (RetainedShapeProduct & { kind: 'published' })
 | (RetainedProductRefusal & { kind: 'refused' })
 | { kind: 'published'; expressId: number; ifcType: string;

@@ -599,7 +599,7 @@ test('actual raw WASM decodes lossless comparison getters once (#8081)', async c
   } finally { base.free(); head.free(); }
 });
 
-test('actual compareWithWasm preserves lossless options and retains the staged column guard (#8081)', async context => {
+test('actual compareWithWasm preserves lossless constructor and option strings (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
   const oracle = await comparisonOracle(context); if (!oracle) return;
   const outputs = ['wasm-diff', 'wasm-runtime'].map(name => new URL(`../../diff/dist/${name}.js`, import.meta.url));
@@ -621,10 +621,10 @@ test('actual compareWithWasm preserves lossless options and retains the staged c
       if (field === 'component name') row.components = { [lone]: 'hash' };
       else if (field === 'component hash') row.components = { component: lone };
       else row[field] = lone;
-      assert.throws(() => compareWithWasm([row], []), /well-formed UTF-16/, field);
+      assert.deepEqual(compareWithWasm([row], []), diffModels([row], []), field);
     }
   }
-  for (const scalar of ['\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '\\udfff', '']) {
+  for (const scalar of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800', '\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '\\udfff', '']) {
     const row = comparisonRow(scalar);
     // Neither transport should inspect opaque adapter refs.
     Object.defineProperty(row, 'ref', { get() { throw new Error('opaque ref observed'); } });

@@ -924,5 +924,5 @@ matrices into IFC Z-up world metres. Consumers must show the
 `PresentationObligationsUnmet` marker and its `obligationsUnmet` list. Openings,
 layers, appearance and persistent faces remain unmet. Refused outcomes carry
 an ID, typed code and optional origin, with no partial product or exact fallback.
-See the [WASM package contract](../../packages/wasm/README.md#experimental-retained-whole-model-engine)
+See the [WASM package contract](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#experimental-retained-whole-model-engine)
 for lifecycle, transport and result details. The default engine is unchanged.

@@ -44,6 +44,7 @@
 import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import type { CesiumModelOriginInfo } from './cesium-bridge';
 import { isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils';
 import { isWithinWktDefinitionExtent, isWktDefinition } from './wkt-projection';
@@ -51,7 +52,6 @@ import { effectiveMapConversionForGeometry, isMapAbsoluteGeometry } from './map-
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { gridCoordinateSource } from './ground-scale';
 import { resolveMapAxisDirection } from './map-axis-direction';
-import { ifcToViewerAxes } from './coordinate-frame';
 import { viewerToEnuRotation } from './viewer-enu-rotation';
 import { viewerFrameCenter } from './cesium-viewer-frame';
 import { ecefToGeodetic, enuFrameAt, geodeticToEcef } from './geo-ecef';
@@ -149,8 +149,7 @@ function projectedMapping(input: GeoMappingInput): GeoMapping | null {
     return null;
   }
   const { a, b } = axis;
-  const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
-  const rtc = ifcToViewerAxes(coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
+  const shift = totalYupOffset(coordinateInfo);
   const toWgs84 = proj4(projectedDefinitionInMetres(projDef), 'WGS84');
   const anchor = { longitude: origin.longitude, latitude: origin.latitude, height: origin.height };
   const frame = enuFrameAt(anchor.latitude, anchor.longitude, anchor.height);
@@ -160,9 +159,9 @@ function projectedMapping(input: GeoMappingInput): GeoMapping | null {
 
   function toGeodetic(vx: number, vy: number, vz: number): GeoPoint | null {
     if (!finite(vx, vy, vz)) return null;
-    const x = vx + shift.x + rtc.x;
-    const y = -(vz + shift.z + rtc.z);
-    const z = vy + shift.y + rtc.y;
+    const x = vx + shift.x;
+    const y = -(vz + shift.z);
+    const z = vy + shift.y;
     const easting = e0 + k * (a * sx * x - b * sy * y);
     const northing = n0 + k * (b * sx * x + a * sy * y);
     const height = h0 + sz * z;
@@ -204,8 +203,7 @@ function geographicMapping(input: GeoMappingInput): GeoMapping | null {
   const mapScale = resolveMapUnitToMetreScale(input.projectedCRS.mapUnitScale, input.lengthUnitScale ?? 1);
   const rot = viewerToEnuRotation(origin.scaleX, axis.a, axis.b, 0, origin.scaleY);
   const center = viewerFrameCenter(coordinateInfo);
-  const shiftY = (coordinateInfo?.originShift ?? { y: 0 }).y
-    + ifcToViewerAxes(coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 }).y;
+  const shiftY = totalYupOffset(coordinateInfo).y;
   // Only a registered WKT carries an extent to refuse against; skip the geodetic round trip otherwise.
   const guarded = isWktDefinition(projDef);
   const anchor = { longitude: origin.longitude, latitude: origin.latitude, height: origin.height };

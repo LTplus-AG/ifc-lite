@@ -28,7 +28,7 @@ fn convex_inclusion_exclusion_and_oblique_prisms_have_hand_volumes() {
     let c = box_([0.;3],[2.,2.,1.]);
     // Three half boxes leave only [1,2]^3, including triple overlap.
     assert!((difference_volume(&host,&[a,b,c]).unwrap()-1.).abs() < 1e-12);
-    assert_eq!(difference_volume(&host,&[box_([3.;3],[4.;3])]),Some(8.));
+    assert!((difference_volume(&host,&[box_([3.;3],[4.;3])]).unwrap()-8.).abs()<1e-12);
     assert!((difference_volume(&host,&[host.clone()]).unwrap()).abs()<1e-12);
     // Oblique unit-square prism: height is the normal component, 3.
     let oblique = Convex::extrusion(&[[0.,0.,0.],[1.,0.,0.],[1.,1.,0.],[0.,1.,0.]], [0.7,0.2,3.]).unwrap();

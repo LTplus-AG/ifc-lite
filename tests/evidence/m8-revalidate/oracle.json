@@ -2,6 +2,6 @@
   "issue": 7955,
   "key": "rust/geometry/src/analytic/profile_retrace.rs",
   "mutation": "tests/evidence/m8-revalidate/revalidate.oracle.patch",
-  "test": "rust/geometry/src/analytic/profile_retrace_tests.rs",
+  "test": "rust/geometry/tests/m8_retrace_capture.rs",
   "why": "M8 exact-collinear and residual topology witnesses must reject this independent mutation."
 }

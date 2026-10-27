@@ -176,9 +176,9 @@ impl GeometryRouter {
         let mut pending = vec![map_id];
         let mut visited = rustc_hash::FxHashSet::default();
         while let Some(id) = pending.pop() {
-            if !visited.insert(id) {
-                return Err(Error::geometry("cyclic or repeated type-map source"));
-            }
+            // This is an existence predicate, not accumulated geometry. A
+            // repeated map has the same dispatch answer on every path.
+            if !visited.insert(id) { continue; }
             let map = decoder.decode_by_id(id)?;
             let (_, items) = self.admit_type_map(&map, decoder)?;
             for item in items {

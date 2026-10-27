@@ -51,3 +51,19 @@ fn issue_7955_m9_curve_only_exact_emits_nothing_and_is_not_a_candidate() {
     let source = SourceBundle::new(mixed.into_bytes());
     assert_eq!(canonical_type_maps(&source)[&20], [(10, 1), (41, 1)]);
 }
+
+#[test]
+fn issue_7955_m9_shared_curve_only_map_is_still_not_a_candidate() {
+    // Both occurrences reach the same curve-only map. Repeated dependencies
+    // cannot turn a meshless type into a retained refusal candidate.
+    let text = fixtures::insert(&fixtures::curves().replace(
+        "#10=IFCREPRESENTATIONMAP(#2,#9)", "#10=IFCREPRESENTATIONMAP(#2,#40)"),
+        "#40=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#43,#44));\
+         #41=IFCREPRESENTATIONMAP(#2,#9);\
+         #42=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,$);\
+         #43=IFCMAPPEDITEM(#41,#42);#44=IFCMAPPEDITEM(#41,#42);");
+    assert!(crate::process_geometry(text.as_bytes()).meshes.is_empty());
+    let source = SourceBundle::new(text.into_bytes());
+    assert!(canonical_element_jobs(&source).is_empty());
+    assert!(canonical_type_maps(&source).is_empty());
+}

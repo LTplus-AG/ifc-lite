@@ -944,6 +944,12 @@ jobs:
             oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/ifctype-lookup-8119/lookup.oracle.patch | grep -Fxq 'tests/evidence/ifctype-lookup-8119/lookup.oracle.patch'; then
+            # #8119: a whole-change revert deletes buildNameTable, SUPPLEMENTAL
+            # and CANONICAL_NAME_ARMS, which the changed tests import. Keep them
+            # and drop only the exact compare after the perfect hash, so foreign
+            # keywords on an occupied slot must fail the codegen and core tests.
+            oracle_args+=(--mutation tests/evidence/ifctype-lookup-8119/lookup.oracle.patch)
           elif git diff --unified=0 --diff-filter=M origin/main...HEAD -- rust/diff/src/transport_result.rs | grep -Fxq "+pub fn result_to_document(diff: &ModelDiff<'_,usize>) -> Value {"; then
             # #8042/#8106: keep the lossless model, options and result APIs.
             # Lose only unpaired UTF-16 units in native result entry keys;

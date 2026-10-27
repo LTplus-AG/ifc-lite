@@ -5089,3 +5089,20 @@ validation changes which malformed record is counted when a later decode fails.
 These are single-run instruction diagnostics, not elapsed-time or browser
 worker-pool speedup evidence. The local diagnosis packet is
 `f3b-leaves-ir-diagnosis-r1.json`; earlier unsuccessful candidates remain in it.
+
+### IfcType keyword perfect-hash lookup (#8119)
+
+Replacing the generated linear IfcType name dispatch with a minimal perfect
+hash (exact spelling still required on every occupied slot) is accepted on
+instruction counts. Parse instructions drop on Haus, ISSUE_129 and duplex, and
+total instructions drop on all three, with matching mesh, vertex and triangle
+counts. The paired native wall-time cohort was protocol-inconclusive, not a
+pass: the small fixtures run in tens of milliseconds, so a millisecond timer
+cannot resolve a parse-phase gain, and two ISSUE_129 phases measured zero on
+both sides. The large-fixture total moved the same way as the instructions.
+The maintainer accepted the change on that evidence (2026-10-27).
+
+Lesson: a parse-only optimisation needs fixtures whose parse phase runs well
+above the timer resolution before a wall-time cohort can say anything; on small
+models the instruction comparison is the meaningful measurement. Numbers and
+the cohort report live in the PR and its evidence, not here.

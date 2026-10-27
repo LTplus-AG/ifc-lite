@@ -923,6 +923,11 @@ jobs:
           # disable only placement/fill checks and require assertion failures.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
+          # GeoWarp: preserve new modules/exports so the tests load; drop k_c
+          # from true-length mapping so the PROJ witnesses turn RED.
+          # Once geo-warp.ts is on main, this clause can go.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/lib/geo/geo-warp.ts | grep -Fxq 'apps/viewer/src/lib/geo/geo-warp.ts'; then
+            oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           # #7955 M1 E: retain wire APIs; relax the production mesh byte bound.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained_wire.rs | grep -Fxq 'rust/geometry/src/document/retained_wire.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-e-wasm-runtime/behaviour.oracle.patch)

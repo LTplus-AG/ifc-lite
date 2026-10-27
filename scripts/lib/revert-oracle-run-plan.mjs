@@ -76,6 +76,8 @@ export function runPlan(plan, root, label, log = console.log, timeoutMs = RUN_TI
   if (plan.typecheck) {
     const parsed = runTypecheckPlan(plan, root, label === 'restored' ? 'baseline' : label, {
       spawn: (bin, args, options) => boundedSpawnSync(bin, args, { ...options, timeout: timeoutMs }),
+      cache: true,
+      cacheLabel: label,
     });
     parsed.durationMs = Date.now() - started;
     parsed.tail = parsed.evidence.join('\n');

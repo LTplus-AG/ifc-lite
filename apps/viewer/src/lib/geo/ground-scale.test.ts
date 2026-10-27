@@ -61,7 +61,9 @@ describe('combined scale factor', () => {
     assert.equal(elevationFactor(50, 0), 1);
     const r = 6_381_000; // Gaussian mean radius near 50°N is 6.381e6 m to 4 digits
     assert.ok(Math.abs(elevationFactor(50, 500) - r / (r + 500)) < 2e-8);
-    assert.ok(Math.abs(combinedScaleFactor(0.9996, 50, 500) - 0.9996 * elevationFactor(50, 500)) < 1e-15);
+    // Independent value: WGS84 R = sqrt(M·N) at 50°N = 6381822.8166 m, so
+    // k_c = 0.9996 · R / (R + 500) (computed outside this module).
+    assert.ok(Math.abs(combinedScaleFactor(0.9996, 50, 500) - 0.9995216899529586) < 1e-12);
   });
 });
 

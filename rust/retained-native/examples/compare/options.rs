@@ -63,6 +63,7 @@ pub fn base_models() -> [&'static str; 14] {
         "tests/fixtures/synthetic-retained/f-c-brep.ifc",
         "tests/fixtures/synthetic-retained/f-a-curved.ifc",
         "tests/fixtures/synthetic-retained/f-b-mapped.ifc",
+        "tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc",
         "tests/fixtures/cli-retained/layered-wall.ifc",
         "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
         "rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc",

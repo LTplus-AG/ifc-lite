@@ -11,21 +11,22 @@ import { tmpdir } from 'node:os';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { protocol, validateProtocol, digest, stress, nonempty, resultProof,
-  assertPair, distribution, fixtureInvariant } from './diff-e2e-protocol.mjs';
+  assertPair, distribution, fixtureInvariant, endpointVerdict, cohortVerdict } from './diff-e2e-protocol.mjs';
 import { fileReceipt, readJson, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt } from './diff-e2e-receipts.mjs';
 import { measure } from './diff-e2e-sample.mjs';
 import { main, run, summary, audit } from './diff-e2e.mjs';
 
 test('#8042 protocol requires five pairs, reproducible balanced interleaving and finite bounds', () => {
   const p = protocol();
-  assert.equal(p.pairs, 5);
-  assert.equal(p.cases.find(c => c.id === 'stress').rows, 750_000);
+  assert.equal(p.pairs, 6);
+  assert.deepEqual(p.cases.map(c => c.id), ['demo', 'haus', 'large']);
+  assert.equal(p.options.length, 1);
+  assert.equal(protocol({ pairs: 1, dryRun: true }).cases.length, 2);
   assert.deepEqual(validateProtocol(p), p);
   assert.deepEqual(protocol(), p);
   assert.equal(p.order.filter(pair => pair[0] === 'base').length, 3);
   assert.ok(p.order.every(pair => new Set(pair).size === 2));
-  for (const pairs of [0, 4, 26, Infinity, NaN, 5.5]) assert.throws(() => protocol({ pairs }));
-  for (const stressRows of [0, 1_000_001, Infinity]) assert.throws(() => protocol({ stressRows }));
+  for (const pairs of [0, 1, 5, 7, 26, Infinity, NaN, 5.5]) assert.throws(() => protocol({ pairs }));
   for (const retained of [0, 11, Infinity]) assert.throws(() => protocol({ retained }));
   assert.throws(() => protocol({ largeBase: '/a' }));
   assert.throws(() => validateProtocol({ ...p, options: [{ scope: 'geometry' }] }));
@@ -291,10 +292,10 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     });
     assert.deepEqual(calls.slice(0, 2), ['proof', 'proof']);
     assert.ok(calls.slice(2).every(mode => mode !== 'proof'));
-    assert.equal(calls.length, 62);
+    assert.equal(calls.length, 26);
     assert.equal(measured.state, 'incomplete', 'absent real scale coverage cannot pass');
-    assert.equal(measured.cases[0].workloads.length, 6);
-    assert.equal(measured.cases[0].workloads[3].summary.base.warmProcessMediansMs.n, 5);
+    assert.equal(measured.cases[0].workloads.length, 2);
+    assert.equal(measured.cases[0].workloads[1].summary.base.warmProcessMediansMs.n, 6);
     assert.equal(measured.performanceVerdict, 'not-assessed');
     let count = 0;
     await assert.rejects(runUnit({ ...args, out: join(dir, 'mismatch') }, async payload => {
@@ -350,4 +351,22 @@ test('#8042 untimed preparation audit discovers dependency paths and preserves s
     // Missing later fixtures must also survive the final audit checkpoint.
     assert.ok(proofs.some(p => p.state === 'skipped'));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+
+test('#8042 paired intervals enforce margin, uncertainty, spread and minimum rounds independently', () => {
+  const base = Array(6).fill(100);
+  const passing = endpointVerdict(base, Array(6).fill(105));
+  assert.equal(passing.verdict, 'pass');
+  assert.deepEqual(passing.ci95, [1.05, 1.05]);
+  assert.equal(endpointVerdict(base, Array(6).fill(111)).verdict, 'regression');
+  assert.equal(endpointVerdict([100], [99]).verdict, 'dry-run-only');
+  const noisy = endpointVerdict([80, 100, 100, 100, 100, 120], [80, 100, 100, 100, 100, 120]);
+  assert.equal(noisy.verdict, 'noisy');
+  const uncertain = endpointVerdict(base, [100, 100, 100, 115, 115, 115]);
+  assert.equal(uncertain.verdict, 'inconclusive');
+  assert.deepEqual(uncertain, endpointVerdict(base, [100, 100, 100, 115, 115, 115]));
+  assert.equal(cohortVerdict([passing, noisy]), 'noisy');
+  assert.equal(cohortVerdict([passing, uncertain]), 'inconclusive');
+  assert.equal(cohortVerdict([passing]), 'pass');
 });

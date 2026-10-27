@@ -2,135 +2,102 @@
      License, v. 2.0. If a copy of the MPL was not distributed with this
      file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
 
-# Diff end-to-end cohort protocol (#8042)
+# Right-sized diff end-to-end protocol (#8042)
 
-**Unmeasured, proposed for parent review.** The tool always reports
-`performanceVerdict: not-assessed` and `fullIssue8042Accepted: false`. No
-production code or performance ledger is changed. The parent owns heavy
-preparation, exclusive admission, approval, interpretation, and future acceptance.
+Protocol v3 supersedes the frozen 25-pair protocol. It measures six paired
+rounds, seed 8042, with exactly three base-first and three branch-first rounds
+in randomized order. There are three cases and two primary endpoints per case:
+**72 timing children plus six untimed proof children**, rather than 1,200 timing
+children. Use supported Node 22.13+ (22.x) or 24.x.
 
-Use Node 22.13+ in 22.x or Node 24.x. Imports are built JavaScript, without an
-implicit TS loader or builds. The primary workload calls the **final public
-`diffModels` facade** on both arms. The Rust arm requires public `initDiff()`
-and uses its actual Node asset resolution. Preparation source `98800519` still
-exports the TS facade and deliberately fails Rust-arm preparation: integrate
-the final production facade first. There is no internal-adapter fallback.
-Choose a TS baseline before facade cutover. The branch CLI must also use the
-Rust fingerprint pipeline before full #8042 acceptance; this harness includes
-its public builder cost but does not independently certify that implementation.
+Cases: the demo revision pair, AC20-FZK-Haus self-comparison, and the preserved
+large controlled revision pair. The large head SHA256 is enforced:
+`f8e748cf1f2128609257c939aac9df40c6f62f70bbca6813ff5a67bb06ac853a`.
+Both large file paths and receipts are bound before measurement. Keep its
+existing source/recipe/expected-output evidence; do not regenerate it. The
+750k synthetic expansion is removed. The single public-call configuration
+has content matching, split/merge and successor detection enabled. CLI rows
+are data-only; this is not a geometry coverage claim.
 
-## Workloads and proof separation
+Each cold observation is a fresh process: imports, initialization, file reads,
+parse, fingerprint build, public diffModels (including marshaling, restoration
+and handle release), input release and GC are measured continuously. Each warm
+observation is a separate process with retained JS fingerprints, one conditioning
+call and three timed calls. Calls still construct and free handles through the
+public facade. Warm repetitions stay in that process; their median is one
+observation, never three independent samples. Fingerprint construction and final
+release remain in the warm lifecycle report, outside warm call latency.
 
-For each fixture, run separate proof children first, then cold and warm timing
-children. Proof children audit actual ESM resolution and transitive CommonJS
-`require` resolution, validate original object identity and hash full inputs and
-results. They exercise every option and repeated call. Hashes preserve Map and
-array order, absent versus undefined optional fields, nonfinite/-0 values and
-lone UTF-16 surrogates. Each pair must have identical fingerprints and results,
-including original JS references and secondary claims. This is implementation
-parity, not external authoring-tool ground truth.
+Proofs run separately before timing. Full input/output hashes, Map order,
+optional-versus-empty/absent values, secondary claims, original row references
+and byKey entry identity remain a **hard gate independent of timing**. Hashing
+and resolver auditing never enter timing children. Source, binary, runtime,
+fixture and preparation receipt checks remain intact. Missing large fixtures
+make a full cohort incomplete; a smoke run cannot pass performance acceptance.
+The Rust arm must expose the final public facade and actual Node WASM resolver;
+the performance-harness branch alone deliberately still exports the TS facade.
+Prepare a clean public-cutover source as the measured branch.
 
-Each timing arm/round/option/workload is a **fresh process**, sequential on the
-same host with seeded balanced interleaving. There are no proof hashes, result
-traversals, loader audit writes or forced GC between timed calls. The proof
-processes exit before measurement; their JIT, heap and GC state cannot survive.
-OS filesystem caches remain uncontrolled and may be warm from preparation/proof.
-This is cold JS/WASM state, not cold disk latency. Fixed option order is 0,1,2;
-cold workloads precede warm workloads. Each option gets its own processes.
+## Timing verdict fixed before measurement
 
-- **Cold:** one option and one public call. `lifecycleTotalMs` continuously spans
-  module imports, initialization, reads, parse, fingerprints, derived construction
-  when applicable, public diff, reference restoration, per-call handle freeing,
-  JS-row release and explicit GC. Nothing is subtracted or stitched on later.
-- **Warm:** a separate process builds inputs and makes one conditioning call,
-  then retains JS fingerprints for the configured repeats of one option. Every
-  repeat calls the production facade, including packing, constructing handles,
-  comparison, restoring references and freeing handles **per call**. The primary
-  warm endpoint is the median public-call `totalMs` within that process.
-  `lifecycleTotalMs` additionally describes the whole continuous warm lifecycle,
-  including conditioning and final release. It is not cold latency.
-- No handle-reuse workload is currently offered. A future handle-reuse experiment
-  must be separately named and cannot replace primary production-call results.
+Report each endpoint's median paired branch/base ratio and a pointwise 95%
+paired percentile bootstrap CI (10,000 resamples, seed 8042). Resample complete
+process pairs, not repeats. No Holm24 procedure or familywise speedup claim.
 
-Public-call costs are inclusive: no private adapter instrumentation pretends to
-separate marshaling from restoration. Import/init/read/parse/fingerprint/release
-phases remain available. `processWallMs` additionally includes Node startup,
-protocol imports, IPC and exit. Memory snapshots, release GC and max RSS are
-reported descriptively; releasing handles need not shrink WASM linear memory.
-All these CLI timings are **data-only**: enabling the third option does not
-create geometry fingerprints or prove split/merge or successor coverage.
+- A lower CI bound above 1.10 means a supported regression.
+- A clean pass requires every upper CI bound at most 1.10.
+- An interval crossing 1.10 is inconclusive, not a pass.
+- Per-arm `(max-min)/median` spread above 20% flags noisy and blocks a clean pass.
+- Identity failure, failed admission, skipped coverage or child failure blocks
+  acceptance. Preserve all samples; do not replace inconvenient observations.
 
-Retained repeats are correlated. Reports preserve raw repetitions, then compute
-**one median per process** and paired process-level deltas and ratios. The
-independent unit is a fresh process pair, never a flattened repetition. Cold
-lifecycle distributions likewise have one observation per arm/process pair.
+Six pairs give limited precision; no result promises a decisive verdict. Record
+the measured verdict and lesson in `scripts/perf/README.md` before consumer
+cutover. `fullIssue8042Accepted` remains false because separate geometry,
+consumer and other correctness obligations are outside this timing cohort.
 
-## Freeze and approve before measurement
-
-Generate a draft without builds, fixtures or timing:
+## Plan, smoke and host observations
 
 ```bash
 node scripts/perf/diff-e2e.mjs plan --out /absolute/evidence/draft.json \
-  --pairs 5 --seed 8042 --stress-rows 750000 --retained 3 \
-  --large-base /absolute/large-base.ifc --large-head /absolute/large-head.ifc
+  --large-base /absolute/frozen/source.ifc \
+  --large-head /absolute/frozen/controlled-revision.ifc
 ```
 
-An unbound draft cannot run. The final reviewed protocol adds `--bindings
-/absolute/evidence/bindings.json`. Bindings are programmatically assembled by
-parent preparation from actual receipts, using `digest`, `fileReceipt`,
-`harnessReceipt`, `sourceReceipt` and `runtimeReceipt` from the harness modules:
+Defaults are six pairs, seed 8042 and three retained calls. A bound full plan
+also needs `--bindings /absolute/evidence/bindings.json`. Bindings retain runtime,
+harnessSource, hostname in measurement, harness digest, base/branch inventory
+digests and fixture receipts. The runner rejects changed bindings. There is no
+per-process classification requirement and no periodic whole-host shell probe.
 
-```js
-{
-  runtime: await runtimeReceipt(), // Node version, path and executable SHA256
-  harnessSource: sourceReceipt('/absolute/harness'), // exact clean harness commit/tree
-  measurement: { hostname: 'ACTUAL_HOST', idleProbes: {
-    scope: 'linux-and-physical-host', commands: ['ACTUAL scheduler/host probe commands'],
-    intervalMs: 1000, requiredIdle: 'no unrelated runnable work'
-  } },
-  harness: digest(await harnessReceipt()), // exact harness/module bytes and paths
-  base: digest(baseInventory), branch: digest(branchInventory), // source commit/tree + all bytes
-  fixtures: { demo: [baseFileReceipt, headFileReceipt], /* haus, large, stress */ }
-}
+Use standard registered exclusive physical-host admission and its idle check
+at the start. Runner records timestamped load averages, free memory and CPU
+counters before/after every round, for reporting rather than automatic process
+classification. Do not change services or timers. Run on Pop; PC benchmark
+admission remains disabled. Do not use the native-only `ifc-benchmark` wrapper.
+
+A one-pair small-fixture smoke runs as **ordinary validation**, with no timing
+acceptance or fabricated exclusive/preparation receipts:
+
+```bash
+~/build-workers/ifc-fleet run --host pop-os --kind ordinary \
+  --storage-task issue8042-rightsized-smoke --cwd /absolute/clean/harness -- \
+  node scripts/perf/diff-e2e.mjs dry-run --base-root /absolute/prepared-ts \
+  --branch-root /absolute/prepared-public-rust --fixture-root /absolute/fixtures \
+  --out /absolute/task-output/smoke
 ```
 
-The idle probe interval must be 1–60 seconds; the parent must choose probes
-that establish the required physical-host ownership and idle window. The harness
-validates the frozen plan, while the parent validates actual probe evidence.
-Fixture receipts contain real absolute path, size and SHA256. The harness
-source must be clean and match its frozen commit/tree as well as its byte digest. The runner
-reconciles bindings before sampling, fixture receipts before/after each case,
-and inventories, runtime and harness bytes after the cohort. Moving prepared
-roots or changing bytes requires new preparation and review.
+It executes real proof children and cold/warm children on demo and Haus, checks
+identity and writes `dry-run.json`, including wall and per-pair process costs.
+It does not require full-cohort preparation inventories, does not audit resolver
+coverage, and never produces a performance verdict. This distinction keeps a
+small functional smoke possible without weakening measurement admission.
 
-Protocol v2 contains proposed numeric criteria for parent approval **before any
-cohort is inspected**:
-
-- Primary endpoints: cold lifecycle and warm per-process median public-call
-  latency, all three options on demo, Haus, real large IFC revision pair
-  (authored or controlled derived as specified below) and stress.
-- Noninferiority margin: branch/base 1.05. A speedup claim additionally requires
-  branch/base below 0.95 on every large/stress primary endpoint.
-- One-sided exact paired sign tests against the margin, ties against the claim;
-  Holm correction across all primary case/option/endpoints, familywise alpha
-  0.05. Neutrality requires every primary endpoint to establish noninferiority.
-  Otherwise parent distinguishes supported regression from inconclusive evidence.
-- Resolution: cold endpoints at least 1 ms, warm endpoints at least 0.1 ms, both
-  at least 100 observed clock ticks. Each child reports its minimum positive
-  `performance.now()` step from 1,000 premeasurement clock probes.
-- Noise: per-arm `(max-min)/median` across process summaries at most 20%.
-- Any failed idle/exclusive probe, timeout, failure, changed identity or
-  resolution/noise violation makes the cohort inconclusive. Preserve every
-  observation; no replacement, exclusion, automatic retry or post-hoc relaxation.
-
-At least five pairs are mandatory, **not guaranteed decisive**. Five pairs
-cannot establish Holm-corrected significance over all 24 primary endpoints:
-even five successes give a minimum one-sided exact sign-test p-value of
-1/32, above the first Holm threshold of 0.05/24.
-Choose sample size (up to 25 pairs) and a fixed analysis before measurement;
-if inconclusive, retain the entire cohort and seek review of a new protocol.
-These criteria are a proposal, not an approval or automated verdict. The parent
-must explicitly approve the exact protocol hash and interpretation plan.
+Budget the full cohort from the smoke's process costs, plus a separately stated
+scale assumption for the large case and its proof cost. Target under two hours;
+use a launcher timeout approximately twice the estimate, initially 14,400 s
+for a two-hour budget. A timeout is a failed cohort, never permission to remove
+the large case. Do not run the full cohort during harness implementation.
 
 ## Parent preparation and receipts
 
@@ -169,8 +136,7 @@ freeze its actual path, source identity and exact install/build/audit/inventory/
 manifest commands before execution. It must produce the declared files before
 the admitted command completes. Freeze actual prepared paths, artifact paths,
 original receipts and wrappers in the reviewed protocol before measurement.
-The protocol remains proposed and unfrozen pending parent review after fleet
-facade qualification; these templates assert no preparation or acceptance result.
+These templates assert no preparation or acceptance result.
 
 Remove relevant generated outputs and disable Turbo/build caches for fresh
 source builds, including independent diff WASM via the repository workflow.
@@ -232,25 +198,15 @@ Failed, stale, unrelated or merely hashed receipts cannot qualify. This trusts
 the authorized preparer's fresh-build attestation and scheduler evidence; it
 is not a cryptographic proof that a compiler executed particular source.
 
-## Admission, execution and completion
+## Exclusive execution and completion
 
-Parent reviews protocol, harness commit and byte digest, exact source/runtime/
-fixture identities, and premeasurement criteria. Obtain exclusive **physical
-host** admission through the registered custom WASM workflow; the native Cargo
-prepared wrapper does not support this protocol. PC timing remains disabled.
-Do not nest reservations or recover an uncertain submission by resubmitting.
-
-Use scheduler probes with timestamped Linux **and host** CPU, memory, process
-and ownership evidence before/during/after the cohort, with no unrelated
-runnable work. Freeze the probe commands, interval and exclusivity requirements
-in the approval record. Runner load/free-memory snapshots are observations,
-not idle certification. Missing or adverse probes cannot qualify. Admission JSON
-is a parent attestation referencing actual evidence, not an acquired lock:
+After admitted source-pinned ordinary preparation, freeze bindings and approve
+that exact protocol hash. Admission JSON remains:
 
 ```json
 {
-  "approvedProtocolSha256": "EXACT_REVIEWED_PROTOCOL_SHA256",
-  "hostname": "EXACT_MEASUREMENT_HOSTNAME",
+  "approvedProtocolSha256": "EXACT_PROTOCOL_SHA256",
+  "hostname": "pop-os",
   "exclusiveReceipt": "/absolute/evidence/original-exclusive-admission.json",
   "preparation": {
     "base": { "inventory": "/absolute/evidence/base.inventory.json", "receipt": "/absolute/evidence/base.build-wrapper.json" },
@@ -259,84 +215,34 @@ is a parent attestation referencing actual evidence, not an acquired lock:
 }
 ```
 
-Custom cohort invocation template, submitted on the same measurement host
-outside any reservation (use the preparation task ID). The frozen parent-owned
-cohort script must collect the required before/during/after host probes and run
-the runner below within this single exclusive command; it must not launch
-another reservation. Freeze actual script/artifact paths and resource bounds
-before measurement. These illustrative bounds do not replace the approved
-idle, probe, identity, statistical or coverage requirements:
+On Pop, outside any reservation, use one task for preparation and measurement:
 
 ```bash
-~/build-workers/run-heavy --cwd /absolute/harness --kind benchmark \
-  --storage-task UNIQUE_COHORT_TASK --cpu 4 --memory 16 --timeout 86400 \
+~/build-workers/run-heavy --cwd /absolute/clean/harness --kind benchmark \
+  --storage-task issue8042-rightsized-cohort --cpu 24 --memory 48 --timeout 14400 \
   --artifact /absolute/task-output/cohort/result.json \
   --artifact /absolute/task-output/cohort/proofs.jsonl \
-  --artifact /absolute/task-output/cohort/host-probes.jsonl \
-  -- bash /absolute/preparation/run-cohort-with-probes.sh
-```
-
-Only within that parent's exclusive command:
-
-```bash
-node /absolute/harness/scripts/perf/diff-e2e.mjs run \
+  -- node scripts/perf/diff-e2e.mjs run \
   --protocol /absolute/evidence/protocol.json --admission /absolute/evidence/admission.json \
-  --base-root /absolute/base --branch-root /absolute/branch \
+  --base-root /absolute/prepared-ts --branch-root /absolute/prepared-public-rust \
   --fixture-root /absolute/fixtures --out /absolute/task-output/cohort
 ```
 
-Output must be new and outside measured roots. `result.json` is atomically
-checkpointed per pair, completion and failure. `proofs.jsonl`, resolver logs,
-`samples.jsonl` and bounded child `samples.log` retain evidence, including a
-finished first arm when its partner fails. There is no resume/replacement mode.
-Reconcile the original receipt/output before any new scheduling decision.
+Paths above must be the actual frozen prepared paths. Admission is an attestation
+referencing the registered launcher's real exclusive/idle receipt; the JSON does
+not acquire a lock. Original receipts must be reconciled after interruption,
+never resubmit an unknown outcome. Outputs are new and outside source roots.
+The runner checkpoints each pair and preserves failed proof/timing evidence.
+Child limits: ten minutes, 12 GiB old-space, 256 KiB log; the launcher additionally
+bounds physical memory and total time. Missing fixtures instruct `pnpm fixtures`
+and make the full run incomplete. The frozen large head hash is a hard gate.
 
-Bounds: 5–25 pairs, one million rows per side, 512 MiB per IFC, 1–10 repeats,
-30 minutes per child, 12 GiB Node old-space and 256 KiB child output. The parent
-launcher must additionally impose real process/host memory and deadline limits;
-V8 old-space is not such a limit. Abort/timeout kills only the owned child.
+Publish compact receipts, JSON, logs and inventories through managed storage,
+close the owning task after reconciling all outcomes, and release generated
+workspaces. Preserve foreign source, fixtures, evidence and locks.
 
-Missing fixtures skip with `pnpm fixtures` instructions and make the cohort
-incomplete (exit 2); empty/oversized files, zero rows, incomplete scans and
-identity mismatches fail. No skipped or missing coverage can yield acceptance.
-The 750k-row case is explicitly synthetic Haus expansion, not a large IFC
-revision pair. The large case may use a **real large IFC plus a reproducible
-controlled derived IFC revision**. Independently authored large revisions are
-not required by #8042; an authored revision is also permitted. Label controlled
-derivation honestly in the frozen evidence and report, without presenting it as
-an independent authoring-tool revision or external ground truth.
-
-Before measurement, parent review must require full STEP entity counts and
-full `IfcObjectDefinition` counts for **both files**, separately from the
-fingerprint row counts; author/source provenance; and SHA256 hashes of source
-and output IFC bytes. For a controlled revision, also retain the exact
-reproducible recipe, its SHA256, parameters/seed and tool versions. Freeze the
-expected unchanged/added/modified/deleted and content-match distribution for
-each option (including expected absence or zero matches), then reconcile the
-untimed proof against it. Bind these evidence references into the reviewed
-protocol bindings so approval covers the recipe and expectations as well as
-the existing fixture receipts. These are parent-reviewed coverage obligations,
-not an automatic harness acceptance verdict. Self-comparison alone cannot
-qualify changed-path coverage; the large proof rejects unchanged-only results.
-
-**Required future acceptance:** a separate real geometry-enriched pair exercising
-split/merge and successor evidence, a real large IFC with an authored or
-controlled derived revision meeting the evidence requirements above, and
-the actual Rust fingerprint pipeline. CLI rows currently contain no geometry
-hashes/AABBs/volumes. Missing coverage blocks full acceptance even when all
-available samples match. Sidecars/UTF-16, lineage, initialization retry/failure,
-opaque references and consumer compatibility also need separate actual-WASM
-proof. Parent records a ledger verdict only after approved, accepted measurement.
-
-Publish compact receipts, JSON, logs and inventories through the owning managed
-storage task, reconcile outcomes, close the task, and release generated
-workspaces. Preserve original receipts and failed/contaminated evidence.
-
-Fast harness-only checks (no real fixtures, production engines or measurements):
+Fast behavioral harness checks (also reached by CI's perf test catch-all):
 
 ```bash
 node --test scripts/perf/diff-e2e.test.mjs
 ```
-
-The existing CI `scripts/perf/*.test.mjs` catch-all runs these tests. Tests use
-behavioral fixtures and injected modules, never assertions on other source text.

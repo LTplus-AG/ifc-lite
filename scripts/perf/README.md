@@ -114,6 +114,15 @@ exports. Actual-WASM tests verify independent memories and that retained diff
 models survive geometry initialization. This is a packaging result; full
 facade startup, marshaling, and end-to-end timing qualification remain open.
 
+**Timing protocol:** [diff-e2e v3](./diff-e2e.md) replaces the oversized frozen
+cohort with six balanced seeded pairs on demo, Haus and the preserved large
+controlled revision. Cold lifecycle and retained-input public calls include the
+production boundary costs; full identity is a separate hard gate. Pointwise
+paired bootstrap intervals use a 1.10 margin and flag spread above 20%. Standard
+exclusive idle admission replaces per-process classification. This is protocol
+preparation, not a measured performance verdict; record the actual verdict here
+before consumer cutover.
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**

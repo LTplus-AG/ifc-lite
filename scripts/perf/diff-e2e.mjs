@@ -10,13 +10,14 @@ import { fileURLToPath } from 'node:url';
 import { hostname, cpus, loadavg, freemem, totalmem, platform, release } from 'node:os';
 import { parseArgs } from 'node:util';
 import { performance } from 'node:perf_hooks';
-import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest } from './diff-e2e-protocol.mjs';
+import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest, endpointVerdict, cohortVerdict } from './diff-e2e-protocol.mjs';
 import { readJson, fileReceipt, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt, sourceReceipt } from './diff-e2e-receipts.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const environment = () => ({ hostname: hostname(), platform: platform(), release: release(),
   node: process.version, cpu: cpus()[0]?.model, cpuCount: cpus().length,
-  totalmem: totalmem(), freemem: freemem(), loadavg: loadavg() });
+  totalmem: totalmem(), freemem: freemem(), loadavg: loadavg(),
+  timestamp: new Date().toISOString(), cpuTimes: cpus().map(cpu => cpu.times) });
 
 export function sample(payload, timeoutMs = LIMITS.timeoutMs) {
   return new Promise((accept, reject) => {
@@ -115,11 +116,6 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
   const harnessSource = harnessSourceFn();
   assert.deepEqual(p.bindings.harnessSource, harnessSource, 'harness source identity mismatch');
   assert.equal(p.bindings.measurement.hostname, hostname());
-  const probes = p.bindings.measurement.idleProbes;
-  assert.equal(probes.scope, 'linux-and-physical-host');
-  assert.ok(Array.isArray(probes.commands) && probes.commands.length > 0 && probes.commands.every(c => typeof c === 'string' && c.trim()));
-  assert.ok(Number.isSafeInteger(probes.intervalMs) && probes.intervalMs >= 1000 && probes.intervalMs <= 60_000);
-  assert.equal(probes.requiredIdle, 'no unrelated runnable work');
   assert.deepEqual(p.bindings.runtime, await runtimeReceipt());
   assert.equal(p.bindings.harness, digest(harness));
   for (const arm of ['base', 'branch']) assert.equal(p.bindings[arm], digest(builds[arm].inventory));
@@ -158,6 +154,7 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
         await persist(); continue;
       }
       assert.deepEqual(entry.fixtures, p.bindings.fixtures[fixture.id], 'fixture identity not frozen');
+      if (fixture.headSha256) assert.equal(entry.fixtures[1].sha256, fixture.headSha256, 'frozen large head differs');
       // All proof executions for this fixture precede its timing. They run in their own processes;
       // their traversals/hashes never interleave with measured comparisons.
       entry.proof = {};
@@ -198,6 +195,10 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
           assert.deepEqual(pair.branch.rows, entry.proof.branch.rows);
         }
         workload.summary = summary(workload.pairs);
+        const endpoint = s => mode === 'cold' ? s.phases.lifecycleTotalMs
+          : distribution(s.retainedTimes.map(t => t.totalMs)).median;
+        workload.timing = endpointVerdict(workload.pairs.map(p => endpoint(p.base)),
+          workload.pairs.map(p => endpoint(p.branch)));
       }
       assert.deepEqual(await Promise.all(fixture.paths.map(path => fileReceipt(path))), entry.fixtures, 'fixture mutated');
       entry.state = 'measured-separate-proof-identical';
@@ -211,6 +212,9 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
     assert.deepEqual(harnessSourceFn(), report.harnessSource, 'harness source changed during cohort');
     assert.deepEqual(await runtimeReceipt(), p.bindings.runtime, 'runtime changed during cohort');
     report.state = report.cases.some(c => c.state === 'skipped') ? 'incomplete' : 'measured';
+    if (report.state === 'measured' && !p.dryRun) report.performanceVerdict = cohortVerdict(
+      report.cases.flatMap(c => c.workloads.map(w => w.timing)));
+    if (p.dryRun) report.performanceVerdict = 'dry-run-only';
   } catch (error) {
     report.state = 'failed'; report.error = error.stack ?? String(error);
     if (error.log) await appendFile(resolve(out, 'samples.log'), error.log);
@@ -255,18 +259,62 @@ export async function audit({ p, root, implementation, fixtureRoot, out }, sampl
   await writeFile(resolve(out, 'runtime-paths.json'), JSON.stringify([...paths].sort(), null, 2) + '\n', { flag: 'wx' });
 }
 
+// Ordinary admitted smoke only. No preparation/admission attestation is invented;
+// this exercises real child IPC, parsing, public engines and identity, but cannot
+// issue a performance verdict or replace the source-pinned exclusive cohort.
+export async function dryRun({ baseRoot, branchRoot, fixtureRoot, out }, sampleFn = sample) {
+  const p = protocol({ pairs: 1, dryRun: true });
+  await mkdir(out, { recursive: false });
+  const start = performance.now();
+  const report = { state: 'running', performanceVerdict: 'dry-run-only',
+    fullIssue8042Accepted: false, protocol: p, environment: environment(), cases: [] };
+  try {
+    for (const definition of p.cases) {
+      const fixture = { ...definition, paths: definition.paths.map(path => resolve(fixtureRoot, path)) };
+      const entry = { id: fixture.id, fixtures: await Promise.all(fixture.paths.map(path => fileReceipt(path))), proof: {}, workloads: [] };
+      report.cases.push(entry);
+      const payload = arm => ({ root: arm === 'base' ? baseRoot : branchRoot, fixture,
+        options: p.options, retained: p.retained, implementation: arm === 'base' ? 'typescript' : 'rust-wasm' });
+      for (const arm of p.order[0]) entry.proof[arm] = await sampleFn({ ...payload(arm), mode: 'proof' });
+      assertPair(entry.proof.base, entry.proof.branch);
+      for (const mode of ['cold', 'warm']) {
+        const pair = { order: p.order[0], before: environment() };
+        for (const arm of pair.order) pair[arm] = await sampleFn({ ...payload(arm), mode });
+        pair.after = environment();
+        entry.workloads.push({ mode, pair, summary: summary([pair]) });
+      }
+    }
+    report.state = 'completed';
+  } catch (error) {
+    report.state = 'failed'; report.error = error.stack ?? String(error);
+    throw error;
+  } finally {
+    report.wallMs = performance.now() - start;
+    report.pairWallMs = report.cases.reduce((sum, c) => sum + c.workloads.reduce((n, w) =>
+      n + w.pair.base.processWallMs + w.pair.branch.processWallMs, 0), 0);
+    await writeFile(resolve(out, 'dry-run.json'), JSON.stringify(report, null, 2) + '\n');
+    console.log(JSON.stringify({ state: report.state, wallMs: report.wallMs, pairWallMs: report.pairWallMs,
+      result: resolve(out, 'dry-run.json') }));
+  }
+  return report;
+}
+
 export async function main(args) {
   const { values: v, positionals } = parseArgs({ args, allowPositionals: true, options:
     Object.fromEntries(['protocol', 'admission', 'base-root', 'branch-root', 'fixture-root', 'out',
-      'pairs', 'seed', 'stress-rows', 'retained', 'large-base', 'large-head', 'root', 'implementation', 'bindings', 'runtime-paths']
+      'pairs', 'seed', 'dry-run', 'retained', 'large-base', 'large-head', 'root', 'implementation', 'bindings', 'runtime-paths']
       .map(key => [key, { type: 'string' }])) });
   const [major, minor] = process.versions.node.split('.').map(Number);
   assert.ok((major === 22 && minor >= 13) || major === 24, 'use supported Node >=22.13 (22.x or 24.x)');
   assert.equal(positionals.length, 1, 'choose plan, audit, inventory or run; see diff-e2e.md');
   assert.ok(v.out, '--out is required (outside source checkout)');
-  if (positionals[0] === 'plan') {
-    const p = protocol({ pairs: Number(v.pairs ?? 5), seed: Number(v.seed ?? 8042),
-      stressRows: Number(v['stress-rows'] ?? 750_000), retained: Number(v.retained ?? 3),
+  if (positionals[0] === 'dry-run') {
+    for (const key of ['base-root', 'branch-root', 'fixture-root']) assert.ok(v[key], `--${key} required`);
+    await dryRun({ baseRoot: resolve(v['base-root']), branchRoot: resolve(v['branch-root']),
+      fixtureRoot: resolve(v['fixture-root']), out: resolve(v.out) });
+  } else if (positionals[0] === 'plan') {
+    const p = protocol({ pairs: Number(v.pairs ?? (v['dry-run'] === 'true' ? 1 : 6)), seed: Number(v.seed ?? 8042),
+      dryRun: v['dry-run'] === 'true', retained: Number(v.retained ?? 3),
       largeBase: v['large-base'], largeHead: v['large-head'],
       bindings: v.bindings ? (await readJson(v.bindings, 32 * 1024 * 1024)).value : undefined });
     await writeFile(v.out, JSON.stringify(p, null, 2) + '\n', { flag: 'wx' });

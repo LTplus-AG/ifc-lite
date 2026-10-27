@@ -384,3 +384,6 @@ mod outcome_tests;
 
 #[path = "origin_tests.rs"]
 mod origins;
+
+#[path = "logical_budget_tests.rs"]
+mod logical_budget_tests;

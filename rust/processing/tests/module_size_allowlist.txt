@@ -141,12 +141,11 @@
      563 rust/geometry/src/material_layer_index.rs
 # +14: SubMeshCollection gains `ids_are_materials` + `of_materials()` so a material-layer id can never be read as a representation item (#3199).
 # -531: the 535-line `#[cfg(test)] mod tests` moved to the sibling mesh_tests.rs, which the ratchet exempts. Production code is unchanged (#3199 follow-up).
-    1012 rust/geometry/src/mesh.rs
+     962 rust/geometry/src/mesh.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
-     758 rust/geometry/src/profile_extractor.rs
      496 rust/geometry/src/profiles/curves_2d.rs
      466 rust/geometry/src/profiles/curves_3d.rs
 # +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).

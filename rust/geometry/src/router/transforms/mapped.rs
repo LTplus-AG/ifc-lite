@@ -5,10 +5,9 @@
 //! `IfcMappedItem` placement: the map's `MappingOrigin` composed under the
 //! item's `MappingTarget`.
 
-use crate::math::tol;
 use super::super::GeometryRouter;
-use crate::{Error, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::{math::tol, Result};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 impl GeometryRouter {
@@ -65,32 +64,19 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
-        let target = self.mapping_target_transform(item, decoder)?;
-        let origin = self.mapping_origin_transform(source, decoder)?;
-        Ok(Self::compose_mapped_transform(target, origin))
+        crate::representation::mapped_transform::mapped_item_local_transform(item, source, decoder)
     }
 
     fn mapping_target_transform(
         &self, item: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
-        match item.get(1) {
-            Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
-                Some(entity) => Ok(Some(self.parse_cartesian_transformation_operator(&entity, decoder)?)),
-                None => Ok(None),
-            },
-            _ => Ok(None),
-        }
+        crate::representation::mapped_transform::mapping_target(item, decoder)
     }
 
     fn compose_mapped_transform(
         target: Option<Matrix4<f64>>, origin: Option<Matrix4<f64>>,
     ) -> Option<Matrix4<f64>> {
-        match (target, origin) {
-            (Some(t), Some(o)) => Some(t * o),
-            (Some(t), None) => Some(t),
-            (None, Some(o)) => Some(o),
-            (None, None) => None,
-        }
+        crate::representation::mapped_transform::compose(target, origin)
     }
 
     /// `IfcRepresentationMap.MappingOrigin` (attr 0) as a 4x4, or `None` when it
@@ -122,29 +108,7 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
-        let Some(origin_attr) = source.get(0).filter(|a| !a.is_null()) else {
-            return Ok(None);
-        };
-        let Some(origin) = decoder.resolve_ref(origin_attr)? else {
-            return Err(Error::geometry(
-                "RepresentationMap MappingOrigin does not resolve".to_string(),
-            ));
-        };
-        let m = match origin.ifc_type {
-            // A 2D mapping origin places a 2D representation in the XY plane.
-            IfcType::IfcAxis2Placement3D | IfcType::IfcAxis2Placement2D => {
-                crate::placement::Axis2Placement::read(&origin, decoder)?.matrix()
-            }
-            other => {
-                // Counted on the origin record, as `Axis2Placement::read`
-                // counts a wrong-typed placement (D3).
-                let _counted = decoder.refuse_malformed(origin.id);
-                return Err(Error::geometry(format!(
-                    "RepresentationMap MappingOrigin is {other}, not an IfcAxis2Placement"
-                )))
-            }
-        };
-        Ok(Some(m))
+        crate::representation::mapped_transform::mapping_origin_frame(source, decoder)
     }
 }
 #[cfg(test)]

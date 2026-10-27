@@ -25,6 +25,7 @@ mod mapped_cache_ownership;
 pub(crate) mod mapped_item;
 pub(crate) mod processing;
 mod processor;
+mod product_admission;
 mod rtc_offset;
 pub(crate) mod structural;
 pub(crate) mod textured;
@@ -652,7 +653,6 @@ impl GeometryRouter {
     }
 
     /// Scale mesh positions from file units to meters
-    /// Only applies scaling if unit_scale != 1.0
     #[inline]
     fn scale_mesh(&self, mesh: &mut Mesh) {
         processing::scale_positions(mesh, self.unit_scale());

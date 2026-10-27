@@ -937,9 +937,14 @@ jobs:
           # #7943: preserve the extracted rational oracle helper. Accepting a
           # partition when ANY vertex is coplanar must fail the nonplanar
           # rational-oracle witnesses; the first face alone is insufficient.
+          # C2 lane #7781: preserve new modules and test wiring while disturbing
+          # reporting, balanced leaves, controller debits, root retention and
+          # profile publication. These mutations remain bounded.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
           # #7711: preserve the new independent probe module so its tests load;
           # disable only placement/fill checks and require assertion failures.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
           # Exact globe placement: preserve the new modules so the tests load;
           # Auto never resolves to Exact, so the placement witnesses turn RED.

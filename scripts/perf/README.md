@@ -5132,6 +5132,41 @@ above the timer resolution before a wall-time cohort can say anything; on small
 models the instruction comparison is the meaningful measurement. Numbers and
 the cohort report live in the PR and its evidence, not here.
 
+### C2 bounded representation admission instruction repair (#7781)
+
+Local Callgrind profiles attributed the admission lane's overhead to repeated
+stop checks, decoded-entity copies, allocation, and moving budget-bearing reply
+envelopes. Reuse flat admitted member vectors, keep cold admission failures out
+of executing controls, batch plain iterative-walk tasks, and carry speculative
+logical debits only on source replies. Inline traversal storage and the ordinary
+unscoped stop check remove overhead without bypassing source cancellation or
+the typed, latched stop path. Acceptance still commits debits; mapped members
+still pay before decode, including retained and cached paths.
+
+The resulting native instruction cohort meets the unchanged per-phase ceiling
+on Haus, duplex, and ISSUE_129 with matching mesh, vertex, and triangle counts.
+This is instruction evidence only; no wall-clock or browser performance claim
+is made. Exact results, source attribution, and validation are recorded in
+`c2-walk-lane-perf-r1.json`. The subsequent owner repair follows main's
+`ExecutionIdentity::same_instance` check for synchronous admission consumption:
+replacing an owner refuses with the existing `WrongOwner` protocol error, while
+reached maintenance on that instance preserves admitted roots. The synchronous
+product driver validates inside the source and publication action arms; this
+avoids a second action dispatch on numerical/transfer steps. The shared execute
+path keeps validation before annotation and texture work. Pending tickets,
+leases, and retained caches keep their existing generation checks. The full
+library and integration suites cover this distinction; the owner repair's
+validation and instruction comparison are in `c2-walk-lane-owner-r1.json`.
+
+Lesson: reducing a plan's allocations in isolation can enlarge every enclosing
+program move or perturb allocator size classes. Whole-plan boxing, inline root
+representation headers, exact small reservations, and a bounded empty-header
+pool all lost in the complete pipeline and were removed. Keep the successful
+plan small and measure the whole driver after each storage change. Unchanged
+parser sources and equal keyword call counts also produced small instruction
+deltas in libc comparisons, so distinguish layout-sensitive comparison costs
+from extra decoding before changing the parser.
+
 ### Retained opening cuts (M3-A, #7955)
 
 Retained hosts subtract each cutter in order and keep every intermediate

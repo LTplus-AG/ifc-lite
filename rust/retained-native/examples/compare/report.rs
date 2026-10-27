@@ -89,9 +89,44 @@ impl Report {
             .as_ref()
             .and_then(|(_, b)| b.as_ref())
             .map(|b| bbox_deviation(&actual.bbox, b));
+        // Finite positions can still overflow area/volume arithmetic. Reject
+        // invalid measurements even when no source expectation is available.
+        for (name, measured) in [
+            ("retained", Some(actual)),
+            ("rounded retained", rounded),
+            ("exact", exact),
+        ] {
+            if measured.is_some_and(|m| {
+                [m.volume, m.area]
+                    .iter()
+                    .chain(&m.bbox)
+                    .any(|v| !v.is_finite())
+            }) {
+                self.violations
+                    .push(format!("{label}: nonfinite {name} measurement"));
+            }
+        }
+        // NaN fails every `> tolerance` comparison; exact curved metrics are
+        // report-only for finite deviations, never for invalid arithmetic.
+        for (name, value) in [
+            ("source volume", source_rel),
+            ("exact volume", vol),
+            ("exact area", area),
+            ("exact bbox", bbox),
+            ("source bbox", source_bbox),
+        ] {
+            if value.is_some_and(|v| !v.is_finite()) {
+                self.violations
+                    .push(format!("{label}: nonfinite {name} deviation"));
+            }
+        }
         for (i, value) in [source_rel, vol, area, bbox].into_iter().enumerate() {
             if let Some(value) = value {
-                self.maxima[i] = self.maxima[i].max(value);
+                self.maxima[i] = self.maxima[i].max(if value.is_finite() {
+                    value
+                } else {
+                    f64::INFINITY
+                });
             }
         }
         if actual.defects > 0 {

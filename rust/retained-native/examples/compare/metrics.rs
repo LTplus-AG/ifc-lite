@@ -77,6 +77,8 @@ impl Metrics {
                     .or_insert(0usize) += 1;
             }
         }
+        // Signed contributions cancel folds/cavities within this mesh. Only
+        // complete mesh volumes are made positive when accumulating parts.
         self.volume += volume.abs();
         self.defects += edges.values().filter(|&&n| n != 2).count();
         Ok(())
@@ -97,7 +99,13 @@ pub fn bbox_deviation(a: &[f64; 6], b: &[f64; 6]) -> f64 {
     a.iter()
         .zip(b)
         .map(|(a, b)| (a - b).abs())
-        .fold(0., f64::max)
+        .fold(0., |maximum, deviation| {
+            if deviation.is_finite() {
+                maximum.max(deviation)
+            } else {
+                f64::INFINITY
+            }
+        })
 }
 
 #[cfg(test)]

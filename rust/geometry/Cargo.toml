@@ -11,6 +11,8 @@ categories = ["graphics", "parsing"]
 readme = "../../README.md"
 
 [features]
+# Off-by-default retained product controller (#7955).
+retained-runtime = ["wasm_source_capture", "dep:wasm-bindgen"]
 # Opt-in #6516 route-work diagnostic; absent from shipping builds.
 opening-perf-trace = []
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel
@@ -154,11 +156,6 @@ ifc-lite-clash.workspace = true
 # JSON serialization for the GeometryDiagnostics camelCase-contract test (asserts
 # the serde rename_all keys match the @ifc-lite/geometry TS interface).
 serde_json.workspace = true
-# Property-based testing for the CSG kernel invariants
-# (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
-# over bounded randomized inputs. Case counts are set explicitly per
-# property to keep the suite fast.
-proptest = "1.6"
 # Snapshot testing for the geometry correctness harness
 # (tests/geometry_correctness_harness.rs). Plain string snapshots only, so
 # no serde-format features are needed. Accept intentional geometry changes
@@ -168,6 +165,18 @@ insta = { version = "1.43", default-features = false }
 # Used by the cross-platform determinism floor test that underpins the
 # pure-Rust CSG kernel. Dev-only: not linked into the shipping crate.
 robust = "1.2"
+
+
+# Property-based testing for the CSG kernel invariants
+# (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
+# over bounded randomized inputs. Case counts are set explicitly per
+# property to keep the suite fast.
+# Refs #7955: wasm test compilation cannot spawn proptest timeout processes.
+# Native property tests retain their existing default features.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest = "1.6"
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+proptest = { version = "1.6", default-features = false, features = ["std", "bit-set"] }
 
 [[example]]
 name = "color_extraction_test"
@@ -189,3 +198,6 @@ too_many_arguments = "allow"
 large_enum_variant = "allow"
 needless_range_loop = "allow"
 should_implement_trait = "allow"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "=0.2.126", optional = true }

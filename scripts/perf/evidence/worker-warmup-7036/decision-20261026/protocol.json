@@ -1,0 +1,21 @@
+{
+  "driverSha256": "6fd233689721678fbb05d413f553f3b72fad2c4b4ce7b9481358fef4ee393d6e",
+  "reference": "tests/evidence/issue-7633/current-canvas-preflight.json",
+  "schedule": "5 alternating-order pairs per each of 4 manifest-pinned fixtures, 40 total fresh-process samples",
+  "comparison": "Frozen main default-off vs candidate opt-in; existing runtime identity statement retained",
+  "memory": "Existing perfMem per-phase and peak JS/WASM/geometry counters; not physical browser RSS",
+  "output": "Per-arm mesh counts; CPU hashing excluded from timings",
+  "frameSummary": "Existing M2 long-frame/long-task monitor with actual spans",
+  "rejection": "Any GPU error, lost/replaced device, fallback adapter, active named host graph, missing required metric, missing perfMem summary or uncertain cleanup stops the cohort; no replacement samples",
+  "state": "Frozen before submission",
+  "runnerSha256": "c08308fe45bb77b4951609e69bfcb0d56b2d7de6a9f4fc1fddd9efa301d61fcb",
+  "canvasPreflightJob": "7b7dd434-7154-406c-aa12-f5f53008a715",
+  "canvasPreflight": "Passed real compute and canvas green readbacks; NVIDIA lovelace; nonfallback; zero errors/loss",
+  "cachePolicy": "Fresh browser process/profile each sample; OS file cache uncontrolled; fixture/model first load in each browser",
+  "scope": "Historical recorded source, not a benchmark of the removal PR",
+  "sourceHelperCheckout": "e47ea729ece91b1655b8753c53d9ab1662bb1aba",
+  "recordedDriverFile": "recorded-cohort-driver.mts.gz",
+  "reproducerDriverFile": "cohort-driver.mts",
+  "reproducerDriverSha256": "9628dccc3f88a3a6d4935c72c49616feb56da3c51942d0bd92d20074e51eb20f",
+  "reproducerChange": "The executable reproducer aggregates sample and cohort errors outside finally, retaining both primary and cleanup failures. The measured driver is archived verbatim; all accepted samples had no errors and cleanupError=null. No new timing samples were run."
+}

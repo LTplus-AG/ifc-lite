@@ -94,7 +94,7 @@ impl std::fmt::Debug for RejectedReply {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum WorkError {
+pub enum WorkError {
     /// A failed owner commit or an unwind poisoned this continuation.
     Aborted,
     /// Publication was requested before every planned work item finished.

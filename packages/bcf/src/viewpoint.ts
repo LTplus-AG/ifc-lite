@@ -55,7 +55,7 @@ export interface ViewerCameraState {
 export interface ViewerSectionPlane {
   /** Axis: 'down' (Y), 'front' (Z), 'side' (X) */
   axis: 'down' | 'front' | 'side';
-  /** Position as percentage (0-100) of model bounds */
+  /** Position as a percentage of model bounds: 0-100 spans them, values outside are cuts beyond them */
   position: number;
   /** Is the section plane enabled */
   enabled: boolean;

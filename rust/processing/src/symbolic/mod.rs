@@ -68,6 +68,7 @@
 
 
 use output_cap::SymbolicAccumulator;
+use ifc_lite_core::resource_stop::ProgramStop;
 use rebase::RenderFrameRebase;
 use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner, IfcType};
 
@@ -101,7 +102,7 @@ pub use primitives::{
 use color::build_styled_item_index;
 use grid::extract_grid;
 use item_walk::extract_symbolic_item;
-use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_placement, Transform2D};
+use transform::{resolve_object_placement, resolve_representation_transform};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Top-level extraction. Mirror of the wasm `parse_symbolic_representations`
@@ -113,11 +114,15 @@ use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_pla
 /// Annotation / FootPrint / Axis representation, and return the full
 /// symbolic primitive collection. Pure-Rust (no `wasm_bindgen`), so it
 /// works inside the HTTP server.
-pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
+///
+/// In controlled execution, a terminal stop discards all staged symbols and
+/// provenance and returns the exact `ProgramStop`. An empty successful collection
+/// means no symbols were found; geometric truncation remains an `Ok` result.
+pub fn extract_symbolic_data<T>(content: &T) -> Result<SymbolicData, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    extract_symbolic_data_with_provenance(content).into_parts().0
+    extract_symbolic_data_with_provenance(content).map(|data| data.into_parts().0)
 }
 
 /// Extract symbols with ordinal-bound direct fill provenance, preserving the legacy data shape.
@@ -128,13 +133,15 @@ where
 /// caller that also ran the native geometry pipeline must use
 /// [`extract_symbolic_data_with_provenance_in_frame`] instead, or its symbols
 /// and its meshes end up in two different frames (#4706).
-pub fn extract_symbolic_data_with_provenance<T>(content: &T) -> SymbolicDataWithProvenance
+pub fn extract_symbolic_data_with_provenance<T>(content: &T) -> Result<SymbolicDataWithProvenance, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_data_into(content, &mut out);
-    out.into_provenance()
+    ifc_lite_geometry::resource::with_terminal_scope(|| {
+        let mut out = SymbolicAccumulator::new();
+        extract_symbolic_data_into(content, &mut out);
+        out.into_provenance()
+    })
 }
 
 /// Extract symbols in a frame the caller already chose: the native pipeline's
@@ -149,13 +156,15 @@ where
 pub fn extract_symbolic_data_with_provenance_in_frame<T>(
     content: &T,
     frame: crate::MeshFrame,
-) -> SymbolicDataWithProvenance
+) -> Result<SymbolicDataWithProvenance, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_data_into_frame(content, Some(frame), &mut out);
-    out.into_provenance()
+    ifc_lite_geometry::resource::with_terminal_scope(|| {
+        let mut out = SymbolicAccumulator::new();
+        extract_symbolic_data_into_frame(content, Some(frame), &mut out);
+        out.into_provenance()
+    })
 }
 
 /// The overlay-frame extraction, writing into a caller-supplied accumulator.
@@ -180,6 +189,7 @@ fn extract_symbolic_data_into_frame<T>(
 where
     T: AsRef<[u8]> + ?Sized,
 {
+    if out.is_exhausted() { return; }
     let content = content.as_ref();
     let entity_index = build_entity_index(content);
     // Symbolic geometry refuses unrepresentable reals (#7678, D15).
@@ -205,6 +215,8 @@ where
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        #[cfg(test)]
+        output_cap::execution_tests::on_entity(id, out);
         // Stop the SCAN, not just the innermost item loop. Breaking only the
         // inner loop still decodes every remaining product, resolves its
         // placements and composes its transforms, which is not the "stop" this
@@ -261,6 +273,7 @@ where
 
         let single_representation = representations.len() == 1;
         for shape_rep in representations {
+            if out.is_exhausted() { break; }
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
@@ -280,51 +293,9 @@ where
             // accumulated directly, rotations accumulated to orient symbols).
             let placement_transform = resolve_object_placement(&entity, &mut decoder, unit_scale);
 
-            // ContextOfItems WCS: some Plan reps use a different coord
-            // system than Body. Compose it in when present and non-trivial.
-            // `ContextOfItems` (IfcRepresentation attr 0) and
-            // `WorldCoordinateSystem` (IfcGeometricRepresentationContext
-            // attr 4) are both MANDATORY, so a dangling ref or absent
-            // attribute is malformed data, not a legitimate default —
-            // `unresolved()` per #2352's convention. A resolved
-            // `IfcGeometricRepresentationSubContext`, in contrast, derives
-            // its WCS from `ParentContext` and legitimately does not store
-            // one inline, so it alone stays `identity()`.
-            let context_transform = match shape_rep.get_ref(0) {
-                Some(context_ref) => match decoder.decode_by_id(context_ref) {
-                    Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
-                        match context.get_ref(4) {
-                            Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
-                                Ok(wcs) => parse_axis2_placement_2d(&wcs, &mut decoder, unit_scale),
-                                Err(_) => Transform2D::unresolved(),
-                            },
-                            None => Transform2D::unresolved(),
-                        }
-                    }
-                    // SubContext inherits WCS from ParentContext — legitimately
-                    // has none inline (the wasm pipeline does the same).
-                    Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationSubContext => {
-                        Transform2D::identity()
-                    }
-                    // Dangling context_ref, or a ref resolving to neither
-                    // Context nor SubContext: malformed data.
-                    _ => Transform2D::unresolved(),
-                },
-                None => Transform2D::unresolved(),
-            };
-            let combined_transform = if context_transform.tx.abs() > 0.001
-                || context_transform.ty.abs() > 0.001
-                || context_transform.tz.abs() > 0.001
-                || (context_transform.m00 - 1.0).abs() > 0.0001
-                || context_transform.m01.abs() > 0.0001
-                || context_transform.m10.abs() > 0.0001
-                || (context_transform.m11 - 1.0).abs() > 0.0001
-                || context_transform.tz.is_nan()
-            {
-                compose_transforms(&context_transform, &placement_transform)
-            } else {
-                placement_transform
-            };
+            let combined_transform = resolve_representation_transform(
+                &shape_rep, placement_transform, &mut decoder, unit_scale,
+            );
 
             let Some(items_attr) = shape_rep.get(3) else {
                 continue;

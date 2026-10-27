@@ -43,7 +43,11 @@ export function useCesiumPlacementController({
 }: CesiumPlacementControllerProps) {
   const { t } = useTranslation();
   const projectionKind = usePlacementProjectionKind(projectedCRS);
-  const canEdit = projectionKind === 'projected';
+  // An IfcRigidOperation or WKT-defined CRS is read-only: the exporter writes
+  // IfcMapConversion edits only (see GeoreferencingPanel).
+  const readOnlyCoordinateOperation = baseMapConversion.operation === 'rigidOperation'
+    || Boolean(projectedCRS?.wellKnownText);
+  const canEdit = projectionKind === 'projected' && !readOnlyCoordinateOperation;
   const editMode = useViewerStore((s) => s.cesiumPlacementEditMode);
   const draftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const draft = useViewerStore((s) => s.cesiumPlacementDraft);
@@ -154,7 +158,7 @@ export function useCesiumPlacementController({
   }, [canEdit, setEditMode]);
 
   return {
-    editMode: editMode && canEdit, canEdit, draftModelId, draft, activeDraft, updateDraft,
+    editMode: editMode && canEdit, canEdit, readOnlyCoordinateOperation, draftModelId, draft, activeDraft, updateDraft,
     mapUnitScale, mapUnitSuffix, activeAngle, deltaE, deltaN, deltaH, deltaAngle,
     dirty, nudgeStep, guardConversion, mapAbsoluteActive,
     handleReset, handleApply, handleClose, beginEditing,

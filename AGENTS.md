@@ -135,12 +135,11 @@ Choose the visited set's SCOPE by what the walk returns:
   silently drops the second: **missing geometry, not a cycle guard**, and no
   termination test notices.
 
-Prefer making the walk **iterative** over adding a cap: with no stack to consume
-there is nothing left for a cap to protect, and the visited set becomes
-sufficient alone. A cap tight enough to stop a cycle usually rejects legitimate
-input — #960 records Revit `FirstOperand` chains 42 nodes deep.
-
-Reuse the shared bound where the chain is shared: `ifc_lite_core::limits`.
+Prefer **iterative** walks with visited sets: no stack depth cap is needed.
+Tight caps reject valid input (#960: 42-node Revit `FirstOperand` chains).
+Use `ifc_lite_core::limits` for shared bounds; see
+`ifc_lite_geometry::placement::resolve_chain` for an iterative, visited-set
+`PlacementRelTo` walk without a depth cap.
 
 A guard that both ACTS and REPORTS has a two-part contract — bound the work, and
 report that you bounded it. Mutate the halves separately; they fail differently

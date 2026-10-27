@@ -149,11 +149,6 @@ impl AddState<'_, '_> {
                 if upper.is_empty() || !upper.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
                     return Err(format!("'{value}' is not an enumeration value"));
                 }
-                // USERDEFINED obliges an ObjectType or ElementType naming the
-                // kind, which an Add does not write.
-                if upper == "USERDEFINED" {
-                    return Err("PredefinedType USERDEFINED needs a type name, which an Add does not write".into());
-                }
                 let members = crate::step_log::predefined_type_members(schema, &class).unwrap_or(&[]);
                 if !members.is_empty() && !members.contains(&upper.as_str()) {
                     return Err(format!("'{value}' is not a PredefinedType of {class} in {schema}"));
@@ -162,6 +157,23 @@ impl AddState<'_, '_> {
             }
         };
         Ok((class, predefined))
+    }
+
+    /// Refuse a value for a string attribute `class` lacks in the schema,
+    /// and a `USERDEFINED` `PredefinedType` without a non-blank `kind`
+    /// (`ObjectType` or `ElementType`) naming what it is.
+    fn check_string_attributes<'v>(&self, class: &str, predefined: Option<&str>, attrs: impl Iterator<Item = (&'static str, &'v str)>, kind: &str) -> Result<(), String> {
+        let mut named = false;
+        for (name, value) in attrs {
+            if attribute_index(self.schema, class, name).is_none() {
+                return Err(format!("{class} has no {name} in {}", self.schema));
+            }
+            named |= name == kind && !value.trim().is_empty();
+        }
+        if predefined == Some(".USERDEFINED.") && !named {
+            return Err(format!("PredefinedType USERDEFINED needs an {kind} naming the kind"));
+        }
+        Ok(())
     }
 
     /// Refuse a plan key that names something already there, a GlobalId key
@@ -197,6 +209,7 @@ impl AddState<'_, '_> {
         }
         validate_psets(self.schema, &t.psets)?;
         let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+        self.check_string_attributes(&class, predefined.as_deref(), t.string_attributes(), "ElementType")?;
         if matches!(t.representation, Representation::Mapped(_)) {
             return Err("a type's representation cannot itself be mapped".into());
         }
@@ -212,6 +225,7 @@ impl AddState<'_, '_> {
         self.check_new_identity(key, &encoded)?;
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
+        self.check_string_attributes(&class, predefined.as_deref(), obj.string_attributes(), "ObjectType")?;
         if let Some(e) = obj.elevation {
             if !self.is_a(&class, "IFCBUILDINGSTOREY") {
                 return Err(format!("{class} has no Elevation; only a storey takes one"));

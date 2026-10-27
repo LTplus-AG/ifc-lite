@@ -10,7 +10,7 @@
 //! became 1.0, a zero-length or non-`IfcDirection` `ExtrudedDirection` became
 //! +Z, so the drawing showed a profile the 3D path refused (PROC-2, #7690).
 
-use super::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use crate::{Error, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
@@ -70,10 +70,11 @@ impl ExtrusionParams {
                 "{name} ExtrudedDirection has no Z component (ValidExtrusionDirection)"
             )));
         }
-        // Both tests above are exact on the authored ratios. Ratios whose
-        // squared length overflows would normalise to a zero axis downstream
-        // and extrude along +Z, so they are rescaled; finite lengths are kept
-        // bit for bit.
+        // Both tests above read the authored ratios: the zero-length test is
+        // an overflow-safe `f64::EPSILON` threshold, and only the `z == 0`
+        // test is exact. Ratios whose squared length overflows would
+        // normalise to a zero axis downstream and extrude along +Z, so they
+        // are rescaled; finite lengths are kept bit for bit.
         let direction = Vector3::from(crate::math::v3::unoverflowed(ratios));
 
         let depth = entity
@@ -81,7 +82,7 @@ impl ExtrusionParams {
             .ok_or_else(|| Error::geometry(format!("{name} missing Depth")))?;
 
         let position = match decoder.resolve_optional(entity, 1)? {
-            Some(pos) => Some(parse_axis2_placement_3d(&pos, decoder)?),
+            Some(pos) => Some(Axis2Placement::read_3d(&pos, decoder)?.matrix()),
             None => None,
         };
 

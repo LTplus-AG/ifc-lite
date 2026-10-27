@@ -25,6 +25,13 @@ use std::sync::{
 
 #[cfg(target_arch = "wasm32")]
 mod bridge;
+#[cfg(target_arch = "wasm32")]
+mod runtime;
+#[cfg(target_arch = "wasm32")]
+mod runtime_mesh;
+#[cfg(target_arch = "wasm32")]
+mod receipt;
+mod fault;
 
 /// Every refusal of the browser executor. A refused call submits nothing
 /// unless it says otherwise; an unknown outcome retires the whole Worker.
@@ -39,8 +46,12 @@ pub enum BrowserError {
     Unqualified(&'static str),
     /// Browser incarnation identities are exhausted.
     Exhausted,
+    /// Copied result buffers exceed the admitted byte budget.
+    ResourceLimit(String),
     /// The driver, transport or SDK refused or failed (message preserved).
     Driver(String),
+    /// Typed SDK status, preserved across the executor boundary.
+    Kernel { status: i32, message: String },
 }
 
 impl std::fmt::Display for BrowserError {
@@ -49,7 +60,9 @@ impl std::fmt::Display for BrowserError {
             Self::WrongWorker => write!(f, "browser worker retired or foreign"),
             Self::InvalidLimits => write!(f, "invalid retained evaluation limits"),
             Self::Unqualified(message) => write!(f, "unqualified retained request: {message}"),
+            Self::ResourceLimit(message) => write!(f, "browser resource limit: {message}"),
             Self::Exhausted => write!(f, "browser incarnation exhausted"),
+            Self::Kernel { status, message } => write!(f, "browser kernel {status}: {message}"),
             Self::Driver(message) => write!(f, "browser worker driver: {message}"),
         }
     }
@@ -195,6 +208,8 @@ impl Drop for BrowserWorker {
 /// completion is immutable and cannot be replaced by host-created geometry.
 /// Dropping it releases only its own object before the Worker's next command.
 pub struct BrowserRealization {
+    #[cfg(target_arch = "wasm32")]
+    domain: BrowserCancellation,
     completion: ifc_lite_geometry::document::RetainedCompletion,
     owner: Arc<Owner>,
     object_live: AtomicBool,

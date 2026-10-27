@@ -16,6 +16,7 @@ impl ProductControl<'_> {
         let element = self.element;
         loop {
             let next = match &mut self.action {
+                Action::Item { .. } => return Err(ProgramError::UnsupportedRetained),
                 Action::Complete(_) => return Ok(()),
                 Action::Taken => return Err(ProgramError::Outstanding),
                 Action::Shape => match product_shape(element, decoder) {

@@ -83,7 +83,7 @@ fn surface_of_revolution_face_with_infinite_boundary_vertices_7674() {
 /// PROC-S30, `advanced_face/conics.rs`: the circle frame's fallback when the
 /// RefDirection is parallel to the Axis (a malformed placement). That reader
 /// had its own `min_by` fallback; since #7687 it is the canonical
-/// `transform::build_axis2_matrix` perpendicular fallback. This test reaches
+/// `placement::build_axis2_matrix` perpendicular fallback. This test reaches
 /// it and pins a finite result; it passes on the parent commit too, by design.
 #[test]
 fn circle_edge_with_refdirection_parallel_to_axis_7674() {

@@ -65,9 +65,12 @@ pub(super) fn cancel(boundary: &AnalyticProfileLoop) -> Result<Option<Vec<Analyt
         if equal { let next = i % points.len(); points.remove(next); }
     }
     if points.len() < 3 || points.len() == original_len { return Ok(None); }
-    Ok(Some((0..points.len()).map(|i| AnalyticCurveSegment::Line {
+    let mut segments = Vec::new();
+    crate::resource::reserve_headers(&mut segments, points.len()).map_err(WalkError::Stopped)?.retain();
+    segments.extend((0..points.len()).map(|i| AnalyticCurveSegment::Line {
         start: points[i], end: points[(i + 1) % points.len()],
-    }).collect()))
+    }));
+    Ok(Some(segments))
 }
 
 pub(super) fn repair(

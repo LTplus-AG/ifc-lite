@@ -19,7 +19,7 @@ fn hull(points: &[Point]) -> Vec<Point> {
     sorted.sort_by(|a,b| a[0].total_cmp(&b[0]).then(a[1].total_cmp(&b[1])));
     sorted.dedup();
     let mut result = Vec::new();
-    for iter in [sorted.iter().copied().collect::<Vec<_>>(), sorted.iter().rev().copied().collect()] {
+    for iter in [sorted.clone(), sorted.iter().rev().copied().collect()] {
         let mut chain = Vec::new();
         for p in iter {
             while chain.len() >= 2 && turn(chain[chain.len()-2], chain[chain.len()-1], p) <= 0. { chain.pop(); }

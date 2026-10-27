@@ -95,8 +95,10 @@ Sources. Sign-out or connection changes clear authentication and model metadata;
 expiry requires reconnecting. Closing Cloud Sources cancels in-flight requests.
 This uses local accounts and scoped Bearer tokens, rather than OAuth/OIDC.
 
-The UI reads the standard `/v2/_catalog`, repository tag lists and OCI manifests.
-It follows catalog pagination. The Rust registry's explicit local token scope
+The UI uses the [Distribution catalog
+API](https://distribution.github.io/distribution/spec/api/#listing-repositories)
+at `/v2/_catalog`, plus OCI tag lists and manifests. Catalog listing is not a
+required OCI Distribution endpoint. The UI follows catalog pagination. The Rust registry's explicit local token scope
 `registry:catalog:read` returns the user's current exact repository/action grants
 plus a catalog read capability. It does not issue wildcard repository access.
 Catalog, tag, manifest and blob reads remain permission checked, and current

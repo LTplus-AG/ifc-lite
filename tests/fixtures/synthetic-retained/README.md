@@ -216,3 +216,13 @@ contracts and are reported separately, never as killed mutants. The suite also
 cannot establish smooth-normal correctness, relative opening/map-frame handling,
 internal-cap suppression, UV seams, engine sidecar loading, retained/Worker/
 viewer/GPU behavior or persistent engine-provided face ancestry.
+
+## M3 opening candidate — unreviewed, non-evidence
+
+`f-d-openings.ifc` is generated separately by `generate-openings.py` (`--check`
+verifies reproducibility). It contains M3 §7.1 cases (a)–(j), with source IDs
+listed in its comments. **It is unreviewed and excluded from the committed
+comparison universe, coverage TSV, oracle acceptance tests and qualification
+claims.** Adversarial schema review, independent geometry checks and a
+third-party parser round trip must all complete before its counts are blessed.
+Its expected future statuses are design intent, not observed current behavior.

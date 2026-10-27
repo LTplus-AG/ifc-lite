@@ -981,6 +981,11 @@ jobs:
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/lib/retained/retained-client.ts | grep -Fxq 'apps/viewer/src/lib/retained/retained-client.ts'; then
             # #7955 M2-B: keep the protocol APIs; Cancel no longer terminates.
             oracle_args+=(--mutation tests/evidence/m2-b/behaviour.oracle.patch --test apps/viewer/src/lib/retained/retained-client.test.ts)
+          # #7955 M3-0: preserve the added oracle API and feature-gated witness;
+          # invert only pairwise inclusion-exclusion, which must fail assertions.
+          # Drop this clause once openings.rs is on main.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/retained-native/src/oracle/openings.rs | grep -Fxq 'rust/retained-native/src/oracle/openings.rs'; then
+            oracle_args+=(--mutation tests/evidence/m3-0-opening-oracle/behaviour.oracle.patch --test rust/retained-native/tests/m3_opening_oracle.rs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- native/smlib-adapter/node/client.mjs | grep -Fxq 'native/smlib-adapter/node/client.mjs'; then
             # #7955 M1 F: preserve the added modules so inert tests still load;
             # break captured-owner retirement and engine asset digest recording.

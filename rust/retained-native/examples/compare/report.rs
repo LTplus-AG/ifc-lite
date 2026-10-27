@@ -35,21 +35,31 @@ impl Report {
         source: Option<(f64, Option<[f64; 6]>)>,
         tolerances: &Value,
         ms: f64,
+        opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
     ) {
         self.published += 1;
         let curved = shape.parts.iter().any(|p| p.curved);
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             &format!("{model}:{}", shape.product_id),
-            curved,
+            curved || opening.is_some(),
             actual,
             rounded,
             exact,
-            source,
+            if opening.is_some() { None } else { source },
             tolerances,
         );
+        let cut_rel = opening.and_then(|e| {
+            super::openings::check_opened(
+                &format!("{model}:{}", shape.product_id),
+                actual,
+                e.as_ref(),
+                tolerances,
+                &mut self.violations,
+            )
+        });
         let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
         self.rows.push(format!(
-            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t",
+            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t\t0\t0\t0\t{}",
             shape.product_id,
             shape.ifc_type.name(),
             format(source_rel),
@@ -59,7 +69,8 @@ impl Report {
             actual.defects == 0,
             actual.volume,
             shape.obligations.0,
-            format(source_bbox)
+            format(source_bbox),
+            format(cut_rel)
         ));
         self.coverage
             .push(format!("{model}\t{}\tpublished\t", shape.product_id));

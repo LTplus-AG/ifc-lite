@@ -2,6 +2,8 @@
 //! Native M1 coverage and independent numerical comparison. Never repairs meshes.
 #[path = "compare/metrics.rs"]
 mod metrics;
+#[path = "compare/openings.rs"]
+mod openings;
 #[path = "compare/options.rs"]
 mod options;
 #[path = "compare/precision.rs"]
@@ -89,7 +91,7 @@ fn write_report(
 ) -> Result<(), Error> {
     report.rows.sort();
     std::fs::create_dir_all(&options.out)?;
-    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\texact_bbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\tscope\tsrc_bbox_dev_m\tkernel_status\torigin_site\torigin_entity\tmessage\n{}\n",report.rows.join("\n")))?;
+    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\texact_bbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\tscope\tsrc_bbox_dev_m\tkernel_status\torigin_site\torigin_entity\tmessage\tcuts\tcutMs\tconsumedParts\tsrc_cut_vol_rel\n{}\n",report.rows.join("\n")))?;
     let mut summary = report.summary();
     summary["complete"] = json!(complete);
     summary["modelsRequested"] = json!(options.models.len());
@@ -149,6 +151,7 @@ fn compare(
                 .exact_only_type_products
                 .push(json!({"model":model,"id":id,"scope":"out of M1 scope"}));
             report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tout of M1 scope\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
+            report.rows.last_mut().unwrap().push_str("\t\t\t\t");
         } else if !candidates.contains(&id) {
             report.universe_mismatch.push(format!(
                 "{model}:{id}: exact mesh omitted from canonical candidates"
@@ -157,6 +160,8 @@ fn compare(
     }
     drop(decoder);
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes, None);
+    let opening_expectations = openings::expectations(&bytes, &sources)?;
+    let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
     let (summary, timings) = driver.run_model(
         source,
@@ -200,6 +205,7 @@ fn compare(
                         source::expected(&sources, id, shape.parts.len()),
                         tolerances,
                         ms,
+                        opening_expectations.get(&id),
                     );
                 }
                 ProductOutcome::Refused {
@@ -222,7 +228,7 @@ fn compare(
                     };
                     let message = message.replace(['\t', '\n', '\r'], " ");
                     report.rows.push(format!(
-                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}",
+                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t0\t0\t0\t",
                         ifc_type.name(), origin.map_or("", |o| o.cause),
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),
@@ -245,6 +251,8 @@ fn compare(
     }
     report.models.push(json!({"model":model,"exact":{"milliseconds":exact_ms,"processMaxRssKiB":exact_rss,"phases":exact.stats},
         "retained":{"milliseconds":retained_ms,"productMilliseconds":timings.product_ms,"acquireMilliseconds":summary.acquire_ms,"phasesMs":{"startupAndQualification":timings.startup_and_qualification_ms,"construction":timings.construction_ms,"affine":timings.affine_ms,"boolean":timings.boolean_ms,"controllerAndPublication":timings.controller_and_publication_ms},"processMaxRssKiB":report::rss(false)?,"childrenMaxRssKiB":report::rss(true)?,"restarts":summary.restarts},
+        "openingSources":{"supportedExtrusions":opening_inventory.supported_extrusions,"noAnalyticQuantities":opening_inventory.no_analytic_quantities},
+        "openingCounters":"M3-0: cuts/cutMs/consumedParts are zero because opened products refuse before cutting",
         "memorySemantics":"getrusage process lifetime high-water marks; children includes reaped workers"}));
     Ok(())
 }

@@ -8,5 +8,10 @@
   "nativeWasmVolumeRelative": 1e-9,
   "viewStorageHalfUlp": true,
   "booleanSourceExpectation": null,
-  "booleanExactComparison": "curved"
+  "booleanExactComparison": "curved",
+  "openingPrismVolumeRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "openingVolumeBoundsRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "openingResultBboxWithinHost": { "absolute": 1e-5, "extentFactor": 2.4e-7 },
+  "removalContainmentMetres": 1e-6,
+  "openingExactComparison": "curved"
 }

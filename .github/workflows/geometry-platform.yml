@@ -10,6 +10,8 @@ on:
       - 'native/**'
       - 'rust/geometry-runtime/**'
       - 'rust/retained-native/**'
+      - 'rust/processing/tests/fixtures/issue_2019_*'
+      - 'rust/processing/tests/fixtures/issue_3641_*'
       - 'rust/processing/src/processor/**'
       - 'rust/processing/src/element/session_retained/**'
       - 'rust/processing/src/element.rs'

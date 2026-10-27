@@ -95,9 +95,15 @@ fn nonfinite_deviations_are_violations_in_every_comparison_channel() {
                     Some(source),
                     &tolerances(),
                 );
+                // Channels 1-4 also raise a nonfinite measurement; require the
+                // deviation check itself, so removing it cannot pass.
                 assert!(
-                    !report.violations.is_empty(),
-                    "channel={channel}, bad={bad}, curved={curved}"
+                    report
+                        .violations
+                        .iter()
+                        .any(|v| v.contains("nonfinite") && v.contains("deviation")),
+                    "channel={channel}, bad={bad}, curved={curved}: {:?}",
+                    report.violations
                 );
             }
         }

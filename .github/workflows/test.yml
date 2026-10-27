@@ -3130,13 +3130,24 @@ jobs:
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
     # Standard GitHub runners keep routine Rust validation out of Depot's
     # metered pool. The longer cap accommodates a cold GitHub cache restore.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || ((vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
+      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
+      # target dir per job on the runner's rust-target volume, outside the
+      # workspace that the runner wipes. A job killed mid-compile (reboot) can
+      # leave truncated dep-info, so an unfinished marker discards the dir.
+      - name: Warm target dir (self-hosted Rust runner)
+        if: startsWith(runner.name, 'ifclite-rust')
+        run: |
+          dir="/cache/rust-target/${GITHUB_JOB}"
+          if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
+          mkdir -p "$dir" && touch "$dir/.unfinished"
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Use lld for host links
@@ -3150,6 +3161,8 @@ jobs:
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
+        # Skipped only where the warm target dir above was set.
+        if: env.CARGO_TARGET_DIR == ''
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           # `-o1-lt`: the test steps below build at opt-level 1 with line-tables
@@ -3260,6 +3273,10 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
 
+      - name: Mark warm target dir finished
+        if: always() && env.CARGO_TARGET_DIR != ''
+        run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
+
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,
       # ON push to main and in the merge queue, where the aggregate judges
@@ -3274,13 +3291,24 @@ jobs:
     name: Rust tests (retained)
     needs: changes
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || ((vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
+      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
+      # target dir per job on the runner's rust-target volume, outside the
+      # workspace that the runner wipes. A job killed mid-compile (reboot) can
+      # leave truncated dep-info, so an unfinished marker discards the dir.
+      - name: Warm target dir (self-hosted Rust runner)
+        if: startsWith(runner.name, 'ifclite-rust')
+        run: |
+          dir="/cache/rust-target/${GITHUB_JOB}"
+          if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
+          mkdir -p "$dir" && touch "$dir/.unfinished"
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Use lld for host links
@@ -3289,6 +3317,8 @@ jobs:
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
+        # Skipped only where the warm target dir above was set.
+        if: env.CARGO_TARGET_DIR == ''
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-retained
@@ -3297,6 +3327,24 @@ jobs:
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: rust-retained-runtime
+      # Hosted Ubuntu images ship a matched chromedriver; the runner image has
+      # only Chrome. Fetch the Chrome-for-Testing driver for the EXACT installed
+      # Chrome build once onto the runner volume.
+      - name: ChromeDriver matching Chrome (self-hosted Rust runner)
+        if: startsWith(runner.name, 'ifclite-rust')
+        run: |
+          set -euo pipefail
+          version=$(google-chrome --version | grep -oE '[0-9]+(\.[0-9]+){3}')
+          dir="/cache/rust-target/chromedriver-${version}"
+          if [ ! -x "$dir/chromedriver-linux64/chromedriver" ]; then
+            tmp=$(mktemp -d)
+            curl --fail --silent --show-error --location --retry 3 \
+              --output "$tmp/driver.zip" \
+              "https://storage.googleapis.com/chrome-for-testing-public/${version}/linux64/chromedriver-linux64.zip"
+            mkdir -p "$dir" && unzip -q -o "$tmp/driver.zip" -d "$dir" && rm -rf "$tmp"
+          fi
+          "$dir/chromedriver-linux64/chromedriver" --version
+          echo "IFCLITE_REAL_CHROMEDRIVER=$dir/chromedriver-linux64/chromedriver" >> "$GITHUB_ENV"
       - name: SMLib-free retained runtime in a real WASM module
         run: node scripts/retained-browser-runtime-tests.mjs
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -3329,6 +3377,9 @@ jobs:
           cargo test -p ifc-lite-retained-native --features retained-runtime
           cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
+      - name: Mark warm target dir finished
+        if: always() && env.CARGO_TARGET_DIR != ''
+        run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
 
   # THE FULL RUST LANE, OFF THE PR (CI redesign, step 5). Everything here is
   # an off-by-default feature build: the workspace never compiles these, so a

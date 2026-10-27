@@ -165,11 +165,17 @@ it `false`. A delta that merely *omitted* the entity would leave it visible in
 the composed state, which is the one failure mode worth calling out here —
 deletion is a change class the corpus exercises directly (`r04`).
 
-So the adapter needs a tombstone-capable layer writer. `minimal-layer.ts`
-already emits `ifclite::deleted` for a deleted entity and `null` for removed
-children, inherits and attributes. (Note for whoever owns `02-layer-format.md`:
-its §2.3 still describes `minimal-layer.ts` as "additive-only today", which the
-implementation has since outgrown.)
+So the adapter needs a tombstone-capable layer writer, and it already has one.
+`minimal-layer.ts` emits `ifclite::deleted` for a deleted entity and `null` for
+removed children, inherits and attributes — **by default**:
+`includeDeletions` is `?? true`, with `false` kept only for the legacy
+additive-only shape. The adapter must therefore not set that flag to `false`,
+because doing so drops exactly the removals this paragraph exists to preserve,
+and drops them silently.
+
+(Note for whoever owns `02-layer-format.md`: its §2.3 still describes
+`minimal-layer.ts` as "additive-only today", which the implementation has since
+outgrown.)
 
 What stays ifc-git's own work is exactly what Layer PRs lacks: **whole-file
 diffing and GUID-agnostic identity.** Those are the two things that cannot be

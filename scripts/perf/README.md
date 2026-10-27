@@ -5140,3 +5140,31 @@ Lesson: a parse-only optimisation needs fixtures whose parse phase runs well
 above the timer resolution before a wall-time cohort can say anything; on small
 models the instruction comparison is the meaningful measurement. Numbers and
 the cohort report live in the PR and its evidence, not here.
+
+## Right-sized public diff qualification (#8042, protocol v3)
+
+**Performance verdict: inconclusive; benchmark command never started.** The
+right-sized harness is carried onto the refreshed stack in #8113. Its behavioral
+suite passes all checks. Fresh ordinary Pop preparations succeeded for the
+public TypeScript source `a3641a732a` and public Rust source `a3cb13ddf2`, using
+the latter's identical harness bytes for both arms. Their original receipts are
+`8a810dc7-9b3b-4689-b010-aa499e7ed79d` and
+`9714c623-c725-4f54-8514-e7bf98748d26`. Comparing the preserved preparation
+proofs confirms identical fingerprints and full output/reference-identity proofs
+for demo, Haus and the frozen large revision pair across all option shapes.
+Those ordinary proofs do not constitute an exclusive timing cohort.
+
+The single benchmark submission,
+`d3327c91-b32e-4812-9a18-f5af16f25bb1`, failed at storage job-open before project
+execution (`processExitCode: null`, `projectStarted: false`). Preparation evidence
+publication had left the owning storage task pending after a canonical-ingest
+error. No endpoint has samples, a median ratio or a confidence interval; no
+large-case cohort duration exists to compare with the planning projection.
+No second cohort was submitted, and performance acceptance remains open.
+
+Lesson: successful build exits and valid artifact hashes do not establish that
+the storage task is ready for the next producer. Reconcile evidence publication
+and check the owning task's lifecycle state before requesting benchmark admission.
+Recover the original receipts rather than replaying builds or silently retrying
+a failed cohort. Preserve the fixed protocol and seek coordinator approval
+before another measurement attempt.

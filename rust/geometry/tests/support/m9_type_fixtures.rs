@@ -33,7 +33,7 @@ pub fn unsupported_second() -> String {
 }
 pub fn curves() -> String {
     insert(&SOURCE.replace("'Body','SweptSolid',(#8)", "'Annotation','Annotation2D',(#31)"),
-        "#30=IFCPOLYLINE((#1,#1));#31=IFCGEOMETRICCURVESET((#30));")
+        "#30=IFCPOLYLINE((#1,#32));#31=IFCGEOMETRICCURVESET((#30));#32=IFCCARTESIANPOINT((1.,0.,0.));")
 }
 pub fn instanced() -> String {
     insert(SOURCE, "#30=IFCWALL('w',$,$,$,$,$,$,$,$);#31=IFCRELDEFINESBYTYPE('r',$,$,$,(#30),#20);")

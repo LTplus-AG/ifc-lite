@@ -87,7 +87,7 @@ fn nonfinite_deviations_are_violations_in_every_comparison_channel() {
                 report.check_measurements(
                     "invalid:1",
                     curved,
-            false,
+                    false,
                     &actual,
                     Some(&rounded),
                     Some(&exact),

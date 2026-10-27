@@ -917,7 +917,7 @@ The separate opt-in WASM `pkg-retained` bundle exposes
 `free()`. Results are buffered for the whole model, so memory includes all
 returned meshes. An empty ID filter selects no jobs. Orphan type products follow
 product occurrences, once per type, with all unreferenced maps processed atomically
-at their MappingOrigin. Instanced types, curve-only maps that exact does not mesh,
+at their MappingOrigin. Instanced types, types with only curve maps that exact does not mesh,
 and jobs without representations are skipped. Published orphan types leave
 MaterialLayers, IfcAppearance and PersistentFaces unmet.
 

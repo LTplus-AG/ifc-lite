@@ -895,22 +895,34 @@ client.dispose(); // terminates the worker; in-flight requests reject
 
 The meshes come back in the same frame and units as the load, so they can replace the element's load-time meshes directly. `scripts/lib/wasm-remesh-contracts.mjs` pins this. For each wall of several fixtures, including one with an RTC shift, it re-meshes the wall from its subgraph and checks the positions, indices, colours and origins against meshing the whole file.
 
-## Experimental initialization overlap
+## Initialization overlap experiment removed
 
-The warm-up candidate is opt-in with `?perf.warmPool=1`. It starts fresh
-geometry and prepass workers alongside a file read; its end-to-end performance
-verdict remains pending. It does not retain used workers across loads.
+The opt-in `perf.warmPool` experiment was removed after its recorded-build
+comparison failed the acceptance rule in [the performance ledger](https://github.com/LTplus-AG/ifc-lite/blob/main/scripts/perf/README.md#worker-warm-up-candidate-removed-7036).
+Normal loads create their own geometry and prepass workers and terminate them
+when the load ends. Idle compilation of the shared WASM module remains available
+through `prewarmSharedWasmModule()`.
 
-Custom browser hosts can call `prewarmMainThreadEngine()` when a load is
-requested. It starts initialization without waiting; the normal loader joins
-the same in-flight attempt and retries after a failure.
-`prewarmGeometryWorkers({ fileSizeMB, workerCountOverride, wasmUrl })` returns
-the number of fresh workers started, or zero when the flag is disabled, workers
-are unavailable, or compilation fails. It uses the existing memory-capped
-worker-count plan. Parallel processing leases and terminates those workers.
+The experimental `prewarmMainThreadEngine`, `prewarmGeometryWorkers`,
+`releaseWarmGeometryWorkers`, `warmGeometryWorkerPoolStats` and
+`GeometryWorkerPoolStats` exports, and the `ProcessParallelOptions.workerPool`
+option, have been removed. Custom hosts should let the normal loader initialize
+its engine and workers.
 
-`releaseWarmGeometryWorkers(reason)` terminates idle workers and returns their
-count; it does not cancel an active load. Unused workers expire after sixty
-seconds. `warmGeometryWorkerPoolStats()` returns `GeometryWorkerPoolStats`, or
-null before a pool exists. `idleBytes` is booked memory using an estimate per
-fresh worker, rather than a measurement of actual process memory.
+## Experimental retained model output
+
+The separate opt-in WASM `pkg-retained` bundle exposes
+`await api.retainedModel(bytes, ids?)`. Consume the completed run with `next()`
+(one outcome in canonical file order, `undefined` at end) and release it with
+`free()`. Results are buffered for the whole model, so memory includes all
+returned meshes. An empty ID filter selects no jobs; type products and jobs
+without representations are skipped.
+
+Published outcomes contain `expressId`, `ifcType`, and atomic `parts` with f64
+object-local metre positions, u32 indices, and column-major `worldFromObject`
+matrices into IFC Z-up world metres. Consumers must show the
+`PresentationObligationsUnmet` marker and its `obligationsUnmet` list. Openings,
+layers, appearance and persistent faces remain unmet. Refused outcomes carry
+an ID, typed code and optional origin, with no partial product or exact fallback.
+See the [WASM package contract](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#experimental-retained-whole-model-engine)
+for lifecycle, transport and result details. The default engine is unchanged.

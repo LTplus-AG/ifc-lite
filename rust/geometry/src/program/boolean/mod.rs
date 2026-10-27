@@ -27,6 +27,7 @@ use crate::{BoolFailureReason, BoolOp, Error, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 mod spine;
+mod retained;
 mod state;
 mod walk;
 use state::{Frame, Value, Walk};
@@ -38,6 +39,7 @@ pub(crate) struct BooleanMachine {
     quality: TessellationQuality,
     frames: Vec<Frame>,
     value: Option<Value>,
+    retained: crate::program::retained::RetainedSlot<retained::RetainedState>,
 }
 
 impl BooleanMachine {
@@ -49,11 +51,14 @@ impl BooleanMachine {
             IfcType::IfcCsgSolid => Frame::Csg { entity: item.clone(), depth: 0, guarded: false },
             _ => Frame::Boolean(item.clone(), 0),
         };
-        Self { visited: OperandPath::default(), quality, frames: vec![first], value: None }
+        Self { visited: OperandPath::default(), quality, frames: vec![first], value: None, retained: None }
     }
 
     /// The next step's stage; `None` once the continuation completed.
     pub(crate) fn stage(&self) -> Option<ProgramStage> {
+        if let Some(Frame::RetainedMapping(control)) = self.frames.last() {
+            return control.stage().unwrap_or(Some(ProgramStage::Source));
+        }
         match self.frames.last()?.is_numerical() {
             true => Some(ProgramStage::Numerical),
             false => Some(ProgramStage::Source),
@@ -156,8 +161,13 @@ impl BooleanMachine {
                 Ok(())
             }
             Frame::AfterBase(walk) => {
-                let value = self.take_value()?;
-                self.frames.push(Frame::Steps(walk.steps(value, false)));
+                if self.retained.is_some() {
+                    let value = self.take_retained_value()?;
+                    self.frames.push(Frame::Steps(walk.retained_steps(value)?));
+                } else {
+                    let value = self.take_value()?;
+                    self.frames.push(Frame::Steps(walk.steps(value, false)));
+                }
                 Ok(())
             }
             Frame::AfterBatch { walk, cutters, mark } => self.after_batch(walk, cutters, mark),
@@ -169,6 +179,7 @@ impl BooleanMachine {
         -> Result<()> {
         match frame {
             Frame::Csg { entity, depth, guarded } => self.enter_csg(entity, depth, guarded, recorder, decoder),
+            Frame::RetainedAfterStep { steps, operator, host } => self.retained_solid(*steps, operator, *host),
             Frame::Operand { entity, operator, .. } if !Frame::dispatches(&entity) => {
                 self.value = Some(recorder.leaf_operand(operator, &entity, decoder, self.quality)?);
                 Ok(())
@@ -197,7 +208,14 @@ impl BooleanMachine {
     }
 
     fn enter_path(&mut self, id: u32) -> Result<()> {
+        if self.retained.is_some() {
+            crate::resource::charge(crate::resource::Cost { live_bytes: std::mem::size_of::<u32>() as u64,
+                ..Default::default() })?.retain();
+        }
         if !self.visited.insert(id) {
+            if let Some(selection) = self.retained_selection() {
+                return Err(selection.refuse_bound(self.visited.len() as u64 + 1).into());
+            }
             return Err(Error::geometry(format!("Cyclic boolean/CSG operand reference at #{id}")));
         }
         self.frames.push(Frame::ExitPath(id));
@@ -209,6 +227,12 @@ impl BooleanMachine {
         // The path length bounds one operand chain; it is the only bound on a
         // long acyclic Boolean -> Csg -> Boolean chain, which never advances
         // MAX_BOOLEAN_DEPTH.
+        if let Some(selection) = self.retained_selection() {
+            selection.charge()?;
+            if self.visited.len() >= MAX_OPERAND_PATH_NODES || depth > MAX_BOOLEAN_DEPTH {
+                return Err(selection.refuse_bound(self.visited.len() as u64 + 1).into());
+            }
+        }
         if self.visited.len() >= MAX_OPERAND_PATH_NODES {
             return Err(Error::geometry(format!(
                 "Boolean/CSG operand chain exceeds {MAX_OPERAND_PATH_NODES} nested nodes at #{}",
@@ -219,6 +243,9 @@ impl BooleanMachine {
         // that reaches it. Recorded AND refused: the record is what a consumer
         // sees, the `Err` is what stops the work.
         if !self.visited.charge() {
+            if let Some(selection) = self.retained_selection() {
+                return Err(selection.refuse_bound(MAX_OPERAND_VISITS as u64 + 1).into());
+            }
             recorder.record_failure(BoolOp::Unknown, BoolFailureReason::OperandBudgetExhausted);
             return Err(Error::geometry(format!(
                 "Boolean/CSG operand walk exceeds {MAX_OPERAND_VISITS} node visits at #{}",
@@ -247,6 +274,7 @@ impl BooleanMachine {
             }
             // `resolve_tree_root` admits only booleans and the primitives.
             _ => {
+                if self.retained.is_some() { return Err(Error::geometry("retained CSG primitive unsupported")); }
                 let mesh = primitive_root_mesh(&root, decoder, recorder.schema(), self.quality)?;
                 self.value = Some((mesh, false));
             }

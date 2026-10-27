@@ -1,0 +1,12 @@
+diff --git a/rust/geometry/src/router/transforms/parsers.rs b/rust/geometry/src/router/transforms/parsers.rs
+--- a/rust/geometry/src/router/transforms/parsers.rs
++++ b/rust/geometry/src/router/transforms/parsers.rs
+@@ -31,7 +31,7 @@
+     #[inline]
+     pub(crate) fn parse_direction(&self, direction_entity: &DecodedEntity) -> Result<Vector3<f64>> {
+         EntityDecoder::direction3_of(direction_entity)
+-            .map(|ratios| Vector3::from(ratios).try_normalize(0.0).unwrap_or_else(Vector3::zeros))
++            .map(Vector3::from)
+             .ok_or_else(|| {
+                 Error::geometry(format!(
+                     "#{} is not a readable IfcDirection",

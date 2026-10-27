@@ -23,6 +23,14 @@
 //! Operations over definitions land with their first caller.
 
 mod retained;
+// Refs #7955: qualify the private receipt consumer.
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod retained_frames;
+// Refs #7955: qualify the private receipt consumer.
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod retained_affine;
 mod retained_disk;
 mod retained_display;
 mod retained_sweep;
@@ -186,3 +194,7 @@ impl GeometryDocument {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[doc(hidden)]
+#[cfg(feature = "retained-runtime")]
+pub mod retained_wire;

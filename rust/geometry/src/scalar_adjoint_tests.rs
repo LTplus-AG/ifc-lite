@@ -308,10 +308,11 @@ const NB: usize = 14;
 /// The placement matrix (rotation about Z, then translation).
 ///
 /// This step is harness-side: in production it comes out of
-/// `parse_axis2_placement_3d`, which reads decoded IFC attributes and cannot be
-/// made generic over the scalar. It is a rigid transform, so it contributes
-/// exactly zero to the volume gradient - which is precisely why parameters
-/// 6..9 are in the box: they are the battery's exact-zero controls.
+/// `placement::Axis2Placement::read_3d(...).matrix()`, which reads decoded IFC
+/// attributes and cannot be made generic over the scalar. It is a rigid
+/// transform, so it contributes exactly zero to the volume gradient - which
+/// is precisely why parameters 6..9 are in the box: they are the battery's
+/// exact-zero controls.
 fn placement<S: GeomScalar>(px: S, py: S, pz: S, theta: S) -> Matrix4<S> {
     let zero = S::from_f64(0.0);
     let one = S::from_f64(1.0);

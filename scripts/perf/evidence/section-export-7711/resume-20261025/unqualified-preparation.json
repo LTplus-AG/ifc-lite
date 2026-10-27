@@ -1,0 +1,20 @@
+{
+  "source": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+  "base": "97d8add207104d5801c0c8d62e40fa7066e848f8",
+  "status": "unqualified preparation; no measurement submitted",
+  "reason": "branch preparation completed in 0.16s without a processing rebuild and has the same executable hash as base; checksum freshness was not explicitly established. Idle guard separately refused selected build processes.",
+  "probes": {
+    "base": "1049d89c79189e217d248d6fc957d2e3b09c9f26d1998cc8205b03141a5c2333",
+    "branch": "1049d89c79189e217d248d6fc957d2e3b09c9f26d1998cc8205b03141a5c2333"
+  },
+  "receipts": {
+    "base": {
+      "id": "6884fa24-843a-4d18-9459-cdd5cc278862",
+      "sha256": "7f7d1c5f04220d69ca74f1ce85c230fe771da09e6977febc85391a7e78f85545"
+    },
+    "branch": {
+      "id": "fd915e33-a2de-4bd3-aa89-c8dd0c9b00e2",
+      "sha256": "3cf810c0cd43a4e4ce537d2088600339dcf1183084c78102c8886675272e5843"
+    }
+  }
+}

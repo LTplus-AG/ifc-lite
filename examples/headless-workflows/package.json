@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite-headless-workflows",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Complete developer workflows for IFC data, validation, editing, geometry and a cancellable local service",

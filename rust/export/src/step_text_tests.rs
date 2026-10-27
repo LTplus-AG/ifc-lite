@@ -466,3 +466,15 @@ fn substitute_ref_in_attr_keeps_a_page_operand_inside_its_string_7589() {
     );
     assert_eq!(substitute_ref_in_attr(r"'Größe \S\' #9'", 9, 50), None);
 }
+
+/// A STEP string literal is the escaped text between single quotes: the
+/// apostrophe and reverse solidus are doubled inside it, and the empty
+/// string is two quotes.
+#[test]
+fn quoted_wraps_the_escaped_text_in_single_quotes() {
+    assert_eq!(quoted(""), "''");
+    assert_eq!(quoted("Wall"), "'Wall'");
+    assert_eq!(quoted("it's"), "'it''s'");
+    assert_eq!(quoted(r"a\b"), r"'a\\b'");
+    assert_eq!(quoted("Höhe"), r"'H\X2\00F6\X0\he'");
+}

@@ -257,3 +257,11 @@ pub const RETAINED_CIRCLE_BASIS_EPS: f64 = 1e-12;
 /// Dot-product deviation of source placement axes from an orthonormal frame.
 /// Unit: dimensionless. Retained requests accept rigid placements only.
 pub const RETAINED_RIGID_DOT_EPS: f64 = 1e-10;
+
+/// Orthonormal dot-product and right-handed cross-product deviation at the
+/// retained dependency boundary. Unit: dimensionless. Matches the adapter's
+/// existing proper-rigid admission at 1e-12; this is stricter than the authored
+/// source-placement tolerance and does not change the native/browser policy.
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const RETAINED_DEPENDENCY_RIGID_EPS: f64 = 1e-12;

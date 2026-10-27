@@ -49,7 +49,9 @@ fn both_walks(links: usize) -> (f64, f64) {
     let leaf_id = (10 + links) as u32;
 
     let mut router_decoder = EntityDecoder::new(&content);
-    let leaf = router_decoder.decode_by_id(leaf_id).expect("leaf placement");
+    let leaf = router_decoder
+        .decode_by_id(leaf_id)
+        .expect("leaf placement");
     let router_x = resolve_chain(&leaf, &mut router_decoder)
         .expect("placement transform")
         .column(3)[0];
@@ -73,7 +75,9 @@ fn both_walks(links: usize) -> (f64, f64) {
 
 fn x_of(id: u32, decoder: &mut EntityDecoder) -> f64 {
     let node = decoder.decode_by_id(id).expect("placement");
-    resolve_chain(&node, decoder).expect("placement transform").column(3)[0]
+    resolve_chain(&node, decoder)
+        .expect("placement transform")
+        .column(3)[0]
 }
 
 /// A chain inside the old cap: both walks must report every link, which also
@@ -82,7 +86,10 @@ fn x_of(id: u32, decoder: &mut EntityDecoder) -> f64 {
 fn both_walks_compose_a_chain_inside_the_old_cap_identically() {
     let links = MAX_PLACEMENT_DEPTH / 2;
     let (router_x, extractor_x) = both_walks(links);
-    assert_eq!((router_x, extractor_x), ((links + 1) as f64, (links + 1) as f64));
+    assert_eq!(
+        (router_x, extractor_x),
+        ((links + 1) as f64, (links + 1) as f64)
+    );
 }
 
 /// D27 (base: truncated at `MAX_PLACEMENT_DEPTH + 1` placements, silently).
@@ -92,7 +99,11 @@ fn both_walks_compose_a_chain_inside_the_old_cap_identically() {
 fn a_chain_beyond_the_old_cap_resolves_in_full() {
     let links = MAX_PLACEMENT_DEPTH + 50;
     let (router_x, extractor_x) = both_walks(links);
-    assert_eq!(router_x, (links + 1) as f64, "the mesh path composes every link");
+    assert_eq!(
+        router_x,
+        (links + 1) as f64,
+        "the mesh path composes every link"
+    );
     assert_eq!(extractor_x, router_x, "the 2D path places it identically");
 }
 
@@ -105,8 +116,14 @@ fn a_very_deep_chain_resolves_without_recursion() {
     let mut decoder = EntityDecoder::new(&content);
     let leaf = (10 + links) as u32;
     assert_eq!(x_of(leaf, &mut decoder), (links + 1) as f64);
-    assert!(decoder.get_placement_transform_cached(10).is_some(), "the root is memoised");
-    assert!(decoder.get_placement_transform_cached(leaf).is_some(), "the leaf is memoised");
+    assert!(
+        decoder.get_placement_transform_cached(10).is_some(),
+        "the root is memoised"
+    );
+    assert!(
+        decoder.get_placement_transform_cached(leaf).is_some(),
+        "the leaf is memoised"
+    );
     assert_eq!(decoder.refused_records(), 0);
 }
 
@@ -121,7 +138,12 @@ fn every_node_resolves_the_same_cold_and_warm() {
     x_of((10 + links) as u32, &mut warmed);
     for id in (10..=10 + links as u32).step_by(7) {
         let cold = x_of(id, &mut EntityDecoder::new(&content));
-        assert_eq!(cold, f64::from(id - 9), "#{id} composes its own {} links", id - 9);
+        assert_eq!(
+            cold,
+            f64::from(id - 9),
+            "#{id} composes its own {} links",
+            id - 9
+        );
         assert_eq!(cold, x_of(id, &mut warmed), "#{id} warm == cold");
     }
 }
@@ -136,7 +158,10 @@ fn a_linear_placement_in_a_long_chain_resolves_the_same_cold_and_warm() {
         &format!("#{linear_id}=IFCLOCALPLACEMENT(#{},#1);", linear_id - 1),
         &format!("#{linear_id}=IFCLINEARPLACEMENT(#{},$,#1);", linear_id - 1),
     );
-    assert!(content.contains("IFCLINEARPLACEMENT"), "the substitution must land");
+    assert!(
+        content.contains("IFCLINEARPLACEMENT"),
+        "the substitution must land"
+    );
     assert_two_orders_agree(&content, linear_id, links);
     assert_two_orders_agree(&content, 10 + links, links);
 }
@@ -164,9 +189,15 @@ fn a_grid_placement_in_a_long_chain_resolves_the_same_cold_and_warm() {
     // `IFCGRIDPLACEMENT(PlacementRelTo, ...)` is the IFC4X1+ layout; the header
     // must say so, since IFC2X3/IFC4 read the record without that slot.
     let content = deep_placement_chain(links)
-        .replace(&format!("#{grid_id}=IFCLOCALPLACEMENT(#{},#1);", grid_id - 1), &grid)
+        .replace(
+            &format!("#{grid_id}=IFCLOCALPLACEMENT(#{},#1);", grid_id - 1),
+            &grid,
+        )
         .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
-    assert!(content.contains("IFCGRIDPLACEMENT") && content.contains("'IFC4X3'"), "the substitution must land");
+    assert!(
+        content.contains("IFCGRIDPLACEMENT") && content.contains("'IFC4X3'"),
+        "the substitution must land"
+    );
     assert_two_orders_agree(&content, grid_id, links);
     assert_two_orders_agree(&content, 10 + links, links);
 }
@@ -175,10 +206,18 @@ fn a_grid_placement_in_a_long_chain_resolves_the_same_cold_and_warm() {
 /// the leaf of the `links`-long chain first; both are `node_id - 9` links.
 fn assert_two_orders_agree(content: &str, node_id: usize, links: usize) {
     let cold = x_of(node_id as u32, &mut EntityDecoder::new(content));
-    assert_eq!(cold, (node_id - 9) as f64, "the substituted link contributes +1.0 X like its neighbours");
+    assert_eq!(
+        cold,
+        (node_id - 9) as f64,
+        "the substituted link contributes +1.0 X like its neighbours"
+    );
     let mut warmed = EntityDecoder::new(content);
     x_of((10 + links) as u32, &mut warmed);
-    assert_eq!(cold, x_of(node_id as u32, &mut warmed), "#{node_id}: cold == warm");
+    assert_eq!(
+        cold,
+        x_of(node_id as u32, &mut warmed),
+        "#{node_id}: cold == warm"
+    );
 }
 
 const CYCLE: &str = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
@@ -202,29 +241,50 @@ fn a_placement_cycle_is_refused_counted_and_not_memoised() {
     for id in [10, 11, 12, 13] {
         let node = decoder.decode_by_id(id).expect("placement");
         assert!(
-            matches!(resolve_chain(&node, &mut decoder), Err(PlacementError::Cyclic { .. })),
+            matches!(
+                resolve_chain(&node, &mut decoder),
+                Err(PlacementError::Cyclic { .. })
+            ),
             "#{id} sits on or below a cycle"
         );
-        assert!(decoder.get_placement_transform_cached(id).is_none(), "#{id} must not be memoised");
+        assert!(
+            decoder.get_placement_transform_cached(id).is_none(),
+            "#{id} must not be memoised"
+        );
     }
     // #10 and #11 are one cycle (detected at the revisited node), #12 its own.
-    assert!(decoder.refused_records() >= 2, "counted: {}", decoder.refused_records());
+    assert!(
+        decoder.refused_records() >= 2,
+        "counted: {}",
+        decoder.refused_records()
+    );
     let before = decoder.refused_records();
     let node = decoder.decode_by_id(10).unwrap();
     assert!(resolve_chain(&node, &mut decoder).is_err());
-    assert_eq!(decoder.refused_records(), before, "one record is counted once");
+    assert_eq!(
+        decoder.refused_records(),
+        before,
+        "one record is counted once"
+    );
 }
 
 #[test]
 fn the_router_refuses_a_cyclic_placement() {
     let mut decoder = EntityDecoder::new(CYCLE);
     let node = decoder.decode_by_id(11).unwrap();
-    assert!(GeometryRouter::new().resolve_scaled_placement(&node, &mut decoder).is_ok(), "no ObjectPlacement attr is identity");
+    assert!(
+        GeometryRouter::new()
+            .resolve_scaled_placement(&node, &mut decoder)
+            .is_ok(),
+        "no ObjectPlacement attr is identity"
+    );
     let product = "#20=IFCWALL('0000000000000000000000',$,$,$,$,#11,$,$,$);\n";
     let content = CYCLE.replacen("ENDSEC;\nEND-ISO", &format!("{product}ENDSEC;\nEND-ISO"), 1);
     let mut decoder = EntityDecoder::new(&content);
     let wall = decoder.decode_by_id(20).unwrap();
-    assert!(GeometryRouter::new().resolve_scaled_placement_strict(&wall, &mut decoder).is_err());
+    assert!(GeometryRouter::new()
+        .resolve_scaled_placement_strict(&wall, &mut decoder)
+        .is_err());
     assert_eq!(decoder.refused_records(), 1);
 }
 
@@ -234,12 +294,21 @@ fn chain_lists_the_links_leaf_first() {
     let mut decoder = EntityDecoder::new(&content);
     let leaf = decoder.decode_by_id(13).unwrap();
     let links = chain(&leaf, &mut decoder).unwrap();
-    assert_eq!(links.iter().map(|l| l.id).collect::<Vec<_>>(), vec![13, 12, 11, 10]);
+    assert_eq!(
+        links.iter().map(|l| l.id).collect::<Vec<_>>(),
+        vec![13, 12, 11, 10]
+    );
     assert!(links.iter().all(|l| l.kind == LinkKind::Local));
-    assert!(decoder.get_placement_transform_cached(13).is_none(), "chain() composes and memoises nothing");
+    assert!(
+        decoder.get_placement_transform_cached(13).is_none(),
+        "chain() composes and memoises nothing"
+    );
     let mut decoder = EntityDecoder::new(CYCLE);
     let node = decoder.decode_by_id(10).unwrap();
-    assert!(matches!(chain(&node, &mut decoder), Err(PlacementError::Cyclic { .. })));
+    assert!(matches!(
+        chain(&node, &mut decoder),
+        Err(PlacementError::Cyclic { .. })
+    ));
 }
 
 #[test]
@@ -250,9 +319,13 @@ fn resolve_object_placement_is_none_only_for_a_missing_placement() {
     );
     let mut decoder = EntityDecoder::new(&content);
     let bare = decoder.decode_by_id(20).unwrap();
-    assert!(resolve_object_placement(&bare, &mut decoder).unwrap().is_none());
+    assert!(resolve_object_placement(&bare, &mut decoder)
+        .unwrap()
+        .is_none());
     let placed = decoder.decode_by_id(21).unwrap();
-    let m = resolve_object_placement(&placed, &mut decoder).unwrap().expect("placed");
+    let m = resolve_object_placement(&placed, &mut decoder)
+        .unwrap()
+        .expect("placed");
     assert_eq!(m.column(3)[0], 3.0);
 }
 
@@ -263,17 +336,42 @@ fn validate_chain_applies_the_consumers_policy() {
     let mut decoder = EntityDecoder::new(&content);
     let leaf = decoder.decode_by_id(12).unwrap();
     validate_chain(&leaf, &mut decoder, &local_only).unwrap();
-    validate_chain(&leaf, &mut decoder, &ChainPolicy { strict_spatial: true, ..local_only }).unwrap();
+    validate_chain(
+        &leaf,
+        &mut decoder,
+        &ChainPolicy {
+            strict_spatial: true,
+            ..local_only
+        },
+    )
+    .unwrap();
 
     // Linear links are a policy decision, not bad input.
-    let linear = content.replace("#11=IFCLOCALPLACEMENT(#10,#1);", "#11=IFCLINEARPLACEMENT(#10,$,#1);");
+    let linear = content.replace(
+        "#11=IFCLOCALPLACEMENT(#10,#1);",
+        "#11=IFCLINEARPLACEMENT(#10,$,#1);",
+    );
     let mut decoder = EntityDecoder::new(&linear);
     let leaf = decoder.decode_by_id(12).unwrap();
-    assert!(matches!(validate_chain(&leaf, &mut decoder, &local_only), Err(PlacementError::Policy { at: 11, .. })));
-    validate_chain(&leaf, &mut decoder, &ChainPolicy { linear: true, ..local_only }).unwrap();
+    assert!(matches!(
+        validate_chain(&leaf, &mut decoder, &local_only),
+        Err(PlacementError::Policy { at: 11, .. })
+    ));
+    validate_chain(
+        &leaf,
+        &mut decoder,
+        &ChainPolicy {
+            linear: true,
+            ..local_only
+        },
+    )
+    .unwrap();
 
     // strict_spatial: 2 coordinates, a zero direction and parallel axes are refused.
-    let strict = ChainPolicy { strict_spatial: true, ..local_only };
+    let strict = ChainPolicy {
+        strict_spatial: true,
+        ..local_only
+    };
     for (replacement, bad) in [
         ("#2=IFCCARTESIANPOINT((1.,0.));", "exactly 3"),
         ("#2=IFCCARTESIANPOINT((1.,0.,0.));#3=IFCDIRECTION((0.,0.,0.));#1=IFCAXIS2PLACEMENT3D(#2,#3,$);", "zero"),
@@ -288,4 +386,69 @@ fn validate_chain_applies_the_consumers_policy() {
         assert!(err.to_string().contains(bad), "{bad}: {err}");
         validate_chain(&leaf, &mut decoder, &local_only).expect("the lenient policy accepts it");
     }
+}
+
+/// F3b X2/R1 (#7779), design-note §7: 10,000 products sharing a seven-deep
+/// placement. Run in an exclusive benchmark window with --profile server-release
+/// and --ignored --nocapture. Reports the one-deep control alongside seven-deep;
+/// timings are evidence for review, never a machine-dependent test assertion.
+#[test]
+#[ignore = "F3b memo performance qualification requires an exclusive idle host"]
+fn issue_7779_ten_thousand_products_seven_deep_memo_benchmark() {
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    const PRODUCTS: u32 = 10_000;
+    let mut samples = Vec::new();
+    for depth in [1usize, 7] {
+        let mut content = deep_placement_chain(depth - 1);
+        let leaf = 10 + depth - 1;
+        let mut products = String::new();
+        for id in 100..100 + PRODUCTS {
+            products.push_str(&format!(
+                "#{id}=IFCWALL('0000000000000000000000',$,$,$,$,#{leaf},$,$,$);\n"
+            ));
+        }
+        content = content.replace("ENDSEC;\nEND-ISO", &format!("{products}ENDSEC;\nEND-ISO"));
+        let mut decoder = EntityDecoder::new(&content);
+        // Keep product decoding outside the measurement: the subject is the
+        // placement memo lookup reached through the real product entry point.
+        let products: Vec<_> = (100..100 + PRODUCTS)
+            .map(|id| decoder.decode_by_id(id).expect("product"))
+            .collect();
+        let first = resolve_object_placement(&products[0], &mut decoder)
+            .expect("warm chain")
+            .expect("placed product");
+        assert_eq!(first[(0, 3)], depth as f64);
+        let mut elapsed = Vec::new();
+        for _ in 0..7 {
+            let started = Instant::now();
+            let mut sum = 0.0;
+            for product in &products {
+                let world = resolve_object_placement(black_box(product), black_box(&mut decoder))
+                    .expect("warm placement")
+                    .expect("placed product");
+                sum += black_box(world[(0, 3)]);
+            }
+            elapsed.push(started.elapsed().as_nanos());
+            assert_eq!(sum, f64::from(PRODUCTS) * depth as f64);
+        }
+        // Full, unscaled transforms are retained at every ancestor; looking up
+        // more products must neither expand the memo nor replace an ancestor
+        // with a partial result.
+        let memo = decoder.take_placement_transform_cache();
+        assert_eq!(memo.len(), depth);
+        for index in 0..depth {
+            assert_eq!(memo[&(10 + index as u32)][12], (index + 1) as f64);
+        }
+        elapsed.sort_unstable();
+        eprintln!("F3b memo depth={depth} products={PRODUCTS} sorted_ns={elapsed:?}");
+        samples.push(elapsed[elapsed.len() / 2] as f64 / f64::from(PRODUCTS));
+    }
+    eprintln!(
+        "F3b memo median_ns_per_product one={} seven={} ratio={}",
+        samples[0],
+        samples[1],
+        samples[1] / samples[0]
+    );
 }

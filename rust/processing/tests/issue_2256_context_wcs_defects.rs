@@ -159,7 +159,7 @@ END-ISO-10303-21;
 "#;
 
 fn polyline_for(express_id: u32) -> ifc_lite_processing::SymbolicPolyline {
-    let data = extract_symbolic_data(FIXTURE);
+    let data = extract_symbolic_data(FIXTURE).expect("symbolic extraction must complete");
     data.polylines
         .into_iter()
         .find(|p| p.express_id == express_id)
@@ -335,7 +335,7 @@ END-ISO-10303-21;
 /// test actually exercises the argument order (mutation-verified).
 #[test]
 fn composition_order_is_context_outer_placement_inner() {
-    let data = extract_symbolic_data(ORDER_FIXTURE);
+    let data = extract_symbolic_data(ORDER_FIXTURE).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .into_iter()

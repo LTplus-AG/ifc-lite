@@ -44,6 +44,7 @@ import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
 import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
+import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from '@/lib/drawing/active-canvas-snapshot';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -928,7 +929,7 @@ export function useDrawingGeneration({
   // measurements/annotations came back floating over whatever cut
   // `sectionPlane` already held (the default). `consumeRestoredSectionConfig` hands this effect
   // that saved `SectionConfig` exactly once per restore; converting it back
-  // into `sectionPlane`'s semantic axis + 0-100 percent (the inverse of the
+  // into `sectionPlane`'s semantic axis + percent of the bounds (the inverse of the
   // `axis`/`position` math in `computeDrawing` above) and writing it to the
   // store lets the existing plane-changed auto-generate effect below do the
   // actual regeneration — no new generation path, no bypass of the
@@ -955,14 +956,9 @@ export function useDrawingGeneration({
     if (!restored) return;
 
     const axis = restored.plane.axis;
-    const axisMin = bounds.min[axis];
-    const axisMax = bounds.max[axis];
-    const span = axisMax - axisMin;
-    // A degenerate (zero-extent) bounding box has no meaningful percentage —
-    // fall back to the slider's own default centre rather than divide by ~0.
-    const position = span > 1e-9
-      ? Math.min(100, Math.max(0, ((restored.plane.position - axisMin) / span) * 100))
-      : 50;
+    // Unclamped: a cut saved above or below the bounds comes back there
+    // (#8162); a degenerate span or non-finite result restores the centre, 50.
+    const position = restoredCutPosition(restored.plane.position, bounds.min[axis], bounds.max[axis]);
 
     const customPlane = restored.plane.customPlane;
     useViewerStore.setState((state) => ({

@@ -86,8 +86,8 @@ test('a replaced transport incarnation retires the driver and every lease', asyn
   await assert.rejects(evaluate(driver), /unavailable/);
 });
 
-test('#8048 response identity, oversize mesh and release failures retire the captured Worker', async () => {
-  for (const fault of ['wrongReply', 'oversize', 'release']) {
+test('#8048 response identity and release failures retire the captured Worker', async () => {
+  for (const fault of ['wrongReply', 'release']) {
     const constructed = nextPeer();
     const driver = new RetainedDriver();
     const peer = await constructed;
@@ -101,7 +101,7 @@ test('#8048 response identity, oversize mesh and release failures retire the cap
       continue;
     }
     if (fault === 'wrongReply') peer.wrongReply = true;
-    await assert.rejects(evaluate(driver, 0, fault === 'oversize' ? 8 : 4096), fault === 'wrongReply' ? /identity/ : /oversized/);
+    await assert.rejects(evaluate(driver), /identity/);
     assert.equal(driver.live(), false, fault);
     assert.equal(peer.retired, true);
   }
@@ -159,4 +159,172 @@ test('#8048 delayed startup injects the fault into its own transport', async () 
   await assert.rejects(evaluate(driver), /identity/);
   assert.equal(peer.retired, true);
   assert.equal(driver.live(), false);
+});
+
+const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+// #7955 / review 4383542900: construction must match native refusal cleanup.
+test('#8184 construction known refusals release unpublished handles and preserve existing leases', async () => {
+  for (const fault of ['resource', 'upload', 9, 10, 11]) {
+    const driver = new RetainedDriver();
+    const source = await evaluate(driver), peer = peers.at(-1);
+    const before = new Set(peer.objects), start = peer.commands.length;
+    if (fault === 'upload') peer.uploadStatus = 4;
+    else if (fault !== 'resource') { peer.failOpcode = fault; peer.kernelStatus = 4; }
+    await assert.rejects(evaluate(driver, 0, fault === 'resource' ? 8 : 4096),
+      error => fault === 'resource' ? error.resourceLimit === true : error.kernelStatus === 4);
+    assert.equal(driver.live(), true, `${fault}: synchronized refusal preserves worker`);
+    assert.equal(driver.objectLive(source.object), true);
+    assert.deepEqual(peer.objects, before, 'unpublished solid and temporary mesh released');
+    assert.equal(opcodes(peer).slice(start).filter(op => op === 8).length, fault === 'upload' ? 0 : fault === 9 ? 1 : 2);
+    peer.failOpcode = undefined;
+    peer.uploadStatus = undefined;
+    const next = await evaluate(driver);
+    assert.equal(driver.objectLive(next.object), true, 'busy guard released; worker reusable');
+    driver.retire();
+  }
+});
+
+test('#8184 construction uncertain statuses and cleanup failures still retire the worker', async () => {
+  for (const fault of ['upload', 'tessellate', 'cleanup']) {
+    const driver = new RetainedDriver();
+    const source = await evaluate(driver), peer = peers.at(-1), start = peer.commands.length;
+    if (fault === 'upload') peer.uploadStatus = 8;
+    else { peer.failOpcode = fault === 'cleanup' ? 8 : 9; peer.kernelStatus = fault === 'cleanup' ? 4 : 8; }
+    await assert.rejects(evaluate(driver, 0, fault === 'cleanup' ? 8 : 4096),
+      error => fault === 'cleanup' ? error.resourceLimit === true : error.kernelStatus === 8);
+    assert.equal(driver.live(), false);
+    assert.equal(driver.objectLive(source.object), false);
+    assert.equal(peer.retired, true);
+    if (fault === 'cleanup') assert.equal(opcodes(peer).slice(start).filter(op => op === 8).length, 1, 'failed release is never retried');
+  }
+});
+
+test('#7955 E Boolean copies/releases its temporary before certifying and reading the result', async () => {
+  const driver = new RetainedDriver();
+  const a = await evaluate(driver), b = await evaluate(driver), peer = peers.at(-1);
+  const start = peer.commands.length;
+  const result = await driver.boolean(a.object, b.object, identity, 3, 0.001, 5, 4096);
+  assert.deepEqual(opcodes(peer).slice(start), [17, 5, 8, 19, 9, 10, 11, 11, 11, 11, 8]);
+  assert.equal(peer.objects.size, 3, 'two inputs and an independently owned result');
+  driver.releaseObject(a.object); driver.releaseObject(b.object); await flush();
+  assert.ok(driver.objectLive(result.object));
+  assert.equal(peer.objects.size, 1);
+  driver.retire();
+});
+test('#7955 E certified empty Boolean allocates no mesh and keeps an independent lease', async () => {
+  const driver = new RetainedDriver(); const a = await evaluate(driver), peer = peers.at(-1);
+  peer.empty = true; const start = peer.commands.length;
+  const result = await driver.boolean(a.object, a.object, identity, 3, 0.001, 5, 4096);
+  assert.equal(result.empty, true); assert.equal(result.mesh, null);
+  assert.deepEqual(opcodes(peer).slice(start), [17, 5, 8, 19]);
+  assert.equal(peer.objects.size, 2);
+  driver.retire();
+});
+test('#7955 E affine failures preserve typed status and retire only after copy starts', async () => {
+  for (const status of [1, 8, 99]) {
+    const driver = new RetainedDriver(); const a = await evaluate(driver), peer = peers.at(-1);
+    peer.failOpcode = 18; peer.kernelStatus = status;
+    await assert.rejects(driver.affine(a.object, identity), error => error.kernelStatus === status);
+    assert.equal(driver.live(), status === 1);
+    assert.equal(driver.objectLive(a.object), status === 1);
+    driver.retire();
+  }
+});
+test('#7955 E affine copy and tessellation preserve input and output leases', async () => {
+  const driver = new RetainedDriver(); const a = await evaluate(driver), peer = peers.at(-1);
+  const start = peer.commands.length;
+  const copy = await driver.affine(a.object, identity);
+  assert.deepEqual(opcodes(peer).slice(start), [18]);
+  const before = peer.objects.size;
+  await driver.tessellate(copy.object, 0.001, 5, 4096);
+  assert.equal(peer.objects.size, before, 'temporary mesh released');
+  driver.releaseObject(a.object); await flush();
+  assert.ok(driver.objectLive(copy.object));
+  driver.retire();
+});
+test('#7955 E foreign leases and invalid limits submit no frames', async () => {
+  const a = new RetainedDriver(), b = new RetainedDriver();
+  const source = await evaluate(a); await evaluate(b); const peer = peers.at(-1);
+  const count = peer.commands.length;
+  await assert.rejects(b.affine(source.object, identity), /foreign/);
+  await assert.rejects(b.tessellate(source.object, 0, 5, 4096), /limits/);
+  assert.equal(peer.commands.length, count);
+  a.retire(); b.retire();
+});
+
+test('#7955 E oversized buffers retain a resource refusal distinct from malformed wire', async () => {
+  const driver = new RetainedDriver();
+  const source = await evaluate(driver);
+  const peer = peers.at(-1), start = peer.commands.length;
+  await assert.rejects(driver.tessellate(source.object, 0.001, 5, 8), error => error.resourceLimit === true && error.kernelStatus === undefined);
+  assert.equal(driver.live(), true);
+  assert.equal(driver.objectLive(source.object), true);
+  assert.equal(peer.objects.size, 1, 'only the input remains');
+  assert.deepEqual(opcodes(peer).slice(start), [19, 9, 10, 8]);
+  driver.retire();
+});
+
+test('#7955 E tessellation kernel refusals preserve the input and release any temporary mesh', async () => {
+  for (const opcode of [19, 9, 10, 11]) {
+    for (const status of [1, 2, 3, 4, 5, 6, 7, 8, 99]) {
+      const driver = new RetainedDriver();
+      const source = await evaluate(driver), peer = peers.at(-1);
+      const start = peer.commands.length;
+      peer.failOpcode = opcode; peer.kernelStatus = status;
+      await assert.rejects(driver.tessellate(source.object, 0.001, 5, 4096), error => error.kernelStatus === status);
+      const recoverable = status <= 7;
+      assert.equal(driver.live(), recoverable);
+      assert.equal(driver.objectLive(source.object), recoverable);
+      if (recoverable) {
+        assert.equal(peer.objects.size, 1, 'only the input remains');
+        assert.equal(opcodes(peer).slice(start).includes(8), opcode === 10 || opcode === 11);
+        peer.failOpcode = undefined;
+        await driver.tessellate(source.object, 0.001, 5, 4096);
+        assert.equal(peer.objects.size, 1, 'the input can still be tessellated');
+      } else assert.equal(peer.retired, true);
+      driver.retire();
+    }
+  }
+});
+
+// #7955 E: transactional refusal releases every intermediate without losing inputs.
+test('#7955 E Boolean known refusals keep the worker and release temporary handles', async () => {
+  for (const fault of ['kernel', 'resource', 'empty-status']) {
+    const driver = new RetainedDriver();
+    const a = await evaluate(driver), peer = peers.at(-1);
+    const start = peer.commands.length;
+    if (fault !== 'resource') { peer.failOpcode = fault === 'kernel' ? 5 : 19; peer.kernelStatus = 4; }
+    await assert.rejects(driver.boolean(a.object, a.object, identity, 3, 0.001, 5, fault === 'resource' ? 8 : 4096),
+      error => fault === 'resource' ? error.resourceLimit === true : error.kernelStatus === 4);
+    assert.equal(driver.live(), true);
+    assert.equal(driver.objectLive(a.object), true);
+    assert.equal(peer.objects.size, 1, 'only the input remains, including after tessellation refusal');
+    assert.ok(opcodes(peer).slice(start).includes(8), 'temporary released');
+    if (fault === 'kernel') assert.deepEqual(opcodes(peer).slice(start), [17, 5, 8]);
+    driver.retire();
+  }
+});
+
+
+test('#7955 E2 construction faults clean unpublished handles and preserve typed evidence', async () => {
+  for (const fault of ['kernel', 'resource', 'retiring']) {
+    const driver = new RetainedDriver();
+    const original = await evaluate(driver), peer = peers.at(-1);
+    const before = peer.objects.size;
+    if (fault !== 'resource') {
+      peer.failOpcode = 10;
+      peer.kernelStatus = fault === 'retiring' ? 8 : 4;
+    }
+    await assert.rejects(evaluate(driver, 0, fault === 'resource' ? 8 : 4096),
+      error => fault === 'resource' ? error.resourceLimit === true : error.kernelStatus === peer.kernelStatus);
+    assert.equal(driver.live(), fault !== 'retiring');
+    assert.equal(driver.objectLive(original.object), fault !== 'retiring');
+    if (fault !== 'retiring') {
+      assert.equal(peer.objects.size, before, 'both unpublished mesh and solid released');
+      peer.failOpcode = 0;
+      const next = await evaluate(driver);
+      assert.equal(driver.objectLive(next.object), true);
+    }
+    driver.retire();
+  }
 });

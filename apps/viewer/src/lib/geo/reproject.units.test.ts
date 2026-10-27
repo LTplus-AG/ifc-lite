@@ -82,7 +82,7 @@ describe('native projection units at metre geometry boundaries (#7056)', () => {
   it('normalizes explicit +to_meter while retaining metre false offsets', () => {
     const definition = '+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=500000 '
       + '+y_0=0 +datum=WGS84 +units=ft +to_meter=0.3048';
-    close(computeGridConvergence(definition, 500000, 0, 9, 0), 0);
+    close(computeGridConvergence(definition, 500000, 0, 0), 0);
   });
 
 });

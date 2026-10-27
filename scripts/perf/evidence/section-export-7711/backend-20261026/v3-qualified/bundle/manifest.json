@@ -1,0 +1,336 @@
+{
+  "assets": [
+    {
+      "executable": true,
+      "name": "base",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 109041438720,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991150.1827588,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "84febf4c-4354-4598-9292-bd5ec6081f52",
+      "receiptSha256": "c45d9c802b2be1ca4502e1ffb46d0a5278878c7cdfc854045763dbc8dda06f77",
+      "role": "base",
+      "sha256": "816211fa5b5ebe9f03b23ccb975122b8afd59891b0c5f3d93b17f809a56a6125",
+      "source": {
+        "clean": true,
+        "commit": "8e2778ca041f027ab95d59532ce43d18bb42dab6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "19d7ac9750239e6c7322732e00ff65766ed04f46",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "base-toolchain.json",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 109041438720,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991150.1827588,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "84febf4c-4354-4598-9292-bd5ec6081f52",
+      "receiptSha256": "c45d9c802b2be1ca4502e1ffb46d0a5278878c7cdfc854045763dbc8dda06f77",
+      "role": "toolchain",
+      "sha256": "c55fbfcbd3794b450149539141bb661177f35b02927a4c3a5d3b98a269c4d698",
+      "source": {
+        "clean": true,
+        "commit": "8e2778ca041f027ab95d59532ce43d18bb42dab6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "19d7ac9750239e6c7322732e00ff65766ed04f46",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": true,
+      "name": "branch",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "branch",
+      "sha256": "75caa014fbdcdc696abb1f52c060f9577a22b5c174cfae36c60f8856af859671",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "branch-toolchain.json",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "toolchain",
+      "sha256": "c55fbfcbd3794b450149539141bb661177f35b02927a4c3a5d3b98a269c4d698",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "ab.sh",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "protocol",
+      "sha256": "e7298a689b5c30af51e00648ce4697f1830beb20611ff330f65524a5b1282bb6",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "ab-order.mjs",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "protocol",
+      "sha256": "f668a6c30ff1ae948f9575fe013173f170de7beff53eaa0be294ab3b2573ee95",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "ab-report.mjs",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "protocol",
+      "sha256": "d7d36f307e99b5b7544b1a36ae76474710039e82f31ad1f5b1a1bf7f9f380f3b",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "is-main-entry.mjs",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "protocol",
+      "sha256": "d3356d7cea1ad770dbd5afdc592eb494907a7e9567bb35c3bcc0f62bd5693977",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "fixture-0.ifc",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "fixture",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "fixture-1.ifc",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "fixture",
+      "sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "executable": false,
+      "name": "fixture-2.ifc",
+      "preparationHost": {
+        "arch": "x86_64",
+        "availableMemoryBytes": 110669918208,
+        "cpus": 32,
+        "host": "pop-os",
+        "os": "Linux",
+        "python": "3.12.3",
+        "time": 1792991462.8328032,
+        "totalMemoryBytes": 134644969472
+      },
+      "preparationJob": "691bd225-f938-4fb7-9c3e-f2f3969cecfe",
+      "receiptSha256": "04ea05320db30ad7cc9de5adc26965219b705f523de7cecb0e6e01fb0a02a953",
+      "role": "fixture",
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "source": {
+        "clean": true,
+        "commit": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+        "toolchainInputs": {
+          "Cargo.lock": "a2487159a31f82ad6d5f2b649ed8ae272ac2b0f9b3157c76f3a5ac4715318760",
+          "package.json": "003536dbe87fc41c2fe8b130647f63443efd1a938986d18d262c513b0ff1a2f4",
+          "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+        },
+        "tree": "87a23a711f4746bcc62d01475f35d6e9ec4d50a3",
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "qualification": "prepared_only; protocol adapter and exclusive measurement required",
+  "schema": 1
+}

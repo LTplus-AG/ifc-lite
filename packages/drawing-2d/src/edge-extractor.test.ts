@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlaneConfig } from './types.js';
 import { EdgeExtractor } from './edge-extractor.js';
+import { weldVertices } from './edge-weld.js';
 import { SectionCutter } from './section-cutter.js';
 import { getViewDirectionForPlane, projectPointForPlane } from './projection-bands.js';
 
@@ -255,5 +256,248 @@ describe('EdgeExtractor winding robustness (issue #2682)', () => {
 
     expect(outward.length).toBeGreaterThan(0);
     expect(inward.map(lineKey).sort()).toEqual(outward.map(lineKey).sort());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Adjacency by POSITION, not by buffer index (issue #8161)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** One f32 ULP at |x| (x a normal, non-zero f32 value). */
+function f32Ulp(x: number): number {
+  return 2 ** (Math.floor(Math.log2(Math.abs(x))) - 23);
+}
+
+/**
+ * Axis-aligned cube of side `size` at `base`, meshed with FOUR VERTICES PER
+ * FACE (24 vertices, 8 distinct positions), the layout the geometry pipeline
+ * emits for flat-shaded solids. `jitter(copy)` returns a per-axis offset in
+ * f32 ULPs applied to the `copy`-th duplicate of a corner (copy 0 is never
+ * jittered, so it carries the exact corner position).
+ */
+function perFaceCube(
+  size: number,
+  base: [number, number, number] = [0, 0, 0],
+  opts: { origin?: [number, number, number]; jitter?: (copy: number) => number } = {},
+): MeshData {
+  const corner = (c: number): [number, number, number] => [
+    base[0] + (c & 1 ? size : 0),
+    base[1] + (c & 2 ? size : 0),
+    base[2] + (c & 4 ? size : 0),
+  ];
+  // Outward-wound quads over corner ids (bit0 = +X, bit1 = +Y, bit2 = +Z).
+  const faces = [
+    [0, 2, 3, 1], [4, 5, 7, 6], // -Z, +Z
+    [0, 1, 5, 4], [2, 6, 7, 3], // -Y, +Y
+    [0, 4, 6, 2], [1, 3, 7, 5], // -X, +X
+  ];
+  const copies = new Map<number, number>();
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (const face of faces) {
+    const start = pos.length / 3;
+    for (const c of face) {
+      const copy = copies.get(c) ?? 0;
+      copies.set(c, copy + 1);
+      const p = corner(c);
+      const j = copy === 0 || !opts.jitter ? 0 : opts.jitter(copy);
+      for (const v of p) pos.push(v + j * f32Ulp(Math.fround(v)));
+    }
+    idx.push(start, start + 1, start + 2, start, start + 2, start + 3);
+  }
+  const positions = new Float32Array(pos);
+  const mesh: MeshData = {
+    expressId: 9,
+    ifcType: 'IfcColumn',
+    modelIndex: 0,
+    positions,
+    normals: new Float32Array(positions.length),
+    indices: new Uint32Array(idx),
+    color: [1, 1, 1, 1],
+  };
+  if (opts.origin) mesh.origin = opts.origin;
+  return mesh;
+}
+
+function typeCounts(edges: { type: string }[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const e of edges) counts[e.type] = (counts[e.type] ?? 0) + 1;
+  return counts;
+}
+
+describe('EdgeExtractor adjacency by position (issue #8161)', () => {
+  function quad(shared: boolean): MeshData {
+    const positions = shared
+      ? new Float32Array([0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2])
+      : new Float32Array([0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 0, 2, 0, 2, 0, 0, 2]);
+    return {
+      expressId: 1,
+      ifcType: 'IfcSlab',
+      modelIndex: 0,
+      positions,
+      normals: new Float32Array(positions.length),
+      indices: shared ? new Uint32Array([0, 1, 2, 0, 2, 3]) : new Uint32Array([0, 1, 2, 3, 4, 5]),
+      color: [1, 1, 1, 1],
+    };
+  }
+
+  it('a quad with per-triangle vertices has the same 4 boundary edges as the shared-vertex quad', () => {
+    const shared = new EdgeExtractor().extractEdges(quad(true));
+    const dup = new EdgeExtractor().extractEdges(quad(false));
+    expect(typeCounts(shared)).toEqual({ boundary: 4 });
+    expect(typeCounts(dup)).toEqual({ boundary: 4 });
+  });
+
+  it('a closed per-face cube has no boundary edges and 12 crease edges', () => {
+    const edges = new EdgeExtractor(30).extractEdges(perFaceCube(2));
+    expect(typeCounts(edges)).toEqual({ crease: 12 });
+    for (const e of edges) expect(e.dihedralAngle).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it('emits each edge at the exact corner positions (representative = first duplicate)', () => {
+    const edges = new EdgeExtractor().extractEdges(perFaceCube(2, [0, 0, 0], { jitter: () => 1 }));
+    const corners = new Set<string>();
+    for (const x of [0, 2]) for (const y of [0, 2]) for (const z of [0, 2]) corners.add(`${x},${y},${z}`);
+    expect(edges.length).toBe(12);
+    for (const e of edges) {
+      expect(corners.has(`${e.v0.x},${e.v0.y},${e.v0.z}`)).toBe(true);
+      expect(corners.has(`${e.v1.x},${e.v1.y},${e.v1.z}`)).toBe(true);
+    }
+  });
+
+  it('a large per-mesh origin (georeferenced RTC frame) changes nothing but the coordinates', () => {
+    const origin: [number, number, number] = [512_345.25, 48.5, -5_412_345.75];
+    const local = new EdgeExtractor().extractEdges(perFaceCube(2));
+    const shifted = new EdgeExtractor().extractEdges(perFaceCube(2, [0, 0, 0], { origin }));
+    expect(typeCounts(shifted)).toEqual({ crease: 12 });
+    const key = (e: { v0: { x: number; y: number; z: number }; v1: { x: number; y: number; z: number } }, o = [0, 0, 0]) =>
+      [e.v0, e.v1]
+        .map((v) => `${v.x - o[0]},${v.y - o[1]},${v.z - o[2]}`)
+        .sort()
+        .join('|');
+    expect(shifted.map((e) => key(e, origin)).sort()).toEqual(local.map((e) => key(e)).sort());
+  });
+
+  it('welds duplicates that differ by f32 rounding at absolute georeferenced magnitudes', () => {
+    // Positions themselves at ~4e5 m (no per-mesh origin): one f32 ULP is
+    // 3.1 cm there, so duplicates rounded along different paths differ by
+    // whole centimetres. A fixed sub-millimetre epsilon cannot weld them.
+    const base: [number, number, number] = [400_000, 30, 400_100];
+    const exact = new EdgeExtractor(30).extractEdges(perFaceCube(1, base));
+    const jittered = new EdgeExtractor(30).extractEdges(
+      perFaceCube(1, base, { jitter: (copy) => (copy % 2 === 0 ? 1 : -1) }),
+    );
+    expect(typeCounts(exact)).toEqual({ crease: 12 });
+    expect(typeCounts(jittered)).toEqual({ crease: 12 });
+  });
+
+  it('does not merge the distinct corners of a sub-millimetre cube near the origin', () => {
+    // 50 µm cube: an absolute weld epsilon sized for building coordinates
+    // (1e-4 m and up) would collapse it to a point and emit nothing.
+    const edges = new EdgeExtractor(30).extractEdges(perFaceCube(5e-5, [0.001, 0.001, 0.001]));
+    expect(typeCounts(edges)).toEqual({ crease: 12 });
+  });
+
+  it('welds near-duplicates regardless of where they fall relative to the quantisation grid', () => {
+    // Sweep the cube across many sub-ULP-grid offsets so that, for some of
+    // them, a corner and its 1-ULP-off duplicate land in adjacent grid cells.
+    let failures = 0;
+    for (let i = 0; i < 200; i++) {
+      const b = 3.0 + i * 0.0137;
+      const edges = new EdgeExtractor(30).extractEdges(
+        perFaceCube(1, [b, b * 1.7, b * 0.3], { jitter: (copy) => (copy % 2 === 0 ? 1 : -1) }),
+      );
+      const c = typeCounts(edges);
+      if (c.crease !== 12 || c.boundary) failures++;
+    }
+    expect(failures).toBe(0);
+  });
+
+  it('skips a zero-area sliver instead of letting it pose as a second face', () => {
+    // Shared-vertex quad plus a collinear (zero-area) triangle along its
+    // diagonal edge: the sliver must not register as an adjacent face.
+    const positions = new Float32Array([0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2, 1, 0, 1]);
+    const mesh: MeshData = {
+      expressId: 2,
+      ifcType: 'IfcSlab',
+      modelIndex: 0,
+      positions,
+      normals: new Float32Array(positions.length),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3, 0, 4, 2]),
+      color: [1, 1, 1, 1],
+    };
+    expect(typeCounts(new EdgeExtractor().extractEdges(mesh))).toEqual({ boundary: 4 });
+  });
+
+  function rawMesh(positions: number[], indices: number[]): MeshData {
+    const pos = new Float32Array(positions);
+    return {
+      expressId: 3,
+      ifcType: 'IfcSlab',
+      modelIndex: 0,
+      positions: pos,
+      normals: new Float32Array(pos.length),
+      indices: new Uint32Array(indices),
+      color: [1, 1, 1, 1],
+    };
+  }
+
+  it('reports a non-manifold edge shared by three faces once, classified from its first two faces', () => {
+    // Three fins on the segment (0,0,0)-(1,0,0): +Y, +Z and -Y, each with
+    // its own (unshared) vertices. Fins 0 and 1 are perpendicular.
+    const mesh = rawMesh(
+      [0, 0, 0, 1, 0, 0, 0.5, 1, 0, 0, 0, 0, 1, 0, 0, 0.5, 0, 1, 0, 0, 0, 1, 0, 0, 0.5, -1, 0],
+      [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+    const edges = new EdgeExtractor(30).extractEdges(mesh);
+    const shared = edges.filter((e) => e.v0.y === 0 && e.v0.z === 0 && e.v1.y === 0 && e.v1.z === 0);
+    expect(shared).toHaveLength(1);
+    expect(shared[0].type).toBe('crease');
+    // 1 shared + 2 free sides per fin.
+    expect(edges).toHaveLength(7);
+  });
+
+  it('does not report a coincident duplicate triangle as boundary edges', () => {
+    // The same triangle twice, with separate vertices: both faces have the
+    // same normal, so every edge is a smooth edge between two faces.
+    const tri = [0, 0, 0, 2, 0, 0, 0, 0, 2];
+    const mesh = rawMesh([...tri, ...tri], [0, 1, 2, 3, 4, 5]);
+    expect(new EdgeExtractor(30).extractEdges(mesh)).toEqual([]);
+  });
+
+  it('treats an opposite-wound coincident triangle as a fold: every edge is a crease', () => {
+    const mesh = rawMesh([0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 0, 0], [0, 1, 2, 3, 4, 5]);
+    expect(typeCounts(new EdgeExtractor(30).extractEdges(mesh))).toEqual({ crease: 3 });
+  });
+
+  it('ignores a triangle that collapses to a segment under the weld', () => {
+    // Quad plus a triangle whose first two corners differ by 1e-7 m at 2 m
+    // magnitude (weld tolerance 4.8e-7 m), so it welds down to a segment and
+    // has no face; the quad keeps its 4 boundary edges and gains nothing.
+    const mesh = rawMesh(
+      [0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2, 1, 0, 1, 1 + 1e-7, 0, 1, 1.5, 0, 1.5],
+      [0, 1, 2, 0, 2, 3, 4, 5, 6],
+    );
+    expect(typeCounts(new EdgeExtractor().extractEdges(mesh))).toEqual({ boundary: 4 });
+  });
+
+  it('ignores a near-collinear sliver whose height is below the weld tolerance', () => {
+    // Quad plus a triangle on its diagonal with a 1e-8 m height (non-zero
+    // area, but under the 4.8e-7 m tolerance at 2 m magnitude).
+    const mesh = rawMesh(
+      [0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2, 0, 0, 0, 2, 0, 2, 1, 1e-8, 1],
+      [0, 1, 2, 0, 2, 3, 4, 5, 6],
+    );
+    expect(typeCounts(new EdgeExtractor().extractEdges(mesh))).toEqual({ boundary: 4 });
+  });
+
+  it('welds a vertex within tolerance of two representatives to the earlier one, across cells', () => {
+    // maxAbs 1 gives tolerance 2^-22; the first two vertices sit 1.8 tolerances
+    // apart (separate representatives, in adjacent cells) and the third lies
+    // within tolerance of both, in the same cell as the SECOND.
+    const t = 2 ** -22;
+    expect(weldVertices(new Float32Array([0, -0.9 * t, 1, 0, 0.9 * t, 1, 0, 0, 1])).rep).toEqual(
+      new Uint32Array([0, 1, 0]),
+    );
   });
 });

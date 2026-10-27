@@ -177,8 +177,9 @@ export function toRenderFrame(p: Vec3, shift: Vec3): Vec3 {
 }
 
 /**
- * Resolve the store's cardinal section-plane `position` — a **0-100
- * percentage of model bounds** (`SectionPlane.position` in `store/types.ts`)
+ * Resolve the store's cardinal section-plane `position` — a **percentage of
+ * model bounds** (`SectionPlane.position` in `store/types.ts`; outside 0-100
+ * is a cut beyond them)
  * — into the shifted-render-frame metres {@link ScanSectionPlane.position}
  * expects.
  *

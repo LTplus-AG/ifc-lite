@@ -20,8 +20,8 @@ mod placement;
 mod regions;
 pub(crate) use regions::{check_sweep_vertices, region_points, sweeps_new_rings};
 mod shapes;
-mod steel_shapes;
 mod simplify;
+mod steel_shapes;
 #[cfg(test)]
 mod tests;
 
@@ -518,9 +518,12 @@ impl ProfileProcessor {
             // Placement.Location), which the linear-placement sampler
             // interpolates between (#859).
             if segment.ifc_type == IfcType::IfcCurveSegment {
-                if let Some(points) = crate::curve_segment::sample_curve_segment(&segment, decoder) {
+                if let Some(points) = crate::curve_segment::sample_curve_segment(&segment, decoder)
+                {
                     for p in points {
-                        if result.last().is_none_or(|last: &Point3<f64>| (last - p).norm() > tol::POINT_COINCIDENT_EPS) {
+                        if result.last().is_none_or(|last: &Point3<f64>| {
+                            (last - p).norm() > tol::POINT_COINCIDENT_EPS
+                        }) {
                             result.push(p);
                         }
                     }
@@ -543,10 +546,8 @@ impl ProfileProcessor {
                                 // Read SegmentLength (attr 3); the value may
                                 // be wrapped in an IfcLengthMeasure typed
                                 // record or be a bare REAL.
-                                let segment_length = segment
-                                    .get(3)
-                                    .and_then(|a| a.as_float())
-                                    .unwrap_or(0.0);
+                                let segment_length =
+                                    segment.get(3).and_then(|a| a.as_float()).unwrap_or(0.0);
                                 if segment_length > tol::LENGTH_ZERO_EPS {
                                     last_curve_segment_terminal =
                                         Some(origin + x_axis * segment_length);
@@ -639,10 +640,14 @@ impl ProfileProcessor {
         // Get trim parameters
         let trim1 = curve
             .get(1)
-            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
+            .map(|v| self.extract_trim_select(v, prefer_cartesian, decoder))
+            .transpose()?
+            .flatten();
         let trim2 = curve
             .get(2)
-            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
+            .map(|v| self.extract_trim_select(v, prefer_cartesian, decoder))
+            .transpose()?
+            .flatten();
 
         // Get sense agreement (attribute 3) - default true
         let sense = curve.get_bool(3).unwrap_or(true);
@@ -757,3 +762,7 @@ fn axis2_placement_location_and_x_axis_3d(
 #[cfg(test)]
 #[path = "curve_fanout_tests.rs"]
 mod curve_fanout_tests;
+
+#[cfg(test)]
+#[path = "leaf_reader_tests.rs"]
+mod leaf_reader_tests;

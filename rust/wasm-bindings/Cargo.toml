@@ -41,7 +41,7 @@ console-tracing = ["dep:tracing", "ifc-lite-processing/observability"]
 # engine bundle every viewer load fetches never carries it, nor the
 # authored-source capture it needs. Built as the separate pkg-retained bundle
 # with `BUILD_RETAINED=1 scripts/build-wasm.sh`.
-retained-browser = ["dep:wasm-bindgen-futures", "ifc-lite-geometry/wasm_source_capture"]
+retained-browser = ["dep:wasm-bindgen-futures", "ifc-lite-geometry/retained-runtime", "ifc-lite-processing/retained-runtime"]
 
 [dependencies]
 serde_json.workspace = true

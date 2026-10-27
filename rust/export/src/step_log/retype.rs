@@ -6,7 +6,7 @@
 //! as IfcOpenShell's `reassign_class` does).
 
 use crate::generated::step_log_tables::{NAME_LISTS, RETYPE_ROWS};
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::lines::split_args;
 use crate::step_record_frame::record_frame;
@@ -84,7 +84,7 @@ pub(crate) fn retype_tokens(
                         .position(|n| *n == "ObjectType")
                         .or_else(|| target.attributes.iter().position(|n| *n == "ElementType"));
                     if let Some(label) = label {
-                        out[label] = format!("'{}'", escape(requested));
+                        out[label] = quoted(requested);
                     }
                 }
             }

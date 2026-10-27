@@ -219,18 +219,29 @@ fn issue_6600_declared_invalid_placement_never_becomes_identity() {
     let chain = (100..210)
         .map(|id| format!("#{id}=IFCLOCALPLACEMENT(#{},#31);", id + 1))
         .collect::<String>();
-    let long = content
-        .replace(
-            "#32=IFCLOCALPLACEMENT($,#31)",
-            "#32=IFCLOCALPLACEMENT(#100,#31)",
-        )
-        .replace(
-            "ENDSEC;END-ISO",
-            &format!("{chain}#210=IFCLOCALPLACEMENT($,#31);ENDSEC;END-ISO"),
-        );
-    let report = sample_alignment_axes(&long, Default::default()).unwrap();
+    // D27: no depth cap. A 110-link acyclic chain is valid; a loop is refused.
+    let long = |tail: &str| {
+        content
+            .replace(
+                "#32=IFCLOCALPLACEMENT($,#31)",
+                "#32=IFCLOCALPLACEMENT(#100,#31)",
+            )
+            .replace("ENDSEC;END-ISO", &format!("{chain}{tail}ENDSEC;END-ISO"))
+    };
+    let report =
+        sample_alignment_axes(&long("#210=IFCLOCALPLACEMENT($,#31);"), Default::default()).unwrap();
+    assert!(!report.axes.is_empty(), "{:?}", report.diagnostics);
+    let report = sample_alignment_axes(
+        &long("#210=IFCLOCALPLACEMENT(#100,#31);"),
+        Default::default(),
+    )
+    .unwrap();
     assert!(report.axes.is_empty());
-    assert!(report.diagnostics[0].message.contains("over-budget"));
+    assert!(
+        report.diagnostics[0].message.contains("cyclic"),
+        "{:?}",
+        report.diagnostics
+    );
 }
 
 #[test]
@@ -325,19 +336,36 @@ fn issue_6600_curve_segment_references_spend_validation_work_without_dropping_re
             .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,#52,$");
         let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
         let curve = decoder.decode_by_id(50).unwrap();
-        let error = crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 3).unwrap_err();
+        let error = crate::alignment_sampling_curve::validate_composite_with_budget(
+            &curve,
+            &mut decoder,
+            3,
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("curve-reference work budget"));
-        crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 4).unwrap();
+        crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 4)
+            .unwrap();
         // Pure validation may memoize #40; accumulated geometry must not.
         let axis = AlignmentAxis::from_content(&content, 20).unwrap();
         near(axis.length_m(), 50.);
-        let gradient = content.replace(" ENDSEC;END-ISO-10303-21;",
-            " #60=IFCGRADIENTCURVE((#40,#40),.F.,#50,$); ENDSEC;END-ISO-10303-21;");
+        let gradient = content.replace(
+            " ENDSEC;END-ISO-10303-21;",
+            " #60=IFCGRADIENTCURVE((#40,#40),.F.,#50,$); ENDSEC;END-ISO-10303-21;",
+        );
         let mut decoder = EntityDecoder::with_index(&gradient, build_entity_index(&gradient));
         let curve = decoder.decode_by_id(60).unwrap();
-        assert!(crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 6)
-            .unwrap_err().to_string().contains("curve-reference work budget"));
-        crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 7).unwrap();
+        assert!(
+            crate::alignment_sampling_curve::validate_composite_with_budget(
+                &curve,
+                &mut decoder,
+                6
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("curve-reference work budget")
+        );
+        crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 7)
+            .unwrap();
     }
     // The production cap must act AND report before a wide list is enqueued.
     let refs = vec!["#40"; 100_000].join(",");
@@ -345,6 +373,8 @@ fn issue_6600_curve_segment_references_spend_validation_work_without_dropping_re
         .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,#52,$");
     let report = sample_alignment_axes(&content, Default::default()).unwrap();
     assert!(report.axes.is_empty());
-    assert!(report.diagnostics.iter().any(|d| d.express_id == Some(20)
-        && d.message.contains("curve-reference work budget")));
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|d| d.express_id == Some(20) && d.message.contains("curve-reference work budget")));
 }

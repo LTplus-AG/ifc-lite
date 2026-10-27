@@ -121,7 +121,7 @@ impl EnumReconciliation {
                     values[index] = ".USERDEFINED.".to_string();
                     let label = &mut values[usize::from(label)];
                     if label.trim() == "$" {
-                        *label = format!("'{}'", crate::step_text::escape(&member));
+                        *label = crate::step_text::quoted(&member);
                     } else {
                         self.record(Loss::LabelOccupied, where_);
                     }

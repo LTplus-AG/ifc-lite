@@ -241,7 +241,7 @@ export function useSymbolicAnnotations(params: {
  * reorientation pass. Wiring those up cleanly is a follow-up.
  *
  * The section position is in world units (already converted from the
- * 0-100% slider via `axisMin + (position / 100) * (axisMax - axisMin)`
+ * percentage `position` via `axisMin + (position / 100) * (axisMax - axisMin)`
  * by the caller — the Drawing panel's `useDrawingLayers` computes the same value to feed the
  * drawing generator).
  */

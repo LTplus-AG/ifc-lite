@@ -8,6 +8,7 @@
 interface ImportMetaEnv {
   /** Local OCI registry demo, using the development server's same-origin proxy. */
   readonly VITE_REGISTRY_ENABLED?: string;
+  readonly VITE_REGISTRY_ADDRESS?: string;
   /** Enable reviewed model reports only after the report service is deployed and qualified. */
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
   /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */

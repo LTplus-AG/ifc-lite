@@ -253,6 +253,7 @@ export default defineConfig(({ mode }) => {
     daluxRelayRoute(),
   ],
   define: {
+    'import.meta.env.VITE_REGISTRY_ADDRESS': JSON.stringify(env.IFC_REGISTRY_TARGET || 'http://127.0.0.1:5000'),
     __APP_VERSION__: JSON.stringify(appVersion),
     __BUILD_SHA__: JSON.stringify(buildSha),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString()),

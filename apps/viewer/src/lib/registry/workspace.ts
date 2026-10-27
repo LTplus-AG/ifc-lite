@@ -3,9 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { create } from 'zustand';
+import { localRegistryAddress } from './connection';
+import type { RegistryRelease } from './artifacts';
 import { RegistryTransport, type RegistrySession } from './transport';
 
 interface RegistryWorkspace {
+  address: string;
+  models: string[];
+  modelTitles: Record<string, string>;
+  catalogNext?: string;
+  releases: RegistryRelease[];
   transport: RegistryTransport | null;
   session: RegistrySession | null;
   repository: string;
@@ -17,7 +24,7 @@ interface RegistryWorkspace {
 }
 
 const initial: RegistryWorkspace = {
-  transport: null, session: null, repository: 'project/model', release: 'issued',
+  address: localRegistryAddress, catalogNext: undefined, models: [], modelTitles: {}, releases: [], transport: null, session: null, repository: '', release: '',
   version: 'revision-2', tags: [], fingerprint: '', published: '',
 };
 
@@ -35,7 +42,7 @@ export function registryTransport(origin: string): RegistryTransport {
 }
 
 export function clearRegistrySession(): void {
-  const { transport } = useRegistryWorkspace.getState();
+  const { transport, address } = useRegistryWorkspace.getState();
   transport?.logout();
-  updateRegistryWorkspace({ ...initial, transport });
+  updateRegistryWorkspace({ ...initial, transport, address });
 }

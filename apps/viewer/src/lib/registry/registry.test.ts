@@ -83,6 +83,17 @@ test('real Rust registry accepts browser artifacts, preserves IFC bytes, and enf
     const artifacts = new RegistryArtifacts(writer);
     const source = new Uint8Array(await readFile(new URL('../../../public/samples/hello-wall.ifc', import.meta.url)));
     const digest = await artifacts.publish('project/model', 'first', source, 'model.ifc');
+    const discovery = new RegistryTransport(origin);
+    await discovery.login(null, 'writer', password);
+    const browser = new RegistryArtifacts(discovery);
+    const catalog = await browser.modelCatalog();
+    assert.deepEqual(catalog.repositories, ['project/model']);
+    assert.equal(catalog.titles['project/model'], 'model');
+    const info = await browser.describe('project/model', 'first');
+    assert.equal(info.publisher, 'writer');
+    assert.equal(info.declaredAuthors, 'writer');
+    assert(info.pushedAt && Math.abs(Date.now() / 1000 - info.pushedAt) < 30);
+    assert(info.createdAt && Number.isFinite(Date.parse(info.createdAt)));
     const pulled = await artifacts.pull('project/model', digest);
     assert.equal(pulled.digest, digest); assert.deepEqual(pulled.bytes, source);
     assert.deepEqual(await artifacts.tags('project/model'), ['first']);
@@ -109,4 +120,16 @@ test('real Rust registry accepts browser artifacts, preserves IFC bytes, and enf
     server.kill('SIGTERM'); await new Promise<void>(resolve => server.once('exit', () => resolve()));
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test('a same-origin challenge cannot route credentials into another application endpoint', async () => {
+  const server = createServer((request, response) => {
+    response.writeHead(401, { 'WWW-Authenticate': `Bearer realm="http://${request.headers.host}/api/other",service="test"` }); response.end();
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address(); assert(address && typeof address !== 'string');
+    await assert.rejects(new RegistryTransport(`http://127.0.0.1:${address.port}`).login(null, 'writer', 'unused-test-password'), /sign-in address/);
+  } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

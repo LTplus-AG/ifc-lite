@@ -2,14 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { RegistryError, RegistryTransport, releaseName, responseBytes } from './transport';
+import { RegistryError, RegistryTransport, releaseName, repositoryName, responseBytes } from './transport';
 
 export const IFC_ARTIFACT_TYPE = 'application/vnd.ifcx-oci.ifc.v1';
 export const OCI_MANIFEST_TYPE = 'application/vnd.oci.image.manifest.v1+json';
 const MAX_IFC_BYTES = 512 * 1024 * 1024;
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 interface Descriptor { mediaType: string; digest: string; size: number; annotations?: Record<string, string> }
-interface Manifest { schemaVersion: 2; mediaType: string; artifactType?: string; config: Descriptor; layers: Descriptor[] }
+interface Manifest { schemaVersion: 2; mediaType: string; artifactType?: string; config: Descriptor; layers: Descriptor[]; annotations?: Record<string, string> }
+export interface RegistryRelease {
+  tag: string; title: string; digest: string;
+  publisher?: string; pushedAt?: number;
+  declaredAuthors?: string; createdAt?: string;
+}
 export interface ReceivedIfc {
   bytes: Uint8Array<ArrayBuffer>;
   filename: string;
@@ -40,7 +45,11 @@ function manifest(bytes: Uint8Array): Manifest {
   if (!value || typeof value !== 'object' || !('schemaVersion' in value) || value.schemaVersion !== 2 ||
     !('mediaType' in value) || value.mediaType !== OCI_MANIFEST_TYPE || !('config' in value) ||
     !('layers' in value) || !Array.isArray(value.layers)) throw new RegistryError('This is not a supported OCI artifact manifest.');
-  return { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config: descriptor(value.config), layers: value.layers.map(descriptor) };
+  const annotations: Record<string, string> = {};
+  if ('annotations' in value && value.annotations && typeof value.annotations === 'object') {
+    for (const [key, item] of Object.entries(value.annotations)) if (typeof item === 'string') annotations[key] = item;
+  }
+  return { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config: descriptor(value.config), layers: value.layers.map(descriptor), annotations };
 }
 
 /** Plain IFC source inside an OCI artifact. Also reads a derived release's optional source/model.ifc. */
@@ -56,7 +65,7 @@ export class RegistryArtifacts {
     return value.tags.filter((tag): tag is string => typeof tag === 'string');
   }
 
-  async pull(repository: string, reference: string, signal?: AbortSignal): Promise<ReceivedIfc> {
+  private async readManifest(repository: string, reference: string, signal?: AbortSignal) {
     if (!SHA256.test(reference)) releaseName(reference);
     const response = await this.transport.request(this.transport.path(repository, `manifests/${encodeURIComponent(reference)}`), {
       signal, headers: { Accept: OCI_MANIFEST_TYPE },
@@ -67,7 +76,53 @@ export class RegistryArtifacts {
     if ((advertised && advertised !== digest) || (SHA256.test(reference) && reference !== digest)) {
       throw new RegistryError('The release fingerprint does not match its manifest.');
     }
-    const candidates = manifest(raw).layers.filter(layer =>
+    return { data: manifest(raw), digest, response };
+  }
+
+  async catalog(signal?: AbortSignal, next = '/v2/_catalog?n=100'): Promise<{ repositories: string[]; next?: string }> {
+    if (this.transport.url(next).pathname !== '/v2/_catalog') throw new RegistryError('The model list returned an invalid page address.');
+    const response = await this.transport.request(next, { signal });
+    const value: unknown = JSON.parse(new TextDecoder().decode(await responseBytes(response, 1024 * 1024)));
+    if (!value || typeof value !== 'object' || !('repositories' in value) || !Array.isArray(value.repositories)) throw new RegistryError('The model list could not be read.');
+    const repositories = value.repositories.filter((name): name is string => typeof name === 'string').map(repositoryName);
+    const link = response.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/);
+    return { repositories, next: link?.[1] };
+  }
+
+  async modelCatalog(signal?: AbortSignal, next?: string): Promise<{ repositories: string[]; titles: Record<string, string>; next?: string }> {
+    const page = await this.catalog(signal, next);
+    const titles: Record<string, string> = {};
+    for (let start = 0; start < page.repositories.length; start += 8) {
+      await Promise.all(page.repositories.slice(start, start + 8).map(async repository => {
+        const releases = await this.releases(repository, signal);
+        titles[repository] = releases[0]?.title || repository.split('/').pop() || repository;
+      }));
+    }
+    return { ...page, titles };
+  }
+
+  async describe(repository: string, tag: string, signal?: AbortSignal): Promise<RegistryRelease> {
+    const { data, digest, response } = await this.readManifest(repository, tag, signal);
+    const filename = data.layers.find(layer => layer.mediaType === 'application/x-step')?.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop();
+    const pushedAt = Number(response.headers.get('ifcx-registry-pushed-at'));
+    return { tag, digest, title: data.annotations?.['org.opencontainers.image.title'] || filename?.replace(/\.ifc$/i, '') || repository.split('/').pop() || repository,
+      publisher: response.headers.get('ifcx-registry-publisher') || undefined,
+      pushedAt: Number.isSafeInteger(pushedAt) && pushedAt > 0 ? pushedAt : undefined,
+      declaredAuthors: data.annotations?.['org.opencontainers.image.authors'], createdAt: data.annotations?.['org.opencontainers.image.created'] };
+  }
+
+  async releases(repository: string, signal?: AbortSignal): Promise<RegistryRelease[]> {
+    const tags = await this.tags(repository, signal);
+    if (tags.length > 1000) throw new RegistryError('This model has too many versions for the local demo. Paste a specific release address.');
+    const releases: RegistryRelease[] = [];
+    // Small batches avoid flooding the registry while reading release metadata.
+    for (let start = 0; start < tags.length; start += 8) releases.push(...await Promise.all(tags.slice(start, start + 8).map(tag => this.describe(repository, tag, signal))));
+    return releases.sort((a, b) => (b.pushedAt ?? 0) - (a.pushedAt ?? 0) || b.tag.localeCompare(a.tag, undefined, { numeric: true }));
+  }
+
+  async pull(repository: string, reference: string, signal?: AbortSignal): Promise<ReceivedIfc> {
+    const { data, digest } = await this.readManifest(repository, reference, signal);
+    const candidates = data.layers.filter(layer =>
       layer.mediaType === 'application/x-step' || /\.ifc$/i.test(layer.annotations?.['org.opencontainers.image.title'] ?? ''));
     if (candidates.length !== 1) throw new RegistryError('Choose a release containing exactly one editable IFC source file.');
     const source = candidates[0];
@@ -95,7 +150,7 @@ export class RegistryArtifacts {
 
   async publish(repository: string, tag: string, bytes: Uint8Array<ArrayBuffer>, filename: string, signal?: AbortSignal): Promise<string> {
     releaseName(tag);
-    if (!this.transport.can('push')) throw new RegistryError('This account can receive releases but cannot publish them.', 403);
+    if (!this.transport.can('push', repository)) throw new RegistryError('This account can receive releases but cannot publish them.', 403);
     if (!new TextDecoder().decode(bytes.subarray(0, 64)).trimStart().startsWith('ISO-10303-21;')) {
       throw new RegistryError('Publish an IFC STEP source model for this demo.');
     }
@@ -105,7 +160,11 @@ export class RegistryArtifacts {
     const config = await this.upload(repository, new TextEncoder().encode('{}'), 'application/vnd.oci.empty.v1+json', signal);
     const layer = await this.upload(repository, bytes, 'application/x-step', signal);
     layer.annotations = { 'org.opencontainers.image.title': filename };
-    const value: Manifest = { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, artifactType: IFC_ARTIFACT_TYPE, config, layers: [layer] };
+    const value: Manifest = { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, artifactType: IFC_ARTIFACT_TYPE, config, layers: [layer], annotations: {
+      'org.opencontainers.image.title': filename.replace(/\.ifc$/i, ''),
+      'org.opencontainers.image.created': new Date().toISOString(),
+      'org.opencontainers.image.authors': this.transport.session?.username ?? '',
+    } };
     const raw = new TextEncoder().encode(JSON.stringify(value));
     const digest = await sha256(raw);
     const response = await this.transport.request(path, { method: 'PUT', signal, headers: { 'Content-Type': OCI_MANIFEST_TYPE }, body: raw });

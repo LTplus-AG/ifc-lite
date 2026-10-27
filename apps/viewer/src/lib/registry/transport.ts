@@ -6,7 +6,10 @@ export class RegistryError extends Error {
   constructor(message: string, readonly status = 0) { super(message); }
 }
 
+export interface RegistryAccess { repository: string; actions: string[] }
 export interface RegistrySession {
+  username: string;
+  repositories: RegistryAccess[];
   repository: string;
   actions: string[];
   expiresAt: number;
@@ -66,8 +69,8 @@ export class RegistryTransport {
   }
 
   get session(): RegistrySession | null { return this.current; }
-  can(action: 'pull' | 'push'): boolean {
-    return Boolean(this.current && this.current.expiresAt > Date.now() && this.current.actions.includes(action));
+  can(action: 'pull' | 'push', repository = this.current?.repository): boolean {
+    return Boolean(this.current && this.current.expiresAt > Date.now() && this.current.repositories.some(access => access.repository === repository && access.actions.includes(action)));
   }
   logout(): void { this.generation += 1; this.token = null; this.current = null; }
 
@@ -79,10 +82,10 @@ export class RegistryTransport {
     return url;
   }
 
-  async login(repository: string, username: string, password: string, signal?: AbortSignal): Promise<RegistrySession> {
+  async login(repository: string | null, username: string, password: string, signal?: AbortSignal): Promise<RegistrySession> {
     this.logout();
     const generation = this.generation;
-    repositoryName(repository);
+    if (repository) repositoryName(repository);
     const challenge = await fetch(this.url('/v2/'), { credentials: 'omit', redirect: 'error', signal });
     const header = challenge.headers.get('www-authenticate') ?? '';
     if (challenge.status !== 401 || !/^Bearer /i.test(header)) {
@@ -91,8 +94,9 @@ export class RegistryTransport {
     const fields = new Map([...header.matchAll(/([\w]+)="([^"]*)"/g)].map(m => [m[1].toLowerCase(), m[2]]));
     if (!fields.get('realm') || !fields.get('service')) throw new RegistryError('The sign-in challenge is incomplete.');
     const realm = this.url(fields.get('realm')!);
+    if (realm.pathname !== '/token') throw new RegistryError('The registry returned an unsupported sign-in address.');
     realm.searchParams.set('service', fields.get('service')!);
-    realm.searchParams.set('scope', `repository:${repository}:pull,push`);
+    realm.searchParams.set('scope', repository ? `repository:${repository}:pull,push` : 'registry:catalog:read');
     const credentials = new TextEncoder().encode(`${username}:${password}`);
     const basic = btoa(Array.from(credentials, byte => String.fromCharCode(byte)).join(''));
     const response = await fetch(realm, {
@@ -103,20 +107,24 @@ export class RegistryTransport {
     if (!reply || typeof reply !== 'object' || !('token' in reply) || typeof reply.token !== 'string' ||
       !('expires_in' in reply) || typeof reply.expires_in !== 'number' || reply.expires_in <= 0 ||
       !('access' in reply) || !Array.isArray(reply.access)) throw new RegistryError('Invalid registry sign-in response.');
-    const actions: string[] = [];
+    const repositories: RegistryAccess[] = [];
+    let catalog = false;
     for (const access of reply.access as unknown[]) {
-      if (access && typeof access === 'object' && 'name' in access && access.name === repository &&
-        'type' in access && access.type === 'repository' && 'actions' in access && Array.isArray(access.actions)) {
-        for (const action of access.actions as unknown[]) {
-          if (action === 'pull' || action === 'push') actions.push(action);
-        }
+      if (!access || typeof access !== 'object' || !('name' in access) || typeof access.name !== 'string' ||
+        !('type' in access) || !('actions' in access) || !Array.isArray(access.actions)) continue;
+      if (access.type === 'registry' && access.name === 'catalog' && access.actions.includes('read')) catalog = true;
+      if (access.type === 'repository') {
+        repositoryName(access.name);
+        repositories.push({ repository: access.name, actions: access.actions.filter((action: unknown): action is string => action === 'pull' || action === 'push') });
       }
     }
-    if (!actions.includes('pull')) throw new RegistryError('This account cannot receive releases from this repository.', 403);
+    const selected = repository ? repositories.find(access => access.repository === repository) : repositories.find(access => access.actions.includes('pull'));
+    if (repository && !selected?.actions.includes('pull')) throw new RegistryError('This account cannot open that model.', 403);
+    if (!repository && !catalog) throw new RegistryError('Model browsing is not available at this registry.');
     signal?.throwIfAborted();
     if (generation !== this.generation) throw new RegistryError('Sign-in was cancelled.');
     this.token = reply.token;
-    this.current = { repository, actions: [...new Set(actions)], expiresAt: Date.now() + reply.expires_in * 1000 };
+    this.current = { username: 'subject' in reply && typeof reply.subject === 'string' ? reply.subject : username, repositories, repository: selected?.repository ?? '', actions: selected?.actions ?? [], expiresAt: Date.now() + reply.expires_in * 1000 };
     return this.current;
   }
 
@@ -127,7 +135,9 @@ export class RegistryTransport {
     }
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${this.token}`);
-    const response = await fetch(this.url(path.toString()), { ...init, headers, credentials: 'omit', redirect: 'error' });
+    const target = this.url(path.toString());
+    if (!target.pathname.startsWith('/v2/')) throw new RegistryError('The request is outside this registry connection.');
+    const response = await fetch(target, { ...init, headers, credentials: 'omit', redirect: 'error' });
     if (response.status === 401) {
       this.logout();
       throw new RegistryError('Your sign-in has expired. Please sign in again.', 401);
@@ -141,7 +151,7 @@ export class RegistryTransport {
 
   path(repository: string, suffix: string): string {
     if (!this.current) throw new RegistryError('Please sign in to the registry.', 401);
-    if (repositoryName(repository) !== this.current.repository) {
+    if (!this.current.repositories.some(access => access.repository === repositoryName(repository) && access.actions.includes('pull'))) {
       throw new RegistryError('Sign in to the selected repository first.', 403);
     }
     return `/v2/${repository}/${suffix}`;

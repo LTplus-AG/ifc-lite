@@ -167,15 +167,18 @@ debugging an exporter, not for versioning a design.
 
 ## 1.6 What does map, and should keep its name
 
-Worth stating explicitly, because the temptation is to invent vocabulary:
+Worth stating explicitly, because the temptation is to invent vocabulary. But
+**read this as shared vocabulary, not as a claim of ownership** — index §4
+(#8203) assigns history, refs, merge and review to Layer PRs, and an earlier
+version of this section read as though ifc-git operated them:
 
-- **Content addressing, and an append-only object store.** A node, a tree and a
-  commit are all immutable and named by their digest.
-- **Compare-and-swap on a ref.** A commit names the parent it expects; two
-  deliveries built on the same parent mean the second is refused and must be
-  rebased. This is the whole of the concurrency control, as in git.
-- **An append-only history DAG.** Any version is reproducible from its ancestry.
-- **Branches, tags, fork and upstream.** Unchanged in meaning.
+- **Content addressing.** A node, a tree and a layer are all immutable and named
+  by their digest. This part *is* ifc-git's, because the content address of a
+  node is what makes identity GUID-agnostic.
+- **An append-only object store, compare-and-swap on a ref, an append-only
+  history DAG, branches, tags, fork and upstream.** All **Layer PRs'
+  surface**, named here because the concepts carry over and a reader needs the
+  words — not because ifc-git implements any of them.
 - **`status`, `commit`, `log`, `branch`, `diff`, `revert`.** Same questions, new
   unit — but **ifc-git does not implement them.** The vocabulary is how to think
   about the problem; the surface belongs to Layer PRs (#8203, index §4), and
@@ -196,7 +199,8 @@ once written, `09-relationship-to-layer-prs.md` (planned, index §5).
   same shape, and the two meet at the component-key vocabulary.
 - **Commit history** (`docs/architecture/commit-history/`, on a branch) reads
   *file revisions* from a document management system that already has them.
-  ifc-git computes versions that nothing else has computed.
+  ifc-git computes the *delta* that nothing else has computed — a layer, not a
+  commit history.
 
 ifc-git is independent of both in what it *computes*, and **subordinate to Layer
 PRs in what it produces.** An earlier version of this paragraph said ifc-git

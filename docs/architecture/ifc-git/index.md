@@ -157,6 +157,20 @@ the GUID-agnostic matching recorded in `identity_map` — the same
 `identity_map` Layer PRs already specifies (`04-identity.md`). Everything after
 that hand-over is Layer PRs' concern.
 
+**Removals are part of the delta, and need naming.** An entity present in the
+previous delivery and absent from the new one is recorded as a **tombstone**
+(`layer-prs/02-layer-format.md` §2.3): an `ifclite::deleted` opinion that
+shadows weaker opinions for that path, resurrectable by a stronger layer setting
+it `false`. A delta that merely *omitted* the entity would leave it visible in
+the composed state, which is the one failure mode worth calling out here —
+deletion is a change class the corpus exercises directly (`r04`).
+
+So the adapter needs a tombstone-capable layer writer. `minimal-layer.ts`
+already emits `ifclite::deleted` for a deleted entity and `null` for removed
+children, inherits and attributes. (Note for whoever owns `02-layer-format.md`:
+its §2.3 still describes `minimal-layer.ts` as "additive-only today", which the
+implementation has since outgrown.)
+
 What stays ifc-git's own work is exactly what Layer PRs lacks: **whole-file
 diffing and GUID-agnostic identity.** Those are the two things that cannot be
 done by a system which assumes an overlay authored against a known base, and

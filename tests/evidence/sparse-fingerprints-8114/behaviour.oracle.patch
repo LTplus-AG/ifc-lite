@@ -1,0 +1,44 @@
+--- a/rust/diff/src/sparse_collection.rs
++++ b/rust/diff/src/sparse_collection.rs
+@@ -26,7 +26,7 @@
+     pub fn push(&mut self, value: T) { self.present.push(value); }
+     /// Add `count` holes in O(1).
+     pub fn push_holes(&mut self, count: usize) {
+-        self.holes = self.holes.checked_add(count.saturating_sub(1)).expect("sparse hole count exceeds usize");
++        self.holes = self.holes.checked_add(count).expect("sparse hole count exceeds usize");
+     }
+     pub fn map<U>(self, project: impl FnMut(T) -> U) -> SparseCollection<U> {
+         SparseCollection { present: self.present.into_iter().map(project).collect(), holes: self.holes }
+--- a/rust/diff/src/js_json.rs
++++ b/rust/diff/src/js_json.rs
+@@ -112,7 +112,7 @@
+ /// map/join), each after a separator unless it is the array's first item.
+ fn write_holes<S: JsonSink>(count: usize, first: bool, sort_keys: bool, out: &mut S) {
+     if count == 0 { return; }
+-    let (token, separated) = if sort_keys { ("null", ",null") } else { ("", ",") };
++    let (token, separated) = if sort_keys { ("", ",") } else { ("null", ",null") };
+     let mut rest = count as u64;
+     if first {
+         out.push_str(token);
+--- a/rust/diff-wasm/src/diff_fingerprint_input.rs
++++ b/rust/diff-wasm/src/diff_fingerprint_input.rs
+@@ -105,7 +105,7 @@
+ // array wins over its string lengths; a length over the engine maximum wins
+ // over its holes; both win over errors in a later array (#8114).
+ fn outer_holes<E: serde::de::Error>(components: bool, holes: usize) -> Result<(), E> {
+-    if components && holes > 1 { Err(null_record(false)) } else { Ok(()) }
++    if components && holes > 0 { Err(null_record(false)) } else { Ok(()) }
+ }
+ fn checked_property_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<PropertySetInput>, D::Error> {
+     let sets = optional_sparse::<D, PropertySet>(deserializer)?
+--- a/rust/diff-wasm/src/diff_fingerprint_host.rs
++++ b/rust/diff-wasm/src/diff_fingerprint_host.rs
+@@ -49,7 +49,7 @@
+ // Iterator completion follows JavaScript truthiness, as in the TS oracle.
+ // Coerce before crossing the integer ABI: ToUint32 would turn truthy strings,
+ // fractional numbers and objects into false (and invoke user coercions).
+-export function fpDone(step) { return step.done; }
++export function fpDone(step) { return !!step.done; }
+ export function fpEntries(value) { return Object.entries(value); }
+ export function fpBytes(value) {
+     if (instance(value, Uint8Array)) {

@@ -16,6 +16,16 @@ pub(super) fn admitting<T>(f: impl FnOnce() -> T) -> T {
 }
 pub(super) fn admitted() -> bool { ADMITTED.with(Cell::get) }
 
+pub(super) fn line_curve(curve: &ifc_lite_core::DecodedEntity) -> bool {
+    match curve.ifc_type {
+        ifc_lite_core::IfcType::IfcPolyline => true,
+        ifc_lite_core::IfcType::IfcIndexedPolyCurve => curve.get(1)
+            .and_then(|v| v.as_list()).is_some_and(|segments| !segments.is_empty() && segments.iter().all(|v|
+                matches!(v, ifc_lite_core::AttributeValue::Typed { name, .. } if name.as_ref() == "IFCLINEINDEX"))),
+        _ => false,
+    }
+}
+
 fn collinear(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {
     orient2d(&ImplicitPoint::Explicit(a), &ImplicitPoint::Explicit(b),
         &ImplicitPoint::Explicit(c), DropAxis::Z) == Sign::Zero

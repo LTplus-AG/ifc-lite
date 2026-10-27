@@ -126,7 +126,7 @@ fn extract_profile(
             {
                 let curve = decoder.decode_by_id(profile.get_ref(2).ok_or("missing OuterCurve")?)
                     .map_err(|error| format!("OuterCurve: {error}"))?;
-                if matches!(curve.ifc_type, IfcType::IfcPolyline | IfcType::IfcIndexedPolyCurve) {
+                if super::profile_retrace::line_curve(&curve) {
                     if let Err(original) = super::profile_topology::validate(&result.loops, clearance, join_precision) {
                         if let WalkError::Stopped(_) = original { return Err(original); }
                         if let Some(mut residual) = super::profile_retrace::repair(&result.loops[0], clearance, join_precision,

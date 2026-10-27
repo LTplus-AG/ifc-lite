@@ -33,6 +33,8 @@ pub fn block_on<T>(future: impl Future<Output = T>) -> T {
         }
     }
 }
+/// Process one model with a fresh driver. Use [`NativeModelDriver`] to retain
+/// a qualified worker across separate model calls.
 pub fn run_model_native(
     source: Arc<SourceBundle>,
     worker_path: impl AsRef<Path>,
@@ -42,7 +44,8 @@ pub fn run_model_native(
     run_model_native_timed(source, worker_path, options, sink).map(|(summary, _)| summary)
 }
 
-/// Same native entry, with diagnostic phase observations excluding sink time.
+/// Same single-model entry, with diagnostic phase observations excluding sink
+/// time. Each call creates a fresh driver; use [`NativeModelDriver`] for reuse.
 pub fn run_model_native_timed(
     source: Arc<SourceBundle>,
     worker_path: impl AsRef<Path>,

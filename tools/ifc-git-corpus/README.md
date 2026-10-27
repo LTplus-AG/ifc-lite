@@ -165,10 +165,12 @@ entity `key` into the `element` node, so a re-GUID moves every element address.
 
 ## Verification scope
 
-`data`, deliberately — it needs no geometry pipeline and so **executes** no
-WASM. That is not the same as needing nothing: `pnpm install` must have linked
-`@ifc-lite/wasm` for `packages/diff` to load at all, and the measurement is only
-as current as `packages/*/dist`. `r02` carries a real geometric change that data
+`data`, deliberately — the tool initializes the independent diff WASM engine
+with `await initDiff()` and does not run the geometry pipeline. `pnpm install`
+and a current workspace build must supply `@ifc-lite/wasm/diff` and the
+`packages/*/dist` modules. The version-1 manifest retains its historical
+TypeScript-reference verification note; `--check` requires its bytes and
+measurements to remain unchanged. `r02` carries a real geometric change that data
 scope cannot see; it is flagged `geometryScopeRequired` in the manifest rather
 than quietly recorded as a no-op.
 

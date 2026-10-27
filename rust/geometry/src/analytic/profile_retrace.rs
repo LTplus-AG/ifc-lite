@@ -111,6 +111,35 @@ pub(super) fn repair(
     Ok(Some(residual))
 }
 
+// Keep this opt-in work out of profile.rs so source locations embedded in the
+// default WASM remain unchanged (M8's compiled default-identity contract).
+pub(super) fn validate(
+    profile: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    result: &mut super::AnalyticProfile,
+    clearance: f64,
+    join: f64,
+    rebuild: impl FnOnce(Vec<AnalyticCurveSegment>) -> Result<AnalyticProfileLoop, WalkError>,
+) -> Result<bool, WalkError> {
+    if !admitted() || profile.ifc_type != ifc_lite_core::IfcType::IfcArbitraryClosedProfileDef
+        || result.loops.len() != 1 {
+        return Ok(false);
+    }
+    let curve = decoder.decode_by_id(profile.get_ref(2).ok_or("missing OuterCurve")?)
+        .map_err(|error| format!("OuterCurve: {error}"))?;
+    if !line_curve(&curve) { return Ok(false); }
+    if let Err(original) = super::profile_topology::validate(&result.loops, clearance, join) {
+        if let WalkError::Stopped(_) = original { return Err(original); }
+        if let Some(mut residual) = repair(&result.loops[0], clearance, join, rebuild)? {
+            residual.source = result.loops[0].source.take();
+            result.loops[0] = residual;
+        } else {
+            return Err(format!("{original} (retrace cancellation did not yield a valid region)").into());
+        }
+    }
+    Ok(true)
+}
+
 #[cfg(test)]
 #[path = "profile_retrace_tests.rs"]
 mod tests;

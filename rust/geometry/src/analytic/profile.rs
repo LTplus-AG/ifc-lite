@@ -116,30 +116,9 @@ fn extract_profile(
             let clearance = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(_, max)| {
                 max.max(DEFAULT_TOPOLOGY_CLEARANCE)
             });
-            let join_precision = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(min, _)| {
-                min.min(DEFAULT_TOPOLOGY_CLEARANCE)
-            });
+            let join_precision = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(min, _)| min.min(DEFAULT_TOPOLOGY_CLEARANCE));
             #[cfg(feature = "retained-runtime")]
-            if super::profile_retrace::admitted()
-                && profile.ifc_type == IfcType::IfcArbitraryClosedProfileDef
-                && result.loops.len() == 1
-            {
-                let curve = decoder.decode_by_id(profile.get_ref(2).ok_or("missing OuterCurve")?)
-                    .map_err(|error| format!("OuterCurve: {error}"))?;
-                if super::profile_retrace::line_curve(&curve) {
-                    if let Err(original) = super::profile_topology::validate(&result.loops, clearance, join_precision) {
-                        if let WalkError::Stopped(_) = original { return Err(original); }
-                        if let Some(mut residual) = super::profile_retrace::repair(&result.loops[0], clearance, join_precision,
-                            |segments| loop_from_segments(ProfileLoopKind::Outer, segments))? {
-                            residual.source = result.loops[0].source.take();
-                            result.loops[0] = residual;
-                            return Ok(());
-                        }
-                        return Err(format!("{original} (retrace cancellation did not yield a valid region)").into());
-                    }
-                    return Ok(());
-                }
-            }
+            if super::profile_retrace::validate(profile, decoder, &mut result, clearance, join_precision, |s| loop_from_segments(ProfileLoopKind::Outer, s))? { return Ok(()); }
             super::profile_topology::validate(&result.loops, clearance, join_precision)
         } else {
             Ok(())

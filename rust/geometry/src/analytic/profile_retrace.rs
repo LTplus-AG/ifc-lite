@@ -22,7 +22,8 @@ fn collinear(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {
 }
 
 pub(super) fn cancel(boundary: &AnalyticProfileLoop) -> Result<Option<Vec<AnalyticCurveSegment>>, WalkError> {
-    let mut points = Vec::with_capacity(boundary.segments.len());
+    let mut points = Vec::new();
+    let _points_storage = crate::resource::reserve_headers(&mut points, boundary.segments.len())?;
     for (i, segment) in boundary.segments.iter().enumerate() {
         let AnalyticCurveSegment::Line { start, end } = segment else { return Ok(None) };
         // Never turn a tolerated join/gap into an interpolated source vertex.

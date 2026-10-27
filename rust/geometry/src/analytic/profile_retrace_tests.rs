@@ -62,7 +62,7 @@ fn issue_3641_near_collinear_and_v_reversals_are_not_cancelled() {
 
 #[test]
 fn issue_3641_cancelled_spur_with_self_intersecting_residual_refuses() {
-    let text = altered("((0.,0.),(4.,0.),(4.,4.),(0.,2.),(4.,2.),(4.,0.),(6.,0.))", "1,2,3,4,5,6,7,1");
+    let text = altered("((0.,0.),(-2.,0.),(0.,0.),(4.,4.),(0.,4.),(3.,0.))", "1,2,3,4,5,6,1");
     let result = extrusion(&text, true);
     assert!(matches!(result.status, AnalyticStatus::Unsupported(ref s) if s.ends_with("(retrace cancellation did not yield a valid region)")), "{result:?}");
 }

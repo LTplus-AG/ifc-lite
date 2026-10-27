@@ -7,7 +7,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { Camera, type Renderer, type RenderOptions } from '@ifc-lite/renderer';
-import { writeBCF, type BCFProject } from '@ifc-lite/bcf';
+import { placeholderSnapshotPng, writeBCF, type BCFProject } from '@ifc-lite/bcf';
 import type { ValidationReport } from '@ifc-lite/ids';
 import { useViewerStore } from '@/store';
 import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -198,6 +198,47 @@ describe('#7974 actual viewer IDS BCF export', () => {
     assert.equal(run.renders.length, 1);
   });
 
+  // BIMcollab Zoom reports "no viewpoint to zoom to" for any viewpoint whose
+  // markup has no <Snapshot>, even with a valid camera (#7974).
+  it('captures a real grouped snapshot even when snapshots were not requested', async () => {
+    const run = setup(true);
+    await runIdsBcfExport(run.params);
+    const { zip, topic, markup } = await archive(run.exported());
+    assert.equal(run.renders.length, 1);
+    const snapshot = markup.match(/<Snapshot>([^<]+)<\/Snapshot>/)?.[1];
+    assert.ok(snapshot, 'grouped viewpoint must reference a snapshot');
+    const bytes = await zip.file(`${topic.guid}/${snapshot}`)!.async('uint8array');
+    assert.notDeepEqual(bytes, placeholderSnapshotPng(), 'a renderer was available, so the image must be real');
+  });
+
+  it('falls back to the placeholder when a grouped capture fails, whatever the hidden switch says', async () => {
+    // The switch is shown locked on for grouped exports, so a value left over
+    // from per-entity must not turn a capture miss into an export error.
+    const run = setup(true, true);
+    dispose?.(); dispose = undefined;
+    await runIdsBcfExport(run.params);
+    const { zip, topic, markup } = await archive(run.exported());
+    const snapshot = markup.match(/<Snapshot>([^<]+)<\/Snapshot>/)?.[1];
+    assert.ok(snapshot);
+    assert.deepEqual(await zip.file(`${topic.guid}/${snapshot}`)!.async('uint8array'), placeholderSnapshotPng());
+  });
+
+  it('gives per-entity viewpoints a placeholder snapshot without rendering one', async () => {
+    const run = setup(true);
+    run.params.settings.topicGrouping = 'per-entity';
+    await runIdsBcfExport(run.params);
+    const project = run.exported();
+    assert.equal(project.topics.size, 2);
+    assert.equal(run.renders.length, 0, 'per-entity snapshots stay opt-in');
+    const zip = await JSZip.loadAsync(await (await writeBCF(project)).arrayBuffer());
+    for (const topic of project.topics.values()) {
+      const markup = await zip.file(`${topic.guid}/markup.bcf`)!.async('string');
+      const snapshot = markup.match(/<Snapshot>([^<]+)<\/Snapshot>/)?.[1];
+      assert.ok(snapshot, `${topic.title} must reference a snapshot`);
+      assert.deepEqual(await zip.file(`${topic.guid}/${snapshot}`)!.async('uint8array'), placeholderSnapshotPng());
+    }
+  });
+
   it('refuses a requested camera when neither complete bounds nor a renderer exist', async () => {
     const run = setup(false);
     setGlobalRendererRef({ current: null });
@@ -206,6 +247,7 @@ describe('#7974 actual viewer IDS BCF export', () => {
 
   it('reports a failed requested snapshot instead of silently downloading an incomplete archive', async () => {
     const run = setup(true, true);
+    run.params.settings.topicGrouping = 'per-entity';
     dispose?.(); dispose = undefined;
     await assert.rejects(runIdsBcfExport(run.params), /snapshot/i);
   });

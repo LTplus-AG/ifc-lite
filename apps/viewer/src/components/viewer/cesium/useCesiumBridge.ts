@@ -77,6 +77,8 @@ export function useCesiumBridge({
   const setCesiumTerrainSource = useViewerStore((s) => s.setCesiumTerrainSource);
   const setCesiumTerrainSaveHeight = useViewerStore((s) => s.setCesiumTerrainSaveHeight);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
+  const globePlacement = useViewerStore((s) => s.cesiumGlobePlacement);
+  const setGlobePlacementStatus = useViewerStore((s) => s.setCesiumGlobePlacementStatus);
   // Last-known placement altitude (in metres) used to keep the user's WORLD
   // camera position stable across bridge rebuilds. When the user toggles the
   // clamp or edits OrthogonalHeight, the model placement changes and the
@@ -108,6 +110,7 @@ export function useCesiumBridge({
       bridgeRef.current = null;
       cameraBridgeRef.current = null;
       prevPlacementRef.current = null;
+      setGlobePlacementStatus(null);
       return;
     }
 
@@ -123,7 +126,7 @@ export function useCesiumBridge({
       const usesSeparateCameraBridge = cameraConversion !== mapConversion;
       const cameraTentative = await createCesiumBridge(
         cameraConversion, projectedCRS, coordinateInfo, lengthUnitScale,
-        undefined, heightsAreEllipsoidal,
+        undefined, heightsAreEllipsoidal, globePlacement,
       );
       if (cancelled || !lifetime.isLive(viewer)) return;
       if (!cameraTentative) {
@@ -159,7 +162,7 @@ export function useCesiumBridge({
       const modelTentative = usesSeparateCameraBridge
         ? await createCesiumBridge(
             mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
-            undefined, heightsAreEllipsoidal,
+            undefined, heightsAreEllipsoidal, globePlacement,
           )
         : cameraTentative;
       if (cancelled || !lifetime.isLive(viewer)) return;
@@ -223,7 +226,10 @@ export function useCesiumBridge({
         // terrainClipY stays in viewer-space; it represents the world terrain
         // altitude expressed in the camera bridge's committed frame. Draft
         // placement edits must not move this floor, or the camera will drift.
-        setCesiumTerrainClipY(cameraPlacement.terrainClipY);
+        // Exact placement bends the model with the Earth (r²/2R below the
+        // anchor's tangent plane at its ends), so a flat viewer-space floor
+        // would cut it; the clip is off there.
+        setCesiumTerrainClipY(bridge.placement.mode === 'exact' ? null : cameraPlacement.terrainClipY);
       } else {
         // Failed re-query (offline, API down) — clear stale store fields so
         // the clip plane doesn't drift relative to the new bridge.
@@ -269,6 +275,7 @@ export function useCesiumBridge({
 
       bridgeRef.current = bridge;
       cameraBridgeRef.current = cameraBridge;
+      setGlobePlacementStatus({ mode: bridge.placement.mode, anchorErrorMetres: bridge.placement.estimate?.total ?? null });
       setBridgeVersion((v) => v + 1);
     })();
 
@@ -293,6 +300,8 @@ export function useCesiumBridge({
     setCesiumTerrainSource,
     setCesiumTerrainSaveHeight,
     setCesiumTerrainClipY,
+    globePlacement,
+    setGlobePlacementStatus,
   ]);
 
   return { bridgeVersion };

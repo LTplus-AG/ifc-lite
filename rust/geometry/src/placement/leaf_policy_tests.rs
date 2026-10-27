@@ -12,10 +12,6 @@
 //! slot on the fast path.
 
 use super::*;
-use crate::transform::{
-    parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
-    parse_cartesian_point, parse_cartesian_point_from_id, parse_direction_from_id,
-};
 use crate::GeometryRouter;
 use ifc_lite_core::Error as CoreError;
 
@@ -30,17 +26,16 @@ const BAD_LEAVES: [&str; 5] = [
 /// Every reader of an `IfcAxis2Placement3D` (#2) whose Location is #1.
 fn placement_3d_readers(content: &str) -> Vec<(&'static str, Result<(), crate::Error>, u64)> {
     type Reader = fn(&mut EntityDecoder) -> Result<(), crate::Error>;
-    let readers: [(&str, Reader); 8] = [
-        ("transform::parse_cartesian_point_from_id", |d| parse_cartesian_point_from_id(1, d).map(drop)),
-        ("transform::parse_cartesian_point", |d| {
+    let readers: [(&str, Reader); 7] = [
+        ("EntityDecoder::point3", |d| d.point3(1).map(drop).map_err(Into::into)),
+        ("EntityDecoder::point3_at", |d| {
             let placement = d.decode_by_id(2)?;
-            parse_cartesian_point(&placement, d, 0).map(drop)
+            d.point3_at(&placement, 0).map(drop).map_err(Into::into)
         }),
-        ("transform::parse_axis2_placement_3d", |d| {
+        ("Axis2Placement::read_3d", |d| {
             let placement = d.decode_by_id(2)?;
-            parse_axis2_placement_3d(&placement, d).map(drop)
+            Axis2Placement::read_3d(&placement, d).map(drop).map_err(Into::into)
         }),
-        ("transform::parse_axis2_placement_3d_from_id", |d| parse_axis2_placement_3d_from_id(2, d).map(drop)),
         ("router.parse_axis2_placement_3d", |d| {
             let placement = d.decode_by_id(2)?;
             GeometryRouter::new().parse_axis2_placement_3d(&placement, d).map(drop)
@@ -89,13 +84,12 @@ fn a_malformed_location_is_refused_and_counted_by_every_reader() {
 fn a_malformed_axis_or_ref_direction_is_refused_and_counted() {
     for bad in ["((0.,'x'))", "((1.))", "((0.,0.,1.,5.))", "((IFCREAL(1.),0.,0.))"] {
         for (axis, ref_direction, record) in [(bad, "((1.,0.,0.))", 10), ("((0.,0.,1.))", bad, 11)] {
-            // The 2D reader takes only the RefDirection (#11).
             for (reader, result, refused) in placement_3d_readers(&doc("((1.,2.,3.))", axis, ref_direction)) {
                 if reader == "Axis2Placement::read_2d" && record == 10 {
                     assert!(result.is_ok(), "the 2D reader never reads #10");
                     continue;
                 }
-                if reader.starts_with("transform::parse_cartesian_point") {
+                if reader.starts_with("EntityDecoder::point3") {
                     assert!(result.is_ok(), "{reader} reads only the point");
                     continue;
                 }
@@ -121,10 +115,10 @@ fn the_record_type_is_checked_in_every_slot() {
     let point_as_axis = "#1=IFCCARTESIANPOINT((1.,2.,3.));\n#10=IFCCARTESIANPOINT((0.,0.,1.));\n#11=IFCDIRECTION((1.,0.,0.));\n\
                          #2=IFCAXIS2PLACEMENT3D(#1,#10,#11);\n";
     let mut decoder = EntityDecoder::new(point_as_axis);
-    assert!(parse_axis2_placement_3d_from_id(2, &mut decoder).is_err());
+    assert!(Axis2Placement::read_id(2, &mut decoder).is_err());
     assert_eq!(decoder.refused_records(), 1);
     let mut decoder = EntityDecoder::new(point_as_axis);
-    assert!(parse_direction_from_id(1, &mut decoder).is_err(), "a point is not a direction");
+    assert!(decoder.direction3(1).is_err(), "a point is not a direction");
     assert_eq!(decoder.refused_records(), 1);
 }
 
@@ -137,8 +131,8 @@ fn a_clean_read_counts_nothing_and_two_components_promote_to_z_zero() {
     assert_eq!(promoted.location, [1.0, 2.0, 0.0], "INTEGER components read, z = 0 (D26)");
     let tilted = Axis2Placement::read_id(3, &mut decoder).unwrap();
     assert_eq!(tilted.axis, Some([0.0, 1.0, 0.0]));
-    assert_eq!(parse_direction_from_id(10, &mut decoder).unwrap().z, 0.0);
-    assert_eq!(parse_cartesian_point_from_id(1, &mut decoder).unwrap().z, 0.0);
+    assert_eq!(decoder.direction3(10).unwrap()[2], 0.0);
+    assert_eq!(decoder.point3(1).unwrap()[2], 0.0);
     assert_eq!(decoder.refused_records(), 0);
 }
 
@@ -177,7 +171,7 @@ fn degenerate_axes_stay_repaired_bit_for_bit() {
         );
         let mut decoder = EntityDecoder::new(&content);
         let placement = decoder.decode_by_id(2).unwrap();
-        let from_reader = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+        let from_reader = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
         let by_hand = build_axis2_matrix(Point3::new(1.0, 2.0, 3.0), Vector3::from(axis), Vector3::from(ref_direction));
         assert_eq!(decoder.refused_records(), 0, "{axis:?}/{ref_direction:?}: repaired, not refused");
         for (col, want) in [x, y, z, [1.0, 2.0, 3.0]].into_iter().enumerate() {

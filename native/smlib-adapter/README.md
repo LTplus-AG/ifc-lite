@@ -140,6 +140,66 @@ ABS --sdk ABS` runs that bundle against an actual module Worker in Chromium.
 
 Nothing in the viewer or the default WASM package imports these modules.
 
+## Node worker_threads transport and local engine staging
+
+`node/client.mjs` mirrors the browser client's `{id, frames}` requests and
+responses and `{id, fatal}` errors, transfer ownership, limits, deadlines and
+incarnation tokens. `node/worker.mjs` hosts the existing browser Worker behind
+`self` and `parentPort`; it does not interpret numerical commands. Worker exit
+also retires pending work. `peakHeapBytes` samples the worker's JavaScript heap
+at startup and message boundaries, retaining the maximum across restarts. It is
+not a measurement of WASM linear memory, process RSS or allocations inside a
+synchronous kernel call.
+
+Package an existing retained WASM bundle and Emscripten adapter build with:
+
+```sh
+node scripts/stage-cli-retained-engine.mjs --build /absolute/smlib-wasm \
+  --sdk /absolute/usd-brep --pkg-retained /absolute/pkg-retained \
+  --toolchain-notice Emscripten-LICENSE=/absolute/emscripten/LICENSE \
+  --out /absolute/new-engine-directory
+```
+
+The fresh output contains `pkg-retained/`, the canonical flat `smlib/` bundle
+plus `smlib/node/`, `LICENSES/SMLib/{LICENSE,THIRD_PARTY_NOTICES.md}` (the
+Apache-2.0 SDK notices), `LICENSES/ifc-lite/LICENSE` (MPL-2.0), and
+`engine-manifest.json`. Every output file except the manifest itself has a
+sha256 entry. The script reports the manifest's sha256 separately. It refuses
+existing destinations, overlapping inputs, nonregular assets and missing files.
+Staging executes no supplied code and makes no numerical qualification claim.
+The copied `pkg-retained/package.json` declares `type: module` so its generated
+JavaScript also loads outside this repository's ESM scope on Node 20.6.
+
+Repeat `--toolchain-notice NAME=ABS` to copy runtime/toolchain notices into
+`LICENSES/toolchain/`. The manifest's `toolchainNotices` array inventories their
+names, relative paths, sizes and sha256 hashes; an empty array means none were
+supplied. This inventory does not certify that all applicable notices have been
+identified. `capabilities` is `null` until a consumer observes a running kernel.
+
+Before importing `pkg-retained`, a Node >=20.6 host can register the staged
+resolve hook (where `engineUrl` is a trailing-slash file URL):
+
+```js
+import { register } from 'node:module';
+register(new URL('smlib/node/hooks.mjs', engineUrl), {
+  data: { smlib: new URL('smlib/', engineUrl).href },
+});
+```
+
+The hook redirects `/smlib/client.mjs` to the Node client and resolves the
+driver's shared sweep and contract imports inside the engine. The driver's
+`workerUrl: '/smlib/worker.mjs'` selects the staged browser Worker. Explicit
+file URLs select fault fixtures. CLI export flags and WASM initialization are
+separate runtime work; no SMLib code is added to the npm CLI package here.
+
+`node --test scripts/smlib-node-transport.test.mjs
+scripts/stage-cli-retained-engine.test.mjs` runs without an SDK or WASM build.
+Real kernel qualification runs only in the non-required `geometry-platform`
+`cli-retained` lane: `IFCLITE_RETAINED_ENGINE=/absolute/engine node --test
+scripts/cli-retained-engine/real-kernel.test.mjs`. With no engine directory it skips
+with an explicit message. This lane exercises the shared primitive/sweep
+contracts; whole-model native/CLI parity awaits the runtime and CLI work.
+
 ## Native subprocess protocol
 
 Native builds produce `ifclite_smlib_worker`, with one serial request stream per

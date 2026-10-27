@@ -136,11 +136,14 @@ enum Merging {
 }
 
 enum Placing {
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
+    Retained(Box<(Vec<super::retained::LogicalRetainedValue>, super::retained::RetainedSelection,
+        Option<super::retained::RetainedPresentation>)>),
     Cached(Arc<Mesh>),
     Walked(Vec<Mesh>),
 }
 
-struct Place {
+pub(super) struct Place {
     parts: Placing,
     item_id: u32,
     source_id: u32,
@@ -182,6 +185,7 @@ enum Action<'a> {
 
 /// A completed walk's output.
 pub(super) enum MappingOutput {
+    Retained(Vec<super::retained::LogicalRetainedValue>),
     Parts(Vec<Mesh>),
     Styled(SubMeshCollection),
     Type(TypeParts),
@@ -194,6 +198,10 @@ pub(super) enum Merged {
 }
 
 pub(super) enum MappingReply {
+    RetainedTypeFinished(Result<Vec<super::retained::LogicalRetainedValue>>),
+    RetainedCached(Place),
+    RetainedFinished(Result<Vec<super::retained::LogicalRetainedValue>>),
+    RetainedPlaced { item_id: u32, value: Result<Vec<super::retained::LogicalRetainedValue>> },
     Entered { item_id: u32, value: Result<(u32, MappedOccurrence)> },
     SharedItems(Vec<DecodedEntity>),
     Child(ItemStep),
@@ -214,6 +222,10 @@ pub(super) enum MappingReply {
 impl MappingReply {
     pub(super) fn tag(&self) -> u8 {
         match self {
+            Self::RetainedTypeFinished(_) => 18,
+            Self::RetainedCached(_) => 15,
+            Self::RetainedFinished(_) => 16,
+            Self::RetainedPlaced { .. } => 17,
             Self::Entered { .. } => 0,
             Self::SharedItems(_) => 1,
             Self::Child(_) => 2,
@@ -243,10 +255,11 @@ enum Event {
 }
 
 pub(super) struct MappingControl<'a> {
+    retained: super::retained::RetainedSlot<retained_impl::State>,
     walk: Walk,
     textures: Textures<'a>,
     /// The type map's `IfcRepresentationMap`.
-    rep_map: Option<&'a DecodedEntity>,
+    rep_map: Option<Reached<'a>>,
     /// Styled only: whether the top-level occurrence may don't-bake.
     allow_instancing: bool,
     /// The styled walk's sub-meshes, and the type map's textured parts.
@@ -257,47 +270,6 @@ pub(super) struct MappingControl<'a> {
 }
 
 impl<'a> MappingControl<'a> {
-    fn new(walk: Walk, action: Action<'a>) -> Self {
-        Self {
-            walk,
-            textures: None,
-            rep_map: None,
-            allow_instancing: false,
-            meshes: SubMeshCollection::new(),
-            textured: Vec::new(),
-            levels: Vec::new(),
-            action,
-        }
-    }
-
-    pub(super) fn occurrence(item: Reached<'a>) -> Self {
-        Self::new(Walk::Occurrence, Action::Enter(item))
-    }
-
-    #[cfg(test)]
-    pub(super) fn shared_source(representation: &'a DecodedEntity, source_id: u32) -> Self {
-        Self::new(Walk::Shared, Action::SharedItems(Reached::Root(representation), source_id, None))
-    }
-
-    /// One styled representation item, appending to `meshes`. A plain item
-    /// is meshed under its own id; a mapped item walks its source.
-    pub(super) fn styled(root: Reached<'a>, meshes: SubMeshCollection, allow_instancing: bool,
-        textures: Textures<'a>, offset: (f64, f64, f64)) -> Self {
-        let item = root.item();
-        let action = if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
-            Action::EnterStyled(root)
-        } else if textures.is_some_and(|index| index.contains_key(&item.id)) {
-            Action::Texture(root)
-        } else {
-            Action::Child(root, ChildControl::Cache(CacheControl::new(offset)))
-        };
-        Self { textures, allow_instancing, meshes, ..Self::new(Walk::Styled, action) }
-    }
-
-    pub(super) fn type_map(rep_map: &'a DecodedEntity, textures: &'a FxHashMap<u32, ResolvedTextureMap>) -> Self {
-        Self { textures: Some(textures), rep_map: Some(rep_map), ..Self::new(Walk::TypeMap, Action::EnterTypeMap) }
-    }
-
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
         Ok(match &self.action {
             Action::Enter(_) | Action::EnterStyled(_) | Action::EnterTypeMap | Action::SharedItems(..)
@@ -339,6 +311,9 @@ impl<'a> MappingControl<'a> {
         Ok(match std::mem::replace(&mut self.action, Action::Taken) {
             Action::Enter(entering) => {
                 let item = entering.item();
+                if self.retained.is_some() {
+                    return Ok(self.admit_retained_mapping(item, router, decoder));
+                }
                 let value = router.admit_mapped_occurrence(item, decoder);
                 MappingReply::Entered { item_id: item.id, value }
             }
@@ -351,14 +326,20 @@ impl<'a> MappingControl<'a> {
                 MappingReply::StyledEntered { item_id: item.id, value }
             }
             Action::EnterTypeMap => {
-                let rep_map = self.rep_map.ok_or(ProgramError::StaleRequest)?;
-                MappingReply::TypeMapEntered(router.admit_type_map(rep_map, decoder))
+                let rep_map = self.rep_map.as_ref().map(Reached::item).ok_or(ProgramError::StaleRequest)?;
+                let value = if let Some(state) = &self.retained {
+                    Self::validate_retained_map(rep_map, decoder, &state.selection)
+                        .and_then(|()| router.admit_type_map(rep_map, decoder))
+                } else { router.admit_type_map(rep_map, decoder) };
+                MappingReply::TypeMapEntered(value)
             }
             Action::Origin => {
-                let rep_map = self.rep_map.ok_or(ProgramError::StaleRequest)?;
+                if self.retained.is_some() { return Ok(self.retained_type_origin(router, decoder)); }
+                let rep_map = self.rep_map.as_ref().map(Reached::item).ok_or(ProgramError::StaleRequest)?;
                 MappingReply::Origin(router.type_map_origin(rep_map, decoder))
             }
             Action::TypeFinish(origin) => {
+                if self.retained.is_some() { return self.finish_retained_type_map(origin); }
                 let level = self.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
                 let parts = std::mem::take(&mut level.parts);
                 let textured = std::mem::take(&mut self.textured);
@@ -390,3 +371,10 @@ impl<'a> MappingControl<'a> {
 mod accept;
 #[path = "mapping_reduce.rs"]
 mod reduce;
+
+#[path = "mapping_entries.rs"]
+mod entries;
+#[path = "mapping_retained.rs"]
+mod retained_impl;
+#[path = "mapping_affine.rs"]
+mod affine;

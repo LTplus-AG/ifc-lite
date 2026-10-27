@@ -12,22 +12,27 @@ mod source_tests;
 pub use source::{with_source_capture, AnalyticBoundarySource, SourceRecord, SourceValue};
 mod owned_directrix;
 pub use owned_directrix::{OwnedDirectrix, OwnedRationalCurve};
-#[cfg(test)]
-mod owned_directrix_tests;
 mod frame;
 mod helpers;
+#[cfg(test)]
+mod owned_directrix_tests;
 mod profile;
 mod profile_topology;
 mod topology_interval;
-pub use profile::{extract_analytic_profile, AnalyticProfile, AnalyticProfileLoop, ProfileLoopKind};
+mod walk_error;
+pub use profile::{
+    extract_analytic_profile, AnalyticProfile, AnalyticProfileLoop, ProfileLoopKind,
+};
 mod extrusion;
+#[cfg(feature = "retained-runtime")]
+pub(crate) use extrusion::try_extract_analytic_extrusion;
 pub use extrusion::{extract_analytic_extrusion, AnalyticExtrusion};
 #[cfg(test)]
 mod tests;
 
 use crate::Result;
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
 pub use frame::{AnalyticPoint, AnalyticSegmentFrame};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 /// An ordered directrix primitive. Angles are radians in the circle's local frame.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

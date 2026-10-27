@@ -51,7 +51,7 @@ fn symbolic_data() {
                 None => continue,
             }
         };
-        let json = serde_json::to_vec(&extract_symbolic_data(&bytes)).expect("SymbolicData serialises");
+        let json = serde_json::to_vec(&extract_symbolic_data(&bytes).expect("symbolic extraction must complete")).expect("SymbolicData serialises");
         g.record(*key, &json);
     }
     g.finish(&FIXTURES.iter().map(|(k, _)| k.to_string()).collect::<Vec<_>>());

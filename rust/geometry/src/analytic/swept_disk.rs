@@ -4,8 +4,10 @@
 
 //! `IfcSweptDiskSolid` directrix interpretation, and opt-in authored source.
 
-use super::{curve, helpers, owned_directrix, AnalyticBoundarySource, AnalyticCurveSegment,
-    AnalyticStatus, AnalyticSweptDisk, OwnedDirectrix};
+use super::{
+    curve, helpers, owned_directrix, AnalyticBoundarySource, AnalyticCurveSegment, AnalyticStatus,
+    AnalyticSweptDisk, OwnedDirectrix,
+};
 use crate::{Error, Result};
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use slot::IfcSweptDiskSolid as Disk;
@@ -38,21 +40,23 @@ pub fn extract_swept_disk(
             Error::geometry("IfcSweptDiskSolid Directrix cannot be resolved".to_string())
         })?;
     let capture = super::source::requested();
-    let mut walk =
-        if capture { curve::CurveWalk::with_source() } else { curve::CurveWalk::default() };
+    let mut walk = if capture {
+        curve::CurveWalk::with_source()
+    } else {
+        curve::CurveWalk::default()
+    };
     if capture {
-        walk.source.record(entity, decoder);
+        walk.source.record(entity, decoder)?;
     }
     let start = read_optional_numeric(entity.get(Disk::START_PARAM.index()), "StartParam")?;
     let end = read_optional_numeric(entity.get(Disk::END_PARAM.index()), "EndParam")?;
-    let (effective_start, effective_end) = crate::swept_disk_range::effective_range(
-        directrix.ifc_type.clone(), start, end, decoder,
-    );
+    let (effective_start, effective_end) =
+        crate::swept_disk_range::effective_range(directrix.ifc_type.clone(), start, end, decoder);
     let has_trim = effective_start.is_some() || effective_end.is_some();
     let extracted = if directrix.ifc_type == IfcType::IfcLine && (start.is_none() || end.is_none())
     {
         if capture {
-            walk.source.record(&directrix, decoder);
+            walk.source.record(&directrix, decoder)?;
         }
         None // An unbounded IfcLine has no authored finite swept extent.
     } else if has_trim && directrix.ifc_type.is_subtype_of(IfcType::IfcCompositeCurve) {
@@ -76,7 +80,14 @@ pub fn extract_swept_disk(
         ));
     }
     if matches!(status, AnalyticStatus::Complete) && has_trim {
-        trim_segments(&directrix, &mut segments, &mut status, effective_start, effective_end, decoder)?;
+        trim_segments(
+            &directrix,
+            &mut segments,
+            &mut status,
+            effective_start,
+            effective_end,
+            decoder,
+        )?;
     }
     if matches!(status, AnalyticStatus::Complete)
         && segments.iter().any(|segment| !segment.is_finite())
@@ -92,10 +103,13 @@ pub fn extract_swept_disk(
         segments.clear();
     }
     let (source, owned_directrix) = if capture {
-        let source = walk.source.finish(entity.id, decoder.plane_angle_to_radians());
-        let owned = rational_directrix(&source, &directrix, start, end)
-            .or_else(|| matches!(status, AnalyticStatus::Complete)
-                .then(|| OwnedDirectrix::Segments(segments.clone())));
+        let source = walk
+            .source
+            .finish(entity.id, decoder.plane_angle_to_radians());
+        let owned = rational_directrix(&source, &directrix, start, end).or_else(|| {
+            matches!(status, AnalyticStatus::Complete)
+                .then(|| OwnedDirectrix::Segments(segments.clone()))
+        });
         (Some(source), owned)
     } else {
         (None, None)
@@ -128,8 +142,7 @@ fn trim_segments(
         }
         IfcType::IfcCompositeCurve | IfcType::IfcCompositeCurveOnSurface => {}
         IfcType::IfcTrimmedCurve => {
-            if !trimmed_line_solid_bounds_redundant(directrix, segments, start, end, decoder)?
-            {
+            if !trimmed_line_solid_bounds_redundant(directrix, segments, start, end, decoder)? {
                 *status = AnalyticStatus::Unsupported(
                     "solid-level trim on trimmed directrix is not redundant".to_string(),
                 );

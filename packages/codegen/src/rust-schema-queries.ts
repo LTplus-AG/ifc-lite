@@ -135,5 +135,12 @@ ${typeUniverse.map((e) => canonicalNames.has(e.name)
 ${visibility} static ALL: &[IfcType] = &[
 ${schema.entities.map((e) => `    IfcType::${e.name},`).join('\n')}\n];
 
+/// The types only a supplemental schema declares. With \`ALL\` they are every
+/// name \`IfcType::from_canonical_name\` resolves, which the registry tests
+/// sweep exhaustively (#7914).
+#[cfg(test)]
+pub(crate) static SUPPLEMENTAL: &[IfcType] = &[
+${typeUniverse.filter((e) => !canonicalNames.has(e.name)).map((e) => `    IfcType::${e.name},\n`).join('')}];
+
 `;
 }

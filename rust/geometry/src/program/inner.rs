@@ -67,6 +67,7 @@ pub(crate) enum ProgramStage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProgramError {
+    UnsupportedRetained,
     WrongPayload,
     WrongOwner,
     Outstanding,
@@ -177,6 +178,10 @@ impl<'a> GeometryProgram<'a> {
         // Owners are validated before the recipe is taken: a refused call
         // leaves the request executable by its actual router and decoder.
         self.validate_owner(router, Some(decoder))?;
+        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
+            return Err(ProgramError::UnsupportedRetained);
+        }
+        if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
         self.expected_router = Some(router.execution_identity());
         self.expected_decoder = Some(decoder.execution_identity());
         let decoder_before = decoder.execution_identity();
@@ -380,6 +385,9 @@ fn next_program_id() -> u64 {
         // Thread teardown: fall back to one identity from a fresh shared block.
         .unwrap_or_else(|_| NEXT_BLOCK.fetch_add(BLOCK, Ordering::Relaxed))
 }
+
+#[path = "retained/program.rs"]
+pub(super) mod retained_program;
 
 #[path = "inner_entries.rs"]
 mod entries;

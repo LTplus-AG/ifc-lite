@@ -199,14 +199,18 @@ pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh, opening: bool) ->
 
 /// `host − (∪ cutters)` as a `Mesh` — the batched void-group subtract.
 ///
-/// The cutters MUST be pairwise disjoint (the router groups by snap-band-
-/// inflated AABBs) and each per-component watertight. Every component is
-/// promoted onto the host faces and oriented outward INDIVIDUALLY — the global
-/// signed-volume orientation of [`subtract`] cannot fix mixed per-component
-/// winding of a multi-component operand (the #2176 lesson) — then the whole
-/// group is subtracted in ONE arrangement (`difference_all_volume_safe`), so
-/// there is no per-cutter f64→f32→snap round-trip to re-jitter and re-crack the
-/// previous cut's seams. Component order is the caller's (deterministic).
+/// The cutters are pairwise disjoint or abut within one snap-grid cell (the
+/// router groups by snap-band-inflated AABBs; the coaxial footprint union
+/// emits prisms that abut within f32 noise), and each is per-component
+/// watertight. Every component is promoted onto the host faces and oriented
+/// outward INDIVIDUALLY — the global signed-volume orientation of [`subtract`]
+/// cannot fix mixed per-component winding of a multi-component operand (the
+/// #2176 lesson). Components that abut are then merged into one closed solid,
+/// because this arrangement never intersects cutter with cutter; [`super::abutting`]
+/// owns that rule and its limits. Then the whole group is subtracted in ONE
+/// arrangement (`difference_all_volume_safe`), so there is no per-cutter
+/// f64→f32→snap round-trip to re-jitter and re-crack the previous cut's seams.
+/// Component order is the caller's (deterministic).
 /// See [`BatchSubtract`] for the three outcomes.
 ///
 /// Owns its #1109 budget like [`subtract`]: a trip is `Nonconforming`, the
@@ -242,6 +246,9 @@ pub(crate) fn subtract_many_with_conformity(
         if super::budget::tripped() { return (BatchSubtract::Nonconforming, false, None); }
         comp_tris.push(orient_outward(c));
     }
+    // Budget-neutral by construction (`abutting` snapshots around its union),
+    // so no trip check is needed here: the loop above already made one.
+    let comp_tris = super::abutting::merge_abutting_components(comp_tris);
     let refs: Vec<&[Tri]> = comp_tris.iter().map(|c| c.as_slice()).collect();
     // Conforming batch: the fast, exact, byte-identical common path.
     if let Some((r, changed)) = difference_all(&h, &refs) {

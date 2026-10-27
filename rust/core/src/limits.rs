@@ -71,6 +71,12 @@ pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 ///
 /// This bounds one path's LENGTH only. A walk over a chain that can revisit
 /// also needs a cycle guard; see the module docs above.
+///
+/// Consumers migrated in the F3b lane (D27) walk `PlacementRelTo` through
+/// `ifc_lite_geometry::placement`, iteratively with a visited set, without this
+/// depth bound. The recursive symbolic placement walk in
+/// `rust/processing/src/symbolic/transform.rs` remains deferred to P2.
+/// The constant is kept for the L-export retirement.
 pub const MAX_PLACEMENT_DEPTH: usize = 100;
 
 /// Maximum `ParentContext` chain (`IfcGeometricRepresentationSubContext` ->

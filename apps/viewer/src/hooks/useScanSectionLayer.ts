@@ -155,7 +155,7 @@ function toScanSectionPlane(
   coordinateInfo: UseScanSectionLayerParams['coordinateInfo'],
 ): ScanSectionPlane {
   const axis = SCAN_SECTION_AXIS_MAP[sectionPlane.axis];
-  // The store's `position` is a 0-100 PERCENTAGE of model bounds, not
+  // The store's `position` is a PERCENTAGE of model bounds, not
   // metres — resolve it exactly the way `useDrawingGeneration` places the
   // cut, or the band sits on a different plane than the drawn geometry.
   const position = resolveScanSectionPosition(sectionPlane.position, axis, coordinateInfo);

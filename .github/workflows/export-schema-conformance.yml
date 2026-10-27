@@ -93,6 +93,8 @@ on:
       - "apps/viewer/src/lib/terrain-imagery/**"
       - "tools/ifcopenshell_reference/validate_export.py"
       - "tools/ifcopenshell_reference/test_validate_export.py"
+      - "tools/ifcopenshell_reference/probe_section_export.py"
+      - "tools/ifcopenshell_reference/test_probe_section_export.py"
       - "tools/ifcopenshell_reference/requirements.lock"
       - "tests/models/manifest.json"
       - ".github/workflows/export-schema-conformance.yml"
@@ -130,7 +132,7 @@ jobs:
 
       - name: validate_export.py self-test (vacuity refusals + fault injection)
         working-directory: tools/ifcopenshell_reference
-        run: python -m unittest test_validate_export -v
+        run: python -m unittest test_validate_export test_probe_section_export -v
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts

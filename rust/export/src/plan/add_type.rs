@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use ifc_lite_core::entity_info_for_schema;
 
 use crate::step_ids::IdAllocator;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use crate::plan::add_props::build_sets;
 use crate::plan::add_rels::{RelKind, RelRequest};
@@ -89,8 +89,9 @@ pub(super) fn build_new_type(
     let type_gid = format!("'{}'", t.global_id_for(owner).encode());
     let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", ref_or_unset(owner_history))];
     if let Some(name) = &t.name {
-        fields.push(("Name", format!("'{}'", escape(name))));
+        fields.push(("Name", quoted(name)));
     }
+    fields.extend(t.string_attributes().map(|(attr, value)| (attr, quoted(value))));
     if !type_sets.is_empty() {
         fields.push(("HasPropertySets", ref_list(&type_sets)));
     }

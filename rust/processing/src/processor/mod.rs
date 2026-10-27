@@ -24,7 +24,7 @@ mod csg_summary_tests;
 mod diagnostics;
 mod entity_index;
 use entity_index::{IndexBuilder, ProcessingIndex};
-mod entry_points;
+pub(crate) mod entry_points;
 #[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use entry_points::{
     process_geometry, process_geometry_filtered, process_geometry_filtered_with_quality,

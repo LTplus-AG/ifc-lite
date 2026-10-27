@@ -174,7 +174,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // lists.
     findings.extend(super::orphans::unplaced_by_removed_structure(index, schema, &removed, &reasons));
     // The Adds name the history the patches settled on, or take one.
-    let adding = AddState::new(index, schema, &removed, &mut history, body_context.chosen());
+    let adding = AddState::new(index, schema, &removed, &reshaped, &mut history, body_context.chosen());
     let added = adding.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals, &mut findings);
 
     // Every rewrite has settled: what the plan modified is read off them.

@@ -1,0 +1,8 @@
+diff --git a/rust/processing/src/element/session_retained/refusal.rs b/rust/processing/src/element/session_retained/refusal.rs
+--- a/rust/processing/src/element/session_retained/refusal.rs
++++ b/rust/processing/src/element/session_retained/refusal.rs
+@@ -63,3 +63,3 @@
+                 Unsupported::RetainedOpeningStrategy => Refusal::OpeningStrategy,
+-                Unsupported::RetainedMaterialLayerStrategy => Refusal::OpeningStrategy,
++                Unsupported::RetainedMaterialLayerStrategy => Refusal::MaterialLayerStrategy,
+                 Unsupported::ConstructionRecipe | Unsupported::RetainedStrategy => {

@@ -56,6 +56,8 @@ struct ModelState {
 #[derive(Clone)]
 pub struct ProductionModel {
     state: Arc<ModelState>,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    source: Option<Arc<ifc_lite_core::SourceBundle>>,
 }
 
 impl Default for ProductionModel {
@@ -71,6 +73,8 @@ impl ProductionModel {
         // 64-bit counters: wrapping would need 2^64 loads in one process.
         static NEXT_LOAD: AtomicU64 = AtomicU64::new(1);
         Self {
+            #[cfg(any(test, feature = "retained-runtime"))]
+            source: None,
             state: Arc::new(ModelState {
                 load: NEXT_LOAD.fetch_add(1, Ordering::Relaxed),
                 source_epoch: AtomicU64::new(0),
@@ -91,6 +95,8 @@ impl ProductionModel {
             id,
             data,
             state: Arc::clone(&self.state),
+            #[cfg(any(test, feature = "retained-runtime"))]
+            source: self.source.clone(),
         })
     }
 
@@ -113,6 +119,8 @@ pub struct OwnedMeshProductionContext {
     id: ProductionContextId,
     data: OwnedMeshProductionData,
     state: Arc<ModelState>,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    source: Option<Arc<ifc_lite_core::SourceBundle>>,
 }
 
 impl OwnedMeshProductionContext {
@@ -171,3 +179,9 @@ impl fmt::Display for ProductionContextError {
 }
 
 impl std::error::Error for ProductionContextError {}
+
+// Refs #7955: private source-bound consumer.
+#[cfg(any(test, feature = "retained-runtime"))]
+#[cfg_attr(not(test), allow(dead_code))]
+#[path = "model_context_retained.rs"]
+pub(super) mod retained;

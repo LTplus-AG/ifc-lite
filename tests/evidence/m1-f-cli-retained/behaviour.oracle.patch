@@ -1,0 +1,12 @@
+diff --git a/packages/cli/src/commands/export-retained.ts b/packages/cli/src/commands/export-retained.ts
+--- a/packages/cli/src/commands/export-retained.ts
++++ b/packages/cli/src/commands/export-retained.ts
+@@ -33,7 +33,7 @@
+  * are fatal and never leave a misleading OBJ or successful-looking report. */
+ export function retainedArtifacts(engine: RetainedEngine, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
+   const published = outcomes.filter(p => p.status === 'published');
+-  // Zero publication was previously accepted as a header-only export.
++  if (!published.length) throw new Error('Retained export published 0 products; nothing written');
+   const obj = retainedObj(published);
+   const report = retainedReport(engine, outcomes, globalId, ids);
+   return { obj, report, json: reportJson(report) };

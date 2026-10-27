@@ -1,0 +1,12 @@
+diff --git a/rust/geometry/src/program/retained/completion.rs b/rust/geometry/src/program/retained/completion.rs
+--- a/rust/geometry/src/program/retained/completion.rs
++++ b/rust/geometry/src/program/retained/completion.rs
+@@ -17,7 +17,7 @@
+                     values,
+                     // Construction/placement discharge none of these obligations.
+                     remaining: vec![RetainedRequirement::OpeningClosure,
+-                        RetainedRequirement::ProductPlacement, RetainedRequirement::IfcAppearance,
++                        RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
+                         RetainedRequirement::PersistentFaces],
+                 })
+             }

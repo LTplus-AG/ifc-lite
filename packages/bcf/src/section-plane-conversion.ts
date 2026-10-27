@@ -17,7 +17,8 @@ import { bcfToViewerCoords, viewerToBcfCoords, type Point3D, type ViewerBounds, 
 /**
  * Convert viewer section plane to BCF clipping plane
  *
- * ifc-lite uses percentage position (0-100) along an axis.
+ * ifc-lite uses a percentage position along an axis (0-100 spans the bounds;
+ * values outside it are cuts beyond them).
  * BCF uses absolute location and direction in world coordinates (Z-up).
  */
 export function sectionPlaneToClippingPlane(
@@ -73,7 +74,8 @@ export function sectionPlaneToClippingPlane(
 /**
  * Convert BCF clipping plane to viewer section plane
  *
- * Determines the closest axis and calculates percentage position.
+ * Determines the closest axis and calculates percentage position, unclamped:
+ * a location beyond the bounds yields a position below 0 or above 100.
  * Converts from BCF coordinates (Z-up) to viewer coordinates (Y-up).
  */
 export function clippingPlaneToSectionPlane(
@@ -113,8 +115,11 @@ export function clippingPlaneToSectionPlane(
     flipped = viewerDirection.x > 0;
   }
 
-  // Clamp position to valid range
-  position = Math.max(0, Math.min(100, position));
+  // Not clamped: a location outside the bounds is a legal BCF cut and comes
+  // back as a percentage below 0 or above 100, so the cut stays where the
+  // viewpoint put it. A non-finite result (a non-finite location) falls back
+  // to the midpoint, as a zero-extent axis does.
+  if (!Number.isFinite(position)) position = 50;
 
   return {
     axis,

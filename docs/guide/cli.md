@@ -1787,3 +1787,26 @@ historical with incomplete native coverage. Export the graph with those params
 and run it through the existing `ifc-lite flow run` command.
 
 Unsupported native Review mode is refused before graph effects on CLI/viewer hosts. Supplied historical parameters and Player overrides remain supported; MCP additionally supports captured native Review. Validated restored nodes are not executed or required to reacquire their former services.
+
+### Experimental retained OBJ export
+
+The default `export --format obj` and explicit `--kernel exact` use the same exact engine.
+Retained export requires Node 20.6 or later and an independently built engine directory
+prepared with `scripts/stage-cli-retained-engine.mjs`; the npm CLI includes no SMLib code.
+
+```bash
+ifc-lite export model.ifc --format obj --kernel retained --retained-engine /path/to/engine --retained-report coverage.json --out model.obj
+```
+
+`IFCLITE_RETAINED_ENGINE` supplies the engine directory when the flag is omitted.
+The CLI checks every staged asset against `engine-manifest.json` before loading it.
+Use only an engine you trust: these hashes detect changed assets, not build provenance.
+Existing `--type`, `--where`, `--storey`, and `--limit` filters apply.
+Retained publishes complete products only, with no exact fallback. OBJ headers carry
+`PresentationObligationsUnmet`: output is shape-only and does not meet the display contract.
+The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
+(as a fraction), refusal counts, and products sorted by id with GlobalId values,
+refusal code/origin or part metrics and unmet obligations. Volumes use unrounded f64
+world coordinates, before OBJ's six decimal places. No timings are emitted.
+The command succeeds if at least one product was published. Invalid arguments,
+missing/invalid engines, and zero publication fail without writing OBJ or report files.

@@ -200,7 +200,7 @@ fn assert_axis(actual: f32, want: f32, axis: &str, which: &str) {
 /// render-Z direction while the meshes sit near the origin.
 #[test]
 fn plan_coordinates_land_in_the_mesh_render_frame() {
-    let data = extract_symbolic_data(&fixture());
+    let data = extract_symbolic_data(&fixture()).expect("symbolic extraction must complete");
     let mut checked = 0;
     for (label, id) in [("LOW", LOW_ID), ("MID", MID_ID), ("HIGH", HIGH_ID)] {
         // The plain `IfcPolyline` is item 0 of each representation, so it is
@@ -226,7 +226,7 @@ fn plan_coordinates_land_in_the_mesh_render_frame() {
 /// elevation — from every producer — must be re-based by the same amount.
 #[test]
 fn every_primitive_kinds_elevation_lands_in_the_mesh_render_frame() {
-    let data = extract_symbolic_data(&fixture());
+    let data = extract_symbolic_data(&fixture()).expect("symbolic extraction must complete");
 
     let mut seen: Vec<&str> = Vec::new();
     let check = |kind: &'static str, express_id: u32, world_y: f32, seen: &mut Vec<&str>| {
@@ -274,7 +274,7 @@ fn every_primitive_kinds_elevation_lands_in_the_mesh_render_frame() {
 /// radius is not something the straight two-point polyline can imitate.
 #[test]
 fn the_trimmed_curve_emits_its_arc_in_the_render_frame() {
-    let data = extract_symbolic_data(&fixture());
+    let data = extract_symbolic_data(&fixture()).expect("symbolic extraction must complete");
     let want = expected(placement_of(LOW_ID).unwrap());
 
     // Radius 2000 mm about the annotation's own origin, swept 0 → 1.5 rad.

@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 pub struct Report {
     pub candidates: usize,
     pub published: usize,
+    pub type_candidates: usize,
+    pub type_published: usize,
     pub histogram: BTreeMap<String, usize>,
     pub violations: Vec<String>,
     pub exact_defects: Vec<Value>,
@@ -45,10 +47,13 @@ impl Report {
         self.published += 1;
         self.cuts += shape.cuts;
         self.cut_times_ms.extend_from_slice(&shape.cut_times_ms);
+        let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
+        self.type_published += usize::from(type_product);
         let curved = shape.parts.iter().any(|p| p.curved);
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             &format!("{model}:{}", shape.product_id),
             curved || opening.is_some(),
+            type_product,
             actual,
             rounded,
             exact,
@@ -99,6 +104,7 @@ impl Report {
         &mut self,
         label: &str,
         curved: bool,
+        type_product: bool,
         actual: &Metrics,
         rounded: Option<&Metrics>,
         exact: Option<&Metrics>,
@@ -170,7 +176,7 @@ impl Report {
         if let Some(value) = source_rel {
             let key = if curved { "curved" } else { "linear" };
             if value
-                > tolerances["sourceVolumeRelative"][key]
+                > tolerances[if type_product { "typeProductSourceVolumeRelative" } else { "sourceVolumeRelative" }][key]
                     .as_f64()
                     .unwrap_or(0.)
             {
@@ -180,11 +186,11 @@ impl Report {
         }
         if let Some((_, Some(bounds))) = source {
             let extent = (0..3).map(|i| bounds[i + 3] - bounds[i]).fold(0., f64::max);
-            let limit = tolerances["sourceWorldBboxMetres"]["absolute"]
+            let limit = tolerances[if type_product { "typeProductSourceWorldBboxMetres" } else { "sourceWorldBboxMetres" }]["absolute"]
                 .as_f64()
                 .unwrap_or(0.)
                 + extent
-                    * tolerances["sourceWorldBboxMetres"]["extentFactor"]
+                    * tolerances[if type_product { "typeProductSourceWorldBboxMetres" } else { "sourceWorldBboxMetres" }]["extentFactor"]
                         .as_f64()
                         .unwrap_or(0.);
             let deviation = bbox_deviation(&actual.bbox, &bounds);
@@ -213,7 +219,7 @@ impl Report {
                 "sourceVolumeRelativeLimit": source_limit, "exactVolumeRelativeLimit": exact_limit,
             }));
         }
-        if !curved && !exact_defect {
+        if !curved && !type_product && !exact_defect {
             for (value, key) in [
                 (vol, "volumeRelative"),
                 (area, "areaRelative"),
@@ -230,6 +236,7 @@ impl Report {
     }
     pub fn summary(&self) -> Value {
         json!({"schema":"ifc-lite.native-retained-comparison/1", "candidates":self.candidates,
+            "typeProducts":{"candidates":self.type_candidates,"published":self.type_published},
             "published":self.published, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},

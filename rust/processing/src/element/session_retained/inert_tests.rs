@@ -361,14 +361,17 @@ fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
     );
 }
 
-// #7955 / #8183: type-map geometry has no product placement authority.
+// #7955 / #8183: instanced type maps cannot borrow orphan placement authority.
 #[test]
-fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
+fn instanced_type_map_refuses_before_invocation_without_restarting_worker() {
     let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(SOURCE, &mut decoder);
     let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
-    let job = super::super::session_tests::type_job(&mut decoder, &[61, 71]);
+    let entity = decoder.decode_by_id(60).unwrap();
+    let metadata = metadata(60);
+    let mut job = job(&entity, &metadata);
+    job.kind = ElementJobKind::TypeProduct { rep_maps: vec![(61, 2), (71, 2)] };
     let peer = InertPeer::new(false);
     let domain = peer.domain();
     let mut worker = Some(peer);
@@ -379,7 +382,7 @@ fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
     };
     let mut future = Box::pin(async {
         let execution = RuntimeProductExecution::<InertReceipt>::begin(
-            job,
+            &job,
             &context,
             &options(),
             &[],
@@ -401,7 +404,7 @@ fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
         .as_mut()
         .poll(&mut Context::from_waker(Waker::noop()))
     else {
-        panic!("unplaced type geometry must refuse synchronously");
+        panic!("instanced type geometry must refuse synchronously");
     };
     assert_eq!(error.refusal().0.code(), "incomplete");
     drop(future);
@@ -410,6 +413,24 @@ fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
     assert_eq!(acquired.get(), 0, "no restart");
     assert!(peer.domain().same_domain(&domain));
     assert!(domain.incarnation().is_some());
+}
+
+// #7955 M9: prove admission reaches transport without fabricating a receipt.
+#[test]
+fn orphan_type_map_reaches_its_first_invocation() {
+    let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(SOURCE, &mut decoder);
+    let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
+    let job = super::super::session_tests::type_job(&mut decoder, &[61, 71]);
+    let mut peer = InertPeer::new(true);
+    let mut execution = RuntimeProductExecution::<InertReceipt>::begin(
+        job, &context, &options(), &[], &mut decoder, &router).unwrap();
+    let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
+    let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+    assert!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
+    drop(future);
+    assert_eq!(peer.invocations, 1);
 }
 
 #[test]

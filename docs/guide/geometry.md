@@ -915,8 +915,11 @@ The separate opt-in WASM `pkg-retained` bundle exposes
 `await api.retainedModel(bytes, ids?)`. Consume the completed run with `next()`
 (one outcome in canonical file order, `undefined` at end) and release it with
 `free()`. Results are buffered for the whole model, so memory includes all
-returned meshes. An empty ID filter selects no jobs; type products and jobs
-without representations are skipped.
+returned meshes. An empty ID filter selects no jobs. Orphan type products follow
+product occurrences, once per type, with all unreferenced maps processed atomically
+at their MappingOrigin. Instanced types, curve-only maps that exact does not mesh,
+and jobs without representations are skipped. Published orphan types leave
+MaterialLayers, IfcAppearance and PersistentFaces unmet.
 
 Published outcomes contain `expressId`, `ifcType`, and atomic `parts` with f64
 object-local metre positions, u32 indices, and column-major `worldFromObject`

@@ -12,3 +12,4 @@ mod sections_source;
 pub mod layers;
 pub mod clips;
 pub mod bounded;
+pub mod type_maps;

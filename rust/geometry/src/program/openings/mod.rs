@@ -16,7 +16,7 @@ pub(crate) mod requests;
 
 use crate::program::opening::{OpeningBounds, OpeningChild, OpeningProgram};
 use crate::router::voids::bool2d_path::Bool2dCut;
-use crate::router::voids::{OpeningType, ParamRectCut, VoidContext};
+use crate::router::voids::{CutterKind, ParamRectCut, VoidContext};
 use crate::{Error, GeometryRouter, Mesh, Result};
 #[cfg(test)]
 use classify::Classifier;
@@ -26,7 +26,7 @@ use requests::{OpeningReady, OpeningReply, OpeningSource};
 
 pub(crate) enum OpeningOutput {
     Context(VoidContext),
-    Classified(Vec<OpeningType>),
+    Classified(Vec<CutterKind>),
     Meshes(Vec<Mesh>),
     Bounds(OpeningBounds),
     Rectangle(Option<ParamRectCut>),
@@ -152,7 +152,7 @@ pub(crate) fn classify(
     recording: bool,
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
-) -> Result<Vec<OpeningType>> {
+) -> Result<Vec<CutterKind>> {
     match OpeningControl::classifier(host, ids, recording).drain(router, decoder)? {
         OpeningOutput::Classified(openings) => Ok(openings),
         _ => Err(protocol("classifier output")),

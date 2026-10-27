@@ -77,7 +77,7 @@ impl GeometryRouter {
     pub(super) fn coaxial_union_prepass(
         &self,
         mesh: &mut Mesh,
-        openings: &[&OpeningType],
+        openings: &[&CutterKind],
         consumed: &mut [bool],
         mutated: &mut bool,
         clipper: &ClippingProcessor,

@@ -4,6 +4,25 @@
 
 # Performance diagnosis kit
 
+## C2-5a void cutter vocabulary (#7781)
+
+The borrowed `Cutter` projections and shared admission helpers passed the local
+native instruction gate against the C2 walk-lane base on Haus, duplex and
+ISSUE_129. Mesh payload bits, serialized output, counts and aggregate geometry
+diagnostics were identical. This qualifies the reconciliation on those fixtures;
+it makes no elapsed-time or browser worker-pool claim. The source-pinned counts,
+identity witnesses and commands are retained in `c2-5a-rebuild-r1.json` with the
+coordinator's Rust sweep evidence.
+
+Preserve each caller's arithmetic when sharing guards: sequential admission and
+engulf stay in f32, while the wider paths subtract mesh extents in f32 before
+widening. Diagonal world bounds widen before adding the f64 origin; local bounds
+omit that origin. Keep the newer execution-owned consumed-host protocol. These
+distinctions, rather than a change of strategy or precision, let the vocabulary
+move without changing output. Frame-changing mesh rebuilds use a crate-private
+helper because `rebuilt_like` retains bounds under an unchanged-extent contract.
+
+
 ## Symbolic extraction label allocation (#7914, #7779)
 
 Local Callgrind diagnosis of the P2 symbolic extractor on louistrue-pc found

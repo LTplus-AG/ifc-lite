@@ -13,7 +13,7 @@ mod mesh_boundary {
     }
 }
 use ifc_lite_geometry::math::frame::zup_to_yup;
-use ifc_lite_processing::{element::retained_runtime::ShapePart, mesh_frame::MeshFrame};
+use ifc_lite_processing::{element::retained_runtime::ShapePart, MeshFrame};
 
 fn cube() -> ShapePart {
     // Unit cube with non-binary local offsets, rotated 90° about IFC Z.

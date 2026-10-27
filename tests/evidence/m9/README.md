@@ -17,6 +17,12 @@ Candidate filtering consults exact's existing processor dispatch. No traversal
 or representation-selection code changes merely to change a refusal code.
 Mixed body/curve types retain all planned maps and still refuse atomically.
 
+After adding both corpus models, the observed pre-feature baseline reports four
+exact-only type products, rather than the zero stated in section 2. The M9 run
+reduces that count to zero. Its measured delta is four type candidates, one
+publication (#6446 type #105), and three `operation_unsupported` refusals; every
+pre-existing coverage row is byte-identical.
+
 The analytic occurrence inventory excludes type-only leaves. The source oracle
 uses its canonical analytic extrusion extractor for missing definitions, retaining
 independent source quantities and existing placement resolvers.

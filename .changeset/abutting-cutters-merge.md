@@ -1,0 +1,5 @@
+---
+"@ifc-lite/wasm": patch
+---
+
+Cutters that abut on the kernel's snap lattice are cut as one solid (ISSUE_068 school wall #43810: 2.28 m2 of sheets inside an opening -> 0, the surface now matches the IfcOpenShell reference). The batched subtract arranges host against cutters only, and its classifier never asked whether a cutter face lies inside another cutter, so two openings that abut in the file and reach the kernel one lattice cell apart after independent f32 roundings left the cell of host between them standing as a sheet. Facing axis-aligned cutter planes on the same or on adjacent lattice planes are now welded onto one plane and the group is unioned in one N-ary arrangement before the subtract; a union that does not come back conforming, closed and volume-exact leaves the cutters as they were. The one-cell threshold is what the snap itself can create near the origin: past 128 caller units the f32 spacing already exceeds a lattice cell, so further out the prepass is inert rather than wrong, and a seam there is left as before. Wider gaps, corner contacts and batches without a facing pair are byte-identical to before.

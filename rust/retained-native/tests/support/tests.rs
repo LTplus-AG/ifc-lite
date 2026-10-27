@@ -39,7 +39,6 @@ fn common_retained_actual_construction_resumes_and_publishes_shape_only() {
     assert_eq!(
         product.obligations.0,
         vec![
-            Requirement::OpeningClosure,
             Requirement::MaterialLayers,
             Requirement::IfcAppearance,
             Requirement::PersistentFaces,

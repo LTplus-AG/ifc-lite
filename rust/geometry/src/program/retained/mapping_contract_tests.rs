@@ -111,8 +111,8 @@ fn exact_type_map_execution_refuses_without_consuming_numerical_ticket() {
     let mut program = RetainedProgram::type_map(decoder.decode_by_id(61).unwrap(), None, contract());
     let mut refused = 0;
     while let Some(ticket) = program.request().unwrap() {
-        if matches!(&program.inner.control, Control::Mapping(c) if c.retained_ready()) {
-            assert_eq!(program.inner.execute(ticket.0, &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
+        if matches!(&program.geometry_ref().control, Control::Mapping(c) if c.retained_ready()) {
+            assert_eq!(program.geometry_mut().execute(ticket.geometry_request(), &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
             refused += 1;
         }
         let (reply, _) = program.admit(ticket, &router, &mut decoder).unwrap();

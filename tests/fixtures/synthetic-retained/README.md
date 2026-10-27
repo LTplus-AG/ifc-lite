@@ -220,9 +220,16 @@ viewer/GPU behavior or persistent engine-provided face ancestry.
 ## M3 opening candidate — unreviewed, non-evidence
 
 `f-d-openings.ifc` is generated separately by `generate-openings.py` (`--check`
-verifies reproducibility). It contains M3 §7.1 cases (a)–(j), with source IDs
+verifies reproducibility). It contains M3 §7.1 cases (a)–(k), with source IDs
 listed in its comments. **It is unreviewed and excluded from the committed
 comparison universe, coverage TSV, oracle acceptance tests and qualification
 claims.** Adversarial schema review, independent geometry checks and a
 third-party parser round trip must all complete before its counts are blessed.
 Its expected future statuses are design intent, not observed current behavior.
+
+Round-3 fixture rulings for #7955: (h) uses `Axis` / `SweptSolid` and therefore
+cuts under the shared exact type-first representation selection; (j) has one
+material layer and no internal boundary. Both publish when their source checks
+pass. Case (k) adds a two-layer voided host to witness `material_layer_strategy`
+before opening execution. These changes do not qualify this fixture for the
+committed coverage universe.

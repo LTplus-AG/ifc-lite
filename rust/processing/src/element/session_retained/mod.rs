@@ -41,6 +41,8 @@ use predispatch::RuntimeRejectedExecution;
 mod entry;
 pub(super) mod admission;
 mod traversal;
+mod openings;
+use openings::OpeningPhase;
 mod source_admission;
 use source_admission::SourceAdmission;
 use batch::{
@@ -83,6 +85,8 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     program: Option<RetainedProgram<'a>>,
     outer: Option<WorkRequest>,
     traversal: RetainedTraversal,
+    openings: Option<OpeningPhase>,
+    opening_entities: &'a [DecodedEntity],
     type_values: Vec<RetainedProductPlan>,
     type_map_members: Vec<u32>,
     pending: Option<PendingRetainedTransaction<R>>,
@@ -91,6 +95,7 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     permits: Storage,
     scratch: Storage,
     plan: Option<RetainedProductPlan>,
+    cut_times_ms: Vec<f64>,
     failed: bool,
     runtime_domain: Option<R::Domain>,
 }

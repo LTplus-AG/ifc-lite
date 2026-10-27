@@ -1,6 +1,33 @@
 // SPDX-License-Identifier: MPL-2.0
 //! A Boolean output owns a new logical definition in the left input's frame.
 use super::*;
+/// Opening operands are already placed by their own products. Reuse the M1
+/// Boolean frame checks and retain the host's presentation and object frame.
+#[cfg(any(test, feature = "retained-runtime"))]
+pub(in crate::program) fn opening_difference(host: LogicalRetainedValue, cutter: LogicalRetainedValue,
+    failure: &failure::FailureHandle, opening: u32) -> crate::Result<RetainedPlanOperation> {
+    use value_error::ValueReason;
+    let check = || -> Result<(), ValueReason> {
+        if host.slot.program != cutter.slot.program || host.contract != cutter.contract {
+            return Err(ValueReason::OperationProgram);
+        }
+        if host.length_unit_scale != cutter.length_unit_scale { return Err(ValueReason::UnitDomain); }
+        if !host.product_placed || !cutter.product_placed { return Err(ValueReason::PlacementDomain); }
+        for value in [&host, &cutter] {
+            value.validate_identity()?;
+            proper_rigid(&value.world_from_evaluation())?;
+        }
+        Ok(())
+    };
+    check().map_err(|reason| reason.into_common(failure, failure::FailureSite::OpeningCut, Some(opening)))?;
+    let mut result = boolean_operation([host, cutter], crate::BoolOp::Difference)?;
+    if let RetainedOperationKind::Boolean { inputs, .. } = &result.kind {
+        crate::resource::reserve_headers(&mut result.value.presentation, inputs[0].presentation.len())?.retain();
+        result.value.presentation.extend_from_slice(&inputs[0].presentation);
+    }
+    result.value.product_placed = true;
+    Ok(result)
+}
 pub(in crate::program) fn boolean_operation(inputs: [LogicalRetainedValue; 2], operation: crate::BoolOp)
     -> crate::Result<RetainedPlanOperation> {
     if !matches!(operation, crate::BoolOp::Union | crate::BoolOp::Intersection | crate::BoolOp::Difference)
@@ -21,5 +48,5 @@ pub(in crate::program) fn boolean_operation(inputs: [LogicalRetainedValue; 2], o
         source_from_evaluation: identity, evaluation_from_source: identity, world_from_source: identity,
         placements: Vec::new(), presentation: Vec::new(), product_placed: false, outcome: outcome::new()?,
     };
-    Ok(RetainedPlanOperation { value, kind: RetainedOperationKind::Boolean { inputs: Box::new(inputs), operation } })
+    Ok(RetainedPlanOperation { #[cfg(any(test, feature = "retained-runtime"))] opening: None, value, kind: RetainedOperationKind::Boolean { inputs: Box::new(inputs), operation } })
 }

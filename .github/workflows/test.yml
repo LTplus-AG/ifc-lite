@@ -2921,6 +2921,7 @@ jobs:
           cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
           cargo test -p ifc-lite-processing --features retained-runtime --test m1_executor
+          cargo test -p ifc-lite-processing --features retained-runtime --test m3_executor
           cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
           cargo test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
           cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser

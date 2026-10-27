@@ -106,6 +106,7 @@
     },
     "test": {
       "dependsOn": ["build"],
+      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE"],
       "cache": false,
       "env": [
         "TEST_PATTERN",

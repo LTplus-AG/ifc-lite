@@ -16,7 +16,6 @@
 //! the first one the source wrote is reused (matching #4686's policy) and
 //! nothing new is written.
 
-use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
 
 use super::attrs::build_record;
@@ -57,10 +56,6 @@ pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanCont
         ),
     ));
     Some((records, owner_history_id))
-}
-
-pub(super) fn quoted(s: &str) -> String {
-    format!("'{}'", escape(s))
 }
 
 /// `IfcTimeStamp` seconds for the caller's stamp: Unix seconds as written, or

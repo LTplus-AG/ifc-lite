@@ -6,7 +6,7 @@
 
 use super::{MergedModel, MergedOptions};
 use crate::schema_detect::detect_schema;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 /// The schema a merge writes: the requested one, else the first model's own,
 /// else IFC4. One home for the emit loop and the drop plan.
@@ -29,12 +29,12 @@ pub(super) fn merged_header(opts: &MergedOptions, schema: &str) -> String {
     };
     let mut out = String::new();
     out.push_str("ISO-10303-21;\nHEADER;\n");
-    out.push_str(&format!("FILE_DESCRIPTION(('{}'),'2;1');\n", escape(&opts.description)));
+    out.push_str(&format!("FILE_DESCRIPTION(({}),'2;1');\n", quoted(&opts.description)));
     out.push_str(&format!(
-        "FILE_NAME('','',(''),(''),'{}','ifc-lite-export','');\n",
-        escape(&opts.application)
+        "FILE_NAME('','',(''),(''),{},'ifc-lite-export','');\n",
+        quoted(&opts.application)
     ));
-    out.push_str(&format!("FILE_SCHEMA(('{}'));\n", escape(declared)));
+    out.push_str(&format!("FILE_SCHEMA(({}));\n", quoted(declared)));
     out.push_str("ENDSEC;\nDATA;\n");
     out
 }

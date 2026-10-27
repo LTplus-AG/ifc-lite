@@ -9,7 +9,7 @@
 
 use super::chain::LinkKind;
 use super::chain_walk::{climb, Climb, Frame};
-use super::{PlacementError, PlacementResult};
+use super::{missing, unsupported, Axis2Placement, PlacementError, PlacementResult};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 /// What a consumer accepts in a chain. All `false` is the strictest
@@ -37,88 +37,130 @@ pub fn validate_chain(
     policy: &ChainPolicy,
 ) -> PlacementResult<()> {
     let mut climbed = Climb::new();
-    climb(&mut climbed, placement, decoder, false, false)?;
+    climb(&mut climbed, placement, decoder, false, false, None)?;
     if let Some((at, found)) = climbed.stopped_at {
-        return Err(PlacementError::Unsupported { at, found });
+        return Err(unsupported(decoder, at, found));
     }
-    for frame in &climbed.frames {
+    check_frames(&climbed.frames, decoder, policy)
+}
+
+pub(super) fn check_frames(
+    frames: &[Frame],
+    decoder: &mut EntityDecoder,
+    policy: &ChainPolicy,
+) -> PlacementResult<()> {
+    for frame in frames {
         let at = frame.entity.id;
         match frame.kind {
             LinkKind::Local => check_relative(frame, decoder, policy)?,
-            LinkKind::Linear if policy.linear => {}
-            LinkKind::Grid if policy.grid => {}
-            LinkKind::Linear => return Err(PlacementError::Policy { at, rule: "IfcLinearPlacement is not accepted" }),
-            LinkKind::Grid => return Err(PlacementError::Policy { at, rule: "IfcGridPlacement is not accepted" }),
+            LinkKind::Linear if policy.linear => {
+                super::linear::validate_source(&frame.entity, decoder)?
+            }
+            LinkKind::Grid if policy.grid => check_grid(frame, decoder)?,
+            LinkKind::Linear => {
+                return Err(PlacementError::Policy {
+                    at,
+                    rule: "IfcLinearPlacement is not accepted",
+                })
+            }
+            LinkKind::Grid => {
+                return Err(PlacementError::Policy {
+                    at,
+                    rule: "IfcGridPlacement is not accepted",
+                })
+            }
         }
     }
     Ok(())
 }
 
-fn check_relative(frame: &Frame, decoder: &mut EntityDecoder, policy: &ChainPolicy) -> PlacementResult<()> {
+// Admission is independent of the climb's optional owner lookup: a missing
+// or wrong-type location must never become a cached validation proof (#7779).
+fn check_grid(frame: &Frame, decoder: &mut EntityDecoder) -> PlacementResult<()> {
+    let location_slot = super::grid_frame::GridPlacementLayout::of(decoder)
+        .location
+        .ok_or_else(|| missing(decoder, frame.entity.id, "PlacementLocation"))?;
+    let location = decoder
+        .resolve_optional(&frame.entity, location_slot)?
+        .ok_or_else(|| missing(decoder, frame.entity.id, "PlacementLocation"))?;
+    if location.ifc_type != IfcType::IfcVirtualGridIntersection {
+        return Err(unsupported(decoder, location.id, location.ifc_type));
+    }
+    Ok(())
+}
+
+fn check_relative(
+    frame: &Frame,
+    decoder: &mut EntityDecoder,
+    policy: &ChainPolicy,
+) -> PlacementResult<()> {
     let at = frame.entity.id;
     let attr = frame
         .entity
         .get(1)
         .filter(|attr| !attr.is_null())
-        .ok_or(PlacementError::Missing { at, attr: "RelativePlacement" })?;
+        .ok_or_else(|| missing(decoder, at, "RelativePlacement"))?;
     let rel = decoder
         .resolve_ref(attr)?
-        .ok_or(PlacementError::Missing { at, attr: "RelativePlacement" })?;
+        .ok_or_else(|| missing(decoder, at, "RelativePlacement"))?;
     match rel.ifc_type {
-        IfcType::IfcAxis2Placement3D if policy.strict_spatial => check_spatial(&rel, decoder),
-        IfcType::IfcAxis2Placement3D => Ok(()),
-        IfcType::IfcAxis2Placement2D if policy.planar_relative => Ok(()),
-        IfcType::IfcAxis2Placement2D => {
-            Err(PlacementError::Policy { at: rel.id, rule: "IfcAxis2Placement2D is not accepted" })
+        IfcType::IfcAxis2Placement3D if policy.strict_spatial => {
+            validate_spatial_frame(&rel, decoder)
         }
-        found => Err(PlacementError::Unsupported { at: rel.id, found }),
+        // Readable under the leaf rule too, so a validator refuses exactly
+        // what `resolve_chain` would (malformed leaves are counted).
+        IfcType::IfcAxis2Placement3D => Axis2Placement::read_3d(&rel, decoder).map(drop),
+        IfcType::IfcAxis2Placement2D if policy.planar_relative => {
+            Axis2Placement::read_2d(&rel, decoder).map(drop)
+        }
+        IfcType::IfcAxis2Placement2D => Err(PlacementError::Policy {
+            at: rel.id,
+            rule: "IfcAxis2Placement2D is not accepted",
+        }),
+        found => Err(unsupported(decoder, rel.id, found)),
     }
 }
 
-/// The ratios of `IfcDirection`/coordinates of `IfcCartesianPoint` in slot
-/// `slot` of `placement`, `None` for `$`, refused unless exactly 3 numbers.
-fn exact3(placement: &DecodedEntity, slot: usize, decoder: &mut EntityDecoder) -> PlacementResult<Option<[f64; 3]>> {
-    let Some(attr) = placement.get(slot).filter(|attr| !attr.is_null()) else {
-        return Ok(None);
-    };
-    let Some(record) = decoder.resolve_ref(attr)? else {
-        return Ok(None);
-    };
-    let at = placement.id;
-    let list = record
-        .get(0)
-        .and_then(|attr| attr.as_list())
-        .filter(|list| list.len() == 3)
-        .ok_or(PlacementError::Policy { at, rule: "placement point or direction must have exactly 3 components" })?;
-    let mut out = [0.0; 3];
-    for (slot, item) in out.iter_mut().zip(list) {
-        *slot = item
-            .as_float()
-            .filter(|v| v.is_finite())
-            .ok_or(PlacementError::Policy { at, rule: "placement component is not a finite number" })?;
-    }
-    Ok(Some(out))
-}
-
-fn check_spatial(rel: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<()> {
-    let at = rel.id;
-    if exact3(rel, 0, decoder)?.is_none() {
-        return Err(PlacementError::Missing { at, attr: "Location" });
-    }
-    let unit = |v: Option<[f64; 3]>| match v {
-        Some(v) => nalgebra::Vector3::from(v)
-            .try_normalize(0.0)
-            .filter(|n| n.norm() > 0.0)
-            .map(Some)
-            .ok_or(PlacementError::Policy { at, rule: "placement direction is zero" }),
-        None => Ok(None),
-    };
-    let axis = unit(exact3(rel, 1, decoder)?)?;
-    let reference = unit(exact3(rel, 2, decoder)?)?;
-    if let (Some(a), Some(r)) = (axis, reference) {
-        if a.cross(&r).norm() <= 1e-12 {
-            return Err(PlacementError::Policy { at, rule: "Axis is parallel to RefDirection" });
+/// Validate an `IfcAxis2Placement3D` under the strict spatial policy.
+///
+/// Strict consumers add arity/degeneracy constraints AFTER the canonical
+/// typed leaf read. Do not bypass that read: unreadable input is refused and
+/// counted even when its attr0 happens to look like three coordinates (#7779).
+pub fn validate_spatial_frame(
+    rel: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> PlacementResult<()> {
+    let frame = Axis2Placement::read_3d(rel, decoder)?;
+    for slot in 0..3 {
+        if let Some(record) = decoder.resolve_optional(rel, slot)? {
+            if record.get_list(0).is_none_or(|list| list.len() != 3) {
+                return Err(PlacementError::Policy {
+                    at: rel.id,
+                    rule: "placement point or direction must have exactly 3 components",
+                });
+            }
         }
+    }
+    let unit = |v: [f64; 3]| {
+        let v = nalgebra::Vector3::from(v);
+        let norm = v.norm();
+        if !norm.is_finite() || norm == 0.0 {
+            return Err(PlacementError::Policy {
+                at: rel.id,
+                rule: "placement direction is zero or unbounded",
+            });
+        }
+        Ok(v / norm)
+    };
+    // Defaults participate in the WR too. Explicit +X Axis with omitted
+    // RefDirection (default +X) is parallel, just like two explicit +X axes.
+    let axis = unit(frame.axis.unwrap_or(super::Z))?;
+    let reference = unit(frame.ref_direction.unwrap_or(super::X))?;
+    if axis.cross(&reference).norm() <= 1e-12 {
+        return Err(PlacementError::Policy {
+            at: rel.id,
+            rule: "Axis is parallel to RefDirection",
+        });
     }
     Ok(())
 }

@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use crate::deterministic_global_id;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::base::{qty, PSet, QSet};
 use super::collect::Collected;
@@ -100,14 +100,14 @@ fn pset_lines(
                 v if v.starts_with('(') => ("IFCPROPERTYLISTVALUE", value),
                 _ => ("IFCPROPERTYSINGLEVALUE", value),
             };
-            lines.push((id, format!("#{id}={entity}('{}',$,{value},{unit});", escape(&prop.name))));
+            lines.push((id, format!("#{id}={entity}({},$,{value},{unit});", quoted(&prop.name))));
             refs.push(format!("#{id}"));
         }
         let set_id = pass.allocate()?;
         let guid = global_id(pass, host, set_id);
         lines.push((
             set_id,
-            format!("#{set_id}=IFCPROPERTYSET('{guid}',{owner},'{}',$,({}));", escape(&pset.name), refs.join(",")),
+            format!("#{set_id}=IFCPROPERTYSET('{guid}',{owner},{},$,({}));", quoted(&pset.name), refs.join(",")),
         ));
         if type_owned.contains(&pset.name) {
             match owned_ids.iter_mut().find(|(n, _)| *n == pset.name) {
@@ -147,14 +147,14 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Result<Vec<
             } else {
                 ""
             };
-            lines.push((id, format!("#{id}={entity}('{}',$,$,{}{formula});", escape(&q.name), to_step_real(q.value)?)));
+            lines.push((id, format!("#{id}={entity}({},$,$,{}{formula});", quoted(&q.name), to_step_real(q.value)?)));
             refs.push(format!("#{id}"));
         }
         let set_id = pass.allocate()?;
         let guid = global_id(pass, host, set_id);
         lines.push((
             set_id,
-            format!("#{set_id}=IFCELEMENTQUANTITY('{guid}',{owner},'{}',$,$,({}));", escape(&qset.name), refs.join(",")),
+            format!("#{set_id}=IFCELEMENTQUANTITY('{guid}',{owner},{},$,$,({}));", quoted(&qset.name), refs.join(",")),
         ));
         let rel_id = pass.allocate()?;
         let guid = global_id(pass, host, rel_id);

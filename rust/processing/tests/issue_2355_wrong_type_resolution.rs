@@ -122,7 +122,7 @@ END-ISO-10303-21;
 
 #[test]
 fn genuine_zero_elevation_stays_finite_zero() {
-    let data = extract_symbolic_data(FIXTURE);
+    let data = extract_symbolic_data(FIXTURE).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -139,7 +139,7 @@ fn genuine_zero_elevation_stays_finite_zero() {
 
 #[test]
 fn dangling_location_on_correctly_typed_placement_is_not_finite() {
-    let data = extract_symbolic_data(FIXTURE);
+    let data = extract_symbolic_data(FIXTURE).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -158,7 +158,7 @@ fn dangling_location_on_correctly_typed_placement_is_not_finite() {
 
 #[test]
 fn wrong_type_mapping_origin_is_not_finite() {
-    let data = extract_symbolic_data(FIXTURE);
+    let data = extract_symbolic_data(FIXTURE).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -177,7 +177,7 @@ fn wrong_type_mapping_origin_is_not_finite() {
 
 #[test]
 fn wrong_type_mapping_target_is_not_finite() {
-    let data = extract_symbolic_data(FIXTURE);
+    let data = extract_symbolic_data(FIXTURE).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()

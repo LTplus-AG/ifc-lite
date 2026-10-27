@@ -122,13 +122,15 @@ pub(crate) async fn test_state(label: &str) -> AppState {
 
 /// Admission sized for tests: `n` CPU slots, no byte budget, tiny queue wait.
 fn test_admission(n: usize) -> Arc<crate::admission::Admission> {
-    Arc::new(crate::admission::Admission::new(crate::admission::AdmissionCfg {
-        max_concurrent_parses: n,
-        mem_budget_bytes: 0,
-        queue_depth: 2 * n,
-        queue_timeout: std::time::Duration::from_millis(100),
-        shed_pct: 85,
-    }))
+    Arc::new(crate::admission::Admission::new(
+        crate::admission::AdmissionCfg {
+            max_concurrent_parses: n,
+            mem_budget_bytes: 0,
+            queue_depth: 2 * n,
+            queue_timeout: std::time::Duration::from_millis(100),
+            shed_pct: 85,
+        },
+    ))
 }
 
 #[tokio::test]
@@ -177,7 +179,9 @@ async fn metrics_endpoint_gated_by_config() {
     state.admission.set_resident_bytes(4321);
     let on = get(&state, "/api/v1/metrics").await;
     assert_eq!(on.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(on.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(on.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let text = String::from_utf8(body.to_vec()).unwrap();
     assert!(text.contains("ifc_server_resident_bytes 4321"));
     assert!(text.contains("ifc_server_admission_in_flight"));
@@ -186,13 +190,15 @@ async fn metrics_endpoint_gated_by_config() {
 #[tokio::test]
 async fn ready_endpoint_reflects_shedding() {
     let mut state = test_state("readiness").await;
-    state.admission = Arc::new(crate::admission::Admission::new(crate::admission::AdmissionCfg {
-        max_concurrent_parses: 2,
-        mem_budget_bytes: 100 * 1024 * 1024,
-        queue_depth: 4,
-        queue_timeout: std::time::Duration::from_millis(100),
-        shed_pct: 85,
-    }));
+    state.admission = Arc::new(crate::admission::Admission::new(
+        crate::admission::AdmissionCfg {
+            max_concurrent_parses: 2,
+            mem_budget_bytes: 100 * 1024 * 1024,
+            queue_depth: 4,
+            queue_timeout: std::time::Duration::from_millis(100),
+            shed_pct: 85,
+        },
+    ));
     let ok = get(&state, "/api/v1/ready").await;
     assert_eq!(ok.status(), StatusCode::OK);
     state.admission.set_resident_bytes(95 * 1024 * 1024);
@@ -208,7 +214,11 @@ async fn post_fixture(state: &AppState, uri: &str) -> axum::response::Response {
     post_content(state, uri, FIXTURE.as_bytes()).await
 }
 
-pub(crate) async fn post_content(state: &AppState, uri: &str, content: &[u8]) -> axum::response::Response {
+pub(crate) async fn post_content(
+    state: &AppState,
+    uri: &str,
+    content: &[u8],
+) -> axum::response::Response {
     let (content_type, body) = multipart_body(content);
     let request = Request::builder()
         .method("POST")
@@ -354,8 +364,8 @@ async fn streaming_complete_event_carries_symbolic_data() {
         ifc_lite_processing::TessellationQuality::default(),
         None,
     )
-        .collect()
-        .await;
+    .collect()
+    .await;
 
     let symbolic = events
         .iter()
@@ -498,10 +508,7 @@ async fn issue_4706_every_route_ships_symbols_in_its_mesh_frame() {
         let (ox, oz) = (component(0), component(2));
         let positions = mesh["positions"].as_array().expect("positions");
         for p in positions.chunks_exact(3) {
-            plan_vertices.push((
-                p[0].as_f64().unwrap() + ox,
-                p[2].as_f64().unwrap() + oz,
-            ));
+            plan_vertices.push((p[0].as_f64().unwrap() + ox, p[2].as_f64().unwrap() + oz));
         }
     }
     assert!(!plan_vertices.is_empty(), "the box must mesh");
@@ -537,7 +544,11 @@ async fn issue_4706_every_route_ships_symbols_in_its_mesh_frame() {
         )
         .unwrap();
         let cache_key = metadata["cache_key"].as_str().unwrap().to_string();
-        let fetched = get(&binary_state, &format!("/api/v1/parse/symbolic/{cache_key}")).await;
+        let fetched = get(
+            &binary_state,
+            &format!("/api/v1/parse/symbolic/{cache_key}"),
+        )
+        .await;
         assert_eq!(fetched.status(), StatusCode::OK, "{endpoint}");
         assert_axes_match(
             &grid_axis_endpoints(&body_json(fetched).await, endpoint),
@@ -616,24 +627,37 @@ async fn issue_4459_old_symbolic_cache_cannot_keep_binary_routes_stale() {
         // the removal, so a reverted bump (where one of them IS `current`)
         // cannot be removed here.
         for retired in ["-symbolic-v1", "-symbolic-v2", "-symbolic-v3"] {
-            state.cache.set_bytes(&format!("{key}{retired}"), &symbols).await.unwrap();
+            state
+                .cache
+                .set_bytes(&format!("{key}{retired}"), &symbols)
+                .await
+                .unwrap();
         }
         // Nothing is writing the current key, so this is a 404 (#7676), not
         // the 202 it was; what matters here is that it is not a 200.
         let pending = get(&state, &format!("/api/v1/parse/symbolic/{key}")).await;
-        assert_eq!(pending.status(), StatusCode::NOT_FOUND, "GET /symbolic must not serve a retired entry");
+        assert_eq!(
+            pending.status(),
+            StatusCode::NOT_FOUND,
+            "GET /symbolic must not serve a retired entry"
+        );
         let second = post_fixture(&state, endpoint).await;
         assert_eq!(second.status(), StatusCode::OK);
         let second_body = to_bytes(second.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(first_body, second_body, "symbolic freshness must preserve geometry bytes");
-        assert!(state.cache.get_bytes(&current).await.unwrap().is_some(),
-            "old sidecar must trigger a parse that writes the current schema");
+        assert_eq!(
+            first_body, second_body,
+            "symbolic freshness must preserve geometry bytes"
+        );
+        assert!(
+            state.cache.get_bytes(&current).await.unwrap().is_some(),
+            "old sidecar must trigger a parse that writes the current schema"
+        );
     }
 }
 
 #[tokio::test]
 async fn issue_4459_old_json_response_is_reparsed_without_changing_request_identity() {
-    use crate::routes::parse::cache_keys::{request_cache_key, json_response_cache_key};
+    use crate::routes::parse::cache_keys::{json_response_cache_key, request_cache_key};
     let state = test_state("4459-old-json").await;
     let key = request_cache_key(FIXTURE.as_bytes(), &Default::default(), Default::default());
     let current = json_response_cache_key(&key);
@@ -643,7 +667,9 @@ async fn issue_4459_old_json_response_is_reparsed_without_changing_request_ident
     // The route writes in a spawned cache task; wait until that original write
     // is visible before removing it, so it cannot race the stale-cache control.
     for _ in 0..100 {
-        if state.cache.get_bytes(&current).await.unwrap().is_some() { break; }
+        if state.cache.get_bytes(&current).await.unwrap().is_some() {
+            break;
+        }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     assert!(state.cache.get_bytes(&current).await.unwrap().is_some());
@@ -654,13 +680,21 @@ async fn issue_4459_old_json_response_is_reparsed_without_changing_request_ident
     // Planted after the removal, so a reverted bump (where one of them IS
     // `current`) cannot be removed here.
     for retired in ["-json-v2", "-json-v3", "-json-v4"] {
-        state.cache.set_bytes(&format!("{key}{retired}"), &bytes).await.unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{key}{retired}"), &bytes)
+            .await
+            .unwrap();
     }
     let second = post_fixture(&state, "/api/v1/parse").await;
     assert_eq!(second.status(), StatusCode::OK);
-    let body: Value = serde_json::from_slice(&to_bytes(second.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let body: Value =
+        serde_json::from_slice(&to_bytes(second.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(body["cache_key"], key);
-    assert_eq!(body["stats"]["from_cache"], false, "must not replay a retired JSON response version");
+    assert_eq!(
+        body["stats"]["from_cache"], false,
+        "must not replay a retired JSON response version"
+    );
 }
 
 /// #4706, second half: the JSON route answers a warm `CACHE_DIR` from the
@@ -709,7 +743,8 @@ async fn issue_4706_a_response_cached_before_the_frame_fix_is_not_replayed() {
         .unwrap_or_else(|| panic!("the parse must write {current} within 10 s"));
     let mut stale: Value = serde_json::from_slice(&written).unwrap();
     stale["symbolic_data"] = serde_json::to_value(
-        ifc_lite_processing::extract_symbolic_data_with_provenance(SITE_LOCAL_FIXTURE),
+        ifc_lite_processing::extract_symbolic_data_with_provenance(SITE_LOCAL_FIXTURE)
+            .expect("symbolic extraction must complete"),
     )
     .unwrap();
     let stale_axes = grid_axis_endpoints(&stale["symbolic_data"], "the pre-change response");
@@ -723,7 +758,10 @@ async fn issue_4706_a_response_cached_before_the_frame_fix_is_not_replayed() {
     state.cache.remove(&current).await.unwrap();
     state
         .cache
-        .set_bytes(&format!("{key}-json-v4"), &serde_json::to_vec(&stale).unwrap())
+        .set_bytes(
+            &format!("{key}-json-v4"),
+            &serde_json::to_vec(&stale).unwrap(),
+        )
         .await
         .unwrap();
 
@@ -763,10 +801,20 @@ async fn metadata_and_parse_report_the_same_declared_schema() {
         .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))")
         .replace("'MainGrid'", "'converted from IFC4X3'");
     assert_ne!(lowercase, FIXTURE, "fixture: the header rewrite must apply");
-    assert!(decoy.contains("('IFC2X3')") && decoy.contains("from IFC4X3"), "fixture: decoy rewrite");
-    for (label, content, declared) in [("lowercase", lowercase, "IFC4"), ("data-decoy", decoy, "IFC2X3")] {
+    assert!(
+        decoy.contains("('IFC2X3')") && decoy.contains("from IFC4X3"),
+        "fixture: decoy rewrite"
+    );
+    for (label, content, declared) in [
+        ("lowercase", lowercase, "IFC4"),
+        ("data-decoy", decoy, "IFC2X3"),
+    ] {
         let metadata = post_content(&state, "/api/v1/parse/metadata", content.as_bytes()).await;
-        assert_eq!(metadata.status(), StatusCode::OK, "{label}: /parse/metadata");
+        assert_eq!(
+            metadata.status(),
+            StatusCode::OK,
+            "{label}: /parse/metadata"
+        );
         let metadata = body_json(metadata).await;
         let full = post_content(&state, "/api/v1/parse", content.as_bytes()).await;
         assert_eq!(full.status(), StatusCode::OK, "{label}: /parse");

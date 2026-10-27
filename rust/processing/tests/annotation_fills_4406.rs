@@ -122,7 +122,8 @@ fn annotation_4406_fill_style_list_is_read_by_the_symbolic_rule() {
             failures.push(format!("{label}: the fill item has no style entry"));
             continue;
         };
-        let symbolic = ifc_lite_processing::extract_symbolic_data(&source);
+        let symbolic = ifc_lite_processing::extract_symbolic_data(&source)
+            .expect("symbolic extraction must complete");
         let agrees = !symbolic.fills.is_empty()
             && symbolic.fills.iter().all(|fill| {
                 info.color
@@ -172,7 +173,10 @@ ENDSEC;END-ISO-10303-21;";
         ("a list (control)", base.to_string()),
         (
             "a bare Styles reference",
-            base.replace("#30=IFCSTYLEDITEM(#14,(#20),$);", "#30=IFCSTYLEDITEM(#14,#20,$);"),
+            base.replace(
+                "#30=IFCSTYLEDITEM(#14,(#20),$);",
+                "#30=IFCSTYLEDITEM(#14,#20,$);",
+            ),
         ),
         (
             "a bare reference inside an IFC2X3 style assignment",

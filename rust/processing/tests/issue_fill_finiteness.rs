@@ -76,14 +76,18 @@ END-ISO-10303-21;
 /// non-finite coordinate.
 #[test]
 fn contrast_fixture_bare_polyline_drops_the_non_finite_point() {
-    let data = extract_symbolic_data(BARE_POLYLINE_WITH_INFINITE_COORD);
+    let data = extract_symbolic_data(BARE_POLYLINE_WITH_INFINITE_COORD)
+        .expect("symbolic extraction must complete");
     assert!(
         data.polylines.is_empty(),
         "a polyline whose point the decode boundary refused must be refused whole, got {:?}",
         data.polylines
     );
     for v in data.polylines.iter().flat_map(|p| &p.points) {
-        assert!(v.is_finite(), "items.rs must never emit a non-finite coordinate, got {v}");
+        assert!(
+            v.is_finite(),
+            "items.rs must never emit a non-finite coordinate, got {v}"
+        );
     }
 }
 
@@ -94,7 +98,8 @@ fn contrast_fixture_bare_polyline_drops_the_non_finite_point() {
 /// the polyline above: no fill, and nothing non-finite.
 #[test]
 fn fill_area_boundary_ring_must_not_emit_non_finite_points() {
-    let data = extract_symbolic_data(FILL_AREA_WITH_INFINITE_COORD);
+    let data = extract_symbolic_data(FILL_AREA_WITH_INFINITE_COORD)
+        .expect("symbolic extraction must complete");
     assert!(
         data.fills.is_empty(),
         "a fill whose boundary point the decode boundary refused must be refused, got {:?}",

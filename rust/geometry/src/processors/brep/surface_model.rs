@@ -236,3 +236,7 @@ impl Default for ShellBasedSurfaceModelProcessor {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "polyloop_leaf_tests.rs"]
+mod leaf_tests;

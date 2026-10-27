@@ -25,6 +25,7 @@ import { ifcToViewerAxes } from './coordinate-frame';
 import { wellKnownCrsCode } from './well-known-crs';
 import { isGeographicProj4, projectedDefinitionInMetres, utmProj4String } from './proj4-utils';
 import { resolveMapAxisDirection } from './map-axis-direction';
+import { isWithinWktDefinitionExtent, resolveWktProjection, withWktExtent } from './wkt-projection';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { PRECISION_GRIDS, resolvePrecisionDef } from './precision-grids';
@@ -218,6 +219,11 @@ function utmDefinitionFromMetadata(crs: ProjectedCRS): string | null {
 /**
  * Resolve a proj4 definition for the given ProjectedCRS.
  *
+ * An `IfcWellKnownText` definition is authoritative over the name (which may
+ * then be a placeholder such as "WKT"): an EPSG identifier it names resolves
+ * through the order below, otherwise the WKT itself is the definition. A WKT
+ * that cannot be read falls back to the name.
+ *
  * Resolution order:
  *   1. Cache hit
  *   2. Precision grid (NTv2/GeoTIFF) for codes where +towgs84 is too coarse
@@ -228,6 +234,17 @@ function utmDefinitionFromMetadata(crs: ProjectedCRS): string | null {
  *   5. Fetch from epsg.io (network fallback)
  */
 export async function resolveProjection(crs: ProjectedCRS): Promise<string | null> {
+  if (crs.wellKnownText) {
+    const wkt = resolveWktProjection(crs.wellKnownText);
+    if (wkt?.kind === 'definition') return wkt.definition;
+    const named: ProjectedCRS = { ...crs, wellKnownText: undefined };
+    const definition = await resolveProjection(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named);
+    if (!definition || wkt?.kind !== 'epsg') return definition;
+    // The WKT's own datum shift and declared extent still apply to the registry projection.
+    return withWktExtent(crs.wellKnownText, wkt.towgs84
+      ? `${definition.replace(/\s\+(?:towgs84|nadgrids)=\S+/g, '')} +towgs84=${wkt.towgs84}`
+      : definition);
+  }
   const explicitCode = extractEpsgCode(crs);
   const aliasCode = explicitCode ? undefined : wellKnownCrsCode(crs.name ?? '');
   // A datum-only geographic label may accompany an explicit UTM zone. Keep
@@ -431,7 +448,7 @@ function coordinatesToLatLon(definition: string, x: number, y: number): LatLon |
   if (isGeographicProj4(definition) && !validLatLon(x, y)) return null;
   try {
     const [lon, lat] = proj4(projectedDefinitionInMetres(definition), 'WGS84', [x, y]);
-    return validLatLon(lon, lat) ? { lat, lon } : null;
+    return validLatLon(lon, lat) && isWithinWktDefinitionExtent(definition, lon, lat) ? { lat, lon } : null;
   } catch (error) {
     console.warn('[reproject] coordinate transformation failed', error);
     return null;

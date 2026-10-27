@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/lib/geo/globe-placement.ts b/apps/viewer/src/lib/geo/globe-placement.ts
+--- a/apps/viewer/src/lib/geo/globe-placement.ts
++++ b/apps/viewer/src/lib/geo/globe-placement.ts
+@@ -106,7 +106,7 @@
+ /** Auto resolves by the estimate; the explicit modes are taken as asked. */
+ export function resolveGlobePlacement(mode: GlobePlacementMode, estimateMetres: number | null): ResolvedGlobePlacement {
+   if (mode !== 'auto') return mode;
+-  return 'anchor';
++  return estimateMetres !== null && estimateMetres > AUTO_EXACT_THRESHOLD_M ? 'exact' : 'anchor';
+ }
+ 
+ /** What the bridge decided, for the model loader and the Georeferencing panel. */

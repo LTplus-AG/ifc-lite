@@ -81,36 +81,17 @@ fn sample_curve_polyline_guarded(
     }
     if kind == "IFCLINE" {
         // IfcLine: 0=Pnt, 1=Dir(IfcVector). Treat as segment [Pnt, Pnt+Dir·magnitude].
-        let pnt = resolve_present(curve.get(0), decoder)?
-            .and_then(|p| {
-                let coords = p.get(0).and_then(|v| v.as_list())?;
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-                Some(Point3::new(x, y, z))
-            });
-        let vector = resolve_present(curve.get(1), decoder)?;
-        let direction = match &vector {
-            Some(v) => resolve_present(v.get(0), decoder)?,
-            None => None,
-        };
-        let (dir, mag) = vector
-            .map(|v| {
-                let magnitude = v.get(1).and_then(|a| a.as_float()).unwrap_or(1.0);
-                let dir = direction
-                    .and_then(|d| {
-                        let coords = d.get(0).and_then(|v| v.as_list())?;
-                        let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                        let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                        let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-                        Some(nalgebra::Vector3::new(x, y, z))
-                    })
-                    .and_then(|v| v.try_normalize(tol::DIRECTION_MIN_LEN))
-                    .unwrap_or_else(|| nalgebra::Vector3::new(1.0, 0.0, 0.0));
-                (dir, magnitude)
-            })
-            .unwrap_or_else(|| (nalgebra::Vector3::new(1.0, 0.0, 0.0), 1.0));
-        let start = pnt.unwrap_or_else(|| Point3::new(0.0, 0.0, 0.0));
+        let [x, y, z] = decoder.point3_at(curve, 0).map_err(|_| Refused)?.ok_or(Refused)?;
+        let start = Point3::new(x, y, z);
+        let vector = resolve_present(curve.get(1), decoder)?.ok_or(Refused)?;
+        if !vector.ifc_type.as_str().eq_ignore_ascii_case("IFCVECTOR") {
+            return Err(Refused);
+        }
+        let [x, y, z] = decoder.direction3_at(&vector, 0).map_err(|_| Refused)?.ok_or(Refused)?;
+        let dir = nalgebra::Vector3::new(x, y, z)
+            .try_normalize(tol::DIRECTION_MIN_LEN).ok_or(Refused)?;
+        // Keep the existing magnitude policy; this migration owns point/direction admission.
+        let mag = vector.get(1).and_then(|a| a.as_float()).unwrap_or(1.0);
         return Ok(vec![start, start + dir * mag]);
     }
     if kind == "IFCCIRCLE" {
@@ -167,26 +148,21 @@ fn sample_curve_polyline_guarded(
         let basis_kind = basis.ifc_type.as_str().to_uppercase();
         let sense = curve.get_bool(3).unwrap_or(true);
 
-        let mut read_trim_point = |idx: usize| -> Option<Point3<f64>> {
-            let list = curve.get(idx)?.as_list()?;
-            for v in list {
-                if let Some(id) = v.as_entity_ref() {
-                    if let Ok(e) = decoder.decode_by_id(id) {
-                        if e.ifc_type.as_str().eq_ignore_ascii_case("IFCCARTESIANPOINT") {
-                            let coords = e.get(0).and_then(|a| a.as_list())?;
-                            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-                            return Some(Point3::new(x, y, z));
-                        }
-                    }
+        let mut read_trim_point = |idx: usize| -> Result<Option<Point3<f64>>, Refused> {
+            let Some(list) = curve.get(idx).and_then(|a| a.as_list()) else {
+                return Ok(None);
+            };
+            for value in list {
+                if let Some(id) = value.as_entity_ref() {
+                    let [x, y, z] = decoder.point3(id).map_err(|_| Refused)?;
+                    return Ok(Some(Point3::new(x, y, z)));
                 }
             }
-            None
+            Ok(None)
         };
 
-        let p1 = read_trim_point(1);
-        let p2 = read_trim_point(2);
+        let p1 = read_trim_point(1)?;
+        let p2 = read_trim_point(2)?;
 
         if basis_kind == "IFCCIRCLE" {
             if let (Some(p_start), Some(p_end)) = (p1, p2) {
@@ -241,11 +217,7 @@ pub(super) fn polyline_points(
 ) -> Result<Vec<Point3<f64>>, Refused> {
     refs.iter()
         .map(|r| {
-            let point = decoder.decode_by_id(r.as_entity_ref()?).ok()?;
-            let coords = point.get(0).and_then(|v| v.as_list())?;
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let [x, y, z] = decoder.point3(r.as_entity_ref()?).ok()?;
             Some(Point3::new(x, y, z))
         })
         .collect::<Option<Vec<_>>>()
@@ -255,3 +227,7 @@ pub(super) fn polyline_points(
 #[cfg(test)]
 #[path = "polyline_cycle_tests.rs"]
 mod polyline_cycle_tests;
+
+#[cfg(test)]
+#[path = "polyline_leaf_tests.rs"]
+mod leaf_tests;

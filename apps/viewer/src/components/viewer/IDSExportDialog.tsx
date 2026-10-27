@@ -114,6 +114,9 @@ export function IDSExportDialog({
   // in-flight promise counts as exporting too, not only a non-done `progress`.
   const [running, setRunning] = useState(false);
   const isExporting = running || (progress !== null && progress.phase !== 'done');
+  // Grouped topics always get a real snapshot: BIMcollab and other BCF tools
+  // ignore a viewpoint without one (#7974), and there are few topics to render.
+  const snapshotsRequired = settings.topicGrouping === 'per-specification';
 
   const handleExport = useCallback(async () => {
     setRunning(true);
@@ -220,14 +223,14 @@ export function IDSExportDialog({
                 {t('idsPanel.export.captureSnapshots')}
               </Label>
               <p className="text-xs text-muted-foreground">
-                {t('idsPanel.export.captureSnapshotsHint')}
+                {t(snapshotsRequired ? 'idsPanel.export.captureSnapshotsRequiredHint' : 'idsPanel.export.captureSnapshotsHint')}
               </p>
             </div>
             <Switch
               id="include-snapshots"
-              checked={settings.includeSnapshots}
+              checked={snapshotsRequired || settings.includeSnapshots}
               onCheckedChange={(v) => setSettings(s => ({ ...s, includeSnapshots: v }))}
-              disabled={isExporting}
+              disabled={isExporting || snapshotsRequired}
             />
           </div>
 

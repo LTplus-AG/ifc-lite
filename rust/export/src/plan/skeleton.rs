@@ -14,10 +14,10 @@
 //! [`Skeleton`] always produces the same bytes.
 
 use crate::step_ids::IdAllocator;
+use crate::step_text::quoted;
 
 use super::add_types::GlobalId;
 use super::identity::{Identity, Made};
-use super::owner_history::quoted;
 use super::types::{ExportingApplication, ValidationFinding};
 use super::placement::fmt;
 use super::props_synth::ref_list;

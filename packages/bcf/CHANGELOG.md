@@ -1,5 +1,15 @@
 # @ifc-lite/bcf
 
+## 5.2.0
+
+### Minor Changes
+
+- [#8164](https://github.com/LTplus-AG/ifc-lite/pull/8164) [`f2496f8`](https://github.com/LTplus-AG/ifc-lite/commit/f2496f876cfc02c1f79e265e3d7b6475722cdc7e) Thanks [@louistrue](https://github.com/louistrue)! - `createBCFFromIDSReport` now gives every viewpoint without a snapshot a small placeholder PNG in `snapshotData`. BIMcollab Zoom on Windows treats a viewpoint without a `<Snapshot>` as missing ("This issue has no viewpoint to zoom to") even when its camera and components are valid. The [#7974](https://github.com/LTplus-AG/ifc-lite/issues/7974) reporter saw the same in Revit, Navisworks and Dalux. Snapshots passed through `entitySnapshots` are unchanged. Written archives and BCF-API uploads of these projects therefore include the placeholder image. New exports: `fillMissingSnapshots(project)` applies the same fallback to any project, `placeholderSnapshotPng()` returns its bytes, and `isPlaceholderSnapshot(viewpoint)` detects it, including after a round trip, so previews and reports can skip it.
+
+### Patch Changes
+
+- [#8179](https://github.com/LTplus-AG/ifc-lite/pull/8179) [`78cb437`](https://github.com/LTplus-AG/ifc-lite/commit/78cb4378af79b998ed1ac4c373dcf2f7adf9254b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `clippingPlaneToSectionPlane` no longer clamps the section position to 0-100. A clipping-plane location outside the given bounds is a legal BCF cut, and it now comes back as a position below 0 or above 100, so a viewpoint's cut stays where it was written instead of moving onto the nearest bound face. A non-finite location gives the midpoint, 50, as a zero-extent axis already did. Callers that need a 0-100 value must clamp it themselves. The `ViewerSectionPlane.position` and renderer `SectionPlane.position` comments now say that values outside 0-100 are cuts beyond the bounds; the renderer already resolved them linearly.
+
 ## 5.1.0
 
 ### Minor Changes

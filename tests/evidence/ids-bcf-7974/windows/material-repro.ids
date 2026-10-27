@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info><title>7974 material repro</title></info>
+  <specifications>
+    <specification name="4.7 Materiaal moet aanwezig zijn" ifcVersion="IFC2X3 IFC4">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><xs:restriction base="xs:string"><xs:enumeration value="IFCWALL"/><xs:enumeration value="IFCWALLSTANDARDCASE"/><xs:enumeration value="IFCSLAB"/><xs:enumeration value="IFCDOOR"/><xs:enumeration value="IFCWINDOW"/><xs:enumeration value="IFCBEAM"/><xs:enumeration value="IFCCOLUMN"/><xs:enumeration value="IFCCOVERING"/><xs:enumeration value="IFCBUILDINGELEMENTPROXY"/><xs:enumeration value="IFCRAILING"/><xs:enumeration value="IFCSTAIR"/><xs:enumeration value="IFCROOF"/></xs:restriction></name></entity>
+      </applicability>
+      <requirements><material cardinality="required"/></requirements>
+    </specification>
+    <specification name="4.8 LoadBearing" ifcVersion="IFC2X3 IFC4">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><xs:simpleValue>IFCWALLSTANDARDCASE</xs:simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN" cardinality="required"><propertySet><xs:simpleValue>Pset_WallCommon</xs:simpleValue></propertySet><baseName><xs:simpleValue>LoadBearing</xs:simpleValue></baseName></property></requirements>
+    </specification>
+    <specification name="Element must have NetVolume" ifcVersion="IFC2X3 IFC4">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><xs:simpleValue>IFCSLAB</xs:simpleValue></name></entity></applicability>
+      <requirements><property cardinality="required"><propertySet><xs:simpleValue>Qto_SlabBaseQuantities</xs:simpleValue></propertySet><baseName><xs:simpleValue>NetVolumeX</xs:simpleValue></baseName></property></requirements>
+    </specification>
+  </specifications>
+</ids>

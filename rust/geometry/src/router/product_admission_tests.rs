@@ -7,7 +7,7 @@ use super::*;
 use crate::profile_walk_model as model;
 
 #[test]
-fn issue_7887_decoder_replacement_between_admitted_roots_is_rejected() {
+fn issue_7887_decoder_replacement_refuses_but_same_instance_maintenance_keeps_roots() {
     let content = model::wall(
         "#160",
         "#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140,#240));",
@@ -33,11 +33,18 @@ fn issue_7887_decoder_replacement_between_admitted_roots_is_rejected() {
                 content.as_bytes(),
             )));
         }
-        let error = plan.validate(&router, &decoder).unwrap_err();
-        assert!(
-            error.to_string().contains("execution owner changed"),
-            "{error}"
-        );
+        if replacement {
+            let error = plan.validate(&router, &decoder).unwrap_err();
+            assert!(error.to_string().contains("WrongOwner"), "{error}");
+        } else {
+            // #8091: reseeding the same source index is reached maintenance,
+            // not a replacement. Both admitted roots still produce geometry.
+            plan.validate(&router, &decoder).unwrap();
+            let second = router
+                .process_representation_item(&roots[1], &mut decoder)
+                .unwrap();
+            assert_eq!(second.triangle_count(), 12);
+        }
         assert!(
             router.take_unsupported_items().is_empty(),
             "an owner failure is not damaged content"
@@ -46,7 +53,7 @@ fn issue_7887_decoder_replacement_between_admitted_roots_is_rejected() {
 }
 
 #[test]
-fn issue_7887_router_configuration_change_cannot_reuse_admitted_roots() {
+fn issue_7887_router_maintenance_keeps_roots_but_replacement_refuses() {
     let content = model::chain(1);
     let mut decoder = EntityDecoder::new(&content);
     let mut router = GeometryRouter::new();
@@ -54,7 +61,14 @@ fn issue_7887_router_configuration_change_cannot_reuse_admitted_roots() {
     let plan = admit_product(&wall, &mut decoder, 2, &router);
     plan.validate(&router, &decoder).unwrap();
     router.set_tessellation_quality(crate::TessellationQuality::High);
-    assert!(plan.validate(&router, &decoder).is_err());
+    plan.validate(&router, &decoder).unwrap();
+    let mesh = router
+        .process_representation_item(&plan.representations[0].1[0], &mut decoder)
+        .unwrap();
+    assert_eq!(mesh.triangle_count(), 12);
+    router = GeometryRouter::new();
+    let error = plan.validate(&router, &decoder).unwrap_err();
+    assert!(error.to_string().contains("WrongOwner"), "{error}");
 }
 
 #[test]

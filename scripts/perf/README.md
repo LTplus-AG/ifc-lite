@@ -5147,9 +5147,16 @@ The resulting native instruction cohort meets the unchanged per-phase ceiling
 on Haus, duplex, and ISSUE_129 with matching mesh, vertex, and triangle counts.
 This is instruction evidence only; no wall-clock or browser performance claim
 is made. Exact results, source attribution, and validation are recorded in
-`c2-walk-lane-perf-r1.json`. Existing maintenance/session admission test failures
-were reproduced at the starting head and remain unresolved; this measurement
-does not certify that separate owner-generation contract conflict.
+`c2-walk-lane-perf-r1.json`. The subsequent owner repair follows main's
+`ExecutionIdentity::same_instance` check for synchronous admission consumption:
+replacing an owner refuses with the existing `WrongOwner` protocol error, while
+reached maintenance on that instance preserves admitted roots. The synchronous
+product driver validates inside the source and publication action arms; this
+avoids a second action dispatch on numerical/transfer steps. The shared execute
+path keeps validation before annotation and texture work. Pending tickets,
+leases, and retained caches keep their existing generation checks. The full
+library and integration suites cover this distinction; the owner repair's
+validation and instruction comparison are in `c2-walk-lane-owner-r1.json`.
 
 Lesson: reducing a plan's allocations in isolation can enlarge every enclosing
 program move or perturb allocator size classes. Whole-plan boxing, inline root

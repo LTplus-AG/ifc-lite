@@ -42,9 +42,15 @@ impl ProductOwners {
         router: &crate::GeometryRouter,
         decoder: &EntityDecoder,
     ) -> crate::Result<()> {
-        if self.0 != Some((decoder.execution_identity(), router.execution_identity())) {
-            return Err(crate::Error::geometry(
-                "product admission execution owner changed",
+        // Like GeometryProgram's synchronous work, admission survives reached
+        // maintenance on the same instance. Pending tickets still validate the
+        // exact generation in GeometryProgram before executing their recipe.
+        if !self.0.is_some_and(|(source, geometry)| {
+            source.same_instance(&decoder.execution_identity())
+                && geometry.same_instance(&router.execution_identity())
+        }) {
+            return Err(crate::program::program_error(
+                crate::program::ProgramError::WrongOwner,
             ));
         }
         Ok(())

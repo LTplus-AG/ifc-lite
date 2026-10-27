@@ -199,14 +199,16 @@ fn a_provisional_template_claim_is_kept_only_for_materialized_geometry() {
     let router = armed(true);
     // #7781: visit the non-minimum id first. Global-template mode would emit
     // a placeholder here; batch-local mode must materialize this occurrence.
-    let template = unlimited().scope(|| styled(&router, &mut decoder, 15, true)).unwrap();
+    let template = unlimited()
+        .scope(|| styled(&router, &mut decoder, 15, true))
+        .unwrap();
     assert_eq!(template.sub_meshes[0].mesh.indices.len(), 36);
-    assert_eq!(
-        template.sub_meshes[0].mesh.instance_meta.as_ref().unwrap().local_transform,
-        Some(translation(10.0))
-    );
+    let meta = template.sub_meshes[0].mesh.instance_meta.as_ref().unwrap();
+    assert_eq!(meta.local_transform, Some(translation(10.0)));
     assert!(claimed(&router));
-    let next = unlimited().scope(|| styled(&router, &mut decoder, 13, true)).unwrap();
+    let next = unlimited()
+        .scope(|| styled(&router, &mut decoder, 13, true))
+        .unwrap();
     assert!(next.sub_meshes[0].mesh.positions.is_empty(), "the kept claim makes the next a placeholder");
 
     let mut router = armed(true);

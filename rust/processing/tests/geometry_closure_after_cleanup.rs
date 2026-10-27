@@ -7,7 +7,7 @@
 //!
 //! `orient_mesh_outward_verdict` runs on the assembled body and the verdict goes
 //! straight to the hasher. `build_mesh_data` runs LATER, and it runs the
-//! f32-collapse degenerate backstop (`Mesh::drop_degenerate_triangles`), which
+//! f32-collapse degenerate backstop (`Mesh::drop_degenerate_triangles_unless_closed`), which
 //! removes triangles. A removed triangle takes its three welded edges with it,
 //! so every neighbour along those edges loses an incidence and becomes a
 //! BOUNDARY edge: a shell the verdict certified closed can be handed back OPEN,

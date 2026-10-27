@@ -605,10 +605,12 @@ impl Mesh {
     /// is not exempt. The same exemption guards the void-output hygiene
     /// (`clean_void_output`, #7292).
     pub fn drop_degenerate_triangles_unless_closed(&mut self) {
-        let candidate = self
-            .indices
-            .chunks_exact(3)
-            .any(|t| self.is_degenerate_triangle([t[0], t[1], t[2]]));
+        // An incomplete trailing triangle is discarded as before (#3988).
+        let candidate = !self.indices.len().is_multiple_of(3)
+            || self
+                .indices
+                .chunks_exact(3)
+                .any(|t| self.is_degenerate_triangle([t[0], t[1], t[2]]));
         if candidate && !crate::exact_topology::strict_closed_mesh(self) {
             self.drop_degenerate_triangles();
         }

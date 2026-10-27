@@ -807,4 +807,10 @@ fn issue_8156_an_open_mesh_still_loses_its_needles() {
     collapsed.positions[3] = 0.0;
     collapsed.drop_degenerate_triangles_unless_closed();
     assert_eq!(collapsed.indices, vec![0, 3, 2, 1, 2, 3]);
+
+    // An incomplete trailing triangle goes, exactly as with the plain drop.
+    let mut clean = Mesh { positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0], ..Mesh::new() };
+    clean.indices = vec![0, 1, 2, 2, 1];
+    clean.drop_degenerate_triangles_unless_closed();
+    assert_eq!(clean.indices, vec![0, 1, 2]);
 }

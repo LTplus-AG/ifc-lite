@@ -1,11 +1,12 @@
+diff --git a/rust/geometry/src/program/mapping_retained.rs b/rust/geometry/src/program/mapping_retained.rs
 --- a/rust/geometry/src/program/mapping_retained.rs
 +++ b/rust/geometry/src/program/mapping_retained.rs
 @@ -87,7 +87,7 @@
                  super::super::retained::validate_affine(transform).map_err(|reason|
                      reason.into_common(&state.selection.failure_handle(), FailureSite::MappingPlacement, Some(item.id)))?;
              }
--            let cached = state.selection.cached(decoder, router, source.source_id)?;
-+            let cached = None; // M7 mutation: re-walk every retained mapped source.
+-            let cached = None; // M7 mutation: re-walk every retained mapped source.
++            let cached = state.selection.cached(decoder, router, source.source_id)?;
              Ok::<_, crate::Error>((source, cached))
          })();
          let selection = state.selection.clone();

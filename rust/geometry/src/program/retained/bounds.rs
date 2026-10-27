@@ -28,15 +28,14 @@ impl EvaluationBounds {
         b.valid().then_some(b)
     }
     pub(crate) fn region(curves: impl IntoIterator<Item = (u32, [f64; 12])>, direction: [f64; 3], depth: f64) -> Option<Self> {
-        let mut points = Vec::new();
-        for (kind, v) in curves {
-            if kind == 1 { points.extend([[v[0], v[1], v[2]], [v[3], v[4], v[5]]]); }
+        let points = curves.into_iter().flat_map(|(kind, v)| {
+            if kind == 1 { [[v[0], v[1], v[2]], [v[3], v[4], v[5]]] }
             else {
                 // Full circle is conservative even for a trimmed arc.
                 let extent: [f64; 3] = std::array::from_fn(|i| v[9] * (1. - v[i + 3] * v[i + 3]).max(0.).sqrt());
-                points.extend([std::array::from_fn(|i| v[i] - extent[i]), std::array::from_fn(|i| v[i] + extent[i])]);
+                [std::array::from_fn(|i| v[i] - extent[i]), std::array::from_fn(|i| v[i] + extent[i])]
             }
-        }
+        });
         let base = Self::points(points)?;
         Self::points(base.corners().into_iter().flat_map(|p| [p, std::array::from_fn(|i| p[i] + direction[i] * depth)]))
     }

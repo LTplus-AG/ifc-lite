@@ -1,7 +1,7 @@
 diff --git a/rust/geometry/src/program/retained/bounds.rs b/rust/geometry/src/program/retained/bounds.rs
 --- a/rust/geometry/src/program/retained/bounds.rs
 +++ b/rust/geometry/src/program/retained/bounds.rs
-@@ -43,7 +43,7 @@
+@@ -42,7 +42,7 @@
  }
  pub(super) fn boolean_bounds(inputs: &[LogicalRetainedValue; 2], operation: crate::BoolOp) -> Option<EvaluationBounds> {
      match operation {

@@ -70,6 +70,8 @@ pub fn base_models() -> [&'static str; 14] {
         "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
         "rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc",
         "rust/geometry/tests/fixtures/issue_098_wall_W.ifc",
+        "rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc",
+        "rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc",
         "rust/geometry/tests/fixtures/bath_csg_solid.ifc",
     ]
 }

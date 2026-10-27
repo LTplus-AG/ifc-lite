@@ -6,6 +6,20 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
+// Strings only retained CODE carries. Plain names such as `pkg-retained`,
+// `/smlib` or `RetainedModelSession` also appear in changelog prose that the
+// default What's New tab bundles, so they are not evidence of retained code.
+// - wasm-bindgen glue/imports for the session class (`retainedmodelsession_free`);
+// - the host Worker's engine URL and the SMLib driver's fixed Worker paths;
+// - minified property access on the loaded engine module.
+export const CODE_SIGNATURES = [
+  'retainedmodelsession_',
+  '/retained-engine/',
+  '/smlib/worker.mjs',
+  '/smlib/client.mjs',
+  '.RetainedModelSession',
+];
+
 /** Inspect every emitted byte (including maps/wasm), not just entry chunks. */
 export async function checkRetainedFree(directory) {
   if (!(await stat(join(directory, 'index.html'))).isFile()) throw new Error('Viewer dist has no index.html');
@@ -17,7 +31,7 @@ export async function checkRetainedFree(directory) {
       if (entry.isDirectory()) { await walk(file); continue; }
       if (!entry.isFile()) throw new Error(`Non-regular viewer asset: ${file}`);
       const bytes = await readFile(file);
-      for (const forbidden of ['pkg-retained', '/smlib', 'retained.worker', 'RetainedModelSession']) {
+      for (const forbidden of CODE_SIGNATURES) {
         if (bytes.includes(forbidden)) throw new Error(`Default dist contains ${forbidden}: ${file}`);
       }
       files++;

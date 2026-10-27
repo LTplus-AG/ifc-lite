@@ -28,7 +28,11 @@ cargo run --release -p ifc-lite-retained-native --features retained-runtime \
 ```
 
 Machine admission policy also applies to these commands. The comparison writes
-`summary.json` and `products.tsv`. It reads the preregistered tolerance file;
+`summary.json` and `products.tsv`. It merges the frozen `tests/fixtures/cli-retained/tolerances.json` base with
+all `tolerances.d/*.json` files in that directory, rejecting duplicate top-level
+keys with both filenames. New slices add `tolerances.d/<slice>.json` in their
+own first commit; never edit existing keys, widen values, or move keys out of
+the base. Each fragment is a JSON object of new preregistrations;
 there is no command-line tolerance override. `--manifest tests/models/manifest.json`
 selects downloaded fixtures. Engine startup/qualification must succeed before any
 coverage is reported. Exact-only orphan type products are listed separately as

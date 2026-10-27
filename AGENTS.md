@@ -43,6 +43,14 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 **Do not trust any list of CI gates written down in this file.** The authoritative list of gates is `.github/workflows/`; the authoritative list of REQUIRED ones is the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Read them. A gate list is a measurement, and a measurement recorded as prose goes stale by the next merged workflow.
 
+## Before handing work back
+
+Run `node scripts/pre-handoff.mjs` (optionally `--base origin/main`). A delegated
+task is not done until it passes or each failure is explained. Commit first so
+the diff includes new manifests and the oracle can verify clean restoration.
+Report every explicit SKIPPED prerequisite as unverified coverage. Use the fleet
+launcher above when witnesses require heavy tests; never nest reservations.
+
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.
 - STEP type names are stored UPPERCASE; render via `store.entities.getTypeName(id)` to get `IfcPascalCase`.

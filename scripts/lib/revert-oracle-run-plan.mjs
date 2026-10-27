@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
+import { boundedSpawnSync } from './bounded-process.mjs';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -70,7 +71,7 @@ function toolchainIdentity(binPath, family) {
   return identity;
 }
 
-export function runPlan(plan, root, label, log = console.log) {
+export function runPlan(plan, root, label, log = console.log, timeoutMs = RUN_TIMEOUT_MS) {
   const started = Date.now();
   if (plan.typecheck) {
     const parsed = runTypecheckPlan(plan, root, label);
@@ -110,7 +111,7 @@ export function runPlan(plan, root, label, log = console.log) {
     cwd,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
-    timeout: RUN_TIMEOUT_MS,
+    timeout: timeoutMs,
     env: {
       ...process.env,
       CI: '1',
@@ -147,7 +148,7 @@ export function runPlan(plan, root, label, log = console.log) {
   try {
     if (plan.runner.family === 'vitest') {
       const selected = plan.relFiles?.[0] ?? plan.file;
-      const listed = spawnSync(command.bin, [...command.prefix, 'list', selected, '--filesOnly'], spawnOptions);
+      const listed = boundedSpawnSync(command.bin, [...command.prefix, 'list', selected, '--filesOnly'], spawnOptions);
       if (listed.error || listed.status !== 0 || listed.signal) {
         throw listed.error ?? new Error(`vitest file discovery failed (${listed.signal ?? listed.status})`);
       }
@@ -158,7 +159,7 @@ export function runPlan(plan, root, label, log = console.log) {
     }
     run = plan.moduleFilter
       ? runExactCargoModule(command.bin, runnerArgs, plan.moduleFilter, spawnOptions)
-      : spawnSync(wheel?.bin ?? command.bin, runnerArgs, spawnOptions);
+      : boundedSpawnSync(wheel?.bin ?? command.bin, runnerArgs, spawnOptions);
     if (coverageDir) executionFiles = readCoveredFiles(coverageDir);
   } catch (error) {
     executionEvidenceError = error instanceof Error ? error.message : String(error);
@@ -182,6 +183,10 @@ export function runPlan(plan, root, label, log = console.log) {
   ) {
     parsed.kind = 'unparseable';
     parsed.evidence = [`cargo's ${plan.moduleFilter}:: filter also selected tests outside that source module`];
+  }
+  if (run.error?.code === 'ETIMEDOUT') {
+    parsed.kind = 'timeout';
+    parsed.evidence = [label === 'reverted' ? 'test hangs under mutation: likely leaked handle/timer' : `test hangs during ${label}`];
   }
   parsed.rawExitCode = run.status;
   parsed.signal = run.signal ?? null;
@@ -211,7 +216,7 @@ function readCoveredFiles(dir) {
 function runExactCargoModule(binPath, args, moduleFilter, options) {
   const separator = args.indexOf('--');
   const cargoArgs = separator === -1 ? args : args.slice(0, separator);
-  const listed = spawnSync(binPath, [...cargoArgs, '--', '--list'], options);
+  const listed = boundedSpawnSync(binPath, [...cargoArgs, '--', '--list'], options);
   if (listed.error || listed.status !== 0 || listed.signal) return listed;
   const identities = `${listed.stdout ?? ''}\n${listed.stderr ?? ''}`
     .split(/\r?\n/)
@@ -220,7 +225,7 @@ function runExactCargoModule(binPath, args, moduleFilter, options) {
   if (identities.length === 0) {
     return { status: 0, signal: null, stdout: 'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n', stderr: '' };
   }
-  const runs = identities.map((identity) => spawnSync(binPath, [...cargoArgs, '--', identity, '--exact'], options));
+  const runs = identities.map((identity) => boundedSpawnSync(binPath, [...cargoArgs, '--', identity, '--exact'], options));
   const failed = runs.find((candidate) => candidate.error || candidate.signal || candidate.status !== 0);
   return {
     status: failed?.status ?? 0,

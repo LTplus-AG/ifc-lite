@@ -12,6 +12,8 @@ mod precision;
 mod report;
 #[path = "compare/source.rs"]
 mod source;
+#[path = "compare/tolerances.rs"]
+mod tolerances;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::canonical_element_jobs;
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;
@@ -27,9 +29,7 @@ type Error = Box<dyn std::error::Error>;
 
 fn main() -> Result<(), Error> {
     let options = options::options()?;
-    let tolerances: serde_json::Value = serde_json::from_slice(&std::fs::read(
-        "tests/fixtures/cli-retained/tolerances.json",
-    )?)?;
+    let tolerances = tolerances::registered()?;
     // Fail before reporting coverage if no qualified numerical engine exists.
     let startup = Instant::now();
     let qualified = ifc_lite_retained_native::NativeWorker::spawn(&options.worker)

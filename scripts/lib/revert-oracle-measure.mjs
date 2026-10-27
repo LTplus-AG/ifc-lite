@@ -27,18 +27,34 @@ import { OBSERVED } from './revert-oracle.mjs';
  *   verifies the tree; both abort the process on failure.
  * @returns {{ plans: object[], baselineResults: object[], revertedResults: object[], deferred: object[] }}
  */
-export function measure({ plans, root, revert, restore, assertClean, log = console.log }) {
+export function measure({ plans, root, revert, restore, assertClean, timeoutMs, verifyRestored = false, log = console.log }) {
+  if (verifyRestored && plans.some((plan) => plan.browser || plan.typecheck)) {
+    throw new Error('--verify-restored requires a runtime non-browser witness; run the specialized oracle separately');
+  }
   const cheap = plans.filter((plan) => !plan.browser);
   const browser = plans.filter((plan) => plan.browser);
 
   log('\n[1/3] baseline: running the branch\'s own tests, unmodified');
   if (cheap.length === 0) log('  (no node/cargo/pytest/typecheck plan; only the browser observer below can witness)');
-  const baselineResults = cheap.map((plan) => runPlan(plan, root, 'baseline', log));
+  const baselineResults = cheap.map((plan) => runPlan(plan, root, 'baseline', log, timeoutMs));
   log('\n[2/3] reverting the production change');
   revert();
   log('\n[3/3] re-running the same tests with production reverted');
-  const revertedResults = cheap.map((plan) => runPlan(plan, root, 'reverted', log));
+  const revertedResults = cheap.map((plan) => runPlan(plan, root, 'reverted', log, timeoutMs));
 
+  if (verifyRestored) {
+    restore();
+    log('\n[restored] proving witnesses green after mutation');
+    const restored = cheap.map((plan) => runPlan(plan, root, 'restored', log, timeoutMs));
+    assertClean();
+    if (restored.some((run) => run.kind !== 'pass' || !run.attributed || run.rawExitCode !== 0)) {
+      throw new Error('restored witness is not green and attributable');
+    }
+  }
+  if (revertedResults.some((run) => run.kind === 'timeout')) {
+    restore();
+    throw new Error('test hangs under mutation: likely leaked handle/timer');
+  }
   if (browser.length === 0) return { plans: cheap, baselineResults, revertedResults, deferred: [] };
   const witnessed = cheap.length > 0 && ledgerVerdict(buildExecutionLedger({ plans: cheap, baselineResults, revertedResults })).verdict === OBSERVED;
   if (witnessed) {
@@ -47,10 +63,10 @@ export function measure({ plans, root, revert, restore, assertClean, log = conso
   }
 
   log('\n[browser 1/2] reverted: building the viewer and running the changed Playwright spec(s) with production still reverted');
-  const browserReverted = browser.map((plan) => runBrowserPlan(plan, root, 'reverted', log));
+  const browserReverted = browser.map((plan) => runBrowserPlan(plan, root, 'reverted', log, timeoutMs));
   log('\n[browser 2/2] baseline: restoring production, rebuilding, and running the same spec(s)');
   restore();
-  const browserBaseline = browser.map((plan) => runBrowserPlan(plan, root, 'baseline', log));
+  const browserBaseline = browser.map((plan) => runBrowserPlan(plan, root, 'baseline', log, timeoutMs));
   assertClean();
   return {
     plans: [...cheap, ...browser],

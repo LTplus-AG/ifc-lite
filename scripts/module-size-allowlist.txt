@@ -191,7 +191,7 @@
    507 packages/drawing-2d/src/dxf/convert.ts
    898 packages/drawing-2d/src/dxf/parser.ts
    413 packages/drawing-2d/src/dxf/writer.ts
-   428 packages/drawing-2d/src/edge-extractor.ts
+   421 packages/drawing-2d/src/edge-extractor.ts
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    499 packages/drawing-2d/src/graphic-overrides/rule-engine.ts

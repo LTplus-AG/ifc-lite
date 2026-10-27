@@ -5,7 +5,9 @@
 //! IFC interpretation of trimmed lines and circles, shared by analytic source
 //! descriptions and sampled mesh directrices. Sampling remains consumer-owned.
 
-use crate::curve_source::{circle_basis, line_basis, mesh_line_basis, trim_angle, trim_point};
+use crate::curve_source::{
+    circle_basis, line_basis, mesh_line_basis, trim_angle, trim_point, CartesianTrimRead,
+};
 use crate::Result;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use std::f64::consts::TAU;
@@ -17,6 +19,9 @@ pub(crate) enum TrimRecovery {
     /// The mesh path historically recovers absent bounds from the basis domain
     /// and retains the authored span for invalid cyclically equal bounds.
     BasisDefaults,
+    /// Profile leaves recover absent bounds but never ignore an authored invalid
+    /// CartesianPoint (#7779). This does not change other mesh consumers.
+    BasisDefaultsStrictPoints,
 }
 
 pub(crate) enum TrimmedPrimitive {
@@ -46,19 +51,25 @@ pub(crate) fn decode_trimmed_primitive(
 ) -> Result<Option<TrimmedPrimitive>> {
     let cartesian = trimmed.get(4).and_then(AttributeValue::as_enum) == Some("CARTESIAN");
     let sense = trimmed.get_bool(3).unwrap_or(true);
-    let ignore_bad_cartesian = matches!(recovery, TrimRecovery::BasisDefaults);
+    let point_policy = match recovery {
+        TrimRecovery::RequireBoth => CartesianTrimRead::RequireValid,
+        TrimRecovery::BasisDefaults => CartesianTrimRead::RecoverInvalid,
+        TrimRecovery::BasisDefaultsStrictPoints => CartesianTrimRead::CanonicalLeaf,
+    };
     match basis.ifc_type {
         IfcType::IfcLine => {
             let (origin, direction) = match recovery {
                 TrimRecovery::RequireBoth => line_basis(basis, decoder)?,
-                TrimRecovery::BasisDefaults => mesh_line_basis(basis, decoder)?,
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
+                    mesh_line_basis(basis, decoder)?
+                }
             };
             let first = trim_point(
                 trimmed.get(1),
                 origin,
                 direction,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let second = trim_point(
@@ -66,7 +77,7 @@ pub(crate) fn decode_trimmed_primitive(
                 origin,
                 direction,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let (start, end) = match recovery {
@@ -76,7 +87,7 @@ pub(crate) fn decode_trimmed_primitive(
                     };
                     (start, end)
                 }
-                TrimRecovery::BasisDefaults => {
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
                     let basis_end = std::array::from_fn(|i| origin[i] + direction[i]);
                     (first.unwrap_or(origin), second.unwrap_or(basis_end))
                 }
@@ -91,7 +102,7 @@ pub(crate) fn decode_trimmed_primitive(
                 x_axis,
                 y_axis,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let second = trim_angle(
@@ -100,7 +111,7 @@ pub(crate) fn decode_trimmed_primitive(
                 x_axis,
                 y_axis,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let (start_angle, end_angle) = match recovery {
@@ -110,7 +121,9 @@ pub(crate) fn decode_trimmed_primitive(
                     };
                     (start, end)
                 }
-                TrimRecovery::BasisDefaults => (first.unwrap_or(0.0), second.unwrap_or(TAU)),
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
+                    (first.unwrap_or(0.0), second.unwrap_or(TAU))
+                }
             };
             let sweep_angle = match recovery {
                 TrimRecovery::RequireBoth => {
@@ -126,7 +139,7 @@ pub(crate) fn decode_trimmed_primitive(
                     }
                     sweep
                 }
-                TrimRecovery::BasisDefaults => {
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
                     // Preserve the mesh sampler's raw span and single seam wrap
                     // for malformed out-of-range/equal authored parameters.
                     let mut end = end_angle;

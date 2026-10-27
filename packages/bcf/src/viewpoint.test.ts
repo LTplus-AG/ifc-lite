@@ -223,6 +223,31 @@ describe('BCF Viewpoint Coordinate Conversion', () => {
       }
     });
 
+    // #8162: a clipping-plane location outside the bounds is a legal BCF cut
+    // (a plan cut above the model top). It used to be clamped onto the nearest
+    // bound face on import; it now comes back where the viewpoint put it.
+    it('preserves a location above the max and below the min on every axis (#8162)', () => {
+      for (const axis of ['down', 'front', 'side'] as const) {
+        for (const position of [137.5, -20]) {
+          const plane = sectionPlaneToClippingPlane({ axis, position, enabled: true, flipped: false }, bounds)!;
+          const back = clippingPlaneToSectionPlane(plane, bounds);
+          expect(back.axis).toBe(axis);
+          expect(back.position).toBeCloseTo(position, 6);
+        }
+      }
+      // An imported world location 3 m above a [0, 20] viewer-Y range (BCF Z).
+      const above = clippingPlaneToSectionPlane({ location: { x: 5, y: -15, z: 23 }, direction: { x: 0, y: 0, z: -1 } }, bounds);
+      expect(above.axis).toBe('down');
+      expect(above.position).toBeCloseTo(115, 6);
+    });
+
+    it('a non-finite location falls back to the midpoint, not a non-finite position (#8162)', () => {
+      for (const z of [Number.NaN, Infinity, -Infinity]) {
+        const back = clippingPlaneToSectionPlane({ location: { x: 5, y: -15, z }, direction: { x: 0, y: 0, z: -1 } }, bounds);
+        expect(back.position).toBe(50);
+      }
+    });
+
     it('falls back to the midpoint when the axis has zero extent', () => {
       const flat: ViewerBounds = { min: { x: 0, y: 5, z: 0 }, max: { x: 10, y: 5, z: 30 } };
       const plane = sectionPlaneToClippingPlane(

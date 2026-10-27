@@ -44,6 +44,8 @@ export const georeferencingEn = {
   'properties.georef.later': 'Later',
   'properties.georef.legacySiteNotice': 'Showing legacy IfcSite geolocation from IFC2X3. This view is read-only.',
   'properties.georef.unsupportedSchemaNotice': 'Georeferencing editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.',
+  'properties.georef.showFullWellKnownText': 'Show full WKT definition',
+  'properties.georef.coordinateOperationReadOnlyNotice': 'Georeferenced by an IFC4X3 IfcRigidOperation or IfcWellKnownText CRS definition. This view is read-only.',
   'properties.georef.noProjectedCrs': 'No projected CRS',
   'properties.georef.epsgButton': 'EPSG',
   'properties.georef.doubleGeorefHeading': 'This model is georeferenced twice. ifc-lite corrected it.',

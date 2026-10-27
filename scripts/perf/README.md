@@ -364,9 +364,9 @@ A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it
 
 Historical qualification of the original stack only (through `7cdd67bc3e`):
 the recovered stack has changed; its wall-time disposition is under
-"Current-main source recovery hold (#7880)" below. The following
-verdict is retained as historical evidence, not a current performance or
-output-identity claim.
+"Current-main source recovery hold (#7880)" below, and the fresh R-versus-X
+result is recorded below. The following verdict is retained as historical
+evidence, not a current performance or output-identity claim.
 
 The frozen X3a, R2a and corrective-tail native cohort preserved mesh, vertex,
 triangle and per-mesh fingerprint output on Haus, ISSUE_129 and Holter. The
@@ -385,6 +385,27 @@ WASM worker scheduling or browser load time. Lesson: preserve phase-level
 failures and wall-time disagreements even when aggregate instructions and
 committed ceilings pass; attribute the retained preprocessing dumps before
 changing production work or accepting the regression.
+
+The fresh corrected-X `a806aed` versus R `fde7d3c` native cohort preserves
+complete ordered mesh/float/frame/metadata/instance output and all diagnostic
+bytes on Haus, ISSUE_129 and heavy Holter. Every timed count and fingerprint
+also matches. The stock report flags an adverse Haus parse phase and remains
+inconclusive overall; complete-call wall observations have both directions.
+Timing neutrality is not established. These are historical, inconclusive
+observations for that older pair, not acceptance of a native cost. The exact
+current-source performance verdict remains pending, including per-phase
+instruction counts and a neutral end-to-end A/B verdict. See the
+[retained R comparison](evidence/placement-7779/recovery-r-native/README.md).
+
+All four original helpers completed, but the original preparation failed its
+strict compiler guard when R reused unchanged core from X. A separately reviewed
+metadata recovery preserves that failure and distinguishes actual R compiler
+commands from transitive X core provenance; the historical core dependency byte
+hash was not captured. Fresh witnesses and timing use the retained exact binaries,
+not pooled old samples. Lesson: preserve adverse phase evidence and dependency
+provenance limitations even when full outputs match. This pair supplies no
+standalone-X cost, browser/GPU, speed or neutrality verdict and changes no
+acceptance band, baseline or ceiling.
 
 ## Generated shader commentary and eager bytes (#7918)
 
@@ -682,22 +703,39 @@ by the terminal event; a drain alone cannot preserve an open span. Other M2b
 transfer, interaction, deterministic-upload and device-loss obligations remain
 open.
 
-## Worker warm-up candidate held (#7036)
+## Worker warm-up candidate removed (#7036)
 
-The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
-earlier worker readiness but mixed first-visible and total-load results. No
-end-to-end speedup is accepted. The candidate creates fresh workers beside the
-file read and still terminates them after each load; it does not satisfy the
-original persistent-reuse requirement. Geometry counts match, but an ordered
-geometry hash was not collected. Repeat/federation measurements during takeover
-overlapped validation builds and need an idle-machine repeat. Lesson: moving
-worker initialization earlier is an opportunity screen, not a performance
-verdict. Keep the measurement and memory constraints before changing the rollout.
+**Rejected by the recorded-build acceptance rule; experiment removed.** The
+[preserved real-GPU comparison](evidence/worker-warmup-7036/decision-20261026/README.md)
+uses interleaved fresh-browser production builds and the same source-built WASM
+binary. First geometry improved on the small house, and full readiness improved
+on the structural model, but full metadata/render readiness regressed beyond
+the unchanged reporter's noise threshold on the large architectural model. The predeclared rule forbids that regression; the
+legacy app-summary total cannot substitute for full readiness. Counts match on
+every paired sample, and all samples completed without GPU errors or recovery.
+Source pins, worker receipt, per-fixture measurements, phase memory and M2 frame
+observations are in the linked evidence, separate from the CI numeric baseline.
 
-The experiment defaults off on both the viewer and worker paths. Repeated cache
-hits cannot extend an unused worker's expiry, and memory-pressure retries drain
-the pool without refilling it. These are lifecycle corrections, not an accepted
-performance win; the end-to-end verdict above remains held.
+The measured candidate combines persistent reset workers and parser-module memo
+sharing. The comparison does not attribute the regression to either layer, and
+neither proposal is admitted. A parser-only proposal would need evidence for its
+own unflagged configuration. The existing main warm-up candidate and its public
+experimental APIs are removed under the flag's committed removal condition.
+Normal per-load worker construction, shared-module idle compilation, error
+recovery and the lower-detail retry notice remain.
+
+Logged WASM/JS phase peaks are not process RSS or idle-pool memory acceptance.
+The separate repeat/federation request was refused by the worker guard before
+execution. Those outstanding acceptance campaigns are not claimed or repeated
+for a candidate that will not ship. Earlier queue/admission and invalid-GPU
+attempts are retained as failures, not substituted timing samples.
+
+Lesson: earlier worker readiness and a small-fixture first-paint improvement do
+not establish an acceptable end-to-end tradeoff for large-model readiness.
+Keep the full-readiness boundary and a decision rule recorded before results;
+remove an unsuccessful experiment rather than carrying it indefinitely behind
+a disabled flag. The historical [fresh-worker captures](evidence/worker-warmup-7036/README.md)
+remain historical evidence, without a performance or reuse acceptance claim.
 
 ## Single-model appends cost O(new meshes) in the viewport (#7021)
 
@@ -2901,6 +2939,11 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
   on both sides** — which reads exactly like "no regression" but is a control,
   not a measurement. If the diff is under `rust/processing/src/symbolic/`, say so
   and drive `extract_symbolic_data` directly, rather than pasting a zero.
+  The `symbolic_probe` processing example times that public API and reports
+  complete symbolic JSON fingerprints outside the timed interval. Build the
+  same example at both source pins, then interleave the binaries; pass a fixture
+  and `1` for one extraction per fresh process. This supplements the geometry
+  worker-pool probe and does not establish browser performance.
   - **And pick the fixture by whether it exercises the branch, not by the default.**
     #2358 only does extra work when a symbolic rep's `ContextOfItems` is a full
     `IfcGeometricRepresentationContext`. The default fixture AC20-FZK-Haus has
@@ -4549,6 +4592,59 @@ checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
 
 
+## Recovered frame and placement validation: mixed, held (#7779)
+
+**Performance acceptance and merging remain held.** The single admitted,
+matched idle cohort compared the ordered tail/currentmain base with the recovered
+private integration using already-built source-pinned binaries. Haus wall time,
+public Viadotto planner time and public Duplex symbolic extraction time increased;
+the symbolic increase and the Haus increase are acceptance barriers, not dismissed
+as noise. Other worker-pool fixtures improved in that cohort; Holter is only a
+sanity sample. This is neither a blanket win nor an accepted correctness cost.
+
+All four worker-pool fixture mesh payload hashes and counts matched, and the
+complete Viadotto planner payload matched. Symbolic Duplex output has the separately
+qualified, sampling-order-only pair of near-zero float changes; its full JSON is
+not identical. Mesh hashing does not cover every exported appearance or auxiliary
+payload. Native single-thread phase instruction counts were flat or lower and both
+arms passed the unchanged canonical ceilings. Those phases do not execute the
+public symbolic API and cannot explain its measured slowdown.
+
+The [source identities and lossless reports](https://github.com/LTplus-AG/ifc-lite/blob/4c6534a7050f77f6cd2fbc734b40d14893d5071a/scripts/perf/evidence/f3b-recovered-7779/README.md)
+retain the balanced order, raw samples, CLI, fixture and manifest identities,
+all binary/tool/source checks before and after, numerical deltas and limits.
+Private integrated measurements do not substitute for raw support qualification.
+Root Turbo, source-matched Python wheel/parity and fresh WASM consumers have
+separate states and must not be called ready from native instruction results.
+Lesson: preserve full frames for correctness, retain every negative measurement,
+and attribute public API work separately before any performance acceptance.
+No new profile, rerun, optimization, repin, publication, merge or issue closure is
+authorized by this evidence.
+
+### Raw symbolic takeover qualification (#7914)
+
+The [raw-layer qualification packet](https://github.com/LTplus-AG/ifc-lite/blob/4c6534a7050f77f6cd2fbc734b40d14893d5071a/tests/evidence/f3b-recovered-symbolic-7779/takeover-42fa/README.md)
+records a separate, exclusively admitted paired comparison of the ordered parent
+and corrected symbolic source. Its verdict is **mixed, held**: some fixture wall
+medians increased and others decreased; this is no overall win or neutral result.
+It does not waive the distinct private integration regressions or the upstream
+instruction-budget hold. Full native mesh counts and hashes matched; full symbolic
+payloads needed their own comparison because the native probe does not execute
+the public symbolic API. The larger real-model coordinate changes are corrected
+negative-Z placement projection, independently checked using IfcOpenShell
+placements and authored curve equations, then the actual browser WASM boundary.
+
+Lesson: check executable provenance before timing. Cargo's shared relocation
+cache reused a baseline artifact during the first branch preparation despite a
+clean, correctly pinned checkout. That pair was rejected before measurements;
+fresh workspace compilation, embedded source paths and frozen executable hashes
+established the replacement pair. Keep source correctness, complete output
+identity and performance acceptance as separate evidence questions.
+
+The later [placement-stack reconciliation](https://github.com/LTplus-AG/ifc-lite/blob/4c6534a7050f77f6cd2fbc734b40d14893d5071a/tests/evidence/f3b-recovered-symbolic-7779/reconciliation-6fa/README.md)
+has separate native correctness and Clippy qualification. These earlier paired
+measurements do not qualify that combined source's performance or consumers.
+
 ## Engine transfer ceiling acceptance (#8000, #8003)
 
 The maintainer accepted the accumulated engine transfer cost measured on main
@@ -4835,6 +4931,76 @@ cohort. Preserve source qualification, output identity and timing as separate
 verdicts. Software-GPU upload and capability-probe stalls also explain why
 worker chunk durations cannot stand in for browser load time.
 
+### Current-source wrapper deletion qualification hold (#7896)
+
+The R2a source sequence was rebuilt at `eeba1e4a21` on the landed #7880
+source `a0720da42c` and continues through `5db3809a`. That sequence incorporated the `cf892ea4` integration and was then merged
+with main `760206a3` as `86184f2e`. The former
+public heads `1c2393e0114a` and `46cc72ff79ad`, X3a parent `abaab36312f7`, and
+integration `453af4305df8` are superseded historical heads, not ancestors of
+this integration; their results do not qualify this source. This ancestry does
+not claim that #7906 merged. The canonical placement readers replace the
+deleted wrappers; GeometryProgram and MappingControl retain current rendering
+and type-map origin authority. The lower X2 resource, finite-grid, refusal and
+WASM contracts and the X3a authored Axis2 / derived-Axis1 correction remain
+prerequisites.
+
+Qualification is **HOLD**: Class R requires a neutral base-versus-branch
+performance verdict for this recovered source, plus source-matched behavioral
+and oracle evidence and applicable gates. External Rust consumer qualification
+includes export's `step_map_rigid`, geometry tests/examples, PyO3 and the
+separate csg-thread-bench crate; the latter two are not covered by workspace
+checks. The six removed exports need Rust-only break #14 (Cargo 24.6.2 with
+npm 10.6.2): break #13 (#7955/#8120) shipped in 23.6.1, and the current
+published ifc-lite-geometry is 23.6.1
+(ifc-lite-core is at 23.6.2). The migration guide is in `docs/api/rust.md`.
+The earlier cargo-semver-checks 0.50.0 comparison against 22.6.0 (receipt
+`295e65a4`, six expected `function_missing` findings) and the eight-crate gate
+on `5db3809a` / `86184f2e` are historical and bind those sources only; the
+comparison against geometry 23.6.1 for this head, and runtime, oracle and performance
+gates, remain
+pending. No additional waiver is introduced.
+
+This restack is source-only. Historical native observations above, private
+`75bf`/R75 qualifications and inherited WASM results bind their original sources
+and do not qualify this head. No new runtime, oracle or performance result is
+claimed, and no output pin, digest/floor protection, baseline, ceiling or
+acceptance band is changed. Root independent review and qualification remain
+required before publication or landing.
+
+### Current-main R2a integration (#7896)
+
+The R2a source sequence from `eeba1e4a21` through `5db3809a` was rebuilt on
+landed #7880 (`a0720da42c`), retaining main's version where #7880 changed the
+same reads (the mandatory `ExtrudedDirection` and deleted
+`get_direction_by_id`). The sequence incorporated the `cf892ea4` integration;
+`5db3809a` was then merged with main `760206a3` as `86184f2e`. The former
+`46cc72ff79ad`, `abaab36312f7` and
+`453af4305df8` heads are not ancestors of this integration; their results do
+not bind this source. Historical results above remain bound to their original
+commits. The adjacent-layer comparison, complete output identity, external
+consumer checks, oracle qualification and independent review remain pending.
+
+The review-fix integration merged main `cf892ea4c`, whose break #13
+(#7955/#8120) has since shipped in 23.6.1. The landing head merges main
+`15efd4ff5c` and records the six public-reader removals as their own break
+#14; archived break #12 remains unchanged.
+New exact-head qualification compares with this merged
+main base, not the historical cohorts.
+
+R2a closes only its assigned reader deletions. The remaining hand-rolled
+`curve_segment.rs::read_placement` belongs to downstream X3b; the Rust reader
+guidance in `rust/AGENTS.md` belongs to downstream G3. Neither is closed by
+this layer, and neither is changed here.
+
+### Current-main validator integration preparation (#7915)
+
+The F3b leaves integration applies the P4/E1 source layer `ecb3b32308` after
+approved R2a and the P2t terminal layer, excluding the deferred P2 frame changes
+and the stale `current-parent-64430` evidence packet. Historical measurements
+above remain tied to their original source pins. This local source integration
+has no runtime, oracle or performance qualification; all acceptance holds remain.
+
 ### Native/browser run snapshots (E2b, #7955)
 
 The [source-qualified evidence](evidence/run-snapshot-e2b/summary.json) records
@@ -4904,3 +5070,39 @@ binds the source, runtime custody, original size failure and completed consumer
 proof. Accepting this budget does not establish isolated feature cost or browser
 runtime cost. Preserve the original failures and unknown consumer attempt;
 hosted/parity and current performance remain holds, and merge is not approved.
+
+### F3b leaf-reader instruction diagnosis (#7779, #8045)
+
+A local Callgrind comparison on louistrue-pc of R2a `1cd8066df9` and leaves
+`f4015a55b6` attributes Haus's regression to parsing profile points again
+after eager reference-list decoding. Reusing those decoded records through the
+same counted leaf rule repairs Haus, but alone leaves duplex over the ceiling:
+its BREP loops also pay for the stricter byte reader. Exact uppercase keyword
+comparison before case folding, inlined coordinate reads, and removing duplicate
+trivia/finite checks repair that path without changing numeric admission or
+fallback refusals. The shared number reader already admits finite REALs; its
+unrepresentable variant still falls through to the counted decoder.
+
+The combined change meets the unchanged per-phase instruction ceiling on Haus,
+ISSUE_129 and duplex. Preserve eager list decoding: interleaving decode and leaf
+validation changes which malformed record is counted when a later decode fails.
+These are single-run instruction diagnostics, not elapsed-time or browser
+worker-pool speedup evidence. The local diagnosis packet is
+`f3b-leaves-ir-diagnosis-r1.json`; earlier unsuccessful candidates remain in it.
+
+### IfcType keyword perfect-hash lookup (#8119)
+
+Replacing the generated linear IfcType name dispatch with a minimal perfect
+hash (exact spelling still required on every occupied slot) is accepted on
+instruction counts. Parse instructions drop on Haus, ISSUE_129 and duplex, and
+total instructions drop on all three, with matching mesh, vertex and triangle
+counts. The paired native wall-time cohort was protocol-inconclusive, not a
+pass: the small fixtures run in tens of milliseconds, so a millisecond timer
+cannot resolve a parse-phase gain, and two ISSUE_129 phases measured zero on
+both sides. The large-fixture total moved the same way as the instructions.
+The maintainer accepted the change on that evidence (2026-10-27).
+
+Lesson: a parse-only optimisation needs fixtures whose parse phase runs well
+above the timer resolution before a wall-time cohort can say anything; on small
+models the instruction comparison is the meaningful measurement. Numbers and
+the cohort report live in the PR and its evidence, not here.

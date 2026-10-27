@@ -11,7 +11,10 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 fn assert_near(actual: f64, expected: f64) {
-    assert!((actual - expected).abs() < 1e-10, "expected {expected}, got {actual}");
+    assert!(
+        (actual - expected).abs() < 1e-10,
+        "expected {expected}, got {actual}"
+    );
 }
 
 #[test]
@@ -104,10 +107,15 @@ fn malformed_selected_items_omit_valid_sibling_geometry_atomically() {
             &format!("{bad_rep}\n#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44,#1001));"),
         );
         let result = extract_swept_disk_descriptions(model.as_bytes(), None);
-        assert!(!result.elements.contains_key(&50), "{reason}: partial geometry escaped");
+        assert!(
+            !result.elements.contains_key(&50),
+            "{reason}: partial geometry escaped"
+        );
         assert!(
             result.diagnostics.iter().any(|d| {
-                d.contains("product #50") && d.contains("representation #1001") && d.contains(reason)
+                d.contains("product #50")
+                    && d.contains("representation #1001")
+                    && d.contains(reason)
             }),
             "{reason}: {:?}",
             result.diagnostics
@@ -128,9 +136,15 @@ fn malformed_sweep_beside_valid_sweep_omits_product_atomically() {
         "#1001=IFCSWEPTDISKSOLID(#999,14.5,$,$,$);\n#1002=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));\n#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44,#1002));",
     );
     let result = extract_swept_disk_descriptions(model.as_bytes(), None);
-    assert!(!result.elements.contains_key(&50), "valid sibling must not escape");
     assert!(
-        result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("solid #1001")),
+        !result.elements.contains_key(&50),
+        "valid sibling must not escape"
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("product #50") && d.contains("solid #1001")),
         "{:?}",
         result.diagnostics
     );
@@ -154,7 +168,10 @@ fn mapped_trimmed_line_has_world_metre_endpoints_and_radius() {
     let value = serde_json::to_value(disk).unwrap();
     assert_eq!(value["status"]["type"], "complete");
     assert_eq!(value["directrix_metrics"]["total_length"], 2.75);
-    assert_eq!(value["directrix_metrics"]["segments"][0]["segment_index"], 0);
+    assert_eq!(
+        value["directrix_metrics"]["segments"][0]["segment_index"],
+        0
+    );
     assert_eq!(value["Directrix"][0]["type"], "line");
     assert_eq!(
         value["Directrix"][0]["start"],
@@ -177,10 +194,15 @@ fn invalid_mapping_target_omits_mapped_product_atomically() {
             &format!("{bad_item}\n#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47,#1001));"),
         );
         let result = extract_swept_disk_descriptions(model.as_bytes(), None);
-        assert!(!result.elements.contains_key(&50), "{target}: valid sibling escaped");
+        assert!(
+            !result.elements.contains_key(&50),
+            "{target}: valid sibling escaped"
+        );
         assert!(
             result.diagnostics.iter().any(|d| {
-                d.contains("product #50") && d.contains("mapped item #1001") && d.contains("MappingTarget")
+                d.contains("product #50")
+                    && d.contains("mapped item #1001")
+                    && d.contains("MappingTarget")
             }),
             "{target}: {:?}",
             result.diagnostics
@@ -193,7 +215,10 @@ fn invalid_mapping_target_omits_mapped_product_atomically() {
     );
     let result = extract_swept_disk_descriptions(wrong_type.as_bytes(), None);
     assert!(!result.elements.contains_key(&50));
-    assert!(result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("MappingTarget #46")));
+    assert!(result
+        .diagnostics
+        .iter()
+        .any(|d| d.contains("product #50") && d.contains("MappingTarget #46")));
 }
 
 #[test]
@@ -202,19 +227,70 @@ fn mapped_origin_and_operator_axes_must_resolve_before_claiming_world_coordinate
     let map = "#45=IFCREPRESENTATIONMAP(#13,#44);";
     let operator = "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);";
     let cases = [
-        (source.replace(map, "#45=IFCREPRESENTATIONMAP($,#44);"), "MappingOrigin"),
-        (source.replace(map, "#45=IFCREPRESENTATIONMAP(#12,#44);"), "MappingOrigin"),
-        (source.replace(map, "#1000=IFCAXIS2PLACEMENT3D(#10,42.,#12);\n#45=IFCREPRESENTATIONMAP(#1000,#44);"), "Axis"),
-        (source.replace(map, "#1000=IFCAXIS2PLACEMENT3D(#10,#11,#10);\n#45=IFCREPRESENTATIONMAP(#1000,#44);"), "RefDirection"),
-        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);"), "LocalOrigin"),
-        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,$,$);"), "LocalOrigin"),
-        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(42.,$,#10,$,$);"), "Axis1"),
-        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,#10,#10,$,$);"), "Axis2"),
-        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,42.);"), "Axis3"),
+        (
+            source.replace(map, "#45=IFCREPRESENTATIONMAP($,#44);"),
+            "MappingOrigin",
+        ),
+        (
+            source.replace(map, "#45=IFCREPRESENTATIONMAP(#12,#44);"),
+            "MappingOrigin",
+        ),
+        (
+            source.replace(
+                map,
+                "#1000=IFCAXIS2PLACEMENT3D(#10,42.,#12);\n#45=IFCREPRESENTATIONMAP(#1000,#44);",
+            ),
+            "Axis",
+        ),
+        (
+            source.replace(
+                map,
+                "#1000=IFCAXIS2PLACEMENT3D(#10,#11,#10);\n#45=IFCREPRESENTATIONMAP(#1000,#44);",
+            ),
+            "RefDirection",
+        ),
+        (
+            source.replace(
+                operator,
+                "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);",
+            ),
+            "LocalOrigin",
+        ),
+        (
+            source.replace(
+                operator,
+                "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,$,$);",
+            ),
+            "LocalOrigin",
+        ),
+        (
+            source.replace(
+                operator,
+                "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(42.,$,#10,$,$);",
+            ),
+            "Axis1",
+        ),
+        (
+            source.replace(
+                operator,
+                "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,#10,#10,$,$);",
+            ),
+            "Axis2",
+        ),
+        (
+            source.replace(
+                operator,
+                "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,42.);",
+            ),
+            "Axis3",
+        ),
     ];
     for (model, reason) in cases {
         let result = extract_swept_disk_descriptions(model.as_bytes(), None);
-        assert!(!result.elements.contains_key(&50), "{reason}: false world description");
+        assert!(
+            !result.elements.contains_key(&50),
+            "{reason}: false world description"
+        );
         assert!(
             result.diagnostics.iter().any(|d| {
                 d.contains("product #50") && d.contains("mapped item #47") && d.contains(reason)
@@ -261,8 +337,13 @@ fn composite_bar_keeps_ordered_lines_and_xz_arcs() {
     }
     // The authored U-bar has three straight runs and two 101.5 mm quarter bends.
     let metrics = disk.directrix_metrics().unwrap();
-    let lengths = [0.322, 0.1015 * std::f64::consts::FRAC_PI_2, 0.245685133619932,
-        0.1015 * std::f64::consts::FRAC_PI_2, 0.250];
+    let lengths = [
+        0.322,
+        0.1015 * std::f64::consts::FRAC_PI_2,
+        0.245685133619932,
+        0.1015 * std::f64::consts::FRAC_PI_2,
+        0.250,
+    ];
     assert_near(metrics.total_length, lengths.iter().sum());
     for (index, (segment, expected_length)) in metrics.segments.iter().zip(lengths).enumerate() {
         assert_eq!(segment.segment_index, index);
@@ -281,8 +362,14 @@ fn l_bar_metrics_include_only_the_authored_quarter_bend() {
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let metrics = result.elements[&78][0].directrix_metrics().unwrap();
     assert_eq!(metrics.segments.len(), 3);
-    assert_near(metrics.total_length, 1.601 + 0.0895 * std::f64::consts::FRAC_PI_2 + 0.160);
-    assert_near(metrics.segments[1].bend_angle.unwrap(), std::f64::consts::FRAC_PI_2);
+    assert_near(
+        metrics.total_length,
+        1.601 + 0.0895 * std::f64::consts::FRAC_PI_2 + 0.160,
+    );
+    assert_near(
+        metrics.segments[1].bend_angle.unwrap(),
+        std::f64::consts::FRAC_PI_2,
+    );
     assert_eq!(metrics.segments[0].bend_angle, None);
     assert_eq!(metrics.segments[2].bend_angle, None);
 }
@@ -302,20 +389,33 @@ fn mapped_scale_doubles_arc_length_and_keeps_bend_angle() {
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let metrics = result.elements[&78][0].directrix_metrics().unwrap();
     assert_eq!(metrics.segments.len(), 3);
-    assert_near(metrics.total_length, 2.0 * (1.601 + 0.0895 * std::f64::consts::FRAC_PI_2 + 0.160));
-    assert_near(metrics.segments[1].length, 2.0 * 0.0895 * std::f64::consts::FRAC_PI_2);
-    assert_near(metrics.segments[1].bend_angle.unwrap(), std::f64::consts::FRAC_PI_2);
+    assert_near(
+        metrics.total_length,
+        2.0 * (1.601 + 0.0895 * std::f64::consts::FRAC_PI_2 + 0.160),
+    );
+    assert_near(
+        metrics.segments[1].length,
+        2.0 * 0.0895 * std::f64::consts::FRAC_PI_2,
+    );
+    assert_near(
+        metrics.segments[1].bend_angle.unwrap(),
+        std::f64::consts::FRAC_PI_2,
+    );
 }
 
 #[test]
 fn crank_bar_metrics_include_both_small_bends() {
-    let result = extract_swept_disk_descriptions(&fixture("swept_disk_composite_arc_crankbar"), None);
+    let result =
+        extract_swept_disk_descriptions(&fixture("swept_disk_composite_arc_crankbar"), None);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let metrics = result.elements[&79][0].directrix_metrics().unwrap();
     assert_eq!(metrics.segments.len(), 5);
     let bends = [0.0822700254876878, 0.0822700254876865];
-    let expected = 2.96012202484092 + 0.1305 * bends[0] + 0.561192138816509
-        + 0.1305 * bends[1] + 1.31913733788869;
+    let expected = 2.96012202484092
+        + 0.1305 * bends[0]
+        + 0.561192138816509
+        + 0.1305 * bends[1]
+        + 1.31913733788869;
     assert_near(metrics.total_length, expected);
     for (index, segment) in metrics.segments.iter().enumerate() {
         assert_eq!(segment.segment_index, index);
@@ -353,7 +453,7 @@ fn mapped_occurrence_scales_radius_and_places_directrix_once() {
 }
 
 #[test]
-fn deep_placement_is_reported_instead_of_claiming_world_coordinates() {
+fn a_deep_placement_chain_is_walked_in_full_not_capped_7779() {
     let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
     let mut chain = String::new();
     for id in 200..=320 {
@@ -369,12 +469,18 @@ fn deep_placement_is_reported_instead_of_claiming_world_coordinates() {
         &format!("{chain}#30=IFCLOCALPLACEMENT(#200,#13);"),
     );
     let result = extract_swept_disk_descriptions(source.as_bytes(), None);
-    assert!(!result.elements.contains_key(&50));
+    // D27: no depth cap, the same as the TS walkers. A 121-link chain used to
+    // be refused ("exceeded maximum depth"); it is a valid chain and resolves.
     assert!(
-        result
+        result.elements.contains_key(&50),
+        "{:?}",
+        result.diagnostics
+    );
+    assert!(
+        !result
             .diagnostics
             .iter()
-            .any(|d| d.contains("exceeded maximum depth")),
+            .any(|d| d.contains("depth") || d.contains("cycle")),
         "{:?}",
         result.diagnostics
     );
@@ -391,15 +497,24 @@ fn malformed_placement_chain_never_claims_world_directrix() {
         source.replace(placement, "#30=IFCLOCALPLACEMENT($,#10);"),
         source.replace(placement, "#30=IFCLOCALPLACEMENT($,$);"),
         source.replace(placement, "#30=IFCLOCALPLACEMENT(#10,#13);"),
-        source.replace(placement, "#1000=IFCAXIS2PLACEMENT2D(#10,#14);\n#30=IFCLOCALPLACEMENT($,#1000);"),
+        source.replace(
+            placement,
+            "#1000=IFCAXIS2PLACEMENT2D(#10,#14);\n#30=IFCLOCALPLACEMENT($,#1000);",
+        ),
         source.replace(axes, "#13=IFCAXIS2PLACEMENT3D(#10,42.,#12);"),
         source.replace(axes, "#13=IFCAXIS2PLACEMENT3D(#10,#11,42.);"),
     ];
     for (index, model) in cases.iter().enumerate() {
         let result = extract_swept_disk_descriptions(model.as_bytes(), None);
-        assert!(!result.elements.contains_key(&50), "case {index}: false world description");
         assert!(
-            result.diagnostics.iter().any(|d| d.contains("product #50: placement:")),
+            !result.elements.contains_key(&50),
+            "case {index}: false world description"
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.contains("product #50: placement:")),
             "case {index}: {:?}",
             result.diagnostics
         );
@@ -437,7 +552,9 @@ fn repeated_solid_in_boolean_keeps_both_source_contributions() {
     assert!(disks
         .iter()
         .all(|disk| disk.source_modified && disk.solid_id == 43));
-    assert!(disks.iter().all(|disk| disk.directrix_metrics().is_some_and(|m| (m.total_length - 2.75).abs() < 1e-10)));
+    assert!(disks.iter().all(|disk| disk
+        .directrix_metrics()
+        .is_some_and(|m| (m.total_length - 2.75).abs() < 1e-10)));
 }
 
 #[test]
@@ -445,14 +562,8 @@ fn malformed_boolean_operands_and_csg_root_omit_product_atomically() {
     let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
     let shape = "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));";
     let cases = [
-        (
-            "#1001=IFCBOOLEANRESULT(.UNION.,$,#43);",
-            "FirstOperand",
-        ),
-        (
-            "#1001=IFCBOOLEANRESULT(.UNION.,#43,$);",
-            "SecondOperand",
-        ),
+        ("#1001=IFCBOOLEANRESULT(.UNION.,$,#43);", "FirstOperand"),
+        ("#1001=IFCBOOLEANRESULT(.UNION.,#43,$);", "SecondOperand"),
         (
             "#1001=IFCBOOLEANRESULT(.UNION.,'invalid',#43);",
             "FirstOperand",
@@ -463,10 +574,15 @@ fn malformed_boolean_operands_and_csg_root_omit_product_atomically() {
     for (item, missing) in cases {
         let broken = source.replace(
             shape,
-            &format!("{item}\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));"),
+            &format!(
+                "{item}\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));"
+            ),
         );
         let result = extract_swept_disk_descriptions(broken.as_bytes(), None);
-        assert!(!result.elements.contains_key(&50), "{missing}: partial description escaped");
+        assert!(
+            !result.elements.contains_key(&50),
+            "{missing}: partial description escaped"
+        );
         assert!(
             result.diagnostics.iter().any(|d| {
                 d.contains("product #50") && d.contains("#1001") && d.contains(missing)
@@ -492,16 +608,25 @@ fn invalid_boolean_operand_and_csg_root_types_omit_valid_sibling() {
     let shape = "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));";
     let product_shape = "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));";
     for (item, reason) in [
-        ("#1001=IFCBOOLEANRESULT(.UNION.,#43,#10);", "IfcBooleanOperand"),
+        (
+            "#1001=IFCBOOLEANRESULT(.UNION.,#43,#10);",
+            "IfcBooleanOperand",
+        ),
         ("#1001=IFCCSGSOLID(#10);", "IfcCsgSelect"),
     ] {
         let model = source
             .replace(shape, &format!("{item}\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43,#1001));"))
             .replace(product_shape, "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44));");
         let result = extract_swept_disk_descriptions(model.as_bytes(), None);
-        assert!(!result.elements.contains_key(&50), "{reason}: valid sibling escaped");
         assert!(
-            result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains(reason) && d.contains("#10")),
+            !result.elements.contains_key(&50),
+            "{reason}: valid sibling escaped"
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.contains("product #50") && d.contains(reason) && d.contains("#10")),
             "{reason}: {:?}",
             result.diagnostics
         );
@@ -603,7 +728,11 @@ fn repeated_representations_bound_stack_before_expanding_second_items_list() {
     let result = extract_swept_disk_descriptions(model.as_bytes(), None);
     assert!(!result.elements.contains_key(&50));
     assert!(
-        result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("representation items exceed work budget")),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("product #50")
+                && d.contains("representation items exceed work budget")),
         "{:?}",
         result.diagnostics
     );
@@ -620,7 +749,11 @@ fn oversized_raw_representations_list_is_bounded_before_resolution() {
     let result = extract_swept_disk_descriptions(model.as_bytes(), None);
     assert!(!result.elements.contains_key(&50));
     assert!(
-        result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("Representations list exceeds work budget")),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("product #50")
+                && d.contains("Representations list exceeds work budget")),
         "{:?}",
         result.diagnostics
     );

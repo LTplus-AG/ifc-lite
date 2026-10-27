@@ -198,9 +198,11 @@ describe('Section bar controls drive the store', () => {
     assert.equal(menu.querySelector('button[aria-current="true"]'), null);
     assert.equal(menu.querySelector('button[aria-current="true"]'), null, '1.00 m is 0.2 m off the ground-floor cut: nothing current');
     click(rows[0].querySelector('button')!);
-    // 2.8 + 1.2 = 4 m is the top of the Y range: 100 %.
-    assert.equal(s().sectionPlane.position, 100);
+    // 2.8 + 1.2 = 4 m clears the 3 m top of the Y range, and the 2.8 m floor
+    // is inside it: the cut stays at 4 m, 125 % of [-1, 3] (#8162), not 100 %.
+    assert.equal(s().sectionPlane.position, 125);
     assert.equal(s().sectionPlane.axis, 'down');
+    assert.equal(field().getAttribute('aria-valuetext'), '4.000m');
   });
 
   it('the storey menu is absent for a vertical cut and without storeys', () => {

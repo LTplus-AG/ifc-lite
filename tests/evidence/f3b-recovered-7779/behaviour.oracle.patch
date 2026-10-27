@@ -1,0 +1,37 @@
+diff --git a/rust/geometry/src/placement/validate.rs b/rust/geometry/src/placement/validate.rs
+index 5347aa4a33..1b5f37b832 100644
+--- a/rust/geometry/src/placement/validate.rs
++++ b/rust/geometry/src/placement/validate.rs
+@@ -53,7 +53,9 @@ pub(super) fn check_frames(
+         let at = frame.entity.id;
+         match frame.kind {
+             LinkKind::Local => check_relative(frame, decoder, policy)?,
+-            LinkKind::Linear if policy.linear => {}
++            LinkKind::Linear if policy.linear => {
++                super::linear::validate_source(&frame.entity, decoder)?
++            }
+             LinkKind::Grid if policy.grid => check_grid(frame, decoder)?,
+             LinkKind::Linear => {
+                 return Err(PlacementError::Policy {
+@@ -153,7 +155,7 @@ pub fn validate_spatial_frame(
+     // Defaults participate in the WR too. Explicit +X Axis with omitted
+     // RefDirection (default +X) is parallel, just like two explicit +X axes.
+     let axis = unit(frame.axis.unwrap_or(super::Z))?;
+-    let reference = unit(frame.ref_direction.unwrap_or([0., 1., 0.]))?;
++    let reference = unit(frame.ref_direction.unwrap_or(super::X))?;
+     if axis.cross(&reference).norm() <= 1e-12 {
+         return Err(PlacementError::Policy {
+             at: rel.id,
+diff --git a/rust/geometry/src/placement/validated_chain.rs b/rust/geometry/src/placement/validated_chain.rs
+index 3e9bd1a625..6de4a363e2 100644
+--- a/rust/geometry/src/placement/validated_chain.rs
++++ b/rust/geometry/src/placement/validated_chain.rs
+@@ -59,7 +59,7 @@ impl<'decoder, 'source> ChainValidator<'decoder, 'source> {
+             self.decoder,
+             false,
+             false,
+-            None,
++            Some(&self.verified),
+         )?;
+         if let Some((at, found)) = climbed.stopped_at {
+             return Err(unsupported(self.decoder, at, found));

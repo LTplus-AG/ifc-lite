@@ -58,6 +58,18 @@ pub struct Counters {
     pub coaxial_preserving_refusals: u64,
     pub coaxial_subtract_refusals: u64,
     pub coaxial_commits: u64,
+    /// #8156 abutting-cutter prepass: padded-AABB candidate pairs rejected for
+    /// want of a facing plane pair, then the groups formed, and every group's
+    /// outcome — refused for spending its budget, refused for anything else
+    /// (nothing welded, nonconforming, open, or the wrong volume), or merged.
+    /// `groups == budget_refusals + refusals + merges` always. An unchanged
+    /// corpus row reads very differently depending on whether the prepass never
+    /// fired or fired and was refused, so both are measured.
+    pub abutting_no_facing_pair: u64,
+    pub abutting_groups: u64,
+    pub abutting_budget_refusals: u64,
+    pub abutting_refusals: u64,
+    pub abutting_merges: u64,
     /// EmptyHost, NoOverlap, BudgetTripped, Nonconforming, Unchanged,
     /// InvalidOutput, GateRejected. Actual group attempts, including rollback.
     pub group_rejections: [u64; 7],

@@ -331,9 +331,10 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
   // #5922: the renderer's frame for an Axis-only placement along each world
   // axis, as `build_axis2_matrix` computes it. The Rust test
   // `parse_axis2_placement_3d_axis_only_frames_on_world_axes`
-  // (rust/geometry/src/transform.rs) pins the SAME table against the renderer
-  // itself; the fill is the shared `firstProjAxis` (@ifc-lite/data). Along -X
-  // world Y was taken here, 180 degrees about the Axis from the viewer.
+  // (rust/geometry/src/placement/axis_frame_tests.rs) pins the SAME table
+  // against the renderer itself; the fill is the shared `firstProjAxis`
+  // (@ifc-lite/data). Along -X, world Y was taken here, 180 degrees about
+  // the Axis from the viewer.
   const rendererFrames: ReadonlyArray<[string, [number, number, number], [number, number, number]]> = [
     // [Axis, local X, local Y]
     ['1.,0.,0.', [0, 1, 0], [0, 0, 1]],

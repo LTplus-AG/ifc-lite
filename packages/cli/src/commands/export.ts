@@ -131,8 +131,23 @@ function escapeCsv(value: string, sep: string): string {
   return escapeCsvCell(value, { delimiter: sep });
 }
 
+/** Flags of `export` that take a value; their values are never the input path. */
+const EXPORT_VALUE_FLAGS = new Set([
+  '--format', '--out', '--type', '--columns', '--separator', '--limit', '--where',
+  '--storey', '--name', '--schema', '--kernel', '--retained-engine', '--retained-report',
+]);
+
+/** The first positional argument, skipping the values of value-taking flags. */
+export function exportFilePath(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    if (EXPORT_VALUE_FLAGS.has(args[i])) { i++; continue; }
+    if (!args[i].startsWith('-')) return args[i];
+  }
+  return undefined;
+}
+
 export async function exportCommand(args: string[]): Promise<void> {
-  const filePath = args.find(a => !a.startsWith('-'));
+  const filePath = exportFilePath(args);
   const format = getFlag(args, '--format') ?? 'csv';
   const retainedEngine = await exportKernel(args, format);
   const outPath = getFlag(args, '--out');

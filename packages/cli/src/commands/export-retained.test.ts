@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir, readdir } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { exportCommand } from './export.js';
+import { exportCommand, exportFilePath } from './export.js';
 import { exportKernel, retainedArtifacts } from './export-retained.js';
 import { requireRetainedNode, validateEngine, type RetainedEngine } from '../retained/engine.js';
 import { retainedReport, reportJson } from '../retained/report.js';
@@ -85,4 +85,12 @@ it('#7955 OBJ uses Rust fixed-six formatting, including exact ties and signed ze
     worldFromObject: Float64Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) };
   const { obj } = retainedArtifacts(engine, [{ ...shape, parts: [part] }], () => null);
   expect(obj).toContain('v 0.007812 -0.007812 -0.000000');
+});
+
+it('reads the input path after value-taking flags', () => {
+  expect(exportFilePath(['--kernel', 'retained', '--retained-engine', '/engine', 'model.ifc', '--format', 'obj']))
+    .toBe('model.ifc');
+  expect(exportFilePath(['--format', 'obj', 'model.ifc'])).toBe('model.ifc');
+  expect(exportFilePath(['model.ifc', '--format', 'csv'])).toBe('model.ifc');
+  expect(exportFilePath(['--format', 'obj'])).toBeUndefined();
 });

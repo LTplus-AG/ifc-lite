@@ -124,3 +124,6 @@ pub fn version() -> String {
 
 #[cfg(feature = "retained-browser")]
 mod retained_model_refusal;
+
+#[cfg(feature = "retained-browser")]
+mod retained_view;

@@ -23,8 +23,10 @@ impl ProfileProcessor {
         attr: &ifc_lite_core::AttributeValue,
         prefer_cartesian: bool,
         decoder: &mut EntityDecoder,
-    ) -> Option<TrimSelect> {
-        let list = attr.as_list()?;
+    ) -> Result<Option<TrimSelect>> {
+        let Some(list) = attr.as_list() else {
+            return Ok(None);
+        };
         let mut param: Option<f64> = None;
         let mut point: Option<Point2<f64>> = None;
 
@@ -34,16 +36,9 @@ impl ProfileProcessor {
                 continue;
             }
             // A reference to an IfcCartesianPoint.
-            if item.as_entity_ref().is_some() {
-                if let Ok(Some(pt)) = decoder.resolve_ref(item) {
-                    if pt.ifc_type == IfcType::IfcCartesianPoint {
-                        if let Some(coords) = pt.get(0).and_then(|v| v.as_list()) {
-                            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                            point = Some(Point2::new(x, y));
-                        }
-                    }
-                }
+            if let Some(id) = item.as_entity_ref() {
+                let [x, y, _] = decoder.point3(id)?;
+                point = Some(Point2::new(x, y));
                 continue;
             }
             // Bare numeric fallback: a parameter authored without the
@@ -53,12 +48,12 @@ impl ProfileProcessor {
             }
         }
 
-        match (prefer_cartesian, point, param) {
+        Ok(match (prefer_cartesian, point, param) {
             (true, Some(p), _) => Some(TrimSelect::Cartesian(p)),
             (_, _, Some(f)) => Some(TrimSelect::Parameter(f)),
             (_, Some(p), None) => Some(TrimSelect::Cartesian(p)),
             _ => None,
-        }
+        })
     }
 
     /// Process trimmed conic (circle or ellipse arc)
@@ -255,21 +250,7 @@ impl ProfileProcessor {
 
         let mut points = Vec::with_capacity(point_entities.len());
         for point_entity in point_entities {
-            if point_entity.ifc_type != IfcType::IfcCartesianPoint {
-                continue;
-            }
-
-            // Get coordinates (attribute 0)
-            let coords_attr = point_entity
-                .get(0)
-                .ok_or_else(|| Error::geometry("CartesianPoint missing coordinates".to_string()))?;
-
-            let coords = coords_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Expected coordinate list".to_string()))?;
-
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let [x, y, _] = decoder.point3_decoded(&point_entity)?;
 
             points.push(Point2::new(x, y));
         }
@@ -376,8 +357,7 @@ impl ProfileProcessor {
                         // density; below Medium it coarsens.
                         let arc_base =
                             (arc_estimate / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
-                        let num_segments =
-                            self.quality().profile_arc_segments(arc_base, 4).min(16);
+                        let num_segments = self.quality().profile_arc_segments(arc_base, 4).min(16);
                         let arc_points = self.approximate_arc_3pt(start, mid, end, num_segments);
                         for pt in arc_points {
                             if result_points.last() != Some(&pt) {
@@ -503,9 +483,7 @@ impl ProfileProcessor {
 /// One `IfcIndexedPolyCurve` segment, `IFCLINEINDEX((i1,i2,...))` or
 /// `IFCARCINDEX((i1,i2,i3))`: whether it is an arc and its index list. A bare
 /// index list reads as a line; anything else has no indices.
-pub(super) fn indexed_segment(
-    segment: &AttributeValue,
-) -> (bool, Option<&[AttributeValue]>) {
+pub(super) fn indexed_segment(segment: &AttributeValue) -> (bool, Option<&[AttributeValue]>) {
     match segment {
         AttributeValue::Typed { name, value } => match &**value {
             AttributeValue::List(indices) => (name.contains("ARC"), Some(indices)),

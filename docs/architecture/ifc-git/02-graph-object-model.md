@@ -1,8 +1,8 @@
 # 02: Graph Object Model
 
 Status: draft, for discussion. Part of the [ifc-git spec set](index.md).
-The digest and the encoding's home are decided in index §6.1: BLAKE3, specified
-and implemented in `rust/git`.
+Index §6.1 records the digest as decided (BLAKE3) and the encoding's home as
+proposed: specified and implemented in `rust/git`.
 
 ## 2.1 Four object kinds
 
@@ -126,10 +126,11 @@ wanted:
 
 This is not v0 with a different digest — the element node carries no `key` at
 all — so it is not authored as a `node-hash-v1.md` under
-`@ifc-lite/provenance`. `rust/git` owns the encoding, under its own magic bytes
-and version byte, and `NHV0` stays frozen with its golden vectors and the
-determinism-certificate work it was built for. Index §6.1 records the decision
-and the argument that changed on the way to it.
+`@ifc-lite/provenance`. The proposal is that `rust/git` owns the encoding, under
+its own magic bytes and version byte, and `NHV0` stays frozen with its golden
+vectors and the determinism-certificate work it was built for. Index §6.1 records
+the digest decision, the open proposal for the encoding's home, and the argument
+that changed on the way to them.
 
 ## 2.5 Canonical encoding
 

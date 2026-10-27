@@ -171,8 +171,9 @@ planned, and land one per PR in roughly this order.
 **These are maintainer calls. This spec set records them as open rather than
 assuming an answer, and neither blocks the documents written so far.**
 
-§6.1 is **decided** as of 2026-10-26 and kept here with its reasoning rather
-than deleted, because the argument is what a later reader needs. §6.2 is open.
+§6.1's digest is **decided** as of 2026-10-26 and kept here with its reasoning
+rather than deleted, because the argument is what a later reader needs; where the
+encoding lives is still **proposed**. §6.2 is open.
 
 ### 6.1 The digest — DECIDED. Where the encoding lives — PROPOSED
 

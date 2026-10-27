@@ -15,14 +15,15 @@ fn rows(text: &str) -> impl Iterator<Item = &str> {
 pub fn coverage(actual: &[String], bless: bool, gate: bool, violations: &mut Vec<String>) -> Result<(), Error> {
     let mut files = vec![PathBuf::from(BASE)];
     files.extend(fragments("tests/manifests/cli-retained-coverage.d", "tsv")?);
-    let mut owners = BTreeMap::new(); let mut pins = BTreeSet::new();
+    let mut owners = BTreeMap::new(); let mut pins = BTreeSet::new(); let mut keys = BTreeSet::new();
     for file in &files {
         for row in rows(&std::fs::read_to_string(file)?) {
             let parts: Vec<_> = row.split('\t').collect();
             if parts.len() != 4 || parts[1].parse::<u32>().is_err() { return Err(format!("invalid coverage row in {}", file.display()).into()); }
             let model = parts[0].to_owned();
             if let Some(previous) = owners.insert(model, file.clone()) { if previous != *file { return Err("model rows span coverage files".into()); } }
-            if !pins.insert(row.to_owned()) { return Err("duplicate coverage row".into()); }
+            if !keys.insert((parts[0].to_owned(), parts[1].parse::<u32>()?)) { return Err("duplicate coverage model/id".into()); }
+            pins.insert(row.to_owned());
         }
     }
     // New models route to the matching slice even before its first blessing.

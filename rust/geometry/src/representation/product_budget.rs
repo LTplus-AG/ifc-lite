@@ -24,6 +24,36 @@ pub(crate) struct ProductItems {
     router: Option<ifc_lite_core::execution_owner::ExecutionIdentity>,
 }
 
+// Private, already charged root members. Retained validation includes skipped
+// representations in `items`, but only selected roots continue the walk.
+#[derive(Default)]
+pub(crate) struct AdmittedRoots {
+    pub(crate) representations: Vec<(DecodedEntity, Vec<DecodedEntity>)>,
+    pub(crate) items: u32,
+}
+
+pub(crate) fn admit_retained_product(
+    element: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    allowance: u32,
+    router: &crate::GeometryRouter,
+    roots: AdmittedRoots,
+) -> ProductItems {
+    let mut plan = ProductItems::default();
+    let walk = RepresentationWalk {
+        select: Select::Meshed,
+        nested: NestedMaps::Expand {
+            max_depth: MAX_MAPPED_ITEM_DEPTH,
+            max_levels: allowance,
+        },
+    };
+    if plan.check() == Flow::Continue {
+        walk.admitted_product(element, decoder, &mut plan, roots);
+    }
+    plan.seal(router, decoder);
+    plan
+}
+
 pub(crate) fn admit_product(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -46,15 +76,18 @@ pub(crate) fn admit_product(
     if plan.check() == Flow::Continue {
         plan.shape_error = walk.product(element, decoder, &mut plan).err();
     }
-    plan.check();
-    // Lazy index/unit initialization during admission belongs to this owner.
-    // Seal AFTER that initialization, then validate before every root execution.
-    plan.decoder = Some(decoder.execution_identity());
-    plan.router = Some(router.execution_identity());
+    plan.seal(router, decoder);
     plan
 }
 
 impl ProductItems {
+    fn seal(&mut self, router: &crate::GeometryRouter, decoder: &EntityDecoder) {
+        self.check();
+        // Seal after lazy decoder initialization; execution validates this owner.
+        self.decoder = Some(decoder.execution_identity());
+        self.router = Some(router.execution_identity());
+    }
+
     fn check(&mut self) -> Flow {
         if let Err(stop) = crate::resource::check_current() {
             self.terminal = Some(stop);

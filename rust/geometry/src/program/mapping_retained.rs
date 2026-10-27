@@ -112,8 +112,7 @@ impl<'a> MappingControl<'a> {
         };
         let admitted = (|| {
             if self.levels.is_empty() { state.selection.enter(item.id, &[])?; }
-            validation::occurrence(item, decoder)
-                .map_err(|error| error.into_common(&state.selection))?;
+            let items = validation::occurrence(item, decoder, budget, &state.selection)?;
             // Reuse source and transform admission, explicitly disabling the
             // exact instancing/cache paths. Validate every target even on hits.
             let source = router.admit_styled_occurrence(item,
@@ -123,45 +122,36 @@ impl<'a> MappingControl<'a> {
                     reason.into_common(&state.selection.failure_handle(), FailureSite::MappingPlacement, Some(item.id)))?;
             }
             let cached = state.selection.cached(decoder, router, source.source_id)?;
-            Ok::<_, crate::Error>((source, cached))
+            Ok::<_, super::super::mapping_budget::SourceFailure>((source, cached, items))
         })();
         let selection = state.selection.clone();
         let styled = state.styled;
-        let binding = admitted.as_ref().ok().filter(|_| styled).map(|(source, cached)| {
+        let binding = admitted.as_ref().ok().filter(|_| styled).map(|(source, cached, _)| {
             // Logical source cache publication is transactional and private to
             // this execution. It never claims an exact renderer template.
             RetainedPresentation::occurrence(item.id, source.source_id, source.solid_id,
                 source.solid_id.is_none() || cached.is_none())
         });
         match admitted {
-            Err(error) => MappingValue::Entered {
-                item_id: item.id,
-                value: Err(error),
-            },
-            Ok((source, Some(values))) => MappingValue::RetainedCached(Place {
+            Err(error) => super::execute::source_reply(Err(error), item.id, |value| MappingValue::Entered {
+                item_id: item.id, value,
+            }),
+            Ok((source, Some(values), _)) => MappingValue::RetainedCached(Place {
                 parts: Placing::Retained(Box::new((values, selection, binding))),
                 item_id: item.id, source_id: source.source_id, transform: source.transform, truncated: false,
             }),
-            Ok((source, None)) => {
+            Ok((source, None, items)) => {
                 if let Some(state) = &mut self.retained {
                     state.pending_binding = binding;
                 }
-                let value =
-                    GeometryRouter::styled_source_items(&source.representation, decoder, budget)
-                        .map(|items| {
-                            (
-                                source.source_id,
-                                MappedOccurrence::Source {
-                                    representation: source.representation,
-                                    items,
-                                    transform: source.transform,
-                                },
-                            )
-                        });
-                super::execute::source_reply(value, item.id, |value| MappingValue::Entered {
+                MappingValue::Entered {
                     item_id: item.id,
-                    value,
-                })
+                    value: Ok((source.source_id, MappedOccurrence::Source {
+                        representation: source.representation,
+                        items,
+                        transform: source.transform,
+                    })),
+                }
             }
         }
     }
@@ -342,7 +332,8 @@ impl<'a> MappingControl<'a> {
 
 impl MappingControl<'_> {
     pub(super) fn validate_retained_map(map: &DecodedEntity, decoder: &mut EntityDecoder,
-        selection: &RetainedSelection) -> Result<()> {
-        validation::map(map, decoder).map_err(|error| error.into_common(selection))
+        selection: &RetainedSelection, budget: &mut super::super::mapping_budget::LogicalBudget,
+    ) -> super::super::mapping_budget::SourceResult<(DecodedEntity, Vec<DecodedEntity>)> {
+        validation::map(map, decoder, budget, selection)
     }
 }

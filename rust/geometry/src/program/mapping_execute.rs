@@ -132,11 +132,11 @@ impl MappingControl<'_> {
                     .map(Reached::item)
                     .ok_or(ProgramError::StaleRequest)?;
                 if let Some(state) = &self.retained {
-                    if let Err(error) =
-                        Self::validate_retained_map(rep_map, decoder, &state.selection)
-                    {
-                        return Ok(MappingValue::TypeMapEntered(Err(error)));
-                    }
+                    return Ok(source_reply(
+                        Self::validate_retained_map(rep_map, decoder, &state.selection, budget),
+                        rep_map.id,
+                        MappingValue::TypeMapEntered,
+                    ));
                 }
                 source_reply(
                     router.admit_type_map(rep_map, decoder, budget),

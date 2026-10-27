@@ -99,7 +99,8 @@ pub trait WalkVisitor {
     }
     /// A representation item. Under every policy but [`NestedMaps::Leaf`] it is
     /// never an `IfcMappedItem`.
-    fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow;
+    fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder)
+        -> Flow;
     /// The source and mapped representation resolved. Only `Continue` reads,
     /// charges and decodes its Items, after this callback; `SkipChildren` and
     /// `Stop` suppress those operations and their errors. The level entities
@@ -173,6 +174,31 @@ impl RepresentationWalk {
             }
         }
         Ok(())
+    }
+
+    /// Continue strict retained root admission without decoding or charging
+    /// those members twice. Skipped representations have already paid too.
+    pub(crate) fn admitted_product<V: WalkVisitor>(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        visitor: &mut V,
+        roots: super::product_budget::AdmittedRoots,
+    ) {
+        let mut run = Run {
+            visitor,
+            element: Some(element),
+            path: Vec::new(),
+            levels: 0,
+            items: roots.items,
+        };
+        for (rep, items) in roots.representations {
+            if run.visitor.shape_rep(&rep) == Flow::Stop
+                || self.items(&mut run, Some(&rep), &items, decoder) == Flow::Stop
+            {
+                break;
+            }
+        }
     }
 
     /// Walk the items of an `IfcRepresentationMap`'s mapped representation (a

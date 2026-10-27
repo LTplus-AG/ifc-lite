@@ -15,7 +15,8 @@ fn close(actual: Option<f64>, expected: f64) {
     let actual=actual.expect("section oracle declined hand case");
     let tolerance: serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/cut-0.json")).unwrap();
     let limit=tolerance["cut0SectionVolumeRelative"].as_f64().unwrap();
-    assert!((actual-expected).abs() <= limit*expected.abs().max(1.),"{actual:.16} != {expected:.16}");
+    if expected == 0. { assert_eq!(actual,0.); }
+    else { assert!((actual-expected).abs() <= limit*expected.abs(),"{actual:.16} != {expected:.16}"); }
 }
 // #7955: hand integration of line-profile sections, moving halfplanes, holes.
 #[test]

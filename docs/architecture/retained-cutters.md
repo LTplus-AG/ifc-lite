@@ -41,3 +41,13 @@ checks own separate modules and report through `src_oracle` and per-family
 maxima. The workflow uses `tests/m*` path triggers because the repository's CI
 path checker rejects bracket classes; the Cargo test selector remains
 `--test 'm[0-9]*'`. The broader path trigger only increases validation coverage.
+
+The **2026-10-27 CUT-0 Round 3 orchestrator message** also changes the exact
+comparison's authority, a documented deviation from M1's unconditional linear
+gate: retained passing the independent source-volume oracle while exact fails
+that same source value at the exact gate's limit classifies the product's exact
+comparison as report-only `exact_defect`. The summary records all three
+deviations. Every retained-vs-source check remains mandatory, all tolerance
+values remain frozen, and there are no product allowlists. Missing source
+oracles and retained source failures leave the exact gate unchanged. See the
+[comparison contract](../../rust/retained-native/README.md) for the report fields.

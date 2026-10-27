@@ -81,3 +81,14 @@ volume field is empty when no published cut can be compared. `summary.json`
 lists supported extrusion openings and every opening without analytic
 quantities. The committed universe adds issue_2019 and issue_3641; the latter
 observes current codes only. `f-d-openings.ifc` is unreviewed and does not count.
+
+The **2026-10-27 CUT-0 Round 3 orchestrator message** revises the M1 exact-linear
+comparison rule: the independent source-derived volume oracle is authoritative.
+When retained passes its preregistered source-volume limit and exact exceeds
+the exact-volume limit against that same source value, the product's exact
+comparison is `exact_defect`, report-only. `summary.json` lists these products,
+the source/retained/exact volumes, retained-vs-source and exact-vs-source relative
+deviations, and retained-vs-exact volume/area/bbox deviations. Without a source
+oracle, or when retained fails it, the exact gate applies unchanged. Source
+volume, source bbox, closure and nonfinite checks still fail independently.
+This documented deviation changes no tolerance and adds no per-product allowlist.

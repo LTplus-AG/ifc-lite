@@ -10,6 +10,7 @@ pub struct Report {
     pub published: usize,
     pub histogram: BTreeMap<String, usize>,
     pub violations: Vec<String>,
+    pub exact_defects: Vec<Value>,
     pub universe_mismatch: Vec<String>,
     pub skipped: Vec<String>,
     pub maxima: [f64; 4],
@@ -105,6 +106,7 @@ impl Report {
         tolerances: &Value,
     ) -> [Option<f64>; 5] {
         let source_rel = source.as_ref().map(|(v, _)| relative(actual.volume, *v));
+        let exact_source_rel = exact.zip(source).map(|(e, (v, _))| relative(e.volume, v));
         let vol = exact
             .zip(rounded)
             .map(|(e, a)| relative(a.volume, e.volume));
@@ -137,6 +139,7 @@ impl Report {
         // report-only for finite deviations, never for invalid arithmetic.
         for (name, value) in [
             ("source volume", source_rel),
+            ("exact source volume", exact_source_rel),
             ("exact volume", vol),
             ("exact area", area),
             ("exact bbox", bbox),
@@ -190,7 +193,27 @@ impl Report {
                     .push(format!("{label}: source bbox deviation {deviation}"));
             }
         }
-        if !curved {
+        // #7955, CUT-0 Round 3 orchestrator ruling (2026-10-27): the
+        // independent source oracle outranks an exact mesh that it disproves.
+        // Source, closure and finite-arithmetic checks above remain mandatory.
+        let source_limit = tolerances["sourceVolumeRelative"][if curved { "curved" } else { "linear" }]
+            .as_f64().unwrap_or(0.);
+        let exact_limit = tolerances["exactLinear"]["volumeRelative"].as_f64().unwrap_or(0.);
+        let exact_defect = !curved && source_rel.zip(exact_source_rel).is_some_and(|(r, e)| {
+            r.is_finite() && e.is_finite() && r <= source_limit && e > exact_limit
+        });
+        if exact_defect {
+            self.exact_defects.push(json!({
+                "classification": "exact_defect", "product": label,
+                "sourceVolumeM3": source.map(|(v, _)| v),
+                "retainedVolumeM3": actual.volume, "exactVolumeM3": exact.map(|e| e.volume),
+                "retainedVsSourceVolumeRelative": source_rel,
+                "exactVsSourceVolumeRelative": exact_source_rel,
+                "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
+                "sourceVolumeRelativeLimit": source_limit, "exactVolumeRelativeLimit": exact_limit,
+            }));
+        }
+        if !curved && !exact_defect {
             for (value, key) in [
                 (vol, "volumeRelative"),
                 (area, "areaRelative"),
@@ -211,7 +234,7 @@ impl Report {
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
-            "violations":self.violations,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
+            "violations":self.violations,"exact_defect":self.exact_defects,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
             "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }

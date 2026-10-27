@@ -4,7 +4,8 @@
 
 import { viewerAliases } from './vite-aliases';
 import { legacyManualChunk } from './vite-chunks';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
+import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
 import Icons from 'unplugin-icons/vite';
 import { FileSystemIconLoader } from 'unplugin-icons/loaders';
@@ -215,8 +216,12 @@ const appVersion = viewerPkg.version || rootPkg.version;
 // GITHUB_SHA; falls back to 'dev' for local builds.
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev').slice(0, 12);
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL']), ...process.env };
+  const retained = { enabled: env.VITE_RETAINED_GEOMETRY === 'on', directory: env.IFCLITE_RETAINED_ENGINE, vercel: env.VERCEL };
+  return {
   plugins: [
+    retainedEngine(retained),
     react(),
     Icons({
       compiler: 'jsx',
@@ -255,7 +260,7 @@ export default defineConfig({
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
   resolve: {
-    alias: viewerAliases,
+    alias: { ...viewerAliases, '@ifc-lite/viewer-retained': path.resolve(__dirname, `src/lib/retained/${retained.enabled ? 'index' : 'off'}.ts`) },
   },
   server: {
     port: 3000,
@@ -363,6 +368,7 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
-    plugins: () => [wasm(), topLevelAwait()],
+    plugins: () => [retainedEngine(retained), wasm(), topLevelAwait()],
   },
+  };
 });

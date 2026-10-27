@@ -6,6 +6,7 @@
   "exactCurved": "report only",
   "closureUndirectedEdgeDefects": 0,
   "nativeWasmVolumeRelative": 1e-9,
+  "viewStorageHalfUlp": true,
   "booleanSourceExpectation": null,
   "booleanExactComparison": "curved"
 }

@@ -926,3 +926,13 @@ layers, appearance and persistent faces remain unmet. Refused outcomes carry
 an ID, typed code and optional origin, with no partial product or exact fallback.
 See the [WASM package contract](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#experimental-retained-whole-model-engine)
 for lifecycle, transport and result details. The default engine is unchanged.
+
+For streaming display in a dedicated host Worker, create a `RetainedModelSession`
+from that opt-in bundle and call `session.run(bytes, { detail: 'view' }, onEvent)`.
+The callback receives `start` with canonical candidate IDs and the pre-pass RTC
+frame, then atomic `published` mesh collections or typed `refused` events.
+Extract and free each collection and its mesh handles in `finally` blocks.
+Use `detail: 'shape'` for the M1 f64 shape parts. A session reuses its qualified
+worker across runs; free the session when finished, or terminate the host Worker
+to cancel immediately. Consumers must continue to show the shape-only marker.
+

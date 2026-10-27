@@ -20,19 +20,27 @@ export const CODE_SIGNATURES = [
   '.RetainedModelSession',
 ];
 
+const LEAK_REMEDY = 'The default (VITE_RETAINED_GEOMETRY unset) build must resolve '
+  + '@ifc-lite/viewer-retained to src/lib/retained/off.ts; find the import that pulls '
+  + 'retained code or engine assets into the default graph and route it through that alias.';
+
 /** Inspect every emitted byte (including maps/wasm), not just entry chunks. */
 export async function checkRetainedFree(directory) {
-  if (!(await stat(join(directory, 'index.html'))).isFile()) throw new Error('Viewer dist has no index.html');
+  const index = await stat(join(directory, 'index.html')).catch(() => null);
+  if (!index?.isFile()) {
+    throw new Error(`Viewer dist has no index.html in ${directory}. Build the default viewer first `
+      + '(pnpm build:e2e) or pass the dist directory as the first argument.');
+  }
   let files = 0;
   async function walk(dir) {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       const file = join(dir, entry.name);
-      if (/retained|smlib/i.test(entry.name)) throw new Error(`Retained asset in default dist: ${file}`);
+      if (/retained|smlib/i.test(entry.name)) throw new Error(`Retained asset in default dist: ${file}. ${LEAK_REMEDY}`);
       if (entry.isDirectory()) { await walk(file); continue; }
-      if (!entry.isFile()) throw new Error(`Non-regular viewer asset: ${file}`);
+      if (!entry.isFile()) throw new Error(`Non-regular viewer asset: ${file}. Remove symlinks/special files from the dist; the gate only accepts regular files.`);
       const bytes = await readFile(file);
       for (const forbidden of CODE_SIGNATURES) {
-        if (bytes.includes(forbidden)) throw new Error(`Default dist contains ${forbidden}: ${file}`);
+        if (bytes.includes(forbidden)) throw new Error(`Default dist contains ${forbidden}: ${file}. ${LEAK_REMEDY}`);
       }
       files++;
     }

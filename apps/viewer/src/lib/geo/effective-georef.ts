@@ -157,6 +157,19 @@ export function mergeProjectedCRS(
   };
 }
 
+/**
+ * Whether the Cesium globe can be offered for a model. A named CRS is enough:
+ * a missing conversion can still be added in the editor. A CRS defined only
+ * by IfcWellKnownText is read-only and places nothing without its parsed
+ * coordinate operation, so it needs one.
+ */
+export function offersCesium(
+  georef: Pick<GeoreferenceInfo, 'source' | 'projectedCRS' | 'mapConversion'> | null | undefined,
+): boolean {
+  if (!georef || georef.source === 'siteLocation') return false;
+  return Boolean(georef.projectedCRS?.name?.trim() || (hasDeclaredCrs(georef.projectedCRS) && georef.mapConversion));
+}
+
 /** A CRS is declared by a non-blank Name or, in IFC4X3, an IfcWellKnownText (WHERE NameOrWKT). */
 export function hasDeclaredCrs(crs: Pick<ProjectedCRS, 'name' | 'wellKnownText'> | null | undefined): boolean {
   return Boolean(crs?.name?.trim() || crs?.wellKnownText?.trim());

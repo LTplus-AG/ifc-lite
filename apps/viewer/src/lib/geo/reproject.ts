@@ -25,7 +25,7 @@ import { ifcToViewerAxes } from './coordinate-frame';
 import { wellKnownCrsCode } from './well-known-crs';
 import { isGeographicProj4, projectedDefinitionInMetres, utmProj4String } from './proj4-utils';
 import { resolveMapAxisDirection } from './map-axis-direction';
-import { isWithinWktDefinitionExtent, resolveWktProjection } from './wkt-projection';
+import { isWithinWktDefinitionExtent, resolveWktProjection, withWktExtent } from './wkt-projection';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { PRECISION_GRIDS, resolvePrecisionDef } from './precision-grids';
@@ -239,9 +239,11 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     if (wkt?.kind === 'definition') return wkt.definition;
     const named: ProjectedCRS = { ...crs, wellKnownText: undefined };
     const definition = await resolveProjection(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named);
-    return definition && wkt?.kind === 'epsg' && wkt.towgs84
+    if (!definition || wkt?.kind !== 'epsg') return definition;
+    // The WKT's own datum shift and declared extent still apply to the registry projection.
+    return withWktExtent(crs.wellKnownText, wkt.towgs84
       ? `${definition.replace(/\s\+(?:towgs84|nadgrids)=\S+/g, '')} +towgs84=${wkt.towgs84}`
-      : definition;
+      : definition);
   }
   const explicitCode = extractEpsgCode(crs);
   const aliasCode = explicitCode ? undefined : wellKnownCrsCode(crs.name ?? '');

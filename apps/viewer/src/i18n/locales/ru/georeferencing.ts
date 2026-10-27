@@ -44,6 +44,7 @@ export const georeferencingRu = {
   "properties.georef.later": "Позже",
   "properties.georef.legacySiteNotice": "Отображение устаревших данных геолокации IfcSite из IFC2X3. Этот вид доступен только для чтения.",
   "properties.georef.unsupportedSchemaNotice": "Для редактирования геопривязки требуется IFC4 или более поздняя версия. IFC2X3 не поддерживает IfcProjectedCRS или IfcMapConversion.",
+  "properties.georef.showFullWellKnownText": "Показать полное определение WKT",
   "properties.georef.coordinateOperationReadOnlyNotice": "Геопривязка задана через IfcRigidOperation или определение CRS IfcWellKnownText (IFC4X3). Этот вид доступен только для чтения.",
   "properties.georef.noProjectedCrs": "Нет проекционной CRS",
   "properties.georef.epsgButton": "EPSG",

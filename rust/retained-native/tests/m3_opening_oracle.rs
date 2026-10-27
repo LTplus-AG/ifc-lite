@@ -101,6 +101,7 @@ fn bounds_nonintersection_containment_and_unsupported_prisms() {
     source.position_matrix.as_mut().unwrap()[12] = 100.;
     // A shifted by 100 m has no intersection: V=4*.2*3=2.4.
     close(prism_result_volume(&s, 30, &[50]).unwrap(), 2.4);
+    assert!(prism_result_volume(&s, 30, &[50; 9]).is_none());
     source_reset_oblique(&mut s, &key);
     assert!(prism_result_volume(&s, 30, &[50]).is_none());
     assert!(expected(&s, 30, &[50]).unwrap().volume_bounds[0] > 0.);
@@ -127,4 +128,91 @@ fn source_reset_oblique(
         .unwrap()
         .source;
     source.axis_unit_vector = Some([0.6, 0., 0.8]);
+}
+
+// #7955: full-circle arcs, holes, tangency, containment and empty results are
+// independent hand cases; they do not use any measured oracle output as input.
+#[test]
+fn green_integral_full_circles_holes_and_tangencies() {
+    let text = std::str::from_utf8(ISSUE_2019)
+        .unwrap()
+        .replace(
+            "IFCRECTANGLEPROFILEDEF(.AREA.,'WallProfile',#22,4.,0.2)",
+            "IFCCIRCLEPROFILEDEF(.AREA.,'Disk',#22,1.)",
+        )
+        .replace("((1.5,0.1))", "((3.,0.1))")
+        .replace("#42,1.,0.4)", "#42,2.,4.)")
+        .replace(
+            "#44= IFCCARTESIANPOINT((0.,0.,0.3))",
+            "#44= IFCCARTESIANPOINT((0.,0.,0.))",
+        )
+        .replace("#43,#45,#4,1.2)", "#43,#45,#4,3.)");
+    let s = extract_analytic_quantity_sources(text.as_bytes(), None);
+    // Unit disk, height3, cut x>=center_x: half remains => 3*pi/2.
+    close(
+        prism_result_volume(&s, 30, &[50]).unwrap(),
+        3. * std::f64::consts::PI / 2.,
+    );
+    let tangent = text.replace("((3.,0.1))", "((4.,0.1))");
+    // Cutter x>=3 merely touches a disk centered x=2 of radius1: volume 3*pi.
+    close(
+        prism_result_volume(
+            &extract_analytic_quantity_sources(tangent.as_bytes(), None),
+            30,
+            &[50],
+        )
+        .unwrap(),
+        3. * std::f64::consts::PI,
+    );
+    let hollow = text
+        .replace(
+            "IFCCIRCLEPROFILEDEF(.AREA.,'Disk',#22,1.)",
+            "IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,'Ring',#22,2.,1.)",
+        )
+        .replace("#42,2.,4.)", "#42,2.,6.)");
+    // Outer r2, inner r1, height3 => 9*pi total, right half cut => 9*pi/2.
+    close(
+        prism_result_volume(
+            &extract_analytic_quantity_sources(hollow.as_bytes(), None),
+            30,
+            &[50],
+        )
+        .unwrap(),
+        9. * std::f64::consts::PI / 2.,
+    );
+    let consumed = text.replace("#42,2.,4.)", "#42,10.,10.)");
+    let e = expected(
+        &extract_analytic_quantity_sources(consumed.as_bytes(), None),
+        30,
+        &[50],
+    )
+    .unwrap();
+    close(e.result_volume.unwrap(), 0.);
+    close(e.volume_bounds[0], 0.);
+}
+
+// #7955: use the same authored dimensions under a common proper rotation and
+// survey translation; neither the 2.08 m³ answer nor the cut set changes.
+#[test]
+fn parallel_world_axes_and_georeferenced_placements() {
+    let mut s = extract_analytic_quantity_sources(ISSUE_2019, None);
+    // Rotate about X by 90°, about Z by atan2(.6,.8), then translate.
+    for instances in s.extrusion_definitions.instances.values_mut() {
+        for i in instances {
+            let f = i.world_from_source.as_mut().unwrap();
+            for column in 0..4 {
+                let x = f[4 * column];
+                let y = f[4 * column + 1];
+                let z = f[4 * column + 2];
+                f[4 * column] = 0.8 * x + 0.6 * z;
+                f[4 * column + 1] = 0.6 * x - 0.8 * z;
+                f[4 * column + 2] = y;
+            }
+            f[12] += 2.6e6;
+            f[13] -= 1e5;
+            f[14] += 700.;
+        }
+    }
+    let actual = prism_result_volume(&s, 30, &[50, 70, 100]).unwrap();
+    assert!((actual - 52. / 25.).abs() < 1e-8, "{actual}");
 }

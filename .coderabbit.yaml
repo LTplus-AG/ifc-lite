@@ -62,6 +62,9 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # #8042: review each layer against its predecessor, preserving draft policy.
+    base_branches:
+      - "^stack/8042-v3-.*$"
 
     # THE STAND-DOWN, and the direction of the signal is the whole design.
     #

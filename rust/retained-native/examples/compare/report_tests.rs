@@ -2,10 +2,7 @@
 use super::*;
 
 fn tolerances() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../../tests/fixtures/cli-retained/tolerances.json"
-    ))
-    .unwrap()
+    crate::tolerances::registered().unwrap()
 }
 
 fn tetrahedron(scale: f64) -> Metrics {

@@ -6,7 +6,7 @@ use crate::math::mat4;
 use crate::processors::BlockProcessor;
 use crate::program::GeometryProgram;
 use crate::{AccountedMappedItemCache, Error, GeometryProcessor, GeometryRouter, Mesh, Result, SubMeshCollection,
-    TessellationQuality};
+    RouterConfig, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -140,10 +140,13 @@ fn a_styled_source_is_claimed_before_its_items_resolve() {
 }
 
 fn armed(batch_local: bool) -> GeometryRouter {
-    let mut router = GeometryRouter::new();
+    // #7781: exercise template selection through the public config constructor.
+    let mut router = GeometryRouter::from_config(RouterConfig {
+        instancing_batch_local: batch_local,
+        ..RouterConfig::default()
+    });
     router.enable_accounted_mapped_item_cache(AccountedMappedItemCache::new());
     router.enable_output_instancing(Arc::new([(12, (2, 13))].into_iter().collect()));
-    router.set_instancing_batch_local(batch_local);
     router
 }
 
@@ -194,10 +197,18 @@ fn a_provisional_template_claim_is_kept_only_for_materialized_geometry() {
     let mut decoder = EntityDecoder::new(BASE);
 
     let router = armed(true);
-    let template = unlimited().scope(|| styled(&router, &mut decoder, 13, true)).unwrap();
+    // #7781: visit the non-minimum id first. Global-template mode would emit
+    // a placeholder here; batch-local mode must materialize this occurrence.
+    let template = unlimited()
+        .scope(|| styled(&router, &mut decoder, 15, true))
+        .unwrap();
     assert_eq!(template.sub_meshes[0].mesh.indices.len(), 36);
+    let meta = template.sub_meshes[0].mesh.instance_meta.as_ref().unwrap();
+    assert_eq!(meta.local_transform, Some(translation(10.0)));
     assert!(claimed(&router));
-    let next = unlimited().scope(|| styled(&router, &mut decoder, 15, true)).unwrap();
+    let next = unlimited()
+        .scope(|| styled(&router, &mut decoder, 13, true))
+        .unwrap();
     assert!(next.sub_meshes[0].mesh.positions.is_empty(), "the kept claim makes the next a placeholder");
 
     let mut router = armed(true);

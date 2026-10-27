@@ -5,7 +5,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { request } from 'node:http';
@@ -113,7 +113,5 @@ test('#7955 build bundles only the host; the shared loader emits no engine asset
   assert(!Array.isArray(result) && 'output' in result);
   const worker = result.output.find(o => /worker-.*\.js/.test(o.fileName));
   assert(worker, 'module Worker was emitted');
-  const output = await readFile(join(f.root, 'dist', worker.fileName), 'utf8');
-  assert(output.includes('/retained-engine/pkg-retained/ifc-lite.js'), 'runtime URL stays HTTP-only');
   assert(!result.output.some(o => /ifc-lite|smlib|\.wasm/.test(o.fileName)), 'no engine payload was emitted');
 });

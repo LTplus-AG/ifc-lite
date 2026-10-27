@@ -53,7 +53,7 @@ for (const mode of ['dev', 'preview'] as const) {
       plugins: [retainedEngine({ enabled: true, directory: f.directory })],
       server: { host: '127.0.0.1', port: 0 }, preview: { host: '127.0.0.1', port: 0 } };
     const server = mode === 'dev' ? await createServer(config) : await preview(config);
-    t.after(async () => { if ('close' in server) await server.close(); else await new Promise<void>((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve())); });
+    t.after(() => server.close());
     if ('listen' in server) await server.listen();
     const address = server.httpServer!.address();
     assert(address && typeof address !== 'string');

@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Actual WASM whole-model entry over E1's inert peer, never SDK geometry evidence.
 use super::*;
+use crate::retained_browser::model::test_driver::TestDriver;
 use wasm_bindgen_test::*;
 
 #[wasm_bindgen(module = "/js/retained-model-tests.mjs")]
 extern "C" {
+    #[wasm_bindgen(catch, js_name = driverFactory)]
+    async fn driver_factory() -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = assertMissingModuleReported)]
+    async fn assert_missing_module_reported() -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = preparePeer)]
     async fn prepare_peer(fail_at: u32) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_name = assertPublished)]
@@ -22,6 +27,7 @@ fn append(extra: &str) -> String {
 // Refs #7955 E2: file ordering, typed refusal, skip empty/type jobs and reuse.
 #[wasm_bindgen_test(async)]
 async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_order() {
+    let _driver = TestDriver::install(driver_factory().await.unwrap());
     let start = prepare_peer(0).await.unwrap();
     let source = append(
         "#80=IFCBUILDINGELEMENTPROXY('p',$,$,$,$,#24,#26,$,.NOTDEFINED.);\n\
@@ -62,6 +68,7 @@ async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_or
 // mesh for that product. The next product gets a new, independently qualified peer.
 #[wasm_bindgen_test(async)]
 async fn retained_browser_smlib_free_model_atomicity_and_worker_replacement() {
+    let _driver = TestDriver::install(driver_factory().await.unwrap());
     let start = prepare_peer(3).await.unwrap();
     let source = append(
         "#105=IFCEXTRUDEDAREASOLID(#18,#2,#3,4.);\n\
@@ -79,4 +86,11 @@ async fn retained_browser_smlib_free_model_atomicity_and_worker_replacement() {
     assert_published(&run.next_outcome(), 110).unwrap();
     assert!(run.next_outcome().is_undefined());
     assert_peers(&start, 2).await.unwrap();
+}
+
+// #8188: a bad fixture URL must reject inside a running test, not prevent the
+// entire harness from loading. The JS deadline is below the runner's 120s cap.
+#[wasm_bindgen_test(async)]
+async fn retained_browser_smlib_free_model_missing_module_reports_failure() {
+    assert_missing_module_reported().await.unwrap();
 }

@@ -9,8 +9,16 @@ pub(crate) struct ModelWorker {
     worker: BrowserWorker,
     qualified: bool,
 }
+#[cfg(test)]
+#[path = "model_test_driver.rs"]
+pub(crate) mod test_driver;
+
 impl ModelWorker {
     pub(crate) fn new() -> Result<Self, RuntimeFault> {
+        #[cfg(test)]
+        if let Some(worker) = test_driver::worker()? {
+            return Ok(Self { worker, qualified: false });
+        }
         Ok(Self {
             worker: BrowserWorker::new()?,
             qualified: false,

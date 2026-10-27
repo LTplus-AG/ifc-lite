@@ -1,8 +1,39 @@
 // SPDX-License-Identifier: MPL-2.0
 // JS assertions on actual returned WASM values, not mock return objects.
-import { peers, nextPeer } from '/smlib/peer.mjs';
+// Keep fixture imports inside caught async test calls: a static missing module
+// prevents wasm-bindgen-test itself from loading and reporting any test result.
+async function loadModule(path) {
+  let timer;
+  try {
+    return await Promise.race([
+      import(path),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('module load timed out')), 10_000);
+      }),
+    ]);
+  } catch (cause) {
+    throw new Error(`Retained test module ${path} failed to load: ${cause.message}`, { cause });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+export async function driverFactory() {
+  const { RetainedDriver } = await loadModule('/retained-test/retained-driver.mjs');
+  return () => new RetainedDriver();
+}
+export async function assertMissingModuleReported() {
+  const path = '/retained-test/deliberately-missing.mjs';
+  try {
+    await loadModule(path);
+  } catch (error) {
+    check(error.message.includes(path) && error.cause instanceof Error, 'module error preserves path and cause');
+    return;
+  }
+  throw new Error('missing test module unexpectedly loaded');
+}
 function check(value, message) { if (!value) throw new Error(message); }
 export async function preparePeer(failAt) {
+  const { peers, nextPeer } = await loadModule('/retained-test/peer.mjs');
   const start = peers.length;
   if (failAt) nextPeer().then(peer => {
     peer.failOpcode = 10;
@@ -35,6 +66,7 @@ export function assertRefused(value, id, code) {
   if (code === 'kernel_failure') check(value.kernelStatus === 4, 'typed kernel status');
 }
 export async function assertPeers(start, count) {
+  const { peers } = await loadModule('/retained-test/peer.mjs');
   const created = peers.slice(start);
   check(created.length === count, `expected ${count} workers, got ${created.length}`);
   for (const peer of created) {

@@ -197,6 +197,22 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 
+export interface RetainedRunOptions { ids?: Uint32Array; detail: 'view' | 'shape'; }
+export interface RetainedRtcFrame { rtcOffset: Float64Array; needsShift: boolean; }
+export type RetainedSessionEvent =
+| { kind: 'start'; candidateIds: Uint32Array; frame: RetainedRtcFrame }
+| (RetainedShapeProduct & { kind: 'published' })
+| (RetainedProductRefusal & { kind: 'refused' })
+| { kind: 'published'; expressId: number; ifcType: string;
+marker: 'PresentationObligationsUnmet';
+obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; meshes: MeshCollection };
+export interface RetainedRunSummary {
+    candidates: number; published: number; refused: number; restarts: number;
+    workersAcquired: number; productMs: number; acquireMs: number;
+}
+
+
+
 export interface RetainedShapePart {
     /** Object-local metres. */
     positions: Float64Array;
@@ -2051,6 +2067,19 @@ export class RetainedModelRun {
     next(): RetainedProductOutcome | undefined;
 }
 
+export class RetainedModelSession {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor();
+    /**
+     * Runs one model in canonical order, reusing the qualified worker. The
+     * callback owns each MeshCollection and must free it after extraction.
+     * Callback exceptions reject the run after controller cleanup; terminate
+     * the host Worker to cancel work immediately.
+     */
+    run(content: Uint8Array, options: RetainedRunOptions, on_event: (event: RetainedSessionEvent) => void): Promise<RetainedRunSummary>;
+}
+
 /**
  * The traced outline. Owns wasm memory: call `free()`.
  */
@@ -2751,6 +2780,7 @@ export interface InitOutput {
     readonly __wbg_retainedbrowserexecutor_free: (a: number, b: number) => void;
     readonly __wbg_retainedbrowsersources_free: (a: number, b: number) => void;
     readonly __wbg_retainedmodelrun_free: (a: number, b: number) => void;
+    readonly __wbg_retainedmodelsession_free: (a: number, b: number) => void;
     readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -2980,6 +3010,8 @@ export interface InitOutput {
     readonly retainedbrowsersources_refused: (a: number, b: number) => void;
     readonly retainedbrowsersources_sources: (a: number, b: number) => void;
     readonly retainedmodelrun_next: (a: number) => number;
+    readonly retainedmodelsession_new: () => number;
+    readonly retainedmodelsession_run: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly scanoutlinejs_coords: (a: number) => number;
     readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
     readonly scanoutlinejs_ringCount: (a: number) => number;

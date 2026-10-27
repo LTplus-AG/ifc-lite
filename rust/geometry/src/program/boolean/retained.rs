@@ -146,6 +146,7 @@ impl BooleanMachine {
             .map_err(|_| self.source_refusal(FailureSite::BooleanOperator, node.id,
                 BooleanReason::UnknownOperator, "unknown retained Boolean operator"))?;
         // A certified-empty host cannot be stepped; do not even decode the RHS.
+        #[cfg(any(test, feature = "retained-runtime"))]
         if matches!(operator, BoolOp::Difference | BoolOp::Intersection) && host.is_empty() {
             return Err(self.source_refusal(FailureSite::BooleanStep, node.id,
                 BooleanReason::EmptyHost, "retained Boolean host is already empty"));

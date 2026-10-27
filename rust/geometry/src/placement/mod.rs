@@ -35,6 +35,8 @@ mod chain_tests;
 #[cfg(test)]
 mod grid_tests;
 #[cfg(test)]
+mod grid_samesense_tests;
+#[cfg(test)]
 mod linear_tests;
 #[cfg(test)]
 mod leaf_policy_tests;

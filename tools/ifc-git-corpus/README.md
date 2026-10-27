@@ -41,6 +41,30 @@ Two claims, kept apart because they are not the same claim:
   the mode worth automating; a plain run in CI would let a drifting engine
   rewrite its own expectations.
 
+### In CI
+
+Wired into the **Node guards** lane in `.github/workflows/test.yml`, as
+*"Check the ifc-git revision corpus manifest is current"*. Three properties
+matter and each is deliberate:
+
+- **`--check` only, never a plain run.** A plain run rewrites `revisions.json`,
+  so in CI it would let a drifting engine rewrite its own expectations and still
+  report green.
+- **Isolated output.** `IFC_GIT_CORPUS_OUT` points at a job-local temp
+  directory, so the derived revisions never enter the workspace and cannot
+  collide with another step or be mistaken for a tracked file.
+- **It skips only on absent inputs, and never on disagreement.** The script
+  exits **3** when the built output it derives from is missing — nothing was
+  derived, so nothing was checked — and **1** when the derivation contradicts
+  the manifest. Separating the two is what lets the CI step avoid `|| true`,
+  which would have hidden a real mismatch along with an unbuilt tree.
+
+| Exit | Meaning | CI |
+| --- | --- | --- |
+| 0 | derivation matches the committed manifest | pass |
+| 1 | derivation **contradicts** the manifest or the declarations | fail |
+| 3 | prerequisites absent; nothing derived | skip, with a notice |
+
 ## The chain
 
 Derived from the committed `apps/viewer/public/samples/building-architecture.ifc`

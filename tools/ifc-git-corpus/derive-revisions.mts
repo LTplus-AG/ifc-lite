@@ -51,6 +51,13 @@
  *   pnpm build   # or at least packages/{parser,diff,cli,encoding}
  *   pnpm tsx tools/ifc-git-corpus/derive-revisions.mts [--check]
  *
+ * Exit codes:
+ *   0  derivation matches the committed manifest (`--check`), or the manifest
+ *      was rewritten (plain run)
+ *   1  the derivation CONTRADICTS the declarations or the committed manifest
+ *   3  prerequisites absent -- nothing was derived, so nothing was checked.
+ *      A CI lane may skip on this and must not skip on 1.
+ *
  * Deliberately not run in CI without `--check`: a plain run WRITES the manifest
  * the tests then check, so regenerating in CI would let a drifting engine
  * rewrite its own expectations.
@@ -89,18 +96,40 @@ if (!process.env.IFC_LITE_CORPUS_BOOTSTRAPPED) {
   process.exit(status ?? 1);
 }
 
-const REQUIRED_DIST = [
+/**
+ * Exit code for "the inputs this needs are not here".
+ *
+ * Deliberately distinct from 1. A CI lane has to tell two situations apart: the
+ * manifest DISAGREES with a fresh derivation (a real failure, exit 1), and the
+ * built output needed to derive anything is absent (not a failure of this
+ * check, exit 3). Collapsing both into 1 forces a lane to choose between
+ * failing on an unbuilt tree and hiding a genuine mismatch behind `|| true`,
+ * and `|| true` is how a gate stops gating.
+ *
+ * The skip stays narrow on purpose: only these paths, only absence. A
+ * derivation that runs and disagrees always exits 1.
+ */
+const PREREQUISITES_ABSENT = 3;
+
+const REQUIRED_PATHS = [
   'packages/parser/dist/index.js',
   'packages/diff/dist/index.js',
   'packages/encoding/dist/index.js',
   'packages/cli/dist/commands/diff-engine.js',
+  // The base model every revision is derived from. Committed, not a fetched
+  // fixture -- but a sparse or partial checkout can still be without it, and
+  // deriving from a missing base would otherwise fail deep inside the parser.
+  'apps/viewer/public/samples/building-architecture.ifc',
 ];
-const missing = REQUIRED_DIST.filter((p) => !existsSync(path.join(REPO_ROOT, p)));
+const missing = REQUIRED_PATHS.filter((p) => !existsSync(path.join(REPO_ROOT, p)));
 if (missing.length > 0) {
   console.error(
-    `Missing built output:\n  ${missing.join('\n  ')}\n\nRun \`pnpm build\` first.`,
+    `Prerequisites absent:\n  ${missing.join('\n  ')}\n\n` +
+      'Run `pnpm install && pnpm build` first.\n\n' +
+      `Exiting ${PREREQUISITES_ABSENT} rather than 1, so a CI lane can skip on absent ` +
+      'inputs without also skipping a real mismatch. A mismatch exits 1.',
   );
-  process.exit(1);
+  process.exit(PREREQUISITES_ABSENT);
 }
 
 const { IfcParser } = await import('../../packages/parser/dist/index.js');

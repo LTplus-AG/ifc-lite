@@ -261,6 +261,9 @@ export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, program
     });
     if (spawn === spawnSync) typecheckRuns.set(cacheKey, r);
   }
+  if (r.error?.code === 'ETIMEDOUT') {
+    return { kind: 'timeout', rawExitCode: null, attributed: false, evidence: ['typecheck runner timed out'] };
+  }
   if (r.error) {
     return { kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: null, evidence: [`could not spawn ${TYPECHECK_SCRIPT}: ${r.error.message}`] };
   }

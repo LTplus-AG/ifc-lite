@@ -59,3 +59,17 @@ for (const second of ['observed', 'unobserved', 'hang']) {
     assert.equal(f.git('status', '--porcelain'), '');
   });
 }
+
+test('#7955 an explicit existing witness is executed even when this branch does not edit it', (t) => {
+  const f = fixture(t);
+  const base = f.git('rev-parse', 'HEAD');
+  writeFileSync(join(f.root, 'lib/c.mjs'), 'export const added = true;\n');
+  f.git('add', '.');
+  f.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'new production file');
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, [oracle, '--root', f.root, '--base', base, '--ci', '--verify-restored',
+    '--mutation', join(f.root, 'a.patch'), '--test', 'scripts/a.test.mjs'], { env, encoding: 'utf8', timeout: 20000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(f.git('status', '--porcelain'), '');
+});

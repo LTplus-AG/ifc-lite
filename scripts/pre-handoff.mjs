@@ -6,6 +6,9 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
+import { resolveCommand } from './lib/revert-oracle-run-plan.mjs';
+import { classifyDiff, parseNameStatus } from './lib/revert-oracle.mjs';
 import { discoverOracles, oracleArgs } from './revert-oracle-discover.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
@@ -17,6 +20,7 @@ export function gateCommands(base) {
     { name: 'ci-path-coverage', args: ['scripts/check-ci-path-coverage.mjs'] },
     { name: 'ci-aggregate-coverage', args: ['scripts/check-ci-aggregate-coverage.mjs'] },
     { name: 'workflow-report-paths', args: ['scripts/check-workflow-report-paths.mjs'], deps: ['yaml'] },
+    { name: 'agents-md-size', args: ['scripts/check-agents-md-size.mjs'] },
     { name: 'license-headers', args: ['scripts/add-license-headers.mjs', '--check'] },
     { name: 'pr-review-signal lanes', args: ['--test', '--test-name-pattern=the REAL test.yml derives', 'scripts/lib/pr-review-signal.test.mjs'] },
     { name: 'retained-free viewer', args: ['scripts/check-viewer-retained-free.mjs'], needs: 'apps/viewer/dist' },
@@ -33,10 +37,10 @@ export function missingDependencies(root, dependencies = []) {
 
 /** Keep failures distinct from unavailable prerequisites; always finish the table. */
 export function runGates(root, commands, log = console.log) {
-  return commands.map(({ name, args, deps, needs }) => {
+  return commands.map(({ name, args, deps, needs, unavailable }) => {
     const missing = missingDependencies(root, deps);
-    const reason = missing.length ? `missing ${missing.join(', ')}; run pnpm install`
-      : needs && !existsSync(resolve(root, needs)) ? `${needs} absent; build the default viewer first` : null;
+    const reason = unavailable || (missing.length ? `missing ${missing.join(', ')}; run pnpm install`
+      : needs && !existsSync(resolve(root, needs)) ? `${needs} absent; build the default viewer first` : null);
     if (reason) {
       log(`SKIPPED ${name}: ${reason}`);
       return { gate: name, result: 'SKIPPED', detail: reason };
@@ -48,6 +52,27 @@ export function runGates(root, commands, log = console.log) {
     const result = run.status === 0 && !run.error && !run.signal ? 'PASS' : 'FAIL';
     return { gate: name, result, detail: run.error?.message ?? `exit ${run.status}${run.signal ? ` (${run.signal})` : ''}` };
   });
+}
+
+/** Preflight derived runners so a missing local toolchain is explicitly skipped. */
+export function oraclePrerequisites(root, oracle, base) {
+  const tests = oracle.test ? [oracle.test] : classifyDiff(parseNameStatus(execFileSync('git',
+    ['diff', '--name-status', `${base}...HEAD`], { cwd: root, encoding: 'utf8' }))).test
+    .map((entry) => entry.path).filter((path) => existsSync(resolve(root, path)));
+  const missing = new Set();
+  for (const { runner, dir } of planRuns(tests, root).plans) {
+    if (!runner) continue; // An unsupported adapter is a failure, not a dependency skip.
+    const command = resolveCommand(runner.bin, dir, root);
+    if (!command) missing.add(`${runner.bin} (run pnpm install)`);
+    else if (['cargo', 'python3'].includes(runner.bin)) {
+      const probe = spawnSync(command.bin, [...command.prefix, '--version'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+      if (probe.error?.code === 'ENOENT' || probe.status !== 0) missing.add(`${runner.bin} toolchain`);
+    }
+    for (const dependency of runner.args.filter((arg) => ['tsx', 'tsx/esm'].includes(arg))) {
+      if (missingDependencies(dir, [dependency]).length) missing.add(`${dependency} (run pnpm install)`);
+    }
+  }
+  return missing.size ? `unavailable prerequisites: ${[...missing].join(', ')}` : null;
 }
 
 export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL('..', import.meta.url))) {
@@ -70,8 +95,11 @@ export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL(
     // The existing oracle derives each language's runner and validates actual
     // assertion evidence. Missing tooling remains a visible failure to explain,
     // unless the entire dependency installation is unavailable up front.
+    let unavailable;
+    try { unavailable = oraclePrerequisites(root, oracle, base); }
+    catch (error) { results.push({ gate: oracle.manifest, result: 'FAIL', detail: error.message }); continue; }
     const deps = oracle.test && /\.[cm]?tsx?$/.test(oracle.test) ? ['typescript'] : [];
-    results.push(...runGates(root, [{ name: oracle.manifest, deps, args: [
+    results.push(...runGates(root, [{ name: oracle.manifest, deps, unavailable, args: [
       'scripts/check-test-revert-oracle.mjs', '--base', base, '--ci', '--json',
       '--verify-restored', '--timeout-ms', '120000', ...oracleArgs([oracle]),
     ] }]));
@@ -82,5 +110,5 @@ export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL(
 
 if (isMainEntry(import.meta.url)) {
   try { process.exitCode = main(); }
-  catch (error) { console.error(`FAIL pre-handoff: ${error.message}`); process.exitCode = 1; }
+  catch (error) { console.table([{ gate: 'pre-handoff', result: 'FAIL', detail: error.message }]); process.exitCode = 1; }
 }

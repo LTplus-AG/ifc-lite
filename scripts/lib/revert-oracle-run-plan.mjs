@@ -74,7 +74,9 @@ function toolchainIdentity(binPath, family) {
 export function runPlan(plan, root, label, log = console.log, timeoutMs = RUN_TIMEOUT_MS) {
   const started = Date.now();
   if (plan.typecheck) {
-    const parsed = runTypecheckPlan(plan, root, label);
+    const parsed = runTypecheckPlan(plan, root, label === 'restored' ? 'baseline' : label, {
+      spawn: (bin, args, options) => boundedSpawnSync(bin, args, { ...options, timeout: timeoutMs }),
+    });
     parsed.durationMs = Date.now() - started;
     parsed.tail = parsed.evidence.join('\n');
     parsed.rawExitCode ??= null;

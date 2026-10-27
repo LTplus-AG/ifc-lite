@@ -28,9 +28,6 @@ import { OBSERVED } from './revert-oracle.mjs';
  * @returns {{ plans: object[], baselineResults: object[], revertedResults: object[], deferred: object[] }}
  */
 export function measure({ plans, root, revert, restore, assertClean, timeoutMs, verifyRestored = false, log = console.log }) {
-  if (verifyRestored && plans.some((plan) => plan.browser || plan.typecheck)) {
-    throw new Error('--verify-restored requires a runtime non-browser witness; run the specialized oracle separately');
-  }
   const cheap = plans.filter((plan) => !plan.browser);
   const browser = plans.filter((plan) => plan.browser);
 
@@ -42,23 +39,24 @@ export function measure({ plans, root, revert, restore, assertClean, timeoutMs, 
   log('\n[3/3] re-running the same tests with production reverted');
   const revertedResults = cheap.map((plan) => runPlan(plan, root, 'reverted', log, timeoutMs));
 
-  if (verifyRestored) {
+  function finishRestored(results) {
     restore();
-    log('\n[restored] proving witnesses green after mutation');
-    const restored = cheap.map((plan) => runPlan(plan, root, 'restored', log, timeoutMs));
-    assertClean();
-    if (restored.some((run) => run.kind !== 'pass' || !run.attributed || run.rawExitCode !== 0)) {
-      throw new Error('restored witness is not green and attributable');
+    if (verifyRestored) {
+      log('\n[restored] proving witnesses green after mutation');
+      const restored = cheap.map((plan) => runPlan(plan, root, 'restored', log, timeoutMs));
+      assertClean();
+      if (restored.some((run) => run.kind !== 'pass' || !run.attributed || run.rawExitCode !== 0)) {
+        throw new Error('restored witness is not green and attributable');
+      }
+    }
+    if (results.some((run) => run.kind === 'timeout')) {
+      throw new Error('test hangs under mutation: likely leaked handle/timer');
     }
   }
-  if (revertedResults.some((run) => run.kind === 'timeout')) {
-    restore();
-    throw new Error('test hangs under mutation: likely leaked handle/timer');
-  }
-  if (browser.length === 0) return { plans: cheap, baselineResults, revertedResults, deferred: [] };
   const witnessed = cheap.length > 0 && ledgerVerdict(buildExecutionLedger({ plans: cheap, baselineResults, revertedResults })).verdict === OBSERVED;
-  if (witnessed) {
-    log(`\n[browser] not run: a changed non-browser test already observed the revert; ${browser.length} Playwright spec(s) skipped to bound CI time`);
+  if (browser.length === 0 || witnessed) {
+    if (verifyRestored || revertedResults.some((run) => run.kind === 'timeout')) finishRestored(revertedResults);
+    if (browser.length) log(`\n[browser] not run: a changed non-browser test already observed the revert; ${browser.length} Playwright spec(s) skipped to bound CI time`);
     return { plans: cheap, baselineResults, revertedResults, deferred: browser };
   }
 
@@ -68,6 +66,12 @@ export function measure({ plans, root, revert, restore, assertClean, timeoutMs, 
   restore();
   const browserBaseline = browser.map((plan) => runBrowserPlan(plan, root, 'baseline', log, timeoutMs));
   assertClean();
+  if (verifyRestored) {
+    finishRestored([...revertedResults, ...browserReverted]);
+    if (browserBaseline.some((run) => run.kind !== 'pass' || !run.attributed || run.rawExitCode !== 0)) {
+      throw new Error('restored browser witness is not green and attributable');
+    }
+  }
   return {
     plans: [...cheap, ...browser],
     baselineResults: [...baselineResults, ...browserBaseline],

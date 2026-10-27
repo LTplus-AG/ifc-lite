@@ -43,6 +43,7 @@ test('#7955 discovers every ADDED slice in deterministic order and retains mutat
 });
 
 for (const [name, overrides, message] of [
+  ['test key', { key: 'scripts/a.test.mjs' }, /production file/],
   ['existing key', { key: 'existing.mjs' }, /not ADDED/],
   ['missing patch', { mutation: 'absent.patch' }, /mutation .*unavailable/],
   ['missing witness', { test: 'absent.test.mjs' }, /test .*unavailable/],

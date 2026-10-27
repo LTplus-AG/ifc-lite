@@ -20,7 +20,7 @@ if (isMainEntry(import.meta.url)) {
   const timeout = Number(milliseconds);
   if (!Number.isSafeInteger(timeout) || timeout <= 0 || !bin) throw new Error('Expected positive timeout, binary and arguments');
   const child = spawn(bin, args, { detached: process.platform !== 'win32', stdio: 'inherit' });
-  function kill() {
+  const kill = () => {
     if (!child.pid) return;
     if (process.platform === 'win32') {
       const result = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
@@ -29,7 +29,7 @@ if (isMainEntry(import.meta.url)) {
       try { process.kill(-child.pid, 'SIGKILL'); }
       catch (error) { if (error.code !== 'ESRCH') throw error; }
     }
-  }
+  };
   let expired = false;
   const timer = setTimeout(() => { expired = true; kill(); }, timeout);
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, () => { kill(); process.exit(128); });

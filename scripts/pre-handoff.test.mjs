@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gateCommands, runGates } from './pre-handoff.mjs';
+import { gateCommands, runGates, oraclePrerequisites } from './pre-handoff.mjs';
 
 test('#7955 handoff keeps running after failures and distinguishes missing prerequisites', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'handoff-'));
@@ -30,4 +30,17 @@ test('#7955 selected base reaches diff-sensitive gates and license invocation is
   assert.ok(gates.find((gate) => gate.name === 'module-size').args.includes('custom/base'));
   assert.ok(gates.find((gate) => gate.name === 'source-text-assertions').args.includes('custom/base'));
   assert.ok(gates.find((gate) => gate.name === 'license-headers').args.includes('--check'));
+});
+
+test('#7955 a registered witness with an unavailable runner is explicitly skipped', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'handoff-runner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'packages/example'), { recursive: true });
+  writeFileSync(join(root, 'package.json'), '{}');
+  writeFileSync(join(root, 'packages/example/package.json'), '{"scripts":{"test":"vitest run"}}');
+  writeFileSync(join(root, 'packages/example/witness.test.mjs'), '');
+  const unavailable = oraclePrerequisites(root, { test: 'packages/example/witness.test.mjs' }, 'unused');
+  assert.match(unavailable, /vitest/);
+  const rows = runGates(root, [{ name: 'witness', unavailable, args: ['-e', 'process.exit(9)'] }], () => {});
+  assert.equal(rows[0].result, 'SKIPPED');
 });

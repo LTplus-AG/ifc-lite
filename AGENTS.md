@@ -1,6 +1,6 @@
 # Agent Guidelines: ifc-lite
 
-Project-specific gotchas and guardrails: the things that bite you *here* and that you can't infer from the code. Generic good practice is assumed, not repeated. This file is the single source of truth; `CLAUDE.md` and `.cursorrules` just point here.
+Project-specific guardrails. This file is the source of truth; `CLAUDE.md` and `.cursorrules` point here.
 
 ## What this is
 Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. No first-party desktop app. Domain logic (decode, geometry, styling, export) lives in Rust crates under `rust/*` and is the source of truth for the server, CLI, SDK, and wasm; TypeScript packages under `packages/*` and apps under `apps/*` consume it (TS mostly does GPU upload and UI). Architecture docs: `docs/architecture/overview.md`.
@@ -45,11 +45,8 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 ## Before handing work back
 
-Run `node scripts/pre-handoff.mjs` (optionally `--base origin/main`). A delegated
-task is not done until it passes or each failure is explained. Commit first so
-the diff includes new manifests and the oracle can verify clean restoration.
-Report every explicit SKIPPED prerequisite as unverified coverage. Use the fleet
-launcher above when witnesses require heavy tests; never nest reservations.
+Run `node scripts/pre-handoff.mjs` after committing. A delegated task is not done
+until it passes or each failure is explained. Report SKIPPED coverage too.
 
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.

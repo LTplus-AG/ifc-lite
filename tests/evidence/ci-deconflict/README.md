@@ -30,9 +30,8 @@ hard timeout per runner, restoring and rerunning the witness green. A timed-out
 mutation fails with `test hangs under mutation: likely leaked handle/timer`;
 assertion failures, import/build failures and unobserved mutations are distinct.
 Unavailable dependencies and absent viewer dist are explicitly SKIPPED; explain
-unverified coverage in the handoff. Runtime non-browser witnesses are supported
-by this local bounded mode; specialized browser/type-only witnesses fail with a
-remedy to run the existing specialized oracle separately.
+unverified coverage in the handoff. Witness selection reuses the existing Node, Rust, Python, browser and typecheck
+adapters. Browser builds and test processes are bounded individually.
 
 `dead-clauses.json` records the exact main commit and 53 removed sentinel paths,
 each verified present with `git cat-file -e`. Two absent sentinels remain in the

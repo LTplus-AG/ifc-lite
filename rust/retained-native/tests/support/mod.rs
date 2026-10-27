@@ -74,7 +74,9 @@ impl RetainedRuntime for Peer {
         self.domain.clone()
     }
     fn incarnation(&self) -> u64 {
-        1
+        // Match SmlibWorker: retirement invalidates both the domain and the
+        // incarnation passed into GeometryDocument::prepare_retained.
+        self.domain.incarnation().unwrap_or(0)
     }
 }
 impl AsyncRetainedExecutor for Peer {

@@ -16,6 +16,7 @@ import { escapeCsvCell } from '@ifc-lite/export';
 import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, fatal, writeOutput, validateLimit } from '../output.js';
+import { exportKernel, exportRetained } from './export-retained.js';
 import { exportRustFormat } from './export-rust-formats.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
 
@@ -133,6 +134,7 @@ function escapeCsv(value: string, sep: string): string {
 export async function exportCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
   const format = getFlag(args, '--format') ?? 'csv';
+  const retainedEngine = await exportKernel(args, format);
   const outPath = getFlag(args, '--out');
   let type = getFlag(args, '--type');
   const columnsStr = getFlag(args, '--columns');
@@ -205,6 +207,10 @@ export async function exportCommand(args: string[]): Promise<void> {
   }
 
   const refs = entities.map((e: any) => e.ref);
+  if (retainedEngine) {
+    await exportRetained(args, retainedEngine, store, filePath, refs, filterRequested);
+    return;
+  }
 
   const columns = columnsStr
     ? columnsStr.split(',')

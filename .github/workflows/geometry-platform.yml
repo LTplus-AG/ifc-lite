@@ -27,6 +27,23 @@ on:
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/stage-retained-runtime-peer.mjs'
       - 'scripts/lib/__fixtures__/retained-driver/**'
+      - 'scripts/stage-cli-retained-engine.mjs'
+      - 'scripts/stage-cli-retained-engine.test.mjs'
+      - 'scripts/cli-retained-engine/**'
+      - 'scripts/retained-compare/**'
+      - 'packages/cli/**'
+      - 'packages/**'
+      - 'shared/**'
+      - 'scripts/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'turbo.json'
+      - 'tsconfig*.json'
+      - 'scripts/smlib-node-transport.test.mjs'
+      - 'scripts/lib/__fixtures__/smlib-node/**'
+      - 'tests/evidence/m1-f1/**'
+      - 'LICENSE'
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
@@ -198,6 +215,21 @@ jobs:
         run: |
           node scripts/retained-browser-contract.mjs --build "$RUNNER_TEMP/smlib-wasm" \
             --sdk "$GITHUB_WORKSPACE/upstream-smlib"
+      - name: Staged Node retained engine with real worker_threads
+        id: cli-retained
+        continue-on-error: true
+        run: |
+          node scripts/stage-cli-retained-engine.mjs --build "$RUNNER_TEMP/smlib-wasm" \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" \
+            --pkg-retained "$GITHUB_WORKSPACE/packages/wasm/pkg-retained" \
+            --toolchain-notice "Emscripten-LICENSE=$GITHUB_WORKSPACE/emsdk/upstream/emscripten/LICENSE" \
+            --out "$RUNNER_TEMP/cli-retained-engine"
+          pnpm build --filter=@ifc-lite/cli
+          IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
+            node --test scripts/cli-retained-engine/real-kernel.test.mjs
+          IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
+            IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
+            node --test scripts/retained-compare/real-engine.test.mjs
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()
@@ -212,9 +244,10 @@ jobs:
           GENERATED_TYPES: ${{ steps.generated-types.outcome }}
           PACKAGE_BOUNDARY: ${{ steps.package-boundary.outcome }}
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
+          CLI_RETAINED: ${{ steps.cli-retained.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
+          for lane in NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

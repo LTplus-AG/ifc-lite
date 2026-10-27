@@ -4,6 +4,26 @@
 
 # Performance diagnosis kit
 
+## Symbolic extraction label allocation (#7914, #7779)
+
+Local Callgrind diagnosis of the P2 symbolic extractor on louistrue-pc found
+lower extraction instruction counts than its base on Holter and all three
+controls. The canonical placement walk saves work overall; its matrix cache,
+leaf reads and full-frame composition do not establish the reported wall-time
+regression's cause. Common entity scans dominate Holter's extraction.
+
+Borrowing product and representation labels during the walk removes temporary
+string allocation, including for products with no symbolic representation.
+Emitted primitives still own their labels. This reduces extraction instructions
+on Holter, Haus, duplex and ISSUE_129, preserving each P2 payload byte for byte
+and Holter's base payload. Placement, projection and refusal semantics stay intact.
+
+Verdict: a small allocation reduction, not qualification of symbolic wall time.
+Pinned local timing pairs remain noisy and do not clear the required per-fixture
+confidence bound. Do not replace P2's geometry corrections with approximate
+identity shortcuts to chase that bound. The source-pinned local diagnosis is
+`p2-holter-overhead-r1.json`; instruction savings do not waive the perf hold.
+
 One place to answer "where does load time go, and what is the biggest lever?"
 for both the **native** Rust pipeline (CLI/server/exporter) and the **WASM**
 viewer path. The two run the *same* Rust code (`process_geometry` ->

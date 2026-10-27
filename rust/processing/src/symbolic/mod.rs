@@ -270,7 +270,10 @@ fn extract_symbolic_data_into_frame<T>(
             continue;
         };
 
-        let ifc_type_name = entity.ifc_type.name().to_string();
+        // Borrow classification labels through the walk; emitted primitives
+        // own their strings. Most products have no symbolic representation
+        // and should not allocate labels only to discard them (#7914).
+        let ifc_type_name = entity.ifc_type.name();
 
         let single_representation = representations.len() == 1;
         for shape_rep in representations {
@@ -281,10 +284,9 @@ fn extract_symbolic_data_into_frame<T>(
             let rep_identifier = shape_rep
                 .get(1)
                 .and_then(|a| a.as_string())
-                .unwrap_or("")
-                .to_string();
+                .unwrap_or("");
             if !matches!(
-                rep_identifier.as_str(),
+                rep_identifier,
                 "Plan" | "Annotation" | "FootPrint" | "Axis"
             ) {
                 continue;
@@ -314,8 +316,8 @@ fn extract_symbolic_data_into_frame<T>(
                     &item,
                     &mut decoder,
                     id,
-                    &ifc_type_name,
-                    &rep_identifier,
+                    ifc_type_name,
+                    rep_identifier,
                     unit_scale,
                     &combined_transform,
                     rebase,

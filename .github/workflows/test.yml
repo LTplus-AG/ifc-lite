@@ -744,6 +744,9 @@ jobs:
       # check instead of failing `build` and skipping every lane that needs it.
       # continue-on-error for the same reason: a measurer fault uploads no
       # artifact, and `perf-ratchet` then fails on the missing download.
+      - name: Verify default viewer is retained-free
+        run: node scripts/check-viewer-retained-free.mjs
+
       - name: Measure perf-ratchet bundle family
         id: perf-ratchet-measure
         continue-on-error: true
@@ -941,6 +944,9 @@ jobs:
           # #7955 M1 F: keep added CLI modules; restore zero-publication success.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/cli/src/commands/export-retained.ts | grep -Fxq 'packages/cli/src/commands/export-retained.ts'; then
             oracle_args+=(--mutation tests/evidence/m1-f-cli-retained/behaviour.oracle.patch --test packages/cli/src/commands/export-retained.test.ts)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/lib/retained/retained-client.ts | grep -Fxq 'apps/viewer/src/lib/retained/retained-client.ts'; then
+            # #7955 M2-B: keep the protocol APIs; Cancel no longer terminates.
+            oracle_args+=(--mutation tests/evidence/m2-b/behaviour.oracle.patch --test apps/viewer/src/lib/retained/retained-client.test.ts)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- native/smlib-adapter/node/client.mjs | grep -Fxq 'native/smlib-adapter/node/client.mjs'; then
             # #7955 M1 F: preserve the added modules so inert tests still load;
             # break captured-owner retirement and engine asset digest recording.

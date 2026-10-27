@@ -104,9 +104,21 @@ small functional smoke possible without weakening measurement admission.
 Budget the full cohort from the smoke's process costs and its explicitly stated
 scale assumption for the large case and proof cost. Target under two hours;
 set the launcher timeout to `planning.timeoutSeconds` (twice the estimate).
-The example below uses 14,400 s only as a two-hour-budget placeholder; replace
-it with the smoke projection before freezing the full command. A timeout is a failed cohort, never permission to remove
-the large case. Do not run the full cohort during harness implementation.
+The validated small-fixture smoke receipt and planning projection are retained
+separately; the command below uses its projected 12,240-second timeout. Recompute
+it for a materially changed source or fixture plan. A timeout is a failed cohort,
+never permission to remove the large case. Do not run the full cohort during harness implementation.
+
+
+Implementation smoke evidence: ordinary Pop job
+`f6a71d44-90d6-4468-946e-4d17af8d8092`, harness commit `20fd70b2ad`, TS source
+`e59777a81424ef44210b9f093c989d5db2c57e59`, Rust source
+`514a5f21233265118ab7393f357e186bf237d350`. The report preserves real fixture
+receipts, all option proofs, raw child costs, the byte-linear size assumption
+and its timeout projection. This is functional harness evidence, not an
+exclusive performance verdict. New full-cohort preparation must bind the
+intended current source pair; the smoke's old source pins are not approval
+for another source pair.
 
 ## Parent preparation and receipts
 
@@ -228,7 +240,7 @@ On Pop, outside any reservation, use one task for preparation and measurement:
 
 ```bash
 ~/build-workers/run-heavy --cwd /absolute/clean/harness --kind benchmark \
-  --storage-task issue8042-rightsized-cohort --cpu 24 --memory 48 --timeout 14400 \
+  --storage-task issue8042-rightsized-cohort --cpu 24 --memory 48 --timeout 12240 \
   --artifact /absolute/task-output/cohort/result.json \
   --artifact /absolute/task-output/cohort/proofs.jsonl \
   -- node scripts/perf/diff-e2e.mjs run \

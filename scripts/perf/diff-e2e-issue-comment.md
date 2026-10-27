@@ -28,9 +28,16 @@ Map/optional-field structure and original-reference identity remain a separate
 hard gate. Standard exclusive idle admission remains mandatory; per-round CPU
 and load samples are descriptive, without classifying every host process.
 
-A one-pair small-fixture ordinary smoke is required before scheduling the full
-cohort. Its receipt, per-pair cost and explicit scale assumption must accompany
-the full-run estimate. No full cohort is authorized by the smoke, and no timing
-verdict has been claimed. The measured verdict and lesson must be recorded in
-scripts/perf/README.md before consumer cutover. Separate correctness and
-geometry-enriched coverage obligations remain open.
+The one-pair demo/Haus ordinary smoke passed on Pop (job
+f6a71d44-90d6-4468-946e-4d17af8d8092): 17.23 seconds end to end, including
+identity proofs, and 11.06 seconds for the timing pair across the two small
+cases. Scaling Haus timing and proof cost by the frozen large pair's byte-size
+ratio gives an explicitly unmeasured full-cohort projection of about 102
+minutes and a twice-estimate timeout of 12,240 seconds. This is a planning
+assumption, not a large-case timing result or an exclusive performance verdict.
+The full cohort has not run.
+
+Fresh source-pinned preparation and v3 binding/admission records are required;
+the old frozen protocol approval does not apply. The measured verdict and
+lesson must be recorded in scripts/perf/README.md before consumer cutover.
+Separate correctness and geometry-enriched coverage obligations remain open.

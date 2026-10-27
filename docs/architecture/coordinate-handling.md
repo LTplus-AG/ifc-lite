@@ -12,6 +12,8 @@ Building corner at: (487234.567, 5234891.234, 0.0)
 
 **Important**: Large coordinates do NOT mean a model is georeferenced! Proper georeferencing in IFC is done via `IfcMapConversion` and `IfcProjectedCRS`, which store transformation parameters separately while keeping geometry in a local coordinate system with small values.
 
+IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose source coordinates already are target-CRS coordinates, often with large values like the example above. ifc-lite reads it like a map conversion with an identity axis (`source: 'rigidOperation'`). The target CRS may be an `IfcProjectedCRS` or an `IfcGeographicCRS`, and either can carry an `IfcWellKnownText` definition (WKT1 or WKT2) in place of an EPSG code. The viewer reads that WKT through proj4's parser, prefers an EPSG identifier the WKT names, and refuses a position outside the WKT's declared `BBOX`. On the globe the model is placed by one anchor point and its local east/north/up frame, not by reprojecting every vertex. Earth curvature and the projection's scale distortion across the model's extent are therefore not applied.
+
 Large coordinates in geometry are a **bad practice** that has unfortunately become common. They cause rendering issues:
 
 | Issue | Description |

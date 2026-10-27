@@ -52,9 +52,12 @@ export { PlyStreamingSource } from './streaming/ply-source.js';
 export { PcdStreamingSource } from './streaming/pcd-source.js';
 export { E57StreamingSource, inspectE57SpatialMetadata } from './streaming/e57-source.js';
 export {
+  extractWktBoundingBox,
   extractWktCrsIdentifiers,
+  extractWktHorizontalCrs,
   extractWktSpatialMetadata,
   type WktAxisDirection,
+  type WktBoundingBox,
   type WktCrsIdentifiers,
   type WktSpatialMetadata,
 } from './spatial-wkt.js';

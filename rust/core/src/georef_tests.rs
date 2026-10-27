@@ -449,12 +449,16 @@ fn rotation_only_map_conversion_is_reported() {
         "#11=IFCMAPCONVERSION(#2,#12,0.,0.,0.,0.8660254037844387,0.5,1.);\n#12=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,$,$,$);",
     );
     let mut decoder = EntityDecoder::new(&content);
-    // No IfcProjectedCRS candidate: the CRS name stays None.
+    // No CRS candidate, but the conversion's own TargetCRS is an
+    // IfcGeographicCRS: the CRS read is the operation's target (TS parity),
+    // so its Name is reported. This used to read only the first
+    // IfcProjectedCRS candidate and left the name None.
     let geo = GeoRefExtractor::extract(&mut decoder, &[(11u32, IfcType::IfcMapConversion)])
         .expect("decode ok")
         .expect("a parsed map conversion is a georeference even with zero offsets");
     assert!(geo.has_map_conversion);
-    assert_eq!(geo.crs_name, None);
+    assert_eq!(geo.crs_name.as_deref(), Some("EPSG:4326"));
+    assert_eq!(geo.map_unit.as_deref(), Some("DEGREE"));
     assert!((geo.rotation().to_degrees() - 30.0).abs() < 1e-9);
 }
 
@@ -586,4 +590,67 @@ fn epset_map_conversion_with_an_overflowing_offset_is_refused_whole() {
     let geo = GeoRefExtractor::extract(&mut decoder, &with_crs).unwrap().unwrap();
     assert_eq!(geo.source, Some(GeoRefSource::EPSetMapConversion));
     assert!(geo.eastings == 0.0 && geo.eastings.is_sign_negative());
+}
+
+/// A conversion-based plane-angle unit whose factor refers back to itself has
+/// no resolvable size: the rigid operation is refused (the CRS still claims
+/// presence) instead of recursing without end.
+#[test]
+fn rigid_operation_with_cyclic_angle_unit_is_refused() {
+    let content = ifc4x3_with_conversion(
+        "#20=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(1.),#21);\n\
+         #21=IFCCONVERSIONBASEDUNIT(*,.PLANEANGLEUNIT.,'LOOP',#20);\n\
+         #12=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,#21,$);\n\
+         #11=IFCRIGIDOPERATION(#2,#12,IFCPLANEANGLEMEASURE(13.),IFCPLANEANGLEMEASURE(52.),$);",
+    );
+    let mut decoder = EntityDecoder::new(&content);
+    let types = [(11u32, IfcType::IfcRigidOperation), (12, IfcType::IfcGeographicCRS)];
+    let (geo, details) = GeoRefExtractor::extract_with_details(&mut decoder, &types)
+        .expect("decode ok")
+        .expect("the named geographic CRS still claims georeferencing");
+    assert_eq!(geo.source, None);
+    assert_eq!(details.operation, None);
+    assert_eq!(details.source_label(geo.source), None);
+    assert_eq!(geo.crs_name.as_deref(), Some("EPSG:4326"));
+    assert_eq!((geo.eastings, geo.northings), (0.0, 0.0));
+}
+
+
+/// PR #8170: preserve the old placement API while retaining exact provenance.
+#[test]
+fn rigid_operation_details_preserve_compatible_zero_translation() {
+    let content = ifc4x3_with_conversion(
+        "#11=IFCRIGIDOPERATION(#2,$,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),$);",
+    );
+    let types = [(11, IfcType::IfcRigidOperation)];
+    let (geo, details) = GeoRefExtractor::extract_with_details(
+        &mut EntityDecoder::new(&content), &types,
+    ).unwrap().unwrap();
+    assert_eq!(geo.source, Some(GeoRefSource::MapConversion));
+    assert!(!geo.has_map_conversion, "exporters must not treat a rigid operation as IfcMapConversion");
+    assert!(geo.has_georef(), "a zero translation still places the model");
+    assert_eq!(details.operation, Some(CoordinateOperationKind::RigidOperation));
+    assert_eq!(details.source_label(geo.source), Some("rigidOperation"));
+    let legacy = GeoRefExtractor::extract(&mut EntityDecoder::new(&content), &types)
+        .unwrap().unwrap();
+    assert_eq!(legacy.source, geo.source);
+    assert_eq!(legacy.to_matrix(), geo.to_matrix());
+    assert!(!legacy.has_map_conversion);
+}
+
+/// PR #8170: WKT declares a CRS without adding fields to GeoReference.
+#[test]
+fn wkt_only_crs_without_an_operation_declares_nothing() {
+    // A CRS defined only by IfcWellKnownText is claimed through a parsed
+    // coordinate operation; on its own it places nothing, so the fallbacks run
+    // and no nameless, sourceless identity record is returned (#8170 review).
+    let content = ifc4x3_with_conversion(
+        "#12=IFCPROJECTEDCRS($,$,$,$,$,$,$);\n\
+         #13=IFCWELLKNOWNTEXT(' PROJCRS[\"local\"] ',#12);",
+    );
+    let types = [(12, IfcType::IfcProjectedCRS), (13, IfcType::IfcWellKnownText)];
+    assert!(GeoRefExtractor::extract_with_details(&mut EntityDecoder::new(&content), &types)
+        .unwrap()
+        .is_none());
+    assert!(GeoRefExtractor::extract(&mut EntityDecoder::new(&content), &types).unwrap().is_none());
 }

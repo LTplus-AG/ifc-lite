@@ -4,8 +4,8 @@
 // No grandfathering or auto-baseline mode. Residuals remain failing debt.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { lex, isTestPath, cfgTestRanges } from './lib/rust-source-text-detect.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const canonical = 'rust/core/src/decoder/leaf_read.rs';
 const spelling = /\b(?:coords|ratios)\s*\.\s*(?:first\s*\(\s*\)|get\s*\(\s*\d\s*\))\s*\.\s*and_then\s*\(\s*\|\s*v\s*\|\s*v\s*\.\s*as_float\s*\(\s*\)\s*\)\s*\.\s*unwrap_or\s*\(/g;
@@ -53,7 +53,7 @@ export function runCheck(root) {
   return { scanned, findings, ok: findings.length === 0 };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainEntry(import.meta.url)) {
   try {
     const result = runCheck(process.cwd());
     for (const hit of result.findings) console.error(`${hit.path}:${hit.line}: copied coordinate/ratio default`);

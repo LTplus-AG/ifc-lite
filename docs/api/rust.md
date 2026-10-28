@@ -640,7 +640,14 @@ Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 `ifc_lite_geometry::representation` is the decoder-only home of a product's
 representation chain (`Representation(6)` to `IfcProductDefinitionShape.Representations(2)`
 to `Items(3)`, and `IfcMappedItem` to `MappingSource` to `MappedRepresentation`).
-It meshes nothing and owns no cache.
+It meshes nothing and owns no cache. `ProductShape::representations()` exposes
+the decoded list in file order; `select()` applies the caller's named policy.
+The crate-private `representation/structural.rs` serves consumers that need
+less: `product_shape_id` reads identity without decoding, `rep_item_ids` yields
+references for lazy RTC sampling, and `reference_only_opening` checks the
+bounded representation list without inspecting geometry. `representation/unwrap.rs`
+contains first-item mapped/boolean probe chains with explicit caller policies;
+it does not replace the branching visitor walk.
 
 ```rust
 pub fn product_shape(element: &DecodedEntity, d: &mut EntityDecoder) -> Result<Option<ProductShape>, ShapeError>;
@@ -760,8 +767,14 @@ sticky. Source-step debits become controller state only after reply acceptance.
 The don't-bake eligibility probe accepts exactly one raw reference and decodes
 at most that member after root mapped-attempt admission. Malformed multi-slot
 Items with ignored members fall through to guarded flat materialization.
-This is neither a memory bound nor whole-product, cache-independent admission
-spanning representations; that and drawing policy remain separate #7887 work.
+These controller meters bound expanded rendering work, not memory. Whole-product,
+cache-independent admission is implemented in `representation/product_budget.rs`
+and called by `program/product/admission.rs` before rendering. It charges root
+members and repeated mapped occurrences across `Select::Meshed` representations,
+retains completed roots, and withholds the current and later roots on budget
+exhaustion. `profile_extractor.rs` uses that same admission and walks the admitted
+roots for extrusion profiles, reporting refusals through its drawing diagnostics.
+The controllers remain responsible for rendering the admitted roots.
 
 #### mesh_check (test-support)
 

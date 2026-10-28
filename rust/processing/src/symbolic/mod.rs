@@ -70,7 +70,7 @@
 use output_cap::SymbolicAccumulator;
 use ifc_lite_core::resource_stop::ProgramStop;
 use rebase::RenderFrameRebase;
-use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner};
 
 mod color;
 mod conic;
@@ -94,7 +94,11 @@ mod projected_conic_tests;
 mod rebase;
 mod text;
 mod transform;
+mod representation_walk;
 mod trimmed_curve;
+mod type_symbols;
+#[cfg(test)]
+mod type_symbols_tests;
 
 pub use output_cap_types::{SymbolicTruncation, SymbolicTruncationReason};
 pub use primitives::{
@@ -103,8 +107,8 @@ pub use primitives::{
 
 use color::build_styled_item_index;
 use grid::extract_grid;
-use item_walk::extract_symbolic_item;
-use transform::{compose_transforms, resolve_object_placement};
+use representation_walk::walk_own_representations;
+use transform::resolve_object_placement;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Top-level extraction. Mirror of the wasm `parse_symbolic_representations`
@@ -213,6 +217,9 @@ fn extract_symbolic_data_into_frame<T>(
     // IfcFillAreaStyle → IfcColourRgb).
     let styled_items = build_styled_item_index(content, &mut decoder);
 
+    // Occurrence -> type, for the type-level symbol fallback (#8233).
+    let type_of = type_symbols::build_type_of(content, &mut decoder);
+
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -254,79 +261,33 @@ fn extract_symbolic_data_into_frame<T>(
 
         // Standard representation walk: IfcProductDefinitionShape → Plan /
         // Annotation / FootPrint / Axis IfcShapeRepresentation → items.
-        let Some(representation_attr) = entity.get(6) else {
-            continue;
-        };
-        if representation_attr.is_null() {
-            continue;
-        }
-        let Ok(Some(representation)) = decoder.resolve_ref(representation_attr) else {
-            continue;
-        };
-        let Some(reps_attr) = representation.get(2) else {
-            continue;
-        };
-        let Ok(representations) = decoder.resolve_ref_list(reps_attr) else {
-            continue;
-        };
-
-        // Borrow classification labels through the walk; emitted primitives
-        // own their strings. Most products have no symbolic representation
-        // and should not allocate labels only to discard them (#7914).
         let ifc_type_name = entity.ifc_type.name();
-
-        let single_representation = representations.len() == 1;
-        for shape_rep in representations {
-            if out.is_exhausted() { break; }
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-            let rep_identifier = shape_rep
-                .get(1)
-                .and_then(|a| a.as_string())
-                .unwrap_or("");
-            if !matches!(
-                rep_identifier,
-                "Plan" | "Annotation" | "FootPrint" | "Axis"
-            ) {
-                continue;
-            }
-
-            // Retain the shared 3D ObjectPlacement frame until plan projection.
-            let placement_transform = resolve_object_placement(&entity, &mut decoder, unit_scale);
-
-            let context_transform = transform::resolve_context_transform(&shape_rep, &mut decoder, unit_scale);
-            // A small 3D WCS rotation can couple a large local Z into plan
-            // XY. Compose before projection without an approximate identity
-            // shortcut, even when its XY block appears unchanged (#7779).
-            let combined_transform = compose_transforms(&context_transform, &placement_transform);
-
-            let Some(items_attr) = shape_rep.get(3) else {
-                continue;
-            };
-            let Ok(items) = decoder.resolve_ref_list(items_attr) else {
-                continue;
-            };
-            let direct_fill_ids = fill_provenance::direct_fill_ids(&items, single_representation);
-            for item in items {
-                if out.is_exhausted() {
-                    break;
-                }
-                extract_symbolic_item(
-                    &item,
-                    &mut decoder,
+        let has_own_symbolic = walk_own_representations(
+            &entity,
+            id,
+            ifc_type_name,
+            &mut decoder,
+            unit_scale,
+            rebase,
+            &styled_items,
+            out,
+        );
+        // No symbolic representation of its own: the symbol may be held only
+        // on the type's RepresentationMaps (#8233).
+        if !has_own_symbolic {
+            if let Some(&type_id) = type_of.get(&id) {
+                type_symbols::walk_type_representation_maps(
+                    &entity,
                     id,
+                    type_id,
                     ifc_type_name,
-                    rep_identifier,
+                    &mut decoder,
                     unit_scale,
-                    &combined_transform,
                     rebase,
                     &styled_items,
                     out,
-                    direct_fill_ids.contains(&item.id).then_some(item.id),
                 );
             }
         }
     }
-
 }

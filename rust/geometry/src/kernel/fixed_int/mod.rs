@@ -87,15 +87,6 @@ impl<const K: usize> FixedInt<K> {
     pub fn is_negative(self) -> bool {
         self.0[K - 1] >> 63 == 1
     }
-
-    /// The same two's-complement value as an arbitrary-precision `BigInt`.
-    pub(crate) fn to_bigint(self) -> num_bigint::BigInt {
-        let mut bytes = Vec::with_capacity(K * 8);
-        for limb in self.0 {
-            bytes.extend_from_slice(&limb.to_le_bytes());
-        }
-        num_bigint::BigInt::from_signed_bytes_le(&bytes)
-    }
 }
 
 // ── Native limb helpers (the hot path) ──────────────────────────────────────

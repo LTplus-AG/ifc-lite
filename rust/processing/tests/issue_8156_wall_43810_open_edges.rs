@@ -233,7 +233,7 @@ fn issue_8156_wall_43810_is_closed_in_the_native_and_browser_frames() {
 /// so the coaxial union hands the batched subtract two prisms and the kernel's
 /// abutting merge unions them first. That union put a vertex of the shared
 /// jamb one ulp off the jamb's plane: the fixed-width materialisation divided
-/// f64-rounded operands instead of rounding the exact quotient once. The jamb
+/// f64-rounded operands, and the exact coordinate (the plane's) was lost. The jamb
 /// was no longer planar, the next subtract split its diagonal on one side of
 /// the seam only, and the cut came back with a T-junction (3 open edges), which
 /// `clean_void_output`'s hygiene widened to 15.

@@ -48,3 +48,16 @@ fn m11_n_7955_negative_extrusion_keeps_outward_profile_sides() {
     // The +X side at local (2,.5,-1.5), under the fixture's authored frame.
     expected(&source(text.as_bytes(),27),[3.76,-0.82,0.7],[0.36,0.48,-0.8]);
 }
+
+#[test]
+fn m11_n_7955_orphan_maps_have_analytic_normals_in_both_source_frames() {
+    let surfaces = source(include_bytes!("../../geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc"),105);
+    // Three maps each contain two unit boxes, one at zero and one translated
+    // to 5,000,000.123456 m. Repeated instances remain separate source surfaces.
+    assert_eq!(surfaces.len(),36);
+    for x in [0.,5_000_000.123456] {
+        expected(&surfaces,[x+0.5,0.,0.5],[1.,0.,0.]);
+        expected(&surfaces,[x-0.5,0.,0.5],[-1.,0.,0.]);
+        expected(&surfaces,[x,0.,1.],[0.,0.,1.]);
+    }
+}

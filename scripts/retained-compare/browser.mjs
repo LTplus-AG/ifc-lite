@@ -67,7 +67,13 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
     // SMLib linear heap; report that limitation rather than inventing a figure.
     const memory = await page.evaluate(async () => {
       if (!performance.measureUserAgentSpecificMemory) return { bytes: null, reason: 'measureUserAgentSpecificMemory unavailable' };
-      try { return { bytes: (await performance.measureUserAgentSpecificMemory()).bytes }; }
+      try {
+        const measurement = await performance.measureUserAgentSpecificMemory();
+        const sdk = measurement.breakdown.filter(entry =>
+          entry.attribution.some(owner => owner.url?.includes('/smlib/')));
+        return { bytes: measurement.bytes, smlibWorkerBytes: sdk.length ? sdk.reduce((sum, entry) => sum + entry.bytes, 0) : null,
+          smlibAttribution: sdk.length ? 'Browser-attributed Worker memory, not isolated SDK linear heap' : 'No separate SDK attribution supplied' };
+      }
       catch (error) { return { bytes: null, reason: String(error) }; }
     });
     await page.evaluate(() => window.harness.dispose());

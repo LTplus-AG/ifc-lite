@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
-import { protocol, validateProtocol, digest, nonempty, resultProof,
+import { protocol, validateProtocol, digest, nonempty, resultProof, handleResultProof,
   assertPair, distribution, fixtureInvariant, endpointVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
 import { fileReceipt, readJson, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt } from './diff-e2e-receipts.mjs';
 import { measure } from './diff-e2e-sample.mjs';
@@ -18,6 +18,8 @@ import { main, run, summary, audit, cpuUtilization } from './diff-e2e.mjs';
 
 test('#8042 protocol requires six pairs, reproducible balanced interleaving and finite bounds', () => {
   const p = protocol();
+  assert.equal(p.version, 'ifc-diff-e2e/4');
+  assert.throws(() => validateProtocol({ ...p, version: 'ifc-diff-e2e/3' }));
   assert.equal(p.pairs, 6);
   assert.deepEqual(p.cases.map(c => c.id), ['demo', 'haus', 'large']);
   assert.equal(p.options.length, 3);
@@ -88,6 +90,24 @@ test('#8042 proof rejects copied row/entry objects even when deeply equal', () =
   assert.throws(() => resultProof(result, base, head), /reuse entry/);
 });
 
+test('#8042 handle proofs accept owned snapshots but reject changed values, copied refs and inconsistent claims', () => {
+  const { base, head, result } = resultFixture();
+  const expected = resultProof(result, base, head);
+  const b = { ...base[0] }, h = { ...head[0] };
+  result.entries[0].base = b; result.entries[0].head = h;
+  result.contentMatches = [{ base: [b], head: [h] }];
+  result.splitMerges = [{ kind: 'split', whole: b, pieces: [h] }];
+  result.successors = [{ base: b, head: h }];
+  assert.deepEqual(handleResultProof(result, base, head), expected);
+  assert.throws(() => resultProof(result, base, head), /identity lost/);
+  b.ref = { ...base[0].ref };
+  assert.throws(() => handleResultProof(result, base, head), /opaque ref identity/);
+  b.ref = base[0].ref; b.extra = true;
+  assert.throws(() => handleResultProof(result, base, head), /changed input values/);
+  delete b.extra; result.successors[0].base = { ...b };
+  assert.throws(() => handleResultProof(result, base, head));
+});
+
 test('#8042 all secondary claim references must point into their proper side', () => {
   for (const mutate of [
     f => { f.result.contentMatches[0].head = [{ ...f.head[0] }]; },
@@ -140,39 +160,117 @@ test('#8042 process summaries do not promote correlated repeats to independent s
   assert.equal(value.base.warmProcessMediansMs.n, 2);
   assert.deepEqual(value.base.warmProcessMediansMs.samples, [1, 3]);
   assert.deepEqual(value.pairedWarmCallRatio.samples, [2, 2]);
+  const secondary = { ...sample([2, 2, 200]), callPath: 'prepared-handles',
+    statelessTimes: [100, 100, 900].map(totalMs => ({ totalMs })) };
+  const reported = summary([{ base: sample([1, 1, 100]), branch: secondary }]);
+  assert.deepEqual(reported.branch.callPaths, ['prepared-handles']);
+  assert.equal(reported.branch.statelessWarmProcessMediansMs.median, 100);
+  assert.deepEqual(reported.pairedWarmCallRatio.samples, [2]);
 });
 
-test('#8042 production facade is called once cold and per warm repeat; proof never enters timing', async () => {
+test('#8042 v4 warm prepares two handles once, conditions, compares and disposes outside latency', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'diff-facade-unit-'));
   const gc = global.gc;
   try {
-    await writeFile(join(dir, 'a.ifc'), 'inert fixture');
-    let calls = 0, inits = 0, releases = 0;
-    global.gc = () => { releases++; };
+    const path = join(dir, 'a.ifc'); await writeFile(path, 'inert fixture');
+    const events = [], handles = [];
+    global.gc = () => { events.push('gc'); };
     const base = [{ key: 'a', ref: {} }], head = [{ key: 'a', ref: {} }];
     let side = 0;
+    const result = { get entries() { throw new Error('proof contaminated timing'); } };
+    const facade = {
+      initDiff() { events.push('init'); },
+      diffModels(b, h, options) {
+        assert.equal(b, base); assert.equal(h, head); assert.equal(options, payload.options[1]);
+        events.push('stateless'); return result;
+      },
+      prepareDiffModel(rows) {
+        events.push(rows === base ? 'prepare-base' : 'prepare-head');
+        const handle = {
+          compare(other, options) {
+            assert.equal(this, handles[0]); assert.equal(other, handles[1]);
+            assert.equal(options, payload.options[1]);
+            events.push('compare'); return result;
+          },
+          dispose() { events.push(rows === base ? 'dispose-base' : 'dispose-head'); },
+        };
+        handles.push(handle); return handle;
+      },
+    };
     const modules = {
       'packages/cli/dist/loader.js': { parseIfcBytes: () => ({}), scanCompletenessWarnings: () => [] },
       'packages/cli/dist/commands/diff-engine.js': { buildFileFingerprints: () => [base, head][side++] },
-      'packages/diff/dist/index.js': { initDiff: () => { inits++; }, diffModels: (_b, _h) => {
-        calls++;
-        // Accessing entries would throw: timing must not traverse/hash output.
-        return { get entries() { throw new Error('proof contaminated timing'); } };
-      } },
+      'packages/diff/dist/index.js': facade,
     };
-    const payload = { root: dir, fixture: { id: 'unit', paths: [join(dir, 'a.ifc'), join(dir, 'a.ifc')] },
+    const payload = { root: dir, fixture: { id: 'unit', paths: [path, path] },
       options: [{}, {}, {}], retained: 3, implementation: 'rust-wasm', optionIndex: 1 };
-    const cold = await measure({ ...payload, mode: 'cold' }, name => modules[name]);
-    assert.equal(calls, 1); assert.equal(inits, 1); assert.equal(releases, 1);
+    const load = name => modules[name];
+    const cold = await measure({ ...payload, mode: 'cold' }, load);
+    assert.deepEqual(events, ['init', 'stateless', 'gc']);
+    assert.equal(cold.callPath, 'stateless-diffModels');
     assert.deepEqual(cold.proofs, []); assert.equal(cold.retainedTimes.length, 0);
-    side = 0;
-    const warm = await measure({ ...payload, mode: 'warm' }, name => modules[name]);
-    assert.equal(calls, 5); assert.equal(inits, 2); assert.equal(releases, 2);
-    assert.equal(warm.retainedTimes.length, 3);
-    assert.ok(warm.phases.lifecycleTotalMs >= warm.phases.releaseMs);
-    side = 0;
-    modules['packages/diff/dist/index.js'] = { diffModels() { throw new Error('must not run'); } };
-    await assert.rejects(measure({ ...payload, mode: 'cold' }, name => modules[name]), /final public Rust facade/);
+    events.length = 0; side = 0;
+    const warm = await measure({ ...payload, mode: 'warm' }, load);
+    assert.deepEqual(events, ['init', 'prepare-base', 'prepare-head',
+      'compare', 'compare', 'compare', 'compare', 'dispose-base', 'dispose-head',
+      'stateless', 'stateless', 'stateless', 'stateless', 'gc']);
+    assert.equal(warm.handleApiAvailable, true);
+    assert.equal(warm.callPath, 'prepared-handles');
+    assert.equal(warm.retainedTimes.length, 3); assert.equal(warm.statelessTimes.length, 3);
+    assert.ok(warm.phases.prepareHandlesMs >= 0); assert.ok(warm.phases.disposeMs >= 0);
+    assert.ok(warm.phases.lifecycleTotalMs >= warm.phases.disposeMs + warm.phases.releaseMs);
+    events.length = 0; side = 0;
+    modules['packages/diff/dist/index.js'] = { diffModels: facade.diffModels };
+    const ts = await measure({ ...payload, mode: 'warm', implementation: 'typescript' }, load);
+    assert.deepEqual(events, ['stateless', 'stateless', 'stateless', 'stateless', 'gc']);
+    assert.equal(ts.callPath, 'stateless-diffModels'); assert.equal(ts.handleApiAvailable, false);
+    assert.equal(ts.retainedTimes.length, 3); assert.deepEqual(ts.statelessTimes, []);
+    modules['packages/diff/dist/index.js'] = { initDiff: facade.initDiff, diffModels: facade.diffModels };
+    for (const mode of ['proof', 'cold', 'warm']) {
+      await assert.rejects(measure({ ...payload, mode }, load), /public prepareDiffModel handle API required/);
+    }
+  } finally { global.gc = gc; await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#8042 v4 proof checks resident output against stateless and disposes on preparation/compare failure', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'diff-handles-unit-'));
+  const gc = global.gc;
+  try {
+    const path = join(dir, 'a.ifc'); await writeFile(path, 'inert fixture');
+    global.gc = () => {};
+    for (const failure of [null, 'prepare', 'compare', 'different']) {
+      const { base, head, result } = resultFixture();
+      let side = 0, prepares = 0, comparisons = 0, disposed = 0, stateless = 0;
+      const modules = {
+        'packages/cli/dist/loader.js': { parseIfcBytes: () => ({}), scanCompletenessWarnings: () => [] },
+        'packages/cli/dist/commands/diff-engine.js': { buildFileFingerprints: () => [base, head][side++] },
+        'packages/diff/dist/index.js': {
+          initDiff() {}, diffModels() { stateless++; return result; },
+          prepareDiffModel() {
+            prepares++;
+            if (failure === 'prepare' && prepares === 2) throw new Error('prepare failed');
+            return {
+              compare() {
+                comparisons++;
+                if (failure === 'compare') throw new Error('compare failed');
+                return failure === 'different' ? { ...result, optional: undefined } : result;
+              },
+              dispose() { disposed++; },
+            };
+          },
+        },
+      };
+      const promise = measure({ root: dir, fixture: { id: 'unit', paths: [path, path] },
+        options: [{}, {}, {}], retained: 3, implementation: 'rust-wasm', mode: 'proof' }, name => modules[name]);
+      if (failure) await assert.rejects(promise, /prepare failed|compare failed|differs from stateless/);
+      else {
+        const proof = await promise;
+        assert.equal(proof.proofs.length, 3); assert.equal(proof.retainedProofs.length, 9);
+        assert.equal(comparisons, 12); assert.equal(stateless, 3);
+        assert.equal(proof.callPath, 'prepared-handles');
+      }
+      assert.equal(prepares, 2); assert.equal(disposed, failure === 'prepare' ? 1 : 2);
+    }
   } finally { global.gc = gc; await rm(dir, { recursive: true, force: true }); }
 });
 

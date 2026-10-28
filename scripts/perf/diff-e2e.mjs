@@ -70,6 +70,9 @@ export function summary(pairs) {
   for (const arm of ['base', 'branch']) {
     const samples = pairs.map(pair => pair[arm]);
     result[arm] = {
+      callPaths: [...new Set(samples.map(s => s.callPath))],
+      statelessWarmProcessMediansMs: samples[0].statelessTimes?.length ? distribution(samples.map(s =>
+        distribution(s.statelessTimes.map(t => t.totalMs)).median)) : undefined,
       phases: Object.fromEntries(Object.keys(samples[0].phases).map(key =>
         [key, distribution(samples.map(s => s.phases[key]))])),
       processWallMs: distribution(samples.map(s => s.processWallMs)),
@@ -132,7 +135,7 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
   await mkdir(out, { recursive: false });
   const report = { version: p.version, state: 'running', performanceVerdict: 'not-assessed',
     fullIssue8042Accepted: false, protocol: p, protocolFile, admissionFile, exclusive,
-    coverage: { adapter: 'final public facade; per-call handles', fingerprintEngine: 'public API on each source; Rust pipeline acceptance still required',
+    coverage: { adapter: 'public diffModels cold; public resident handles warm vs TS diffModels; stateless candidate warm reported only', fingerprintEngine: 'public API on each source; Rust pipeline acceptance still required',
       geometry: 'absent from real CLI projection', auxiliaryOperations: 'not timed; separate parity evidence required' },
     harness, harnessSource, builds: {}, environment: environment(), cases: [],
     startedAt: new Date().toISOString() };

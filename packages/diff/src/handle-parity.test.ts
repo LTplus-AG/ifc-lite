@@ -20,9 +20,8 @@ type Vector = { name: string; base: EntityFingerprint<number>[]; head: EntityFin
 // variants of every differential vector, then return to the original mode.
 for (const name of ['core', 'content', 'split', 'successor', 'lineage']) {
   const vectors = JSON.parse(readFileSync(new URL(`../../../rust/diff/tests/${name}_vectors.json`, import.meta.url), 'utf8')) as Vector[];
-  test.skipIf(!existsSync(binary))(`public handles: ${name} differential corpus (${vectors.length} vectors; #8042; missing WASM: pnpm build:wasm)`, () => {
+  test.skipIf(!existsSync(binary)).each(vectors)(`public handles: ${name} $name (#8042; missing WASM: pnpm build:wasm)`, vector => {
     initDiffSync({ module: readFileSync(binary) });
-    for (const vector of vectors) {
       const options: DiffOptions = { ...vector.options,
         ...(vector.options?.keyAliases ? { keyAliases: new Map(vector.options.keyAliases) } : { keyAliases: undefined }) };
       // Real mesh tokens, symmetric placements, and mixed placements+mesh.
@@ -47,7 +46,6 @@ for (const name of ['core', 'content', 'split', 'successor', 'lineage']) {
           }
         } finally { left.dispose(); right[Symbol.dispose](); }
       }
-    }
   });
 }
 

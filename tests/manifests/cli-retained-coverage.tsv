@@ -132,7 +132,7 @@ tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	133	refused	incomplete
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	141	refused	incomplete
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	156	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	173	refused	operation_unsupported
-tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	181	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	181	published	
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	190	published	
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	202	refused	empty_result
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	219	published	

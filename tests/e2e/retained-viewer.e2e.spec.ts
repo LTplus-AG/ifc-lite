@@ -13,7 +13,8 @@ const MAPPED = 'rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc';
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
 const SKIP = 'SKIP: no staged SMLib engine; this is NOT parity evidence';
 interface ViewerGlobals {
-  __ifc_lite_viewer_store__: { getState(): ViewerState };
+  __ifc_lite_viewer_store__: { getState(): ViewerState; subscribe(listener: (state: ViewerState) => void): () => void };
+  __retainedCancel?: { clickMs: number; before: { meshIds: number[]; published: number }; error?: string };
   __IFC_LITE_LOAD_TRACE__: { latest(): LoadTraceSnapshot | null };
   __retainedLongTasks: number[];
 }
@@ -116,37 +117,66 @@ test.describe('retained viewer acceptance', () => {
     expect(requests.filter(url => /\/smlib\/|pkg-retained/.test(url))).toEqual([]);
   });
 
-  test('Cancel terminates the real host within 1 s and keeps published meshes', async ({ page }) => {
-    await setup(page, 'retained');
-    const hostPromise = page.waitForEvent('worker', { predicate: worker => /retained\.worker/.test(worker.url()) });
-    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
-    const host = await hostPromise;
-    await page.waitForFunction(() => {
-      const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
-      const model = [...state.models.values()][0];
-      return (model?.geometryResult?.meshes.length ?? 0) > 0 && model?.retainedGeometry?.completeness === 'running';
+  test.describe('Cancel timing', () => {
+    // Trace DOM snapshots add main-thread/transport work to the latency sample.
+    test.use({ trace: 'off' });
+    test('Cancel terminates the real host within 1 s and keeps published meshes', async ({ page }) => {
+      await setup(page, 'retained');
+      // #7955: a Node-side snapshot between first batch and click can take
+      // seconds under GPU load and let this small model finish. Observe the first
+      // append in-page and click the real DOM button in the same microtask turn.
+      const closed = new Promise<void>(done => page.on('worker', host => {
+        if (/retained\.worker/.test(host.url())) host.once('close', () => done());
+      }));
+      await page.evaluate(() => {
+        const globals = globalThis as typeof globalThis & ViewerGlobals;
+        const store = globals.__ifc_lite_viewer_store__;
+        const unsubscribe = store.subscribe(state => {
+          const model = [...state.models.values()][0];
+          if (!model?.geometryResult?.meshes.length || model.retainedGeometry?.completeness !== 'running') return;
+          unsubscribe();
+          queueMicrotask(() => {
+            const current = [...store.getState().models.values()][0];
+            // This is a primary load, before finalization/ID registration. The
+            // single-model stream carries the fixture's express IDs directly.
+            const meshIds = [...new Set(current.geometryResult!.meshes.map(mesh => mesh.expressId))];
+            const button = [...document.querySelectorAll('button')].filter(button => button.textContent?.trim() === 'Cancel').at(-1);
+            globals.__retainedCancel = { clickMs: performance.now(), before: { meshIds, published: current.retainedGeometry!.published } };
+            if (!button || button.disabled || current.retainedGeometry?.completeness !== 'running') {
+              globals.__retainedCancel.error = 'No enabled Cancel button during the first published batch';
+              return;
+            }
+            button.click();
+          });
+        });
+      });
+      await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+      await page.waitForFunction(() => Boolean((globalThis as typeof globalThis & ViewerGlobals).__retainedCancel));
+      const click = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!);
+      expect(click.error).toBeUndefined();
+      expect(click.before.meshIds.length).toBeGreaterThan(0);
+      await closed;
+      // Both endpoints use the browser clock. Reading the clock after Playwright
+      // observed close is an upper bound, including transport/main-thread delay.
+      const closedAt = await page.evaluate(() => performance.now());
+      const rowsReady = await page.waitForFunction(() => {
+        const model = [...(globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState().models.values()][0];
+        return (model?.retainedGeometry?.cancelled ?? 0) > 0 && model?.retainedGeometry?.completeness === 'incomplete' && performance.now();
+      });
+      const cancelledAt = await rowsReady.jsonValue() as number;
+      const before = click.before;
+      await complete(page, true);
+      const after = await snapshot(page);
+      const cancelMs = Math.max(closedAt, cancelledAt) - click.clickMs;
+      expect(cancelMs).toBeLessThanOrEqual(1000);
+      expect(after.summary!.cancelled).toBeGreaterThan(0);
+      expect(after.summary!.refused.every(p => p.code === 'cancelled')).toBe(true);
+      expect(after.summary!.published + after.summary!.cancelled).toBe(expected(MAPPED).length);
+      for (const id of before.meshIds) expect(after.meshIds).toContain(id);
+      for (const row of after.summary!.refused) expect(after.meshIds).not.toContain(row.expressId);
+      expect(after.meshIds).toHaveLength(after.summary!.published);
+      await record('cancel', { cancelMs, workerCloseMs: closedAt - click.clickMs, measurement: 'browser-clock upper bound through observed Worker close and cancelled rows', before, after });
     });
-    const before = await snapshot(page);
-    const closed = new Promise<number>(done => host.once('close', () => done(performance.now())));
-    const start = performance.now();
-    await page.getByRole('button', { name: 'Cancel', exact: true }).last().click();
-    const closedAt = await closed;
-    await page.waitForFunction(() => {
-      const model = [...(globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState().models.values()][0];
-      return (model?.retainedGeometry?.cancelled ?? 0) > 0 && model?.retainedGeometry?.completeness === 'incomplete';
-    });
-    const cancelledAt = performance.now();
-    await complete(page, true);
-    const after = await snapshot(page);
-    const cancelMs = Math.max(closedAt, cancelledAt) - start;
-    expect(cancelMs).toBeLessThanOrEqual(1000);
-    expect(after.summary!.cancelled).toBeGreaterThan(0);
-    expect(after.summary!.refused.every(p => p.code === 'cancelled')).toBe(true);
-    expect(after.summary!.published + after.summary!.cancelled).toBe(expected(MAPPED).length);
-    for (const id of before.meshIds) expect(after.meshIds).toContain(id);
-    for (const row of after.summary!.refused) expect(after.meshIds).not.toContain(row.expressId);
-    expect(after.meshIds).toHaveLength(after.summary!.published);
-    await record('cancel', { cancelMs, workerCloseMs: closedAt - start, before, after });
   });
 
   test('flagged preview with an empty engine fails before listening', async () => {

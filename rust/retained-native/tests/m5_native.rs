@@ -91,7 +91,9 @@ fn issue_7955_m5_full_synthetic_hand_oracle_and_native_reference() {
                 let limit=if row["case"].as_str().unwrap().starts_with("f "){2e-3}else{1e-6};
                 assert_eq!(actual.defects,0,"#{id} closure");
                 assert!(metrics::relative(actual.volume,expected)<=limit,"#{id} {} vs {expected}",actual.volume);
-                reference.push(serde_json::json!({"id":id,"code":"published","volume":actual.volume}));
+                let triangles:usize=shape.parts.iter().map(|p|p.indices.len()/3).sum();
+                let vertices:usize=shape.parts.iter().map(|p|p.positions.len()/3).sum();
+                reference.push(serde_json::json!({"id":id,"code":"published","volume":actual.volume,"triangles":triangles,"vertices":vertices}));
             }
             ProductOutcome::Refused{product_id,refusal,origin,..}=>{
                 assert_eq!(*product_id,id);assert_eq!(row["code"],refusal.code(),"#{id}: {outcome:?}");

@@ -169,10 +169,18 @@ test.describe('retained viewer acceptance', () => {
     const result = await new Promise<{ code: number | null; output: string }>((done, reject) => {
       const child = spawn('pnpm', ['--filter', '@ifc-lite/viewer', 'exec', 'vite', 'preview', '--port', '0'], {
         env: { ...process.env, VITE_RETAINED_GEOMETRY: 'on', IFCLITE_RETAINED_ENGINE: '', NO_COLOR: '1' },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32',
       });
       let output = '';
-      const timeout = setTimeout(() => { child.kill(); reject(new Error(`Invalid engine preview failed to exit: ${output}`)); }, 30_000);
+      const timeout = setTimeout(() => {
+        // pnpm owns a Vite child: terminate our process group on failure too.
+        if (process.platform === 'win32') child.kill();
+        else if (child.pid) {
+          try { process.kill(-child.pid, 'SIGTERM'); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') console.error(error); }
+        }
+        reject(new Error(`Invalid engine preview failed to exit: ${output}`));
+      }, 30_000);
       child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { output += data; });
       child.once('error', error => { clearTimeout(timeout); reject(error); });
       child.once('exit', code => { clearTimeout(timeout); done({ code, output }); });

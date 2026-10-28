@@ -104,7 +104,6 @@ pub(super) struct BatchObservation {
     pub planned_jobs: Vec<super::PlannedJob>,
     pub output_counts: [u64; 3],
     pub diagnostics: GeometryDiagnostics,
-    pub pipeline: Option<serde_json::Value>,
 }
 
 pub(super) struct BrowserLoad {
@@ -170,7 +169,6 @@ fn dispatch(
         output_counts,
         jobs: jobs.chunks_exact(3).map(|job| job[0]).collect(),
         diagnostics,
-        pipeline,
     });
     outputs
 }

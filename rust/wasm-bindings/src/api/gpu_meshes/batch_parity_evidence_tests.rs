@@ -6,7 +6,7 @@
 //! Preserve the in-memory fields serde skips and exact floating-point bits.
 //! Only elements with an observed mesh/colour/identity/job drift are retained.
 
-use super::compare::{Axis, Drift};
+use super::compare::Drift;
 use ifc_lite_processing::MeshData;
 use serde_json::{json, Value};
 pub(super) fn record(m: &MeshData) -> Value {

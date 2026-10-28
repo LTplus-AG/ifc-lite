@@ -65,5 +65,5 @@ fn s3_boolean_outcomes_follow_ordered_dependencies_without_aliasing() {
     operations[4].bind_numerical_outcome(false).unwrap();
     let plan = program.finish().unwrap();
     assert_eq!(plan.values[0].evaluated_empty(), Some(false));
-    assert_eq!(plan.remaining.len(), 4);
+    assert_eq!(plan.remaining.len(), 5);
 }

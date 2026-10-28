@@ -137,6 +137,11 @@ fn m11_corner_normals_are_world_axes_and_none_keeps_the_existing_mesh_bytes() {
         before.normals.clone(), before.indices.clone(), [1.; 4]).with_origin(before.origin);
     let old = mesh_boundary::MeshDataJs::new(42, "IfcWall".into(), before, [1.; 4]);
     let new = mesh_boundary::MeshDataJs::from_mesh_data(data);
-    assert_eq!(mesh_boundary::buffers(&old), mesh_boundary::buffers(&new),
+    let bits = |mesh: &mesh_boundary::MeshDataJs| {
+        let (positions, normals, indices, origin) = mesh_boundary::buffers(mesh);
+        (positions.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            normals.iter().map(|v| v.to_bits()).collect::<Vec<_>>(), indices.to_vec(), origin.map(f64::to_bits))
+    };
+    assert_eq!(bits(&old), bits(&new),
         "the retained constructor migration preserves every position/normal/index/origin bit");
 }

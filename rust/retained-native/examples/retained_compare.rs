@@ -10,6 +10,8 @@ mod options;
 mod precision;
 #[path = "compare/report.rs"]
 mod report;
+#[path = "compare/layer_report.rs"]
+mod layer_report;
 #[path = "compare/source.rs"]
 mod source;
 #[path = "compare/tolerances.rs"]
@@ -163,6 +165,7 @@ fn compare(
         opening_expectations.insert(72209, Some(expected));
     }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
+    let layer_candidates = layer_report::candidates(&bytes);
     let mut seen = BTreeSet::new();
     let (summary, timings) = driver.run_model(
         source,
@@ -180,6 +183,10 @@ fn compare(
             report.candidates += 1;
             match outcome {
                 ProductOutcome::Published(shape) => {
+                    report.layers.outcome(&layer_candidates, id, "published");
+                    if let Err(error) = report.layers.published(&model, &shape, &exact) {
+                        report.violations.push(format!("{model}:{id}: layer report: {error}"));
+                    }
                     let mut actual = Metrics::default();
                     for part in &shape.parts {
                         let points: Vec<_> = part
@@ -229,6 +236,7 @@ fn compare(
                     ..
                 } => {
                     let code = refusal.code();
+                    report.layers.outcome(&layer_candidates, id, code);
                     let cuts = cut_times_ms.len();
                     let cut_ms = cut_times_ms.iter().sum::<f64>();
                     report.cuts += cuts as u64;

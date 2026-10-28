@@ -34,9 +34,9 @@ pub struct LayerCompletion {
 }
 
 impl LayerSpec {
-    pub fn cumulative(&self) -> Vec<f64> {
+    pub fn cumulative(&self) -> impl Iterator<Item = f64> + '_ {
         let mut sum = 0.;
-        self.layers.iter().take(self.layers.len() - 1).map(|(_, t)| { sum += t; sum }).collect()
+        self.layers.iter().take(self.layers.len().saturating_sub(1)).map(move |(_, t)| { sum += t; sum })
     }
     /// The scalar law is exact's d=offset+sense*C. Along a directed circle,
     /// positive Axis2 is its left normal: q=sigma*(R-rho), so solve q=d.
@@ -49,6 +49,8 @@ impl LayerSpec {
             .map_err(|_| "layer_frame")?;
         let g = Matrix4::from_column_slice(&frame);
         let mut out = Vec::new();
+        crate::resource::reserve_headers(&mut out, self.layers.len().saturating_sub(1))
+            .map_err(|_| "layer_budget")?.retain();
         for c in self.cumulative() {
             out.push(match self.family {
                 LayerFamily::Planar { axis } => {
@@ -73,6 +75,16 @@ pub(crate) fn admit(element: &DecodedEntity, router: &GeometryRouter, decoder: &
     let Some(buildup) = router.material_layer_index().and_then(|i| i.get(element.id)) else {
         return Ok(LayerAdmission::None);
     };
+    if let crate::material_layer_index::LayerBuildup::Sliceable { layers, .. } = buildup {
+        // Exact's merge repeatedly scans/removes the thinnest layer. Charge
+        // its worst-case work and both scalar-stack allocations before reuse;
+        // the latched stop preserves the product resource refusal precedence.
+        let n = layers.len() as u64;
+        crate::resource::charge(crate::resource::Cost {
+            work: n.saturating_mul(n), live_bytes: n.saturating_mul(32),
+            ..Default::default()
+        }).map_err(|_| "layer_budget")?.retain();
+    }
     let program = match crate::router::layers::LayerProgram::admit(element, decoder, buildup, router.unit_scale()) {
         Ok(Some(p)) => p,
         Ok(None) => return Ok(LayerAdmission::None),
@@ -89,7 +101,7 @@ pub(crate) fn admit(element: &DecodedEntity, router: &GeometryRouter, decoder: &
     let placement = router.resolve_scaled_placement_strict(element, decoder).map_err(|_| "layer_frame")?;
     let spec = LayerSpec { source_id, family, layers, sense, offset_m: offset * router.unit_scale(),
         world_from_object: placement };
-    if spec.cumulative().into_iter().any(|c| spec.radius_at(c).is_some_and(|r| !r.is_finite() || r <= 0.)) {
+    if spec.cumulative().any(|c| spec.radius_at(c).is_some_and(|r| !r.is_finite() || r <= 0.)) {
         return Err("layer_radius");
     }
     Ok(LayerAdmission::Bands(spec))

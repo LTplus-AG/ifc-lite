@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Atomic shape-only publication; layer and display obligations remain.
+//! Atomic shape-only publication after opening and layer completion.
 use super::runtime::ReceiptEvidence;
 use super::*;
 use ifc_lite_geometry::program::transactions::Requirement;
@@ -151,7 +151,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         )?;
         remaining.extend(self.plan.requirements());
         let obligations = PresentationObligationsUnmet(remaining);
-        // Layer/appearance/face obligations remain after opening completion. This
+        // Appearance/face obligations remain after opening and layer completion. This
         // guards the shape-only invariant, not a supported fully discharged
         // path: final-product publication needs separate authority, and
         // require_final_product deliberately still refuses (M1 spec section 3).

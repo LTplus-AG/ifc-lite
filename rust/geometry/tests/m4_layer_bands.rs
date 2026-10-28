@@ -32,7 +32,7 @@ fn signs(sigma: f64, sense: f64, expected: [f64;2], outside_first: bool) {
     with(&text,55,|spec,traversal,router,decoder| {
         assert_eq!(spec.source_id,23);
         assert_eq!(spec.layers,[(16,0.1),(18,0.2),(20,0.3)]);
-        for (c,r) in spec.cumulative().into_iter().zip(expected) { assert!((spec.radius_at(c).unwrap()-r).abs()<1e-12); }
+        for (c,r) in spec.cumulative().zip(expected) { assert!((spec.radius_at(c).unwrap()-r).abs()<1e-12); }
         let entity = decoder.decode_by_id(55).unwrap();
         let host = body(traversal.product_parts(&entity),router,decoder);
         let mut program = traversal.layer_bands(host,spec).unwrap();

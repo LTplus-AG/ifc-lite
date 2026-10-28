@@ -14,7 +14,9 @@ pub(super) fn regions(host: &LogicalRetainedValue, spec: &LayerSpec) -> crate::R
     let corners = bounds.corners().map(|p| inverse.transform_point(&Point3::from(p)));
     let margin = cutter::MARGIN_MIN_M.max(cutter::MARGIN_DIAGONAL * Vector3::new(
         bounds.0[3] - bounds.0[0], bounds.0[4] - bounds.0[1], bounds.0[5] - bounds.0[2]).norm());
-    let interfaces = spec.cumulative();
+    let mut interfaces = Vec::new();
+    crate::resource::reserve_headers(&mut interfaces, spec.layers.len().saturating_sub(1))?.retain();
+    interfaces.extend(spec.cumulative());
     let mut output = Vec::new();
     crate::resource::reserve_headers(&mut output, spec.layers.len())?.retain();
     match spec.family {
@@ -31,6 +33,8 @@ pub(super) fn regions(host: &LogicalRetainedValue, spec: &LayerSpec) -> crate::R
                     cutter::CutterError::Recipe(e) => crate::Error::geometry(e.to_string()) })?
                 .ok_or_else(|| crate::Error::geometry("layer bounding prism"))?;
             for k in 0..spec.layers.len() {
+                crate::resource::charge(crate::resource::Cost { live_bytes: 1024,
+                    work: 1, ..Default::default() })?.retain();
                 let lower = if k == 0 { lo.min(spec.sense * spec.offset_m + interfaces[0] - margin) }
                     else { spec.sense * spec.offset_m + interfaces[k - 1] };
                 let upper = if k == interfaces.len() { hi.max(lower + margin) }
@@ -51,6 +55,8 @@ pub(super) fn regions(host: &LogicalRetainedValue, spec: &LayerSpec) -> crate::R
             local[(0, 3)] = center[0]; local[(1, 3)] = center[1]; local[(2, 3)] = min_z;
             let frame = crate::document::retained_frames::multiply(g, crate::math::mat4::col_major_array(&local));
             for k in 0..spec.layers.len() {
+                crate::resource::charge(crate::resource::Cost { live_bytes: 1024,
+                    work: 1, ..Default::default() })?.retain();
                 // q=sigma*(R-rho). w=sense*(q-offset), dw/drho=-sigma*sense.
                 // Outside-first stacks therefore swap the unbounded end regions.
                 let previous = if k == 0 { None } else { spec.radius_at(interfaces[k - 1]) };

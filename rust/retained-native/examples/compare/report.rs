@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub struct Report {
+    pub layers: super::layer_report::LayerReport,
     pub candidates: usize,
     pub published: usize,
     pub type_candidates: usize,
@@ -262,7 +263,7 @@ impl Report {
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
-            "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
+            "layers":self.layers.summary(), "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
             "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }

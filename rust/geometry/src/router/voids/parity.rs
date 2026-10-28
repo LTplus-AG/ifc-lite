@@ -6,6 +6,7 @@
 
 use super::mesh_point;
 use super::NORMALIZE_EPSILON;
+use crate::math::aabb::Aabb3f32;
 use crate::math::v3::{self, V3};
 use crate::{Mesh, Point3, Vector3};
 
@@ -228,16 +229,8 @@ pub(in crate::router::voids) fn opening_engulfs_host_solid(host: &Mesh, opening:
     // any real gap between a non-engulfing opening and the host, preventing
     // false positives on near-complete openings that leave a narrow border.
     let inset = {
-        let mut mn = [f32::INFINITY; 3];
-        let mut mx = [f32::NEG_INFINITY; 3];
-        for v in host.positions.chunks_exact(3) {
-            mn[0] = mn[0].min(v[0]);
-            mx[0] = mx[0].max(v[0]);
-            mn[1] = mn[1].min(v[1]);
-            mx[1] = mx[1].max(v[1]);
-            mn[2] = mn[2].min(v[2]);
-            mx[2] = mx[2].max(v[2]);
-        }
+        let bounds = Aabb3f32::from_positions(&host.positions);
+        let (mn, mx) = (bounds.min, bounds.max);
         let min_extent = (0..3)
             .map(|i| (mx[i] - mn[i]) as f64)
             .fold(f64::INFINITY, f64::min);

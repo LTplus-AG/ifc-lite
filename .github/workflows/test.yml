@@ -1610,6 +1610,10 @@ jobs:
           # Once router/config.rs is on main, ordinary whole-change inversion resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/config.rs | grep -Fxq 'rust/geometry/src/router/config.rs'; then
             oracle_args+=(--mutation tests/evidence/router-config-7781/behaviour.oracle.patch)
+          # #7781 C2-5c: preserve the internal f32 helper and legacy fold witnesses.
+          # Reverse the lower-bound update; the per-site bit comparisons must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch)
           # #7781 C2-5b: keep the extracted helper and its legacy test wiring.
           # Shift the signed ray parameter; bit-equality witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/parity.rs | grep -Fxq 'rust/geometry/src/router/voids/parity.rs'; then

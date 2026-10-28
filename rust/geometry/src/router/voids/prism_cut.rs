@@ -59,6 +59,11 @@
 //! kernel (A/B measurement). Default ON; wasm has no env, so the default holds
 //! on both targets.
 
+#[cfg(test)]
+#[path = "aabb_fold_tests.rs"]
+mod aabb_fold_tests;
+
+use crate::math::aabb::Aabb3;
 use std::sync::OnceLock;
 
 use super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
@@ -333,14 +338,14 @@ struct PTri {
 impl PTri {
     #[inline]
     fn aabb(&self) -> (V3, V3) {
-        let mut lo = self.p[0];
-        let mut hi = self.p[0];
-        for v in &self.p[1..] {
-            for k in 0..3 {
-                lo[k] = lo[k].min(v[k]);
-                hi[k] = hi[k].max(v[k]);
-            }
+        let mut bounds = Aabb3 {
+            min: self.p[0],
+            max: self.p[0],
+        };
+        for &v in &self.p[1..] {
+            bounds.extend(v);
         }
+        let (lo, hi) = (bounds.min, bounds.max);
         (lo, hi)
     }
 }
@@ -356,14 +361,11 @@ impl PTri {
 /// absolute floor uses the full host extent; a remote or long cutter cannot
 /// enlarge it. Caps are excluded because their opposite contributions cancel.
 fn partition_consistent(host: &[PTri], out: &[PTri], inside: &[PTri], bounds: &[(V3, V3)]) -> bool {
-    let mut lo = [f64::INFINITY; 3];
-    let mut hi = [f64::NEG_INFINITY; 3];
-    for (a, b) in bounds {
-        for k in 0..3 {
-            lo[k] = lo[k].min(a[k]);
-            hi[k] = hi[k].max(b[k]);
-        }
+    let mut envelope = Aabb3::EMPTY;
+    for &(min, max) in bounds {
+        envelope = envelope.union(&Aabb3 { min, max });
     }
+    let (lo, hi) = (envelope.min, envelope.max);
     let origin: V3 = std::array::from_fn(|k| (lo[k] + hi[k]) * 0.5);
     let extent = (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);
     let sum = |ts: &[PTri], reference: &V3| {
@@ -416,17 +418,16 @@ fn has_measurable_region(inside: &[PTri], caps: &[PTri]) -> bool {
         return false;
     };
     let axes = [u, cross(n, u), n];
-    let mut lo = [0.0f64; 3];
-    let mut hi = [0.0f64; 3];
+    let mut bounds = Aabb3 {
+        min: [0.0; 3],
+        max: [0.0; 3],
+    };
     for t in &faces {
         for p in t.p {
-            for k in 0..3 {
-                let coordinate = dot(sub(p, origin), axes[k]);
-                lo[k] = lo[k].min(coordinate);
-                hi[k] = hi[k].max(coordinate);
-            }
+            bounds.extend(std::array::from_fn(|k| dot(sub(p, origin), axes[k])));
         }
     }
+    let (lo, hi) = (bounds.min, bounds.max);
     let envelope = (0..3).map(|k| hi[k] - lo[k]).product::<f64>();
     envelope.is_finite() && envelope >= 1.0e-9
 }
@@ -2748,17 +2749,12 @@ impl Execution {
                 // the exact path owns the redundant-void machinery (#964,
                 // #635).
                 let axes = [pf.u, pf.v, pf.d];
-                let mut hlo = [f64::INFINITY; 3];
-                let mut hhi = [f64::NEG_INFINITY; 3];
-                for t in &tris {
-                    for p in &t.p {
-                        for k in 0..3 {
-                            let s = dot(*p, axes[k]);
-                            hlo[k] = hlo[k].min(s);
-                            hhi[k] = hhi[k].max(s);
-                        }
-                    }
-                }
+                let bounds = Aabb3::from_points(
+                    tris.iter()
+                        .flat_map(|t| t.p.iter())
+                        .map(|p| std::array::from_fn(|k| dot(*p, axes[k]))),
+                );
+                let (hlo, hhi) = (bounds.min, bounds.max);
                 let plo = [pf.bb.0[0], pf.bb.0[1], pf.d0()];
                 let phi = [pf.bb.1[0], pf.bb.1[1], pf.d1()];
                 let overlap = (0..3).all(|k| phi[k] > hlo[k] && plo[k] < hhi[k]);
@@ -2782,19 +2778,15 @@ impl Execution {
                                 ok = true;
                                 // Committed-cutter AABB (extended pf): lift the
                                 // 4 profile-bb corners at both depth planes.
-                                let mut lo = [f64::INFINITY; 3];
-                                let mut hi = [f64::NEG_INFINITY; 3];
+                                let mut bounds = Aabb3::EMPTY;
                                 for &uu in &[pf.bb.0[0], pf.bb.1[0]] {
                                     for &vv in &[pf.bb.0[1], pf.bb.1[1]] {
                                         for &w in &[pf.d0(), pf.d1()] {
-                                            let p = pf.lift(uu, vv, w);
-                                            for k in 0..3 {
-                                                lo[k] = lo[k].min(p[k]);
-                                                hi[k] = hi[k].max(p[k]);
-                                            }
+                                            bounds.extend(pf.lift(uu, vv, w));
                                         }
                                     }
                                 }
+                                let (lo, hi) = (bounds.min, bounds.max);
                                 refine_boxes.push((
                                     [
                                         lo[0] - REFINE_REGION_PAD,

@@ -8,6 +8,7 @@
 
 use super::geom::{mesh_is_closed_exact, mesh_point, point_inside_mesh};
 use crate::csg::GroupCut;
+use crate::math::aabb::Aabb3f32;
 use crate::{Mesh, Point3};
 
 /// The mesh the host continues as after a subtract, or `None` when it stays as
@@ -162,10 +163,12 @@ fn overlapping_components(mesh: &Mesh) -> bool {
             .or_insert(([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]));
         for &vi in tri {
             let b = vi as usize * 3;
-            for k in 0..3 {
-                entry.0[k] = entry.0[k].min(mesh.positions[b + k]);
-                entry.1[k] = entry.1[k].max(mesh.positions[b + k]);
-            }
+            let mut bounds = Aabb3f32 {
+                min: entry.0,
+                max: entry.1,
+            };
+            bounds.extend([mesh.positions[b], mesh.positions[b + 1], mesh.positions[b + 2]]);
+            *entry = (bounds.min, bounds.max);
         }
     }
     if boxes.len() < 2 {

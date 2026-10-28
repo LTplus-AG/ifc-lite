@@ -12,6 +12,7 @@ mod membrane;
 
 use super::{CutterKind, GeometryRouter, NORMALIZE_EPSILON};
 use crate::csg::plane_eps::PlaneEps;
+use crate::math::aabb::Aabb3;
 use crate::{Mesh, Point3, Vector3};
 
 impl GeometryRouter {
@@ -87,19 +88,9 @@ impl GeometryRouter {
                     if overlaps_x && overlaps_y && overlaps_z && dirs_compatible && phantom_free {
                         // Merge into box i
                         let dir = rects[i].2;
-                        rects[i] = (
-                            Point3::new(
-                                a_min.x.min(b_min.x),
-                                a_min.y.min(b_min.y),
-                                a_min.z.min(b_min.z),
-                            ),
-                            Point3::new(
-                                a_max.x.max(b_max.x),
-                                a_max.y.max(b_max.y),
-                                a_max.z.max(b_max.z),
-                            ),
-                            dir,
-                        );
+                        let bounds = Aabb3 { min: (*a_min).into(), max: (*a_max).into() }
+                            .union(&Aabb3 { min: (*b_min).into(), max: (*b_max).into() });
+                        rects[i] = (bounds.min.into(), bounds.max.into(), dir);
                         rects.remove(j);
                         merged = true;
                     } else {
@@ -319,25 +310,8 @@ impl crate::program::openings::execute::Execution {
             open_max + forward,
         ];
 
-        let new_min = Point3::new(
-            all_points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min),
-            all_points.iter().map(|p| p.y).fold(f64::INFINITY, f64::min),
-            all_points.iter().map(|p| p.z).fold(f64::INFINITY, f64::min),
-        );
-        let new_max = Point3::new(
-            all_points
-                .iter()
-                .map(|p| p.x)
-                .fold(f64::NEG_INFINITY, f64::max),
-            all_points
-                .iter()
-                .map(|p| p.y)
-                .fold(f64::NEG_INFINITY, f64::max),
-            all_points
-                .iter()
-                .map(|p| p.z)
-                .fold(f64::NEG_INFINITY, f64::max),
-        );
+        let bounds = Aabb3::from_points(all_points.iter().map(|p| (*p).into()));
+        let (new_min, new_max) = (bounds.min.into(), bounds.max.into());
 
         (new_min, new_max)
     }

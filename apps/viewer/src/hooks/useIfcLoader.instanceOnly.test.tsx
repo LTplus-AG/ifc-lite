@@ -29,8 +29,12 @@ for (const flat of [false, true]) {
     });
     const state = useViewerStore.getState(), calls: string[] = [];
     const append = state.appendGeometryBatch, shards = state.appendInstancedShards;
-    mock.method(state, 'appendGeometryBatch', (...args: Parameters<typeof append>) => { calls.push(`append:${args[1].length}`);return append(...args); });
-    mock.method(state, 'appendInstancedShards', (...args: Parameters<typeof shards>) => { calls.push('shards');return shards(...args); });
+    // Publish forwarding observers through Zustand so the mounted hook gets
+    // the new callbacks; directly mutating an old state object would not.
+    await act(async () => useViewerStore.setState({
+      appendGeometryBatch: (...args: Parameters<typeof append>) => { calls.push(`append:${args[1].length}`);return append(...args); },
+      appendInstancedShards: (...args: Parameters<typeof shards>) => { calls.push('shards');return shards(...args); },
+    }));
     const id = crypto.randomUUID(), pending = hook.loadFile(blankFile('METRE'), { kind: 'primary', modelId: id });
     try {
       await waitFor(() => delivered, 'loader consumed the batch and is waiting for completion');
@@ -39,7 +43,10 @@ for (const flat of [false, true]) {
       assert.deepEqual(result?.coordinateInfo.shiftedBounds, bounds);
       assert.equal(result?.meshes.length, flat ? 1 : 0);
       assert.equal(useViewerStore.getState().geometryStreamingActive, true);
-    } finally { release();await act(async () => pending); }
+    } finally {
+      release();await act(async () => pending);
+      await act(async () => useViewerStore.setState({ appendGeometryBatch: append, appendInstancedShards: shards }));
+    }
     assert.equal(useViewerStore.getState().models.get(id)?.loadState, 'complete');
   });
 }

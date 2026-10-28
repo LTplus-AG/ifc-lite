@@ -1,0 +1,11 @@
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+@@ -519,7 +519,7 @@
+             outputs.push(ElementMeshOutput {
+                 id,
+                 finishes: batch_finishes.for_meshes(&produced.meshes, &mut decoder),
+-                meshes: produced.meshes.into_iter().map(|mut mesh| { mesh.color[0] = 0.123456; mesh }).collect(),
++                meshes: produced.meshes,
+                 geometry_hash: produced.geometry_hash,
+                 geometry_aabb: produced.geometry_aabb,
+                 geometry_volume: produced.geometry_volume,

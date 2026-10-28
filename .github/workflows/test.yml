@@ -1635,6 +1635,9 @@ jobs:
           # policy to the box tolerance. Prism threshold witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5-finish/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5-finish/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-5-finish/behaviour.oracle.patch)
+          # #7782 C4-0: preserve harness wiring and perturb a production colour payload.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"

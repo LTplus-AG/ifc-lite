@@ -224,7 +224,12 @@ describe('resolveAttribute (§12.5 golden table)', () => {
   });
 
   it('compares values canonically', () => {
-    expect(canonicalValueKey({ b: [1, { d: 2, c: 3 }], a: undefined })).toBe(canonicalValueKey({ a: null, b: [1, { c: 3, d: 2 }] }));
+    expect(canonicalValueKey({ b: [1, { d: 2, c: 3 }], a: undefined })).toBe(canonicalValueKey({ b: [1, { c: 3, d: 2 }] }));
+    expect(canonicalValueKey(undefined)).not.toBe(canonicalValueKey(null));
+    expect(canonicalValueKey([undefined])).toBe(canonicalValueKey([null]));
+    expect(canonicalValueKey(-0)).toBe(canonicalValueKey(0));
+    expect(canonicalValueKey('Cafe\u0301')).toBe(canonicalValueKey('Café'));
+    expect(canonicalValueKey(JSON.parse('{"n":1e400}'))).toBe(canonicalValueKey(JSON.parse('{"n":1e400}')));
     expect(canonicalValueKey('1')).not.toBe(canonicalValueKey(1));
     expect(canonicalValueKey(Number.NaN)).not.toBe(canonicalValueKey(null));
     expect(canonicalValueKey(Infinity)).not.toBe(canonicalValueKey(-Infinity));

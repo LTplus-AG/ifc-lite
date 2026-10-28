@@ -65,24 +65,33 @@ export interface ResolveOptions {
 }
 
 /**
- * Canonical JSON (sorted object keys); `undefined` reads as `null`. Values
- * JSON cannot represent (non-finite numbers, bigint, functions, symbols)
- * get tagged keys, so `NaN` never compares equal to a `null` removal.
+ * Comparison key for an opinion value: the same canonical form as
+ * `@ifc-lite/ifcx` uses for opinions (NFC strings, -0 as 0, sorted keys,
+ * object members holding `undefined` skipped). A top-level `undefined`
+ * (an attribute kept without a value) is distinct from a `null` removal,
+ * and values JSON cannot represent (non-finite numbers, bigint, functions,
+ * symbols) get tagged keys, so `NaN` never equals a removal.
  */
-export function canonicalValueKey(value: unknown): string {
-  if (value === undefined || value === null) return 'null';
-  if (typeof value === 'number' && !Number.isFinite(value)) return `\u0000number:${String(value)}`;
-  if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol') {
-    return `\u0000${typeof value}:${String(value)}`;
+export function canonicalValueKey(value: unknown, nested = false): string {
+  if (value === undefined && !nested) return '\u0000undefined';
+  if (value === null || value === undefined) return 'null';
+  switch (typeof value) {
+    case 'string':
+      return JSON.stringify(value.normalize('NFC'));
+    case 'number':
+      if (!Number.isFinite(value)) return `\u0000number:${value}`;
+      return JSON.stringify(value === 0 ? 0 : value);
+    case 'boolean':
+      return value ? 'true' : 'false';
+    case 'object': {
+      if (Array.isArray(value)) return `[${value.map((item) => canonicalValueKey(item, true)).join(',')}]`;
+      const record = value as Record<string, unknown>;
+      const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
+      return `{${keys.map((key) => `${JSON.stringify(key.normalize('NFC'))}:${canonicalValueKey(record[key], true)}`).join(',')}}`;
+    }
+    default:
+      return `\u0000${typeof value}:${String(value)}`;
   }
-  if (Array.isArray(value)) return `[${value.map(canonicalValueKey).join(',')}]`;
-  if (typeof value === 'object') {
-    const entries = Object.keys(value as Record<string, unknown>)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalValueKey((value as Record<string, unknown>)[key])}`);
-    return `{${entries.join(',')}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function distinctValues(opinions: readonly Opinion[]): number {

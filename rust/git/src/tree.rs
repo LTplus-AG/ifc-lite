@@ -39,7 +39,7 @@ pub const TREE_MAGIC: &[u8; 4] = b"IGT1";
 pub const TREE_FORMAT_VERSION: u8 = 0;
 
 /// Target entries per chunk. Boundaries are content-derived, so this is an
-/// average rather than a cap — see [`is_boundary`].
+/// average rather than a cap — see the `is_boundary` predicate below.
 pub const TARGET_CHUNK_ENTRIES: usize = 512;
 
 /// One entry: an entity key, the node carrying its content, and its class.

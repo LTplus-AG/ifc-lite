@@ -48,6 +48,12 @@ async function middleware(directory?: string): Promise<Connect.NextHandleFunctio
       res.setHeader('ETag', etag);
       res.setHeader('Content-Type', mime[extname(file)] ?? 'text/plain; charset=utf-8');
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      // Mirror the app's cross-origin isolation headers (as cesium-assets.ts
+      // does): Vite only injects server.headers on its own responses, and a
+      // module Worker served without COEP is blocked under isolation
+      // (net::ERR_BLOCKED_BY_RESPONSE on /smlib/worker.mjs).
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
       if (req.headers['if-none-match']?.split(',').some(value => ['*', etag, `W/${etag}`].includes(value.trim()))) {
         res.statusCode = 304; res.end(); return;
       }

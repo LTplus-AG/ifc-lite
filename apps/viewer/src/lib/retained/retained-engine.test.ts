@@ -71,6 +71,8 @@ for (const mode of ['dev', 'preview'] as const) {
       assert(result.headers['content-type']?.startsWith(mime));
       assert.equal(result.headers.etag, f.etag);
       assert.equal(result.headers['cache-control'], 'no-cache');
+      assert.equal(result.headers['cross-origin-embedder-policy'], 'credentialless', `${path}: a Worker without COEP is blocked under isolation`);
+      assert.equal(result.headers['cross-origin-opener-policy'], 'same-origin');
       const cached = await get(address.port, path, { 'If-None-Match': f.etag });
       assert.equal(cached.status, 304);
       assert.equal(cached.body, '');

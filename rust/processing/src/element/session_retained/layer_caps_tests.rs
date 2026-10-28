@@ -39,6 +39,23 @@ fn m4_boxes_remove_caps_and_conform_t_junction() {
     }
 }
 #[test]
+fn m4_rim_grid_extreme_coordinates_preserve_closed_skin() {
+    // #7955: two unit cubes still have volume 2 after a shared translation.
+    // At y=+/-1e13 m, y / the fixed 1e-6 m weld grid exceeds i64's range.
+    // The float-to-integer cell saturates; visiting neighbours must not wrap
+    // or panic, and the exactly coincident rims still need zero displacement.
+    for offset in [-1e13,1e13] {
+        let mut parts = [cube(0.,false),cube(1.,false)];
+        for part in &mut parts {
+            for p in part.positions.chunks_exact_mut(3) { p[1] += offset; }
+        }
+        assert_eq!(remove(&mut parts,&layers()).unwrap(),0.);
+        closed(&parts).unwrap();
+        assert!((volume(&parts,[0.,offset,0.])-2.).abs()<1e-12);
+        assert!(parts.iter().all(|p| !boundary(p).unwrap().is_empty()));
+    }
+}
+#[test]
 fn m4_cap_area_and_wrong_sign_refuse() {
     for wrong_sign in [false,true] {
         let mut parts = [cube(0.,false),cube(1.,false)];

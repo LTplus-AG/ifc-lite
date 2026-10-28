@@ -83,7 +83,10 @@ pub(super) fn conform(left: &mut ShapePart, right: &mut ShapePart, surface: Laye
     for p in candidates {
         let c = cell(p); let mut closest: Option<(f64,Point)> = None;
         for x in -1..=1 { for y in -1..=1 { for z in -1..=1 {
-            for &q in grid.get(&[c[0]+x,c[1]+y,c[2]+z]).into_iter().flatten() {
+            // Float-to-integer cells saturate at extreme coordinates. A
+            // neighbour beyond that range cannot be a stored grid key.
+            let (Some(x),Some(y),Some(z)) = (c[0].checked_add(x),c[1].checked_add(y),c[2].checked_add(z)) else { continue; };
+            for &q in grid.get(&[x,y,z]).into_iter().flatten() {
                 work()?;
                 let d = norm(sub(p,q));
                 if d <= tau && closest.is_none_or(|(old,_)| d < old) { closest = Some((d,q)); }

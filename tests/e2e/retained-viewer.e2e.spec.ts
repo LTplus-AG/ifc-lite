@@ -214,8 +214,15 @@ test.describe('retained viewer acceptance', () => {
     const cancelMs = Math.max(closedAt, cancelledAt) - click.clickMs;
     expect(cancelMs).toBeLessThanOrEqual(1000);
     expect(after.summary!.cancelled).toBeGreaterThan(0);
-    expect(after.summary!.refused.every(p => p.code === 'cancelled')).toBe(true);
-    expect(after.summary!.published + after.summary!.cancelled).toBe(expected(MAPPED).length);
+    // #7955: this fixture streams flat walls so Cancel can run before a
+    // 256-product instance flush. Refusals already reported before cancellation
+    // retain their real codes; only products not yet published are cancelled.
+    const wallOutcomes = expected(WALL);
+    for (const row of after.summary!.refused.filter(row => row.code !== 'cancelled')) {
+      expect(wallOutcomes).toContainEqual({ id: row.expressId, status: 'refused', code: row.code });
+    }
+    expect(after.summary!.cancelled).toBe(after.summary!.refused.filter(row => row.code === 'cancelled').length);
+    expect(after.summary!.published + after.summary!.refused.length).toBe(wallOutcomes.length);
     for (const id of before.meshIds) expect(after.meshIds).toContain(id);
     for (const row of after.summary!.refused) expect(after.meshIds).not.toContain(row.expressId);
     expect(after.meshIds).toHaveLength(after.summary!.published);

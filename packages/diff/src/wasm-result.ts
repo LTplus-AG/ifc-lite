@@ -19,7 +19,7 @@ export type IndexedDiff = Omit<ModelDiff, 'entries' | 'byKey' | 'appliedKeyAlias
 export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly EntityFingerprint<TRef>[], head: readonly EntityFingerprint<TRef>[]): ModelDiff<TRef> {
   // The decoded records are owned by this call. Restore in place so a second
   // object graph and an intermediate Map tuple array never become live (#8042).
-  const entries: DiffEntry<TRef>[] = [];
+  const entries = raw.entries as unknown as DiffEntry<TRef>[];
   const byKey = new Map<string, DiffEntry<TRef>>();
   for (const indexed of raw.entries) {
     const baseIndex = indexed.base, headIndex = indexed.head;
@@ -27,7 +27,6 @@ export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly Ent
     entry.key = baseIndex === undefined ? head[headIndex!].key : base[baseIndex].key;
     if (baseIndex !== undefined) entry.base = base[baseIndex];
     if (headIndex !== undefined) entry.head = head[headIndex];
-    entries.push(entry);
     byKey.set(entry.key, entry);
   }
   return {

@@ -11,6 +11,25 @@ fn oracle(text: &str,id:u32)->ClipExpectation {
     clips::expected(&model,&sources,id).unwrap().expect("clip source must be recognized")
 }
 #[test]
+fn issue_7955_clip_oracle_preserves_type_map_authority_and_occurrence_errors() {
+    let text=include_str!("../../geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc");
+    let model=SourceBundle::new(text.as_bytes().to_vec());
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    assert!(clips::expected(&model,&sources,105).unwrap().is_none());
+    assert!(clips::expected(&model,&sources,70).unwrap().is_none());
+    let maps=ifc_lite_processing::element::retained_runtime::canonical_type_maps(&model);
+    let expected=ifc_lite_retained_native::oracle::type_maps::expected(text.as_bytes(),&sources,&maps[&105])
+        .unwrap().expect("M9 must still qualify the orphan type");
+    assert_eq!(expected.parts,6);
+    assert!((expected.volume-6.).abs()<1e-12);
+    assert!(expected.bbox.is_some());
+    // A malformed occurrence shape is still an oracle failure, never abstention.
+    let malformed=fixture::SOURCE.replace("#12,$,$);","#8,$,$);");
+    let model=SourceBundle::new(malformed.as_bytes().to_vec());
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(malformed.as_bytes(),None);
+    assert!(clips::expected(&model,&sources,13).is_err());
+}
+#[test]
 fn issue_7955_section_integrals_match_hand_authored_constraints() {
     for (text,expected) in [(fixture::SOURCE.to_string(),36.),
         (fixture::SOURCE.replace("#8,.T.","#8,.F."),12.),(fixture::chain(),1229./48.)] {

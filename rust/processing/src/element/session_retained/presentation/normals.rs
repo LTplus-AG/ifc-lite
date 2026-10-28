@@ -39,7 +39,7 @@ fn work(resources: &OwnedResourceContext, count: usize) -> Result<(), RetainedEx
 
 fn corner_normals(part: &ShapePart, resources: &OwnedResourceContext, storage: &mut Storage)
     -> Result<Vec<f64>, RetainedExecutionError> {
-    if part.positions.len() % 3 != 0 || part.indices.is_empty() || part.indices.len() % 3 != 0
+    if !part.positions.len().is_multiple_of(3) || part.indices.is_empty() || !part.indices.len().is_multiple_of(3)
         || part.revision_local_faces.len() != part.indices.len() / 3
         || part.world_from_object.iter().any(|v| !v.is_finite()) {
         return Err(invalid());

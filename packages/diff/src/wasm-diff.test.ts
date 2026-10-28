@@ -50,4 +50,14 @@ test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-
       if (entry.head) expect(head.includes(entry.head)).toBe(true);
     }
   }
+  // #8042: options are observed after model construction. Keys belong to that
+  // snapshot even when an option getter edits the original referenced object.
+  const mutable = [{ key: 'snapshot', ifcType: 'IfcWall', dataHash: 'd', ref }];
+  const snapshot = compareWithWasm(mutable, [], { get scope() {
+    mutable[0].key = 'edited';
+    return 'data' as const;
+  } });
+  expect(snapshot.entries[0].key).toBe('snapshot');
+  expect(snapshot.entries[0].base).toBe(mutable[0]);
+  expect(snapshot.byKey.get('snapshot')).toBe(snapshot.entries[0]);
 });

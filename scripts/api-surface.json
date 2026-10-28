@@ -7457,6 +7457,7 @@
     "notification: function",
     "parseMessage: function",
     "readOnlyScope: function",
+    "routeConsoleToStderr: function",
     "scopeAllows: function",
     "successResponse: function",
     "toolError: function"

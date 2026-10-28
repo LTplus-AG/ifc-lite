@@ -13,9 +13,15 @@ pub(super) fn read(bytes: &[u8], id: u32, decoder: &mut EntityDecoder) -> Option
     while let Some((key,kind,_,_))=scanner.next_entity() {
         if ifc_lite_core::keyword_eq(kind,"IFCRELASSOCIATESMATERIAL") {
             let e=decoder.decode_by_id(key).ok()?;
-            if e.get_list(4)?.iter().any(|v|v.as_entity_ref()==Some(id)) {
+            if usage.is_none() && e.get_list(4)?.iter().any(|v|v.as_entity_ref()==Some(id)) {
                 let m=decoder.decode_by_id(e.get_ref(5)?).ok()?;
-                if m.ifc_type==IfcType::IfcMaterialLayerSetUsage { usage=Some(m); }
+                if m.ifc_type==IfcType::IfcMaterialLayerSetUsage {
+                    let set=decoder.decode_by_id(m.get_ref(0)?).ok()?;
+                    // First sliceable association wins; a single-layer usage
+                    // cannot shadow a later multi-layer stack. Unsupported
+                    // layer records below fail closed in this source oracle.
+                    if set.get_list(0)?.len()>=2 { usage=Some(m); }
+                }
             }
         } else if ifc_lite_core::keyword_eq(kind,"IFCRELVOIDSELEMENT") {
             let e=decoder.decode_by_id(key).ok()?;

@@ -87,7 +87,9 @@ adapter's polygon triangulation. The initial single-quad correction therefore
 did not fix the replay and has been removed. M4 instead normalizes an interior
 edge of two triangles only when they share a source face, form a strictly
 convex noncoplanar quad, and the other diagonal is strictly shorter and absent
-from the mesh. Each flip preserves all four directed boundary edges, vertex
+from the mesh. All old/new triangle normals must agree within the requested
+tessellation surface angle, rejecting folded or numerically collinear pairs.
+Each flip preserves all four directed boundary edges, vertex
 bits, triangle count and source IDs; normals are recomputed from the new
 triangles. Coplanar, concave, boundary and cross-source-face pairs are unchanged.
 The walk has a linear work budget and fails closed on exhaustion. No SDK source,

@@ -77,7 +77,7 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
             mesh->normals.insert(mesh->normals.end(),{nx/length,ny/length,nz/length});
         mesh->faces.push_back(source->second);
     }
-    normalize_mesh_diagonals(*mesh);
+    normalize_mesh_diagonals(*mesh,angle);
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
     ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");

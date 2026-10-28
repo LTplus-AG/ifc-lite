@@ -46,14 +46,14 @@ void verify(const std::array<Point,4>& points,unsigned expected_a,unsigned expec
             mesh.indices={ids[0],ids[1],ids[2],ids[0],ids[2],ids[3]};
             mesh.faces={7,7}; mesh.normals.resize(18);
             const auto before=boundary(mesh); const auto positions=mesh.positions;
-            normalize_mesh_diagonals(mesh);
+            normalize_mesh_diagonals(mesh,5);
             require(mesh.positions==positions,"exact vertex coordinates preserved");
             require(mesh.faces==std::vector<uint32_t>({7,7}),"source attribution preserved");
             require(boundary(mesh)==before && before.size()==4,"oriented boundary preserved");
             require(mesh.indices.size()==6,"triangle count preserved");
             require(contains(mesh,expected_a,expected_b),"expected interior diagonal");
             const auto indices=mesh.indices;
-            normalize_mesh_diagonals(mesh);
+            normalize_mesh_diagonals(mesh,5);
             require(mesh.indices==indices,"normalization idempotent");
         }
     }
@@ -61,8 +61,8 @@ void verify(const std::array<Point,4>& points,unsigned expected_a,unsigned expec
 }
 
 void run_mesh_diagonals_tests() {
-    // |A-C|²=6, |B-D|²=5; both diagonals interior, noncoplanar quad.
-    verify({{{0,0,0},{2,0,0},{2,1,1},{0,1,0}}},1,3);
+    // |A-C|²=5.0001, |B-D|²=5; both interior, normal spread below 5°.
+    verify({{{0,0,0},{2,0,0},{2,1,0.01},{0,1,0}}},1,3);
     // A is concave. The shorter B-D must not cross the exterior; retain A-C.
     verify({{{0.2,0,0},{0,-1,0},{10,0,0.01},{0,1,0}}},0,2,false);
     // Actual SDK #55 cap, before its removal. Both platform triangulations
@@ -74,12 +74,15 @@ void run_mesh_diagonals_tests() {
         {7.283199846221442,7.283199846221437,3}}};
     verify(cap,1,3); cap[2][1]=std::nextafter(cap[2][1],8.0); verify(cap,1,3);
     AdapterMesh separate;
-    separate.positions={0,0,0,2,0,0,2,1,1,0,1,0};
+    separate.positions={0,0,0,2,0,0,2,1,0.01,0,1,0};
     separate.indices={0,1,2,0,2,3}; separate.faces={1,2}; separate.normals.resize(18);
     const auto indices=separate.indices;
-    normalize_mesh_diagonals(separate);
+    normalize_mesh_diagonals(separate,5);
     require(separate.indices==indices,"cannot flip across source face boundary");
-    separate.faces={1,1}; separate.positions[8]=0;
-    normalize_mesh_diagonals(separate);
+    separate.faces={1,1}; separate.positions[8]=1;
+    normalize_mesh_diagonals(separate,5);
+    require(separate.indices==indices,"fold exceeds existing requested surface angle");
+    separate.positions[8]=0;
+    normalize_mesh_diagonals(separate,5);
     require(separate.indices==indices,"coplanar pair unchanged");
 }

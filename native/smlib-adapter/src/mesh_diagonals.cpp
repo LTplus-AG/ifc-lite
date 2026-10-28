@@ -34,7 +34,7 @@ void replace(AdapterMesh& mesh,uint32_t id,const Triangle& t) {
 }
 }
 
-void normalize_mesh_diagonals(AdapterMesh& mesh) {
+void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees) {
     // #7955: the SDK triangulates surface polygons before SmApiTessellate
     // returns. Its aspect-ratio ties can choose different diagonals for a
     // warped quad on native/WASM. A strictly shorter interior diagonal gives
@@ -43,6 +43,7 @@ void normalize_mesh_diagonals(AdapterMesh& mesh) {
     std::map<Edge,std::set<uint32_t>> adjacent;
     std::set<Edge> pending;
     const auto count=uint32_t(mesh.indices.size()/3);
+    const double minimum_alignment=std::cos(angle_degrees*SM_PI/180.);
     auto insert=[&](uint32_t id) {
         const auto t=triangle(mesh,id);
         for (unsigned i=0;i<3;++i) {
@@ -82,7 +83,7 @@ void normalize_mesh_diagonals(AdapterMesh& mesh) {
         const auto U=point(mesh,u),V=point(mesh,v),P=point(mesh,p),Q=point(mesh,q);
         const double old_length=U.DistanceBetweenSquared(V),new_length=P.DistanceBetweenSquared(Q);
         if (!std::isfinite(new_length) || !(new_length>0 && new_length<old_length)) continue;
-        const auto n=normal(mesh,a)+normal(mesh,b);
+        const auto na=normal(mesh,a),nb=normal(mesh,b),n=na+nb;
         // A coplanar pair has identical volume for either diagonal. Preserve
         // it. For warped pairs require all four boundary turns to agree with
         // the area normal: both diagonals are interior to the convex quad.
@@ -94,6 +95,18 @@ void normalize_mesh_diagonals(AdapterMesh& mesh) {
             convex &= ((loop[(k+1)%4]-loop[k])*(loop[(k+2)%4]-loop[(k+1)%4])).Dot(n)>0;
         const Triangle left{p,q,v},right{q,p,u};
         if (!convex || !(normal(mesh,left).Dot(n)>0 && normal(mesh,right).Dot(n)>0)) continue;
+        // Convexity alone is insufficient near collinear boundary vertices:
+        // roundoff can turn a tiny projected turn positive and the new sliver
+        // can face away from the source surface. Keep every old/new normal
+        // within the existing requested surface-angle limit of every other.
+        const std::array<SmVector3d,4> normals{na,nb,normal(mesh,left),normal(mesh,right)};
+        bool aligned=true;
+        for (unsigned k=0;k<4;++k) for (unsigned l=k+1;l<4;++l) {
+            const double lengths=std::hypot(normals[k].x,normals[k].y,normals[k].z)*
+                std::hypot(normals[l].x,normals[l].y,normals[l].z);
+            aligned &= std::isfinite(lengths) && lengths>0 && normals[k].Dot(normals[l])/lengths>=minimum_alignment;
+        }
+        if (!aligned) continue;
         erase(first); erase(second);
         replace(mesh,first,left); replace(mesh,second,right);
         insert(first); insert(second);

@@ -236,7 +236,9 @@ describe('resolveAttribute (§12.5 golden table)', () => {
     expect(canonicalValueKey({ 'e\u0301': 1, f: 2 })).toBe(canonicalValueKey({ '\u00e9': 1, f: 2 }));
     // Both spellings in one object: order no longer depends on insertion order.
     expect(canonicalValueKey({ '\u00e9': 1, 'e\u0301': 2 })).toBe(canonicalValueKey({ 'e\u0301': 2, '\u00e9': 1 }));
-    expect(canonicalValueKey(JSON.parse('{"n":1e400}'))).toBe(canonicalValueKey(JSON.parse('{"n":1e400}')));
+    // A parsed 1e400 is Infinity: it must not collapse to the null that JSON.stringify would write.
+    expect(canonicalValueKey(JSON.parse('{"n":1e400}'))).not.toBe(canonicalValueKey({ n: null }));
+    expect(canonicalValueKey(JSON.parse('[1e400]'))).not.toBe(canonicalValueKey(JSON.parse('[-1e400]')));
     expect(canonicalValueKey('1')).not.toBe(canonicalValueKey(1));
     expect(canonicalValueKey(Number.NaN)).not.toBe(canonicalValueKey(null));
     expect(canonicalValueKey(Infinity)).not.toBe(canonicalValueKey(-Infinity));

@@ -6,7 +6,7 @@
 
 `packages/ifcx/src/opinions.ts` is a new module. The CI revert oracle (`Changed tests observe production`) reverts production by deleting it, so `opinions.test.ts` fails to load (`ERR_MODULE_NOT_FOUND`), no assertion runs, and the oracle reports `REVERT-BROKE-BUILD` / INCONCLUSIVE. Following the oracle's advice, each behavioural decision below was checked with a surgical mutation instead, across all three production files.
 
-Each patch is written mutant→fixed (the orientation of `git diff base...head`), and the oracle reverse-applies it. All rows were captured at head `5e652a0d8` against `origin/main` `91664f0d0`. Every run ended `OBSERVED` (exit 0) with restoration verified. The full result records are in `summary.json`.
+Each patch is written mutant→fixed (the orientation of `git diff base...head`), and the oracle reverse-applies it. All rows were captured at head `56e07df69` against `origin/main` `3ad275c2f`. Every run ended `OBSERVED` (exit 0) with restoration verified. The full result records are in `summary.json`.
 
 | Patch | Module | Mutation | Test that went red |
 |---|---|---|---|
@@ -15,7 +15,7 @@ Each patch is written mutant→fixed (the orientation of `git diff base...head`)
 | `default-on.patch` | `federated-composition.ts` | retention is on by default | `opinions.test.ts` |
 | `order-strongest-first.patch` | `opinions.ts` | opinions are listed strongest first, so the last is no longer the composed value | `opinions.test.ts` |
 | `drop-principal.patch` | `opinions.ts` | the provenance principal is not attached to opinions | `opinions.test.ts` |
-| `compare-key-order.patch` | `opinions.ts` | values are compared by JSON text, so key order alone counts as a disagreement | `opinions.test.ts` |
+| `compare-key-order.patch` | `opinions.ts` | object keys are not sorted, so key order alone counts as a disagreement | `opinions.test.ts` |
 | `two-opinion-blind.patch` | `opinions.ts` | a disagreement between exactly two layers is not reported | `opinions.test.ts` |
 | `overlay-drops-option.patch` | `index.ts` | addIfcxOverlay does not pass retainOpinions to composition | `opinions.test.ts` |
 | `parse-drops-result.patch` | `index.ts` | the parse result never carries attributeOpinions | `opinions.test.ts` |

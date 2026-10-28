@@ -21,16 +21,18 @@ extern "C" {
     fn measure(outcome:&JsValue)->Result<JsValue,JsValue>;
 }
 #[derive(serde::Deserialize)]
-struct Row {id:u32,code:String,volume:Option<f64>}
+struct Row {id:u32,code:String,volume:Option<f64>,#[serde(default)] curved:bool}
+#[derive(serde::Deserialize)]
+struct NativeReference {synthetic:Vec<Row>,adversarial:Row}
 #[derive(serde::Deserialize)]
 struct Expectations {synthetic:Vec<Row>,#[serde(rename="issue5314")] issue:Vec<Row>}
 #[wasm_bindgen_test(async)]
 async fn retained_browser_m5_clips_hand_oracle_and_native_parity(){
     let expected:Expectations=serde_json::from_str(include_str!("../../../../tests/fixtures/cli-retained/expected.d/m5.json")).unwrap();
-    let native:Vec<Row>=serde_wasm_bindgen::from_value(reference().await.unwrap()).unwrap();
-    assert_eq!(native.len(),expected.synthetic.len());
+    let native:NativeReference=serde_wasm_bindgen::from_value(reference().await.unwrap()).unwrap();
+    assert_eq!(native.synthetic.len(),expected.synthetic.len());
     for (bytes,rows,parity) in [
-        (include_bytes!("../../../../tests/fixtures/synthetic-retained/f-e-clips.ifc").as_slice(),expected.synthetic,Some(native)),
+        (include_bytes!("../../../../tests/fixtures/synthetic-retained/f-e-clips.ifc").as_slice(),expected.synthetic,Some(native.synthetic)),
         (include_bytes!("../../../geometry/tests/fixtures/issue_5314_halfspace_edge.ifc").as_slice(),expected.issue,None),
     ]{
         let mut run=crate::api::IfcAPI::new().retained_model(bytes,Some(rows.iter().map(|r|r.id).collect())).await.unwrap();
@@ -38,7 +40,7 @@ async fn retained_browser_m5_clips_hand_oracle_and_native_parity(){
             let actual:Row=serde_wasm_bindgen::from_value(measure(&run.next_outcome()).unwrap()).unwrap();
             assert_eq!((actual.id,actual.code.as_str()),(expected.id,expected.code.as_str()));
             match(actual.volume,expected.volume){
-                (Some(a),Some(b))=>assert!((a-b).abs()/b.abs()<=if expected.id==105{2e-3}else{1e-6},"#{} {a} vs {b}",actual.id),
+                (Some(a),Some(b))=>assert!((a-b).abs()/b.abs()<=if expected.curved{2e-3}else{1e-6},"#{} {a} vs {b}",actual.id),
                 (None,None)=>{},_=>panic!("oracle volume presence differs"),
             }
             if let Some(native)=&parity{
@@ -48,5 +50,13 @@ async fn retained_browser_m5_clips_hand_oracle_and_native_parity(){
         }
         assert!(run.next_outcome().is_undefined());
     }
+    let bytes=include_bytes!("../../../../tests/fixtures/synthetic-retained/m5-adversarial-nonschema-mapped-operand.ifc");
+    let mut extension=crate::api::IfcAPI::new().retained_model(bytes,Some(vec![27])).await.unwrap();
+    let actual:Row=serde_wasm_bindgen::from_value(measure(&extension.next_outcome()).unwrap()).unwrap();
+    assert_eq!((actual.id,actual.code.as_str()),(27,"published"));
+    assert_eq!(actual.code,native.adversarial.code);
+    let (a,b)=(actual.volume.unwrap(),native.adversarial.volume.unwrap());
+    assert!((a-b).abs()/b.abs()<=1e-9,"non-schema extension native parity");
+    assert!(extension.next_outcome().is_undefined());
     console_log!("sdk witness executed: m5_browser_parity");
 }

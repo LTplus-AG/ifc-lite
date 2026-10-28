@@ -35,10 +35,9 @@ fn volume(outcome: ProductOutcome, expected: f64) {
 #[test]
 fn issue_7955_m5_agreement_and_baked_host_real_sdk() {
     let Some(worker)=worker() else {return};
-    // Hand volumes: 4*6*(2-.5), 4*6*.5; mapped host multiplies X/Y by 2/3.
+    // Hand volumes: 4*6*(2-.5), 4*6*.5.
     volume(run(fixture::SOURCE,&worker),36.);
     volume(run(&fixture::SOURCE.replace("#8,.T.","#8,.F."),&worker),12.);
-    volume(run(&fixture::mapped(),&worker),216.);
     println!("sdk witness executed: m5_agreement_bake");
 }
 #[test]
@@ -94,13 +93,31 @@ fn issue_7955_m5_full_synthetic_hand_oracle_and_native_reference() {
                 assert!(metrics::relative(actual.volume,expected)<=limit,"#{id} {} vs {expected}",actual.volume);
                 reference.push(serde_json::json!({"id":id,"code":"published","volume":actual.volume}));
             }
-            ProductOutcome::Refused{product_id,refusal,..}=>{
+            ProductOutcome::Refused{product_id,refusal,origin,..}=>{
                 assert_eq!(*product_id,id);assert_eq!(row["code"],refusal.code(),"#{id}: {outcome:?}");
+                let origin=origin.as_ref().expect("typed source origin");
+                assert_eq!(row["origin"]["site"],origin.site);
+                assert_eq!(row["origin"]["entity"],origin.entity.unwrap());
+                assert_eq!(row["origin"]["cause"],origin.cause);
                 reference.push(serde_json::json!({"id":id,"code":refusal.code()}));
             }
         }
     }
+    // This deliberately invalid IFC is a controller extension, not qualification.
+    // Its measured volume is only transported for native/browser parity.
+    let adversarial=include_str!("../../../tests/fixtures/synthetic-retained/m5-adversarial-nonschema-mapped-operand.ifc");
+    let mut extension=Vec::new();
+    ifc_lite_retained_native::run_model_native(SourceBundle::new(adversarial.as_bytes().to_vec()),&worker,
+        &ModelOptions{ids:Some([27].into_iter().collect()),..Default::default()},|o|extension.push(o)).unwrap();
+    assert_eq!(extension.len(),1);
+    let ProductOutcome::Published(shape)=&extension[0] else {panic!("observed extension outcome changed: {:?}",extension[0])};
+    let mut measured=metrics::Metrics::default();
+    for part in &shape.parts {
+        let points:Vec<_>=part.positions.chunks_exact(3).map(|p|metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect();
+        measured.add_mesh(&points,&part.indices).unwrap();
+    }
     if let Some(path)=std::env::var_os("IFCLITE_M5_REFERENCE"){
+        let reference=serde_json::json!({"synthetic":reference,"adversarial":{"id":27,"code":"published","volume":measured.volume}});
         std::fs::write(path,serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
     }
     println!("sdk witness executed: m5_synthetic");

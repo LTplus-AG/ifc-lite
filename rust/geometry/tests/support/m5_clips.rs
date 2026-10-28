@@ -23,13 +23,3 @@ pub fn chain() -> String {
 ";
     SOURCE.replace("'CSG',(#10)", "'CSG',(#37)").replace("ENDSEC;END-ISO", &format!("{extra}ENDSEC;END-ISO"))
 }
-
-pub fn mapped() -> String {
-    let extra = "
-#40=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#5));#41=IFCREPRESENTATIONMAP(#2,#40);
-#42=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#1,2.,$,3.,1.);
-#43=IFCMAPPEDITEM(#41,#42);
-";
-    SOURCE.replace(".DIFFERENCE.,#5,#9", ".DIFFERENCE.,#43,#9")
-        .replace("ENDSEC;END-ISO", &format!("{extra}ENDSEC;END-ISO"))
-}

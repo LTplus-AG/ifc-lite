@@ -9,14 +9,20 @@ mod fixture;
 
 // #7955: logical annotations exercise the controller; they are not SDK evidence.
 fn drive(text: &str, empty_boolean: Option<usize>) -> (Vec<Operation>, Result<(), TransactionError>) {
+    drive_product(text,13,empty_boolean)
+}
+fn drive_product(text:&str,id:u32,empty_boolean:Option<usize>)->(Vec<Operation>,Result<(),TransactionError>){
     let source = SourceBundle::new(text.as_bytes().to_vec()); let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(text, &mut decoder);
-    let wall = decoder.decode_by_id(13).unwrap(); let traversal = Traversal::new(1, 1);
-    let mut program = traversal.product_parts(&wall); let mut operations = Vec::new(); let mut booleans = 0;
+    let wall = decoder.decode_by_id(id).unwrap(); let traversal = Traversal::new(1, 1);
+    let mut program = traversal.product_parts(&wall); let mut operations:Vec<Operation> = Vec::new(); let mut booleans = 0;
     let result = loop {
         let ticket = match program.request() {
             Ok(Some(t)) => t, Err(e) => break Err(e),
-            Ok(None) => break program.finish().map(|p| assert_eq!(p.values().len(), 1)),
+            Ok(None) => break program.finish().map(|p| {
+                assert_eq!(p.values().len(),1);
+                assert_eq!(p.values()[0].slot(),operations.last().unwrap().value().slot());
+            }),
         };
         let (reply, batch, _) = match program.admit(ticket, &router, &mut decoder) {
             Ok(r) => r, Err(e) => break Err(e),
@@ -90,7 +96,9 @@ fn issue_7955_union_intersection_and_invalid_surface_refuse_before_cutter() {
 }
 #[test]
 fn issue_7955_mapped_nonuniform_host_bakes_before_cutter() {
-    let (ops,result)=drive(&fixture::mapped(),None);result.unwrap();assert_eq!(ops.len(),4);
+    // Explicitly non-schema extension: IfcMappedItem is not IfcBooleanOperand.
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/m5-adversarial-nonschema-mapped-operand.ifc");
+    let (ops,result)=drive_product(text,27,None);result.unwrap();assert_eq!(ops.len(),4);
     assert!(matches!(ops[1].kind(),OperationKind::Affine { .. }));
     assert!(matches!(ops[2].kind(),OperationKind::Construction(RetainedRecipe::Prism(_))));
     assert_eq!(ops[1].value().evaluation_bounds(),ops[3].value().evaluation_bounds());

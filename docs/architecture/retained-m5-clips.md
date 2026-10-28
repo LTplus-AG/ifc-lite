@@ -50,3 +50,22 @@ its existing source comparison and `exact_defect` decision; multiple
 inconsistent authorities fail. No output column or existing tolerance changes.
 The existing six-field `src_oracle` serialization remains unchanged. Empty
 per-slice results leave all existing check behavior unchanged.
+
+## Non-schema case (e) amendment, 2026-10-28
+
+The user's follow-up ruling says to put case (e) in a "SEPARATE clearly-named
+adversarial/non-schema fixture" and keep it "OUT of the committed coverage
+universe and published-count deltas". Accordingly,
+`m5-adversarial-nonschema-mapped-operand.ifc` labels its IFC4 violation:
+`IfcMappedItem` is not an `IfcBooleanOperand`. Tests pin the observed affine
+bake before the clip, typed outcome and native/browser agreement only. It has
+no analytic qualification expectation. Schema validation must reject it.
+
+The schema-valid outer mapping bakes after clipping; its affine final output
+is deferred to M10. All other candidate qualification cases stay in
+`f-e-clips.ifc`, with hand expectations in `expected.d/m5.json` (the task's
+slice-name convention also replaces the spec's `m5-clips.json` here).
+The survey case places the rotation and offset on the extrusion itself, so
+it exercises the plane-to-host transform. The generic chain and curved case
+avoid the old fixture's collapsed edges; minimal controller fragments retain
+separate deliberately degenerate regression coverage.

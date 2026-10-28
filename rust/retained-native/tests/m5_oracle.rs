@@ -12,7 +12,7 @@ fn oracle(text: &str,id:u32)->ClipExpectation {
 #[test]
 fn issue_7955_section_integrals_match_hand_authored_constraints() {
     for (text,expected) in [(fixture::SOURCE.to_string(),36.),
-        (fixture::SOURCE.replace("#8,.T.","#8,.F."),12.),(fixture::chain(),1229./48.),(fixture::mapped(),216.)] {
+        (fixture::SOURCE.replace("#8,.T.","#8,.F."),12.),(fixture::chain(),1229./48.)] {
         let e=oracle(&text,13);let v=e.section_volume().expect("section oracle must execute");
         assert!((v-expected).abs()/expected<1e-12,"{v} vs {expected}");
         assert!(!e.curved());assert!(e.host_volume().unwrap()>=v);
@@ -49,9 +49,9 @@ fn issue_7955_synthetic_oracle_covers_curves_mixed_nodes_and_openings() {
     let rows:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/expected.d/m5.json")).unwrap();
     for row in rows["synthetic"].as_array().unwrap() {
         let id=row["id"].as_u64().unwrap() as u32;
-        if row["code"]!="published" || id==206{continue;}
+        if row["code"]!="published" || row["unclipped"]==true{continue;}
         let e=oracle(text,id);
-        if id==128 {assert!(e.section_volume().is_none());assert!(e.parts[0].mixed);continue;}
+        if row["mixed"]==true {assert!(e.section_volume().is_none());assert!(e.parts[0].mixed);continue;}
         let v=e.section_volume().expect("required section integral");let expected=row["volume"].as_f64().unwrap();
         assert!((v-expected).abs()/expected<1e-9,"#{id}: {v} vs {expected}");
     }

@@ -74,6 +74,10 @@ impl TransactionError {
             FailureSite::HalfSpaceClip => "halfspace_clip",
         };
         let cause = match &origin.cause {
+            OriginCause::Recipe(crate::document::RetainedRefusal::UnsupportedSource(reason))
+                if origin.site == FailureSite::BooleanSecondOperand && reason == "halfspace_union" => "halfspace_union",
+            OriginCause::Recipe(crate::document::RetainedRefusal::UnsupportedSource(reason))
+                if origin.site == FailureSite::BooleanSecondOperand && reason == "halfspace_intersection" => "halfspace_intersection",
             OriginCause::Recipe(_) => "recipe",
             OriginCause::Shape(_) => "shape",
             OriginCause::Core(_) => "core",

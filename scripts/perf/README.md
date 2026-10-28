@@ -14,6 +14,15 @@ reduction, not a protocol-v3 acceptance verdict: fingerprint and public warm-cal
 latency still exceeded the TypeScript arm, including with retained native models
 in the diagnostic. Removing callbacks alone does not remove native hashing,
 document allocation, result decoding or per-call model construction costs.
+The preserved large pair also retained the fingerprint regression and showed
+that the warm-call cost scales with model size rather than staying a small
+fixed overhead. Release optimization was enabled. Native strings still cache
+UTF-8 alongside UTF-16, and dense canonical JSON is materialized as UTF-8 before
+the hash consumes UTF-16 again; batching does not eliminate those costs.
+Marked batch calls placed most remaining time inside WASM, not JS packing.
+A decoded native slice retained byte identity, but spent most computation time
+outside final serialization and hashing, in the rest of canonical processing.
+Native timer shares are diagnostic proxies, not a WASM phase decomposition.
 
 Bulk CLI, MCP and viewer adapters use the explicit internal snapshot batch;
 the end-to-end harness reaches it through the CLI adapter without a protocol

@@ -306,6 +306,9 @@ jobs:
           node --test scripts/retained-compare/browser.test.mjs
           pnpm build:e2e --concurrency=1
           pnpm exec playwright test --project=viewer-retained
+          VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
+          node scripts/check-viewer-retained-free.mjs
+          VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default
       - name: Optional retained browser corpus (report only)
         if: inputs.corpus == true
         continue-on-error: true

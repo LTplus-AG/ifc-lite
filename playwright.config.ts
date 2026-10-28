@@ -14,6 +14,9 @@ const PORT = process.env.PLAYWRIGHT_PORT ?? '3000';
 const BASE_URL = `http://localhost:${PORT}`;
 const retainedProject = process.argv.some((arg, i) => arg === '--project=viewer-retained' ||
   (arg === '--project' && process.argv[i + 1] === 'viewer-retained'));
+const retainedDefaultProject = process.argv.some((arg, i) => arg === '--project=viewer-retained-default' ||
+  (arg === '--project' && process.argv[i + 1] === 'viewer-retained-default'));
+const isolatedRetainedPreview = retainedProject || retainedDefaultProject;
 const retainedEngine = process.env.IFCLITE_RETAINED_ENGINE;
 const retainedAvailable = Boolean(retainedEngine && existsSync(join(retainedEngine, 'engine-manifest.json')));
 
@@ -48,9 +51,9 @@ export default defineConfig({
   webServer: onlyCollabProject()
     ? undefined
     : {
-        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}${retainedProject ? ' --strictPort' : ''}`,
+        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}${isolatedRetainedPreview ? ' --strictPort' : ''}`,
         port: Number(PORT),
-        reuseExistingServer: !retainedProject,
+        reuseExistingServer: !isolatedRetainedPreview,
         timeout: 90000,
         env: {
           BROWSER: 'none',
@@ -69,6 +72,20 @@ export default defineConfig({
         channel: process.env.IFCLITE_BROWSER_CHANNEL || 'chrome',
         trace: 'retain-on-failure',
         screenshot: 'only-on-failure',
+        launchOptions: { args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan',
+          '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--disable-vulkan-surface',
+          '--ignore-gpu-blocklist', '--enable-gpu'] },
+      },
+    },
+    {
+      // Run the same event-driven exact-load assertion against an unflagged dist.
+      name: 'viewer-retained-default',
+      testMatch: /retained-viewer\.e2e\.spec\.ts/,
+      grep: /build without a kernel choice/,
+      use: {
+        baseURL: BASE_URL,
+        headless: true,
+        channel: process.env.IFCLITE_BROWSER_CHANNEL || 'chrome',
         launchOptions: { args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan',
           '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--disable-vulkan-surface',
           '--ignore-gpu-blocklist', '--enable-gpu'] },

@@ -8,6 +8,7 @@ import { chromium } from '@playwright/test';
 import { serveRoots } from '../smlib-browser-worker-probe.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { compare, tsv } from './metrics.mjs';
+import { coverageRows } from './coverage.mjs';
 import { compareView } from './browser-metrics.mjs';
 import { loadTolerances } from './tolerances.mjs';
 
@@ -20,7 +21,7 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
   const validated = await validateEngine(engine);
   const nativeBytes = await readFile(native), nativeRows = tsv(nativeBytes.toString());
   const blessed = corpus ? nativeRows.filter(p => p.status !== 'exact_only_type_product')
-    : tsv(await readFile(join(ROOT, 'tests/manifests/cli-retained-coverage.tsv'), 'utf8'));
+    : await coverageRows();
   const tolerances = loadTolerances(join(ROOT, 'tests/fixtures/cli-retained'));
   if (tolerances.nativeWasmVolumeRelative !== 1e-9 || tolerances.viewStorageHalfUlp !== true) throw new Error('Preregistered M2 tolerances changed');
   const temporary = await mkdtemp(join(tmpdir(), 'retained-browser-parity-'));

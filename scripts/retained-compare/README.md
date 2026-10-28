@@ -2,7 +2,7 @@
 
 The browser harness serves an already staged, inventory-validated engine with
 `serveRoots`. It keeps one real `RetainedModelSession` warm across the committed
-coverage manifest, running shape and view detail for each model. Native
+coverage manifests (including per-slice fragments), running shape and view detail for each model. Native
 `products.tsv` is read unmodified; its SHA256 is recorded in `summary.json`.
 `retainedReport` supplies the f64 volumes and `metrics.compare` enforces the
 preregistered 1e-9 native/browser tolerance. View checks independently authenticate
@@ -26,6 +26,11 @@ pnpm build:e2e --concurrency=1
 VITE_RETAINED_GEOMETRY=on IFCLITE_RETAINED_ENGINE=/absolute/engine \
 IFCLITE_VIEWER_OUT=/absolute/results/e2e \
 pnpm exec playwright test --project=viewer-retained
+
+VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
+node scripts/check-viewer-retained-free.mjs
+VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= \
+pnpm exec playwright test --project=viewer-retained-default
 ```
 
 The e2e project starts its own flagged preview and refuses an occupied port;

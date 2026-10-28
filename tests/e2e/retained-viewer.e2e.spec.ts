@@ -149,22 +149,6 @@ test.describe('retained viewer acceptance', () => {
     await record('cancel', { cancelMs, workerCloseMs: closedAt - start, before, after });
   });
 
-  test('flagged build without a kernel choice loads exact without retained assets', async ({ page }) => {
-    const requests: string[] = [], workers: string[] = [];
-    page.context().on('request', req => requests.push(req.url()));
-    page.on('worker', worker => workers.push(worker.url()));
-    await setup(page);
-    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
-    await complete(page, false);
-    const result = await snapshot(page);
-    expect(result.meshIds.length).toBeGreaterThan(0);
-    expect(result.summary).toBeUndefined();
-    expect(requests.filter(url => /\/smlib\/|pkg-retained/.test(url))).toEqual([]);
-    expect(workers.filter(url => /retained|smlib/.test(url))).toEqual([]);
-    await expect(page.locator('[data-retained-chip]')).toHaveCount(0);
-    await record('default', result);
-  });
-
   test('flagged preview with an empty engine fails before listening', async () => {
     const result = await new Promise<{ code: number | null; output: string }>((done, reject) => {
       const child = spawn('pnpm', ['--filter', '@ifc-lite/viewer', 'exec', 'vite', 'preview', '--port', '0'], {
@@ -190,4 +174,21 @@ test.describe('retained viewer acceptance', () => {
     expect(result.output).not.toMatch(/Local:\s+http/);
     await record('missing-engine', result);
   });
+});
+
+test('build without a kernel choice loads exact without retained assets', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'viewer-retained-default' && !(engine && existsSync(join(engine, 'engine-manifest.json'))), SKIP);
+  const requests: string[] = [], workers: string[] = [];
+  page.context().on('request', req => requests.push(req.url()));
+  page.on('worker', worker => workers.push(worker.url()));
+  await setup(page);
+  await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+  await complete(page, false);
+  const result = await snapshot(page);
+  expect(result.meshIds.length).toBeGreaterThan(0);
+  expect(result.summary).toBeUndefined();
+  expect(requests.filter(url => /\/smlib\/|pkg-retained/.test(url))).toEqual([]);
+  expect(workers.filter(url => /retained|smlib/.test(url))).toEqual([]);
+  await expect(page.locator('[data-retained-chip]')).toHaveCount(0);
+  await record('default', result);
 });

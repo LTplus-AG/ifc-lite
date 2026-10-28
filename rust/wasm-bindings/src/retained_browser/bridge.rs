@@ -20,6 +20,9 @@ extern "C" {
     pub(super) fn retire(this: &Driver);
     #[wasm_bindgen(method, js_name = objectLive)]
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
+    #[cfg(test)]
+    #[wasm_bindgen(method, js_name = liveObjectCount)]
+    pub(super) fn live_object_count(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = releaseObject)]
     pub(super) fn release_object(this: &Driver, object: &JsValue);
     #[wasm_bindgen(method)]

@@ -60,8 +60,8 @@ pub struct ModelSummary {
     pub published: usize,
     /// Attempted opening cuts across published and refused products.
     pub cuts: u64,
-    /// Replacement acquisition attempts after the initial worker slot, including
-    /// failed qualification attempts; capped at three per model.
+    /// Fault recovery attempts, including failed qualification; capped at three
+    /// per model. Deliberate controller cancellations do not spend this budget.
     pub restarts: u8,
     pub product_ms: f64,
     pub acquire_ms: f64,
@@ -109,14 +109,13 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
         ifc_lite_geometry::MaterialLayerIndex::from_content(source.bytes(), &mut decoder),
     ));
     let (jobs, type_maps) = crate::processor::entry_points::canonical_jobs_and_type_maps(&source);
-    let mut attempts = usize::from(worker.is_some());
+    let mut restart_budget = super::restart_budget::RestartBudget::new(options.max_restarts, worker.is_some());
     if worker
         .as_ref()
         .is_some_and(|w| w.domain().incarnation().is_none())
     {
         *worker = None;
     }
-    let max_attempts = usize::from(options.max_restarts.min(3)) + 1;
     let mut summary = ModelSummary::default();
     for (product_id, ifc_type) in jobs {
         if options
@@ -130,12 +129,8 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
         let product_start = resource::BudgetStart::now();
         let mut acquire_ms = 0.;
         let mut bounded_acquire = || {
-            if attempts >= max_attempts {
-                return Err(RuntimeFault::transport("worker restart budget exhausted"));
-            }
-            attempts += 1;
             let start = resource::BudgetStart::now();
-            let result = acquire();
+            let result = restart_budget.acquire(&mut acquire);
             acquire_ms += start.elapsed().as_secs_f64() * 1000.;
             result
         };
@@ -161,6 +156,11 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
             .as_ref()
             .is_some_and(|w| w.domain().incarnation().is_none())
         {
+            // Preserve retirement of an unsettled operation, but source and
+            // cooperative cancellation are not numerical/transport faults.
+            if outcome.as_ref().is_err_and(|error| error.controller_cancelled()) {
+                restart_budget.deliberate_retirement();
+            }
             *worker = None;
         }
         match outcome {
@@ -191,7 +191,7 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
             }
         }
     }
-    summary.restarts = attempts.saturating_sub(1) as u8;
+    summary.restarts = restart_budget.restarts();
     Ok(summary)
 }
 

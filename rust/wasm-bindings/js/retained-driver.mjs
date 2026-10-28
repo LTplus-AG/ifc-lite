@@ -36,6 +36,12 @@ export class RetainedDriver {
     return !this.#retired && (!this.#transport || this.#transport.incarnation === this.#incarnation);
   }
   objectLive(object) { return this.live() && this.#objects.has(object); }
+  // Observe acknowledged cleanup on this same Worker; never revive a domain.
+  async liveObjectCount() {
+    await this.#awaitCleanup();
+    if (!this.live()) throw new Error('retired retained worker');
+    return this.#objects.size;
+  }
   // Observation only, for the actual-Worker cancellation tests. Resolves when a
   // frame with this opcode is transferred; cannot submit work or grant authority.
   nextDispatch(opcode) {

@@ -1,0 +1,2 @@
+# SPDX-License-Identifier: MPL-2.0
+retained refusal lifecycle and live objects

@@ -139,6 +139,15 @@ impl From<u8> for RetainedExecutionError {
 }
 
 impl RetainedExecutionError {
+    /// Only controller-owned source/resource stops authorize an uncharged
+    /// replacement. Runtime, receipt, and domain faults keep the recovery cap.
+    pub(super) fn controller_cancelled(&self) -> bool {
+        if let Self::Opening { inner, .. } = self { return inner.controller_cancelled(); }
+        matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_)
+            | Self::Common(_) | Self::Recipe(_) | Self::DeadlineExceeded
+            | Self::Unsupported(_) | Self::InvalidTypeSource
+            | Self::Owner(WorkError::StaleSource | WorkError::Aborted))
+    }
     pub(super) fn terminal(&self) -> bool {
         if let Self::Opening { inner, .. } = self { return inner.terminal(); }
         if matches!(self, Self::Runtime(_)) {

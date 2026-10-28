@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/cancellation.rs",
+  "mutation": "tests/evidence/retained-refusal-retire/behaviour.oracle.patch",
+  "test": "rust/processing/src/element/session_retained/lifecycle_tests.rs",
+  "why": "Reverse the idle-refusal fix: eight terminal opening refusals must still allow the following valid product to publish on the original peer, without restart or leaked receipts. No SMLib is needed."
+}

@@ -24,6 +24,8 @@ pub(super) mod publication;
 mod publication_mesh;
 mod presentation;
 pub(super) mod model;
+mod restart_budget;
+mod cancellation;
 mod drive;
 mod acceptance;
 mod validation;
@@ -55,6 +57,8 @@ pub(super) mod error;
 pub(super) mod refusal;
 #[cfg(test)]
 mod inert_tests;
+#[cfg(test)]
+mod lifecycle_tests;
 #[cfg(test)]
 mod refusal_tests;
 #[cfg(test)]
@@ -175,21 +179,6 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             _storage: storage,
         });
         Ok(Some(issued))
-    }
-    fn cancel(&mut self) {
-        self.failed = true;
-        let settled = self.pending.as_ref().is_some_and(|pending|
-            pending.cancellation.stage.load(Ordering::Acquire) == SETTLED_FAULT);
-        if !settled {
-            if let Some(owner) = &self.runtime_domain { owner.retire(); }
-            if let Some(pending) = &self.pending {
-                pending.cancellation.cancel();
-            }
-        }
-        if let Some(program) = &mut self.program {
-            program.cancel();
-        }
-        self.plan = None;
     }
     fn traversal_plan(&self) -> Option<&RetainedProductPlan> {
         self.plan.as_ref().filter(|_| !self.failed)

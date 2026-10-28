@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature="retained-runtime")]
 //! #7955 hand-derived M4 source witnesses; never read any retained tessellation.
 use ifc_lite_retained_native::oracle::layers::expected;
 const CURVED:&[u8]=include_bytes!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc");
@@ -36,5 +37,17 @@ fn m4_synthetic_source_volumes_are_independently_derived() {
             let hand=3.*std::f64::consts::PI*(b*b-a*a)/4.-if id==4055 && k==2 {0.02} else {0.};
             assert!((oracle.volumes[k]-hand).abs()<1e-9,"#{id} band{k}: {} vs {hand}",oracle.volumes[k]);
         }
+    }
+}
+
+
+#[test]
+fn m4_inward_stack_source_integral() {
+    let bytes=include_bytes!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc");
+    let source=ifc_lite_processing::extract_analytic_quantity_sources(bytes,None);
+    let oracle=expected(bytes,&source,13055).unwrap();
+    for (value,(inner,outer)) in oracle.volumes.iter().zip([(9.9_f64,10_f64),(9.7,9.9),(9.4,9.7)]) {
+        let hand=3.*std::f64::consts::PI*(outer*outer-inner*inner)/4.;
+        assert!((value-hand).abs()<1e-9);
     }
 }

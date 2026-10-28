@@ -134,9 +134,9 @@ fn issue_7955_m4_synthetic_bands_and_refusals() {
     let text=include_str!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc");
     // Remains outside the coverage universe until the required independent
     // fixture review and parser roundtrip have been accepted.
-    let Some(results)=run(text,&[1027,2027,3055,4055,5027,6027,7027,8027,9027,10027,11027]) else {return;};
+    let Some(results)=run(text,&[1027,2027,3055,4055,5027,6027,7027,8027,9027,10027,11027,13055]) else {return;};
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
-    for id in [1027,2027,3055,4055,5027,6027,7027] {
+    for id in [1027,2027,3055,4055,5027,6027,7027,13055] {
         let product=shape(&results,id);
         let oracle=ifc_lite_retained_native::oracle::layers::expected(text.as_bytes(),&sources,id).unwrap();
         let tolerance=if oracle.curved {2e-3} else {1e-6};

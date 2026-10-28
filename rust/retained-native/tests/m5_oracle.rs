@@ -34,6 +34,7 @@ fn issue_7955_source_plane_flag_and_georeferenced_frame() {
 }
 #[test]
 fn issue_7955_original_corpus_clips_have_independent_section_authority() {
+    let hand:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/expected.d/m5.json")).unwrap();
     for (text,ids) in [
         (include_str!("../../../apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc"),vec![67536,75347]),
         (include_str!("../../geometry/tests/fixtures/issue_5314_halfspace_edge.ifc"),vec![30]),
@@ -41,6 +42,10 @@ fn issue_7955_original_corpus_clips_have_independent_section_authority() {
         for id in ids {
             let e=oracle(text,id);let volume=e.section_volume().expect("required source integral");
             assert!(volume>0.&&volume<e.host_volume().unwrap());
+            let family=if id==30{"issue5314"}else{"fzk"};
+            let row=hand[family].as_array().unwrap().iter().find(|r|r["id"]==id).unwrap();
+            let hand=row["volume"].as_f64().unwrap();
+            assert!((volume-hand).abs()/hand<1e-10,"#{id} source integral {volume} vs hand {hand}");
             println!("source clip #{id}: {volume}");
         }
     }

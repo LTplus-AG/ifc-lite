@@ -117,7 +117,7 @@ test.describe('retained viewer acceptance', () => {
     await page.locator('#file-input-add').setInputFiles(resolve(WALL));
     await expect.poll(async () => (await snapshot(page)).error).toMatch(/Retained geometry loads one model at a time/);
     expect((await snapshot(page)).models).toBe(1);
-    expect(requests.filter(url => /\/smlib\/|pkg-retained/.test(url))).toEqual([]);
+    expect(requests.filter(url => /\/smlib\/|pkg-retained|\/retained-engine\//.test(url))).toEqual([]);
   });
 
   test('Cancel terminates the real host within 1 s and keeps published meshes', async ({ page }) => {
@@ -216,7 +216,7 @@ test('build without a kernel choice loads exact without retained assets', async 
   const result = await snapshot(page);
   expect(result.meshIds.length).toBeGreaterThan(0);
   expect(result.summary).toBeUndefined();
-  expect(requests.filter(url => /\/smlib\/|pkg-retained/.test(url))).toEqual([]);
+  expect(requests.filter(url => /\/smlib\/|pkg-retained|\/retained-engine\//.test(url))).toEqual([]);
   expect(workers.filter(url => /retained|smlib/.test(url))).toEqual([]);
   await expect(page.locator('[data-retained-chip]')).toHaveCount(0);
   await record('default', result);

@@ -26,6 +26,7 @@ function retained(rows) {
   return new DiffModel(c.strings, c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
 }
 let executedPairs = 0;
+let comparisons = 0;
 for (const [basePath, headPath] of pairs) {
   const paths = [basePath, headPath].map(path => new URL(path, root));
   if (paths.some(path => !existsSync(path))) {
@@ -45,8 +46,13 @@ for (const [basePath, headPath] of pairs) {
     const head = retained(rows[1]);
     try {
       for (const options of [{ scope: 'data' }, { scope: 'data', matchUnpairedByContent: true },
-        { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true }]) {
+        { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true },
+        { scope: 'both', excludeTypes: ['IfcSpace'] },
+        { scope: 'data', keyAliases: new Map(), detectSuccessors: true }]) {
         const expected = diffModels(rows[0], rows[1], options);
+        const publicResult = publicDiff.diffModels(rows[0], rows[1], options);
+        assert.deepEqual(publicResult, expected, `${basePath}: public binary facade`);
+        comparisons++;
         const actual = restoreDiffReferences(base.compare(head, options), rows[0], rows[1]);
         assert.deepEqual(actual, expected, `${basePath}: ${JSON.stringify(options)}`);
         for (const entry of actual.entries) {
@@ -62,7 +68,8 @@ for (const [basePath, headPath] of pairs) {
   executedPairs++;
 }
 console.log(`Real IFC parity: ${executedPairs}/${pairs.length} pairs executed.`);
-if (executedPairs === 0) {
-  console.error('INCOMPLETE: no real IFC pairs executed; run pnpm fixtures and rerun parity.');
+console.log(`Real IFC parity: ${comparisons}/10 comparisons; ${pairs.length - executedPairs} skipped pairs.`);
+if (executedPairs !== pairs.length) {
+  console.error('INCOMPLETE: real IFC coverage missing; run pnpm fixtures and rerun parity.');
   process.exitCode = 2;
 }

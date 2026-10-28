@@ -13,6 +13,7 @@ pub struct Report {
     pub histogram: BTreeMap<String, usize>,
     pub violations: Vec<String>,
     pub exact_defects: Vec<Value>,
+    pub exact_waivers: Vec<Value>,
     pub universe_mismatch: Vec<String>,
     pub skipped: Vec<String>,
     pub maxima: [f64; 4],
@@ -43,6 +44,7 @@ impl Report {
         ms: f64,
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
         sources: &ifc_lite_processing::AnalyticQuantitySources,
+        exact_report_only: bool,
     ) {
         self.published += 1;
         self.cuts += shape.cuts;
@@ -59,6 +61,7 @@ impl Report {
             exact,
             if opening.is_some() { None } else { source },
             tolerances,
+            exact_report_only,
         );
         let cut_rel = opening.and_then(|e| {
             super::openings::check_opened(
@@ -110,6 +113,7 @@ impl Report {
         exact: Option<&Metrics>,
         source: Option<(f64, Option<[f64; 6]>)>,
         tolerances: &Value,
+        exact_report_only: bool,
     ) -> [Option<f64>; 5] {
         let source_rel = source.as_ref().map(|(v, _)| relative(actual.volume, *v));
         let exact_source_rel = exact.zip(source).map(|(e, (v, _))| relative(e.volume, v));
@@ -218,7 +222,15 @@ impl Report {
                 "sourceVolumeRelativeLimit": source_limit, "exactVolumeRelativeLimit": exact_limit,
             }));
         }
-        if !curved && !type_product && !exact_defect {
+        // The waiver is audit-visible: which products skipped the exact gate and
+        // by how much they deviated, so it cannot hide a regression.
+        if exact_report_only && !curved && !type_product && !exact_defect {
+            self.exact_waivers.push(json!({
+                "classification": "exact_report_only", "product": label,
+                "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
+            }));
+        }
+        if !curved && !type_product && !exact_defect && !exact_report_only {
             for (value, key) in [
                 (vol, "volumeRelative"),
                 (area, "areaRelative"),
@@ -240,7 +252,7 @@ impl Report {
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
-            "violations":self.violations,"exact_defect":self.exact_defects,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
+            "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
             "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }

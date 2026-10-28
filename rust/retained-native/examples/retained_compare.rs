@@ -152,7 +152,13 @@ fn compare(
     let type_expectations: BTreeMap<_, _> = type_maps.iter().map(|(&id, maps)| {
         ifc_lite_retained_native::oracle::type_maps::expected(&bytes, &sources, maps).map(|value| (id, value))
     }).collect::<Result<_, _>>()?;
-    let opening_expectations = openings::expectations(&bytes, &sources)?;
+    let retraced = source::retraced(path, &sources, &mut source.decoder(), tolerances)?;
+    let mut opening_expectations = openings::expectations(&bytes, &sources)?;
+    let retraced_opening = source::retraced_opening(path, &sources, &mut source.decoder(), tolerances)?;
+    let has_retraced_opening = retraced_opening.is_some();
+    if let Some(expected) = retraced_opening {
+        opening_expectations.insert(72209, Some(expected));
+    }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
     let (summary, timings) = driver.run_model(
@@ -188,12 +194,13 @@ fn compare(
                             Err(error) => { report.violations.push(format!("{model}:{id}: {error}")); None }
                         }
                     });
+                    let retraced = (shape.product_id == 72245).then_some(retraced).flatten();
                     let expectation = if let Some(value) = type_expectations.get(&id) {
                         if value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
                             report.violations.push(format!("{model}:{id}: missing or incomplete type source oracle"));
                         }
                         value.as_ref().map(|v| (v.volume, v.bbox))
-                    } else { source::expected(&sources, id, shape.parts.len()) };
+                    } else { retraced.or_else(|| source::expected(&sources, id, shape.parts.len())) };
                     report.published(
                         &model,
                         &shape,
@@ -205,6 +212,7 @@ fn compare(
                         ms,
                         opening_expectations.get(&id),
                         &sources,
+                        retraced.is_some() || (id == 72209 && has_retraced_opening),
                     );
                 }
                 ProductOutcome::Refused {

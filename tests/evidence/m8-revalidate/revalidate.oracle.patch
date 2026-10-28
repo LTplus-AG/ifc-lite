@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/profile_retrace.rs
++++ b/rust/geometry/src/analytic/profile_retrace.rs
+@@ -103,7 +103,7 @@
+     if (residual.signed_area - boundary.signed_area).abs() > 1e-12 * boundary.signed_area.abs() {
+         return Ok(None);
+     }
+-    match { let _ = (clearance, join); Ok::<(), WalkError>(()) } {
++    match validate_topology(std::slice::from_ref(&residual), clearance, join) {
+         Ok(()) => {},
+         Err(WalkError::Unsupported(_)) => return Ok(None),
+         Err(stop @ WalkError::Stopped(_)) => return Err(stop),

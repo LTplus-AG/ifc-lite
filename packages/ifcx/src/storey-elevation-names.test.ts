@@ -38,6 +38,10 @@ describe('worldMatrix', () => {
     assert.equal(worldZ(worldMatrix(at(1.5), worldMatrix(at(2), IDENTITY))), 3.5);
     assert.equal(worldZ(worldMatrix(node({}), IDENTITY)), 0);
   });
+  it('a corrupt transform reads as unknown, not as the origin', () => {
+    const corrupt = node({ 'usd::xformop': { transform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, Infinity, 1]] } });
+    assert.ok(!Number.isFinite(worldZ(worldMatrix(corrupt, IDENTITY))));
+  });
 });
 
 describe('a storey with no Elevation takes the Z of its placement chain', () => {
@@ -62,5 +66,9 @@ describe('a storey with no Elevation takes the Z of its placement chain', () => 
 
   it('an Elevation the file states wins over the placement', () => {
     assert.equal(build({ ...at(2.5), 'bsi::ifc::prop::Elevation': 7 }).storeyElevations.get(3), 7);
+  });
+
+  it('a corrupt placement leaves the elevation unknown instead of reading 0', () => {
+    assert.equal(build(at(Infinity)).storeyElevations.get(3), undefined);
   });
 });

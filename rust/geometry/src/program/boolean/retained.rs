@@ -13,6 +13,17 @@ use crate::program::retained::failure::{BooleanReason, FailureSite, OriginCause}
 pub(super) struct RetainedState {
     pub selection: RetainedSelection,
     value: Option<LogicalRetainedValue>,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    result_hook: Option<StepResultHook>,
+}
+/// Shared M5/M6 hook: arm for an admitted cutter, attach its Difference result,
+/// then inspect the shared numerical outcome before reading the next operand.
+/// Ordinary solid Booleans never arm this hook.
+#[cfg(any(test, feature = "retained-runtime"))]
+struct StepResultHook {
+    site: FailureSite,
+    entity: u32,
+    result: Option<LogicalRetainedValue>,
 }
 impl Walk {
     pub(super) fn retained_steps(self, value: LogicalRetainedValue) -> Result<Steps> {
@@ -29,7 +40,7 @@ impl BooleanMachine {
             ..Default::default() })?.retain();
         let mut machine = Self::new(item, quality);
         #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
-        { machine.retained = Some(boxed(RetainedState { selection, value: None })?); }
+        { machine.retained = Some(boxed(RetainedState { selection, value: None, result_hook: None })?); }
         #[cfg(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")))]
         { let _ = machine; match selection {} }
         boxed(machine)
@@ -128,6 +139,8 @@ impl BooleanMachine {
     }
     pub(super) fn retained_steps(&mut self, mut steps: Steps, recorder: &BooleanClippingProcessor,
         decoder: &mut EntityDecoder) -> Result<()> {
+        #[cfg(any(test, feature = "retained-runtime"))]
+        self.check_step_result()?;
         let host = steps.retained.take().ok_or_else(stale)?;
         let Some(node) = steps.nodes.pop() else {
             self.retained.as_mut().ok_or_else(stale)?.value = Some(*host);
@@ -167,6 +180,7 @@ impl BooleanMachine {
                 failure: &selection.failure_handle() })? {
                 CutterStep::Skip => { steps.retained = Some(host); self.frames.push(Frame::Steps(steps)); }
                 CutterStep::Cutter(operation) => {
+                    self.arm_step_result(FailureSite::HalfSpaceClip, second.id)?;
                     self.frames.push(Frame::RetainedAfterStep { steps: boxed(steps)?, operator, host });
                     self.frames.push(Frame::RetainedReady { operation: boxed(operation)?, steps: None });
                 }
@@ -181,6 +195,10 @@ impl BooleanMachine {
     pub(super) fn retained_solid(&mut self, steps: Steps, operator: BoolOp, host: LogicalRetainedValue) -> Result<()> {
         let right = self.take_retained_value()?;
         let operation = crate::program::retained::boolean::boolean_operation([host, right], operator)?;
+        #[cfg(any(test, feature = "retained-runtime"))]
+        if let Some(hook) = self.retained.as_mut().ok_or_else(stale)?.result_hook.as_mut() {
+            hook.result = Some(operation.value().try_copy()?);
+        }
         self.frames.push(Frame::RetainedReady { operation: boxed(operation)?, steps: Some(boxed(steps)?) });
         Ok(())
     }
@@ -217,4 +235,22 @@ fn boxed<T>(value: T) -> Result<Box<T>> {
         live_bytes: std::mem::size_of::<T>() as u64, ..Default::default()
     })?.retain();
     Ok(Box::new(value))
+}
+
+#[cfg(any(test, feature = "retained-runtime"))]
+impl BooleanMachine {
+    fn arm_step_result(&mut self, site: FailureSite, entity: u32) -> Result<()> {
+        let state = self.retained.as_mut().ok_or_else(stale)?;
+        if state.result_hook.is_some() { return Err(stale()); }
+        state.result_hook = Some(StepResultHook { site, entity, result: None });
+        Ok(())
+    }
+    fn check_step_result(&mut self) -> Result<()> {
+        let Some(hook) = self.retained.as_mut().ok_or_else(stale)?.result_hook.take() else { return Ok(()) };
+        if hook.result.ok_or_else(stale)?.is_empty() {
+            return Err(self.source_refusal(hook.site, hook.entity, BooleanReason::EmptyHost,
+                "retained cutter consumed the host"));
+        }
+        Ok(())
+    }
 }

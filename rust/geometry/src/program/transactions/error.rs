@@ -71,6 +71,7 @@ impl TransactionError {
             FailureSite::TypeMapPlacement => "type_map_placement",
             FailureSite::MappingAffine => "mapping_affine",
             FailureSite::TypeMapAffine => "type_map_affine",
+            FailureSite::HalfSpaceClip => "halfspace_clip",
         };
         let cause = match &origin.cause {
             OriginCause::Recipe(_) => "recipe",
@@ -78,6 +79,8 @@ impl TransactionError {
             OriginCause::Core(_) => "core",
             OriginCause::Structure(_) => "structure",
             OriginCause::Mapping(_) => "mapping",
+            OriginCause::Boolean(super::logical::failure::BooleanReason::EmptyHost)
+                if origin.site == FailureSite::HalfSpaceClip => "consumed",
             OriginCause::Boolean(_) => "boolean",
             OriginCause::Value(_) => "value",
             OriginCause::Processor(_) => "processor",

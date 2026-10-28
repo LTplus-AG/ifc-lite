@@ -234,6 +234,8 @@ describe('resolveAttribute (§12.5 golden table)', () => {
     expect(canonicalValueKey('Cafe\u0301')).toBe(canonicalValueKey('Café'));
     // Keys sort by their NFC form: decomposed 'e\u0301' sorts before 'f' raw, after it normalized.
     expect(canonicalValueKey({ 'e\u0301': 1, f: 2 })).toBe(canonicalValueKey({ '\u00e9': 1, f: 2 }));
+    // Both spellings in one object: order no longer depends on insertion order.
+    expect(canonicalValueKey({ '\u00e9': 1, 'e\u0301': 2 })).toBe(canonicalValueKey({ 'e\u0301': 2, '\u00e9': 1 }));
     expect(canonicalValueKey(JSON.parse('{"n":1e400}'))).toBe(canonicalValueKey(JSON.parse('{"n":1e400}')));
     expect(canonicalValueKey('1')).not.toBe(canonicalValueKey(1));
     expect(canonicalValueKey(Number.NaN)).not.toBe(canonicalValueKey(null));

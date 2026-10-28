@@ -10,11 +10,13 @@ per canonical product job. It never retries a failed product or falls back to
 exact geometry. A replacement worker qualifies its own numerical families.
 `max_restarts` caps fault recovery at three replacements per model, including
 failed qualification attempts. Settled source/product refusals retain the
-healthy worker and release their receipts. A source/resource cancellation of an
-unsettled packet still retires its captured worker, but its deliberate
-replacement does not spend fault recovery budget or refund earlier faults.
-`ModelSummary.restarts` reports only fault recovery attempts. Numerical,
-transport, receipt and domain faults remain bounded.
+healthy worker and release their receipts, including buffer-budget refusals
+after a complete reply. Cancellation with work still in flight retires its
+captured worker. The first sixteen controller-owned replacements per model are
+uncharged; further replacements spend the fault recovery budget. No cancellation
+refunds earlier faults. `ModelSummary.restarts` reports charged recovery attempts.
+An invocation fault takes precedence over an elapsed product deadline, and a
+domain retired by the executor always requires charged recovery.
 
 Published parts contain f64 object-local metres and column-major placement
 matrices into absolute IFC Z-up world metres. Every product carries

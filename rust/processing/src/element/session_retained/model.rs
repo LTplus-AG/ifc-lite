@@ -60,8 +60,8 @@ pub struct ModelSummary {
     pub published: usize,
     /// Attempted opening cuts across published and refused products.
     pub cuts: u64,
-    /// Fault recovery attempts, including failed qualification; capped at three
-    /// per model. Deliberate controller cancellations do not spend this budget.
+    /// Charged recovery attempts, including failed qualification and deliberate
+    /// replacements beyond the first sixteen; capped at three per model.
     pub restarts: u8,
     pub product_ms: f64,
     pub acquire_ms: f64,
@@ -136,7 +136,7 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
                 result
             })
         };
-        let mut observation = ProductObservation { id: product_id, cut_times_ms: Vec::new() };
+        let mut observation = ProductObservation::new(product_id);
         let outcome = product(
             &mut decoder,
             &router,
@@ -158,9 +158,9 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
             .as_ref()
             .is_some_and(|w| w.domain().incarnation().is_none())
         {
-            // Preserve retirement of an unsettled operation, but source and
-            // cooperative cancellation are not numerical/transport faults.
-            if outcome.as_ref().is_err_and(|error| error.controller_cancelled()) {
+            // Classify by who retired the captured domain, never by the error
+            // variant (which may also describe a stop after an independent fault).
+            if observation.cancellation.as_ref().is_some_and(|c| c.controller_retired()) {
                 restart_budget.deliberate_retirement();
             }
             *worker = None;
@@ -197,9 +197,15 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
     Ok(summary)
 }
 
-struct ProductObservation {
+pub(super) struct ProductObservation<R: NumericalReceipt> {
     id: u32,
-    cut_times_ms: Vec<f64>,
+    pub(super) cut_times_ms: Vec<f64>,
+    pub(super) cancellation: Option<RuntimeCancellation<R>>,
+}
+impl<R: NumericalReceipt> ProductObservation<R> {
+    pub(super) fn new(id: u32) -> Self {
+        Self { id, cut_times_ms: Vec::new(), cancellation: None }
+    }
 }
 
 #[allow(clippy::too_many_arguments)] // One product's source, budget, transport and planned type maps.
@@ -207,7 +213,7 @@ async fn product<W: AsyncRetainedExecutor>(
     decoder: &mut EntityDecoder<'_>,
     router: &GeometryRouter,
     snapshot: &OwnedMeshProductionContext,
-    observation: &mut ProductObservation,
+    observation: &mut ProductObservation<W::Receipt>,
     options: &ModelOptions,
     worker: &mut Option<W>,
     acquire: &mut impl FnMut() -> Result<W, RuntimeFault>,
@@ -254,6 +260,6 @@ async fn product<W: AsyncRetainedExecutor>(
     })?;
     let witness =
         super::drive::drive(execution, decoder, router, worker, acquire, options.limits,
-            &mut observation.cut_times_ms).await?;
+            observation).await?;
     witness.publish_shape()
 }

@@ -10,7 +10,7 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
     worker: &mut Option<W>,
     acquire: &mut impl FnMut() -> Result<W, RuntimeFault>,
     limits: NumericalLimits,
-    observed_cut_times_ms: &mut Vec<f64>,
+    observation: &mut super::model::ProductObservation<W::Receipt>,
 ) -> Result<witness::RuntimeProductWitness<W::Receipt>, RetainedExecutionError> {
     while execution.advance_source(decoder, router)? {
         let worker = match &mut *worker {
@@ -20,19 +20,20 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
         let issued = execution
             .issue_next(decoder, router, worker)?
             .ok_or_else(|| protocol(ReceiptFailure::MissingAdmission))?;
+        observation.cancellation = Some(issued.cancellation.clone());
         let is_cut = execution.prepared.is_none() && matches!(execution.openings, Some(OpeningPhase::Cuts));
         if is_cut {
             execution.scratch.reserve(&execution.resources, &mut execution.cut_times_ms, 1)?;
             // Keep diagnostic observations even if acceptance/publication fails.
             // Both vectors are charged to this product's existing live budget.
-            execution.scratch.reserve(&execution.resources, observed_cut_times_ms, 1)?;
+            execution.scratch.reserve(&execution.resources, &mut observation.cut_times_ms, 1)?;
         }
         let cut_start = resource::BudgetStart::now();
         let result = issued.execute_async(worker, limits).await;
         if is_cut {
             let ms = cut_start.elapsed().as_secs_f64() * 1000.;
             execution.cut_times_ms.push(ms);
-            observed_cut_times_ms.push(ms);
+            observation.cut_times_ms.push(ms);
         }
         let completed = match result {
             Ok(completed) => completed,

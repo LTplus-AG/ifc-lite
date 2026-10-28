@@ -134,6 +134,7 @@ fn issue_7955_dispatch_fault_cannot_publish_and_retires_only_original_domain() {
             .issue_next(decoder, router, &peer)
             .unwrap()
             .unwrap();
+        let cancellation = issued.cancellation.clone();
         let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
         let mut cx = Context::from_waker(Waker::noop());
         let Poll::Ready(Err(rejected)) = future.as_mut().poll(&mut cx) else {
@@ -143,6 +144,7 @@ fn issue_7955_dispatch_fault_cannot_publish_and_retires_only_original_domain() {
         assert!(rejected.issued.is_none());
         drop(future);
         assert!(peer.domain.incarnation().is_none());
+        assert!(!cancellation.controller_retired(), "faults require charged recovery");
         assert!(foreign.domain.incarnation().is_some());
         assert_eq!(execution.discharged_count(), 0);
         assert!(execution.validate_witness().is_err());
@@ -157,6 +159,7 @@ fn issue_7955_abandoned_async_invocation_retires_domain_without_publishing() {
             .issue_next(decoder, router, &peer)
             .unwrap()
             .unwrap();
+        let cancellation = issued.cancellation.clone();
         let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
         assert!(future
             .as_mut()
@@ -165,6 +168,7 @@ fn issue_7955_abandoned_async_invocation_retires_domain_without_publishing() {
         assert!(resource::current_account().is_none());
         drop(future);
         assert!(peer.domain.incarnation().is_none());
+        assert!(cancellation.controller_retired(), "the controller retired in-flight work");
         assert_eq!(execution.discharged_count(), 0);
         assert!(execution.validate_witness().is_err());
     });
@@ -275,7 +279,7 @@ fn issue_7955_real_opening_job_admits_host_before_opening_body() {
     assert!(execution.advance_source(&mut decoder, &router).unwrap());
 }
 
-// #7955: only a settled contract fault disarms a numerical packet.
+// #7955: a settled contract fault disarms a numerical packet.
 #[test]
 fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
     for suspend in [false, true] {
@@ -396,7 +400,7 @@ fn instanced_type_map_refuses_before_invocation_without_restarting_worker() {
             &mut worker,
             &mut acquire,
             limits(),
-            &mut Vec::new(),
+            &mut super::model::ProductObservation::new(60),
         )
         .await
     });

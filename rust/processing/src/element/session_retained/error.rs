@@ -139,8 +139,8 @@ impl From<u8> for RetainedExecutionError {
 }
 
 impl RetainedExecutionError {
-    /// Only controller-owned source/resource stops authorize an uncharged
-    /// replacement. Runtime, receipt, and domain faults keep the recovery cap.
+    /// Settled logical/source/resource refusals can release receipts normally.
+    /// This taxonomy does not establish who retired a worker.
     pub(super) fn controller_cancelled(&self) -> bool {
         if let Self::Opening { inner, .. } = self { return inner.controller_cancelled(); }
         use ifc_lite_geometry::program::transactions::TransactionFailureKind as Kind;
@@ -154,7 +154,7 @@ impl RetainedExecutionError {
             || matches!(self, Self::Common(error) if matches!(error.kind(),
                 Kind::Source | Kind::OperationUnsupported | Kind::Unsupported
                 | Kind::EmptyResult | Kind::Empty | Kind::Incomplete
-                | Kind::Stopped | Kind::DeadlineExceeded | Kind::Cancelled))
+                | Kind::Stopped | Kind::DeadlineExceeded))
     }
     pub(super) fn terminal(&self) -> bool {
         if let Self::Opening { inner, .. } = self { return inner.terminal(); }

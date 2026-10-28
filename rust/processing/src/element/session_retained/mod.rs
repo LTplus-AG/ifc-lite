@@ -70,8 +70,8 @@ const EXECUTING: u8 = 1;
 const DELIVERED: u8 = 2;
 const ACCEPTED: u8 = 3;
 const CANCELLED: u8 = 4;
-/// The runtime settled a contract fault: nothing is outstanding on the worker,
-/// so dropping the refused product must not retire its healthy domain.
+/// A refused execution has settled: nothing is outstanding on the worker.
+/// Faults have already retired it; typed refusals release receipts normally.
 const SETTLED_FAULT: u8 = 5;
 struct PendingRetainedTransaction<R: NumericalReceipt> {
     outer: WorkRequest,

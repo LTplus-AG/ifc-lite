@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+use std::sync::atomic::AtomicBool;
 type ReservedRealizations<R> = (Vec<Arc<RuntimeRealization<R>>>, Storage);
-pub(super) struct StageState { stage: AtomicU8, _storage: Reservation }
+pub(super) struct StageState { stage: AtomicU8, controller_retired: AtomicBool, _storage: Reservation }
 impl StageState {
     pub(super) fn new(resources: &OwnedResourceContext) -> Result<Self, RetainedExecutionError> {
         let storage = resources.with_scope(|| resource::charge(resource::Cost {
             live_bytes: (std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>()) as u64,
             ..Default::default()
         })).map_err(RetainedExecutionError::Stopped)?;
-        Ok(Self { stage: AtomicU8::new(ISSUED), _storage: storage })
+        Ok(Self { stage: AtomicU8::new(ISSUED), controller_retired: AtomicBool::new(false), _storage: storage })
     }
 }
 impl std::ops::Deref for StageState {
@@ -22,6 +23,18 @@ pub(super) struct RuntimeCancellation<R: NumericalReceipt> {
 impl<R: NumericalReceipt> RuntimeCancellation<R> {
     pub(super) fn cancel(&self) {
         self.stage.store(CANCELLED, Ordering::Release);
+        // A domain already lost by its executor is a fault, regardless of the
+        // product's reported stop. Only our own live-domain cancellation counts.
+        if self.owner.incarnation().is_some() {
+            self.stage.controller_retired.store(true, Ordering::Release);
+        }
+        self.owner.retire();
+    }
+    pub(super) fn controller_retired(&self) -> bool {
+        self.stage.controller_retired.load(Ordering::Acquire)
+    }
+    pub(super) fn fault(&self) {
+        self.stage.store(SETTLED_FAULT, Ordering::Release);
         self.owner.retire();
     }
 }

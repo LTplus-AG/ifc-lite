@@ -42,7 +42,9 @@ impl NumericalReceipt for Receipt {
         Some(ReceiptMesh { positions: &m.positions, indices: &m.indices, faces: &m.revision_local_faces })
     }
 }
-struct Peer(Domain, bool);
+#[derive(Clone, Copy)]
+enum LateReply { Transport, Kernel, DeadReceipt, HealthyReceipt }
+struct Peer(Domain, usize, Option<LateReply>);
 impl RetainedRuntime for Peer {
     type Receipt = Receipt;
     fn domain(&self) -> Domain { self.0.clone() }
@@ -53,6 +55,18 @@ impl AsyncRetainedExecutor for Peer {
         assert_eq!(self.0.0.live.get(), 0, "previous refused product released every receipt");
         let Invocation::Construction(request) = call else { panic!("only host construction is admitted") };
         assert_eq!(request.recipe().solid_id(), 19);
+        self.0.0.calls.set(self.0.0.calls.get() + 1);
+        if let Some(reply) = self.2 {
+            // #7955: invoke has actually started before the product deadline.
+            // A blocking native transport can return long after that deadline.
+            std::thread::sleep(std::time::Duration::from_millis(1_100));
+            if !matches!(reply, LateReply::HealthyReceipt) { self.0.retire(); }
+            match reply {
+                LateReply::Transport => return Err(RuntimeFault::transport("crash after deadline")),
+                LateReply::Kernel => return Err(RuntimeFault::kernel(8, "trap after deadline")),
+                LateReply::DeadReceipt | LateReply::HealthyReceipt => {}
+            }
+        }
         let frame = request.payload();
         let mesh = RetainedTessellation {
             positions: vec![-1.,-0.5,0., 1.,-0.5,0., 1.,0.5,0., -1.,0.5,0.,
@@ -67,9 +81,8 @@ impl AsyncRetainedExecutor for Peer {
         };
         let completion = RetainedCompletion::new(request.clone(), mesh,
             frame.source_from_evaluation, frame.evaluation_from_source);
-        self.0.0.calls.set(self.0.0.calls.get() + 1);
         self.0.0.live.set(self.0.0.live.get() + 1);
-        Ok(Receipt { domain: self.0.clone(), completion, id: self.0.0.calls.get(), oversized: self.1 })
+        Ok(Receipt { domain: self.0.clone(), completion, id: self.0.0.calls.get(), oversized: self.0.0.calls.get() <= self.1 })
     }
 }
 fn ready<T>(future: impl Future<Output = T>) -> T {
@@ -94,7 +107,7 @@ fn issue_7955_eight_terminal_refusals_then_publication_without_retirement_or_lea
         &ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
         &mut worker, || {
             acquisitions.set(acquisitions.get() + 1);
-            Ok(Peer(domain.clone(), false))
+            Ok(Peer(domain.clone(), 0, None))
         }, |outcome, _| {
             assert_eq!(domain.0.live.get(), 0, "sink sees no retained kernel leases");
             rows.push(outcome);
@@ -110,7 +123,7 @@ fn issue_7955_eight_terminal_refusals_then_publication_without_retirement_or_lea
     let mut fresh = Vec::new();
     ready(run_model(ifc_lite_core::SourceBundle::new(CASCADE.as_bytes().to_vec()),
         &ModelOptions { ids: Some([104].into_iter().collect()), ..Default::default() },
-        || Ok(Peer(fresh_domain.clone(), false)), |o| fresh.push(o))).unwrap();
+        || Ok(Peer(fresh_domain.clone(), 0, None)), |o| fresh.push(o))).unwrap();
     let ProductOutcome::Published(fresh) = fresh.pop().unwrap() else { panic!("fresh #104") };
     assert_eq!(reused.product_id, 104);
     assert_eq!(reused.parts.len(), 1);
@@ -119,31 +132,96 @@ fn issue_7955_eight_terminal_refusals_then_publication_without_retirement_or_lea
     assert_eq!(reused.parts[0].world_from_object, fresh.parts[0].world_from_object);
 }
 
-#[test]
-fn issue_7955_unsettled_resource_cancellations_retire_without_spending_fault_budget() {
-    // Real controller buffer admission fails after invoke, while its packet is
-    // still armed. Retirement must stay conservative; only accounting changes.
+fn unvoided_cascade() -> String {
     let mut text = CASCADE.lines().filter(|line| !line.contains("=IFCRELVOIDSELEMENT"))
         .collect::<Vec<_>>().join("\n");
     let extra: String = (105..109).map(|id| format!(
         "#{id}=IFCWALL('extra{id}',$,$,$,$,#24,#26,$,.NOTDEFINED.);\n")).collect();
     text = text.replace("#104=IFCWALL", &(extra + "#104=IFCWALL"));
-    let mut domains = Vec::new();
+    text
+}
+
+#[test]
+fn issue_7955_eight_settled_resource_refusals_release_receipts_and_keep_worker() {
+    // The reply has fully arrived; real controller buffer admission refuses it.
+    // All eight temporary receipts must drop on the original healthy peer.
+    let domain = Domain(Rc::new(Counts::default()));
+    let acquisitions = Cell::new(0);
     let mut outcomes = Vec::new();
-    let summary = ready(run_model(ifc_lite_core::SourceBundle::new(text.into_bytes()),
+    let summary = ready(run_model(ifc_lite_core::SourceBundle::new(unvoided_cascade().into_bytes()),
         &ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
         || {
-            let domain = Domain(Rc::new(Counts::default()));
-            domains.push(domain.clone());
-            Ok(Peer(domain, domains.len() <= 8))
+            acquisitions.set(acquisitions.get() + 1);
+            Ok(Peer(domain.clone(), 8, None))
         }, |o| outcomes.push(o))).unwrap();
     assert_eq!(summary.by_code.get("resource_exhausted"), Some(&8));
-    assert_eq!((summary.published, summary.restarts, domains.len()), (1,0,9));
+    assert_eq!((summary.published, summary.restarts, acquisitions.get()), (1,0,1));
     assert!(outcomes[..8].iter().all(|o| matches!(o, ProductOutcome::Refused { .. })));
     assert!(matches!(outcomes.last(), Some(ProductOutcome::Published(s)) if s.product_id == 104));
-    for (i, domain) in domains.iter().enumerate() {
-        assert_eq!(domain.0.live.get(), 0, "all temporary receipts released");
-        assert_eq!(domain.0.calls.get(), 1, "no product replay");
-        assert_eq!(domain.incarnation().is_some(), i == 8, "unsettled cancellations still retire");
+    assert_eq!(domain.0.live.get(), 0, "all temporary receipts released");
+    assert_eq!(domain.0.calls.get(), 9, "no product replay");
+    assert_eq!(domain.0.retired.get(), 0, "settled refusals never retire the peer");
+}
+
+fn late_reply_run(reply: LateReply) -> (ModelSummary, Vec<ProductOutcome>, Vec<Domain>) {
+    let mut domains = Vec::new();
+    let mut outcomes = Vec::new();
+    let options = ModelOptions {
+        ids: Some((100..109).collect()),
+        product_budget: ProductBudgetSpec { deadline_ms: 1_000, ..Default::default() },
+        ..Default::default()
+    };
+    let summary = ready(run_model(ifc_lite_core::SourceBundle::new(unvoided_cascade().into_bytes()),
+        &options, || {
+            let domain = Domain(Rc::new(Counts::default()));
+            domains.push(domain.clone());
+            Ok(Peer(domain, 0, Some(reply)))
+        }, |o| outcomes.push(o))).unwrap();
+    assert_eq!(summary.published, 0, "no partial publication after the deadline");
+    assert!(domains.iter().all(|d| d.0.live.get() == 0), "every receipt released");
+    (summary, outcomes, domains)
+}
+
+#[test]
+fn issue_7955_fault_after_deadline_is_charged_and_three_restarts_exhaust_the_cap() {
+    for (reply, expected) in [(LateReply::Transport, "worker_fault"), (LateReply::Kernel, "kernel_failure")] {
+        let (summary, outcomes, domains) = late_reply_run(reply);
+        assert_eq!(summary.restarts, 3);
+        assert_eq!(domains.len(), 4, "initial worker plus exactly three replacements");
+        assert!(domains.iter().all(|d| d.0.calls.get() == 1 && d.incarnation().is_none()));
+        for outcome in &outcomes[..4] {
+            let ProductOutcome::Refused { refusal, message, .. } = outcome else { panic!("fault must refuse") };
+            assert_eq!(refusal.code(), expected, "invocation fault wins over deadline");
+            assert!(message.contains("after deadline"));
+        }
+        assert_exhausted(&outcomes[4..]);
+    }
+}
+
+#[test]
+fn issue_7955_independently_dead_domain_is_charged_even_when_reported_as_deadline() {
+    // Defense in depth: a peer returns a receipt after independently retiring.
+    // The checkpoint reports a deadline, but that cannot make recovery free.
+    let (summary, outcomes, domains) = late_reply_run(LateReply::DeadReceipt);
+    assert_eq!((summary.restarts, domains.len()), (3,4));
+    assert_eq!(summary.by_code.get("deadline_exceeded"), Some(&4));
+    assert_exhausted(&outcomes[4..]);
+}
+
+#[test]
+fn issue_7955_settled_reply_after_deadline_keeps_healthy_worker() {
+    let (summary, _, domains) = late_reply_run(LateReply::HealthyReceipt);
+    assert_eq!((summary.restarts, domains.len()), (0,1));
+    assert_eq!(summary.by_code.get("deadline_exceeded"), Some(&9));
+    assert_eq!(domains[0].0.calls.get(), 9);
+    assert_eq!(domains[0].0.retired.get(), 0);
+}
+
+fn assert_exhausted(outcomes: &[ProductOutcome]) {
+    assert_eq!(outcomes.len(), 5);
+    for outcome in outcomes {
+        let ProductOutcome::Refused { refusal, message, .. } = outcome else { panic!("cap must refuse") };
+        assert_eq!(refusal.code(), "worker_fault");
+        assert!(message.contains("worker restart budget exhausted"));
     }
 }

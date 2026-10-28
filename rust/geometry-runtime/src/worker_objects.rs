@@ -80,7 +80,7 @@ impl Drop for ManagedObjectLease {
 impl SmlibWorker {
     /// Drain final-drop releases and count acknowledged, still-owned wire
     /// objects (solids and meshes). This measures handles, not SDK heap bytes.
-    #[cfg(feature = "retained-runtime")]
+    #[cfg(all(feature = "retained-runtime", any(test, feature = "test-support")))]
     pub fn retained_live_object_count(&mut self) -> Result<usize, WorkerError> {
         self.flush_releases()?;
         Ok(self.objects.len())

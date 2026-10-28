@@ -16,7 +16,6 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             return Err(protocol(ReceiptFailure::ForeignConstructionReceipt));
         }
         if let Err(error) = self.context.lifecycle().validate() {
-            pending.cancellation.cancel();
             return Err(RetainedExecutionError::Source(error));
         }
         let owner = self.validate(decoder, router)?;
@@ -66,6 +65,14 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .and_then(|()| self.permits.reserve(&self.resources, &mut self.ledger, work.realizations.len()))
             .and_then(|()| check_resources(&self.resources));
         if let Err(reason) = validation {
+            if reason.controller_cancelled() {
+                if let Some(pending) = &self.pending {
+                    // DELIVERED proves this controller's complete packet has
+                    // arrived, even if source/budget validation now refuses it.
+                    let _ = pending.cancellation.stage.compare_exchange(
+                        DELIVERED, SETTLED_FAULT, Ordering::AcqRel, Ordering::Acquire);
+                }
+            }
             // Retire only this controller's captured domain on its terminal
             // fault. Never cancel the supplied (possibly foreign) envelope.
             if reason.terminal() { self.cancel(); }
@@ -93,7 +100,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         for (operation, receipt) in pending.operations.iter().zip(&work.realizations) {
             if let Err(error) = operation.expected().bind_numerical_outcome(receipt.is_empty()) {
                 self.failed = true;
-                pending.cancellation.cancel();
+                pending.cancellation.fault();
                 return Err(Box::new(RuntimeRejectedCompletion { reason: geometry(error), work }));
             }
         }
@@ -119,7 +126,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             // The complete packet is authenticated and ACCEPTED. A typed
             // logical/source stop (including a consumed host) has no numerical
             // operation left to cancel; drop its receipts on the healthy peer.
-            if !reason.controller_cancelled() { pending.cancellation.cancel(); }
+            if !reason.controller_cancelled() { pending.cancellation.fault(); }
             return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
         }
         // Never overwrite a cancellation which raced the synchronous consume.
@@ -127,7 +134,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             || pending.cancellation.owner.incarnation().is_none()
         {
             self.failed = true;
-            pending.cancellation.cancel();
+            pending.cancellation.fault();
             return Err(Box::new(RuntimeRejectedCompletion {
                 reason: protocol(ReceiptFailure::CancelledDelivery), work,
             }));

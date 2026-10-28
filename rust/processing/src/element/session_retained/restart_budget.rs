@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Bound fault recovery without charging deliberate cancellation replacements.
+//! Bound fault recovery and allow at most sixteen uncharged cancellations.
 use super::runtime::RuntimeFault;
 
 pub(super) struct RestartBudget {
     max: u8,
     restarts: u8,
     replacement: bool,
+    deliberate: u8,
 }
 impl RestartBudget {
     pub(super) fn new(max: u8, has_worker: bool) -> Self {
-        Self { max: max.min(3), restarts: 0, replacement: has_worker }
+        Self { max: max.min(3), restarts: 0, replacement: has_worker, deliberate: 0 }
     }
     pub(super) fn acquire<W>(&mut self, acquire: impl FnOnce() -> Result<W, RuntimeFault>)
         -> Result<W, RuntimeFault> {
@@ -24,7 +25,10 @@ impl RestartBudget {
         acquire()
     }
     pub(super) fn deliberate_retirement(&mut self) {
-        self.replacement = false;
+        if self.deliberate < 16 {
+            self.deliberate += 1;
+            self.replacement = false;
+        }
     }
     pub(super) fn restarts(&self) -> u8 { self.restarts }
 }
@@ -52,5 +56,24 @@ mod tests {
         budget.acquire(|| Ok(())).unwrap();
         assert_eq!(budget.restarts(), 3);
         assert!(budget.acquire::<()>(|| panic!("exhausted acquisition must not run")).is_err());
+    }
+
+    // #7955: even genuine in-flight cancellation cannot respawn indefinitely.
+    #[test]
+    fn deliberate_replacements_beyond_sixteen_spend_the_fault_cap() {
+        let mut budget = RestartBudget::new(3, false);
+        budget.acquire(|| Ok(())).unwrap();
+        for _ in 0..16 {
+            budget.deliberate_retirement();
+            budget.acquire(|| Ok(())).unwrap();
+            assert_eq!(budget.restarts(), 0);
+        }
+        for charged in 1..=3 {
+            budget.deliberate_retirement();
+            budget.acquire(|| Ok(())).unwrap();
+            assert_eq!(budget.restarts(), charged);
+        }
+        budget.deliberate_retirement();
+        assert!(budget.acquire::<()>(|| panic!("replacement ceiling must stop acquisition")).is_err());
     }
 }

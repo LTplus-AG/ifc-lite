@@ -31,7 +31,9 @@ bool contains(const AdapterMesh& mesh,unsigned a,unsigned b) {
     return false;
 }
 void verify(const std::array<Point,4>& points,unsigned expected_a,unsigned expected_b,
-    bool both_inputs=true) {
+    bool both_inputs=true,double radius=10.3) {
+    std::vector<std::optional<CylinderPatch>> cylinders(8);
+    cylinders[7]=CylinderPatch{SmAxis2Placement{},radius};
     // Loop start, winding and starting diagonal must not affect this convex
     // pair's answer. Concave inputs test only their valid initial diagonal.
     for (unsigned start=0;start<4;++start) for(unsigned direction:{1u,3u}) {
@@ -46,14 +48,14 @@ void verify(const std::array<Point,4>& points,unsigned expected_a,unsigned expec
             mesh.indices={ids[0],ids[1],ids[2],ids[0],ids[2],ids[3]};
             mesh.faces={7,7}; mesh.normals.resize(18);
             const auto before=boundary(mesh); const auto positions=mesh.positions;
-            normalize_mesh_diagonals(mesh,5);
+            normalize_mesh_diagonals(mesh,5,0.001,cylinders);
             require(mesh.positions==positions,"exact vertex coordinates preserved");
             require(mesh.faces==std::vector<uint32_t>({7,7}),"source attribution preserved");
             require(boundary(mesh)==before && before.size()==4,"oriented boundary preserved");
             require(mesh.indices.size()==6,"triangle count preserved");
             require(contains(mesh,expected_a,expected_b),"expected interior diagonal");
             const auto indices=mesh.indices;
-            normalize_mesh_diagonals(mesh,5);
+            normalize_mesh_diagonals(mesh,5,0.001,cylinders);
             require(mesh.indices==indices,"normalization idempotent");
         }
     }
@@ -61,10 +63,13 @@ void verify(const std::array<Point,4>& points,unsigned expected_a,unsigned expec
 }
 
 void run_mesh_diagonals_tests() {
-    // |A-C|²=5.0001, |B-D|²=5; both interior, normal spread below 5°.
-    verify({{{0,0,0},{2,0,0},{2,1,0.01},{0,1,0}}},1,3);
+    // Unit cylinder: |A-C|²=1+2*(1-sqrt(1-.03²))=1.0009002;
+    // |B-D|²=1+2*(1-sqrt(1-.02²))=1.00040004. Normal spread <5°.
+    verify({{{1,0,0},{std::sqrt(1-.02*.02),.02,0},
+        {std::sqrt(1-.03*.03),.03,1},{1,0,1}}},1,3,true,1);
     // A is concave. The shorter B-D must not cross the exterior; retain A-C.
-    verify({{{0.2,0,0},{0,-1,0},{10,0,0.01},{0,1,0}}},0,2,false);
+    verify({{{1,0,.5},{std::sqrt(1-.01*.01),-.01,.49},
+        {std::sqrt(1-.02*.02),.02,.5},{std::sqrt(1-.01*.01),-.01,.51}}},0,2,false,1);
     // Actual SDK #55 cap, before its removal. Both platform triangulations
     // must normalize to B-D (squared length 9.0135364196 vs 9.0157549360).
     std::array<Point,4> cap{{
@@ -74,15 +79,17 @@ void run_mesh_diagonals_tests() {
         {7.283199846221442,7.283199846221437,3}}};
     verify(cap,1,3); cap[2][1]=std::nextafter(cap[2][1],8.0); verify(cap,1,3);
     AdapterMesh separate;
-    separate.positions={0,0,0,2,0,0,2,1,0.01,0,1,0};
+    for(const auto& p:cap) separate.positions.insert(separate.positions.end(),p.begin(),p.end());
     separate.indices={0,1,2,0,2,3}; separate.faces={1,2}; separate.normals.resize(18);
+    std::vector<std::optional<CylinderPatch>> cylinders(3);
+    cylinders[1]=CylinderPatch{SmAxis2Placement{},10.3}; cylinders[2]=cylinders[1];
     const auto indices=separate.indices;
-    normalize_mesh_diagonals(separate,5);
+    normalize_mesh_diagonals(separate,5,0.001,cylinders);
     require(separate.indices==indices,"cannot flip across source face boundary");
-    separate.faces={1,1}; separate.positions[8]=1;
-    normalize_mesh_diagonals(separate,5);
-    require(separate.indices==indices,"fold exceeds existing requested surface angle");
-    separate.positions[8]=0;
-    normalize_mesh_diagonals(separate,5);
-    require(separate.indices==indices,"coplanar pair unchanged");
+    separate.faces={1,1};
+    normalize_mesh_diagonals(separate,5,0.000001,cylinders);
+    require(separate.indices==indices,"new triangles exceed requested chord bound");
+    cylinders[1].reset();
+    normalize_mesh_diagonals(separate,5,0.001,cylinders);
+    require(separate.indices==indices,"general non-cylinder surface unchanged");
 }

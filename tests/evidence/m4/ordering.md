@@ -85,10 +85,16 @@ gate. This is not an IFC ordering disagreement with the authored products.
 The SDK emits the differing triangles inside `SmApiTessellate`, before the
 adapter's polygon triangulation. The initial single-quad correction therefore
 did not fix the replay and has been removed. M4 instead normalizes an interior
-edge of two triangles only when they share a source face, form a strictly
+edge of two triangles only when they share an analytic cylindrical source face, form a strictly
 convex noncoplanar quad, and the other diagonal is strictly shorter and absent
 from the mesh. All old/new triangle normals must agree within the requested
 tessellation surface angle, rejecting folded or numerically collinear pairs.
+The SDK supplies the cylinder placement (`SmCone::GetCanonical`); its existing
+`InvTransformPoint` maps candidate vertices. Radial extrema of each projected
+triangle must stay within the original chord bound. A common open half-plane
+excludes the axis, so the minimum radius occurs on an edge and the maximum
+at a vertex: this bounds the whole triangle, not just sampled points. Planes
+and general NURBS keep their original triangulation.
 Each flip preserves all four directed boundary edges, vertex
 bits, triangle count and source IDs; normals are recomputed from the new
 triangles. Coplanar, concave, boundary and cross-source-face pairs are unchanged.

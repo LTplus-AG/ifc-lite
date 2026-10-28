@@ -32,9 +32,29 @@ void replace(AdapterMesh& mesh,uint32_t id,const Triangle& t) {
         mesh.normals[9*id+3*i+2]=n.z/length;
     }
 }
+bool within_cylinder(const AdapterMesh& mesh,const Triangle& t,const CylinderPatch& cylinder,double chord) {
+    std::array<SmPoint3d,3> p;
+    for (unsigned i=0;i<3;++i) {
+        // Reuse the SDK's analytic surface placement; never derive a frame.
+        cylinder.frame.InvTransformPoint(point(mesh,t[i]),p[i]);
+        if (std::abs(std::hypot(p[i].x,p[i].y)-cylinder.radius)>chord) return false;
+    }
+    // A common open half-plane excludes the axis from the projected triangle.
+    // The minimum radius is then on a projected edge; its maximum is at a
+    // vertex. Checking those extrema bounds the ENTIRE triangle, not samples.
+    for (unsigned i=1;i<3;++i) if (!(p[0].x*p[i].x+p[0].y*p[i].y>0)) return false;
+    for (unsigned i=0;i<3;++i) {
+        const auto& a=p[i]; const auto& b=p[(i+1)%3];
+        const double dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy;
+        const double u=length>0 ? std::clamp(-(a.x*dx+a.y*dy)/length,0.,1.) : 0.;
+        if (cylinder.radius-std::hypot(a.x+u*dx,a.y+u*dy)>chord) return false;
+    }
+    return true;
+}
 }
 
-void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees) {
+void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees,double chord,
+    const std::vector<std::optional<CylinderPatch>>& cylinders) {
     // #7955: the SDK triangulates surface polygons before SmApiTessellate
     // returns. Its aspect-ratio ties can choose different diagonals for a
     // warped quad on native/WASM. A strictly shorter interior diagonal gives
@@ -70,7 +90,8 @@ void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees) {
         auto found=adjacent.find(key);
         if (found==adjacent.end() || found->second.size()!=2) continue;
         auto it=found->second.begin(); const uint32_t first=*it++,second=*it;
-        if (mesh.faces[first]!=mesh.faces[second]) continue;
+        const auto source=mesh.faces[first];
+        if (source!=mesh.faces[second] || source>=cylinders.size() || !cylinders[source]) continue;
         auto a=triangle(mesh,first),b=triangle(mesh,second);
         unsigned i=0;
         while (i<3 && edge(a[i],a[(i+1)%3])!=key) ++i;
@@ -95,6 +116,8 @@ void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees) {
             convex &= ((loop[(k+1)%4]-loop[k])*(loop[(k+2)%4]-loop[(k+1)%4])).Dot(n)>0;
         const Triangle left{p,q,v},right{q,p,u};
         if (!convex || !(normal(mesh,left).Dot(n)>0 && normal(mesh,right).Dot(n)>0)) continue;
+        if (!within_cylinder(mesh,left,*cylinders[source],chord) ||
+            !within_cylinder(mesh,right,*cylinders[source],chord)) continue;
         // Convexity alone is insufficient near collinear boundary vertices:
         // roundoff can turn a tiny projected turn positive and the new sliver
         // can face away from the source surface. Keep every old/new normal
@@ -104,7 +127,8 @@ void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees) {
         for (unsigned k=0;k<4;++k) for (unsigned l=k+1;l<4;++l) {
             const double lengths=std::hypot(normals[k].x,normals[k].y,normals[k].z)*
                 std::hypot(normals[l].x,normals[l].y,normals[l].z);
-            aligned &= std::isfinite(lengths) && lengths>0 && normals[k].Dot(normals[l])/lengths>=minimum_alignment;
+            const double product=normals[k].Dot(normals[l]);
+            aligned &= std::isfinite(lengths) && lengths>0 && product>0 && product/lengths>=minimum_alignment;
         }
         if (!aligned) continue;
         erase(first); erase(second);

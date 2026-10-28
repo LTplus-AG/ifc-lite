@@ -5355,7 +5355,7 @@
   ],
   "@ifc-lite/diff/internal": [
     "DiffModelHandle: class",
-    "PreparedDiffModel: type",
+    "PreparedDiffModel: class (type-only)",
     "buildFingerprintBatch: function",
     "prepareDiffModel: function"
   ],

@@ -54,6 +54,3 @@ export class DiffModelHandle<TRef = unknown> {
 export function prepareDiffModel<TRef>(entities: Iterable<EntityFingerprint<TRef>>): DiffModelHandle<TRef> {
   return new DiffModelHandle(entities);
 }
-
-/** @internal Compatibility name for existing internal owners. */
-export type PreparedDiffModel<TRef = unknown> = DiffModelHandle<TRef>;

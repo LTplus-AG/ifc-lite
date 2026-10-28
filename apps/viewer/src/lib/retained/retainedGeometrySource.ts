@@ -19,7 +19,7 @@
 
 import type { CoordinateInfo, MeshData, StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { calculateMeshBounds, createCoordinateInfo } from '@/utils/localParsingUtils';
-import type { RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
+import type { RetainedFaceRow, RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
 import type { RetainedHostEvent, RetainedStart } from './retained-protocol';
 
 /** The host client surface the source drives (`RetainedClient`, or a protocol fixture). */
@@ -68,10 +68,33 @@ interface Accumulator {
   bounds: ReturnType<typeof calculateMeshBounds>['bounds'] | null;
   frame: RetainedStart['frame'] | null;
   meshes: number;
+  faces: Map<number, RetainedFaceRow[]>;
 }
 
 function snapshot(acc: Accumulator): RetainedGeometrySummary {
-  return { ...acc.summary, refused: [...acc.summary.refused], obligationsUnmet: [...acc.obligations].sort() };
+  return { ...acc.summary, refused: [...acc.summary.refused], obligationsUnmet: [...acc.obligations].sort(),
+    ...(acc.faces.size > 0 ? { faces: Object.fromEntries(acc.faces) } : {}) };
+}
+
+/** Each part's face table over its own view mesh (one mesh per part, M11-0), merged by key. */
+export function faceRows(faces: { table: string[]; triangles: Uint32Array }[], meshes: MeshData[]): RetainedFaceRow[] {
+  const rows = new Map<string, RetainedFaceRow>();
+  faces.forEach((part, i) => {
+    const mesh = meshes[i];
+    for (let t = 0; t < part.triangles.length; t++) {
+      const key = part.table[part.triangles[t]];
+      const row = rows.get(key) ?? { key, triangles: 0, areaM2: 0 };
+      row.triangles++;
+      if (mesh && mesh.indices.length >= 3 * t + 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => mesh.indices[3 * t + k] * 3);
+        const u = [0, 1, 2].map((k) => mesh.positions[b + k] - mesh.positions[a + k]);
+        const v = [0, 1, 2].map((k) => mesh.positions[c + k] - mesh.positions[a + k]);
+        row.areaM2 += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
+      }
+      rows.set(key, row);
+    }
+  });
+  return [...rows.values()];
 }
 
 function unpublished(acc: Accumulator, row: RetainedUnpublishedRow): void {
@@ -148,7 +171,7 @@ export async function* retainedGeometryEvents(
 ): AsyncGenerator<StreamingGeometryEvent> {
   const acc: Accumulator = {
     summary: { kernel: 'retained', candidates: 0, published: 0, refused: [], cancelled: 0, obligationsUnmet: [], completeness: 'running' },
-    candidateIds: new Uint32Array(), received: new Set(), obligations: new Set(), bounds: null, frame: null, meshes: 0,
+    candidateIds: new Uint32Array(), received: new Set(), obligations: new Set(), bounds: null, frame: null, meshes: 0, faces: new Map(),
   };
   // Every product would otherwise copy the whole row list into the store: at
   // most one mid-run summary per interval, and every boundary at once.
@@ -210,6 +233,7 @@ export async function* retainedGeometryEvents(
           acc.summary.published++;
           for (const obligation of event.obligationsUnmet) acc.obligations.add(obligation);
           grow(acc, event.meshes);
+          if (event.faces) acc.faces.set(event.expressId, faceRows(event.faces, event.meshes));
           acc.meshes += event.meshes.length;
           report(true);
           yield { type: 'batch', meshes: event.meshes, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };

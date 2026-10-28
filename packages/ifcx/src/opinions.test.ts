@@ -170,6 +170,12 @@ describe('opinion retention (federated composition)', () => {
     cyclic.self = cyclic;
     assert.equal(divergent(cyclic, cyclic), false);
     assert.equal(divergent(cyclic, { a: 1 }), true);
+    // Non-plain objects: Date by time, Map/Set by identity, never equal to {}.
+    assert.equal(divergent(new Date(0), new Date(1)), true);
+    assert.equal(divergent(new Date(5), new Date(5)), false);
+    assert.equal(divergent(new Map([['a', 1]]), new Map([['a', 2]])), true);
+    assert.equal(divergent(new Set(), {}), true);
+    assert.equal(divergent(Object.create(null) as object, {}), false, 'a null-prototype record is a plain record');
   });
 });
 

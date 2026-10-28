@@ -47,8 +47,7 @@ fn fits(length: u64) -> Result<(), JsValue> {
     super::diff_fingerprint_host::string_fits(length as f64)
 }
 /// One decode per entity, both fingerprints from the same owned native input.
-#[wasm_bindgen(js_name = diffBuildPackedFingerprints)]
-pub fn diff_build_packed_fingerprints(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
+pub(crate) fn build(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
     let document = crate::diff_binary::decode(bytes).map_err(|e| JsValue::from_str(&e))?;
     let inputs: Vec<Input> = document_serde::from_document(document)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;

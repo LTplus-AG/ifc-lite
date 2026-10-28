@@ -29,6 +29,12 @@ impl DiffModel {
         Ok(Self { entities, non_ascii_classes })
     }
 
+    /// Explicit internal batch; no retained input or implicit cache.
+    #[wasm_bindgen(js_name = buildFingerprintBatch)]
+    pub fn build_fingerprint_batch(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
+        crate::diff_fingerprint_binary::build(bytes)
+    }
+
     /// Private facade constructor: one UTF-16 dictionary buffer, no per-string host reads.
     #[wasm_bindgen(js_name = fromPacked)]
     #[allow(clippy::too_many_arguments)]

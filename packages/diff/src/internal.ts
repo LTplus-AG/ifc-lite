@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // internal: in-repo consumers only; no semver guarantee
-import { diffBuildPackedFingerprints } from '@ifc-lite/wasm/diff';
 import type { DataFingerprintInput, ComponentKey } from './fingerprint.js';
 import { projectInput } from './wasm-fingerprint.js';
 import { packDocument, unpackDocument } from './wasm-binary.js';
@@ -15,7 +14,7 @@ import { diffModelConstructor } from './wasm-runtime.js';
 export function buildFingerprintBatch(inputs: readonly DataFingerprintInput[]): {
   dataHash: string; components: Record<ComponentKey, string>;
 }[] {
-  diffModelConstructor();
+  const Model = diffModelConstructor();
   const slots = <T, U>(values: T[], project: (value: T) => U) => {
     const present: U[] = [];
     let holes = 0;
@@ -33,7 +32,7 @@ export function buildFingerprintBatch(inputs: readonly DataFingerprintInput[]): 
       typeAssignments: slots(dto.typeAssignments ?? [], value => value),
     };
   });
-  return unpackDocument(diffBuildPackedFingerprints(packDocument(projected))) as {
+  return unpackDocument(Model.buildFingerprintBatch(packDocument(projected))) as {
     dataHash: string; components: Record<ComponentKey, string>;
   }[];
 }

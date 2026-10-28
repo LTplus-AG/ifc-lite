@@ -54,6 +54,7 @@ import { buildFingerprintBatch } from '@ifc-lite/diff/internal';
 import {
   initDiff,
   type EntityFingerprint,
+  type DataFingerprintInput,
 } from '@ifc-lite/diff';
 import { extractProjectUnits, spatialContainerPath, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';

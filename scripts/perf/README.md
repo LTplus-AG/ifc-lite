@@ -5270,3 +5270,13 @@ follow-up; do not replace the independent oracle or relax parity to meet a timin
 target. When profiling archived revisions with a shared Cargo target, refresh
 copied source mtimes and verify recompilation for every arm: one early diagnostic
 reused a stale library and was discarded before repeating the comparison.
+
+The full-model profiler then exposed GC and large transport dictionaries beyond
+native compute. An interleaved diagnostic kept the complete adapter snapshot but
+sent bounded dense chunks to the same native batch function. This reduced
+packing and native live-memory costs while preserving row order and hashes;
+sparse inputs retain whole-document validation and host length-check order.
+Final timings must not retain the temporary DTO capture used to export native
+profile slices: that capture extends a large graph's lifetime into the next call
+and can inflate GC cost. Use the non-capturing production-lifetime harness for
+end-to-end conclusions, and the slice harness only for native investigation.

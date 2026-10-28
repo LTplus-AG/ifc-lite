@@ -3,14 +3,14 @@
     "observer": "tests",
     "baseline": {
       "kind": "pass",
-      "passed": 12,
-      "total": 12
+      "passed": 13,
+      "total": 13
     },
     "reverted": {
       "kind": "assertion-failure",
       "passed": 4,
-      "failed": 8,
-      "total": 12,
+      "failed": 9,
+      "total": 13,
       "evidence": []
     },
     "ledger": [
@@ -31,9 +31,9 @@
         "attribution": "runtime-v8-file",
         "baseline": {
           "kind": "pass",
-          "passed": 12,
+          "passed": 13,
           "failed": 0,
-          "total": 12,
+          "total": 13,
           "exitCode": 0,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -47,8 +47,8 @@
         "reverted": {
           "kind": "assertion-failure",
           "passed": 4,
-          "failed": 8,
-          "total": 12,
+          "failed": 9,
+          "total": 13,
           "exitCode": 1,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -66,18 +66,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
     "production": [
       "packages/ifcx/src/federated-composition.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "3759632e-0393-4beb-9849-31c1329794ab",
+    "invocationId": "cf561377-e6cf-473b-b017-f86ff216c5c0",
     "timing": {
-      "startedAt": "2026-10-28T18:53:28.211Z",
-      "finishedAt": "2026-10-28T18:53:31.912Z"
+      "startedAt": "2026-10-28T21:58:52.542Z",
+      "finishedAt": "2026-10-28T21:58:57.117Z"
     },
     "restoration": "verified"
   },
@@ -85,14 +85,14 @@
     "observer": "tests",
     "baseline": {
       "kind": "pass",
-      "passed": 12,
-      "total": 12
+      "passed": 13,
+      "total": 13
     },
     "reverted": {
       "kind": "assertion-failure",
-      "passed": 11,
+      "passed": 12,
       "failed": 1,
-      "total": 12,
+      "total": 13,
       "evidence": []
     },
     "ledger": [
@@ -113,9 +113,91 @@
         "attribution": "runtime-v8-file",
         "baseline": {
           "kind": "pass",
-          "passed": 12,
+          "passed": 13,
           "failed": 0,
-          "total": 12,
+          "total": 13,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "node v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/ifcx/src/opinions.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 12,
+          "failed": 1,
+          "total": 13,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "node v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/ifcx/src/opinions.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "production": [
+      "packages/ifcx/src/federated-composition.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "invocationId": "15c621c0-df65-4fc6-9d30-fc86d44d13e7",
+    "timing": {
+      "startedAt": "2026-10-28T21:58:57.250Z",
+      "finishedAt": "2026-10-28T21:59:00.209Z"
+    },
+    "restoration": "verified"
+  },
+  "default-on": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 13,
+      "total": 13
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 11,
+      "failed": 2,
+      "total": 13,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/ifcx/src/opinions.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/ifcx/src/opinions.test.ts",
+        "adapter": "node-test",
+        "runner": {
+          "family": "node-test",
+          "command": [
+            "tsx",
+            "--test",
+            "src/opinions.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 13,
+          "failed": 0,
+          "total": 13,
           "exitCode": 0,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -129,90 +211,8 @@
         "reverted": {
           "kind": "assertion-failure",
           "passed": 11,
-          "failed": 1,
-          "total": 12,
-          "exitCode": 1,
-          "signal": null,
-          "toolchain": "node v24.21.0",
-          "attributed": true,
-          "files": [
-            "packages/ifcx/src/opinions.test.ts"
-          ],
-          "testIdentities": [],
-          "evidence": []
-        }
-      }
-    ],
-    "schemaVersion": 2,
-    "channel": "pull-request",
-    "verdict": "OBSERVED",
-    "exitCode": 0,
-    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
-    "production": [
-      "packages/ifcx/src/federated-composition.ts"
-    ],
-    "tests": [
-      "packages/ifcx/src/opinions.test.ts"
-    ],
-    "invocationId": "69718f4c-d943-428e-bc8b-75c1b6fc8db1",
-    "timing": {
-      "startedAt": "2026-10-28T18:53:32.022Z",
-      "finishedAt": "2026-10-28T18:53:34.719Z"
-    },
-    "restoration": "verified"
-  },
-  "default-on": {
-    "observer": "tests",
-    "baseline": {
-      "kind": "pass",
-      "passed": 12,
-      "total": 12
-    },
-    "reverted": {
-      "kind": "assertion-failure",
-      "passed": 10,
-      "failed": 2,
-      "total": 12,
-      "evidence": []
-    },
-    "ledger": [
-      {
-        "file": "packages/ifcx/src/opinions.test.ts",
-        "role": "executable",
-        "runKey": "test:packages/ifcx/src/opinions.test.ts",
-        "adapter": "node-test",
-        "runner": {
-          "family": "node-test",
-          "command": [
-            "tsx",
-            "--test",
-            "src/opinions.test.ts"
-          ]
-        },
-        "features": [],
-        "attribution": "runtime-v8-file",
-        "baseline": {
-          "kind": "pass",
-          "passed": 12,
-          "failed": 0,
-          "total": 12,
-          "exitCode": 0,
-          "signal": null,
-          "toolchain": "node v24.21.0",
-          "attributed": true,
-          "files": [
-            "packages/ifcx/src/opinions.test.ts"
-          ],
-          "testIdentities": [],
-          "evidence": []
-        },
-        "reverted": {
-          "kind": "assertion-failure",
-          "passed": 10,
           "failed": 2,
-          "total": 12,
+          "total": 13,
           "exitCode": 1,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -230,18 +230,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
     "production": [
       "packages/ifcx/src/federated-composition.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "f3e11159-80bd-47aa-87ff-8bb984f920ac",
+    "invocationId": "9b4e62fa-62fe-47f4-9c85-37b0eff256f0",
     "timing": {
-      "startedAt": "2026-10-28T18:53:34.832Z",
-      "finishedAt": "2026-10-28T18:53:37.259Z"
+      "startedAt": "2026-10-28T21:59:00.259Z",
+      "finishedAt": "2026-10-28T21:59:03.219Z"
     },
     "restoration": "verified"
   },
@@ -249,14 +249,14 @@
     "observer": "tests",
     "baseline": {
       "kind": "pass",
-      "passed": 12,
-      "total": 12
+      "passed": 13,
+      "total": 13
     },
     "reverted": {
       "kind": "assertion-failure",
       "passed": 9,
-      "failed": 3,
-      "total": 12,
+      "failed": 4,
+      "total": 13,
       "evidence": []
     },
     "ledger": [
@@ -277,9 +277,9 @@
         "attribution": "runtime-v8-file",
         "baseline": {
           "kind": "pass",
-          "passed": 12,
+          "passed": 13,
           "failed": 0,
-          "total": 12,
+          "total": 13,
           "exitCode": 0,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -293,8 +293,8 @@
         "reverted": {
           "kind": "assertion-failure",
           "passed": 9,
-          "failed": 3,
-          "total": 12,
+          "failed": 4,
+          "total": 13,
           "exitCode": 1,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -312,18 +312,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
     "production": [
       "packages/ifcx/src/opinions.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "73cca1de-136b-481b-926c-59f978918dc0",
+    "invocationId": "dc9c02e8-4703-4e86-b3d6-fbfb0cf3fdab",
     "timing": {
-      "startedAt": "2026-10-28T18:53:37.343Z",
-      "finishedAt": "2026-10-28T18:53:40.204Z"
+      "startedAt": "2026-10-28T21:59:03.268Z",
+      "finishedAt": "2026-10-28T21:59:06.831Z"
     },
     "restoration": "verified"
   },
@@ -331,14 +331,14 @@
     "observer": "tests",
     "baseline": {
       "kind": "pass",
-      "passed": 12,
-      "total": 12
+      "passed": 13,
+      "total": 13
     },
     "reverted": {
       "kind": "assertion-failure",
       "passed": 11,
-      "failed": 1,
-      "total": 12,
+      "failed": 2,
+      "total": 13,
       "evidence": []
     },
     "ledger": [
@@ -359,9 +359,9 @@
         "attribution": "runtime-v8-file",
         "baseline": {
           "kind": "pass",
-          "passed": 12,
+          "passed": 13,
           "failed": 0,
-          "total": 12,
+          "total": 13,
           "exitCode": 0,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -375,8 +375,8 @@
         "reverted": {
           "kind": "assertion-failure",
           "passed": 11,
-          "failed": 1,
-          "total": 12,
+          "failed": 2,
+          "total": 13,
           "exitCode": 1,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -394,18 +394,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
     "production": [
       "packages/ifcx/src/opinions.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "fc46da43-a62b-4186-b67d-c51730a4f74a",
+    "invocationId": "68403d85-e30d-4d7b-8c90-5a58c1b82a0b",
     "timing": {
-      "startedAt": "2026-10-28T18:53:40.250Z",
-      "finishedAt": "2026-10-28T18:53:43.568Z"
+      "startedAt": "2026-10-28T21:59:06.880Z",
+      "finishedAt": "2026-10-28T21:59:10.646Z"
     },
     "restoration": "verified"
   },
@@ -413,178 +413,14 @@
     "observer": "tests",
     "baseline": {
       "kind": "pass",
-      "passed": 12,
-      "total": 12
-    },
-    "reverted": {
-      "kind": "assertion-failure",
-      "passed": 10,
-      "failed": 2,
-      "total": 12,
-      "evidence": []
-    },
-    "ledger": [
-      {
-        "file": "packages/ifcx/src/opinions.test.ts",
-        "role": "executable",
-        "runKey": "test:packages/ifcx/src/opinions.test.ts",
-        "adapter": "node-test",
-        "runner": {
-          "family": "node-test",
-          "command": [
-            "tsx",
-            "--test",
-            "src/opinions.test.ts"
-          ]
-        },
-        "features": [],
-        "attribution": "runtime-v8-file",
-        "baseline": {
-          "kind": "pass",
-          "passed": 12,
-          "failed": 0,
-          "total": 12,
-          "exitCode": 0,
-          "signal": null,
-          "toolchain": "node v24.21.0",
-          "attributed": true,
-          "files": [
-            "packages/ifcx/src/opinions.test.ts"
-          ],
-          "testIdentities": [],
-          "evidence": []
-        },
-        "reverted": {
-          "kind": "assertion-failure",
-          "passed": 10,
-          "failed": 2,
-          "total": 12,
-          "exitCode": 1,
-          "signal": null,
-          "toolchain": "node v24.21.0",
-          "attributed": true,
-          "files": [
-            "packages/ifcx/src/opinions.test.ts"
-          ],
-          "testIdentities": [],
-          "evidence": []
-        }
-      }
-    ],
-    "schemaVersion": 2,
-    "channel": "pull-request",
-    "verdict": "OBSERVED",
-    "exitCode": 0,
-    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
-    "production": [
-      "packages/ifcx/src/opinions.ts"
-    ],
-    "tests": [
-      "packages/ifcx/src/opinions.test.ts"
-    ],
-    "invocationId": "6a98b2f0-3f50-4b9a-b7c1-1f52f4ea8d90",
-    "timing": {
-      "startedAt": "2026-10-28T18:53:43.661Z",
-      "finishedAt": "2026-10-28T18:53:47.528Z"
-    },
-    "restoration": "verified"
-  },
-  "two-opinion-blind": {
-    "observer": "tests",
-    "baseline": {
-      "kind": "pass",
-      "passed": 12,
-      "total": 12
-    },
-    "reverted": {
-      "kind": "assertion-failure",
-      "passed": 8,
-      "failed": 4,
-      "total": 12,
-      "evidence": []
-    },
-    "ledger": [
-      {
-        "file": "packages/ifcx/src/opinions.test.ts",
-        "role": "executable",
-        "runKey": "test:packages/ifcx/src/opinions.test.ts",
-        "adapter": "node-test",
-        "runner": {
-          "family": "node-test",
-          "command": [
-            "tsx",
-            "--test",
-            "src/opinions.test.ts"
-          ]
-        },
-        "features": [],
-        "attribution": "runtime-v8-file",
-        "baseline": {
-          "kind": "pass",
-          "passed": 12,
-          "failed": 0,
-          "total": 12,
-          "exitCode": 0,
-          "signal": null,
-          "toolchain": "node v24.21.0",
-          "attributed": true,
-          "files": [
-            "packages/ifcx/src/opinions.test.ts"
-          ],
-          "testIdentities": [],
-          "evidence": []
-        },
-        "reverted": {
-          "kind": "assertion-failure",
-          "passed": 8,
-          "failed": 4,
-          "total": 12,
-          "exitCode": 1,
-          "signal": null,
-          "toolchain": "node v24.21.0",
-          "attributed": true,
-          "files": [
-            "packages/ifcx/src/opinions.test.ts"
-          ],
-          "testIdentities": [],
-          "evidence": []
-        }
-      }
-    ],
-    "schemaVersion": 2,
-    "channel": "pull-request",
-    "verdict": "OBSERVED",
-    "exitCode": 0,
-    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
-    "production": [
-      "packages/ifcx/src/opinions.ts"
-    ],
-    "tests": [
-      "packages/ifcx/src/opinions.test.ts"
-    ],
-    "invocationId": "adaf7521-7069-4a03-a4a6-5f2ffb788957",
-    "timing": {
-      "startedAt": "2026-10-28T18:53:47.671Z",
-      "finishedAt": "2026-10-28T18:53:51.552Z"
-    },
-    "restoration": "verified"
-  },
-  "overlay-drops-option": {
-    "observer": "tests",
-    "baseline": {
-      "kind": "pass",
-      "passed": 12,
-      "total": 12
+      "passed": 13,
+      "total": 13
     },
     "reverted": {
       "kind": "assertion-failure",
       "passed": 11,
-      "failed": 1,
-      "total": 12,
+      "failed": 2,
+      "total": 13,
       "evidence": []
     },
     "ledger": [
@@ -605,9 +441,9 @@
         "attribution": "runtime-v8-file",
         "baseline": {
           "kind": "pass",
-          "passed": 12,
+          "passed": 13,
           "failed": 0,
-          "total": 12,
+          "total": 13,
           "exitCode": 0,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -621,8 +457,8 @@
         "reverted": {
           "kind": "assertion-failure",
           "passed": 11,
-          "failed": 1,
-          "total": 12,
+          "failed": 2,
+          "total": 13,
           "exitCode": 1,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -640,33 +476,33 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
     "production": [
-      "packages/ifcx/src/index.ts"
+      "packages/ifcx/src/opinions.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "0316503b-8a7e-4967-97f7-6d218db0d24a",
+    "invocationId": "441581c2-1541-4f19-af6b-50d6c76a22fc",
     "timing": {
-      "startedAt": "2026-10-28T18:53:51.684Z",
-      "finishedAt": "2026-10-28T18:53:55.537Z"
+      "startedAt": "2026-10-28T21:59:10.687Z",
+      "finishedAt": "2026-10-28T21:59:14.241Z"
     },
     "restoration": "verified"
   },
-  "parse-drops-result": {
+  "two-opinion-blind": {
     "observer": "tests",
     "baseline": {
       "kind": "pass",
-      "passed": 12,
-      "total": 12
+      "passed": 13,
+      "total": 13
     },
     "reverted": {
       "kind": "assertion-failure",
-      "passed": 10,
-      "failed": 2,
-      "total": 12,
+      "passed": 9,
+      "failed": 4,
+      "total": 13,
       "evidence": []
     },
     "ledger": [
@@ -687,9 +523,9 @@
         "attribution": "runtime-v8-file",
         "baseline": {
           "kind": "pass",
-          "passed": 12,
+          "passed": 13,
           "failed": 0,
-          "total": 12,
+          "total": 13,
           "exitCode": 0,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -702,9 +538,9 @@
         },
         "reverted": {
           "kind": "assertion-failure",
-          "passed": 10,
-          "failed": 2,
-          "total": 12,
+          "passed": 9,
+          "failed": 4,
+          "total": 13,
           "exitCode": 1,
           "signal": null,
           "toolchain": "node v24.21.0",
@@ -722,18 +558,182 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
-    "base": "87f917e646ee7b9769dfab8b236cfe27432a6196",
-    "head": "0c188f77013a1cefe100625ceda39a3188cea0c8",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "production": [
+      "packages/ifcx/src/opinions.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "invocationId": "9cd3c557-0139-4211-ab6f-56c0dec4cf76",
+    "timing": {
+      "startedAt": "2026-10-28T21:59:14.299Z",
+      "finishedAt": "2026-10-28T21:59:18.245Z"
+    },
+    "restoration": "verified"
+  },
+  "overlay-drops-option": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 13,
+      "total": 13
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 12,
+      "failed": 1,
+      "total": 13,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/ifcx/src/opinions.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/ifcx/src/opinions.test.ts",
+        "adapter": "node-test",
+        "runner": {
+          "family": "node-test",
+          "command": [
+            "tsx",
+            "--test",
+            "src/opinions.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 13,
+          "failed": 0,
+          "total": 13,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "node v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/ifcx/src/opinions.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 12,
+          "failed": 1,
+          "total": 13,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "node v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/ifcx/src/opinions.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
     "production": [
       "packages/ifcx/src/index.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "2487c468-e95c-4068-85e9-75921b283136",
+    "invocationId": "451105b6-d87b-4bc7-b711-205216452775",
     "timing": {
-      "startedAt": "2026-10-28T18:53:55.595Z",
-      "finishedAt": "2026-10-28T18:53:59.410Z"
+      "startedAt": "2026-10-28T21:59:18.315Z",
+      "finishedAt": "2026-10-28T21:59:21.168Z"
+    },
+    "restoration": "verified"
+  },
+  "parse-drops-result": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 13,
+      "total": 13
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 11,
+      "failed": 2,
+      "total": 13,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/ifcx/src/opinions.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/ifcx/src/opinions.test.ts",
+        "adapter": "node-test",
+        "runner": {
+          "family": "node-test",
+          "command": [
+            "tsx",
+            "--test",
+            "src/opinions.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 13,
+          "failed": 0,
+          "total": 13,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "node v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/ifcx/src/opinions.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 11,
+          "failed": 2,
+          "total": 13,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "node v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/ifcx/src/opinions.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
+    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "production": [
+      "packages/ifcx/src/index.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "invocationId": "5cbdd81c-2b51-4944-9ee5-31a9aa2cf74a",
+    "timing": {
+      "startedAt": "2026-10-28T21:59:21.214Z",
+      "finishedAt": "2026-10-28T21:59:23.976Z"
     },
     "restoration": "verified"
   }

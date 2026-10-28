@@ -28,7 +28,7 @@ pub(super) struct Context<'a> {
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Result<Vec<Requirement>, RetainedExecutionError> {
     let mut discharged = Vec::new();
     discharged.extend(appearance::apply(product, context));
-    discharged.extend(normals::apply(product, context));
+    discharged.extend(normals::apply(product, context)?);
     discharged.extend(faces::apply(product, context)?);
     discharged.extend(instancing::apply(product, context));
     Ok(discharged)

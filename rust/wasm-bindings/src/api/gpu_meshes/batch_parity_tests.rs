@@ -429,4 +429,3 @@ fn deleting_instantiated_browser_job_or_output_fails_coverage_7782() {
             .any(|d| d.axis == Axis::TypeGeometry && d.element == Some(101)));
     }
 }
-

@@ -64,7 +64,6 @@ pub(super) enum Axis {
     Diagnostics,
     /// Native refusal counters versus the browser's `PipelineDiagnostics`.
     RefusalCounters,
-
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -962,5 +961,4 @@ mod tests {
             ]
         );
     }
-
 }

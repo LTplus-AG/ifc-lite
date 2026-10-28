@@ -44,11 +44,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await unmount();
-  assert.equal(frees.mock.callCount(), creates.mock.calls.filter(call => !call.error).length,
-    '#8042: every successfully created native model must be released');
-  assert.equal(disposes.mock.callCount(), frees.mock.callCount(), 'each handle is disposed exactly once');
-  mock.restoreAll();
+  try {
+    await unmount();
+    assert.equal(frees.mock.callCount(), creates.mock.calls.filter(call => !call.error).length,
+      '#8042: every successfully created native model must be released');
+    assert.equal(disposes.mock.callCount(), frees.mock.callCount(), 'each handle is disposed exactly once');
+  } finally { mock.restoreAll(); }
 });
 
 async function unmount() {

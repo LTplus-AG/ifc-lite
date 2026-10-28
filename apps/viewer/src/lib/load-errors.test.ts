@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { bundleAgeHours, classifyLoadError, errorCaptureProps } from './load-errors.js';
 import { formatLoadError } from './load-error-message.js';
+import { scrubEvent } from './analytics-scrub.js';
 
 describe('classifyLoadError', () => {
   it('classifies the wasm-bindgen non-OK HTTP status as wasm_engine_load', () => {
@@ -877,5 +878,86 @@ describe('bundleAgeHours (#4886)', () => {
     assert.equal(bundleAgeHours(undefined, Date.now()), undefined);
     assert.equal(bundleAgeHours('dev', Date.now()), undefined);
     assert.equal(bundleAgeHours(built, Date.parse('2026-09-13T00:00:00Z')), undefined);
+  });
+});
+
+
+describe('invalid .ifcZIP contents (#8258)', () => {
+  const refusals = [
+    'This .ifcZIP archive contains no .ifc/.ifcxml entry — nothing to parse.',
+    'This .ifcZIP archive contains 2 model files (tower.ifc, annex.ifcxml) — expected exactly one.',
+    'This .ifcZIP archive contains 12 model files (a.ifc, ...) — expected exactly one.',
+    'This .ifcZIP archive\'s model entry "tower.ifc" declares an uncompressed size of 8.0 GiB, over the 4.0 GiB limit — refusing to decompress.',
+    'This .ifcZIP archive\'s extracted entry "tower.ifc" exceeds the 4096 MiB limit.',
+  ];
+
+  it('classifies every parser content/size refusal and gives actionable guidance', () => {
+    for (const message of refusals) {
+      assert.equal(classifyLoadError(new Error(message)), 'invalid_archive', message);
+      const guidance = formatLoadError(new Error(message), 'bundle.ifczip');
+      assert.match(guidance, /"bundle\.ifczip"/);
+      assert.match(guidance, /exactly one \.ifc\/\.ifcxml model/);
+      assert.match(guidance, /extraction size limit/);
+      assert.match(guidance, /Extract and open a single model directly/);
+      assert.match(guidance, /export a smaller model/);
+    }
+  });
+
+  it('retains classification after analytics filename scrubbing, including the production form', () => {
+    const stored = 'This [model] archive contains 2 model files ([file], ...) — expected exactly one.';
+    assert.equal(classifyLoadError(stored), 'invalid_archive');
+    for (const message of refusals) {
+      const event = scrubEvent({ event: '$exception', properties: {
+        $exception_list: [{ type: 'Error', value: message }],
+        $exception_level: 'error',
+      } });
+      assert.ok(event);
+      assert.equal(event.properties.error_kind, 'invalid_archive');
+      assert.equal(event.properties.$exception_fingerprint, 'ifc-lite:invalid_archive');
+      assert.equal(event.properties.$exception_level, 'warning');
+      const scrubbed = event.properties.$exception_list[0].value;
+      assert.doesNotMatch(scrubbed, /tower|annex/);
+      assert.equal(classifyLoadError(scrubbed), 'invalid_archive', scrubbed);
+    }
+  });
+
+  it('does not let user-controlled entry names steal the archive bucket', () => {
+    for (const name of ['out of memory.ifc', 'ifc-lite_bg.wasm.ifc', 'failed to read file.ifc']) {
+      assert.equal(classifyLoadError(
+        `This .ifcZIP archive contains 2 model files (${name}, other.ifc) — expected exactly one.`,
+      ), 'invalid_archive');
+      assert.equal(classifyLoadError(
+        `This .ifcZIP archive's extracted entry "${name}" exceeds the 4096 MiB limit.`,
+      ), 'invalid_archive');
+    }
+    assert.equal(classifyLoadError('out of memory while decompressing archive'), 'out_of_memory');
+  });
+
+  it('keeps unrelated archive bugs and quoted or extended refusals loud', () => {
+    for (const message of [
+      'Failed to update archive index',
+      'This archive contains no .ifc/.ifcxml entry — nothing to parse.',
+      ...refusals.map((message) => `Upload failed: ${message}`),
+      ...refusals.map((message) => `${message} Internal state corrupted.`),
+    ]) {
+      assert.equal(classifyLoadError(message), 'unknown', message);
+      const event = scrubEvent({ event: '$exception', properties: {
+        $exception_list: [{ type: 'Error', value: message }],
+        $exception_level: 'error',
+      } });
+      assert.equal(event?.properties.$exception_level, 'error');
+      assert.equal(event?.properties.error_kind, undefined);
+      assert.equal(event?.properties.$exception_fingerprint, undefined);
+    }
+  });
+
+  it('preserves an explicitly chosen severity and fingerprint', () => {
+    const event = scrubEvent({ event: '$exception', properties: {
+      $exception_list: [{ type: 'Error', value: refusals[0] }],
+      $exception_level: 'fatal',
+      $exception_fingerprint: 'chosen-at-capture',
+    } });
+    assert.equal(event?.properties.$exception_level, 'fatal');
+    assert.equal(event?.properties.$exception_fingerprint, 'chosen-at-capture');
   });
 });

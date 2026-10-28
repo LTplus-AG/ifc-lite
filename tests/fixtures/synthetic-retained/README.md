@@ -243,7 +243,9 @@ it is **excluded from the committed comparison universe, coverage TSV, oracle
 acceptance tests and qualification claims** until a slice preregisters its oracle.
 Entity ids are grouped by case (#100 (a), #200 (b), … #700 (g)); all products sit
 on one storey at identity site/building/storey placements, so world = storey frame.
-Colour components are dyadic, so every RGB value below is exact in f32.
+Colour components are dyadic, so every RGB value below is exact in f32. Every style is an
+IfcSurfaceStyleRendering (same arity in all IFC4 releases). All representations use the
+root 'Model' context, as the other fixtures here do.
 
 ```text
 (a) #110 IfcBuildingElementProxy 0xH1HnEmDSPgnrLEbcw1md  f-i-a-styled-translucent
@@ -257,7 +259,7 @@ Colour components are dyadic, so every RGB value below is exact in f32.
     body #210 4 x 0.2 x 3, world [0,4]x[10,10.2]x[0,3], volume 2.4 m3
     no IfcStyledItem on #210, no mapped item, no type. Colour path only:
       #217 IfcRelAssociatesMaterial -> #205 IfcMaterial <- #206 IfcMaterialDefinitionRepresentation
-      -> #204 IfcStyledRepresentation -> #203 IfcStyledItem(Item=$) -> #202 -> #201 Shading
+      -> #204 IfcStyledRepresentation -> #203 IfcStyledItem(Item=$) -> #202 -> #201 Rendering
     expected RGBA = (0.125, 0.75, 0.25, 1.0)
 
 (c) nine IfcBuildingElementProxy occurrences of ONE IfcRepresentationMap #306
@@ -279,6 +281,12 @@ Colour components are dyadic, so every RGB value below is exact in f32.
     No mirror, no scale: every occurrence is rigid. Expected 9 occurrences >= 8
     (INSTANCE_MIN_OCCURRENCES), one map, opaque, uncut, one part each: one M11-I
     group key for all nine (object-local bytes are identical by construction).
+    Every map has an identity MappingOrigin, so MappingOrigin/MappingTarget composition
+    order is NOT exercised. RTC: the exact router's offset is the per-axis median of the
+    sampled translations (rust/geometry/src/router/rtc_offset.rs), so c9 (1 of 15) does
+    not rebase the model: c9 is a far outlier at raw coordinates, where one f32 ulp is
+    0.25 m. Its pairing check (#3666) may therefore fail and render flat; that outcome is
+    reported, never hidden, and does not change the expected group key.
 
 (d) #425 IfcWall 2gUqIAKsPN$gi8bEeq06KI  f-i-d-arc-wall, placement (0,30,0); wall-local below
     body #421: quarter annulus r=5.0, R=5.3, sector -45..+45 deg about +X, height 3, from
@@ -299,26 +307,46 @@ Colour components are dyadic, so every RGB value below is exact in f32.
       end faces at +/-45 deg, each              : 0.3*3 = 0.9 m2; outward (-s,+c) at +45, (-c,-s) at -45
       volume: 3*pi/4*(5.3^2-5^2) - 2*(F(5.3)-F(5)) = 7.280640974694 - 0.600947428457 = 6.679693546237 m3
     Curved values are analytic; a chord tessellation is smaller (IfcOpenShell gives 22.97199 / 21.55790).
+    Jambs are planar (+-Y), not radial: the opening is rectangular in the wall frame.
+    "Arc segment" here is IfcTrimmedCurve(IfcCircle) in an IfcCompositeCurve, the construct
+    f-a-curved already publishes; an IfcIndexedPolyCurve/IfcArcIndex profile is not covered.
 
 (e) #507 IfcReinforcingBar 3Bl14IClHIuORTUPACAxPA  f-i-e-swept-disk-30deg-bend, placement (0,40,0)
     #504 IfcSweptDiskSolid radius 0.05, no inner radius, no Start/EndParam, Directrix #503
     IfcPolyline (0,0,0) -> (2,0,0) -> (3.73205080756888,1,0): legs 2 m and 2 m, exactly ONE
     vertex, deflection 30 deg (> the 10 deg crease guard): expected a normal crease at the
     bend ring; smooth (radial (p - c(t))/r) along each straight leg. Unstyled (class default).
+    The crease is not uniform around the ring: at the mitre, a section point at angle phi
+    from the bend plane sees a normal jump acos(cos^2(phi)*cos30 + sin^2(phi)), which is
+    30 deg in the bend plane, 0 at +-Z, and below 10 deg for |phi| > 70.3 deg. Expect a
+    split for the in-plane seam vertices (|phi| < 70.3 deg); vertices near +-Z may smooth.
+    Assert the in-plane dihedral, not "every seam vertex splits".
     Mitred-joint analytic volume pi*0.05^2*4 = 0.031415926536 m3 (polygonal sections are smaller).
 
-(f) #610 IfcMember 2JRv6rFcvGzQZcIBEG$MeV  f-i-f-flush-halfspace-clip, placement (0,50,0)
-    #608 IfcBooleanClippingResult(.DIFFERENCE., #603 unit cube [0,1]^3, #607 IfcHalfSpaceSolid)
+(f) #610 IfcMember 2JRv6rFcvGzQZcIBEG$MeV  f-i-f-flush-halfspace-clip, placement (0,51,0)
+    #608 IfcBooleanClippingResult(.DIFFERENCE., #603, #607). #603 extrudes the stepped profile
+    #602 (object x,z): base [0,2]x[0,0.5], tall leg [0,0.4]x[0.5,2], low step [1.6,2]x[0.5,1];
+    Position #601 maps profile y to +Z and extrudes 1 m along -Y, so world y in [50,51].
+    Source polyline segments (index in source order): 0 bottom z=0, 1 x=2, 2 step top z=1
+    (x 2..1.6), 3 x=1.6, 4 base top z=0.5, 5 x=0.4, 6 leg top z=2, 7 x=0.
     #607 BaseSurface IfcPlane at z=1 with normal +Z, AgreementFlag .F. (IFC4: TRUE iff the normal
-    points away from the half-space material) => half space = {z >= 1}, coincident with the
-    cube's top cap. Expected: volume 1.0 m3, six faces, nothing removed; the top face z=1 is
-    attributed by the tie-break to the LEFT (host) operand: #603:cap(end), never the halfspace.
+    points away from the half-space material) => half space = {z >= 1}. An inverted flag would
+    keep only the leg above z=1 (0.4 m3).
+    Expected volume 1.8 - 0.4 = 1.4 m3; bbox [0,2]x[50,51]x[0,1]. Two disjoint z=1 faces, +Z:
+      x in [0,0.4]  : the cut; on the halfspace plane only          -> #607 halfspace role, 0.4 m2
+      x in [1.6,2]  : coincident with host side segment 2 AND the plane -> tie-break to the LEFT
+                      (host) operand: #603:side(0,2) (source index), never the halfspace, 0.4 m2
+    They are 1.2 m apart, so no kernel face can span both and the kernel cross-check stays
+    meaningful. Leg side faces x=0 / x=0.4 shrink to z<=1; no other face changes.
 
 (g) #713 IfcBuildingElementProxy 1izkKcekXOCPG9L5vHmA$a  f-i-g-type-styled, placement (0,60,0)
     typed by #718 IfcRelDefinesByType -> #707 IfcBuildingElementProxyType, RepresentationMaps (#710);
     #710's item #706 (box 0.5 x 0.5 x 1, volume 0.25 m3) is styled #708 -> (0.625, 0.125, 0.875).
     The occurrence's IfcMappedItem #711, its representation and the product carry no style or
     material. expected RGBA = (0.625, 0.125, 0.875, 1.0), from the type's map.
+    The occurrence's IfcMappedItem references the type's map directly, so plain
+    mapped-item style chasing (as in (c)) also reaches this colour: (g) is the type-map
+    binding witness, not a case that only type-aware resolution can pass.
 ```
 
 Independent checks (IfcOpenShell schema/EXPRESS validation, parse/write/parse, an

@@ -52,7 +52,7 @@ DATA;
 /* ---- (b) #213 wall, colour ONLY via IfcMaterialDefinitionRepresentation (0.125,0.75,0.25) ----
    No IfcStyledItem references the body item #210, there is no type, so no direct/mapped style can shadow it. */
 #200=IFCCOLOURRGB($,0.125,0.75,0.25);
-#201=IFCSURFACESTYLESHADING(#200,0.);
+#201=IFCSURFACESTYLERENDERING(#200,0.,$,$,$,$,$,$,.NOTDEFINED.);
 #202=IFCSURFACESTYLE('f-i-b-material',.BOTH.,(#201));
 #203=IFCSTYLEDITEM($,(#202),$);
 #204=IFCSTYLEDREPRESENTATION(#5,'Style','Material',(#203));
@@ -76,7 +76,7 @@ DATA;
    c8 #381: rotated about +X by its placement #383 (Axis=(0,-0.6,0.8), RefDirection=+X; sin 0.6, cos 0.8; det +1).
    c9 #391: identity rotation at x = 2.6e6 m. */
 #300=IFCCOLOURRGB($,0.25,0.5,0.75);
-#301=IFCSURFACESTYLESHADING(#300,0.);
+#301=IFCSURFACESTYLERENDERING(#300,0.,$,$,$,$,$,$,.NOTDEFINED.);
 #302=IFCSURFACESTYLE('f-i-c-map',.BOTH.,(#301));
 #303=IFCCARTESIANPOINT((0.3,0.1));
 #304=IFCAXIS2PLACEMENT2D(#303,$);
@@ -157,7 +157,7 @@ DATA;
    styled (0.875,0.625,0.375); rectangular window opening #433 via IfcRelVoidsElement #438:
    wall-local x 4.5..5.75, y -0.5..0.5, z 0.5..2.5 (fully through the thickness). ---- */
 #400=IFCCOLOURRGB($,0.875,0.625,0.375);
-#401=IFCSURFACESTYLESHADING(#400,0.);
+#401=IFCSURFACESTYLERENDERING(#400,0.,$,$,$,$,$,$,.NOTDEFINED.);
 #402=IFCSURFACESTYLE('f-i-d-host',.BOTH.,(#401));
 #403=IFCDIRECTION((0.707106781186548,-0.707106781186547));
 #404=IFCAXIS2PLACEMENT2D(#20,#403);
@@ -214,13 +214,25 @@ DATA;
 #510=IFCLOCALPLACEMENT(#14,#509);
 #507=IFCREINFORCINGBAR('3Bl14IClHIuORTUPACAxPA',$,'f-i-e-swept-disk-30deg-bend',$,$,#510,#506,$,$,$,$,$,.NOTDEFINED.,$);
 
-/* ---- (f) #610 unit cube [0,1]^3 clipped by a halfspace FLUSH with its top face z=1:
-   IfcPlane at z=1, normal +Z, AgreementFlag .F. => the half space is z >= 1 (material on the
-   normal side); DIFFERENCE removes nothing of positive volume. ---- */
-#600=IFCCARTESIANPOINT((0.5,0.5));
-#601=IFCAXIS2PLACEMENT2D(#600,$);
-#602=IFCRECTANGLEPROFILEDEF(.AREA.,$,#601,1.,1.);
-#603=IFCEXTRUDEDAREASOLID(#602,#4,#2,1.);
+/* ---- (f) #610 stepped bar clipped by ONE halfspace that both CUTS and is FLUSH:
+   profile (object x,z): base [0,2]x[0,0.5], tall leg [0,0.4]x[0.5,2], low step [1.6,2]x[0.5,1],
+   extruded 1 m along object -Y. IfcPlane at z=1, normal +Z, AgreementFlag .F. => the half space is
+   z >= 1 (material on the normal side). DIFFERENCE cuts the leg down to z=1 (removes 0.4 m3) and is
+   coincident with the step top (profile segment #620->#621, source index 2). The two z=1 regions,
+   x in [0,0.4] (cut) and x in [1.6,2] (flush), are disjoint, so no kernel face can span both. ---- */
+#615=IFCCARTESIANPOINT((0.,0.));
+#616=IFCCARTESIANPOINT((2.,0.));
+#620=IFCCARTESIANPOINT((2.,1.));
+#621=IFCCARTESIANPOINT((1.6,1.));
+#622=IFCCARTESIANPOINT((1.6,0.5));
+#623=IFCCARTESIANPOINT((0.4,0.5));
+#624=IFCCARTESIANPOINT((0.4,2.));
+#625=IFCCARTESIANPOINT((0.,2.));
+#626=IFCPOLYLINE((#615,#616,#620,#621,#622,#623,#624,#625,#615));
+#602=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'f-i-f-stepped',#626);
+#600=IFCDIRECTION((0.,-1.,0.));
+#601=IFCAXIS2PLACEMENT3D(#1,#600,#3);
+#603=IFCEXTRUDEDAREASOLID(#602,#601,#2,1.);
 #604=IFCCARTESIANPOINT((0.,0.,1.));
 #605=IFCAXIS2PLACEMENT3D(#604,#2,#3);
 #606=IFCPLANE(#605);
@@ -228,7 +240,7 @@ DATA;
 #608=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#603,#607);
 #609=IFCSHAPEREPRESENTATION(#5,'Body','Clipping',(#608));
 #611=IFCPRODUCTDEFINITIONSHAPE($,$,(#609));
-#612=IFCCARTESIANPOINT((0.,50.,0.));
+#612=IFCCARTESIANPOINT((0.,51.,0.));
 #613=IFCAXIS2PLACEMENT3D(#612,$,$);
 #614=IFCLOCALPLACEMENT(#14,#613);
 #610=IFCMEMBER('2JRv6rFcvGzQZcIBEG$MeV',$,'f-i-f-flush-halfspace-clip',$,$,#614,#611,$,.NOTDEFINED.);
@@ -236,7 +248,7 @@ DATA;
 /* ---- (g) #713 occurrence of type #707 whose RepresentationMaps item is styled (0.625,0.125,0.875);
    the occurrence, its IfcMappedItem and its representation carry no style or material. ---- */
 #700=IFCCOLOURRGB($,0.625,0.125,0.875);
-#701=IFCSURFACESTYLESHADING(#700,0.);
+#701=IFCSURFACESTYLERENDERING(#700,0.,$,$,$,$,$,$,.NOTDEFINED.);
 #702=IFCSURFACESTYLE('f-i-g-type',.BOTH.,(#701));
 #703=IFCCARTESIANPOINT((0.25,0.25));
 #704=IFCAXIS2PLACEMENT2D(#703,$);

@@ -9,15 +9,18 @@ const FAMILY: &str = "layer_axis_family";
 pub(super) fn usage_id(id: u32, decoder: &mut EntityDecoder) -> Result<u32, &'static str> {
     let source = decoder.trusted_inputs().ok_or("layer_source")?.source().clone();
     let mut scanner = EntityScanner::new(source.bytes());
+    let mut selected = None;
     while let Some((entity_id, kind, _, _)) = scanner.next_entity() {
         crate::resource::budget_checkpoint().map_err(|_| "layer_budget")?;
         if !ifc_lite_core::keyword_eq(kind, "IFCRELASSOCIATESMATERIAL") { continue; }
         let association = decoder.decode_by_id(entity_id).map_err(|_| "layer_usage")?;
         if !association.get_list(4).is_some_and(|ids| ids.iter().any(|v| v.as_entity_ref() == Some(id))) { continue; }
         let material = decoder.decode_by_id(association.get_ref(5).ok_or("layer_usage")?).map_err(|_| "layer_usage")?;
-        if material.ifc_type == IfcType::IfcMaterialLayerSetUsage { return Ok(material.id); }
+        // The canonical material index inserts in source order: the last
+        // association wins. Keep cutter provenance tied to that same usage.
+        if material.ifc_type == IfcType::IfcMaterialLayerSetUsage { selected = Some(material.id); }
     }
-    Err("layer_usage")
+    selected.ok_or("layer_usage")
 }
 pub(super) fn axis_family(element: &DecodedEntity, decoder: &mut EntityDecoder, scale: f64)
     -> Result<LayerFamily, &'static str> {

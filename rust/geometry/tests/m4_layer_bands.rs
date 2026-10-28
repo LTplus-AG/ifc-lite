@@ -64,6 +64,18 @@ fn m4_nonzero_offset_is_transported_before_each_sense() {
 }
 
 #[test]
+fn m4_usage_provenance_follows_the_exact_indexes_last_association() {
+    let text=CURVED.replace("ENDSEC;\nEND-ISO",concat!(
+        "#9000=IFCMATERIALLAYERSETUSAGE(#22,.AXIS2.,.POSITIVE.,0.25,$);\n",
+        "#9001=IFCRELASSOCIATESMATERIAL('last',$,$,$,(#55),#9000);\nENDSEC;\nEND-ISO"));
+    with(&text,55,|spec,_,_,_| {
+        assert_eq!(spec.source_id,9000);
+        assert_eq!((spec.sense,spec.offset_m),(1.,0.25));
+        assert!((spec.radius_at(0.1).unwrap()-9.65).abs()<1e-12);
+    });
+}
+
+#[test]
 fn m4_two_admissions_each_band_uses_the_same_opened_host() {
     with(STRAIGHT,27,|spec,traversal,router,decoder| {
         let entity = decoder.decode_by_id(27).unwrap();

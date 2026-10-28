@@ -395,22 +395,25 @@ all its unreferenced maps in source order. Their MappingOrigin supplies placemen
 nested mappings retain f64 world precision. Instanced types, types with only curve maps
 that exact does not mesh, and representationless jobs are absent. One unsupported
 map refuses the entire type; there is no partial publication or exact retry.
-Published orphan types leave MaterialLayers, IfcAppearance and SurfaceNormals unmet. Instanced type-library geometry is unavailable in retained mode.
+Published orphan types leave MaterialLayers and IfcAppearance unmet.
+Instanced type-library geometry is unavailable in retained mode.
 
 A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
 Each part has object-local metre `Float64Array` positions, `Uint32Array` indices,
 a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
 and `curved`. The optional `revisionLocalFaces` array preserves one kernel diagnostic
 index per triangle; these indices are not persistent IFC face identities. Optional
-`normals` (per corner, absolute IFC Z-up axes), `color`, `materialName`,
-`geometryItemId`, `materialId` and `instanceKey` are reserved for independently
-qualified presentation slices and remain absent in the scaffold. Every published part
-carries `faces`: a string table of persistent source keys `#item[>#opening]:role`
-(`cap(start|end)`, `side(loop,segment)` in authored profile order, `disk(wall|start|end)`)
-and one table index per triangle, derived from the product's own authored recipes
-and cross-checked against the kernel's faces; `PersistentFaces` is then discharged.
-A product whose faces cannot be proven refuses `face_provenance_unproven` (cause
-`unattributed` or `ambiguous`). `appearance_unsupported` is a reserved typed refusal. Textures and indexed palettes
+`normals` are populated on every published part (per corner, absolute IFC Z-up axes).
+They use angle-weighted smoothing within each revision-local face and a 10° crease
+guard relative to each facet, after applying the composed world frame. Positions
+and indices stay unchanged, and `SurfaceNormals` is discharged. Optional `color`, `materialName`,
+`geometryItemId`, `materialId` and `instanceKey` remain reserved for independently qualified slices.
+Every published part carries `faces`: a string table of persistent source keys
+`#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
+`disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
+and cross-checked against the kernel's faces; `PersistentFaces` is discharged.
+Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambiguous`).
+`appearance_unsupported` remains reserved. Textures and indexed palettes
 are proven absent for retained-eligible products; tessellated bodies still refuse.
 Every publication carries `marker: 'PresentationObligationsUnmet'`
 and a nonempty `obligationsUnmet` list; consumers must display that marker. This
@@ -438,7 +441,7 @@ The synchronous callback receives `start` (canonical `candidateIds` and a
 `buildPrePassOnce`, regardless of the ID filter.
 
 View events own a `MeshCollection`: extract its meshes and free every mesh
-handle and collection in `finally` blocks. Positions, flat normals and f64
+handle and collection in `finally` blocks. Positions, smoothed corner normals and f64
 origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
 Z-up metres. Colours are type defaults, and the shape-only marker still applies.
 The returned summary counts candidates, publications, refusals, restarts and

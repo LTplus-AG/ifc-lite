@@ -97,8 +97,6 @@ mod transform;
 mod representation_walk;
 mod trimmed_curve;
 mod type_symbols;
-#[cfg(test)]
-mod type_symbols_tests;
 
 pub use output_cap_types::{SymbolicTruncation, SymbolicTruncationReason};
 pub use primitives::{

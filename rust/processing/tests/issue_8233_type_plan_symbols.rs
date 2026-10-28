@@ -4,11 +4,14 @@
 
 //! #8233: plan symbols held only on a type's `RepresentationMaps`.
 //!
+//! An integration test through the public `extract_symbolic_data`, so the
+//! revert oracle still compiles it with the production change reverted.
+//!
 //! An occurrence typed through `IfcRelDefinesByType` often carries only a Body
 //! representation while the Plan / FootPrint symbol lives on the type. The
 //! symbolic walk used to read only the occurrence's own `Representation`.
 
-use super::extract_symbolic_data;
+use ifc_lite_processing::extract_symbolic_data;
 
 fn file(body: &str) -> Vec<u8> {
     format!(

@@ -135,6 +135,7 @@ struct Observed {
     worker:ifc_lite_retained_native::NativeWorker,
     calls:std::rc::Rc<std::cell::Cell<usize>>,
     fail:Option<usize>,
+    clips:std::rc::Rc<std::cell::RefCell<Vec<f64>>>,
 }
 use ifc_lite_processing::element::retained_runtime::{RetainedRuntime,AsyncRetainedExecutor,Invocation,NumericalLimits,RuntimeFault};
 impl RetainedRuntime for Observed {
@@ -148,15 +149,27 @@ impl AsyncRetainedExecutor for Observed {
             self.calls.set(self.calls.get()+1);
             if self.fail==Some(self.calls.get()){return Err(RuntimeFault::kernel(7,"M6 second Boolean fault"));}
         }
-        self.worker.invoke(call,limits).await
+        use ifc_lite_processing::element::retained_runtime::{NumericalReceipt,Operand,ReceiptEvidence};
+        let clip=if let Invocation::Boolean{right,..}=&call {
+            let receipt=match right {Operand::Source{receipt,..}|Operand::Placed{receipt,..}=>receipt};
+            matches!(receipt.evidence(),ReceiptEvidence::Construction(c) if matches!(c.request().recipe(),
+                ifc_lite_geometry::document::RetainedRecipe::Prism(p) if p.role==ifc_lite_geometry::document::PrismRole::BoundedHalfSpace))
+        }else{false};
+        let start=std::time::Instant::now();let result=self.worker.invoke(call,limits).await;
+        if clip {self.clips.borrow_mut().push(start.elapsed().as_secs_f64()*1000.);}
+        result
     }
 }
-fn observed(ids:&[u32],fail:Option<usize>)->(Vec<ProductOutcome>,usize) {
+fn observed_source(text:&str,ids:&[u32],fail:Option<usize>)->(Vec<ProductOutcome>,usize,Vec<f64>) {
     let calls=std::rc::Rc::new(std::cell::Cell::new(0));let mut outcomes=Vec::new();let path=worker().unwrap();
+    let clips=std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     ifc_lite_retained_native::block_on(ifc_lite_processing::element::retained_runtime::run_model(
-        SourceBundle::new(SOURCE.as_bytes().to_vec()),&ModelOptions{ids:Some(ids.iter().copied().collect()),..Default::default()},
-        ||ifc_lite_retained_native::NativeWorker::spawn(&path).map(|worker|Observed{worker,calls:calls.clone(),fail}),|o|outcomes.push(o))).unwrap();
-    (outcomes,calls.get())
+        SourceBundle::new(text.as_bytes().to_vec()),&ModelOptions{ids:Some(ids.iter().copied().collect()),..Default::default()},
+        ||ifc_lite_retained_native::NativeWorker::spawn(&path).map(|worker|Observed{worker,calls:calls.clone(),fail,clips:clips.clone()}),|o|outcomes.push(o))).unwrap();
+    let times=clips.borrow().clone();(outcomes,calls.get(),times)
+}
+fn observed(ids:&[u32],fail:Option<usize>)->(Vec<ProductOutcome>,usize) {
+    let (outcomes,calls,_)=observed_source(SOURCE,ids,fail);(outcomes,calls)
 }
 #[test]
 fn m6_native_second_boolean_fault_is_atomic_and_next_product_succeeds() {
@@ -183,7 +196,7 @@ fn m6_native_960_report_has_no_untyped_or_unverified_outcome() {
     let ids=ifc_lite_processing::element::retained_runtime::canonical_element_jobs(&source).into_iter()
         .map(|(id,_)|id).filter(|id|bounded::applies(text.as_bytes(),*id)).collect::<Vec<_>>();
     assert!(!ids.is_empty(),"960 must exercise actual PBHS products");
-    let outcomes=run(&text,&ids);let mut counts=std::collections::BTreeMap::new();
+    let (outcomes,_,mut clip_ms)=observed_source(&text,&ids,None);let mut counts=std::collections::BTreeMap::new();
     let mut rows=Vec::new();
     for outcome in &outcomes {
         *counts.entry(code(outcome)).or_insert(0usize)+=1;
@@ -195,7 +208,11 @@ fn m6_native_960_report_has_no_untyped_or_unverified_outcome() {
             }
         }
     }
-    let report=serde_json::json!({"model":"issues/960_house_segmented_roof_clip.ifc","counts":counts,"rows":rows});
+    clip_ms.sort_by(f64::total_cmp);
+    let percentile=|q:f64|clip_ms.get(((clip_ms.len() as f64*q).ceil() as usize).saturating_sub(1)).copied();
+    let report=serde_json::json!({"model":"issues/960_house_segmented_roof_clip.ifc","counts":counts,"rows":rows,
+        "clipMs":{"count":clip_ms.len(),"p50":percentile(0.5),"p95":percentile(0.95)},
+        "timingScope":"actual bounded-prism Boolean invokes; ordinary qualification diagnostics, not a performance claim"});
     if let Some(path)=std::env::var_os("IFCLITE_M6_960_REPORT") {std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();}
     println!("M6 960 report: {report}");
     println!("sdk witness executed: m6_960_bounded_report");

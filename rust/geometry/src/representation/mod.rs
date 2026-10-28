@@ -21,7 +21,6 @@ pub use walk::{Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkR
 
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
-    is_direct_body_representation,
 };
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};

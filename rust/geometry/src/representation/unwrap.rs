@@ -101,13 +101,12 @@ fn unwrap_item(
 
 /// Preserve the caller's initial chain: direction keeps absence, rectangular
 /// and extrusion probes multiply the first mapping by identity, too. The map
-/// callback retains the router's target/origin identity shortcuts and errors.
+/// reader retains the target/origin identity shortcuts and errors.
 pub(crate) fn unwrap_solid(
     item: DecodedEntity,
     mut chain: Option<Matrix4<f64>>,
     policy: Policy,
     decoder: &mut EntityDecoder,
-    mut map_transform: impl FnMut(&MappedLevel, &mut EntityDecoder) -> Result<Option<Matrix4<f64>>>,
 ) -> Result<Option<(DecodedEntity, Option<Matrix4<f64>>)>> {
     crate::resource::check_current()?;
     let solid = unwrap_item(
@@ -141,7 +140,7 @@ pub(crate) fn unwrap_solid(
                     map,
                     mapped_rep,
                 };
-                if let Some(map) = probe_result!(terminal, map_transform(&level, decoder))? {
+                if let Some(map) = probe_result!(terminal, level.local_transform(decoder))? {
                     chain = Some(match chain.take() {
                         Some(parent) => parent * map,
                         None => map,

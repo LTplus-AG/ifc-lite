@@ -91,7 +91,7 @@ pub(super) fn element_is_single_unrotated_item(
 /// exotic returns false so we bail safely.
 pub(super) fn item_has_identity_position(current: DecodedEntity, decoder: &mut EntityDecoder) -> bool {
     match unwrap_boolean_leaf(current, decoder) {
-        Ok(Some(item)) => item_position_is_identity(&item, decoder),
+        Ok(Some(item)) => item_position_is_unrotated(&item, decoder),
         _ => false,
     }
 }

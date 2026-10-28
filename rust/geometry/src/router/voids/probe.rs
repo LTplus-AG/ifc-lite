@@ -74,8 +74,7 @@ impl GeometryRouter {
     ) -> Result<Option<(Vector3<f64>, Option<Matrix4<f64>>)>> {
         checked_probe(|terminal| {
             let (solid, mapping_chain) = probe_result!(terminal,
-                unwrap_solid(item.clone(), None, UnwrapPolicy::FIRST, decoder,
-                    |level, decoder| self.mapped_item_transform(&level.item, &level.map, decoder)))??;
+                unwrap_solid(item.clone(), None, UnwrapPolicy::FIRST, decoder,))??;
             let (dir, position_transform) = probe_result!(terminal,
                 self.extract_extrusion_direction_from_solid(&solid, decoder))??;
             let combined = match (mapping_chain.as_ref(), position_transform) {
@@ -265,14 +264,8 @@ impl GeometryRouter {
         placement: &Matrix4<f64>,
         decoder: &mut EntityDecoder,
     ) -> Option<ExtrudedSolidInfo> {
-        let (solid, chain) = unwrap_solid(
-            item,
-            Some(Matrix4::identity()),
-            UnwrapPolicy::SINGLE_UNCLIPPED,
-            decoder,
-            |level, decoder| self.mapped_item_transform(&level.item, &level.map, decoder),
-        )
-        .ok()??;
+        let (solid, chain) =
+            unwrap_solid(item, Some(Matrix4::identity()), UnwrapPolicy::SINGLE_UNCLIPPED, decoder).ok()??;
         let chain = chain?;
 
         let profile_entity = decoder.resolve_ref(solid.get(0)?).ok()??;
@@ -280,7 +273,7 @@ impl GeometryRouter {
         // several disjoint areas (#7685) defers to the 3D path.
         let [profile] = <[_; 1]>::try_from(
             ProfileProcessor::new(self.schema.clone())
-                .process_regions(&profile_entity, decoder, self.tessellation_quality)
+                .process_regions(&profile_entity, decoder, self.tessellation_quality())
                 .ok()?,
         )
         .ok()?;

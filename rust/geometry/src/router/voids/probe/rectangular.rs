@@ -115,14 +115,7 @@ impl GeometryRouter {
         placement: &Matrix4<f64>,
         decoder: &mut EntityDecoder,
     ) -> Option<RectParam> {
-        let (solid, chain) = unwrap_solid(
-            item,
-            Some(Matrix4::identity()),
-            UnwrapPolicy::FIRST,
-            decoder,
-            |level, decoder| self.mapped_item_transform(&level.item, &level.map, decoder),
-        )
-        .ok()??;
+        let (solid, chain) = unwrap_solid(item, Some(Matrix4::identity()), UnwrapPolicy::FIRST, decoder).ok()??;
         let chain = chain?;
 
         let profile = decoder.resolve_ref(solid.get(0)?).ok()??;
@@ -169,8 +162,8 @@ impl GeometryRouter {
         }
         let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
         let center_native = m.transform_point(&center_local);
-        let s = self.unit_scale;
-        let (rx, ry, rz) = self.rtc_offset;
+        let s = self.unit_scale();
+        let (rx, ry, rz) = self.rtc_offset();
         Some(RectParam {
             r: Matrix3::from_columns(&[uu, vv, ww]),
             center: Point3::new(

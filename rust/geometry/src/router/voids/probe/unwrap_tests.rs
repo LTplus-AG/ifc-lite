@@ -5,7 +5,6 @@ use crate::profile_walk_model as model;
 use crate::representation::unwrap::unwrap_boolean_leaf;
 
 fn unwrap(content: &str, id: u32, policy: UnwrapPolicy) -> Option<(u32, Option<Matrix4<f64>>)> {
-    let router = GeometryRouter::new();
     let mut decoder = EntityDecoder::new(content);
     let item = decoder.decode_by_id(id).unwrap();
     unwrap_solid(item, None, policy, &mut decoder, |level, decoder| {
@@ -59,15 +58,9 @@ fn issue_7781_probe_mapping_composes_both_levels_and_preserves_absence() {
         assert!(unwrap(&content, 240, policy).unwrap().1.is_none());
         let mut decoder = EntityDecoder::new(&content);
         let leaf = decoder.decode_by_id(240).unwrap();
-        let (_, identity) = unwrap_solid(
-            leaf,
-            Some(Matrix4::identity()),
-            policy,
-            &mut decoder,
-            |level, decoder| GeometryRouter::new().mapped_item_transform(&level.item, &level.map, decoder),
-        )
-        .unwrap()
-        .unwrap();
+        let (_, identity) = unwrap_solid(leaf, Some(Matrix4::identity()), policy, &mut decoder)
+            .unwrap()
+            .unwrap();
         assert_eq!(identity.unwrap(), Matrix4::identity());
     }
 }

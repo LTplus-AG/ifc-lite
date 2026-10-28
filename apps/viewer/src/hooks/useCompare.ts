@@ -273,8 +273,13 @@ export function useCompare() {
       // since a stale cache entry for a pair that is no longer selected would
       // silently defeat the reconciliation effect's `isCurrentFor` check on
       // the NEXT option change (see that effect's comment).
-      if (!stillWanted() || !current(built, readGeometryContentVersion())) {
+      if (!stillWanted()) {
         built.dispose();
+        return;
+      }
+      if (!current(built, readGeometryContentVersion())) {
+        built.dispose();
+        store.setCompareError('The model geometry kept changing while comparing. Run the comparison again.');
         return;
       }
       if (builtRef.current !== built) builtRef.current?.dispose();

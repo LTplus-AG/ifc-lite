@@ -19,6 +19,13 @@ export interface BcfServerConfig {
    */
   clientId: string;
   clientSecret: string;
+  /**
+   * Same-origin token relay the session's grants go through ('' = the
+   * vendor's token endpoint directly). Set for a vendor app that is a
+   * confidential client: the relay holds its secret, so `clientSecret` stays
+   * empty and every refresh must take the same route (#4919).
+   */
+  tokenRelay: string;
   /** Last-selected project, so reconnects re-sync without re-picking. */
   projectId: string;
   projectName: string;
@@ -40,6 +47,7 @@ function sanitize(value: unknown): BcfServerConfig | null {
     tokenExpiresAt: typeof parsed.tokenExpiresAt === 'number' ? parsed.tokenExpiresAt : 0,
     clientId: typeof parsed.clientId === 'string' ? parsed.clientId : '',
     clientSecret: typeof parsed.clientSecret === 'string' ? parsed.clientSecret : '',
+    tokenRelay: typeof parsed.tokenRelay === 'string' ? parsed.tokenRelay : '',
     projectId: typeof parsed.projectId === 'string' ? parsed.projectId : '',
     projectName: typeof parsed.projectName === 'string' ? parsed.projectName : '',
   };

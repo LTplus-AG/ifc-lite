@@ -98,8 +98,11 @@ No source-size admission ceiling is imposed: large files that load successfully
 can continue to load. After an OOM-shaped trap on a source of at least 1 GB
 (decimal), serial pre-pass, sharded pre-pass and shard scan report an actionable
 "Out of memory:" error, including compatibility-retry failures. The viewer
-classifies it as `out_of_memory`. The raw trap remains in the message tail and
-`.cause`, since a Rust panic can produce the same `unreachable` signature.
+classifies it as `out_of_memory`. A Rust panic produces the same `unreachable`
+signature but stashes its source location first (#2527); a trap with a stashed
+location is left unmapped. The raw trap stays in the message tail. `.cause` is
+set only inside the worker: the worker posts the message alone, so callers on
+the main thread see the text, not the cause.
 
 This is a failure-reporting heuristic, not proof of OOM or a guarantee that a
 1.8 GB file will load. Snapshot compaction reduces an avoidable allocation;

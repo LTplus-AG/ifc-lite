@@ -11,6 +11,8 @@
  * See docs/architecture/prepass-memory.md for the allocation accounting.
  */
 
+import { WASM_PANIC_STASH_KEY } from './wasm-panic-forward.js';
+
 /** Map failed attempts from 1 GB, including observed 1.6–1.8 GB pre-pass traps. */
 const HUGE_FILE_GB_THRESHOLD = 1.0;
 
@@ -30,10 +32,17 @@ const OOM_SIGNATURE =
  * sure it never SILENTLY masks a genuine panic/assert on a large model, the
  * mapped error preserves the original trap: verbatim in the message tail and as
  * `.cause` for programmatic inspection.
+ *
+ * A Rust panic runs the panic hook, which stashes its source location on the
+ * realm (#2527) before aborting; an allocator abort never does. So a stashed
+ * location means a genuine panic: it is left unmapped (read, not consumed, so
+ * the worker still forwards it) instead of being relabelled out-of-memory.
  */
-export function largeFilePrepassError(err: unknown, byteLength: number): Error | null {
+export function largeFilePrepassError(err: unknown, byteLength: number, realm: object = globalThis): Error | null {
   const sizeGB = byteLength / 1e9;
   const raw = err instanceof Error ? err.message : String(err);
+  const stash = (realm as Record<string, unknown>)[WASM_PANIC_STASH_KEY] as { location?: unknown } | undefined;
+  if (typeof stash?.location === 'string' && stash.location !== '') return null;
   if (sizeGB >= HUGE_FILE_GB_THRESHOLD && OOM_SIGNATURE.test(raw)) {
     return new Error(
       `Out of memory: this model is ${sizeGB.toFixed(1)} GB and may exceed available WebAssembly memory ` +

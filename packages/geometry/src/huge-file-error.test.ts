@@ -55,6 +55,13 @@ describe('largeFilePrepassError', () => {
     expect(largeFilePrepassError(new Error('unreachable executed'), 0.5 * GB)).toBeNull();
   });
 
+  it('leaves a genuine panic (stashed location) unmapped, without consuming the stash', () => {
+    const realm = { __ifclite_wasm_panic: { location: 'geometry/src/mesh_weld.rs:412:9', at: Date.now() } };
+    expect(largeFilePrepassError(new Error('unreachable executed'), 1.7 * GB, realm)).toBeNull();
+    expect(realm.__ifclite_wasm_panic).toBeDefined();
+    expect(largeFilePrepassError(new Error('unreachable executed'), 1.7 * GB, {})).not.toBeNull();
+  });
+
   it('does NOT hijack an unrelated error on a large file', () => {
     expect(largeFilePrepassError(new Error('malformed STEP header'), 3.9 * GB)).toBeNull();
   });

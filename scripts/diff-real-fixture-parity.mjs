@@ -8,6 +8,7 @@ import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
 import { loadDiffOracle } from './lib/diff-oracle.mjs';
 import * as publicDiff from '../packages/diff/dist/index.js';
+import { prepareDiffModel } from '../packages/diff/dist/internal.js';
 import { fingerprintColumns } from '../packages/diff/dist/wasm-columns.js';
 import { restoreDiffReferences } from '../packages/diff/dist/wasm-result.js';
 import { initSync, DiffModel } from '../packages/wasm/pkg-diff/ifc-lite-diff.js';
@@ -23,7 +24,11 @@ const pairs = [
 ];
 function retained(rows) {
   const c = fingerprintColumns(rows);
-  return new DiffModel(c.strings, c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
+  const raw = new DiffModel(c.strings, c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
+  try {
+    const prepared = prepareDiffModel(rows);
+    return { raw, prepared, free() { prepared.dispose(); raw.free(); } };
+  } catch (error) { raw.free(); throw error; }
 }
 let executedPairs = 0;
 let comparisons = 0;
@@ -52,11 +57,12 @@ for (const [basePath, headPath] of pairs) {
         const expected = diffModels(rows[0], rows[1], options);
         const publicResult = publicDiff.diffModels(rows[0], rows[1], options);
         assert.deepEqual(publicResult, expected, `${basePath}: public binary facade`);
+        assert.deepEqual(base.prepared.compare(head.prepared, options), expected, `${basePath}: retained snapshot facade`);
         comparisons++;
         const rawOptions = { ...options,
           ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
         };
-        const actual = restoreDiffReferences(base.compare(head, rawOptions), rows[0], rows[1]);
+        const actual = restoreDiffReferences(base.raw.compare(head.raw, rawOptions), rows[0], rows[1]);
         assert.deepEqual(actual, expected, `${basePath}: ${JSON.stringify(options)}`);
         for (const entry of actual.entries) {
           assert.equal(actual.byKey.get(entry.key), entry);

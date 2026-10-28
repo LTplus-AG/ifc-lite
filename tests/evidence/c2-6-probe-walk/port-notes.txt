@@ -2,26 +2,46 @@ C2-6 / #7781 reconciliation, base 93cc587c79bc3bac3b1647c9bb47898f5d1a7e33
 
 Transplant plan: recovery/c2-l08-representation-main61b-stack-49a6-r3
 (84f82f034afb23ef4528d2a0b04a65d96e068aad), not a merge.
-Qualification is pending; this is an early durable implementation checkpoint.
+Source and qualification receipts: coordinator artifact c2-6-build-r1.json.
 
 Architecture decisions against C2.md sections 1.1/1.2, row 6, 3.2 row 8, 6, 8:
-- Share wrapper traversal in representation, with explicit boolean and single-item
-  policies. The existing branching RepresentationWalk / NestedMaps::FirstChain
-  cannot replace the probe chains: FirstChain visits non-mapped siblings and then
-  the first MAPPED item; probes take the first ITEM, regardless of its type.
-- Keep layer boolean-only traversal uncapped, cycle guarded, and allocation-free
-  for a direct leaf (#960). Never expand mapped items for layer eligibility.
-- ProductShape/Select and MappedLevel are the shared structural vocabulary.
-  Body probes retain their narrower body-only filter after Meshed duplicate
-  exclusion. Opening source retains unchecked shape-type admission and its old
-  errors; the recovery patch's new type rejection is an out-of-scope X change.
-- Preserve direction's absent initial mapping chain versus rectangular/extrusion
-  identity multiplication, transform-before-Items ordering, and 32 visited nodes
-  including the leaf. Typed ProgramStopped outcomes remain typed.
+- representation/unwrap.rs owns unwrap_solid with Policy {through_booleans,
+  single_item}, using MappedLevel::local_transform and rep_items. Its static
+  callback driver also owns the layer probe's boolean-only traversal.
+- Deviation from a general WalkVisitor: the existing RepresentationWalk's
+  NestedMaps::FirstChain visits non-mapped siblings and then the first MAPPED
+  item; probes take the first ITEM regardless of type. Expand's shared work
+  meters and refusal callbacks would also change these callers' policies.
+  A private single-chain driver preserves those policies without extending the
+  public API. Cycles/depth still defer via None; no new diagnostic is emitted.
+- Layers keep an uncapped, iterative boolean chain (#960), with a visited set
+  only for boolean nodes, no allocation for a direct leaf, no mapped expansion,
+  and the base's complete unrotated leaf admission (including translation).
+- ProductShape/Select share product resolution and representation selection.
+  Body probes retain the body-only filter after Meshed duplicate exclusion;
+  annotation, structural and typeless admission is not broadened.
+- Opening source keeps unchecked shape-type admission, old error strings,
+  placement-before-Items order, ordinary Items-error skips and typed stops.
+  The recovery patch's strict shape-type rejection is deliberately NOT ported.
+- Direction keeps an absent initial chain. Rectangular/extrusion probes keep
+  identity multiplication. Mapped transforms are composed before resolving
+  Items; the shared bound is 32 nodes INCLUDING the leaf (31 wrappers accepted,
+  32 refused), and boolean steps also count. No new caching or hoisting.
 - Axis2Placement::read_3d and EntityDecoder::direction3_of reproduce the deleted
-  pub(crate) delegates. Counting direction3_at refusals would change diagnostics
-  and is deferred. The public transitional reader remains present.
-- Keep permissive inline 2D profile reads unchanged (C2-X2).
-- Do not transplant unrelated Reference-only opening or RTC changes.
+  pub(crate) delegates. Using direction3_at would start counting refusals and
+  change diagnostics, so the public transitional reader remains.
+- The inline 2D profile decoder moves unchanged to probe/rectangular.rs;
+  component defaults and permissive admission remain deferred to C2-X2.
+- No unrelated Reference-only opening or RTC recovery edits were transplanted.
+- Router getters and the unrotated layer predicate use the pinned base's names.
 
-No public API removal/addition is intended; no rust-major-offset or changeset.
+Runtime witnesses use parsed STEP records, including first/single mapped items,
+boolean eligibility, depth/cycles, malformed map/shape/type admission, missing
+and identity placements, noncommuting nested transforms and typed resource stops.
+The bounded mutation reverses first/single admission while keeping all test
+wiring: it compiles, fails the changed regression, and passes after restoration.
+The permissive 2D decoder is token-identical after removing whitespace/comments.
+
+No public API change, changeset, rust-major-offset edit, PR or issue write.
+Native instruction and serialized-output/diagnostic qualification is recorded
+separately; no wall-clock, browser/WASM or full-workspace claim is made.

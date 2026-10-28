@@ -4,6 +4,21 @@
 
 # Performance diagnosis kit
 
+## C2-6 probe wrapper traversal (#7781)
+
+The shared single-chain wrapper driver passed the local native instruction gate
+against `93cc587c79` on Haus, duplex and ISSUE_129. Geometry counts, ordered mesh
+bits, serialized output and aggregate diagnostics matched exactly. Qualification
+receipts and per-phase comparisons are in the coordinator's `c2-6-build-r1.json`.
+This is a native reconciliation verdict, with no elapsed-time or browser claim.
+
+A first-item probe is not `NestedMaps::FirstChain`, which follows the first mapped
+item after visiting ordinary siblings. Keep probe cardinality, boolean admission,
+absent versus identity transforms and the leaf-inclusive depth bound explicit.
+Layers retain their uncapped boolean chain and unrotated leaf admission. Sharing
+ProductShape selection must also preserve the opening probe's unchecked shape
+type and the rectangular probe's narrower body-only filter.
+
 ## C2-5b void rays and frames (#7781)
 
 The shared array ray/triangle helper and first-fit face-normal clustering passed

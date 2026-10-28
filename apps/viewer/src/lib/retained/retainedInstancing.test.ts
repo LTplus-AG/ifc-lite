@@ -55,3 +55,17 @@ it('#7955 M11-I refused products count toward the 256-product flush window', () 
     expressId: i, ifcType: 'IfcWall', code: 'incomplete' });
   assert.equal(encoded, 1, 'a sparse candidate cannot remain buffered across an arbitrary number of products');
 });
+
+it('#7955 M11-I supplies the source product type when optional viewer mesh metadata is absent', () => {
+  const product = candidate(31);
+  delete product.meshes[0].ifcType;
+  let encodedType: string | undefined;
+  const batcher = new RetainedInstancing(meshes => {
+    encodedType = meshes[0].ifcType;
+    return { shard: new Uint8Array(), flatIndices: Uint32Array.of(0),
+      instanceCount: 0, groupCount: 0, verificationRejections: 0 };
+  }, 1, () => {});
+  batcher.accept(product);
+  batcher.flush();
+  assert.equal(encodedType, 'IfcBeam', 'the required WASM field comes from the publication, never an invented type');
+});

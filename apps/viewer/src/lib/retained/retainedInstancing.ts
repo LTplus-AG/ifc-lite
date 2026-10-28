@@ -49,6 +49,7 @@ export class RetainedInstancing {
     // Clear before encoding/emission so a throwing consumer cannot replay a shard.
     this.pending = [];
     const encoded = this.encode(pending.map(event => ({ ...event.meshes[0],
+      ifcType: event.meshes[0].ifcType ?? event.ifcType,
       worldFromObject: event.instanceWorldFromObject! })), pending.map(event => event.instanceKey!), this.rtc);
     const flat = new Set(encoded.flatIndices);
     const grouped: Published[] = [];

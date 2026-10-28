@@ -24,7 +24,7 @@ This spec keeps three things apart that stack order currently collapses into one
 
 1. **Precedence.** Which opinion is shown when nobody claims authority. Unchanged: stack order (02 §2.2). This is the fallback and keeps every existing stack composing exactly as it does today.
 2. **Authority.** Who is entitled to decide a value. A **responsibility map** (§12.3), the machine-readable form of an ISO 19650 responsibility matrix.
-3. **Disagreement.** Whether parties hold different values. Never resolved silently: differing opinions are retained (§12.4), surfaced as **contested** (§12.5) and closed only by the authority (§12.6).
+3. **Disagreement.** Whether parties hold different values. Never resolved silently: differing opinions are retained (§12.4), surfaced as **contested** or **authority-split** (§12.5) and closed only by the authority (§12.6).
 
 ## 12.3 The responsibility map (charter)
 
@@ -85,32 +85,28 @@ Composition keeps every layer's value per (path, attribute key) instead of only 
 Opinion = { layerId, principal, value }      // list in precedence order, strongest last
 ```
 
-This matches the shape of upstream `GetOpinions` (IFC5-development PR #153), so ifc-lite and the reference implementation can exchange the same information. In `federated-composition.ts` it replaces the winner-only `attributeSources` map, which becomes a projection of the list (last entry). Retention is on whenever a charter applies or the viewer is in review mode; otherwise composition keeps today's cost.
+This matches the shape of upstream `GetOpinions` (IFC5-development PR #153), so ifc-lite and the reference implementation can exchange the same information. In `federated-composition.ts` the list is a separate retained-opinions collection. `attributeSources` stays, but is projected from the opinion §12.5 selects as the shown value, not from the last list entry: when authority overrides stack order, the source must name the authoritative layer, not the strongest one. Retention is on whenever a charter applies or the viewer is in review mode; otherwise composition keeps today's cost.
 
 ## 12.5 Resolution
 
-For each (path, attribute key) with opinions `O`:
+For each (path, attribute key) with opinions `O`, the state is the **first** row that matches, so every input has exactly one state. "Values differ" always compares values, never principals: two principals holding the same value agree.
 
-1. Find the governing rule `R` (§12.3). If none, the value is the stack-order winner (precedence).
-2. Otherwise let `A` be the opinions whose principal holds `R.role`.
-3. If `A` is non-empty, the shown value is the strongest opinion in `A`, **regardless of stack order**. Opinions outside `A` with a different value are **dissent**.
-4. If `A` is empty, the shown value is the stack-order winner, marked as not yet confirmed by the authority.
+| # | Condition | State | Shown value | Surfaced |
+|---|---|---|---|---|
+| 1 | No governing rule `R` (§12.3); all opinions hold one value | `agreed` | That value | No |
+| 2 | No governing rule; values differ | `divergent` | Stack-order winner (precedence) | Informational: a candidate for a new charter rule |
+| 3 | Rule `R` applies; no opinion's principal holds `R.role` | `unconfirmed` | Stack-order winner | Lower-severity review flag |
+| 4 | Authoritative opinions (principal holds `R.role`) hold more than one value | `authority-split` | Strongest authoritative opinion | BCF topic to the role (§12.6) |
+| 5 | Authoritative opinions hold one value; some other opinion differs | `contested` | The authoritative value, **regardless of stack order** | BCF topic to the role (§12.6) |
+| 6 | Authoritative opinions hold one value; no other opinion differs | `authoritative` | The authoritative value | No |
 
-Every attribute ends in one of these states:
-
-| State | Meaning | Surfaced |
-|---|---|---|
-| `agreed` | All opinions hold the same value | No |
-| `authoritative` | The authority has spoken; nobody differs | No |
-| `contested` | The authority has spoken; at least one other party holds a different value | Yes: BCF topic to the authority (§12.6) |
-| `unconfirmed` | A rule exists but the authority has not set a value | Yes, as a lower-severity review flag |
-| `divergent` | No rule applies and principals differ; stack order decided | Yes, informational: a candidate for a new charter rule |
+Opinions outside the role whose value differs from the shown value are **dissent** (rows 4 and 5). `authority-split` covers two layers from principals in the same role disagreeing, e.g. two fire consultants on one project, or one consultant's earlier and later deliveries composed together. It is resolved the same way as `contested` (§12.6), by a principal holding the role.
 
 Resolution is a pure function of (stack, charter). The same inputs always give the same states, so viewer, CLI, MCP and the registry agree.
 
 ## 12.6 Contested lifecycle
 
-- **Record.** `{ path, attributeKey, ruleId, authoritative: Opinion, dissent: Opinion[] }`, keyed by a hash of those fields so recomposition never duplicates it.
+- **Record.** `{ path, attributeKey, ruleId, state, authoritative: Opinion[], dissent: Opinion[] }` (`authoritative` holds one opinion for `contested`, several for `authority-split`), keyed by a hash of those fields so recomposition never duplicates it.
 - **Surface.** One BCF topic per record (08 §8.6), assigned to the rule's role, bound to (entity, attribute key). The viewer colours contested entities through `@ifc-lite/lens` and the entity panel lists every opinion with its principal.
 - **Resolve.** Only a principal holding the role can close it, by publishing a layer whose manifest records the resolution:
   - `uphold`: keep the authoritative value; the dissent is acknowledged with a reason.
@@ -121,7 +117,8 @@ Nobody else can resolve it. A reviewer in the merge conflict queue (08 §8.3) wh
 
 ## 12.7 Integration
 
-- **Merge.** A concurrent-edit conflict (05 §5.3) on a governed attribute where exactly one side is authoritative resolves automatically to that side, recorded in `manifest.merge.resolutions` with the rule id as basis. The other side remains in the stack as dissent and the attribute becomes `contested`. Both sides authoritative (same role, two layers) stays an ordinary conflict.
+- **Merge.** A concurrent-edit conflict (05 §5.3) on a governed attribute where exactly one side is authoritative resolves automatically to that side, recorded in `manifest.merge.resolutions` with the rule id as basis. The other side remains in the stack as dissent and the attribute becomes `contested`. Both sides authoritative (same role, two layers) stays an ordinary conflict and, if merged unresolved, composes as `authority-split`.
+- **Merge granularity.** The merge conflict unit stays (entity, `componentKey`), so `@ifc-lite/diff`'s output shape does not change. A concurrent-edit on `pset:Pset_WallCommon` where the architect changed `IsExternal` and the fire consultant changed `FireRating` is resolved **inside** the component: the merge engine already holds the base, ours and theirs attribute values (`ComponentSnapshot.attributes`), so it compares them per attribute key. Members changed on only one side take that side; governed members follow the rule above; only a member both sides changed without a governing rule stays a conflict.
 - **Ref policy.** `RefPolicy` gains `charter?: string` (the ref holding the charter) and `rejectDissent?: boolean`. By default a non-authoritative opinion merges as an opinion (it is information, not a write); with `rejectDissent` the ref refuses layers that would create new contested records.
 - **Scope claims.** Unchanged. A scope claim is what a layer says it touches; authority is who decides. Publish-time claim checking (07 §7.2) still runs.
 - **ifc-git.** Each ingested whole-file delivery becomes a layer attributed to its delivering principal, so two discipline deliveries go through exactly this resolution. Most real disagreements arrive this way.

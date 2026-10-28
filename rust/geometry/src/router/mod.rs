@@ -2,21 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Geometry routing, configuration, caches and processor selection.
+//! Geometry routing: [`RouterConfig`], caches and processor selection.
 //!
-//! [`RouterConfig`] supplies the meshing choices through
-//! [`GeometryRouter::from_config`]. `representation` owns shape selection and
-//! the decoder-only walk; its product admission precedes rendering. The
-//! controllers in `program/` execute the admitted roots: `ProductControl`
-//! handles product output/placement, `MappingControl` owns source levels with
-//! Occurrence/Shared/Styled/TypeMap sinks, `CacheControl` wraps item caching,
-//! and `ItemControl` drives the selected registry processor and its reports.
-//!
-//! `processing::finish_item_mesh` validates indices, scales positions and
-//! publishes object-frame bounds for rebased items. Direct items retain
-//! `rtc_applied`; raw product items choose an element-frame offset. Mapping
-//! source merges use `keep_rebase_in_origin` to carry the rebase in an f64
-//! origin before mapping, leaving final placement to subtract model RTC once.
+//! Walks, controllers and frames: `docs/architecture/geometry-pipeline.md`.
 
 pub(crate) mod annotation;
 mod annotation_polygon;

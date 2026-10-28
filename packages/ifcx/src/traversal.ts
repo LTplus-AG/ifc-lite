@@ -98,14 +98,26 @@ export function collectSiblingEdgeNames(composed: Map<string, ComposedNode>): Ma
       else byChild.set(child.path, new Set([names]));
     }
   }
+  // Children held by the same parents share one union, so two parents with k shared children build it once.
+  const ids = new Map<ReadonlySet<string>, number>();
+  const unions = new Map<string, ReadonlySet<string>>();
   const siblings = new Map<string, ReadonlySet<string>>();
   for (const [path, sets] of byChild) {
     if (sets.size === 1) {
       siblings.set(path, sets.values().next().value as ReadonlySet<string>);
       continue;
     }
-    const union = new Set<string>();
-    for (const set of sets) for (const name of set) union.add(name);
+    const key = [...sets].map((set) => {
+      let id = ids.get(set);
+      if (id === undefined) ids.set(set, (id = ids.size));
+      return id;
+    }).sort((x, y) => x - y).join(',');
+    let union = unions.get(key);
+    if (!union) {
+      const built = new Set<string>();
+      for (const set of sets) for (const name of set) built.add(name);
+      unions.set(key, (union = built));
+    }
     siblings.set(path, union);
   }
   return siblings;

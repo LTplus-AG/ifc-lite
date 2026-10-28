@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildHierarchy } from './hierarchy-builder.js';
 import { nodeName } from './names.js';
-import { IDENTITY, worldMatrix, worldZ } from './placement.js';
+import { localZ } from './placement.js';
 import type { ComposedNode } from './types.js';
 
 const node = (attributes: Record<string, unknown>, inherits?: Record<string, string>): ComposedNode =>
@@ -32,19 +32,18 @@ describe('nodeName: an occurrence keeps its own name over its type\'s', () => {
   });
 });
 
-describe('worldMatrix', () => {
-  it('chains the translations down the spatial path', () => {
-    const at = (z: number) => node({ 'usd::xformop': { transform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, z, 1]] } });
-    assert.equal(worldZ(worldMatrix(at(1.5), worldMatrix(at(2), IDENTITY))), 3.5);
-    assert.equal(worldZ(worldMatrix(node({}), IDENTITY)), 0);
+describe('localZ', () => {
+  const at = (z: number) => node({ 'usd::xformop': { transform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, z, 1]] } });
+  it('reads the node\'s own translation Z, and 0 with no transform', () => {
+    assert.equal(localZ(at(1.5)), 1.5);
+    assert.equal(localZ(node({})), 0);
   });
   it('a corrupt transform reads as unknown, not as the origin', () => {
-    const corrupt = node({ 'usd::xformop': { transform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, Infinity, 1]] } });
-    assert.ok(!Number.isFinite(worldZ(worldMatrix(corrupt, IDENTITY))));
+    assert.equal(localZ(at(Infinity)), undefined);
   });
 });
 
-describe('a storey with no Elevation takes the Z of its placement chain', () => {
+describe('a storey with no Elevation takes the Z of its own placement, as the STEP builder does', () => {
   const at = (z: number) => ({ 'usd::xformop': { transform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, z, 1]] } });
   const cls = (code: string) => ({ 'bsi::ifc::class': { code, uri: `urn:${code}` } });
   const build = (storeyAttrs: Record<string, unknown>) => {
@@ -60,8 +59,8 @@ describe('a storey with no Elevation takes the Z of its placement chain', () => 
     return buildHierarchy(composed, pathToId);
   };
 
-  it('chains the parent\'s Z with its own', () => {
-    assert.equal(build(at(2.5)).storeyElevations.get(3), 3.5);
+  it('reads its own placement, parent-relative: the building\'s Z is not added', () => {
+    assert.equal(build(at(2.5)).storeyElevations.get(3), 2.5);
   });
 
   it('an Elevation the file states wins over the placement', () => {

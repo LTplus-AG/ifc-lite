@@ -9,9 +9,9 @@
 
 mod affinity_chunks;
 mod batch;
-pub(in crate::api) mod batch_host;
 mod partitioned_batch;
 mod batch_from_source;
+pub(in crate::api) mod batch_host;
 mod batch_partition;
 mod instancing;
 pub(crate) mod prepass;

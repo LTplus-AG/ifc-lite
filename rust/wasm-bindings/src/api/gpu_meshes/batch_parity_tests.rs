@@ -288,8 +288,8 @@ fn observe_fixture(
         assert_refusal_fixture(&content, &native, &browser, &warm, &split, &reload);
     }
     observations.insert(name, serde_json::json!({
-        "bindings": drifts.iter().map(|d| evidence::binding(&native_meshes, &browser_meshes, d)).collect::<Vec<_>>(),
-        "selectedMeshEvidence": evidence::selected(&native_meshes, &browser_meshes, &drifts),
+        "bindings": drifts.iter().map(|d| evidence::binding(&native_meshes, &browser.meshes().collect::<Vec<_>>(), d)).collect::<Vec<_>>(),
+        "selectedMeshEvidence": evidence::selected(&native_meshes, &browser.meshes().collect::<Vec<_>>(), &drifts),
         "nativeJobs": native_jobs, "browserJobs": browser_jobs,
         "nativeClasses": native.meshes.iter().map(|m| (m.express_id, m.geometry_class)).collect::<Vec<_>>(),
         "browserDiscoveryTypes": browser.prepass.simple_jobs.iter().chain(&browser.prepass.complex_jobs)

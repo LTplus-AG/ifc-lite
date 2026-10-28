@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! C40-R1 (#7782): raw evidence for drift attribution, never a comparator.
+//! C4-0 (#7782): raw attribution evidence and value-bound exception payloads.
 //! Preserve the in-memory fields serde skips and exact floating-point bits.
 //! Only elements with an observed mesh/colour/identity/job drift are retained.
 
@@ -17,7 +17,13 @@ pub(super) fn selected(native: &[&MeshData], browser: &[&MeshData], drifts: &[Dr
         .filter(|d| {
             matches!(
                 d.axis,
-                Axis::MeshHash | Axis::Color | Axis::ElementSet | Axis::JobSet
+                Axis::MeshHash
+                    | Axis::Color
+                    | Axis::ElementSet
+                    | Axis::JobSet
+                    | Axis::Placement
+                    | Axis::Layers
+                    | Axis::TypeGeometry
             )
         })
         .filter_map(|d| d.element)
@@ -52,6 +58,11 @@ pub(super) fn record(m: &MeshData) -> Value {
             "uvs": m.uvs.as_ref().map(|v| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>()),
             "localBounds": m.local_bounds.map(|v| v.map(f32::to_bits)),
             "localToWorld": m.local_to_world.map(|v| v.map(f64::to_bits)),
+            "instance": m.instance.as_ref().map(|i| json!({
+                "transform": i.transform.map(f64::to_bits),
+                "localTransform": i.local_transform.map(|v| v.map(f64::to_bits)),
+                "canonicalTransform": i.canonical_transform.map(|v| v.map(f64::to_bits)),
+            })),
         },
     })
 }

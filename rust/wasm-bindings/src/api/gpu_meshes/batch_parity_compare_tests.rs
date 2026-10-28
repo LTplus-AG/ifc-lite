@@ -24,8 +24,9 @@
 //! * Type-product geometry: native plans `TypeGeometryMode::SuppressInstanced`,
 //!   the viewer `EmitTagged`. A browser class-2 mesh is removed before the
 //!   other axes run only when its element is a type-product job on the wire
-//!   AND native drew nothing for it; any other class-2 mesh is a
-//!   `TypeGeometry` drift and stays in the comparison.
+//!   AND native drew nothing for it. Its FULL payload still produces a
+//!   value-bound `TypeGeometry` exception; unexpected class-2 meshes stay in
+//!   every comparison. The library mode cannot hide payload changes.
 //!
 //! Not compared, with the reason: `global_id` / `name` / `properties` (the viewer takes element metadata from the parser worker,
 //! `metadata: None` in `produce_batch`); finishes (native `MeshData` carries
@@ -319,6 +320,12 @@ pub(super) fn apply_type_geometry_rule<'a>(
                 return true;
             }
             let sanctioned = type_jobs.contains(&m.express_id) && !native_ids.contains(&m.express_id);
+            if sanctioned && reported.insert(m.express_id) {
+                drifts.push(Drift {
+                    fixture, axis: Axis::TypeGeometry, element: Some(m.express_id),
+                    detail: "EmitTagged emits an instantiated type-library map; native SuppressInstanced omits it".into(),
+                });
+            }
             if !sanctioned && reported.insert(m.express_id) {
                 drifts.push(Drift {
                     fixture,
@@ -584,6 +591,10 @@ pub(super) fn compare_meshes(
     for id in ids {
         let n = native.get(&id).map(Vec::as_slice).unwrap_or_default();
         let b = browser.get(&id).map(Vec::as_slice).unwrap_or_default();
+        // These captured row-major transforms describe the original world
+        // placement, not the baked vertex frame (processor/site_local.rs).
+        // Compare their presence and bits even on the world-normalized path;
+        // native intentionally drops them after a rotating site bake today.
         let placements = |meshes: &[&MeshData]| {
             let mut values: Vec<_> = meshes
                 .iter()
@@ -1119,7 +1130,10 @@ mod tests {
         assert_eq!(kept.iter().map(|m| m.express_id).collect::<Vec<_>>(), [31]);
         assert_eq!(
             drifts.iter().map(Drift::key).collect::<Vec<_>>(),
-            [("t", Axis::TypeGeometry, Some(31))]
+            [
+                ("t", Axis::TypeGeometry, Some(100)),
+                ("t", Axis::TypeGeometry, Some(31))
+            ]
         );
         // Native drawing the type itself withdraws the sanction.
         let native = tri(100, 1);

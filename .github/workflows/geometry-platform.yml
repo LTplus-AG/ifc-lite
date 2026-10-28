@@ -265,6 +265,7 @@ jobs:
             --features retained-browser -- retained_browser --nocapture | tee "$RUNNER_TEMP/retained-browser.log"
           grep -F "sdk witness executed: m8 real browser Worker parity" "$RUNNER_TEMP/retained-browser.log"
           grep -F "sdk witness executed: retained refusal browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "sdk witness executed: retained consumed-host browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
       - name: M3 native and browser opening parity
         id: m3-browser
         continue-on-error: true

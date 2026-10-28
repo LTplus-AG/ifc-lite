@@ -41,3 +41,24 @@ async fn retained_browser_refusals_preserve_worker_and_release_objects() {
     assert_eq!(reused.parts[0].world_from_object, control.parts[0].world_from_object);
     web_sys::console::log_1(&"sdk witness executed: retained refusal browser lifecycle".into());
 }
+
+#[wasm_bindgen_test(async)]
+async fn retained_browser_consumed_hosts_preserve_settled_worker() {
+    let text = std::str::from_utf8(CASCADE).unwrap().replace("#24,#333", "#24,#26");
+    let mut native = BrowserWorker::new().unwrap();
+    native.qualify().await.unwrap();
+    let incarnation = native.incarnation();
+    let mut worker = Some(native);
+    let mut rows = Vec::new();
+    let summary = run_model_with_worker(SourceBundle::new(text.into_bytes()),
+        &ModelOptions { ids: Some((100..105).collect()), max_restarts: 0, ..Default::default() },
+        &mut worker, || panic!("settled empty-result refusal must not replace the Worker"),
+        |o, _| rows.push(o)).await.unwrap();
+    assert_eq!((summary.candidates, summary.published, summary.restarts), (5,1,0));
+    assert_eq!(summary.by_code.get("empty_result"), Some(&4));
+    assert!(matches!(rows.last(), Some(ProductOutcome::Published(s)) if s.product_id == 104));
+    let worker = worker.as_ref().unwrap();
+    assert_eq!(worker.incarnation(), incarnation);
+    assert_eq!(JsFuture::from(worker.owner.driver.live_object_count()).await.unwrap().as_f64(), Some(0.));
+    web_sys::console::log_1(&"sdk witness executed: retained consumed-host browser lifecycle".into());
+}

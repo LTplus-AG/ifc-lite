@@ -75,3 +75,30 @@ fn issue_7955_real_sdk_refusals_preserve_worker_and_release_objects() {
     assert_eq!(reused.parts[0].world_from_object, fresh.parts[0].world_from_object);
     println!("sdk witness executed: retained refusal lifecycle and live objects");
 }
+
+#[test]
+fn issue_7955_real_sdk_consumed_hosts_do_not_retire_after_acceptance() {
+    let Some(path) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(), "real SMLib worker required");
+        eprintln!("SKIP consumed-host lifecycle: set IFCLITE_SMLIB_WORKER; not SDK evidence");
+        return;
+    };
+    // Identical host and cutter: real Difference certifies an empty host. The
+    // controller must refuse atomically after accepting the complete packet.
+    let text = CASCADE.replace("#24,#333", "#24,#26");
+    let native = NativeWorker::spawn(&path).unwrap();
+    let incarnation = native.incarnation();
+    let mut worker = Some(native);
+    let mut rows = Vec::new();
+    let summary = block_on(run_model_with_worker(SourceBundle::new(text.into_bytes()),
+        &ModelOptions { ids: Some((100..105).collect()), max_restarts: 0, ..Default::default() },
+        &mut worker, || panic!("settled empty-result refusal must not retire the worker"),
+        |o, _| rows.push(o))).unwrap();
+    assert_eq!((summary.candidates, summary.published, summary.restarts), (5,1,0));
+    assert_eq!(summary.by_code.get("empty_result"), Some(&4));
+    published(&rows);
+    let worker = worker.as_mut().unwrap();
+    assert_eq!(worker.incarnation(), incarnation);
+    assert_eq!(worker.0.retained_live_object_count().unwrap(), 0);
+    println!("sdk witness executed: retained consumed-host lifecycle and live objects");
+}

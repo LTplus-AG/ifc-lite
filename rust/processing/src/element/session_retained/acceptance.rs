@@ -116,7 +116,10 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .and_then(|()| self.validate(decoder, router).map(|_| ()));
         if let Err(reason) = result {
             self.failed = true;
-            pending.cancellation.cancel();
+            // The complete packet is authenticated and ACCEPTED. A typed
+            // logical/source stop (including a consumed host) has no numerical
+            // operation left to cancel; drop its receipts on the healthy peer.
+            if !reason.controller_cancelled() { pending.cancellation.cancel(); }
             return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
         }
         // Never overwrite a cancellation which raced the synchronous consume.

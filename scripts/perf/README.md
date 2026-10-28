@@ -5189,6 +5189,21 @@ above the timer resolution before a wall-time cohort can say anything; on small
 models the instruction comparison is the meaningful measurement. Numbers and
 the cohort report live in the PR and its evidence, not here.
 
+### C2 remaining structural consumers (#7781)
+
+The Reference-only opening guard, routing-key identity read and RTC Items
+enumeration now share crate-private structural entries in `representation`.
+The native Callgrind comparison on Haus, duplex and ISSUE_129 meets the unchanged
+per-phase instruction ceiling, with identical mesh counts, serialized output,
+diagnostics and ordered mesh fingerprints. This establishes instruction and
+output preservation; wall-clock and browser performance were not measured.
+The source pins and comparisons are recorded in `c2-r1-build-r1.json`.
+
+Lesson: shared structural access must retain the caller's decoding boundary.
+Opening admission checks the list bound before decoding members, routing can
+use its signature memo from an ID alone, and RTC probes raw points before
+decoding an item and stops at the first hit.
+
 ### C2 bounded representation admission instruction repair (#7781)
 
 Local Callgrind profiles attributed the admission lane's overhead to repeated

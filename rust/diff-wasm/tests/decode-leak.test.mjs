@@ -391,3 +391,35 @@ test('public handles release resident models on dispose and Symbol.dispose, incl
   }
   assert.equal(disposed.length, 256, 'disposed handles stay reachable during the invariant');
 });
+
+// #8266: retain the disposed handles themselves so a stale lazy view cannot
+// be hidden by collection of the whole owner. No result or source row survives.
+test('disposed public handles release their cached stripped rows and opaque refs (#8266)', async () => {
+  const { setImmediate: turn } = await import('node:timers/promises');
+  const api = await import('../../../packages/diff/dist/index.js');
+  api.initDiffSync({ module: readFileSync(new URL('ifc-lite-diff_bg.wasm', bundle)) });
+  assert.equal(typeof globalThis.gc, 'function', 'run the leak suite with --expose-gc');
+  function prepare() {
+    const ref = { opaque: Symbol('owned ref') };
+    const rows = [{ key: 'site', ifcType: 'IfcSite', dataHash: 'd', geometryHash: 'p:0', ref }];
+    const left = api.prepareDiffModel(rows), right = api.prepareDiffModel(rows);
+    const result = left.compare(right, { stripPlacementGeometry: true });
+    assert.equal(result.entries[0].base.geometryHash, undefined);
+    assert.equal(result.entries[0].base.ref, ref);
+    return { left, right, ref: new WeakRef(ref), view: new WeakRef(result.entries[0].base) };
+  }
+  const owned = prepare();
+  const collect = async () => { await turn(); globalThis.gc(); await turn(); };
+  try {
+    await collect();
+    assert.ok(owned.ref.deref(), 'opaque ref survives while owned');
+    assert.ok(owned.view.deref(), 'lazy view survives while owned');
+  } finally { owned.left.dispose(); owned.right[Symbol.dispose](); }
+  for (let attempt = 0; attempt < 64; attempt++) {
+    await collect();
+    if (owned.ref.deref() === undefined && owned.view.deref() === undefined) break;
+  }
+  assert.equal(owned.ref.deref(), undefined, 'disposed handles release the opaque ref');
+  assert.equal(owned.view.deref(), undefined, 'disposed handles release the lazy stripped view');
+  assert.throws(() => owned.left.compare(owned.right), /disposed/);
+});

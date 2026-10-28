@@ -12,9 +12,10 @@ test.skipIf(!existsSync(binary))('retained snapshots preserve parity, ref identi
   const { prepareDiffModel } = await import('./internal.js');
   await initDiff();
   const ref = { opaque: () => 42 };
+  const sourceMin: [number, number, number] = [0, 0, 0];
   const base: EntityFingerprint<typeof ref>[] = [{ key: 'old', ifcType: 'IfcWall',
     dataHash: 'a', components: { 'attr:core': 'a' }, ref,
-    aabb: { min: [0, 0, 0], max: [1, 1, 1] } }];
+    aabb: { min: sourceMin, max: [1, 1, 1] } }];
   const head: typeof base = [{ ...base[0], key: 'new', components: { 'attr:core': 'a' },
     aabb: { min: [0, 0, 0], max: [1, 1, 1] } }];
   const left = prepareDiffModel(base.values());
@@ -34,7 +35,7 @@ test.skipIf(!existsSync(binary))('retained snapshots preserve parity, ref identi
       const before = left.compare(right);
       base[0].dataHash = 'edited';
       base[0].components!['attr:core'] = 'edited';
-      base[0].aabb!.min[0] = 100;
+      sourceMin[0] = 100;
       expect(left.compare(right)).toEqual(before);
       const fresh = prepareDiffModel(base);
       try { expect(fresh.compare(right)).toEqual(diffModels(base, head)); }

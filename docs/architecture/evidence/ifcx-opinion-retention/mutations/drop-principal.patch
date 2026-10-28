@@ -1,0 +1,12 @@
+diff --git a/packages/ifcx/src/opinions.ts b/packages/ifcx/src/opinions.ts
+index 9b55891900..644f08cf60 100644
+--- a/packages/ifcx/src/opinions.ts
++++ b/packages/ifcx/src/opinions.ts
+@@ -60,6 +60,7 @@ export function recordLayerOpinions(
+   const principal = getProvenance(layer.file)?.author?.principal;
+   for (const [attribute, value] of layerValues) {
+     const opinion: AttributeOpinion = { layerId: layer.id, layerName: layer.name, value };
++    if (principal) opinion.principal = principal;
+     const list = into.get(attribute);
+     if (list) list.push(opinion);
+     else into.set(attribute, [opinion]);

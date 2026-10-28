@@ -1,0 +1,15 @@
+diff --git a/packages/ifcx/src/opinions.ts b/packages/ifcx/src/opinions.ts
+index 98aa2c8730..644f08cf60 100644
+--- a/packages/ifcx/src/opinions.ts
++++ b/packages/ifcx/src/opinions.ts
+@@ -82,8 +82,8 @@ export function findDivergentAttributes(
+   for (const [path, byAttribute] of opinionsByPath) {
+     for (const [attribute, opinions] of byAttribute) {
+       if (opinions.length < 2) continue;
+-      const first = JSON.stringify(opinions[0].value ?? null);
+-      const differs = opinions.some((o) => JSON.stringify(o.value ?? null) !== first);
++      const first = canonicalStringify(opinions[0].value ?? null);
++      const differs = opinions.some((o) => canonicalStringify(o.value ?? null) !== first);
+       if (differs) divergent.push({ path, attribute, opinions: [...opinions] });
+     }
+   }

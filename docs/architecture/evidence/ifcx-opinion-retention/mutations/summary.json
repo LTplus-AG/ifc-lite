@@ -1,0 +1,128 @@
+{
+  "record-values": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/federated-composition.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "record-skip-null": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/federated-composition.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "default-on": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/federated-composition.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "order-strongest-first": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/opinions.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "drop-principal": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/opinions.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "compare-key-order": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/opinions.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "two-opinion-blind": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/opinions.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "overlay-drops-option": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/index.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "parse-drops-result": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
+    "base": "863501ff76ab1987c59f12611553cbe1572ddcd3",
+    "head": "e9529d65827e907c27163d6a227382c6c089f0d4",
+    "production": [
+      "packages/ifcx/src/index.ts"
+    ],
+    "tests": [
+      "packages/ifcx/src/opinions.test.ts"
+    ],
+    "restoration": "verified"
+  }
+}

@@ -63,7 +63,9 @@ for (const [basePath, headPath] of pairs) {
           if (entry.base) assert.ok(rows[0].includes(entry.base));
           if (entry.head) assert.ok(rows[1].includes(entry.head));
         }
-        if (basePath === headPath) assert.equal(actual.counts.unchanged, rows[0].length);
+        if (basePath === headPath) {
+          assert.equal(actual.counts.unchanged, rows[0].filter(row => !options.excludeTypes?.includes(row.ifcType)).length);
+        }
         console.log(JSON.stringify({ base: basePath, head: headPath, options, entities: rows.map(row => row.length), counts: actual.counts, parity: 'exact' }));
       }
     } finally { head.free(); }

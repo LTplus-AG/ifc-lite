@@ -226,5 +226,10 @@ describe('resolveAttribute (§12.5 golden table)', () => {
   it('compares values canonically', () => {
     expect(canonicalValueKey({ b: [1, { d: 2, c: 3 }], a: undefined })).toBe(canonicalValueKey({ a: null, b: [1, { c: 3, d: 2 }] }));
     expect(canonicalValueKey('1')).not.toBe(canonicalValueKey(1));
+    expect(canonicalValueKey(Number.NaN)).not.toBe(canonicalValueKey(null));
+    expect(canonicalValueKey(Infinity)).not.toBe(canonicalValueKey(-Infinity));
+    expect(canonicalValueKey([Number.NaN])).not.toBe(canonicalValueKey([null]));
+    expect(canonicalValueKey(1n)).not.toBe(canonicalValueKey(1));
+    expect(resolveAttribute({ attributeKey: EXTERNAL }, [op('a', ARCH, null), op('b', ARCH, Number.NaN)]).state).toBe('divergent');
   });
 });

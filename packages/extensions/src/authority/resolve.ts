@@ -64,9 +64,17 @@ export interface ResolveOptions {
   requireSignature?: boolean;
 }
 
-/** Canonical JSON (sorted object keys); `undefined` reads as `null`. */
+/**
+ * Canonical JSON (sorted object keys); `undefined` reads as `null`. Values
+ * JSON cannot represent (non-finite numbers, bigint, functions, symbols)
+ * get tagged keys, so `NaN` never compares equal to a `null` removal.
+ */
 export function canonicalValueKey(value: unknown): string {
   if (value === undefined || value === null) return 'null';
+  if (typeof value === 'number' && !Number.isFinite(value)) return `\u0000number:${String(value)}`;
+  if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol') {
+    return `\u0000${typeof value}:${String(value)}`;
+  }
   if (Array.isArray(value)) return `[${value.map(canonicalValueKey).join(',')}]`;
   if (typeof value === 'object') {
     const entries = Object.keys(value as Record<string, unknown>)
@@ -74,7 +82,7 @@ export function canonicalValueKey(value: unknown): string {
       .map((key) => `${JSON.stringify(key)}:${canonicalValueKey((value as Record<string, unknown>)[key])}`);
     return `{${entries.join(',')}}`;
   }
-  return JSON.stringify(value) ?? 'null';
+  return JSON.stringify(value);
 }
 
 function distinctValues(opinions: readonly Opinion[]): number {

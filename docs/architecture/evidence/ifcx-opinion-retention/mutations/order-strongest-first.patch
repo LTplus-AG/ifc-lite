@@ -1,10 +1,10 @@
-diff --git a/packages/ifcx/src/opinions.ts b/packages/ifcx/src/opinions.ts
-index dff170c39c..644f08cf60 100644
---- a/packages/ifcx/src/opinions.ts
-+++ b/packages/ifcx/src/opinions.ts
-@@ -62,7 +62,7 @@ export function recordLayerOpinions(
+diff --git b/packages/ifcx/src/opinions.ts a/packages/ifcx/src/opinions.ts
+index d2869801a1..bf13f48d95 100644
+--- b/packages/ifcx/src/opinions.ts
++++ a/packages/ifcx/src/opinions.ts
+@@ -69,7 +69,7 @@ export function recordLayerOpinions(
      const opinion: AttributeOpinion = { layerId: layer.id, layerName: layer.name, value };
-     if (principal) opinion.principal = principal;
+     if (principal !== undefined) opinion.principal = principal;
      const list = into.get(attribute);
 -    if (list) list.unshift(opinion);
 +    if (list) list.push(opinion);

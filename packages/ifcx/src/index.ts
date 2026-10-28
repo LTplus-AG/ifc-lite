@@ -37,6 +37,7 @@ import {
   composeFederated,
   type FederatedCompositionResult,
 } from './federated-composition.js';
+import type { AttributeOpinions } from './opinions.js';
 
 // Re-exported so the IFCX version constant can be imported from the package
 // that owns the format. Defined in @ifc-lite/data for dependency reasons —
@@ -114,6 +115,12 @@ export {
   type FederatedCompositionResult,
   type ComposedNodeWithSources,
 } from './federated-composition.js';
+export {
+  findDivergentAttributes,
+  type AttributeOpinion,
+  type AttributeOpinions,
+  type DivergentAttribute,
+} from './opinions.js';
 
 // IFCX writer for export
 export {
@@ -395,6 +402,11 @@ export interface FederatedFileInput {
 export interface FederatedParseOptions extends IfcxParseOptions {
   /** Maximum inheritance depth (default: 10) */
   maxInheritDepth?: number;
+  /**
+   * Keep every layer's own value per attribute, not only the winner, and
+   * return them as `attributeOpinions`. Off by default.
+   */
+  retainOpinions?: boolean;
 }
 
 /**
@@ -414,6 +426,13 @@ export interface FederatedIfcxParseResult extends IfcxParseResult {
   };
   /** Map from path to layer IDs that define it */
   pathToLayers: Map<string, string[]>;
+  /**
+   * Path → attribute key → every layer's own value, weakest first,
+   * strongest last. Present only with `retainOpinions`; paths are those of
+   * the composed result (tombstoned nodes are gone). Feed it to
+   * `findDivergentAttributes` to list where layers disagree.
+   */
+  attributeOpinions?: Map<string, AttributeOpinions>;
 }
 
 /**
@@ -494,6 +513,7 @@ export async function parseFederatedIfcx(
       options.onProgress?.({ phase: `compose-${phase}`, percent });
     },
     maxInheritDepth: options.maxInheritDepth,
+    retainOpinions: options.retainOpinions,
   });
 
   options.onProgress?.({ phase: 'compose', percent: 100 });
@@ -559,9 +579,15 @@ function finalizeFederatedResult(
 
   // Build path-to-layers map
   const pathToLayers = new Map<string, string[]>();
+  let attributeOpinions: Map<string, AttributeOpinions> | undefined;
   for (const [path, node] of compositionResult.composed) {
     pathToLayers.set(path, Array.from(node.contributingLayers));
+    if (node.opinions) {
+      attributeOpinions ??= new Map();
+      attributeOpinions.set(path, node.opinions);
+    }
   }
+  if (options.retainOpinions) attributeOpinions ??= new Map();
 
   const parseTime = performance.now() - startTime;
   // @raw-entity-enumeration-ok federated parser construction reports the count of freshly composed IFCX source rows before any live mutation view exists
@@ -592,6 +618,7 @@ function finalizeFederatedResult(
       crossLayerReferences: compositionResult.stats.crossLayerReferences,
     },
     pathToLayers,
+    ...(attributeOpinions ? { attributeOpinions } : {}),
   };
 }
 
@@ -642,6 +669,7 @@ export async function addIfcxOverlay(
         options.onProgress?.({ phase: `compose-${phase}`, percent });
       },
       maxInheritDepth: options.maxInheritDepth,
+      retainOpinions: options.retainOpinions,
     });
     options.onProgress?.({ phase: 'compose', percent: 100 });
 

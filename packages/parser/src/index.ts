@@ -111,7 +111,7 @@ export {
   type IfcxFile,
   type IfcxNode,
   type ComposedNode,
-  type ComposedNodeWithSources,
+  type ComposedNodeWithSources, findDivergentAttributes, type AttributeOpinion, type AttributeOpinions, type DivergentAttribute,
   type IfcxLayer,
   type LayerStack,
   type PathIndex,

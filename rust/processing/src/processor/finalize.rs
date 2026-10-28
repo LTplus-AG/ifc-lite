@@ -245,7 +245,7 @@ fn extract_georeferencing(
     });
     #[cfg(target_arch = "wasm32")]
     let georeferencing = {
-        let _ = item_dedup_cache;
+        let _ = (&decoder, &item_dedup_cache);
         extract_georeferencing()
     };
 

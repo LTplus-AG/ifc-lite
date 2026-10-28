@@ -138,9 +138,8 @@ export async function measure({ root, fixture, options, retained, implementation
       });
       for (let repeat = 0; repeat < retained; repeat++) {
         const start = performance.now();
-        let result = facade.diffModels(rows[0], rows[1], options[optionIndex]);
+        facade.diffModels(rows[0], rows[1], options[optionIndex]);
         statelessTimes.push({ repeat, option: optionIndex, totalMs: performance.now() - start });
-        result = undefined;
       }
     }
     snapshot('beforeRelease');

@@ -48,7 +48,8 @@ function facetName(facet: IDSFacet): string | undefined {
   }
 }
 
-type RuleAccumulator = { name?: string; shortDescription: string; longDescription?: string; seen: number; passed: number; failed: number };
+/** `perEntity`: how many requirements share this id; IDS ids need not be unique, so one row may count several checks per entity (#8204). */
+type RuleAccumulator = { name?: string; shortDescription: string; longDescription?: string; seen: number; passed: number; failed: number; perEntity: number };
 
 function rulesForCheck(report: ValidationReport, result: SpecificationResult): IdsReportRuleSummary[] {
   const sourceSpec = report.source.kind === 'ids'
@@ -57,17 +58,23 @@ function rulesForCheck(report: ValidationReport, result: SpecificationResult): I
   const unmatched = report.source.kind === 'ids' && isUnmatchedSpecification(result.applicableCount, result.error);
   const rules = new Map<string, RuleAccumulator>();
   for (const requirement of sourceSpec?.requirements ?? []) {
+    const known = rules.get(requirement.id);
+    if (known) { known.perEntity++; continue; }
     rules.set(requirement.id, {
       name: facetName(requirement.facet),
       shortDescription: requirement.id,
       longDescription: requirement.description,
-      seen: 0, passed: 0, failed: 0,
+      seen: 0, passed: 0, failed: 0, perEntity: 1,
     });
   }
   for (const entity of result.entityResults) {
+    const perEntity = new Map<string, number>();
     for (const check of entity.requirementResults) {
       const id = check.requirement.id;
-      const rule: RuleAccumulator = rules.get(id) ?? { shortDescription: id, seen: 0, passed: 0, failed: 0 };
+      const rule: RuleAccumulator = rules.get(id) ?? { shortDescription: id, seen: 0, passed: 0, failed: 0, perEntity: 1 };
+      const count = (perEntity.get(id) ?? 0) + 1;
+      perEntity.set(id, count);
+      rule.perEntity = Math.max(rule.perEntity, count);
       rule.shortDescription = check.requirement.label || id;
       if (!rule.longDescription) rule.longDescription = check.checkedDescription || undefined;
       rule.seen++;
@@ -77,14 +84,15 @@ function rulesForCheck(report: ValidationReport, result: SpecificationResult): I
     }
   }
   return [...rules].map(([id, rule]) => {
-    const complete = result.entityResults.length === result.applicableCount && rule.seen === result.applicableCount;
+    const expected = result.applicableCount * rule.perEntity;
+    const complete = result.entityResults.length === result.applicableCount && rule.seen === expected;
     const measured = rule.passed + rule.failed;
     return {
       id,
       ...(rule.name ? { name: rule.name } : {}),
       shortDescription: rule.shortDescription,
       longDescription: rule.longDescription,
-      checked: result.applicableCount,
+      checked: expected,
       passed: complete ? rule.passed : null,
       failed: complete ? rule.failed : null,
       passRate: complete ? (unmatched ? 0 : boundedPassRate(rule.passed, measured)) : null,

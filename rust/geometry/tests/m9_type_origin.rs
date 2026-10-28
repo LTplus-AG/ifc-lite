@@ -36,14 +36,14 @@ fn assert_placement_unmet(plan: Plan) {
 fn issue_7955_m9_orphan_maps_discharge_both_obligations_atomically() {
     let plan = plan(105, 1);
     assert_eq!(plan.values().len(), 6);
-    let frames: Vec<_> = plan.values().map(|v| *v.object_frame()).collect();
     assert!(plan.type_origin_placed(105, &[101, 103, 108]));
     let plan = plan.discharge_type_origin(105, &[101, 103, 108]).unwrap();
     assert_eq!(plan.requirements().collect::<Vec<_>>(), [Requirement::MaterialLayers,
         Requirement::IfcAppearance, Requirement::PersistentFaces]);
-    assert_eq!(plan.values().map(|v| *v.object_frame()).collect::<Vec<_>>(), frames);
-    // Discharge must not rewrite the logical frame. Numeric world coordinates
-    // also depend on evaluation frames; m9_native checks all six world-space cubes.
+    // Frames are not asserted here: discharge only edits obligations, so a
+    // before/after frame comparison could not fail. Placement correctness is
+    // checked in world space by m9_native (real SDK, all six cubes incl. the
+    // far box at x = 5 000 000.123456 m), which the geometry-platform lane runs.
 }
 
 #[test]

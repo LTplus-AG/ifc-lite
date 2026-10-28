@@ -137,7 +137,7 @@ fn compare(
                 .exact_only_type_products
                 .push(json!({"model":model,"id":id,"scope":"unexpected exact-only type product"}));
             report.universe_mismatch.push(format!("{model}:{id}: exact type mesh omitted from canonical candidates"));
-            report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tout of M1 scope\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
+            report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tunexpected exact-only type product\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
             report.rows.last_mut().unwrap().push_str("\t\t\t\t\t");
         } else if !candidates.contains(&id) {
             report.universe_mismatch.push(format!(

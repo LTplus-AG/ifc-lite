@@ -53,7 +53,10 @@ for (const [basePath, headPath] of pairs) {
         const publicResult = publicDiff.diffModels(rows[0], rows[1], options);
         assert.deepEqual(publicResult, expected, `${basePath}: public binary facade`);
         comparisons++;
-        const actual = restoreDiffReferences(base.compare(head, options), rows[0], rows[1]);
+        const rawOptions = { ...options,
+          ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
+        };
+        const actual = restoreDiffReferences(base.compare(head, rawOptions), rows[0], rows[1]);
         assert.deepEqual(actual, expected, `${basePath}: ${JSON.stringify(options)}`);
         for (const entry of actual.entries) {
           assert.equal(actual.byKey.get(entry.key), entry);

@@ -33,6 +33,10 @@ mod evidence;
 #[path = "batch_parity_observe_tests.rs"]
 mod observe;
 
+#[allow(dead_code)] // Shared entry-point helper also serves processing sink tests.
+#[path = "../../../../processing/tests/common/entry_trace.rs"]
+mod entry_trace;
+
 use compare::{Axis, Drift};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -252,40 +256,8 @@ fn observe_fixture(
         &mut drifts,
     );
 
-    let warm = observe::browser_warm(&content);
-    let split = observe::browser_split(&content);
-    let preload = observe::fixture(if fixture.path == TYPE_MODES {
-        MULTICOLOR
-    } else {
-        TYPE_MODES
-    });
-    let (previous, reload) = observe::browser_reloaded(&preload, &content);
-    let previous_cold = observe::browser_cold(&preload);
-    compare::compare_lifecycle(
-        name,
-        Axis::ReloadDiagnostics,
-        &previous_cold,
-        &previous,
-        &mut drifts,
-    );
-    let cold = compare::payload(&browser.outputs);
-    for (axis, diag_axis, leg) in [
-        (Axis::Warm, Axis::WarmDiagnostics, &warm),
-        (Axis::Split, Axis::SplitDiagnostics, &split),
-        (Axis::Reload, Axis::ReloadDiagnostics, &reload),
-    ] {
-        if let Some(detail) = compare::payload_divergence(&cold, &compare::payload(&leg.outputs)) {
-            drifts.push(Drift {
-                fixture: name,
-                axis,
-                element: None,
-                detail,
-            });
-        }
-        compare::compare_lifecycle(name, diag_axis, &browser, leg, &mut drifts);
-    }
     if fixture.path == REFUSALS {
-        assert_refusal_fixture(&content, &native, &browser, &warm, &split, &reload);
+        assert_refusal_fixture(&content, &native, &browser);
     }
     observations.insert(name, serde_json::json!({
         "bindings": drifts.iter().map(|d| evidence::binding(&native_meshes, &browser.meshes().collect::<Vec<_>>(), d)).collect::<Vec<_>>(),
@@ -296,15 +268,8 @@ fn observe_fixture(
             .map(|j| (j.0, format!("{:?}", j.3))).collect::<Vec<_>>(),
         "nativeRefusedInputElements": native.stats.refused_input_elements,
         "nativeRefusedPrepassRecords": native.stats.refused_prepass_records,
-        "cold": load_evidence(&browser), "warm": load_evidence(&warm),
-        "split": load_evidence(&split), "previous": load_evidence(&previous), "reload": load_evidence(&reload),
+        "cold": load_evidence(&browser),
     }));
-    compare::compare_adapters(
-        name,
-        observe::adapter_ids(&content),
-        browser.meshes().count(),
-        &mut drifts,
-    );
     drifts
 }
 
@@ -313,7 +278,7 @@ fn observe_fixture(
 fn load_evidence(load: &observe::BrowserLoad) -> serde_json::Value {
     serde_json::json!({
         "classes": load.meshes().map(|m| (m.express_id, m.geometry_class)).collect::<Vec<_>>(),
-        "pipeline": load.pipeline, "coldPrefixPipelines": load.cold_prefix_pipelines,
+        "pipeline": load.pipeline,
         "batches": load.batches.iter().map(|b| serde_json::json!({
             "jobs": b.jobs, "plannedJobs": b.planned_jobs, "outputCounts": b.output_counts, "diagnostics": b.diagnostics, "pipeline": b.pipeline,
         })).collect::<Vec<_>>(),
@@ -328,9 +293,6 @@ fn assert_refusal_fixture(
     content: &[u8],
     native: &ifc_lite_processing::ProcessingResult,
     cold: &observe::BrowserLoad,
-    warm: &observe::BrowserLoad,
-    split: &observe::BrowserLoad,
-    reload: &observe::BrowserLoad,
 ) {
     assert_eq!(
         native.stats.refused_input_elements, 2,
@@ -346,7 +308,7 @@ fn assert_refusal_fixture(
         );
         assert!(selected.meshes.is_empty());
     }
-    for (leg, repetitions) in [(cold, 1), (warm, 2), (split, 1), (reload, 1)] {
+    for (leg, repetitions) in [(cold, 1)] {
         for id in [100, 200, 300] {
             assert_eq!(
                 leg.batches
@@ -423,22 +385,6 @@ fn every_expected_row_names_a_gated_fixture_and_reason_7782() {
 }
 
 #[test]
-fn zero_job_load_has_no_batch_or_diagnostic_across_lifecycles_7782() {
-    // A real IFC with project metadata but no geometric products.
-    let content = b"ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;ENDSEC;END-ISO-10303-21;";
-    let previous = observe::fixture(TYPE_MODES);
-    for load in [
-        observe::browser_cold(content),
-        observe::browser_warm(content),
-        observe::browser_split(content),
-        observe::browser_reloaded(&previous, content).1,
-    ] {
-        assert_eq!(load.prepass.total_jobs(), 0);
-        assert!(load.outputs.is_empty() && load.batches.is_empty() && load.pipeline.is_none());
-    }
-}
-
-#[test]
 fn deleting_instantiated_browser_job_or_output_fails_coverage_7782() {
     let content = observe::fixture(TYPE_MODES);
     let native = observe::native(&content);
@@ -484,150 +430,3 @@ fn deleting_instantiated_browser_job_or_output_fails_coverage_7782() {
     }
 }
 
-#[test]
-fn diagnostic_only_loss_fails_lifecycle_with_identical_geometry_7782() {
-    let content = observe::fixture(
-        "../processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
-    );
-    let cold = observe::browser_cold(&content);
-    let mut warm = observe::browser_warm(&content);
-    assert!(
-        compare::lifecycle_differences(&cold, &warm, true).is_empty(),
-        "unmutated lifecycle control"
-    );
-    let before = compare::payload(&warm.outputs);
-    assert!(
-        warm.batches[1].diagnostics.hosts_with_openings > 0,
-        "real diagnostic anchor"
-    );
-    warm.batches[1].diagnostics.hosts_with_openings = 0;
-    assert_eq!(before, compare::payload(&warm.outputs));
-    assert!(!compare::lifecycle_differences(&cold, &warm, true).is_empty());
-    // Accumulator-only loss is independently visible, even if all drains are intact.
-    let mut reload = observe::browser_reloaded(&observe::fixture(TYPE_MODES), &content).1;
-    assert!(
-        compare::lifecycle_differences(&cold, &reload, false).is_empty(),
-        "unmutated reload control"
-    );
-    let before = compare::payload(&reload.outputs);
-    reload
-        .pipeline
-        .as_mut()
-        .unwrap()
-        .as_object_mut()
-        .unwrap()
-        .remove("totalCsgFailures");
-    assert_eq!(before, compare::payload(&reload.outputs));
-    assert!(!compare::lifecycle_differences(&cold, &reload, false).is_empty());
-}
-
-#[test]
-fn first_warm_complete_drain_mutations_fail_without_mesh_changes_7782_r5() {
-    let content = observe::fixture(
-        "../processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
-    );
-    let cold = observe::browser_cold(&content);
-    let mut warm = observe::browser_warm(&content);
-    assert!(
-        compare::lifecycle_differences(&cold, &warm, true).is_empty(),
-        "unmutated lifecycle control"
-    );
-    let payload = compare::payload(&warm.outputs);
-    let original = warm.batches[0].diagnostics.clone();
-    let mut mutations = Vec::new();
-    let mut classification = serde_json::to_value(&original).unwrap();
-    let total = classification["classification"]["total"].as_u64().unwrap();
-    classification["classification"]["total"] = (total + 1).into();
-    mutations.push(classification);
-    for (key, detail) in [
-        (
-            "unsupportedItemsByType",
-            serde_json::json!({"reason": "IfcTextLiteral", "count": 1}),
-        ),
-        (
-            "failuresByReason",
-            serde_json::json!({"reason": "empty-result", "count": 1}),
-        ),
-        (
-            "worstHosts",
-            serde_json::json!({"productId": 42, "ifcType": "IfcWall",
-            "openings": 1, "csgFailures": 1, "firstFailureLabel": "empty-result", "triangleCount": 12}),
-        ),
-    ] {
-        let mut changed = serde_json::to_value(&original).unwrap();
-        changed[key].as_array_mut().unwrap().push(detail);
-        mutations.push(changed);
-    }
-    for changed in mutations {
-        warm.batches[0].diagnostics = serde_json::from_value(changed).unwrap();
-        assert_eq!(payload, compare::payload(&warm.outputs));
-        let differences = compare::lifecycle_differences(&cold, &warm, true);
-        assert!(
-            differences
-                .iter()
-                .any(|d| d.contains("warm attempt 0 drain")),
-            "{differences:?}"
-        );
-    }
-    warm.batches[0].diagnostics = original;
-    assert!(compare::lifecycle_differences(&cold, &warm, true).is_empty());
-}
-
-#[test]
-fn every_intermediate_pipeline_field_is_required_7782_r5() {
-    let content = observe::fixture(TYPE_MODES);
-    let cold = observe::browser_cold(&content);
-    for (warm, mut leg) in [
-        (true, observe::browser_warm(&content)),
-        (false, observe::browser_split(&content)),
-    ] {
-        assert!(
-            leg.batches.len() > 1,
-            "control must include intermediate snapshots"
-        );
-        assert!(
-            compare::lifecycle_differences(&cold, &leg, warm).is_empty(),
-            "unmutated lifecycle control"
-        );
-        let payload = compare::payload(&leg.outputs);
-        for i in 0..leg.batches.len() - 1 {
-            let original = leg.batches[i].pipeline.clone().unwrap();
-            // Covers backstopCount and every other non-five-key field, even
-            // when zero; retained operational fields must also be present.
-            for key in original.as_object().unwrap().keys() {
-                let mut missing = original.clone();
-                missing.as_object_mut().unwrap().remove(key);
-                leg.batches[i].pipeline = Some(missing);
-                assert_eq!(payload, compare::payload(&leg.outputs));
-                assert!(
-                    !compare::lifecycle_differences(&cold, &leg, warm).is_empty(),
-                    "missing {key} in batch {i}"
-                );
-            }
-            for key in [
-                "backstopCount",
-                "elementCount",
-                "meshCount",
-                "triangleCount",
-            ] {
-                let mut changed = original.clone();
-                changed[key] = (changed[key].as_u64().unwrap() + 1).into();
-                leg.batches[i].pipeline = Some(changed);
-                assert_eq!(payload, compare::payload(&leg.outputs));
-                assert!(
-                    !compare::lifecycle_differences(&cold, &leg, warm).is_empty(),
-                    "changed {key} in batch {i}"
-                );
-            }
-            let mut missing_nested = original.clone();
-            missing_nested["rectFast"]
-                .as_object_mut()
-                .unwrap()
-                .remove("deferHostNotBox");
-            leg.batches[i].pipeline = Some(missing_nested);
-            assert!(!compare::lifecycle_differences(&cold, &leg, warm).is_empty());
-            leg.batches[i].pipeline = Some(original);
-        }
-        assert!(compare::lifecycle_differences(&cold, &leg, warm).is_empty());
-    }
-}

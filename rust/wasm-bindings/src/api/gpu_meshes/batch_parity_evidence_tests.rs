@@ -76,10 +76,8 @@ pub(super) fn binding(native: &[&MeshData], browser: &[&MeshData], drift: &Drift
             .iter()
             .filter(|m| drift.element.is_none_or(|id| m.express_id == id))
             .map(|m| {
-                let bytes = serde_json::to_vec(&record(m)).unwrap();
-                let hash = bytes.iter().fold(0xcbf29ce484222325u64, |hash, byte| {
-                    (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
-                });
+                let text = serde_json::to_string(&record(m)).unwrap();
+                let hash = super::entry_trace::fnv(&text);
                 format!("{hash:016x}")
             })
             .collect();

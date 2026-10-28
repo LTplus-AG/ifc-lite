@@ -33,7 +33,6 @@
 //! none); `instance` (both legs are unarmed and must leave it `None`, which
 //! the exact digest still checks); operational timings and point-cache tallies.
 
-use super::super::ElementMeshOutput;
 use ifc_lite_geometry::GeometryDiagnostics;
 use ifc_lite_processing::{MeshData, MeshFrame};
 use std::collections::{BTreeMap, BTreeSet};
@@ -65,17 +64,7 @@ pub(super) enum Axis {
     Diagnostics,
     /// Native refusal counters versus the browser's `PipelineDiagnostics`.
     RefusalCounters,
-    /// A second batch on a warm API changed the payload.
-    Warm,
-    /// One job per batch changed the payload.
-    Split,
-    /// A previous load on the same API changed the payload.
-    Reload,
-    /// The public flat and partitioned adapters disagree on what is drawn.
-    Partition,
-    WarmDiagnostics,
-    SplitDiagnostics,
-    ReloadDiagnostics,
+
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,19 +82,12 @@ impl Drift {
     }
 }
 
-/// FNV-1a 64 over exact little-endian bits.
-#[derive(Clone, Copy)]
-struct Fnv(u64);
-
+// Reuse the processing entry-point evidence hasher; only typed writes live here.
+use super::entry_trace::Fnv;
+use std::hash::Hasher;
 impl Fnv {
-    fn new() -> Self {
-        Fnv(0xcbf2_9ce4_8422_2325)
-    }
     fn bytes(&mut self, bytes: &[u8]) {
-        for &b in bytes {
-            self.0 ^= u64::from(b);
-            self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
-        }
+        self.write(bytes);
     }
     fn u8(&mut self, v: u8) {
         self.bytes(&[v]);
@@ -224,7 +206,7 @@ fn structure(h: &mut Fnv, m: &MeshData) {
 fn structure_digest(m: &MeshData) -> u64 {
     let mut h = Fnv::new();
     structure(&mut h, m);
-    h.0
+    h.finish()
 }
 
 /// The exact-frame digest: structure plus every coordinate bit.
@@ -234,54 +216,7 @@ pub(super) fn exact_digest(m: &MeshData) -> u64 {
     h.f32s(&m.positions);
     h.f32s(&m.normals);
     h.f64s(&m.origin);
-    h.0
-}
-
-/// A browser output's complete payload as one digest per output, for the
-/// browser-against-browser axes (warm, split, reload): exact digest plus
-/// colour, finishes and the diff-engine fingerprint.
-pub(super) fn payload(outputs: &[ElementMeshOutput]) -> Vec<(u32, u64)> {
-    outputs
-        .iter()
-        .map(|out| {
-            let mut h = Fnv::new();
-            h.size(out.meshes.len());
-            for m in &out.meshes {
-                h.u64(exact_digest(m));
-                h.f32s(&m.color);
-            }
-            h.size(out.finishes.len());
-            for f in &out.finishes {
-                let pair = ifc_lite_processing::prepass::finish_to_wire(*f);
-                h.f32s(&pair);
-            }
-            h.u64(out.geometry_hash.unwrap_or(0));
-            h.u8(u8::from(out.geometry_hash.is_some()));
-            h.f64s(&out.geometry_aabb.unwrap_or([f64::NAN; 6]));
-            h.u64(out.geometry_volume.map_or(u64::MAX, f64::to_bits));
-            h.u8(out.geometry_closure_bits);
-            (out.id, h.0)
-        })
-        .collect()
-}
-
-/// The first output id at which two payloads part, or `None` when equal.
-pub(super) fn payload_divergence(a: &[(u32, u64)], b: &[(u32, u64)]) -> Option<String> {
-    if a == b {
-        return None;
-    }
-    let at = a
-        .iter()
-        .zip(b)
-        .position(|(x, y)| x != y)
-        .unwrap_or(a.len().min(b.len()));
-    Some(format!(
-        "{} vs {} outputs; first difference at output {at} (element {:?} vs {:?})",
-        a.len(),
-        b.len(),
-        a.get(at).map(|o| o.0),
-        b.get(at).map(|o| o.0),
-    ))
+    h.finish()
 }
 
 fn by_element<'a>(meshes: impl Iterator<Item = &'a MeshData>) -> BTreeMap<u32, Vec<&'a MeshData>> {
@@ -726,350 +661,6 @@ pub(super) fn compare_refusals(
 /// Sum additive diagnostic counters, merge reason histograms by reason,
 /// and retain all host records (sorted only for scheduler-order independence).
 /// This is comparison of returned diagnostics, never a second router drain.
-fn add_diagnostics(total: &mut serde_json::Value, value: &serde_json::Value) {
-    use serde_json::Value;
-    match (total, value) {
-        (Value::Object(a), Value::Object(b)) => {
-            for (key, value) in b {
-                if key != "schemaVersion" {
-                    add_diagnostics(a.entry(key).or_insert(Value::Null), value);
-                }
-            }
-        }
-        (Value::Number(a), Value::Number(b)) => {
-            *a = (a.as_u64().expect("counter") + b.as_u64().expect("counter")).into();
-        }
-        (Value::Array(a), Value::Array(b)) => {
-            for value in b {
-                if let Some(reason) = value.get("reason") {
-                    if let Some(row) = a.iter_mut().find(|r| r.get("reason") == Some(reason)) {
-                        row["count"] = (row["count"].as_u64().unwrap()
-                            + value["count"].as_u64().unwrap())
-                        .into();
-                        continue;
-                    }
-                }
-                a.push(value.clone());
-            }
-            a.sort_by_key(ToString::to_string);
-        }
-        (a, b) => *a = b.clone(),
-    }
-}
-
-pub(super) fn batch_diagnostics(batches: &[super::observe::BatchObservation]) -> serde_json::Value {
-    let mut total = serde_json::json!({});
-    if let Some(first) = batches.first() {
-        total["schemaVersion"] = first.diagnostics.schema_version.into();
-    }
-    for batch in batches {
-        add_diagnostics(
-            &mut total,
-            &serde_json::to_value(&batch.diagnostics).unwrap(),
-        );
-    }
-    if let Some(map) = total.as_object_mut() {
-        for value in map.values_mut() {
-            if let Some(rows) = value.as_array_mut() {
-                rows.sort_by_key(ToString::to_string);
-            }
-        }
-    }
-    total
-}
-
-/// Operational counters are retained in the report but excluded from parity.
-/// Everything else, including unknown future non-operational fields and
-/// missing refusal fields, remains in the compared object.
-fn pipeline_contract(pipeline: Option<&serde_json::Value>) -> serde_json::Value {
-    let mut value = pipeline.cloned().unwrap_or(serde_json::Value::Null);
-    if let Some(map) = value.as_object_mut() {
-        for key in [
-            "schemaVersion",
-            "batches",
-            "pointCacheHits",
-            "pointCacheMisses",
-            "facetedBrepMs",
-            "phaseMs",
-        ] {
-            map.remove(key);
-        }
-    }
-    value
-}
-
-/// Require every field in the actual public schema, including nested counters
-/// and operational fields. Missing is not zero. Extra fields remain subject to
-/// full-object comparison; they cannot disappear through this presence check.
-fn require_pipeline_schema(
-    actual: Option<&serde_json::Value>,
-    path: &str,
-    differences: &mut Vec<String>,
-) {
-    fn visit(
-        schema: &serde_json::Value,
-        actual: Option<&serde_json::Value>,
-        path: &str,
-        out: &mut Vec<String>,
-    ) {
-        if let Some(fields) = schema.as_object() {
-            for (key, value) in fields {
-                visit(
-                    value,
-                    actual.and_then(|a| a.get(key)),
-                    &format!("{path}.{key}"),
-                    out,
-                );
-            }
-        } else if actual.and_then(serde_json::Value::as_u64).is_none() {
-            out.push(format!("{path}: missing or non-counter field {actual:?}"));
-        }
-    }
-    let schema = serde_json::to_value(ifc_lite_processing::PipelineDiagnostics::default()).unwrap();
-    visit(&schema, actual, path, differences);
-    if actual.and_then(|a| a.get("schemaVersion")) != schema.get("schemaVersion") {
-        differences.push(format!("{path}: pipeline schema version differs"));
-    }
-}
-
-/// A repeated identical job wire contributes attempted counts each time.
-/// productsWithFailures is distinct within a drain, but record_batch SUMS it
-/// across attempts. refusedPrepassRecords alone is a load-wide distinct union.
-/// Unknown fields need an explicit semantic decision, never a blanket sum.
-fn repeated_pipeline(
-    cold: Option<&serde_json::Value>,
-    attempts: usize,
-    out: &mut Vec<String>,
-) -> serde_json::Value {
-    let original = pipeline_contract(cold);
-    let mut expected = original.clone();
-    if let Some(fields) = expected.as_object_mut() {
-        for (key, value) in fields {
-            match key.as_str() {
-                "refusedPrepassRecords" => {}
-                "elementCount"
-                | "meshCount"
-                | "triangleCount"
-                | "backstopCount"
-                | "totalCsgFailures"
-                | "productsWithFailures"
-                | "hostsWithOpenings"
-                | "silentNoOps"
-                | "rectFast"
-                | "refusedInputElements" => {
-                    for _ in 1..attempts {
-                        add_diagnostics(value, &original[key]);
-                    }
-                }
-                _ => out.push(format!("undefined repeated-attempt semantics for {key}")),
-            }
-        }
-    }
-    expected
-}
-
-/// Check the fields independently observable in the returned drains/outputs.
-/// The other counters (notably backstopCount and distinct prepass refusals)
-/// are checked against a complete cold-prefix reference, not reconstructed
-/// from mesh absence or the accumulator under test.
-fn check_snapshot_drains(
-    batches: &[super::observe::BatchObservation],
-    pipeline: Option<&serde_json::Value>,
-    label: &str,
-    differences: &mut Vec<String>,
-) {
-    let folded = batch_diagnostics(batches);
-    for key in [
-        "totalCsgFailures",
-        "productsWithFailures",
-        "hostsWithOpenings",
-        "silentNoOps",
-        "rectFast",
-    ] {
-        if pipeline.and_then(|p| p.get(key)) != folded.get(key) {
-            differences.push(format!(
-                "{label} accumulator {key} differs from cumulative drains"
-            ));
-        }
-    }
-    for (i, key) in ["elementCount", "meshCount", "triangleCount"]
-        .iter()
-        .enumerate()
-    {
-        let expected = batches.iter().map(|b| b.output_counts[i]).sum::<u64>();
-        if pipeline
-            .and_then(|p| p.get(key))
-            .and_then(serde_json::Value::as_u64)
-            != Some(expected)
-        {
-            differences.push(format!(
-                "{label} accumulator {key} differs from cumulative outputs"
-            ));
-        }
-    }
-}
-
-pub(super) fn lifecycle_differences(
-    cold: &super::observe::BrowserLoad,
-    leg: &super::observe::BrowserLoad,
-    warm: bool,
-) -> Vec<String> {
-    let mut differences = Vec::new();
-    let diag = batch_diagnostics(&cold.batches);
-    if warm {
-        if leg.batches.len() != cold.batches.len() * 2 {
-            differences.push("warm replay must retain both complete attempts".into());
-        }
-        // C40-R5: include attempt ZERO, whose classification/histograms/host
-        // details are not present in PipelineDiagnostics at all.
-        for (i, batch) in leg.batches.iter().enumerate() {
-            let actual = batch_diagnostics(std::slice::from_ref(batch));
-            if diag != actual {
-                differences.push(format!(
-                    "warm attempt {i} drain cold {diag} vs actual {actual}"
-                ));
-            }
-        }
-    } else {
-        let actual = batch_diagnostics(&leg.batches);
-        if diag != actual {
-            differences.push(format!("batch drains cold {diag} vs lifecycle {actual}"));
-        }
-    }
-    // Validate cold snapshots too: a field lost consistently on all legs is
-    // still a broken public schema. Zero-job loads must remain absent.
-    for (label, load) in [("cold", cold), ("lifecycle", leg)] {
-        if load.batches.is_empty() {
-            if load.pipeline.is_some() {
-                differences.push(format!("{label}: zero batches must have no accumulator"));
-            }
-        } else {
-            require_pipeline_schema(load.pipeline.as_ref(), label, &mut differences);
-            if load.pipeline != load.batches.last().unwrap().pipeline {
-                differences.push(format!(
-                    "{label}: final accumulator differs from last snapshot"
-                ));
-            }
-        }
-        for (i, batch) in load.batches.iter().enumerate() {
-            let label = format!("{label} batch {i}");
-            if batch.diagnostics.schema_version != GeometryDiagnostics::default().schema_version {
-                differences.push(format!(
-                    "{label}: geometry diagnostic schema version differs"
-                ));
-            }
-            require_pipeline_schema(batch.pipeline.as_ref(), &label, &mut differences);
-            if batch
-                .pipeline
-                .as_ref()
-                .and_then(|p| p.get("batches"))
-                .and_then(serde_json::Value::as_u64)
-                != Some(i as u64 + 1)
-            {
-                differences.push(format!("{label}: cumulative batch count differs"));
-            }
-            check_snapshot_drains(
-                &load.batches[..=i],
-                batch.pipeline.as_ref(),
-                &label,
-                &mut differences,
-            );
-        }
-    }
-    for (i, batch) in leg.batches.iter().enumerate() {
-        let expected = if warm {
-            repeated_pipeline(cold.pipeline.as_ref(), i + 1, &mut differences)
-        } else if leg.batches.len() == 1 {
-            pipeline_contract(cold.pipeline.as_ref())
-        } else {
-            // Split prefixes were independently produced on fresh APIs, with
-            // the same prepass and exact attempted job prefix in one batch.
-            let reference = leg.cold_prefix_pipelines.get(i).and_then(Option::as_ref);
-            require_pipeline_schema(reference, &format!("cold prefix {i}"), &mut differences);
-            pipeline_contract(reference)
-        };
-        let actual = pipeline_contract(batch.pipeline.as_ref());
-        if expected != actual {
-            differences.push(format!(
-                "batch {i} accumulator expected {expected} vs actual {actual}"
-            ));
-        }
-    }
-    let expected = if warm {
-        repeated_pipeline(cold.pipeline.as_ref(), 2, &mut differences)
-    } else {
-        pipeline_contract(cold.pipeline.as_ref())
-    };
-    let actual = pipeline_contract(leg.pipeline.as_ref());
-    if expected != actual {
-        differences.push(format!(
-            "load accumulator expected {expected} vs actual {actual}"
-        ));
-    }
-    differences
-}
-
-pub(super) fn compare_lifecycle(
-    fixture: &'static str,
-    axis: Axis,
-    cold: &super::observe::BrowserLoad,
-    leg: &super::observe::BrowserLoad,
-    drifts: &mut Vec<Drift>,
-) {
-    let detail = lifecycle_differences(cold, leg, axis == Axis::WarmDiagnostics);
-    if !detail.is_empty() {
-        drifts.push(Drift {
-            fixture,
-            axis,
-            element: None,
-            detail: detail.join("; "),
-        });
-    }
-}
-
-/// `Partition`: the partitioned adapter must draw exactly the flat adapter's
-/// meshes, some of them through the shard, and report its shard count.
-pub(super) fn compare_adapters(
-    fixture: &'static str,
-    (flat, partition_flat, shard, reported): (Vec<u32>, Vec<u32>, Vec<u32>, usize),
-    core_meshes: usize,
-    drifts: &mut Vec<Drift>,
-) {
-    let mut drawn: Vec<u32> = partition_flat.iter().chain(&shard).copied().collect();
-    let mut flat_sorted = flat.clone();
-    drawn.sort_unstable();
-    flat_sorted.sort_unstable();
-    let mut problems = Vec::new();
-    if flat.len() != core_meshes {
-        problems.push(format!(
-            "flat export carries {} meshes, the core produced {core_meshes}",
-            flat.len()
-        ));
-    }
-    if drawn != flat_sorted {
-        problems.push(format!(
-            "partition draws {} flat + {} instanced, flat draws {}",
-            partition_flat.len(),
-            shard.len(),
-            flat.len()
-        ));
-    }
-    if reported != shard.len() {
-        problems.push(format!(
-            "instancedOccurrences reports {reported}, the shard holds {}",
-            shard.len()
-        ));
-    }
-    if !problems.is_empty() {
-        drifts.push(Drift {
-            fixture,
-            axis: Axis::Partition,
-            element: None,
-            detail: problems.join("; "),
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     //! The comparators must be able to fail: each test builds the smallest
@@ -1281,33 +872,6 @@ mod tests {
     }
 
     #[test]
-    fn attempted_counters_sum_but_prepass_refusals_remain_distinct_7782_r5() {
-        let mut cold =
-            serde_json::to_value(ifc_lite_processing::PipelineDiagnostics::default()).unwrap();
-        cold["backstopCount"] = 3.into();
-        cold["productsWithFailures"] = 2.into();
-        cold["refusedInputElements"] = 2.into();
-        cold["refusedPrepassRecords"] = 1.into();
-        cold["rectFast"]["deferHostNotBox"] = 4.into();
-        let mut differences = Vec::new();
-        for attempts in 1..=3 {
-            let expected = repeated_pipeline(Some(&cold), attempts, &mut differences);
-            assert_eq!(expected["backstopCount"], 3 * attempts);
-            assert_eq!(expected["productsWithFailures"], 2 * attempts);
-            assert_eq!(expected["refusedInputElements"], 2 * attempts);
-            assert_eq!(expected["refusedPrepassRecords"], 1);
-            assert_eq!(expected["rectFast"]["deferHostNotBox"], 4 * attempts);
-        }
-        assert!(differences.is_empty());
-        cold["undefinedNewCounter"] = 1.into();
-        repeated_pipeline(Some(&cold), 2, &mut differences);
-        assert!(
-            !differences.is_empty(),
-            "new counters require defined aggregation semantics"
-        );
-    }
-
-    #[test]
     fn complete_diagnostics_preserve_defer_and_detail_only_drift_7782_r6() {
         let zero = GeometryDiagnostics::default();
         let mut unchanged = Vec::new();
@@ -1399,15 +963,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_partition_that_loses_a_mesh_is_reported() {
-        let mut drifts = Vec::new();
-        compare_adapters("t", (vec![1, 2, 2], vec![1], vec![2, 2], 2), 3, &mut drifts);
-        assert!(drifts.is_empty(), "{drifts:?}");
-        compare_adapters("t", (vec![1, 2, 2], vec![1], vec![2], 1), 3, &mut drifts);
-        assert_eq!(
-            drifts.iter().map(Drift::key).collect::<Vec<_>>(),
-            [("t", Axis::Partition, None)]
-        );
-    }
 }

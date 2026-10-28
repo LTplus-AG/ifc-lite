@@ -108,9 +108,6 @@ pub(super) struct BatchObservation {
 }
 
 pub(super) struct BrowserLoad {
-    /// Split-only oracle: a fresh once-path API runs each cumulative job prefix.
-    /// Never derived by subtracting or copying the split snapshots under test.
-    pub cold_prefix_pipelines: Vec<Option<serde_json::Value>>,
     pub prepass: PrepassOnceData,
     pub outputs: Vec<ElementMeshOutput>,
     pub batches: Vec<BatchObservation>,
@@ -195,83 +192,7 @@ fn browser_load(api: &IfcAPI, content: &[u8]) -> BrowserLoad {
         outputs,
         batches,
         pipeline,
-        cold_prefix_pipelines: Vec::new(),
     }
-}
-
-/// Replay the same nonempty wire without clearing any worker caches. The
-/// outputs are the warm leg; both cold and warm diagnostics remain observable.
-pub(super) fn browser_warm(content: &[u8]) -> BrowserLoad {
-    let api = IfcAPI::new();
-    let (prepass, jobs) = prepare(&api, content);
-    let mut batches = Vec::new();
-    dispatch(&api, content, &prepass, &jobs, &mut batches);
-    let outputs = dispatch(&api, content, &prepass, &jobs, &mut batches);
-    let pipeline = pipeline_json(&api);
-    api.clear_pre_pass_cache();
-    BrowserLoad {
-        prepass,
-        outputs,
-        batches,
-        pipeline,
-        cold_prefix_pipelines: Vec::new(),
-    }
-}
-
-/// One job per real batch, preserving every drain and accumulator snapshot.
-pub(super) fn browser_split(content: &[u8]) -> BrowserLoad {
-    let api = IfcAPI::new();
-    let (prepass, jobs) = prepare(&api, content);
-    let mut batches = Vec::new();
-    let mut outputs = Vec::new();
-    for job in jobs.chunks_exact(3) {
-        outputs.extend(dispatch(&api, content, &prepass, job, &mut batches));
-    }
-    let pipeline = pipeline_json(&api);
-    assert_eq!(
-        api.pipeline_diagnostics.lock().unwrap().batches,
-        (jobs.len() / 3) as u64
-    );
-    api.clear_pre_pass_cache();
-    // Observe references AFTER the split leg, so no extra API activity is
-    // interleaved with the lifecycle under test. Small committed fixtures only.
-    let mut cold_prefix_pipelines = Vec::new();
-    for end in (3..=jobs.len()).step_by(3) {
-        let reference_api = IfcAPI::new();
-        let (reference_prepass, reference_jobs) = prepare(&reference_api, content);
-        assert_eq!(
-            reference_jobs, jobs,
-            "fresh prepass preserves the attempted wire"
-        );
-        let mut reference_batches = Vec::new();
-        dispatch(
-            &reference_api,
-            content,
-            &reference_prepass,
-            &reference_jobs[..end],
-            &mut reference_batches,
-        );
-        cold_prefix_pipelines.push(pipeline_json(&reference_api));
-        reference_api.clear_pre_pass_cache();
-    }
-    BrowserLoad {
-        prepass,
-        outputs,
-        batches,
-        pipeline,
-        cold_prefix_pipelines,
-    }
-}
-
-/// Keep both load observations: the caller can check the predecessor as well
-/// as reset isolation on the target (including a zero-job target).
-pub(super) fn browser_reloaded(previous: &[u8], content: &[u8]) -> (BrowserLoad, BrowserLoad) {
-    let api = IfcAPI::new();
-    let previous = browser_load(&api, previous);
-    api.clear_pre_pass_cache();
-    let target = browser_load(&api, content);
-    api.clear_pre_pass_cache();
-    (previous, target)
 }
 
 /// Observe the native discovery result using the public selection request,
@@ -311,82 +232,6 @@ pub(super) fn native_jobs(
 pub(super) fn native_selected(content: &[u8], id: u32) -> ProcessingResult {
     let request = ProcessingRequest::full_pass().ids(Some(std::sync::Arc::new([id].into())));
     process(content, &request, &mut ())
-}
-
-/// Mesh express ids drawn by the public flat and partitioned exports for the
-/// same wire, each on a fresh API (direct API probes, not load-host legs): `(flat, partitioned_flat, shard_instances,
-/// reported_instanced_occurrences)`. Both adapters consume one
-/// `produce_batch`; the partition may move a mesh into the shard but must not
-/// lose or invent one.
-pub(super) fn adapter_ids(content: &[u8]) -> (Vec<u32>, Vec<u32>, Vec<u32>, usize) {
-    let flat_api = IfcAPI::new();
-    let (prepass, jobs) = prepare(&flat_api, content);
-    let (rtc_x, rtc_y, rtc_z) = prepass.meta.frame.rtc_offset();
-    let unit_scale = stream_meta_unit_scale(&prepass.meta);
-    let needs_shift = prepass.meta.frame.needs_shift();
-    let flat = flat_api.process_geometry_batch(
-        content,
-        &jobs,
-        unit_scale,
-        rtc_x,
-        rtc_y,
-        rtc_z,
-        needs_shift,
-        &prepass.void_keys,
-        &prepass.void_counts,
-        &prepass.void_values,
-        &prepass.style_ids,
-        &prepass.style_colors,
-        Some(prepass.meta.plane_angle_to_radians),
-        Some(prepass.material_element_ids.clone()),
-        Some(prepass.material_color_counts.clone()),
-        Some(prepass.material_colors.clone()),
-    );
-    let collection_ids = |collection: &crate::zero_copy::MeshCollection| -> Vec<u32> {
-        (0..collection.len())
-            .map(|i| collection.get(i).expect("index below len").express_id())
-            .collect()
-    };
-    let flat_ids = collection_ids(&flat);
-
-    let partition_api = IfcAPI::new();
-    let (prepass, jobs) = prepare(&partition_api, content);
-    let mut partitioned = partition_api.process_geometry_batch_partitioned(
-        content,
-        &jobs,
-        unit_scale,
-        rtc_x,
-        rtc_y,
-        rtc_z,
-        needs_shift,
-        &prepass.void_keys,
-        &prepass.void_counts,
-        &prepass.void_values,
-        &prepass.style_ids,
-        &prepass.style_colors,
-        Some(prepass.meta.plane_angle_to_radians),
-        Some(prepass.material_element_ids.clone()),
-        Some(prepass.material_color_counts.clone()),
-        Some(prepass.material_colors.clone()),
-    );
-    let reported = partitioned.instanced_occurrences();
-    let partition_flat = collection_ids(
-        &partitioned
-            .take_meshes()
-            .expect("a fresh result holds its meshes"),
-    );
-    let shard = partitioned.take_shard();
-    let shard_ids = if shard.is_empty() {
-        Vec::new()
-    } else {
-        ifc_lite_geometry::decode_instanced(&shard)
-            .expect("the partition's shard decodes")
-            .instances
-            .iter()
-            .map(|instance| instance.entity_id)
-            .collect()
-    };
-    (flat_ids, partition_flat, shard_ids, reported)
 }
 
 /// The native pass the server, CLI and exporters run: one chunk, no

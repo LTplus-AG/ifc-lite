@@ -6,28 +6,27 @@ use super::support::*;
 fn opening_and_layer_refusals_do_not_acquire_the_worker() {
     let unsupported=include_str!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc")
         .replace("IFCCIRCLE(#26,10.)","IFCELLIPSE(#26,10.,9.)");
-    for (text,id,code) in [(unsupported.as_str(),55,"material_layer_strategy")] {
-        let acquired = std::cell::Cell::new(0);
-        let mut outcomes = Vec::new();
-        let options = ifc_lite_retained_native::ModelOptions {
-            ids: Some([id].into_iter().collect()),
-            ..Default::default()
-        };
-        ifc_lite_retained_native::block_on(
-            ifc_lite_processing::element::retained_runtime::run_model(
-                ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec()),
-                &options,
-                || {
-                    acquired.set(acquired.get() + 1);
-                    Ok(peer())
-                },
-                |outcome| outcomes.push(outcome),
-            ),
-        )
-        .unwrap();
-        assert_eq!(refusal(&outcomes, id).code(), code);
-        assert_eq!(acquired.get(), 0, "source refusal must precede acquisition");
-    }
+    let (text,id,code) = (unsupported.as_str(),55,"material_layer_strategy");
+    let acquired = std::cell::Cell::new(0);
+    let mut outcomes = Vec::new();
+    let options = ifc_lite_retained_native::ModelOptions {
+        ids: Some([id].into_iter().collect()),
+        ..Default::default()
+    };
+    ifc_lite_retained_native::block_on(
+        ifc_lite_processing::element::retained_runtime::run_model(
+            ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec()),
+            &options,
+            || {
+                acquired.set(acquired.get() + 1);
+                Ok(peer())
+            },
+            |outcome| outcomes.push(outcome),
+        ),
+    )
+    .unwrap();
+    assert_eq!(refusal(&outcomes, id).code(), code);
+    assert_eq!(acquired.get(), 0, "source refusal must precede acquisition");
 }
 #[test]
 fn source_refused_family_is_not_replaced_by_exact() {

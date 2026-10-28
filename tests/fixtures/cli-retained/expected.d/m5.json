@@ -1,0 +1,95 @@
+{
+  "status": "HAND-DERIVED; synthetic fixture independent review pending",
+  "derivation": {
+    "a": "4*6*(2-.5)",
+    "b": "4*6*.5",
+    "c,d": "integral_0^.5 (4-z)(6-z) dz + integral_.5^2 (4.5-2z)(6-z) dz = 1229/48",
+    "e": "2*3*36",
+    "f": "2*area(disk radius2)-integral_disk |x| = 8*pi-32/3",
+    "g": "4*6*1-1*1*1",
+    "h": "4*6*2",
+    "m": "36-1*1*1.5"
+  },
+  "synthetic": [
+    {
+      "case": "a agreement true",
+      "id": 23,
+      "code": "published",
+      "volume": 36.0
+    },
+    {
+      "case": "b agreement false",
+      "id": 35,
+      "code": "published",
+      "volume": 12.0
+    },
+    {
+      "case": "c three oblique clips",
+      "id": 59,
+      "code": "published",
+      "volume": 25.604166666666668
+    },
+    {
+      "case": "d rotated survey chain",
+      "id": 66,
+      "code": "published",
+      "volume": 25.604166666666668
+    },
+    {
+      "case": "e nonuniform mapped host",
+      "id": 83,
+      "code": "published",
+      "volume": 216.0
+    },
+    {
+      "case": "f curved two oblique clips",
+      "id": 105,
+      "code": "published",
+      "volume": 14.466074562051679
+    },
+    {
+      "case": "g clip solid clip",
+      "id": 128,
+      "code": "published",
+      "volume": 23.0
+    },
+    {
+      "case": "h kept side skip",
+      "id": 140,
+      "code": "published",
+      "volume": 48.0
+    },
+    {
+      "case": "i consumed",
+      "id": 152,
+      "code": "empty_result"
+    },
+    {
+      "case": "j union halfspace",
+      "id": 164,
+      "code": "operation_unsupported"
+    },
+    {
+      "case": "k intersection halfspace",
+      "id": 176,
+      "code": "operation_unsupported"
+    },
+    {
+      "case": "l nonplane source",
+      "id": 188,
+      "code": "source_invalid"
+    },
+    {
+      "case": "m opened clipped wall",
+      "id": 200,
+      "code": "published",
+      "volume": 34.5
+    },
+    {
+      "case": "m opening cutter",
+      "id": 206,
+      "code": "published",
+      "volume": 2.0
+    }
+  ]
+}

@@ -84,13 +84,15 @@ impl<'a> Reader<'a> {
             4 => Value::String(self.string()?),
             5 => {
                 let count = self.word()?;
-                let mut values = Vec::new();
+                // Reserve small known containers once, without trusting an
+                // unvalidated wire count to request an unbounded allocation.
+                let mut values = Vec::with_capacity((count as usize).min(4096).min(self.bytes.len() - self.position));
                 for _ in 0..count { values.push(self.value(depth + 1)?); }
                 Value::Array(values)
             },
             6 => {
                 let count = self.word()?;
-                let mut values = Vec::new();
+                let mut values = Vec::with_capacity((count as usize).min(4096).min((self.bytes.len() - self.position) / 5));
                 for _ in 0..count { values.push((self.string()?, self.value(depth + 1)?)); }
                 Value::Object(values)
             },

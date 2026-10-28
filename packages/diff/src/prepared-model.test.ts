@@ -15,7 +15,8 @@ test.skipIf(!existsSync(binary))('retained snapshots preserve parity, ref identi
   const base: EntityFingerprint<typeof ref>[] = [{ key: 'old', ifcType: 'IfcWall',
     dataHash: 'a', components: { 'attr:core': 'a' }, ref,
     aabb: { min: [0, 0, 0], max: [1, 1, 1] } }];
-  const head = [{ ...base[0], key: 'new', components: { 'attr:core': 'a' } }];
+  const head: typeof base = [{ ...base[0], key: 'new', components: { 'attr:core': 'a' },
+    aabb: { min: [0, 0, 0], max: [1, 1, 1] } }];
   const left = prepareDiffModel(base.values());
   try {
     const right = prepareDiffModel(head);

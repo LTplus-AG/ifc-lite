@@ -10,8 +10,8 @@
 //! so the `_checked` builders give the caller each hole-bearing string's exact
 //! UTF-16 length, in the oracle's order and before any O(holes) hashing. A
 //! rejected length returns the caller's error. Hole-free strings are never
-//! offered: they cost the input their own size, and dense input keeps the
-//! materialized path unchanged. The unchecked builders accept every length.
+//! offered: they cost the input their own size. Both dense and sparse values
+//! stream canonical UTF-16 into the hasher. The unchecked builders accept every length.
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use crate::JsString;
@@ -24,11 +24,6 @@ use super::{core_attributes, set_to_json, sorted_entries, sorted_property_sets, 
 
 fn accept_all<T>(result: Result<T, Infallible>) -> T {
     match result { Ok(value) => value, Err(never) => match never {} }
-}
-/// Stream canonical UTF-16 directly, including hole runs (#8114, #8042).
-fn hash(value: &JsonValue, _holes: bool) -> String { stable_hash_json(value) }
-fn trailing_holes(value: &JsonValue) -> bool {
-    matches!(value, JsonValue::Array(items) if matches!(items.last(), Some(JsonValue::Holes(_))))
 }
 fn has_holes(input: &DataFingerprintInput) -> bool {
     input.property_sets.holes() > 0 || input.quantity_sets.holes() > 0 || input.type_assignments.holes() > 0
@@ -123,7 +118,7 @@ pub fn build_data_fingerprint_checked<E>(input: &DataFingerprintInput,
     let value = JsonValue::Object(object);
     let holes = has_holes(input);
     if holes { check(utf16_length(&value, false))?; }
-    Ok(hash(&value, holes))
+    Ok(stable_hash_json(&value))
 }
 
 /// Per-component sub-hashes, making the conflict unit `(entity, componentKey)`.
@@ -171,21 +166,21 @@ pub fn build_component_fingerprint_entries_checked<E>(input: &DataFingerprintInp
     check_property_sets(&input.property_sets, true, &mut check)?;
     assert_eq!(input.property_sets.holes(), 0, "component property sets require present records");
     for (name, set) in sorted_property_sets(input) {
-        let members = member_array(&set, "properties");
-        components.insert(JsString::surround("pset:", &name, ""), hash(&members, trailing_holes(&members)));
+        let members = member_array(set, "properties");
+        components.insert(JsString::surround("pset:", &name, ""), stable_hash_json(&members));
     }
     check_quantity_sets(&input.quantity_sets, true, &mut check)?;
     assert_eq!(input.quantity_sets.holes(), 0, "component quantity sets require present records");
     for (name, set) in sorted_quantity_sets(input) {
-        let members = member_array(&set, "quantities");
-        components.insert(JsString::surround("qset:", &name, ""), hash(&members, trailing_holes(&members)));
+        let members = member_array(set, "quantities");
+        components.insert(JsString::surround("qset:", &name, ""), stable_hash_json(&members));
     }
 
     check_type_assignments(&input.type_assignments, true, &mut check)?;
     let type_assignments = sorted_type_assignments(&input.type_assignments);
     if !type_assignments.is_empty() {
         let value = JsonValue::Array(type_assignments);
-        components.insert("type-assignment".into(), hash(&value, trailing_holes(&value)));
+        components.insert("type-assignment".into(), stable_hash_json(&value));
     }
 
     let materials = sorted_string_list(&input.materials);
@@ -218,11 +213,11 @@ impl OrderedComponents {
 ///
 /// The component hash covers only the members, not the wrapping `name`, which
 /// is already carried by the component key itself.
-fn member_array(set: &JsonValue, members_key: &str) -> JsonValue {
+fn member_array(set: JsonValue, members_key: &str) -> JsonValue {
     if let JsonValue::Object(entries) = set {
         for (key, value) in entries {
             if key == members_key {
-                return value.clone();
+                return value;
             }
         }
     }

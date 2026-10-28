@@ -69,7 +69,7 @@ use std::sync::OnceLock;
 use super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
 use super::geom::opening_frame::cluster_prism_directions;
 use super::geom::opening_mesh_thinnest_axis_dir;
-use super::geom::parity::RAY_DIR;
+use super::geom::parity::PARITY_RAY_DIR as RAY_DIR;
 use super::{cutter_is_closed_manifold, CutterKind, VoidContext};
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;

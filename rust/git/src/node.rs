@@ -18,7 +18,7 @@
 //! exact case GUID-agnostic identity exists to prevent.
 //!
 //! Here the key is **not** hashed. A node address is its content; the key lives
-//! in the [`crate::tree`] that points at it. That is git's arrangement — a blob
+//! in the `tree` that points at it (a later PR on #8262). That is git's arrangement — a blob
 //! is content, a tree maps names to blobs, two identical files share one blob —
 //! and it makes a re-GUID a change of tree keys and no change of node
 //! addresses. Measured end to end by `tools/ifc-git-corpus`: 116 regenerated
@@ -203,7 +203,16 @@ impl Node {
             } => {
                 w.string(ifc_type);
                 let mut sorted: Vec<&Component> = components.iter().collect();
-                sorted.sort_by_key(|c| sort_key(&c.key));
+                // Key first, then the child address, for the same reason the
+                // set branch tie-breaks on value: `Node` is public and
+                // enforces no uniqueness, and duplicate same-named property
+                // sets are a real IFC shape (#8136). Sorting on the key alone
+                // with a stable sort let the caller's order decide the bytes.
+                sorted.sort_by(|a, b| {
+                    sort_key(&a.key)
+                        .cmp(&sort_key(&b.key))
+                        .then_with(|| a.node.cmp(&b.node))
+                });
                 w.u32(sorted.len() as u32);
                 for component in sorted {
                     w.string(&component.key);
@@ -244,17 +253,32 @@ impl Node {
             }
             Node::Relationship { ifc_type, roles } => {
                 w.string(ifc_type);
-                let mut sorted: Vec<&Role> = roles.iter().collect();
-                sorted.sort_by_key(|r| sort_key(&r.name));
+                // A role's members are a set: sorted by digest, so the order
+                // the caller walked its references in is invisible. Sorted
+                // once here, because the role ordering below needs the same
+                // bytes — comparing unsorted targets, or re-sorting inside the
+                // comparator, would either leak input order or clone on every
+                // comparison.
+                let mut sorted: Vec<(&str, Vec<Address>)> = roles
+                    .iter()
+                    .map(|role| {
+                        let mut targets = role.targets.clone();
+                        targets.sort();
+                        (role.name.as_str(), targets)
+                    })
+                    .collect();
+                // Name, then those sorted targets, so two roles sharing a
+                // name are still totally ordered.
+                sorted.sort_by(|(a_name, a_targets), (b_name, b_targets)| {
+                    sort_key(a_name)
+                        .cmp(&sort_key(b_name))
+                        .then_with(|| a_targets.cmp(b_targets))
+                });
                 w.u32(sorted.len() as u32);
-                for role in sorted {
-                    w.string(&role.name);
-                    // A role's members are a set: sorted by digest, so the
-                    // order the caller walked its references in is invisible.
-                    let mut targets = role.targets.clone();
-                    targets.sort();
+                for (name, targets) in &sorted {
+                    w.string(name);
                     w.u32(targets.len() as u32);
-                    for target in &targets {
+                    for target in targets {
                         w.address(target);
                     }
                 }

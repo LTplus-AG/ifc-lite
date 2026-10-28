@@ -157,3 +157,20 @@ fn sort_key_orders_ascii_conventionally() {
     assert!(sort_key("ab") < sort_key("abc"));
     assert_eq!(sort_key("abc"), sort_key("abc"));
 }
+
+// Review on #8265: `u8::from_str_radix` accepts a leading sign and uppercase
+// digits, so one address had several accepted spellings.
+#[test]
+fn parse_rejects_a_signed_digit_pair() {
+    let tagged = format!("{}:{}", super::ADDRESS_ALGORITHM, "+f".repeat(32));
+    assert_eq!(Address::parse(&tagged), Err(AddressError::NotHex));
+}
+
+#[test]
+fn parse_rejects_uppercase_hex_so_one_address_has_one_spelling() {
+    let lower = format!("{}:{}", super::ADDRESS_ALGORITHM, "ab".repeat(32));
+    let upper = format!("{}:{}", super::ADDRESS_ALGORITHM, "AB".repeat(32));
+    let parsed = Address::parse(&lower).expect("lowercase parses");
+    assert_eq!(parsed.tagged(), lower, "round trip is byte-identical");
+    assert_eq!(Address::parse(&upper), Err(AddressError::NotHex));
+}

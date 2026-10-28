@@ -331,3 +331,45 @@ fn unicode_spelling_does_not_change_a_node_address() {
     let nfd = pset("Pset_Be\u{301}ton", &[("Styrke", Some("C30"))]);
     assert_eq!(nfc.address(), nfd.address());
 }
+
+// Review on #8265: the `Set` branch tie-breaks name-then-value so input order
+// cannot reach the hash, but the `Element` and `Relationship` branches sorted
+// on the name alone with a stable sort. `Node` is public and enforces no
+// uniqueness, and duplicate same-named property sets are a real IFC shape
+// (#8136), so a tie was reachable and the caller's order decided the bytes.
+
+#[test]
+fn two_components_sharing_a_key_do_not_let_input_order_reach_the_address() {
+    let x = Address::of(b"x");
+    let y = Address::of(b"y");
+    let forward = element("IfcWall", &[("pset:A", x), ("pset:A", y)]);
+    let reverse = element("IfcWall", &[("pset:A", y), ("pset:A", x)]);
+    assert_eq!(
+        forward.address(),
+        reverse.address(),
+        "a duplicate component key must still be totally ordered"
+    );
+}
+
+#[test]
+fn two_roles_sharing_a_name_do_not_let_input_order_reach_the_address() {
+    let a = Address::of(b"a");
+    let b = Address::of(b"b");
+    let role = |targets: Vec<Address>| Role {
+        name: "RelatedObjects".to_owned(),
+        targets,
+    };
+    let forward = Node::Relationship {
+        ifc_type: "IfcRelAggregates".to_owned(),
+        roles: vec![role(vec![a]), role(vec![b])],
+    };
+    let reverse = Node::Relationship {
+        ifc_type: "IfcRelAggregates".to_owned(),
+        roles: vec![role(vec![b]), role(vec![a])],
+    };
+    assert_eq!(
+        forward.address(),
+        reverse.address(),
+        "two roles sharing a name must still be totally ordered"
+    );
+}

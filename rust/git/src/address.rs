@@ -55,6 +55,20 @@ impl Address {
         if hex.len() != 64 {
             return Err(AddressError::Length(hex.len()));
         }
+        // `u8::from_str_radix` accepts a leading sign and uppercase digits, so
+        // decoding alone would give one address several accepted spellings:
+        // `+f` pairs and `AB` pairs both parsed, and the second parsed to the
+        // same address as `ab`. For a content address that is a defect twice
+        // over — a `parse` → `tagged` round trip stopped being byte-identical,
+        // and a string-keyed lookup against `tagged()` output could miss a
+        // value that parsed. The digit set is the contract `NotHex` already
+        // documents, so enforce it here rather than leaning on the decoder.
+        if !hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(AddressError::NotHex);
+        }
         let mut bytes = [0u8; 32];
         for (index, pair) in hex.as_bytes().chunks_exact(2).enumerate() {
             let text = std::str::from_utf8(pair).map_err(|_| AddressError::NotHex)?;

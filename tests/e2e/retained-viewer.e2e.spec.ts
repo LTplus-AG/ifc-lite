@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { LoadTraceSnapshot } from '../../packages/load-trace/src';
+import { mappedInstancePixels } from './m11-instancing-pixels';
 
 const WALL = 'rust/geometry/tests/fixtures/issue_098_wall_W.ifc';
 const MAPPED = 'rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc';
@@ -110,7 +111,9 @@ test.describe('retained viewer acceptance', () => {
     expect(observed.shards).toHaveLength(1);
     expect(observed.shards[0]).toMatchObject({ templates: 1, instances: 64 });
     expect(observed.shards[0].triangles).toBeGreaterThan(0);
-    await record('m11-i-instancing', { ...observed, summary: result.summary });
+    const pixels = await mappedInstancePixels(page);
+    await record('m11-i-instancing', { ...observed, summary: result.summary, pixels: pixels.evidence });
+    if (process.env.IFCLITE_VIEWER_OUT) await writeFile(join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing-gpu.png'), pixels.png);
     if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing.png') });
   });
 

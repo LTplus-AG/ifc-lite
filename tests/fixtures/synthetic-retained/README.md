@@ -232,6 +232,9 @@ browser witnesses use the real engine. The native witness drains receipt
 releases and asserts the acknowledged live solid/mesh handle count returns to
 zero before every subsequent invocation and after the run. This is a handle
 ownership check, not an SDK allocator/RSS measurement.
+Native and browser tests also substitute the host's representation for every
+cutter: four certified empty differences must produce `empty_result`, then
+#104 must still publish on the original worker with all handles released.
 
 ## M3 opening candidate — unreviewed, non-evidence
 

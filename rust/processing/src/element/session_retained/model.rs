@@ -129,10 +129,12 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
         let product_start = resource::BudgetStart::now();
         let mut acquire_ms = 0.;
         let mut bounded_acquire = || {
-            let start = resource::BudgetStart::now();
-            let result = restart_budget.acquire(&mut acquire);
-            acquire_ms += start.elapsed().as_secs_f64() * 1000.;
-            result
+            restart_budget.acquire(|| {
+                let start = resource::BudgetStart::now();
+                let result = acquire();
+                acquire_ms += start.elapsed().as_secs_f64() * 1000.;
+                result
+            })
         };
         let mut observation = ProductObservation { id: product_id, cut_times_ms: Vec::new() };
         let outcome = product(

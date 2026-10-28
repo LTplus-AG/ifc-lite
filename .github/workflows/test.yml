@@ -942,6 +942,10 @@ jobs:
           # profile publication. These mutations remain bounded.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
+          # #7781 C2-3: preserve report-module test wiring; suppress drop counts
+          # and change the strict precheck message so the policy witnesses fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-3-reconcile/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-3-reconcile/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-3-reconcile/behaviour.oracle.patch)
           # #7781 C2-2: retain the new structural entries and regression wiring;
           # reverse only the opening predecode bound. The 65-entry witness must
           # fail an assertion, not lose its imported helper during collection.

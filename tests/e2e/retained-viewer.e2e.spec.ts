@@ -23,7 +23,6 @@ const expected = (model: string) => readFileSync('tests/manifests/cli-retained-c
 
 async function setup(page: Page, kernel?: 'retained' | 'exact') {
   await page.addInitScript(() => {
-    localStorage.setItem('ifc-lite-onboarding-completed', 'true');
     const globals = globalThis as typeof globalThis & ViewerGlobals;
     globals.__retainedLongTasks = [];
     new PerformanceObserver(list => {

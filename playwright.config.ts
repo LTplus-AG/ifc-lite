@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { BEGIN_FRAME_CHROME_ARGS } from './tests/benchmark/frames/begin-frame-driver';
 
 // One preview server per run. Every project shares it; `reuseExistingServer`
@@ -10,7 +12,10 @@ import { BEGIN_FRAME_CHROME_ARGS } from './tests/benchmark/frames/begin-frame-dr
 // instead, so a host with several checkouts sets PLAYWRIGHT_PORT per run.
 const PORT = process.env.PLAYWRIGHT_PORT ?? '3000';
 const BASE_URL = `http://localhost:${PORT}`;
-const retainedProject = process.argv.some(arg => arg === '--project=viewer-retained');
+const retainedProject = process.argv.some((arg, i) => arg === '--project=viewer-retained' ||
+  (arg === '--project' && process.argv[i + 1] === 'viewer-retained'));
+const retainedEngine = process.env.IFCLITE_RETAINED_ENGINE;
+const retainedAvailable = Boolean(retainedEngine && existsSync(join(retainedEngine, 'engine-manifest.json')));
 
 /**
  * `playwright test --project=viewer-collab-e2e` (and nothing else): that
@@ -24,7 +29,7 @@ function onlyCollabProject(): boolean {
     arg.startsWith('--project=') ? [arg.slice('--project='.length)] : arg === '--project' && argv[i + 1] ? [argv[i + 1]] : [],
   );
   return projects.length > 0 && projects.every((p) => p === 'viewer-collab-e2e' ||
-    (p === 'viewer-retained' && !process.env.IFCLITE_RETAINED_ENGINE));
+    (p === 'viewer-retained' && !retainedAvailable));
 }
 
 export default defineConfig({
@@ -43,7 +48,7 @@ export default defineConfig({
   webServer: onlyCollabProject()
     ? undefined
     : {
-        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}`,
+        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}${retainedProject ? ' --strictPort' : ''}`,
         port: Number(PORT),
         reuseExistingServer: !retainedProject,
         timeout: 90000,

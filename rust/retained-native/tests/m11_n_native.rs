@@ -4,7 +4,10 @@
 mod support;
 #[path = "support/m11_n_exact.rs"]
 mod exact_report;
+#[path = "support/m11_n_fi.rs"]
+mod fi;
 use ifc_lite_retained_native::{oracle::normals, ProductOutcome};
+use ifc_lite_processing::element::retained_runtime::ModelOptions;
 use ifc_lite_geometry::program::transactions::Requirement;
 use std::{collections::BTreeMap, path::Path};
 use serde_json::json;
@@ -21,6 +24,8 @@ fn universe(root: &Path) -> BTreeMap<String,BTreeMap<u32,String>> {
             assert!(models.entry(fields[0].into()).or_default().insert(fields[1].parse().unwrap(), status).is_none());
         }
     }
+    // f-i remains outside the coverage ledger; M11-N preregisters only (d)/(e).
+    assert!(models.insert(fi::MODEL.into(),fi::IDS.into_iter().map(|id| (id,"published".into())).collect()).is_none());
     models
 }
 
@@ -34,13 +39,15 @@ fn m11_n_7955_committed_corpus_source_normals() {
     let mut arc_corners = 0;
     let mut violations = Vec::new();
     for (model, expected) in universe(&root) {
+        let ids = (model == fi::MODEL).then_some(fi::IDS.to_vec());
+        let options = ModelOptions {ids:ids.as_ref().map(|v| v.iter().copied().collect()),..Default::default()};
         let bytes = std::fs::read(root.join(&model)).unwrap();
         let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes,None);
         let exact = ifc_lite_processing::process_geometry(&bytes);
         let mut rows = Vec::new();
         let mut actual = BTreeMap::new();
         ifc_lite_retained_native::run_model_native(ifc_lite_core::SourceBundle::new(bytes.clone()),&worker,
-            &Default::default(), |outcome| {
+            &options, |outcome| {
                 match outcome {
                     ProductOutcome::Published(product) => {
                         actual.insert(product.product_id,"published".to_string());
@@ -59,6 +66,12 @@ fn m11_n_7955_committed_corpus_source_normals() {
                             assert!(check.smoothed_curved > 0,"arc sides must actually smooth, #{}",product.product_id);
                             arc_corners += check.curved;
                         }
+                        if model == fi::MODEL {
+                            if let Err(error) = fi::check(&product,tolerances["normalPlanarRadians"].as_f64().unwrap(),
+                                tolerances["normalCurvedRadians"].as_f64().unwrap()) {
+                                violations.push(format!("{model}:{} {error}",product.product_id));
+                            }
+                        }
                         rows.push(json!({"id":product.product_id,"status":"published","parts":product.parts.iter().map(|p|
                             json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object}))
                             .collect::<Vec<_>>() }));
@@ -71,7 +84,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                 }
             }).unwrap();
         assert_eq!(actual,expected,"coverage changed for {model}");
-        references.push(json!({"model":model,"source":String::from_utf8(bytes).unwrap(),"rows":rows}));
+        references.push(json!({"model":model,"source":String::from_utf8(bytes).unwrap(),"rows":rows,"ids":ids}));
     }
     assert!(published >= 131,"must execute the full committed universe");
     assert!(arc_corners > 0,"f-a-curved radial source oracle must execute");
@@ -82,7 +95,3 @@ fn m11_n_7955_committed_corpus_source_normals() {
     println!("M11-N published products: {published}");
     println!("sdk witness executed: m11_n_corpus_normals");
 }
-
-// Shared f-i is owned by m11-fixture-f-i. The arc/opening (d) and 30-degree
-// disk-bend (e) assertions are pending its reviewed fixture; no skipped test
-// claims that coverage. The universe loop admits it when its manifest lands.

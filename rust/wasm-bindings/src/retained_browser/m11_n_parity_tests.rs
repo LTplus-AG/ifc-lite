@@ -56,7 +56,10 @@ async fn retained_browser_m11_n_normals_corpus_parity() {
         let source = js_sys::Reflect::get(&model,&"source".into()).unwrap().as_string().unwrap();
         let rows = js_sys::Array::from(&js_sys::Reflect::get(&model,&"rows".into()).unwrap());
         assert!(rows.length() > 0);
-        let mut run = crate::api::IfcAPI::new().retained_model(source.as_bytes(),None).await.unwrap();
+        let ids = js_sys::Reflect::get(&model,&"ids".into()).unwrap();
+        let ids = (!ids.is_null() && !ids.is_undefined()).then(||
+            js_sys::Array::from(&ids).iter().map(|id| id.as_f64().unwrap() as u32).collect());
+        let mut run = crate::api::IfcAPI::new().retained_model(source.as_bytes(),ids).await.unwrap();
         for row in rows.iter() {
             compared += 1;
             match verify(&run.next_outcome(),&row,&name) {

@@ -1,2 +1,4 @@
 # SPDX-License-Identifier: MPL-2.0
 m11_n_corpus_normals
+m11_n_fi_arc
+m11_n_fi_bend

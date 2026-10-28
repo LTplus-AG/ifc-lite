@@ -33,6 +33,7 @@ type Reply = { id?: number; result?: { isError?: boolean }; error?: unknown };
 /** Run the server process through the calls; resolve with everything it wrote. */
 async function drive(): Promise<{ stdout: string; stderr: string; replies: Reply[] }> {
   const child = spawn(process.execPath, [CLI, FIXTURE], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const closed = new Promise<void>((done) => child.once('close', () => done()));
   let stdout = '';
   let stderr = '';
   child.stdout.setEncoding('utf8').on('data', (d: string) => { stdout += d; });
@@ -62,8 +63,11 @@ async function drive(): Promise<{ stdout: string; stderr: string; replies: Reply
     expect(clash.result, JSON.stringify(clash)).toBeDefined();
     expect(clash.result?.isError, JSON.stringify(clash)).toBeFalsy();
   } finally {
+    // Wait for both pipes to drain: a line can still be in flight on one
+    // stream when the reply arrives on the other.
     child.stdin.end();
     child.kill();
+    await closed;
   }
   return { stdout, stderr, replies: replies() };
 }

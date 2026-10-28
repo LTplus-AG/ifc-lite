@@ -8,9 +8,12 @@
  * index. Retained path only; triangle-level picking waits for the renderer.
  */
 
-import { useTranslation } from '@/i18n';
+import { registerEnglish, useTranslation } from '@/i18n';
+import { retainedGeometryEn } from '@/i18n/catalogues/retained-geometry.en';
 import { useViewerStore } from '@/store';
 import type { RetainedFaceRow } from '@/store/retainedGeometry';
+
+registerEnglish(retainedGeometryEn);
 
 export function RetainedFaceTable({ modelId, faces }: { modelId: string; faces?: Record<number, RetainedFaceRow[]> }) {
   const { t } = useTranslation();

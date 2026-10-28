@@ -213,6 +213,9 @@ export async function* retainedGeometryEvents(
       if ('done' in pulled) break;
       const event = pulled.event;
       switch (event.kind) {
+        case 'progress':
+          yield { type: 'progress', phase: 'workers' };
+          break;
         case 'start': {
           started = true;
           acc.candidateIds = event.candidateIds;

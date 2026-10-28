@@ -40,6 +40,13 @@ async function collect(events: AsyncIterator<StreamingGeometryEvent>, until?: (e
 const ids = (events: StreamingGeometryEvent[]) => events.flatMap((e) => e.type === 'batch' ? e.meshes.map((m) => m.expressId) : []);
 
 describe('#7955 M2-C retained geometry source', () => {
+  it('M11-I forwards buffered-product heartbeats to the loader watchdog', async () => {
+    const value = run(new ScriptedHostWorker([start([1]), { kind: 'progress' }, published(1), complete]));
+    const events = await collect(value.events);
+    assert.deepEqual(events.map(e => e.type), ['start', 'progress', 'batch', 'complete']);
+    assert.equal(value.last().published, 1);
+    value.client.unload();
+  });
   it('M11-I Cancel keeps every product already published in an atomic IFNS shard', async () => {
     const shard = new ArrayBuffer(32);
     const base = published(1);

@@ -21,17 +21,21 @@ export class RetainedInstancing {
     private readonly send: (event: RetainedHostResponse, transfer: Transferable[]) => void) {}
 
   event(event: RetainedSessionEvent): void {
-    if (event.kind === 'start') this.rtc = event.frame.rtcOffset;
     if (event.kind === 'published') {
       if (!('meshes' in event)) throw new Error('Retained session published shape parts on a view run');
       // The converter frees all WASM handles even if extraction throws.
-      const meshes = convertMeshCollectionToBatch(event.meshes);
-      const published = { ...event, meshes };
-      if (event.instanceKey && event.instanceWorldFromObject && meshes.length === 1) {
-        this.pending.push(published);
+      this.accept({ ...event, meshes: convertMeshCollectionToBatch(event.meshes) });
+    } else this.accept(event);
+  }
+
+  accept(event: Extract<RetainedHostEvent, { kind: 'start' | 'published' | 'refused' }>): void {
+    if (event.kind === 'start') this.rtc = event.frame.rtcOffset;
+    if (event.kind === 'published') {
+      if (event.instanceKey && event.instanceWorldFromObject && event.meshes.length === 1) {
+        this.pending.push(event);
         this.emit({ kind: 'progress' }); // Keep the product watchdog alive while candidates wait.
       }
-      else this.emit(published);
+      else this.emit(event);
     } else this.emit(event);
     if (event.kind !== 'start' && ++this.products === FLUSH_PRODUCTS) {
       this.flush();

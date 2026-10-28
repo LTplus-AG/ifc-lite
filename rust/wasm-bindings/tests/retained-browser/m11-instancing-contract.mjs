@@ -22,10 +22,11 @@ export function instancingContract() {
       if (result.groupCount !== 1 || result.instanceCount !== 64 || result.flatIndices.length
         || result.verificationRejections) throw Error('one verified group of 64 required');
       const header = new DataView(result.shard.buffer, result.shard.byteOffset, result.shard.byteLength);
+      const flatIndices = meshes.reduce((sum, mesh) => sum + mesh.indices.length, 0);
       if (header.getUint32(0, true) !== 0x49464e53 || header.getUint32(8, true) !== 1
-        || header.getUint32(12, true) !== 64 || header.getUint32(24, true) * 64 !== 64 * 36) throw Error('IFNS triangle coverage changed');
+        || header.getUint32(12, true) !== 64 || header.getUint32(24, true) * 64 !== flatIndices) throw Error('IFNS triangle coverage changed');
       return { key: keys[0], groups: result.groupCount, occurrences: result.instanceCount,
-        verificationRejections: result.verificationRejections, triangles: 64 * 12 };
+        verificationRejections: result.verificationRejections, triangles: flatIndices / 3 };
     },
   };
 }

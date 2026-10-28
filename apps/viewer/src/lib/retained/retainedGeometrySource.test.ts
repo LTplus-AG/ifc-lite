@@ -53,6 +53,7 @@ describe('#7955 M2-C retained geometry source', () => {
     if (batch?.type !== 'batch') throw new Error('missing batch');
     assert.deepEqual(batch.instancedShards, [shard]);
     assert.equal(batch.totalSoFar, 1);
+    assert.deepEqual(batch.coordinateInfo?.originalBounds, event.bounds);
     assert.deepEqual(batch.meshes, []);
     assert.equal(value.last().published, 1);
     assert.equal(value.last().completeness, 'complete');

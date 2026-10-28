@@ -41,9 +41,9 @@ pub fn region(points: &[Point], relative: f64) -> Result<Vec<Point>, &'static st
     for omit in 0..points.len() {
         let remaining: Vec<_> = points.iter().enumerate().filter(|(i,_)| *i != omit).map(|(_,p)| *p).collect();
         let candidate = hull(&remaining);
-        let contains = candidate.len() >= 3 && (0..candidate.len()).all(|i|
-            remaining.iter().all(|p| turn(candidate[i], candidate[(i+1)%candidate.len()], *p) >= 0.));
-        if (area(&candidate).abs()-authored).abs() <= relative*authored && contains {
+        // Every remaining vertex must be a hull corner: the residual is convex.
+        let convex = candidate.len() == remaining.len();
+        if (area(&candidate).abs()-authored).abs() <= relative*authored && convex {
             matches.push(candidate);
         }
     }

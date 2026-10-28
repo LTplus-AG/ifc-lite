@@ -148,6 +148,30 @@ fn exact_defect_when_retained_matches_source_but_exact_does_not() {
 }
 
 #[test]
+fn exact_report_only_waiver_is_listed_in_the_summary() {
+    let actual = tetrahedron(1.);
+    let exact = tetrahedron(1.2);
+    let mut report = Report::default();
+    // No source oracle: the exact gate would violate, but the waiver defers it.
+    report.check_measurements("fixture:w", false, false, &actual, Some(&actual), Some(&exact),
+        None, &tolerances(), true);
+    assert!(report.violations.is_empty(), "{:?}", report.violations);
+    let summary = report.summary();
+    let waived = summary["exact_report_only"].as_array().unwrap();
+    assert_eq!(waived.len(), 1);
+    assert_eq!(waived[0]["classification"], "exact_report_only");
+    assert_eq!(waived[0]["product"], "fixture:w");
+    assert_eq!(waived[0]["retainedVsExact"]["volumeRelative"], relative(actual.volume, exact.volume));
+    assert!(summary["exact_defect"].as_array().unwrap().is_empty());
+    // Without the waiver nothing is listed and the gate violates.
+    let mut gated = Report::default();
+    gated.check_measurements("fixture:g", false, false, &actual, Some(&actual), Some(&exact),
+        None, &tolerances(), false);
+    assert!(gated.summary()["exact_report_only"].as_array().unwrap().is_empty());
+    assert!(!gated.violations.is_empty());
+}
+
+#[test]
 fn exact_gate_still_violates_when_retained_fails_source_7955() {
     let actual = tetrahedron(1.02);
     let exact = tetrahedron(1.01);

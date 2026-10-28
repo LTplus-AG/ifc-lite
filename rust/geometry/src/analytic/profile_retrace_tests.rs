@@ -51,6 +51,28 @@ fn issue_3641_equal_retrace_and_two_spurs_cancel() {
     }
 }
 
+fn line_loop(points: &[[f64; 2]]) -> Vec<AnalyticCurveSegment> {
+    (0..points.len()).map(|i| {
+        let [sx, sy] = points[i]; let [ex, ey] = points[(i + 1) % points.len()];
+        AnalyticCurveSegment::Line { start: [sx, sy, 0.], end: [ex, ey, 0.] }
+    }).collect()
+}
+
+#[test]
+fn issue_3641_straight_through_collinear_vertices_survive_a_retrace() {
+    // (2,0) and the surviving (2,4) are exactly collinear with their neighbours
+    // but lie between them (not an exact reversal): only the spur may cancel.
+    let points = [[0.,0.],[2.,0.],[4.,0.],[4.,4.],[2.,4.],[2.,6.],[2.,4.],[0.,4.]];
+    let segments = line_loop(&points);
+    let mut live: Vec<usize> = (0..points.len()).collect();
+    let mut cancelled = Vec::new();
+    let residual = cancel_segments(&segments, |i| cancelled.push(live.remove(i))).unwrap().unwrap();
+    assert_eq!(cancelled, [5, 6]);
+    assert_eq!(residual, line_loop(&[[0.,0.],[2.,0.],[4.,0.],[4.,4.],[2.,4.],[0.,4.]]));
+    // A loop whose only collinear vertex is straight-through has nothing to cancel.
+    assert!(cancel_segments(&line_loop(&[[0.,0.],[2.,0.],[4.,0.],[4.,4.],[0.,4.]]), |_| {}).unwrap().is_none());
+}
+
 #[test]
 fn issue_3641_near_collinear_and_v_reversals_are_not_cancelled() {
     for y in ["0.000000000001", "0.000000001", "0.0000001"] {

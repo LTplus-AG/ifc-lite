@@ -3,12 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Private lossless document wire: little-endian tokens plus UTF-16 dictionary.
 use ifc_lite_diff::{DocumentValue as Value, JsString};
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 pub(crate) fn encode(value: &Value) -> Vec<u8> {
     let mut writer = Writer { body: Vec::new(), strings: Vec::new(), ids: HashMap::new() };
     writer.value(value);
-    let mut result = Vec::new();
+    let capacity = writer.strings.iter().fold(4usize.saturating_add(writer.body.len()),
+        |size, text| size.saturating_add(4).saturating_add(text.units().len().saturating_mul(2)));
+    let mut result = Vec::with_capacity(capacity);
     result.extend_from_slice(&(writer.strings.len() as u32).to_le_bytes());
     for string in writer.strings {
         result.extend_from_slice(&(string.units().len() as u32).to_le_bytes());
@@ -21,9 +23,12 @@ struct Writer<'a> { body: Vec<u8>, strings: Vec<&'a JsString>, ids: HashMap<&'a 
 impl<'a> Writer<'a> {
     fn word(&mut self, value: u32) { self.body.extend_from_slice(&value.to_le_bytes()); }
     fn string(&mut self, value: &'a JsString) {
-        let id = if let Some(id) = self.ids.get(value) { *id } else {
-            let id = self.strings.len() as u32;
-            self.strings.push(value); self.ids.insert(value, id); id
+        let id = match self.ids.entry(value) {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(entry) => {
+                let id = self.strings.len() as u32;
+                self.strings.push(value); entry.insert(id); id
+            },
         };
         self.word(id);
     }

@@ -41,6 +41,21 @@ describe('the effective entity set of an IFCX store', () => {
     expect(counts.get('IFCSPACE')).toBe(2);
   });
 
+  it('rebuckets the table after a retype: a row moved into a class is found by a filtered walk', () => {
+    const types: Record<number, string> = { 1: 'IfcSpace', 2: 'IfcWall', 3: 'IfcSpace' };
+    let typeRevision = 0;
+    const table = {
+      expressId: new Uint32Array([1, 2, 3]),
+      getTypeName: (id: number) => types[id] ?? 'Unknown',
+      get typeRevision() { return typeRevision; },
+    };
+    const source: EffectiveEntitySource = { entityIndex: emptyIndex, entities: table, schemaVersion: 'IFC5' };
+    expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 3]);
+    types[2] = 'IfcSpace';
+    typeRevision++;
+    expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 2, 3]);
+  });
+
   it('buckets the table once per model: a second filtered call does not rescan it', () => {
     const rows = 2000;
     const ids = new Uint32Array(rows).map((_, i) => i + 1);

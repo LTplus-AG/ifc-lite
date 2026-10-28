@@ -145,7 +145,12 @@ export interface EffectiveEntitySource {
    * Optional type fallback for a caller-supplied columnar source domain. `expressId` lists the table's
    * rows: with `schemaVersion` 'IFC5' it is also the source domain when the caller supplies none.
    */
-  readonly entities?: { getTypeName(id: number): string; readonly expressId?: Iterable<number> & ArrayLike<number> };
+  readonly entities?: {
+    getTypeName(id: number): string;
+    readonly expressId?: Iterable<number> & ArrayLike<number>;
+    /** See `EntityTable.typeRevision`: a retype invalidates the class buckets built over this table. */
+    readonly typeRevision?: number;
+  };
   /** The model's schema. An 'IFC5' (IFCX) store has no STEP type index, so its entity table is the source. */
   readonly schemaVersion?: string;
 }
@@ -253,7 +258,7 @@ export function* iterateEffectiveEntities(
   }
 }
 
-const BUCKETS = new WeakMap<object, { count: number; byClass: Map<string, number[]> }>();
+const BUCKETS = new WeakMap<object, { count: number; revision: number; byClass: Map<string, number[]> }>();
 
 /** The rows of `classes` (upper case) in an entity table, from buckets built once per table and rebuilt if its row count changes. */
 function idsOfClasses(
@@ -267,12 +272,14 @@ function idsOfClasses(
   return out;
 }
 
-/** An entity table's rows by class (upper case), built once per table and rebuilt if its row count changes. */
+/** An entity table's rows by class (upper case), built once per table and rebuilt if its row count or type revision changes. */
 function bucketsOf(table: NonNullable<EffectiveEntitySource['entities']>): Map<string, number[]> {
   const rows = table.expressId ?? [];
+  // A retype (`setTypeOverride`) moves a row between classes without changing the row count.
+  const revision = table.typeRevision ?? 0;
   let held = BUCKETS.get(table);
-  if (!held || held.count !== rows.length) {
-    held = { count: rows.length, byClass: new Map() };
+  if (!held || held.count !== rows.length || held.revision !== revision) {
+    held = { count: rows.length, revision, byClass: new Map() };
     for (const id of rows) {
       const key = table.getTypeName(id).toUpperCase();
       const list = held.byClass.get(key);

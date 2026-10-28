@@ -33,7 +33,7 @@ import { IFCLITE_ATTR } from './types.js';
 export interface AttributeOpinion {
   layerId: string;
   layerName: string;
-  /** `author.principal` from the layer's provenance manifest, when present. */
+  /** `author.principal` from the layer's provenance manifest, when it is a string. */
   principal?: string;
   /** The layer's value; `null` is a removal opinion. */
   value: unknown;
@@ -60,11 +60,14 @@ export function recordLayerOpinions(
   layerValues: ReadonlyMap<string, unknown>
 ): void {
   if (layerValues.size === 0) return;
-  const principal = getProvenance(layer.file)?.author?.principal;
+  // The header is unvalidated input: keep any string as written (an empty
+  // principal is still a stated one, distinct from no manifest), drop the rest.
+  const stated: unknown = getProvenance(layer.file)?.author?.principal;
+  const principal = typeof stated === 'string' ? stated : undefined;
   for (const [attribute, value] of layerValues) {
     if (attribute === IFCLITE_ATTR.DELETED) continue;
     const opinion: AttributeOpinion = { layerId: layer.id, layerName: layer.name, value };
-    if (principal) opinion.principal = principal;
+    if (principal !== undefined) opinion.principal = principal;
     const list = into.get(attribute);
     if (list) list.push(opinion);
     else into.set(attribute, [opinion]);

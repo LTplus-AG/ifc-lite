@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IfcxFile, IfcxNode } from './types.js';
-import { IFCLITE_ATTR } from './types.js';
+import { IFCLITE_ATTR, PROVENANCE_KEY } from './types.js';
 import { composeFederated } from './federated-composition.js';
 import { createLayerStack } from './layer-stack.js';
 import { createProvenanceManifest, setProvenance } from './provenance.js';
@@ -65,6 +65,17 @@ describe('opinion retention (federated composition)', () => {
       ['layer-1', 'fire@consult.example', 'EI 90'],
     ]);
     assert.equal(wall.attributes.get(FIRE), fire?.at(-1)?.value, 'last opinion must be the composed value');
+  });
+
+  it('keeps a stated principal as written, even empty; drops a non-string one', () => {
+    const withPrincipal = (principal: unknown): IfcxFile => {
+      const file = makeFile([{ path: 'wall-1', attributes: { [FIRE]: 'EI 30' } }]);
+      const author = { kind: 'human', principal };
+      return { ...file, header: { ...file.header, [PROVENANCE_KEY]: { author } } as IfcxFile['header'] };
+    };
+    const { composed } = composeFederated(stackOf([withPrincipal(''), withPrincipal(42), makeFile([{ path: 'wall-1', attributes: { [FIRE]: 'EI 60' } }])]), { retainOpinions: true });
+    const fire = composed.get('wall-1')?.opinions?.get(FIRE) ?? [];
+    assert.deepEqual(fire.map((o) => ['principal' in o, o.principal]), [[true, ''], [false, undefined], [false, undefined]]);
   });
 
   it('lists disagreements, and not agreements', () => {

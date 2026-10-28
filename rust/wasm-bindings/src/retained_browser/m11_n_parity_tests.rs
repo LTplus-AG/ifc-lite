@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955: every corpus corner traverses the actual browser Worker boundary.
-use super::*;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::*;
 #[wasm_bindgen(inline_js = "
 export async function m11NormalsReference() {
   const response = await fetch('/smlib/m11-n-native.json');

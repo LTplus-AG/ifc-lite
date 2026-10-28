@@ -144,6 +144,8 @@ describe('opinion retention (federated composition)', () => {
     // An in-memory undefined keeps the attribute; null removes it.
     assert.equal(divergent(undefined, null), true);
     assert.equal(divergent({ a: 1, b: undefined }, { a: 1 }), false);
+    // Keys sort by their NFC form: decomposed 'e\u0301' sorts before 'f' raw, after it normalized.
+    assert.equal(divergent({ 'e\u0301': 1, f: 2 }, { '\u00e9': 1, f: 2 }), false);
   });
 });
 

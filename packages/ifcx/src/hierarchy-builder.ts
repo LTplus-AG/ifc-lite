@@ -142,7 +142,7 @@ function buildSpatialNode(
   node: ComposedNode,
   pathToId: Map<string, number>,
   incomingEdgeNames: ReadonlyMap<string, string[]>,
-  siblingEdgeNames: ReadonlyMap<string, Set<string>>,
+  siblingEdgeNames: ReadonlyMap<string, ReadonlySet<string>>,
   parentWorld: Matrix4,
 ): SpatialNode {
   const world = worldMatrix(node, parentWorld);

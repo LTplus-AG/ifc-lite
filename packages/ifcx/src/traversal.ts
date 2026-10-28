@@ -85,15 +85,21 @@ export function collectIncomingEdgeNames(composed: Map<string, ComposedNode>): M
  * generator that must keep sibling edge names unique appends `_001` to the second `Window`; this is what lets
  * the name reader tell that suffix from a name that really ends in digits.
  */
-export function collectSiblingEdgeNames(composed: Map<string, ComposedNode>): Map<string, Set<string>> {
-  const siblings = new Map<string, Set<string>>();
+export function collectSiblingEdgeNames(composed: Map<string, ComposedNode>): Map<string, ReadonlySet<string>> {
+  // One shared set per parent, not a copy per child (O(k) rather than O(k²) for k children); a child held by
+  // several parents gets the union, built only for that child.
+  const byChild = new Map<string, ReadonlySet<string>[]>();
   for (const node of composed.values()) {
-    const names = new Set(node.children.keys());
+    const names: ReadonlySet<string> = new Set(node.children.keys());
     for (const child of node.children.values()) {
-      const set = siblings.get(child.path) ?? new Set<string>();
-      for (const name of names) set.add(name);
-      siblings.set(child.path, set);
+      const sets = byChild.get(child.path);
+      if (sets) sets.push(names);
+      else byChild.set(child.path, [names]);
     }
+  }
+  const siblings = new Map<string, ReadonlySet<string>>();
+  for (const [path, sets] of byChild) {
+    siblings.set(path, sets.length === 1 ? sets[0] : new Set(sets.flatMap((set) => [...set])));
   }
   return siblings;
 }

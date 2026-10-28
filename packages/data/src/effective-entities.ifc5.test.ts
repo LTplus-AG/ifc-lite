@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { iterateEffectiveEntities, type EffectiveEntitySource } from './effective-entities.js';
+import { countEffectiveEntityTypes, iterateEffectiveEntities, type EffectiveEntitySource } from './effective-entities.js';
 
 const TYPES: Record<number, string> = { 1: 'IfcSpace', 2: 'IfcWall', 3: 'IfcSpace' };
 const entities = { expressId: new Uint32Array([1, 2, 3]), getTypeName: (id: number) => TYPES[id] ?? 'Unknown' };
@@ -23,6 +23,14 @@ describe('the effective entity set of an IFCX store', () => {
     };
     expect([...iterateEffectiveEntities(step, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1]);
     expect([...iterateEffectiveEntities({ entityIndex: emptyIndex, entities, schemaVersion: 'IFC4' }, null, ['IFCSPACE'])]).toEqual([]);
+  });
+
+  it('counts the entity table too: an IFCX model with no pending edits has its spaces and walls', () => {
+    const ifcx: EffectiveEntitySource = { entityIndex: emptyIndex, entities, schemaVersion: 'IFC5' };
+    const counts = countEffectiveEntityTypes(ifcx, null);
+    expect(counts.get('IFCSPACE')).toBe(2);
+    expect(counts.get('IFCWALL')).toBe(1);
+    expect(countEffectiveEntityTypes({ entityIndex: emptyIndex, entities, schemaVersion: 'IFC4' }, null).size).toBe(0);
   });
 
   it('buckets the table once per model: a second filtered call does not rescan it', () => {

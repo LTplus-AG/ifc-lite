@@ -77,7 +77,9 @@ export function countEffectiveEntityTypes(
   const byType = source.entityIndex.byType;
   const counts = new Map<string, number>();
   const tombstones = overlay?.getTombstones?.();
-  const walk = !!sourceIds || !!(overlay && !tombstones);
+  // An IFCX store's STEP index is empty; the canonical iterator walks its entity table instead (see below).
+  const ifc5Table = !sourceIds && byType.size === 0 && source.schemaVersion === 'IFC5' && !!source.entities?.expressId;
+  const walk = !!sourceIds || ifc5Table || !!(overlay && !tombstones);
   for (const [type, ids] of byType) counts.set(type, walk ? 0 : ids.length);
   if (walk) {
     for (const entity of iterateEffectiveEntities(source, overlay, undefined, sourceIds)) {
@@ -267,6 +269,7 @@ function idsOfClasses(
     BUCKETS.set(table, held);
   }
   const out: number[] = [];
-  for (const key of classes) out.push(...(held.byClass.get(key) ?? []));
+  // A loop, not `push(...bucket)`: spreading a large class bucket can exceed the engine's argument limit.
+  for (const key of classes) for (const id of held.byClass.get(key) ?? []) out.push(id);
   return out;
 }

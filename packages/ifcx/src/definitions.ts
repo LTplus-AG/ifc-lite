@@ -110,6 +110,8 @@ export function materialAssociations(composed: ReadonlyMap<string, ComposedNode>
   const types = typeDefinitions(composed);
   const parents = parentPaths(composed);
   const out: { materialPath: string; ownerPath: string }[] = [];
+  // Several parts of one owner can inherit the same material; the owner is associated with it once.
+  const seen = new Set<string>();
   for (const node of composed.values()) {
     for (const [edge, target] of Object.entries(node.inherits ?? {})) {
       if (!isMaterialEdge(edge) || !materials.has(target)) continue;
@@ -119,7 +121,11 @@ export function materialAssociations(composed: ReadonlyMap<string, ComposedNode>
       const owners = owningEntityPaths(node.path, composed, parents);
       const typed = owners.filter((owner) => types.has(owner));
       for (const ownerPath of typed.length > 0 ? typed : owners) {
-        if (ownerPath !== target) out.push({ materialPath: target, ownerPath });
+        const key = `${target}\n${ownerPath}`;
+        if (ownerPath !== target && !seen.has(key)) {
+          seen.add(key);
+          out.push({ materialPath: target, ownerPath });
+        }
       }
     }
   }

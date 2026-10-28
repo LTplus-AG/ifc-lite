@@ -872,6 +872,17 @@ export async function* processParallel(
       startPrepass(false);
       return;
     }
+    // An EMPTY stitch takes the same fallback. Delivering it would install no
+    // index on any worker (the engine stores an empty index as none), so the
+    // shard-only `finalize-styles` step was guaranteed to throw
+    // "finalizePrepassStyles: no entity index" and fail the load every time.
+    // The serial pre-pass builds its own index and handles a genuinely
+    // entity-free file through the zero-geometry path.
+    if (stitched.ids.length === 0) {
+      console.warn('[stream][shard] stitch produced no entities — serial pre-pass');
+      startPrepass(false);
+      return;
+    }
     console.log(`[stream][shard] stitched ${stitched.ids.length} entities @ ${elapsed()}ms (shard scan started @ ${shardScanDispatchedAt}ms)`);
     // Exact-size SAB-backed columns straight from the stitch — no contiguity
     // copy needed, and deliverEntityIndex shares them zero-copy.

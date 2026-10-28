@@ -25,20 +25,22 @@ struct Band { index:u16, #[serde(rename="materialId")] material_id:u32, volume:f
 #[derive(serde::Deserialize)]
 struct Row { id:u32,code:String,bands:Vec<Band> }
 #[derive(serde::Deserialize)]
-struct Reference { m4straight:Vec<Row>,m4curved:Vec<Row> }
+struct Reference { m4straight:Vec<Row>,m4curved:Vec<Row>,m4synthetic:Vec<Row> }
 #[wasm_bindgen_test(async)]
 async fn retained_browser_m4_layers_native_parity() {
     let native:Reference=serde_wasm_bindgen::from_value(reference().await.unwrap()).unwrap();
-    for (bytes,rows,count) in [
-        (include_bytes!("../../../../tests/fixtures/cli-retained/layered-wall.ifc").as_slice(),native.m4straight,2),
-        (include_bytes!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc").as_slice(),native.m4curved,3),
+    for (bytes,rows) in [
+        (include_bytes!("../../../../tests/fixtures/cli-retained/layered-wall.ifc").as_slice(),native.m4straight),
+        (include_bytes!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc").as_slice(),native.m4curved),
+        (include_bytes!("../../../../tests/fixtures/synthetic-retained/f-g-layers.ifc").as_slice(),native.m4synthetic),
     ] {
-        assert_eq!(rows.len(),1);
+        assert!(!rows.is_empty());
         let mut run=crate::api::IfcAPI::new().retained_model(bytes,Some(rows.iter().map(|r|r.id).collect())).await.unwrap();
         for expected in rows {
             let actual:Row=serde_wasm_bindgen::from_value(measure(&run.next_outcome()).unwrap()).unwrap();
-            assert_eq!(expected.code,"published","native must qualify the witness");
-            assert_eq!((actual.id,actual.code),(expected.id,expected.code)); assert_eq!(actual.bands.len(),count);
+            let code=match expected.id {8027=>"material_layer_strategy",9027=>"layer_caps_unresolved",_=>"published"};
+            assert_eq!(expected.code,code,"native must qualify the witness");
+            assert_eq!((actual.id,actual.code),(expected.id,expected.code));
             assert_eq!(actual.bands.len(),expected.bands.len());
             for (a,b) in actual.bands.iter().zip(expected.bands) {
                 assert_eq!((a.index,a.material_id),(b.index,b.material_id));

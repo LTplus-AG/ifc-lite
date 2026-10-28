@@ -57,8 +57,8 @@ fn check(shape: &ShapeOnlyProduct, parts: usize, volume: f64, bbox: [f64; 6]) {
     assert_eq!(actual.defects, 0);
     assert!(metrics::relative(actual.volume, volume) <= 1e-6, "{} vs {volume}", actual.volume);
     assert!(metrics::bbox_deviation(&actual.bbox, &bbox) <= 1e-5);
-    assert_eq!(shape.obligations.0, [ifc_lite_geometry::program::transactions::Requirement::MaterialLayers,
-        ifc_lite_geometry::program::transactions::Requirement::IfcAppearance,
+    // M4: an orphan type has no occurrence LayerSetUsage or layer phase (#7955).
+    assert_eq!(shape.obligations.0, [ifc_lite_geometry::program::transactions::Requirement::IfcAppearance,
         ifc_lite_geometry::program::transactions::Requirement::SurfaceNormals]);
 }
 #[test]

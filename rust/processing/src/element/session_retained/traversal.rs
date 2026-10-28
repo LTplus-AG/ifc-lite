@@ -32,7 +32,9 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             let values = std::mem::take(&mut self.type_values);
             let plan = self.resources.with_scope(|| RetainedProductPlan::type_maps(values).and_then(|p| p.discharge_type_origin(self.state.job.id, &self.type_map_members_planned))).map_err(common)?;
             if let Err(error) = self.validate_manifest(&plan) { self.failed = true; return Err(error); }
-            self.plan = Some(plan);
+            // Type-map plans have no occurrence layer phase. M4 discharges
+            // that inapplicable obligation just as it does for plain products.
+            self.plan = Some(plan.discharge_layers());
             self.outer = None;
             return Ok(());
         };

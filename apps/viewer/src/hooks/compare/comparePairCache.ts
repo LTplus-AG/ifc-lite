@@ -11,7 +11,7 @@
  */
 
 import { useViewerStore } from '@/store';
-import type { EntityFingerprint } from '@ifc-lite/diff';
+import { prepareDiffModel, type DiffModelHandle, type EntityFingerprint } from '@ifc-lite/diff';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 
@@ -24,6 +24,9 @@ export const readGeometryContentVersion = (): number =>
 type Side = EntityFingerprint<CompareRef>[];
 
 export interface BuiltPair {
+  baseHandle: DiffModelHandle<CompareRef>;
+  headHandle: DiffModelHandle<CompareRef>;
+  dispose: () => void;
   baseModelId: string;
   headModelId: string;
   baseName: string;
@@ -66,6 +69,24 @@ export interface BuiltPair {
   /** Store `mutationVersion` the stores were baked at (#5312). Any edit since
    *  makes the fingerprints describe a model that no longer exists. */
   mutationVersion: number;
+}
+
+/** Transfer both native snapshots to one owner; roll back partial allocation. */
+export function preparePairHandles(base: Side, head: Side): Pick<BuiltPair,
+  'baseHandle' | 'headHandle' | 'dispose'> {
+  const baseHandle = prepareDiffModel(base);
+  try {
+    const headHandle = prepareDiffModel(head);
+    let disposed = false;
+    return { baseHandle, headHandle, dispose() {
+      if (disposed) return;
+      disposed = true;
+      try { baseHandle.dispose(); } finally { headHandle.dispose(); }
+    } };
+  } catch (error) {
+    baseHandle.dispose();
+    throw error;
+  }
 }
 
 /** Are these fingerprints the ones for this A/B pair, extracted from the mesh

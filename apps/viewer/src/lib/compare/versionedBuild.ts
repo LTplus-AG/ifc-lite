@@ -48,6 +48,8 @@ export interface VersionedBuildOptions<T> {
   extract: (version: number) => Promise<T>;
   /** How many times to re-extract before giving up. Default 3. */
   maxAttempts?: number;
+  /** Release a rejected extraction when T owns resources (#8042). */
+  discard?: (candidate: T) => void;
 }
 
 /**
@@ -65,6 +67,7 @@ export async function buildAtCurrentVersion<T>(options: VersionedBuildOptions<T>
     // and the one below; extracting is not, which is the case that retries.
     const candidate = cached && isCurrent(cached, version) ? cached : await extract(version);
     if (isCurrent(candidate, readVersion())) return candidate;
+    options.discard?.(candidate);
     // The world moved while we were reading it, so whatever we just produced
     // describes a mix of before and after. No need to retire `cached` here:
     // versions only ever move forward, so the reuse check above rejects it on

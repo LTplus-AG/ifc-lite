@@ -39,8 +39,10 @@ pub(super) fn reference_only(source: &mut Source<'_>, product: u32) -> Result<bo
 /// host. An opening used by another canonical host cannot change semantics as a
 /// side effect of this occurrence's conversion.
 pub(super) fn prepare(
-    source: &mut Source<'_>, product: u32,
-    opening_ids: &[u32], exclusive: &std::collections::BTreeSet<u32>,
+    source: &mut Source<'_>,
+    product: u32,
+    opening_ids: &[u32],
+    exclusive: &std::collections::BTreeSet<u32>,
 ) -> Result<Vec<ifc_lite_core::DecodedEntity>, String> {
     if opening_ids.is_empty() { return Ok(Vec::new()); }
     if opening_ids.len() > 64 { return Err("Appearance opening scope exceeds 64 openings".into()); }
@@ -82,9 +84,12 @@ pub(super) fn prepare(
 /// Capture companion geometry through the same evaluator before its rows change.
 /// Textured companions remain refused until publication can retain their assets.
 pub(super) fn removed_meshes(
-    source: &mut Source<'_>, opening_ids: &[u32], edits: &[ifc_lite_core::DecodedEntity],
+    source: &mut Source<'_>,
+    opening_ids: &[u32],
+    edits: &[ifc_lite_core::DecodedEntity],
     textures: &std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>>,
-    styles: &super::owned_context::Styles, budget: &mut super::budget::PlanBudget,
+    styles: &super::owned_context::Styles,
+    budget: &mut super::budget::PlanBudget,
 ) -> Result<Vec<crate::types::mesh::MeshData>, String> {
     let edited: std::collections::BTreeSet<_> = edits.iter().map(|row| row.id).collect();
     let mut result = Vec::new();

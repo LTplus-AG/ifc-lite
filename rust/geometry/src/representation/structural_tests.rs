@@ -132,10 +132,19 @@ fn shallow_ids_preserve_dangling_and_non_list_policies() {
         #5=IFCPRODUCTDEFINITIONSHAPE($,$,#999);";
     let mut decoder = EntityDecoder::new(source);
     assert_eq!(product_shape_id(&decoder.decode_by_id(1).unwrap()), Some(999));
-    assert_eq!(pds_representation_ids(&decoder.decode_by_id(2).unwrap()).collect::<Vec<_>>(), vec![999, 998]);
+    assert_eq!(
+        pds_representation_ids(&decoder.decode_by_id(2).unwrap()).collect::<Vec<_>>(),
+        vec![999, 998]
+    );
     assert_eq!(rep_item_ids(&decoder.decode_by_id(3).unwrap()).count(), 0);
-    assert_eq!(rep_item_ids(&decoder.decode_by_id(4).unwrap()).collect::<Vec<_>>(), vec![999, 998]);
-    assert_eq!(pds_representation_ids(&decoder.decode_by_id(5).unwrap()).collect::<Vec<_>>(), vec![999]);
+    assert_eq!(
+        rep_item_ids(&decoder.decode_by_id(4).unwrap()).collect::<Vec<_>>(),
+        vec![999, 998]
+    );
+    assert_eq!(
+        pds_representation_ids(&decoder.decode_by_id(5).unwrap()).collect::<Vec<_>>(),
+        vec![999]
+    );
     assert_eq!(decoder.cache_size(), 5, "ID reads never decode list members");
 }
 

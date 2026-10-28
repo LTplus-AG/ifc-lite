@@ -220,7 +220,9 @@ pub(crate) fn element_reaches_indexed_colour(
     indexed_colour_full: &FxHashMap<u32, FullIndexedColourMap>,
     decoder: &mut EntityDecoder,
 ) -> bool {
-    let Some(pds_id) = product_shape_id(entity) else { return false };
+    let Some(pds_id) = product_shape_id(entity) else {
+        return false;
+    };
     let Ok(pds) = decoder.decode_by_id(pds_id) else { return false };
     let mut reps: Vec<u32> = pds_representation_ids(&pds).collect();
     let mut visited = rustc_hash::FxHashSet::default();

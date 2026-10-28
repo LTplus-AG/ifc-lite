@@ -18,6 +18,8 @@ pub(crate) struct RetainedProgram<'a> {
 }
 enum RetainedInner<'a> {
     Geometry(GeometryProgram<'a>),
+    #[cfg(feature = "retained-runtime")]
+    Layers(Box<layers::LayerBands>),
     // Default unit tests exercise geometry programs; cuts enter only through
     // the retained-runtime facade and its feature-gated integration witnesses.
     #[cfg_attr(not(feature = "retained-runtime"), allow(dead_code))]
@@ -27,11 +29,15 @@ enum RetainedInner<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RetainedTicket {
     Geometry(ProgramRequest),
+    #[cfg(feature = "retained-runtime")]
+    Layer { program: u64, seq: u64 },
     #[cfg(any(test, feature = "retained-runtime"))]
     Cut { program: u64, seq: u64 },
 }
 pub(crate) enum RetainedReply {
     Geometry(ProgramReply),
+    #[cfg(feature = "retained-runtime")]
+    Layer { program: u64, seq: u64 },
     #[cfg(any(test, feature = "retained-runtime"))]
     Cut { program: u64, seq: u64 },
 }
@@ -81,6 +87,8 @@ impl<'a> RetainedProgram<'a> {
     }
     #[cfg(any(test, feature = "retained-runtime"))]
     fn selection(&self) -> Option<&RetainedSelection> {
+        #[cfg(feature = "retained-runtime")]
+        if let RetainedInner::Layers(layers) = &self.inner { return Some(&layers.selection); }
         let RetainedInner::Geometry(inner) = &self.inner else {
             let RetainedInner::Cuts(cuts) = &self.inner else { return None; };
             return Some(&cuts.selection);
@@ -117,6 +125,8 @@ impl<'a> RetainedProgram<'a> {
     pub(crate) fn request(&mut self) -> std::result::Result<Option<RetainedTicket>, RetainedProgramError> {
         self.check()?;
         match &mut self.inner {
+            #[cfg(feature = "retained-runtime")]
+            RetainedInner::Layers(layers) => layers.request().map(|r| r.map(|seq| RetainedTicket::Layer { program: layers.id, seq })),
             RetainedInner::Geometry(inner) => inner.request().map(|r| r.map(RetainedTicket::Geometry)).map_err(Into::into),
             #[cfg(any(test, feature = "retained-runtime"))]
             RetainedInner::Cuts(cuts) => cuts.request().map(|r| r.map(|seq| RetainedTicket::Cut { program: cuts.id, seq })),
@@ -145,6 +155,12 @@ impl<'a> RetainedProgram<'a> {
     ) -> std::result::Result<(RetainedReply, Vec<RetainedPlanOperation>), RetainedProgramError>
     {
         self.check()?;
+        #[cfg(feature = "retained-runtime")]
+        if let RetainedInner::Layers(layers) = &mut self.inner {
+            let RetainedTicket::Layer { program, seq } = ticket else { return Err(RetainedProgramError::StaleRequest); };
+            let operations = layers.admit(program, seq, router, decoder)?;
+            return Ok((RetainedReply::Layer { program, seq }, operations));
+        }
         #[cfg(any(test, feature = "retained-runtime"))]
         if let RetainedInner::Cuts(cuts) = &mut self.inner {
             let RetainedTicket::Cut { program, seq } = ticket else { return Err(RetainedProgramError::StaleRequest); };
@@ -221,6 +237,8 @@ impl<'a> RetainedProgram<'a> {
     ) -> std::result::Result<(), RetainedProgramError> {
         self.check()?;
         match (&self.inner, ticket) {
+            #[cfg(feature = "retained-runtime")]
+            (RetainedInner::Layers(layers), RetainedTicket::Layer { program, seq }) => layers.validate_ticket(program, seq),
             (RetainedInner::Geometry(inner), RetainedTicket::Geometry(ticket))
                 if inner.pending.is_some_and(|(pending, _)| pending == ticket) => Ok(()),
             #[cfg(any(test, feature = "retained-runtime"))]
@@ -232,6 +250,8 @@ impl<'a> RetainedProgram<'a> {
         -> std::result::Result<(), RetainedProgramError> {
         self.check()?;
         match (&self.inner, reply) {
+            #[cfg(feature = "retained-runtime")]
+            (RetainedInner::Layers(layers), RetainedReply::Layer { program, seq }) => layers.validate_reply(*program, *seq, router),
             (RetainedInner::Geometry(inner), RetainedReply::Geometry(reply)) => inner.validate_reply(reply, router).map_err(Into::into),
             #[cfg(any(test, feature = "retained-runtime"))]
             (RetainedInner::Cuts(cuts), RetainedReply::Cut { program, seq }) => cuts.validate_reply(*program, *seq, router),
@@ -244,6 +264,10 @@ impl<'a> RetainedProgram<'a> {
             return Err(Box::new(RejectedRetainedReply { error, reply }));
         }
         match (&mut self.inner, reply) {
+            #[cfg(feature = "retained-runtime")]
+            (RetainedInner::Layers(layers), reply @ RetainedReply::Layer { .. }) => {
+                if let Err(error) = layers.accept() { return Err(Box::new(RejectedRetainedReply { error, reply })); }
+            }
             (RetainedInner::Geometry(inner), RetainedReply::Geometry(reply)) => {
                 inner.accept(reply, router).map_err(|r| Box::new(RejectedRetainedReply {
                     error: r.error.into(), reply: RetainedReply::Geometry(r.reply),
@@ -285,63 +309,8 @@ mod tests;
 /// This owns no numerical receipt or source decoder and grants no SDK authority.
 #[derive(Clone)]
 pub(crate) struct RetainedTraversal { selection: Option<RetainedSelection> }
-impl RetainedTraversal {
-    pub(crate) fn new(contract: RetainedContract) -> Self {
-        Self { selection: RetainedSelection::new(contract,next_program_id()) }
-    }
-    #[cfg(feature = "retained-runtime")]
-    pub(crate) fn opening_cuts(&self, host: RetainedProductPlan, cutters: Vec<(u32, RetainedProductPlan)>)
-        -> std::result::Result<RetainedProgram<'static>, RetainedFailure> {
-        let selection = self.selection.as_ref().ok_or(RetainedProgramError::Unsupported)?.for_root();
-        crate::resource::charge(crate::resource::Cost {
-            live_bytes: std::mem::size_of::<openings::OpeningCuts>() as u64, ..Default::default()
-        }).map_err(RetainedFailure::Stopped)?.retain();
-        let cuts = openings::OpeningCuts::new(selection, next_program_id(), host, cutters)?;
-        Ok(RetainedProgram { inner: RetainedInner::Cuts(Box::new(cuts)), cancelled: false, unsupported: false })
-    }
-    pub(crate) fn product_parts<'a>(&self, element: &'a DecodedEntity) -> RetainedProgram<'a> {
-        let id = next_program_id();
-        let selection = self.selection.as_ref().map(RetainedSelection::for_root);
-        let unsupported = selection.is_none();
-        let control = match selection {
-            Some(selection) => ProductControl::retained(element, selection),
-            None => {
-                ProductControl::merged(element, crate::router::processing::SourceHygiene::IndexOnly)
-            }
-        };
-        let mut inner = GeometryProgram::with_control(Control::Product(control));
-        inner.id = id;
-        RetainedProgram { inner: RetainedInner::Geometry(inner), cancelled: false, unsupported }
-    }
-    pub(crate) fn product_submeshes<'a>(&self, element: &'a DecodedEntity, allow_instancing: bool,
-        textures: Option<&'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>) -> RetainedProgram<'a> {
-        let mut program = self.product_parts(element);
-        if let RetainedInner::Geometry(inner) = &mut program.inner {
-        if let Control::Product(control) = &mut inner.control {
-            control.select_retained_styled(allow_instancing, textures);
-        }
-        }
-        program
-    }
-    pub(crate) fn type_map<'a>(&self, rep_map: DecodedEntity,
-        textures: Option<&'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>) -> RetainedProgram<'a> {
-        let id = next_program_id();
-        let selection = self.selection.as_ref().map(RetainedSelection::for_root);
-        let unsupported = selection.is_none();
-        let control = match selection {
-            Some(selection) => crate::program::mapping::MappingControl::retained_type_map(rep_map,textures,selection),
-            None => {
-                // Default wasm has no retained selection. Keep this root inert
-                // without borrowing a temporary or constructing numerical authority.
-                crate::program::mapping::MappingControl::occurrence(
-                    crate::program::mapping::Reached::Nested(rep_map))
-            }
-        };
-        let mut inner = GeometryProgram::with_control(Control::Mapping(control));
-        inner.id = id;
-        RetainedProgram { inner: RetainedInner::Geometry(inner), cancelled: false, unsupported }
-    }
- }
+#[path = "traversal.rs"]
+mod traversal;
 
 #[cfg(all(test, target_arch = "wasm32", not(any(feature = "wasm_source_capture", feature = "retained-runtime"))))]
 mod unavailable_tests {

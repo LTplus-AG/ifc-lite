@@ -46,6 +46,10 @@ mod entry;
 pub(super) mod admission;
 mod traversal;
 mod openings;
+mod layers;
+mod layer_caps;
+mod layer_rims;
+mod layer_mesh;
 use openings::OpeningPhase;
 mod source_admission;
 use source_admission::SourceAdmission;
@@ -92,6 +96,10 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     outer: Option<WorkRequest>,
     traversal: RetainedTraversal,
     openings: Option<OpeningPhase>,
+    layer_spec: Option<ifc_lite_geometry::program::transactions::LayerSpec>,
+    layer_active: bool,
+    layer_start: Option<resource::BudgetStart>,
+    band_ms: f64,
     opening_entities: &'a [DecodedEntity],
     type_values: Vec<RetainedProductPlan>,
     type_map_members: Vec<u32>,

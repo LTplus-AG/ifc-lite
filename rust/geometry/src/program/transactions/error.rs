@@ -21,6 +21,7 @@ pub enum TransactionFailureKind {
     OperationUnsupported,
     DeadlineExceeded,
     EmptyResult,
+    MaterialLayerStrategy,
 }
 #[derive(Debug)]
 pub struct TransactionError(RetainedFailure);
@@ -41,6 +42,7 @@ impl TransactionError {
         if let RetainedFailure::Completion(super::logical::failure::CompletionReason::OpeningConsumed { opening }) = &self.0 {
             return Some(("opening_cut", Some(*opening), "consumed"));
         }
+        if let RetainedFailure::LayerStrategy(cause) = &self.0 { return Some(("layer_band", None, cause)); }
         let RetainedFailure::Origin(handle) = &self.0 else {
             return None;
         };
@@ -71,6 +73,7 @@ impl TransactionError {
             FailureSite::TypeMapPlacement => "type_map_placement",
             FailureSite::MappingAffine => "mapping_affine",
             FailureSite::TypeMapAffine => "type_map_affine",
+            FailureSite::LayerBand => "layer_band",
         };
         let cause = match &origin.cause {
             OriginCause::Recipe(_) => "recipe",
@@ -88,6 +91,8 @@ impl TransactionError {
     pub fn kind(&self) -> TransactionFailureKind {
         use TransactionFailureKind as Kind;
         match &self.0 {
+            RetainedFailure::LayerStrategy(_) => Kind::MaterialLayerStrategy,
+            RetainedFailure::LayerEmpty => Kind::EmptyResult,
             RetainedFailure::Stopped(_) => Kind::Stopped,
             RetainedFailure::DeadlineExceeded => Kind::DeadlineExceeded,
             RetainedFailure::Origin(handle) => {

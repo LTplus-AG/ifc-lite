@@ -80,11 +80,16 @@ impl Plan {
         ]);
         for plan in plans { values.extend(plan.inner.values); }
         resources.check().map_err(super::TransactionError::stopped)?;
-        Ok(Self { inner: logical::RetainedProductPlan { values, remaining, opening: None },
+        Ok(Self { inner: logical::RetainedProductPlan { values, remaining, opening: None, layers: None },
             _storage: Some(storage), _requirements_storage: Some(requirements_storage) })
     }
 }
 impl Plan {
+    pub fn discharge_layers(mut self) -> Self {
+        self.inner.remaining.retain(|r| *r != logical::RetainedRequirement::MaterialLayers);
+        self
+    }
+    pub fn layers(&self) -> Option<&super::LayerCompletion> { self.inner.layers.as_ref() }
     pub fn discharge_unvoided(mut self) -> Self {
         self.inner.remaining.retain(|r| *r != logical::RetainedRequirement::OpeningClosure);
         self

@@ -39,6 +39,8 @@ pub(in crate::program) enum FailureSite {
     TypeMapPlacement,
     MappingAffine,
     TypeMapAffine,
+    #[cfg(feature = "retained-runtime")]
+    LayerBand,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum StructuralReason {
@@ -336,6 +338,10 @@ pub(in crate::program) enum CompletionReason {
 }
 #[derive(Debug)]
 pub(in crate::program) enum RetainedFailure {
+    #[cfg(feature = "retained-runtime")]
+    LayerStrategy(&'static str),
+    #[cfg(feature = "retained-runtime")]
+    LayerEmpty,
     Stopped(ProgramStop),
     #[cfg(feature = "retained-runtime")]
     DeadlineExceeded,

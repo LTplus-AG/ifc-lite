@@ -51,6 +51,8 @@ pub enum Unsupported {
 }
 #[derive(Debug)]
 pub enum RetainedExecutionError {
+    LayerStrategy(&'static str),
+    LayerCaps(&'static str),
     Source(RetainedContextError),
     Core(ifc_lite_core::Error),
     Owner(WorkError),

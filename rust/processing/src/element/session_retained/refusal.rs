@@ -12,6 +12,7 @@ pub enum RetainedProductRefusal {
     OpeningStrategy,
     OpeningUnsupported,
     MaterialLayerStrategy,
+    LayerCapsUnresolved,
     OperationUnsupported,
     SourceInvalid,
     SourceChanged,
@@ -42,6 +43,7 @@ impl RetainedProductRefusal {
             Self::OpeningUnsupported => "opening_unsupported",
             Self::OpeningStrategy => "opening_strategy",
             Self::MaterialLayerStrategy => "material_layer_strategy",
+            Self::LayerCapsUnresolved => "layer_caps_unresolved",
             Self::OperationUnsupported => "operation_unsupported",
             Self::SourceInvalid => "source_invalid",
             Self::SourceChanged => "source_changed",
@@ -66,6 +68,14 @@ impl RetainedExecutionError {
         use RetainedProductRefusal as Refusal;
         let mut origin = None;
         let refusal = match self {
+            Self::LayerStrategy(cause) => {
+                origin = Some(RefusalOrigin { site: "layer_band", entity: None, cause });
+                Refusal::MaterialLayerStrategy
+            }
+            Self::LayerCaps(cause) => {
+                origin = Some(RefusalOrigin { site: "layer_caps", entity: None, cause });
+                Refusal::LayerCapsUnresolved
+            }
             Self::Unsupported(reason) => match reason {
                 Unsupported::RetainedOpeningStrategy => Refusal::OpeningStrategy,
                 Unsupported::RetainedMaterialLayerStrategy => Refusal::MaterialLayerStrategy,
@@ -134,6 +144,7 @@ pub(super) fn common_kind_refusal(kind: Kind, stop: Option<ProgramStop>) -> Reta
     use RetainedProductRefusal as Refusal;
     match kind {
         Kind::OperationUnsupported => Refusal::OperationUnsupported,
+        Kind::MaterialLayerStrategy => Refusal::MaterialLayerStrategy,
         Kind::Source | Kind::Unsupported => Refusal::SourceInvalid,
         Kind::Empty => Refusal::EmptyResult,
         Kind::Incomplete => Refusal::Incomplete,

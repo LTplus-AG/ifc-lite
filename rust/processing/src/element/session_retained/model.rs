@@ -58,6 +58,8 @@ pub enum ProductOutcome {
 pub struct ModelSummary {
     pub candidates: usize,
     pub published: usize,
+    pub layered_products: usize,
+    pub bands: usize,
     /// Attempted opening cuts across published and refused products.
     pub cuts: u64,
     /// Charged recovery attempts, including failed qualification and deliberate
@@ -168,6 +170,9 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
         match outcome {
             Ok(shape) => {
                 summary.published += 1;
+                let bands = shape.parts.iter().filter(|p| p.layer.is_some()).count();
+                summary.layered_products += usize::from(bands != 0);
+                summary.bands += bands;
                 sink(ProductOutcome::Published(shape), ms);
             }
             Err(error) => {

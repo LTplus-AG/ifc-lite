@@ -12,7 +12,12 @@ pub(super) fn decoded_openings(context: &OwnedMeshProductionContext, id: u32,
     let mut openings = Vec::new();
     // The canonical plan uses this same layer predicate. Let begin report its
     // layer refusal before looking at a malformed related opening.
-    if router.is_material_layer_sliceable(id) { return Ok(openings); }
+    if router.is_material_layer_sliceable(id) {
+        let element = decoder.decode_by_id(id).map_err(RetainedExecutionError::Core)?;
+        let admitted = RetainedTraversal::layer_admission(&element, router, decoder);
+        error::budget_checkpoint()?;
+        if admitted.is_err() { return Ok(openings); } // begin reports layer precedence.
+    }
     if let Some(ids) = context.borrowed().void_index.get(&id) {
         OwnedResourceContext::capture_current().reserve_headers(&mut openings, ids.len())
             .map_err(RetainedExecutionError::Stopped)?.retain();
@@ -85,8 +90,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 Ok(true)
             }
             Some(OpeningPhase::Cuts) => {
-                self.plan = Some(plan);
-                self.state.stage = Stage::Complete;
+                self.complete_layers(plan)?;
                 Ok(true)
             }
             None if matches!(kind, WorkKind::Primary { strategy: PrimaryStrategy::VoidedSubmeshes, .. }) => {

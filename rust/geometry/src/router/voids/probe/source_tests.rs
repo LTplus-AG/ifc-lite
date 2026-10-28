@@ -103,7 +103,10 @@ fn issue_7781_direction_and_opening_placement_propagate_typed_stop() {
     let mut decoder = EntityDecoder::new(&content);
     let item = decoder.decode_by_id(1000).unwrap();
     let element = decoder.decode_by_id(100).unwrap();
-    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+        work: Some(0),
+        ..ResourceLimits::default()
+    }));
     let stop = account
         .prepare(Cost {
             work: u64::MAX,

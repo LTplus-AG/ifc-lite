@@ -74,7 +74,7 @@ impl GeometryRouter {
     ) -> Result<Option<(Vector3<f64>, Option<Matrix4<f64>>)>> {
         checked_probe(|terminal| {
             let (solid, mapping_chain) = probe_result!(terminal,
-                unwrap_solid(item.clone(), None, UnwrapPolicy::FIRST, decoder,))??;
+                unwrap_solid(item.clone(), None, UnwrapPolicy::FIRST, decoder))??;
             let (dir, position_transform) = probe_result!(terminal,
                 self.extract_extrusion_direction_from_solid(&solid, decoder))??;
             let combined = match (mapping_chain.as_ref(), position_transform) {

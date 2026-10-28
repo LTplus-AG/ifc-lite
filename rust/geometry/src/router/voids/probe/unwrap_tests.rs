@@ -7,11 +7,9 @@ use crate::representation::unwrap::unwrap_boolean_leaf;
 fn unwrap(content: &str, id: u32, policy: UnwrapPolicy) -> Option<(u32, Option<Matrix4<f64>>)> {
     let mut decoder = EntityDecoder::new(content);
     let item = decoder.decode_by_id(id).unwrap();
-    unwrap_solid(item, None, policy, &mut decoder, |level, decoder| {
-        router.mapped_item_transform(&level.item, &level.map, decoder)
-    })
-    .unwrap()
-    .map(|(solid, chain)| (solid.id, chain))
+    unwrap_solid(item, None, policy, &mut decoder)
+        .unwrap()
+        .map(|(solid, chain)| (solid.id, chain))
 }
 
 #[test]

@@ -4,6 +4,7 @@ mod clipping;
 pub mod inventory;
 mod math;
 pub mod openings;
+pub mod mapped;
 mod prism;
 pub mod quantities;
 

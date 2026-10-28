@@ -292,3 +292,6 @@ mod m6_parity_tests;
 mod cut0_parity_tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 pub(crate) mod m9_parity_tests;
+
+#[cfg(test)]
+mod m7_parity_tests;

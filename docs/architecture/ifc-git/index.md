@@ -176,10 +176,17 @@ and drops them silently.
 Those same defaults carry a second load. Because the writer emits only the
 attribute keys a delivery actually changed, the delta layer asserts only what
 that party stated — which is what makes its opinions evaluable under the
-authority rule in [`layer-prs/12-authority.md`](../layer-prs/12-authority.md) §12.4,
-discussed in §6.3.
-Disabling the flags would not just lose removals; it would turn carried-over
-values into opinions the delivering party never expressed.
+authority rule in [`layer-prs/12-authority.md`](../layer-prs/12-authority.md)
+§12.4, discussed in §6.3.
+
+Disabling either flag drops part of the delta rather than adding to it:
+`includeUpdatedValues: false` omits a changed existing attribute,
+`includeDeletions: false` omits tombstones and `null` removals, and in both
+cases the previous delivery's value survives composition. The authority cost
+follows from that, and it is misattribution of a *retracted* opinion rather
+than a fabricated one: the party's superseded value goes on reading as its
+current position, so a `contested` record (§12.6) would attach to a value it
+has already changed or withdrawn.
 
 (Note for whoever owns `02-layer-format.md`: its §2.3 still describes
 `minimal-layer.ts` as "additive-only today", which the implementation has since

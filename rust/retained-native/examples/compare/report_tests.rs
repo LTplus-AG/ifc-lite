@@ -244,3 +244,27 @@ fn m8_report_only_exact_still_gates_source_volume_bounds_and_closure() {
         None, &tolerances(), false);
     assert!(report.violations.iter().any(|message| message.contains("exact")));
 }
+
+// #3641: the harness must gate the cut result, including a smaller valid bbox.
+#[test]
+fn m8_convex_opening_expectation_rejects_wrong_volume_and_escaped_bbox() {
+    let path = std::path::Path::new("rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc");
+    let bytes = include_bytes!("../../../processing/tests/fixtures/issue_3641_voiding_trap.ifc");
+    let sources = ifc_lite_processing::extract_analytic_quantity_sources(bytes, None);
+    let mut decoder = ifc_lite_core::EntityDecoder::with_index(bytes, ifc_lite_core::build_entity_index(bytes));
+    let t = crate::tolerances::registered().unwrap();
+    let expected = crate::source::retraced_opening(path, &sources, &mut decoder, &t).unwrap().unwrap();
+    let volume = expected.result_volume.unwrap();
+    let bbox = expected.host_bbox.unwrap();
+    for defect in 0..3 {
+        let mut actual = Metrics { volume, area: 0., bbox, defects: 0 };
+        match defect {
+            1 => actual.volume *= 1.001,
+            2 => actual.bbox[0] -= 1.,
+            _ => actual.bbox[0] += 0.001,
+        }
+        let mut violations = Vec::new();
+        crate::openings::check_opened("M8 slab", &actual, Some(&expected), &t, &mut violations);
+        assert_eq!(violations.is_empty(), defect == 0, "defect={defect}: {violations:?}");
+    }
+}

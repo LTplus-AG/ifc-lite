@@ -153,7 +153,12 @@ fn compare(
         ifc_lite_retained_native::oracle::type_maps::expected(&bytes, &sources, maps).map(|value| (id, value))
     }).collect::<Result<_, _>>()?;
     let retraced = source::retraced(path, &sources, &mut source.decoder(), tolerances)?;
-    let opening_expectations = openings::expectations(&bytes, &sources)?;
+    let mut opening_expectations = openings::expectations(&bytes, &sources)?;
+    let retraced_opening = source::retraced_opening(path, &sources, &mut source.decoder(), tolerances)?;
+    let has_retraced_opening = retraced_opening.is_some();
+    if let Some(expected) = retraced_opening {
+        opening_expectations.insert(72209, Some(expected));
+    }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
     let (summary, timings) = driver.run_model(
@@ -207,7 +212,7 @@ fn compare(
                         ms,
                         opening_expectations.get(&id),
                         &sources,
-                        retraced.is_some(),
+                        retraced.is_some() || (id == 72209 && has_retraced_opening),
                     );
                 }
                 ProductOutcome::Refused {

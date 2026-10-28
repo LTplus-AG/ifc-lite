@@ -98,7 +98,7 @@ function rulesOverlap(a: ScopeClaim, b: ScopeClaim): boolean {
   if (aType !== undefined && bType !== undefined && !typePatternsOverlap(aType, bType)) return false;
   const bConstraints = b.selector?.constraints ?? {};
   for (const [key, value] of Object.entries(a.selector?.constraints ?? {})) {
-    if (key in bConstraints && bConstraints[key] !== value) return false;
+    if (Object.prototype.hasOwnProperty.call(bConstraints, key) && bConstraints[key] !== value) return false;
   }
   return true;
 }
@@ -221,7 +221,8 @@ function ruleMatches(rule: CharterRule, subject: AttributeSubject): boolean {
   const { ifcType, constraints } = claim.selector;
   if (subject.ifcType === undefined) return false;
   if (ifcType.endsWith('*') ? !subject.ifcType.startsWith(ifcType.slice(0, -1)) : ifcType !== subject.ifcType) return false;
-  return Object.entries(constraints).every(([key, value]) => subject.tags?.[key] === value);
+  const tags = subject.tags ?? {};
+  return Object.entries(constraints).every(([key, value]) => Object.prototype.hasOwnProperty.call(tags, key) && tags[key] === value);
 }
 
 /** The most specific rule governing an attribute, or undefined when none does. */

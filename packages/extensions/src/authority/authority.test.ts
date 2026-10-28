@@ -113,6 +113,9 @@ describe('parseCharter', () => {
     expect(errorCodes(ambiguous('model.mutate:Pset_WallCommon@IfcWall', 'model.mutate:Pset_WallCommon@IfcDoor'))).toEqual([]);
     expect(errorCodes(ambiguous('model.mutate:Pset_WallCommon.FireRating', 'model.mutate:Pset_WallCommon.IsExternal'))).toEqual([]);
     expect(errorCodes(ambiguous('model.mutate:geometry@IfcWall&storey=EG', 'model.mutate:geometry@IfcWall&storey=OG1'))).toEqual([]);
+    // Constraint keys that name Object.prototype members are ordinary keys.
+    expect(errorCodes(ambiguous('model.mutate:geometry@IfcWall&constructor=X', 'model.mutate:geometry@IfcWall&storey=EG'))).toEqual(['ambiguous_authority']);
+    expect(errorCodes(ambiguous('model.mutate:geometry@IfcWall&__proto__=X', 'model.mutate:geometry@IfcWall&__proto__=Y'))).toEqual([]);
     expect(errorCodes(ambiguous('model.mutate:Pset_WallCommon@IfcWall', 'model.mutate:Pset_WallCommon.FireRating@IfcWall'))).toEqual([]);
     // Same role is never ambiguous.
     expect(errorCodes({
@@ -229,6 +232,8 @@ describe('resolveAttribute (§12.5 golden table)', () => {
     expect(canonicalValueKey([undefined])).toBe(canonicalValueKey([null]));
     expect(canonicalValueKey(-0)).toBe(canonicalValueKey(0));
     expect(canonicalValueKey('Cafe\u0301')).toBe(canonicalValueKey('Café'));
+    // Keys sort by their NFC form: decomposed 'e\u0301' sorts before 'f' raw, after it normalized.
+    expect(canonicalValueKey({ 'e\u0301': 1, f: 2 })).toBe(canonicalValueKey({ '\u00e9': 1, f: 2 }));
     expect(canonicalValueKey(JSON.parse('{"n":1e400}'))).toBe(canonicalValueKey(JSON.parse('{"n":1e400}')));
     expect(canonicalValueKey('1')).not.toBe(canonicalValueKey(1));
     expect(canonicalValueKey(Number.NaN)).not.toBe(canonicalValueKey(null));

@@ -86,8 +86,12 @@ export function canonicalValueKey(value: unknown, nested = false): string {
     case 'object': {
       if (Array.isArray(value)) return `[${value.map((item) => canonicalValueKey(item, true)).join(',')}]`;
       const record = value as Record<string, unknown>;
-      const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
-      return `{${keys.map((key) => `${JSON.stringify(key.normalize('NFC'))}:${canonicalValueKey(record[key], true)}`).join(',')}}`;
+      // Sort by the NFC form, so two spellings of one key order the same.
+      const members = Object.keys(record)
+        .filter((key) => record[key] !== undefined)
+        .map((key) => [key.normalize('NFC'), key] as const)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      return `{${members.map(([nfc, key]) => `${JSON.stringify(nfc)}:${canonicalValueKey(record[key], true)}`).join(',')}}`;
     }
     default:
       return `\u0000${typeof value}:${String(value)}`;

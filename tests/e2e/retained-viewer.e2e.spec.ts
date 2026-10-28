@@ -10,6 +10,7 @@ import type { LoadTraceSnapshot } from '../../packages/load-trace/src';
 import { mappedInstancePixels } from './m11-instancing-pixels';
 
 const WALL = 'rust/geometry/tests/fixtures/issue_098_wall_W.ifc';
+const PRESENTATION = 'tests/fixtures/synthetic-retained/f-i-presentation.ifc';
 const MAPPED = 'rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc';
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
 // Trace DOM snapshots add work to the Cancel latency sample; keep real UI/Worker
@@ -21,6 +22,7 @@ interface ViewerGlobals {
   __retainedCancel?: { clickMs: number; before: { meshIds: number[]; published: number }; error?: string };
   __IFC_LITE_LOAD_TRACE__: { latest(): LoadTraceSnapshot | null };
   __retainedLongTasks: number[];
+  __m11Fi?: { shards: number; occurrenceIds: number[] };
   __m11I?: { draws: number; shards: { templates: number; instances: number; triangles: number }[] };
 }
 const expected = (model: string) => readFileSync('tests/manifests/cli-retained-coverage.tsv', 'utf8')
@@ -122,6 +124,36 @@ test.describe('retained viewer acceptance', () => {
     await record('m11-i-instancing', { ...observed, summary: result.summary, flatProducts: result.meshIds.length, spans: result.spans, pixels: pixels.evidence });
     if (process.env.IFCLITE_VIEWER_OUT) await writeFile(join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing-gpu.png'), pixels.png);
     if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing.png') });
+  });
+
+  test('M11-I: f-i case (c) emits an instanced shard', async ({ page }) => {
+    await setup(page, 'retained');
+    await page.evaluate(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals;
+      const seen = new Set<ArrayBuffer>(), caseIds = new Set([311,321,331,341,351,361,371,381,391]);
+      globals.__m11Fi = { shards: 0, occurrenceIds: [] };
+      globals.__ifc_lite_viewer_store__.subscribe(state => {
+        for (const { bytes } of state.pendingInstancedShards ?? []) {
+          if (seen.has(bytes)) continue;
+          seen.add(bytes);
+          const wire = new DataView(bytes), templates = wire.getUint32(8, true);
+          const stride = wire.getUint32(4, true) >= 2 ? wire.getUint32(28, true) || 88 : 88;
+          const ids = Array.from({ length: wire.getUint32(12, true) }, (_, i) =>
+            wire.getUint32(32 + templates * 48 + i * stride + 4, true)).filter(id => caseIds.has(id));
+          if (ids.length > 0) { globals.__m11Fi!.shards++;globals.__m11Fi!.occurrenceIds.push(...ids); }
+        }
+      });
+    });
+    await page.locator('#file-input-open').setInputFiles(resolve(PRESENTATION));
+    await complete(page, true);
+    const result = await snapshot(page);
+    expect(result.error).toBeNull();
+    const observed = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11Fi!);
+    expect(observed.shards, '§7.4: a real IFNS shard contains f-i case (c) occurrences').toBeGreaterThan(0);
+    // c9 is a raw-coordinate outlier: its pairing verifier may correctly keep
+    // it flat. Require the group, never force that occurrence past verification.
+    await record('m11-i-f-i-c', { ...observed, farOccurrenceInstanced: observed.occurrenceIds.includes(391),
+      farOccurrenceFlat: result.meshIds.includes(391), summary: result.summary });
   });
 
   test('positive: current corpus outcomes are absent/listed, with no exact cache lookup', async ({ page }) => {

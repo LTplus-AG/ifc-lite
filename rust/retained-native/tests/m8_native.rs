@@ -6,9 +6,8 @@ mod metrics;
 use ifc_lite_core::{SourceBundle, EntityDecoder, build_entity_index};
 use ifc_lite_retained_native::{NativeModelDriver, ModelOptions, ProductOutcome, oracle::{convex, retrace}};
 const FIXTURE: &str = include_str!("../../processing/tests/fixtures/issue_3641_voiding_trap.ifc");
-fn tolerance() -> f64 {
-    let v: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m8.json")).unwrap();
-    v["convexLeafVolumeRelative"]["linear"].as_f64().unwrap()
+fn tolerances() -> serde_json::Value {
+    serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m8.json")).unwrap()
 }
 fn worker() -> Option<NativeModelDriver> {
     let path = std::env::var_os("IFCLITE_SMLIB_WORKER");
@@ -28,7 +27,9 @@ fn issue_3641_real_sdk_cutpart_and_opening_subset_matrix() {
     let expected = retrace::source(&sources,&mut decoder,origin,1e-12).unwrap();
     let host = convex::source(&sources,72209,origin).unwrap();
     let cutters = [convex::source(&sources,72216,origin).unwrap(),convex::source(&sources,72230,origin).unwrap(),expected.clone()];
-    for mask in 0..8 {
+    let t = tolerances();
+    let mut refused = Vec::new();
+    for mask in 0u32..8 {
         let text = FIXTURE.lines().filter(|line| ![(0,"#72208="),(1,"#72229="),(2,"#72244=")].iter()
             .any(|(i,prefix)| mask & (1<<i) == 0 && line.starts_with(prefix))).collect::<Vec<_>>().join("\n");
         let mut measured = Vec::new();
@@ -44,30 +45,39 @@ fn issue_3641_real_sdk_cutpart_and_opening_subset_matrix() {
                     }
                     assert_eq!(m.defects,0,"product {}",product.product_id);
                     measured.push((product.product_id,"published".to_string(),Some(m.volume)));
-                    if product.product_id == 72245 { assert!((m.volume-expected.volume()).abs()/expected.volume()<=tolerance()); }
+                    if product.product_id == 72245 { assert!((m.volume-expected.volume()).abs()/expected.volume()<=t["convexLeafVolumeRelative"]["linear"].as_f64().unwrap()); }
                     if product.product_id == 72209 {
                         let selected: Vec<_> = cutters.iter().enumerate().filter(|(i,_)| mask & (1<<i) != 0).map(|(_,c)| c.clone()).collect();
                         let volume = convex::difference_volume(&host,&selected).unwrap();
-                        assert!((m.volume-volume).abs()/volume<=tolerance());
+                        let relative = (m.volume-volume).abs()/volume;
+                        eprintln!("M8 slab mask={mask}: volume={} oracle={volume} relative={relative} cuts={} cutTimesMs={:?}", m.volume, product.cuts, product.cut_times_ms);
+                        assert!(relative<=t["convexDifferenceVolumeRelative"]["linear"].as_f64().unwrap());
+                        assert_eq!(product.cuts, u64::from(mask.count_ones()));
+                        assert_eq!(product.cut_times_ms.len(), mask.count_ones() as usize);
+                        assert!(product.cut_times_ms.iter().all(|ms| ms.is_finite() && *ms >= 0.));
+                        let bbox = host.bbox();
+                        let extent = (0..3).map(|i| bbox[i+3]-bbox[i]).fold(0., f64::max);
+                        let limit = t["voidingResultBboxWithinHost"]["absolute"].as_f64().unwrap()
+                            + extent*t["voidingResultBboxWithinHost"]["extentFactor"].as_f64().unwrap();
+                        assert!(ifc_lite_retained_native::oracle::openings::bbox_excess(&m.bbox, &bbox)<=limit);
                     }
                 }
-                ProductOutcome::Refused {product_id,refusal,..} => {
-                    assert_eq!(product_id,72209);
-                    assert_ne!(mask,0);
-                    assert_eq!(refusal.code(),"opening_strategy");
+                ProductOutcome::Refused {product_id,refusal,origin,message,cut_times_ms,..} => {
+                    eprintln!("M8 refusal mask={mask} product={product_id} code={} origin={origin:?} message={message:?} cutTimesMs={cut_times_ms:?}", refusal.code());
+                    refused.push((mask,product_id,refusal.code().to_string()));
                     measured.push((product_id,refusal.code().into(),None));
                 }
             }
         }).unwrap();
         assert_eq!(summary.candidates,4);
-        assert_eq!(summary.published,if mask==0 {4} else {3});
-        assert_eq!(timing.boolean_ms,0.,"pre-M3-A host must refuse before cuts");
+        assert_eq!(summary.published + summary.by_code.values().sum::<usize>(), 4);
         if mask == 7 {
             if let Some(path) = std::env::var_os("IFCLITE_M8_NATIVE_REFERENCE") {
                 let rows: Vec<_> = measured.iter().map(|(id,code,volume)| serde_json::json!({"id":id,"code":code,"volume":volume})).collect();
                 std::fs::write(path,serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
             }
         }
-        eprintln!("sdk witness executed: m8 issue_3641 mask={mask} codes_volumes={measured:?} timings={timing:?}; cutTimesMs=[] (opening_strategy)");
+        eprintln!("sdk witness executed: m8 issue_3641 mask={mask} codes_volumes={measured:?} timings={timing:?}");
     }
+    assert!(refused.is_empty(), "M3-A + M8 requires all opening subsets to publish: {refused:?}");
 }

@@ -108,3 +108,86 @@ fn refusal_absent_invalid_present_and_wrong_values_are_distinct_7782() {
     );
     assert!(drifts.is_empty());
 }
+
+#[test]
+fn swapping_appearance_or_placement_between_meshes_is_not_parity_7782() {
+    let native = observe::native(&observe::fixture(MULTICOLOR));
+    let mut first = native.meshes[0].clone();
+    let mut second = first.clone();
+    second.positions[0] += 2.0;
+    first.color = [1.0, 0.0, 0.0, 1.0];
+    second.color = [0.0, 0.0, 1.0, 1.0];
+    first.local_to_world = Some([0.0; 16]);
+    second.local_to_world = Some([1.0; 16]);
+    for swap_color in [true, false] {
+        let (mut a, mut b) = (first.clone(), second.clone());
+        if swap_color {
+            std::mem::swap(&mut a.color, &mut b.color);
+        } else {
+            std::mem::swap(&mut a.local_to_world, &mut b.local_to_world);
+        }
+        for frames in [None, Some((MeshFrame::RawIfc, MeshFrame::RawIfc))] {
+            let mut drifts = Vec::new();
+            compare::compare_meshes(
+                "control",
+                &[&first, &second],
+                &[&a, &b],
+                frames,
+                &mut drifts,
+            );
+            assert!(drifts.iter().any(|d| d.axis == compare::Axis::MeshHash));
+        }
+    }
+}
+
+#[test]
+fn type_product_dispatch_expands_to_map_units_without_deduplication_7782() {
+    // Two distinct RepresentationMaps reference the same shape: geometry alone
+    // cannot distinguish a lost/duplicated map identity. The fixture invariant
+    // names both source maps and the actual batch tap must preserve them.
+    let source = String::from_utf8(observe::fixture(super::TYPE_MODES)).unwrap();
+    let source = source
+        .replace("(#16),$,$,.NOTDEFINED.)", "(#16,#117),$,$,.NOTDEFINED.)")
+        .replace(
+            "#116=IFCREPRESENTATIONMAP",
+            "#117=IFCREPRESENTATIONMAP(#15,#13);\n#116=IFCREPRESENTATIONMAP",
+        );
+    let native = observe::native(source.as_bytes());
+    let browser = observe::browser_cold(source.as_bytes());
+    let native_jobs = observe::native_jobs(source.as_bytes(), &native, &browser.prepass);
+    assert_eq!(native_jobs.get(&100), Some(&2), "native one job per map");
+    let maps: Vec<_> = browser
+        .batches
+        .iter()
+        .flat_map(|b| &b.planned_jobs)
+        .filter(|j| j.0 == 100)
+        .copied()
+        .collect();
+    assert_eq!(maps, [(100, Some(16), 1), (100, Some(117), 1)]);
+    assert_eq!(super::browser_job_units(&browser).get(&100), Some(&2));
+    let native_meshes: Vec<_> = native.meshes.iter().collect();
+    let browser_meshes: Vec<_> = browser.meshes().collect();
+    let mut units = super::browser_job_units(&browser);
+    let mut drifts = Vec::new();
+    compare::type_coverage(
+        "multi-map-control",
+        &native_meshes,
+        &browser_meshes,
+        &native_jobs,
+        &units,
+        &mut drifts,
+    );
+    assert!(drifts.is_empty(), "equal expanded units: {drifts:?}");
+    units.insert(100, 1); // The old, wrong wire-product unit loses a map.
+    compare::type_coverage(
+        "multi-map-control",
+        &native_meshes,
+        &browser_meshes,
+        &native_jobs,
+        &units,
+        &mut drifts,
+    );
+    assert!(drifts
+        .iter()
+        .any(|d| d.axis == compare::Axis::JobSet && d.element == Some(100)));
+}

@@ -161,6 +161,16 @@ fn structure(h: &mut Fnv, m: &MeshData) {
     h.opt_u32(m.material_id);
     h.str(m.material_name.as_deref());
     h.str(m.presentation_layer.as_deref());
+    // Bind appearance and captured placement to THIS mesh, not independent
+    // multisets that could hide swaps between two same-item submeshes.
+    h.f32s(&m.color);
+    match m.local_to_world {
+        Some(matrix) => {
+            h.u8(1);
+            h.f64s(&matrix);
+        }
+        None => h.u8(0),
+    }
     h.size(m.positions.len());
     h.size(m.normals.len());
     h.u32s(&m.indices);
@@ -224,7 +234,6 @@ pub(super) fn exact_digest(m: &MeshData) -> u64 {
     h.f32s(&m.positions);
     h.f32s(&m.normals);
     h.f64s(&m.origin);
-    h.f64s(&m.local_to_world.unwrap_or([f64::NAN; 16]));
     h.0
 }
 
@@ -1109,14 +1118,16 @@ mod tests {
         );
         let mut drifts = Vec::new();
         compare_meshes("t", &[&native], &[&browser], None, &mut drifts);
-        assert_eq!(drifts.len(), 1);
-        assert_eq!(drifts[0].axis, Axis::Color);
+        assert_eq!(
+            drifts.iter().map(|d| d.axis).collect::<Vec<_>>(),
+            [Axis::MeshHash, Axis::Color]
+        );
         drifts.clear();
         browser.color[0] += 2.0 / 255.0;
         compare_meshes("t", &[&native], &[&browser], None, &mut drifts);
         assert_eq!(
             drifts.iter().map(Drift::key).collect::<Vec<_>>(),
-            [("t", Axis::Color, Some(7))]
+            [("t", Axis::MeshHash, Some(7)), ("t", Axis::Color, Some(7))]
         );
     }
 

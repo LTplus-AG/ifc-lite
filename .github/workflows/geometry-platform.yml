@@ -8,6 +8,12 @@ on:
   pull_request:
     paths:
       - 'native/**'
+      # M2-D builds and drives the real opt-in viewer.
+      - 'apps/viewer/**'
+      - 'tests/e2e/retained-viewer.e2e.spec.ts'
+      - 'tests/benchmark/frames/**'
+      - 'playwright.config.ts'
+      - 'tests/evidence/m2-d/**'
       - 'rust/geometry-runtime/**'
       - 'rust/retained-native/**'
       - 'rust/processing/tests/fixtures/issue_2019_*'
@@ -283,6 +289,39 @@ jobs:
             IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
             IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
+      - name: Browser parity and real retained viewer
+        id: viewer-retained
+        continue-on-error: true
+        env:
+          IFCLITE_RETAINED_ENGINE: ${{ runner.temp }}/cli-retained-engine
+          IFCLITE_NATIVE_PRODUCTS: ${{ runner.temp }}/native-compare/products.tsv
+          IFCLITE_BROWSER_OUT: ${{ runner.temp }}/viewer-retained
+          IFCLITE_VIEWER_OUT: ${{ runner.temp }}/viewer-retained/e2e
+          VITE_RETAINED_GEOMETRY: 'on'
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: |
+          # A skip is not parity evidence: missing upstream products fail this lane.
+          test -s "$IFCLITE_RETAINED_ENGINE/engine-manifest.json"
+          test -s "$IFCLITE_NATIVE_PRODUCTS"
+          node --test scripts/retained-compare/browser.test.mjs
+          pnpm build:e2e --concurrency=1
+          pnpm exec playwright test --project=viewer-retained
+      - name: Optional retained browser corpus (report only)
+        if: inputs.corpus == true
+        continue-on-error: true
+        run: |
+          node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
+            --native "$RUNNER_TEMP/native-corpus/products.tsv" --out "$RUNNER_TEMP/viewer-retained-corpus" --corpus
+      - name: Upload retained viewer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: retained-viewer-comparison
+          path: |
+            ${{ runner.temp }}/viewer-retained/
+            ${{ runner.temp }}/viewer-retained-corpus/
+            test-results/
+          if-no-files-found: error
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()
@@ -300,9 +339,10 @@ jobs:
           PACKAGE_BOUNDARY: ${{ steps.package-boundary.outcome }}
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
           CLI_RETAINED: ${{ steps.cli-retained.outcome }}
+          VIEWER_RETAINED: ${{ steps.viewer-retained.outcome }}
         run: |
           failed=0
-          for lane in M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED; do
+          for lane in M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

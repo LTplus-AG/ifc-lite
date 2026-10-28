@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/retained-compare/browser-metrics.mjs",
+  "mutation": "tests/evidence/m2-d/behaviour.oracle.patch",
+  "test": "scripts/retained-compare/browser-metrics.test.mjs",
+  "why": "Casting both world points to f32 hides a one-ULP view-storage error at georeferenced coordinates."
+}

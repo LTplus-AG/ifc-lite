@@ -16,20 +16,17 @@ use std::collections::BTreeMap;
 use std::convert::Infallible;
 use crate::JsString;
 use crate::input::{DataFingerprintInput, PropertyEntryInput, PropertySetInput, QuantitySetInput, TypeAssignmentInput};
-use crate::js_json::{stable_hash_json, stringify, utf16_length, JsonValue};
+use crate::js_json::{stable_hash_json, utf16_length, JsonValue};
 use crate::projections::sorted_string_list;
 use crate::sparse_collection::SparseCollection;
-use crate::utf16::stable_hash;
 use super::{core_attributes, set_to_json, sorted_entries, sorted_property_sets, sorted_quantity_sets,
     sorted_type_assignments, string_array, with_holes};
 
 fn accept_all<T>(result: Result<T, Infallible>) -> T {
     match result { Ok(value) => value, Err(never) => match never {} }
 }
-/// Hash materialized text for hole-free values; stream hole runs (#8114).
-fn hash(value: &JsonValue, holes: bool) -> String {
-    if holes { stable_hash_json(value) } else { stable_hash(&stringify(value)) }
-}
+/// Stream canonical UTF-16 directly, including hole runs (#8114, #8042).
+fn hash(value: &JsonValue, _holes: bool) -> String { stable_hash_json(value) }
 fn trailing_holes(value: &JsonValue) -> bool {
     matches!(value, JsonValue::Array(items) if matches!(items.last(), Some(JsonValue::Holes(_))))
 }
@@ -168,7 +165,7 @@ pub fn build_component_fingerprint_entries_checked<E>(input: &DataFingerprintInp
 
     components.insert(
         "attr:core".into(),
-        stable_hash(&stringify(&JsonValue::Object(core_attributes(input)))),
+        stable_hash_json(&JsonValue::Object(core_attributes(input))),
     );
 
     check_property_sets(&input.property_sets, true, &mut check)?;
@@ -195,14 +192,14 @@ pub fn build_component_fingerprint_entries_checked<E>(input: &DataFingerprintInp
     if !materials.is_empty() {
         components.insert(
             "material".into(),
-            stable_hash(&stringify(&string_array(&materials))),
+            stable_hash_json(&string_array(&materials)),
         );
     }
     let classifications = sorted_string_list(&input.classifications);
     if !classifications.is_empty() {
         components.insert(
             "classification".into(),
-            stable_hash(&stringify(&string_array(&classifications))),
+            stable_hash_json(&string_array(&classifications)),
         );
     }
 

@@ -32,3 +32,21 @@ Round 2 task (the original spec called it `m5-clips.json`). No existing
 threshold was changed. Test-generated minimal STEP fragments are synthetic
 controller invariants; they are not authored-corpus or independently reviewed
 fixture qualification.
+
+## Shared source-oracle interface amendment, 2026-10-28
+
+In the Round 2 follow-up answer, the user authorized a **generic, shared**
+source-context extension in `retained_compare.rs`, `compare/report.rs`, and
+`checks/mod.rs`. Each check now receives `SourceContext { model, product_id,
+analytic }`; `model` borrows the shared `Arc<SourceBundle>` so each slice can
+read its bytes or create an indexed decoder without another model buffer. A `Deref` compatibility
+bridge lets the untouched M4/M6 stubs accept their existing analytic-only
+argument until each slice adopts `&SourceContext`. Their dispatcher call need
+not change again.
+
+`OracleResult::authority` optionally supplies an independently established
+volume, bounds, and curved/linear classification. The report feeds that into
+its existing source comparison and `exact_defect` decision; multiple
+inconsistent authorities fail. No output column or existing tolerance changes.
+The existing six-field `src_oracle` serialization remains unchanged. Empty
+per-slice results leave all existing check behavior unchanged.

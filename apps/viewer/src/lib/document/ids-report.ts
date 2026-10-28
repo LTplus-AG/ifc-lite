@@ -28,8 +28,8 @@ import { captureValidationElements } from '../validation/reports/element-evidenc
 import { isUnmatchedSpecification, validationReportSummary } from '../validation/report-summary.js';
 import { capturedReportModelScope, replaceReportSnapshot } from './report-provenance.js';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
-import { boundedPassRate, formatConstraint } from '@ifc-lite/ids';
-import type { IDSConstraint, IDSFacet } from '@ifc-lite/ids';
+import { boundedPassRate, formatConstraint, isIDSValidationReport } from '@ifc-lite/ids';
+import type { IDSConstraint, IDSFacet, IDSRequirement } from '@ifc-lite/ids';
 import type { IdsReportBlock, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportVariant } from './types.js';
 
 /** A constraint as bare text: a simple value without `formatConstraint`'s quotes. */
@@ -51,13 +51,15 @@ function facetName(facet: IDSFacet): string | undefined {
 /** `perEntity`: how many requirements share this id; IDS ids need not be unique, so one row may count several checks per entity (#8204). */
 type RuleAccumulator = { name?: string; shortDescription: string; longDescription?: string; seen: number; passed: number; failed: number; perEntity: number };
 
-function rulesForCheck(report: ValidationReport, result: SpecificationResult): IdsReportRuleSummary[] {
-  const sourceSpec = report.source.kind === 'ids'
-    ? report.source.document.specifications.find((spec) => spec.id === result.specification.id)
-    : undefined;
+function rulesForCheck(report: ValidationReport, result: SpecificationResult, own?: readonly IDSRequirement[]): IdsReportRuleSummary[] {
+  // An IDS result carries its own specification; specification ids need not be unique, so
+  // joining back to the document by id is only the fallback for results without one (#8204 review).
+  const sourceRequirements = own ?? (report.source.kind === 'ids'
+    ? report.source.document.specifications.find((spec) => spec.id === result.specification.id)?.requirements
+    : undefined);
   const unmatched = report.source.kind === 'ids' && isUnmatchedSpecification(result.applicableCount, result.error);
   const rules = new Map<string, RuleAccumulator>();
-  for (const requirement of sourceSpec?.requirements ?? []) {
+  for (const requirement of sourceRequirements ?? []) {
     const known = rules.get(requirement.id);
     if (known) { known.perEntity++; continue; }
     rules.set(requirement.id, {
@@ -159,7 +161,7 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
       checks,
     };
   }
-  const checks: IdsReportCheckSummary[] = report.specificationResults.map((result) => ({
+  const checks: IdsReportCheckSummary[] = (isIDSValidationReport(report) ? report.specificationResults : []).map((result) => ({
     id: result.specification.id,
     shortDescription: result.specification.name,
     longDescription: result.specification.description,
@@ -167,7 +169,7 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
     passed: result.passedCount,
     failed: result.failedCount,
     passRate: isUnmatchedSpecification(result.applicableCount, result.error) ? 0 : result.passRate,
-    rules: rulesForCheck(report, result),
+    rules: rulesForCheck(report, result, result.specification.requirements),
     ...(result.error !== undefined ? { error: result.error } : {}),
   }));
   return { kind: 'ids-report', id, sourceKind: 'ids', sourceName: report.source.document.info.title, generatedAt, summary: totals, checks };

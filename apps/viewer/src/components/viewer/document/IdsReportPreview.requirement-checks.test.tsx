@@ -121,3 +121,25 @@ for (const ids of [['global-id', 'missing-property'], ['same', 'same']]) it(`rep
   assert.equal(ui.querySelector('[data-ids-report-requirement-checks]')?.textContent, `${n}/${2 * n} checks passed (50%)`);
   assert.ok(pdfTexts(block).includes(`${n}/${2 * n} checks passed (50%)`));
 });
+
+it('counts each specification from its own requirements when two specifications share an id (#8204 review)', async () => {
+  const bytes = readFileSync(new URL('../../../../public/samples/building-architecture.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer, { disableWorkerScan: true });
+  const globalId = { id: 'r', optionality: 'required' as const, facet: { type: 'attribute' as const, name: { type: 'simpleValue' as const, value: 'GlobalId' } } };
+  const missing = { id: 'q', optionality: 'required' as const, facet: { type: 'property' as const,
+    propertySet: { type: 'simpleValue' as const, value: 'Regression_8204_Absent' }, baseName: { type: 'simpleValue' as const, value: 'Missing' } } };
+  const wall = { type: 'entity' as const, name: { type: 'simpleValue' as const, value: 'IFCWALL' } };
+  const document: IDSDocument = { info: { title: 'Shared ids' }, specifications: [
+    { id: 'dup', name: 'First', ifcVersions: ['IFC4'], applicability: { facets: [wall] }, requirements: [globalId, globalId, missing] },
+    { id: 'dup', name: 'Second', ifcVersions: ['IFC4'], applicability: { facets: [wall] }, requirements: [globalId, missing] },
+  ] };
+  const report = await validateIDS(document, createDataAccessor(store, 'model'),
+    { modelId: 'model', schemaVersion: 'IFC4', entityCount: store.entityIndex.byId.size });
+  const n = report.specificationResults[0].applicableCount;
+  assert.ok(n > 0);
+  const ui = render(<IdsReportPreview block={idsReportBlockFromReport(report, 'ids', 'compact')} />);
+  const rows = [...ui.querySelectorAll('[data-ids-report-spec="dup"] > ul > [data-ids-report-row]')].map((row) => row.textContent ?? '');
+  assert.equal(rows.length, 2);
+  assert.match(rows[0], new RegExp(`${2 * n}/${3 * n} · 66%$`));
+  assert.match(rows[1], new RegExp(`${n}/${2 * n} · 50%$`), 'the second specification is not measured against the first one’s requirements');
+});

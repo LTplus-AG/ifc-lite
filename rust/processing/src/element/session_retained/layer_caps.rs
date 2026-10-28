@@ -73,3 +73,7 @@ pub(super) fn remove(parts: &mut [ShapePart], layers: &LayerCompletion) -> Resul
     if !after.is_finite() || (after-before).abs() > tolerance*before.abs() { return Err(fail("assembly_volume")); }
     Ok(displacement)
 }
+
+#[cfg(test)]
+#[path = "layer_caps_tests.rs"]
+mod tests;

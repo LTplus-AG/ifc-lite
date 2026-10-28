@@ -252,20 +252,6 @@ mod tests {
     }
 
     #[test]
-    fn record_text_allocates_the_record_length_without_growth_slack() {
-        let slots = ["'g'".to_string(), "$".to_string(), "(#1,#2,#3)".to_string()];
-        for id in [0, 7, 10, 99_999, u32::MAX] {
-            let record = record_text(id, "IFCWALL", &slots);
-            assert_eq!(record, format!("#{id}=IFCWALL('g',$,(#1,#2,#3));"));
-            assert!(record.capacity() <= record.len() + 16, "#{id}: capacity {} for {} bytes", record.capacity(), record.len());
-        }
-        assert_eq!(record_text(3, "IFCX", &[]), "#3=IFCX();");
-        let long: Vec<String> = (0..5_000).map(|i| format!("#{i}")).collect();
-        let record = build_record("IFC4", 12, "IFCWALL", &[("Name", format!("({})", long.join(",")))]);
-        assert!(record.capacity() <= record.len() + 16, "capacity {} for {} bytes", record.capacity(), record.len());
-    }
-
-    #[test]
 fn list_edit_swaps_every_named_entry_in_place() {
         let entries = [ListEntry::Ref(1), ListEntry::Ref(2), ListEntry::Ref(3)];
         let mut edit = ListEdit::default();

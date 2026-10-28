@@ -67,17 +67,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/federated-composition.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "cf561377-e6cf-473b-b017-f86ff216c5c0",
+    "invocationId": "3935638a-590e-465f-b6b0-9aae86c3b8c3",
     "timing": {
-      "startedAt": "2026-10-28T21:58:52.542Z",
-      "finishedAt": "2026-10-28T21:58:57.117Z"
+      "startedAt": "2026-10-28T22:08:12.067Z",
+      "finishedAt": "2026-10-28T22:08:15.364Z"
     },
     "restoration": "verified"
   },
@@ -149,17 +149,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/federated-composition.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "15c621c0-df65-4fc6-9d30-fc86d44d13e7",
+    "invocationId": "dea31608-b908-449a-9770-02ed25bccf3b",
     "timing": {
-      "startedAt": "2026-10-28T21:58:57.250Z",
-      "finishedAt": "2026-10-28T21:59:00.209Z"
+      "startedAt": "2026-10-28T22:08:15.482Z",
+      "finishedAt": "2026-10-28T22:08:18.646Z"
     },
     "restoration": "verified"
   },
@@ -231,17 +231,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/federated-composition.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "9b4e62fa-62fe-47f4-9c85-37b0eff256f0",
+    "invocationId": "957190b7-a53e-43a3-b7f4-0dad10f9fde1",
     "timing": {
-      "startedAt": "2026-10-28T21:59:00.259Z",
-      "finishedAt": "2026-10-28T21:59:03.219Z"
+      "startedAt": "2026-10-28T22:08:18.786Z",
+      "finishedAt": "2026-10-28T22:08:22.866Z"
     },
     "restoration": "verified"
   },
@@ -313,17 +313,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/opinions.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "dc9c02e8-4703-4e86-b3d6-fbfb0cf3fdab",
+    "invocationId": "25b6aa3a-2afb-4b8a-97a3-27bfb68d0b94",
     "timing": {
-      "startedAt": "2026-10-28T21:59:03.268Z",
-      "finishedAt": "2026-10-28T21:59:06.831Z"
+      "startedAt": "2026-10-28T22:08:22.996Z",
+      "finishedAt": "2026-10-28T22:08:27.056Z"
     },
     "restoration": "verified"
   },
@@ -395,17 +395,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/opinions.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "68403d85-e30d-4d7b-8c90-5a58c1b82a0b",
+    "invocationId": "49b47ec3-b242-49e4-a611-a81e788824de",
     "timing": {
-      "startedAt": "2026-10-28T21:59:06.880Z",
-      "finishedAt": "2026-10-28T21:59:10.646Z"
+      "startedAt": "2026-10-28T22:08:27.108Z",
+      "finishedAt": "2026-10-28T22:08:31.205Z"
     },
     "restoration": "verified"
   },
@@ -477,17 +477,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/opinions.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "441581c2-1541-4f19-af6b-50d6c76a22fc",
+    "invocationId": "80f1381e-fa28-411b-8dbb-1cad4de2e7f0",
     "timing": {
-      "startedAt": "2026-10-28T21:59:10.687Z",
-      "finishedAt": "2026-10-28T21:59:14.241Z"
+      "startedAt": "2026-10-28T22:08:31.323Z",
+      "finishedAt": "2026-10-28T22:08:35.283Z"
     },
     "restoration": "verified"
   },
@@ -559,17 +559,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/opinions.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "9cd3c557-0139-4211-ab6f-56c0dec4cf76",
+    "invocationId": "19dd5799-14dc-4915-9898-dde772a4e82a",
     "timing": {
-      "startedAt": "2026-10-28T21:59:14.299Z",
-      "finishedAt": "2026-10-28T21:59:18.245Z"
+      "startedAt": "2026-10-28T22:08:35.332Z",
+      "finishedAt": "2026-10-28T22:08:39.282Z"
     },
     "restoration": "verified"
   },
@@ -641,17 +641,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/index.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "451105b6-d87b-4bc7-b711-205216452775",
+    "invocationId": "ad835b8e-8235-4dfb-9e1c-5e35bb7c420d",
     "timing": {
-      "startedAt": "2026-10-28T21:59:18.315Z",
-      "finishedAt": "2026-10-28T21:59:21.168Z"
+      "startedAt": "2026-10-28T22:08:39.348Z",
+      "finishedAt": "2026-10-28T22:08:42.563Z"
     },
     "restoration": "verified"
   },
@@ -723,17 +723,17 @@
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/ifcx/src/opinions.test.ts; that file has a green, attributable baseline.",
     "base": "7fd1c4f5e8b0c14dd3bcf412506d265eee39268d",
-    "head": "80b35ef89377e76b6b7d95d67f5c5a01ca123eec",
+    "head": "35170f671c59231646c45f13a295cfc49cc2548d",
     "production": [
       "packages/ifcx/src/index.ts"
     ],
     "tests": [
       "packages/ifcx/src/opinions.test.ts"
     ],
-    "invocationId": "5cbdd81c-2b51-4944-9ee5-31a9aa2cf74a",
+    "invocationId": "d525b909-b61d-43fe-92e3-f885b1e56244",
     "timing": {
-      "startedAt": "2026-10-28T21:59:21.214Z",
-      "finishedAt": "2026-10-28T21:59:23.976Z"
+      "startedAt": "2026-10-28T22:08:42.654Z",
+      "finishedAt": "2026-10-28T22:08:45.601Z"
     },
     "restoration": "verified"
   }

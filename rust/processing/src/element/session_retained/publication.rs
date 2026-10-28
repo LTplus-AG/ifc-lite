@@ -13,7 +13,7 @@ pub struct ShapeOnlyProduct {
     pub consumed_parts: usize,
     pub cut_times_ms: Vec<f64>,
     pub obligations: PresentationObligationsUnmet,
-    _storage: Storage,
+    pub(super) _storage: Storage,
 }
 #[derive(Debug)]
 pub struct ShapePart {
@@ -33,7 +33,9 @@ pub struct ShapePart {
 }
 #[derive(Debug)]
 pub struct PartAppearance {
-    pub color: [f32; 4],
+    pub rgba: [f32; 4],
+    pub geometry_class: u8,
+    pub style_id: Option<u32>,
     pub material_name: Option<String>,
     pub geometry_item_id: Option<u32>,
     pub material_id: Option<u32>,
@@ -140,7 +142,10 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             obligations,
             _storage: storage,
         };
-        let discharged = presentation::apply(&mut product, &self.plan);
+        let discharged = presentation::apply(&mut product, &presentation::Context {
+            plan: &self.plan, model: &self.presentation_context,
+            resources: &self.resources, element_color: self.element_color,
+        });
         product.obligations.0.retain(|r| !discharged.contains(r));
         if product.obligations.0.is_empty() { return Err(incomplete()); }
         Ok(product)

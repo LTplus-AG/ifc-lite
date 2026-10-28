@@ -53,6 +53,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
             }
           } else {
             assert(event.parts.length > 0 && event.parts.every(part => part.positions instanceof Float64Array), 'shape detail preserves M1 f64 parts');
+            assert(event.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals === undefined && part.color === undefined && part.faces === undefined && part.instanceKey === undefined), 'M11-0 copies every revision-local face without discharging presentation');
           }
         } finally { event.meshes?.free(); }
       });

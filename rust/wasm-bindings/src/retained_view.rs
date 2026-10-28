@@ -13,11 +13,12 @@ pub(crate) fn view_meshes(product: &ShapeOnlyProduct, frame_rtc: [f64; 3]) -> Ve
             let mesh = view_part(part, frame_rtc);
             let color = part.appearance.as_ref().map_or_else(
                 || ifc_lite_processing::style::default_color_for_type(product.ifc_type.clone()).to_array(),
-                |appearance| appearance.color);
+                |appearance| appearance.rgba);
             let mut data = ifc_lite_processing::MeshData::new(product.product_id,
                 product.ifc_type.name().into(), mesh.positions, mesh.normals, mesh.indices, color)
                 .with_origin(mesh.origin);
             if let Some(appearance) = &part.appearance {
+                data.geometry_class = appearance.geometry_class;
                 data.material_name = appearance.material_name.clone();
                 data.geometry_item_id = appearance.geometry_item_id;
                 data.material_id = appearance.material_id;

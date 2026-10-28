@@ -3,6 +3,8 @@ use super::*;
 /// Owned intermediate evidence. This deliberately exposes no final mesh/product.
 pub struct RuntimeProductWitness<R: NumericalReceipt> {
     pub(super) cut_times_ms: Vec<f64>,
+    pub(super) presentation_context: OwnedMeshProductionContext,
+    pub(super) element_color: [f32; 4],
     pub(super) plan: RetainedProductPlan,
     pub(super) product_id: u32,
     pub(super) ifc_type: IfcType,
@@ -47,6 +49,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .take()
             .ok_or_else(|| protocol(ReceiptFailure::UnfinishedProduct))?;
         Ok(RuntimeProductWitness {
+            presentation_context: self.context.presentation_snapshot(),
+            element_color: self.state.element_color,
             plan,
             cut_times_ms: std::mem::take(&mut self.cut_times_ms),
             product_id: self.state.job.id,

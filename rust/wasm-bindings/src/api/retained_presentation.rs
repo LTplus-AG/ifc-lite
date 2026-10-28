@@ -23,7 +23,7 @@ pub(super) fn part_fields(result: &Object, part: &ShapePart) -> Result<(), JsVal
     }
     if let Some(appearance) = &part.appearance {
         let color = Array::new();
-        for component in appearance.color { color.push(&component.into()); }
+        for component in appearance.rgba { color.push(&component.into()); }
         set(result, "color", &color)?;
         if let Some(name) = &appearance.material_name { set(result, "materialName", &name.as_str().into())?; }
         if let Some(id) = appearance.geometry_item_id { set(result, "geometryItemId", &id.into())?; }

@@ -173,6 +173,21 @@ additive-only shape. The adapter must therefore not set that flag to `false`,
 because doing so drops exactly the removals this paragraph exists to preserve,
 and drops them silently.
 
+Those same defaults carry a second load. Because the writer emits only the
+attribute keys a delivery actually changed, the delta layer asserts only what
+that party stated — which is what makes its opinions evaluable under the
+authority rule in [`layer-prs/12-authority.md`](../layer-prs/12-authority.md)
+§12.4, discussed in §6.3.
+
+Disabling either flag drops part of the delta rather than adding to it:
+`includeUpdatedValues: false` omits a changed existing attribute,
+`includeDeletions: false` omits tombstones and `null` removals, and in both
+cases the previous delivery's value survives composition. The authority cost
+follows from that, and it is misattribution of a *retracted* opinion rather
+than a fabricated one: the party's superseded value goes on reading as its
+current position, so a `contested` record (§12.6) would attach to a value it
+has already changed or withdrawn.
+
 (Note for whoever owns `02-layer-format.md`: its §2.3 still describes
 `minimal-layer.ts` as "additive-only today", which the implementation has since
 outgrown.)
@@ -190,13 +205,15 @@ grow it:
   Layer PRs' surface, not ifc-git's, and are struck below.
 - **Conversion fidelity is a different spec set** (#8203), which *uses* the diff
   engine rather than living here.
-- **A prerequisite ifc-git does not currently meet:** change tracking has to
-  work **per property**, not per property set. The component-key vocabulary this
-  document shares with `@ifc-lite/diff` is `pset:<Name>` — set-level — and
-  authority over `Pset_WallCommon.FireRating` can belong to a fire consultant
-  while the architect owns the rest of `Pset_WallCommon`. Until tracking is
-  per-property, a layer produced from a delivery cannot carry authority
-  correctly. Recorded as open in §6.
+- **Authority is per property, and the delta layer already carries it.**
+  Authority over `Pset_WallCommon.FireRating` can belong to a fire consultant
+  while the architect owns the rest of `Pset_WallCommon`, and the component-key
+  vocabulary shared with `@ifc-lite/diff` is set-level (`pset:<Name>`). An
+  earlier draft read that as a prerequisite ifc-git did not meet. It is not:
+  the component key is where the diff *compares*, while the layer format and
+  composition are per attribute key throughout, and the writer emits only the
+  members a delivery changed. Resolved in §6.3 against
+  `layer-prs/12-authority.md` §12.4.
 
 The commit-aware source work stays parked and is **not a dependency**.
 
@@ -225,12 +242,14 @@ requires" — had the direction backwards.
 ## 6. Open decisions
 
 **These are maintainer calls. This spec set records them as open rather than
-assuming an answer. §6.1 and §6.2 do not block the documents written so far;
-§6.3 does block the delivery → layer adapter (§8, step 8).**
+assuming an answer. None of them blocks the documents written so far, and none
+blocks the delivery → layer adapter (§8, step 8).**
 
 §6.1's digest is **decided** as of 2026-10-26 and kept here with its reasoning
 rather than deleted, because the argument is what a later reader needs; where the
-encoding lives is still **proposed**. §6.2 and §6.3 are open.
+encoding lives is still **proposed**. §6.2 is open. §6.3 is **resolved** as of
+2026-10-28 and kept for the same reason: the conclusion it reversed is the part
+a later reader needs.
 
 ### 6.1 The digest — DECIDED. Where the encoding lives — PROPOSED
 
@@ -407,25 +426,72 @@ recorded here and belongs with whoever specifies storage for Layer PRs:
 Had it landed on SHA-256 the objection would have disappeared, and this section
 would have needed revisiting rather than reapplying.
 
-### 6.3 Per-property change tracking — OPEN, and a prerequisite
+### 6.3 Per-property change tracking — RESOLVED, and not a diff decision
 
-The component-key vocabulary shared with `@ifc-lite/diff` localises change to a
-property **set**: `pset:<Name>`. Authority, as #8203 frames it, is per property —
-`Pset_WallCommon.FireRating` may belong to a fire consultant while the architect
-owns the rest of `Pset_WallCommon`.
+Authority, as #8203 frames it, is per property: `Pset_WallCommon.FireRating` may
+belong to a fire consultant while the architect owns the rest of
+`Pset_WallCommon`. An earlier version of this section concluded that carrying
+authority therefore required a new `pset:<Name>.<Property>` component key, and
+so a change to `@ifc-lite/diff`'s output shape, which it recorded as a
+prerequisite for the authority work. **That was wrong on both counts**, and the
+maintainer's correction on #8203 is the resolution.
 
-So a delta layer produced from a delivery cannot carry authority correctly while
-tracking is set-level: the layer would claim the architect changed `FireRating`
-whenever anything in that set moved, or would have to over-claim the whole set.
+**The problem is real.** Layers are state-based, so a `set-component` carries
+the whole component value — `opsForComponentChange` assigns the complete `next`
+value and emits one `set-component` for it (`merge/src/three-way.ts`). A
+delivery that changes only `IsExternal` therefore carries its unchanged
+`FireRating` along with it, and read naively that becomes dissent the architect
+never expressed.
 
-What needs deciding is the key shape and its cost. `pset:<Name>.<Property>` is
-the obvious form, and it multiplies the number of component keys per element by
-the number of properties — which bears on the fingerprint layer, the diff
-output, and every consumer that switches on a key. It also has to stay
-compatible with the existing vocabulary rather than forking it (§6.1's lesson).
+**The fix is in what counts as an opinion, not in the key.**
+[`layer-prs/12-authority.md`](../layer-prs/12-authority.md) §12.4 (#8210,
+merged 2026-10-28) defines an opinion as what a layer *asserts*:
+an attribute key whose value differs from the same key in the layer's declared
+base (`manifest.base`, resolved against the ref's layer stack in
+`merge/src/ref-flow.ts`). Carried, unchanged members are not opinions. A layer
+with no base — a first delivery, an import — asserts everything it contains,
+which is correct, because that party did state those values. That is a
+per-member comparison *inside* the components the diff already flags, so
+`pset:<Name>` stays exactly as it is.
 
-Not a decision this document can take alone; it changes `@ifc-lite/diff`'s
-output shape.
+Two properties of the existing implementation make this hold, and both were
+missed by the earlier conclusion:
+
+- **`pset:<Name>` is a derived comparison bucket, not a unit of storage or
+  transport.** `componentKeyForAttribute` computes it from a *single* IFCX
+  attribute key (`merge/src/component-state.ts`), and composition over a stack
+  is per-attribute last-writer-wins. So the authority unit —
+  `bsi::ifc::v5a::Pset_WallCommon::FireRating` — is already the native
+  granularity of both the layer format and composition. The component key is
+  the granularity at which the diff and the merge *compare*, which is a
+  different question.
+- **The adapter's writer rule is already the default.**
+  `extractMinimalLayer` emits only attribute keys that are new or whose value
+  changed (`includeUpdatedValues` is `?? true`) and explicit `null`s for keys
+  the delivery dropped (`includeDeletions` is `?? true`) —
+  `collab/src/snapshot/minimal-layer.ts`. "Emit only the changed members" is
+  therefore the writer's default rather than work the adapter has to add.
+  Turning either flag off does not widen what it emits, it narrows it — a
+  changed existing value or a removal goes missing — which is why §4's rule
+  about those flags is load-bearing for a second reason.
+
+Per-attribute last-writer-wins cuts both ways, and the asymmetry is worth
+naming: **omitting an unchanged member is safe, and omitting a removed member is
+not** — the previous delivery's value shines through the omission and the
+property looks retained. That is what the explicit `null` is for, and why §4's
+rule about `includeDeletions` is about correctness rather than completeness.
+
+So the over-assertion risk is real for **merge-authored** layers, where the
+whole component value is emitted by construction, and structurally absent from
+the **delivery adapter** path, whose writer is already member-level. Nothing
+here gates the authority work.
+
+**What stays open**, narrowly: whether a member-level component key is wanted
+for reasons unrelated to authority — per-property change display in a UI, for
+instance. That is a presentation decision, it carries the cost the earlier draft
+priced (one key per property per element, reaching the fingerprint layer and
+every consumer that switches on a key), and it is not a prerequisite for
+anything in this spec set.
 
 ## 7. Research
 
@@ -484,8 +550,8 @@ pinned by parity fixtures.
 | 4 | `03-diff.md`, documenting the engine that landed in 2 | next |
 | 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 4; §6.1 answered |
 | 6 | Authorship extraction across the four schemas | after 5 |
-| 7 | **Per-property change tracking**, replacing set-level `pset:<Name>` keys | after 5; prerequisite for authority (§4) |
-| 8 | **Delivery → layer adapter**: emit a delta layer against the party's previous delivery, with the match recorded in `identity_map` | after 7; the hand-over point to Layer PRs |
+| 7 | ~~**Per-property change tracking**, replacing set-level `pset:<Name>` keys~~ | **struck** — not a prerequisite, and the writer is already member-level (§6.3) |
+| 8 | **Delivery → layer adapter**: emit a delta layer against the party's previous delivery, with the match recorded in `identity_map` | after 6; the hand-over point to Layer PRs |
 
 **Struck on 2026-10-27 (#8203), because they are Layer PRs' surface and not
 ifc-git's:** an object store and refs, the verb surface (`status`, `commit`,

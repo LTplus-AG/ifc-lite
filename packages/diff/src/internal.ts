@@ -36,3 +36,6 @@ export function buildFingerprintBatch(inputs: readonly DataFingerprintInput[]): 
     dataHash: string; components: Record<ComponentKey, string>;
   }[];
 }
+
+export { prepareDiffModel } from './prepared-model.js';
+export type { PreparedDiffModel } from './prepared-model.js';

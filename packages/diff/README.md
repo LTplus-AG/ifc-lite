@@ -252,3 +252,12 @@ call it again after changes. Public unary fingerprint APIs remain supported.
 ## License
 
 MPL-2.0
+
+In-repository consumers making repeated comparisons may use
+`prepareDiffModel` from `@ifc-lite/diff/internal` after `initDiff()`. It owns an
+immutable snapshot of fingerprint fields and keeps opaque `ref` identities.
+Call `base.compare(head, options)` repeatedly and `dispose()` on both owners in
+`finally` blocks. Disposal is idempotent; comparing a disposed owner throws.
+Prepare new owners after edits. Returned entries refer to the snapshots, while
+the public `diffModels` API continues to return the original input objects.
+There is no implicit cache or automatic mutation tracking.

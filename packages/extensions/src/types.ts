@@ -53,8 +53,7 @@ export type ValidationErrorCode =
   | 'invalid_activation'
   | 'invalid_reference'
   | 'invalid_widget'
-  | 'invalid_manifest_version'
-  | 'ambiguous_authority';
+  | 'invalid_manifest_version' | 'ambiguous_authority'; // charter rules, authority/charter.ts
 
 export type ValidationResult<T> =
   | { ok: true; value: T }

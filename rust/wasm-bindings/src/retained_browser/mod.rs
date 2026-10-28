@@ -285,7 +285,7 @@ mod m4_parity_tests;
 #[cfg(test)]
 mod m5_parity_tests;
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
 mod m6_parity_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]

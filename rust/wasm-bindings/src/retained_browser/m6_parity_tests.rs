@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955 M6: whole-model API through the actual browser module Worker.
-use super::*;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::*;
+wasm_bindgen_test_configure!(run_in_browser);
 #[wasm_bindgen(inline_js = "export function m6Measure(o) {
   if (o.status === 'refused') return { id:o.expressId, code:o.code, volume:null };
   let volume=0;

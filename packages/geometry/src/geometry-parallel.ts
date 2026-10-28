@@ -1320,7 +1320,11 @@ export async function* processParallel(
       // fields on its `{type:'error'}` message — this handler previously
       // dropped them on the floor.
       restashWasmPanicLocation(globalThis, data.wasmPanicLocation, data.wasmPanicAt, data.message);
-      prepassError = new Error(data.message);
+      // Wrapped like the process-worker pool's `Geometry worker error: …`
+      // (#8246): a bare "unreachable" carries no geometry marker, so the
+      // viewer's classifier filed pre-pass traps on 1.6+ GB files as
+      // `unknown` and showed the raw trap text instead of memory guidance.
+      prepassError = new Error(`Pre-pass worker error: ${data.message}`);
       prepassDone = true;
       prepassWorker.terminate();
       wake();

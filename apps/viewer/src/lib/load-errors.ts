@@ -217,7 +217,10 @@ function isStreamStalledError(message: string): boolean {
  *  - `worker.onerror` wrapped as "Geometry worker failed: …" (an empty
  *    `ErrorEvent` from a hard crash — classic OOM kill of the worker thread),
  *  - "Geometry worker error: …" (the worker posted a `{type:'error'}` message,
- *    e.g. "Geometry worker error: unreachable").
+ *    e.g. "Geometry worker error: unreachable"),
+ *  - the streaming pre-pass worker's "Pre-pass worker error: …" /
+ *    "Pre-pass worker failed: …" — the same `geometry.worker.ts`, so the same
+ *    attribution (#8246: its bare "unreachable" used to land in `unknown`).
  *
  * Deliberately keyed on the "geometry worker" marker only. A *bare* wasm trap
  * (`unreachable`, `RuntimeError`) is NOT attributed here: the viewer runs other
@@ -228,7 +231,7 @@ function isStreamStalledError(message: string): boolean {
  * prefix.)
  */
 function isGeometryWorkerCrashError(message: string): boolean {
-  return /geometry worker (?:failed|error|crashed|terminated)/i.test(message);
+  return /(?:geometry|pre-pass) worker (?:failed|error|crashed|terminated)/i.test(message);
 }
 
 /**

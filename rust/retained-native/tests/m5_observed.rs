@@ -138,3 +138,16 @@ fn issue_7955_m5_burkwil_beam_4548_two_clip_witness(){
     assert!(metrics::relative(measurement.volume,volume)<1e-6,"{} vs {volume}",measurement.volume);
     println!("sdk witness executed: m5_burkwil");
 }
+#[test]
+fn issue_7955_m5_issue1155_delta_requires_unclipped_profile_admission(){
+    let text=include_str!("../../geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc");
+    let uncut=text.replace("'Clipping',(#113212)","'SweptSolid',(#113155)");
+    let Some((base,base_rows))=observed(&uncut,Some(vec![113218]),None) else{return};
+    let Some((clipped,clip_rows))=observed(text,Some(vec![113218]),None) else{return};
+    assert_eq!(base.len(),1);assert_eq!(clipped.len(),1);
+    if matches!(clipped[0],ProductOutcome::Published(_)){
+        assert!(matches!(base[0],ProductOutcome::Published(_)),"no delta from a refused base profile");
+    }
+    println!("issue1155 unclipped={}, clipped={}",base_rows[0]["code"],clip_rows[0]["code"]);
+    println!("sdk witness executed: m5_issue1155_profile");
+}

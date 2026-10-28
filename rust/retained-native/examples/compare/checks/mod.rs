@@ -31,10 +31,10 @@ pub struct OracleResult {
     pub authority: Option<SourceAuthority>,
     pub clip_part: Option<ClipPartEvidence>,
 }
-pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, tolerances: &serde_json::Value) -> Vec<OracleResult> {
+pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, tolerances: &serde_json::Value, bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>) -> Vec<OracleResult> {
     let mut results = layers::check(product, sources, tolerances);
     results.extend(clips::check(product, sources, tolerances));
-    results.extend(bounded::check(product, sources, tolerances));
+    results.extend(bounded::check(product, bounded, tolerances));
     results.extend(faces::check(product, sources, tolerances));
     results
 }

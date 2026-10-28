@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
+//! #7955 M6: real SDK; missing fixtures/SDK fail this qualification lane.
+use ifc_lite_core::SourceBundle;
+use ifc_lite_retained_native::{run_model_native, ModelOptions, ProductOutcome, ShapeOnlyProduct};
+use ifc_lite_retained_native::oracle::bounded;
+#[allow(dead_code)]
+#[path="../examples/compare/metrics.rs"]
+mod metrics;
+const SOURCE:&str=include_str!("../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
+fn worker()->std::ffi::OsString {std::env::var_os("IFCLITE_SMLIB_WORKER").expect("M6 requires real SDK; set IFCLITE_SMLIB_WORKER")}
+fn run(text:&str,ids:&[u32])->Vec<ProductOutcome> {
+    let mut outcomes=Vec::new();run_model_native(SourceBundle::new(text.as_bytes().to_vec()),worker(),
+        &ModelOptions{ids:Some(ids.iter().copied().collect()),..Default::default()},|o|outcomes.push(o)).unwrap();
+    assert_eq!(outcomes.len(),ids.len());outcomes
+}
+fn shape(outcomes:&[ProductOutcome],id:u32)->&ShapeOnlyProduct {
+    outcomes.iter().find_map(|o|match o{ProductOutcome::Published(s) if s.product_id==id=>Some(s),_=>None})
+        .unwrap_or_else(||panic!("missing published #{id}: {outcomes:?}"))
+}
+fn code(outcome:&ProductOutcome)->&str {match outcome{ProductOutcome::Published(_)=>"published",ProductOutcome::Refused{refusal,..}=>refusal.code()}}
+fn measure(shape:&ShapeOnlyProduct)->metrics::Metrics {
+    let mut m=metrics::Metrics::default();for part in &shape.parts {
+        let points=part.positions.chunks_exact(3).map(|p|metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();
+        m.add_mesh(&points,&part.indices).unwrap();
+    }m
+}
+fn verify(text:&str,shape:&ShapeOnlyProduct,hand:Option<f64>) {
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,shape.product_id).expect("independent source oracle required");
+    let actual=measure(shape);let tol:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
+    let key=if e.curved{"curved"}else{"linear"};
+    for volume in [hand,e.section_volume].into_iter().flatten() {
+        assert!((actual.volume-volume).abs()<=tol["boundedSectionVolumeRelative"][key].as_f64().unwrap()*volume.abs(),"#{} {} vs {volume}",shape.product_id,actual.volume);
+    }
+    assert!(actual.volume>=0.&&actual.volume<=e.host_volume*(1.+tol["boundedVolumeBoundsRelative"][key].as_f64().unwrap()));
+    let extent=(0..3).map(|i|actual.bbox[i+3]-actual.bbox[i]).fold(0.,f64::max);
+    let limit=tol["boundedOutsideMaterialMetres"]["absolute"].as_f64().unwrap()+extent*tol["boundedOutsideMaterialMetres"]["extentFactor"].as_f64().unwrap();
+    for part in &shape.parts {for p in part.positions.chunks_exact(3) {
+        let world=metrics::transform(&part.world_from_object,[p[0],p[1],p[2]]);
+        assert!(e.removed_clearance(world)<=limit,"#{} vertex {world:?} lies in removed material",shape.product_id);
+    }}
+    assert_eq!(actual.defects,0,"#{} closure",shape.product_id);
+    println!("M6 source oracle: {}",serde_json::json!({"id":shape.product_id,"volume":actual.volume,"section":e.section_volume,"hand":hand,"closure":actual.defects}));
+}
+#[test]
+fn m6_native_bounded_volumes_nonconvex_overlap_arc_and_frames() {
+    let ids=[1000,1001,1002,1003,1005,1010,1014,1015];let outcomes=run(SOURCE,&ids);
+    let pins:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/expected.d/m6-halfspaces.json")).unwrap();
+    for id in ids {verify(SOURCE,shape(&outcomes,id),pins["rows"][(id-1000)as usize]["volume"].as_f64());}
+    println!("sdk witness executed: m6_bounded_volumes");
+}
+#[test]
+fn m6_native_boxed_twin_outcomes_and_enclosure_never_read() {
+    let plain=run(SOURCE,&[1008]);
+    for id in [1007,1009] {
+        let boxed=run(SOURCE,&[id]);assert_eq!(code(&boxed[0]),code(&plain[0]));
+        if let (ProductOutcome::Published(a),ProductOutcome::Published(b))=(&boxed[0],&plain[0]) {
+            assert_eq!(measure(a).volume.to_bits(),measure(b).volume.to_bits());
+        }
+    }
+    let absent=SOURCE.lines().filter(|l|!l.contains("IFCBOUNDINGBOX(")).collect::<Vec<_>>().join("\n");
+    let boxed=run(&absent,&[1007]);assert_eq!(code(&boxed[0]),code(&plain[0]));
+    println!("sdk witness executed: m6_boxed_twin_outcomes");
+}
+#[test]
+fn m6_native_refusals_are_atomic() {
+    let outcomes=run(SOURCE,&[1006,1012,1013]);
+    for o in &outcomes {assert_eq!(code(o),"operation_unsupported");}
+    println!("sdk witness executed: m6_typed_refusals");
+}
+#[test]
+fn qualifies_after_m5_m6_native_mixed_chain_and_boxed_publication() {
+    let outcomes=run(SOURCE,&[1004,1007,1008,1009]);
+    for id in [1007,1008,1009] {verify(SOURCE,shape(&outcomes,id),Some(32.));}
+    let mixed=measure(shape(&outcomes,1004));assert!((mixed.volume-41.).abs()<=41e-6);assert_eq!(mixed.defects,0);
+}
+#[test]
+fn qualifies_after_m5_m6_native_consumed_provenance() {
+    let outcomes=run(SOURCE,&[1011]);
+    let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("consumed host must refuse atomically");};
+    assert_eq!(refusal.code(),"empty_result");let origin=origin.unwrap();assert_eq!(origin.site,"bounded_halfspace");assert_eq!(origin.cause,"consumed");
+}
+#[test]
+fn m6_native_fzk_bounded_only_chains_publish() {
+    let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
+    let text=std::fs::read_to_string(path).expect("M6 FZK fixture required: run pnpm fixtures");
+    let outcomes=run(&text,&[60012,67828]);
+    for id in [60012,67828] {verify(&text,shape(&outcomes,id),None);}
+    println!("sdk witness executed: m6_fzk_bounded_chains");
+}

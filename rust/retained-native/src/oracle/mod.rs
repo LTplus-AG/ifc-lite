@@ -19,4 +19,5 @@ pub mod type_maps;
 pub mod faces;
 pub mod face_bands;
 pub mod normals;
-
+mod bounded_source;
+mod bounded_partition;

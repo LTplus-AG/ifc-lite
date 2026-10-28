@@ -206,6 +206,7 @@ fn compare(
                         }
                         value.as_ref().map(|v| (v.volume, v.bbox))
                     } else { retraced.or_else(|| source::expected(&sources, id, shape.parts.len())) };
+                    let bounded = ifc_lite_retained_native::oracle::bounded::expected(&bytes, &sources, id);
                     report.published(
                         &model,
                         &shape,
@@ -218,6 +219,7 @@ fn compare(
                         opening_expectations.get(&id),
                         &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
+                        bounded.as_ref(),
                     );
                     report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }

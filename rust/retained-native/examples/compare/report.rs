@@ -48,6 +48,7 @@ impl Report {
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
         sources: &super::checks::SourceContext<'_>,
         exact_report_only: bool,
+        bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>,
     ) {
         self.published += 1;
         self.normal_planar_fallbacks += shape.normal_planar_fallbacks;
@@ -56,7 +57,7 @@ impl Report {
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
         self.type_published += usize::from(type_product);
         let curved = shape.parts.iter().any(|p| p.curved);
-        let results = super::checks::check(shape, sources, tolerances);
+        let results = super::checks::check(shape, sources, tolerances, bounded);
         let authorities: Vec<_> = results.iter().filter_map(|r| r.authority).collect();
         let authority = authorities.first();
         if authorities.iter().any(|a| authority.is_some_and(|first|
@@ -65,7 +66,7 @@ impl Report {
         }
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             &format!("{model}:{}", shape.product_id),
-            authority.map_or(curved || opening.is_some(), |a| a.curved),
+            authority.map_or(curved || opening.is_some() || bounded.is_some(), |a| a.curved),
             type_product,
             actual,
             rounded,
@@ -74,7 +75,7 @@ impl Report {
             tolerances,
             exact_report_only,
         );
-        let cut_rel = opening.and_then(|e| {
+        let cut_rel = opening.filter(|_| bounded.is_none()).and_then(|e| {
             if let Some(authority) = authority { return Some(relative(actual.volume, authority.volume)); }
             super::openings::check_opened(
                 &format!("{model}:{}", shape.product_id),

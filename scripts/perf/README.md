@@ -4,6 +4,23 @@
 
 # Performance diagnosis kit
 
+## C2-5 prism directions and shared parity ray (#7781)
+
+The remaining prism clustering caller and shared ray direction passed the local
+native instruction gate against main at `169c75f39e` on Haus, duplex and ISSUE_129.
+Geometry counts, ordered mesh bits, serialized output and aggregate diagnostics
+matched exactly. Source-pinned comparisons and proof receipts are recorded in
+`c2-r3-build-r1.json` with the coordinator's Rust sweep evidence. This is a native
+reconciliation verdict, with no elapsed-time or browser worker-pool claim.
+
+The prism detector keeps its own strict cosine threshold and already-normalized
+vectors. Sharing first-fit clustering must retain unweighted first representatives,
+iteration order and the pre-push limit that permits 65 clusters. The box/wall
+cosine policy is different: substituting it is caught by the compiled mutation
+oracle. Array-to-vector conversion preserves the normal bits and the three-product
+dot order; the independent legacy-loop sweep covers threshold neighbors, the cap,
+zero and nonfinite normals. Neither normalization nor existing callers changed.
+
 ## C2-6 probe wrapper traversal (#7781)
 
 The shared single-chain wrapper driver passed the local native instruction gate

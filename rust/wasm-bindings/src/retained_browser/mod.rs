@@ -299,3 +299,6 @@ mod m7_parity_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod m8_parity_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod m11_faces_parity_tests;

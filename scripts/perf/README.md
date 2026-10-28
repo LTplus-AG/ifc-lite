@@ -5254,11 +5254,12 @@ owned documents and decoded strings instead of round-tripping through serde.
 Preserve UTF-16 ordering, sparse length-check order, first-key semantics and the
 original output wire; the optimization does not change the canonical format.
 
-Verdict: native slice diagnostics improved substantially, and explicit internal
-model owners remove pack/construct/free from repeated comparisons. Full Haus and
-LARGE diagnostics still miss TypeScript parity, including retained warm calls.
-These ordinary runs are diagnostic evidence, not exclusive-host acceptance or a
-worker-pool geometry performance claim. Public one-shot calls still pay setup;
+Verdict: native slice diagnostics improved substantially. Bounded dense transport
+puts LARGE fingerprinting inside the requested diagnostic comparison band; Haus
+fingerprinting and retained warm comparison on both fixtures still miss the
+target. Explicit internal model owners remove pack/construct/free from repeated
+comparisons. These ordinary runs are diagnostic evidence, not exclusive-host
+acceptance or a worker-pool geometry performance claim. Public one-shot calls still pay setup;
 there is no hidden identity cache. CLI and viewer callers currently compare each
 fresh fingerprint pair once, so retention is exercised by repeated-call consumers
 and the diagnostic harness rather than imposed on those one-shot lifetimes.

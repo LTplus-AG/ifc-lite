@@ -46,8 +46,9 @@ export function assertPublished(value, id, ifcType) {
   check(value.status === 'published' && value.expressId === id, `published #${id}: ${JSON.stringify(value)}`);
   check(value.ifcType === ifcType, 'canonical IFC type');
   check(value.marker === 'PresentationObligationsUnmet', 'shape-only marker');
+  check(value.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals === undefined && part.faces === undefined && part.color === undefined && part.instanceKey === undefined), 'M11-0 face partition without presentation claims');
   check(JSON.stringify(value.obligationsUnmet) === JSON.stringify([
-    'MaterialLayers', 'IfcAppearance', 'PersistentFaces',
+    'MaterialLayers', 'IfcAppearance', 'PersistentFaces', 'SurfaceNormals',
   ]), `remaining obligations: ${JSON.stringify(value.obligationsUnmet)}`);
   check(value.parts.length === 1, 'complete single-part product');
   const part = value.parts[0];

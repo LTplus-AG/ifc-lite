@@ -25,6 +25,8 @@ pub enum RetainedProductRefusal {
     DeadlineExceeded,
     Cancelled,
     ContractBreach,
+    AppearanceUnsupported,
+    FaceProvenanceUnproven,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +55,8 @@ impl RetainedProductRefusal {
             Self::DeadlineExceeded => "deadline_exceeded",
             Self::Cancelled => "cancelled",
             Self::ContractBreach => "contract_breach",
+            Self::AppearanceUnsupported => "appearance_unsupported",
+            Self::FaceProvenanceUnproven => "face_provenance_unproven",
         }
     }
 }

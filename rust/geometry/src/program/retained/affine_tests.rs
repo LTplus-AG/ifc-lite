@@ -135,7 +135,7 @@ fn h2b_nested_nonuniform_affines_preserve_order_and_cached_inner_definition() {
     assert_eq!(plan.values.len(),2);
     assert_ne!(plan.values[0].definition(),plan.values[1].definition());
     assert!(plan.values.iter().all(|v| matches!(v.definition(), LogicalRetainedDefinition::Operation(_)) && v.world_from_source().is_none()));
-    assert_eq!(plan.remaining.len(),4);
+    assert_eq!(plan.remaining.len(),5);
 }
 
 #[test]

@@ -103,7 +103,7 @@ pub(super) fn finish_at(finishes: &[Option<SpecularMaterial>], i: usize) -> Opti
 /// [`MeshDataJs::from_mesh_data`] plus the #5582 finish stamp. Every site that
 /// turns a batch's `MeshData` into a `MeshDataJs` goes through this, so the
 /// flat collection and the partitioned batch's flat side cannot disagree.
-pub(super) fn mesh_js_with_finish(mesh: MeshData, finish: Option<SpecularMaterial>) -> MeshDataJs {
+pub(crate) fn mesh_js_with_finish(mesh: MeshData, finish: Option<SpecularMaterial>) -> MeshDataJs {
     let mut js = MeshDataJs::from_mesh_data(mesh);
     if let Some(finish) = finish {
         js.set_material(finish.metallic, finish.roughness);

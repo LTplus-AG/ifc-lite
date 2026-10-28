@@ -5,8 +5,8 @@
 /**
  * Host messages → the loader's `StreamingGeometryEvent`s (#7955 M2-C).
  *
- * A published product or complete instance shard becomes one atomic `batch`.
- * A refused or never-reached product produces no
+ * One published product becomes one `batch` (products are atomic, so a batch
+ * never carries part of one). A refused or never-reached product produces no
  * mesh at all; it only becomes a row of the `RetainedGeometrySummary`, which
  * is reported after every change. Nothing here ever asks the exact kernel for
  * anything: a refused product stays absent.
@@ -21,6 +21,7 @@ import type { CoordinateInfo, MeshData, StreamingGeometryEvent } from '@ifc-lite
 import { calculateMeshBounds, createCoordinateInfo } from '@/utils/localParsingUtils';
 import type { RetainedFaceRow, RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
 import type { RetainedHostEvent, RetainedStart } from './retained-protocol';
+import { recordRetainedPublication } from './retainedPublication';
 
 /** The host client surface the source drives (`RetainedClient`, or a protocol fixture). */
 export interface RetainedRunner {
@@ -132,16 +133,6 @@ function coordinateInfo(acc: Accumulator): CoordinateInfo {
   };
 }
 
-function grow(acc: Accumulator, meshes: MeshData[], supplied?: Accumulator['bounds']): void {
-  if (meshes.length === 0 && !supplied) return;
-  const bounds = supplied ?? calculateMeshBounds(meshes).bounds;
-  if (!acc.bounds) { acc.bounds = bounds; return; }
-  for (const axis of ['x', 'y', 'z'] as const) {
-    acc.bounds.min[axis] = Math.min(acc.bounds.min[axis], bounds.min[axis]);
-    acc.bounds.max[axis] = Math.max(acc.bounds.max[axis], bounds.max[axis]);
-  }
-}
-
 type Pulled = { event: RetainedHostEvent } | { done: true } | { idle: true };
 
 /** One host message, or a heartbeat tick while waiting; throws past the stall budget. */
@@ -234,14 +225,8 @@ export async function* retainedGeometryEvents(
           break;
         }
         case 'published': {
-          for (const product of event.instanceProducts ?? [event]) {
-            acc.received.add(product.expressId);
-            acc.summary.published++;
-            for (const obligation of product.obligationsUnmet) acc.obligations.add(obligation);
-          }
-          grow(acc, event.meshes, event.bounds);
+          recordRetainedPublication(acc, event);
           if (event.faces) acc.faces.set(event.expressId, faceRows(event.faces, event.meshes));
-          acc.meshes += event.meshCount ?? event.meshes.length;
           report(true);
           yield { type: 'batch', meshes: event.meshes, instancedShards: event.instancedShards, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
           phase();

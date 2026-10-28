@@ -44,11 +44,15 @@ pub(super) fn populate_metadata(
     }
     #[cfg(target_arch = "wasm32")]
     for job in chunk.iter_mut() {
-        if job.needs_identity() {
-            if let Ok(entity) = decoder.decode_at(job.start, job.end) {
-                job.set_identity(&entity);
-            }
+        // Keep the serial scheduler's existing early-return policy for jobs
+        // whose identity was already supplied by the scan (including types).
+        if !job.needs_identity() {
+            continue;
         }
+        let Ok(entity) = decoder.decode_at(job.start, job.end) else {
+            continue;
+        };
+        job.set_identity(&entity);
         appearance.resolve(job, &ctx.geometry_style_index, decoder);
     }
 }

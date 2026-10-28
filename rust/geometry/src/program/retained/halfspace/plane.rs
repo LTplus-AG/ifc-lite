@@ -34,3 +34,7 @@ fn refuse(ctx: &super::Context<'_, '_>, refusal: RetainedRefusal) -> crate::Erro
     ctx.failure.record(super::FailureSite::BooleanSecondOperand, Some(ctx.second.id), OriginCause::Recipe(refusal));
     error
 }
+
+#[cfg(test)]
+#[path = "m5_plane_tests.rs"]
+mod tests;

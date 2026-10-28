@@ -3,3 +3,7 @@ m5_three_chain
 m5_empty_refusal
 m5_synthetic
 m5_corpus
+m5_kernel_failure
+m5_clip_timings
+m5_lineage
+m5_burkwil

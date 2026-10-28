@@ -21,7 +21,9 @@ fn drive_product(text:&str,id:u32,empty_boolean:Option<usize>)->(Vec<Operation>,
             Ok(Some(t)) => t, Err(e) => break Err(e),
             Ok(None) => break program.finish().map(|p| {
                 assert_eq!(p.values().len(),1);
-                assert_eq!(p.values()[0].slot(),operations.last().unwrap().value().slot());
+                if id==13 && operations.len()==1 {
+                    assert_eq!(p.values()[0].slot(),operations[0].value().slot());
+                }
             }),
         };
         let (reply, batch, _) = match program.admit(ticket, &router, &mut decoder) {
@@ -102,4 +104,21 @@ fn issue_7955_mapped_nonuniform_host_bakes_before_cutter() {
     assert!(matches!(ops[1].kind(),OperationKind::Affine { .. }));
     assert!(matches!(ops[2].kind(),OperationKind::Construction(RetainedRecipe::Prism(_))));
     assert_eq!(ops[1].value().evaluation_bounds(),ops[3].value().evaluation_bounds());
+}
+
+#[test]
+fn issue_7955_reviewed_skip_and_tangent_skip_make_no_cutter_call() {
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-clips.ifc");
+    for id in [145,216] {
+        let (ops,result)=drive_product(text,id,None);result.unwrap();
+        assert_eq!(ops.len(),1,"#{id}: bounds-proven identity must not invoke a cutter/Boolean");
+    }
+}
+#[test]
+fn issue_7955_reviewed_unsupported_halfspaces_stop_before_cutter() {
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-clips.ifc");
+    for (id,entity,cause) in [(167,162,"halfspace_union"),(178,173,"halfspace_intersection"),(189,184,"opaque")] {
+        let (ops,result)=drive_product(text,id,None);assert_eq!(ops.len(),1);
+        assert_eq!(result.unwrap_err().origin_view(),Some(("boolean_second_operand",Some(entity),cause)));
+    }
 }

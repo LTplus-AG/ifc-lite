@@ -18,9 +18,14 @@ test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-
   const ref = { callback: () => 42 };
   const base: EntityFingerprint<typeof ref>[] = [
     { key: 'old', ifcType: 'IfcWall', dataHash: 'd', geometryHash: 42n, ref },
-    { key: 'same', ifcType: 'IfcWall', dataHash: 'a', ref },
+    { key: 'same', ifcType: 'IfcWall', dataHash: 'a', ref, components: {}, container: 'before' },
+    { key: '__proto__\ud800', ifcType: 'IfcWall', dataHash: 'a', ref, components: { '\udfff': 'a' } },
+    { key: 'gone', ifcType: 'IfcWall', dataHash: 'gone', ref },
   ];
-  const head = [{ ...base[0], key: 'new', geometryHash: '42' }, { ...base[1], dataHash: 'b' }];
+  const head = [{ ...base[0], key: 'new', geometryHash: '42' },
+    { ...base[1], dataHash: 'b', container: 'after' },
+    { ...base[2], components: { '\udfff': 'b' } },
+    { key: 'added', ifcType: 'IfcWall', dataHash: 'added', ref }];
   const options: DiffOptions[] = [
     {}, { matchUnpairedByContent: true },
     { keyAliases: new Map([['new', 'old']]) },

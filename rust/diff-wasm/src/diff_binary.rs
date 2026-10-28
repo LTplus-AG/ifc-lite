@@ -58,7 +58,6 @@ impl<'a> Writer<'a> {
     fn entry(&mut self, entry: &'a ifc_lite_diff::model::DiffEntry<'_, usize>) {
         use ifc_lite_diff::model::{DiffState, DiffChangeKind};
         self.body.push(7);
-        self.string(&entry.key);
         self.body.push(match entry.state { DiffState::Added => 0, DiffState::Modified => 1,
             DiffState::Deleted => 2, DiffState::Unchanged => 3 });
         // Preserve the core's change-kind order rather than relying on a mask.

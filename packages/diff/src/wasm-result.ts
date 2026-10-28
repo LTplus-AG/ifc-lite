@@ -24,6 +24,7 @@ export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly Ent
   for (const indexed of raw.entries) {
     const baseIndex = indexed.base, headIndex = indexed.head;
     const entry = indexed as unknown as DiffEntry<TRef>;
+    entry.key = baseIndex === undefined ? head[headIndex!].key : base[baseIndex].key;
     if (baseIndex !== undefined) entry.base = base[baseIndex];
     if (headIndex !== undefined) entry.head = head[headIndex];
     entries.push(entry);

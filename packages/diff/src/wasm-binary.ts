@@ -81,7 +81,9 @@ export function unpackDocument(bytes: Uint8Array): unknown {
     strings.push(value);
   }
   const readEntry = () => {
-    const key = strings[word()];
+    // Entry keys are the original base key, or the head key for additions.
+    // Restore from the same row indices as references, avoiding string copies.
+    const key = '';
     const state = ['added', 'modified', 'deleted', 'unchanged'][view.getUint8(cursor++)];
     const count = view.getUint8(cursor++), changeKinds: string[] = [];
     for (let i = 0; i < count; i++) changeKinds.push(['data', 'geometry', 'container'][view.getUint8(cursor++)]);

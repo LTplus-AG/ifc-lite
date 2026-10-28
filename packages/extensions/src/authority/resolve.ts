@@ -76,9 +76,10 @@ let deepValueCount = 0;
  * object members holding `undefined` skipped). A top-level `undefined`
  * (an attribute kept without a value) is distinct from a `null` removal,
  * and values JSON cannot represent (non-finite numbers, bigint, functions,
- * symbols) get tagged keys, so `NaN` never equals a removal. A value
- * nested past `MAX_KEY_DEPTH` (or cyclic) compares by identity, so
- * nothing throws.
+ * symbols) get tagged keys, so `NaN` never equals a removal.
+ * A `Date` compares by time. A value nested past `MAX_KEY_DEPTH` (or
+ * cyclic), or holding a non-plain object such as a Map or Set, compares
+ * by identity, so nothing throws.
  */
 export function canonicalValueKey(value: unknown): string {
   const key = structuralKey(value, 0);
@@ -92,7 +93,7 @@ export function canonicalValueKey(value: unknown): string {
   return identity;
 }
 
-/** Canonical key, or undefined when the value nests past `MAX_KEY_DEPTH`. */
+/** Canonical key, or undefined when the value must compare by identity. */
 function structuralKey(value: unknown, depth: number): string | undefined {
   if (value === undefined && depth === 0) return '\u0000undefined';
   if (value === null || value === undefined) return 'null';
@@ -106,6 +107,13 @@ function structuralKey(value: unknown, depth: number): string | undefined {
       return value ? 'true' : 'false';
     case 'object': {
       if (depth >= MAX_KEY_DEPTH) return undefined;
+      // Only arrays and plain records are IFCX values. A Date compares by
+      // time; any other built-in or class instance (Map, Set, ...) has no
+      // enumerable members to compare, so it falls back to identity.
+      const proto: unknown = Object.getPrototypeOf(value);
+      if (!Array.isArray(value) && proto !== Object.prototype && proto !== null) {
+        return value instanceof Date ? `\u0000Date:${value.getTime()}` : undefined;
+      }
       const parts: string[] = [];
       if (Array.isArray(value)) {
         for (const item of value) {

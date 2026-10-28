@@ -250,6 +250,13 @@ describe('resolveAttribute (§12.5 golden table)', () => {
     cyclic.self = cyclic;
     expect(canonicalValueKey(cyclic)).toBe(canonicalValueKey(cyclic));
     expect(canonicalValueKey(cyclic)).not.toBe(canonicalValueKey({ a: 1 }));
+    // Non-plain objects: Date by time, Map/Set by identity, never equal to {}.
+    expect(canonicalValueKey(new Date(0))).not.toBe(canonicalValueKey(new Date(1)));
+    expect(canonicalValueKey(new Date(5))).toBe(canonicalValueKey(new Date(5)));
+    expect(canonicalValueKey(new Map([['a', 1]]))).not.toBe(canonicalValueKey(new Map([['a', 2]])));
+    expect(canonicalValueKey(new Set())).not.toBe(canonicalValueKey({}));
+    expect(canonicalValueKey(Object.create(null) as object)).toBe(canonicalValueKey({}));
+    expect(resolveAttribute({ attributeKey: EXTERNAL }, [op('a', ARCH, new Date(0)), op('b', ARCH, new Date(1))]).state).toBe('divergent');
     expect(canonicalValueKey(Number.NaN)).not.toBe(canonicalValueKey(null));
     expect(canonicalValueKey(Infinity)).not.toBe(canonicalValueKey(-Infinity));
     expect(canonicalValueKey([Number.NaN])).not.toBe(canonicalValueKey([null]));

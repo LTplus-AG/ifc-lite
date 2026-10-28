@@ -8,6 +8,10 @@ mod events;
 const RELATIVE: f64 = 1e-13;
 const WORK: usize = 2_000_000;
 
+#[cfg(test)]
+#[path = "sections_tests.rs"]
+mod tests;
+
 /// World halfspaces n·x <= c. `None` means unsupported or work exhausted,
 /// never a truncated integral. Direction can be oblique or reversed.
 pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Option<f64> {

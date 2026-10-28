@@ -57,6 +57,9 @@ impl<'a> Writer<'a> {
     }
     fn entry(&mut self, entry: &'a ifc_lite_diff::model::DiffEntry<'_, usize>) {
         use ifc_lite_diff::model::{DiffState, DiffChangeKind};
+        // The key pass keeps the base key for aliases and the head key only
+        // for additions. Qualify this invariant in debug/test builds (#8042).
+        debug_assert_eq!(entry.key, entry.base.or(entry.head).expect("entry row").key);
         self.body.push(7);
         self.body.push(match entry.state { DiffState::Added => 0, DiffState::Modified => 1,
             DiffState::Deleted => 2, DiffState::Unchanged => 3 });

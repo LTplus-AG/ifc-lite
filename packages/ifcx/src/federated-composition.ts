@@ -19,6 +19,7 @@ import type { IfcxLayer } from './layer-stack.js';
 import { LayerStack } from './layer-stack.js';
 import { PathIndex, parsePath } from './path-resolver.js';
 import { applyTombstones } from './tombstones.js';
+import { recordLayerOpinions, type AttributeOpinions } from './opinions.js';
 import { inheritsField } from './definitions.js';
 
 /**
@@ -29,6 +30,12 @@ export interface ComposeOptions {
   onProgress?: (phase: string, percent: number) => void;
   /** Maximum inheritance depth (default: 10) */
   maxInheritDepth?: number;
+  /**
+   * Keep every layer's own value per attribute on each composed node
+   * (`ComposedNodeWithSources.opinions`), not only the winner. Off by
+   * default so ordinary composition pays nothing. See `opinions.ts`.
+   */
+  retainOpinions?: boolean;
 }
 
 /**
@@ -43,6 +50,8 @@ interface PreComposedNode {
   attributeSources: Map<string, string>;
   /** Layers that define this path */
   definedInLayers: Set<string>;
+  /** Every layer's own attribute values (only with `retainOpinions`) */
+  opinions?: AttributeOpinions;
 }
 
 /**
@@ -53,6 +62,11 @@ export interface ComposedNodeWithSources extends ComposedNode {
   attributeSources: Map<string, { layerId: string; layerName: string }>;
   /** All layers that contributed to this node */
   contributingLayers: Set<string>;
+  /**
+   * Every layer's own value per attribute key, weakest first, strongest
+   * last. Present only when composed with `retainOpinions`.
+   */
+  opinions?: AttributeOpinions;
 }
 
 /**
@@ -88,7 +102,7 @@ export function composeFederated(
   layerStack: LayerStack,
   options: ComposeOptions = {}
 ): FederatedCompositionResult {
-  const { onProgress, maxInheritDepth = 10 } = options;
+  const { onProgress, maxInheritDepth = 10, retainOpinions = false } = options;
 
   onProgress?.('indexing', 0);
 
@@ -125,7 +139,7 @@ export function composeFederated(
     // Skip hierarchical paths - they're references, not definitions
     if (path.includes('/')) continue;
 
-    const pre = mergeNodesForPath(path, layers);
+    const pre = mergeNodesForPath(path, layers, retainOpinions);
     preComposed.set(path, pre);
 
     pathCount++;
@@ -196,7 +210,7 @@ export function composeFederated(
  * Merge all nodes for a path across layers.
  * Layers are processed in strength order (strongest first).
  */
-function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
+function mergeNodesForPath(path: string, layers: IfcxLayer[], retainOpinions: boolean): PreComposedNode {
   const result: PreComposedNode = {
     path,
     children: {},
@@ -205,6 +219,7 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
     attributeSources: new Map(),
     definedInLayers: new Set(),
   };
+  if (retainOpinions) result.opinions = new Map();
 
   // Process layers in reverse order (weakest first) so stronger layers override
   for (let i = layers.length - 1; i >= 0; i--) {
@@ -213,6 +228,8 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
     if (!nodes) continue;
 
     result.definedInLayers.add(layer.id);
+    // This layer's own values: the last node for the path wins within it.
+    const layerValues = retainOpinions ? new Map<string, unknown>() : undefined;
 
     // Process all nodes for this path in this layer
     for (const node of nodes) {
@@ -246,9 +263,11 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
         for (const [key, value] of Object.entries(node.attributes)) {
           result.attributes[key] = value;
           result.attributeSources.set(key, layer.id);
+          layerValues?.set(key, value);
         }
       }
     }
+    if (layerValues && result.opinions) recordLayerOpinions(result.opinions, layer, layerValues);
   }
 
   return result;
@@ -397,6 +416,7 @@ function composeNode(
     children: new Map(),
     attributeSources: new Map(),
     contributingLayers: new Set(pre?.definedInLayers || []),
+    ...(pre?.opinions ? { opinions: pre.opinions } : {}),
     ...inheritsField(pre?.inherits, (p) => pathIndex.resolvePath(p)),
   };
 

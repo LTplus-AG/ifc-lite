@@ -40,7 +40,8 @@ async fn retained_browser_m11_faces_parity() {
     let native: BTreeMap<String, Vec<Row>> = serde_wasm_bindgen::from_value(reference().await.unwrap()).unwrap();
     for (name, bytes) in [("f-a-curved.ifc", include_bytes!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc").as_slice()),
         ("issue_2019_wall_two_overlapping_openings.ifc", include_bytes!("../../../processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc").as_slice()),
-        ("swept_disk_trimmed_line.ifc", include_bytes!("../../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc").as_slice())] {
+        ("swept_disk_trimmed_line.ifc", include_bytes!("../../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc").as_slice()),
+        ("f-i-presentation.ifc", include_bytes!("../../../../tests/fixtures/synthetic-retained/f-i-presentation.ifc").as_slice())] {
         let expected: BTreeMap<u32, Row> = native[name].iter().map(|r| (r.id, r.clone())).collect();
         assert!(expected.values().any(|r| r.keys.as_ref().is_some_and(|k| !k.is_empty())), "{name}: no native keys");
         let mut run = crate::api::IfcAPI::new().retained_model(bytes, None).await.unwrap();

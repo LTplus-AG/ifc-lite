@@ -142,6 +142,43 @@ fn issue_7955_m11_f_connected_coincident_faces_go_to_the_earliest_cut() {
     println!("sdk witness executed: m11_f_connected_coincident");
 }
 
+/// Shared M11 fixture f-i (#8268): every published case meets the source oracle; (d) also
+/// meets the README's hand-derived arc-wall areas. (e) and (f) refuse upstream on main.
+#[test]
+fn issue_7955_m11_f_presentation_fixture_faces() {
+    let text = fixture("tests/fixtures/synthetic-retained/f-i-presentation.ifc");
+    let Some(outcomes) = native(&text) else { return; };
+    let sources = sources(&text);
+    let mut mapped = BTreeSet::new();
+    for outcome in &outcomes {
+        let ProductOutcome::Published(product) = outcome else { continue };
+        let expected = if product.product_id == 425 { face_bands::cut(&sources, 425, &[433]) } else { faces::uncut(&sources, product.product_id) };
+        let actual = assert_matches(&format!("f-i #{}", product.product_id), product, &expected.expect("predicted"));
+        if (311..=391).contains(&product.product_id) { mapped.insert(actual.into_keys().collect::<Vec<_>>()); }
+    }
+    assert_eq!(mapped.len(), 1, "(c) nine occurrences of one map share their keys: {mapped:?}");
+    // (d), README: annulus r 5.0..5.3 over 90 deg, height 3, box opening x 4.5..5.75, |y| <= 0.5, z 0.5..2.5.
+    let actual = face_check::measured(shape(&outcomes, 425)).unwrap();
+    for (key, area, curved) in [("#421:side(0,0)", 22.972682996507, true), ("#421:side(0,2)", 21.558596478692, true),
+        ("#421:side(0,1)", 0.9, false), ("#421:side(0,3)", 0.9, false), ("#421:cap(start)", 2.426880324898, true),
+        ("#421:cap(end)", 2.426880324898, true), ("#440>#433:side(0,0)", 0.602850395552, false),
+        ("#440>#433:side(0,2)", 0.602850395552, false), ("#440>#433:cap(start)", 0.300473714228, true),
+        ("#440>#433:cap(end)", 0.300473714228, true)] {
+        let measured = *actual.get(key).unwrap_or_else(|| panic!("(d) missing {key}: {actual:?}"));
+        assert!((measured - area).abs() / area <= limit(curved), "(d) {key}: {measured} vs {area}");
+    }
+    assert_eq!(actual.len(), 10, "(d) no other keys: {actual:?}");
+    // Not reachable on main: (e) the bent swept disk, (f) the halfspace clip (its tie-break needs M5/M6).
+    for (id, entity) in [(507, 504), (610, 607)] {
+        let refused = outcomes.iter().find_map(|o| match o {
+            ProductOutcome::Refused { product_id, refusal, origin, .. } if *product_id == id => Some((refusal.code(), origin.and_then(|o| o.entity))),
+            _ => None,
+        });
+        assert_eq!(refused, Some(("operation_unsupported", Some(entity))), "f-i #{id} became reachable: add its face case");
+    }
+    println!("sdk witness executed: m11_f_presentation_fixture");
+}
+
 // A real receipt whose one Boolean triangle claims another kernel face: the kernel
 // cross-check must refuse, never re-key or publish.
 struct Corrupt(NativeReceipt, Option<Vec<u32>>);
@@ -220,7 +257,7 @@ fn issue_7955_m11_f_stage_native_browser_reference() {
     let mut models = BTreeMap::new();
     for path in ["tests/fixtures/synthetic-retained/f-a-curved.ifc",
         "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
-        "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc"] {
+        "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc", "tests/fixtures/synthetic-retained/f-i-presentation.ifc"] {
         let Some(outcomes) = native(&fixture(path)) else { return; };
         let rows: Vec<_> = outcomes.iter().map(|o| match o {
             ProductOutcome::Published(p) => {
@@ -241,3 +278,4 @@ fn issue_7955_m11_f_stage_native_browser_reference() {
     }
     println!("sdk witness executed: m11_f_reference");
 }
+

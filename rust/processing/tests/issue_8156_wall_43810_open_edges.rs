@@ -227,15 +227,17 @@ fn issue_8156_wall_43810_is_closed_in_the_native_and_browser_frames() {
     assert!(defects.is_empty(), "wall #{WALL} (#8156):\n{}", defects.join("\n"));
 }
 
-/// Still open, by a different mechanism (#8156 remainder). With the site offset
-/// AND a per-element local frame (the frame of the appearance `Context::evaluated_router`,
-/// and of `process_geometry` compiled to wasm), the void cut itself comes back
-/// with an unsplit collinear T-junction where the two abutting openings meet,
-/// so it is not strictly closed; `clean_void_output` then runs its watertight
-/// cleanup and drops ridge needles, leaving 15 open edges. Measured identical on
-/// `main`; the backstop change does not reach it.
+/// The site offset AND a per-element local frame: the frame of the appearance
+/// `Context::evaluated_router`, and of `process_geometry` compiled to wasm.
+/// Here the two abutting openings' footprints reach the void cut 7.6 µm apart,
+/// so the coaxial union hands the batched subtract two prisms and the kernel's
+/// abutting merge unions them first. That union put a vertex of the shared
+/// jamb one ulp off the jamb's plane: the fixed-width materialisation divided
+/// f64-rounded operands instead of rounding the exact quotient once. The jamb
+/// was no longer planar, the next subtract split its diagonal on one side of
+/// the seam only, and the cut came back with a T-junction (3 open edges), which
+/// `clean_void_output`'s hygiene widened to 15.
 #[test]
-#[ignore = "#8156 remainder: open in the site-offset local frame"]
 fn issue_8156_wall_43810_is_closed_in_the_site_offset_local_frame() {
     let defects = frame_defects(&[("site offset, per-element local frame", Offset::Site, true)]);
     assert!(defects.is_empty(), "wall #{WALL} (#8156):\n{}", defects.join("\n"));

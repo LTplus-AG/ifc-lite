@@ -1638,6 +1638,7 @@ dependencies = [
  "insta",
  "jpeg-decoder",
  "nalgebra",
+ "num-bigint 0.4.6",
  "num-rational",
  "num-traits",
  "png",

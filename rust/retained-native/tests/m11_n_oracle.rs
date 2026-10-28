@@ -61,3 +61,16 @@ fn m11_n_7955_orphan_maps_have_analytic_normals_in_both_source_frames() {
         expected(&surfaces,[x,0.,1.],[0.,0.,1.]);
     }
 }
+
+#[test]
+fn m11_n_7955_retraced_profile_uses_independent_m8_source_region() {
+    let text = include_str!("../../processing/tests/fixtures/issue_3641_voiding_trap.ifc")
+        .replace("#72246=IFCLOCALPLACEMENT(#226962,#72247);", "#72246=IFCLOCALPLACEMENT($,#5);");
+    let surfaces = source(text.as_bytes(),72245);
+    // The authored residual is a quadrilateral, extruded from z=12.816 m
+    // toward (1e-9,3e-10,-1). Its y=0 side is oblique by the same 3e-10.
+    assert_eq!(surfaces.len(),6);
+    expected(&surfaces,[2.,-0.2,12.816],[0.,0.,1.]);
+    expected(&surfaces,[2.,0.,12.816],[0.,1.,3e-10]);
+    expected(&surfaces,[2.+25.632e-9,-0.2+25.632*3e-10,-12.816],[0.,0.,-1.]);
+}

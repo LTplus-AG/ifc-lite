@@ -8,6 +8,8 @@ use ifc_lite_processing::{AnalyticQuantitySources, element::retained_runtime::Sh
 mod sources;
 #[path = "normals_types.rs"]
 mod types;
+#[path = "normals_retrace.rs"]
+mod retrace;
 pub use sources::surfaces;
 
 #[derive(Clone, Debug)]

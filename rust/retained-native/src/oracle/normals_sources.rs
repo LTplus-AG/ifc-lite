@@ -35,7 +35,9 @@ pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -
         for i in extrusions.into_iter().flatten() {
             let source = &sources.extrusion_definitions.sources.iter().find(|s| s.key==i.source).ok_or("missing prism source")?.source;
             for &sign in signs.get(&(i.solid_id,i.mapping_path.clone())).ok_or("missing prism polarity")? {
-                result.extend(extrusion(source,&i.world_from_source.ok_or("missing prism frame")?)
+                let frame = i.world_from_source.ok_or("missing prism frame")?;
+                result.extend(extrusion(source,&frame)
+                    .or_else(|| super::retrace::extrusion(source,&mut decoder,&frame))
                     .ok_or("unresolved prism normals")?.into_iter().map(|s| s.reversed(sign*polarity)));
             }
         }

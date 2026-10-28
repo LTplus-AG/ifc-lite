@@ -37,6 +37,7 @@ export function compareWasmModels<TRef>(
   baseRows: readonly EntityFingerprint<TRef>[], headRows: readonly EntityFingerprint<TRef>[],
   options: DiffOptions,
   keys: readonly [readonly string[], readonly string[]],
+  placementRows?: () => readonly [readonly EntityFingerprint<TRef>[], readonly EntityFingerprint<TRef>[]],
 ): ModelDiff<TRef> {
   const stripPlacementGeometry = options.stripPlacementGeometry === true;
   const raw = unpackDocument(baseModel.comparePacked(headModel, {
@@ -58,12 +59,20 @@ export function compareWasmModels<TRef>(
     ...(options.excludeTypes === undefined ? {} : { excludeTypes: [...options.excludeTypes] }),
     ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
   })) as IndexedDiff;
-  // Classification is entirely Rust-owned. Only project the returned adapter
-  // records here, preserving JS stripping's observable fields and ref identity.
-  const project = (rows: readonly EntityFingerprint<TRef>[]) => rows.map(row =>
-    typeof row.geometryHash === 'string' && row.geometryHash.startsWith('p:')
-      ? { ...row, geometryHash: undefined } : row);
-  return restoreDiffReferences(raw,
-    stripPlacementGeometry ? project(baseRows) : baseRows,
-    stripPlacementGeometry ? project(headRows) : headRows, keys);
+  // Classification is Rust-owned; handle owners supply their stable stripped
+  // view, while one-shot calls project only for this call.
+  const [baseView, headView] = stripPlacementGeometry
+    ? placementRows?.() ?? [stripPlacementRows(baseRows), stripPlacementRows(headRows)]
+    : [baseRows, headRows];
+  return restoreDiffReferences(raw, baseView, headView, keys);
+}
+
+/** Project returned records only; native models always retain original hashes. */
+export function stripPlacementRows<TRef>(rows: readonly EntityFingerprint<TRef>[], frozen = false): readonly EntityFingerprint<TRef>[] {
+  const view = rows.map(row => {
+    if (typeof row.geometryHash !== 'string' || !row.geometryHash.startsWith('p:')) return row;
+    const projected = { ...row, geometryHash: undefined };
+    return frozen ? Object.freeze(projected) : projected;
+  });
+  return frozen ? Object.freeze(view) : view;
 }

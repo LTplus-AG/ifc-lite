@@ -98,7 +98,9 @@ hashes as `undefined`, exactly like stripping in JS first. Mesh hashes, bounding
 boxes, volumes and refs are preserved. Keep the default `false` for symmetric
 pairs, including two placement-only models, to retain placement move detection.
 Resolve capability before exclusions and key deduplication. The option never
-changes either handle's snapshot, so the same handles serve every option set.
+changes either handle's snapshot. A handle lazily owns a frozen stripped view:
+only placement rows are shallow-copied, refs remain identical, and repeated
+stripped comparisons return the same row objects. Disposal releases both views.
 
 ### Scope — what counts as a change
 

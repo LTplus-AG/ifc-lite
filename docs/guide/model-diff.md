@@ -77,7 +77,9 @@ Set it when exactly one full input has mesh hashes, before exclusions or key
 deduplication, so placements cannot defeat geometry capability abstention.
 Keep its default `false` for symmetric pairs (including two placement-only
 models) so placement moves remain detectable. Changing the option leaves the
-resident snapshots intact.
+resident snapshots intact. Each handle lazily owns a frozen stripped view;
+placement rows alone are shallow-copied and reused across comparisons, while
+other rows and opaque refs retain their identity. Disposal releases both views.
 
 ### Classification
 

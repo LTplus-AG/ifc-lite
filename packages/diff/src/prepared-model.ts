@@ -5,7 +5,7 @@ import type { DiffOptions, EntityFingerprint, ModelDiff } from './types.js';
 import { fingerprintColumns } from './wasm-columns.js';
 import { packStrings } from './wasm-binary.js';
 import { diffModelConstructor } from './wasm-runtime.js';
-import { compareWasmModels } from './wasm-diff.js';
+import { compareWasmModels, stripPlacementRows } from './wasm-diff.js';
 
 /** Explicit immutable fingerprint snapshot; opaque ref objects retain their identity.
  * Dispose in finally. Prepare again to observe edits to the source fingerprints.
@@ -15,6 +15,7 @@ export class DiffModelHandle<TRef = unknown> {
   private model: InstanceType<ReturnType<typeof diffModelConstructor>> | undefined;
   private rows: EntityFingerprint<TRef>[];
   private keys: string[];
+  private strippedRows: readonly EntityFingerprint<TRef>[] | undefined;
 
   constructor(entities: Iterable<EntityFingerprint<TRef>>) {
     const Model = diffModelConstructor();
@@ -35,7 +36,13 @@ export class DiffModelHandle<TRef = unknown> {
 
   compare(head: DiffModelHandle<TRef>, options: DiffOptions = {}): ModelDiff<TRef> {
     if (!this.model || !head.model) throw new Error('Diff model handle has been disposed.');
-    return compareWasmModels(this.model, head.model, this.rows, head.rows, options, [this.keys, head.keys]);
+    return compareWasmModels(this.model, head.model, this.rows, head.rows, options, [this.keys, head.keys],
+      () => [this.withoutPlacementGeometry(), head.withoutPlacementGeometry()]);
+  }
+
+  /** Owned lazy view: placement rows alone are copied, once per handle. */
+  private withoutPlacementGeometry(): readonly EntityFingerprint<TRef>[] {
+    return this.strippedRows ??= stripPlacementRows(this.rows, true);
   }
 
   [Symbol.dispose](): void { this.dispose(); }
@@ -45,6 +52,7 @@ export class DiffModelHandle<TRef = unknown> {
     const model = this.model;
     this.model = undefined;
     this.rows = [];
+    this.strippedRows = undefined;
     this.keys = [];
     model?.free();
   }

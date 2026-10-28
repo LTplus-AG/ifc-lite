@@ -4,6 +4,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { diffModels as oracle } from '../test/oracle/diff.js';
+import * as oracleProvenance from '../test/oracle/index.js';
+import * as publicDiff from './index.js';
 import { diffModels, initDiffSync, prepareDiffModel, DiffModelHandle } from './index.js';
 import type { DiffOptions, EntityFingerprint } from './types.js';
 
@@ -40,6 +42,26 @@ for (const name of ['core', 'content', 'split', 'successor', 'lineage']) {
           expect(actual, vector.name).toEqual(expected);
           expect(wire(actual), vector.name).toBe(wire(expected));
           expect(wire(diffModels(base, head, opts)), vector.name).toBe(wire(expected));
+          if (stripPlacementGeometry) {
+            const again = left.compare(right, opts);
+            const records = (result: typeof actual) => [
+              ...result.entries.flatMap(entry => [entry.base, entry.head]),
+              ...(result.contentMatches ?? []).flatMap(match => [...match.base, ...match.head]),
+              ...(result.splitMerges ?? []).flatMap(claim => [claim.whole, ...claim.pieces, claim.excluded]),
+              ...(result.successors ?? []).flatMap(claim => [claim.base, claim.head]),
+            ].filter(row => row !== undefined);
+            const firstRows = records(actual), nextRows = records(again);
+            expect(nextRows.length).toBe(firstRows.length);
+            for (let i = 0; i < firstRows.length; i++) {
+              expect(nextRows[i], vector.name).toBe(firstRows[i]);
+              expect(Object.isFrozen(firstRows[i]), vector.name).toBe(true);
+            }
+            expect(publicDiff.identityMapFromContentMatches(actual.contentMatches), vector.name)
+              .toEqual(oracleProvenance.identityMapFromContentMatches(expected.contentMatches));
+            expect(publicDiff.identityMapFromSuccessors(actual.successors), vector.name)
+              .toEqual(oracleProvenance.identityMapFromSuccessors(expected.successors));
+            expect(publicDiff.lineageOfDiff(actual), vector.name).toEqual(oracleProvenance.lineageOfDiff(expected));
+          }
           if (base === vector.base && !stripPlacementGeometry) {
             expect(JSON.parse(wire(actual)), vector.name).toEqual(vector.expected);
           }
@@ -72,5 +94,40 @@ test.skipIf(!existsSync(binary))('placement stripping preserves output records, 
     }
     expect(left.compare(right)).toEqual(before);
     expect(base[0].geometryHash).toBe('p:a');
+  } finally { left.dispose(); right.dispose(); }
+});
+
+// #8266 review: the stripped view is owned by each handle, not re-created by
+// each compare. Only placement rows differ from the original frozen snapshot.
+test.skipIf(!existsSync(binary))('stripped handle views freeze and reuse placement rows while preserving other identities (#8266)', () => {
+  initDiffSync({ module: readFileSync(binary) });
+  const ref = { opaque: Symbol('ref') };
+  const rows: EntityFingerprint<typeof ref>[] = [
+    { key: 'placement', ifcType: 'IfcSite', dataHash: 'd', geometryHash: 'p:before', ref },
+    { key: 'mesh', ifcType: 'IfcWall', dataHash: 'd', geometryHash: 42n, ref },
+    { key: 'absent', ifcType: 'IfcSpace', dataHash: 'd', ref },
+  ];
+  const left = prepareDiffModel(rows), right = prepareDiffModel(rows);
+  try {
+    const original = left.compare(right);
+    const stripped = left.compare(right, { stripPlacementGeometry: true });
+    for (const side of ['base', 'head'] as const) {
+      const placement = stripped.byKey.get('placement')![side]!;
+      expect(placement.geometryHash).toBeUndefined();
+      expect(Object.isFrozen(placement)).toBe(true);
+      expect(placement.ref).toBe(ref);
+      expect(placement).not.toBe(original.byKey.get('placement')![side]);
+      for (const key of ['mesh', 'absent']) {
+        expect(stripped.byKey.get(key)![side]).toBe(original.byKey.get(key)![side]);
+      }
+      for (const scope of ['data', 'both', 'geometry'] as const) {
+        const again = left.compare(right, { scope, stripPlacementGeometry: true });
+        expect(again.byKey.get('placement')![side]).toBe(placement);
+      }
+      expect(left.compare(right).byKey.get('placement')![side]!.geometryHash).toBe('p:before');
+    }
+    left.dispose(); right.dispose();
+    expect(stripped.byKey.get('placement')!.base!.ref).toBe(ref);
+    expect(stripped.byKey.get('placement')!.base!.geometryHash).toBeUndefined();
   } finally { left.dispose(); right.dispose(); }
 });

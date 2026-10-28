@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: MPL-2.0
+rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc
+rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc

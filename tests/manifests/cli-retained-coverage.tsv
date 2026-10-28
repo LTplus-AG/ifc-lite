@@ -21,18 +21,6 @@ rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	74	refused	incomplete
 rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	81	refused	operation_unsupported
 rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	88	refused	operation_unsupported
 rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc	99	published	
-rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	1215	refused	operation_unsupported
-rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	1216	refused	operation_unsupported
-rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	1315	refused	operation_unsupported
-rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	360	refused	operation_unsupported
-rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	456	refused	operation_unsupported
-rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc	105	published	
-rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc	70	published	
-rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc	75	published	
-rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc	80	published	
-rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc	85	published	
-rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc	90	published	
-rust/geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc	95	published	
 rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc	40	published	
 rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc	47	published	
 rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc	54	published	

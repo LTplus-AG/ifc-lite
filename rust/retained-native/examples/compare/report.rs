@@ -75,6 +75,7 @@ impl Report {
             exact_report_only,
         );
         let cut_rel = opening.and_then(|e| {
+            if let Some(authority) = authority { return Some(relative(actual.volume, authority.volume)); }
             super::openings::check_opened(
                 &format!("{model}:{}", shape.product_id),
                 actual,

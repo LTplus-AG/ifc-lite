@@ -67,3 +67,63 @@ fn issue_7955_m5_consumption_and_unsupported_refuse_real_sdk() {
     }
     println!("sdk witness executed: m5_empty_refusal");
 }
+
+#[test]
+fn issue_7955_m5_full_synthetic_hand_oracle_and_native_reference() {
+    let Some(worker)=worker() else{return};
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-clips.ifc");
+    let expected:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/expected.d/m5.json")).unwrap();
+    let rows=expected["synthetic"].as_array().unwrap();
+    let mut outcomes=Vec::new();
+    ifc_lite_retained_native::run_model_native(SourceBundle::new(text.as_bytes().to_vec()),&worker,
+        &ModelOptions{ids:Some(rows.iter().map(|r|r["id"].as_u64().unwrap() as u32).collect()),..Default::default()},|o|outcomes.push(o)).unwrap();
+    assert_eq!(outcomes.len(),rows.len());let mut reference=Vec::new();
+    for (outcome,row) in outcomes.iter().zip(rows) {
+        let id=row["id"].as_u64().unwrap() as u32;
+        match outcome {
+            ProductOutcome::Published(shape)=>{
+                assert_eq!(shape.product_id,id);assert_eq!(row["code"],"published");
+                let mut actual=metrics::Metrics::default();
+                for part in &shape.parts {
+                    let points:Vec<_>=part.positions.chunks_exact(3).map(|p|metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect();
+                    actual.add_mesh(&points,&part.indices).unwrap();
+                }
+                let expected=row["volume"].as_f64().unwrap();
+                let limit=if row["case"].as_str().unwrap().starts_with("f "){2e-3}else{1e-6};
+                assert_eq!(actual.defects,0,"#{id} closure");
+                assert!(metrics::relative(actual.volume,expected)<=limit,"#{id} {} vs {expected}",actual.volume);
+                reference.push(serde_json::json!({"id":id,"code":"published","volume":actual.volume}));
+            }
+            ProductOutcome::Refused{product_id,refusal,..}=>{
+                assert_eq!(*product_id,id);assert_eq!(row["code"],refusal.code(),"#{id}: {outcome:?}");
+                reference.push(serde_json::json!({"id":id,"code":refusal.code()}));
+            }
+        }
+    }
+    if let Some(path)=std::env::var_os("IFCLITE_M5_REFERENCE"){
+        std::fs::write(path,serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
+    }
+    println!("sdk witness executed: m5_synthetic");
+}
+
+#[test]
+fn issue_7955_m5_committed_corpus_matches_source_sections() {
+    let Some(worker)=worker() else{return};
+    use ifc_lite_retained_native::oracle::clips;
+    for (text,ids) in [
+        (include_str!("../../../apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc"),vec![67536,75347]),
+        (include_str!("../../geometry/tests/fixtures/issue_5314_halfspace_edge.ifc"),vec![30]),
+    ] {
+        let model=SourceBundle::new(text.as_bytes().to_vec());
+        let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+        let mut outcomes=Vec::new();
+        ifc_lite_retained_native::run_model_native(model.clone(),&worker,
+            &ModelOptions{ids:Some(ids.iter().copied().collect()),..Default::default()},|o|outcomes.push(o)).unwrap();
+        assert_eq!(outcomes.len(),ids.len());
+        for (outcome,id) in outcomes.into_iter().zip(ids) {
+            let expected=clips::expected(&model,&sources,id).unwrap().unwrap();
+            volume(outcome,expected.section_volume().expect("required source section"));
+        }
+    }
+    println!("sdk witness executed: m5_corpus");
+}

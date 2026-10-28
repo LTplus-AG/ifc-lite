@@ -6,6 +6,8 @@ use ifc_lite_geometry::{Matrix4, Point3, Vector3, placement::{Axis2Placement, re
     representation::{product_shape, rep_items, MappedLevel, Select}};
 use ifc_lite_processing::AnalyticQuantitySources;
 use std::{collections::HashSet, sync::Arc};
+#[path = "clip_openings.rs"]
+mod openings;
 
 #[derive(Clone, Debug)]
 pub struct Plane { pub entity: u32, pub point: [f64; 3], pub normal: [f64; 3] }
@@ -13,15 +15,14 @@ impl Plane {
     pub fn excess(&self, point: [f64; 3]) -> f64 { dot(self.normal, sub(point, self.point)).max(0.) }
     fn equation(&self) -> ([f64; 3], f64) { (self.normal, dot(self.normal, self.point)) }
 }
-#[derive(Debug)]
 pub struct ClipPart {
+    host: Option<ExtrudedHost>,
     pub planes: Vec<Plane>,
     pub host_volume: Option<f64>,
     pub section_volume: Option<f64>,
     pub curved: bool,
     pub mixed: bool,
 }
-#[derive(Debug)]
 pub struct ClipExpectation { pub parts: Vec<ClipPart> }
 impl ClipExpectation {
     pub fn section_volume(&self) -> Option<f64> { self.parts.iter().try_fold(0., |v,p| Some(v+p.section_volume?)) }
@@ -64,7 +65,7 @@ fn part(mut current: DecodedEntity, mut world: Matrix4<f64>, sources: &AnalyticQ
                 } else {
                     // A later Union could reintroduce material behind an earlier
                     // clip. Do not apply a kept-side predicate to that union.
-                    if !difference { return Ok(ClipPart { planes: Vec::new(),host_volume:None,section_volume:None,curved:true,mixed:true }); }
+                    if !difference { return Ok(ClipPart { host:None, planes: Vec::new(),host_volume:None,section_volume:None,curved:true,mixed:true }); }
                     mixed = true;
                 }
                 current = reference(&current, slot::IfcBooleanResult::FIRST_OPERAND.index(), decoder)?;
@@ -91,7 +92,7 @@ fn part(mut current: DecodedEntity, mut world: Matrix4<f64>, sources: &AnalyticQ
                         .any(|s|!matches!(s,ifc_lite_geometry::analytic::AnalyticCurveSegment::Line{..})));
                 let host_volume = host.as_ref().and_then(|h| section_volume(h,&[]));
                 let section_volume = if mixed {None} else {host.as_ref().and_then(|h| section_volume(h,&planes.iter().map(Plane::equation).collect::<Vec<_>>()))};
-                return Ok(ClipPart {planes,host_volume,section_volume,curved,mixed});
+                return Ok(ClipPart {host,planes,host_volume,section_volume,curved,mixed});
             }
         }
     }
@@ -133,5 +134,12 @@ pub fn expected(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, pr
             parts.push(part(item,frame,sources,product,&mut decoder)?);
         }
     }
-    if parts.iter().all(|p|p.planes.is_empty()) { Ok(None) } else { Ok(Some(ClipExpectation {parts})) }
+    if parts.iter().all(|p|p.planes.is_empty()) { return Ok(None); }
+    let cuts=openings::cutters(model,sources,product)?;
+    if !cuts.is_empty() {
+        for part in &mut parts {
+            part.section_volume=if part.mixed {None} else {part.host.as_ref().and_then(|h|openings::net_volume(h,&part.planes,&cuts))};
+        }
+    }
+    Ok(Some(ClipExpectation {parts}))
 }

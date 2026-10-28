@@ -8,7 +8,8 @@
     "f": "2*area(disk radius2)-integral_disk |x| = 8*pi-32/3",
     "g": "4*6*1-1*1*1",
     "h": "4*6*2",
-    "m": "36-1*1*1.5"
+    "m": "36-1*1*1.5",
+    "issue5314": "widthY * integral_0^widthX (depth-x) dx; values read as decimal millimetres from source, then converted to metres"
   },
   "synthetic": [
     {
@@ -90,6 +91,13 @@
       "id": 206,
       "code": "published",
       "volume": 2.0
+    }
+  ],
+  "issue5314": [
+    {
+      "id": 30,
+      "code": "published",
+      "volume": 0.0020736068223065843
     }
   ]
 }

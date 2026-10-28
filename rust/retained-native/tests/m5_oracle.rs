@@ -42,3 +42,17 @@ fn issue_7955_original_corpus_clips_have_independent_section_authority() {
         }
     }
 }
+
+#[test]
+fn issue_7955_synthetic_oracle_covers_curves_mixed_nodes_and_openings() {
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-clips.ifc");
+    let rows:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/expected.d/m5.json")).unwrap();
+    for row in rows["synthetic"].as_array().unwrap() {
+        let id=row["id"].as_u64().unwrap() as u32;
+        if row["code"]!="published" || id==206{continue;}
+        let e=oracle(text,id);
+        if id==128 {assert!(e.section_volume().is_none());assert!(e.parts[0].mixed);continue;}
+        let v=e.section_volume().expect("required section integral");let expected=row["volume"].as_f64().unwrap();
+        assert!((v-expected).abs()/expected<1e-9,"#{id}: {v} vs {expected}");
+    }
+}

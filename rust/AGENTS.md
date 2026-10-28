@@ -2,7 +2,7 @@
 
 Supplements [root AGENTS.md](../AGENTS.md).
 
-- **Workspace:** edit repo-root `/Cargo.toml` for profiles, package version and shared lints; there is no `rust/Cargo.toml`.
+- **Workspace:** edit repo-root `/Cargo.toml` (profiles: `release` aborts, `server-release` unwinds; version; shared lints); there is no `rust/Cargo.toml`.
 - **`cargo test --workspace` does not cover `rust/python` (workspace `exclude`) or `rust/csg-thread-bench` (its own detached `[workspace]`).** A public-API change can break the PyO3 wheel or the bench crate with the workspace test still green; build and test those in-dir separately.
 - **150-line functions are ratcheted** (`function_length_ratchet`): a new or growing one fails; split it, and lower or delete its allowlist row as it shrinks.
 - **Do not apply numeric clippy rewrites.** `[workspace.lints.clippy]` deliberately allows `excessive_precision`, `manual_range_contains`, `manual_clamp`, `neg_cmp_op_on_partial_ord`, `approx_constant`. The `.clamp()` / `RangeInclusive::contains` / `partial_cmp` suggestions change NaN/panic behavior, and the precise literals are intentional.
@@ -10,7 +10,7 @@ Supplements [root AGENTS.md](../AGENTS.md).
 - **Representations:** use public `representation::RepresentationWalk`; `Select::Meshed` is what renders. In `rust/geometry` also reuse product admission and crate-private `structural`/`unwrap`. Never hand-walk attributes 6 → 2 → 3.
 - **Closure/volume (`rust/geometry`; tests via `test-support`):** use `mesh_check`'s `EdgeLedger` and named `VertexKey`/`Degenerate` policies; no local edge-pairing maps.
 - **Float sort keys: `ifc_lite_geometry::cmp_f64_nan_last`** (NaN last, `-0.0 == +0.0`), not `partial_cmp(..).unwrap_or(Equal)`, which may panic a sort on NaN. `scripts/check-float-sort-comparators.mjs` flags every other non-test `partial_cmp` (#7674).
-- **`[lints]` inherit-vs-extend footgun.** core/processing/clash/ffi/export/wasm-bindings use `[lints] workspace = true`, but `rust/geometry` instead carries a full `[lints.clippy]` block (a member cannot inherit and extend). For a crate-local allow elsewhere, convert it the geometry way.
+- **`[lints]` inherit-vs-extend footgun.** core/processing/clash/ffi/export/wasm-bindings use `[lints] workspace = true`, but `rust/geometry` instead carries a full `[lints.clippy]` block (a member cannot inherit and extend); for a local allow elsewhere, do the same.
 - **RTC detection is orchestrator-owned:** `detect_rtc_offset_for_file` + `router.set_rtc_offset` in `processing/src/processor/mod.rs`. Direct router callers must set the offset for models beyond `LARGE_COORD_THRESHOLD_METERS` (1 km). Restore world coordinates through `ProcessingResult::frame` (`MeshFrame::to_world`/`world_matrix`) in f64; never re-derive the site tier or add RTC in f32 (#7684).
 - **STEP strings:** `decode_ifc_string` handles `\X\ \X2\ \X4\ \S\ \P\`; malformed `\S\` before a multibyte character must not panic (#1500). Keep `s_escape_before_multibyte_char_does_not_panic` green when changing `decode_ifc_string` (`core/src/step_encoding.rs`).
 - **Geometry diagnostics are feature-gated.** `observability = ["dep:tracing"]` routes warn/debug through tracing (the server enables it via `ifc-lite-processing/observability`); default builds compile zero tracing code. Emit via the `diag_warn!` / `diag_debug!` macros (`geometry/src/diag.rs`), never raw `eprintln` in the kernel, and the feature-off expansion must reproduce the old output byte-for-byte. `csg_capture` and `debug_geometry` are the other opt-in features.

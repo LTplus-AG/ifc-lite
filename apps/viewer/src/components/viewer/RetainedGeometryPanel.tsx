@@ -68,8 +68,12 @@ export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOp
   }, [summary.refused, code, sort]);
 
   const select = (row: RetainedUnpublishedRow) => {
+    // Two-channel selection (AGENTS.md): the global id drives 3D highlight,
+    // the {modelId, expressId} ref drives the properties panel.
     const state = useViewerStore.getState();
+    state.setSelectedEntityIds([]);
     state.setSelectedEntityId(toGlobalIdFromModels(state.models, modelId, row.expressId));
+    state.setSelectedEntity({ modelId, expressId: row.expressId });
   };
   const reloadExact = () => {
     if (!sourceFile) return;

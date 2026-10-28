@@ -55,7 +55,7 @@ const rowIds = () => [...document.querySelectorAll<HTMLElement>('[data-retained-
 afterEach(() => {
   cleanup();
   chooseGeometryKernel('exact');
-  act(() => useViewerStore.setState({ models: new Map(), activeModelId: null, selectedEntityId: null }));
+  act(() => useViewerStore.setState({ models: new Map(), activeModelId: null, selectedEntityId: null, selectedEntity: null }));
 });
 
 describe('#7955 M2-C retained chip', () => {
@@ -121,6 +121,7 @@ describe('#7955 M2-C Retained geometry panel', () => {
 
     click(panel()!.querySelector('[data-retained-row="30"]')!);
     assert.equal(useViewerStore.getState().selectedEntityId, 1030, 'the global id of #30 in a model offset by 1000');
+    assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: 'm', expressId: 30 }, 'the properties channel follows the row');
   });
 
   it('"Reload with exact kernel" reloads the whole model with the exact kernel', () => {

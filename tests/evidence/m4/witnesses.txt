@@ -3,3 +3,4 @@ m4_straight_bands
 m4_curved_authored_bands
 m4_order_atomicity
 m4_unsliced_skips
+m4_synthetic

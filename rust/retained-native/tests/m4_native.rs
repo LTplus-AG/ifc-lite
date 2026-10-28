@@ -128,3 +128,26 @@ fn issue_7955_m4_single_and_thin_collapsed_layers_publish_unsliced() {
     }
     println!("sdk witness executed: m4_unsliced_skips");
 }
+
+#[test]
+fn issue_7955_m4_synthetic_bands_and_refusals() {
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc");
+    // Remains outside the coverage universe until the required independent
+    // fixture review and parser roundtrip have been accepted.
+    let Some(results)=run(text,&[1027,2027,3055,4055,5027,6027,7027,8027,9027,10027,11027]) else {return;};
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    for id in [1027,2027,3055,4055,5027,6027,7027] {
+        let product=shape(&results,id);
+        let oracle=ifc_lite_retained_native::oracle::layers::expected(text.as_bytes(),&sources,id).unwrap();
+        let tolerance=if oracle.curved {2e-3} else {1e-6};
+        for part in &product.parts {
+            let tag=part.layer.unwrap(); close(part.capped_volume_m3.unwrap(),oracle.volumes[usize::from(tag.index)],tolerance);
+        }
+        let measured=measure(product); assert_eq!(measured.defects,0); close(measured.volume,oracle.opened_volume,tolerance);
+    }
+    let single=shape(&results,10027); assert_eq!(single.parts.len(),1); assert!(single.parts[0].layer.is_none()); close(measure(single).volume,3.6,1e-6);
+    for (id,code) in [(8027,"material_layer_strategy"),(9027,"layer_caps_unresolved"),(11027,"operation_unsupported")] {
+        assert!(results.iter().any(|o|matches!(o,ProductOutcome::Refused{product_id,refusal,..} if *product_id==id && refusal.code()==code)),"#{id} expected {code}: {results:?}");
+    }
+    println!("sdk witness executed: m4_synthetic");
+}

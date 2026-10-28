@@ -18,3 +18,23 @@ fn m4_source_integrals_match_hand_volumes() {
         std::fs::write(path,serde_json::to_vec_pretty(&serde_json::json!({"layeredWall":{"id":27,"bandVolumesM3":straight.volumes},"curvedWall":{"id":55,"bandVolumesM3":curved.volumes,"independentProducts":[122,188,254]}})).unwrap()).unwrap();
     }
 }
+
+#[test]
+fn m4_synthetic_source_volumes_are_independently_derived() {
+    let bytes=include_bytes!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(bytes,None);
+    for (id,hand) in [(1027,vec![0.6,1.2,1.8]),(2027,vec![0.6,1.2,1.8]),
+        (5027,vec![0.2,0.4,0.6]),(6027,vec![0.6,3.]),(7027,vec![2.4,1.2,0.])] {
+        let oracle=expected(bytes,&sources,id).unwrap(); assert_eq!(oracle.volumes.len(),hand.len());
+        for (a,b) in oracle.volumes.iter().zip(hand) {assert!((a-b).abs()<1e-8,"#{id}: {a} vs {b}");}
+    }
+    // pi/2 annular sector with height3; the second case's .2*.1*1 door
+    // lies strictly between rho=10.3 and 10.6, removing .02 m³ only there.
+    for id in [3055,4055] {
+        let oracle=expected(bytes,&sources,id).unwrap();
+        for (k,(a,b)) in [(10_f64,10.1_f64),(10.1,10.3),(10.3,10.6)].into_iter().enumerate() {
+            let hand=3.*std::f64::consts::PI*(b*b-a*a)/4.-if id==4055 && k==2 {0.02} else {0.};
+            assert!((oracle.volumes[k]-hand).abs()<1e-9,"#{id} band{k}: {} vs {hand}",oracle.volumes[k]);
+        }
+    }
+}

@@ -80,6 +80,8 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         let mut parts = Vec::new();
         let mut storage = Storage::default();
         storage.reserve(&self.resources, &mut parts, self.plan.values().len())?;
+        let mut face_sources = Vec::new();
+        storage.reserve(&self.resources, &mut face_sources, self.plan.values().len())?;
         for value in self.plan.values() {
             let (_, realization) = self
                 .ledger
@@ -107,6 +109,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             if indices.is_empty() {
                 return Err(incomplete());
             }
+            face_sources.push(presentation::face_sources(realization)?);
             parts.push(super::publication_mesh::copy_part(
                 runtime::ReceiptMesh { positions, indices, faces },
                 *value.object_frame(), curved, &self.resources, &mut storage,
@@ -144,8 +147,8 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         };
         let discharged = presentation::apply(&mut product, &presentation::Context {
             plan: &self.plan, model: &self.presentation_context,
-            resources: &self.resources, element_color: self.element_color,
-        });
+            resources: &self.resources, element_color: self.element_color, faces: &face_sources,
+        })?;
         product.obligations.0.retain(|r| !discharged.contains(r));
         if product.obligations.0.is_empty() { return Err(incomplete()); }
         Ok(product)

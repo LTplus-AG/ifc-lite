@@ -15,7 +15,7 @@ fn m11_0_7955_real_sdk_keeps_face_partition_and_unmet_normals() {
             for part in &product.parts {
                 assert_eq!(part.revision_local_faces.len(), part.indices.len() / 3);
                 assert!(!part.revision_local_faces.is_empty());
-                assert!(part.normals.is_none() && part.appearance.is_none() && part.faces.is_none() && part.instance_key.is_none());
+                assert!(part.normals.is_none() && part.appearance.is_none() && part.faces.is_some() && part.instance_key.is_none());
             }
         }
     }

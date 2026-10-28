@@ -1,13 +1,13 @@
 diff --git b/packages/ifcx/src/opinions.ts a/packages/ifcx/src/opinions.ts
-index 9f04ceb3cd..e20575e23c 100644
+index 63e115d567..3c892c696e 100644
 --- b/packages/ifcx/src/opinions.ts
 +++ a/packages/ifcx/src/opinions.ts
-@@ -98,7 +98,7 @@ function opinionKey(value: unknown, nested = false): string {
+@@ -99,7 +99,7 @@ function opinionKey(value: unknown, nested = false): string {
        const members = Object.keys(record)
          .filter((key) => record[key] !== undefined)
          .map((key) => [key.normalize('NFC'), key] as const)
 -        ;
-+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
++        .sort(([a, rawA], [b, rawB]) => (a !== b ? (a < b ? -1 : 1) : rawA < rawB ? -1 : rawA > rawB ? 1 : 0));
        return `{${members.map(([nfc, key]) => `${JSON.stringify(nfc)}:${opinionKey(record[key], true)}`).join(',')}}`;
      }
      default:

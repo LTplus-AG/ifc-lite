@@ -26,6 +26,7 @@ export type RetainedSessionEvent =
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
+    layeredProducts?: number; bands?: number;
 }
 "#;
 
@@ -116,6 +117,8 @@ impl RetainedModelSession {
         for (key, value) in [
             ("candidates", summary.candidates as f64),
             ("published", summary.published as f64),
+            ("layeredProducts", summary.layered_products as f64),
+            ("bands", summary.bands as f64),
             ("refused", (summary.candidates - summary.published) as f64),
             ("restarts", f64::from(summary.restarts)),
             ("workersAcquired", f64::from(workers_acquired)),

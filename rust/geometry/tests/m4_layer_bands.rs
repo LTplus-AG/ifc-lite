@@ -137,3 +137,21 @@ fn straight_signs(sigma:f64,sense:f64) {
 #[test] fn m4_straight_forward_negative() {straight_signs(1.,-1.);} // y=1-.1=.9; first y>.9.
 #[test] fn m4_straight_reverse_positive() {straight_signs(-1.,1.);} // y=0+.1=.1; first y<.1.
 #[test] fn m4_straight_reverse_negative() {straight_signs(-1.,-1.);} // y=1-.1=.9; first y>.9.
+
+#[test]
+fn m4_source_only_eligibility_and_family_refusals() {
+    let admit=|text:&str,id| {
+        let bundle=SourceBundle::new(text.as_bytes().to_vec()); let mut d=bundle.decoder();
+        let mut r=GeometryRouter::with_units(text,&mut d);
+        r.set_material_layer_index(Arc::new(MaterialLayerIndex::from_content(text,&mut d)));
+        let e=d.decode_by_id(id).unwrap(); Traversal::layer_admission(&e,&r,&mut d)
+    };
+    let single=STRAIGHT.replace("((#80,#81),'layers')","((#80),'layers')");
+    assert!(matches!(admit(&single,27).unwrap(),LayerAdmission::None|LayerAdmission::Skip(_)));
+    let thin=STRAIGHT.replace("($,0.1,$)","($,0.001,$)");
+    assert!(matches!(admit(&thin,27).unwrap(),LayerAdmission::Skip(_)));
+    let unsupported=CURVED.replace("IFCCIRCLE(#26,10.)","IFCELLIPSE(#26,10.,9.)");
+    assert_eq!(admit(&unsupported,55).unwrap_err(),"layer_axis_family");
+    let radius=CURVED.replace(".AXIS2.,.NEGATIVE.,0.,$)",".AXIS2.,.POSITIVE.,10.,$)");
+    assert_eq!(admit(&radius,55).unwrap_err(),"layer_radius");
+}

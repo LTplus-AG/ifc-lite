@@ -207,14 +207,19 @@ fn same_kind(a: &Support, b: &Support) -> bool {
         | (Support::Cylinder { .. }, Support::Cylinder { .. }) | (Support::Tube { .. }, Support::Tube { .. }))
 }
 
-/// Every source face one triangle (corners in the part object frame) lies on,
-/// each with whether its bounded extent holds the centroid. None is
-/// `unattributed`; supports of different kinds are `ambiguous`.
-pub(crate) fn candidates(operands: &[Operand], part: &[V; 3], chord: f64) -> Result<Vec<(Choice, bool)>, Unproven> {
+/// Every source face one triangle lies on, each with whether its bounded extent
+/// holds the centroid; `oriented` is false for a zero-area triangle, which has no
+/// normal to test. None is `unattributed`; oriented supports of different kinds
+/// are `ambiguous`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Candidates { pub matches: Vec<(Choice, bool)>, pub oriented: bool }
+pub(crate) fn candidates(operands: &[Operand], part: &[V; 3], chord: f64) -> Result<Candidates, Unproven> {
     let mut matches: Vec<(Choice, bool)> = Vec::new();
+    let mut oriented = true;
     for (o, operand) in operands.iter().enumerate() {
         let corners = part.map(|p| transform(&operand.from_part, p));
         let normal = unit(cross(sub(corners[1], corners[0]), sub(corners[2], corners[0])));
+        oriented &= normal.is_some();
         let centroid = std::array::from_fn(|i| (corners[0][i] + corners[1][i] + corners[2][i]) / 3.);
         for (f, face) in operand.faces.iter().enumerate() {
             if operand.incident(face, &corners, normal, chord) {
@@ -224,28 +229,35 @@ pub(crate) fn candidates(operands: &[Operand], part: &[V; 3], chord: f64) -> Res
     }
     let face = |(o, f): Choice| &operands[o].faces[f];
     let Some(&(first, _)) = matches.first() else { return Err(Unproven::Unattributed { entity: None }) };
-    if matches.iter().any(|&(c, _)| !same_kind(&face(c).support, &face(first).support)) {
+    if oriented && matches.iter().any(|&(c, _)| !same_kind(&face(c).support, &face(first).support)) {
         return Err(Unproven::Ambiguous { entity: Some(operands[first.0].item) });
     }
-    Ok(matches)
+    Ok(Candidates { matches, oriented })
 }
 
 /// One key per revision-local kernel face. Its candidates are the source faces
-/// common to ALL its triangles (none: the kernel cross-check fails, `ambiguous`).
-/// Coincident candidates prefer faces whose bounded extent holds one of its
-/// triangles, then the LEFT (host) operand: operands are in left-first lineage
-/// order, and the left operand is where a Boolean's surviving boundary comes
-/// from. A key may span several kernel faces, never the reverse.
-pub(crate) fn resolve(face: &[Vec<(Choice, bool)>]) -> Result<Choice, Unproven> {
-    let (first, rest) = face.split_first().ok_or(Unproven::Unattributed { entity: None })?;
-    let common: Vec<(Choice, bool)> = first.iter().filter_map(|&(choice, inside)| {
+/// common to all its ORIENTED triangles (none: the kernel cross-check fails,
+/// `ambiguous`); zero-area triangles must lie on the chosen face too, and a face
+/// with no oriented triangle has no evidence (`unattributed`). Coincident
+/// candidates prefer faces whose bounded extent holds one of its triangles, then
+/// the LEFT (host) operand: operands are in left-first lineage order, and the
+/// left operand is where a Boolean's surviving boundary comes from. A key may
+/// span several kernel faces, never the reverse.
+pub(crate) fn resolve(face: &[Candidates]) -> Result<Choice, Unproven> {
+    let mut oriented = face.iter().filter(|c| c.oriented);
+    let first = oriented.next().ok_or(Unproven::Unattributed { entity: None })?;
+    let common: Vec<(Choice, bool)> = first.matches.iter().filter_map(|&(choice, inside)| {
         let mut held = inside;
-        for other in rest {
-            held |= other.iter().find(|(c, _)| *c == choice)?.1;
+        for other in oriented.clone() {
+            held |= other.matches.iter().find(|(c, _)| *c == choice)?.1;
         }
         Some((choice, held))
     }).collect();
     let bounded = common.iter().any(|&(_, held)| held);
-    common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).min()
-        .ok_or(Unproven::Ambiguous { entity: None })
+    let choice = common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).min()
+        .ok_or(Unproven::Ambiguous { entity: None })?;
+    if face.iter().any(|c| !c.oriented && !c.matches.iter().any(|(m, _)| *m == choice)) {
+        return Err(Unproven::Ambiguous { entity: None });
+    }
+    Ok(choice)
 }

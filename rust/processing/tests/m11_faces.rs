@@ -154,12 +154,26 @@ fn m11_f_7955_kernel_face_merging_two_coincident_cutters_keeps_the_left_one() {
     let operands = [host, half(0.), half(1.)];
     // The jamb at x = 1 (cutter edge 3) across both halves, split by the kernel's own diagonal.
     let jamb = [tri([1., 0.2, 1.], [1., 1.8, 1.], [1., 0.2, 2.], [1., 0., 0.]), tri([1., 1.8, 1.], [1., 1.8, 2.], [1., 0.2, 2.], [1., 0., 0.])];
-    assert_eq!(candidates(&operands, &jamb[0], CHORD).unwrap().iter().filter(|c| c.1).count(), 1, "centroid in one half");
+    assert_eq!(candidates(&operands, &jamb[0], CHORD).unwrap().matches.iter().filter(|c| c.1).count(), 1, "centroid in one half");
     let (o, f) = face(&operands, &jamb).unwrap();
     assert_eq!((operands[o].item, operands[o].faces[f].role), (100, Role::Side { boundary: 0, segment: 3 }),
         "coincident cutters: the left one, uniformly across the kernel face");
     // Each half alone, as its own kernel face, keeps its own cutter.
     assert_eq!(face(&operands, &jamb[1..]).map(|(o, _)| operands[o].item), Ok(102));
+}
+
+#[test]
+fn m11_f_7955_zero_area_triangles_never_choose_a_face() {
+    let host = [operand(&wall(&BOX, 3., [0.; 3]), false, 1., IDENTITY)];
+    // A point on the box corner lies on three planes: alone it is no evidence.
+    let point = [[0.; 3]; 3];
+    assert!(!candidates(&host, &point, CHORD).unwrap().oriented);
+    assert_eq!(face(&host, &[point]), Err(Unproven::Unattributed { entity: None }));
+    // Beside an oriented triangle of the same kernel face it must lie on that face too.
+    let base = tri([0., 0., 0.], [0., 1., 0.], [1., 0., 0.], [0., 0., -1.]);
+    assert_eq!(face(&host, &[base, point]).map(|(_, f)| host[0].faces[f].role), Ok(Role::Cap { end: false }));
+    let far = [[2., 1., 3.]; 3];
+    assert_eq!(face(&host, &[base, far]), Err(Unproven::Ambiguous { entity: None }));
 }
 
 #[test]

@@ -130,7 +130,7 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
         choices.resize(count, (0, 0));
         for face in order.chunk_by(|&a, &b| kernel[a] == kernel[b]) {
             let mut lists = Vec::with_capacity(face.len());
-            charge(face.len(), face.len() * std::mem::size_of::<Vec<(Choice, bool)>>())?;
+            charge(face.len(), face.len() * std::mem::size_of::<super::face_attribution::Candidates>())?;
             for &t in face {
                 charge(work, 0)?;
                 let corner = |i: u32| -> Option<[f64; 3]> {

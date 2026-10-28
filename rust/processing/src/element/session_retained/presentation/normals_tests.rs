@@ -123,12 +123,20 @@ fn m11_n_7955_invalid_and_degenerate_meshes_refuse_without_nan_normals() {
 
 #[test]
 fn m11_n_7955_budget_bounds_backing_and_high_valence_work() {
-    for (work, bytes) in [(1_000_000, 1), (100, 1_000_000)] {
+    // 1,000 triangles fit in the work allowance; their quadratic adjacency
+    // comparisons do not. Distinct face ids also prove rejected neighbours
+    // consume work, rather than only neighbours accepted for smoothing.
+    for (work, bytes) in [(1_000_000, 1), (1_050, 10_000_000)] {
         let budget = ProductBudget::new(BudgetStart::now(), work, bytes, 10000);
+        let started = std::time::Instant::now();
         budget.scope(|| {
-            let p = fan(&[0.; 100], &[90.; 100]);
+            let mut p = fan(&[0.; 1_000], &[90.; 1_000]);
+            p.revision_local_faces = (0..1_000).collect();
             assert_eq!(corner_normals(&p, &OwnedResourceContext::capture_current(), &mut Storage::default())
                 .unwrap_err().refusal().0.code(), "resource_exhausted");
+            assert!(p.normals.is_none(), "refused normal stream must not be attached");
         });
+        assert!(!budget.deadline_fired(), "work/backing must refuse before the deadline");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "bounded high-valence refusal");
     }
 }

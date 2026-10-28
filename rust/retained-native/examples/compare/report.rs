@@ -28,6 +28,8 @@ pub struct Report {
     pub coverage: Vec<String>,
     pub models: Vec<Value>,
     pub exact_only_type_products: Vec<Value>,
+    /// M11-F report-only projection rows (`checks::faces::exact_projection`).
+    pub face_projection: Vec<Value>,
 }
 impl Report {
     // One comparison row combines both independently measured sides and source expectations.
@@ -253,7 +255,7 @@ impl Report {
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
             "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
-            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
+            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }
 fn finite(v: f64) -> Value {

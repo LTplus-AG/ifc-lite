@@ -113,10 +113,9 @@ fn issue_7955_mapped_nonuniform_host_bakes_before_cutter() {
 #[test]
 fn issue_7955_reviewed_bounds_proven_skip_makes_no_cutter_call() {
     let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-clips.ifc");
-    for id in [145] {
-        let (ops,result)=drive_product(text,id,None);result.unwrap();
-        assert_eq!(ops.len(),1,"#{id}: bounds-proven identity must not invoke a cutter/Boolean");
-    }
+    let id=145;
+    let (ops,result)=drive_product(text,id,None);result.unwrap();
+    assert_eq!(ops.len(),1,"#{id}: bounds-proven identity must not invoke a cutter/Boolean");
 }
 #[test]
 fn issue_7955_reviewed_unsupported_halfspaces_stop_before_cutter() {

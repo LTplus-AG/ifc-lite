@@ -41,6 +41,8 @@ fn close(actual: f64, expected: f64, tolerance: f64) {
 #[test]
 fn issue_7955_m4_curved_ifc_normal_matches_independently_authored_bands() {
     let Some(results) = run(CURVED,&[55,122,188,254]) else {return;};
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(CURVED.as_bytes(),None);
+    let independent=ifc_lite_retained_native::oracle::layers::expected(CURVED.as_bytes(),&sources,55).expect("IFC source oracle");
     let wall = shape(&results,55);
     assert_eq!(wall.parts.len(),3); assert_eq!(wall.cuts,1);
     let limits: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m4.json")).unwrap();
@@ -54,6 +56,7 @@ fn issue_7955_m4_curved_ifc_normal_matches_independently_authored_bands() {
         let expected = 3.*std::f64::consts::PI*(b*b-a*a)/4.-2.*(f(b)-f(a));
         let part = &wall.parts[index];
         let tag = part.layer.unwrap(); assert_eq!(usize::from(tag.index),index); assert_eq!(tag.material_id,material);
+        close(independent.volumes[index],expected,1e-10);
         let actual = part.capped_volume_m3.unwrap();
         let proxy = measure(shape(&results,id));
         close(proxy.volume,expected,tolerance); close(actual,expected,tolerance); close(actual,proxy.volume,tolerance);

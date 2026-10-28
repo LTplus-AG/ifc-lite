@@ -7,7 +7,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 const FAMILY: &str = "layer_axis_family";
 
 pub(super) fn usage_id(id: u32, decoder: &mut EntityDecoder) -> Result<u32, &'static str> {
-    let source = decoder.source().clone();
+    let source = decoder.trusted_inputs().ok_or("layer_source")?.source().clone();
     let mut scanner = EntityScanner::new(source.bytes());
     while let Some((entity_id, kind, _, _)) = scanner.next_entity() {
         crate::resource::budget_checkpoint().map_err(|_| "layer_budget")?;

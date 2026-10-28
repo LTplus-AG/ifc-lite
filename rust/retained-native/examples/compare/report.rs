@@ -18,6 +18,10 @@ pub struct Report {
     pub skipped: Vec<String>,
     pub maxima: [f64; 4],
     pub cuts: u64,
+    pub layered_products: usize,
+    pub bands: usize,
+    pub band_ms: f64,
+    pub cap_ms: f64,
     pub cut_times_ms: Vec<f64>,
     pub oracle_maxima: BTreeMap<String, f64>,
     pub exact_ms: f64,
@@ -47,8 +51,12 @@ impl Report {
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
         sources: &ifc_lite_processing::AnalyticQuantitySources,
         exact_report_only: bool,
+        bytes: &[u8],
     ) {
         self.published += 1;
+        let bands=shape.parts.iter().filter(|p|p.layer.is_some()).count();
+        self.layered_products+=usize::from(bands>0); self.bands+=bands;
+        self.band_ms+=shape.band_ms; self.cap_ms+=shape.cap_ms;
         self.cuts += shape.cuts;
         self.cut_times_ms.extend_from_slice(&shape.cut_times_ms);
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
@@ -90,7 +98,7 @@ impl Report {
             shape.cuts, shape.cut_times_ms.iter().sum::<f64>(), shape.consumed_parts,
             format(cut_rel)
         ));
-        let results = super::checks::check(shape, sources, tolerances);
+        let results = super::checks::check(shape, sources, bytes, tolerances);
         for result in &results {
             let maximum = self.oracle_maxima.entry(result.family.into()).or_default();
             *maximum = maximum.max(if result.value.is_finite() { result.value } else { f64::INFINITY });
@@ -250,7 +258,7 @@ impl Report {
     pub fn summary(&self) -> Value {
         json!({"schema":"ifc-lite.native-retained-comparison/1", "candidates":self.candidates,
             "typeProducts":{"candidates":self.type_candidates,"published":self.type_published},
-            "published":self.published, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
+            "published":self.published,"layeredProducts":self.layered_products,"bands":self.bands,"bandMs":self.band_ms,"capMs":self.cap_ms, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),

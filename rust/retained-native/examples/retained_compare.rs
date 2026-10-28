@@ -216,6 +216,7 @@ fn compare(
                         opening_expectations.get(&id),
                         &sources,
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
+                        &bytes,
                     );
                     report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }

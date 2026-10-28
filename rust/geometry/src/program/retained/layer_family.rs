@@ -86,10 +86,9 @@ pub(crate) fn admit(element: &DecodedEntity, router: &GeometryRouter, decoder: &
         super::layer_source::axis_family(element, decoder, router.unit_scale())?
     } else { LayerFamily::Planar { axis: axis.unit_vector() } };
     let source_id = super::layer_source::usage_id(element.id, decoder)?;
-    let mut placement = router.get_placement_transform_from_element(element, decoder).map_err(|_| "layer_frame")?;
-    router.scale_transform(&mut placement);
+    let placement = router.resolve_scaled_placement_strict(element, decoder).map_err(|_| "layer_frame")?;
     let spec = LayerSpec { source_id, family, layers, sense, offset_m: offset * router.unit_scale(),
-        world_from_object: crate::math::mat4::col_major_array(&placement) };
+        world_from_object: placement };
     if spec.cumulative().into_iter().any(|c| spec.radius_at(c).is_some_and(|r| !r.is_finite() || r <= 0.)) {
         return Err("layer_radius");
     }

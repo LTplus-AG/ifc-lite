@@ -44,7 +44,12 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
     await page.evaluate(async () => { window.harness = await import('/harness/browser-page.mjs'); await window.harness.initialize(); });
     for (const model of [...new Set(blessed.map(p => p.model))].sort()) {
       const result = await page.evaluate(model => window.harness.runModel(model), model);
-      const report = retainedReport(validated, result.shape.outcomes, () => null);
+      // Playwright serializes typed arrays as plain data; restore the API's
+      // actual shape contract before calling the shared CLI volume reporter.
+      const outcomes = result.shape.outcomes.map(p => p.status !== 'published' ? p : { ...p,
+        parts: p.parts.map(part => ({ ...part, positions: Float64Array.from(part.positions),
+          indices: Uint32Array.from(part.indices), worldFromObject: Float64Array.from(part.worldFromObject) })) });
+      const report = retainedReport(validated, outcomes, () => null);
       products.push(...report.products.map(p => ({ ...p, model })));
       const view = compareView(result.shape, result.view, result.prepass);
       models.push({ model, ...report.summary, ...view, importMs: result.importMs,

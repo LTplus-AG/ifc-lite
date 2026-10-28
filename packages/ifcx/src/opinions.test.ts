@@ -138,6 +138,7 @@ describe('opinion retention (federated composition)', () => {
     assert.equal(divergent(Number.NaN, Number.NaN), false);
     // Two layers each parsing {"n":1e400} hold equal values.
     assert.equal(divergent(JSON.parse('{"n":1e400}'), JSON.parse('{"n":1e400}')), false);
+    assert.equal(divergent(JSON.parse('{"n":1e400}'), { n: null }), true);
     assert.equal(divergent(Infinity, 'EI 90'), true);
     assert.equal(divergent(Number.NaN, null), true);
     assert.equal(divergent(1n, 1), true);
@@ -146,6 +147,8 @@ describe('opinion retention (federated composition)', () => {
     assert.equal(divergent({ a: 1, b: undefined }, { a: 1 }), false);
     // Keys sort by their NFC form: decomposed 'e\u0301' sorts before 'f' raw, after it normalized.
     assert.equal(divergent({ 'e\u0301': 1, f: 2 }, { '\u00e9': 1, f: 2 }), false);
+    // Both spellings in one object: order no longer depends on insertion order.
+    assert.equal(divergent({ '\u00e9': 1, 'e\u0301': 2 }, { 'e\u0301': 2, '\u00e9': 1 }), false);
   });
 });
 

@@ -44,6 +44,14 @@ fn bounded_step(ctx: &mut Context<'_, '_>) -> crate::Result<CutterStep> {
         _ => return Err(unsupported(ctx, "halfspace_operator")),
     }
     if ctx.second.get_bool(1).is_none() { return Err(crate::Error::geometry("missing AgreementFlag")); }
+    let surface_id = ctx.second.get_ref(0).ok_or_else(|| crate::Error::geometry("missing BaseSurface"))?;
+    let surface = ctx.decoder.decode_by_id(surface_id)?;
+    if surface.ifc_type != IfcType::IfcPlane { return Err(crate::Error::geometry("BaseSurface must be IfcPlane")); }
+    let plane_position = ctx.decoder.decode_by_id(surface.get_ref(0)
+        .ok_or_else(|| crate::Error::geometry("missing plane Position"))?)?;
+    if plane_position.ifc_type != IfcType::IfcAxis2Placement3D {
+        return Err(crate::Error::geometry("plane Position must be IfcAxis2Placement3D"));
+    }
     let (p, r) = super::plane_source::lower(ctx.host, ctx.second, ctx.decoder)?;
     let (p, r) = (Vector3::from(p), Vector3::from(r));
     let id = ctx.second.get_ref(2).ok_or_else(|| crate::Error::geometry("missing PBHS Position"))?;

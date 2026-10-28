@@ -10,11 +10,13 @@ pub struct Expectation {
     pub section_volume:Option<f64>,
     pub curved:bool,
     clips:Vec<Clip>,
+    origin:[f64;3],
 }
 impl Expectation {
     /// Positive only strictly inside removed material, in world metres.
     /// An interior triangulation edge is not a material boundary.
     pub fn removed_clearance(&self,p:[f64;3])->f64 {
+        let p=sub(p,self.origin);
         self.clips.iter().map(|clip| {
             let plane=clip.plane.1-dot(clip.plane.0,p);
             let lateral=clip.edges.as_ref().map_or(f64::INFINITY,|edges| {
@@ -30,8 +32,12 @@ pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Optio
     let (host_id,ids,solid_cuts)=chain(product,&mut decoder)?;if ids.is_empty(){return None;}
     let instances=sources.extrusion_definitions.instances.get(&product)?;
     let instance=instances.iter().find(|i|i.source.solid_id==host_id)?;
-    let host=ExtrudedHost::from_sources(sources,instance)?;
-    let world=instance.world_from_source?;
+    let mut host=ExtrudedHost::from_sources(sources,instance)?;
+    let mut world=instance.world_from_source?;
+    // Translate the source oracle before forming plane offsets. This retains
+    // section accuracy for survey origins without changing the source geometry.
+    let origin=transform(&world,[0.;3]);
+    for i in 0..3 {world[12+i]-=origin[i];host.frame[12+i]-=origin[i];}
     let clips=ids.into_iter().map(|id|Clip::read(id,&world,&mut decoder)).collect::<Option<Vec<_>>>()?;
     let curved=clips.iter().any(|c|c.edges.as_ref().is_some_and(|e|e.iter().any(|s|matches!(s,super::clipping::Edge::Arc{..}))));
     let host_volume=section_volume(&host,&[])?;
@@ -47,12 +53,14 @@ pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Optio
         if !router.opening_requires_subtraction(id,&mut decoder){return Some(cuts);}
         for i in sources.extrusion_definitions.instances.get(&id)? {
             if i.source_modified{return None;}
-            cuts.push(extrusion_pieces(&ExtrudedHost::from_sources(sources,i)?)?);
+            let mut opening=ExtrudedHost::from_sources(sources,i)?;
+            for k in 0..3 {opening.frame[12+k]-=origin[k];}
+            cuts.push(extrusion_pieces(&opening)?);
         }
         Some(cuts)
     });
     let section_volume=if solid_cuts {None}else{extra.and_then(|extra|result_volume(&host,&clips,extra))};
-    Some(Expectation{host_volume,section_volume,curved,clips})
+    Some(Expectation{host_volume,section_volume,curved,clips,origin})
 }
 fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->Option<f64> {
     if clips.len()>3{return None;}

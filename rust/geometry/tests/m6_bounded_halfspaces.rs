@@ -69,3 +69,15 @@ fn issue_7955_m6_boxed_delegates_outcomes_without_enclosure() {
     let (_,missing)=walk(&text,1007);
     assert_eq!(missing.as_ref().err().map(|e|e.kind()),plain.as_ref().err().map(|e|e.kind()));
 }
+#[test]
+fn issue_7955_m6_boolean_operator_and_malformed_source_precedence() {
+    for operator in ["UNION","INTERSECTION"] {
+        let text=SOURCE.replace("IFCBOOLEANRESULT(.DIFFERENCE.",&format!("IFCBOOLEANRESULT(.{operator}."));
+        let (trace,result)=walk(&text,1001);assert_eq!(result.unwrap_err().kind(),TransactionFailureKind::OperationUnsupported);
+        assert_eq!(trace.order,["host"]);
+    }
+    let text=SOURCE.lines().map(|line|if line.contains("IFCPOLYGONALBOUNDEDHALFSPACE(") {
+            line.replace(",.F.,",",$,")
+        }else{line.to_string()}).collect::<Vec<_>>().join("\n");
+    let (trace,result)=walk(&text,1001);assert_eq!(result.unwrap_err().kind(),TransactionFailureKind::Source);assert_eq!(trace.order,["host"]);
+}

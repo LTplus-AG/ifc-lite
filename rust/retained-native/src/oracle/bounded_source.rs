@@ -92,7 +92,7 @@ fn read_edges(id:u32,decoder:&mut EntityDecoder,path:&mut HashSet<u32>)->Option<
         IfcType::IfcIndexedPolyCurve => {
             let list=decoder.decode_by_id(curve.get_ref(0)?).ok()?;
             let points=list.get(0)?.as_list()?.iter().map(|row|{let v=row.as_list()?;Some([v.first()?.as_float()?,v.get(1)?.as_float()?])}).collect::<Option<Vec<_>>>()?;
-            let point=|i:&ifc_lite_core::AttributeValue|points.get(i.as_ifc_index()?.checked_sub(1)? as usize).copied();
+            let point=|i:&ifc_lite_core::AttributeValue|points.get(i.as_ifc_index()? as usize).copied();
             let mut edges=Vec::new();
             for segment in curve.get(1)?.as_list()? {
                 let (name,value)=segment.as_typed()?;let ids=value.as_list()?;

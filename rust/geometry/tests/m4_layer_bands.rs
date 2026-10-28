@@ -24,11 +24,12 @@ fn body(mut program: Program<'_>, router: &GeometryRouter, decoder: &mut EntityD
     }
     program.finish().unwrap()
 }
-fn signs(sigma: f64, sense: f64, expected: [f64;2], outside_first: bool) {
+fn signs(sigma: f64, sense: f64, offset: f64, expected: [f64;2], outside_first: bool) {
     let mut text = CURVED.to_owned();
     if sigma < 0. { text = text.replace("#28=IFCTRIMMEDCURVE(#27,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.5707963267949)),.T.,.PARAMETER.);",
         "#28=IFCTRIMMEDCURVE(#27,(IFCPARAMETERVALUE(1.5707963267949)),(IFCPARAMETERVALUE(0.)),.F.,.PARAMETER.);"); }
-    if sense > 0. { text = text.replace(".AXIS2.,.NEGATIVE.,0.,$)",".AXIS2.,.POSITIVE.,0.,$)"); }
+    let direction=if sense>0. {"POSITIVE"} else {"NEGATIVE"};
+    text = text.replace(".AXIS2.,.NEGATIVE.,0.,$)",&format!(".AXIS2.,.{direction}.,{offset},$)"));
     with(&text,55,|spec,traversal,router,decoder| {
         assert_eq!(spec.source_id,23);
         assert_eq!(spec.layers,[(16,0.1),(18,0.2),(20,0.3)]);
@@ -47,10 +48,20 @@ fn signs(sigma: f64, sense: f64, expected: [f64;2], outside_first: bool) {
 }
 // IFC positive Axis2 follows the left normal. On a CCW arc it points inward;
 // CW outward. Solve sigma*(10-rho)=offset+sense*C, with offset=0 and C=.1,.3.
-#[test] fn m4_ccw_positive_inward() { signs(1.,1.,[9.9,9.7],true); } // 10-rho=+.1 => rho=9.9; first rho>9.9.
-#[test] fn m4_ccw_negative_outward() { signs(1.,-1.,[10.1,10.3],false); } // 10-rho=-.1 => rho=10.1; first rho<10.1.
-#[test] fn m4_cw_positive_outward() { signs(-1.,1.,[10.1,10.3],false); } // rho-10=+.1 => rho=10.1; first rho<10.1.
-#[test] fn m4_cw_negative_inward() { signs(-1.,-1.,[9.9,9.7],true); } // rho-10=-.1 => rho=9.9; first rho>9.9.
+#[test] fn m4_ccw_positive_inward() { signs(1.,1.,0.,[9.9,9.7],true); } // 10-rho=+.1 => rho=9.9; first rho>9.9.
+#[test] fn m4_ccw_negative_outward() { signs(1.,-1.,0.,[10.1,10.3],false); } // 10-rho=-.1 => rho=10.1; first rho<10.1.
+#[test] fn m4_cw_positive_outward() { signs(-1.,1.,0.,[10.1,10.3],false); } // rho-10=+.1 => rho=10.1; first rho<10.1.
+#[test] fn m4_cw_negative_inward() { signs(-1.,-1.,0.,[9.9,9.7],true); } // rho-10=-.1 => rho=9.9; first rho>9.9.
+
+#[test]
+fn m4_nonzero_offset_is_transported_before_each_sense() {
+    // q=.25+sense*C. Thus rho=10-sigma*.25-sigma*sense*C,
+    // with C=.1,.3. Offset follows the Axis normal, independently of sense.
+    signs(1.,1.,0.25,[9.65,9.45],true);    // 10-.25-.1, 10-.25-.3
+    signs(1.,-1.,0.25,[9.85,10.05],false); // 10-.25+.1, 10-.25+.3
+    signs(-1.,1.,0.25,[10.35,10.55],false);// 10+.25+.1, 10+.25+.3
+    signs(-1.,-1.,0.25,[10.15,9.95],true); // 10+.25-.1, 10+.25-.3
+}
 
 #[test]
 fn m4_two_admissions_each_band_uses_the_same_opened_host() {

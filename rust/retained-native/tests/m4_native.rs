@@ -57,10 +57,14 @@ fn issue_7955_m4_curved_ifc_normal_matches_independently_authored_bands() {
         let part = &wall.parts[index];
         let tag = part.layer.unwrap(); assert_eq!(usize::from(tag.index),index); assert_eq!(tag.material_id,material);
         close(independent.volumes[index],expected,1e-10);
+        let proxy_opening = [129,195,261][index];
+        let proxy_source = ifc_lite_retained_native::oracle::openings::prism_result_volume(
+            &sources,id,&[proxy_opening]).expect("independent authored proxy source");
+        close(proxy_source,expected,1e-10);
         let actual = part.capped_volume_m3.unwrap();
         let proxy = measure(shape(&results,id));
-        close(proxy.volume,expected,tolerance); close(actual,expected,tolerance); close(actual,proxy.volume,tolerance);
-        println!("M4 independent band: {}",serde_json::json!({"index":index,"radii":[a,b],"handVolume":expected,"cappedVolume":actual,"proxy":id,"proxyVolume":proxy.volume}));
+        close(proxy.volume,expected,tolerance); close(actual,proxy_source,tolerance); close(actual,proxy.volume,tolerance);
+        println!("M4 independent band: {}",serde_json::json!({"index":index,"radii":[a,b],"handVolume":expected,"cappedVolume":actual,"proxy":id,"proxySourceVolume":proxy_source,"proxyVolume":proxy.volume}));
         sum += actual;
     }
     let measured = measure(wall); assert_eq!(measured.defects,0); close(measured.volume,sum,tolerance);

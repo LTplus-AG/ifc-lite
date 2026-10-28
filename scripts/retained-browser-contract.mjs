@@ -38,6 +38,7 @@ export async function runRetainedBrowserContract({ build, sdk, timeout = 300_000
     server = serveRoots({
       '/smlib/': root,
       '/pkg/': join(ROOT, 'packages/wasm/pkg-retained'),
+      '/driver/': join(ROOT, 'rust/wasm-bindings/js'),
       '/contract/': join(ROOT, 'rust/wasm-bindings/tests/retained-browser'),
       '/fixtures/': join(ROOT, 'rust/geometry/tests/fixtures'),
       '/manifests/': join(ROOT, 'tests/manifests'),

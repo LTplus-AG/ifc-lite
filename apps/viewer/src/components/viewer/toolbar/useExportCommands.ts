@@ -29,6 +29,8 @@ import { recordActivity } from '@/lib/activity/activity-journal';
 import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
+import type { TranslationKey } from '@/i18n';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 
 export type { CsvExportType };
 
@@ -36,7 +38,12 @@ export type { CsvExportType };
 export interface ResolvedExportCommand {
   command: RegisteredExportCommand;
   disabled: boolean;
+  /** Why it is disabled, when the reason is not just "nothing loaded" (shown as its tooltip). */
+  disabledReasonKey?: TranslationKey;
 }
+
+/** 3D exports built from the loaded meshes: refused on a retained, shape-only model (#7955 M2). */
+const MESH_DERIVED_EXPORTS: ReadonlySet<string> = new Set(['glb', 'kmz', 'ion', 'usd']);
 
 /** `spatial` is the one table whose type id does not say what the file holds. */
 const CSV_SUFFIX: Record<CsvExportType, string> = {
@@ -69,6 +76,7 @@ export function useExportCommands(surface: ExportSurface) {
   const canExport = hasModelsLoaded || Boolean(ifcDataStore);
   // The same live change set the amber Export modified IFC button counts.
   const hasChanges = totalChangeCount(useChangedModels()) > 0;
+  const shapeOnly = useViewerStore((s) => hasRetainedShapeOnlyModel(s.models));
   const { exporters: extensionExporters, extensionExportRunning, runExtensionExporter } = useExtensionExporters(surface);
 
   /**
@@ -151,13 +159,15 @@ export function useExportCommands(surface: ExportSurface) {
   }, [handleExportJSON, handleScreenshot]);
 
   const commands = useMemo<ResolvedExportCommand[]>(
-    () => EXPORT_COMMANDS.map((command) => ({
-      command,
-      disabled: command.requires === 'dataStore' ? !ifcDataStore
-        : command.requires === 'changes' ? !hasChanges
-        : !canExport,
-    })),
-    [ifcDataStore, canExport, hasChanges],
+    () => EXPORT_COMMANDS.map((command) => shapeOnly && MESH_DERIVED_EXPORTS.has(command.id)
+      ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
+      : {
+        command,
+        disabled: command.requires === 'dataStore' ? !ifcDataStore
+          : command.requires === 'changes' ? !hasChanges
+          : !canExport,
+      }),
+    [ifcDataStore, canExport, hasChanges, shapeOnly],
   );
 
   return {

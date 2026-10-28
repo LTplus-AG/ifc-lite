@@ -36,6 +36,15 @@ impl Traversal {
         textures: &'a rustc_hash::FxHashMap<u32, ResolvedTextureMap>) -> Program<'a> {
         Program(self.0.product_submeshes(root, true, Some(textures)))
     }
+    pub fn opening_body<'a>(&self, root: &'a DecodedEntity) -> Program<'a> {
+        self.product_parts(root)
+    }
+    pub fn opening_cuts(&self, host: Plan, cutters: Vec<(u32, Plan)>) -> Result<Program<'static>, TransactionError> {
+        let mut plans = Vec::new();
+        crate::resource::reserve_headers(&mut plans, cutters.len()).map_err(TransactionError::stopped)?.retain();
+        plans.extend(cutters.into_iter().map(|(id, plan)| (id, plan.inner)));
+        self.0.opening_cuts(host.inner, plans).map(Program).map_err(Into::into)
+    }
     pub fn type_map<'a>(&self, root: DecodedEntity,
         textures: &'a rustc_hash::FxHashMap<u32, ResolvedTextureMap>) -> Program<'a> {
         Program(self.0.type_map(root, Some(textures)))

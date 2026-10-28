@@ -106,10 +106,7 @@ mod tests {
     use super::*;
     #[test]
     fn m3_source_gates_detect_cut_errors_and_allow_shrunken_bbox() {
-        let t: Value = serde_json::from_str(include_str!(
-            "../../../../tests/fixtures/cli-retained/tolerances.json"
-        ))
-        .unwrap();
+        let t = crate::tolerances::registered().unwrap();
         // Hand box: host 4*2*3=24, cutter 1*2*1=2, remaining 22.
         let e = OpeningExpectation {
             nominal_host_volume: 24.,
@@ -134,10 +131,7 @@ mod tests {
     }
     #[test]
     fn m3_unverifiable_voided_host_fails_closed() {
-        let t: Value = serde_json::from_str(include_str!(
-            "../../../../tests/fixtures/cli-retained/tolerances.json"
-        ))
-        .unwrap();
+        let t = crate::tolerances::registered().unwrap();
         let m = super::super::metrics::Metrics {
             volume: 22.,
             area: 0.,

@@ -34,6 +34,7 @@ pub enum OperationKind<'a> {
     Boolean { inputs: [ValueRef<'a>; 2], operation: crate::BoolOp },
 }
 impl Operation {
+    pub fn opening(&self) -> Option<(u32, usize, usize)> { self.0.opening }
     pub fn value(&self) -> ValueRef<'_> { ValueRef(self.0.value()) }
     pub fn into_value(self) -> Value { Value(self.0.into_value()) }
     pub fn kind(&self) -> OperationKind<'_> {
@@ -77,11 +78,18 @@ impl Plan {
         ]);
         for plan in plans { values.extend(plan.inner.values); }
         resources.check().map_err(super::TransactionError::stopped)?;
-        Ok(Self { inner: logical::RetainedProductPlan { values, remaining },
+        Ok(Self { inner: logical::RetainedProductPlan { values, remaining, opening: None },
             _storage: Some(storage), _requirements_storage: Some(requirements_storage) })
     }
 }
 impl Plan {
+    pub fn discharge_unvoided(mut self) -> Self {
+        self.inner.remaining.retain(|r| *r != logical::RetainedRequirement::OpeningClosure);
+        self
+    }
+    pub fn opening(&self) -> Option<(usize, u64, usize)> {
+        self.inner.opening.as_ref().map(|o| (o.related, o.cuts, o.consumed))
+    }
     pub fn values(&self) -> impl ExactSizeIterator<Item = ValueRef<'_>> {
         self.inner.values.iter().map(ValueRef)
     }

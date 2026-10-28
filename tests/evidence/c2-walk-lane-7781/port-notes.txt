@@ -1,0 +1,68 @@
+C2 walk lane port notes (#7781)
+
+1. rust-major-offset.json
+Keep published main history verbatim; append its latestBreak to reason, increment offset 14 to 15, append C2 references, and describe the actual nested representation API break. Old stack break entries are not reused. Rust versions are regenerated as 26.0.0 against npm 11.0.0.
+
+2. rust/geometry/src/program/mapping.rs
+Keep current retained-runtime states and reply payloads. Wrap MappingValue in a reply carrying a speculative LogicalBudget; accept commits the budget. Move execution to mapping_execute.rs. Refused tag is 19, leaving retained tags 15 through 18 intact.
+
+3. rust/geometry/src/program/mapping_accept.rs
+Keep main retained accept dispatch and re-express stack logical refusal reduction around it. Split ordinary child reduction into accept_child_reply so accept stays 149 lines. Logical refusal ends the reached mapping; retained output refuses completely rather than accepting partial exact geometry.
+
+4. rust/geometry/src/router/layers.rs
+Keep main LayerControl/LayerProgram architecture unchanged. Product eligibility admission moves into program/layers.rs before LayerProgram reads geometry. A refused logical product declines eligibility without reporting; ordinary fallback owns the report.
+
+5. rust/geometry/src/router/layers/stages.rs
+Keep main LayerSliceResult::publish return type and accept-side stop observation. Adapt stale terminal tests to actual LayerControl execute/accept boundaries instead of restoring deleted router helpers. Check sticky stop before accepting any reply, including the host child, so no post-stop effects publish.
+
+6. rust/geometry/src/router/mod.rs
+Keep RouterConfig fields and constructor/accessor structure. Add only product_admission module; no restored mutable scalar fields or old router item/submesh modules.
+
+7. rust/geometry/src/router/processing.rs
+Keep current GeometryProgram product execution. Transfer pre-admission into ProductControl and shared product/admission.rs. Preserve existing item finishing helpers; add only focused small-budget test entry points and test modules here.
+
+8. rust/geometry/src/router/transforms/mapped.rs
+Delegate to one representation/mapped_transform implementation shared with extraction. Use main canonical placement::Axis2Placement leaf reads, preserve malformed-origin refusal counting and identity-origin distinction for textured type maps.
+
+9. rust/geometry/src/router/transforms/mod.rs
+Keep main placement::resolve_object_placement/resolve_chain path. A small element_world_placement helper delegates to it; no old recursive placement parser or scalar RouterConfig fields return.
+
+10. rust/geometry/src/router/voids/mod.rs
+Keep current main void and styled controllers unchanged. Product admission is inside their canonical product child; do not restore stale duplicate router loops.
+
+11. rust/processing/tests/module_size_allowlist.txt
+Start from current merged base budgets, lower mesh.rs 1012 to 953 and remove the profile_extractor.rs 758 row. No increases/new allowances. Move existing instancing inline tests to an exempt sibling; mapping-budget test module is registered in existing inner_tests.rs.
+
+12. rust/processing/tests/module_size_ratchet.rs
+Recompute sorted-row FNV-1a geometry shard as 2474138991149067250; other five shard pins unchanged.
+
+13. rust/processing/tests/positional_read_allowlist.txt
+Keep current rows and delete only newly repaid debt: profile_extractor 8, representation/walk 3, transforms/mapped 2. Exact per-file scan matches; function-length allowlist is unchanged.
+
+14. scripts/check-refwalk-guards.mjs
+Keep current scanner and zero-unguarded requirement. Measured candidate floor is 26 after removing decoder items/enter recursion and extractor recursion, down from main 29. Nine unrelated fan-out review sites remain visible; no allowlist additions.
+
+15. scripts/float-sort-comparator-allowlist.txt
+Keep main unchanged because processing item helpers remain at their current path. Scanner reports 50 uses in four allowlisted files; do not copy obsolete router/item location from the stack.
+
+Additional structural and validation decisions
+
+Base composition: new branch starts at #8123 b4b0b82467f100c2e2f1c355a1175b2c911276d3 and locally merges origin/main 882198715d5e1a700147c441b0758c174772c217, producing 6ee1e4d6886ba058f34370ffd16e169734213735. Main placement #7914, leaves #8045, hash dispatch #8119, W1 overlay refusal #8127 and retained-runtime source are preserved.
+
+The initial squash used tip #7887 5e393edac2f8462ef69718df6a485c12b6a1ebeb (old stack ancestor c7d3855296fc16079e7857c81f0e5ea9e8f58f84). Also port the refreshed #8020 head cc7e2635eca4d51e39fb8c1ccd92c709e1ee5e49 refusal contract, wrong-class named-read tests and RTC FirstChain refusal-abstention regression.
+
+No old router/item.rs or router/product_submeshes.rs is added: those were stale implementation relocations, not independent behavior. Existing processing helpers and ProductControl now implement the same behavior. Removed obsolete crate-private ProductShape direct_geometry/next_selected and retained_items convenience wrapper once the admitted plan replaced their use; strict retained source validation still runs first.
+
+ProductItems is source-only and sealed to decoder/router execution identity. ProductControl validates before executing admitted items and publishes the refusal at acceptance. Completed roots survive logical exhaustion, the incomplete mapped root and later roots do not. Retained output retains stricter complete-or-refused semantics. A new regression observes no member decode/diagnostic before over-budget admission acceptance and exactly one report afterwards.
+
+Layer tests now drive production controller replies for successful, multiple-solid, empty and placement-error inputs. They inject stops between execute and accept at eligibility, host, frame, planes, slice and cleanup where reached. Public layer, styled and void gateways remain covered. This exposed and corrected delayed host-stop observation; this is a preservation of the stack stop contract within main controllers.
+
+Extractor profile_extractor.rs/sink.rs/solid.rs consume the same admitted roots and map transforms, use canonical ExtrusionParams leaves and current ifc_type_from_keyword hash dispatch, and preserve current terminal cancellation handling. Logical truncation retains completed profiles with diagnostics; resource stops remain terminal.
+
+Controller logical quota debits are carried by replies, applied only at acceptance and shared by normal and retained entry variants. Cache hits still pay mapped attempts; unmaterialized children are not charged by the execution controller. Product admission separately accounts for every source occurrence independently of caches.
+
+One workflow elif selects tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch by added-file diff. Whole-change reversal would delete added modules/types imported by tests. The inverse patch keeps wiring and termination while mutating refusal reporting, balanced map leaves, controller debits, admitted-root retention and profile publication. Separately regenerated bound and report patches preserve the earlier diagnostic experiments; only the behavior patch is selected in CI.
+
+Validation scope: local nightly-2025-11-15, CARGO_BUILD_JOBS=4, managed fleet local admission, geometry focused library tests and geometry/processing all-targets clippy only. No local full workspace tests, WASM builds, benchmarks, integration-test execution or mutation-test execution. Ratchet source audit uses repository scanners outside cargo; coordinator must run their integration tests. No historical PR validation is claimed as current-head evidence.
+
+Release evidence: scripts/rust-api-surface.json adds only inherited RouterConfig versus main and is unchanged versus assembled base. The scanner does not cover nested-module signatures: direct source comparison proves NestedMaps::Expand gains required max_levels, exhaustive WalkRefusal variants change and lose Clone/Copy/Eq/PartialEq, and WalkVisitor::refused becomes required with &DecodedEntity instead of u32. Those public contracts cannot be ported intact as additive-only. A single new major wasm changeset carries Rust-only wording; existing #8123 changeset remains inherited. No cargo-semver-checks result is claimed.

@@ -12,6 +12,7 @@
 use super::frame_parts::single_frame_source;
 use super::transforms::instancing_enabled;
 use crate::math::mat4;
+use crate::program::mapping_budget::{LogicalBudget, SourceResult};
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
@@ -69,7 +70,8 @@ impl GeometryRouter {
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> Result<(u32, MappedOccurrence)> {
+        budget: &mut LogicalBudget,
+    ) -> SourceResult<(u32, MappedOccurrence)> {
         // IfcMappedItem attributes:
         // 0: MappingSource (IfcRepresentationMap)
         // 1: MappingTarget (IfcCartesianTransformationOperator)
@@ -119,6 +121,7 @@ impl GeometryRouter {
         let items_attr = representation
             .get(3)
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
+        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
         let items = decoder.resolve_ref_list(items_attr)?;
         Ok((source_id, MappedOccurrence::Source { representation, items, transform }))
     }
@@ -160,10 +163,16 @@ impl GeometryRouter {
 
     /// A styled source's items. A representation without an Items attribute
     /// walks nothing; one whose Items do not resolve is an error.
-    pub(crate) fn styled_source_items(representation: &DecodedEntity, decoder: &mut EntityDecoder)
-        -> Result<Vec<DecodedEntity>> {
+    pub(crate) fn styled_source_items(
+        representation: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        budget: &mut LogicalBudget,
+    ) -> SourceResult<Vec<DecodedEntity>> {
         match representation.get(slot::IfcRepresentation::ITEMS.index()) {
-            Some(items_attr) => Ok(decoder.resolve_ref_list(items_attr)?),
+            Some(items_attr) => {
+                budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+                Ok(decoder.resolve_ref_list(items_attr)?)
+            }
             None => Ok(Vec::new()),
         }
     }
@@ -229,13 +238,7 @@ impl GeometryRouter {
             }
         }
         if let ([part], true) = (parts, instancing_enabled()) {
-            part.instance_meta = Some(InstanceMeta {
-                transform: mat4::IDENTITY,
-                local_transform: local_rm,
-                canonical_transform: None,
-                rep_identity: source_id as u128,
-                instanceable: true,
-            });
+            part.instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
         }
     }
 

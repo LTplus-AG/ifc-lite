@@ -79,7 +79,7 @@ pub(super) fn capture(
         contract,
         length_unit_scale: scale,
     };
-    Ok(RetainedPlanOperation {
+    Ok(RetainedPlanOperation { #[cfg(any(test, feature = "retained-runtime"))] opening: None,
         value,
         kind: RetainedOperationKind::Construction(recipe),
     })

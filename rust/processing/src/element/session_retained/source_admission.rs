@@ -13,7 +13,7 @@ pub(super) struct SourceAdmission {
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     pub(super) fn advance_source(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter)
         -> Result<bool, RetainedExecutionError> {
-        let result = self.advance_source_checked(decoder, router);
+        let result = self.advance_source_checked(decoder, router).map_err(|e| self.opening_error(e));
         let result = check_resources(&self.resources).and(result);
         if result.as_ref().is_err_and(|error| error.terminal()) { self.cancel(); }
         result

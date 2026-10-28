@@ -101,7 +101,7 @@ impl GeometryHasher {
     /// The producer takes each segment's verdict where the orienter runs, which
     /// is necessarily BEFORE the per-`MeshData` funnel that finishes the mesh.
     /// One step in that funnel removes triangles: the f32-collapse degenerate
-    /// backstop (`Mesh::drop_degenerate_triangles`). A removed triangle takes
+    /// backstop (`Mesh::drop_degenerate_triangles_unless_closed`). A removed triangle takes
     /// its three welded edges with it, so each neighbour along them drops from
     /// two incidences to one — a BOUNDARY edge. A shell certified closed can
     /// therefore be handed back OPEN while still carrying `0x0F` and a finite

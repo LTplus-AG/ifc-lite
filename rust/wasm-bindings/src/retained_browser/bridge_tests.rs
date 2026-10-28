@@ -187,3 +187,6 @@ fn retained_browser_smlib_free_driver_fault_preserves_typed_kernel_and_resource_
 
 #[path = "runtime_tests.rs"]
 mod runtime_tests;
+
+#[path = "m3_parity_tests.rs"]
+mod m3_parity_tests;

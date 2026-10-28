@@ -9,7 +9,7 @@ use crate::program::opening::OpeningBounds;
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::WorldFrame;
 use crate::router::voids::probe::ExtrudedSolidInfo;
-use crate::router::voids::{OpeningType, RectParam};
+use crate::router::voids::{CutterKind, RectParam};
 use crate::router::OpeningDiagnostic;
 use crate::{Mesh, Result, Vector3};
 use ifc_lite_core::DecodedEntity;
@@ -58,11 +58,11 @@ pub(crate) enum OpeningReady {
         placement: ProbePlacement,
     },
     FinishClassifier {
-        output: Vec<OpeningType>,
+        output: Vec<CutterKind>,
         diagnostic: Vec<OpeningDiagnostic>,
     },
     /// Merge classified rectangles into larger boxes.
-    Merge(Vec<OpeningType>),
+    Merge(Vec<CutterKind>),
     /// Every opening box must share the host frame (a signed permutation).
     RectOrientation {
         host: Matrix3<f64>,
@@ -97,12 +97,12 @@ pub(crate) enum OpeningReply {
     Direction(Result<Option<(Vector3<f64>, Option<Matrix4<f64>>)>>),
     Metrics(VecDeque<Mesh>, usize, usize),
     BoundsDecision(OpeningBounds, bool),
-    Decision(Decisions, Option<OpeningType>),
-    Fallback(OpeningType),
+    Decision(Decisions, Option<CutterKind>),
+    Fallback(CutterKind),
     ProbeDirection(Option<Vector3<f64>>),
     ProbeParts(ProbePlacement),
-    ClassifierFinished(Vec<OpeningType>, Vec<OpeningDiagnostic>),
-    Merged(Vec<OpeningType>, Vec<OpeningType>),
+    ClassifierFinished(Vec<CutterKind>, Vec<OpeningDiagnostic>),
+    Merged(Vec<CutterKind>, Vec<CutterKind>),
     RectHost(Option<RectParam>),
     RectBoxes(Option<Vec<RectParam>>),
     RectOrientation(Option<Vec<RectParam>>),

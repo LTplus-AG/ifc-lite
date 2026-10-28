@@ -14,6 +14,7 @@ mod inner_cache;
 mod item;
 mod layers;
 mod mapping;
+pub(crate) mod mapping_budget;
 mod opening;
 mod opening_bounds;
 mod product;
@@ -21,9 +22,9 @@ mod styled;
 mod voids;
 pub(crate) mod openings;
 pub(crate) use boolean::BooleanMachine;
-pub(crate) use inner::GeometryProgram;
 #[cfg(test)]
-pub(crate) use inner::{ProgramError, ProgramStage};
+pub(crate) use inner::ProgramStage;
+pub(crate) use inner::{program_error, GeometryProgram, ProgramError};
 
 /// Opaque, owned constructor admitted by the actual selected processor instance.
 /// It contains sampled production parameters in file units, never a decoder,

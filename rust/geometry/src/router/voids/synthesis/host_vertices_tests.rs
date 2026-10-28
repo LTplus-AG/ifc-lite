@@ -5,7 +5,7 @@
 //! #6940: the rule of `reconcile_with_host_vertices` clause by clause, then
 //! the tear it exists for, through the void router, on a slab made here.
 
-use super::super::super::{world_host_bounds, GeometryRouter, OpeningType, VoidContext};
+use super::super::super::{world_host_bounds, CutterKind, GeometryRouter, VoidContext};
 use super::reconcile_with_host_vertices;
 use crate::kernel::mesh_bridge::SNAP_GRID;
 use crate::kernel::mesh_volume::mesh_volume;
@@ -306,13 +306,13 @@ fn slab() -> Mesh {
 
 /// The opening that fills the hole, footprint and depth, with one corner
 /// `(dx, dy)` grid steps from the hole's.
-fn opening(corner: usize, dx: i32, dy: i32) -> OpeningType {
+fn opening(corner: usize, dx: i32, dy: i32) -> CutterKind {
     let mut c = hole().map(|p| [p[0] as f32, p[1] as f32]);
     c[corner][0] += g(dx);
     c[corner][1] += g(dy);
     let mesh = prism(&c, 0.0, DEPTH);
     let (mn, mx) = mesh.bounds();
-    OpeningType::NonRectangular(
+    CutterKind::NonRectangular(
         mesh,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -320,7 +320,7 @@ fn opening(corner: usize, dx: i32, dy: i32) -> OpeningType {
     )
 }
 
-fn cut(host: Mesh, opening: OpeningType) -> Mesh {
+fn cut(host: Mesh, opening: CutterKind) -> Mesh {
     let context = VoidContext {
         merged_openings: vec![opening.clone()],
         openings: vec![opening],

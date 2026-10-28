@@ -12,7 +12,7 @@ fn reached_ticket(
     decoder: &mut EntityDecoder,
 ) -> RetainedTicket {
     while let Some(ticket) = program.request().unwrap() {
-        if matches!(&program.inner.control, Control::Product(c) if c.retained_ready()) {
+        if matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()) {
             return ticket;
         }
         let (reply, operations) = program.admit(ticket, router, decoder).unwrap();
@@ -60,9 +60,9 @@ fn admission_budget_stop_preserves_original_stop_ticket_and_reached_operation() 
             );
             assert_eq!(account.check(), Err(expected));
             assert_eq!(account.usage().work, budget);
-            assert_eq!(program.inner.pending, Some((ticket.0, false)));
-            assert_eq!(program.inner.expected_payload, None);
-            assert!(matches!(&program.inner.control, Control::Product(c) if c.retained_ready()));
+            assert_eq!(program.geometry_ref().pending, Some((ticket.geometry_request(), false)));
+            assert_eq!(program.geometry_ref().expected_payload, None);
+            assert!(matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()));
             assert_eq!(program.validate_ticket(ticket), Err(RetainedProgramError::Stopped(expected)));
         });
         // S2 strengthens S1: the original stop remains terminal after scope
@@ -70,8 +70,8 @@ fn admission_budget_stop_preserves_original_stop_ticket_and_reached_operation() 
         // failed admission left its real operation intact; never resume the facade.
         assert_eq!(program.validate_ticket(ticket), Err(RetainedProgramError::Stopped(expected)));
         assert_eq!(program.admit(ticket, &router, &mut decoder).err(), Some(RetainedProgramError::Stopped(expected)));
-        assert_eq!(program.inner.pending, Some((ticket.0, false)));
-        let Control::Product(control) = &mut program.inner.control else { panic!("product") };
+        assert_eq!(program.geometry_ref().pending, Some((ticket.geometry_request(), false)));
+        let Control::Product(control) = &mut program.geometry_mut().control else { panic!("product") };
         let (_, operations) = control.admit_retained().unwrap();
         assert_eq!(operations.len(), 1);
         assert!(matches!(operations[0].value().definition(),
@@ -103,9 +103,9 @@ fn source_step_stop_returns_its_reply_for_intact_rejection() {
                     dimension: Dimension::Work, requested: 1, remaining: 0,
                     reason: RefusalReason::Limit,
                 }));
-                assert_eq!(program.inner.pending, Some((ticket.0, true)));
-                assert_eq!(reply.0.request, ticket.0);
-                assert!(matches!(&reply.0.value,
+                assert_eq!(program.geometry_ref().pending, Some((ticket.geometry_request(), true)));
+                assert_eq!(reply.geometry_reply().request, ticket.geometry_request());
+                assert!(matches!(&reply.geometry_reply().value,
                     ReplyValue::Product(ProductReply::Item(ItemStep::RetainedComplete(Err(Error::ProgramStopped(actual)), _)))
                     if *actual == stop));
                 // No facade check or accept in this scope may incidentally latch it.
@@ -117,10 +117,10 @@ fn source_step_stop_returns_its_reply_for_intact_rejection() {
     assert_eq!(crate::resource::check_current(), Ok(()));
     let rejected = program.accept(reply, &router).err().unwrap();
     assert_eq!(rejected.error, RetainedProgramError::Stopped(stop));
-    assert_eq!(rejected.reply.0.request, ticket.0);
+    assert_eq!(rejected.reply.geometry_reply().request, ticket.geometry_request());
     let rejected = program.accept(rejected.reply, &router).err().unwrap();
     assert_eq!(rejected.error, RetainedProgramError::Stopped(stop));
-    assert_eq!(rejected.reply.0.request, ticket.0);
+    assert_eq!(rejected.reply.geometry_reply().request, ticket.geometry_request());
     assert_eq!(existing_sibling.request().err(), Some(RetainedProgramError::Stopped(stop)));
     assert_eq!(traversal.product_parts(&entity).request().err(), Some(RetainedProgramError::Stopped(stop)));
     assert!(matches!(program.finish(), Err(RetainedFailure::Stopped(actual)) if actual == stop));
@@ -136,7 +136,7 @@ fn refused_exact_execution_does_not_bind_an_unbound_reached_controller() {
     reached_ticket(&mut program, &router, &mut decoder);
     // Put the real reached controller in a fresh protocol wrapper to exercise
     // first-owner binding. Normal product traversal has already bound owners.
-    let mut inner = GeometryProgram::with_control(program.inner.control);
+    let mut inner = GeometryProgram::with_control(program.into_geometry().control);
     let request = inner.request().unwrap().unwrap();
     assert_eq!(inner.execute(request, &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
     assert!(inner.expected_router.is_none());
@@ -172,12 +172,12 @@ fn refused_type_map_execution_does_not_bind_an_unbound_reached_controller() {
     let mut program = RetainedProgram::type_map(decoder.decode_by_id(61).unwrap(), None, contract());
     loop {
         let ticket = program.request().unwrap().expect("type source construction");
-        if matches!(&program.inner.control, Control::Mapping(c) if c.retained_ready()) { break; }
+        if matches!(&program.geometry_ref().control, Control::Mapping(c) if c.retained_ready()) { break; }
         let (reply, operations) = program.admit(ticket, &router, &mut decoder).unwrap();
         assert!(operations.is_empty());
         program.accept(reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
     }
-    let mut inner = GeometryProgram::with_control(program.inner.control);
+    let mut inner = GeometryProgram::with_control(program.into_geometry().control);
     let request = inner.request().unwrap().unwrap();
     assert_eq!(inner.execute(request, &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
     assert!(inner.expected_router.is_none());

@@ -9,15 +9,17 @@ use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, GroupCut};
 use crate::mesh::SubMeshCollection;
 use crate::program::openings::execute::Execution;
-use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
+use crate::{Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
+mod admission;
 mod batch_cutter;
 pub(crate) mod bool2d_path;
 mod coaxial_union;
+mod cutter;
 pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
@@ -35,6 +37,11 @@ pub use prism_cut::{take_prism_defers, take_prism_stats};
 #[cfg(test)]
 mod reveal_tests;
 
+use admission::{
+    aabb_engulfs, admit_cutter, cut_retains_triangles, min_opening_volume, ENGULF_TOLERANCE,
+    ENGULF_TOLERANCE_F32,
+};
+pub(crate) use cutter::{CutterKind, OpeningFrame};
 use geom::*;
 use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
@@ -49,15 +56,6 @@ const NORMALIZE_EPSILON: f64 = 1e-12;
 /// |cos| above which an authored cutter depth counts as the wall normal itself
 /// (matches the vertical selector's 0.98 axis tolerance in `local_frame.rs`).
 const WALL_NORMAL_DEPTH_COS: f64 = 0.98;
-/// Minimum opening volume (m³) below which CSG is skipped (degenerate-void filter).
-/// 0.0001 m³ ≈ 0.1 litre — filters artefacts while allowing small real openings (e.g. sleeves).
-const MIN_OPENING_VOLUME: f64 = 0.0001;
-/// Fraction of pre-CSG triangles the result must retain. CSG outputs with fewer
-/// triangles than `pre_count / CSG_TRIANGLE_RETENTION_DIVISOR` are rejected as
-/// kernel blowups.
-const CSG_TRIANGLE_RETENTION_DIVISOR: usize = 4;
-/// Minimum triangle count for a valid CSG result.
-const MIN_VALID_TRIANGLES: usize = 4;
 /// A mixed 2D + residual composition may inherit a small number of imperfect
 /// IFC seams, but a large absolute increase signals that the second route tore
 /// the re-extruded host. Below this floor the relative comparison still rules.
@@ -65,63 +63,6 @@ const MIXED_ROUTE_DEFECT_FLOOR: usize = 64;
 const MIXED_ROUTE_DEFECT_GROWTH: usize = 4;
 /// Maximum wrapper depth when drilling through mapped/boolean items to find an extrusion.
 const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
-/// Per-axis AABB engulf slack shared by the batched, host-consumed, and
-/// rectangular-fallback engulf checks below, so the three guards can't drift
-/// apart on what counts as "engulfs the host".
-const ENGULF_TOLERANCE: f64 = 0.03;
-const ENGULF_TOLERANCE_F32: f32 = 0.03;
-
-/// Classification of an opening for void subtraction.
-#[derive(Clone)]
-pub(crate) enum OpeningType {
-    /// Rectangular opening with AABB clipping
-    /// Fields: (min_bounds, max_bounds, extrusion_direction)
-    Rectangular(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
-    /// Diagonal rectangular opening with mesh geometry and a full oriented frame.
-    /// The frame preserves roof-window roll, not just the penetration direction.
-    DiagonalRectangular(Mesh, OpeningFrame),
-    /// Non-rectangular opening (circular, arched, or floor openings with
-    /// rotated footprint). Uses full CSG subtraction with the actual mesh
-    /// geometry. The AABB + extrusion direction are kept so that callers can
-    /// fall back to a rectangular box cut when CSG can't run (issue #635 —
-    /// e.g. circular windows whose triangulated profile blows past
-    /// `MAX_CSG_POLYGONS_PER_MESH`).
-    NonRectangular(Mesh, Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
-}
-
-/// World-space basis for an oriented rectangular opening.
-#[derive(Clone, Copy)]
-pub(crate) struct OpeningFrame {
-    depth: Vector3<f64>,
-    cross_a: Vector3<f64>,
-    cross_b: Vector3<f64>,
-    depth_is_authored: bool,
-}
-
-impl OpeningFrame {
-    fn from_depth(depth: Vector3<f64>) -> Option<Self> {
-        let depth = depth.try_normalize(NORMALIZE_EPSILON)?;
-        let seed = if depth.z.abs() < 0.9 {
-            Vector3::new(0.0, 0.0, 1.0)
-        } else {
-            Vector3::new(0.0, 1.0, 0.0)
-        };
-        let cross_a = seed.cross(&depth).try_normalize(NORMALIZE_EPSILON)?;
-        let cross_b = depth.cross(&cross_a).try_normalize(NORMALIZE_EPSILON)?;
-        Some(Self {
-            depth,
-            cross_a,
-            cross_b,
-            depth_is_authored: true,
-        })
-    }
-
-    pub(crate) fn is_axis_aligned(&self) -> bool {
-        is_axis_aligned_direction(&self.depth)
-            && is_axis_aligned_direction(&self.cross_a)
-            && is_axis_aligned_direction(&self.cross_b)
-    }
-}
 
 /// Pre-computed per-element void subtraction data.
 ///
@@ -134,10 +75,10 @@ impl OpeningFrame {
 pub(crate) struct VoidContext {
     /// All classified openings. The diagonal-opening pass needs the raw list
     /// (unmerged) so its per-item box rotation stays accurate.
-    pub(crate) openings: Vec<OpeningType>,
+    pub(crate) openings: Vec<CutterKind>,
     /// Rectangular openings merged into larger boxes to prevent O(2^N)
     /// triangle growth when many adjacent openings tile a surface.
-    pub(crate) merged_openings: Vec<OpeningType>,
+    pub(crate) merged_openings: Vec<CutterKind>,
     /// Parametric placement-frame cut data (host + reconciled opening boxes),
     /// captured only when `rect_fast::param_enabled()`. Drives the analytic fast
     /// path in `apply_void_context`; `None` defers to the exact kernel.
@@ -160,7 +101,7 @@ impl VoidContext {
     fn rect_opening_count(&self) -> usize {
         self.merged_openings
             .iter()
-            .filter(|o| matches!(o, OpeningType::Rectangular(..)))
+            .filter(|o| matches!(o, CutterKind::Rectangular(..)))
             .count()
     }
 
@@ -169,10 +110,10 @@ impl VoidContext {
     /// directly (the native / legacy fast path) without cloning the cutters; if any
     /// cutter carries its own per-element origin it must be relativized first.
     fn all_cutters_world_framed(&self) -> bool {
-        let world = |o: &OpeningType| match o {
-            OpeningType::Rectangular(..) => true,
-            OpeningType::DiagonalRectangular(m, _) => m.origin == [0.0, 0.0, 0.0],
-            OpeningType::NonRectangular(m, ..) => m.origin == [0.0, 0.0, 0.0],
+        let world = |o: &CutterKind| match o {
+            CutterKind::Rectangular(..) => true,
+            CutterKind::DiagonalRectangular(m, _) => m.origin == [0.0, 0.0, 0.0],
+            CutterKind::NonRectangular(m, ..) => m.origin == [0.0, 0.0, 0.0],
         };
         self.openings.iter().all(world) && self.merged_openings.iter().all(world)
     }
@@ -211,40 +152,10 @@ impl VoidContext {
         self.openings
             .iter()
             .filter_map(|o| match o {
-                OpeningType::NonRectangular(m, ..) => opening_obb_if_malformed(m),
+                CutterKind::NonRectangular(m, ..) => opening_obb_if_malformed(m),
                 _ => None,
             })
             .collect()
-    }
-}
-
-impl OpeningType {
-    /// The cutter mesh and its extrusion direction, for the two mesh-carrying
-    /// kinds; `None` for `Rectangular`, which has no mesh until synthesised.
-    fn mesh_cutter(&self) -> Option<(&Mesh, Option<Vector3<f64>>)> {
-        match self {
-            OpeningType::Rectangular(..) => None,
-            OpeningType::DiagonalRectangular(m, f) => Some((m, Some(f.depth))),
-            OpeningType::NonRectangular(m, _, _, d) => Some((m, *d)),
-        }
-    }
-
-    /// Return a copy translated by `-origin` (world → host-local frame). Bounds
-    /// (`Point3`) shift; direction vectors and the oriented `OpeningFrame` are
-    /// translation-invariant and pass through unchanged.
-    fn translated(&self, origin: [f64; 3]) -> OpeningType {
-        let sub = |p: &Point3<f64>| Point3::new(p.x - origin[0], p.y - origin[1], p.z - origin[2]);
-        match self {
-            OpeningType::Rectangular(min, max, dir) => {
-                OpeningType::Rectangular(sub(min), sub(max), *dir)
-            }
-            OpeningType::DiagonalRectangular(mesh, frame) => {
-                OpeningType::DiagonalRectangular(translate_cutter_mesh(mesh, origin), *frame)
-            }
-            OpeningType::NonRectangular(mesh, min, max, dir) => {
-                OpeningType::NonRectangular(translate_cutter_mesh(mesh, origin), sub(min), sub(max), *dir)
-            }
-        }
     }
 }
 
@@ -325,20 +236,6 @@ impl GeometryRouter {
 }
 
 impl Execution {
-    /// Tier-conditional minimum opening volume (m³) floor. Shared by the batch
-    /// admission gate and the sequential CSG path so the two can never diverge
-    /// (B11 / issue #976): the 0.1 L default filters legacy-BSP CSG artefacts,
-    /// but at High/Highest quality it relaxes to ~1e-9 m³ so genuine small
-    /// openings (bolt holes / sleeves in thin plates) still get cut instead of
-    /// being silently skipped.
-    #[inline]
-    fn min_opening_volume(quality: TessellationQuality) -> f64 {
-        match quality {
-            TessellationQuality::High | TessellationQuality::Highest => 1e-9,
-            _ => MIN_OPENING_VOLUME,
-        }
-    }
-
     /// Apply a pre-built `VoidContext` to a single mesh.
     ///
     /// This is the cheap per-mesh half of void subtraction: it re-reads the
@@ -601,7 +498,7 @@ impl Execution {
             Vec::with_capacity(ctx.merged_openings.len());
         for op in &ctx.merged_openings {
             match op {
-                OpeningType::Rectangular(omn, omx, dir) => {
+                CutterKind::Rectangular(omn, omx, dir) => {
                     let (fmn, fmx) = match dir {
                         Some(d) => self.extend_opening_along_direction(
                             *omn, *omx, wall_min, wall_max, *d,
@@ -656,12 +553,12 @@ impl Execution {
         let host_local = mesh_to_frame(mesh, &axes, center);
 
         let z = Vector3::new(0.0, 0.0, 1.0);
-        let mut local_openings: Vec<OpeningType> = Vec::with_capacity(ctx.merged_openings.len());
+        let mut local_openings: Vec<CutterKind> = Vec::with_capacity(ctx.merged_openings.len());
         for op in &ctx.merged_openings {
             let cutter = match op {
-                OpeningType::DiagonalRectangular(m, _) => m,
-                OpeningType::NonRectangular(m, _, _, _) => m,
-                OpeningType::Rectangular(..) => return None,
+                CutterKind::DiagonalRectangular(m, _) => m,
+                CutterKind::NonRectangular(m, _, _, _) => m,
+                CutterKind::Rectangular(..) => return None,
             };
             let (lmn, lmx) = project_aabb_in_frame(cutter, &axes, center)?;
             let in_frame =
@@ -673,9 +570,9 @@ impl Execution {
             // opening's flush/short cap along the wrong axis and carve the wrong
             // prism (#1270 review).
             let frame_depth = match op {
-                OpeningType::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
-                OpeningType::NonRectangular(_, _, _, d) => d.map(in_frame),
-                OpeningType::Rectangular(..) => None,
+                CutterKind::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
+                CutterKind::NonRectangular(_, _, _, d) => d.map(in_frame),
+                CutterKind::Rectangular(..) => None,
             };
             // Whether THIS opening's own oriented box is axis-aligned in the
             // wall frame. The frame is seeded from the FIRST rotated opening
@@ -686,7 +583,7 @@ impl Execution {
             // brep/curved voids and frame-misaligned boxes alike — keeps its
             // exact (un-rotated, centred) mesh for the subtract.
             let frame_aligned = match op {
-                OpeningType::DiagonalRectangular(_, f) => {
+                CutterKind::DiagonalRectangular(_, f) => {
                     is_axis_aligned_direction(&in_frame(f.depth))
                         && is_axis_aligned_direction(&in_frame(f.cross_a))
                         && is_axis_aligned_direction(&in_frame(f.cross_b))
@@ -704,7 +601,7 @@ impl Execution {
                 // handing the rectangular cut an antiparallel (-Z) depth flips
                 // its cap extension and tears the host (rvt01 #10191 census).
                 let rect_depth = match op {
-                    OpeningType::DiagonalRectangular(_, frame)
+                    CutterKind::DiagonalRectangular(_, frame)
                         if frame.depth_is_authored
                             && frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) =>
                     {
@@ -712,13 +609,13 @@ impl Execution {
                     }
                     _ => Some(z),
                 };
-                local_openings.push(OpeningType::Rectangular(lmn, lmx, rect_depth));
+                local_openings.push(CutterKind::Rectangular(lmn, lmx, rect_depth));
             } else {
                 let mesh_local = mesh_to_frame(cutter, &axes, center);
                 // Keep this cutter's true depth in the frame; fall back to the
                 // wall normal (+Z) only when the opening carried no direction.
                 let dir = frame_depth.unwrap_or(z);
-                local_openings.push(OpeningType::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
+                local_openings.push(CutterKind::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
             }
         }
         let local_ctx = VoidContext {
@@ -830,13 +727,7 @@ impl Execution {
         if ctx.merged_openings.is_empty() {
             return None;
         }
-        let depth_of = |op: &OpeningType| -> Option<Vector3<f64>> {
-            match op {
-                OpeningType::DiagonalRectangular(_, f) => Some(f.depth),
-                OpeningType::NonRectangular(_, _, _, d) => *d,
-                OpeningType::Rectangular(_, _, d) => *d,
-            }
-        };
+        let depth_of = |op: &CutterKind| op.cutter().depth();
         // Define the wall frame from the first opening whose depth is a
         // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
         // keep their (unchanged) world path.
@@ -854,7 +745,7 @@ impl Execution {
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a
         // plan-rotated wall never has them (they'd be diagonal), so bail.
-        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
+        if ctx.merged_openings.iter().any(|op| matches!(op, CutterKind::Rectangular(..))) {
             return None;
         }
         Some(axes)
@@ -1017,12 +908,12 @@ impl Execution {
         // quad generators are no longer needed on this path.
         //
         // `synth_rect` owns the synthesised box meshes so they outlive the loop's
-        // borrowed `&OpeningType`s below.
-        let mut synth_rect: Vec<OpeningType> = Vec::new();
-        let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
+        // borrowed `&CutterKind`s below.
+        let mut synth_rect: Vec<CutterKind> = Vec::new();
+        let mut non_rect_openings: Vec<&CutterKind> = Vec::new();
         for opening in &ctx.merged_openings {
             match opening {
-                OpeningType::Rectangular(open_min, open_max, extrusion_dir) => {
+                CutterKind::Rectangular(open_min, open_max, extrusion_dir) => {
                     // Penetration axis: the authored extrusion dir when present,
                     // else inferred from how the box pierces the host (issue
                     // #1337). Carrying a concrete dir downstream keeps the
@@ -1043,7 +934,7 @@ impl Execution {
                         (*open_min, *open_max)
                     };
                     let box_mesh = GeometryRouter::make_box_mesh(final_min, final_max);
-                    synth_rect.push(OpeningType::NonRectangular(
+                    synth_rect.push(CutterKind::NonRectangular(
                         box_mesh,
                         final_min,
                         final_max,
@@ -1055,11 +946,11 @@ impl Execution {
                 // it (here AND in the clean-box `recut_malformed_openings` pass)
                 // leaves overlapping sliver "shards" in the reveals. Skip it; the
                 // recut performs the single, clean box cut for these openings.
-                OpeningType::NonRectangular(m, ..) if opening_obb_if_malformed(m).is_some() => {}
+                CutterKind::NonRectangular(m, ..) if opening_obb_if_malformed(m).is_some() => {}
                 other => non_rect_openings.push(other),
             }
         }
-        let all_openings: Vec<&OpeningType> =
+        let all_openings: Vec<&CutterKind> =
             synth_rect.iter().chain(non_rect_openings.iter().copied()).collect();
 
         // DISJOINT-CUTTER BATCHING: group cutters whose pad-inflated AABBs are
@@ -1124,29 +1015,15 @@ impl Execution {
                 if batch_consumed[idx] {
                     continue;
                 }
-                let Some((opening_mesh, extrusion_dir)) = opening.mesh_cutter() else { continue };
+                let Some((opening_mesh, extrusion_dir)) = opening.cutter().mesh_cutter() else { continue };
                 // Same admission guards as the sequential loop.
-                let opening_valid = !opening_mesh.is_empty()
-                    && opening_mesh.positions.iter().all(|&v| v.is_finite())
-                    && opening_mesh.positions.len() >= 9;
-                if !opening_valid {
-                    continue;
-                }
-                let (result_min, result_max) = result.bounds();
-                let (omn, omx) = opening_mesh.bounds();
-                let no_overlap = omx.x < result_min.x
-                    || omn.x > result_max.x
-                    || omx.y < result_min.y
-                    || omn.y > result_max.y
-                    || omx.z < result_min.z
-                    || omn.z > result_max.z;
-                if no_overlap {
-                    continue;
-                }
-                let open_vol = (omx.x - omn.x) as f64
-                    * (omx.y - omn.y) as f64
-                    * (omx.z - omn.z) as f64;
-                if open_vol < Self::min_opening_volume(self.tessellation_quality) {
+                if admit_cutter(
+                    opening_mesh,
+                    result.bounds(),
+                    min_opening_volume(self.tessellation_quality),
+                )
+                .is_none()
+                {
                     continue;
                 }
                 let Some(ext) = GeometryRouter::batch_cutter(opening_mesh, extrusion_dir, &result) else {
@@ -1158,16 +1035,13 @@ impl Execution {
                 // engulf test) stays on the sequential path, where the
                 // near-engulf and redundant-void guards live — batched it can
                 // shave the host's outer shell (the #559171-family residual).
-                let engulfs = {
-                    let tol = ENGULF_TOLERANCE;
-                    let covers = |omin: f64, omax: f64, wmin: f64, wmax: f64| {
-                        let slack = (wmax - wmin).abs().max(1.0e-9) * tol;
-                        omin <= wmin + slack && omax >= wmax - slack
-                    };
-                    covers(lo.x as f64, hi.x as f64, wall_min.x, wall_max.x)
-                        && covers(lo.y as f64, hi.y as f64, wall_min.y, wall_max.y)
-                        && covers(lo.z as f64, hi.z as f64, wall_min.z, wall_max.z)
-                };
+                let engulfs = aabb_engulfs(
+                    [lo.x as f64, lo.y as f64, lo.z as f64],
+                    [hi.x as f64, hi.y as f64, hi.z as f64],
+                    [wall_min.x, wall_min.y, wall_min.z],
+                    [wall_max.x, wall_max.y, wall_max.z],
+                    ENGULF_TOLERANCE,
+                );
                 if engulfs {
                     continue;
                 }
@@ -1245,6 +1119,7 @@ impl Execution {
                     } else {
                         for &(m_idx, _) in &members {
                             let ext = all_openings[m_idx]
+                                .cutter()
                                 .mesh_cutter()
                                 .and_then(|(m, dir)| GeometryRouter::batch_cutter(m, dir, &result));
                             let Some(ext) = ext else {
@@ -1266,9 +1141,7 @@ impl Execution {
                         // a conforming miss; keeping the original host instead
                         // can discard useful seam repairs made by the singles.
                         if let GroupCut::Cut(csg_result) | GroupCut::Retessellated(csg_result) = outcome {
-                            let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
-                                .max(MIN_VALID_TRIANGLES);
-                            if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
+                            if cut_retains_triangles(tri_before, &csg_result) {
                                 result = csg_result;
                                 host_mutated = true;
                                 for &(m_idx, _) in &extended {
@@ -1293,61 +1166,24 @@ impl Execution {
             // (winding-robust after the defect-A orient-outward fix). The
             // mesh-bounds AABB + frame-depth direction still seed the #635
             // fallback, which only fires if the exact subtract no-ops.
-            let normalized: Option<(&Mesh, Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> =
-                match *opening {
-                    OpeningType::Rectangular(..) => None,
-                    OpeningType::DiagonalRectangular(ref opening_mesh, ref frame) => {
-                        let (mn, mx) = opening_mesh.bounds();
-                        Some((
-                            opening_mesh,
-                            Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
-                            Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
-                            Some(frame.depth),
-                        ))
-                    }
-                    OpeningType::NonRectangular(
-                        ref opening_mesh,
-                        ref open_min_pt,
-                        ref open_max_pt,
-                        ref extrusion_dir,
-                    ) => Some((opening_mesh, *open_min_pt, *open_max_pt, *extrusion_dir)),
-                };
+            let normalized = opening.cutter().normalized();
             if let Some((opening_mesh, open_min_pt, open_max_pt, extrusion_dir)) = normalized {
                 let open_min_pt = &open_min_pt;
                 let open_max_pt = &open_max_pt;
                 {
-                    let opening_valid = !opening_mesh.is_empty()
-                        && opening_mesh.positions.iter().all(|&v| v.is_finite())
-                        && opening_mesh.positions.len() >= 9;
-
-                    if !opening_valid {
-                        continue;
-                    }
-
-                    let (result_min, result_max) = result.bounds();
-                    let (open_min_f32, open_max_f32) = opening_mesh.bounds();
-                    let no_overlap = open_max_f32.x < result_min.x
-                        || open_min_f32.x > result_max.x
-                        || open_max_f32.y < result_min.y
-                        || open_min_f32.y > result_max.y
-                        || open_max_f32.z < result_min.z
-                        || open_min_f32.z > result_max.z;
-                    if no_overlap {
-                        continue;
-                    }
-
-                    let open_vol = (open_max_f32.x - open_min_f32.x)
-                        * (open_max_f32.y - open_min_f32.y)
-                        * (open_max_f32.z - open_min_f32.z);
                     // The 0.1 L volume floor filtered legacy-BSP CSG artefacts but
                     // also drops genuine small openings — bolt holes / sleeves in
                     // thin plates. At the two highest quality levels keep those
                     // holes (the exact kernel is stable on small cutters); only
                     // reject numerically degenerate cutters there. (issue #976)
-                    let min_open_vol = Self::min_opening_volume(self.tessellation_quality) as f32;
-                    if open_vol < min_open_vol {
+                    // This path compares in f32, the precision of the bounds.
+                    let (result_min, result_max) = result.bounds();
+                    let min_open_vol = min_opening_volume(self.tessellation_quality) as f32;
+                    let Some((open_min_f32, open_max_f32)) =
+                        admit_cutter(opening_mesh, (result_min, result_max), min_open_vol)
+                    else {
                         continue;
-                    }
+                    };
 
                     // ENGULFING-SOLID VOID: when this opening's real solid
                     // CONTAINS the whole host, the exact subtract no-ops on the
@@ -1359,17 +1195,14 @@ impl Execution {
                     // TRUE solid containment — so a void whose AABB engulfs the
                     // host while its real profile excludes it is not affected.
                     // On a hit the host is fully consumed.
-                    let aabb_engulfs = {
-                        let tol = ENGULF_TOLERANCE_F32;
-                        let covers = |omin: f32, omax: f32, hmin: f32, hmax: f32| {
-                            let slack = (hmax - hmin).abs().max(1.0e-9) * tol;
-                            omin <= hmin + slack && omax >= hmax - slack
-                        };
-                        covers(open_min_f32.x, open_max_f32.x, result_min.x, result_max.x)
-                            && covers(open_min_f32.y, open_max_f32.y, result_min.y, result_max.y)
-                            && covers(open_min_f32.z, open_max_f32.z, result_min.z, result_max.z)
-                    };
-                    if aabb_engulfs && opening_engulfs_host_solid(&result, opening_mesh) {
+                    let host_aabb_engulfed = aabb_engulfs(
+                        [open_min_f32.x, open_min_f32.y, open_min_f32.z],
+                        [open_max_f32.x, open_max_f32.y, open_max_f32.z],
+                        [result_min.x, result_min.y, result_min.z],
+                        [result_max.x, result_max.y, result_max.z],
+                        ENGULF_TOLERANCE_F32,
+                    );
+                    if host_aabb_engulfed && opening_engulfs_host_solid(&result, opening_mesh) {
                         // The empty result marks the host consumed
                         // (`program::openings::execute`).
                         result = Mesh::default();
@@ -1400,9 +1233,7 @@ impl Execution {
                     // intersection, or bailed on a grazing/coplanar cutter.
                     let csg_unchanged = kept.is_none();
                     if let Some(csg_result) = kept {
-                        let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
-                            .max(MIN_VALID_TRIANGLES);
-                        if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
+                        if cut_retains_triangles(tri_before, &csg_result) {
                             result = csg_result;
                             host_mutated = true;
                             csg_succeeded = true;
@@ -1450,16 +1281,13 @@ impl Execution {
                         // wall and never engulf it, so they still take the fallback.
                         // The 3% per-axis tolerance absorbs an opening that reaches
                         // ~flush with a wall face (its near plane).
-                        let engulfs_host = {
-                            let tol = ENGULF_TOLERANCE;
-                            let covers = |omin: f64, omax: f64, wmin: f64, wmax: f64| {
-                                let slack = (wmax - wmin).abs().max(1.0e-9) * tol;
-                                omin <= wmin + slack && omax >= wmax - slack
-                            };
-                            covers(final_min.x, final_max.x, wall_min.x, wall_max.x)
-                                && covers(final_min.y, final_max.y, wall_min.y, wall_max.y)
-                                && covers(final_min.z, final_max.z, wall_min.z, wall_max.z)
-                        };
+                        let engulfs_host = aabb_engulfs(
+                            [final_min.x, final_min.y, final_min.z],
+                            [final_max.x, final_max.y, final_max.z],
+                            [wall_min.x, wall_min.y, wall_min.z],
+                            [wall_max.x, wall_max.y, wall_max.z],
+                            ENGULF_TOLERANCE,
+                        );
                         // `capped` keys on the `OperandTooLarge` rejection: the
                         // #1109 per-boolean/-element escalation budget records it
                         // when a cut trips mid-arrangement and bails to the un-cut

@@ -23,6 +23,7 @@ export default defineConfig({
       // first runtime dependency the embed tests have on the geometry package.
       '@ifc-lite/geometry': path.resolve(__dirname, '../../packages/geometry/src'),
       '@': path.resolve(__dirname, '../viewer/src'),
+      '@ifc-lite/viewer-retained': path.resolve(__dirname, '../viewer/src/lib/retained/off.ts'),
     },
   },
   test: {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained-only IFNS boundary. Uses the exact collator and #3666 verifier.
 use ifc_lite_geometry::{InstanceMeshRef, InstanceMeta, Matrix4};
+use ifc_lite_geometry::math::frame::yup_to_zup;
 use ifc_lite_processing::MeshData;
 use js_sys::{Array, Object, Uint8Array, Uint32Array};
 use serde::Deserialize;
@@ -46,14 +47,21 @@ pub fn encode_instanced_shard(
     let mut finishes = Vec::new();
     let mut identities = std::collections::BTreeMap::new();
     for (input, key) in meshes.iter().zip(keys.iter()) {
-        let input: Input = serde_wasm_bindgen::from_value(input).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let mut input: Input = serde_wasm_bindgen::from_value(input).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let key = key.as_string().filter(|k| k.len() == 64 && k.bytes().all(|b| b.is_ascii_hexdigit()))
             .ok_or_else(|| JsValue::from_str("Invalid retained instance key"))?;
         let next_id = identities.len() as u128;
         let id = *identities.entry(key).or_insert(next_id);
         let frame = Matrix4::from_column_slice(&input.world_from_object);
+        // MeshDataJs is Y-up; IFNS is native IFC Z-up. Reuse the canonical
+        // inverse swap because the renderer applies the forward swap itself.
+        for values in [&mut input.positions, &mut input.normals] {
+            for xyz in values.chunks_exact_mut(3) {
+                xyz.copy_from_slice(&yup_to_zup([xyz[0], xyz[1], xyz[2]]));
+            }
+        }
         let mut mesh = MeshData::new(input.express_id, input.ifc_type, input.positions, input.normals, input.indices, input.color)
-            .with_origin(input.origin);
+            .with_origin(yup_to_zup(input.origin));
         mesh.geometry_class = input.geometry_class;
         mesh.geometry_item_id = input.geometry_item_id;
         frames.push(InstanceMeta { transform: ifc_lite_geometry::math::mat4::from_na(&frame),
@@ -66,9 +74,8 @@ pub fn encode_instanced_shard(
         positions: &m.positions, normals: &m.normals, indices: &m.indices, origin: m.origin,
         instance_meta: Some(frame), entity_id: m.express_id, color: m.color, item_id: m.geometry_item_id,
     }).collect();
-    let basis = Matrix4::from_row_slice(&ifc_lite_geometry::math::frame::ZUP_TO_YUP);
     let mut collated = ifc_lite_geometry::collate_refs_in_basis(&refs, INSTANCE_MIN_OCCURRENCES as usize,
-        [rtc[0], rtc[1], rtc[2]], Some(&basis));
+        [rtc[0], rtc[1], rtc[2]], None);
     let result = Object::new();
     set(&result, "flatIndices", &Uint32Array::from(collated.flat_indices.iter().map(|i| *i as u32).collect::<Vec<_>>().as_slice()))?;
     set(&result, "instanceCount", &(collated.instanced_occurrence_count() as u32).into())?;

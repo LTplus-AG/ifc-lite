@@ -41,6 +41,7 @@ it('#7955 M11-I actual IFNS encoder verifies rotated RTC pairs and returns rejec
   assert.equal(result.flatIndices.length, 0);
   const header = new DataView(result.shard.buffer);
   assert.equal(header.getUint32(24, true) * header.getUint32(12, true), 3 * 64, 'flat and rendered triangle counts match');
+  assertRenderedCoordinates(result.shard, input);
   const small = encode(input.slice(0, 7));
   assert.equal(small.shard.length, 0);
   assert.equal(small.flatIndices.length, 7);
@@ -55,6 +56,34 @@ it('#7955 M11-I actual IFNS encoder verifies rotated RTC pairs and returns rejec
     assert.equal(encode(values).flatIndices.length, 8, 'exact eligibility gates apply');
   }
 });
+
+/** IFNS is native Z-up; independently apply its wire matrix and renderer axis swap. */
+function assertRenderedCoordinates(shard, input) {
+  const view = new DataView(shard.buffer, shard.byteOffset, shard.byteLength);
+  const templates = view.getUint32(8, true), instances = view.getUint32(12, true);
+  const stride = view.getUint32(28, true) || 88;
+  const table = 32 + templates * 48, positions = table + instances * stride;
+  const normals = positions + view.getUint32(16, true) * 4;
+  for (let i = 0; i < instances; i++) {
+    const record = table + i * stride, template = 32 + view.getUint32(record, true) * 48;
+    const source = input.find(m => m.expressId === view.getUint32(record + 4, true));
+    const origin = [0, 1, 2].map(axis => view.getFloat64(template + 24 + axis * 8, true));
+    const start = view.getUint32(template, true), count = view.getUint32(template + 4, true);
+    const matrix = Array.from({ length: 16 }, (_, j) => view.getFloat32(record + 24 + j * 4, true));
+    for (let v = 0; v < count; v += 3) {
+      const point = [0, 1, 2].map(axis => origin[axis] + view.getFloat32(positions + (start + v + axis) * 4, true));
+      const world = [0, 1, 2].map(row => matrix[row * 4] * point[0] + matrix[row * 4 + 1] * point[1]
+        + matrix[row * 4 + 2] * point[2] + matrix[row * 4 + 3]);
+      const rendered = [world[0], world[2], -world[1]];
+      for (let axis = 0; axis < 3; axis++) assert.ok(Math.abs(rendered[axis]
+        - (source.origin[axis] + source.positions[v + axis])) <= 1e-6, 'IFNS and flat render at the same coordinates');
+    }
+  }
+  // All hand-authored normals point along IFC +Z, even after a Z-axis rotation.
+  for (let n = 0; n < view.getUint32(20, true); n += 3) {
+    assert.deepEqual([0, 1, 2].map(axis => view.getFloat32(normals + (n + axis) * 4, true) + 0), [0, 0, 1]);
+  }
+}
 
 function observe() {
   const seen = { workers: [], fetches: [], errors: [] };

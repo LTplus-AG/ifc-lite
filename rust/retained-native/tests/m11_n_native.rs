@@ -53,6 +53,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                             || check.curved_radians > tolerances["normalCurvedRadians"].as_f64().unwrap()
                             || check.unit_error > tolerances["normalUnitAbsolute"].as_f64().unwrap() {
                             violations.push(format!("{model}:{} {check:?}",product.product_id));
+                            println!("normal gate source surfaces {model}:{} {source:?}",product.product_id);
                         }
                         if model.ends_with("f-a-curved.ifc") && check.curved > 0 {
                             assert!(check.smoothed_curved > 0,"arc sides must actually smooth, #{}",product.product_id);

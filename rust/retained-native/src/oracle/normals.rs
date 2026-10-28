@@ -131,6 +131,11 @@ pub struct Check {
     pub curved_radians: f64,
     pub unit_error: f64,
 }
+fn facet(local: [[f64;3];3], frame: &[f64;16]) -> Option<[f64;3]> {
+    // Translation cancels analytically. Subtracting absolute world points
+    // loses small edges on georeferenced models and corrupts oracle incidence.
+    unit(cross(vector(frame,sub(local[1],local[0])), vector(frame,sub(local[2],local[0]))))
+}
 /// Surface selection uses only positions, source incidence and the facet,
 /// never the output normal being tested. Empty source sets get flat equality.
 pub fn check(product: &ShapeOnlyProduct, source: &[Surface]) -> Result<Check,String> {
@@ -139,11 +144,12 @@ pub fn check(product: &ShapeOnlyProduct, source: &[Surface]) -> Result<Check,Str
         let normals = part.normals.as_ref().ok_or("missing normals")?;
         if normals.len() != part.indices.len()*3 { return Err("normal cardinality".into()); }
         for (t,triangle) in part.indices.chunks_exact(3).enumerate() {
-            let points: [[f64;3];3] = std::array::from_fn(|i| {
+            let local: [[f64;3];3] = std::array::from_fn(|i| {
                 let v = triangle[i] as usize * 3;
-                transform(&part.world_from_object,[part.positions[v],part.positions[v+1],part.positions[v+2]])
+                [part.positions[v],part.positions[v+1],part.positions[v+2]]
             });
-            let facet = unit(cross(sub(points[1],points[0]),sub(points[2],points[0]))).ok_or("degenerate triangle")?;
+            let points = local.map(|p| transform(&part.world_from_object,p));
+            let facet = facet(local,&part.world_from_object).ok_or("degenerate triangle")?;
             let centroid = add(points[0],scale(add(sub(points[1],points[0]),sub(points[2],points[0])),1./3.));
             let surface = source.iter().find(|s| {
                 let incidence = if s.curved() {0.001001} else {1e-6};
@@ -170,4 +176,18 @@ pub fn check(product: &ShapeOnlyProduct, source: &[Surface]) -> Result<Check,Str
         }
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn m11_n_7955_source_facet_direction_is_translation_invariant() {
+        let triangle = [[0.,0.,0.],[0.02,0.,2.41],[0.,0.,2.41]];
+        let mut frame = [0.8,0.6,0.,0., -0.6,0.8,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+        for translation in [0.,5_000_000.,1e20] {
+            frame[12] = translation; frame[13] = -translation; frame[14] = translation;
+            assert!(angle(facet(triangle,&frame).unwrap(),[0.6,-0.8,0.]) < 1e-15);
+        }
+    }
 }

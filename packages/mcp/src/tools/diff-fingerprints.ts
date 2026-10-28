@@ -59,8 +59,7 @@
  * rather than shared because there is no honest home for it yet:
  *
  * - `@ifc-lite/cli` already depends on `@ifc-lite/mcp`, so this package cannot
- *   import { buildFingerprintBatch } from '@ifc-lite/diff/internal';
-import from there without a cycle.
+ *   import from there without a cycle.
  * - `@ifc-lite/diff` is deliberately store-agnostic and dependency-free; giving
  *   it a runtime dependency on `@ifc-lite/parser` to host an adapter would undo
  *   the property that lets the viewer, the CLI and this server each supply
@@ -88,6 +87,7 @@ import from there without a cycle.
  * fingerprints, which the paired tests check.
  */
 
+import { buildFingerprintBatch } from '@ifc-lite/diff/internal';
 import {
   type DataFingerprintInput,
   type EntityFingerprint,

@@ -11,7 +11,7 @@ use {
     crate::analytic::{analytic_boundary_loop, AnalyticCurveSegment},
     crate::document::{PrismLoop, PrismRole, PrismSegment, RetainedPrism, RetainedRefusal, retained_frames},
     crate::math::{mat4::col_major_array, tol::RETAINED_RIGID_DOT_EPS},
-    ifc_lite_core::IfcType,
+    ifc_lite_core::{IfcType, slot},
     nalgebra::{Matrix4, Vector3},
 };
 
@@ -43,18 +43,18 @@ fn bounded_step(ctx: &mut Context<'_, '_>) -> crate::Result<CutterStep> {
         crate::BoolOp::Intersection => return Err(unsupported(ctx, "halfspace_intersection")),
         _ => return Err(unsupported(ctx, "halfspace_operator")),
     }
-    if ctx.second.get_bool(1).is_none() { return Err(crate::Error::geometry("missing AgreementFlag")); }
-    let surface_id = ctx.second.get_ref(0).ok_or_else(|| crate::Error::geometry("missing BaseSurface"))?;
+    if ctx.second.get_bool(slot::IfcHalfSpaceSolid::AGREEMENT_FLAG.index()).is_none() { return Err(crate::Error::geometry("missing AgreementFlag")); }
+    let surface_id = ctx.second.get_ref(slot::IfcHalfSpaceSolid::BASE_SURFACE.index()).ok_or_else(|| crate::Error::geometry("missing BaseSurface"))?;
     let surface = ctx.decoder.decode_by_id(surface_id)?;
     if surface.ifc_type != IfcType::IfcPlane { return Err(crate::Error::geometry("BaseSurface must be IfcPlane")); }
-    let plane_position = ctx.decoder.decode_by_id(surface.get_ref(0)
+    let plane_position = ctx.decoder.decode_by_id(surface.get_ref(slot::IfcPlane::POSITION.index())
         .ok_or_else(|| crate::Error::geometry("missing plane Position"))?)?;
     if plane_position.ifc_type != IfcType::IfcAxis2Placement3D {
         return Err(crate::Error::geometry("plane Position must be IfcAxis2Placement3D"));
     }
     let (p, r) = super::plane_source::lower(ctx.host, ctx.second, ctx.decoder)?;
     let (p, r) = (Vector3::from(p), Vector3::from(r));
-    let id = ctx.second.get_ref(2).ok_or_else(|| crate::Error::geometry("missing PBHS Position"))?;
+    let id = ctx.second.get_ref(slot::IfcPolygonalBoundedHalfSpace::POSITION.index()).ok_or_else(|| crate::Error::geometry("missing PBHS Position"))?;
     let position = ctx.decoder.decode_by_id(id)?;
     if position.ifc_type != IfcType::IfcAxis2Placement3D {
         return Err(crate::Error::geometry("PBHS Position must be IfcAxis2Placement3D"));
@@ -70,7 +70,7 @@ fn bounded_step(ctx: &mut Context<'_, '_>) -> crate::Result<CutterStep> {
     if dot.abs() < RETAINED_RIGID_DOT_EPS {
         return Err(unsupported(ctx, "bounded_halfspace_parallel"));
     }
-    let boundary_id = ctx.second.get_ref(3).ok_or_else(|| crate::Error::geometry("missing PolygonalBoundary"))?;
+    let boundary_id = ctx.second.get_ref(slot::IfcPolygonalBoundedHalfSpace::POLYGONAL_BOUNDARY.index()).ok_or_else(|| crate::Error::geometry("missing PolygonalBoundary"))?;
     let boundary = ctx.decoder.decode_by_id(boundary_id)?;
     if !boundary.ifc_type.is_subtype_of(IfcType::IfcBoundedCurve) {
         return Err(crate::Error::geometry("PolygonalBoundary must be IfcBoundedCurve"));

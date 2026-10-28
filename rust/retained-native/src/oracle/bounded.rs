@@ -2,7 +2,7 @@
 //! Source-only M6 oracle: inclusion–exclusion of triangulated boundary prisms.
 //! No retained plan/cutter or output mesh supplies an expected volume.
 use super::{bounded_partition::{pieces, extrusion_pieces, inside_distance, Plane}, bounded_source::{Clip,chain}, math::*, sections::{ExtrudedHost,section_volume}};
-use ifc_lite_core::SourceBundle;
+use ifc_lite_core::{SourceBundle,slot};
 use ifc_lite_processing::AnalyticQuantitySources;
 
 pub struct Expectation {
@@ -50,7 +50,7 @@ pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Optio
     while let Some((id,name,_,_))=scanner.next_entity() {
         if name.eq_ignore_ascii_case("IFCRELVOIDSELEMENT") {
             let relation=decoder.decode_by_id(id).ok()?;
-            if relation.get_ref(4)==Some(product) {opening_ids.push(relation.get_ref(5)?);}
+            if relation.get_ref(slot::IfcRelVoidsElement::RELATING_BUILDING_ELEMENT.index())==Some(product) {opening_ids.push(relation.get_ref(slot::IfcRelVoidsElement::RELATED_OPENING_ELEMENT.index())?);}
         }
     }
     let extra=opening_ids.into_iter().try_fold(Vec::new(),|mut cuts,id| {

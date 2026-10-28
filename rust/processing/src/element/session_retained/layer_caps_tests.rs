@@ -69,3 +69,47 @@ fn m4_flat_snap_limit_is_bounded_and_reports_displacement() {
         } else { assert!(result.is_err()); }
     }
 }
+
+fn sector(inner: f64, outer: f64, angles: &[f64]) -> ShapePart {
+    let mut mesh=cube(0.,false);
+    mesh.positions.clear(); mesh.indices.clear(); mesh.curved=true;
+    for &a in angles {
+        for (r,z) in [(inner,0.),(outer,0.),(inner,1.),(outer,1.)] {
+            mesh.positions.extend([r*a.cos(),r*a.sin(),z]);
+        }
+    }
+    let mut quad=|v:[u32;4]|mesh.indices.extend([v[0],v[1],v[2],v[0],v[2],v[3]]);
+    for i in 0..angles.len()-1 {
+        let a=4*i as u32; let b=a+4;
+        quad([a,b,b+1,a+1]); // bottom -Z
+        quad([a+2,a+3,b+3,b+2]); // top +Z
+        quad([a,a+2,b+2,b]); // inner cylinder
+        quad([a+1,b+1,b+3,a+3]); // outer cylinder
+    }
+    quad([0,1,3,2]);
+    let end=4*(angles.len()-1) as u32;
+    quad([end,end+2,end+3,end+1]);
+    mesh
+}
+
+#[test]
+fn m4_curved_chord_conformity_obeys_one_millimetre_limit() {
+    for sagitta in [0.0005_f64,0.002] {
+        // Radius10: midpoint-to-chord distance is R*(1-cos(angle/2)).
+        // Solve for angle; the fine rim has a midpoint the coarse rim lacks.
+        let angle=2.*(1.-sagitta/10.).acos();
+        let mut parts=[sector(9.9,10.,&[0.,angle]),sector(10.,10.1,&[0.,angle/2.,angle])];
+        let mut manifest=layers();
+        manifest.interfaces=vec![LayerInterface::Cylinder {
+            center:[0.;3],axis:[0.,0.,1.],radius:10.,outward:1.,
+        }];
+        let result=remove(&mut parts,&manifest);
+        if sagitta<1e-3 {
+            let displacement=result.unwrap();
+            assert!((displacement-sagitta).abs()<1e-12);
+            assert!(displacement<=1e-3); closed(&parts).unwrap();
+        } else {
+            assert!(matches!(result,Err(RetainedExecutionError::LayerCaps(_))));
+        }
+    }
+}

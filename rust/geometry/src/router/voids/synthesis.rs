@@ -88,8 +88,14 @@ impl GeometryRouter {
                     if overlaps_x && overlaps_y && overlaps_z && dirs_compatible && phantom_free {
                         // Merge into box i
                         let dir = rects[i].2;
-                        let bounds = Aabb3 { min: (*a_min).into(), max: (*a_max).into() }
-                            .union(&Aabb3 { min: (*b_min).into(), max: (*b_max).into() });
+                        let bounds = Aabb3 {
+                            min: (*a_min).into(),
+                            max: (*a_max).into(),
+                        }
+                        .union(&Aabb3 {
+                            min: (*b_min).into(),
+                            max: (*b_max).into(),
+                        });
                         rects[i] = (bounds.min.into(), bounds.max.into(), dir);
                         rects.remove(j);
                         merged = true;

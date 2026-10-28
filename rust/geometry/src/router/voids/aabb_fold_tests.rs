@@ -167,8 +167,16 @@ fn c2_5c_rect_union_legacy_bits() {
         let expected = {
             let mut rects = [(a_min, a_max, dir)];
             rects[i] = (
-                Point3::new(a_min.x.min(b_min.x), a_min.y.min(b_min.y), a_min.z.min(b_min.z)),
-                Point3::new(a_max.x.max(b_max.x), a_max.y.max(b_max.y), a_max.z.max(b_max.z)),
+                Point3::new(
+                    a_min.x.min(b_min.x),
+                    a_min.y.min(b_min.y),
+                    a_min.z.min(b_min.z),
+                ),
+                Point3::new(
+                    a_max.x.max(b_max.x),
+                    a_max.y.max(b_max.y),
+                    a_max.z.max(b_max.z),
+                ),
                 dir,
             );
             (rects[i].0.into(), rects[i].1.into())
@@ -202,15 +210,25 @@ fn c2_5c_extended_points_legacy_bits() {
                 all_points.iter().map(|p| p.z).fold(f64::INFINITY, f64::min),
             );
             let new_max = Point3::new(
-                all_points.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max),
-                all_points.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max),
-                all_points.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max),
+                all_points
+                    .iter()
+                    .map(|p| p.x)
+                    .fold(f64::NEG_INFINITY, f64::max),
+                all_points
+                    .iter()
+                    .map(|p| p.y)
+                    .fold(f64::NEG_INFINITY, f64::max),
+                all_points
+                    .iter()
+                    .map(|p| p.z)
+                    .fold(f64::NEG_INFINITY, f64::max),
             );
             (new_min.into(), new_max.into())
         };
         let actual = {
             let bounds = Aabb3::from_points(all_points.iter().map(|p| (*p).into()));
-            let (new_min, new_max): (Point3<f64>, Point3<f64>) = (bounds.min.into(), bounds.max.into());
+            let (new_min, new_max): (Point3<f64>, Point3<f64>) =
+                (bounds.min.into(), bounds.max.into());
             (new_min.into(), new_max.into())
         };
         assert_bits(expected, actual);
@@ -301,7 +319,11 @@ fn c2_5c_component_vertices_legacy_bits() {
                     min: entry.0,
                     max: entry.1,
                 };
-                bounds.extend([mesh.positions[b], mesh.positions[b + 1], mesh.positions[b + 2]]);
+                bounds.extend([
+                    mesh.positions[b],
+                    mesh.positions[b + 1],
+                    mesh.positions[b + 2],
+                ]);
                 *entry = (bounds.min, bounds.max);
             }
             pair
@@ -385,7 +407,8 @@ fn c2_5c_triangle_bounds_legacy_bits() {
 #[test]
 fn c2_5c_partition_bounds_legacy_bits() {
     for points in cases() {
-        let pairs: Vec<([f64; 3], [f64; 3])> = points.chunks(2).map(|p| (p[0], p[p.len() - 1])).collect();
+        let pairs: Vec<([f64; 3], [f64; 3])> =
+            points.chunks(2).map(|p| (p[0], p[p.len() - 1])).collect();
         let bounds = &pairs;
         let expected = {
             let mut lo = [f64::INFINITY; 3];

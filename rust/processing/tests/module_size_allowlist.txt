@@ -297,7 +297,7 @@
 # that decides jamb from exit (#3219) is new there. An earlier revision added a
 # facing vote and a footprint restriction; both were measured to decline pushes
 # the pre-fix code made, and both were deleted.
-     498 rust/geometry/src/router/voids/synthesis.rs
+     504 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      782 rust/geometry/src/triangulation.rs
      745 rust/geometry/src/void_index.rs

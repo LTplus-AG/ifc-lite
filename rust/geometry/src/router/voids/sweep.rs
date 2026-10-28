@@ -167,7 +167,11 @@ fn overlapping_components(mesh: &Mesh) -> bool {
                 min: entry.0,
                 max: entry.1,
             };
-            bounds.extend([mesh.positions[b], mesh.positions[b + 1], mesh.positions[b + 2]]);
+            bounds.extend([
+                mesh.positions[b],
+                mesh.positions[b + 1],
+                mesh.positions[b + 2],
+            ]);
             *entry = (bounds.min, bounds.max);
         }
     }

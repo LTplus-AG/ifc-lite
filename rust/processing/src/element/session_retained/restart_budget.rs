@@ -37,8 +37,8 @@ impl RestartBudget {
 mod tests {
     use super::*;
 
-    // #7955: deliberate retirements never refund earlier faults or consume a
-    // future fault slot, even when the last product is deliberately cancelled.
+    // #7955: retirements within the free allowance never refund earlier faults
+    // or consume a fault slot, even when the last product is cancelled.
     #[test]
     fn cancellations_do_not_spend_or_refund_fault_restarts() {
         let mut budget = RestartBudget::new(3, false);

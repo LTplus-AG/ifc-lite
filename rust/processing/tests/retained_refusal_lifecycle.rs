@@ -53,7 +53,9 @@ impl NumericalReceipt for Receipt {
 }
 #[derive(Clone, Copy)]
 enum LateReply { Transport, Kernel, DeadReceipt, HealthyReceipt }
-struct Peer(Domain, usize, Option<LateReply>, bool);
+#[derive(Clone, Copy)]
+enum ReplyFault { None, InputPreparation, ForeignAdmission }
+struct Peer(Domain, usize, Option<LateReply>, ReplyFault);
 impl RetainedRuntime for Peer {
     type Receipt = Receipt;
     fn domain(&self) -> Domain { self.0.clone() }
@@ -61,7 +63,7 @@ impl RetainedRuntime for Peer {
 }
 impl AsyncRetainedExecutor for Peer {
     async fn invoke(&mut self, call: Invocation<'_, Receipt>, _: NumericalLimits) -> Result<Receipt, RuntimeFault> {
-        if !self.3 {
+        if !matches!(self.3, ReplyFault::InputPreparation) {
             assert_eq!(self.0.0.live.get(), 0, "previous refused product released every receipt");
         }
         let Invocation::Construction(request) = call else { panic!("only host construction is admitted") };
@@ -90,11 +92,18 @@ impl AsyncRetainedExecutor for Peer {
             revision_local_faces: (0..6).flat_map(|i| [i,i]).collect(),
             source_face_count: 6, boundary_edges: 0, spine_edges: 0,
         };
-        let completion = RetainedCompletion::new(request.clone(), mesh,
+        let admission = if matches!(self.3, ReplyFault::ForeignAdmission) {
+            let mut foreign = ifc_lite_geometry::document::GeometryDocument::new();
+            let ifc_lite_geometry::document::RetainedRecipe::Extrusion(recipe) = request.recipe()
+                else { panic!("rectangle fixture") };
+            let definition = foreign.add_retained_extrusion(recipe.clone()).unwrap();
+            foreign.prepare_retained(definition, 1).unwrap()
+        } else { request.clone() };
+        let completion = RetainedCompletion::new(admission, mesh,
             frame.source_from_evaluation, frame.evaluation_from_source);
         self.0.0.live.set(self.0.0.live.get() + 1);
         Ok(Receipt { domain: self.0.clone(), completion, id: self.0.0.calls.get(), oversized: self.0.0.calls.get() <= self.1,
-            validations: Cell::new(0), fail_on_reuse: self.3 })
+            validations: Cell::new(0), fail_on_reuse: matches!(self.3, ReplyFault::InputPreparation) })
     }
 }
 fn ready<T>(future: impl Future<Output = T>) -> T {
@@ -119,7 +128,7 @@ fn issue_7955_eight_terminal_refusals_then_publication_without_retirement_or_lea
         &ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
         &mut worker, || {
             acquisitions.set(acquisitions.get() + 1);
-            Ok(Peer(domain.clone(), 0, None, false))
+            Ok(Peer(domain.clone(), 0, None, ReplyFault::None))
         }, |outcome, _| {
             assert_eq!(domain.0.live.get(), 0, "sink sees no retained kernel leases");
             rows.push(outcome);
@@ -135,7 +144,7 @@ fn issue_7955_eight_terminal_refusals_then_publication_without_retirement_or_lea
     let mut fresh = Vec::new();
     ready(run_model(ifc_lite_core::SourceBundle::new(CASCADE.as_bytes().to_vec()),
         &ModelOptions { ids: Some([104].into_iter().collect()), ..Default::default() },
-        || Ok(Peer(fresh_domain.clone(), 0, None, false)), |o| fresh.push(o))).unwrap();
+        || Ok(Peer(fresh_domain.clone(), 0, None, ReplyFault::None)), |o| fresh.push(o))).unwrap();
     let ProductOutcome::Published(fresh) = fresh.pop().unwrap() else { panic!("fresh #104") };
     assert_eq!(reused.product_id, 104);
     assert_eq!(reused.parts.len(), 1);
@@ -164,7 +173,7 @@ fn issue_7955_eight_settled_resource_refusals_release_receipts_and_keep_worker()
         &ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
         || {
             acquisitions.set(acquisitions.get() + 1);
-            Ok(Peer(domain.clone(), 8, None, false))
+            Ok(Peer(domain.clone(), 8, None, ReplyFault::None))
         }, |o| outcomes.push(o))).unwrap();
     assert_eq!(summary.by_code.get("resource_exhausted"), Some(&8));
     assert_eq!((summary.published, summary.restarts, acquisitions.get()), (1,0,1));
@@ -187,7 +196,7 @@ fn late_reply_run(reply: LateReply) -> (ModelSummary, Vec<ProductOutcome>, Vec<D
         &options, || {
             let domain = Domain(Rc::new(Counts::default()));
             domains.push(domain.clone());
-            Ok(Peer(domain, 0, Some(reply), false))
+            Ok(Peer(domain, 0, Some(reply), ReplyFault::None))
         }, |o| outcomes.push(o))).unwrap();
     assert_eq!(summary.published, 0, "no partial publication after the deadline");
     assert!(domains.iter().all(|d| d.0.live.get() == 0), "every receipt released");
@@ -253,7 +262,7 @@ fn issue_7955_input_preparation_fault_retires_captured_domain_and_is_charged() {
         || {
             let domain = Domain(Rc::new(Counts::default()));
             domains.push(domain.clone());
-            Ok(Peer(domain, 0, None, true))
+            Ok(Peer(domain, 0, None, ReplyFault::InputPreparation))
         }, |o| outcomes.push(o))).unwrap();
     assert_eq!((summary.published, summary.restarts, domains.len()), (0,3,4));
     for domain in domains {
@@ -266,5 +275,22 @@ fn issue_7955_input_preparation_fault_retires_captured_domain_and_is_charged() {
         assert_eq!(refusal.code(), "worker_fault");
         assert!(message.contains("receipt transport fault during input preparation"));
     }
+    assert_exhausted(&outcomes[4..]);
+}
+
+#[test]
+fn issue_7955_abandoned_foreign_receipt_is_a_fault_not_a_free_controller_cancel() {
+    let mut domains = Vec::new();
+    let mut outcomes = Vec::new();
+    let summary = ready(run_model(ifc_lite_core::SourceBundle::new(unvoided_cascade().into_bytes()),
+        &ModelOptions { ids: Some((100..109).collect()), ..Default::default() },
+        || {
+            let domain = Domain(Rc::new(Counts::default()));
+            domains.push(domain.clone());
+            Ok(Peer(domain, 0, None, ReplyFault::ForeignAdmission))
+        }, |o| outcomes.push(o))).unwrap();
+    assert_eq!((summary.published, summary.restarts, domains.len()), (0,3,4));
+    assert_eq!(summary.by_code.get("contract_breach"), Some(&4));
+    assert!(domains.iter().all(|d| d.incarnation().is_none() && d.0.live.get() == 0));
     assert_exhausted(&outcomes[4..]);
 }

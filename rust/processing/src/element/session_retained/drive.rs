@@ -48,13 +48,20 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
                     if let Some(program) = &mut execution.program {
                         program.cancel();
                     }
+                } else if !error.reason.controller_cancelled() {
+                    if let Some(pending) = &execution.pending { pending.cancellation.fault(); }
                 }
                 return Err(error.reason);
             }
         };
-        execution
-            .accept(completed, decoder, router)
-            .map_err(|rejected| rejected.reason)?;
+        if let Err(rejected) = execution.accept(completed, decoder, router) {
+            // The model abandons this product even for a recoverable caller
+            // error. Its drop must not turn a receipt fault into a free cancel.
+            if !rejected.reason.controller_cancelled() {
+                if let Some(pending) = &execution.pending { pending.cancellation.fault(); }
+            }
+            return Err(rejected.reason);
+        }
     }
     execution.into_witness(limits.chord_metres)
 }

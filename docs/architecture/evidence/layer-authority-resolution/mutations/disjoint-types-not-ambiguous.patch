@@ -1,0 +1,14 @@
+diff --git b/packages/extensions/src/authority/charter.ts a/packages/extensions/src/authority/charter.ts
+index 870433e68d..61809f1bee 100644
+--- b/packages/extensions/src/authority/charter.ts
++++ a/packages/extensions/src/authority/charter.ts
+@@ -95,7 +95,8 @@ function rulesOverlap(a: ScopeClaim, b: ScopeClaim): boolean {
+   if (!targetsOverlap(a.capability.target, b.capability.target)) return false;
+   const aType = a.selector?.ifcType;
+   const bType = b.selector?.ifcType;
+-    const bConstraints = b.selector?.constraints ?? {};
++  if (aType !== undefined && bType !== undefined && !typePatternsOverlap(aType, bType)) return false;
++  const bConstraints = b.selector?.constraints ?? {};
+   for (const [key, value] of Object.entries(a.selector?.constraints ?? {})) {
+     if (key in bConstraints && bConstraints[key] !== value) return false;
+   }

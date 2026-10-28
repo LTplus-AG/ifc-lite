@@ -78,3 +78,53 @@ fn issue_7955_m4_straight_hand_volumes_and_closed_union() {
     assert!(wall.max_snap_metres<=1e-6);
     println!("sdk witness executed: m4_straight_bands");
 }
+
+#[test]
+fn issue_7955_m4_opening_precedes_bands_and_failed_intersection_is_atomic() {
+    use ifc_lite_retained_native::{NativeWorker,NativeReceipt,NativeDomain,block_on};
+    use ifc_lite_processing::element::retained_runtime::*;
+    use ifc_lite_geometry::BoolOp;
+    use std::{rc::Rc,cell::RefCell};
+    let Some(path)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
+        eprintln!("SKIP M4 fault witness: real SDK missing"); return;
+    };
+    struct Observed { inner:NativeWorker, calls:Rc<RefCell<Vec<BoolOp>>> }
+    impl RetainedRuntime for Observed {
+        type Receipt=NativeReceipt;
+        fn domain(&self)->NativeDomain {self.inner.domain()}
+        fn incarnation(&self)->u64 {self.inner.incarnation()}
+    }
+    impl AsyncRetainedExecutor for Observed {
+        async fn invoke(&mut self, call:Invocation<'_,NativeReceipt>,limits:NumericalLimits)->Result<NativeReceipt,RuntimeFault> {
+            if let Invocation::Boolean{operation,..}=&call {
+                self.calls.borrow_mut().push(*operation);
+                if *operation==BoolOp::Intersection && self.calls.borrow().iter().filter(|&&o|o==BoolOp::Intersection).count()==2 {
+                    return Err(RuntimeFault::kernel(7,"M4 injected second Intersection failure"));
+                }
+            }
+            self.inner.invoke(call,limits).await
+        }
+    }
+    let calls=Rc::new(RefCell::new(Vec::new())); let mut results=Vec::new();
+    block_on(run_model(SourceBundle::new(CURVED.as_bytes().to_vec()),
+        &ModelOptions{ids:Some([55,122].into_iter().collect()),..Default::default()},
+        ||NativeWorker::spawn(&path).map(|inner|Observed{inner,calls:calls.clone()}),|o|results.push(o))).unwrap();
+    assert_eq!(results.len(),2);
+    assert!(matches!(results[0],ProductOutcome::Refused{product_id:55,refusal:RetainedProductRefusal::KernelFailure{status:7},..}));
+    shape(&results,122);
+    assert_eq!(*calls.borrow(),[BoolOp::Difference,BoolOp::Intersection,BoolOp::Intersection,BoolOp::Difference]);
+    println!("sdk witness executed: m4_order_atomicity");
+}
+
+#[test]
+fn issue_7955_m4_single_and_thin_collapsed_layers_publish_unsliced() {
+    for text in [STRAIGHT.replace("((#80,#81),'layers')","((#80),'layers')"),
+        STRAIGHT.replace("($,0.1,$)","($,0.001,$)")] {
+        let Some(results)=run(&text,&[27]) else {return;};
+        let product=shape(&results,27); assert_eq!(product.parts.len(),1);
+        assert!(product.parts[0].layer.is_none()); close(measure(product).volume,6.,1e-6);
+        assert!(!product.obligations.0.contains(&ifc_lite_geometry::program::transactions::Requirement::MaterialLayers));
+    }
+    println!("sdk witness executed: m4_unsliced_skips");
+}

@@ -18,6 +18,18 @@ const shape: RetainedShapeProduct = { status: 'published', cuts: 0, consumedPart
   parts: [{ positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0), indices: Uint32Array.of(0, 1, 2),
     worldFromObject: Float64Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1), curved: false }] };
 
+it('#7955 M11-I reports instance candidates while every OBJ occurrence stays baked', () => {
+  const key = '1'.repeat(64);
+  const products = Array.from({ length: 64 }, (_, expressId) => ({ ...shape, expressId, instanceKey: key }));
+  const grouped = retainedArtifacts(engine, products, () => null);
+  const flat = retainedArtifacts(engine, products.map(({ instanceKey: _key, ...p }) => p), () => null);
+  expect(grouped.obj).toBe(flat.obj);
+  expect(grouped.report.products).toHaveLength(64);
+  for (const product of grouped.report.products) expect(product).toHaveProperty('instanceGroup', { templateProductId: 0, key });
+  const below = retainedReport(engine, products.slice(0, 7), () => null);
+  for (const product of below.products) expect(product).not.toHaveProperty('instanceGroup');
+});
+
 it('#7955 validates kernel arguments before touching input or output', async () => {
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', undefined);
   const dir = await mkdtemp(join(tmpdir(), 'retained-fatal-')); dirs.push(dir);

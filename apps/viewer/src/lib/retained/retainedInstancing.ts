@@ -15,7 +15,7 @@ const FLUSH_PRODUCTS = 256;
 export class RetainedInstancing {
   private pending: Published[] = [];
   private products = 0;
-  private rtc = new Float64Array(3);
+  private rtc: Float64Array = new Float64Array(3);
 
   constructor(private readonly encode: Encode, private readonly runId: number,
     private readonly send: (event: RetainedHostResponse, transfer: Transferable[]) => void) {}

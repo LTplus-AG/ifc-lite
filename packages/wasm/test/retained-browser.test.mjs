@@ -21,6 +21,41 @@ const defaultWasm = join(packageDir, 'pkg', 'ifc-lite_bg.wasm');
 const retainedJs = join(packageDir, 'pkg-retained', 'ifc-lite.js');
 const retainedWasm = join(packageDir, 'pkg-retained', 'ifc-lite_bg.wasm');
 
+it('#7955 M11-I actual IFNS encoder verifies rotated RTC pairs and returns rejected groups flat', async (t) => {
+  if (!existsSync(retainedWasm)) { t.skip('retained WASM not built; not boundary evidence'); return; }
+  const wasm = await import(pathToFileURL(retainedJs).href);
+  wasm.initSync(readFileSync(retainedWasm));
+  // Hand-derived XY triangle at a surveyed origin, alternating 90-degree rotations.
+  const input = Array.from({ length: 64 }, (_, i) => {
+    const c = i % 2 ? 0 : 1, s = i % 2 ? 1 : 0;
+    return { expressId: i + 1, ifcType: 'IfcBeam', color: [1, 0, 0, 1],
+      positions: Float32Array.of(0,0,0, c,0,-s, -s,0,-c), normals: Float32Array.of(0,1,0, 0,1,0, 0,1,0),
+      indices: Uint32Array.of(0,1,2), origin: [i*3,0,0],
+      worldFromObject: Float64Array.of(c,s,0,0, -s,c,0,0, 0,0,1,0, 2600000+i*3,1200000,0,1) };
+  });
+  const encode = values => wasm.encodeInstancedShard(values, values.map(() => '1'.repeat(64)), Float64Array.of(2600000,1200000,0));
+  const result = encode(input);
+  assert.equal(result.groupCount, 1);
+  assert.equal(result.instanceCount, 64);
+  assert.equal(result.verificationRejections, 0);
+  assert.equal(result.flatIndices.length, 0);
+  const header = new DataView(result.shard.buffer);
+  assert.equal(header.getUint32(24, true) * header.getUint32(12, true), 3 * 64, 'flat and rendered triangle counts match');
+  const small = encode(input.slice(0, 7));
+  assert.equal(small.shard.length, 0);
+  assert.equal(small.flatIndices.length, 7);
+  const corrupt = input.slice(0, 8).map(m => ({ ...m, positions: m.positions.slice() }));
+  corrupt[3].positions[3] += 0.1;
+  const rejected = encode(corrupt);
+  assert.equal(rejected.verificationRejections, 1, '#3666 sees mismatched actual geometry');
+  assert.equal(rejected.shard.length, 0);
+  assert.equal(rejected.flatIndices.length, 8, 'all failed group members render flat');
+  for (const changes of [{ color: [1,0,0,0.5] }, { geometryClass: 1 }, { texture: {} }, { ifcType: 'IfcSpace' }]) {
+    const values = input.slice(0, 8).map(m => ({ ...m, ...changes }));
+    assert.equal(encode(values).flatIndices.length, 8, 'exact eligibility gates apply');
+  }
+});
+
 function observe() {
   const seen = { workers: [], fetches: [], errors: [] };
   const previous = { Worker: globalThis.Worker, fetch: globalThis.fetch, error: console.error };
@@ -42,6 +77,7 @@ it('the default engine carries no retained executor or retained API', async (t) 
     const engine = await import(pathToFileURL(defaultJs).href);
     engine.initSync(readFileSync(defaultWasm));
     assert.equal('RetainedBrowserExecutor' in engine, false, 'no retained executor export');
+    assert.equal('encodeInstancedShard' in engine, false, 'no retained instancing export');
     const api = new engine.IfcAPI();
     assert.equal(typeof api.retainedSources, 'undefined', 'no retainedSources on the default IfcAPI');
     api.free();

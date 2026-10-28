@@ -20,6 +20,7 @@ interface ViewerGlobals {
   __retainedCancel?: { clickMs: number; before: { meshIds: number[]; published: number }; error?: string };
   __IFC_LITE_LOAD_TRACE__: { latest(): LoadTraceSnapshot | null };
   __retainedLongTasks: number[];
+  __m11I?: { draws: number; shards: { templates: number; instances: number; triangles: number }[] };
 }
 const expected = (model: string) => readFileSync('tests/manifests/cli-retained-coverage.tsv', 'utf8')
   .split(/\r?\n/).map(line => line.split('\t')).filter(row => row[0] === model)
@@ -69,6 +70,47 @@ async function record(name: string, result: unknown) {
 
 test.describe('retained viewer acceptance', () => {
   test.skip(!(engine && existsSync(join(engine, 'engine-manifest.json'))), SKIP);
+
+  test('M11-I: one verified shard renders all 64 mapped occurrences', async ({ page }) => {
+    await page.addInitScript(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals;
+      globals.__m11I = { draws: 0, shards: [] };
+      const proto = (globalThis as unknown as { GPURenderPassEncoder?: { prototype: {
+        drawIndexed(...args: number[]): void;
+      } } }).GPURenderPassEncoder?.prototype;
+      if (!proto) return;
+      const draw = proto.drawIndexed;
+      proto.drawIndexed = function (...args: number[]) {
+        if (args[1] === 64) globals.__m11I!.draws++;
+        return draw.apply(this, args);
+      };
+    });
+    await setup(page, 'retained');
+    await page.evaluate(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals;
+      const seen = new Set<ArrayBuffer>();
+      globals.__ifc_lite_viewer_store__.subscribe(state => {
+        for (const { bytes } of state.pendingInstancedShards ?? []) {
+          if (seen.has(bytes)) continue;
+          seen.add(bytes);
+          const header = new DataView(bytes);
+          globals.__m11I!.shards.push({ templates: header.getUint32(8, true),
+            instances: header.getUint32(12, true), triangles: header.getUint32(24, true) / 3 * header.getUint32(12, true) });
+        }
+      });
+    });
+    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+    await complete(page, true);
+    await expect.poll(() => page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11I!.draws)).toBeGreaterThan(0);
+    const result = await snapshot(page);
+    expect(result.error).toBeNull();
+    expect(result.summary?.published).toBe(64);
+    expect(result.summary?.refused).toEqual([]);
+    const observed = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11I!);
+    expect(observed.shards).toEqual([{ templates: 1, instances: 64, triangles: 768 }]);
+    await record('m11-i-instancing', { ...observed, summary: result.summary });
+    if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing.png') });
+  });
 
   test('positive: current corpus outcomes are absent/listed, with no exact cache lookup', async ({ page }) => {
     const requests: string[] = [];
@@ -150,7 +192,7 @@ test.describe('retained viewer acceptance', () => {
         });
       });
     });
-    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+    await page.locator('#file-input-open').setInputFiles(resolve(WALL));
     await page.waitForFunction(() => Boolean((globalThis as typeof globalThis & ViewerGlobals).__retainedCancel));
     const click = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!);
     expect(click.error).toBeUndefined();

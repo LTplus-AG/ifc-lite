@@ -1811,6 +1811,10 @@ The optional `ifc-lite.retained-report/1` JSON contains engine identity, setting
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
 refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.
+Byte-identical eligible mapped products repeated at least eight times carry
+`instanceGroup: { templateProductId, key }`. This describes sharing candidates;
+the viewer separately verifies each pairing in bounded batches. OBJ always
+bakes every occurrence, regardless of its instance group.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
 

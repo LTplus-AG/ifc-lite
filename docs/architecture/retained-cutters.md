@@ -50,4 +50,4 @@ comparison as report-only `exact_defect`. The summary records all three
 deviations. Every retained-vs-source check remains mandatory, all tolerance
 values remain frozen, and there are no product allowlists. Missing source
 oracles and retained source failures leave the exact gate unchanged. See the
-[comparison contract](../../rust/retained-native/README.md) for the report fields.
+[comparison contract](https://github.com/LTplus-AG/ifc-lite/blob/main/rust/retained-native/README.md) for the report fields.

@@ -53,6 +53,8 @@ export default defineConfig({
       '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
+      // The embed never carries the retained kernel (#7955 M2).
+      '@ifc-lite/viewer-retained': path.resolve(__dirname, '../viewer/src/lib/retained/off.ts'),
     },
   },
   server: {

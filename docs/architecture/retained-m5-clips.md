@@ -69,3 +69,21 @@ The survey case places the rotation and offset on the extrusion itself, so
 it exercises the plane-to-host transform. The generic chain and curved case
 avoid the old fixture's collapsed edges; minimal controller fragments retain
 separate deliberately degenerate regression coverage.
+
+## Operation-limit correction, 2026-10-28
+
+The user's boundary ruling keeps the shared 128-operation limit unchanged.
+M5 §5's `1 + 2k` lineage formula counted constructions incorrectly: native and
+browser count Boolean/Affine operations only. A plain k-clip chain consumes k
+operations; cutter constructions consume zero. Tests cover 128 complete
+controller admissions, real native/browser 70 and 128 publications, and the
+129th operation's atomic `resource_exhausted`, followed by a successful product.
+The existing runtime-origin diagnostic identifies the limit (`retained
+dependency depth` native, `retained operation depth` browser); it is not a
+source-entity refusal. No shared limit or failure taxonomy changes.
+
+Per-step clip timings are observed by an M5 test executor that forwards actual
+calls to the real SDK and associates a halfspace prism's sealed receipt with
+its Difference. It writes a separate per-product `clips`/`clipMs` summary and
+p50/p95, preserving the comparison harness's existing output columns. These
+invocation timings are diagnostic, not an exclusive end-to-end perf verdict.

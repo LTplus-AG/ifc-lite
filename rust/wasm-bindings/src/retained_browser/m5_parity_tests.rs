@@ -3,8 +3,9 @@
 #![cfg(target_arch = "wasm32")]
 use super::*;
 #[wasm_bindgen(inline_js = "export async function m5Reference() { const r=await fetch('/smlib/m5-native-clips.json'); if(!r.ok) throw new Error('M5 native reference missing'); return r.json(); }
+export async function m5LineageReference() { const r=await fetch('/smlib/m5-native-lineage.json'); if(!r.ok) throw new Error('M5 native lineage reference missing'); return r.json(); }
 export function m5Measure(outcome) {
-  if(outcome.status==='refused')return {id:outcome.expressId,code:outcome.code,volume:null};
+  if(outcome.status==='refused')return {id:outcome.expressId,code:outcome.code,volume:null,message:outcome.message};
   let volume=0;
   for(const part of outcome.parts){
     const p=part.positions,t=part.indices,point=i=>[0,1,2].map(k=>p[i*3+k]-p[k]);let six=0;
@@ -17,11 +18,13 @@ export function m5Measure(outcome) {
 extern "C" {
     #[wasm_bindgen(catch, js_name=m5Reference)]
     async fn reference()->Result<JsValue,JsValue>;
+    #[wasm_bindgen(catch, js_name=m5LineageReference)]
+    async fn lineage_reference()->Result<JsValue,JsValue>;
     #[wasm_bindgen(catch, js_name=m5Measure)]
     fn measure(outcome:&JsValue)->Result<JsValue,JsValue>;
 }
 #[derive(serde::Deserialize)]
-struct Row {id:u32,code:String,volume:Option<f64>,#[serde(default)] curved:bool}
+struct Row {id:u32,code:String,volume:Option<f64>,#[serde(default)] curved:bool,message:Option<String>}
 #[derive(serde::Deserialize)]
 struct NativeReference {synthetic:Vec<Row>,adversarial:Row}
 #[derive(serde::Deserialize)]
@@ -59,4 +62,28 @@ async fn retained_browser_m5_clips_hand_oracle_and_native_parity(){
     assert!((a-b).abs()/b.abs()<=1e-9,"non-schema extension native parity");
     assert!(extension.next_outcome().is_undefined());
     console_log!("sdk witness executed: m5_browser_parity");
+}
+
+#[path = "../../../../tests/fixtures/synthetic-retained/m5_chain_source.rs"]
+mod chains;
+#[wasm_bindgen_test(async)]
+async fn retained_browser_m5_lineage_boundary_matches_native(){
+    let reference:serde_json::Value=serde_wasm_bindgen::from_value(lineage_reference().await.unwrap()).unwrap();
+    for expected in reference.as_array().unwrap(){
+        let count=expected["count"].as_u64().unwrap() as usize;
+        let text=chains::chain(count);
+        let mut run=crate::api::IfcAPI::new().retained_model(text.as_bytes(),Some(vec![22,145])).await.unwrap();
+        let outcome=run.next_outcome();
+        let actual:Row=serde_wasm_bindgen::from_value(measure(&outcome).unwrap()).unwrap();
+        assert_eq!(actual.id,22);assert_eq!(actual.code,expected["code"].as_str().unwrap());
+        if count==129 {
+            assert_eq!(actual.code,"resource_exhausted");
+            assert!(actual.message.unwrap().contains("retained operation depth"),"lineage limit origin");
+            assert!(js_sys::Reflect::get(&outcome,&JsValue::from_str("parts")).unwrap().is_undefined(),"no partial publication");
+        }else{assert_eq!(actual.code,"published");}
+        let next:Row=serde_wasm_bindgen::from_value(measure(&run.next_outcome()).unwrap()).unwrap();
+        assert_eq!((next.id,next.code.as_str()),(145,"published"));
+        assert!(run.next_outcome().is_undefined());
+    }
+    console_log!("sdk witness executed: m5_browser_lineage");
 }

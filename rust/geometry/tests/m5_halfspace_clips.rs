@@ -122,3 +122,12 @@ fn issue_7955_reviewed_unsupported_halfspaces_stop_before_cutter() {
         assert_eq!(result.unwrap_err().origin_view(),Some(("boolean_second_operand",Some(entity),cause)));
     }
 }
+
+#[path = "../../../tests/fixtures/synthetic-retained/m5_chain_source.rs"]
+mod chains;
+#[test]
+fn issue_7955_128_clip_controller_admission_is_complete(){
+    let (ops,result)=drive_product(&chains::chain(128),22,None);result.unwrap();
+    assert_eq!(ops.len(),257);
+    assert_eq!(ops.iter().filter(|op|matches!(op.kind(),OperationKind::Boolean{..})).count(),128);
+}

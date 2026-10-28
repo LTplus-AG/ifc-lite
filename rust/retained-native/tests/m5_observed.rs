@@ -91,15 +91,29 @@ fn issue_7955_m5_real_clip_invocations_and_per_step_timings(){
     if let Some(path)=std::env::var_os("IFCLITE_M5_TIMINGS"){std::fs::write(path,serde_json::to_vec_pretty(&summary).unwrap()).unwrap();}
     println!("sdk witness executed: m5_clip_timings");
 }
+#[path = "../../../tests/fixtures/synthetic-retained/m5_chain_source.rs"]
+mod chains;
 #[test]
-fn issue_7955_m5_seventy_clip_lineage_refuses_atomically(){
-    let mut records=String::new();let mut last=11;
-    for i in 0..70 {let next=1000+i;records.push_str(&format!("#{next}=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#{last},#17);\n"));last=next;}
-    let text=FIXTURE.replace("'CSG',(#18)",&format!("'CSG',(#{last})")).replace("ENDSEC;\nEND-ISO",&format!("{records}ENDSEC;\nEND-ISO"));
-    let Some((outcomes,rows))=observed(&text,Some(vec![22,145]),None) else{return};
-    assert_eq!(outcomes.len(),2);println!("70-chain observations: code={}, booleans={}, clips={}",rows[0]["code"],rows[0]["booleans"],rows[0]["clips"]);
-    assert!(matches!(&outcomes[0],ProductOutcome::Refused{refusal:RetainedProductRefusal::ResourceExhausted,..}),"70-chain must refuse atomically: {}",rows[0]["code"]);
-    assert!(matches!(&outcomes[1],ProductOutcome::Published(s) if s.product_id==145));
+fn issue_7955_m5_lineage_boundary_and_atomic_refusal(){
+    let mut reference=Vec::new();
+    for count in [70,128,129] {
+        let Some((outcomes,rows))=observed(&chains::chain(count),Some(vec![22,145]),None) else{return};
+        assert_eq!(outcomes.len(),2);
+        println!("{count}-chain observations: code={}, booleans={}, clips={}",rows[0]["code"],rows[0]["booleans"],rows[0]["clips"]);
+        assert_eq!(rows[0]["booleans"],count);
+        if count<=128 {
+            assert!(matches!(&outcomes[0],ProductOutcome::Published(s) if s.product_id==22),"{count}: {}",rows[0]["code"]);
+        } else {
+            let ProductOutcome::Refused{refusal:RetainedProductRefusal::ResourceExhausted,message,..}=&outcomes[0]
+                else {panic!("129-chain must refuse atomically: {}",rows[0]["code"])};
+            assert!(message.contains("retained dependency depth"),"must identify runtime lineage limit: {message}");
+        }
+        assert!(matches!(&outcomes[1],ProductOutcome::Published(s) if s.product_id==145));
+        reference.push(serde_json::json!({"count":count,"id":22,"code":rows[0]["code"]}));
+    }
+    if let Some(path)=std::env::var_os("IFCLITE_M5_LINEAGE_REFERENCE"){
+        std::fs::write(path,serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
+    }
     println!("sdk witness executed: m5_lineage");
 }
 #[test]

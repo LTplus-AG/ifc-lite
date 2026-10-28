@@ -4,6 +4,88 @@
 
 # Performance diagnosis kit
 
+## C2-6 probe wrapper traversal (#7781)
+
+The shared single-chain wrapper driver passed the local native instruction gate
+against `93cc587c79` on Haus, duplex and ISSUE_129. Geometry counts, ordered mesh
+bits, serialized output and aggregate diagnostics matched exactly. Qualification
+receipts and per-phase comparisons are in the coordinator's `c2-6-build-r1.json`.
+This is a native reconciliation verdict, with no elapsed-time or browser claim.
+
+A first-item probe is not `NestedMaps::FirstChain`, which follows the first mapped
+item after visiting ordinary siblings. Keep probe cardinality, boolean admission,
+absent versus identity transforms and the leaf-inclusive depth bound explicit.
+Layers retain their uncapped boolean chain and unrotated leaf admission. Sharing
+ProductShape selection must also preserve the opening probe's unchecked shape
+type and the rectangular probe's narrower body-only filter.
+
+## C2-5b void rays and frames (#7781)
+
+The shared array ray/triangle helper and first-fit face-normal clustering passed
+the local native instruction gate against main at `f6961be929` on Haus, duplex
+and ISSUE_129. Ordered mesh bits, serialized output, geometry counts and aggregate
+diagnostics matched exactly. This qualifies the reconciliation on those fixtures;
+it makes no elapsed-time or browser worker-pool claim. Source-pinned counts,
+identity witnesses and commands are recorded in `c2-5b-build-r1.json` with the
+coordinator's Rust sweep evidence.
+
+Keep each ray caller's determinant floor and barycentric slack, including the
+inclusive range check's NaN rejection. Normal clustering must preserve first-fit
+order, antiparallel flips, weighted arithmetic and the box classifier's early cap.
+Independent legacy-body comparisons cover these distinctions; a compiled mutation
+of the ray parameter makes the new parity assertions fail. Cohesive frame and
+parity modules fit below the module-size limit without growing the void driver.
+
+## C2-5a void cutter vocabulary (#7781)
+
+The borrowed `Cutter` projections and shared admission helpers passed the local
+native instruction gate against the C2 walk-lane base on Haus, duplex and
+ISSUE_129. Mesh payload bits, serialized output, counts and aggregate geometry
+diagnostics were identical. This qualifies the reconciliation on those fixtures;
+it makes no elapsed-time or browser worker-pool claim. The source-pinned counts,
+identity witnesses and commands are retained in `c2-5a-rebuild-r1.json` with the
+coordinator's Rust sweep evidence.
+
+Preserve each caller's arithmetic when sharing guards: sequential admission and
+engulf stay in f32, while the wider paths subtract mesh extents in f32 before
+widening. Diagonal world bounds widen before adding the f64 origin; local bounds
+omit that origin. Keep the newer execution-owned consumed-host protocol. These
+distinctions, rather than a change of strategy or precision, let the vocabulary
+move without changing output. Frame-changing mesh rebuilds use a crate-private
+helper because `rebuilt_like` retains bounds under an unchanged-extent contract.
+
+## Retained cutter foundation (#7955 CUT-0)
+
+This slice adds conservative bounds and derived cutter construction behind the
+retained feature, with no retained product admission or optimization claim.
+Default exact output and wasm byte identity are separate acceptance checks;
+source-oracle timings are diagnostics, not an end-to-end performance result.
+
+## Symbolic extraction label allocation (#7914, #7779)
+
+Local Callgrind diagnosis of the P2 symbolic extractor on louistrue-pc found
+lower extraction instruction counts than its base on Holter and all three
+controls. The canonical placement walk saves work overall; its matrix cache,
+leaf reads and full-frame composition do not establish the reported wall-time
+regression's cause. Common entity scans dominate Holter's extraction.
+
+Borrowing product and representation labels during the walk removes temporary
+string allocation, including for products with no symbolic representation.
+Emitted primitives still own their labels. This reduces extraction instructions
+on Holter, Haus, duplex and ISSUE_129, preserving each P2 payload byte for byte
+and Holter's base payload. Placement, projection and refusal semantics stay intact.
+
+A registered paired symbolic wall-time cohort on Pop (hash dispatch in both
+arms) was voided by its own host monitor: agent sessions and the T3 server were
+active on the host for most of the run. It is recorded as invalid, not as a
+pass or a fail. The maintainer accepted P2 on 2026-10-27 on the instruction
+evidence: extraction instructions are lower than the base on all four fixtures,
+Holter's payload is byte-identical, and pinned local timing pairs show no
+regression beyond their noise. This is not a measured wall-time qualification.
+Do not replace P2's geometry corrections with approximate identity shortcuts to
+chase a wall-time bound. The source-pinned local diagnosis is
+`p2-holter-overhead-r1.json`.
+
 One place to answer "where does load time go, and what is the biggest lever?"
 for both the **native** Rust pipeline (CLI/server/exporter) and the **WASM**
 viewer path. The two run the *same* Rust code (`process_geometry` ->
@@ -5106,3 +5188,81 @@ Lesson: a parse-only optimisation needs fixtures whose parse phase runs well
 above the timer resolution before a wall-time cohort can say anything; on small
 models the instruction comparison is the meaningful measurement. Numbers and
 the cohort report live in the PR and its evidence, not here.
+
+### C2 remaining structural consumers (#7781)
+
+The Reference-only opening guard, routing-key identity read and RTC Items
+enumeration now share crate-private structural entries in `representation`.
+The native Callgrind comparison on Haus, duplex and ISSUE_129 meets the unchanged
+per-phase instruction ceiling, with identical mesh counts, serialized output,
+diagnostics and ordered mesh fingerprints. This establishes instruction and
+output preservation; wall-clock and browser performance were not measured.
+The source pins and comparisons are recorded in `c2-r1-build-r1.json`.
+
+Lesson: shared structural access must retain the caller's decoding boundary.
+Opening admission checks the list bound before decoding members, routing can
+use its signature memo from an ID alone, and RTC probes raw points before
+decoding an item and stops at the first hit.
+
+### C2 bounded representation admission instruction repair (#7781)
+
+Local Callgrind profiles attributed the admission lane's overhead to repeated
+stop checks, decoded-entity copies, allocation, and moving budget-bearing reply
+envelopes. Reuse flat admitted member vectors, keep cold admission failures out
+of executing controls, batch plain iterative-walk tasks, and carry speculative
+logical debits only on source replies. Inline traversal storage and the ordinary
+unscoped stop check remove overhead without bypassing source cancellation or
+the typed, latched stop path. Acceptance still commits debits; mapped members
+still pay before decode, including retained and cached paths.
+
+The resulting native instruction cohort meets the unchanged per-phase ceiling
+on Haus, duplex, and ISSUE_129 with matching mesh, vertex, and triangle counts.
+This is instruction evidence only; no wall-clock or browser performance claim
+is made. Exact results, source attribution, and validation are recorded in
+`c2-walk-lane-perf-r1.json`. The subsequent owner repair follows main's
+`ExecutionIdentity::same_instance` check for synchronous admission consumption:
+replacing an owner refuses with the existing `WrongOwner` protocol error, while
+reached maintenance on that instance preserves admitted roots. The synchronous
+product driver validates inside the source and publication action arms; this
+avoids a second action dispatch on numerical/transfer steps. The shared execute
+path keeps validation before annotation and texture work. Pending tickets,
+leases, and retained caches keep their existing generation checks. The full
+library and integration suites cover this distinction; the owner repair's
+validation and instruction comparison are in `c2-walk-lane-owner-r1.json`.
+
+Lesson: reducing a plan's allocations in isolation can enlarge every enclosing
+program move or perturb allocator size classes. Whole-plan boxing, inline root
+representation headers, exact small reservations, and a bounded empty-header
+pool all lost in the complete pipeline and were removed. Keep the successful
+plan small and measure the whole driver after each storage change. Unchanged
+parser sources and equal keyword call counts also produced small instruction
+deltas in libc comparisons, so distinguish layout-sensitive comparison costs
+from extra decoding before changing the parser.
+
+### Retained opening cuts (M3-A, #7955)
+
+Retained hosts subtract each cutter in order and keep every intermediate
+tessellation for certified emptiness. Real SDK source-oracle checks and
+native/Node/browser parity pass. Per-cut timings describe the cost of those
+invocations; they do not establish browser worker-pool performance.
+
+Verdict: default exact OBJ goldens and ordered native geometry fingerprints
+remain identical on Haus and ISSUE_129, the default WASM bytes are identical,
+and the default instruction gate stays within its unchanged ceilings. The
+final paired native wall-time cohort is unqualified because ISSUE_129 has
+phases below timer resolution. Haus medians are unchanged; ISSUE_129's geometry
+and total medians are slower within measured spread. An earlier source cohort
+also exceeded the Haus spread limit. Preserve both observations; neither
+establishes a speedup or performance-neutrality claim.
+
+Lesson: a successful chained kernel operation does not prove publication.
+Whole-model parity caught a browser receipt that held a sealed mesh but did
+not expose it through the publication trait. Keep both boundary and model
+checks, and measure the complete worker pool before changing cut grouping,
+bounds pruning or intermediate tessellation.
+
+Feature isolation also applies to data layout. Adding retained-only fields or
+enum variants to default-compiled types changed the default WASM bytes even
+when their operations were unreachable. Gate the state as well as its entry
+points, and qualify fresh base/branch builds at the same source path; preserved
+archive mtimes can otherwise make Cargo reuse the wrong side of a comparison.

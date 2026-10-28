@@ -8,6 +8,7 @@
 //! at existing call sites keeps working unchanged.
 
 use super::NORMALIZE_EPSILON;
+use crate::math::aabb::Aabb3;
 use crate::{Mesh, Point3, Vector3};
 
 /// Build a right-handed orthonormal wall frame `[len, up, depth]` from a
@@ -56,19 +57,8 @@ pub(in crate::router::voids) fn mesh_to_frame(
         normals.push(n.dot(&axes[1]) as f32);
         normals.push(n.dot(&axes[2]) as f32);
     }
-    Mesh {
-        positions,
-        normals,
-        indices: mesh.indices.clone(),
-        rtc_applied: mesh.rtc_applied,
-        origin: mesh.origin,
-        // Frame-transformed cut intermediate — not an instanceable occurrence.
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
-        welded_in_object_frame: false,
-        plane_tags: None,
-    }
+    // A frame-transformed cut intermediate is not an instanceable occurrence.
+    mesh.reframed_like(positions, normals, mesh.indices.clone(), mesh.origin)
 }
 
 /// Axis-aligned bounds of `mesh` expressed in the frame `axes` about `center`.
@@ -77,16 +67,11 @@ pub(in crate::router::voids) fn project_aabb_in_frame(
     axes: &[Vector3<f64>; 3],
     center: Vector3<f64>,
 ) -> Option<(Point3<f64>, Point3<f64>)> {
-    let mut lo = [f64::INFINITY; 3];
-    let mut hi = [f64::NEG_INFINITY; 3];
-    for ch in mesh.positions.chunks_exact(3) {
+    let bounds = Aabb3::from_points(mesh.positions.chunks_exact(3).map(|ch| {
         let p = Vector3::new(ch[0] as f64, ch[1] as f64, ch[2] as f64) - center;
-        for k in 0..3 {
-            let v = p.dot(&axes[k]);
-            lo[k] = lo[k].min(v);
-            hi[k] = hi[k].max(v);
-        }
-    }
+        std::array::from_fn(|k| p.dot(&axes[k]))
+    }));
+    let (lo, hi) = (bounds.min, bounds.max);
     // Validate BOTH bounds: a +inf projection lands only in `hi`, so checking
     // `lo` alone could return a non-finite AABB into the cutter path (#1259).
     (lo.iter().all(|v| v.is_finite()) && hi.iter().all(|v| v.is_finite())).then(|| {

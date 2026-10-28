@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+m9_frames
+m9_boolean
+m9_atomic_refusals
+m9_absent_types
+m9_reference

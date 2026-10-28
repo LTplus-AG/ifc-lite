@@ -42,12 +42,12 @@ export async function preparePeer(failAt) {
   });
   return start;
 }
-export function assertPublished(value, id) {
+export function assertPublished(value, id, ifcType) {
   check(value.status === 'published' && value.expressId === id, `published #${id}: ${JSON.stringify(value)}`);
-  check(value.ifcType === 'IfcBuildingElementProxy', 'canonical IFC type');
+  check(value.ifcType === ifcType, 'canonical IFC type');
   check(value.marker === 'PresentationObligationsUnmet', 'shape-only marker');
   check(JSON.stringify(value.obligationsUnmet) === JSON.stringify([
-    'OpeningClosure', 'MaterialLayers', 'IfcAppearance', 'PersistentFaces',
+    'MaterialLayers', 'IfcAppearance', 'PersistentFaces',
   ]), `remaining obligations: ${JSON.stringify(value.obligationsUnmet)}`);
   check(value.parts.length === 1, 'complete single-part product');
   const part = value.parts[0];

@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/representation/unwrap.rs
++++ b/rust/geometry/src/representation/unwrap.rs
+@@ -148,7 +148,7 @@
+                 }
+                 let mut items = probe_result!(terminal, rep_items(&level.mapped_rep, decoder))?.into_iter();
+                 let next = items.next()?;
+-                if !policy.single_item && items.next().is_some() {
++                if policy.single_item && items.next().is_some() {
+                     return None;
+                 }
+                 Some(next)

@@ -9,6 +9,10 @@ description = "Independent WebAssembly entry points for the IFC diff engine"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Only the separately built ownership regression harness enables this.
+decode-leak-test = []
+
 [dependencies]
 ifc-lite-diff.workspace = true
 serde.workspace = true

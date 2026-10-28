@@ -6,7 +6,7 @@ use crate::program::opening::OpeningBounds;
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::WorldFrame;
 use crate::router::voids::geom::{extract_rotation_columns, rotate_and_normalize, spatial_cluster_count};
-use crate::router::voids::OpeningType;
+use crate::router::voids::CutterKind;
 use crate::{Mesh, Vector3};
 use nalgebra::Matrix4;
 
@@ -53,7 +53,7 @@ impl OpeningReady {
                 // from the first item that has one.
                 let direction = bounds.into_iter().find_map(|(_, _, direction)| direction);
                 let (min, max) = super::decision::world_bounds(&mesh);
-                OpeningReply::Fallback(OpeningType::NonRectangular(mesh, min, max, direction))
+                OpeningReply::Fallback(CutterKind::NonRectangular(mesh, min, max, direction))
             }
             Self::ProbeDirection { value, placement } => {
                 // A zero-length IFCDIRECTION drops only THIS item's direction

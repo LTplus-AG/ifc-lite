@@ -71,7 +71,12 @@ export const idsPanelRu = {
   "idsPanel.validate": "Проверить",
   "idsPanel.modelToValidate": "Модель для проверки",
   "idsPanel.specificationsPassed": "Пройдено спецификаций {passed}/{total}",
-  "idsPanel.checked": "Проверено",
+  "idsPanel.entityResults": "Результаты по сущностям",
+  "idsPanel.unmatchedSpecifications": {
+    one: "{countDisplay} спецификация без применимых сущностей",
+    many: "{countDisplay} спецификаций без применимых сущностей",
+    other: "{countDisplay} спецификации без применимых сущностей",
+  },
   "idsPanel.requirementChecks": "Проверка требований",
   "idsPanel.requirementsPassed": "Выполнено требований {passed}/{total}",
   "idsPanel.noRequirementChecks": "Проверка соответствия требованиям не проводилась",

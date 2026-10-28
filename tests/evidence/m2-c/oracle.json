@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/hooks/ingest/geometryEventSource.ts",
+  "mutation": "tests/evidence/m2-c/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/ingest/geometryEventSource.test.ts",
+  "why": "A retained load that keeps the exact cache plan must fail the loader-seam witness."
+}

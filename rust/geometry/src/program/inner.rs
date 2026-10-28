@@ -358,7 +358,7 @@ enum Output {
     Layers(Option<crate::SubMeshCollection>),
 }
 
-fn program_error(error: ProgramError) -> Error {
+pub(crate) fn program_error(error: ProgramError) -> Error {
     Error::geometry(format!("geometry program protocol: {error:?}"))
 }
 

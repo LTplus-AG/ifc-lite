@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/revert-oracle-discover.mjs",
+  "mutation": "tests/evidence/ci-deconflict/behaviour.oracle.patch",
+  "test": "scripts/revert-oracle-discover.test.mjs",
+  "why": "Losing added-file discovery must fail the multi-slice and validation witnesses."
+}

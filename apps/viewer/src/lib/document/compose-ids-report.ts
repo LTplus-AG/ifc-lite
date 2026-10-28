@@ -152,7 +152,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary, t), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary, t), summaryWidth, 9, false)];
   const notChecked = block.benchmarks ? notCheckedIdsSpecifications(block) : 0;
   if (notChecked > 0) {
-    const label = `${t('manualValidation.verdict.unanswered')}: ${t('idsPanel.specifications', { count: notChecked, countDisplay: fmt(t, notChecked) })}`;
+    const label = t('idsPanel.unmatchedSpecifications', { count: notChecked, countDisplay: fmt(t, notChecked) });
     summaryLines.push(...(wrap ? wrap(label, summaryWidth, 9, false) : [cursor.truncate(label, summaryWidth, 9, false)]));
   }
   const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;

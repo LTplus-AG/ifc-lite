@@ -15,7 +15,7 @@
 //! Primitive coverage matches the wasm pipeline that ships to production:
 //!
 //! - `IfcPolyline`, `IfcIndexedPolyCurve` → [`SymbolicPolyline`].
-//! - `IfcCircle` → [`SymbolicCircle`] (full circle).
+//! - `IfcCircle` → [`SymbolicCircle`] for XY similarities, otherwise a sampled [`SymbolicPolyline`].
 //! - `IfcEllipse` → [`SymbolicPolyline`] (64-segment tessellation).
 //! - `IfcTrimmedCurve` on `IfcCircle` → [`SymbolicPolyline`] (arc with
 //!   `PLANEANGLEUNIT` scaling, sense agreement, wrap-around). Near-
@@ -35,11 +35,11 @@
 //!
 //! Coordinate handling matches the wasm pipeline:
 //!
-//! - Per-product `ObjectPlacement` is resolved through the
-//!   `IfcLocalPlacement` chain; symbolic uses a 2D
-//!   translation-plus-rotation accumulation that intentionally diverges
-//!   from the 3D geometry router so floor-plan annotations aren't
-//!   distorted by parent rotations.
+//! - Per-product `ObjectPlacement` is resolved through the shared 3D chain
+//!   (`ifc_lite_geometry::placement::resolve_chain`: `IfcLocalPlacement`,
+//!   `IfcLinearPlacement` and `IfcGridPlacement`, no depth cap, memoised on
+//!   the decoder) and projected to XY. A symbol therefore lands where the mesh
+//!   of the same product does; under a tilted parent it is foreshortened.
 //! - Per-representation `ContextOfItems.WorldCoordinateSystem` is
 //!   composed in when present (Plan reps occasionally use a different
 //!   WCS than Body).
@@ -81,14 +81,16 @@ pub use provenance::SymbolicDataWithProvenance;
 mod grid;
 mod item_walk;
 mod items;
-mod output_cap;
-mod output_cap_types;
-mod output_cap_validate;
 #[cfg(test)]
 mod items_cycle_tests;
+mod output_cap;
 #[cfg(test)]
 mod output_cap_tests;
+mod output_cap_types;
+mod output_cap_validate;
 mod primitives;
+#[cfg(test)]
+mod projected_conic_tests;
 mod rebase;
 mod text;
 mod transform;
@@ -102,7 +104,7 @@ pub use primitives::{
 use color::build_styled_item_index;
 use grid::extract_grid;
 use item_walk::extract_symbolic_item;
-use transform::{resolve_object_placement, resolve_representation_transform};
+use transform::{compose_transforms, resolve_object_placement};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Top-level extraction. Mirror of the wasm `parse_symbolic_representations`
@@ -185,8 +187,7 @@ fn extract_symbolic_data_into_frame<T>(
     content: &T,
     frame: Option<crate::MeshFrame>,
     out: &mut SymbolicAccumulator,
-)
-where
+) where
     T: AsRef<[u8]> + ?Sized,
 {
     if out.is_exhausted() { return; }
@@ -269,7 +270,10 @@ where
             continue;
         };
 
-        let ifc_type_name = entity.ifc_type.name().to_string();
+        // Borrow classification labels through the walk; emitted primitives
+        // own their strings. Most products have no symbolic representation
+        // and should not allocate labels only to discard them (#7914).
+        let ifc_type_name = entity.ifc_type.name();
 
         let single_representation = representations.len() == 1;
         for shape_rep in representations {
@@ -280,22 +284,22 @@ where
             let rep_identifier = shape_rep
                 .get(1)
                 .and_then(|a| a.as_string())
-                .unwrap_or("")
-                .to_string();
+                .unwrap_or("");
             if !matches!(
-                rep_identifier.as_str(),
+                rep_identifier,
                 "Plan" | "Annotation" | "FootPrint" | "Axis"
             ) {
                 continue;
             }
 
-            // ObjectPlacement transform for this entity (translations
-            // accumulated directly, rotations accumulated to orient symbols).
+            // Retain the shared 3D ObjectPlacement frame until plan projection.
             let placement_transform = resolve_object_placement(&entity, &mut decoder, unit_scale);
 
-            let combined_transform = resolve_representation_transform(
-                &shape_rep, placement_transform, &mut decoder, unit_scale,
-            );
+            let context_transform = transform::resolve_context_transform(&shape_rep, &mut decoder, unit_scale);
+            // A small 3D WCS rotation can couple a large local Z into plan
+            // XY. Compose before projection without an approximate identity
+            // shortcut, even when its XY block appears unchanged (#7779).
+            let combined_transform = compose_transforms(&context_transform, &placement_transform);
 
             let Some(items_attr) = shape_rep.get(3) else {
                 continue;
@@ -312,8 +316,8 @@ where
                     &item,
                     &mut decoder,
                     id,
-                    &ifc_type_name,
-                    &rep_identifier,
+                    ifc_type_name,
+                    rep_identifier,
                     unit_scale,
                     &combined_transform,
                     rebase,

@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/program/transactions/type_origin.rs
++++ b/rust/geometry/src/program/transactions/type_origin.rs
+@@ -23,7 +23,7 @@
+         crate::resource::charge(crate::resource::Cost {
+             work: self.inner.values.len() as u64, ..Default::default()
+         }).map_err(TransactionError::stopped)?.retain();
+-        if { let _ = (type_product, maps); true } {
++        if self.type_origin_placed(type_product, maps) {
+             self.inner.remaining.retain(|requirement| !matches!(requirement,
+                 logical::RetainedRequirement::ProductPlacement | logical::RetainedRequirement::OpeningClosure));
+         }

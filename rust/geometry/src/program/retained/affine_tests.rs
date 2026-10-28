@@ -74,7 +74,7 @@ fn h2b_affine_copy_budget_stop_is_typed_and_sticky_at_common_admission() {
     let mut program = RetainedProgram::type_map(map, None, contract());
     let mut constructions = 0;
     while let Some(ticket) = program.request().unwrap() {
-        let ready = matches!(&program.inner.control,
+        let ready = matches!(&program.geometry_ref().control,
             Control::Mapping(control) if control.retained_ready());
         if constructions > 0 && ready {
             let account = crate::resource::ExecutionAccount::new(
@@ -113,8 +113,8 @@ fn h2b_nested_nonuniform_affines_preserve_order_and_cached_inner_definition() {
     let mut program = RetainedProgram::product_submeshes(&entity, true, None, contract());
     let mut operations = Vec::new();
     while let Some(ticket) = program.request().unwrap() {
-        if matches!(&program.inner.control, Control::Product(c) if c.retained_ready()) {
-            assert_eq!(program.inner.execute(ticket.0, &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
+        if matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()) {
+            assert_eq!(program.geometry_mut().execute(ticket.geometry_request(), &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
         }
         let (reply, reached) = program.admit(ticket, &router, &mut decoder).unwrap();
         operations.extend(reached);
@@ -147,7 +147,9 @@ fn s2_r2_reached_singular_map_with_nan_determinant_refuses_whole_plan() {
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(&bytes, &mut decoder);
     let target = decoder.decode_by_id(82).unwrap();
-    let matrix = router.parse_cartesian_transformation_operator(&target, &mut decoder).unwrap();
+    let matrix =
+        crate::router::transforms::operator::parse_transformation_operator(&target, &mut decoder)
+            .unwrap();
     assert!(matrix.iter().all(|value| value.is_finite()));
     assert_eq!([matrix[(0, 0)], matrix[(1, 1)], matrix[(2, 2)]], [0., 1e200, 1e200]);
     assert!(matrix.fixed_view::<3, 3>(0, 0).determinant().is_nan());

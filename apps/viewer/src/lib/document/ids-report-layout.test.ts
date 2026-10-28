@@ -339,14 +339,14 @@ it('prints unmatched IDS specifications beside the PDF benchmark (#8065)', () =>
   ids.benchmarks = true;
   ids.summary = { checked: 0, passed: 0, failed: 0, passRate: 0 };
   ids.checks = ids.checks.map((check) => ({ ...check, checked: 0, passed: 0, failed: 0, passRate: 0, rules: [] }));
-  assert.ok(compose(ids).texts.some((item) => item.text === 'Not checked: 1 specification'));
+  assert.ok(compose(ids).texts.some((item) => item.text === '1 specification matched no entities'));
   ids.checks[0].error = 'Evaluation failed';
-  assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
+  assert.ok(!compose(ids).texts.some((item) => item.text.endsWith('matched no entities')));
   assert.ok(compose(ids).texts.some((item) => item.text.includes('Evaluation failed')));
   delete ids.checks[0].error;
   ids.sourceKind = 'rules';
-  assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
+  assert.ok(!compose(ids).texts.some((item) => item.text.endsWith('matched no entities')));
   delete ids.sourceKind;
   ids.benchmarks = false;
-  assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
+  assert.ok(!compose(ids).texts.some((item) => item.text.endsWith('matched no entities')));
 });

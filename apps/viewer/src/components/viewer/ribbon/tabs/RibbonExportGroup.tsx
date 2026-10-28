@@ -40,6 +40,7 @@ interface RibbonExportButtonProps extends ResolvedExportCommand {
 function RibbonExportButton({
   command,
   disabled,
+  disabledReasonKey,
   icons,
   onExportCsv,
   onRunAction,
@@ -51,7 +52,7 @@ function RibbonExportButton({
     contentLabel: t(command.labelKey),
     contentSource: 'export' as const,
     contentId: command.id,
-    tooltip: t(command.tooltipKey),
+    tooltip: t(disabledReasonKey ?? command.tooltipKey),
     disabled,
     'data-export-command': command.id,
   };

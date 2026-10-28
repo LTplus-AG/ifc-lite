@@ -97,10 +97,10 @@ fn issue_7955_b2a_zero_origin_storage_keeps_original_stop_and_unconsumed_reply()
     assert_eq!(crate::resource::check_current(), Ok(()));
     let rejected = program.accept(reply, &router).err().unwrap();
     assert_eq!(rejected.error, RetainedProgramError::Stopped(expected));
-    assert_eq!(rejected.reply.0.request, ticket.0);
+    assert_eq!(rejected.reply.geometry_reply().request, ticket.geometry_request());
     let rejected = program.accept(rejected.reply, &router).err().unwrap();
     assert_eq!(rejected.error, RetainedProgramError::Stopped(expected));
-    assert_eq!(program.inner.pending, Some((ticket.0, true)));
+    assert_eq!(program.geometry_ref().pending, Some((ticket.geometry_request(), true)));
     drop(rejected.reply);
     let other = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
     other.cancel();

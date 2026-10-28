@@ -57,7 +57,9 @@ test('GLB imports preserve valid triangles that a bounding-box frame would colla
   captureDiagnostics(page, errors);
   await page.goto('/');
   await load(page, { name: 'precision-invariant-6515.glb', mimeType: 'model/gltf-binary', buffer: widePrecisionGlb() }, 1, gpu);
-  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_scene_owner__(19).flat?.reduce((count, part) => count + part.triangles, 0))).toBe(2);
+  // Model settlement can precede the viewport debug hooks; keep polling until
+  // the real owner exists and contains both triangles (#6515).
+  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_scene_owner__?.(19).flat?.reduce((count, part) => count + part.triangles, 0))).toBe(2);
   const owner = await page.evaluate(() => globalThis.__ifc_lite_scene_owner__(19));
   expect(owner.corners).toHaveLength(18);
   expect(owner.corners[3] - owner.corners[0], 'the uploaded owner retains its 1 µm edge').toBeCloseTo(Math.fround(0.000001), 9);

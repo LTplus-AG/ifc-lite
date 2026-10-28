@@ -8,7 +8,8 @@
  * The loader marks the in-flight work stale and aborts its geometry stream.
  * A primary load returns to an empty viewer; a federated add leaves the
  * already-loaded models in place. Neither path reports a user cancel as an
- * error.
+ * error. A load that installs `interrupt` (a retained-kernel run, #7955 M2)
+ * is ended instead: it finishes with what it already published.
  *
  * The canceller is published through the store's `activeLoadCanceller`,
  * which the status-bar Cancel and the in-viewport loading card both read
@@ -26,12 +27,15 @@ import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/ac
 interface LoadActivity {
   subject: string;
   result: () => { outcome: 'completed' | 'failed' | 'cancelled'; detail?: string };
+  /** While set, Cancel calls this instead of discarding the load. */
+  interrupt?: () => void;
 }
 
 /** Per-load publication and error evidence; shared UI flags cannot settle a file. */
 export function createModelLoadActivity(subject: string) {
   return {
     subject, published: false, cancelled: false, error: undefined as string | undefined,
+    interrupt: undefined as (() => void) | undefined,
     fail(message: string): string {
       this.error = message;
       return message;
@@ -94,6 +98,8 @@ export function installModelLoadCanceller(
     // A retained reference to a load that has since ended or been replaced
     // must not supersede, or reset the viewer under, the load that owns the slot.
     if (released) return;
+    // A retained run keeps its published products; its stream then completes the load.
+    if (activity?.interrupt) { activity.interrupt(); return; }
     const ownsUi = store.getState().activeLoadCanceller === cancel;
     // Keep the native cancellation counter for other load observers.
     store.getState().noteLoadCancelled();

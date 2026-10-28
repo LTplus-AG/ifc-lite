@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
@@ -81,5 +82,24 @@ describe('buildMergedGLB — nothing to draw', () => {
     assert.deepEqual(json.meshes, []);
     assert.deepEqual(json.nodes, []);
     assert.deepEqual(json.scenes[0].nodes, []);
+  });
+});
+
+describe('buildMergedGLB: node translation for the Exact globe placement', () => {
+  // One opaque mesh with an origin and one blended mesh, so both primitives and the origin fold are covered.
+  const meshes = () => [
+    { expressId: 1, positions: new Float32Array([0, 0, 0, 4, 0, 0, 0, 3, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]), color: [0.8, 0.2, 0.1, 1], origin: [1500, 2, -700] },
+    { expressId: 2, positions: new Float32Array([0, 0, 0, 0, 2, 0, 0, 0, -5]), normals: new Float32Array([1, 0, 0, 1, 0, 0, 1, 0, 0]), indices: new Uint32Array([0, 1, 2]), color: [0.3, 0.6, 0.9, 0.4] },
+  ] as unknown as import('@ifc-lite/geometry').MeshData[];
+
+  it('without a translation the bytes are the ones main built before Exact existed (Anchor placement)', () => {
+    // SHA-256 of main's (fc3eaafbe0) buildMergedGLB for these meshes, computed from that commit's cesium-glb.ts.
+    const digest = createHash('sha256').update(buildMergedGLB(meshes())).digest('hex');
+    assert.equal(digest, '371e44bd4fc552e1db00c0b0ce7d038d603f222847d4c1aa7899e494c10fcd25');
+  });
+
+  it('a translation travels as the node translation, in full double precision', () => {
+    const { json } = parseGlb(buildMergedGLB(meshes(), [3000.125, -1000.0625, 0.5]));
+    assert.deepEqual(json.nodes, [{ mesh: 0, translation: [3000.125, -1000.0625, 0.5] }]);
   });
 });

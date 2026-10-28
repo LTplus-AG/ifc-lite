@@ -393,15 +393,19 @@ let world = resolve_chain(&placement, &mut decoder)?;
 let world = resolve_object_placement(&product, &mut decoder)?;
 ```
 
-`resolve_chain` is the placement walk of the router and the 2D profile
-extractor. Analytic export, appearance, alignment sampling and map-normalization
-preflight use the same iterative walk with a `ChainPolicy`. Symbolic extraction
-still carries its own placement walk until the P2 migration (#7779).
-Nothing in the chain is defaulted: a cyclic chain, a `$`
+`resolve_chain` is the placement walk of the router, the 2D profile
+extractor and symbolic extraction. Analytic export, appearance, alignment
+sampling and map-normalization preflight use the same iterative walk with a
+`ChainPolicy`. Nothing in the chain is defaulted: a cyclic chain, a `$`
 `RelativePlacement`, a record that is not a placement (as `PlacementRelTo` or as
 `RelativePlacement`) and a linear or grid frame that cannot be sampled are each
 refused and counted (`EntityDecoder::refused_records`), so the element is lost
-visibly instead of drawn at its parent's origin. A 2D `RelativePlacement` is
+visibly instead of drawn at its parent's origin. Symbolic extraction is the one
+exception: it drops symbols only for admission refusals (malformed point,
+direction or real input and missing mandatory attributes, see
+`PlacementError::is_admission_refusal`) and keeps its established unresolved
+policy for dangling references, wrong record types and cycles, which place the
+symbol at the origin with unknown elevation. A 2D `RelativePlacement` is
 honoured. An absent, `$` or `*` `ObjectPlacement` remains identity ("genuinely
 missing"); a present value of the wrong kind is refused. An authored linear
 `CartesianPosition` is authoritative: an unreadable authored frame does not
@@ -440,6 +444,20 @@ admission shares the renderer's schema-dependent position-slot reader: at least
 one RelativePlacement or CartesianPosition must exist in its declared slot,
 with the required placement type. Cartesian frames use the typed Axis2 reader. Consumer-specific
 linear checks run on the returned new links; export aborts if any fails.
+
+Symbolic extraction retains the full 3D product and conic frames through
+composition, then projects to XY. Opposing product and conic tilts can cancel;
+projecting each input separately loses that geometry. The length scale applies
+to the composed product translation once. Circles keep their exact
+circle primitive under similarities. Under a foreshortening projection they
+use the bounded sampled-polyline representation already used for ellipses,
+including an edge-on circle whose projection is a line. Trimmed circular
+arcs likewise transform sampled points rather than multiplying a scalar radius.
+Polyline, indexed-curve and fill vertices use the same full frame, including
+local Z and the representative vertex elevation. A projected arc becomes a
+chord only if it has no interior reversal along that chord; coincident endpoints
+can still enclose a visible segment. Text baselines stay unit length after
+projection, independently of the scalar text-height convention.
 
 ### Large Coordinate Handling
 

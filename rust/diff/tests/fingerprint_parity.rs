@@ -131,7 +131,7 @@ fn parse_input(value: &Value) -> DataFingerprintInput {
                 sets.iter()
                     .map(|set| PropertySetInput {
                         name: opt_string(set, "name").unwrap_or_default(),
-                        properties: entries(set, "properties"),
+                        properties: entries(set, "properties").into(),
                     })
                     .collect()
             })
@@ -143,7 +143,7 @@ fn parse_input(value: &Value) -> DataFingerprintInput {
                 sets.iter()
                     .map(|set| QuantitySetInput {
                         name: opt_string(set, "name").unwrap_or_default(),
-                        quantities: entries(set, "quantities"),
+                        quantities: entries(set, "quantities").into(),
                     })
                     .collect()
             })

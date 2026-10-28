@@ -99,6 +99,9 @@ export function IDSPanelResults({
   if (!report || !summary) return null;
   const isRules = report.source.kind === 'rules';
 
+  const unmatchedSpecifications = isRules ? 0
+    : report.specificationResults.filter((result) => isUnmatchedSpecification(result.applicableCount, result.error)).length;
+
   const specScope = isolationScope === 'spec';
   const noActiveSpec = specScope && !activeSpecificationId;
   const failedLabel = failedActive ? t('idsPanel.showAllFailed') : t(specScope ? 'idsPanel.isolateFailedSpec' : 'idsPanel.isolateFailedIds');
@@ -152,14 +155,19 @@ export function IDSPanelResults({
             })}
           </span>
         </div>
+        {/* Name vacuous passes next to the headline so N/M does not read as compliance (#8204). */}
+        {unmatchedSpecifications > 0 && <p className="-mt-1 mb-2 text-xs text-muted-foreground">
+          {t('idsPanel.unmatchedSpecifications', {
+            count: unmatchedSpecifications, countDisplay: formatLocaleNumber(locale, unmatchedSpecifications),
+          })}
+        </p>}
         {!isRules && <IDSCheckSummary report={report} />}
         {!isRules && <div className="text-xs font-medium">{t('idsPanel.entitySpecificationResults')}</div>}
-        <ValidationBenchmark summary={summary} name={validationSourceName(report)}
-          notCheckedSpecifications={isRules ? 0 : report.specificationResults.filter((result) => isUnmatchedSpecification(result.applicableCount, result.error)).length} />
+        <ValidationBenchmark summary={summary} name={validationSourceName(report)} />
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-background rounded p-2">
             <div className="font-medium">{formatLocaleNumber(locale, report.summary.totalEntitiesChecked)}</div>
-            <div className="text-muted-foreground">{t('idsPanel.checked')}</div>
+            <div className="text-muted-foreground">{t('idsPanel.entityResults')}</div>
           </div>
           <div className="bg-background rounded p-2">
             <div className="font-medium text-green-600">{formatLocaleNumber(locale, report.summary.totalEntitiesPassed)}</div>

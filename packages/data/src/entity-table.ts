@@ -19,6 +19,8 @@ function normalizeIfcUpperCase(upper: string): string {
 
 export interface EntityTable {
   readonly count: number;
+  /** Bumped by every {@link setTypeOverride}, so a cache keyed on class can tell a retype happened. Optional. */
+  readonly typeRevision?: number;
 
   expressId: Uint32Array;
   typeEnum: Uint16Array;
@@ -266,6 +268,7 @@ export function entityTableFromColumns(
   // class name. Left empty unless the host sets one; the original columnar
   // type is never modified.
   const typeOverrides = new Map<number, string>();
+  let typeRevision = 0;
 
   // GlobalId → expressId for BCF integration. Only populated for entities
   // that actually have a non-empty GlobalId string.
@@ -279,6 +282,7 @@ export function entityTableFromColumns(
 
   return {
     count,
+    get typeRevision() { return typeRevision; },
     expressId,
     typeEnum,
     globalId,
@@ -352,6 +356,7 @@ export function entityTableFromColumns(
     },
 
     setTypeOverride: (id, typeName) => {
+      typeRevision++;
       if (typeName === null) typeOverrides.delete(id);
       // Canonicalise to PascalCase on the way in: callers (a UI "change
       // class" action) hand this a raw UPPERCASE IFC class token, but

@@ -67,6 +67,7 @@ pub(super) fn capture(
             source_revision: contract.source_revision,
             source_id: item.id,
         },
+        bounds: payload.evaluation_bounds,
         placements: Vec::new(),
         presentation: Vec::new(),
         product_placed: false,
@@ -79,7 +80,7 @@ pub(super) fn capture(
         contract,
         length_unit_scale: scale,
     };
-    Ok(RetainedPlanOperation {
+    Ok(RetainedPlanOperation { #[cfg(any(test, feature = "retained-runtime"))] opening: None,
         value,
         kind: RetainedOperationKind::Construction(recipe),
     })

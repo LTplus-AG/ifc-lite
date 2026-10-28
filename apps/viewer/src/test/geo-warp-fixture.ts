@@ -11,6 +11,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import PROJ_ORACLE from '../lib/geo/__fixtures__/proj-oracle.json' with { type: 'json' };
 import type { EnuFrame } from '../lib/geo/geo-ecef.js';
+import { createGeoMapping, type GeoMapping, type GeoWarpOrigin } from '../lib/geo/geo-warp.js';
 
 export type WarpCase = (typeof PROJ_ORACLE.warp)[number];
 
@@ -61,3 +62,19 @@ export function ecefOf(frame: EnuFrame, enu: ArrayLike<number>): number[] {
 }
 
 export const dist = (a: ArrayLike<number>, b: ArrayLike<number>) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/** The anchor exactly as PROJ placed it, as `computeCesiumModelOrigin` returns it for `rigidLine`. */
+export function rigidOrigin(c: WarpCase): GeoWarpOrigin {
+  return {
+    longitude: c.anchor.lon, latitude: c.anchor.lat, height: c.anchor.h, ifcOriginHeight: c.anchor.H,
+    easting: c.anchor.E, northing: c.anchor.N, scaleX: 1, scaleY: 1, scaleZ: 1,
+    combinedScaleFactor: 1, gridSource: 'rigidOperation',
+  };
+}
+
+/** `rigidLine` through the exact mapping, with the oracle's geoid plane. */
+export function rigidMapping(c: WarpCase): GeoMapping {
+  const m = createGeoMapping({ ...rigidLine(c), projDef: c.proj4, origin: rigidOrigin(c), geoid: geoidPlane(c.anchor) });
+  if (!m) throw new Error(`no mapping for ${c.case}`);
+  return m;
+}

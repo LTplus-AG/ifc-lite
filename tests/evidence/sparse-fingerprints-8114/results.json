@@ -1,0 +1,70 @@
+{
+  "source": "3f48fabad05feb9a6bf395027a3819cb2d93ae6a",
+  "productionHead": "beafb3d2698a9fd3e86ab100531aaf3f509f8eb3",
+  "host": "pop-os",
+  "request": "auto-16ec6177b38942c6ade91824162bd577",
+  "job": "7efc2a2a-9234-4732-afb2-f97ce5173cba",
+  "commands": [
+    "cargo test -p ifc-lite-diff",
+    "node --experimental-strip-types --test packages/wasm/test/diff-parity.test.mjs"
+  ],
+  "arms": {
+    "baseline": {
+      "rust": {
+        "exit": 0,
+        "passed": 121,
+        "failed": 0,
+        "ignored": 0
+      },
+      "node": {
+        "exit": 0,
+        "tests": 31,
+        "pass": 31,
+        "fail": 0,
+        "skipped": 0
+      },
+      "logSha256": {
+        "rust": "ed01ac1d6a097b39892bda4532edf06c8daf9588c95cd63f6e058e27302810e3",
+        "node": "e484bbb4570a475538338a19c2d38c881bdfa0a2948ff520d58ed1d5ee7ebea4"
+      }
+    },
+    "mutated": {
+      "rust": {
+        "exit": 101,
+        "passed": 57,
+        "failed": 10,
+        "ignored": 0
+      },
+      "node": {
+        "exit": 1,
+        "tests": 31,
+        "pass": 22,
+        "fail": 9,
+        "skipped": 0
+      },
+      "logSha256": {
+        "rust": "5d7fbe28e6f8ae9ed171a560ed234947f3bc1888ee8258679955ea137032f440",
+        "node": "c6c7179d76bdc1ac022ffc34fe94f7fc3690e188f6e1b1787557af5f40c21fcb"
+      }
+    },
+    "restored": {
+      "rust": {
+        "exit": 0,
+        "passed": 121,
+        "failed": 0,
+        "ignored": 0
+      },
+      "node": {
+        "exit": 0,
+        "tests": 31,
+        "pass": 31,
+        "fail": 0,
+        "skipped": 0
+      },
+      "logSha256": {
+        "rust": "f92c7bceb422222000e4ffcca80427768d32993497db64d2233fbf378e8a65de",
+        "node": "b128f5103c47cc1f1f77618893ab0528ce6355b0f916a6f696c75ed31c3584e4"
+      }
+    }
+  }
+}

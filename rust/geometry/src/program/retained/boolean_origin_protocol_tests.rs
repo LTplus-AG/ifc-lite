@@ -25,15 +25,15 @@ fn issue_7955_b2b_foreign_reply_rejection_preserves_source_error_and_valid_conti
                     let recorded = handle.origin();
                     let rejected = program.accept(reply, &foreign).err().unwrap();
                     assert_eq!(rejected.error, RetainedProgramError::WrongOwner);
-                    assert_eq!(rejected.reply.0.request, ticket.0);
-                    assert_eq!(program.inner.pending, Some((ticket.0, true)));
+                    assert_eq!(rejected.reply.geometry_reply().request, ticket.geometry_request());
+                    assert_eq!(program.geometry_ref().pending, Some((ticket.geometry_request(), true)));
                     if bad {
                         assert!(Arc::ptr_eq(recorded.as_ref().unwrap(), &handle.origin().unwrap()));
                     } else {
                         assert!(handle.origin().is_none(), "caller rejection has no source-origin authority");
                     }
                     program.accept(rejected.reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
-                    assert!(program.inner.pending.is_none(), "legitimate packet is consumed once");
+                    assert!(program.geometry_ref().pending.is_none(), "legitimate packet is consumed once");
                     retried = true;
                 } else {
                     program.accept(reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));

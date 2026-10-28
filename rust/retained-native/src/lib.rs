@@ -13,3 +13,6 @@ pub use ifc_lite_processing::element::retained_runtime::{
 };
 pub use model::{block_on, run_model_native, run_model_native_timed, NativeModelDriver};
 pub use native_types::{NativeDomain, NativeReceipt, NativeWorker};
+
+/// Source-only validation utilities; never used by product execution.
+pub mod oracle;

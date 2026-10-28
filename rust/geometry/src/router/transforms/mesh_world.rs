@@ -124,7 +124,7 @@ impl GeometryRouter {
     /// The captured RTC frame that world placement and its predicates use.
     #[inline]
     pub(crate) fn world_frame(&self) -> WorldFrame {
-        WorldFrame { rtc_offset: self.rtc_offset }
+        WorldFrame { rtc_offset: self.rtc_offset() }
     }
 
     #[cfg(test)]

@@ -1,0 +1,29 @@
+--- a/rust/geometry/src/representation/walk/engine.rs
++++ b/rust/geometry/src/representation/walk/engine.rs
+@@ -131,7 +131,7 @@
+                 shape_rep: None,
+                 path: &run.path,
+             };
+-            let _ = (item, why, &at);
++            run.visitor.refused(item, why, &at);
+             if bail {
+                 Flow::Stop
+             } else {
+@@ -192,7 +192,7 @@
+                     path: &run.path[..last],
+                 };
+                 let terminal = matches!(why, WalkRefusal::Budget { .. });
+-                let _ = (item, why, &at);
++                run.visitor.refused(item, why, &at);
+                 if bail || terminal {
+                     return Flow::Stop;
+                 }
+@@ -258,7 +258,7 @@
+                 shape_rep: Some(rep),
+                 path: &run.path,
+             };
+-            let _ = (rep, why, &at);
++            run.visitor.refused(rep, why, &at);
+             return Ok(None);
+         }
+         Ok(Some(decoder.resolve_ref_list(list)?))

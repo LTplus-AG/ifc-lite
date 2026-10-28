@@ -19,6 +19,7 @@ import type { IfcxLayer } from './layer-stack.js';
 import { LayerStack } from './layer-stack.js';
 import { PathIndex, parsePath } from './path-resolver.js';
 import { applyTombstones } from './tombstones.js';
+import { inheritsField } from './definitions.js';
 
 /**
  * Options for federated composition.
@@ -382,13 +383,7 @@ function composeNode(
   // Cycle detection
   if (visiting.has(path)) {
     // Return a stub to break the cycle
-    const stub: ComposedNodeWithSources = {
-      path,
-      attributes: new Map(),
-      children: new Map(),
-      attributeSources: new Map(),
-      contributingLayers: new Set(),
-    };
+    const stub: ComposedNodeWithSources = { path, attributes: new Map(), children: new Map(), attributeSources: new Map(), contributingLayers: new Set() };
     composed.set(path, stub);
     return stub;
   }
@@ -402,6 +397,7 @@ function composeNode(
     children: new Map(),
     attributeSources: new Map(),
     contributingLayers: new Set(pre?.definedInLayers || []),
+    ...inheritsField(pre?.inherits, (p) => pathIndex.resolvePath(p)),
   };
 
   if (pre) {

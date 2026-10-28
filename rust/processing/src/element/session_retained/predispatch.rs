@@ -102,7 +102,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                         self.state.job.id, class, self.state.element_color),
                     _ => program.finish(),
                 }.map_err(common)?;
-                if plan.requirements().any(|r| r == Requirement::ProductPlacement) {
+                if plan.requirements().any(|r| r == Requirement::ProductPlacement)
+                    && !matches!(outer.kind, WorkKind::TypeMap { map_id, .. } if plan.type_origin_placed(self.state.job.id, &[map_id])) {
                     return Err(RetainedExecutionError::Unsupported(
                         Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));
                 }

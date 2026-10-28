@@ -45,6 +45,7 @@ impl MappingControl<'_> {
         if let Sink::Shared(placeholder) = sink {
             // A refused merge is a typed terminal, not a skipped registration.
             let value = match value {
+                Ok(_) if self.logical_stopped => Ok(()),
                 Ok(parts) => router.publish_shared_mapped_source(source_id, parts),
                 Err(error @ Error::ProgramStopped(_)) => Err(error),
                 Err(_) => Ok(()),
@@ -56,7 +57,10 @@ impl MappingControl<'_> {
             return Event::Advance;
         }
         let published = value.and_then(|parts| {
-            router.publish_mapped_source(source_id, &parts, truncated).map(|()| parts)
+            if !self.logical_stopped {
+                router.publish_mapped_source(source_id, &parts, truncated)?;
+            }
+            Ok(parts)
         });
         match published {
             Ok(parts) => {
@@ -222,21 +226,24 @@ impl MappingControl<'_> {
         self.select_plain(Reached::Nested(item), router)
     }
 
-    /// A styled source's next item. Its depth bounds every item, plain or
-    /// mapped, and the cut item is recorded as its own type.
+    /// Only entering another mapped level consumes depth. Plain and textured
+    /// leaves under exactly 32 mapped levels remain reachable (#7887).
     fn next_styled(&mut self, item: DecodedEntity, router: &GeometryRouter) -> Option<Event> {
-        let depth = self.levels.len();
-        let error = if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
-            Error::geometry(format!(
-                "MappedItem nesting exceeded maximum depth of {} at #{}",
-                MAX_MAPPED_ITEM_DEPTH, item.id
-            ))
-        } else if item.ifc_type != IfcType::IfcMappedItem {
-            if self.textures.is_some_and(|index| index.contains_key(&item.id)) {
+        if item.ifc_type != IfcType::IfcMappedItem {
+            if self
+                .textures
+                .is_some_and(|index| index.contains_key(&item.id))
+            {
                 self.action = Action::Texture(Reached::Nested(item));
                 return None;
             }
             return self.select_plain(Reached::Nested(item), router);
+        }
+        let error = if self.levels.len() >= MAX_MAPPED_ITEM_DEPTH as usize {
+            Error::geometry(format!(
+                "MappedItem nesting exceeded maximum depth of {} at #{}",
+                MAX_MAPPED_ITEM_DEPTH, item.id
+            ))
         } else if self.levels.iter().any(|level| level.item_id == item.id) {
             Error::geometry(format!("Detected cyclic IfcMappedItem reference at #{}", item.id))
         } else {

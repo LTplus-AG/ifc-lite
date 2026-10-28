@@ -244,13 +244,16 @@ export function compilerProgramIncludes(plan, root) {
   }
 }
 
-export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, programIncludes = compilerProgramIncludes } = {}) {
+// `cache` defaults to the real spawn only: injected fakes stay uncached. A
+// bounded production spawn opts in, keyed by `cacheLabel` so a `restored`
+// re-run never reuses the `baseline` result it is meant to re-prove.
+export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, programIncludes = compilerProgramIncludes, cache = spawn === spawnSync, cacheLabel = phase } = {}) {
   const script = join(root, TYPECHECK_SCRIPT);
   if (!existsSync(script)) {
     return { kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: null, evidence: [`${TYPECHECK_SCRIPT} not found under ${root}`] };
   }
-  const cacheKey = `${phase}:${plan.dir}`;
-  let r = spawn === spawnSync ? typecheckRuns.get(cacheKey) : null;
+  const cacheKey = `${cacheLabel}:${plan.dir}`;
+  let r = cache ? typecheckRuns.get(cacheKey) : null;
   if (!r) {
     r = spawn(process.execPath, [script], {
       cwd: plan.dir,
@@ -259,7 +262,10 @@ export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, program
       timeout: 10 * 60 * 1000,
       env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
     });
-    if (spawn === spawnSync) typecheckRuns.set(cacheKey, r);
+    if (cache) typecheckRuns.set(cacheKey, r);
+  }
+  if (r.error?.code === 'ETIMEDOUT') {
+    return { kind: 'timeout', rawExitCode: null, attributed: false, evidence: ['typecheck runner timed out'] };
   }
   if (r.error) {
     return { kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: null, evidence: [`could not spawn ${TYPECHECK_SCRIPT}: ${r.error.message}`] };

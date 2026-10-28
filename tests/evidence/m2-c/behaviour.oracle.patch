@@ -1,0 +1,12 @@
+--- a/apps/viewer/src/lib/retained/retainedLoad.ts
++++ b/apps/viewer/src/lib/retained/retainedLoad.ts
+@@ -62,8 +62,7 @@
+ const RETAINED_POLICY: GeometryKernelLoad = {
+   kind: 'retained',
+   serverEnabled: false,
+-  // Mutation: a retained load keeps the exact cache plan (exact cache read and write).
+-  cachePlan: (plan) => plan,
++  cachePlan: (plan) => ({ ...plan, tier: 'none', shouldCache: false, persistSource: false }),
+   refuseSource: () => true,
+ };
+ 

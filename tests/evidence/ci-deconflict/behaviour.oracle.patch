@@ -1,0 +1,8 @@
+diff --git a/scripts/revert-oracle-discover.mjs b/scripts/revert-oracle-discover.mjs
+--- a/scripts/revert-oracle-discover.mjs
++++ b/scripts/revert-oracle-discover.mjs
+@@ -10,3 +10,3 @@
+ export function addedPaths(root, base) {
+-  return execFileSync('git', ['diff', '--name-only', '-z', '--diff-filter=M', `${base}...HEAD`],
++  return execFileSync('git', ['diff', '--name-only', '-z', '--diff-filter=A', `${base}...HEAD`],
+     { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);

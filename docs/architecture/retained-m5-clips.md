@@ -87,3 +87,9 @@ calls to the real SDK and associates a halfspace prism's sealed receipt with
 its Difference. It writes a separate per-product `clips`/`clipMs` summary and
 p50/p95, preserving the comparison harness's existing output columns. These
 invocation timings are diagnostic, not an exclusive end-to-end perf verdict.
+
+The mutation manifest uses the newly added M5 source-oracle module as its
+slice discovery key, because CUT-0 already added `plane.rs` and discovery
+requires an added production key. Its reverse-applied behavioral patch still
+changes only `plane.rs` to ignore AgreementFlag, and the logical a/b witness
+must fail. The key is registration, not the mutation target.

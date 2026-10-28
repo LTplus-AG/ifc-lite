@@ -50,3 +50,15 @@ The arc fixture wraps its `IfcIndexedPolyCurve` in an `IfcCompositeCurve`, since
 IFC4's PBHS `BoundaryType` rule permits only `IfcPolyline` or `IfcCompositeCurve`.
 This corrects §7.1(f)'s direct-indexed fixture spelling while retaining the
 `IfcArcIndex` and the prescribed geometry.
+
+For source polylines, section area is quadratic between topology events, so
+Gauss–Legendre quadrature evaluates each span directly. Curved sections retain
+the shared adaptive integration. Shared, oppositely directed opening end caps
+prove zero-volume intersections before triangle tuple expansion; this avoids
+spending the fixed work budget on disjoint FZK opening parts. Neither change
+alters the preregistered acceptance tolerances or the 4,096-section cap.
+
+The synthetic universe/coverage fragment is a post-M5 qualification step: its
+consumed and plain-plane cases must satisfy their unconditional expectations
+before the complete fixture can enter the committed coverage gate. This round
+uses individually asserted SDK outcomes for the bounded-only and twin cases.

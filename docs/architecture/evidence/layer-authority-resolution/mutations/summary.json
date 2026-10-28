@@ -67,18 +67,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/resolve.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "2d525ec7-35c7-48de-9ea8-317e44f067a5",
+    "invocationId": "51b4b373-4257-4f38-ab5c-f5c8989a76dc",
     "timing": {
-      "startedAt": "2026-10-28T17:08:24.531Z",
-      "finishedAt": "2026-10-28T17:08:27.965Z"
+      "startedAt": "2026-10-28T17:30:36.762Z",
+      "finishedAt": "2026-10-28T17:30:40.769Z"
     },
     "restoration": "verified"
   },
@@ -150,18 +150,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/resolve.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "a8fe11ff-127d-4f93-8488-fa642206f86d",
+    "invocationId": "e4607c89-c1ba-4fe8-bef5-42115bd8d086",
     "timing": {
-      "startedAt": "2026-10-28T17:08:28.032Z",
-      "finishedAt": "2026-10-28T17:08:31.467Z"
+      "startedAt": "2026-10-28T17:30:40.892Z",
+      "finishedAt": "2026-10-28T17:30:45.886Z"
     },
     "restoration": "verified"
   },
@@ -233,18 +233,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/resolve.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "54ac3446-3851-40e1-84e3-65e355851fff",
+    "invocationId": "f4647412-50f9-47b2-8a82-c7f2017a46c9",
     "timing": {
-      "startedAt": "2026-10-28T17:08:31.545Z",
-      "finishedAt": "2026-10-28T17:08:35.287Z"
+      "startedAt": "2026-10-28T17:30:46.005Z",
+      "finishedAt": "2026-10-28T17:30:51.465Z"
     },
     "restoration": "verified"
   },
@@ -316,18 +316,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/resolve.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "fa7f4b8c-6011-4f8a-9de4-e78fa762cf33",
+    "invocationId": "7ee6bf4b-2d70-4c55-9cbe-e5ab91b7f231",
     "timing": {
-      "startedAt": "2026-10-28T17:08:35.369Z",
-      "finishedAt": "2026-10-28T17:08:39.065Z"
+      "startedAt": "2026-10-28T17:30:51.521Z",
+      "finishedAt": "2026-10-28T17:30:56.306Z"
     },
     "restoration": "verified"
   },
@@ -399,18 +399,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/resolve.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "1c403a1d-4411-4960-a7d2-b7a3d4a5e656",
+    "invocationId": "7dc07fa1-b1f7-4b87-b7bb-518ec51748a1",
     "timing": {
-      "startedAt": "2026-10-28T17:08:39.184Z",
-      "finishedAt": "2026-10-28T17:08:42.566Z"
+      "startedAt": "2026-10-28T17:30:56.424Z",
+      "finishedAt": "2026-10-28T17:31:00.950Z"
     },
     "restoration": "verified"
   },
@@ -482,18 +482,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/resolve.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "7000a774-ed15-44d6-9dc4-4f310b2b3316",
+    "invocationId": "a98affef-ff8a-4db3-9282-448fd18fdd59",
     "timing": {
-      "startedAt": "2026-10-28T17:08:42.694Z",
-      "finishedAt": "2026-10-28T17:08:46.162Z"
+      "startedAt": "2026-10-28T17:31:01.056Z",
+      "finishedAt": "2026-10-28T17:31:07.212Z"
     },
     "restoration": "verified"
   },
@@ -565,18 +565,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/resolve.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "9fd39d76-2edd-43bb-9ece-184914098705",
+    "invocationId": "af3bf2b5-d3ed-4ad1-8c4c-e2aa32317859",
     "timing": {
-      "startedAt": "2026-10-28T17:08:46.307Z",
-      "finishedAt": "2026-10-28T17:08:50.800Z"
+      "startedAt": "2026-10-28T17:31:07.259Z",
+      "finishedAt": "2026-10-28T17:31:13.940Z"
     },
     "restoration": "verified"
   },
@@ -648,18 +648,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/charter.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "d7ad815b-6230-404a-adde-4d7503bedde8",
+    "invocationId": "7789ba7a-ee2b-43b7-ae7b-6ace2e82164f",
     "timing": {
-      "startedAt": "2026-10-28T17:08:50.924Z",
-      "finishedAt": "2026-10-28T17:08:54.928Z"
+      "startedAt": "2026-10-28T17:31:14.090Z",
+      "finishedAt": "2026-10-28T17:31:21.578Z"
     },
     "restoration": "verified"
   },
@@ -731,18 +731,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/charter.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "751a0fd8-e7e4-4cad-b144-56d07d5be7b1",
+    "invocationId": "78882b17-2b86-42f6-aa43-68ff334671f8",
     "timing": {
-      "startedAt": "2026-10-28T17:08:55.033Z",
-      "finishedAt": "2026-10-28T17:08:58.945Z"
+      "startedAt": "2026-10-28T17:31:21.722Z",
+      "finishedAt": "2026-10-28T17:31:28.299Z"
     },
     "restoration": "verified"
   },
@@ -814,18 +814,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/charter.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "0af817f3-5768-4206-a339-1c3ef220c7e2",
+    "invocationId": "d7fb007e-491c-4873-9dec-37a6ebda427a",
     "timing": {
-      "startedAt": "2026-10-28T17:08:59.056Z",
-      "finishedAt": "2026-10-28T17:09:02.778Z"
+      "startedAt": "2026-10-28T17:31:28.429Z",
+      "finishedAt": "2026-10-28T17:31:32.606Z"
     },
     "restoration": "verified"
   },
@@ -897,18 +897,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/charter.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "925d4d2c-92f2-47c5-97d5-9157a6c09641",
+    "invocationId": "9f000540-d3ab-4247-a3ee-3f8a8c146c20",
     "timing": {
-      "startedAt": "2026-10-28T17:09:02.876Z",
-      "finishedAt": "2026-10-28T17:09:06.623Z"
+      "startedAt": "2026-10-28T17:31:32.743Z",
+      "finishedAt": "2026-10-28T17:31:35.848Z"
     },
     "restoration": "verified"
   },
@@ -980,18 +980,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/attribute-path.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "6a427a4e-ac5e-4a09-b627-418b9ec1b77e",
+    "invocationId": "98be7340-d788-4ffd-bf85-fd6ad73ddf2d",
     "timing": {
-      "startedAt": "2026-10-28T17:09:06.684Z",
-      "finishedAt": "2026-10-28T17:09:10.757Z"
+      "startedAt": "2026-10-28T17:31:35.954Z",
+      "finishedAt": "2026-10-28T17:31:38.980Z"
     },
     "restoration": "verified"
   },
@@ -1063,18 +1063,18 @@
     "verdict": "OBSERVED",
     "exitCode": 0,
     "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
-    "base": "b4b7bd55404b47f035dc8818ca4f38790345940d",
-    "head": "f57a6187c088563628f3234c9b2ff507af8fc914",
+    "base": "545ac30b3875a73160f00d4ce070dc5919e676d9",
+    "head": "2574d8df448b775021db824384a5008fe2749af0",
     "production": [
       "packages/extensions/src/authority/attribute-path.ts"
     ],
     "tests": [
       "packages/extensions/src/authority/authority.test.ts"
     ],
-    "invocationId": "f6de499e-a09a-463c-96cd-330b46ae2d08",
+    "invocationId": "edd86c64-5297-4f24-91c9-a7168f5749ad",
     "timing": {
-      "startedAt": "2026-10-28T17:09:10.905Z",
-      "finishedAt": "2026-10-28T17:09:15.585Z"
+      "startedAt": "2026-10-28T17:31:39.062Z",
+      "finishedAt": "2026-10-28T17:31:42.468Z"
     },
     "restoration": "verified"
   }

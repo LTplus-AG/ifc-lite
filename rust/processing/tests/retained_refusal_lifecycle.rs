@@ -25,7 +25,12 @@ impl NumericalReceipt for Receipt {
     type Domain = Domain;
     type Error = RuntimeFault;
     fn heap_bytes() -> u64 { std::mem::size_of::<Self>() as u64 }
-    fn buffer_bytes(&self) -> Result<u64, RuntimeFault> { Ok(if self.oversized { u64::MAX } else { 1024 }) }
+    fn buffer_bytes(&self) -> Result<u64, RuntimeFault> {
+        if self.oversized { return Ok(u64::MAX); }
+        let mesh = &self.completion.tessellation;
+        Ok((mesh.positions.capacity() * 8 + mesh.indices.capacity() * 4
+            + mesh.flat_corner_normals.capacity() * 8 + mesh.revision_local_faces.capacity() * 4) as u64)
+    }
     fn object(&self) -> usize { self.id }
     fn evidence(&self) -> ReceiptEvidence<'_, usize> { ReceiptEvidence::Construction(&self.completion) }
     fn domain(&self) -> &Domain { &self.domain }

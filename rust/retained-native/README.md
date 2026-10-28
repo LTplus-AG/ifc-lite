@@ -7,8 +7,14 @@ pipeline and introduce no SMLib dependency into published processing.
 
 `run_model_native(source, worker_path, options, sink)` emits one atomic outcome
 per canonical product job. It never retries a failed product or falls back to
-exact geometry. A replacement worker qualifies its own numerical families;
-there are at most three replacements, even if a larger limit is requested.
+exact geometry. A replacement worker qualifies its own numerical families.
+`max_restarts` caps fault recovery at three replacements per model, including
+failed qualification attempts. Settled source/product refusals retain the
+healthy worker and release their receipts. A source/resource cancellation of an
+unsettled packet still retires its captured worker, but its deliberate
+replacement does not spend fault recovery budget or refund earlier faults.
+`ModelSummary.restarts` reports only fault recovery attempts. Numerical,
+transport, receipt and domain faults remain bounded.
 
 Published parts contain f64 object-local metres and column-major placement
 matrices into absolute IFC Z-up world metres. Every product carries

@@ -39,14 +39,16 @@ fn issue_3641_third_cut_failure_publishes_nothing_and_next_product_succeeds() {
         &ModelOptions { ids: Some([72209, 72216].into_iter().collect()), ..Default::default() },
         || NativeWorker::spawn(&path).map(|inner| KernelOnNthBoolean { inner, calls: calls.clone() }),
         |outcome| outcomes.push(outcome))).unwrap();
-    eprintln!("M8 injected third cut: calls={} outcomes={outcomes:?}", calls.get());
+    eprintln!("M8 injected third cut: calls={} outcomeCount={}", calls.get(), outcomes.len());
     assert_eq!(calls.get(), 3, "must reach the third real-kernel cut boundary");
     assert_eq!(outcomes.len(), 2);
     match &outcomes[0] {
         ProductOutcome::Refused { product_id, refusal, origin, cut_times_ms, .. } => {
             assert_eq!(*product_id, 72209);
             assert_eq!(refusal.code(), "kernel_failure");
-            assert_eq!(origin.unwrap().site, "opening_cut");
+            // An executor RuntimeFault has no source origin; it is not an
+            // opening-admission refusal. Preserve that existing contract.
+            assert!(origin.is_none());
             assert_eq!(cut_times_ms.len(), 3);
         }
         other => panic!("third cut published partial geometry: {other:?}"),

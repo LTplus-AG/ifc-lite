@@ -389,6 +389,7 @@ test('#7955: the retained worker URL prologue is classifiable without counting l
   // Neither pretty-looking text nor punctuation inside the URL changes the
   // classification, and syntax we do not parse stays conservatively unknown.
   assert.equal(chunkFormatting(minified.replace('/retained-engine/pkg-retained/ifc-lite.js', 'let __tla = [{  ; }];')), 'minified');
+  // eslint-disable-next-line no-template-curly-in-string -- a literal sample of minified source text, not a template
   for (const url of ['`/${location.host}/x`', String.raw`"/x\";(){}"`, '/*(){}*/"/x"']) {
     assert.equal(chunkFormatting(`(async()=>{const e=new URL(${url},self.location.origin);`), 'unknown');
   }

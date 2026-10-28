@@ -142,6 +142,7 @@ mod tests {
             area: 0.,
             bbox: [0.1, 0., 0., 3.9, 2., 3.],
             defects: 0,
+            ..Default::default()
         };
         let mut violations = Vec::new();
         assert_eq!(check("box", &m, &e, &t, &mut violations), Some(0.));
@@ -159,6 +160,7 @@ mod tests {
             area: 0.,
             bbox: [0., 0., 0., 4., 2., 3.],
             defects: 0,
+            ..Default::default()
         };
         let mut violations = Vec::new();
         assert_eq!(check_opened("brep", &m, None, &t, &mut violations), None);

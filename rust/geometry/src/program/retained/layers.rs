@@ -103,6 +103,8 @@ impl LayerBands {
             let interfaces = self.spec.interfaces(*self.host.values[0].object_frame()).map_err(RetainedFailure::LayerStrategy)?;
             let mut tags = Vec::new();
             let mut bands = Vec::new();
+            crate::resource::reserve_headers(&mut tags, count).map_err(|e| self.selection.failure_handle().common(FailureSite::LayerBand, e))?.retain();
+            crate::resource::reserve_headers(&mut bands, count).map_err(|e| self.selection.failure_handle().common(FailureSite::LayerBand, e))?.retain();
             for (index, value) in self.values.into_iter().enumerate() {
                 if value.evaluated_empty() == Some(true) { continue; }
                 tags.push(ShapeLayer { index: index as u16, material_id: self.spec.layers[index].0 });

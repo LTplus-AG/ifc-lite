@@ -68,7 +68,9 @@ fn line_body(element: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Lay
         }
         if item.ifc_type != IfcType::IfcExtrudedAreaSolid { return Err(FAMILY); }
         let source = crate::analytic::try_extract_analytic_extrusion(&item, decoder).map_err(|_| FAMILY)?;
+        if source.status != crate::analytic::AnalyticStatus::Complete { return Err(FAMILY); }
         let profile = source.profile.ok_or(FAMILY)?;
+        if profile.status != crate::analytic::AnalyticStatus::Complete || profile.loops.is_empty() { return Err(FAMILY); }
         if profile.loops.iter().flat_map(|l| &l.segments)
             .any(|s| !matches!(s, crate::analytic::AnalyticCurveSegment::Line { .. })) { return Err(FAMILY); }
         return Ok(LayerFamily::Planar { axis: [0., 1., 0.] });

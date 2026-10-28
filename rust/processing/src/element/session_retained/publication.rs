@@ -121,6 +121,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                 *value.object_frame(), curved, &self.resources, &mut storage,
             )?;
             part.layer = self.plan.layers().map(|l| l.tags[part_index]);
+            part.curved = self.plan.layers().map_or(curved, |l| l.interfaces.iter().any(|s| matches!(s, ifc_lite_geometry::program::transactions::LayerInterface::Cylinder { .. })));
             parts.push(part);
         }
         if parts.is_empty() {

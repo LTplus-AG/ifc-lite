@@ -26,12 +26,19 @@ export interface RetainedShapePart {
     materialId?: number;
     faces?: { table: string[]; triangles: Uint32Array };
     instanceKey?: string;
+    /** Open material band; closure is validated across the product. */
+    layer?: { index: number; materialId: number };
+    /** Closed band volume before interface caps are removed, in cubic metres. */
+    cappedVolumeM3?: number;
 }
 export interface RetainedShapeProduct {
     status: 'published';
     /** Opening cuts applied (M3). Always set by retainedModel/RetainedModelSession;
      * optional so consumer-built literals stay valid across minor versions. */
     cuts?: number;
+    bandMs?: number;
+    capMs?: number;
+    maxSnapMetres?: number;
     /** Host parts consumed by a cut; always 0 on a published product. */
     consumedParts?: number;
     expressId: number;
@@ -47,7 +54,7 @@ export interface RetainedProductRefusal {
     expressId: number;
     ifcType: string;
     code: 'opening_strategy' | 'opening_unsupported' | 'material_layer_strategy' | 'operation_unsupported'
-        | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
+        | 'layer_caps_unresolved' | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
         | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
         | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach'
         | 'appearance_unsupported' | 'face_provenance_unproven';
@@ -139,6 +146,9 @@ pub(super) fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
             set(&result, "status", &"published".into())?;
             set(&result, "expressId", &product.product_id.into())?;
             set(&result, "ifcType", &product.ifc_type.name().into())?;
+            set(&result, "bandMs", &product.band_ms.into())?;
+            set(&result, "capMs", &product.cap_ms.into())?;
+            set(&result, "maxSnapMetres", &product.max_snap_metres.into())?;
             set(&result, "cuts", &(product.cuts as f64).into())?;
             set(&result, "consumedParts", &(product.consumed_parts as f64).into())?;
             set(&result, "marker", &"PresentationObligationsUnmet".into())?;
@@ -167,6 +177,13 @@ pub(super) fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
                 )?;
                 set(&view, "curved", &part.curved.into())?;
                 super::retained_presentation::part_fields(&view, part)?;
+                if let Some(layer) = part.layer {
+                    let tag = Object::new();
+                    set(&tag, "index", &layer.index.into())?;
+                    set(&tag, "materialId", &layer.material_id.into())?;
+                    set(&view, "layer", &tag)?;
+                }
+                if let Some(volume) = part.capped_volume_m3 { set(&view, "cappedVolumeM3", &volume.into())?; }
                 parts.push(&view);
             }
             set(&result, "parts", &parts)?;

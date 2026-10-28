@@ -20,6 +20,11 @@ export function worldPoints(part: RetainedShapePart): number[][] {
 
 export function partVolume(part: RetainedShapePart): number {
   const points = worldPoints(part), origin = points[0];
+  if (part.layer) {
+    const volume = part.cappedVolumeM3;
+    if (volume === undefined || !Number.isFinite(volume) || volume <= 0) throw new Error('Missing closed band volume');
+    return volume;
+  }
   let volume = 0;
   for (let i = 0; i < part.indices.length; i += 3) {
     const [a, b, c] = Array.from(part.indices.subarray(i, i + 3), index => points[index].map((v, j) => v - origin[j]));
@@ -57,6 +62,7 @@ export function retainedObj(products: RetainedShapeProduct[]): string {
     for (const part of product.parts) {
       const points = worldPoints(part);
       for (const [x, y, z] of points) lines.push(`v ${fixed(x)} ${fixed(z)} ${fixed(-y)}`);
+      if (part.layer) lines.push(`# layer ${part.layer.index} material #${part.layer.materialId}`);
       if (part.normals) {
         if (part.normals.length !== part.indices.length * 3 || !part.normals.every(Number.isFinite)) {
           throw new Error('Invalid retained corner normals; refusing partial product');

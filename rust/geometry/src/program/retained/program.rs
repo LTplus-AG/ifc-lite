@@ -287,7 +287,7 @@ impl<'a> RetainedProgram<'a> {
     pub(crate) fn cancel(&mut self) {
         self.cancelled = true;
         #[cfg(any(test, feature = "retained-runtime"))]
-        if let RetainedInner::Cuts(cuts) = &self.inner { cuts.selection.remember_stop(crate::resource::ProgramStop::Cancelled); }
+        if let Some(selection) = self.selection() { selection.remember_stop(crate::resource::ProgramStop::Cancelled); }
     }
     /// Latch a stop the caller hit after a successful admit (its own
     /// allocation or check), so request and finish report it, not an

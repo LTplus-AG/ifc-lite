@@ -12,23 +12,25 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       return { ...common, code: p.code, origin: p.origin ?? null, ...(p.kernelStatus === undefined ? {} : { kernelStatus: p.kernelStatus }) };
     }
     const parts = p.parts.map(part => ({ vertices: part.positions.length / 3, triangles: part.indices.length / 3,
-      curved: part.curved, volumeM3: partVolume(part),
+      curved: part.curved, ...(part.layer ? { layer: part.layer } : {}), volumeM3: partVolume(part),
       ...(part.color ? { color: part.color } : {}),
       ...(part.materialName === undefined ? {} : { materialName: part.materialName }),
       ...(part.geometryItemId === undefined ? {} : { geometryItemId: part.geometryItemId }),
       ...(part.materialId === undefined ? {} : { materialId: part.materialId }),
       ...(part.normals ? { normals: Array.from(part.normals) } : {}),
       ...(part.faces ? { faces: faceReport(part) } : {}) }));
-    return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
+    return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, bandMs: p.bandMs, capMs: p.capMs, maxSnapMetres: p.maxSnapMetres, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
       ...(p.instanceGroup ? { instanceGroup: p.instanceGroup } : {}) };
   });
   const published = outcomes.filter(p => p.status === 'published').length;
+  const layered = outcomes.filter(p => p.status === 'published' && p.parts.some(part => part.layer));
+  const bands = layered.reduce((sum, p) => sum + (p.status === 'published' ? p.parts.filter(part => part.layer).length : 0), 0);
   return { format: 'ifc-lite.retained-report/1',
     engine: { sdk: engine.sdk, manifestSha256: engine.manifestSha256, capabilities: engine.capabilities },
     settings: { kernel: 'retained', chordMetres: 0.001, angleDegrees: 5, maxBytes: 16 * 1024 * 1024,
       maxRestarts: 3, ids: ids ? Array.from(ids).sort((a, b) => a - b) : null },
-    summary: { candidates: outcomes.length, published, coverage: outcomes.length ? published / outcomes.length : 0, byCode }, products };
+    summary: { layeredProducts: layered.length, bands, candidates: outcomes.length, published, coverage: outcomes.length ? published / outcomes.length : 0, byCode }, products };
 }
 
 /** Stable keys throughout, with products already sorted by numeric id. */

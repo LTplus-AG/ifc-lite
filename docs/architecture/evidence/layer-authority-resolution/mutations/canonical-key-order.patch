@@ -1,13 +1,13 @@
 diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
-index 82f9403e77..1e35e949d1 100644
+index b328c3c3c8..8c6ead26f7 100644
 --- b/packages/extensions/src/authority/resolve.ts
 +++ a/packages/extensions/src/authority/resolve.ts
-@@ -86,7 +86,7 @@ export function canonicalValueKey(value: unknown, nested = false): string {
-     case 'object': {
-       if (Array.isArray(value)) return `[${value.map((item) => canonicalValueKey(item, true)).join(',')}]`;
-       const record = value as Record<string, unknown>;
--      const keys = Object.keys(record).filter((key) => record[key] !== undefined);
-+      const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
-       return `{${keys.map((key) => `${JSON.stringify(key.normalize('NFC'))}:${canonicalValueKey(record[key], true)}`).join(',')}}`;
+@@ -90,7 +90,7 @@ export function canonicalValueKey(value: unknown, nested = false): string {
+       const members = Object.keys(record)
+         .filter((key) => record[key] !== undefined)
+         .map((key) => [key.normalize('NFC'), key] as const)
+-        ;
++        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+       return `{${members.map(([nfc, key]) => `${JSON.stringify(nfc)}:${canonicalValueKey(record[key], true)}`).join(',')}}`;
      }
      default:

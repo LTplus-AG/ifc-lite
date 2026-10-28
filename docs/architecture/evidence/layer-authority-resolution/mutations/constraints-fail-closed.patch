@@ -1,13 +1,13 @@
 diff --git b/packages/extensions/src/authority/charter.ts a/packages/extensions/src/authority/charter.ts
-index 8e56e606f5..61809f1bee 100644
+index 9d44fd7d97..7f209480e4 100644
 --- b/packages/extensions/src/authority/charter.ts
 +++ a/packages/extensions/src/authority/charter.ts
-@@ -221,7 +221,7 @@ function ruleMatches(rule: CharterRule, subject: AttributeSubject): boolean {
-   const { ifcType, constraints } = claim.selector;
+@@ -222,7 +222,7 @@ function ruleMatches(rule: CharterRule, subject: AttributeSubject): boolean {
    if (subject.ifcType === undefined) return false;
    if (ifcType.endsWith('*') ? !subject.ifcType.startsWith(ifcType.slice(0, -1)) : ifcType !== subject.ifcType) return false;
--  return Object.entries(constraints).every(([key, value]) => subject.tags?.[key] !== value);
-+  return Object.entries(constraints).every(([key, value]) => subject.tags?.[key] === value);
+   const tags = subject.tags ?? {};
+-  return Object.entries(constraints).every(([key, value]) => Object.prototype.hasOwnProperty.call(tags, key) && tags[key] !== value);
++  return Object.entries(constraints).every(([key, value]) => Object.prototype.hasOwnProperty.call(tags, key) && tags[key] === value);
  }
  
  /** The most specific rule governing an attribute, or undefined when none does. */

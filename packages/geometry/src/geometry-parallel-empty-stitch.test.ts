@@ -52,7 +52,10 @@ describe('sharded pre-pass with an empty stitch', () => {
           queueMicrotask(() => self.reply({
             type: 'shard-result', shardIndex: i,
             ids: new Uint32Array(), starts: new Uint32Array(),
-            lengths: new Uint32Array(), classes: new Uint8Array(), handoff: i === 0 ? 0 : -1,
+            lengths: new Uint32Array(), classes: new Uint8Array(),
+            // -1: shard 0 hit EOF/stop with no records, so the stitch is empty
+            // (not a handoff miss, which already falls back).
+            handoff: -1,
           }));
         } else if (message.type === 'prepass-streaming') {
           queueMicrotask(() => emit({ type: 'complete', totalJobs: 0 }));

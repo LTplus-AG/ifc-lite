@@ -20,6 +20,21 @@ timing or performance-neutrality claim. Benchmarks were explicitly excluded
 from this task. Keep that coverage gap visible; a compact snapshot fixes wasted
 capacity but does not establish that a large model fits the browser.
 
+## Retained viewer instancing (#7955 M11-I)
+
+Sharing is confined to byte-equal mapped geometry in the retained viewer.
+The existing IFNS pairing verifier checks reconstruction, and small or rejected
+groups stay flat. Native and browser witnesses agree on the synthetic mapped
+group; the default WASM remains byte-identical to the base. Heavy-model fractions
+are report-only comparisons against exact, with rendered occurrences as the
+denominator and bounded product windows.
+
+This reduces repeated GPU geometry storage without sharing kernel construction:
+every occurrence is still evaluated. No load-time or end-to-end worker-pool
+speedup is claimed. Keep the native IFNS axis contract when starting from
+Y-up view meshes, and publish each shard with all its product records so Cancel
+cannot separate rendered geometry from coverage.
+
 ## C2-3 mapped admission and drop reporting (#7781)
 
 The ROUTER-13, ROUTER-15 and ROUTER-19 consolidations passed the local native

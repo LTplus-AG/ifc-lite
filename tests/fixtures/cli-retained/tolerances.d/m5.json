@@ -1,0 +1,6 @@
+{
+  "clipSectionVolumeRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "clipVolumeBoundsRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "clipKeptSideMetres": { "absolute": 1e-5, "extentFactor": 2.4e-7 },
+  "clipExactComparison": "report"
+}

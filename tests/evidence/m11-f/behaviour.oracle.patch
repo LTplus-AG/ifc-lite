@@ -1,0 +1,10 @@
+--- a/rust/processing/src/element/session_retained/presentation/face_attribution.rs
++++ b/rust/processing/src/element/session_retained/presentation/face_attribution.rs
+@@ -246,6 +246,6 @@
+         Some((choice, held))
+     }).collect();
+     let bounded = common.iter().any(|&(_, held)| held);
+-    common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).max()
++    common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).min()
+         .ok_or(Unproven::Ambiguous { entity: None })
+ }

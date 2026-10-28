@@ -44,7 +44,10 @@ fn plane(entity: &DecodedEntity, world: &Matrix4<f64>, decoder: &mut EntityDecod
     // call HalfSpacePlan, plane_source, halfspace_box or any retained lowering.
     let sign = if entity.get_bool(slot::IfcHalfSpaceSolid::AGREEMENT_FLAG.index()).unwrap_or(true) { -1. } else { 1. };
     let inverse = world.try_inverse().ok_or("singular clip source frame")?;
-    let r = inverse.transpose().transform_vector(&(normal * sign)).normalize();
+    // A normal is a covector. Only the linear inverse-transpose applies;
+    // Matrix4::transform_vector performs projective division using row 4,
+    // which is nonzero after transposing a translated affine inverse.
+    let r = (inverse.fixed_view::<3,3>(0,0).transpose() * (normal * sign)).normalize();
     if p.iter().chain(r.iter()).any(|v| !v.is_finite()) { return Err("nonfinite clip plane".into()); }
     Ok(Plane { entity: entity.id, point: [p.x,p.y,p.z], normal: [r.x,r.y,r.z] })
 }

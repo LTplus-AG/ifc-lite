@@ -38,7 +38,7 @@ fn planes(host:&ExtrudedHost)->Option<Vec<([f64;3],f64)>> {
     let mut local:Vec<_>=profile.into_iter().map(|p|([-p.n[0],-p.n[1],0.],p.d)).collect();
     local.extend([([0.,0.,-1.],0.),([0.,0.,1.],host.depth)]);
     Some(local.into_iter().map(|(n,c)|{
-        let n=inverse.transform_vector(&Vector3::from(n));let n=[n.x,n.y,n.z];
+        let n=inverse.fixed_view::<3,3>(0,0)*Vector3::from(n);let n=[n.x,n.y,n.z];
         (n,c+dot(n,[origin.x,origin.y,origin.z]))
     }).collect())
 }

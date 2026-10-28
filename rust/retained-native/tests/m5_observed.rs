@@ -151,3 +151,18 @@ fn issue_7955_m5_issue1155_delta_requires_unclipped_profile_admission(){
     println!("issue1155 unclipped={}, clipped={}",base_rows[0]["code"],clip_rows[0]["code"]);
     println!("sdk witness executed: m5_issue1155_profile");
 }
+#[test]
+fn issue_7955_m5_clipped_opening_body_real_sdk(){
+    let text=FIXTURE.replace("'SweptSolid',(#115)","'CSG',(#505)")
+        .replace("ENDSEC;\nEND-ISO","#500=IFCCARTESIANPOINT((0.,0.,1.));#501=IFCAXIS2PLACEMENT3D(#500,$,$);#502=IFCPLANE(#501);#503=IFCHALFSPACESOLID(#502,.T.);#505=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#115,#503);ENDSEC;\nEND-ISO");
+    let Some((outcomes,rows))=observed(&text,Some(vec![200]),None) else{return};
+    assert_eq!(rows[0]["clips"],2);assert_eq!(rows[0]["booleans"],3);
+    let ProductOutcome::Published(shape)=&outcomes[0] else{panic!("clipped opening: {}",rows[0]["code"])};
+    let mut measured=metrics::Metrics::default();
+    for part in &shape.parts {
+        let points:Vec<_>=part.positions.chunks_exact(3).map(|p|metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect();
+        measured.add_mesh(&points,&part.indices).unwrap();
+    }
+    assert_eq!(measured.defects,0);assert!(metrics::relative(measured.volume,35.)<1e-6);
+    println!("sdk witness executed: m5_clipped_opening");
+}

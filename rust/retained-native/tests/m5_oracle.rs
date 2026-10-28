@@ -25,9 +25,12 @@ fn issue_7955_source_plane_flag_and_georeferenced_frame() {
     assert_eq!(a.parts[0].planes[0].excess([0.,0.,0.]),0.5);
     assert_eq!(b.parts[0].planes[0].excess([0.,0.,2.]),1.5);
     let text=fixture::SOURCE.replace("$,$,$,#12", "$,$,#53,#12")
-        .replace("ENDSEC;END-ISO", "#50=IFCCARTESIANPOINT((2600000.,100000.,0.));#51=IFCDIRECTION((0.8660254037844386,0.5,0.));#52=IFCAXIS2PLACEMENT3D(#50,$,#51);#53=IFCLOCALPLACEMENT($,#52);ENDSEC;END-ISO");
+        .replace("ENDSEC;END-ISO", "#50=IFCCARTESIANPOINT((2600000.,100000.,10.));#51=IFCDIRECTION((0.8660254037844386,0.5,0.));#52=IFCAXIS2PLACEMENT3D(#50,$,#51);#53=IFCLOCALPLACEMENT($,#52);ENDSEC;END-ISO");
     let e=oracle(&text,13);assert!((e.section_volume().unwrap()-36.).abs()<1e-8);
-    assert_eq!(e.parts[0].planes[0].point,[2600000.,100000.,0.5]);
+    assert_eq!(e.parts[0].planes[0].point,[2600000.,100000.,10.5]);
+    let opposite=oracle(&text.replace("#8,.T.","#8,.F."),13);
+    assert!((opposite.section_volume().unwrap()-12.).abs()<1e-8);
+    assert_eq!(opposite.parts[0].planes[0].normal,[0.,0.,1.]);
 }
 #[test]
 fn issue_7955_original_corpus_clips_have_independent_section_authority() {

@@ -8,3 +8,4 @@ m5_clip_timings
 m5_lineage
 m5_burkwil
 m5_issue1155_profile
+m5_clipped_opening

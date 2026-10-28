@@ -22,7 +22,7 @@ fn drive_product(text:&str,id:u32,empty_boolean:Option<usize>)->(Vec<Operation>,
             Ok(None) => break program.finish().map(|p| {
                 assert_eq!(p.values().len(),1);
                 if id==13 && operations.len()==1 {
-                    assert_eq!(p.values()[0].slot(),operations[0].value().slot());
+                    assert_eq!(p.values().next().unwrap().slot(),operations[0].value().slot());
                 }
             }),
         };

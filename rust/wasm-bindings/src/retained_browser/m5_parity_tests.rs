@@ -87,3 +87,15 @@ async fn retained_browser_m5_lineage_boundary_matches_native(){
     }
     console_log!("sdk witness executed: m5_browser_lineage");
 }
+#[wasm_bindgen_test(async)]
+async fn retained_browser_m5_clipped_opening_hand_oracle(){
+    let text=include_str!("../../../../tests/fixtures/synthetic-retained/f-e-clips.ifc")
+        .replace("'SweptSolid',(#115)","'CSG',(#505)")
+        .replace("ENDSEC;\nEND-ISO","#500=IFCCARTESIANPOINT((0.,0.,1.));#501=IFCAXIS2PLACEMENT3D(#500,$,$);#502=IFCPLANE(#501);#503=IFCHALFSPACESOLID(#502,.T.);#505=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#115,#503);ENDSEC;\nEND-ISO");
+    let mut run=crate::api::IfcAPI::new().retained_model(text.as_bytes(),Some(vec![200])).await.unwrap();
+    let actual:Row=serde_wasm_bindgen::from_value(measure(&run.next_outcome()).unwrap()).unwrap();
+    assert_eq!((actual.id,actual.code.as_str()),(200,"published"));
+    assert!((actual.volume.unwrap()-35.).abs()/35.<1e-6);
+    assert!(run.next_outcome().is_undefined());
+    console_log!("sdk witness executed: m5_browser_clipped_opening");
+}

@@ -44,7 +44,7 @@ fn issue_3641_real_sdk_cutpart_and_opening_subset_matrix() {
                         m.add_mesh(&points,&part.indices).unwrap();
                     }
                     assert_eq!(m.defects,0,"product {}",product.product_id);
-                    measured.push((product.product_id,"published".to_string(),Some(m.volume)));
+                    measured.push((product.product_id,"published".to_string(),Some(m.volume),Some(product.cuts)));
                     if product.product_id == 72245 { assert!((m.volume-expected.volume()).abs()/expected.volume()<=t["convexLeafVolumeRelative"]["linear"].as_f64().unwrap()); }
                     if product.product_id == 72209 {
                         let selected: Vec<_> = cutters.iter().enumerate().filter(|(i,_)| mask & (1<<i) != 0).map(|(_,c)| c.clone()).collect();
@@ -65,7 +65,7 @@ fn issue_3641_real_sdk_cutpart_and_opening_subset_matrix() {
                 ProductOutcome::Refused {product_id,refusal,origin,message,cut_times_ms,..} => {
                     eprintln!("M8 refusal mask={mask} product={product_id} code={} origin={origin:?} message={message:?} cutTimesMs={cut_times_ms:?}", refusal.code());
                     refused.push((mask,product_id,refusal.code().to_string()));
-                    measured.push((product_id,refusal.code().into(),None));
+                    measured.push((product_id,refusal.code().into(),None,None));
                 }
             }
         }).unwrap();
@@ -73,7 +73,7 @@ fn issue_3641_real_sdk_cutpart_and_opening_subset_matrix() {
         assert_eq!(summary.published + summary.by_code.values().sum::<usize>(), 4);
         if mask == 7 {
             if let Some(path) = std::env::var_os("IFCLITE_M8_NATIVE_REFERENCE") {
-                let rows: Vec<_> = measured.iter().map(|(id,code,volume)| serde_json::json!({"id":id,"code":code,"volume":volume})).collect();
+                let rows: Vec<_> = measured.iter().map(|(id,code,volume,cuts)| serde_json::json!({"id":id,"code":code,"volume":volume,"cuts":cuts})).collect();
                 std::fs::write(path,serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
             }
         }

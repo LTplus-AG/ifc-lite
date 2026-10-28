@@ -8,7 +8,7 @@ use wasm_bindgen_test::*;
   return await r.json();
 }
 export function m8Summary(value) {
-  if (value.status === 'refused') return {id:value.expressId,code:value.code,volume:null};
+  if (value.status === 'refused') return {id:value.expressId,code:value.code,volume:null,cuts:null};
   let volume=0;
   for (const part of value.parts) {
     const p=part.positions, ix=part.indices;
@@ -20,7 +20,7 @@ export function m8Summary(value) {
     }
     volume+=Math.abs(v);
   }
-  return {id:value.expressId,code:'published',volume};
+  return {id:value.expressId,code:'published',volume,cuts:value.cuts};
 }")]
 extern "C" {
     #[wasm_bindgen(catch, js_name=m8Reference)]
@@ -29,7 +29,7 @@ extern "C" {
     fn summary(value: &JsValue) -> JsValue;
 }
 #[derive(serde::Deserialize, Debug)]
-struct Row { id: u32, code: String, volume: Option<f64> }
+struct Row { id: u32, code: String, volume: Option<f64>, cuts: Option<u64> }
 #[wasm_bindgen_test(async)]
 async fn retained_browser_m8_real_worker_matches_native_codes_and_volumes() {
     let native = reference().await.unwrap();
@@ -45,7 +45,8 @@ async fn retained_browser_m8_real_worker_matches_native_codes_and_volumes() {
         let value = run.next_outcome();
         assert!(!value.is_undefined());
         let actual: Row = serde_wasm_bindgen::from_value(summary(&value)).unwrap();
-        assert_eq!((actual.id,&actual.code),(expected.id,&expected.code));
+        assert_eq!((actual.id,&actual.code,actual.cuts),(expected.id,&expected.code,expected.cuts));
+        if actual.id == 72209 { assert_eq!(actual.cuts, Some(3)); }
         match (actual.volume,expected.volume) {
             (Some(a),Some(b)) => assert!((a-b).abs()/b.abs() <= 1e-9,"{a} vs {b}"),
             (None,None) => {},

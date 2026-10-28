@@ -14,13 +14,13 @@ pub(crate) mod mapped_transform;
 pub(crate) mod product_budget;
 mod refusal;
 mod select;
+pub(crate) mod unwrap;
 mod walk;
 pub use select::{meshed_representations, Select};
 pub use walk::{Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS};
 
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
-    is_direct_body_representation,
 };
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -84,9 +84,23 @@ pub struct ProductShape {
 /// `$`. Every other malformation is an `Err` carrying today's message text; the
 /// probes that abstain on malformed input call `.ok().flatten()`, so the
 /// leniency stays visible at the call site.
-pub fn product_shape(
+pub fn product_shape(element: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<ProductShape>, ShapeError> {
+    product_shape_with_type_check(element, decoder, true)
+}
+
+// Opening probes historically admit the same slots on any shape record type.
+// Keep that policy private: strict public product_shape admission is unchanged.
+pub(crate) fn product_shape_unchecked(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
+) -> Result<Option<ProductShape>, ShapeError> {
+    product_shape_with_type_check(element, decoder, false)
+}
+
+fn product_shape_with_type_check(
+    element: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    check_type: bool,
 ) -> Result<Option<ProductShape>, ShapeError> {
     // IfcProduct: GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement, Representation, Tag
     let attr = element
@@ -96,7 +110,7 @@ pub fn product_shape(
         return Ok(None);
     }
     let shape = decoder.resolve_ref(attr)?.ok_or(ShapeError::Unresolved)?;
-    if shape.ifc_type != IfcType::IfcProductDefinitionShape {
+    if check_type && shape.ifc_type != IfcType::IfcProductDefinitionShape {
         return Err(ShapeError::NotAProductDefinitionShape(shape.ifc_type));
     }
     let list = shape.get(2).ok_or(ShapeError::MissingRepresentations)?;

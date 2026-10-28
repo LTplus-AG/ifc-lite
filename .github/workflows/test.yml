@@ -942,6 +942,10 @@ jobs:
           # profile publication. These mutations remain bounded.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
+          # #7781 C2-6: retain the shared wrapper helper and its test wiring;
+          # reverse only first-vs-single mapped-item admission.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-6-probe-walk/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-6-probe-walk/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-6-probe-walk/behaviour.oracle.patch)
           # #7781 C2-5a: keep cutter types and test wiring; disturb engulf
           # admission and restoration of a diagonal cutter's f64 origin.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch'; then

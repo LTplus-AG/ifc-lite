@@ -33,23 +33,22 @@ mod unit_admission;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
-pub use config::RouterConfig;
-pub use processor::GeometryProcessor;
+pub use crate::representation::meshed_representations;
+pub(super) use crate::representation::{effective_element_rep_type, effective_rep_type, is_body_representation};
 pub use brep_signatures::SharedBrepSignatureCache;
-pub use mapped_cache_ownership::AccountedMappedItemCache;
+pub use config::RouterConfig;
+pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
+pub(crate) use diagnostics::ClassificationKind;
+pub use diagnostics::{
+    aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown, ClassificationStats,
+    ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
+};
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
+pub use mapped_cache_ownership::AccountedMappedItemCache;
+pub use processor::GeometryProcessor;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
-pub use diagnostics::{
-    aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
-    ClassificationStats, ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic,
-    OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary, WorstHost,
-    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
-};
-pub(crate) use diagnostics::ClassificationKind;
-pub(super) use crate::representation::{effective_element_rep_type, effective_rep_type, is_body_representation, is_direct_body_representation};
-pub use crate::representation::meshed_representations;
-pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 
 #[cfg(test)]
 mod tests;

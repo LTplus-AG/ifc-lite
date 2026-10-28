@@ -62,8 +62,6 @@ const WALL_NORMAL_DEPTH_COS: f64 = 0.98;
 /// the re-extruded host. Below this floor the relative comparison still rules.
 const MIXED_ROUTE_DEFECT_FLOOR: usize = 64;
 const MIXED_ROUTE_DEFECT_GROWTH: usize = 4;
-/// Maximum wrapper depth when drilling through mapped/boolean items to find an extrusion.
-const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
 
 /// Pre-computed per-element void subtraction data.
 ///

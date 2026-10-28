@@ -6,7 +6,7 @@
 //!
 //! Originally contributed by Mathias Søndergaard (Sonderwoods/Linkajou).
 //!
-//! [`process`] sequences five phases, each in its own module:
+//! [`process`] sequences four phases, each in its own module:
 //! `scan` (one walk: entity index, jobs, spans) -> `resolve` (index installed,
 //! styles/voids/units/frame resolved, filters applied) -> `pass` (chunked
 //! parallel meshing and sink events, with `jobs` meshing one element) ->

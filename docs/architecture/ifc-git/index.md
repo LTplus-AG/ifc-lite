@@ -470,8 +470,10 @@ missed by the earlier conclusion:
   changed (`includeUpdatedValues` is `?? true`) and explicit `null`s for keys
   the delivery dropped (`includeDeletions` is `?? true`) —
   `collab/src/snapshot/minimal-layer.ts`. "Emit only the changed members" is
-  what the writer does unless someone turns it off — which makes §4's rule
-  about those flags load-bearing for a second reason.
+  therefore the writer's default rather than work the adapter has to add.
+  Turning either flag off does not widen what it emits, it narrows it — a
+  changed existing value or a removal goes missing — which is why §4's rule
+  about those flags is load-bearing for a second reason.
 
 Per-attribute last-writer-wins cuts both ways, and the asymmetry is worth
 naming: **omitting an unchanged member is safe, and omitting a removed member is

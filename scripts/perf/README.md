@@ -4,6 +4,25 @@
 
 # Performance diagnosis kit
 
+## C2-3 mapped admission and drop reporting (#7781)
+
+The ROUTER-13, ROUTER-15 and ROUTER-19 consolidations passed the local native
+instruction gate against main at `863501ff76` on Haus, duplex and ISSUE_129.
+Geometry counts, ordered mesh bits, serialized output and aggregate diagnostics
+matched exactly. The measured implementation is `a95d4f4da3`; source pins,
+per-phase comparisons and qualification receipts are in `c2-r2-final-r1.json`
+with the coordinator's Rust sweep evidence. This is a native reconciliation
+verdict, with no elapsed-time or browser worker-pool claim.
+
+Share mapped-transform resolution and scaling at admission, keeping matrix
+capture at its existing consumer boundaries. Both public placement APIs can
+reuse the scaled resolver after their existing unit admission and strict
+precheck. A shared mapped-drop report boundary must preserve counting policy,
+parent truncation, scope restoration and event ordering. Moving a diagnostic
+also changes its default tracing target: keep the original targets explicitly.
+The full mutation oracle exercises default and observability witnesses and
+verifies they pass again after source restoration.
+
 ## C2-5 prism directions and shared parity ray (#7781)
 
 The remaining prism clustering caller and shared ray direction passed the local

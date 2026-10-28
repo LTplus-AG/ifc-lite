@@ -43,6 +43,22 @@ impl GeometryRouter {
         Ok(Some(crate::math::mat4::col_major_array(&matrix)))
     }
 
+    /// Admit the mapping in metres before source/cache work. Instance capture
+    /// consumes this already-scaled matrix later, at the placement boundary.
+    #[inline]
+    pub(crate) fn scaled_mapped_item_transform(
+        &self,
+        item: &DecodedEntity,
+        source: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Matrix4<f64>>> {
+        let mut transform = self.mapped_item_transform(item, source, decoder)?;
+        if let Some(transform) = &mut transform {
+            self.scale_transform(transform);
+        }
+        Ok(transform)
+    }
+
     /// The full `IfcMappedItem` transform: `MappingTarget · MappingOrigin`.
     ///
     /// `item` is the `IfcMappedItem` (attr 1 = MappingTarget), `source` its

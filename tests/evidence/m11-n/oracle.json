@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "key": "rust/processing/src/element/session_retained/presentation/normals.rs",
+  "key": "rust/processing/src/element/session_retained/presentation/normals_mesh.rs",
   "mutation": "tests/evidence/m11-n/behaviour.oracle.patch",
   "test": "rust/processing/tests/m11_n_normals.rs",
   "why": "Ignoring the crease guard must fail the own-facet, non-transitive smoothing and 16-gon crease invariants without a kernel or SDK."

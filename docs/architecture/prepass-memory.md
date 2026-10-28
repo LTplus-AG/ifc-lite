@@ -24,8 +24,8 @@ into WASM again. A trap already bypasses that retry. Geometry workers' shard
 scan assists install `setSourceBytes(Vec<u8>)` once and use the `*FromSource`
 methods in `worker-prepass-source.ts`; this adopts the ABI copy, and the Rust
 Arc clones do not copy the source. Each worker has a separate linear memory;
-the shared JS source does not share their WASM heaps. `scan-shard` must be
-guarded too, before it installs that source.
+the shared JS source does not share their WASM heaps. Shard scans can also
+trap while installing or scanning that source.
 
 ## Serial allocation overlap
 
@@ -60,7 +60,7 @@ Hash-table growth can overlap old and new tables. At final conversion,
 the table, sorts in place, then overlaps rows with the final `12N` columns.
 The metadata snapshot changes no spans or duplicate-id precedence; final
 sorted index bytes are covered by its regression test. Discovery, job order,
-style resolution, and wire encodings are unchanged for admitted inputs.
+style resolution, and wire encodings are unchanged.
 
 ## Sharded and discovery allocations
 
@@ -94,19 +94,13 @@ shrink, and fragmentation may prevent a large contiguous allocation.
 
 ## Admission and limits
 
-The worker now refuses **`F >= 1,500,000,000` decimal bytes** before serial
-pre-pass, sharded pre-pass, or shard scan enters WASM. This conservative policy
-includes both production failures whether telemetry's MB means decimal or
-binary units. The normal worker error contains **"Out of memory"**, the
-source size, the 4 GiB constraint, and split-model/native CLI/server actions;
-the viewer's existing `load-errors.ts` classifies it as `out_of_memory`.
-It does not manufacture a WASM panic location or replay a failed allocation.
-For a refused 1.8 GB file the incremental file/index WASM allocation changes
-from the estimates above to **zero**; existing engine/JS allocations remain.
+No source-size admission ceiling is imposed: large files that load successfully
+can continue to load. After an OOM-shaped trap on a source of at least 1 GB
+(decimal), serial pre-pass, sharded pre-pass and shard scan report an actionable
+"Out of memory:" error, including compatibility-retry failures. The viewer
+classifies it as `out_of_memory`. The raw trap remains in the message tail and
+`.cause`, since a Rust panic can produce the same `unreachable` signature.
 
-This ceiling does not guarantee success for every smaller file or every host.
-It deliberately trades support for possibly loadable large files for a clear
-failure in the observed crash band. Raising it needs real large-file browser
-peak evidence, including late metadata, dense entities, styles, unsorted ids,
-and geometry-worker memory. Snapshot compaction is not a claim that the whole
-viewer can now load a 1.8 GB file.
+This is a failure-reporting heuristic, not proof of OOM or a guarantee that a
+1.8 GB file will load. Snapshot compaction reduces an avoidable allocation;
+model density, metadata location and host memory still determine peak use.

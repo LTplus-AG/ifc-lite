@@ -11,22 +11,8 @@
  * See docs/architecture/prepass-memory.md for the allocation accounting.
  */
 
-/** Below this the failure is treated as unrelated to size (caller rethrows). */
-const HUGE_FILE_GB_THRESHOLD = 2.5;
-
-/** Conservative admission ceiling, not a prediction of every model's peak.
- * Entity density and style/job counts cannot be inferred from source size.
- * Refuse the observed 1.6–1.8 GB failure band BEFORE any file-sized WASM copy. */
-export const MAX_STREAMING_PREPASS_BYTES = 1_500_000_000;
-
-export function assertStreamingPrepassHeadroom(byteLength: number): void {
-  if (byteLength < MAX_STREAMING_PREPASS_BYTES) return;
-  throw new Error(
-    `Out of memory: this ${(byteLength / 1e9).toFixed(2)} GB model exceeds the browser streaming pre-pass ` +
-    `source limit of 1.50 GB. The source, entity indexes and temporary buffers must share ` +
-    `WebAssembly's 4 GiB address space. Split the model into smaller files or use the native ifc-lite CLI/server.`,
-  );
-}
+/** Map failed attempts from 1 GB, including observed 1.6–1.8 GB pre-pass traps. */
+const HUGE_FILE_GB_THRESHOLD = 1.0;
 
 /** wasm OOM / abort signatures across engines (V8, SpiderMonkey, JSC). */
 const OOM_SIGNATURE =

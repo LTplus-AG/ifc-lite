@@ -62,17 +62,6 @@ async function send(type: string, extra: Record<string, unknown> = {}): Promise<
 }
 
 describe('streaming prepass trap handling (#6542)', () => {
-  for (const type of ['prepass-streaming', 'prepass-streaming-sharded', 'scan-shard']) {
-    it(`${type}: refuses the large-file failure band before copying or replaying source (#8259)`, async () => {
-      // Length-only input: any attempt to view/copy it or enter the WASM mock
-      // is a test failure. Do not allocate gigabytes to exercise admission.
-      await send(type, { sharedBuffer: { byteLength: 1_649_550_000 } });
-      expect(faults.sources).toHaveLength(0);
-      expect(posted.filter((m) => m.type === 'error')).toHaveLength(1);
-      expect(posted.find((m) => m.type === 'error')?.message).toMatch(/out of memory.*streaming pre-pass/i);
-      expect(posted.some((m) => m.type === 'prepass-progress' || m.type === 'shard-result')).toBe(false);
-    });
-  }
   for (const type of ['prepass-streaming', 'prepass-streaming-sharded', 'scan-shard', 'resolve-styles-shard', 'finalize-styles']) {
     it(`${type}: stops on a WASM trap before copying/replaying the file`, async () => {
       await send(type);

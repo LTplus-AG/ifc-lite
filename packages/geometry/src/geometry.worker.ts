@@ -12,7 +12,7 @@ import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import * as wasmBindings from '@ifc-lite/wasm';
 import { createInCallHeartbeat, installInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
 import { initWasmWithRetry } from './wasm-init-retry.js';
-import { assertStreamingPrepassHeadroom, largeFilePrepassError } from './huge-file-error.js';
+import { largeFilePrepassError } from './huge-file-error.js';
 import { isWasmRuntimeTrap } from './wasm-runtime-trap.js';
 import { freeWasmInstanceQuietly } from './wasm-instance-free.js';
 import type { MeshData, TessellationQuality } from './types.js';
@@ -1368,9 +1368,6 @@ self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
 
 async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<void> {
   try {
-    if (e.data.type === 'prepass-streaming' || e.data.type === 'prepass-streaming-sharded' || e.data.type === 'scan-shard') {
-      assertStreamingPrepassHeadroom(e.data.sharedBuffer.byteLength);
-    }
     if (e.data.type === 'resolve-styles-shard') {
       // Sharded pre-pass: resolve this worker's styled-item slice against the
       // entity index installed by the preceding set-entity-index (FIFO).
@@ -1762,6 +1759,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       return;
     }
   } catch (err) {
+    if (e.data.type === 'scan-shard') err = largeFilePrepassError(err, e.data.sharedBuffer.byteLength) ?? err;
     // Same #2527 follow-up forward as the top-level catch above.
     const panic = takeWasmPanicStash(self);
     (self as unknown as Worker).postMessage(

@@ -36,8 +36,9 @@ own first commit; never edit existing keys, widen values, or move keys out of
 the base. Each fragment is a JSON object of new preregistrations;
 there is no command-line tolerance override. `--manifest tests/models/manifest.json`
 selects downloaded fixtures. Engine startup/qualification must succeed before any
-coverage is reported. Exact-only orphan type products are listed separately as
-“out of M1 scope”; they never enter the coverage numerator or denominator.
+coverage is reported. Orphan type products are retained candidates since M9; an
+exact type mesh missing from the candidates is listed separately as an
+“unexpected exact-only type product” and is a universe mismatch.
 Missing files are reported explicitly and fail a
 gated run. `--bless` updates the committed coverage manifest only after a clean
 committed-fixture comparison and is forbidden whenever `CI` is set.

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 #![cfg(feature = "retained-runtime")]
-//! #7955: type products are intentionally excluded by the whole-model contract.
+//! #7955: orphan types share the whole-model contract and exact scheduling.
 use super::support::*;
 #[test]
-fn canonical_jobs_skip_type_products_and_empty_jobs_in_exact_order() {
+fn canonical_jobs_include_orphan_type_products_after_products() {
     let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
     let ids: Vec<_> =
         ifc_lite_processing::element::retained_runtime::canonical_element_jobs(&source)
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-    assert_eq!(ids, vec![10, 20, 50]);
+    assert_eq!(ids, vec![10, 20, 50, 60]);
 }
 #[test]
 fn repeated_mapped_occurrences_publish_separate_placements() {

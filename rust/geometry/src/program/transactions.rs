@@ -9,6 +9,7 @@ use crate::resource::{OwnedResourceContext, ProgramStop, Reservation};
 
 mod error;
 mod values;
+mod type_origin;
 pub use error::{TransactionError, TransactionFailureKind};
 pub use values::{Definition, Operation, OperationKind, Plan, Requirement, Slot, Value, ValueRef};
 

@@ -6,7 +6,7 @@
 
 `packages/extensions/src/authority/` is new. The CI revert oracle (`Changed tests observe production`) reverts production by deleting it, so `authority.test.ts` fails to load, no assertion runs, and the oracle reports `REVERT-BROKE-BUILD` / INCONCLUSIVE. Each behavioural decision below was checked with a surgical mutation instead.
 
-Each patch is written mutant→fixed (the orientation of `git diff base...head`), and the oracle reverse-applies it. All rows were captured at head `639890dd5` against `origin/main` `7fd1c4f5e`. Every run ended `OBSERVED` (exit 0) with restoration verified. The full result records are in `summary.json`.
+Each patch is written mutant→fixed (the orientation of `git diff base...head`), and the oracle reverse-applies it. All rows were captured at head `83432d425` against `origin/main` `80b18cbb7`. Every run ended `OBSERVED` (exit 0) with restoration verified. The full result records are in `summary.json`.
 
 | Patch | Module | Mutation | Test that went red |
 |---|---|---|---|

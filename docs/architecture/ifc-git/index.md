@@ -24,10 +24,10 @@
 ## 1. North star
 
 A delivered IFC file arriving from outside ifc-lite has no history. ifc-git gives
-it one: **every delivery that changed something becomes a commit**, and the
-commit is computed from the **diff against its parent** rather than from the
-file bytes, so an unchanged re-export creates no new history — it is recorded as
-pointing at the commit that already exists.
+it one: **every delivery that changed something becomes a delta layer** against
+that party's previous delivery, handed to Layer PRs (§4). The layer is computed
+from the **diff against that previous delivery** rather than from the file bytes,
+so an unchanged re-export produces no layer and no new history.
 
 It is used on the CLI to ingest files and headlessly to diff. **It does not
 expose a git verb surface of its own** — an earlier version of this paragraph
@@ -209,7 +209,7 @@ planned, and land one per PR in roughly this order.
 | --- | --- |
 | [`01-concepts.md`](01-concepts.md) | Glossary: org, repo, commit, tree, blob, ref, branch. Repo kinds. What maps onto git and what cannot. |
 | [`02-graph-object-model.md`](02-graph-object-model.md) | The node DAG. Node kinds and component keys. Canonical encoding. Why this is GUID-agnostic. |
-| `03-diff.md` | Diff as the commit computer. Graph diff and change localisation. The Rust port and its parity contract. |
+| `03-diff.md` | Diff as the delta-layer computer. Graph diff and change localisation. The Rust port and its parity contract. |
 | `04-authorship.md` | The schema-neutral authorship record and its per-schema adapters. Resolution ladder, warning codes, and the rule against fabricated attribution. |
 | `05-layer-adapter.md` | The hand-over: emitting a delta layer against a party's previous delivery, and recording the match in `identity_map`. |
 | `06-relationship-to-layer-prs.md` | The boundary in detail, and what ifc-git owes Layer PRs at the hand-over. |
@@ -225,11 +225,12 @@ requires" — had the direction backwards.
 ## 6. Open decisions
 
 **These are maintainer calls. This spec set records them as open rather than
-assuming an answer, and neither blocks the documents written so far.**
+assuming an answer. §6.1 and §6.2 do not block the documents written so far;
+§6.3 does block the delivery → layer adapter (§8, step 8).**
 
 §6.1's digest is **decided** as of 2026-10-26 and kept here with its reasoning
 rather than deleted, because the argument is what a later reader needs; where the
-encoding lives is still **proposed**. §6.2 is open.
+encoding lives is still **proposed**. §6.2 and §6.3 are open.
 
 ### 6.1 The digest — DECIDED. Where the encoding lives — PROPOSED
 

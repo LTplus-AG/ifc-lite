@@ -187,7 +187,7 @@ fn own(pieces: &[Piece], cutters: &[Cutter], groups: &[Vec<usize>], areas: &mut 
         }
     }
     let mut owner = vec![usize::MAX; pieces.len()];
-    for i in 0..pieces.len() { let r = root(&mut parent, i); owner[r] = owner[r].min(pieces[i].cutter); }
+    for (i, piece) in pieces.iter().enumerate() { let r = root(&mut parent, i); owner[r] = owner[r].min(piece.cutter); }
     for (i, piece) in pieces.iter().enumerate() {
         let c = owner[root(&mut parent, i)];
         let Some(s) = groups[c].iter().position(|g| *g == piece.group) else { continue };

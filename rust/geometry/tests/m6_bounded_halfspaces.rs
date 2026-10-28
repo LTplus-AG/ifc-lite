@@ -81,3 +81,11 @@ fn issue_7955_m6_boolean_operator_and_malformed_source_precedence() {
         }else{line.to_string()}).collect::<Vec<_>>().join("\n");
     let (trace,result)=walk(&text,1001);assert_eq!(result.unwrap_err().kind(),TransactionFailureKind::Source);assert_eq!(trace.order,["host"]);
 }
+
+#[test]
+fn issue_7955_m6_full_circle_uses_the_prism_circle_wire() {
+    let text=SOURCE.replace("#36=IFCINDEXEDPOLYCURVE(#35,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,4,1))),.F.);","#36=IFCCIRCLE(#9036,0.5);\n#9036=IFCAXIS2PLACEMENT2D(#9037,$);\n#9037=IFCCARTESIANPOINT((1.,1.));");
+    let (trace,result)=walk(&text,1005);result.unwrap();
+    assert_eq!(trace.prisms.len(),1);assert_eq!(trace.prisms[0].loops[0].segments.len(),1);
+    assert!(matches!(trace.prisms[0].loops[0].segments[0],PrismSegment::Circle{radius,..} if radius==0.5));
+}

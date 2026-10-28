@@ -84,6 +84,13 @@ fn read_edges(id:u32,decoder:&mut EntityDecoder,path:&mut HashSet<u32>)->Option<
             }
             Some(edges)
         }
+        IfcType::IfcCircle => {
+            let position=decoder.decode_by_id(curve.get_ref(0)?).ok()?;
+            let placement=Axis2Placement::read_2d(&position,decoder).ok()?.matrix();
+            let radius=curve.get(1)?.as_float()?;
+            if !radius.is_finite()||radius<=0.{return None;}
+            Some(vec![Edge::Arc{c:[placement[(0,3)],placement[(1,3)]],u:[radius,0.],v:[0.,radius],a:0.,sweep:std::f64::consts::TAU}])
+        }
         IfcType::IfcPolyline => {
             let refs=curve.get(0)?.as_list()?;if refs.len()>257{return None;}
             let points=refs.iter().map(|r|decoder.point3(r.as_entity_ref()?).ok().map(|p|[p[0],p[1]])).collect::<Option<Vec<_>>>()?;

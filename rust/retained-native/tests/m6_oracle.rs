@@ -30,3 +30,13 @@ fn m6_outside_material_uses_original_boundary_not_partition_edges() {
     assert!(arc.curved);assert!(arc.removed_clearance([0.5,0.5,3.])>0.4);
     assert_eq!(arc.removed_clearance([1.5,1.5,3.]),0.);
 }
+
+#[test]
+fn m6_circle_boundary_clearance_remains_analytic() {
+    let text=std::str::from_utf8(SOURCE).unwrap().replace("#36=IFCINDEXEDPOLYCURVE(#35,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,4,1))),.F.);","#36=IFCCIRCLE(#9036,0.5);\n#9036=IFCAXIS2PLACEMENT2D(#9037,$);\n#9037=IFCCARTESIANPOINT((1.,1.));");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,1005).unwrap();
+    assert!(e.curved);assert!(e.section_volume.is_none(),"curved boundaries use hand integrals and analytic clearance");
+    assert!((e.removed_clearance([1.,1.,3.])-0.5).abs()<1e-12);
+    assert_eq!(e.removed_clearance([1.6,1.,3.]),0.);
+}

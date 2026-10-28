@@ -194,3 +194,11 @@ fn m6_native_960_report_has_no_untyped_or_unverified_outcome() {
     println!("M6 960 report: {report}");
     println!("sdk witness executed: m6_960_bounded_report");
 }
+
+#[test]
+fn m6_native_full_circle_boundary_hand_integral() {
+    if worker().is_none(){return;}
+    let text=SOURCE.replace("#36=IFCINDEXEDPOLYCURVE(#35,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,4,1))),.F.);","#36=IFCCIRCLE(#9036,0.5);\n#9036=IFCAXIS2PLACEMENT2D(#9037,$);\n#9037=IFCCARTESIANPOINT((1.,1.));");
+    let outcomes=run(&text,&[1005]);verify(&text,shape(&outcomes,1005),Some(64.-std::f64::consts::FRAC_PI_2));
+    println!("sdk witness executed: m6_circle_boundary");
+}

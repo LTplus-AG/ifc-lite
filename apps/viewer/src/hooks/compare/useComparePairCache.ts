@@ -26,6 +26,7 @@ export function useComparePairCache(epoch: MutableRefObject<number>) {
         || !state.models.has(state.compareHeadModelId ?? '')) {
         epoch.current += 1;
         release();
+        if (state.compareRunning) state.setCompareRunning(false);
         return;
       }
       const built = builtRef.current;

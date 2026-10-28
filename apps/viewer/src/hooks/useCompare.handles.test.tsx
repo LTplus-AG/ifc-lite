@@ -115,7 +115,7 @@ describe('resident compare ownership (#8042 A2)', () => {
     assert.equal(useViewerStore.getState().compareError, null);
   });
 
-  for (const action of ['cancel', 'clear', 'unmount', 'supersede'] as const) {
+  for (const action of ['cancel', 'clear', 'unmount', 'supersede', 'selection', 'key', 'teardown'] as const) {
     it(`releases a locally owned build when ${action} happens after allocation, before publication`, async () => {
       const original = createModel;
       let newer: Promise<void> | undefined;
@@ -125,6 +125,9 @@ describe('resident compare ownership (#8042 A2)', () => {
           if (action === 'clear') useViewerStore.getState().clearCompare();
           if (action === 'unmount') { root!.unmount(); root = null; }
           if (action === 'supersede') newer = hook.runComparison();
+          if (action === 'selection') useViewerStore.setState({ compareHeadModelId: 'C' });
+          if (action === 'key') useViewerStore.setState({ compareKeyProperty: 'Tag' });
+          if (action === 'teardown') useViewerStore.setState({ models: new Map() });
         });
         return original(...args);
       });

@@ -247,3 +247,8 @@ See the [ifc-lite docs](https://ifclite.dev/docs/) and the
 ## License
 
 MPL-2.0
+
+`@ifc-lite/diff/internal` is for in-repository consumers only and has no semver
+stability guarantee. `buildFingerprintBatch` snapshots fresh adapter DTOs once
+and computes data and component fingerprints together. It never caches inputs;
+call it again after changes. Public unary fingerprint APIs remain supported.

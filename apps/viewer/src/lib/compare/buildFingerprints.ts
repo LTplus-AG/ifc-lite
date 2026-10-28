@@ -50,9 +50,8 @@
  * length unit with no physical quantity change does not read as modified.
  */
 
+import { buildFingerprintBatch } from '@ifc-lite/diff/internal';
 import {
-  buildComponentFingerprints,
-  buildDataFingerprint,
   initDiff,
   type EntityFingerprint,
 } from '@ifc-lite/diff';
@@ -314,6 +313,7 @@ export async function buildEntityFingerprints(
   );
 
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
+  const inputs: DataFingerprintInput[] = [];
   let processed = 0;
   for (const [localId, geometryHash] of geometryByLocalId) {
     const ifcType = store.entities.getTypeName(localId) || 'IfcProduct';
@@ -343,11 +343,12 @@ export async function buildEntityFingerprints(
     // not contain it, which the engine reads as "no evidence", never as "moved".
     const container = spatialContainerPath(store, localId);
 
+    inputs.push(dataInput);
     fingerprints.push({
       key,
       ifcType,
-      dataHash: buildDataFingerprint(dataInput),
-      components: buildComponentFingerprints(dataInput),
+      dataHash: '',
+      components: {},
       geometryHash,
       ...(aabb ? { aabb } : {}),
       ...(volume !== undefined ? { volume } : {}),
@@ -364,5 +365,7 @@ export async function buildEntityFingerprints(
     }
   }
 
+  const hashes = buildFingerprintBatch(inputs);
+  for (let i = 0; i < fingerprints.length; i++) Object.assign(fingerprints[i], hashes[i]);
   return fingerprints;
 }

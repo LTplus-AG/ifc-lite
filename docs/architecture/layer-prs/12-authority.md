@@ -55,7 +55,7 @@ Changes to the charter are themselves layers on the `charter` ref, governed by t
 
 ### Selectors
 
-Selectors reuse the scope-claim grammar (07 §7.1, `extensions/src/capability/scope-claim.ts`) with one extension: the target segment may name a single member as `<Set>.<Member>`. Today `SEGMENT_RE` in `capability/parse.ts` rejects `.`, so this is a grammar change, not a new grammar.
+Selectors reuse the scope-claim grammar (07 §7.1, `extensions/src/capability/scope-claim.ts`) unchanged. The parser already splits capability targets on `.` (`capability/parse.ts`), so `Pset_WallCommon.FireRating` is already a valid two-segment target. What this spec adds is only its meaning: a two-segment target `<Set>.<Member>` names one member of a set.
 
 A selector target matches IFCX attribute keys as follows:
 
@@ -119,6 +119,7 @@ Nobody else can resolve it. A reviewer in the merge conflict queue (08 §8.3) wh
 
 ## 12.7 Integration
 
+- **Attribution through merge layers.** A three-way merge appends only the merge layer to the ref (`merge/src/ref-flow.ts`), and that layer is authored by the resolver. Attributing its ops to the resolver would credit the resolver with every merged value. So the opinion pass expands a merge layer back into its sources: ops taken from the candidate (auto-merged ops and `theirs` resolutions) are attributed to the candidate layer's `author.principal`, read from the content-addressed candidate named in `manifest.merge.candidate`; `edited` resolutions are the resolver's own opinions; `ours` adds nothing, since that value is already in the stack under its original layer. Candidate opinions the merge did **not** apply (the losing side of an authority auto-resolution) are still read from the candidate layer and retained as dissent, so they reach §12.5 without being composed into the shown value. This requires the registry to keep every merged candidate layer; it already stores them by id.
 - **Merge.** A concurrent-edit conflict (05 §5.3) on a governed attribute where exactly one side is authoritative resolves automatically to that side, recorded in `manifest.merge.resolutions` with the rule id as basis. The other side remains in the stack as dissent and the attribute becomes `contested`. Both sides authoritative (same role, two layers) stays an ordinary conflict and, if merged unresolved, composes as `authority-split`.
 - **Merge granularity.** The merge conflict unit stays (entity, `componentKey`), so `@ifc-lite/diff`'s output shape does not change. A concurrent-edit on `pset:Pset_WallCommon` where the architect changed `IsExternal` and the fire consultant changed `FireRating` is resolved **inside** the component: the merge engine already holds the base, ours and theirs attribute values (`ComponentSnapshot.attributes`), so it compares them per attribute key. Members changed on only one side take that side; governed members follow the rule above; only a member both sides changed without a governing rule stays a conflict.
 - **Ref policy.** `RefPolicy` gains `charter?: string` (the ref holding the charter) and `rejectDissent?: boolean`. By default a non-authoritative opinion merges as an opinion (it is information, not a write); with `rejectDissent` the ref refuses layers that would create new contested records.

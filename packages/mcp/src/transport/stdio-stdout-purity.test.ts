@@ -28,7 +28,7 @@ const missing = !existsSync(FIXTURE)
       : null;
 if (missing) console.warn(`[mcp] skipping the stdio stdout purity test: ${missing}`);
 
-type Reply = { id?: number; result?: { isError?: boolean } };
+type Reply = { id?: number; result?: { isError?: boolean }; error?: unknown };
 
 /** Run the server process through the calls; resolve with everything it wrote. */
 async function drive(): Promise<{ stdout: string; stderr: string; replies: Reply[] }> {
@@ -57,6 +57,9 @@ async function drive(): Promise<{ stdout: string; stderr: string; replies: Reply
     await reply(2);
     send({ id: 3, method: 'tools/call', params: { name: 'clash_check', arguments: {} } });
     const clash = await reply(3);
+    // A JSON-RPC error has no `result`: require one, so absence cannot pass.
+    expect(clash.error, JSON.stringify(clash)).toBeUndefined();
+    expect(clash.result, JSON.stringify(clash)).toBeDefined();
     expect(clash.result?.isError, JSON.stringify(clash)).toBeFalsy();
   } finally {
     child.stdin.end();

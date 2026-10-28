@@ -4,6 +4,23 @@
 
 # Performance diagnosis kit
 
+## C2-5b void rays and frames (#7781)
+
+The shared array ray/triangle helper and first-fit face-normal clustering passed
+the local native instruction gate against main at `f6961be929` on Haus, duplex
+and ISSUE_129. Ordered mesh bits, serialized output, geometry counts and aggregate
+diagnostics matched exactly. This qualifies the reconciliation on those fixtures;
+it makes no elapsed-time or browser worker-pool claim. Source-pinned counts,
+identity witnesses and commands are recorded in `c2-5b-build-r1.json` with the
+coordinator's Rust sweep evidence.
+
+Keep each ray caller's determinant floor and barycentric slack, including the
+inclusive range check's NaN rejection. Normal clustering must preserve first-fit
+order, antiparallel flips, weighted arithmetic and the box classifier's early cap.
+Independent legacy-body comparisons cover these distinctions; a compiled mutation
+of the ray parameter makes the new parity assertions fail. Cohesive frame and
+parity modules fit below the module-size limit without growing the void driver.
+
 ## C2-5a void cutter vocabulary (#7781)
 
 The borrowed `Cutter` projections and shared admission helpers passed the local

@@ -204,7 +204,7 @@
      706 rust/geometry/src/router/mod.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
-# -125: the closure, pairing and signed-volume checks moved to `mesh_check` (C2-1, #7793); 882 -> 757.
+# C2-5b (#7781): geom.rs is 240 lines after frame/parity extraction; its row is removed.
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
 # High/Highest small-opening floor (B11 regression, issue #976).
@@ -261,6 +261,7 @@
 # post-cut sliver refinement REGION-SCOPED (refine_high_aspect_slivers_within) so
 # only rim slivers the cut created are bisected, not the host's authored
 # long-thin faces; skip the probe/audit tail when the fixpoint was a no-op.
+# C2-5b (#7781): shared ray intersection replaces the inline body; measured 2953 -> 2939.
     2939 rust/geometry/src/router/voids/prism_cut.rs
 # NEW: #129 coaxial footprint-union for OVERLAPPING opening clusters. One cohesive
 # algorithm: extended-AABB overlap clustering (union-find), coaxial detection, 2.5D

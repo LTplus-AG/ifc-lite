@@ -56,7 +56,9 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
       const outcomes = result.shape.outcomes.map(p => p.status !== 'published' ? p : { ...p,
         parts: p.parts.map(part => ({ ...part, positions: Float64Array.from(part.positions),
           indices: Uint32Array.from(part.indices), worldFromObject: Float64Array.from(part.worldFromObject) })) });
-      const report = retainedReport(validated, outcomes, () => null);
+      // Whole-model run: no id filter, so `ids` is deliberately undefined (the
+      // report then records `ids: null`); per-product codes/volumes ignore it.
+      const report = retainedReport(validated, outcomes, () => null, undefined);
       products.push(...report.products.map(p => ({ ...p, model })));
       const view = compareView(result.shape, result.view, result.prepass);
       models.push({ model, ...report.summary, ...view, importMs: result.importMs,

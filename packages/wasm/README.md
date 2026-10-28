@@ -417,7 +417,7 @@ and a nonempty `obligationsUnmet` list; consumers must display that marker. This
 is shape-only output. Supported openings are cut individually; completed cuts and
 plan-proven unvoided products discharge `OpeningClosure`. `cuts` reports completed
 cuts and `consumedParts` is zero: a consumed part refuses the entire product with
-`empty_result`. Layer, appearance and persistent-face obligations remain unmet.
+`empty_result`. Layer and appearance obligations remain unmet.
 Unsupported opening bodies report `opening_unsupported`; hosts with internal
 material-layer boundaries refuse `material_layer_strategy` before opening work.
 

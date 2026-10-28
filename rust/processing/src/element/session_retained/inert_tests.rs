@@ -466,3 +466,49 @@ fn issue_7955_mismatched_opening_attributes_refuse_source_changed() {
     .err().expect("foreign opening source allocation");
     assert_eq!(error.refusal().0.code(), "source_changed");
 }
+
+// #7955: a completion's stage proves whether an operation can still be running.
+// Exercise the shared acceptance rule for both source changes and resource stops.
+#[test]
+fn settled_completion_stops_preserve_worker_but_undelivered_stops_cancel() {
+    for stage in [ISSUED, EXECUTING, DELIVERED, ACCEPTED] {
+        for reason in [RetainedExecutionError::Source(RetainedContextError::Stale),
+            RetainedExecutionError::Stopped(ProgramStop::Cancelled)] {
+            let resources = OwnedResourceContext::capture_current();
+            let peer = InertPeer::new(false);
+            let foreign = InertPeer::new(false);
+            let cancellation = RuntimeCancellation::<InertReceipt> {
+                stage: Arc::new(batch::StageState::new(&resources).unwrap()),
+                owner: peer.domain(),
+            };
+            cancellation.stage.store(stage, Ordering::Release);
+            cancellation.refuse_completion(&reason);
+            let settled = matches!(stage, DELIVERED | ACCEPTED);
+            assert_eq!(peer.domain.incarnation().is_some(), settled);
+            assert_eq!(cancellation.controller_retired(), !settled);
+            assert!(foreign.domain.incarnation().is_some(), "never retire a foreign envelope");
+        }
+    }
+}
+
+#[test]
+fn settled_completion_fault_is_charged_and_cancelled_program_is_not_a_source_stop() {
+    with_execution(|execution, decoder, router| {
+        let peer = InertPeer::new(false);
+        let issued = execution.issue_next(decoder, router, &peer).unwrap().unwrap();
+        let cancellation = issued.cancellation.clone();
+        // The real common program's use-after-cancel is protocol misuse.
+        let program = execution.program.as_mut().unwrap();
+        program.cancel();
+        let reason = common(program.request().unwrap_err());
+        assert!(matches!(&reason, RetainedExecutionError::Common(error)
+            if error.kind() == ifc_lite_geometry::program::transactions::TransactionFailureKind::Cancelled));
+        assert!(!reason.controller_cancelled());
+        cancellation.stage.store(ACCEPTED, Ordering::Release);
+        cancellation.refuse_completion(&reason);
+        assert!(peer.domain.incarnation().is_none());
+        assert!(!cancellation.controller_retired(), "protocol faults stay charged");
+        drop(issued);
+        assert!(!cancellation.controller_retired(), "later packet drop cannot relabel a fault");
+    });
+}

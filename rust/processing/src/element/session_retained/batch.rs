@@ -37,6 +37,25 @@ impl<R: NumericalReceipt> RuntimeCancellation<R> {
         self.stage.store(SETTLED_FAULT, Ordering::Release);
         self.owner.retire();
     }
+    /// Completion refusals share one rule: preserve a settled healthy peer for
+    /// source/resource stops; retire faults. An undelivered packet still cancels.
+    pub(super) fn refuse_completion(&self, reason: &RetainedExecutionError) {
+        if !reason.controller_cancelled() {
+            self.fault();
+            return;
+        }
+        loop {
+            let stage = self.stage.load(Ordering::Acquire);
+            if stage == SETTLED_FAULT { return; }
+            if !matches!(stage, DELIVERED | ACCEPTED) {
+                self.cancel();
+                return;
+            }
+            if self.stage.compare_exchange(stage, SETTLED_FAULT, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                return;
+            }
+        }
+    }
 }
 pub(super) struct RuntimeIssued<R: NumericalReceipt> {
     pub(super) operations: Vec<IssuedRetainedOperation<R>>,

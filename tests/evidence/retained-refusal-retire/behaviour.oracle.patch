@@ -1,7 +1,7 @@
 --- a/rust/processing/src/element/session_retained/cancellation.rs
 +++ b/rust/processing/src/element/session_retained/cancellation.rs
-@@ -5,11 +5,11 @@
- impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
+@@ -19,11 +19,11 @@
+
      pub(super) fn cancel(&mut self) {
          self.failed = true;
 -        let settled = self.pending.as_ref().is_some_and(|pending|
@@ -19,15 +19,12 @@
          }
 --- a/rust/processing/src/element/session_retained/acceptance.rs
 +++ b/rust/processing/src/element/session_retained/acceptance.rs
-@@ -116,7 +116,10 @@
+@@ -121,7 +121,7 @@
              .and_then(|()| self.validate(decoder, router).map(|_| ()));
          if let Err(reason) = result {
              self.failed = true;
 -            pending.cancellation.cancel();
-+            // The complete packet is authenticated and ACCEPTED. A typed
-+            // logical/source stop (including a consumed host) has no numerical
-+            // operation left to cancel; drop its receipts on the healthy peer.
-+            if !reason.controller_cancelled() { pending.cancellation.fault(); }
++            pending.cancellation.refuse_completion(&reason);
              return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
          }
          // Never overwrite a cancellation which raced the synchronous consume.

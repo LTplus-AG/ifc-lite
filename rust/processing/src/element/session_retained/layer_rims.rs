@@ -24,7 +24,7 @@ fn split(mesh: &mut ShapePart, surface: LayerInterface, others: &[Point], tau: f
     let mut output = Vec::new(); let mut maximum: f64 = 0.;
     let triangles = mesh.indices.clone();
     for t in triangles.chunks_exact(3) {
-        super::error::budget_checkpoint()?;
+        work()?;
         let mut ring = Vec::new();
         for (a,b) in [(t[0],t[1]),(t[1],t[2]),(t[2],t[0])] {
             ring.push(a);
@@ -37,7 +37,7 @@ fn split(mesh: &mut ShapePart, surface: LayerInterface, others: &[Point], tau: f
             let end = points.partition_point(|p| p[axis] <= pa[axis].max(pb[axis])+tau);
             let mut interior = Vec::new();
             for &p in &points[start..end] {
-                super::error::budget_checkpoint()?;
+                work()?;
                 let u = dot(sub(p,pa),edge)/length2;
                 if u <= 0. || u >= 1. || norm(sub(p,pa)) <= tau || norm(sub(p,pb)) <= tau { continue; }
                 let projection = std::array::from_fn(|i| pa[i]+u*edge[i]);
@@ -83,7 +83,7 @@ pub(super) fn conform(left: &mut ShapePart, right: &mut ShapePart, surface: Laye
         let c = cell(p); let mut closest: Option<(f64,Point)> = None;
         for x in -1..=1 { for y in -1..=1 { for z in -1..=1 {
             for &q in grid.get(&[c[0]+x,c[1]+y,c[2]+z]).into_iter().flatten() {
-                super::error::budget_checkpoint()?;
+                work()?;
                 let d = norm(sub(p,q));
                 if d <= tau && closest.is_none_or(|(old,_)| d < old) { closest = Some((d,q)); }
             }

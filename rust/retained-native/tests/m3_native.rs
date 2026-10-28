@@ -118,8 +118,9 @@ fn issue_7955_m3_synthetic_cases_and_empty_refusals() {
     assert_eq!(shape(&outcomes, 185).cuts, 1);
     assert_eq!(shape(&outcomes, 225).cuts, 1);
     let (layered, calls, _) = observed(FD, &[248], None).unwrap();
-    assert_eq!(refusal(&layered, 248).0, "material_layer_strategy");
-    assert_eq!(calls, 0, "two-layer host must refuse before opening cuts");
+    let product=shape(&layered,248);
+    assert_eq!(product.parts.len(),2);
+    assert_eq!(calls,3,"M4: opening then two independent band intersections");
     report_exact(FD, &outcomes, &[29, 185]);
     println!("sdk witness executed: m3_synthetic_empty");
 }
@@ -259,7 +260,14 @@ fn issue_7955_m3_stage_native_browser_reference() {
         ProductOutcome::Refused { product_id, refusal, .. } => serde_json::json!({"id":product_id,"code":refusal.code()}),
     }).collect::<Vec<_>>();
     if let Some(path) = std::env::var_os("IFCLITE_M3_REFERENCE") {
-        std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({"issue2019":rows(&issue),"synthetic":rows(&synthetic),"nonbakeable":rows(&nonbakeable)})).unwrap()).unwrap();
+        // Reuse the existing staged native-reference transport; no workflow fork.
+        let m4straight=run(include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc"),&[27]).unwrap();
+        let m4curved=run(include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"),&[55]).unwrap();
+        let layers=|outcomes:&[ProductOutcome]| outcomes.iter().map(|o|match o {
+            ProductOutcome::Published(s)=>serde_json::json!({"id":s.product_id,"code":"published","bands":s.parts.iter().map(|p|serde_json::json!({"index":p.layer.map(|l|l.index),"materialId":p.layer.map(|l|l.material_id),"volume":p.capped_volume_m3})).collect::<Vec<_>>()}),
+            ProductOutcome::Refused{product_id,refusal,..}=>serde_json::json!({"id":product_id,"code":refusal.code(),"bands":[]}),
+        }).collect::<Vec<_>>();
+        std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({"issue2019":rows(&issue),"synthetic":rows(&synthetic),"nonbakeable":rows(&nonbakeable),"m4straight":layers(&m4straight),"m4curved":layers(&m4curved)})).unwrap()).unwrap();
     }
     println!("sdk witness executed: m3_reference");
 }

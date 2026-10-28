@@ -20,7 +20,7 @@ fn strip(mesh: &mut ShapePart, surface: LayerInterface, sign: f64) -> Result<f64
     let mut indices = Vec::with_capacity(mesh.indices.len());
     let mut area = 0.;
     for t in mesh.indices.chunks_exact(3) {
-        super::error::budget_checkpoint()?;
+        work()?;
         let p = t.iter().map(|&i| point(mesh,i)).collect::<Vec<_>>();
         let n = cross(sub(p[1],p[0]),sub(p[2],p[0]));
         let length = norm(n);

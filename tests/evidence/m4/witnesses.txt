@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: MPL-2.0
+m4_straight_bands
+m4_curved_authored_bands

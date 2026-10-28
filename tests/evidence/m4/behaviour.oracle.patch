@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/program/retained/layer_source.rs
++++ b/rust/geometry/src/program/retained/layer_source.rs
+@@ -47,7 +47,7 @@
+             let placement = decoder.decode_by_id(basis.get_ref(0).ok_or(FAMILY)?).map_err(|_| FAMILY)?;
+             if rep.get_string(2) != Some("Curve2D") || placement.ifc_type != IfcType::IfcAxis2Placement2D
+                 || normal != [0., 0., 1.] { return Err(FAMILY); }
+-            let sigma = 1.; // Mutation: ignore the directed Axis orientation.
++            let sigma = if axis.get_bool(3).ok_or(FAMILY)? { 1. } else { -1. };
+             Ok(LayerFamily::Cylindrical { center: center.map(|v| v * scale), radius: radius * scale, sigma })
+         }
+         _ => Err(FAMILY),

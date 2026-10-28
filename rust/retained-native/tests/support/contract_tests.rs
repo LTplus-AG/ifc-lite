@@ -4,18 +4,9 @@
 use super::support::*;
 #[test]
 fn opening_and_layer_refusals_do_not_acquire_the_worker() {
-    for (text, id, code) in [
-        (
-            include_str!("../../../../tests/fixtures/cli-retained/layered-wall.ifc"),
-            27,
-            "material_layer_strategy",
-        ),
-        (
-            include_str!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"),
-            55,
-            "material_layer_strategy",
-        ),
-    ] {
+    let unsupported=include_str!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc")
+        .replace("IFCCIRCLE(#26,10.)","IFCELLIPSE(#26,10.,9.)");
+    for (text,id,code) in [(unsupported.as_str(),55,"material_layer_strategy")] {
         let acquired = std::cell::Cell::new(0);
         let mut outcomes = Vec::new();
         let options = ifc_lite_retained_native::ModelOptions {

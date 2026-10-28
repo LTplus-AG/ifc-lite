@@ -21,7 +21,7 @@ pub(super) fn edge_key(a: Point, b: Point) -> (Key, Key) {
 pub(super) fn boundary(mesh: &ShapePart) -> Result<Vec<(u32, u32)>, RetainedExecutionError> {
     let mut edges = BTreeMap::<_, (usize, (u32, u32))>::new();
     for t in mesh.indices.chunks_exact(3) {
-        super::error::budget_checkpoint()?;
+        work()?;
         for (a,b) in [(t[0],t[1]),(t[1],t[2]),(t[2],t[0])] {
             let entry = edges.entry(edge_key(point(mesh,a),point(mesh,b))).or_insert((0,(a,b)));
             entry.0 += 1;
@@ -38,7 +38,7 @@ pub(super) fn closed(parts: &[ShapePart]) -> Result<(), RetainedExecutionError> 
     let mut edges = BTreeMap::<_, (usize, i64)>::new();
     for mesh in parts {
         for t in mesh.indices.chunks_exact(3) {
-            super::error::budget_checkpoint()?;
+            work()?;
             for (a,b) in [(t[0],t[1]),(t[1],t[2]),(t[2],t[0])] {
                 let (a,b) = (point(mesh,a),point(mesh,b));
                 let entry = edges.entry(edge_key(a,b)).or_default();
@@ -47,5 +47,13 @@ pub(super) fn closed(parts: &[ShapePart]) -> Result<(), RetainedExecutionError> 
         }
     }
     if edges.values().any(|&(n,d)| n != 2 || d != 0) { return Err(fail("assembly_closure")); }
+    Ok(())
+}
+
+/// Each visited triangle/candidate consumes the same product work allowance.
+pub(super) fn work() -> Result<(), RetainedExecutionError> {
+    super::error::budget_checkpoint()?;
+    ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost { work:1,..Default::default() })
+        .map_err(RetainedExecutionError::Stopped)?.retain();
     Ok(())
 }

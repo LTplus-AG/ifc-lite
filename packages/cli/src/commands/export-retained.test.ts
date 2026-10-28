@@ -47,7 +47,7 @@ it('#7955 shape-only OBJ transforms world f64 points to Y-up and keeps refusal o
   expect(obj).toContain('v 10.000000 30.000000 -20.000000');
   expect(obj).toContain('f 1 2 3');
   expect(obj).not.toContain('_80');
-  expect(report.summary).toEqual({ candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
+  expect(report.summary).toEqual({ layeredProducts: 0, bands: 0, candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
   expect(report.products.map(p => p.id)).toEqual([27, 80]);
   expect(report.products[1]).toMatchObject({ globalId: 'guid-80', code: refusal.code, origin: refusal.origin });
   expect(report.products[1]).not.toHaveProperty('parts');
@@ -118,4 +118,15 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
   }
   expect(report.products[0]).toMatchObject({ instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } });
   expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(0, 0, 1) }] }], () => null)).toThrow(/corner normals/);
+});
+
+it('#7955 M4 OBJ labels bands and reports their closed volumes', () => {
+  // A single open triangle has zero divergence volume at its own origin;
+  // the retained volume certificate must survive export of the open band.
+  const band = { ...shape.parts[0], layer: { index: 1, materialId: 20 }, cappedVolumeM3: 5.4 };
+  const { obj, report } = retainedArtifacts(engine, [{ ...shape, parts: [band] }], () => null);
+  expect(obj).toContain('# layer 1 material #20\nf 1 2 3');
+  expect(report.summary).toMatchObject({ layeredProducts: 1, bands: 1 });
+  expect(report.products[0]).toMatchObject({ volumeM3: 5.4, parts: [{ layer: { index: 1, materialId: 20 }, volumeM3: 5.4 }] });
+  expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...band, cappedVolumeM3: undefined }] }], () => null)).toThrow(/closed band volume/);
 });

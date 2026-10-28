@@ -107,3 +107,33 @@ fn m4_certified_empty_bands_drop_or_restore_unsliced_host() {
         });
     }
 }
+
+fn straight_signs(sigma:f64,sense:f64) {
+    let offset=if sense>0. {0.} else {1.};
+    let usage=if sense>0. {".AXIS2.,.POSITIVE.,0.)"} else {".AXIS2.,.NEGATIVE.,1.)"};
+    let points=if sigma>0. {"(#9000,#9001)"} else {"(#9001,#9000)"};
+    let text=STRAIGHT.replace(".AXIS2.,.POSITIVE.,0.)",usage)
+        .replace("#26=IFCPRODUCTDEFINITIONSHAPE($,$,(#25));","#26=IFCPRODUCTDEFINITIONSHAPE($,$,(#25,#9003));")
+        .replace("ENDSEC;\nEND-ISO",&format!("#9000=IFCCARTESIANPOINT((0.,0.));\n#9001=IFCCARTESIANPOINT((2.,0.));\n#9002=IFCPOLYLINE({points});\n#9003=IFCSHAPEREPRESENTATION(#4,'Axis','Curve2D',(#9002));\nENDSEC;\nEND-ISO"));
+    with(&text,27,|spec,traversal,router,decoder| {
+        let expected_frame=nalgebra::Matrix4::from_column_slice(&spec.world_from_object);
+        let entity=decoder.decode_by_id(27).unwrap();
+        let host=body(traversal.product_parts(&entity),router,decoder);
+        let frame=nalgebra::Matrix4::from_column_slice(host.values().next().unwrap().object_frame());
+        let plan=body(traversal.layer_bands(host,spec).unwrap(),router,decoder);
+        let ifc_lite_geometry::program::transactions::LayerInterface::Plane{normal,distance}=plan.layers().unwrap().interfaces[0] else {panic!("plane")};
+        let n=nalgebra::Vector3::from(normal);
+        let world_normal=frame.transform_vector(&n);
+        let world_point=frame.transform_point(&nalgebra::Point3::from(n*distance));
+        let expected_normal=expected_frame.transform_vector(&(nalgebra::Vector3::y()*sense));
+        let expected_point=expected_frame.transform_point(&nalgebra::Point3::new(0.,offset+sense*0.1,0.));
+        assert!((world_normal-expected_normal).norm()<=2.*f64::EPSILON);
+        assert!((world_normal.dot(&world_point.coords)-expected_normal.dot(&expected_point.coords)).abs()<=1e-12);
+    });
+}
+// Straight exact semantics fix a=+Y even if the polyline endpoints are reversed.
+// sigma=+/- therefore gives the same scalar arithmetic for a given sense.
+#[test] fn m4_straight_forward_positive() {straight_signs(1.,1.);} // y=0+.1=.1; first y<.1.
+#[test] fn m4_straight_forward_negative() {straight_signs(1.,-1.);} // y=1-.1=.9; first y>.9.
+#[test] fn m4_straight_reverse_positive() {straight_signs(-1.,1.);} // y=0+.1=.1; first y<.1.
+#[test] fn m4_straight_reverse_negative() {straight_signs(-1.,-1.);} // y=1-.1=.9; first y>.9.

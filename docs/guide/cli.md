@@ -1828,3 +1828,11 @@ these channels remain absent until their individual presentation proofs land. Re
 accepts per-corner `vn` records when supplied; the scaffold continues to emit geometry
 without them. Textures and indexed palettes are proven absent from retained-eligible
 products; unsupported tessellated bodies continue to refuse explicitly.
+
+Retained material layers on supported straight and circular wall axes publish open
+bands whose combined outer skin is closed. OBJ identifies each band with
+`# layer <index> material #<id>` before its faces. Report parts include optional
+`layer: { index, materialId }` metadata; their `volumeM3` is measured before the
+internal interface caps are removed. The report includes `layeredProducts` and
+`bands` counts. Failed cap matching or seam validation refuses the whole product
+with `layer_caps_unresolved`.

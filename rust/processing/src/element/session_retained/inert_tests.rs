@@ -223,6 +223,7 @@ fn issue_7955_owned_storage_is_released_without_billing_foreign_account() {
 #[test]
 fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
     let text = SOURCE.replace("ENDSEC;END-ISO-10303-21;", "#80=IFCMATERIALLAYER($,0.1,$);#81=IFCMATERIALLAYER($,0.2,$);#82=IFCMATERIALLAYERSET((#80,#81),'layers');#83=IFCMATERIALLAYERSETUSAGE(#82,.AXIS2.,.POSITIVE.,0.);#84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#10),#83);ENDSEC;END-ISO-10303-21;");
+    let text=text.replace("(#12));","(#12,#9001));").replace("ENDSEC;END-ISO","#9000=IFCPOLYLINE((#4,#8,#4));#9001=IFCSHAPEREPRESENTATION(#2,'Axis','Curve2D',(#9000));ENDSEC;END-ISO");
     let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let mut router = GeometryRouter::with_units(&text, &mut decoder);
@@ -246,7 +247,7 @@ fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
         &router,
     )
     .err()
-    .expect("layers require a separate retained strategy");
+    .expect("unsupported Axis must refuse before a worker");
     assert_eq!(error.refusal().0.code(), "material_layer_strategy");
 }
 

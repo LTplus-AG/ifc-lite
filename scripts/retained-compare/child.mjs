@@ -21,7 +21,7 @@ let actual = expected;
 if (expected.summary.published) {
   actual = JSON.parse(await readFile(report, 'utf8'));
   assert.deepEqual(actual.summary, expected.summary);
-  assert.deepEqual(actual.products.map(({ globalId, ...p }) => p), expected.products.map(({ globalId, ...p }) => p));
+  assert.deepEqual(actual.products.map(({ globalId, bandMs, capMs, ...p }) => p), expected.products.map(({ globalId, bandMs, capMs, ...p }) => p));
   assert.match(await readFile(obj, 'utf8'), /# PresentationObligationsUnmet/);
 } else {
   await assert.rejects(access(obj));

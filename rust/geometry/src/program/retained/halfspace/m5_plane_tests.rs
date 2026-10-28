@@ -37,3 +37,19 @@ fn issue_7955_survey_plane_to_host_matches_explicit_inverse_bits() {
     assert!((actual_p[0]-5.).abs()<1e-9 && (actual_p[1]-3.).abs()<1e-9);
     assert!((actual_r[0]-std::f64::consts::FRAC_1_SQRT_2).abs()<1e-15 && actual_r[1].abs()<1e-15);
 }
+#[test]
+fn issue_7955_skip_preserves_slot_until_product_placement(){
+    let text=include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/../../tests/fixtures/synthetic-retained/f-e-clips.ifc"));
+    let source=ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());let mut decoder=source.decoder();
+    let router=crate::GeometryRouter::with_units(text,&mut decoder);let wall=decoder.decode_by_id(145).unwrap();
+    let mut program=RetainedProgram::product_parts(&wall,RetainedContract{source_epoch:1,source_revision:1});
+    let mut slots=Vec::new();
+    while let Some(ticket)=program.request().unwrap(){
+        let (reply,operations)=program.admit(ticket,&router,&mut decoder).unwrap();
+        for op in operations{op.bind_numerical_outcome(false).unwrap();slots.push(op.value().slot());}
+        program.accept(reply,&router).unwrap_or_else(|e|panic!("{:?}",e.error));
+    }
+    assert_eq!(slots.len(),1);
+    let value=program.finish().unwrap().values.pop().unwrap();
+    assert_eq!(value.placements().first().expect("product placement").input,slots[0]);
+}

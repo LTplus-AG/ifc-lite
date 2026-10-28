@@ -22,7 +22,11 @@ fn drive_product(text:&str,id:u32,empty_boolean:Option<usize>)->(Vec<Operation>,
             Ok(None) => break program.finish().map(|p| {
                 assert_eq!(p.values().len(),1);
                 if id==13 && operations.len()==1 {
-                    assert_eq!(p.values().next().unwrap().slot(),operations[0].value().slot());
+                    // Product placement legitimately allocates a placed slot; the
+                    // skipped clip must preserve the original definition/outcome.
+                    let value=p.values().next().unwrap();
+                    assert_eq!(value.definition(),operations[0].value().definition());
+                    assert_eq!(value.evaluated_empty(),operations[0].value().evaluated_empty());
                 }
             }),
         };
@@ -107,9 +111,9 @@ fn issue_7955_mapped_nonuniform_host_bakes_before_cutter() {
 }
 
 #[test]
-fn issue_7955_reviewed_skip_and_tangent_skip_make_no_cutter_call() {
+fn issue_7955_reviewed_bounds_proven_skip_makes_no_cutter_call() {
     let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-clips.ifc");
-    for id in [145,216] {
+    for id in [145] {
         let (ops,result)=drive_product(text,id,None);result.unwrap();
         assert_eq!(ops.len(),1,"#{id}: bounds-proven identity must not invoke a cutter/Boolean");
     }
@@ -130,4 +134,14 @@ fn issue_7955_128_clip_controller_admission_is_complete(){
     let (ops,result)=drive_product(&chains::chain(128),22,None);result.unwrap();
     assert_eq!(ops.len(),257);
     assert_eq!(ops.iter().filter(|op|matches!(op.kind(),OperationKind::Boolean{..})).count(),128);
+}
+
+#[test]
+fn issue_7955_tangent_to_conservative_bounds_skips_at_equality(){
+    let (host,result)=drive(&fixture::SOURCE.replace("(0.,0.,0.5)","(0.,0.,-1.)"),None);result.unwrap();
+    let upper=host[0].value().evaluation_bounds().unwrap().0[5];
+    let text=fixture::SOURCE.replace("#8,.T.","#8,.F.")
+        .replace("(0.,0.,0.5)",&format!("(0.,0.,{upper})"));
+    let (ops,result)=drive(&text,None);result.unwrap();
+    assert_eq!(ops.len(),1,"max h == 0 must be an identity without any cutter/Boolean");
 }

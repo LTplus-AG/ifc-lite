@@ -20,7 +20,7 @@ DATA;
 /* l nonplane source: product #189 */
 /* m opened clipped wall: product #200 */
 /* m opening cutter: product #204 */
-/* h2 tangent kept side skip: product #216 */
+/* h2 surface tangent contact: product #216 */
 #1=IFCCARTESIANPOINT((0.0,0.0,0.0));
 #2=IFCAXIS2PLACEMENT3D(#1,$,$);
 #3=IFCDIRECTION((0.0,0.0,1.0));
@@ -236,6 +236,6 @@ DATA;
 #213=IFCLOCALPLACEMENT($,#2);
 #214=IFCSHAPEREPRESENTATION(#4,'Body','CSG',(#212));
 #215=IFCPRODUCTDEFINITIONSHAPE($,$,(#214));
-#216=IFCWALL('0000000000000000000216',$,'SYNTHETIC h2 tangent kept side skip',$,$,#213,#215,$,.NOTDEFINED.);
+#216=IFCWALL('0000000000000000000216',$,'SYNTHETIC h2 surface tangent contact',$,$,#213,#215,$,.NOTDEFINED.);
 ENDSEC;
 END-ISO-10303-21;

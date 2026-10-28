@@ -111,7 +111,7 @@
       "unclipped": true
     },
     {
-      "case": "h2 tangent kept side skip",
+      "case": "h2 surface tangent contact",
       "id": 216,
       "code": "published",
       "volume": 48.0

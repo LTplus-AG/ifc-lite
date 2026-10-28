@@ -93,3 +93,9 @@ slice discovery key, because CUT-0 already added `plane.rs` and discovery
 requires an added production key. Its reverse-applied behavioral patch still
 changes only `plane.rs` to ignore AgreementFlag, and the logical a/b witness
 must fail. The key is registration, not the mutation target.
+
+The optional h2 plane touches the actual host surface, but CUT-0's outward
+rounded conservative box extends beyond it. It is therefore a contact case,
+not a bounds-proven skip. Its volume remains 48. The `max h == 0` no-call
+witness instead places the plane exactly on the conservative box boundary;
+no padding or tolerance is removed. A separate no-call witness covers h.

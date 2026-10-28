@@ -80,9 +80,9 @@ fn issue_7955_m5_second_boolean_failure_is_atomic_and_next_product_succeeds(){
 fn issue_7955_m5_real_clip_invocations_and_per_step_timings(){
     let Some((outcomes,rows))=observed(FIXTURE,None,None) else{return};
     assert_eq!(outcomes.len(),14);
-    for (id,count) in [(58,3),(89,3),(111,2),(134,2),(145,0),(156,1),(167,0),(178,0),(189,0),(200,1),(216,0)] {
+    for (id,count) in [(58,3),(89,3),(111,2),(134,2),(145,0),(156,1),(167,0),(178,0),(189,0),(200,1),(216,1)] {
         let row=rows.iter().find(|r|r["id"]==id).unwrap();assert_eq!(row["clips"],count,"#{id}");
-        if [145,167,178,189,216].contains(&id){assert_eq!(row["booleans"],0,"#{id}: no Boolean");}
+        if [145,167,178,189].contains(&id){assert_eq!(row["booleans"],0,"#{id}: no Boolean");}
     }
     let mut times:Vec<_>=rows.iter().flat_map(|r|r["steps"].as_array().unwrap()).map(|c|c["clipMs"].as_f64().unwrap()).collect();
     assert!(times.iter().all(|t|t.is_finite()&&*t>0.));times.sort_by(f64::total_cmp);

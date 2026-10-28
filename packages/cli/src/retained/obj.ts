@@ -19,19 +19,30 @@ export function worldPoints(part: RetainedShapePart): number[][] {
 }
 
 export function partVolume(part: RetainedShapePart): number {
-  const points = worldPoints(part), origin = points[0];
+  const points = worldPoints(part);
   if (part.layer) {
     const volume = part.cappedVolumeM3;
     if (volume === undefined || !Number.isFinite(volume) || volume <= 0) throw new Error('Missing closed band volume');
     return volume;
   }
+  return Math.abs(signedVolume(points, part.indices, points[0]));
+}
+
+/** Open material parts close only as an assembly, with one shared origin. */
+export function productVolume(parts: RetainedShapePart[]): number {
+  if (!parts.some(part => part.layer)) return parts.reduce((sum, part) => sum + partVolume(part), 0);
+  const origin = parts.length ? worldPoints(parts[0])[0] : [0, 0, 0];
+  return Math.abs(parts.reduce((sum, part) => sum + signedVolume(worldPoints(part), part.indices, origin), 0));
+}
+
+function signedVolume(points: number[][], indices: Uint32Array, origin: number[]): number {
   let volume = 0;
-  for (let i = 0; i < part.indices.length; i += 3) {
-    const [a, b, c] = Array.from(part.indices.subarray(i, i + 3), index => points[index].map((v, j) => v - origin[j]));
+  for (let i = 0; i < indices.length; i += 3) {
+    const [a, b, c] = Array.from(indices.subarray(i, i + 3), index => points[index].map((v, j) => v - origin[j]));
     volume += (a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
   }
   if (!Number.isFinite(volume)) throw new Error('Nonfinite retained volume');
-  return Math.abs(volume);
+  return volume;
 }
 
 function fixed(value: number): string {

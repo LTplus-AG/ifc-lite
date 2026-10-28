@@ -23,14 +23,16 @@ const append = extra => new TextEncoder().encode(source.replace('ENDSEC;\nEND-IS
 test('#7955 actual retainedModel yields deterministic CLI report and no partial products', async () => {
   const api = new module.IfcAPI();
   try {
-    const outcomes = await collectRetained(api, append(`#80=IFCBUILDINGELEMENTPROXY('p',$,$,$,$,#24,#26,$,.NOTDEFINED.);
+    const outcomes = await collectRetained(api, append(`#80=IFCBUILDINGELEMENTPROXY('p',$,$,$,$,#24,#9004,$,.NOTDEFINED.);
+#9001=IFCCARTESIANPOINT((0.,0.));#9002=IFCPOLYLINE((#9001,#9001,#9001));
+#9003=IFCSHAPEREPRESENTATION(#4,'Axis','Curve2D',(#9002));#9004=IFCPRODUCTDEFINITIONSHAPE($,$,(#25,#9003));
 #81=IFCMATERIALLAYER($,0.1,$);#85=IFCMATERIALLAYER($,0.2,$);#82=IFCMATERIALLAYERSET((#81,#85),'layers');
 #83=IFCMATERIALLAYERSETUSAGE(#82,.AXIS2.,.POSITIVE.,0.);
 #84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#80),#83);`));
     const { obj, report } = retainedArtifacts(engine, outcomes, () => null);
-    assert.deepEqual(report.summary, { candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
+    assert.deepEqual(report.summary, { layeredProducts: 0, bands: 0, candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
     assert.equal(report.products[0].parts.length, 1);
-    assert.deepEqual(report.products[0].obligationsUnmet, ['MaterialLayers', 'IfcAppearance', 'SurfaceNormals']);
+    assert.deepEqual(report.products[0].obligationsUnmet, ['IfcAppearance', 'SurfaceNormals']);
     assert.equal(report.products[1].code, 'material_layer_strategy');
     assert.ok(!('parts' in report.products[1]));
     assert.equal(obj.split('\n').filter(line => line === '# PresentationObligationsUnmet').length, 1);

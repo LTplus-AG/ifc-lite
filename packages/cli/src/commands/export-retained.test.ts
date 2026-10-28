@@ -127,6 +127,17 @@ it('#7955 M4 OBJ labels bands and reports their closed volumes', () => {
   const { obj, report } = retainedArtifacts(engine, [{ ...shape, parts: [band] }], () => null);
   expect(obj).toContain('# layer 1 material #20\nf 1 2 3');
   expect(report.summary).toMatchObject({ layeredProducts: 1, bands: 1 });
-  expect(report.products[0]).toMatchObject({ volumeM3: 5.4, parts: [{ layer: { index: 1, materialId: 20 }, volumeM3: 5.4 }] });
+  expect(report.products[0]).toMatchObject({ parts: [{ layer: { index: 1, materialId: 20 }, volumeM3: 5.4 }] });
   expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...band, cappedVolumeM3: undefined }] }], () => null)).toThrow(/closed band volume/);
+});
+
+it('#7955 M4 open parts measure the closed assembly with a common origin', () => {
+  // Unit tetrahedron: det(eX,eY,eZ)/6 = 1/6. Partition its outer skin into
+  // two open meshes with different first vertices; neither has its own volume.
+  const first = { ...shape.parts[0], layer: { index: 0, materialId: 16 }, cappedVolumeM3: 1 / 12,
+    positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1), indices: Uint32Array.of(0, 2, 1, 0, 1, 3) };
+  const second = { ...first, layer: { index: 1, materialId: 20 },
+    positions: Float64Array.of(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0), indices: Uint32Array.of(3, 2, 1, 0, 1, 2) };
+  const report = retainedReport(engine, [{ ...shape, parts: [first, second] }], () => null);
+  expect(report.products[0]).toMatchObject({ volumeM3: expect.closeTo(1 / 6, 14) });
 });

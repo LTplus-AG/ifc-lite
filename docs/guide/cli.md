@@ -1810,16 +1810,16 @@ types with only curve maps that exact does not mesh are absent. OBJ headers carr
 The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
 refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
-world coordinates, before OBJ's six decimal places. No timings are emitted.
+world coordinates, before OBJ's six decimal places. Layer phase timings are optional report fields.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
 
 Retained opening subtraction runs each opening body value separately in relationship order.
 A consumed host part refuses the complete product with `empty_result`; partial or whole-product
 removal is not published. Unsupported opening geometry reports `opening_unsupported`, while
-material-layer hosts report `material_layer_strategy` before opening execution. Successful
+unsupported layer-axis families report `material_layer_strategy` before opening execution. Successful
 opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their OBJ marker
-lists `IfcAppearance, MaterialLayers, SurfaceNormals`. Layer, appearance and surface-normal
+lists `IfcAppearance, SurfaceNormals` after layer completion or a source-proven layer skip. Appearance and surface-normal
 obligations still prevent final display-contract publication. Every published part reports its
 persistent source face keys (`#item[>#opening]:role`) with triangle counts and areas; a product
 whose faces cannot be proven refuses `face_provenance_unproven`. The report reserves additive,
@@ -1833,6 +1833,7 @@ Retained material layers on supported straight and circular wall axes publish op
 bands whose combined outer skin is closed. OBJ identifies each band with
 `# layer <index> material #<id>` before its faces. Report parts include optional
 `layer: { index, materialId }` metadata; their `volumeM3` is measured before the
-internal interface caps are removed. The report includes `layeredProducts` and
+internal interface caps are removed. The product's `volumeM3` measures the published
+assembled outer skin after seam conformity. The report includes `layeredProducts` and
 `bands` counts. Failed cap matching or seam validation refuses the whole product
 with `layer_caps_unresolved`.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { RetainedProductOutcome } from '../../../wasm/pkg-retained/ifc-lite.js';
 import type { RetainedEngine } from './engine.js';
-import { partVolume, worldPoints } from './obj.js';
+import { partVolume, productVolume, worldPoints } from './obj.js';
 
 export function retainedReport(engine: RetainedEngine, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
   const byCode: Record<string, number> = {};
@@ -19,7 +19,7 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       ...(part.materialId === undefined ? {} : { materialId: part.materialId }),
       ...(part.normals ? { normals: Array.from(part.normals) } : {}),
       ...(part.faces ? { faces: faceReport(part) } : {}) }));
-    return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, bandMs: p.bandMs, capMs: p.capMs, maxSnapMetres: p.maxSnapMetres, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
+    return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, bandMs: p.bandMs, capMs: p.capMs, maxSnapMetres: p.maxSnapMetres, parts, volumeM3: productVolume(p.parts),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
       ...(p.instanceGroup ? { instanceGroup: p.instanceGroup } : {}) };
   });

@@ -16,7 +16,13 @@ fn m4_source_integrals_match_hand_volumes() {
     for (a,b) in curved.volumes.iter().zip(&hand) { assert!((a-b).abs()<1e-10,"{a} vs {b}"); }
     assert!((curved.opened_volume-hand.iter().sum::<f64>()).abs()<1e-10);
     if let Some(path)=std::env::var_os("IFCLITE_M4_EXPECTED") {
-        std::fs::write(path,serde_json::to_vec_pretty(&serde_json::json!({"layeredWall":{"id":27,"bandVolumesM3":straight.volumes},"curvedWall":{"id":55,"bandVolumesM3":curved.volumes,"independentProducts":[122,188,254]}})).unwrap()).unwrap();
+        let bytes=include_bytes!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc");
+        let sources=ifc_lite_processing::extract_analytic_quantity_sources(bytes,None);
+        let synthetic:Vec<_>=[1027,2027,3055,4055,5027,6027,7027,13055].into_iter().map(|id| {
+            let oracle=expected(bytes,&sources,id).unwrap();
+            serde_json::json!({"id":id,"bandVolumesM3":oracle.volumes,"curved":oracle.curved})
+        }).collect();
+        std::fs::write(path,serde_json::to_vec_pretty(&serde_json::json!({"layeredWall":{"id":27,"bandVolumesM3":straight.volumes,"curved":false},"curvedWall":{"id":55,"bandVolumesM3":curved.volumes,"curved":true,"independentProducts":[122,188,254]},"synthetic":synthetic})).unwrap()).unwrap();
     }
 }
 

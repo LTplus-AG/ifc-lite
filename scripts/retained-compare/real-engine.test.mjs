@@ -8,6 +8,45 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runComparison } from './run.mjs';
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
+test('#7955 M4 CLI band tags and capped volumes match native at 1e-9', {
+  timeout: 600000,
+  skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT parity evidence',
+}, async () => {
+  assert.ok(process.env.IFCLITE_M3_REFERENCE, 'M4 native reference is required');
+  const reference = JSON.parse(await readFile(process.env.IFCLITE_M3_REFERENCE, 'utf8'));
+  const scratch = await mkdtemp(join(tmpdir(), 'm4-bands-parity-'));
+  try {
+    for (const [name, model] of [
+      ['m4straight', 'tests/fixtures/cli-retained/layered-wall.ifc'],
+      ['m4curved', 'tests/fixtures/synthetic-retained/f-a-curved.ifc'],
+      ['m4synthetic', 'tests/fixtures/synthetic-retained/f-g-layers.ifc'],
+    ]) {
+      assert.ok(reference[name]?.length > 0, `${name} native observations required`);
+      const output = join(scratch, name);
+      await mkdir(output);
+      const child = spawnSync(process.execPath, ['scripts/retained-compare/child.mjs', resolve(engine), model, output],
+        { encoding: 'utf8', timeout: 270000, maxBuffer: 16 * 1024 * 1024 });
+      if (child.error) throw child.error;
+      assert.equal(child.status, 0, child.stderr);
+      const products = JSON.parse(child.stdout);
+      for (const expected of reference[name]) {
+        const matches = products.filter(row => row.id === expected.id);
+        assert.equal(matches.length, 1, `one atomic outcome for #${expected.id}`);
+        const actual = matches[0];
+        assert.equal(actual.code ?? actual.status, expected.code, `#${expected.id}`);
+        if (expected.code !== 'published') { assert.equal(actual.parts, undefined); continue; }
+        assert.equal(actual.parts.length, expected.bands.length);
+        for (const [index, band] of expected.bands.entries()) {
+          const part = actual.parts[index];
+          assert.deepEqual(part.layer, { index: band.index, materialId: band.materialId });
+          const relative = Math.abs(part.volumeM3 - band.volume) / Math.abs(band.volume);
+          assert.ok(Number.isFinite(relative) && relative <= 1e-9,
+            `#${expected.id} band ${band.index}: native ${band.volume}, Node/wasm ${part.volumeM3}`);
+        }
+      }
+    }
+  } finally { await rm(scratch, { recursive: true, force: true }); }
+});
 test('#7955 built CLI matches native codes and f64 volumes on committed models', {
   timeout: 1800000,
   skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT parity evidence',

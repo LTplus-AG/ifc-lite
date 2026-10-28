@@ -31,6 +31,8 @@ on:
       - 'rust/geometry/src/document/**'
       - 'rust/geometry/src/program/**'
       - 'rust/geometry/tests/m*'
+      # Shared test fixtures (CUT-0 prisms) used by the native and Worker witnesses.
+      - 'rust/geometry/tests/support/**'
       - 'rust/processing/tests/m*'
       - 'tests/manifests/cli-retained-coverage.d/**'
       - 'tests/evidence/*/witnesses.txt'
@@ -131,6 +133,9 @@ jobs:
         id: native-compare
         continue-on-error: true
         run: |
+          # The default step shell has no pipefail: without it `| tee` would hide
+          # a failing cargo test whose witness markers were already printed.
+          set -o pipefail
           export IFCLITE_REQUIRE_SMLIB=1
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"

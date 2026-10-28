@@ -55,6 +55,7 @@ pub enum RetainedExecutionError {
     Core(ifc_lite_core::Error),
     Owner(WorkError),
     Common(TransactionError),
+    Opening { opening: u32, inner: Box<Self> },
     Receipt(ReceiptFailure),
     Recipe(ifc_lite_geometry::document::RetainedRefusal),
     Geometry(ifc_lite_geometry::Error),
@@ -137,6 +138,7 @@ impl From<u8> for RetainedExecutionError {
 
 impl RetainedExecutionError {
     pub(super) fn terminal(&self) -> bool {
+        if let Self::Opening { inner, .. } = self { return inner.terminal(); }
         if matches!(self, Self::Runtime(_)) {
             return true;
         }
@@ -155,10 +157,12 @@ impl RetainedExecutionError {
                 | Self::Transition(CANCELLED)
                 | Self::Owner(WorkError::StaleSource | WorkError::Aborted)
         ) || matches!(self, Self::Common(error) if matches!(error.kind(),
-                ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
+                ifc_lite_geometry::program::transactions::TransactionFailureKind::EmptyResult
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::OperationUnsupported
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::DeadlineExceeded
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Unsupported
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::Empty
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Incomplete
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Stopped))
     }

@@ -34,6 +34,13 @@ with `z = 0`, and count malformed-input refusals. For an already decoded
 direction when no decoder is available, `EntityDecoder::direction3_of` returns
 `Option<[f64; 3]>` and cannot count refusals.
 
+`placement::PlacementError::is_admission_refusal()` identifies malformed point,
+direction or real input and missing mandatory attributes. It returns false for
+dangling references, wrong record types, cycles and terminal execution stops;
+callers must propagate `PlacementError::ProgramStopped` separately. Symbolic
+extraction uses this distinction to drop refused input while retaining its
+established unresolved-placement behavior.
+
 The geometry crate's former `parse_axis2_placement_3d`,
 `parse_axis2_placement_3d_from_id`, `parse_cartesian_point`,
 `parse_cartesian_point_from_id`, `parse_direction`, and `parse_direction_from_id`
@@ -642,9 +649,119 @@ impl ProductShape { pub fn select(&self, element: &DecodedEntity, s: Select) -> 
 pub enum Select { Meshed, Body, RtcVotable, Any, Where(fn(..) -> bool) } // Meshed = what renders
 pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
 // product / map / mapped_item drive a WalkVisitor in DFS pre-order; nesting is
-// capped by depth and a path-scoped visited set.
+// iterative, with caller-selected depth/cycle and expansion policies.
+// MappedLevel::local_transform returns MappingTarget · MappingOrigin in file units.
 pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
 ```
+
+`NestedMaps::Expand { max_depth, max_levels }` bounds branching work in the
+walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
+Two independent counters share that limit: mapped-level attempts (after depth
+and cycle checks, before resolving the source) and total `Items` members.
+Every expanded occurrence pays again, including repeated valid DAG nodes. Each full list
+is charged before allocating or decoding its members, including ignored
+non-reference members. Product representations share the counters; each public
+walk call starts fresh. This bounds expansion work, not source parsing or
+visitor-owned computation.
+
+Exhaustion reports one `WalkRefusal::Budget { max_levels }` and stops the entire
+walk, unwinding every entered level. A root-list refusal identifies the
+representation ID and sets `WalkCtx::shape_rep`; nested refusals identify the
+mapped item and exclude it from the path. Product/map calls still return
+`Ok(())` on budget refusal: callers must handle the visitor's refusal channel to
+report truncation. Existing `ShapeError` results remain errors.
+
+Class X entry policy (#8007/#7781), an explicit exception to the former eager
+recursive behavior: a nested level resolves `MappingSource` and
+`MappedRepresentation` before `enter_map`, but reads, validates, charges and
+decodes its `Items` only after the callback returns `Continue`. List charging
+still precedes all member allocation/decoding, including ignored non-references.
+`SkipChildren` and `Stop` suppress child-list charges, decoding and errors, even
+for missing or malformed `Items`; both still pair entry with `leave_map`.
+A nested `MissingItems`, `Decode` or item-budget refusal now happens inside the
+entered scope, with a paired leave, while its refusal context excludes that
+level. Nonterminal malformed-list refusals allow later siblings; `Budget` stops
+globally. Depth/cycle checks still precede level admission; level admission
+still precedes source resolution and the callback, even for a skipped level.
+An over-budget list is refused before examining members, so it can supersede a
+decoder error. Root lists retain their existing precharge before member decode,
+without a mapped-level entry callback; their errors remain `ShapeError`.
+
+This laziness permits a visitor to reject/skip a source before paying for its
+children (for example, an already cached source or a failed transform). It is
+not sufficient for strict cache-independent admission. These generic meters
+bound actual expanded work; they do **not** charge cached logical occurrences
+that a visitor skips. The router's #7887 decoder-only product admission prepass
+now charges root members and repeated mapped occurrences across the selected
+meshed representations before rendering, independently of renderer cache hits.
+The existing `GeometryProgram` remains the renderer. A generic walk visitor's
+cache hit is still not proof that this lower walk validated all descendants.
+Continued expansion
+retains both work bounds and reports truncation. `FirstChain` remains unmetered
+by either work counter (no `u32::MAX` sentinel); its depth and cycle policy is
+unchanged. `Refuse` and `Leaf` also have no work meters.
+
+Level entities are pre-callback snapshots. The callback's mutable decoder can
+change which entity each child reference resolves to: child decoding now sees
+the post-callback decoder, while the already resolved mapped representation's
+`Items` attribute remains the snapshot. A fully decoded list is still a snapshot
+before its first item callback. No panic-unwind cleanup guarantee is added;
+normal stop/refusal cleanup pairs every entered scope. The Class X prerequisite
+introduced this policy with the recursive walker and its path-scoped set.
+
+The Class R implementation (#8007) uses an explicit DFS task stack (`List`,
+`Enter`, `Leave`) instead of native recursion, preserving that entry, refusal
+and callback policy. The active level path also supplies cycle checks; shared
+nodes on sibling paths remain separate occurrences. All five walk attribute
+reads use named slot indices without typed-owner assertions, preserving the
+malformed-target refusal and root `ShapeError` behavior (#8020).
+`MappedLevel::local_transform` delegates to the shared mapped-transform module
+and returns `MappingTarget · MappingOrigin` in file units, preserving
+target-before-origin error precedence. Router transform calls and the mapped
+RTC vote share that definition. The outer RTC traversal remains recursive.
+The task engine and transform consolidation introduce no additional work-policy
+exception. Source recovery retains the original policy and iterative regression
+tests; runtime validation and performance qualification of this head are pending.
+
+`WalkRefusal` now distinguishes `MissingSource`, `UnresolvedSource`,
+`MissingMappedRepresentation`, `UnresolvedMappedRepresentation`, `MissingItems`
+and `Decode(core::Error)` instead of `Dangling`/`Malformed`. A `#n` whose record
+cannot be decoded is `Decode`, whereas a present non-reference slot is
+`Unresolved*`. `TooDeep { max_depth }` carries the configured limit.
+`WalkRefusal::into_error(item_id)` preserves the historical strict refusal messages
+and wraps decoder failures in `Error::CoreError`. `WalkVisitor::refused` receives
+`&DecodedEntity` instead of a numeric id (read `.id` for the old identifier), so
+future strict visitors can inspect the refused mapped item. For a root budget
+refusal that entity is the holding representation, with `shape_rep` set.
+
+Source breaks, covered by the pending Rust major in `rust-major-offset.json`:
+`Expand` gains `max_levels`; `WalkRefusal` replaces/removes variants, changes
+`TooDeep` to a struct variant and adds `Budget`/`Decode`; it no longer implements
+`Clone`, `Copy`, `PartialEq` or `Eq` because the decoder error is owned; and
+`WalkVisitor::refused` is now required and implementations must change their argument type.
+`into_error` is additive. These breaks are recorded as Rust break #15 against
+the published Rust 25.0.0 baseline, with `majorOffset` 15. This is a source-level
+API assessment; no new cargo-semver-checks measurement is claimed.
+
+The ordinary renderer remains owned by GeometryProgram/MappingControl. Its
+separate internal Class X policy (#7873) gives each controller invocation two
+independent 65,536 allowances: reached mapped attempts and materialized Items
+members. The four source-list boundaries precharge the full list, including
+ignored non-reference members, before decoding it. Repeated DAG occurrences
+pay again; cache hits and don't-bake skips can avoid child-list charges, but
+still pay their mapped attempt. Existing path/depth checks take precedence.
+
+A typed logical refusal is distinct from resource/cancellation `ProgramStop`.
+Root refusal returns an error. Nested refusal reports once under its parent's
+source policy, stops remaining siblings and closes entered sources innermost
+first, retaining the completed geometry prefix with its transforms. Partial
+sources and refused templates are not published. Actual resource stops remain
+sticky. Source-step debits become controller state only after reply acceptance.
+The don't-bake eligibility probe accepts exactly one raw reference and decodes
+at most that member after root mapped-attempt admission. Malformed multi-slot
+Items with ignored members fall through to guarded flat materialization.
+This is neither a memory bound nor whole-product, cache-independent admission
+spanning representations; that and drawing policy remain separate #7887 work.
 
 #### mesh_check (test-support)
 
@@ -715,6 +832,22 @@ mesh-coordinate frame when the router is created. Use it when one operation
 must produce identical local-frame geometry across native and wasm targets;
 ordinary routers continue to use the target and environment default. The frame
 choice cannot be changed after construction because router caches depend on it.
+
+`RouterConfig` is the value type for the router's meshing choices: `unit_scale`, `rtc_offset`, `tessellation_quality`,
+`local_frame`, `skip_small_cuts` and `instancing_batch_local`.
+`GeometryRouter::from_config(config)` builds a router from one, arming no
+caches, and `GeometryRouter::config()` reads the effective values back (a
+refused length unit reads back as `unit_scale == 1.0`). This is **not a full
+router snapshot**: length-unit refusal is deliberately not serialized.
+Rebuilding from `router.config().clone()` loses refusal; pass the raw invalid
+scale or call `refuse_length_unit()` on every rebuilt router before meshing.
+The `with_*` constructors build through `from_config`, and the `set_*` methods remain.
+Configuration changes advance the router's execution generation, so a change
+while a product holds the execution lease refuses that product's publication.
+Equal-value quality/skip calls remain no-ops; the batch-local setter always
+advances the generation. Build the router, inject its shared caches, then lease
+it. Resource budgets, deadlines and cache accounts keep their execution owners;
+cloning a config does not copy or reset them.
 
 For repeated `IfcMappedItem` sources, `mapping_origin_transform(source, decoder)`
 parses the source map's origin once. `resolve_scaled_mapped_item_transform_with_origin_loader`

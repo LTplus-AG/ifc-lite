@@ -1,0 +1,25 @@
+--- a/packages/diff/src/wasm-projections.ts
++++ b/packages/diff/src/wasm-projections.ts
+@@ -7,11 +7,11 @@ const key = <TRef>(entity: EntityFingerprint<TRef>) => ({ key: entity.key });
+ 
+ /** Only fields consumed by the native identity helper cross the boundary. */
+ export function projectContentMatches<TRef>(matches: Iterable<ContentMatch<TRef>> | undefined) {
+-  return [...matches ?? []].map(match => ({ kind: match.kind, base: match.head.map(key), head: match.base.map(key) }));
++  return [...matches ?? []].map(match => ({ kind: match.kind, base: match.base.map(key), head: match.head.map(key) }));
+ }
+ 
+ export function projectAcceptedSuccessors<TRef>(accepted: Iterable<SuccessorClaim<TRef>> | undefined) {
+-  return [...accepted ?? []].map(claim => ({ confidence: claim.confidence, base: key(claim.head), head: key(claim.base) }));
++  return [...accepted ?? []].map(claim => ({ confidence: claim.confidence, base: key(claim.base), head: key(claim.head) }));
+ }
+ 
+ /** Keep arbitrary adapter references and unrelated fingerprint fields in JS. */
+@@ -22,7 +22,7 @@ export function projectLineageDiff<TRef>(diff: ModelDiff<TRef>) {
+     contentMatches: projectContentMatches(diff.contentMatches),
+     splitMerges: (diff.splitMerges ?? []).map(claim => ({
+       kind: claim.kind, confidence: claim.confidence, whole: key(claim.whole),
+-      pieces: [],
++      pieces: claim.pieces.map(piece => ({ key: piece.key, volume: piece.volume })),
+       piecesVolume: claim.piecesVolume,
+     })),
+   };

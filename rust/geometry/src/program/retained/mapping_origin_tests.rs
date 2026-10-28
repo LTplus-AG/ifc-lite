@@ -133,9 +133,9 @@ fn issue_7955_b2a_source_error_reply_remains_owned_until_acceptance() {
             if let Some(recorded) = program.selection().unwrap().failure_handle().origin() {
                 let rejected = program.accept(reply, &foreign).err().unwrap();
                 assert_eq!(rejected.error, RetainedProgramError::WrongOwner);
-                assert_eq!(rejected.reply.0.request, ticket.0);
+                assert_eq!(rejected.reply.geometry_reply().request, ticket.geometry_request());
                 program.accept(rejected.reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
-                assert!(program.inner.pending.is_none(), "error reply consumed exactly once");
+                assert!(program.geometry_ref().pending.is_none(), "error reply consumed exactly once");
                 assert!(drive(&mut program, &router, &mut decoder).is_empty());
                 let failure = origin(finish(program, mode).unwrap_err());
                 assert!(Arc::ptr_eq(&recorded, &failure));

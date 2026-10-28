@@ -214,7 +214,7 @@ impl GeometryRouter {
         if item.ifc_type == IfcType::IfcMappedItem {
             return self.process_mapped_item_cached(item, decoder);
         }
-        crate::program::GeometryProgram::representation_item(item, self.rtc_offset).drain(self, decoder)
+        crate::program::GeometryProgram::representation_item(item, self.rtc_offset()).drain(self, decoder)
     }
 
     /// A textured `IfcTriangulatedFaceSet` meshed with its per-vertex UVs,
@@ -264,9 +264,9 @@ impl GeometryRouter {
             && self.representation_item_benefits_from_rtc(item, decoder, offset_meters))
         .then(|| {
             (
-                offset_meters.0 / self.unit_scale,
-                offset_meters.1 / self.unit_scale,
-                offset_meters.2 / self.unit_scale,
+                offset_meters.0 / self.unit_scale(),
+                offset_meters.1 / self.unit_scale(),
+                offset_meters.2 / self.unit_scale(),
             )
         })
     }
@@ -279,7 +279,7 @@ impl GeometryRouter {
         let processor = Rc::clone(self.processor_for(&IfcType::IfcAlignment)?);
         // Missing Axis or unparseable curve isn't fatal — fall back so the
         // walk can still read a normal representation if present.
-        let mut mesh = processor.process(element, decoder, self.schema, self.tessellation_quality).ok()?;
+        let mut mesh = processor.process(element, decoder, self.schema, self.tessellation_quality()).ok()?;
         if mesh.positions.is_empty() {
             return None;
         }
@@ -301,3 +301,43 @@ mod hygiene_tests;
 #[cfg(test)]
 #[path = "product_program_tests.rs"]
 mod product_tests;
+
+#[cfg(test)]
+#[path = "processing_budget_tests.rs"]
+mod budget_tests;
+#[cfg(test)]
+#[path = "item_tests.rs"]
+mod item_tests;
+
+#[cfg(test)]
+impl GeometryRouter {
+    pub(super) fn process_element_parts_with_budget(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        hygiene: SourceHygiene,
+        allowance: u32,
+    ) -> Result<Vec<Mesh>> {
+        crate::program::GeometryProgram::product_with_limit(element, hygiene, allowance, None)
+            .drain_parts(self, decoder)
+    }
+    pub(super) fn process_element_submeshes_with_budget(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        allow_instancing: bool,
+        textures: Option<
+            &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+        >,
+        hygiene: SourceHygiene,
+        allowance: u32,
+    ) -> Result<SubMeshCollection> {
+        crate::program::GeometryProgram::product_with_limit(
+            element,
+            hygiene,
+            allowance,
+            Some((allow_instancing, textures)),
+        )
+        .drain_styled(self, decoder)
+    }
+}

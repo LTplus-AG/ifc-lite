@@ -20,7 +20,7 @@
  * changed test has already observed the revert (`revert-oracle-measure.mjs`).
  */
 
-import { spawnSync } from 'node:child_process';
+import { boundedSpawnSync as spawnSync } from './bounded-process.mjs';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -144,7 +144,7 @@ function finish(parsed, extra, started, plan, label, log) {
 }
 
 /** Build the viewer for this side of the revert, then run the one scoped spec. */
-export function runBrowserPlan(plan, root, label, log = console.log) {
+export function runBrowserPlan(plan, root, label, log = console.log, timeoutMs = RUN_TIMEOUT_MS) {
   const started = Date.now();
   const env = baseEnv();
   const { build } = plan.runner;
@@ -154,10 +154,10 @@ export function runBrowserPlan(plan, root, label, log = console.log) {
       return finish({ kind: 'runner-missing', passed: null, failed: null, total: null, evidence: [`\`${BROWSER_BUILD_SCRIPT}\` needs ${build.bin}, which was not found; run pnpm install`] }, {}, started, plan, label, log);
     }
     log(`  [${label}] building the viewer: ${build.bin} ${build.args.join(' ')}`);
-    const built = spawnSync(buildCommand.bin, [...buildCommand.prefix, ...build.args], { cwd: root, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: BUILD_TIMEOUT_MS });
+    const built = spawnSync(buildCommand.bin, [...buildCommand.prefix, ...build.args], { cwd: root, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: Math.min(BUILD_TIMEOUT_MS, timeoutMs) });
     if (built.error || built.signal || built.status !== 0) {
       return finish({
-        kind: 'load-failure', passed: null, failed: null, total: null,
+        kind: built.error?.code === 'ETIMEDOUT' ? 'timeout' : 'load-failure', passed: null, failed: null, total: null,
         evidence: [`\`${BROWSER_BUILD_SCRIPT}\` failed (${built.error?.message ?? built.signal ?? `exit ${built.status}`}), so no browser assertion ran`],
       }, { tail: tailOf(built) }, started, plan, label, log);
     }
@@ -171,7 +171,7 @@ export function runBrowserPlan(plan, root, label, log = console.log) {
   let run, report = null, readError = null;
   try {
     run = spawnSync(command.bin, [...command.prefix, ...browserRunArgs(plan.runner, plan.file, { globalTimeoutMs: GLOBAL_TIMEOUT_MS })], {
-      cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: RUN_TIMEOUT_MS,
+      cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs,
       // A private port: the config reuses any server already on its port,
       // which would serve some other build than the one just made.
       env: { ...env, PLAYWRIGHT_PORT: String(freePort()), PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath },
@@ -185,6 +185,7 @@ export function runBrowserPlan(plan, root, label, log = console.log) {
   const parsed = parsePlaywrightReport(report, {
     exitCode: run?.status ?? null, signal: run?.signal ?? null, sameFile: sameFileAs(root, plan.file, report),
   });
+  if (run?.error?.code === 'ETIMEDOUT') parsed.kind = 'timeout';
   if (readError) parsed.evidence.unshift(`could not read the Playwright report: ${readError}`);
   if (run?.error) parsed.evidence.unshift(`playwright did not complete: ${run.error.message}`);
   const version = spawnSync(command.bin, [...command.prefix, '--version'], { encoding: 'utf8', timeout: 30_000 });

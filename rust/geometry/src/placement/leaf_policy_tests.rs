@@ -12,7 +12,6 @@
 //! slot on the fast path.
 
 use super::*;
-use crate::GeometryRouter;
 use ifc_lite_core::Error as CoreError;
 
 const BAD_LEAVES: [&str; 5] = [
@@ -26,7 +25,7 @@ const BAD_LEAVES: [&str; 5] = [
 /// Every reader of an `IfcAxis2Placement3D` (#2) whose Location is #1.
 fn placement_3d_readers(content: &str) -> Vec<(&'static str, Result<(), crate::Error>, u64)> {
     type Reader = fn(&mut EntityDecoder) -> Result<(), crate::Error>;
-    let readers: [(&str, Reader); 7] = [
+    let readers: [(&str, Reader); 6] = [
         ("EntityDecoder::point3", |d| d.point3(1).map(drop).map_err(Into::into)),
         ("EntityDecoder::point3_at", |d| {
             let placement = d.decode_by_id(2)?;
@@ -35,10 +34,6 @@ fn placement_3d_readers(content: &str) -> Vec<(&'static str, Result<(), crate::E
         ("Axis2Placement::read_3d", |d| {
             let placement = d.decode_by_id(2)?;
             Axis2Placement::read_3d(&placement, d).map(drop).map_err(Into::into)
-        }),
-        ("router.parse_axis2_placement_3d", |d| {
-            let placement = d.decode_by_id(2)?;
-            GeometryRouter::new().parse_axis2_placement_3d(&placement, d).map(drop)
         }),
         ("Axis2Placement::read_id", |d| Axis2Placement::read_id(2, d).map(drop).map_err(Into::into)),
         ("resolve_chain", |d| {

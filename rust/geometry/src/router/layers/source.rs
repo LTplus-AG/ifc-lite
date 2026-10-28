@@ -4,10 +4,10 @@
 
 //! Reached source eligibility and late placement admission.
 use crate::math::tol;
+use crate::representation::unwrap::unwrap_boolean_leaf;
 use crate::representation::{product_shape, Select};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
-use rustc_hash::FxHashSet;
 
 /// Reached only after host production and its empty-mesh test. Use the same
 /// placement service and translation scaling as the original layer path.
@@ -89,52 +89,10 @@ pub(super) fn element_is_single_unrotated_item(
 /// up with IfcMaterialLayerSetUsage in practice (extrusions, revolved /
 /// advanced swept solids, boolean clipping on top of those). Anything
 /// exotic returns false so we bail safely.
-pub(super) fn item_has_identity_position(
-    mut cur: DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> bool {
-    // `IfcBooleanResult.FirstOperand` is a file-supplied reference, so
-    // `#10=IFCBOOLEANRESULT(.DIFFERENCE.,#10,#20)` -- one self-referential
-    // entity -- walked forever. This walk used to RECURSE, so it consumed a
-    // stack frame per link and aborted the process; a Rust stack overflow
-    // ABORTS rather than raising a catchable panic, so nothing could turn it
-    // into a load error (#2866).
-    //
-    // Iterative plus a visited-id set, the same shape as `collect_polygonal_chain`
-    // in processors/boolean/mod.rs. Iterating is what makes the set SUFFICIENT:
-    // it breaks on the first repeat, and with no stack to consume there is
-    // nothing left for a length cap to protect. Capping length INSTEAD of
-    // iterating would reintroduce the regression #960 made that walk iterative
-    // to fix: Revit exports building-element-part chains up to 42 DIFFERENCE
-    // nodes deep, and bailing on one returns `false`, so a wall that renders
-    // with layer slicing today would silently render as a single mesh.
-    let mut visited: FxHashSet<u32> = FxHashSet::default();
-    loop {
-        // Type check BEFORE the insert: the walk only ever descends FROM a
-        // boolean node, so every node on a reachable cycle is one, and a plain
-        // extrusion -- the overwhelmingly common root -- reaches its answer
-        // without the set ever allocating.
-        if !matches!(
-            cur.ifc_type,
-            IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult
-        ) {
-            return item_position_is_unrotated(&cur, decoder);
-        }
-        // A repeat is "exotic", which this function's contract already answers
-        // with `false`.
-        if !visited.insert(cur.id) {
-            return false;
-        }
-        // Boolean results wrap another operand; follow the first operand,
-        // which carries the visible geometry.
-        let Some(first_operand_id) = cur.get_ref(slot::IfcBooleanResult::FIRST_OPERAND.index())
-        else {
-            return false;
-        };
-        cur = match decoder.decode_by_id(first_operand_id) {
-            Ok(inner) => inner,
-            Err(_) => return false,
-        };
+pub(super) fn item_has_identity_position(current: DecodedEntity, decoder: &mut EntityDecoder) -> bool {
+    match unwrap_boolean_leaf(current, decoder) {
+        Ok(Some(item)) => item_position_is_unrotated(&item, decoder),
+        _ => false,
     }
 }
 
@@ -203,3 +161,7 @@ fn rotation_is_identity(m: &Matrix4<f64>) -> bool {
     }
     true
 }
+
+#[cfg(test)]
+#[path = "source_tests.rs"]
+mod tests;

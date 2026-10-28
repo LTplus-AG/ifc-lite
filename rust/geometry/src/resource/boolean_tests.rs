@@ -237,3 +237,20 @@ fn issue_7914_fresh_empty_poll_observes_later_account_installation() {
     assert_eq!(result, Err(ProgramStop::Cancelled));
     assert!(!is_stopped());
 }
+
+#[test]
+fn issue_7781_source_only_poll_observes_and_latches_a_late_stop() {
+    with_handle(|handle| {
+        with_source_stop(handle.clone(), || {
+            assert!(!is_active(), "exercise the source-only fast path");
+            assert!(!is_stopped());
+            handle.stop(refusal());
+            assert!(is_stopped());
+            // Inspect the independent terminal channel before a typed poll can
+            // repair a missing propagation from the boolean observation.
+            assert_eq!(current_terminal(), Some(refusal()));
+            assert_eq!(check_current(), Err(refusal()));
+        });
+    });
+    assert!(!is_stopped());
+}

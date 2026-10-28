@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/geometry/src/program/transactions/type_origin.rs",
+  "mutation": "tests/evidence/m9/behaviour.oracle.patch",
+  "test": "rust/geometry/tests/m9_type_origin.rs",
+  "why": "Unconditionally dropping ProductPlacement must fail the product-plan and mismatched-type placement witnesses without SMLib."
+}

@@ -75,7 +75,7 @@ fn h2a2_diamond_keeps_256_occurrences_and_work_refusal_is_sticky() {
     assert_eq!(drive(&mut program, &router, &mut decoder).len(), 1);
     assert_eq!(program.finish().unwrap().values.len(), 256);
     let mut limited = RetainedProgram::product_parts(&entity, contract());
-    let Control::Product(control) = &limited.inner.control else { panic!("product") };
+    let Control::Product(control) = &limited.geometry_ref().control else { panic!("product") };
     control.retained_selection().unwrap().set_work_limit(40);
     let first = stop(&mut limited, &router, &mut decoder);
     assert!(matches!(first, RetainedProgramError::Stopped(crate::resource::ProgramStop::ResourceRefused(f)) if f.dimension == crate::resource::Dimension::Work));
@@ -90,7 +90,7 @@ fn h2a2_retained_cache_refuses_a_foreign_decoder_before_reusing_definitions() {
     let entity = decoder.decode_by_id(10).unwrap();
     let mut program = RetainedProgram::product_parts(&entity, contract());
     drive(&mut program, &router, &mut decoder);
-    let Control::Product(control) = &program.inner.control else { panic!("product") };
+    let Control::Product(control) = &program.geometry_ref().control else { panic!("product") };
     let selection = control.retained_selection().unwrap();
     assert!(selection.cached(&decoder, &router, 81).unwrap().is_some());
     let other = source.decoder();
@@ -115,7 +115,7 @@ fn h2a2_cached_acyclic_fanout_debits_work_before_copying_expanding_values() {
     let router = GeometryRouter::with_units(&bytes, &mut decoder);
     let entity = decoder.decode_by_id(10).unwrap();
     let mut program = RetainedProgram::product_parts(&entity, contract());
-    let Control::Product(control) = &program.inner.control else { panic!("product") };
+    let Control::Product(control) = &program.geometry_ref().control else { panic!("product") };
     control.retained_selection().unwrap().set_work_limit(400);
     let first = stop(&mut program, &router, &mut decoder);
     assert!(matches!(first, RetainedProgramError::Stopped(crate::resource::ProgramStop::ResourceRefused(f))

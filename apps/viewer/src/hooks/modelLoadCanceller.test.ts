@@ -164,3 +164,24 @@ for (const endLatest of ['cancel', 'complete'] as const) {
     releaseFirst(); releaseSecond();
   });
 }
+
+// #7955 M2: a retained run is ended, not discarded — what it published stays.
+it('Cancel interrupts a load that installed `interrupt`, keeping the model; afterwards Cancel discards as before', async () => {
+  const canceller = await import('./modelLoadCanceller.js');
+  startLoading();
+  const activity = canceller.createModelLoadActivity('tower.ifc');
+  let superseded = 0;
+  let interrupted = 0;
+  activity.interrupt = () => { interrupted += 1; };
+  const release = canceller.installModelLoadCanceller('primary', () => { superseded += 1; }, () => null, activity);
+  store.getState().activeLoadCanceller?.();
+  assert.equal(interrupted, 1, 'the run was asked to end');
+  assert.equal(superseded, 0, 'the load was not superseded');
+  assert.ok(store.getState().models.has('loading-model'), 'the model and its published geometry stay');
+  assert.equal(store.getState().loading, true, 'the load finishes on its own');
+  activity.interrupt = undefined; // the run ended; the load may still wait on metadata
+  store.getState().activeLoadCanceller?.();
+  assert.equal(superseded, 1);
+  assert.equal(store.getState().models.size, 0);
+  release();
+});

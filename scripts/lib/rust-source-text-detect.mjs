@@ -300,7 +300,7 @@ function matchDelim(masked, open) {
  * @param {string} masked
  * @returns {Array<[number, number]>}
  */
-function cfgTestRanges(masked) {
+export function cfgTestRanges(masked) {
   /** @type {Array<[number, number]>} */
   const ranges = [];
   const re = /#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]/g;

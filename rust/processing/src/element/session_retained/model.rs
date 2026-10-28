@@ -50,12 +50,16 @@ pub enum ProductOutcome {
         refusal: RetainedProductRefusal,
         origin: Option<RefusalOrigin>,
         message: String,
+        /// Attempted opening cuts, including a failed or consuming invocation.
+        cut_times_ms: Vec<f64>,
     },
 }
 #[derive(Debug, Default)]
 pub struct ModelSummary {
     pub candidates: usize,
     pub published: usize,
+    /// Attempted opening cuts across published and refused products.
+    pub cuts: u64,
     /// Replacement acquisition attempts after the initial worker slot, including
     /// failed qualification attempts; capped at three per model.
     pub restarts: u8,
@@ -104,7 +108,7 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
     router.set_material_layer_index(Arc::new(
         ifc_lite_geometry::MaterialLayerIndex::from_content(source.bytes(), &mut decoder),
     ));
-    let jobs = crate::processor::entry_points::canonical_element_jobs(&source);
+    let (jobs, type_maps) = crate::processor::entry_points::canonical_jobs_and_type_maps(&source);
     let mut attempts = usize::from(worker.is_some());
     if worker
         .as_ref()
@@ -135,19 +139,22 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
             acquire_ms += start.elapsed().as_secs_f64() * 1000.;
             result
         };
+        let mut observation = ProductObservation { id: product_id, cut_times_ms: Vec::new() };
         let outcome = product(
             &mut decoder,
             &router,
             &snapshot,
-            product_id,
+            &mut observation,
             options,
             worker,
             &mut bounded_acquire,
+            type_maps.get(&product_id).map(Vec::as_slice),
         )
         .await;
         let ms = (product_start.elapsed().as_secs_f64() * 1000. - acquire_ms).max(0.);
         summary.product_ms += ms;
         summary.acquire_ms += acquire_ms;
+        summary.cuts += observation.cut_times_ms.len() as u64;
         // The executor may retire a domain for resource/source cancellation too.
         // Never keep a dead domain merely because its refusal is not transport.
         if worker
@@ -177,6 +184,7 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
                         refusal,
                         origin,
                         message: error.to_string(),
+                        cut_times_ms: observation.cut_times_ms,
                     },
                     ms,
                 );
@@ -187,15 +195,23 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
     Ok(summary)
 }
 
+struct ProductObservation {
+    id: u32,
+    cut_times_ms: Vec<f64>,
+}
+
+#[allow(clippy::too_many_arguments)] // One product's source, budget, transport and planned type maps.
 async fn product<W: AsyncRetainedExecutor>(
     decoder: &mut EntityDecoder<'_>,
     router: &GeometryRouter,
     snapshot: &OwnedMeshProductionContext,
-    id: u32,
+    observation: &mut ProductObservation,
     options: &ModelOptions,
     worker: &mut Option<W>,
     acquire: &mut impl FnMut() -> Result<W, RuntimeFault>,
+    type_maps: Option<&[(u32, u8)]>,
 ) -> Result<ShapeOnlyProduct, RetainedExecutionError> {
+    let id = observation.id;
     let spec = options.product_budget;
     let budget = resource::ProductBudget::new(
         resource::BudgetStart::now(),
@@ -206,24 +222,36 @@ async fn product<W: AsyncRetainedExecutor>(
     let entity = budget
         .scope(|| decoder.decode_by_id(id))
         .map_err(RetainedExecutionError::Core)?;
+    let kind = budget.scope(|| -> Result<_, RetainedExecutionError> {
+        type_maps.map_or(Ok(ElementJobKind::Product), |maps| {
+            let mut rep_maps = Vec::new();
+            OwnedResourceContext::capture_current().reserve_headers(&mut rep_maps, maps.len())
+                .map_err(RetainedExecutionError::Stopped)?.retain();
+            rep_maps.extend_from_slice(maps);
+            Ok(ElementJobKind::TypeProduct { rep_maps })
+        })
+    })?;
     let job = ElementMeshJob {
         id,
         ifc_type: entity.ifc_type.clone(),
         entity: &entity,
-        kind: ElementJobKind::Product,
+        kind,
         element_color: None,
         metadata: None,
     };
+    let openings = budget.scope(|| openings::decoded_openings(snapshot, id, decoder, router))?;
     let execution = budget.scope(|| {
         RuntimeProductExecution::begin(
             &job,
             snapshot,
             &MeshProductionOptions::default(),
+            &openings,
             decoder,
             router,
         )
     })?;
     let witness =
-        super::drive::drive(execution, decoder, router, worker, acquire, options.limits).await?;
+        super::drive::drive(execution, decoder, router, worker, acquire, options.limits,
+            &mut observation.cut_times_ms).await?;
     witness.publish_shape()
 }

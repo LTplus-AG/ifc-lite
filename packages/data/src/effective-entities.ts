@@ -275,18 +275,20 @@ function idsOfClasses(
 /** An entity table's rows by class (upper case), built once per table and rebuilt if its row count or type revision changes. */
 function bucketsOf(table: NonNullable<EffectiveEntitySource['entities']>): Map<string, number[]> {
   const rows = table.expressId ?? [];
-  // A retype (`setTypeOverride`) moves a row between classes without changing the row count.
-  const revision = table.typeRevision ?? 0;
-  let held = BUCKETS.get(table);
-  if (!held || held.count !== rows.length || held.revision !== revision) {
-    held = { count: rows.length, revision, byClass: new Map() };
+  // A retype (`setTypeOverride`) moves a row between classes without changing the row count. A table that can be
+  // retyped but reports no revision cannot be cached safely, so its buckets are rebuilt on every call.
+  const revision = table.typeRevision;
+  const cacheable = revision !== undefined || !('setTypeOverride' in table);
+  let held = cacheable ? BUCKETS.get(table) : undefined;
+  if (!held || held.count !== rows.length || held.revision !== (revision ?? 0)) {
+    held = { count: rows.length, revision: revision ?? 0, byClass: new Map() };
     for (const id of rows) {
       const key = table.getTypeName(id).toUpperCase();
       const list = held.byClass.get(key);
       if (list) list.push(id);
       else held.byClass.set(key, [id]);
     }
-    BUCKETS.set(table, held);
+    if (cacheable) BUCKETS.set(table, held);
   }
   return held.byClass;
 }

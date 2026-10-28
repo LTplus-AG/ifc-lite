@@ -4,6 +4,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { countEffectiveEntityTypes, iterateEffectiveEntities, type EffectiveEntitySource } from './effective-entities.js';
+import { EntityTableBuilder } from './entity-table.js';
+import { StringTable } from './string-table.js';
 
 const TYPES: Record<number, string> = { 1: 'IfcSpace', 2: 'IfcWall', 3: 'IfcSpace' };
 const entities = { expressId: new Uint32Array([1, 2, 3]), getTypeName: (id: number) => TYPES[id] ?? 'Unknown' };
@@ -41,19 +43,29 @@ describe('the effective entity set of an IFCX store', () => {
     expect(counts.get('IFCSPACE')).toBe(2);
   });
 
-  it('rebuckets the table after a retype: a row moved into a class is found by a filtered walk', () => {
-    const types: Record<number, string> = { 1: 'IfcSpace', 2: 'IfcWall', 3: 'IfcSpace' };
-    let typeRevision = 0;
-    const table = {
-      expressId: new Uint32Array([1, 2, 3]),
-      getTypeName: (id: number) => types[id] ?? 'Unknown',
-      get typeRevision() { return typeRevision; },
-    };
+  it('rebuckets the table after a retype: a row moved into a class by setTypeOverride is found by a filtered walk', () => {
+    const builder = new EntityTableBuilder(3, new StringTable());
+    builder.add(1, 'IFCSPACE', '', 'a', '', '');
+    builder.add(2, 'IFCWALL', '', 'b', '', '');
+    builder.add(3, 'IFCSPACE', '', 'c', '', '');
+    const table = builder.build();
     const source: EffectiveEntitySource = { entityIndex: emptyIndex, entities: table, schemaVersion: 'IFC5' };
     expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 3]);
-    types[2] = 'IfcSpace';
-    typeRevision++;
+    table.setTypeOverride(2, 'IFCSPACE');
     expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 2, 3]);
+  });
+
+  it('does not cache a table that can be retyped but reports no revision', () => {
+    const types: Record<number, string> = { 1: 'IfcSpace', 2: 'IfcWall' };
+    const table = {
+      expressId: new Uint32Array([1, 2]),
+      getTypeName: (id: number) => types[id] ?? 'Unknown',
+      setTypeOverride: (id: number, type: string | null) => { if (type) types[id] = type; },
+    };
+    const source: EffectiveEntitySource = { entityIndex: emptyIndex, entities: table, schemaVersion: 'IFC5' };
+    expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1]);
+    table.setTypeOverride(2, 'IfcSpace');
+    expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 2]);
   });
 
   it('buckets the table once per model: a second filtered call does not rescan it', () => {

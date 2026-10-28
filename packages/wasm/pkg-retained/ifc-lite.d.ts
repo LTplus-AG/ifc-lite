@@ -206,7 +206,8 @@ export type RetainedSessionEvent =
 | { kind: 'published'; expressId: number; ifcType: string;
 marker: 'PresentationObligationsUnmet';
 obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
-meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string };
+meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string;
+instanceWorldFromObject?: Float64Array };
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
@@ -2632,6 +2633,12 @@ export function clashIntersectionSolid(positions_a: Float32Array, indices_a: Uin
 export function difference2d(a: Contours2D, b: Contours2D): Contours2D;
 
 /**
+ * Bounded host batch of baked Y-up meshes and controller-composed IFC frames.
+ * Keys are full SHA256 hex strings, never truncated to the collator's u128 id.
+ */
+export function encodeInstancedShard(meshes: { expressId: number; ifcType: string; positions: Float32Array; normals: Float32Array; indices: Uint32Array; color: number[]; worldFromObject: Float64Array; origin?: number[]; geometryClass?: number; geometryItemId?: number; material?: { metallic?: number; roughness?: number }; texture?: unknown }[], keys: string[], rtc: Float64Array): { shard: Uint8Array; flatIndices: Uint32Array; instanceCount: number; groupCount: number; verificationRejections: number };
+
+/**
  * Get WASM memory to allow JavaScript to create TypedArray views
  */
 export function get_memory(): any;
@@ -2848,6 +2855,7 @@ export interface InitOutput {
     readonly contours2d_shapeCount: (a: number) => number;
     readonly contours2d_shapeOffsets: (a: number) => number;
     readonly difference2d: (a: number, b: number) => number;
+    readonly encodeInstancedShard: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly gridaxiscollection_getAxis: (a: number, b: number) => number;
     readonly gridaxiscollection_isEmpty: (a: number) => number;
     readonly gridaxiscollection_length: (a: number) => number;

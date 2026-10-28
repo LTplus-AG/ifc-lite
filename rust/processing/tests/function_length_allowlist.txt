@@ -48,12 +48,12 @@
    168 rust/geometry/src/router/voids/aabb_clip.rs Execution::triangle_intersects_box
    715 rust/geometry/src/router/voids/mod.rs Execution::apply_void_context_inner
    182 rust/geometry/src/router/voids/mod.rs Execution::try_cut_wall_local_frame
-   306 rust/geometry/src/router/voids/prism_cut.rs Execution::try_prism_cut
+   297 rust/geometry/src/router/voids/prism_cut.rs Execution::try_prism_cut
    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
-   214 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction
-   168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
+   197 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction
+   163 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
    159 rust/geometry/src/space_dcel/arrangement.rs Arrangement::resolve
    164 rust/landxml/src/parser/capture.rs TinHandler::finish_capture

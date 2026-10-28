@@ -194,7 +194,7 @@ pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
 #[derive(Debug)]
 pub(crate) struct RetainedProductPlan {
     #[cfg(feature = "retained-runtime")]
-    pub(crate) layers: Option<layer_family::LayerCompletion>,
+    pub(crate) layers: Option<Box<layer_family::LayerCompletion>>,
     pub(crate) values: Vec<LogicalRetainedValue>,
     /// Conservatively unchecked obligations until a consumer proves them
     /// unnecessary or discharges them; traversal alone does neither.

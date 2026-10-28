@@ -4,7 +4,8 @@ use super::{layer_caps::{curved,on}, layer_mesh::*, publication::ShapePart, erro
 use ifc_lite_geometry::program::transactions::LayerInterface;
 use std::collections::{BTreeMap,BTreeSet};
 
-fn rim(mesh: &ShapePart, surface: LayerInterface) -> Result<(BTreeSet<(Key,Key)>,Vec<Point>),RetainedExecutionError> {
+type Rim = (BTreeSet<(Key,Key)>,Vec<Point>);
+fn rim(mesh: &ShapePart, surface: LayerInterface) -> Result<Rim,RetainedExecutionError> {
     let mut edges = BTreeSet::new(); let mut points = BTreeMap::new();
     for (a,b) in boundary(mesh)? {
         let (a,b) = (point(mesh,a),point(mesh,b));

@@ -89,7 +89,7 @@ impl Plan {
         self.inner.remaining.retain(|r| *r != logical::RetainedRequirement::MaterialLayers);
         self
     }
-    pub fn layers(&self) -> Option<&super::LayerCompletion> { self.inner.layers.as_ref() }
+    pub fn layers(&self) -> Option<&super::LayerCompletion> { self.inner.layers.as_deref() }
     pub fn discharge_unvoided(mut self) -> Self {
         self.inner.remaining.retain(|r| *r != logical::RetainedRequirement::OpeningClosure);
         self

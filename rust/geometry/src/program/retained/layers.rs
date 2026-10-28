@@ -111,7 +111,10 @@ impl LayerBands {
                 bands.push(value);
             }
             self.host.values = bands;
-            self.host.layers = Some(LayerCompletion { tags, interfaces });
+            crate::resource::charge(crate::resource::Cost {
+                live_bytes: std::mem::size_of::<LayerCompletion>() as u64, ..Default::default()
+            }).map_err(|e| self.selection.failure_handle().common(FailureSite::LayerBand, e.into()))?.retain();
+            self.host.layers = Some(Box::new(LayerCompletion { tags, interfaces }));
         }
         // Publication must still run cap removal atomically for layered plans.
         self.host.remaining.retain(|r| *r != RetainedRequirement::MaterialLayers);

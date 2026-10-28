@@ -120,6 +120,24 @@ describe('opinion retention (federated composition)', () => {
     assert.equal(composed.has('wall-1'), false);
     assert.deepEqual(findDivergentAttributes(opinionsByPath(composed)), []);
   });
+
+  it('does not retain the tombstone marker on a resurrected node', () => {
+    const deletes = makeFile([{ path: 'wall-1', attributes: { [IFCLITE_ATTR.DELETED]: true } }]);
+    const restores = makeFile([{ path: 'wall-1', attributes: { [IFCLITE_ATTR.DELETED]: false } }]);
+    const { composed } = composeFederated(stackOf([architect, deletes, restores]), { retainOpinions: true });
+    const wall = composed.get('wall-1');
+    assert.equal(wall?.attributes.has(IFCLITE_ATTR.DELETED), false);
+    assert.equal(wall?.opinions?.has(IFCLITE_ATTR.DELETED), false);
+    assert.deepEqual(findDivergentAttributes(opinionsByPath(composed)), []);
+  });
+
+  it('compares values canonicalStringify rejects by identity instead of throwing', () => {
+    const op = (value: unknown) => ({ layerId: 'l', layerName: 'l', value });
+    const nan = new Map([['wall-1', new Map([[FIRE, [op(Number.NaN), op(Number.NaN)]]])]]);
+    assert.deepEqual(findDivergentAttributes(nan), []);
+    const mixed = new Map([['wall-1', new Map([[FIRE, [op(Infinity), op('EI 90')]]])]]);
+    assert.equal(findDivergentAttributes(mixed).length, 1);
+  });
 });
 
 describe('opinion retention (parse API)', () => {

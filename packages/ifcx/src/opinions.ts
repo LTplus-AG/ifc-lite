@@ -18,6 +18,9 @@
  * opinion per layer: when a layer carries several nodes for one path, the
  * layer's last value is its opinion (that is what the layer composes to).
  * A `null` value is a removal opinion and is retained like any other.
+ * The `ifclite::deleted` tombstone marker is not retained: composition
+ * strips it from every surviving node, and a tombstoned node takes its
+ * opinions with it.
  *
  * Spec: docs/architecture/layer-prs/12-authority.md §12.4.
  */
@@ -25,6 +28,7 @@
 import type { IfcxLayer } from './layer-stack.js';
 import { canonicalStringify } from './canonical.js';
 import { getProvenance } from './provenance.js';
+import { IFCLITE_ATTR } from './types.js';
 
 /** One layer's own value for one attribute of one path. */
 export interface AttributeOpinion {
@@ -59,11 +63,31 @@ export function recordLayerOpinions(
   if (layerValues.size === 0) return;
   const principal = getProvenance(layer.file)?.author?.principal;
   for (const [attribute, value] of layerValues) {
+    if (attribute === IFCLITE_ATTR.DELETED) continue;
     const opinion: AttributeOpinion = { layerId: layer.id, layerName: layer.name, value };
     if (principal) opinion.principal = principal;
     const list = into.get(attribute);
     if (list) list.push(opinion);
     else into.set(attribute, [opinion]);
+  }
+}
+
+/**
+ * Comparison key for an opinion value. Canonical for every IFCX value;
+ * values `canonicalStringify` rejects (non-finite numbers, functions,
+ * nesting past its depth limit) cannot come from a parsed file, so they
+ * fall back to identity (`Object.is`) instead of throwing.
+ */
+function opinionKey(value: unknown, fallback: Map<unknown, string>): string {
+  try {
+    return canonicalStringify(value ?? null);
+  } catch {
+    let key = fallback.get(value);
+    if (key === undefined) {
+      key = `\u0000uncanonical:${fallback.size}`;
+      fallback.set(value, key);
+    }
+    return key;
   }
 }
 
@@ -82,8 +106,9 @@ export function findDivergentAttributes(
   for (const [path, byAttribute] of opinionsByPath) {
     for (const [attribute, opinions] of byAttribute) {
       if (opinions.length < 2) continue;
-      const first = canonicalStringify(opinions[0].value ?? null);
-      const differs = opinions.some((o) => canonicalStringify(o.value ?? null) !== first);
+      const fallback = new Map<unknown, string>();
+      const first = opinionKey(opinions[0].value, fallback);
+      const differs = opinions.some((o) => opinionKey(o.value, fallback) !== first);
       if (differs) divergent.push({ path, attribute, opinions: [...opinions] });
     }
   }

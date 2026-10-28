@@ -85,6 +85,9 @@ export const retainedGeometryEn = {
   'retainedGeometry.code.deadline_exceeded': 'The product exceeded its time budget.',
   'retainedGeometry.code.cancelled': 'Not computed: the run stopped before this product.',
   'retainedGeometry.code.contract_breach': 'The kernel returned output that broke its contract.',
+  'retainedGeometry.code.opening_unsupported': 'Uses an opening the retained kernel cannot cut yet.',
+  'retainedGeometry.code.appearance_unsupported': 'Uses textures or indexed colour palettes, which the retained kernel does not reproduce.',
+  'retainedGeometry.code.face_provenance_unproven': 'Its faces could not be traced back to the source geometry.',
   'retainedGeometry.code.other': 'Refused with code {code}.',
 
   'retainedGeometry.setting.title': 'Geometry kernel',

@@ -29,6 +29,7 @@ const KNOWN_CODES = new Set([
   'opening_strategy', 'material_layer_strategy', 'operation_unsupported', 'source_invalid', 'source_changed',
   'incomplete', 'empty_result', 'family_unqualified', 'kernel_failure', 'worker_fault', 'worker_retired',
   'resource_exhausted', 'deadline_exceeded', 'cancelled', 'contract_breach',
+  'opening_unsupported', 'appearance_unsupported', 'face_provenance_unproven',
 ]);
 
 export interface RetainedGeometryPanelProps {

@@ -2,6 +2,8 @@
 #![cfg(feature = "retained-runtime")]
 //! #7955: real SDK, all committed published products, independent source normals.
 mod support;
+#[path = "support/m11_n_exact.rs"]
+mod exact_report;
 use ifc_lite_retained_native::{oracle::normals, ProductOutcome};
 use ifc_lite_geometry::program::transactions::Requirement;
 use std::{collections::BTreeMap, path::Path};
@@ -33,6 +35,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
     for (model, expected) in universe(&root) {
         let bytes = std::fs::read(root.join(&model)).unwrap();
         let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes,None);
+        let exact = ifc_lite_processing::process_geometry(&bytes);
         let mut rows = Vec::new();
         let mut actual = BTreeMap::new();
         ifc_lite_retained_native::run_model_native(ifc_lite_core::SourceBundle::new(bytes.clone()),&worker,
@@ -44,6 +47,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                         assert!(!product.obligations.0.contains(&Requirement::SurfaceNormals));
                         let source = normals::surfaces(&bytes,&sources,product.product_id).unwrap_or_else(|e| panic!("{model}:{}: {e}",product.product_id));
                         let check = normals::check(&product,&source).unwrap();
+                        let histogram = exact_report::histogram(&exact,product.product_id,&source);
                         if check.unattributed != 0 || check.planar_radians > tolerances["normalPlanarRadians"].as_f64().unwrap()
                             || check.curved_radians > tolerances["normalCurvedRadians"].as_f64().unwrap()
                             || check.unit_error > tolerances["normalUnitAbsolute"].as_f64().unwrap() {
@@ -56,7 +60,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                         rows.push(json!({"id":product.product_id,"status":"published","parts":product.parts.iter().map(|p|
                             json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object}))
                             .collect::<Vec<_>>() }));
-                        println!("normal source witness {model}:{} {check:?}",product.product_id);
+                        println!("normal source witness {model}:{} {check:?}; exact/source angle histogram (report-only): {histogram:?}",product.product_id);
                     }
                     ProductOutcome::Refused {product_id,refusal,..} => {
                         actual.insert(product_id,"refused".to_string());

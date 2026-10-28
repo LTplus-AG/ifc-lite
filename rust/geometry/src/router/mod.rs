@@ -499,7 +499,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<u128> {
-        let rep = element.get(6)?.as_entity_ref()?;
+        let rep = crate::representation::structural::product_shape_id(element)?;
         let mut memo = self.content_sig_memo.borrow_mut();
         let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
         Some(content_hash::item_signature(decoder, rep, &mut memo, &mut refused))

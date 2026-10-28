@@ -14,6 +14,7 @@ pub(crate) mod mapped_transform;
 pub(crate) mod product_budget;
 mod refusal;
 mod select;
+pub(crate) mod structural;
 pub(crate) mod unwrap;
 mod walk;
 pub use select::{meshed_representations, Select};

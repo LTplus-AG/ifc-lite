@@ -127,6 +127,9 @@ fn apply_content_matching_impl<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geom
         group.geometry_hash = geometry_hash;
         matches.push(group);
     }
+    if !retired.iter().any(|retired| *retired) {
+        return ContentDiff { core, content_matches: matches };
+    }
     for (i, entry) in entries.iter().enumerate() {
         if retired[i] {
             match entry.state {
@@ -136,12 +139,10 @@ fn apply_content_matching_impl<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geom
             }
         }
     }
-    if retired.iter().any(|retired| *retired) {
-        let mut index = 0;
-        core.entries.retain(|_| { let keep = !retired[index]; index += 1; keep });
-        if build_index {
-            core.by_key = core.entries.iter().enumerate().map(|(i, entry)| (entry.key.clone(), i)).collect();
-        }
+    let mut index = 0;
+    core.entries.retain(|_| { let keep = !retired[index]; index += 1; keep });
+    if build_index {
+        core.by_key = core.entries.iter().enumerate().map(|(i, entry)| (entry.key.clone(), i)).collect();
     }
     ContentDiff { core, content_matches: matches }
 }

@@ -21,12 +21,14 @@ IFCLITE_NATIVE_PRODUCTS=/absolute/native/products.tsv \
 IFCLITE_BROWSER_OUT=/absolute/results \
 node --test scripts/retained-compare/browser.test.mjs
 
+rm -rf apps/viewer/dist # discard outputs from a previous build mode
 VITE_RETAINED_GEOMETRY=on IFCLITE_RETAINED_ENGINE=/absolute/engine \
 pnpm build:e2e --concurrency=1
 VITE_RETAINED_GEOMETRY=on IFCLITE_RETAINED_ENGINE=/absolute/engine \
 IFCLITE_VIEWER_OUT=/absolute/results/e2e \
 pnpm exec playwright test --project=viewer-retained
 
+rm -rf apps/viewer/dist
 VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
 node scripts/check-viewer-retained-free.mjs
 VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= \

@@ -304,8 +304,11 @@ jobs:
           test -s "$IFCLITE_RETAINED_ENGINE/engine-manifest.json"
           test -s "$IFCLITE_NATIVE_PRODUCTS"
           node --test scripts/retained-compare/browser.test.mjs
+          # Turbo cache restoration does not remove outputs from another build mode.
+          rm -rf apps/viewer/dist
           pnpm build:e2e --concurrency=1
           pnpm exec playwright test --project=viewer-retained
+          rm -rf apps/viewer/dist
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
           node scripts/check-viewer-retained-free.mjs
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default

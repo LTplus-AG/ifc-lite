@@ -7,7 +7,7 @@ use super::{
 };
 #[path = "mapped_source.rs"]
 mod source;
-use ifc_lite_core::{EntityDecoder, IfcType, SourceBundle};
+use ifc_lite_core::{slot, EntityDecoder, IfcType, SourceBundle};
 use source::{Frame, Leaf};
 use std::collections::BTreeMap;
 
@@ -32,27 +32,20 @@ struct Walk<'a, 'b> {
 impl Walk<'_, '_> {
     fn subtract_product(&mut self, tree: &mut Tree, id: u32, host_inverse: &Frame) -> Option<()> {
         let product = self.decoder.decode_by_id(id).ok()?;
-        let world = source::placement(self.decoder, product.get_ref(5))?;
+        let (world, items) = source::body_items(self.decoder, &product)?;
         let frame = multiply(host_inverse, &world);
-        let shape = self.decoder.decode_by_id(product.get_ref(6)?).ok()?;
         let mut parts = 0;
-        for id in shape.get_refs(2)? {
-            let rep = self.decoder.decode_by_id(id).ok()?;
-            if rep.get_string(1) != Some("Body") {
-                continue;
-            }
-            for item in rep.get_refs(3)? {
-                let cut = self.item(item, &frame, 0, 0)?;
-                let original = tree.terms.clone();
-                // H minus C = H - HC; intersect with the actual Boolean host,
-                // not its bounding box or the sum of nominal cutter volumes.
-                for (ka, va) in original {
-                    for (kb, vb) in &cut.terms {
-                        *tree.terms.entry(ka | kb).or_default() -= va * vb;
-                    }
+        for item in items {
+            let cut = self.item(item, &frame, 0, 0)?;
+            let original = tree.terms.clone();
+            // H minus C = H - HC; intersect with the actual Boolean host,
+            // not its bounding box or the sum of nominal cutter volumes.
+            for (ka, va) in original {
+                for (kb, vb) in &cut.terms {
+                    *tree.terms.entry(ka | kb).or_default() -= va * vb;
                 }
-                parts += 1;
             }
+            parts += 1;
         }
         (parts > 0).then_some(())
     }
@@ -64,18 +57,38 @@ impl Walk<'_, '_> {
         let e = self.decoder.decode_by_id(id).ok()?;
         match e.ifc_type {
             IfcType::IfcMappedItem => {
-                let (mapping, items) = source::mapping(self.decoder, e.get_ref(0)?, e.get_ref(1)?)?;
+                let (mapping, items) = source::mapping(
+                    self.decoder,
+                    e.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?,
+                    e.ref_at(slot::IfcMappedItem::MAPPING_TARGET)?,
+                )?;
                 if items.len() != 1 {
                     return None;
                 }
                 self.item(items[0], &multiply(frame, &mapping), depth, map_depth + 1)
             }
-            IfcType::IfcCsgSolid => self.item(e.get_ref(0)?, frame, depth, map_depth + 1),
+            IfcType::IfcCsgSolid => self.item(
+                e.ref_at(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION)?,
+                frame,
+                depth,
+                map_depth + 1,
+            ),
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                let a = self.item(e.get_ref(1)?, frame, depth + 1, map_depth)?;
-                let b = self.item(e.get_ref(2)?, frame, depth + 1, map_depth)?;
+                use slot::IfcBooleanResult as Boolean;
+                let a = self.item(
+                    e.ref_at(Boolean::FIRST_OPERAND)?,
+                    frame,
+                    depth + 1,
+                    map_depth,
+                )?;
+                let b = self.item(
+                    e.ref_at(Boolean::SECOND_OPERAND)?,
+                    frame,
+                    depth + 1,
+                    map_depth,
+                )?;
                 let mut terms = BTreeMap::new();
-                let op = e.get(0)?.as_enum()?;
+                let op = e.enum_at(Boolean::OPERATOR)?;
                 let sign = match op {
                     "INTERSECTION" => 1,
                     "UNION" | "DIFFERENCE" => -1,
@@ -168,13 +181,19 @@ pub fn expected(bytes: &[u8], product: u32) -> Option<MappedExpectation> {
 }
 /// Compose the caller's canonical cut set with a bounded Boolean host tree.
 /// Unsupported frames, units or leaves remain unverified rather than guessed.
-pub fn opened(bytes: &[u8], host: u32, cutters: &[u32]) -> Option<super::openings::OpeningExpectation> {
+pub fn opened(
+    bytes: &[u8],
+    host: u32,
+    cutters: &[u32],
+) -> Option<super::openings::OpeningExpectation> {
     if cutters.len() > 8 {
         return None;
     }
     let nominal = expected(bytes, host)?;
     let result = evaluate(bytes, host, cutters)?;
-    let cutter_volume = cutters.iter().try_fold(0., |v, id| Some(v + expected(bytes, *id)?.volume))?;
+    let cutter_volume = cutters
+        .iter()
+        .try_fold(0., |v, id| Some(v + expected(bytes, *id)?.volume))?;
     Some(super::openings::OpeningExpectation {
         nominal_host_volume: nominal.volume,
         volume_bounds: [(nominal.volume - cutter_volume).max(0.), nominal.volume],
@@ -190,8 +209,7 @@ fn evaluate(bytes: &[u8], product: u32, cutters: &[u32]) -> Option<MappedExpecta
         return None;
     }
     let e = decoder.decode_by_id(product).ok()?;
-    let world = source::placement(&mut decoder, e.get_ref(5))?;
-    let shape = decoder.decode_by_id(e.get_ref(6)?).ok()?;
+    let (world, items) = source::body_items(&mut decoder, &e)?;
     let mut result = MappedExpectation {
         volume: 0.,
         bbox: [
@@ -205,35 +223,29 @@ fn evaluate(bytes: &[u8], product: u32, cutters: &[u32]) -> Option<MappedExpecta
         curved: false,
         parts: 0,
     };
-    for id in shape.get_refs(2)? {
-        let rep = decoder.decode_by_id(id).ok()?;
-        if rep.get_string(1) != Some("Body") {
-            continue;
+    for item in items {
+        let mut walk = Walk {
+            decoder: &mut decoder,
+            leaves: Vec::new(),
+            work: 256,
+        };
+        let mut tree = walk.item(item, &IDENTITY, 0, 0)?;
+        for cutter in cutters {
+            walk.subtract_product(&mut tree, *cutter, &source::inverse_rigid(&world))?;
         }
-        for item in rep.get_refs(3)? {
-            let mut walk = Walk {
-                decoder: &mut decoder,
-                leaves: Vec::new(),
-                work: 256,
-            };
-            let mut tree = walk.item(item, &IDENTITY, 0, 0)?;
-            for cutter in cutters {
-                walk.subtract_product(&mut tree, *cutter, &source::inverse_rigid(&world))?;
-            }
-            result.volume += walk.volume(&tree)?;
-            result.curved |= walk.leaves.iter().any(|p| p.curved);
-            result.parts += 1;
-            for i in 0..8 {
-                extend_bbox(
-                    &mut result.bbox,
-                    transform(
-                        &world,
-                        std::array::from_fn(|axis| {
-                            tree.bbox[axis + if i & (1 << axis) == 0 { 0 } else { 3 }]
-                        }),
-                    ),
-                );
-            }
+        result.volume += walk.volume(&tree)?;
+        result.curved |= walk.leaves.iter().any(|p| p.curved);
+        result.parts += 1;
+        for i in 0..8 {
+            extend_bbox(
+                &mut result.bbox,
+                transform(
+                    &world,
+                    std::array::from_fn(|axis| {
+                        tree.bbox[axis + if i & (1 << axis) == 0 { 0 } else { 3 }]
+                    }),
+                ),
+            );
         }
     }
     // Local placements are rigid; mapping determinants already act on leaf

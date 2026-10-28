@@ -95,6 +95,9 @@ test.describe('retained viewer acceptance', () => {
     await page.getByRole('button', { name: `Select #${refused}`, exact: true }).click();
     expect((await snapshot(page)).selected).toBe(refused);
     await record('positive', result);
+    if (process.env.IFCLITE_VIEWER_OUT) {
+      await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'positive.png') });
+    }
   });
 
   test('a retained federated add is refused before any SDK request', async ({ page }) => {

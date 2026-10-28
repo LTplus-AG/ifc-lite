@@ -30,6 +30,8 @@ contract for boxed twins, PBHS → plane → solid Difference, and consumed-resu
 provenance. They are explicitly excluded from Round 2 passing counts and are
 run after the M5 rebase. They are not `#[ignore]` tests. M5 owns the shared
 Boolean completion/provenance hook; M6 adds no competing hook.
+The consumed expectation uses M5's `halfspace_clip` site, following that shared
+hook ruling in place of M6's earlier `bounded_halfspace` spelling.
 
 The source oracle independently decodes planes and boundary placements. Linear
 non-convex loops are ear-partitioned; inclusion–exclusion integrates triangle
@@ -38,8 +40,8 @@ A work-cap or unsupported oracle family is an explicit missing section result,
 not zero. Original boundaries, including analytic arcs, define the gated
 strict-interior removed-material check; triangulation seams do not.
 Synthetic hand integrals additionally qualify the quarter-circle case. Their
-fixture requires independent adversarial review and schema/round-trip validation
-before it counts as release evidence. Measured evidence is stored outside the
+fixture passed independent adversarial Opus review and IFC4 schema/round-trip
+validation on 2026-10-28; its M5 cases still await qualification. Measured evidence is stored outside the
 repository under the implementation's M6 evidence directory.
 
 FZK walls #60012 and #67828 each have two PBHS clips, no plain-plane clip, and

@@ -89,3 +89,13 @@ fn issue_7955_m6_full_circle_uses_the_prism_circle_wire() {
     assert_eq!(trace.prisms.len(),1);assert_eq!(trace.prisms[0].loops[0].segments.len(),1);
     assert!(matches!(trace.prisms[0].loops[0].segments[0],PrismSegment::Circle{radius,..} if radius==0.5));
 }
+
+#[test]
+fn issue_7955_m6_admits_exactly_256_boundary_vertices() {
+    // Remove one distinct point from the 257-gon, preserving its closure.
+    let text=SOURCE.replace(",#295,#39));",",#39));");
+    let (trace,result)=walk(&text,1012);result.unwrap();
+    assert_eq!(trace.order,["host","prism","difference"]);
+    assert_eq!(trace.prisms[0].loops[0].segments.len(),256);
+    trace.prisms[0].lower().unwrap();
+}

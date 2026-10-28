@@ -96,7 +96,8 @@ fn qualifies_after_m5_m6_native_consumed_provenance() {
     for source in [SOURCE,chained.as_str()] {
         let outcomes=run(source,&[1011]);
         let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("consumed host must refuse atomically");};
-        assert_eq!(refusal.code(),"empty_result");let origin=origin.unwrap();assert_eq!(origin.site,"bounded_halfspace");assert_eq!(origin.cause,"consumed");
+        // Round 2 assigns attribution to M5's shared HalfSpaceClip hook.
+        assert_eq!(refusal.code(),"empty_result");let origin=origin.unwrap();assert_eq!(origin.site,"halfspace_clip");assert_eq!(origin.cause,"consumed");
     }
 }
 #[test]
@@ -168,8 +169,9 @@ fn observed(ids:&[u32],fail:Option<usize>)->(Vec<ProductOutcome>,usize) {
 #[test]
 fn m6_native_second_boolean_fault_is_atomic_and_next_product_succeeds() {
     if worker().is_none(){return;}
-    let (outcomes,calls)=observed(&[1003,1010],Some(2));assert_eq!(calls,2);assert_eq!(outcomes.len(),2);
-    assert_eq!(code(&outcomes[0]),"kernel_failure");verify(SOURCE,shape(&outcomes,1010),Some(64.));
+    // #1014 follows #1003 in canonical product order and performs a real Boolean.
+    let (outcomes,calls)=observed(&[1003,1014],Some(2));assert_eq!(calls,3);assert_eq!(outcomes.len(),2);
+    assert_eq!(code(&outcomes[0]),"kernel_failure");verify(SOURCE,shape(&outcomes,1014),Some(56.+6.*35f64.to_radians().tan()));
     let (refused,calls)=observed(&[1006,1012,1013],None);assert_eq!(calls,0);
     for o in refused {assert_eq!(code(&o),"operation_unsupported");}
     println!("sdk witness executed: m6_atomic_failure");

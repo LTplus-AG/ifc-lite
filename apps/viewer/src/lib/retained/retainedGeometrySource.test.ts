@@ -45,7 +45,7 @@ describe('#7955 M2-C retained geometry source', () => {
     const base = published(1);
     if (base.kind !== 'published') throw new Error('expected published fixture');
     const event = { ...base, meshes: [], instancedShards: [shard], meshCount: 3,
-      instanceProducts: [1, 2, 3].map(expressId => ({ expressId, ifcType: base.ifcType, obligationsUnmet: base.obligationsUnmet })),
+      instanceProducts: [1, 2, 3].map(expressId => ({ ...base, expressId })),
       bounds: { min: { x: 3, y: 5, z: 7 }, max: { x: 4, y: 6, z: 8 } } };
     const value = run(new ScriptedHostWorker([start([1, 2, 3, 4]), event]));
     const events = await collect(value.events, e => e.type === 'batch');

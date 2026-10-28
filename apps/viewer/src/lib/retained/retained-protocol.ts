@@ -20,7 +20,7 @@ export type RetainedRefused = SessionEvent<'refused'>;
 
 export type RetainedHostEvent = RetainedStart
   | (Omit<RetainedPublished, 'meshes'> & { meshes: MeshData[]; instancedShards?: ArrayBuffer[];
-      instanceProducts?: Pick<RetainedPublished, 'expressId' | 'ifcType' | 'obligationsUnmet'>[];
+      instanceProducts?: Omit<RetainedPublished, 'meshes'>[];
       meshCount?: number; bounds?: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } })
   | RetainedRefused
   | { kind: 'progress' }

@@ -61,7 +61,7 @@ export class RetainedInstancing {
       // cannot receive geometry while dropping the remaining publication rows.
       this.emit({ ...grouped[0], meshes: [], meshCount: grouped.length,
         bounds: calculateMeshBounds(grouped.flatMap(event => event.meshes)).bounds,
-        instanceProducts: grouped.map(({ expressId, ifcType, obligationsUnmet }) => ({ expressId, ifcType, obligationsUnmet })),
+        instanceProducts: grouped.map(({ meshes: _meshes, ...product }) => product),
         instancedShards: [Uint8Array.from(encoded.shard).buffer] });
     }
   }

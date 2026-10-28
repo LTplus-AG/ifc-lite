@@ -64,14 +64,18 @@ A selector target matches IFCX attribute keys as follows:
 | `Pset_WallCommon.FireRating` | `bsi::ifc::v5a::Pset_WallCommon::FireRating` |
 | `Pset_WallCommon` | every member of that set |
 | `prop.FireRating` | `bsi::ifc::prop::FireRating` (flat IFC5 property) |
-| `geometry`, `geometry:<tier>` | `usd::*` geometry components (02 §2.2) |
-| `placement`, `attr:class`, `material` | the matching component keys |
+| `prop` | every flat IFC5 property |
+| `geometry`, `geometry.<tier>` | `usd::*` geometry components (02 §2.2); `usd::xformop` is `placement` |
+| `placement`, `attr.class`, `material` | the matching component keys |
+| `*` | every attribute, including keys with no selector path |
+
+A target matches a prefix of the attribute's path, so a set covers its members. The merge vocabulary spells `geometry:<tier>` and `attr:class` with a colon; inside a capability the first `:` already separates the action from the target, so the charter uses `.` instead. A rule with an `@<type>` selector never governs an attribute whose entity type is unknown.
 
 Authority is evaluated **per IFCX attribute key**, the unit composition already resolves, not per merge `componentKey`. This matters because the merge engine buckets set members into `pset:<Set>` (`merge/src/component-state.ts`): the architect editing `Pset_WallCommon.IsExternal` and the fire consultant setting `Pset_WallCommon.FireRating` are one component for merge purposes but two separate authority questions.
 
 ### Specificity and ambiguity
 
-The governing rule for an attribute is the most specific match: member before set before component; exact type before glob; more constraints before fewer. Two equally specific rules naming different roles is a **charter error**, rejected when the charter is published. Authority is never ambiguous at evaluation time.
+The governing rule for an attribute is the most specific match, compared in this order: more target segments (member before set before component), more literal (non-glob) segments, exact type before glob before no type, more constraints before fewer. Two equally specific rules naming different roles is a **charter error**, rejected when the charter is published. Authority is never ambiguous at evaluation time.
 
 ### Principals
 

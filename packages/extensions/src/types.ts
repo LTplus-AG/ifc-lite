@@ -53,7 +53,8 @@ export type ValidationErrorCode =
   | 'invalid_activation'
   | 'invalid_reference'
   | 'invalid_widget'
-  | 'invalid_manifest_version';
+  | 'invalid_manifest_version'
+  | 'ambiguous_authority';
 
 export type ValidationResult<T> =
   | { ok: true; value: T }

@@ -71,6 +71,12 @@ export function recordLayerOpinions(
   }
 }
 
+/** Same nesting cap as `canonicalStringify`; also stops cyclic values. */
+const MAX_KEY_DEPTH = 512;
+/** Identity keys for values past the cap: distinct values differ, one reference agrees. */
+const deepValueKeys = new WeakMap<object, string>();
+let deepValueCount = 0;
+
 /**
  * Comparison key for an opinion value. Identical to `canonicalStringify`
  * for every value it accepts (NFC strings, -0 as 0, sorted keys, object
@@ -78,10 +84,24 @@ export function recordLayerOpinions(
  * top-level `undefined` (an in-memory layer keeping the attribute) is
  * distinct from a `null` removal, and values JSON cannot carry (non-finite
  * numbers such as a parsed `1e400`, bigint, functions, symbols) get tagged
- * keys, so equal values agree and nothing throws.
+ * keys. A value nested past `MAX_KEY_DEPTH` (or cyclic) compares by
+ * identity instead, so nothing throws.
  */
-function opinionKey(value: unknown, nested = false): string {
-  if (value === undefined && !nested) return '\u0000undefined';
+function opinionKey(value: unknown): string {
+  const key = structuralKey(value, 0);
+  if (key !== undefined) return key;
+  const target = value as object;
+  let identity = deepValueKeys.get(target);
+  if (identity === undefined) {
+    identity = `\u0000deep:${deepValueCount++}`;
+    deepValueKeys.set(target, identity);
+  }
+  return identity;
+}
+
+/** Canonical key, or undefined when the value nests past `MAX_KEY_DEPTH`. */
+function structuralKey(value: unknown, depth: number): string | undefined {
+  if (value === undefined && depth === 0) return '\u0000undefined';
   if (value === null || value === undefined) return 'null';
   switch (typeof value) {
     case 'string':
@@ -92,7 +112,16 @@ function opinionKey(value: unknown, nested = false): string {
     case 'boolean':
       return value ? 'true' : 'false';
     case 'object': {
-      if (Array.isArray(value)) return `[${value.map((item) => opinionKey(item, true)).join(',')}]`;
+      if (depth >= MAX_KEY_DEPTH) return undefined;
+      const parts: string[] = [];
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const part = structuralKey(item, depth + 1);
+          if (part === undefined) return undefined;
+          parts.push(part);
+        }
+        return `[${parts.join(',')}]`;
+      }
       const record = value as Record<string, unknown>;
       // Sort by the NFC form, so two spellings of one key order the same;
       // the raw key breaks ties when one object holds both spellings.
@@ -100,7 +129,12 @@ function opinionKey(value: unknown, nested = false): string {
         .filter((key) => record[key] !== undefined)
         .map((key) => [key.normalize('NFC'), key] as const)
         .sort(([a, rawA], [b, rawB]) => (a !== b ? (a < b ? -1 : 1) : rawA < rawB ? -1 : rawA > rawB ? 1 : 0));
-      return `{${members.map(([nfc, key]) => `${JSON.stringify(nfc)}:${opinionKey(record[key], true)}`).join(',')}}`;
+      for (const [nfc, key] of members) {
+        const part = structuralKey(record[key], depth + 1);
+        if (part === undefined) return undefined;
+        parts.push(`${JSON.stringify(nfc)}:${part}`);
+      }
+      return `{${parts.join(',')}}`;
     }
     default:
       return `\u0000${typeof value}:${String(value)}`;

@@ -149,6 +149,16 @@ describe('opinion retention (federated composition)', () => {
     assert.equal(divergent({ 'e\u0301': 1, f: 2 }, { '\u00e9': 1, f: 2 }), false);
     // Both spellings in one object: order no longer depends on insertion order.
     assert.equal(divergent({ '\u00e9': 1, 'e\u0301': 2 }, { 'e\u0301': 2, '\u00e9': 1 }), false);
+    // Past the 512-level cap (or cyclic): identity, never a stack overflow.
+    const deep = (n: number) => { let v: unknown = 1; for (let i = 0; i < n; i++) v = [v]; return v; };
+    const deepValue = deep(20000);
+    assert.equal(divergent(deepValue, deepValue), false);
+    assert.equal(divergent(deep(20000), deep(20000)), true);
+    assert.equal(divergent(deep(100), deep(100)), false, 'below the cap: structural');
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic.self = cyclic;
+    assert.equal(divergent(cyclic, cyclic), false);
+    assert.equal(divergent(cyclic, { a: 1 }), true);
   });
 });
 

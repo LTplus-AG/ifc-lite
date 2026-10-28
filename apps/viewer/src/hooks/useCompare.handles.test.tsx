@@ -131,6 +131,7 @@ describe('resident compare ownership (#8042 A2)', () => {
       assert.equal(useViewerStore.getState().compareError, null);
       assert.equal(frees.mock.callCount(), 2);
       assert.equal(useViewerStore.getState().compareResult === null, action !== 'supersede');
+      assert.equal(useViewerStore.getState().compareRunning, false);
       if (action === 'supersede') assert.equal(creates.mock.callCount(), 4);
     });
   }

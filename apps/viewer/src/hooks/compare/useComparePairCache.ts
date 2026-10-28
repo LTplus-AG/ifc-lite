@@ -36,6 +36,10 @@ export function useComparePairCache(epoch: MutableRefObject<number>) {
       unsubscribe();
       epoch.current += 1;
       release();
+      // This hook owns the panel run; its superseded continuation cannot clear
+      // progress once unmounted, so release the UI flag with the native owner.
+      const state = useViewerStore.getState();
+      if (state.compareRunning) state.setCompareRunning(false);
     };
   }, [epoch]);
   return builtRef;

@@ -867,19 +867,10 @@ export async function* processParallel(
     trace.end(shardScanSpan);
     const shards = shardResults as ShardColumns[];
     const stitched = trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
-    if (!stitched) {
-      console.warn('[stream][shard] stitch fallback triggered (handoff not found) — serial pre-pass');
-      startPrepass(false);
-      return;
-    }
-    // An EMPTY stitch takes the same fallback. Delivering it would install no
-    // index on any worker (the engine stores an empty index as none), so the
-    // shard-only `finalize-styles` step was guaranteed to throw
-    // "finalizePrepassStyles: no entity index" and fail the load every time.
-    // The serial pre-pass builds its own index and handles a genuinely
-    // entity-free file through the zero-geometry path.
-    if (stitched.ids.length === 0) {
-      console.warn('[stream][shard] stitch produced no entities — serial pre-pass');
+    // An EMPTY stitch falls back too: workers store an empty index as none, so
+    // the sharded-only finalize-styles always threw "no entity index".
+    if (!stitched || stitched.ids.length === 0) {
+      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : 'handoff not found'}) — serial pre-pass`);
       startPrepass(false);
       return;
     }

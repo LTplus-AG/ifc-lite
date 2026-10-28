@@ -20,7 +20,15 @@ fn retire(indices: impl IntoIterator<Item = usize>, retired: &mut [bool]) {
     for i in indices { retired[i] = true; }
 }
 
-pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: GeometryTolerances) -> ContentDiff<'a, R> {
+pub fn apply_content_matching<'a, R>(core: KeyDiff<'a, R>, tolerances: GeometryTolerances) -> ContentDiff<'a, R> {
+    apply_content_matching_impl(core, tolerances, true)
+}
+
+pub(crate) fn apply_content_matching_for_transport<'a, R>(core: KeyDiff<'a, R>, tolerances: GeometryTolerances) -> ContentDiff<'a, R> {
+    apply_content_matching_impl(core, tolerances, false)
+}
+
+fn apply_content_matching_impl<'a, R>(mut core: KeyDiff<'a, R>, tolerances: GeometryTolerances, build_index: bool) -> ContentDiff<'a, R> {
     let entries = &core.entries;
     let mut bases = Buckets::default();
     let mut heads = Buckets::default();
@@ -128,8 +136,12 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
             }
         }
     }
-    let mut index = 0;
-    core.entries.retain(|_| { let keep = !retired[index]; index += 1; keep });
-    core.by_key = core.entries.iter().enumerate().map(|(i, entry)| (entry.key.clone(), i)).collect();
+    if retired.iter().any(|retired| *retired) {
+        let mut index = 0;
+        core.entries.retain(|_| { let keep = !retired[index]; index += 1; keep });
+        if build_index {
+            core.by_key = core.entries.iter().enumerate().map(|(i, entry)| (entry.key.clone(), i)).collect();
+        }
+    }
     ContentDiff { core, content_matches: matches }
 }

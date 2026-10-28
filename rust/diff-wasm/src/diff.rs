@@ -4,7 +4,7 @@
 //! Retained fingerprint models: buffers cross once, comparisons pass options.
 //! JS retains adapter references and restores them from returned row indices.
 use ifc_lite_diff::{columns::{decode_columns, FingerprintColumns},
-    engine::diff_models, model::EntityFingerprint,
+    engine::diff_models_for_transport, model::EntityFingerprint,
     transport_options::options_from_document, transport_result::result_to_document};
 use wasm_bindgen::prelude::*;
 
@@ -55,7 +55,7 @@ impl DiffModel {
         let mappings = crate::diff_class_normalization::mappings(
             &self.non_ascii_classes, &head.non_ascii_classes, &options)?;
         let result = ifc_lite_diff::class_normalization::with_overrides(mappings, || {
-            diff_models(&self.entities, &head.entities, &options)
+            diff_models_for_transport(&self.entities, &head.entities, &options)
         });
         Ok(crate::diff_binary::encode_result(&result))
     }
@@ -68,7 +68,7 @@ impl DiffModel {
         let mappings = crate::diff_class_normalization::mappings(
             &self.non_ascii_classes, &head.non_ascii_classes, &options)?;
         let result = ifc_lite_diff::class_normalization::with_overrides(mappings, || {
-            diff_models(&self.entities, &head.entities, &options)
+            diff_models_for_transport(&self.entities, &head.entities, &options)
         });
         // Restore the core context before any host result conversion can run.
         crate::diff_transport::host_value(&result_to_document(&result))

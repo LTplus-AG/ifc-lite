@@ -25,6 +25,9 @@ export interface RetainedGeometrySummary {
   kernel: 'retained';
   /** Products the run planned (`start.candidateIds`); 0 until the engine started. */
   candidates: number;
+  /** True once the engine sent its start event. `candidates` alone cannot say:
+   *  a started run may legitimately plan zero products. */
+  started?: boolean;
   published: number;
   /** Every candidate without geometry, refusals and cancellations alike, in arrival order. */
   refused: RetainedUnpublishedRow[];

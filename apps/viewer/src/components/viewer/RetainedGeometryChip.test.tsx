@@ -78,9 +78,19 @@ describe('#7955 M2-C retained chip', () => {
     mount();
     assert.equal(chip()?.textContent, 'Retained · shape-only · 4/4 products · 0 refused' + 'complete');
     cleanup();
-    seed(summary({ published: 1, refused: [{ expressId: 20, ifcType: 'IfcDoor', code: 'opening_strategy' }], cancelled: 0, completeness: 'running' }));
+    seed(summary({ started: true, published: 1, refused: [{ expressId: 20, ifcType: 'IfcDoor', code: 'opening_strategy' }], cancelled: 0, completeness: 'running' }));
     mount();
     assert.equal(chip()?.textContent, 'Retained · shape-only · 2/4 products' + 'running');
+  });
+
+  it('reads starting only before the engine started, not for a started zero-candidate run', () => {
+    seed(summary({ candidates: 0, published: 0, refused: [], cancelled: 0, completeness: 'running' }));
+    mount();
+    assert.equal(chip()?.textContent, 'Retained · shape-only · starting engine' + 'running');
+    cleanup();
+    seed(summary({ started: true, candidates: 0, published: 0, refused: [], cancelled: 0, completeness: 'running' }));
+    mount();
+    assert.equal(chip()?.textContent, 'Retained · shape-only · 0/0 products' + 'running');
   });
 });
 

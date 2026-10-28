@@ -48,7 +48,7 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
   const refused = summary.refused.length - summary.cancelled;
   const counts = { published: String(summary.published), candidates: String(summary.candidates), refused: String(refused), cancelled: String(summary.cancelled) };
   const label = summary.completeness === 'running' && !summary.failure
-    ? summary.candidates === 0
+    ? !summary.started
       ? t('retainedGeometry.chip.starting')
       : t('retainedGeometry.chip.running', { done: String(summary.published + summary.refused.length), candidates: counts.candidates })
     : summary.cancelled > 0 ? t('retainedGeometry.chip.labelCancelled', counts) : t('retainedGeometry.chip.label', counts);

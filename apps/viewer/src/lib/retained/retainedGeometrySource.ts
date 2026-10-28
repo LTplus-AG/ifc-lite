@@ -199,6 +199,7 @@ export async function* retainedGeometryEvents(
           acc.candidateIds = event.candidateIds;
           acc.frame = event.frame;
           acc.summary.candidates = event.candidateIds.length;
+          acc.summary.started = true;
           report();
           yield { type: 'start', totalEstimate: event.candidateIds.length };
           phase();

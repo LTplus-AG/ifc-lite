@@ -14,9 +14,12 @@
 
 /// A building element whose construction-projection profile was dropped —
 /// its `IfcExtrudedAreaSolid` (direct or via `IfcMappedItem`) is present but
-/// could not be turned into 2D drawing geometry, or the mapped-item chain
-/// was too deep. Never an element the extractor deliberately excludes (a
-/// non-`IfcExtrudedAreaSolid` representation, an `IfcFeatureElement`).
+/// could not be turned into 2D drawing geometry, or the representation walk
+/// refused an item (too deep, cyclic, unresolvable, or over budget). Never an
+/// element the extractor deliberately excludes (a
+/// non-`IfcExtrudedAreaSolid` representation, an `IfcFeatureElement`). An
+/// `execution-stop:` reason instead marks an affected product at a terminal
+/// execution failure; it does not describe malformed model content.
 #[derive(Debug, Clone)]
 pub struct SkippedProfile {
     /// Express ID of the building element whose profile was dropped.
@@ -24,6 +27,7 @@ pub struct SkippedProfile {
     /// IFC type name (e.g., `"IfcWall"`).
     pub ifc_type: String,
     /// Short, stable reason string (not user-facing prose): the geometry
-    /// error text, or `"max mapped item depth exceeded"`.
+    /// error text, `"mapped item #<id>: <the walk's refusal>"`, or
+    /// `"execution-stop: <terminal>"` when the affected product is known.
     pub reason: String,
 }

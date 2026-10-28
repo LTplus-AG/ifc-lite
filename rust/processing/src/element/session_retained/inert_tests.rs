@@ -121,7 +121,7 @@ fn with_execution<T>(
     let metadata = metadata(10);
     let job = job(&entity, &metadata);
     let mut execution =
-        RuntimeProductExecution::begin(&job, &context, &options(), &mut decoder, &router).unwrap();
+        RuntimeProductExecution::begin(&job, &context, &options(), &[], &mut decoder, &router).unwrap();
     run(&mut execution, &mut decoder, &router)
 }
 
@@ -237,6 +237,7 @@ fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
         &job,
         &context,
         &options(),
+        &[],
         &mut decoder,
         &router,
     )
@@ -246,7 +247,7 @@ fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
 }
 
 #[test]
-fn issue_7955_real_opening_job_refuses_before_numerical_admission() {
+fn issue_7955_real_opening_job_admits_host_before_opening_body() {
     let text = SOURCE.replace(
         "ENDSEC;END-ISO-10303-21;",
         "#30=IFCOPENINGELEMENT('o',$,$,$,$,#19,#21,$,$);ENDSEC;END-ISO-10303-21;",
@@ -261,16 +262,17 @@ fn issue_7955_real_opening_job_refuses_before_numerical_admission() {
     let entity = decoder.decode_by_id(10).unwrap();
     let metadata = metadata(10);
     let job = job(&entity, &metadata);
-    let error = RuntimeProductExecution::<InertReceipt>::begin(
+    let openings = [decoder.decode_by_id(30).unwrap()];
+    let mut execution = RuntimeProductExecution::<InertReceipt>::begin(
         &job,
         &context,
         &options(),
+        &openings,
         &mut decoder,
         &router,
     )
-    .err()
-    .expect("openings require a separate retained strategy");
-    assert_eq!(error.refusal().0.code(), "opening_strategy");
+    .unwrap();
+    assert!(execution.advance_source(&mut decoder, &router).unwrap());
 }
 
 // #7955: only a settled contract fault disarms a numerical packet.
@@ -332,6 +334,7 @@ fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
         &job,
         &context,
         &options(),
+        &[],
         &mut decoder,
         &router,
     );
@@ -358,14 +361,17 @@ fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
     );
 }
 
-// #7955 / #8183: type-map geometry has no product placement authority.
+// #7955 / #8183: instanced type maps cannot borrow orphan placement authority.
 #[test]
-fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
+fn instanced_type_map_refuses_before_invocation_without_restarting_worker() {
     let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(SOURCE, &mut decoder);
     let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
-    let job = super::super::session_tests::type_job(&mut decoder, &[61, 71]);
+    let entity = decoder.decode_by_id(60).unwrap();
+    let metadata = metadata(60);
+    let mut job = job(&entity, &metadata);
+    job.kind = ElementJobKind::TypeProduct { rep_maps: vec![(61, 2), (71, 2)] };
     let peer = InertPeer::new(false);
     let domain = peer.domain();
     let mut worker = Some(peer);
@@ -376,9 +382,10 @@ fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
     };
     let mut future = Box::pin(async {
         let execution = RuntimeProductExecution::<InertReceipt>::begin(
-            job,
+            &job,
             &context,
             &options(),
+            &[],
             &mut decoder,
             &router,
         )?;
@@ -389,6 +396,7 @@ fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
             &mut worker,
             &mut acquire,
             limits(),
+            &mut Vec::new(),
         )
         .await
     });
@@ -396,7 +404,7 @@ fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
         .as_mut()
         .poll(&mut Context::from_waker(Waker::noop()))
     else {
-        panic!("unplaced type geometry must refuse synchronously");
+        panic!("instanced type geometry must refuse synchronously");
     };
     assert_eq!(error.refusal().0.code(), "incomplete");
     drop(future);
@@ -405,4 +413,52 @@ fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
     assert_eq!(acquired.get(), 0, "no restart");
     assert!(peer.domain().same_domain(&domain));
     assert!(domain.incarnation().is_some());
+}
+
+// #7955 M9: prove admission reaches transport without fabricating a receipt.
+#[test]
+fn orphan_type_map_reaches_its_first_invocation() {
+    let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(SOURCE, &mut decoder);
+    let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
+    let job = super::super::session_tests::type_job(&mut decoder, &[61, 71]);
+    let mut peer = InertPeer::new(true);
+    let mut execution = RuntimeProductExecution::<InertReceipt>::begin(
+        job, &context, &options(), &[], &mut decoder, &router).unwrap();
+    let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
+    let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+    assert!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
+    drop(future);
+    assert_eq!(peer.invocations, 1);
+}
+
+#[test]
+fn issue_7955_mismatched_opening_attributes_refuse_source_changed() {
+    let text = SOURCE.replace(
+        "ENDSEC;END-ISO-10303-21;",
+        "#30=IFCOPENINGELEMENT('o',$,$,$,$,#19,#21,$,$);ENDSEC;END-ISO-10303-21;",
+    );
+    let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(&text, &mut decoder);
+    let context = ProductionModel::from_source(source.clone()).snapshot(OwnedMeshProductionData {
+        void_index: Arc::new([(10, vec![30])].into_iter().collect()),
+        ..Default::default()
+    });
+    let entity = decoder.decode_by_id(10).unwrap();
+    let metadata = metadata(10);
+    let job = job(&entity, &metadata);
+    let foreign = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
+    let openings = [foreign.decoder().decode_by_id(30).unwrap()];
+    let error = RuntimeProductExecution::<InertReceipt>::begin(
+        &job,
+        &context,
+        &options(),
+        &openings,
+        &mut decoder,
+        &router,
+    )
+    .err().expect("foreign opening source allocation");
+    assert_eq!(error.refusal().0.code(), "source_changed");
 }

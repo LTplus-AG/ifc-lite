@@ -270,6 +270,7 @@ nav:
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
+    - Retained Cutters: architecture/retained-cutters.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
@@ -319,6 +320,7 @@ nav:
         - Review Workflow: architecture/layer-prs/08-review.md
         - CLI & CI: architecture/layer-prs/09-cli.md
         - Registry: architecture/layer-prs/10-registry.md
+        - Authority: architecture/layer-prs/12-authority.md
     - IFC Git:
         - Overview: architecture/ifc-git/index.md
         - Concepts: architecture/ifc-git/01-concepts.md

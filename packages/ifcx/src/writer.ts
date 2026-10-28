@@ -9,7 +9,7 @@
  */
 
 import type { IfcxFile, IfcxNode, IfcxHeader } from './types.js';
-import type { EntityTable, PropertyTable, SpatialHierarchy } from '@ifc-lite/data';
+import type { DerivedEntities, EntityTable, PropertyTable, SpatialHierarchy } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { IFCX_VERSION } from '@ifc-lite/data';
 import { collectRequiredImports } from './writer-imports.js';
@@ -40,6 +40,8 @@ export interface IfcxExportOptions {
 export interface IfcxExportData {
   /** Entity table */
   entities: EntityTable;
+  /** Rows of `entities` the source file does not state as such: written as the file states them, or not at all. */
+  derivedEntities?: DerivedEntities;
   /** Property table (optional if using mutation view) */
   properties?: PropertyTable;
   /** Spatial hierarchy */

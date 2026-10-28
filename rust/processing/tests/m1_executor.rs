@@ -46,19 +46,17 @@ fn layered_wall_refuses_before_execution() {
     assert_eq!(refusal(&text, 10).code(), "material_layer_strategy");
 }
 #[test]
-fn openings_precede_layers_on_the_same_wall() {
+fn layers_precede_openings_on_the_same_wall() {
     let text = SOURCE.replace(
         "ENDSEC;END-ISO-10303-21;",
         &format!("{LAYERS}{OPENING}ENDSEC;END-ISO-10303-21;"),
     );
-    assert_eq!(refusal(&text, 10), RetainedProductRefusal::OpeningStrategy);
+    assert_eq!(refusal(&text, 10), RetainedProductRefusal::MaterialLayerStrategy);
 }
 #[test]
-fn curved_fixture_keeps_opening_strategy() {
+fn curved_fixture_keeps_material_layer_strategy() {
     let text = include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc");
-    for id in [55, 122, 188, 254] {
-        assert_eq!(refusal(text, id).code(), "opening_strategy", "product {id}");
-    }
+    assert_eq!(refusal(text, 55).code(), "material_layer_strategy");
 }
 #[test]
 fn plain_extrusion_admits_without_a_numerical_worker() {

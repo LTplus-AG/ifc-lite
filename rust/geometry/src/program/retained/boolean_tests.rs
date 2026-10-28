@@ -90,7 +90,7 @@ fn h2c_boolean_admission_resource_refusal_is_typed_and_sticky() {
         let mut constructions = 0;
         let mut refused = false;
         while let Some(ticket) = program.request().unwrap() {
-            let ready = matches!(&program.inner.control, Control::Product(control) if control.retained_ready());
+            let ready = matches!(&program.geometry_ref().control, Control::Product(control) if control.retained_ready());
             if constructions == 3 && ready {
                 let limits = ResourceLimits {
                     live_bytes: (dimension == Dimension::LiveBytes).then_some(0),

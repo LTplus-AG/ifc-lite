@@ -27,7 +27,8 @@ use crate::router::instancing::TemplateClaim;
 use crate::router::mapped_item::{MappedOccurrence, StyledSource};
 use crate::router::textured::{TexturedPart, TypeParts};
 use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+pub(super) use execute::MappingReply;
+use ifc_lite_core::DecodedEntity;
 use nalgebra::Matrix4;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -197,50 +198,56 @@ pub(super) enum Merged {
     Styled(SubMeshCollection),
 }
 
-pub(super) enum MappingReply {
+pub(super) enum MappingValue {
     RetainedTypeFinished(Result<Vec<super::retained::LogicalRetainedValue>>),
-    RetainedCached(Place),
+    RetainedCached(Place, super::mapping_budget::LogicalBudget),
     RetainedFinished(Result<Vec<super::retained::LogicalRetainedValue>>),
     RetainedPlaced { item_id: u32, value: Result<Vec<super::retained::LogicalRetainedValue>> },
-    Entered { item_id: u32, value: Result<(u32, MappedOccurrence)> },
-    SharedItems(Vec<DecodedEntity>),
+    Entered { item_id: u32, value: Result<(u32, MappedOccurrence)>, budget: super::mapping_budget::LogicalBudget },
+    SharedItems(Result<Vec<DecodedEntity>>, super::mapping_budget::LogicalBudget),
+    Refused {
+        item_id: u32,
+        refusal: super::mapping_budget::LogicalRefusal,
+        budget: super::mapping_budget::LogicalBudget,
+    },
     Child(ItemStep),
     Merged(Merged),
     Finished(Result<Vec<Mesh>>),
     Placed { item_id: u32, truncated: bool, value: Result<Vec<Mesh>> },
     CacheChild(CacheReply),
-    StyledEntered { item_id: u32, value: Result<StyledSource> },
-    StyledItems(Result<Vec<DecodedEntity>>),
+    StyledEntered { item_id: u32, value: Result<StyledSource>, budget: super::mapping_budget::LogicalBudget },
+    StyledItems(Result<Vec<DecodedEntity>>, super::mapping_budget::LogicalBudget),
     Textured(Option<(Mesh, Vec<f32>)>),
-    TypeMapEntered(Result<(DecodedEntity, Vec<DecodedEntity>)>),
+    TypeMapEntered(Result<(DecodedEntity, Vec<DecodedEntity>)>, super::mapping_budget::LogicalBudget),
     Origin(Result<Option<Matrix4<f64>>>),
     TypeFinished(Result<TypeParts>),
     StyledFinished(SubMeshCollection),
     Placeholder(SubMeshCollection),
 }
 
-impl MappingReply {
+impl MappingValue {
     pub(super) fn tag(&self) -> u8 {
         match self {
             Self::RetainedTypeFinished(_) => 18,
-            Self::RetainedCached(_) => 15,
+            Self::RetainedCached(..) => 15,
             Self::RetainedFinished(_) => 16,
             Self::RetainedPlaced { .. } => 17,
             Self::Entered { .. } => 0,
-            Self::SharedItems(_) => 1,
+            Self::SharedItems(..) => 1,
             Self::Child(_) => 2,
             Self::Merged(_) => 3,
             Self::Finished(_) => 4,
             Self::Placed { .. } => 5,
             Self::CacheChild(_) => 6,
             Self::StyledEntered { .. } => 7,
-            Self::StyledItems(_) => 8,
+            Self::StyledItems(..) => 8,
             Self::Textured(_) => 9,
-            Self::TypeMapEntered(_) => 10,
+            Self::TypeMapEntered(..) => 10,
             Self::Origin(_) => 11,
             Self::TypeFinished(_) => 12,
             Self::StyledFinished(_) => 13,
             Self::Placeholder(_) => 14,
+            Self::Refused { .. } => 19,
         }
     }
 }
@@ -267,6 +274,8 @@ pub(super) struct MappingControl<'a> {
     textured: Vec<TexturedPart>,
     levels: Vec<Level>,
     action: Action<'a>,
+    budget: super::mapping_budget::LogicalBudget,
+    logical_stopped: bool,
 }
 
 impl<'a> MappingControl<'a> {
@@ -281,78 +290,6 @@ impl<'a> MappingControl<'a> {
             }
             Action::Complete(_) => None,
             Action::Taken => return Err(ProgramError::Outstanding),
-        })
-    }
-
-    pub(super) fn execute(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
-        -> std::result::Result<MappingReply, ProgramError> {
-        // Steps that keep their action in place: the accept consumes it.
-        match &mut self.action {
-            Action::Child(item, ChildControl::Item(control)) => {
-                return control.execute(item.item(), router, decoder).map(MappingReply::Child);
-            }
-            Action::Child(item, ChildControl::Cache(control)) => {
-                return control.execute(item.item(), router, decoder).map(MappingReply::CacheChild);
-            }
-            Action::SharedItems(representation, ..) => {
-                return Ok(MappingReply::SharedItems(GeometryRouter::shared_source_items(representation.item(), decoder)));
-            }
-            Action::StyledItems(pending) => {
-                let items = GeometryRouter::styled_source_items(&pending.representation, decoder);
-                return Ok(MappingReply::StyledItems(items));
-            }
-            Action::Texture(item) => {
-                let item = item.item();
-                let map = self.textures.and_then(|index| index.get(&item.id)).ok_or(ProgramError::StaleRequest)?;
-                return Ok(MappingReply::Textured(router.textured_face_set(item, decoder, map, Some(router.rtc_offset()))));
-            }
-            _ => {}
-        }
-        Ok(match std::mem::replace(&mut self.action, Action::Taken) {
-            Action::Enter(entering) => {
-                let item = entering.item();
-                if self.retained.is_some() {
-                    return Ok(self.admit_retained_mapping(item, router, decoder));
-                }
-                let value = router.admit_mapped_occurrence(item, decoder);
-                MappingReply::Entered { item_id: item.id, value }
-            }
-            Action::EnterStyled(entering) => {
-                let item = entering.item();
-                // Only the top-level occurrence is independent: a nested map is
-                // part of its parent's shared geometry, never don't-baked.
-                let eligible = self.allow_instancing && self.levels.is_empty();
-                let value = router.admit_styled_occurrence(item, eligible, self.textures, decoder);
-                MappingReply::StyledEntered { item_id: item.id, value }
-            }
-            Action::EnterTypeMap => {
-                let rep_map = self.rep_map.as_ref().map(Reached::item).ok_or(ProgramError::StaleRequest)?;
-                let value = if let Some(state) = &self.retained {
-                    Self::validate_retained_map(rep_map, decoder, &state.selection)
-                        .and_then(|()| router.admit_type_map(rep_map, decoder))
-                } else { router.admit_type_map(rep_map, decoder) };
-                MappingReply::TypeMapEntered(value)
-            }
-            Action::Origin => {
-                if self.retained.is_some() { return Ok(self.retained_type_origin(router, decoder)); }
-                let rep_map = self.rep_map.as_ref().map(Reached::item).ok_or(ProgramError::StaleRequest)?;
-                MappingReply::Origin(router.type_map_origin(rep_map, decoder))
-            }
-            Action::TypeFinish(origin) => {
-                if self.retained.is_some() { return self.finish_retained_type_map(origin); }
-                let level = self.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
-                let parts = std::mem::take(&mut level.parts);
-                let textured = std::mem::take(&mut self.textured);
-                MappingReply::TypeFinished(router.finish_type_map(parts, textured, origin.as_ref()))
-            }
-            Action::Merge(merging) => self.merge(merging, router)?,
-            Action::Finish => self.finish(router)?,
-            Action::Place(place) => Self::place(place, router),
-            Action::Placeholder(placeholder) => self.push_placeholder(placeholder),
-            other => {
-                self.action = other;
-                return Err(ProgramError::StaleRequest);
-            }
         })
     }
 
@@ -376,5 +313,10 @@ mod reduce;
 mod entries;
 #[path = "mapping_retained.rs"]
 mod retained_impl;
+#[path = "mapping_stop.rs"]
+mod stop;
+
+#[path = "mapping_execute.rs"]
+mod execute;
 #[path = "mapping_affine.rs"]
 mod affine;

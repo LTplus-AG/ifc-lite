@@ -47,6 +47,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     let definition = match recipe {
                         RetainedRecipe::Extrusion(recipe) => document.add_retained_extrusion(recipe.clone()),
                         RetainedRecipe::SweptDisk(recipe) => document.add_retained_swept_disk(recipe.clone()),
+                        RetainedRecipe::Prism(recipe) => document.add_retained_prism(recipe.clone()),
                         _ => return Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
                     }.map_err(protocol)?;
                     // Classify zero incarnation as retirement before recipe preparation.

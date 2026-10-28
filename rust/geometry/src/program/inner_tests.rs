@@ -276,3 +276,6 @@ fn direct_product_drains_refuse_replaced_decoder_but_allow_maintenance() {
         }
     }
 }
+
+#[path = "mapping_budget_tests.rs"]
+mod mapping_budget_tests;

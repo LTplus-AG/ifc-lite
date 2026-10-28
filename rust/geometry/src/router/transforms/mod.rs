@@ -9,8 +9,6 @@ mod mesh_world;
 pub(crate) use mesh_world::{WorldFrame, LARGE_MAPPED_ORIGIN_M};
 pub(crate) mod operator;
 
-mod parsers;
-
 use super::GeometryRouter;
 use crate::math::mat4;
 use crate::placement;
@@ -169,6 +167,15 @@ impl GeometryRouter {
         for sub in &mut sub_meshes.sub_meshes {
             self.transform_mesh_world(&mut sub.mesh, &placement.transform);
         }
+    }
+
+    /// The canonical product placement in metres; absent placement is identity.
+    pub(super) fn element_world_placement(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Matrix4<f64>> {
+        Ok(self.resolve_object_placement(element, decoder)?.transform)
     }
 
     /// Get placement transform from element without applying it

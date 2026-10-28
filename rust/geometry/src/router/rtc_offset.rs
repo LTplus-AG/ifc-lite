@@ -164,18 +164,7 @@ impl GeometryRouter {
         let shape = product_shape(entity, decoder).ok()??;
 
         for shape_rep in shape.select(entity, Select::Meshed) {
-            // attr 3 = Items (list of geometry items)
-            let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
-                Some(list) => list,
-                None => continue,
-            };
-
-            for item_ref in items {
-                let item_id = match item_ref.as_entity_ref() {
-                    Some(id) => id,
-                    None => continue,
-                };
-
+            for item_id in crate::representation::structural::rep_item_ids(shape_rep) {
                 // Try fast CartesianPoint extraction (if item itself is a point)
                 if let Some(coords) = decoder.get_cartesian_point_fast(item_id) {
                     return Some(coords);
@@ -393,3 +382,7 @@ fn file_geometry_spans(content: &[u8]) -> impl Iterator<Item = (u32, usize, usiz
         (geometry || (spatial && has_representation())).then_some((id, start, end))
     })
 }
+
+#[cfg(test)]
+#[path = "rtc_offset/structural_tests.rs"]
+mod structural_tests;

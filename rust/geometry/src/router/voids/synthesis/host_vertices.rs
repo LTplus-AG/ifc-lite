@@ -80,6 +80,7 @@
 //!   corners.
 
 use crate::kernel::mesh_bridge::SNAP_GRID;
+use crate::math::aabb::Aabb3f32;
 use crate::{Mesh, Vector3};
 use rustc_hash::FxHashMap;
 
@@ -159,13 +160,8 @@ pub(in crate::router::voids) fn reconcile_positions_with_host_vertices(
     // Only host vertices within a step of the cutter's box can match. The
     // cheap f32 reject comes first (two steps wide, so f32 rounding of the
     // pad cannot lose a candidate); the exact test is the cell comparison.
-    let (mut flo, mut fhi) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
-    for p in cutter.positions.chunks_exact(3) {
-        for k in 0..3 {
-            flo[k] = flo[k].min(p[k]);
-            fhi[k] = fhi[k].max(p[k]);
-        }
-    }
+    let bounds = Aabb3f32::from_positions(&cutter.positions);
+    let (flo, fhi) = (bounds.min, bounds.max);
     // The cutter's box in cells costs three roundings a vertex and is read
     // only for a host vertex that passes the f32 reject. An opening that
     // shares no corner with its host has none, so the box is built on the

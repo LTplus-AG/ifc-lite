@@ -99,3 +99,21 @@ rounded conservative box extends beyond it. It is therefore a contact case,
 not a bounds-proven skip. Its volume remains 48. The `max h == 0` no-call
 witness instead places the plane exactly on the conservative box boundary;
 no padding or tolerance is removed. A separate no-call witness covers h.
+
+## Shared section integrator amendment, 2026-10-28
+
+The orchestrator's Round 3 implementation task explicitly authorizes repairing
+generic near-coincident breakpoint handling in CUT-0's `oracle/sections.rs`,
+provided the tolerance and work cap remain unchanged, the exact FZK input has
+a failing-before regression, and CUT-0 oracle outputs and coverage are rerun
+with unchanged expectations. This supersedes the frozen shared-file restriction
+only for that numerical robustness repair.
+
+FZK wall #67536 produces adjacent events `0.6732050807569754` and
+`0.6732050807569755`. The integrator previously rejected their first bisection
+before testing convergence. It now evaluates that final representable level
+against the same `1e-13` relative criterion, then refuses precision exhaustion
+if it has not converged. The 2,000,000 work cap, area checks, topology events,
+and acceptance tolerances are unchanged. Previously converged levels follow
+the same arithmetic. The regression reconstructs the exact trapezoid and
+plane, verifies the adjacent events, and compares with its hand integral.

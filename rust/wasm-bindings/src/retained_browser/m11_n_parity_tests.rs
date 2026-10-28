@@ -4,6 +4,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
 #[wasm_bindgen(inline_js = "
 let m11DiagnosticCount = 0;
+let m11ReorderedParts = 0;
 export async function m11NormalsReference() {
   const response = await fetch('/smlib/m11-n-native.json');
   if (!response.ok) throw new Error('M11-N real native reference missing');
@@ -22,12 +23,53 @@ export function m11VerifyNormals(actual, expected, model) {
       mismatches.push(label+'['+i+']: actual='+a[i]+' expected='+b[i]); return;
     }
   };
+  const equivalent = (a,b) => a.length === b.length && a.every((v,i) =>
+    Number.isFinite(v) && Number.isFinite(b[i]) && Math.abs(v-b[i]) <= 1e-12*Math.max(1,Math.abs(b[i])));
+  // SDK tessellation may reorder vertices/triangles and flip a planar diagonal.
+  // Compare the normal field at each geometric vertex, including every split
+  // direction in both directions. Triangle multiplicity is not a field value.
+  const field = part => {
+    const vertices = Array.from({length:part.positions.length/3},(_,i) => ({
+      p:Array.from(part.positions.slice(3*i,3*i+3)), normals:[]
+    }));
+    if (part.normals.length !== part.indices.length*3) throw new Error('normal cardinality');
+    for (let t=0;t<part.indices.length;t+=3) {
+      const points = Array.from(part.indices.slice(t,t+3),v=>vertices[v].p);
+      const edge = i => Array.from({length:3},(_,j)=>points[i][j]-points[0][j]);
+      const world = p => Array.from({length:3},(_,i)=>part.frame[i]*p[0]+part.frame[i+4]*p[1]+part.frame[i+8]*p[2]);
+      const a=world(edge(1)),b=world(edge(2));
+      const facet=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+      for (let c=0;c<3;c++) {
+        const n=Array.from(part.normals.slice(3*(t+c),3*(t+c+1)));
+        const cosine=n.reduce((sum,v,i)=>sum+v*facet[i],0)/(Math.hypot(...n)*Math.hypot(...facet));
+        if (!Number.isFinite(cosine) || cosine < Math.cos(Math.PI/18)) throw new Error('normal outside own-facet crease cone');
+        vertices[part.indices[t+c]].normals.push(n);
+      }
+    }
+    return vertices;
+  };
+  const covers = (a,b,label) => {
+    for (const vertex of a) {
+      const peers=b.filter(candidate=>equivalent(vertex.p,candidate.p));
+      if (!peers.length) { mismatches.push(label+' vertex '+JSON.stringify(vertex.p)); return; }
+      const normals=peers.flatMap(p=>p.normals);
+      for (const n of vertex.normals) if (!normals.some(other=>equivalent(n,other))) {
+        mismatches.push(label+' normal at '+JSON.stringify(vertex.p)+': '+JSON.stringify(n)); return;
+      }
+    }
+  };
   actual.parts.forEach((part,i) => {
     const source = expected.parts[i];
-    compare(part.indices,source.indices,0,'triangles');
-    compare(part.positions,source.positions,1e-12,'positions');
     compare(part.worldFromObject,source.frame,1e-12,'frame');
-    compare(part.normals,source.normals,1e-12,'normal digest');
+    if (part.indices.length !== source.indices.length || part.positions.length !== source.positions.length)
+      mismatches.push('mesh cardinality');
+    if (!equivalent(Array.from(part.indices),source.indices) || !equivalent(Array.from(part.positions),source.positions))
+      m11ReorderedParts++;
+    try {
+      const browser=field({...part,frame:part.worldFromObject});
+      const native=field(source);
+      covers(browser,native,'browser/native'); covers(native,browser,'native/browser');
+    } catch (error) { mismatches.push(error.message); }
   });
   if (mismatches.length) {
     if (m11DiagnosticCount++ < 2) console.log('M11_N_PARITY_REPRO '+JSON.stringify({model,expected,
@@ -35,6 +77,7 @@ export function m11VerifyNormals(actual, expected, model) {
         frame:Array.from(p.worldFromObject),normals:Array.from(p.normals)}))}));
     fail(mismatches.join('; '));
   }
+  console.log('M11-N normal field parity '+model+':'+expected.id+'; reordered parts so far '+m11ReorderedParts);
   return 1;
 }")]
 extern "C" {

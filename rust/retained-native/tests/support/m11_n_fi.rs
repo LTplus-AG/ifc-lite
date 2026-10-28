@@ -2,7 +2,11 @@
 //! #7955: preregistered f-i (d)/(e) source expectations from the fixture README.
 //! These two products are additional witnesses, not additions to the coverage TSV.
 use ifc_lite_processing::element::retained_runtime::{ShapeOnlyProduct, ShapePart};
-use ifc_lite_retained_native::oracle::{metrics::transform, normals};
+use ifc_lite_retained_native::oracle::normals;
+#[path = "../../examples/compare/metrics.rs"]
+#[allow(dead_code)] // Reuse the existing frame transform; other measurements are unrelated here.
+mod metrics;
+use metrics::transform;
 
 pub const MODEL: &str = "tests/fixtures/synthetic-retained/f-i-presentation.ifc";
 pub const IDS: [u32; 2] = [425, 507];

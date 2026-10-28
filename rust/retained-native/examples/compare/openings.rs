@@ -63,7 +63,7 @@ pub fn check_opened(
 }
 /// A preregistered tolerance; a missing or renamed key is a harness bug, never
 /// a silent zero.
-fn tolerance(t: &Value, key: &str, field: &str) -> f64 {
+pub fn tolerance(t: &Value, key: &str, field: &str) -> f64 {
     t[key][field]
         .as_f64()
         .unwrap_or_else(|| panic!("tolerances.json lacks preregistered {key}.{field}"))

@@ -176,9 +176,11 @@ impl Report {
         if let Some(value) = source_rel {
             let key = if curved { "curved" } else { "linear" };
             if value
-                > tolerances[if type_product { "typeProductSourceVolumeRelative" } else { "sourceVolumeRelative" }][key]
-                    .as_f64()
-                    .unwrap_or(0.)
+                > super::openings::tolerance(
+                    tolerances,
+                    if type_product { "typeProductSourceVolumeRelative" } else { "sourceVolumeRelative" },
+                    key,
+                )
             {
                 self.violations
                     .push(format!("{label}: source volume deviation {value}"));
@@ -186,13 +188,10 @@ impl Report {
         }
         if let Some((_, Some(bounds))) = source {
             let extent = (0..3).map(|i| bounds[i + 3] - bounds[i]).fold(0., f64::max);
-            let limit = tolerances[if type_product { "typeProductSourceWorldBboxMetres" } else { "sourceWorldBboxMetres" }]["absolute"]
-                .as_f64()
-                .unwrap_or(0.)
-                + extent
-                    * tolerances[if type_product { "typeProductSourceWorldBboxMetres" } else { "sourceWorldBboxMetres" }]["extentFactor"]
-                        .as_f64()
-                        .unwrap_or(0.);
+            // A missing or renamed preregistered key panics, never reads as 0.
+            let bbox_key = if type_product { "typeProductSourceWorldBboxMetres" } else { "sourceWorldBboxMetres" };
+            let limit = super::openings::tolerance(tolerances, bbox_key, "absolute")
+                + extent * super::openings::tolerance(tolerances, bbox_key, "extentFactor");
             let deviation = bbox_deviation(&actual.bbox, &bounds);
             if deviation > limit {
                 self.violations

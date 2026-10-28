@@ -68,3 +68,19 @@ fn map_identity_class_and_order_are_observed_7782() {
         assert_eq!(drifts[0].axis, Axis::PlannedJobs);
     }
 }
+
+#[test]
+fn unit_refusal_source_and_scale_are_observed_7782() {
+    let bytes = super::observe::fixture(super::REFUSALS);
+    let mut load = super::observe::browser_cold(&bytes);
+    let mut drifts = Vec::new();
+    units("control", None, &load.prepass.meta, &mut drifts);
+    assert!(drifts.is_empty());
+    load.prepass.meta.length_unit_refused = Some(42);
+    units("control", None, &load.prepass.meta, &mut drifts);
+    assert_eq!(drifts.len(), 1);
+    assert_eq!(drifts[0].axis, Axis::UnitRefusal);
+    drifts.clear();
+    units("control", Some(42), &load.prepass.meta, &mut drifts);
+    assert!(drifts.is_empty());
+}

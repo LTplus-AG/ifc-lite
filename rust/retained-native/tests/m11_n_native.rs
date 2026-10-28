@@ -49,7 +49,10 @@ fn m11_n_7955_committed_corpus_source_normals() {
                             || check.unit_error > tolerances["normalUnitAbsolute"].as_f64().unwrap() {
                             violations.push(format!("{model}:{} {check:?}",product.product_id));
                         }
-                        if model.ends_with("f-a-curved.ifc") {arc_corners += check.curved;}
+                        if model.ends_with("f-a-curved.ifc") && check.curved > 0 {
+                            assert!(check.smoothed_curved > 0,"arc sides must actually smooth, #{}",product.product_id);
+                            arc_corners += check.curved;
+                        }
                         rows.push(json!({"id":product.product_id,"status":"published","parts":product.parts.iter().map(|p|
                             json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object}))
                             .collect::<Vec<_>>() }));

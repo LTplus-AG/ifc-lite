@@ -112,6 +112,7 @@ pub struct Check {
     pub corners: usize,
     pub planar: usize,
     pub curved: usize,
+    pub smoothed_curved: usize,
     pub flat: usize,
     pub unattributed: usize,
     pub planar_radians: f64,
@@ -147,6 +148,7 @@ pub fn check(product: &ShapeOnlyProduct, source: &[Surface]) -> Result<Check,Str
                 let expected = surface.and_then(|s| s.sample(point)).map_or(facet,|(n,_)| n);
                 let error = angle(expected,normal);
                 if surface.is_some_and(Surface::curved) {
+                    result.smoothed_curved += usize::from(angle(facet,normal) > 1e-9);
                     result.curved += 1; result.curved_radians = result.curved_radians.max(error);
                 } else {
                     if source.is_empty() {result.flat += 1;} else {result.planar += 1;}

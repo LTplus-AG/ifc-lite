@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ContentMatch, DiffEntry, EntityFingerprint, ModelDiff, SplitMergeClaim, SuccessorClaim } from './types.js';
 
-type IndexedEntry = Omit<DiffEntry, 'base' | 'head'> & { base?: number; head?: number };
+type IndexedEntry = Omit<DiffEntry, 'key' | 'base' | 'head'> & { key?: string; base?: number; head?: number };
 type IndexedContent = Omit<ContentMatch, 'base' | 'head'> & { base: number[]; head: number[] };
 type IndexedSplit = Omit<SplitMergeClaim, 'whole' | 'pieces' | 'excluded'> & { whole: number; pieces: number[]; excluded?: number };
 type IndexedSuccessor = Omit<SuccessorClaim, 'base' | 'head'> & { base: number; head: number };
@@ -24,9 +24,9 @@ export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly Ent
   for (const indexed of raw.entries) {
     const baseIndex = indexed.base, headIndex = indexed.head;
     const entry = indexed as unknown as DiffEntry<TRef>;
-    entry.key = baseIndex === undefined
+    entry.key = indexed.key ?? (baseIndex === undefined
       ? (keys ? keys[1][headIndex!] : head[headIndex!].key)
-      : (keys ? keys[0][baseIndex] : base[baseIndex].key);
+      : (keys ? keys[0][baseIndex] : base[baseIndex].key));
     if (baseIndex !== undefined) entry.base = base[baseIndex];
     if (headIndex !== undefined) entry.head = head[headIndex];
     byKey.set(entry.key, entry);

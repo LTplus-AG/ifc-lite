@@ -45,7 +45,8 @@ async fn retained_browser_m6_bounded_hand_oracle() {
     for (a,e) in actual.iter().zip(&wanted) {
         assert_eq!((a.id,a.code.as_str()),(e.id,e.code.as_str()));
         match (a.volume,e.volume) {
-            (Some(a),Some(v))=>{let limit=if e.id==1005{2e-3}else{1e-6};assert!((a-v).abs()<=limit*v.abs());},
+            (Some(a),Some(v))=>{let tol:serde_json::Value=serde_json::from_str(include_str!("../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
+                let key=if e.id==1005{"curved"}else{"linear"};let limit=tol["boundedSectionVolumeRelative"][key].as_f64().unwrap();assert!((a-v).abs()<=limit*v.abs());},
             (None,None)=>{},_=>panic!("volume presence differs"),
         }
     }

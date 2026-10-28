@@ -90,3 +90,13 @@ fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->O
     }
     volume.is_finite().then_some(volume)
 }
+
+/// Whether this direct body walk contains M6's source family. The comparison
+/// harness uses this separately from `expected`, so a missing oracle cannot
+/// quietly turn into an unverified published product.
+pub fn applies(bytes:&[u8],product:u32)->bool {
+    let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    let Some((_,ids,_))=chain(product,&mut decoder) else{return false;};
+    ids.into_iter().any(|id|decoder.decode_by_id(id).ok().is_some_and(|e|matches!(e.ifc_type,
+        ifc_lite_core::IfcType::IfcPolygonalBoundedHalfSpace|ifc_lite_core::IfcType::IfcBoxedHalfSpace)))
+}

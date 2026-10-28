@@ -206,7 +206,9 @@ fn compare(
                         }
                         value.as_ref().map(|v| (v.volume, v.bbox))
                     } else { retraced.or_else(|| source::expected(&sources, id, shape.parts.len())) };
-                    let bounded = ifc_lite_retained_native::oracle::bounded::expected(&bytes, &sources, id);
+                    let m6 = ifc_lite_retained_native::oracle::bounded::applies(&bytes, id);
+                    let bounded = m6.then(|| ifc_lite_retained_native::oracle::bounded::expected(&bytes, &sources, id)).flatten();
+                    if m6 && bounded.is_none() { report.violations.push(format!("{model}:{id}: M6 source oracle unavailable")); }
                     report.published(
                         &model,
                         &shape,

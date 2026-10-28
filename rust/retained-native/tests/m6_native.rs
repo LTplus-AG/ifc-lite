@@ -105,7 +105,11 @@ fn m6_native_fzk_bounded_only_chains_publish() {
     }
     let text=std::fs::read_to_string(path).unwrap();
     let outcomes=run(&text,&[60012,67828]);
-    for id in [60012,67828] {verify(&text,shape(&outcomes,id),None);}
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    for id in [60012,67828] {
+        assert!(bounded::expected(text.as_bytes(),&sources,id).unwrap().section_volume.is_some(),"FZK #{id} requires the section oracle");
+        verify(&text,shape(&outcomes,id),None);
+    }
     println!("sdk witness executed: m6_fzk_bounded_chains");
 }
 #[test]
@@ -156,4 +160,37 @@ fn m6_native_second_boolean_fault_is_atomic_and_next_product_succeeds() {
     let (refused,calls)=observed(&[1006,1012,1013],None);assert_eq!(calls,0);
     for o in refused {assert_eq!(code(&o),"operation_unsupported");}
     println!("sdk witness executed: m6_atomic_failure");
+}
+
+#[test]
+fn m6_native_960_report_has_no_untyped_or_unverified_outcome() {
+    if worker().is_none(){return;}
+    let root=std::env::var_os("IFC_LITE_FIXTURE_ROOT").map(std::path::PathBuf::from)
+        .unwrap_or_else(||std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models"));
+    let path=root.join("issues/960_house_segmented_roof_clip.ifc");
+    if !path.exists() {
+        assert!(std::env::var_os("IFC_LITE_REQUIRE_FIXTURES").is_none(),"M6 960 fixture required: run pnpm fixtures");
+        eprintln!("SKIP M6 960: run pnpm fixtures; not qualification evidence");return;
+    }
+    let text=std::fs::read_to_string(path).unwrap();
+    let source=SourceBundle::new(text.as_bytes().to_vec());
+    let ids=ifc_lite_processing::element::retained_runtime::canonical_element_jobs(&source).into_iter()
+        .map(|(id,_)|id).filter(|id|bounded::applies(text.as_bytes(),*id)).collect::<Vec<_>>();
+    assert!(!ids.is_empty(),"960 must exercise actual PBHS products");
+    let outcomes=run(&text,&ids);let mut counts=std::collections::BTreeMap::new();
+    let mut rows=Vec::new();
+    for outcome in &outcomes {
+        *counts.entry(code(outcome)).or_insert(0usize)+=1;
+        match outcome {
+            ProductOutcome::Published(s)=>{verify(&text,s,None);rows.push(serde_json::json!({"id":s.product_id,"code":"published","volume":measure(s).volume}));},
+            ProductOutcome::Refused{product_id,refusal,origin,..}=>{
+                assert_ne!(refusal.code(),"contract_breach","960 #{product_id}: {refusal:?}");
+                rows.push(serde_json::json!({"id":product_id,"code":refusal.code(),"origin":format!("{origin:?}")}));
+            }
+        }
+    }
+    let report=serde_json::json!({"model":"issues/960_house_segmented_roof_clip.ifc","counts":counts,"rows":rows});
+    if let Some(path)=std::env::var_os("IFCLITE_M6_960_REPORT") {std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();}
+    println!("M6 960 report: {report}");
+    println!("sdk witness executed: m6_960_bounded_report");
 }

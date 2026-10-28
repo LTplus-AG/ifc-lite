@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+model	id	status	code
+tests/fixtures/synthetic-retained/f-g-layers.ifc	10027	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	1027	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	11027	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-g-layers.ifc	13055	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	2027	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	3055	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	4055	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	4063	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	5027	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	6027	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	7027	published	
+tests/fixtures/synthetic-retained/f-g-layers.ifc	8027	refused	material_layer_strategy
+tests/fixtures/synthetic-retained/f-g-layers.ifc	9027	refused	layer_caps_unresolved

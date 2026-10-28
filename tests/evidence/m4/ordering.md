@@ -62,3 +62,14 @@ exposing presentation internals solely for integration tests. Native/browser
 band parity reuses the existing staged M3 reference file with additive M4 keys;
 no workflow is edited. Viewer rendering uses the existing double-sided mesh
 pipelines (`packages/renderer/src/pipeline.ts:254`, `:316`, `:374`, `:441`).
+
+The far-offset rotated fixture #2027 also exposes an existing exact f32 storage
+defect. Its local rectangle is 2 m by 0.6 m, extruded 3 m: 3.6 m³. After
+rounding its rotated XY corners to exact storage and subtracting the placement
+(2600000,100000), the corners are (-0.5,-1.28125), (1.25,-0.28125),
+(1,0.2421875), (-0.75,-0.7578125). Shoelace area is 1.166015625 m²,
+so exact volume is 3.498046875 m³ (2.83203125% low). The real-SDK run
+measures retained volume 3.6000000002622174 m³. The independent source oracle
+therefore applies CUT-0's existing source-over-proven-exact-defect rule; no
+tolerance is changed. A layered product still has one source instance, even
+when its presentation contains multiple bands.

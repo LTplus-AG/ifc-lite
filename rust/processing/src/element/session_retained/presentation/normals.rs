@@ -9,11 +9,11 @@ use ifc_lite_geometry::resource;
 const CREASE_RADIANS: f64 = std::f64::consts::PI / 18.;
 
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>)
-    -> Result<Vec<Requirement>, RetainedExecutionError> {
+    -> Result<[Requirement; 1], RetainedExecutionError> {
     for part in &mut product.parts {
         part.normals = Some(corner_normals(part, context.resources, &mut product._storage)?);
     }
-    Ok(vec![Requirement::SurfaceNormals])
+    Ok([Requirement::SurfaceNormals])
 }
 
 #[derive(Clone, Copy)]

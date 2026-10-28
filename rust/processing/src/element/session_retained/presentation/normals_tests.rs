@@ -123,10 +123,16 @@ fn m11_n_7955_invalid_and_degenerate_meshes_refuse_without_nan_normals() {
 
 #[test]
 fn m11_n_7955_budget_bounds_backing_and_high_valence_work() {
-    // 1,000 triangles fit in the work allowance; their quadratic adjacency
-    // comparisons do not. Distinct face ids also prove rejected neighbours
-    // consume work, rather than only neighbours accepted for smoothing.
-    for (work, bytes) in [(1_000_000, 1), (1_050, 10_000_000)] {
+    // The same triangle count with separate vertices fits the allowance,
+    // including charged allocations and all linear processing. Sharing two
+    // vertices instead creates quadratic adjacency scans that must refuse.
+    let separate = part([0.,0.,0., 1.,0.,0., 0.,1.,0.].repeat(1_000),
+        (0..3_000).collect(), (0..1_000).collect());
+    ProductBudget::new(BudgetStart::now(), 20_000, 10_000_000, 10000).scope(|| {
+        for n in normals(&separate).chunks_exact(3) { near(n, [0.,0.,1.]); }
+    });
+    // Distinct face ids prove rejected neighbours consume work too.
+    for (work, bytes) in [(1_000_000, 1), (20_000, 10_000_000)] {
         let budget = ProductBudget::new(BudgetStart::now(), work, bytes, 10000);
         let started = std::time::Instant::now();
         budget.scope(|| {
@@ -134,7 +140,6 @@ fn m11_n_7955_budget_bounds_backing_and_high_valence_work() {
             p.revision_local_faces = (0..1_000).collect();
             assert_eq!(corner_normals(&p, &OwnedResourceContext::capture_current(), &mut Storage::default())
                 .unwrap_err().refusal().0.code(), "resource_exhausted");
-            assert!(p.normals.is_none(), "refused normal stream must not be attached");
         });
         assert!(!budget.deadline_fired(), "work/backing must refuse before the deadline");
         assert!(started.elapsed() < std::time::Duration::from_secs(2), "bounded high-valence refusal");

@@ -7,6 +7,7 @@
 use super::super::cutter::OpeningFrame;
 use super::NORMALIZE_EPSILON;
 use super::{extent_along_axis, mesh_point};
+use crate::math::v3::V3;
 use crate::{Mesh, Point3, Vector3};
 
 /// |cos| above which two facet normals share one cluster (about 11.5 degrees).
@@ -115,6 +116,23 @@ pub(crate) fn cluster_face_normals(
         assigned(index, &clusters[index].0, anchor);
     }
     Some(clusters)
+}
+
+/// Candidate directions for the stepped-prism detector (ROUTER-9, #7781).
+/// Keep its already-normalized vectors verbatim: `mesh_facets` has a different
+/// normalization policy. First representatives stay unweighted and in input
+/// order. The old `len() > 64` check BEFORE pushing allows 65 clusters.
+/// `Vector3<f64>::dot` uses the same left-to-right three products as `v3::dot`.
+pub(in crate::router::voids) fn cluster_prism_directions(
+    normals: &[Option<V3>],
+) -> Option<Vec<V3>> {
+    let facets = normals.iter().flatten().map(|&normal| Facet {
+        normal: normal.into(),
+        weight: 0.0,
+        anchor: Point3::origin(),
+    });
+    let clusters = cluster_face_normals(facets, 0.999, Merge::FirstSeen, 65, |_, _, _| {})?;
+    Some(clusters.into_iter().map(|(axis, _)| axis.into()).collect())
 }
 
 /// Whether a mesh is a clean axis-aligned (in its own frame) rectangular box —
@@ -255,3 +273,7 @@ pub(crate) fn infer_opening_frame(
 #[cfg(test)]
 #[path = "opening_frame_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "prism_direction_tests.rs"]
+mod prism_direction_tests;

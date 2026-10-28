@@ -1622,6 +1622,10 @@ jobs:
           # Shift the signed ray parameter; bit-equality witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/parity.rs | grep -Fxq 'rust/geometry/src/router/voids/parity.rs'; then
             oracle_args+=(--mutation tests/evidence/c2-5b-voids-frames/behaviour.oracle.patch)
+          # #7781 R3: retain the new adapter/test wiring; change only its cosine
+          # policy to the box tolerance. Prism threshold witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5-finish/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5-finish/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-5-finish/behaviour.oracle.patch)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"

@@ -89,12 +89,13 @@ fn issue_7781_boolean_leaf_policy_retains_long_chains_beyond_probe_limit() {
 #[test]
 fn issue_7781_actual_probes_preserve_noncommuting_transform_order_and_placement() {
     let source = model::chain(2)
+        .replace(model::TARGET, "#99=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#93,1.,$);")
         .replace("#1000=IFCMAPPEDITEM(#1001,#99)", "#1000=IFCMAPPEDITEM(#1001,#97)")
         .replace(
             "#1001=IFCREPRESENTATIONMAP(#11,#1002)",
             "#1001=IFCREPRESENTATIONMAP(#95,#1002)",
         )
-        + "\n#94=IFCCARTESIANPOINT((3.,0.,0.));\n#95=IFCAXIS2PLACEMENT3D(#94,$,$);\n\
+        + "\n#93=IFCCARTESIANPOINT((0.,1.,0.));\n#94=IFCCARTESIANPOINT((3.,0.,0.));\n#95=IFCAXIS2PLACEMENT3D(#94,$,$);\n\
            #96=IFCDIRECTION((0.,1.,0.));\n\
            #97=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#96,$,#12,2.,$);";
     let mut decoder = EntityDecoder::new(&source);
@@ -111,13 +112,14 @@ fn issue_7781_actual_probes_preserve_noncommuting_transform_order_and_placement(
         .extract_extrusion_direction_recursive(&item, &mut decoder)
         .unwrap()
         .unwrap();
-    // Outer rotation/scale acts on MappingOrigin before product translation.
+    // Outer rotation/scale acts on its MappingOrigin and the inner map
+    // translation before product placement. Reversing either product differs.
     assert_eq!(
         direction_frame.unwrap().transform_point(&Point3::origin()),
-        Point3::new(0., 6., 0.)
+        Point3::new(-2., 6., 0.)
     );
-    assert_eq!(extruded.m.transform_point(&Point3::origin()), Point3::new(10., 6., 0.));
-    assert_eq!(rect.center, Point3::new(10., 6., 1.));
+    assert_eq!(extruded.m.transform_point(&Point3::origin()), Point3::new(8., 6., 0.));
+    assert_eq!(rect.center, Point3::new(8., 6., 1.));
     assert_eq!(rect.half, [1., 1., 1.]);
 }
 

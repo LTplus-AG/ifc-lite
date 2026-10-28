@@ -19,7 +19,7 @@ impl Clip {
         let position=decoder.decode_by_id(surface.get_ref(0)?).ok()?;
         let local=Axis2Placement::read_3d(&position,decoder).ok()?.matrix();
         let frame=multiply(world,local.as_slice().try_into().ok()?);
-        let mut normal=unit(vector(&frame,[0.,0.,1.]))?;
+        let mut normal=unit(cross(vector(&frame,[1.,0.,0.]),vector(&frame,[0.,1.,0.])))?;
         if !half.get_bool(1)? {normal=normal.map(|v|-v);}
         let plane=(normal,dot(normal,transform(&frame,[0.;3])));
         if half.ifc_type!=IfcType::IfcPolygonalBoundedHalfSpace {
@@ -60,8 +60,30 @@ pub(super) fn chain(product:u32,decoder:&mut EntityDecoder)->Option<(u32,Vec<u32
     None
 }
 fn boundary(id:u32,decoder:&mut EntityDecoder)->Option<Vec<Edge>> {
+    read_loop(id,decoder,&mut HashSet::new())
+}
+fn read_loop(id:u32,decoder:&mut EntityDecoder,path:&mut HashSet<u32>)->Option<Vec<Edge>> {
+    if path.len()>=128 || !path.insert(id){return None;}
+    let result=read_edges(id,decoder,path);path.remove(&id);result
+}
+fn read_edges(id:u32,decoder:&mut EntityDecoder,path:&mut HashSet<u32>)->Option<Vec<Edge>> {
     let curve=decoder.decode_by_id(id).ok()?;
     match curve.ifc_type {
+        IfcType::IfcCompositeCurve => {
+            let mut edges=Vec::new();
+            for reference in curve.get(0)?.as_list()? {
+                let segment=decoder.decode_by_id(reference.as_entity_ref()?).ok()?;
+                let mut child=read_loop(segment.get_ref(2)?,decoder,path)?;
+                if !segment.get_bool(1)? {
+                    child=child.into_iter().rev().map(|e|match e {
+                        Edge::Line(a,b)=>Edge::Line(b,a),
+                        Edge::Arc{c,u,v,a,sweep}=>Edge::Arc{c,u,v,a:a+sweep,sweep:-sweep},
+                    }).collect();
+                }
+                if edges.len()+child.len()>256{return None;}edges.extend(child);
+            }
+            Some(edges)
+        }
         IfcType::IfcPolyline => {
             let refs=curve.get(0)?.as_list()?;if refs.len()>257{return None;}
             let points=refs.iter().map(|r|decoder.point3(r.as_entity_ref()?).ok().map(|p|[p[0],p[1]])).collect::<Option<Vec<_>>>()?;

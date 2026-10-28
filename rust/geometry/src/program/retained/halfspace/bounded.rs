@@ -17,7 +17,7 @@ use {
 
 #[cfg(feature = "retained-runtime")]
 pub(super) fn step(mut ctx: Context<'_, '_>) -> crate::Result<CutterStep> {
-    let result = lower(&mut ctx);
+    let result = bounded_step(&mut ctx);
     result.map_err(|error| {
         if !matches!(error, crate::Error::ProgramStopped(_)) && ctx.failure.origin().is_none() {
             ctx.failure.record(FailureSite::BooleanSecondOperand, Some(ctx.second.id),
@@ -36,7 +36,7 @@ fn unsupported(ctx: &Context<'_, '_>, reason: &str) -> crate::Error {
 }
 
 #[cfg(feature = "retained-runtime")]
-fn lower(ctx: &mut Context<'_, '_>) -> crate::Result<CutterStep> {
+fn bounded_step(ctx: &mut Context<'_, '_>) -> crate::Result<CutterStep> {
     match ctx.operator {
         crate::BoolOp::Difference => {},
         crate::BoolOp::Union => return Err(unsupported(ctx, "halfspace_union")),

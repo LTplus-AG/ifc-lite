@@ -56,7 +56,13 @@ fn issue_7955_m6_refusals_precede_cutter_construction() {
 fn issue_7955_m6_boxed_delegates_outcomes_without_enclosure() {
     let (_,plain)=walk(SOURCE,1008);
     for id in [1007,1009] {
-        let (_,boxed)=walk(SOURCE,id);
+        let (trace,boxed)=walk(SOURCE,id);
+        let source=SourceBundle::new(SOURCE.as_bytes().to_vec());let mut decoder=source.decoder();
+        for line in SOURCE.lines().filter(|l|l.contains("IFCBOXEDHALFSPACE(")) {
+            let entity_id=line[1..line.find('=').unwrap()].parse().unwrap();
+            let enclosure=decoder.decode_by_id(entity_id).unwrap().get_ref(2).unwrap();
+            assert!(!trace.decoded.contains(&enclosure),"Enclosure #{enclosure} was decoded");
+        }
         assert_eq!(boxed.as_ref().err().map(|e|e.kind()),plain.as_ref().err().map(|e|e.kind()));
     }
     let text=SOURCE.lines().filter(|l|!l.contains("IFCBOUNDINGBOX(")).collect::<Vec<_>>().join("\n");

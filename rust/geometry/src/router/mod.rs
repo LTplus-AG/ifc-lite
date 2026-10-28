@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Geometry Router - Dynamic dispatch to geometry processors
+//! Geometry routing: [`RouterConfig`], caches and processor selection.
 //!
-//! Routes IFC representation entities to appropriate processors based on type.
+//! Walks, controllers and frames: `docs/architecture/geometry-pipeline.md`.
 
 pub(crate) mod annotation;
 mod annotation_polygon;

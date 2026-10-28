@@ -13,7 +13,7 @@ Axis2 as object +Y; `router/layers/planes.rs:27-48` places interfaces at
 `d = offset * scale + sense * C`, with normal `rotation * axis * sense`;
 `router/layers/slice.rs:63-81` takes the negative side first and leaves the
 positive side as the remainder. These paths are relative to `rust/geometry/src`.
-`router/layers/stages.rs:49-84` remains the eligibility and thin-layer authority.
+`router/layers/stages.rs:54-89` remains the eligibility and thin-layer authority.
 
 For a directed XY circular Axis, positive Axis2 is its left normal: inward
 for CCW (`sigma=+1`), outward for CW (`sigma=-1`). Thus

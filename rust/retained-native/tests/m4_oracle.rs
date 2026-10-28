@@ -57,3 +57,26 @@ fn m4_inward_stack_source_integral() {
         assert!((value-hand).abs()<1e-9);
     }
 }
+
+#[test]
+fn m4_source_association_order_matches_the_hand_authored_stack() {
+    let original=std::str::from_utf8(CURVED).unwrap();
+    let later=original.replace("ENDSEC;\nEND-ISO",concat!(
+        "#9000=IFCMATERIALLAYERSETUSAGE(#22,.AXIS2.,.POSITIVE.,0.25,$);\n",
+        "#9001=IFCRELASSOCIATESMATERIAL('last',$,$,$,(#55),#9000);\nENDSEC;\nEND-ISO"));
+    let earlier=original.replace("#56=IFCRELASSOCIATESMATERIAL",concat!(
+        "#9000=IFCMATERIALLAYERSET((#17,#9003),'one-positive-layer',$);\n",
+        "#9001=IFCMATERIALLAYERSETUSAGE(#9000,.AXIS2.,.POSITIVE.,0.25,$);\n",
+        "#9002=IFCRELASSOCIATESMATERIAL('first',$,$,$,(#55),#9001);\n",
+        "#9003=IFCMATERIALLAYER(#16,0.,$,$,$,$,$);\n#56=IFCRELASSOCIATESMATERIAL"));
+    for text in [later,earlier] {
+        let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+        let oracle=expected(text.as_bytes(),&sources,55).unwrap();
+        let f=|r:f64|0.5*(r*r-0.25).sqrt()+r*r*(0.5/r).asin();
+        for (volume,(a,b)) in oracle.volumes.iter().zip([(10_f64,10.1_f64),(10.1,10.3),(10.3,10.6)]) {
+            // The valid NEGATIVE stack remains rho=10..10.1..10.3..10.6.
+            let hand=3.*std::f64::consts::PI*(b*b-a*a)/4.-2.*(f(b)-f(a));
+            assert!((volume-hand).abs()<1e-10);
+        }
+    }
+}

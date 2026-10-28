@@ -16,11 +16,11 @@ pub(super) fn read(bytes: &[u8], id: u32, decoder: &mut EntityDecoder) -> Option
             if usage.is_none() && e.get_list(4)?.iter().any(|v|v.as_entity_ref()==Some(id)) {
                 let m=decoder.decode_by_id(e.get_ref(5)?).ok()?;
                 if m.ifc_type==IfcType::IfcMaterialLayerSetUsage {
-                    let set=decoder.decode_by_id(m.get_ref(0)?).ok()?;
-                    // First sliceable association wins; a single-layer usage
-                    // cannot shadow a later multi-layer stack. Unsupported
-                    // layer records below fail closed in this source oracle.
-                    if set.get_list(0)?.len()>=2 { usage=Some(m); }
+                    // Independently select the first plain multi-layer usage. A
+                    // single-layer or malformed earlier association cannot win.
+                    if let Some(thickness)=plain_layers(&m,decoder,scale) {
+                        usage=Some((m,thickness));
+                    }
                 }
             }
         } else if ifc_lite_core::keyword_eq(kind,"IFCRELVOIDSELEMENT") {
@@ -28,14 +28,11 @@ pub(super) fn read(bytes: &[u8], id: u32, decoder: &mut EntityDecoder) -> Option
             if e.get_ref(4)==Some(id) { openings.push(e.get_ref(5)?); }
         }
     }
-    let usage=usage?;
+    let (usage,mut thickness)=usage?;
     let axis=match usage.get(1)?.as_enum()? {"AXIS1"=>0,"AXIS2"=>1,"AXIS3"=>2,_=>return None};
     let sense=match usage.get(2)?.as_enum()? {"POSITIVE"=>1.,"NEGATIVE"=>-1.,_=>return None};
     let offset=usage.get_float(3)?*scale;
-    let set=decoder.decode_by_id(usage.get_ref(0)?).ok()?;
-    let mut thickness=Vec::new();
-    for l in set.get_list(0)? { thickness.push(decoder.decode_by_id(l.as_entity_ref()?).ok()?.get_float(1)?*scale); }
-    if thickness.is_empty() || thickness.len()>128 || thickness.iter().any(|t| !t.is_finite() || *t<0.) {return None;}
+    if !offset.is_finite() || thickness.len()>128 {return None;}
     // Independent scalar merge: thinnest <2 mm into thicker neighbour; ties left.
     while thickness.len()>1 {
         let Some(i)=(0..thickness.len()).filter(|&i|thickness[i]<0.002).min_by(|&i,&j|thickness[i].total_cmp(&thickness[j])) else {break;};
@@ -64,4 +61,20 @@ pub(super) fn read(bytes: &[u8], id: u32, decoder: &mut EntityDecoder) -> Option
         }
     }
     Some(Usage{axis,sense,offset,thickness,frame,circle,openings})
+}
+
+fn plain_layers(usage: &ifc_lite_core::DecodedEntity, decoder: &mut EntityDecoder, scale: f64) -> Option<Vec<f64>> {
+    if !matches!(usage.get(1)?.as_enum()?,"AXIS1"|"AXIS2"|"AXIS3")
+        || !matches!(usage.get(2)?.as_enum()?,"POSITIVE"|"NEGATIVE") {return None;}
+    let set=decoder.decode_by_id(usage.get_ref(0)?).ok()?;
+    if set.ifc_type!=IfcType::IfcMaterialLayerSet {return None;}
+    let mut thickness=Vec::new();
+    for value in set.get_list(0)? {
+        let Some(id)=value.as_entity_ref() else {continue;};
+        let layer=decoder.decode_by_id(id).ok()?;
+        if layer.ifc_type!=IfcType::IfcMaterialLayer {return None;}
+        let t=layer.get_float(1).unwrap_or(0.);
+        if t.is_finite() && t>0. {thickness.push(t*scale);}
+    }
+    (thickness.len()>=2).then_some(thickness)
 }

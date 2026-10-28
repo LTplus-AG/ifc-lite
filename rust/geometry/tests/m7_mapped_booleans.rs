@@ -115,12 +115,18 @@ fn m7_e17_multi_solid_operand_refuses_without_partial_plan() {
 }
 
 #[test]
-fn m7_e11_refusal_is_at_the_halfspace_constructor() {
+fn m7_e11_refusal_is_at_the_halfspace_operand() {
     let (_, plan) = walk(156);
     let error = match plan {
         Err(e) => e,
         Ok(_) => panic!("unqualified halfspace admitted"),
     };
+    // #7955: CUT-0 dispatches halfspaces before constructor capture; preserve
+    // the typed unsupported refusal and the original halfspace entity.
+    assert_eq!(
+        error.kind(),
+        ifc_lite_geometry::program::transactions::TransactionFailureKind::OperationUnsupported
+    );
     let (site, id, _) = error.origin_view().expect("typed refusal origin");
-    assert_eq!((site, id), ("constructor", Some(145)));
+    assert_eq!((site, id), ("boolean_second_operand", Some(145)));
 }

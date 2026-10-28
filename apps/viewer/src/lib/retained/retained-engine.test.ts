@@ -71,6 +71,8 @@ for (const mode of ['dev', 'preview'] as const) {
       assert(result.headers['content-type']?.startsWith(mime));
       assert.equal(result.headers.etag, f.etag);
       assert.equal(result.headers['cache-control'], 'no-cache');
+      assert.equal(result.headers['cross-origin-embedder-policy'], 'credentialless', `${path}: a Worker without COEP is blocked under isolation`);
+      assert.equal(result.headers['cross-origin-opener-policy'], 'same-origin');
       const cached = await get(address.port, path, { 'If-None-Match': f.etag });
       assert.equal(cached.status, 304);
       assert.equal(cached.body, '');
@@ -81,7 +83,9 @@ for (const mode of ['dev', 'preview'] as const) {
     }
     assert.equal((await get(address.port, '/smlib/%xx')).status, 400);
     assert.equal((await get(address.port, '/retained-engine/smlib/x')).status, 404);
-    assert.equal((await get(address.port, '/smlib/missing')).status, 404);
+    const missing = await get(address.port, '/smlib/missing');
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers['cross-origin-embedder-policy'], 'credentialless', 'errors keep COEP so a missing Worker reads as 404, not BLOCKED_BY_RESPONSE');
   });
 
   test(`#7955 ${mode} refuses missing and corrupt engines with validator errors`, async (t) => {

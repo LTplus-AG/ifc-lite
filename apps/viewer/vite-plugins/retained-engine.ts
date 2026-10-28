@@ -27,6 +27,13 @@ async function middleware(directory?: string): Promise<Connect.NextHandleFunctio
   return async (req, res, next) => {
     const raw = (req.url ?? '').split('?')[0];
     if (!raw.startsWith('/smlib/') && !raw.startsWith('/retained-engine/')) return next();
+    // Mirror the app's cross-origin isolation headers (as cesium-assets.ts
+    // does) on EVERY response here, errors included: Vite only injects
+    // server.headers on its own responses, a module Worker served without COEP
+    // is blocked under isolation (net::ERR_BLOCKED_BY_RESPONSE on
+    // /smlib/worker.mjs), and a header-less 404 would hide behind that error.
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
     try {
       const decoded = decodeURIComponent(raw);
       if (decoded.includes('\\') || decoded.split('/').some(p => p === '.' || p === '..')) {

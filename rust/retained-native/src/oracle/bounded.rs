@@ -81,6 +81,11 @@ fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->R
     let mut work=4096usize;let mut volume=0.;
     for mask in 0..1usize<<partitions.len() {
         let selected=partitions.iter().enumerate().filter(|(i,_)|mask&(1<<i)!=0).map(|(_,p)|p).collect::<Vec<_>>();
+        // An opening may consist of two many-sided extrusions sharing a
+        // physical cap and extending in opposite directions (FZK). Their
+        // intersection has zero volume. Prove that from common source planes
+        // before forming triangle tuples; do not raise the 4,096-work cap.
+        if disjoint_common_planes(&selected) {continue;}
         let mut tuples=vec![Vec::<Plane>::new()];
         for partition in selected {
             if tuples.len().checked_mul(partition.len()).ok_or("section work overflow")?>work{return Err("section work cap exceeded".into());}
@@ -103,4 +108,13 @@ pub fn applies(bytes:&[u8],product:u32)->bool {
     let Some((_,ids,_))=chain(product,&mut decoder) else{return false;};
     ids.into_iter().any(|id|decoder.decode_by_id(id).ok().is_some_and(|e|matches!(e.ifc_type,
         ifc_lite_core::IfcType::IfcPolygonalBoundedHalfSpace|ifc_lite_core::IfcType::IfcBoxedHalfSpace)))
+}
+
+fn disjoint_common_planes(partitions:&[&Vec<Vec<Plane>>])->bool {
+    let common=partitions.iter().flat_map(|pieces| {
+        pieces.first().into_iter().flat_map(|first|first.iter())
+            .filter(|plane|pieces.iter().all(|piece|piece.contains(plane))).copied()
+    }).collect::<Vec<_>>();
+    common.iter().enumerate().any(|(i,(n,c))|common[i+1..].iter()
+        .any(|(m,d)|*m==n.map(|v|-v)&&c+d<=0.))
 }

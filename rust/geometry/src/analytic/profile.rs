@@ -250,6 +250,17 @@ fn arbitrary_loops(
     Ok(loops)
 }
 
+/// Closed analytic PBHS boundary; source capture and topology match profiles.
+#[cfg(feature = "retained-runtime")]
+pub(crate) fn analytic_boundary_loop(id: u32, decoder: &mut EntityDecoder) -> crate::Result<AnalyticProfileLoop> {
+    super::with_source_capture(|| {
+        let boundary = curve_loop(id, ProfileLoopKind::Outer, decoder)?;
+        super::profile_topology::validate(std::slice::from_ref(&boundary),
+            DEFAULT_TOPOLOGY_CLEARANCE, DEFAULT_TOPOLOGY_CLEARANCE)?;
+        Ok(boundary)
+    })
+}
+
 fn curve_loop(
     id: u32,
     kind: ProfileLoopKind,

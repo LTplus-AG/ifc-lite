@@ -17,6 +17,8 @@ mod helpers;
 #[cfg(test)]
 mod owned_directrix_tests;
 mod profile;
+#[cfg(feature = "retained-runtime")]
+pub(crate) use profile::analytic_boundary_loop;
 mod profile_topology;
 mod topology_interval;
 mod walk_error;

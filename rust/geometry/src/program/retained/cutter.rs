@@ -47,10 +47,7 @@ pub(in crate::program) fn halfspace_box(host: &LogicalRetainedValue, source_id: 
     if h <= 0. { return Ok(CutterStep::Skip); }
     let center = Vector3::from(std::array::from_fn::<_, 3, _>(|i| b.0[i] / 2. + b.0[i + 3] / 2.));
     let origin = center - r * r.dot(&(center - p));
-    let k = (0..3).min_by(|&a, &b| r[a].abs().total_cmp(&r[b].abs())).unwrap();
-    let mut axis = Vector3::zeros(); axis[k] = 1.;
-    let u = r.cross(&axis).normalize();
-    let v = r.cross(&u);
+    let (u, v) = plane_axes(r);
     let diagonal = Vector3::new(b.0[3] - b.0[0], b.0[4] - b.0[1], b.0[5] - b.0[2]).norm();
     let margin = MARGIN_MIN_M.max(MARGIN_DIAGONAL * diagonal);
     let mut low = [f64::INFINITY; 2]; let mut high = [f64::NEG_INFINITY; 2];
@@ -67,6 +64,14 @@ pub(in crate::program) fn halfspace_box(host: &LogicalRetainedValue, source_id: 
     prism.lower()?;
     prism_operation(host, prism).map(CutterStep::Cutter)
         .map_err(CutterError::Control)
+}
+
+/// CUT-0's deterministic plane basis, shared by plane and bounded cutters.
+pub(in crate::program) fn plane_axes(r: Vector3<f64>) -> (Vector3<f64>, Vector3<f64>) {
+    let k = (0..3).min_by(|&a, &b| r[a].abs().total_cmp(&r[b].abs())).unwrap();
+    let mut axis = Vector3::zeros(); axis[k] = 1.;
+    let u = r.cross(&axis).normalize();
+    (u, r.cross(&u))
 }
 
 #[cfg(test)]

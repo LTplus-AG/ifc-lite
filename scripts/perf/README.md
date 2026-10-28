@@ -22,6 +22,12 @@ distinctions, rather than a change of strategy or precision, let the vocabulary
 move without changing output. Frame-changing mesh rebuilds use a crate-private
 helper because `rebuilt_like` retains bounds under an unchanged-extent contract.
 
+## Retained cutter foundation (#7955 CUT-0)
+
+This slice adds conservative bounds and derived cutter construction behind the
+retained feature, with no retained product admission or optimization claim.
+Default exact output and wasm byte identity are separate acceptance checks;
+source-oracle timings are diagnostics, not an end-to-end performance result.
 
 ## Symbolic extraction label allocation (#7914, #7779)
 

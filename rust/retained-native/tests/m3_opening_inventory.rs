@@ -3,11 +3,15 @@
 #[allow(dead_code)]
 #[path = "../examples/compare/options.rs"]
 mod options;
+#[allow(dead_code)]
+#[path = "../examples/compare/registry.rs"]
+mod registry;
 use ifc_lite_processing::extract_analytic_quantity_sources;
 use ifc_lite_retained_native::oracle::inventory::{is_opening, opening_inventory};
 
 // #7955 M3-0: supported opening membership, not merely a host-only assertion.
-// The complete universe is pinned: adding a fixture requires an explicit count.
+// The M3 base membership stays pinned. Every slice addition must also satisfy
+// the exhaustive, disjoint classification invariant below (#7955 CUT-0).
 #[test]
 fn every_committed_opening_has_an_explicit_quantity_classification() {
     let pins = [
@@ -30,29 +34,22 @@ fn every_committed_opening_has_an_explicit_quantity_classification() {
         ("issue_1985_scaled_kinds.ifc", vec![], 0),
         ("bath_csg_solid.ifc", vec![], 0),
     ];
-    assert_eq!(pins.len(), options::committed_models().len());
-    for path in options::committed_models() {
-        let name = std::path::Path::new(path)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap();
-        let (_, supported, unsupported) = pins
-            .iter()
-            .find(|p| p.0 == name)
-            .expect("new fixture needs a reviewed count");
-        let absolute = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(path);
-        let bytes = std::fs::read(absolute).expect("committed fixture missing");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let base = options::base_models();
+    assert_eq!(pins.len(), base.len());
+    for path in base {
+        let name = std::path::Path::new(path).file_name().unwrap().to_str().unwrap();
+        assert!(pins.iter().any(|p| p.0 == name), "base fixture needs a reviewed count");
+    }
+    for path in options::committed_models(&root).expect("valid per-slice universe") {
+        let name = std::path::Path::new(&path).file_name().unwrap().to_str().unwrap();
+        let bytes = std::fs::read(root.join(&path)).expect("committed fixture missing");
         let sources = extract_analytic_quantity_sources(&bytes, None);
         let inventory = opening_inventory(&bytes, &sources);
-        assert_eq!(&inventory.supported_extrusions, supported, "{path}");
-        assert_eq!(
-            inventory.no_analytic_quantities.len(),
-            *unsupported,
-            "{path}"
-        );
+        if let Some((_, supported, unsupported)) = pins.iter().find(|p| p.0 == name) {
+            assert_eq!(&inventory.supported_extrusions, supported, "{path}");
+            assert_eq!(inventory.no_analytic_quantities.len(), *unsupported, "{path}");
+        }
         let mut scanner = ifc_lite_core::EntityScanner::new(&bytes);
         let mut all = std::collections::BTreeSet::new();
         while let Some((id, name, _, _)) = scanner.next_entity() {

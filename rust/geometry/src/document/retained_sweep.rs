@@ -25,7 +25,7 @@ use crate::math::tol;
 use nalgebra::{Matrix4, Vector4};
 
 #[path = "retained_region.rs"]
-mod region;
+pub(super) mod region;
 
 pub(super) const MAX_LOOPS: usize = 128;
 pub(super) const MAX_SEGMENTS: usize = 8192;
@@ -50,6 +50,8 @@ pub enum RegionQualification {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct SweepPayload {
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub evaluation_bounds: Option<super::EvaluationBounds>,
     pub format: u32,
     pub bytes: Vec<u8>,
     pub segments: u32,
@@ -138,6 +140,8 @@ pub(super) fn lower(recipe: &RetainedExtrusion) -> Result<SweepPayload, Retained
         }
     }
     Ok(SweepPayload {
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        evaluation_bounds: super::EvaluationBounds::region(curves.iter().flatten().map(|c| (c.kind, c.values)), [vector[0] / norm, vector[1] / norm, vector[2] / norm], depth),
         format: 1,
         bytes,
         segments,
@@ -254,7 +258,7 @@ pub(super) fn array(matrix: Matrix4<f64>) -> [f64; 16] {
     std::array::from_fn(|i| matrix.as_slice()[i])
 }
 
-fn f64_bytes(bytes: &mut Vec<u8>, value: f64) -> Result<(), RetainedRefusal> {
+pub(super) fn f64_bytes(bytes: &mut Vec<u8>, value: f64) -> Result<(), RetainedRefusal> {
     if !value.is_finite() {
         return Err(RetainedRefusal::InvalidSource(
             "nonfinite curve coefficient",

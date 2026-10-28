@@ -21,6 +21,8 @@ impl<'a> ValueRef<'a> {
     }
     pub fn definition(self) -> Definition { Definition(self.0.definition().clone()) }
     pub fn slot(self) -> Slot { Slot(self.0.slot()) }
+    /// Conservative bounds in the runtime object evaluation frame.
+    pub fn evaluation_bounds(self) -> Option<crate::document::EvaluationBounds> { self.0.bounds }
     pub fn evaluated_empty(self) -> Option<bool> { self.0.evaluated_empty() }
     pub fn object_frame(self) -> &'a [f64; 16] { self.0.object_frame() }
     pub fn world_from_source(self) -> Option<&'a [f64; 16]> { self.0.world_from_source() }

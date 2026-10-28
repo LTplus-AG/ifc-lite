@@ -99,8 +99,8 @@ impl Edge {
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) struct HalfPlane {
-    n: Point,
-    d: f64,
+    pub(super) n: Point,
+    pub(super) d: f64,
 }
 impl HalfPlane {
     fn distance(self, p: Point) -> f64 {

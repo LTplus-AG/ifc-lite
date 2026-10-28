@@ -14,6 +14,10 @@ mod report;
 mod source;
 #[path = "compare/tolerances.rs"]
 mod tolerances;
+#[path = "compare/registry.rs"]
+mod registry;
+#[path = "compare/checks/mod.rs"]
+mod checks;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::canonical_element_jobs;
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;
@@ -51,28 +55,10 @@ fn main() -> Result<(), Error> {
     }
     report.rows.sort();
     report.coverage.sort();
-    let coverage = format!(
-        "# SPDX-License-Identifier: MPL-2.0\nmodel\tid\tstatus\tcode\n{}\n",
-        report.coverage.join("\n")
-    );
-    let pin = "tests/manifests/cli-retained-coverage.tsv";
-    if options.bless {
-        if !report.violations.is_empty()
-            || !report.universe_mismatch.is_empty()
-            || !report.skipped.is_empty()
-        {
-            return Err(
-                "refusing to bless a run with violations, universe mismatch or missing fixtures"
-                    .into(),
-            );
-        }
-        std::fs::write(pin, &coverage)?;
+    if options.bless && (!report.violations.is_empty() || !report.universe_mismatch.is_empty() || !report.skipped.is_empty()) {
+        return Err("refusing to bless a run with violations, universe mismatch or missing fixtures".into());
     }
-    if options.gate && std::fs::read_to_string(pin)? != coverage {
-        report
-            .violations
-            .push("coverage or refusal histogram differs from committed manifest".into());
-    }
+    registry::coverage(&report.coverage, options.bless, options.gate, &mut report.violations)?;
     write_report(&options, &mut report, true)?;
     if options.gate
         && (!report.violations.is_empty()
@@ -91,7 +77,7 @@ fn write_report(
 ) -> Result<(), Error> {
     report.rows.sort();
     std::fs::create_dir_all(&options.out)?;
-    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\texact_bbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\tscope\tsrc_bbox_dev_m\tkernel_status\torigin_site\torigin_entity\tmessage\tcuts\tcutMs\tconsumedParts\tsrc_cut_vol_rel\n{}\n",report.rows.join("\n")))?;
+    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\texact_bbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\tscope\tsrc_bbox_dev_m\tkernel_status\torigin_site\torigin_entity\tmessage\tcuts\tcutMs\tconsumedParts\tsrc_cut_vol_rel\tsrc_oracle\n{}\n",report.rows.join("\n")))?;
     let mut summary = report.summary();
     summary["complete"] = json!(complete);
     summary["modelsRequested"] = json!(options.models.len());
@@ -151,7 +137,7 @@ fn compare(
                 .exact_only_type_products
                 .push(json!({"model":model,"id":id,"scope":"out of M1 scope"}));
             report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tout of M1 scope\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
-            report.rows.last_mut().unwrap().push_str("\t\t\t\t");
+            report.rows.last_mut().unwrap().push_str("\t\t\t\t\t");
         } else if !candidates.contains(&id) {
             report.universe_mismatch.push(format!(
                 "{model}:{id}: exact mesh omitted from canonical candidates"
@@ -206,6 +192,7 @@ fn compare(
                         tolerances,
                         ms,
                         opening_expectations.get(&id),
+                        &sources,
                     );
                 }
                 ProductOutcome::Refused {
@@ -235,7 +222,7 @@ fn compare(
                     // column empty rather than report 0 for a consumed host.
                     let message = message.replace(['\t', '\n', '\r'], " ");
                     report.rows.push(format!(
-                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t{cuts}\t{cut_ms}\t\t",
+                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t{cuts}\t{cut_ms}\t\t\t",
                         ifc_type.name(), origin.map_or("", |o| o.cause),
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{collections::BTreeSet, path::{Path, PathBuf}};
 pub struct Options {
     pub worker: PathBuf,
     pub out: PathBuf,
@@ -45,7 +45,7 @@ pub fn options() -> Result<Options, Box<dyn std::error::Error>> {
             .map(|p| parent.join(p))
             .collect()
     } else {
-        committed_models().into_iter().map(PathBuf::from).collect()
+        committed_models(Path::new("."))?.into_iter().map(PathBuf::from).collect()
     };
     Ok(Options {
         worker: worker.ok_or("--worker required")?,
@@ -55,8 +55,8 @@ pub fn options() -> Result<Options, Box<dyn std::error::Error>> {
         bless,
     })
 }
-pub fn committed_models() -> Vec<&'static str> {
-    vec![
+pub fn base_models() -> [&'static str; 14] {
+    [
         "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
         "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",
         "tests/fixtures/synthetic-retained/f-c-extrusion.ifc",
@@ -72,4 +72,13 @@ pub fn committed_models() -> Vec<&'static str> {
         "rust/geometry/tests/fixtures/issue_098_wall_W.ifc",
         "rust/geometry/tests/fixtures/bath_csg_solid.ifc",
     ]
+}
+pub fn committed_models(root: &Path) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut models: BTreeSet<String> = base_models().into_iter().map(String::from).collect();
+    for path in super::registry::fragments(root.join("tests/fixtures/cli-retained/universe.d"), "txt")? {
+        for line in std::fs::read_to_string(path)?.lines().map(str::trim).filter(|s| !s.is_empty() && !s.starts_with('#')) {
+            if !models.insert(line.to_owned()) { return Err(format!("duplicate universe model {line}").into()); }
+        }
+    }
+    Ok(models.into_iter().collect())
 }

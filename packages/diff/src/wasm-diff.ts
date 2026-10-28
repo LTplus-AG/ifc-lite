@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { DiffOptions, EntityFingerprint, ModelDiff } from './types.js';
-import { packStrings, unpackStrings } from './wasm-binary.js';
+import { packStrings, unpackDocument } from './wasm-binary.js';
 import { fingerprintColumns } from './wasm-columns.js';
 import { diffModelConstructor } from './wasm-runtime.js';
 import { restoreDiffReferences, type IndexedDiff } from './wasm-result.js';
@@ -32,7 +32,7 @@ export function compareWasmModels<TRef>(
   baseRows: readonly EntityFingerprint<TRef>[], headRows: readonly EntityFingerprint<TRef>[],
   options: DiffOptions,
 ): ModelDiff<TRef> {
-  const raw = unpackStrings(baseModel.comparePacked(headModel, {
+  const raw = unpackDocument(baseModel.comparePacked(headModel, {
     scope: options.scope,
     moveTolerance: options.moveTolerance,
     reshapeTolerance: options.reshapeTolerance,

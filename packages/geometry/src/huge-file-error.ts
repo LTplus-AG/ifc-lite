@@ -6,15 +6,27 @@
  * Turn the bare wasm trap a huge model triggers in the streaming prepass into an
  * actionable, human-readable error.
  *
- * The streaming prepass (`buildPrePassStreaming`) copies the whole file into
- * wasm linear memory AND builds the entity index alongside it. On wasm32 the
- * address space is capped at 4GB, so a ~3GB+ file cannot fit — the allocator
- * aborts with a bare `unreachable executed` / `RuntimeError`. This maps that to
- * a clear message suggesting smaller inputs or the native CLI/server.
+ * wasm-bindgen copies even a SAB-backed byte slice into linear memory. Index
+ * tables, metadata fallback indexes and discovery lists share its 4 GiB limit.
+ * See docs/architecture/prepass-memory.md for the allocation accounting.
  */
 
 /** Below this the failure is treated as unrelated to size (caller rethrows). */
 const HUGE_FILE_GB_THRESHOLD = 2.5;
+
+/** Conservative admission ceiling, not a prediction of every model's peak.
+ * Entity density and style/job counts cannot be inferred from source size.
+ * Refuse the observed 1.6–1.8 GB failure band BEFORE any file-sized WASM copy. */
+export const MAX_STREAMING_PREPASS_BYTES = 1_500_000_000;
+
+export function assertStreamingPrepassHeadroom(byteLength: number): void {
+  if (byteLength < MAX_STREAMING_PREPASS_BYTES) return;
+  throw new Error(
+    `Out of memory: this ${(byteLength / 1e9).toFixed(2)} GB model exceeds the browser streaming pre-pass ` +
+    `source limit of 1.50 GB. The source, entity indexes and temporary buffers must share ` +
+    `WebAssembly's 4 GiB address space. Split the model into smaller files or use the native ifc-lite CLI/server.`,
+  );
+}
 
 /** wasm OOM / abort signatures across engines (V8, SpiderMonkey, JSC). */
 const OOM_SIGNATURE =
@@ -38,7 +50,7 @@ export function largeFilePrepassError(err: unknown, byteLength: number): Error |
   const raw = err instanceof Error ? err.message : String(err);
   if (sizeGB >= HUGE_FILE_GB_THRESHOLD && OOM_SIGNATURE.test(raw)) {
     return new Error(
-      `This model is ${sizeGB.toFixed(1)} GB and may exceed available WebAssembly memory ` +
+      `Out of memory: this model is ${sizeGB.toFixed(1)} GB and may exceed available WebAssembly memory ` +
         `(32-bit address space). Try a smaller model or use the native ifc-lite CLI/server. ` +
         `(underlying wasm trap: ${raw})`,
       { cause: err },

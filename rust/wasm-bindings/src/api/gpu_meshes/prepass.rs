@@ -8,6 +8,7 @@ use wasm_bindgen::prelude::*;
 
 use super::prepass_affinity::fold_u128_to_u32;
 use super::prepass_discovery::is_disabled;
+use super::prepass_memory::snapshot_entity_index;
 
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
@@ -443,7 +444,7 @@ impl IfcAPI {
                         MetaMode::SmallFileSingle,
                     ),
                     None => (
-                        EntityDecoder::with_index(content, entity_index.clone()),
+                        EntityDecoder::with_index(content, snapshot_entity_index(&entity_index)),
                         MetaMode::StreamingPartial { scanned_through },
                     ),
                 };
@@ -470,7 +471,7 @@ impl IfcAPI {
             // correct, sharing its resolution with `buildPrePassOnce`.
             let mut decoder = match &prebuilt_arc {
                 Some(pi) => EntityDecoder::with_arc_columnar_index(content, pi.clone()),
-                None => EntityDecoder::with_index(content, entity_index.clone()),
+                None => EntityDecoder::with_index(content, snapshot_entity_index(&entity_index)),
             };
             let meta_res = resolve_stream_meta(
                 MetaMode::SmallFileSingle,

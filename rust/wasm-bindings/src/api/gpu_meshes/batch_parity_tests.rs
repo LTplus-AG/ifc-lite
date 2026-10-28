@@ -32,6 +32,8 @@ mod compare;
 mod evidence;
 #[path = "batch_parity_observe_tests.rs"]
 mod observe;
+#[path = "batch_parity_plan_tests.rs"]
+mod plan;
 
 #[allow(dead_code)] // Shared entry-point helper also serves processing sink tests.
 #[path = "../../../../processing/tests/common/entry_trace.rs"]
@@ -187,6 +189,7 @@ fn observe_fixture(
     let name = short(fixture.path);
     let content = observe::fixture(fixture.path);
     let native = observe::native(&content);
+    let planned_native = ifc_lite_processing::parity_test_support::take_jobs();
     let browser = observe::browser_cold(&content);
 
     // Only the native side is asserted: an anchor the browser misses (in
@@ -202,6 +205,9 @@ fn observe_fixture(
     );
 
     let mut drifts = Vec::new();
+    plan::compare(name, &planned_native, &browser.batches.iter()
+        .flat_map(|b| b.planned_jobs.iter().copied()).collect::<Vec<_>>(), &mut drifts);
+    plan::units(name, native.metadata.length_unit_refused, &browser.prepass.meta, &mut drifts);
     let native_frame = native.frame;
     let browser_frame = browser.prepass.meta.frame;
     frames.insert(
@@ -261,28 +267,8 @@ fn observe_fixture(
     }
     observations.insert(name, serde_json::json!({
         "bindings": drifts.iter().map(|d| evidence::binding(&native_meshes, &browser.meshes().collect::<Vec<_>>(), d)).collect::<Vec<_>>(),
-        "selectedMeshEvidence": evidence::selected(&native_meshes, &browser.meshes().collect::<Vec<_>>(), &drifts),
-        "nativeJobs": native_jobs, "browserJobs": browser_jobs,
-        "nativeClasses": native.meshes.iter().map(|m| (m.express_id, m.geometry_class)).collect::<Vec<_>>(),
-        "browserDiscoveryTypes": browser.prepass.simple_jobs.iter().chain(&browser.prepass.complex_jobs)
-            .map(|j| (j.0, format!("{:?}", j.3))).collect::<Vec<_>>(),
-        "nativeRefusedInputElements": native.stats.refused_input_elements,
-        "nativeRefusedPrepassRecords": native.stats.refused_prepass_records,
-        "cold": load_evidence(&browser),
     }));
     drifts
-}
-
-/// Evidence includes every batch drain/snapshot and operational counters;
-/// comparison exclusions never make those observations disappear.
-fn load_evidence(load: &observe::BrowserLoad) -> serde_json::Value {
-    serde_json::json!({
-        "classes": load.meshes().map(|m| (m.express_id, m.geometry_class)).collect::<Vec<_>>(),
-        "pipeline": load.pipeline,
-        "batches": load.batches.iter().map(|b| serde_json::json!({
-            "jobs": b.jobs, "plannedJobs": b.planned_jobs, "outputCounts": b.output_counts, "diagnostics": b.diagnostics, "pipeline": b.pipeline,
-        })).collect::<Vec<_>>(),
-    })
 }
 
 /// #7782/C40-R5: each of two attempted jobs reaches the same refused leaf.
@@ -345,7 +331,7 @@ fn c4_0_native_browser_parity() {
     let failures = gate::reconcile(&bindings, &expected);
     let report = serde_json::json!({ "fixtures": frames.len(), "frames": frames,
         "observedDifferences": bindings, "expectedDifferences": expected,
-        "failures": failures, "observations": observations });
+        "failures": failures });
     if let Ok(path) = std::env::var("IFC_LITE_C4_0_BINDINGS_REPORT") {
         std::fs::write(path, serde_json::to_string_pretty(&bindings).unwrap()).unwrap();
     }

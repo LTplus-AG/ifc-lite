@@ -64,6 +64,8 @@ pub(super) enum Axis {
     Diagnostics,
     /// Native refusal counters versus the browser's `PipelineDiagnostics`.
     RefusalCounters,
+    PlannedJobs,
+    UnitRefusal,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -398,24 +400,10 @@ fn world_normals(m: &MeshData, frame: MeshFrame) -> Vec<[f64; 3]> {
         .collect()
 }
 
-/// Order meshes of one element for pairing: structure first, then the world
-/// centroid, so two same-structure pieces pair by where they are.
+/// Global element emission is parallel/chunked; only per-element submesh order
+/// is contractual (including transparent draw order). Never sort these meshes.
 fn ordered<'a>(meshes: &[&'a MeshData], frame: MeshFrame) -> Vec<(&'a MeshData, Vec<[f64; 3]>)> {
-    type Keyed<'m> = (u64, [i64; 3], &'m MeshData, Vec<[f64; 3]>);
-    let mut v: Vec<Keyed> = meshes
-        .iter()
-        .map(|m| {
-            let pts = world_points(m, frame);
-            let n = pts.len().max(1) as f64;
-            let c = pts
-                .iter()
-                .fold([0.0; 3], |a, p| [a[0] + p[0], a[1] + p[1], a[2] + p[2]]);
-            let q = |x: f64| (x / n * 1e3).round() as i64;
-            (structure_digest(m), [q(c[0]), q(c[1]), q(c[2])], *m, pts)
-        })
-        .collect();
-    v.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
-    v.into_iter().map(|(_, _, m, pts)| (m, pts)).collect()
+    meshes.iter().map(|m| (*m, world_points(m, frame))).collect()
 }
 
 fn close(a: &[[f64; 3]], b: &[[f64; 3]], tol: f64) -> Option<f64> {
@@ -449,10 +437,8 @@ fn mesh_difference(
         return Some("non-finite or malformed xyz position/normal input".into());
     }
     let Some((native_frame, browser_frame)) = normalized else {
-        let mut a: Vec<u64> = native.iter().map(|m| exact_digest(m)).collect();
-        let mut b: Vec<u64> = browser.iter().map(|m| exact_digest(m)).collect();
-        a.sort_unstable();
-        b.sort_unstable();
+        let a: Vec<u64> = native.iter().map(|m| exact_digest(m)).collect();
+        let b: Vec<u64> = browser.iter().map(|m| exact_digest(m)).collect();
         return (a != b).then(|| describe(native, browser));
     };
     let finite_frame = |frame: MeshFrame| match frame {
@@ -675,6 +661,17 @@ mod tests {
         m.geometry_class = class;
         m.geometry_item_id = Some(id + 1);
         m
+    }
+
+    #[test]
+    fn submesh_reordering_fails_in_exact_and_world_frames_7782() {
+        let a = tri(7, 0);
+        let mut b = tri(7, 0);
+        b.color[3] = 0.5;
+        for frames in [None, Some((MeshFrame::RawIfc, MeshFrame::RawIfc))] {
+            assert!(mesh_difference(&[&a, &b], &[&a, &b], frames).is_none());
+            assert!(mesh_difference(&[&a, &b], &[&b, &a], frames).is_some());
+        }
     }
 
     #[test]

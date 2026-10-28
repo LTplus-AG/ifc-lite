@@ -9,35 +9,6 @@
 use super::compare::{Axis, Drift};
 use ifc_lite_processing::MeshData;
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
-
-pub(super) fn selected(native: &[&MeshData], browser: &[&MeshData], drifts: &[Drift]) -> Value {
-    let ids: BTreeSet<u32> = drifts
-        .iter()
-        .filter(|d| {
-            matches!(
-                d.axis,
-                Axis::MeshHash
-                    | Axis::Color
-                    | Axis::ElementSet
-                    | Axis::JobSet
-                    | Axis::Placement
-                    | Axis::Layers
-                    | Axis::TypeGeometry
-            )
-        })
-        .filter_map(|d| d.element)
-        .collect();
-    let side = |meshes: &[&MeshData]| {
-        meshes
-            .iter()
-            .filter(|m| ids.contains(&m.express_id))
-            .map(|m| record(m))
-            .collect::<Vec<_>>()
-    };
-    json!({ "ids": ids, "native": side(native), "browser": side(browser) })
-}
-
 pub(super) fn record(m: &MeshData) -> Value {
     json!({
         "mesh": m,
@@ -81,7 +52,10 @@ pub(super) fn binding(native: &[&MeshData], browser: &[&MeshData], drift: &Drift
                 format!("{hash:016x}")
             })
             .collect();
-        values.sort();
+        // Global scheduling may reorder elements; preserve each element's submeshes.
+        if drift.element.is_none() {
+            values.sort();
+        }
         values
     };
     serde_json::json!({ "fixture": drift.fixture, "axis": format!("{:?}", drift.axis),

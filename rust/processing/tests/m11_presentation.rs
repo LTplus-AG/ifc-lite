@@ -4,7 +4,7 @@
 use ifc_lite_geometry::{program::transactions::Resources as OwnedResourceContext, resource::{self, Reservation}};
 use ifc_lite_processing::element::retained_runtime::{RetainedExecutionError, ShapePart};
 mod runtime { pub use ifc_lite_processing::element::retained_runtime::ReceiptMesh; }
-mod publication { pub use super::ShapePart; }
+mod publication { pub(super) use super::ShapePart; }
 #[allow(dead_code)]
 #[path = "../src/element/session_retained/storage.rs"]
 mod storage;

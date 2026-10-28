@@ -17,7 +17,7 @@ fn issue_7955_survey_plane_to_host_matches_explicit_inverse_bits() {
     }
     let host=program.finish().unwrap().values.pop().unwrap();
     let f=host.object_frame();
-    assert!((f[0]-3f64.sqrt()/2.).abs()<1e-15 && (f[1]-.5).abs()<1e-15);
+    assert!((f[0]-3f64.sqrt()/2.).abs()<1e-15 && (f[1]-0.5).abs()<1e-15);
     // Hand inverse of Rz(theta),t: [Rz(-theta),-Rz(-theta)t].
     // Use admitted frame's f64 cos/sin, so the assertion pins exact arithmetic,
     // independently of plane_source and retained_frames::relative.

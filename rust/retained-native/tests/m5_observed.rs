@@ -87,7 +87,7 @@ fn issue_7955_m5_real_clip_invocations_and_per_step_timings(){
     let mut times:Vec<_>=rows.iter().flat_map(|r|r["steps"].as_array().unwrap()).map(|c|c["clipMs"].as_f64().unwrap()).collect();
     assert!(times.iter().all(|t|t.is_finite()&&*t>0.));times.sort_by(f64::total_cmp);
     let percentile=|p:f64|times[((times.len() as f64*p).ceil() as usize).saturating_sub(1)];
-    let summary=serde_json::json!({"products":rows,"clipMs":{"p50":percentile(.5),"p95":percentile(.95)},"scope":"real SDK invocations; not an exclusive performance benchmark"});
+    let summary=serde_json::json!({"products":rows,"clipMs":{"p50":percentile(0.5),"p95":percentile(0.95)},"scope":"real SDK invocations; not an exclusive performance benchmark"});
     if let Some(path)=std::env::var_os("IFCLITE_M5_TIMINGS"){std::fs::write(path,serde_json::to_vec_pretty(&summary).unwrap()).unwrap();}
     println!("sdk witness executed: m5_clip_timings");
 }

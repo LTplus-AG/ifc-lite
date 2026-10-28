@@ -14,12 +14,15 @@ pub(super) fn cutters(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySourc
     let mut result=Vec::new();
     for id in prepass.void_index.get(&product).into_iter().flatten() {
         if !router.opening_requires_subtraction(*id,&mut decoder){continue;}
-        let instances=sources.extrusion_definitions.instances.get(id).ok_or("opening has no analytic extrusion")?;
-        for instance in instances {
-            if instance.source_modified{return Err("modified opening requires its own clip oracle".into());}
+        let parts=source_parts(model,sources,*id)?;
+        if parts.is_empty(){return Err("opening has no analytic parts".into());}
+        for part in parts {
+            if part.mixed{return Err("mixed solid opening requires a different source oracle".into());}
             if result.len()==8{return Err("clip-opening inclusion/exclusion budget".into());}
-            let host=ExtrudedHost::from_sources(sources,instance).ok_or("opening extrusion unavailable")?;
-            result.push(planes(&host).ok_or("opening must be a convex line-profile extrusion")?);
+            let host=part.host.ok_or("opening extrusion unavailable")?;
+            let mut cut=planes(&host).ok_or("opening must be a convex line-profile extrusion")?;
+            cut.extend(part.planes.iter().map(Plane::equation));
+            result.push(cut);
         }
     }
     Ok(result)

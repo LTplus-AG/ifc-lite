@@ -1,5 +1,5 @@
 {
-  "status": "HAND-DERIVED; corrected synthetic fixture independent review pending",
+  "status": "HAND-DERIVED; Opus review round 2 and IFC4 EXPRESS validation passed; SDK qualification required",
   "derivation": {
     "a": "4*6*(2-.5)",
     "b": "4*6*.5",

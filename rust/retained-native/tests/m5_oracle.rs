@@ -56,3 +56,13 @@ fn issue_7955_synthetic_oracle_covers_curves_mixed_nodes_and_openings() {
         assert!((v-expected).abs()/expected<1e-9,"#{id}: {v} vs {expected}");
     }
 }
+
+#[test]
+fn issue_7955_source_oracle_clipped_opening_composes_after_host_clip(){
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-clips.ifc");
+    // Existing opening column [-.5,2.5] becomes z>=1; the clipped host is z>=.5.
+    // Net source volume 36 - 1*1*(2-1) = 35.
+    let text=text.replace("'SweptSolid',(#115)","'CSG',(#505)")
+        .replace("ENDSEC;\nEND-ISO","#500=IFCCARTESIANPOINT((0.,0.,1.));#501=IFCAXIS2PLACEMENT3D(#500,$,$);#502=IFCPLANE(#501);#503=IFCHALFSPACESOLID(#502,.T.);#505=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#115,#503);ENDSEC;\nEND-ISO");
+    assert!((oracle(&text,200).section_volume().unwrap()-35.).abs()<1e-10);
+}

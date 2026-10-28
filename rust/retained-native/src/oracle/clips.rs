@@ -98,13 +98,13 @@ fn part(mut current: DecodedEntity, mut world: Matrix4<f64>, sources: &AnalyticQ
     }
     Err("clip oracle spine work budget exhausted".into())
 }
-/// `None` means no supported plain-plane clip was found, not a zero-volume
-/// expectation. A discovered but unsupported oracle remains explicit in parts.
-pub fn expected(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
-    -> Result<Option<ClipExpectation>, String> {
+// Source traversal only: opening extraction reuses this without recursively
+// following void relationships. Cycles and expansion have the same work bound.
+fn source_parts(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
+    -> Result<Vec<ClipPart>, String> {
     let mut decoder = model.decoder();
     let element = decoder.decode_by_id(product).map_err(|e| e.to_string())?;
-    let Some(shape) = product_shape(&element,&mut decoder).map_err(|e|format!("{e:?}"))? else {return Ok(None)};
+    let Some(shape) = product_shape(&element,&mut decoder).map_err(|e|format!("{e:?}"))? else {return Ok(Vec::new())};
     let mut world = resolve_object_placement(&element,&mut decoder).map_err(|e|e.to_string())?.unwrap_or_else(Matrix4::identity);
     let scale = sources.extrusion_definitions.length_unit_scale;
     for i in 0..3 { for j in 0..4 { world[(i,j)] *= scale; } }
@@ -134,6 +134,13 @@ pub fn expected(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, pr
             parts.push(part(item,frame,sources,product,&mut decoder)?);
         }
     }
+    Ok(parts)
+}
+/// `None` means no supported plain-plane clip was found, not a zero-volume
+/// expectation. A discovered but unsupported oracle remains explicit in parts.
+pub fn expected(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
+    -> Result<Option<ClipExpectation>, String> {
+    let mut parts=source_parts(model,sources,product)?;
     if parts.iter().all(|p|p.planes.is_empty()) { return Ok(None); }
     let cuts=openings::cutters(model,sources,product)?;
     if !cuts.is_empty() {

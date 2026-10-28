@@ -102,14 +102,7 @@ fn qualifies_after_m5_m6_native_consumed_provenance() {
 #[test]
 fn m6_native_fzk_bounded_only_chains_publish() {
     if worker().is_none(){return;}
-    let root=std::env::var_os("IFC_LITE_FIXTURE_ROOT").map(std::path::PathBuf::from)
-        .unwrap_or_else(||std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models"));
-    let path=root.join("ara3d/AC20-FZK-Haus.ifc");
-    if !path.exists() {
-        assert!(std::env::var_os("IFC_LITE_REQUIRE_FIXTURES").is_none(),"M6 FZK fixture required: run pnpm fixtures");
-        eprintln!("SKIP M6 FZK: run pnpm fixtures; not qualification evidence");return;
-    }
-    let text=std::fs::read_to_string(path).unwrap();
+    let Some(text)=ifc_lite_testkit::fixture_text("ara3d/AC20-FZK-Haus.ifc") else {return;};
     let outcomes=run(&text,&[60012,67828]);
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     for id in [60012,67828] {
@@ -185,14 +178,7 @@ fn m6_native_second_boolean_fault_is_atomic_and_next_product_succeeds() {
 #[test]
 fn m6_native_960_report_has_no_untyped_or_unverified_outcome() {
     if worker().is_none(){return;}
-    let root=std::env::var_os("IFC_LITE_FIXTURE_ROOT").map(std::path::PathBuf::from)
-        .unwrap_or_else(||std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models"));
-    let path=root.join("issues/960_house_segmented_roof_clip.ifc");
-    if !path.exists() {
-        assert!(std::env::var_os("IFC_LITE_REQUIRE_FIXTURES").is_none(),"M6 960 fixture required: run pnpm fixtures");
-        eprintln!("SKIP M6 960: run pnpm fixtures; not qualification evidence");return;
-    }
-    let text=std::fs::read_to_string(path).unwrap();
+    let Some(text)=ifc_lite_testkit::fixture_text("issues/960_house_segmented_roof_clip.ifc") else {return;};
     let source=SourceBundle::new(text.as_bytes().to_vec());
     let ids=ifc_lite_processing::element::retained_runtime::canonical_element_jobs(&source).into_iter()
         .map(|(id,_)|id).filter(|id|bounded::applies(text.as_bytes(),*id)).collect::<Vec<_>>();

@@ -76,7 +76,8 @@ async fn retained_browser_m6_boxed_twin_outcomes() {
 }
 #[wasm_bindgen_test(async)]
 async fn qualifies_after_m5_retained_browser_m6_publication() {
-    let actual=rows(vec![1004,1007,1008,1009,1011]).await;
+    let ids=vec![1004,1007,1008,1009,1011];let actual=rows(ids.clone()).await;
+    assert_eq!(actual.iter().map(|r|r.id).collect::<Vec<_>>(),ids);
     for a in actual {
         let e=expected().into_iter().find(|r|r.id==a.id).unwrap();assert_eq!(a.code,e.code);
         if let Some(volume)=e.volume {assert!((a.volume.unwrap()-volume).abs()<=1e-6*volume);}

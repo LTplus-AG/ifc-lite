@@ -43,11 +43,8 @@ fn m6_circle_boundary_clearance_remains_analytic() {
 
 #[test]
 fn m6_fzk_sections_are_available_for_both_bounded_chains() {
-    let root=std::env::var_os("IFC_LITE_FIXTURE_ROOT").map(std::path::PathBuf::from)
-        .unwrap_or_else(||std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models"));
-    let path=root.join("ara3d/AC20-FZK-Haus.ifc");
-    if !path.exists(){assert!(std::env::var_os("IFC_LITE_REQUIRE_FIXTURES").is_none(),"run pnpm fixtures");eprintln!("SKIP M6 FZK oracle: run pnpm fixtures");return;}
-    let bytes=std::fs::read(path).unwrap();let sources=ifc_lite_processing::extract_analytic_quantity_sources(&bytes,None);
+    let Some(bytes)=ifc_lite_testkit::fixture_bytes("ara3d/AC20-FZK-Haus.ifc") else {return;};
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(&bytes,None);
     for id in [60012,67828] {
         let e=bounded::expected(&bytes,&sources,id).expect("FZK source oracle");
         assert!(e.section_volume.is_some(),"#{id}: {:?}",e.section_unavailable);

@@ -80,4 +80,5 @@ fn issue_3641_real_sdk_cutpart_and_opening_subset_matrix() {
         eprintln!("sdk witness executed: m8 issue_3641 mask={mask} codes_volumes={measured:?} timings={timing:?}");
     }
     assert!(refused.is_empty(), "M3-A + M8 requires all opening subsets to publish: {refused:?}");
+    println!("sdk witness executed: m8 issue_3641 opening subset matrix");
 }

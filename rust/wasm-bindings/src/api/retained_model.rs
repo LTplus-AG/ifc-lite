@@ -37,10 +37,10 @@ export interface RetainedShapeProduct {
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
-    instanceKey?: string;
-    instanceGroup?: { templateProductId: number; key: string };
     marker: 'PresentationObligationsUnmet';
     obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
+    instanceKey?: string;
+    instanceGroup?: { templateProductId: number; key: string };
 }
 export interface RetainedProductRefusal {
     status: 'refused';

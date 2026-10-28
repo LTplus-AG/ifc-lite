@@ -206,7 +206,7 @@ export type RetainedSessionEvent =
 | { kind: 'published'; expressId: number; ifcType: string;
 marker: 'PresentationObligationsUnmet';
 obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
-meshes: MeshCollection };
+meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string };
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
@@ -221,6 +221,15 @@ export interface RetainedShapePart {
     /** Column-major object metres to absolute IFC Z-up world metres. */
     worldFromObject: Float64Array;
     curved: boolean;
+    revisionLocalFaces?: Uint32Array;
+    /** Per-corner unit normals in absolute IFC Z-up axes, placement already applied. */
+    normals?: Float64Array;
+    color?: [number, number, number, number];
+    materialName?: string;
+    geometryItemId?: number;
+    materialId?: number;
+    faces?: { table: string[]; triangles: Uint32Array };
+    instanceKey?: string;
 }
 export interface RetainedShapeProduct {
     status: 'published';
@@ -232,8 +241,10 @@ export interface RetainedShapeProduct {
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
+    instanceKey?: string;
+    instanceGroup?: { templateProductId: number; key: string };
     marker: 'PresentationObligationsUnmet';
-    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces'>;
+    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
 }
 export interface RetainedProductRefusal {
     status: 'refused';
@@ -242,7 +253,8 @@ export interface RetainedProductRefusal {
     code: 'opening_strategy' | 'opening_unsupported' | 'material_layer_strategy' | 'operation_unsupported'
     | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
     | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
-    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';
+    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach'
+    | 'appearance_unsupported' | 'face_provenance_unproven';
     origin?: { site: string; entity?: number; cause: string };
     kernelStatus?: number;
 }

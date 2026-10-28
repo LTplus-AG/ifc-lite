@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "mesh.hpp"
 #include "empty.hpp"
+#include "triangulate.hpp"
 #include <SmApiBrep.h>
 #include <SmBrep.h>
 #include <SmPoly.h>
@@ -36,10 +37,7 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
         ensure(found != source_ids.end(),"tessellation lost source face attribution");
         const uint32_t source = found->second;
         SmTArray<SmPolyFace*> added;
-        if (!polygon->IsTriangle()) {
-            checked(polygon->IsPlanar() ? polygon->TriangulatePlanar(added)
-                                       : polygon->TriangulateNonPlanar(added));
-        }
+        checked(triangulate_polygon(polygon,added));
         triangle_sources.emplace(polygon,source);
         for (auto* triangle : added) triangle_sources.emplace(triangle,source);
     }

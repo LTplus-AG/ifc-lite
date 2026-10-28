@@ -73,3 +73,19 @@ measures retained volume 3.6000000002622174 m³. The independent source oracle
 therefore applies CUT-0's existing source-over-proven-exact-defect rule; no
 tolerance is changed. A layered product still has one source instance, even
 when its presentation contains multiple bands.
+
+Native/browser qualification exposed a separate SDK triangulation ambiguity.
+Replaying identical native wire requests into the actual WASM SDK produced the
+same 466 vertices (maximum coordinate difference 6.6e-15 m) and 928 triangles
+for #55's last capped band, but one warped quad on radius 10.3 used the opposite
+diagonal. Its capped volumes were 14.169965548346143 and 14.16996229702047 m³,
+a relative difference 2.2945191091677772e-7, failing the unchanged 1e-9 parity
+gate. This is not an IFC ordering disagreement with the authored products.
+
+M4 therefore also owns a narrow adapter correction: for a single-loop quad,
+the SDK must validate both diagonals' endpoint sectors and absence of an
+existing diagonal before the adapter selects the shorter diagonal. Splitting
+still uses `SmPolyFace::MakeManifoldEdge`; vertices, frames, SDK sources and
+tolerances are unchanged. Other polygons retain the SDK triangulators. The
+actual SDK tests exercise loop rotation, reversed winding, a concave quad and
+the captured four-vertex reproducer on both native and Emscripten targets.

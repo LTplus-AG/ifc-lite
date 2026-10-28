@@ -52,9 +52,10 @@ it('#7955 fits a real decoded instance-only scene and resets ownership for its r
   assert.ok(Math.abs(h.camera.getTarget().x - 0.5) < 0.01);
   await act(async () => update({ geometry: null, streaming: false }));
   const next = buildShardBytes(38);
-  // Hand-built IFNS v1 instance transform: translation X at byte 152.
-  new DataView(next).setFloat32(152, 1000, true);
+  // Hand-built IFNS v1 instance transform: row-major translation X at byte 116.
+  new DataView(next).setFloat32(116, 1000, true);
   await act(async () => update({ geometry: [], shard: next, streaming: true }));
+  assert.equal(h.scene.getInstancedEntityBounds(38)?.min.x, 1000, 'fixture translates the rendered occurrence');
   assert.ok(Math.abs(h.camera.getTarget().x - 1000.5) < 0.01);
   assert.equal(h.calls.filter(call => call === 'fit').length, 2);
 });

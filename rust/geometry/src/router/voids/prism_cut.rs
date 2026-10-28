@@ -67,11 +67,13 @@ use crate::math::aabb::Aabb3;
 use std::sync::OnceLock;
 
 use super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
+use super::geom::opening_frame::cluster_prism_directions;
 use super::geom::opening_mesh_thinnest_axis_dir;
+use super::geom::parity::PARITY_RAY_DIR as RAY_DIR;
 use super::{cutter_is_closed_manifold, CutterKind, VoidContext};
-use crate::program::openings::execute::Execution;
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;
+use crate::program::openings::execute::Execution;
 use nalgebra::Point2;
 use rustc_hash::FxHashMap;
 
@@ -954,15 +956,7 @@ fn detect_prism(verts: &[V3], tris: &[[usize; 3]], mesh_vol: f64) -> Option<Pris
         let (a, b, c) = (verts[t[0]], verts[t[1]], verts[t[2]]);
         normals.push(normalize(cross(sub(b, a), sub(c, a))));
     }
-    let mut clusters: Vec<V3> = Vec::new();
-    for n in normals.iter().flatten() {
-        if !clusters.iter().any(|c| dot(*n, *c).abs() > 0.999) {
-            if clusters.len() > 64 {
-                return None; // way past any stepped extrusion — bail early
-            }
-            clusters.push(*n);
-        }
-    }
+    let clusters = cluster_prism_directions(&normals)?;
     let mut mag = 0.0f64;
     for v in verts {
         for c in v {
@@ -1247,10 +1241,6 @@ fn opening_aabb_obb(op: &CutterKind, origin: [f64; 3]) -> Option<([V3; 3], V3, V
 }
 
 // ─────────────────────────── ray parity (point in solid) ─────────────────────
-
-/// Fixed skewed ray direction (same constants as `geom::point_inside_mesh`) —
-/// avoids exact grazes on the axis-dominated faces of IFC geometry.
-const RAY_DIR: V3 = [0.573_257_1, 0.665_412_3, 0.477_889_5];
 
 /// Möller–Trumbore crossing parity of `point` against the triangle list (with
 /// precomputed AABBs). Odd ⇒ inside the solid.

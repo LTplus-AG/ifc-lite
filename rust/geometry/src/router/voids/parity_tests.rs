@@ -168,3 +168,18 @@ fn c2_5b_ray_thresholds_degenerate_nonfinite_and_signed_zero() {
         }
     }
 }
+
+// #7781 R3 / ROUTER-8: both former f64 literal spellings have these exact bits.
+#[test]
+fn c2_5_finish_shared_ray_keeps_both_legacy_directions() {
+    let legacy_array: V3 = [0.573_257_1, 0.665_412_3, 0.477_889_5];
+    let legacy_vector = Vector3::<f64>::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+    assert_eq!(
+        PARITY_RAY_DIR.map(f64::to_bits),
+        legacy_array.map(f64::to_bits)
+    );
+    let vector: V3 = PARITY_DIR_A.into();
+    let legacy: V3 = legacy_vector.into();
+    assert_eq!(vector.map(f64::to_bits), legacy.map(f64::to_bits));
+    assert_eq!(vector.map(f64::to_bits), PARITY_RAY_DIR.map(f64::to_bits));
+}

@@ -157,7 +157,9 @@ pub(in crate::router::voids) fn point_inside_mesh_agreed(
 /// Irrational-ish, non-axis-aligned: avoids exact edge and vertex grazes on the
 /// axis-aligned faces that dominate IFC opening boxes. ONE definition, shared by
 /// both callers, so the single-ray and two-ray answers cannot drift apart.
-const PARITY_DIR_A: Vector3<f64> = Vector3::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+pub(in crate::router::voids) const PARITY_RAY_DIR: V3 = [0.573_257_1, 0.665_412_3, 0.477_889_5];
+const PARITY_DIR_A: Vector3<f64> =
+    Vector3::new(PARITY_RAY_DIR[0], PARITY_RAY_DIR[1], PARITY_RAY_DIR[2]);
 
 /// Shares no plane with [`PARITY_DIR_A`] and no axis with those same facets.
 const PARITY_DIR_B: Vector3<f64> = Vector3::new(-0.412_889_7, 0.734_115_3, -0.538_662_1);

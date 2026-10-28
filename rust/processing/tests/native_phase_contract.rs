@@ -65,7 +65,9 @@ fn issue_7782_sink_cancellation_keeps_only_the_completed_chunk() {
             })
             .collect();
         assert_eq!(batches.len(), 1, "no later chunk may be published");
-        assert_eq!(batches[0].0, 1);
+        // This fixture schedules two meshless jobs before the first proxy.
+        // Progress counts jobs, including chunks that never call on_batch.
+        assert_eq!(batches[0].0, 3);
         assert!(batches[0].1 > batches[0].0);
         assert_eq!(sink.payloads, vec![format!("{:?}", full.meshes[0])]);
         assert_eq!(partial.stats.total_meshes, 1);

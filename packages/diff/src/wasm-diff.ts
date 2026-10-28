@@ -38,7 +38,7 @@ export function compareWasmModels<TRef>(
   options: DiffOptions,
   keys: readonly [readonly string[], readonly string[]],
 ): ModelDiff<TRef> {
-  const stripPlacementGeometry = options.stripPlacementGeometry;
+  const stripPlacementGeometry = options.stripPlacementGeometry === true;
   const raw = unpackDocument(baseModel.comparePacked(headModel, {
     scope: options.scope,
     stripPlacementGeometry,

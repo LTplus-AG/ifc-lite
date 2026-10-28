@@ -291,7 +291,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
       // Keep ownership so a later null/new load resets the instance-only fit.
-      lastGeometryRef.current = scene.getInstancedModelIndices().length > 0 ? geometry : null;
+      lastGeometryRef.current = !appearanceSourceGeometry?.length && scene.getInstancedModelIndices().length > 0 ? geometry : null;
       renderer.requestRender();
       return;
     }

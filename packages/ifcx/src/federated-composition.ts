@@ -14,79 +14,20 @@
  * - Inheritance is resolved across layer boundaries
  */
 
-import type { IfcxFile, IfcxNode, ComposedNode } from './types.js';
 import type { IfcxLayer } from './layer-stack.js';
 import { LayerStack } from './layer-stack.js';
-import { PathIndex, parsePath } from './path-resolver.js';
+import { PathIndex } from './path-resolver.js';
 import { applyTombstones } from './tombstones.js';
-import { recordLayerOpinions, type AttributeOpinions } from './opinions.js';
+import { recordLayerOpinions } from './opinions.js';
 import { inheritsField } from './definitions.js';
+import type {
+  ComposeOptions,
+  ComposedNodeWithSources,
+  FederatedCompositionResult,
+  PreComposedNode,
+} from './federated-types.js';
 
-/**
- * Options for federated composition.
- */
-export interface ComposeOptions {
-  /** Progress callback */
-  onProgress?: (phase: string, percent: number) => void;
-  /** Maximum inheritance depth (default: 10) */
-  maxInheritDepth?: number;
-  /**
-   * Keep every layer's own value per attribute on each composed node
-   * (`ComposedNodeWithSources.opinions`), not only the winner. Off by
-   * default so ordinary composition pays nothing. See `opinions.ts`.
-   */
-  retainOpinions?: boolean;
-}
-
-/**
- * Pre-composed node before inheritance resolution.
- */
-interface PreComposedNode {
-  path: string;
-  children: Record<string, string | null>;
-  inherits: Record<string, string | null>;
-  attributes: Record<string, unknown>;
-  /** Track which layer contributed each attribute */
-  attributeSources: Map<string, string>;
-  /** Layers that define this path */
-  definedInLayers: Set<string>;
-  /** Every layer's own attribute values (only with `retainOpinions`) */
-  opinions?: AttributeOpinions;
-}
-
-/**
- * Extended ComposedNode with source tracking.
- */
-export interface ComposedNodeWithSources extends ComposedNode {
-  /** Track which layer contributed each attribute */
-  attributeSources: Map<string, { layerId: string; layerName: string }>;
-  /** All layers that contributed to this node */
-  contributingLayers: Set<string>;
-  /**
-   * Every layer's own value per attribute key, weakest first, strongest
-   * last. Present only when composed with `retainOpinions`.
-   */
-  opinions?: AttributeOpinions;
-}
-
-/**
- * Result of federated composition.
- */
-export interface FederatedCompositionResult {
-  /** Composed nodes by path */
-  composed: Map<string, ComposedNodeWithSources>;
-  /** Path index for lookups */
-  pathIndex: PathIndex;
-  /** Root nodes (no parent) */
-  roots: ComposedNodeWithSources[];
-  /** Statistics */
-  stats: {
-    totalNodes: number;
-    layersUsed: number;
-    inheritanceResolutions: number;
-    crossLayerReferences: number;
-  };
-}
+export type { ComposeOptions, ComposedNodeWithSources, FederatedCompositionResult } from './federated-types.js';
 
 /**
  * Compose multiple IFCX layers into a unified stage.

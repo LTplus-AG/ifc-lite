@@ -5,7 +5,13 @@ The browser harness serves an already staged, inventory-validated engine with
 coverage manifests (including per-slice fragments), running shape and view detail for each model. Native
 `products.tsv` is read unmodified; its SHA256 is recorded in `summary.json`.
 `retainedReport` supplies the f64 volumes and `metrics.compare` enforces the
-preregistered 1e-9 native/browser tolerance. View checks independently authenticate
+preregistered 1e-9 native/browser tolerance. M5 registers a 1e-7 exception only
+for rows with a passing `clipSectionVolumeRelative` source oracle whose
+`sourceCurved` metadata is true. A runtime `curved` flag alone never qualifies;
+planar clips and unclipped curves retain 1e-9. The source-oracle limits remain
+unchanged, and `scopedVolumeRows` records every selected exception. The M5
+registration records the measured gap, evidence path, and approved margin.
+View checks independently authenticate
 the prepass RTC, product outcomes, triangle counts and half-ULP vertex storage.
 Neither this harness nor the mutation witness changes tolerance registrations.
 

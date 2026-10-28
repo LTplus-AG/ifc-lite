@@ -11,7 +11,8 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 export async function runComparison({ engine, native, out }) {
   const nativeRows = tsv(await readFile(native, 'utf8'));
   const blessed = await coverageRows();
-  const tolerance = loadTolerances().nativeWasmVolumeRelative;
+  const tolerances = loadTolerances();
+  const tolerance = tolerances.nativeWasmVolumeRelative;
   if (tolerance !== 1e-9) throw new Error('Preregistered native/wasm tolerance changed');
   const scratch = await mkdtemp(join(tmpdir(), 'cli-retained-parity-'));
   const products = [];
@@ -24,7 +25,8 @@ export async function runComparison({ engine, native, out }) {
       if (child.status !== 0) throw new Error(`${model}: ${child.stderr}`);
       products.push(...JSON.parse(child.stdout));
     }
-    const result = compare(nativeRows, products, blessed, tolerance);
+    const result = compare(nativeRows, products, blessed, tolerance,
+      tolerances.nativeWasmClippedCurvedVolumeRelative?.value);
     if (out) await writeFile(out, `${JSON.stringify({ ...result, products }, null, 2)}\n`);
     if (result.violations.length) throw new Error(JSON.stringify(result));
     return result;

@@ -1,0 +1,380 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "issue": 7955,
+  "sourceHead": "0feb444dcf954124886fb46d27936ef17155a3bb",
+  "fixture": "tests/fixtures/synthetic-retained/f-e-clips.ifc#111",
+  "method": "Fresh native SDK and real Chrome/module-Worker IfcAPI.retained_model captures; unique nearest-vertex bijection. All three browser variants reproduce the identical-input Emscripten replay positions, indices and frames exactly. No mesh edited or welded.",
+  "analysisPath": "/home/louistrue/build-workers/landing-perf/m5/round6/analysis-browser-0feb.json",
+  "analysisSha256": "0ecdce53873597b9def7e69e2b48b8b2bbaa54e9edb4862ed9ce7326fdde5c3e",
+  "captureSha256": {
+    "/home/louistrue/build-workers/landing-perf/m5/round6/round6-browser-0feb444dcf954124886fb46d27936ef17155a3bb-2ff4ceda-3bb8-4bcd-8577-10592dd58525-raw-native-meshes.json": "cb47e329723ba977db2b4c0bf105c2946972af21dd3de4c3c91f582a536340a5",
+    "/home/louistrue/build-workers/landing-perf/m5/round6/round6-browser-0feb444dcf954124886fb46d27936ef17155a3bb-2ff4ceda-3bb8-4bcd-8577-10592dd58525-meshes.json": "eb6f2da179491de7167b46a169d5aaca702d9a7e842b225d561fdf2df174930d"
+  },
+  "classificationCountsAbove1e12Metres": {
+    "planar_cap_side": 0,
+    "curved_side": 0,
+    "clip_plane": 0,
+    "clip_curve_intersection": 0,
+    "unclassified": 0
+  },
+  "clip2": {
+    "variant": "clip2",
+    "vertices": 300,
+    "triangles": 596,
+    "sameVertexOrdering": false,
+    "sameIndexArrays": false,
+    "windingPreservingTriangleMultisetEqual": false,
+    "matchedTriangles": 532,
+    "unmatchedNativeTriangles": 64,
+    "unmatchedBrowserTriangles": 64,
+    "minSecondNearestDistance": 0.06276276736975617,
+    "maxNearestDistance": 2.152802317486082e-15,
+    "medianNearestDistance": 0.0,
+    "changedVertices": 0,
+    "groups": {},
+    "nativeVolume": 23.111667309872118,
+    "browserVolume": 23.11166665113554,
+    "browserMinusNativeVolume": -6.587365781740573e-07,
+    "relativeVolumeGap": 2.850233907151644e-08,
+    "triangleContributions": {
+      "cap_bottom": {
+        "nativeTriangles": 126,
+        "browserTriangles": 126,
+        "nativeArea": 12.561291550606303,
+        "browserArea": 12.561291550606303,
+        "nativeVolume": 0.0,
+        "browserVolume": 0.0,
+        "volumeDelta": 0.0,
+        "matchedTriangles": 126,
+        "matchedCentroidDisplacementTerm": 0.0,
+        "matchedAreaVectorChangeTerm": 0.0,
+        "unmatchedNativeVolume": 0.0,
+        "unmatchedBrowserVolume": 0.0,
+        "unmatchedTriangulationContribution": 0.0
+      },
+      "curved_side": {
+        "nativeTriangles": 300,
+        "browserTriangles": 300,
+        "nativeArea": 19.653510344074196,
+        "browserArea": 19.653510343468938,
+        "nativeVolume": 13.09881670178375,
+        "browserVolume": 13.098816043047178,
+        "volumeDelta": -6.587365728449868e-07,
+        "matchedTriangles": 296,
+        "matchedCentroidDisplacementTerm": 2.0638477133946853e-16,
+        "matchedAreaVectorChangeTerm": -5.561365444753272e-16,
+        "unmatchedNativeVolume": 0.18013200848311384,
+        "unmatchedBrowserVolume": 0.18013134974653522,
+        "unmatchedTriangulationContribution": -6.587365786181465e-07
+      },
+      "clip_right": {
+        "nativeTriangles": 63,
+        "browserTriangles": 63,
+        "nativeArea": 3.473295564324528,
+        "browserArea": 3.4732955643245247,
+        "nativeVolume": 2.455990846599027,
+        "browserVolume": 2.4559908465990268,
+        "volumeDelta": -4.440892098500626e-16,
+        "matchedTriangles": 47,
+        "matchedCentroidDisplacementTerm": -2.6058477319989184e-17,
+        "matchedAreaVectorChangeTerm": -2.858946575054533e-15,
+        "unmatchedNativeVolume": 0.607275175739342,
+        "unmatchedBrowserVolume": 0.6072751757393434,
+        "unmatchedTriangulationContribution": 1.4432899320127035e-15
+      },
+      "cap_top": {
+        "nativeTriangles": 44,
+        "browserTriangles": 44,
+        "nativeArea": 7.651303372335472,
+        "browserArea": 7.651303372335471,
+        "nativeVolume": 5.100868914890313,
+        "browserVolume": 5.100868914890313,
+        "volumeDelta": 0.0,
+        "matchedTriangles": 0,
+        "matchedCentroidDisplacementTerm": 0.0,
+        "matchedAreaVectorChangeTerm": 0.0,
+        "unmatchedNativeVolume": 5.100868914890313,
+        "unmatchedBrowserVolume": 5.100868914890313,
+        "unmatchedTriangulationContribution": 0.0
+      },
+      "clip_left": {
+        "nativeTriangles": 63,
+        "browserTriangles": 63,
+        "nativeArea": 3.473295564324521,
+        "browserArea": 3.473295564324524,
+        "nativeVolume": 2.455990846599026,
+        "browserVolume": 2.4559908465990286,
+        "volumeDelta": 2.6645352591003757e-15,
+        "matchedTriangles": 63,
+        "matchedCentroidDisplacementTerm": -1.3678046558789443e-17,
+        "matchedAreaVectorChangeTerm": 1.9766990151723682e-15,
+        "unmatchedNativeVolume": 0.0,
+        "unmatchedBrowserVolume": 0.0,
+        "unmatchedTriangulationContribution": 0.0
+      }
+    },
+    "nativeOracle": {
+      "volume": 23.111667309872118,
+      "sourceVolume": 23.11801679287792,
+      "hostVolume": 25.132741228718345,
+      "bbox": [
+        -2.0000000000000004,
+        -1.9999999999999993,
+        0.0,
+        2.0,
+        2.0000000000000004,
+        2.0
+      ],
+      "checks": [
+        {
+          "key": "clipSectionVolumeRelative",
+          "value": 0.000274655177504618,
+          "limit": 0.002,
+          "passed": true
+        },
+        {
+          "key": "clipVolumeBoundsRelative",
+          "value": 0.0,
+          "limit": 0.002,
+          "passed": true
+        },
+        {
+          "key": "clipKeptSideMetres",
+          "value": 1.1102230246251565e-15,
+          "limit": 1.096e-05,
+          "passed": true
+        },
+        {
+          "key": "clipClosure",
+          "value": 0,
+          "limit": 0,
+          "passed": true
+        }
+      ]
+    },
+    "browserOracle": {
+      "volume": 23.11166665113554,
+      "sourceVolume": 23.11801679287792,
+      "hostVolume": 25.132741228718345,
+      "bbox": [
+        -2.0000000000000004,
+        -1.9999999999999993,
+        0.0,
+        2,
+        2.0000000000000004,
+        2.0
+      ],
+      "checks": [
+        {
+          "key": "clipSectionVolumeRelative",
+          "value": 0.0002746836720153745,
+          "limit": 0.002,
+          "passed": true
+        },
+        {
+          "key": "clipVolumeBoundsRelative",
+          "value": 0.0,
+          "limit": 0.002,
+          "passed": true
+        },
+        {
+          "key": "clipKeptSideMetres",
+          "value": 1.7763568394002505e-15,
+          "limit": 1.096e-05,
+          "passed": true
+        },
+        {
+          "key": "clipClosure",
+          "value": 0,
+          "limit": 0,
+          "passed": true
+        }
+      ]
+    }
+  },
+  "diagonalFlips": [
+    {
+      "nativeTriangles": [
+        383,
+        382
+      ],
+      "browserTriangles": [
+        274,
+        275
+      ],
+      "vertices": [
+        {
+          "nativeIndex": 118,
+          "browserIndex": 118,
+          "native": [
+            -1.007520488638305,
+            -1.7276870274948615,
+            0.0
+          ],
+          "browser": [
+            -1.007520488638305,
+            -1.7276870274948615,
+            0.0
+          ],
+          "deltaMetres": 0.0,
+          "source": "curved_side",
+          "radialResidualNative": 2.220446049250313e-16,
+          "radialResidualBrowser": 2.220446049250313e-16
+        },
+        {
+          "nativeIndex": 119,
+          "browserIndex": 119,
+          "native": [
+            -0.9185891861120093,
+            -1.776568013659504,
+            0.0
+          ],
+          "browser": [
+            -0.9185891861120093,
+            -1.776568013659504,
+            0.0
+          ],
+          "deltaMetres": 0.0,
+          "source": "curved_side",
+          "radialResidualNative": 2.220446049250313e-16,
+          "radialResidualBrowser": 2.220446049250313e-16
+        },
+        {
+          "nativeIndex": 278,
+          "browserIndex": 214,
+          "native": [
+            -1.0000000000000013,
+            -1.732050807568876,
+            2.0
+          ],
+          "browser": [
+            -1.0000000000000013,
+            -1.732050807568876,
+            2.0
+          ],
+          "deltaMetres": 0.0,
+          "source": "clip_curve_intersection",
+          "radialResidualNative": 4.440892098500626e-16,
+          "radialResidualBrowser": 4.440892098500626e-16
+        },
+        {
+          "nativeIndex": 279,
+          "browserIndex": 213,
+          "native": [
+            -0.9185891861120093,
+            -1.7765680136595035,
+            2.0
+          ],
+          "browser": [
+            -0.9185891861120093,
+            -1.7765680136595035,
+            2.0
+          ],
+          "deltaMetres": 0.0,
+          "source": "curved_side",
+          "radialResidualNative": 6.661338147750939e-16,
+          "radialResidualBrowser": 6.661338147750939e-16
+        }
+      ],
+      "nativeVolumeContribution": 0.12947297493626272,
+      "browserVolumeContribution": 0.12946615235464937,
+      "volumeDelta": -6.822581613358247e-06,
+      "quadNoncoplanarityVolume": 6.822581613395255e-06
+    },
+    {
+      "nativeTriangles": [
+        330,
+        329
+      ],
+      "browserTriangles": [
+        327,
+        328
+      ],
+      "vertices": [
+        {
+          "nativeIndex": 97,
+          "browserIndex": 97,
+          "native": [
+            -2.0,
+            1.3551523844546272e-15,
+            0.0
+          ],
+          "browser": [
+            -2.0,
+            1.3551523844546272e-15,
+            0.0
+          ],
+          "deltaMetres": 0.0,
+          "source": "curved_side",
+          "radialResidualNative": 0.0,
+          "radialResidualBrowser": 0.0
+        },
+        {
+          "nativeIndex": 98,
+          "browserIndex": 98,
+          "native": [
+            -1.9980116134113395,
+            -0.0891604882973142,
+            0.0
+          ],
+          "browser": [
+            -1.9980116134113395,
+            -0.0891604882973142,
+            0.0
+          ],
+          "deltaMetres": 0.0,
+          "source": "curved_side",
+          "radialResidualNative": 2.220446049250313e-16,
+          "radialResidualBrowser": 2.220446049250313e-16
+        },
+        {
+          "nativeIndex": 246,
+          "browserIndex": 246,
+          "native": [
+            -2.0000000000000004,
+            8.00040872142049e-16,
+            1.0000000000000004
+          ],
+          "browser": [
+            -2.0000000000000004,
+            8.00040872142049e-16,
+            1.0000000000000004
+          ],
+          "deltaMetres": 0.0,
+          "source": "clip_curve_intersection",
+          "radialResidualNative": 4.440892098500626e-16,
+          "radialResidualBrowser": 4.440892098500626e-16
+        },
+        {
+          "nativeIndex": 247,
+          "browserIndex": 245,
+          "native": [
+            -1.999015451092161,
+            -0.06274732101696595,
+            1.00098454890784
+          ],
+          "browser": [
+            -1.999015451092161,
+            -0.06274732101696597,
+            1.00098454890784
+          ],
+          "deltaMetres": 1.3877787807814457e-17,
+          "source": "clip_curve_intersection",
+          "radialResidualNative": 4.440892098500626e-16,
+          "radialResidualBrowser": 4.440892098500626e-16
+        }
+      ],
+      "nativeVolumeContribution": 0.050659033546851154,
+      "browserVolumeContribution": 0.05066519739188599,
+      "volumeDelta": 6.163845034837245e-06,
+      "quadNoncoplanarityVolume": 6.16384503482573e-06
+    }
+  ],
+  "contributionConvention": "V = sum(area_vector dot centroid)/3 at the common source origin [0,0,0]. Each runtime is integrated without editing its mesh. Source-surface deltas sum to browser-minus-native volume. Matching triangles split into native_area_vector dot delta_centroid/3 plus delta_area_vector dot browser_centroid/3; changed diagonals are reported separately as unmatched-triangulation contribution. CSV records every triangle in both runtimes.",
+  "decision": "M5 #111 fresh native/browser relative volume gap 2.85e-8 (2.850233907151644e-8), giving a 3.5× margin at 1e-7. 2026-10-28 user/orchestrator ruling: the user-approved 1e-7 ceiling governs; the added 10× margin yields to the accepted 3.5× margin; do not register above about 5e-8. No vertex differs by more than 1e-12 m (max 2.153e-15 m); the gap comes from two curved-side diagonal flips whose vertices lie on the curve or curve/clip intersections. Both runtimes pass every unchanged M5 source-oracle gate. Applies only to source-curved AND clipped rows; all other rows retain 1e-9. Evidence: tests/evidence/m5/round6-parity.json; full captures, per-triangle contributions and analysis: /home/louistrue/build-workers/landing-perf/m5/round6/analysis-browser-0feb.json.",
+  "runtimeVolumes": {
+    "native": 23.111667309872125,
+    "browser": 23.11166665113555,
+    "note": "Runtime tetrahedron sums differ from the independent area-vector integration by a few ULPs."
+  }
+}

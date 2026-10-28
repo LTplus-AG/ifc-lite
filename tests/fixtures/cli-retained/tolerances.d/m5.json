@@ -2,5 +2,9 @@
   "clipSectionVolumeRelative": { "linear": 1e-6, "curved": 2e-3 },
   "clipVolumeBoundsRelative": { "linear": 1e-6, "curved": 2e-3 },
   "clipKeptSideMetres": { "absolute": 1e-5, "extentFactor": 2.4e-7 },
-  "clipExactComparison": "report"
+  "clipExactComparison": "report",
+  "nativeWasmClippedCurvedVolumeRelative": {
+    "value": 1e-7,
+    "why": "M5 #111 fresh native/browser relative volume gap 2.85e-8 (2.850233907151644e-8), giving a 3.5× margin at 1e-7. 2026-10-28 user/orchestrator ruling: the user-approved 1e-7 ceiling governs; the added 10× margin yields to the accepted 3.5× margin; do not register above about 5e-8. No vertex differs by more than 1e-12 m (max 2.153e-15 m); the gap comes from two curved-side diagonal flips whose vertices lie on the curve or curve/clip intersections. Both runtimes pass every unchanged M5 source-oracle gate. Applies only to source-curved AND clipped rows; all other rows retain 1e-9. Evidence: tests/evidence/m5/round6-parity.json; full captures, per-triangle contributions and analysis: /home/louistrue/build-workers/landing-perf/m5/round6/analysis-browser-0feb.json."
+  }
 }

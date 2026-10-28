@@ -42,6 +42,7 @@
       "id": 111,
       "code": "published",
       "curved": true,
+      "clipped": true,
       "volume": 23.11801679287786
     },
     {

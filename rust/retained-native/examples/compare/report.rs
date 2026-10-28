@@ -107,7 +107,7 @@ impl Report {
                 self.violations.push(format!("{model}:{}: {} source oracle failed", shape.product_id, result.family));
             }
         }
-        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated})).collect::<Vec<_>>()).expect("oracle results serialize")));
+        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated,"sourceCurved":r.authority.map(|a|a.curved)})).collect::<Vec<_>>()).expect("oracle results serialize")));
         self.coverage
             .push(format!("{model}\t{}\tpublished\t", shape.product_id));
     }

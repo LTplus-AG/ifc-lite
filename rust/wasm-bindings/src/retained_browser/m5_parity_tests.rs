@@ -27,13 +27,29 @@ extern "C" {
     fn measure(outcome:&JsValue)->Result<JsValue,JsValue>;
 }
 #[derive(serde::Deserialize)]
-struct Row {id:u32,code:String,volume:Option<f64>,#[serde(default)] curved:bool,triangles:Option<u64>,vertices:Option<u64>}
+struct Row {id:u32,code:String,volume:Option<f64>,#[serde(default)] curved:bool,#[serde(default)] clipped:bool,triangles:Option<u64>,vertices:Option<u64>}
 #[derive(serde::Deserialize)]
 struct NativeReference {synthetic:Vec<Row>,adversarial:Row}
 #[derive(serde::Deserialize)]
 struct Expectations {synthetic:Vec<Row>,#[serde(rename="issue5314")] issue:Vec<Row>}
+fn parity_pass(actual:f64, native:f64, curved:bool, clipped:bool, scoped:f64)->bool {
+    let limit=if curved && clipped {scoped} else {1e-9};
+    let relative=(actual-native).abs()/native.abs();
+    relative.is_finite() && relative<=limit
+}
+#[wasm_bindgen_test]
+fn retained_browser_m5_planar_parity_stays_strict(){
+    // #7955: independently protect this browser gate as well as the CLI comparator.
+    assert!(!parity_pass(1.+1e-8,1.,false,true,1e-7));
+    assert!(!parity_pass(1.+1e-8,1.,true,false,1e-7));
+    assert!(parity_pass(1.+2.85e-8,1.,true,true,1e-7));
+    assert!(!parity_pass(1.+2e-7,1.,true,true,1e-7));
+}
 #[wasm_bindgen_test(async)]
 async fn retained_browser_m5_clips_hand_oracle_and_native_parity(){
+    let tolerances:serde_json::Value=serde_json::from_str(include_str!("../../../../tests/fixtures/cli-retained/tolerances.d/m5.json")).unwrap();
+    let scoped=tolerances["nativeWasmClippedCurvedVolumeRelative"]["value"].as_f64().unwrap();
+    assert_eq!(scoped,1e-7,"M5 approved native/browser ceiling");
     let expected:Expectations=serde_json::from_str(include_str!("../../../../tests/fixtures/cli-retained/expected.d/m5.json")).unwrap();
     let native:NativeReference=serde_wasm_bindgen::from_value(reference().await.unwrap()).unwrap();
     assert_eq!(native.synthetic.len(),expected.synthetic.len());
@@ -53,7 +69,7 @@ async fn retained_browser_m5_clips_hand_oracle_and_native_parity(){
             if let Some(native)=&parity{
                 assert_eq!((actual.id,actual.code.as_str()),(native[i].id,native[i].code.as_str()));
                 if let (Some(a),Some(b))=(actual.volume,native[i].volume){
-                    if (a-b).abs()/b.abs()>1e-9 {
+                    if !parity_pass(a,b,expected.curved,expected.clipped,scoped) {
                         mismatches.push(format!("native parity #{}: browser {a} ({:?} tri, {:?} vert) vs native {b} ({:?} tri, {:?} vert), relative {:e}",
                             actual.id,actual.triangles,actual.vertices,native[i].triangles,native[i].vertices,(a-b).abs()/b.abs()));
                     }

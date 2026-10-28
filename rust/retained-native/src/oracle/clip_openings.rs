@@ -4,9 +4,10 @@ use super::*;
 use crate::oracle::{clipping::convex_planes, math::{dot, transform, vector}};
 use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::prepass::{resolve_prepass,PrepassSpans,ResolveOptions};
+type ConvexCut = Vec<([f64; 3], f64)>;
 
 pub(super) fn cutters(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
-    -> Result<Vec<Vec<([f64;3],f64)>>,String> {
+    -> Result<Vec<ConvexCut>,String> {
     let mut scanner=EntityScanner::new(model.bytes());let mut spans=PrepassSpans::default();
     while let Some((id,name,start,end))=scanner.next_entity(){spans.stash(name,id,start,end);}
     let mut decoder=model.decoder();let prepass=resolve_prepass(&spans,&mut decoder,ResolveOptions::default());
@@ -27,7 +28,7 @@ pub(super) fn cutters(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySourc
     }
     Ok(result)
 }
-fn planes(host:&ExtrudedHost)->Option<Vec<([f64;3],f64)>> {
+fn planes(host:&ExtrudedHost)->Option<ConvexCut> {
     if host.loops.len()!=1||!host.loops[0].0{return None;}
     let profile=convex_planes(&host.loops[0].1)?;
     let x=Vector3::from(vector(&host.frame,[1.,0.,0.]));
@@ -42,7 +43,7 @@ fn planes(host:&ExtrudedHost)->Option<Vec<([f64;3],f64)>> {
         (n,c+dot(n,[origin.x,origin.y,origin.z]))
     }).collect())
 }
-pub(super) fn net_volume(host:&ExtrudedHost,clips:&[Plane],cuts:&[Vec<([f64;3],f64)>])->Option<f64>{
+pub(super) fn net_volume(host:&ExtrudedHost,clips:&[Plane],cuts:&[ConvexCut])->Option<f64>{
     if cuts.len()>8{return None;}
     let base:Vec<_>=clips.iter().map(Plane::equation).collect();
     let mut volume=section_volume(host,&base)?;

@@ -139,7 +139,7 @@ fn issue_7955_m5_committed_corpus_matches_source_sections() {
         assert_eq!(outcomes.len(),ids.len());
         for (outcome,id) in outcomes.into_iter().zip(ids) {
             let expected=clips::expected(&model,&sources,id).unwrap().unwrap();
-            volume(outcome,expected.section_volume().expect("required source section"));
+            volume(outcome,expected.section_volume().unwrap_or_else(||panic!("#{id}: required source section")));
         }
     }
     println!("sdk witness executed: m5_corpus");

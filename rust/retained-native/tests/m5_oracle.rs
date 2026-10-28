@@ -40,7 +40,7 @@ fn issue_7955_original_corpus_clips_have_independent_section_authority() {
         (include_str!("../../geometry/tests/fixtures/issue_5314_halfspace_edge.ifc"),vec![30]),
     ] {
         for id in ids {
-            let e=oracle(text,id);let volume=e.section_volume().expect("required source integral");
+            let e=oracle(text,id);let volume=e.section_volume().unwrap_or_else(||panic!("#{id}: required source integral; host={:?}, planes={:?}",e.host_volume(),e.parts.iter().map(|p|&p.planes).collect::<Vec<_>>()));
             assert!(volume>0.&&volume<e.host_volume().unwrap());
             let family=if id==30{"issue5314"}else{"fzk"};
             let row=hand[family].as_array().unwrap().iter().find(|r|r["id"]==id).unwrap();
@@ -60,7 +60,7 @@ fn issue_7955_synthetic_oracle_covers_curves_mixed_nodes_and_openings() {
         if row["code"]!="published" || row["unclipped"]==true{continue;}
         let e=oracle(text,id);
         if row["mixed"]==true {assert!(e.section_volume().is_none());assert!(e.parts[0].mixed);continue;}
-        let v=e.section_volume().expect("required section integral");let expected=row["volume"].as_f64().unwrap();
+        let v=e.section_volume().unwrap_or_else(||panic!("#{id}: required section integral; host={:?}, planes={:?}",e.host_volume(),e.parts.iter().map(|p|&p.planes).collect::<Vec<_>>()));let expected=row["volume"].as_f64().unwrap();
         assert!((v-expected).abs()/expected<1e-9,"#{id}: {v} vs {expected}");
     }
 }

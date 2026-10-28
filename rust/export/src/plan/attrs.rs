@@ -146,7 +146,27 @@ pub(crate) fn build_record(file_schema: &str, id: u32, entity_type: &str, fields
             }
         }
     }
-    format!("#{id}={entity_type}({});", slots.join(","))
+    record_text(id, entity_type, &slots)
+}
+
+/// `#id=TYPE(slot,slot,...);` in a buffer sized to the exact record length.
+/// `format!` grows its buffer by doubling, which left records of a few
+/// hundred bytes and up at 1.98-2.00x their length, and an export holds every
+/// record it builds.
+pub(crate) fn record_text(id: u32, entity_type: &str, slots: &[String]) -> String {
+    use std::fmt::Write as _;
+    let digits = id.checked_ilog10().map_or(1, |log| log as usize + 1);
+    let args = slots.iter().map(String::len).sum::<usize>() + slots.len().saturating_sub(1);
+    let mut record = String::with_capacity("#=();".len() + digits + entity_type.len() + args);
+    let _ = write!(record, "#{id}={entity_type}(");
+    for (i, slot) in slots.iter().enumerate() {
+        if i > 0 {
+            record.push(',');
+        }
+        record.push_str(slot);
+    }
+    record.push_str(");");
+    record
 }
 
 /// The mandatory attributes a built record leaves `$`, by name, from the

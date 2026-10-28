@@ -1,5 +1,11 @@
 # @ifc-lite/wasm
 
+## 11.0.1
+
+### Patch Changes
+
+- [#8247](https://github.com/LTplus-AG/ifc-lite/pull/8247) [`f713740`](https://github.com/LTplus-AG/ifc-lite/commit/f713740fb5b20dfef563fe99bac28be41f318998) Thanks [@louistrue](https://github.com/louistrue)! - Rust-only: in `ifc-lite-export`, records added by an export plan through `build_record` and `build_value_record` are now built in a buffer sized to the record. The records were built with `format!`, whose doubling growth left records of a few hundred bytes and up holding 1.98 to 2.00 times their length in memory, and an export keeps every such record until it writes the file. Output bytes are unchanged.
+
 ## 11.0.0
 
 ### Major Changes

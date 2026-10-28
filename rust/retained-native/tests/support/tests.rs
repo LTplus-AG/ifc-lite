@@ -41,7 +41,6 @@ fn common_retained_actual_construction_resumes_and_publishes_shape_only() {
         vec![
             Requirement::MaterialLayers,
             Requirement::IfcAppearance,
-            Requirement::SurfaceNormals,
         ]
     );
     let part = &product.parts[0];

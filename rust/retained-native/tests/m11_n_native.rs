@@ -62,7 +62,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                 }
             }).unwrap();
         assert_eq!(actual,expected,"coverage changed for {model}");
-        references.push(json!({"model":model,"rows":rows}));
+        references.push(json!({"model":model,"source":String::from_utf8(bytes).unwrap(),"rows":rows}));
     }
     assert!(published >= 131,"must execute the full committed universe");
     assert!(arc_corners > 0,"f-a-curved radial source oracle must execute");
@@ -70,7 +70,8 @@ fn m11_n_7955_committed_corpus_source_normals() {
         std::fs::write(path,serde_json::to_vec(&references).unwrap()).unwrap();
     }
     assert!(violations.is_empty(),"{} gate violations:\n{}",violations.len(),violations.join("\n"));
-    println!("sdk witness executed: m11_n_corpus_normals ({published} published)");
+    println!("M11-N published products: {published}");
+    println!("sdk witness executed: m11_n_corpus_normals");
 }
 
 // Shared f-i is owned by m11-fixture-f-i. The arc/opening (d) and 30-degree

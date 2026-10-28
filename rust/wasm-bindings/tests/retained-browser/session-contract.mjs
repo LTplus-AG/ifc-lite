@@ -36,8 +36,8 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
           assert(start && event.kind === 'published', `every mapped product publishes: ${JSON.stringify(event)}`);
           assert(event.expressId === start.candidateIds[published.length], 'sink follows canonical job order');
           assert(event.marker === 'PresentationObligationsUnmet' && event.obligationsUnmet.length > 0, 'shape-only marker retained');
-          assert(event.obligationsUnmet.at(-1) === 'SurfaceNormals', 'M11-0 surface normals remain unmet');
-          assert(event.instanceKey === undefined, 'M11-0 optional presentation stays absent');
+          assert(!event.obligationsUnmet.includes('SurfaceNormals'), 'M11-N discharges surface normals');
+          assert(event.instanceKey === undefined, 'M11-0 optional instancing stays absent');
           published.push(event.expressId);
           if (detail === 'view') {
             assert(event.cuts === 0 && event.consumedParts === 0, 'view event carries the M3 cut diagnostics (no openings here)');

@@ -32,7 +32,11 @@ pub(super) fn check_rgba_columns(what: &str, ids: &[u32], colors: &[f32]) -> Res
 /// meshes nothing rather than the model at a metre scale. One encoder for the
 /// JS object below and the native C4-0 parity gate.
 pub(super) fn stream_meta_unit_scale(meta: &ifc_lite_processing::stream_meta::StreamMeta) -> f64 {
-    if meta.length_unit_refused.is_some() { f64::NAN } else { meta.length_unit_scale }
+    if meta.length_unit_refused.is_some() {
+        f64::NAN
+    } else {
+        meta.length_unit_scale
+    }
 }
 
 /// Serialize the shared [`StreamMeta`] onto a JS object as the wire fields the

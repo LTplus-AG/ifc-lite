@@ -150,112 +150,14 @@ const FIXTURES: &[Fixture] = &[
     },
 ];
 
-/// A difference the gate expects, and must keep seeing until `removed_by`
-/// lands and deletes this row.
-struct Expected {
-    fixture: &'static str,
-    axis: Axis,
-    element: Option<u32>,
-    reason: &'static str,
-    removed_by: &'static str,
-}
+// Every exception binds the complete measured payloads and requires a reason.
+// Removing drift makes its row stale; changing it fails even at the same key.
+const EXPECTED_DIFF: &str = include_str!("batch_parity_expected.json");
 
-// C40-R1: measured at 61e56d289f (15 fixtures / 28 differences), after
-// merging main f5d871ffc1 without changing any producer/fixture/comparator.
-// Only proven defects with an approved removal item are bound. The other
-// 11 keys remain UNEXPECTED: map-vs-type job multiplicity (3), material
-// names lost by the RGBA wire (2), rotated-site local bounds (4), and layers
-// (MeshHash + Color). These need contract/ownership review, not blanket rows.
-// D66 preserves native-unsliced output by default: C4-10a's dead-build
-// removal does not remove that layer drift. C4-9's strict zero-Color gate
-// remains blocked even though all four layer RGBA8 values are identical.
-const EXPECTED_DIFF: &[Expected] = &[
-    Expected {
-        fixture: "c4_0_refusal_parity_7782.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "c4_bare_type_map_7782.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "Bare #44 is undiscovered, so there is no browser batch/accumulator; even after discovery is fixed the schema lacks both refusal fields",
-        removed_by: "C4-10a refusal schema/accounting after C4-7a restores the #43 batch; missing stays distinct from zero",
-    },
-    Expected {
-        fixture: "c4_native_unsliced_layers_7782.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "c4_type_geometry_modes_7782.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "issue_1781_image_textures.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "issue_1910_building_shell_geometry.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "issue_2019_wall_two_overlapping_openings.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "issue_3641_voiding_trap.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "issue_4560_wall_roof_polygonal_cutters.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "issue_6601_multicolor_element.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "mapped_instances_indexed_colour.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "mapped_instances_indexed_colour_uniform.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "mapped_instances_site_rotated.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "mapped_instances_site_translated.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "mapped_instances_synthetic.ifc", axis: Axis::RefusalCounters, element: None,
-        reason: "PipelineDiagnostics has neither refusal field; absent is not zero (pipeline_diagnostics.rs, compare_refusals)",
-        removed_by: "C4-10a: report attempted input refusals and distinct prepass refusals in the browser schema",
-    },
-    Expected {
-        fixture: "c4_bare_type_map_7782.ifc", axis: Axis::ElementSet, element: Some(43),
-        reason: "Native record_refs_at accepts bare #44; browser type discovery/batch as_list rejects it, so #43 is neither scheduled nor drawn",
-        removed_by: "C4-7a: shared bare-or-list RepresentationMaps reader; delete this measured row when fixed",
-    },
-    Expected {
-        fixture: "c4_bare_type_map_7782.ifc", axis: Axis::JobSet, element: Some(43),
-        reason: "Native record_refs_at accepts bare #44; browser type discovery/batch as_list rejects it, so #43 is neither scheduled nor drawn",
-        removed_by: "C4-7a: shared bare-or-list RepresentationMaps reader; delete this measured row when fixed",
-    },
-];
+#[path = "batch_parity_controls_tests.rs"]
+mod controls;
+#[path = "batch_parity_gate_tests.rs"]
+mod gate;
 
 fn short(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
@@ -464,92 +366,6 @@ fn assert_refusal_fixture(
     }
 }
 
-type Key = (&'static str, Axis, Option<u32>);
-
-/// `(unexpected, stale)`: observed keys with no row, rows nothing observed.
-fn reconcile(observed: &[Drift], expected: &[Expected]) -> (Vec<Key>, Vec<Key>) {
-    let seen: BTreeSet<Key> = observed.iter().map(Drift::key).collect();
-    let rows: BTreeSet<Key> = expected
-        .iter()
-        .map(|e| (e.fixture, e.axis, e.element))
-        .collect();
-    assert_eq!(
-        rows.len(),
-        expected.len(),
-        "EXPECTED_DIFF lists a key twice"
-    );
-    (
-        seen.difference(&rows).copied().collect(),
-        rows.difference(&seen).copied().collect(),
-    )
-}
-
-fn report(
-    frames: &BTreeMap<&'static str, String>,
-    observed: &[Drift],
-    unexpected: &[Key],
-    stale: &[Key],
-) -> String {
-    use std::fmt::Write;
-    let mut out = String::new();
-    let verdict = if unexpected.is_empty() && stale.is_empty() {
-        "PASS"
-    } else {
-        "FAIL"
-    };
-    let _ = writeln!(out, "## C4-0 native/browser parity (#7782): {verdict}\n");
-    let _ = writeln!(
-        out,
-        "{} fixtures, {} observed difference(s), {} expected row(s), {} unexpected, {} stale.\n",
-        frames.len(),
-        observed.len(),
-        EXPECTED_DIFF.len(),
-        unexpected.len(),
-        stale.len()
-    );
-    let _ = writeln!(
-        out,
-        "| fixture | axis | element | status | reason / evidence | removed by |"
-    );
-    let _ = writeln!(out, "|---|---|---|---|---|---|");
-    let row_for = |key: &Key| {
-        EXPECTED_DIFF
-            .iter()
-            .find(|e| (e.fixture, e.axis, e.element) == *key)
-    };
-    for d in observed {
-        let (status, reason, removed_by) = match row_for(&d.key()) {
-            Some(e) => (
-                "expected",
-                format!("{} ({})", e.reason, d.detail),
-                e.removed_by,
-            ),
-            None => ("UNEXPECTED", d.detail.clone(), "-"),
-        };
-        let element = d.element.map_or("-".to_string(), |id| format!("#{id}"));
-        let reason = reason.replace('|', "\\|");
-        let _ = writeln!(
-            out,
-            "| {} | {:?} | {element} | {status} | {reason} | {removed_by} |",
-            d.fixture, d.axis
-        );
-    }
-    for key in stale {
-        let e = row_for(key).expect("a stale key is a row");
-        let element = e.element.map_or("-".to_string(), |id| format!("#{id}"));
-        let _ = writeln!(
-            out,
-            "| {} | {:?} | {element} | STALE (no longer observed: delete the row) | {} | {} |",
-            e.fixture, e.axis, e.reason, e.removed_by
-        );
-    }
-    let _ = writeln!(out, "\n### Frames\n");
-    for (fixture, frame) in frames {
-        let _ = writeln!(out, "- {fixture}: {frame}");
-    }
-    out
-}
-
 #[test]
 fn c4_0_native_browser_parity() {
     let mut frames = BTreeMap::new();
@@ -559,95 +375,51 @@ fn c4_0_native_browser_parity() {
         .flat_map(|f| observe_fixture(f, &mut frames, &mut observations))
         .collect();
     observed.sort();
-    let (unexpected, stale) = reconcile(&observed, EXPECTED_DIFF);
     let bindings: Vec<_> = observations
         .values()
         .flat_map(|o| o["bindings"].as_array().unwrap().iter().cloned())
         .collect();
+    let expected: Vec<serde_json::Value> = serde_json::from_str(EXPECTED_DIFF).unwrap();
+    let failures = gate::reconcile(&bindings, &expected);
+    let report = serde_json::json!({ "fixtures": frames.len(), "frames": frames,
+        "observedDifferences": bindings, "expectedDifferences": expected,
+        "failures": failures, "observations": observations });
     if let Ok(path) = std::env::var("IFC_LITE_C4_0_BINDINGS_REPORT") {
         std::fs::write(path, serde_json::to_string_pretty(&bindings).unwrap()).unwrap();
     }
-    let expected: Vec<serde_json::Value> =
-        serde_json::from_str(include_str!("batch_parity_expected.json")).unwrap();
-    let expected_values: Vec<_> = expected.iter().map(|row| row["evidence"].clone()).collect();
-
-    let mut text = report(&frames, &observed, &unexpected, &stale);
-    text.push_str("\n### Complete observations (including operational counters)\n\n```json\n");
-    text.push_str(&serde_json::to_string_pretty(&observations).unwrap());
-    text.push_str("\n```\n");
-    eprintln!("{text}");
-    if let Some(path) = std::env::var_os("IFC_LITE_C4_0_PARITY_REPORT") {
-        std::fs::write(&path, &text).unwrap_or_else(|err| panic!("write the parity report: {err}"));
+    if let Ok(path) = std::env::var("IFC_LITE_C4_0_PARITY_REPORT") {
+        std::fs::write(
+            path,
+            format!(
+                "# C4-0 parity (#7782)\n\n```json\n{}\n```\n",
+                serde_json::to_string_pretty(&report).unwrap()
+            ),
+        )
+        .unwrap();
     }
-    assert_eq!(
-        bindings, expected_values,
-        "C4-0 full payload binding changed; new, changed and stale exceptions all fail"
+    for (fixture, observation) in &observations {
+        eprintln!(
+            "C4-0 {fixture}: {} differences, full payloads compared",
+            observation["bindings"].as_array().unwrap().len()
+        );
+    }
+    eprintln!(
+        "C4-0 bindings: {}",
+        serde_json::to_string(&bindings).unwrap()
     );
-    assert!(
-        unexpected.is_empty() && stale.is_empty(),
-        "native/browser parity drifted from EXPECTED_DIFF: unexpected {unexpected:?}, stale {stale:?} (full report above)"
-    );
+    assert!(failures.is_empty(), "C4-0 full payload gate: {failures:#?}");
 }
 
 #[test]
-fn every_expected_row_names_a_gated_fixture_and_its_removal() {
+fn every_expected_row_names_a_gated_fixture_and_reason_7782() {
     let gated: BTreeSet<&str> = FIXTURES.iter().map(|f| short(f.path)).collect();
-    for e in EXPECTED_DIFF {
-        assert!(
-            gated.contains(e.fixture),
-            "row for ungated fixture {}",
-            e.fixture
-        );
-        assert!(
-            !e.reason.trim().is_empty() && !e.removed_by.trim().is_empty(),
-            "{:?} row needs a reason and a removal",
-            e.axis
-        );
+    let expected: Vec<serde_json::Value> = serde_json::from_str(EXPECTED_DIFF).unwrap();
+    for row in expected {
+        assert!(gated.contains(row["evidence"]["fixture"].as_str().unwrap()));
+        for key in ["reason", "resolution"] {
+            assert!(!row[key].as_str().unwrap().trim().is_empty());
+        }
     }
-}
-
-#[test]
-fn reconciliation_fails_on_new_and_on_stale_rows() {
-    let drift = |fixture, element| Drift {
-        fixture,
-        axis: Axis::MeshHash,
-        element,
-        detail: String::new(),
-    };
-    let row = |fixture, element| Expected {
-        fixture,
-        axis: Axis::MeshHash,
-        element,
-        reason: "r",
-        removed_by: "x",
-    };
-    let (unexpected, stale) = reconcile(
-        &[drift("a", Some(1)), drift("b", None)],
-        &[row("a", Some(1)), row("c", Some(2))],
-    );
-    assert_eq!(
-        unexpected,
-        [("b", Axis::MeshHash, None)],
-        "a new difference is not covered"
-    );
-    assert_eq!(
-        stale,
-        [("c", Axis::MeshHash, Some(2))],
-        "a row nothing produces is stale"
-    );
-}
-
-#[test]
-#[should_panic(expected = "EXPECTED_DIFF lists a key twice")]
-fn reconciliation_rejects_duplicate_rows_7782() {
-    let row = || Expected {
-        fixture: "a",
-        axis: Axis::MeshHash,
-        element: None,
-        reason: "r",
-        removed_by: "C4-0",
-    };
-    reconcile(&[], &[row(), row()]);
 }
 
 #[test]

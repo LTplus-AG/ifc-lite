@@ -493,6 +493,8 @@ fn mesh_difference(
             || m.normals.len() != m.positions.len()
             || m.positions.iter().chain(&m.normals).any(|v| !v.is_finite())
             || m.origin.iter().any(|v| !v.is_finite())
+            || m.local_bounds.iter().flatten().any(|v| !v.is_finite())
+            || m.local_to_world.iter().flatten().any(|v| !v.is_finite())
     }) {
         return Some("non-finite or malformed xyz position/normal input".into());
     }
@@ -1082,7 +1084,7 @@ mod tests {
     }
 
     #[test]
-    fn the_colour_axis_compares_at_rgba8_wire_resolution() {
+    fn colour_quantization_is_observed_as_full_payload_drift_7782() {
         let native = tri(7, 0);
         let mut browser = tri(7, 0);
         // What the RGBA8 style wire decodes 0.5 / 0.4 / 0.3 to.
@@ -1096,7 +1098,9 @@ mod tests {
         );
         let mut drifts = Vec::new();
         compare_meshes("t", &[&native], &[&browser], None, &mut drifts);
-        assert!(drifts.is_empty(), "{drifts:?}");
+        assert_eq!(drifts.len(), 1);
+        assert_eq!(drifts[0].axis, Axis::Color);
+        drifts.clear();
         browser.color[0] += 2.0 / 255.0;
         compare_meshes("t", &[&native], &[&browser], None, &mut drifts);
         assert_eq!(

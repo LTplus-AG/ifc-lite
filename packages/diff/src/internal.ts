@@ -51,5 +51,5 @@ export function buildFingerprintBatch(inputs: readonly DataFingerprintInput[]): 
   return results;
 }
 
-export { prepareDiffModel } from './prepared-model.js';
+export { DiffModelHandle, prepareDiffModel } from './prepared-model.js';
 export type { PreparedDiffModel } from './prepared-model.js';

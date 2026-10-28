@@ -19,6 +19,19 @@ export interface DiffOptions {
   /** What differences count as a modification. Default `'both'`. */
   scope?: DiffScope;
   /**
+   * Ignore `p:`-prefixed placement geometry hashes on BOTH sides. Default false.
+   * Mesh hashes, bounding boxes, volumes and all other fields are kept. Results
+   * expose those placement hashes as `undefined`, exactly as if the caller had
+   * stripped them before comparison; source fingerprints/handles are unchanged.
+   *
+   * Set this for a mixed-capability pair (exactly one model has mesh hashes),
+   * so placement-only entities cannot defeat the whole-model geometry
+   * abstention. Keep false for symmetric pairs, including two placement-only
+   * models, so placement moves remain detectable. Capability must be assessed
+   * on the full inputs, before type exclusions or key deduplication.
+   */
+  stripPlacementGeometry?: boolean;
+  /**
    * IFC type names to leave out of the comparison entirely - a "blacklist" of
    * classes the user does not want considered as changes (e.g.
    * `IfcOpeningElement`, which is only the connective void between a wall and a

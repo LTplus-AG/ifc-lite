@@ -6,7 +6,7 @@ revisions as **added / modified / deleted / unchanged**, with separable
 versions" mode.
 
 The public comparison API consumes adapter fingerprints without invoking a
-parser or renderer. All 23 existing operations run in the independent
+parser or renderer. The operations run in the independent
 `@ifc-lite/wasm/diff` Rust module. Initialize once with `await initDiff()` or
 `initDiffSync(...)` before calling synchronous comparison, fingerprint, lineage,
 or sidecar operations. Adapters (the CLI and viewer) extract a fingerprint per
@@ -63,6 +63,42 @@ const diff = diffModels(base, head, { scope: 'both' }); // 'data' | 'geometry' |
 diff.counts;            // { added, modified, deleted, unchanged }
 diff.byKey.get(gid);    // O(1) lookup for picking — { state, changeKinds, base?, head? }
 ```
+
+### Repeated comparisons and ownership
+
+`prepareDiffModel(entities)` returns a public `DiffModelHandle<TRef>`. It takes
+an immutable fingerprint snapshot and transfers it into Rust once. Reuse the
+same pair with different options; no model is marshalled again during compare.
+Opaque `ref` objects keep their identity. Source edits require a new handle.
+There is no implicit cache.
+
+```ts
+import { prepareDiffModel } from '@ifc-lite/diff';
+
+const left = prepareDiffModel(base);
+try {
+  const right = prepareDiffModel(head);
+  try {
+    const dataDiff = left.compare(right, { scope: 'data' });
+    const fullDiff = left.compare(right, { scope: 'both' });
+  } finally { right.dispose(); }
+} finally { left.dispose(); }
+```
+
+Call `dispose()` in `finally`, or use `using` on platforms supporting explicit
+resource management (`Symbol.dispose`). Release is idempotent; comparing a
+released handle throws. Returned results remain valid after release and refer
+to the owned snapshots. `diffModels` is a one-shot convenience: every call
+transfers and frees both models, so use handles for repeated comparisons.
+
+For mixed mesh capability (exactly one full input has a non-`p:` geometry hash),
+pass `stripPlacementGeometry: true`. Rust ignores `p:` placement hashes on both
+sides, allowing geometry capability abstention to work. Results expose those
+hashes as `undefined`, exactly like stripping in JS first. Mesh hashes, bounding
+boxes, volumes and refs are preserved. Keep the default `false` for symmetric
+pairs, including two placement-only models, to retain placement move detection.
+Resolve capability before exclusions and key deduplication. The option never
+changes either handle's snapshot, so the same handles serve every option set.
 
 ### Scope — what counts as a change
 

@@ -7,7 +7,12 @@ import { fingerprintColumns } from './wasm-columns.js';
 import { diffModelConstructor } from './wasm-runtime.js';
 import { restoreDiffReferences, type IndexedDiff } from './wasm-result.js';
 
-/** Synchronous Rust comparison after explicit runtime initialization. */
+/**
+ * One-shot synchronous Rust comparison after explicit runtime initialization.
+ * Every call marshals both models into WASM, compares them, and frees both
+ * native models. For repeated comparisons, prepare each model once with
+ * {@link prepareDiffModel} and explicitly dispose the resulting handles.
+ */
 export function compareWithWasm<TRef = unknown>(base: Iterable<EntityFingerprint<TRef>>, head: Iterable<EntityFingerprint<TRef>>, options: DiffOptions = {}): ModelDiff<TRef> {
   const Model = diffModelConstructor();
   const baseRows = Array.from(base);
@@ -33,8 +38,10 @@ export function compareWasmModels<TRef>(
   options: DiffOptions,
   keys: readonly [readonly string[], readonly string[]],
 ): ModelDiff<TRef> {
+  const stripPlacementGeometry = options.stripPlacementGeometry;
   const raw = unpackDocument(baseModel.comparePacked(headModel, {
     scope: options.scope,
+    stripPlacementGeometry,
     moveTolerance: options.moveTolerance,
     reshapeTolerance: options.reshapeTolerance,
     maxMoveDistance: options.maxMoveDistance,
@@ -51,5 +58,12 @@ export function compareWasmModels<TRef>(
     ...(options.excludeTypes === undefined ? {} : { excludeTypes: [...options.excludeTypes] }),
     ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
   })) as IndexedDiff;
-  return restoreDiffReferences(raw, baseRows, headRows, keys);
+  // Classification is entirely Rust-owned. Only project the returned adapter
+  // records here, preserving JS stripping's observable fields and ref identity.
+  const project = (rows: readonly EntityFingerprint<TRef>[]) => rows.map(row =>
+    typeof row.geometryHash === 'string' && row.geometryHash.startsWith('p:')
+      ? { ...row, geometryHash: undefined } : row);
+  return restoreDiffReferences(raw,
+    stripPlacementGeometry ? project(baseRows) : baseRows,
+    stripPlacementGeometry ? project(headRows) : headRows, keys);
 }

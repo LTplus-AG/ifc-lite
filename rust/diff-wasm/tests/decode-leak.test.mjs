@@ -349,3 +349,45 @@ for (const seam of retainedCallbackSeams) {
     await checkRetainedCallbacks(wasm, seam, detail => context.diagnostic(JSON.stringify(detail)));
   });
 }
+
+// #8042 A1: exercise the PUBLIC owners using the feature binary with the
+// production glue. Counters distinguish actual Rust model release from JS
+// object collection; disposed handles remain strongly reachable throughout.
+test('public handles release resident models on dispose and Symbol.dispose, including failed compares (#8042)', async () => {
+  const api = await import('../../../packages/diff/dist/index.js');
+  const production = await import('../../../packages/wasm/pkg-diff/ifc-lite-diff.js');
+  const bytes = readFileSync(new URL('ifc-lite-diff_bg.wasm', bundle));
+  api.initDiffSync({ module: bytes });
+  const exports = production.initSync({ module: bytes });
+  assert.equal(typeof exports.diffTestModelLiveCount, 'function');
+  const live = () => exports.diffTestModelLiveCount();
+  const externrefs = () => exports.diffTestExternrefLiveCount();
+  const rows = [{ key: 'wall', ifcType: 'IfcWall', dataHash: 'd', geometryHash: 'p:0', ref: { callback() {} } }];
+  const exercise = () => {
+    const left = api.prepareDiffModel(rows), right = api.prepareDiffModel(rows);
+    assert.equal(live(), 2);
+    try {
+      for (const stripPlacementGeometry of [false, true]) {
+        const result = left.compare(right, { stripPlacementGeometry });
+        assert.equal(result.counts.unchanged, 1);
+        assert.equal(result.entries[0].base.ref, rows[0].ref);
+      }
+      const sentinel = new Error('option getter failed');
+      assert.throws(() => left.compare(right, { get scope() { throw sentinel; } }), error => error === sentinel);
+      assert.equal(live(), 2, 'failed comparison does not consume its models');
+    } finally { left.dispose(); right[Symbol.dispose](); }
+    left[Symbol.dispose](); right.dispose();
+    assert.equal(live(), 0, 'both native owners were freed exactly once');
+    assert.throws(() => left.compare(right), /disposed/);
+    assert.throws(() => right.compare(left), /disposed/);
+    return [left, right];
+  };
+  for (let i = 0; i < 4; i++) exercise();
+  const baseline = externrefs();
+  const disposed = [];
+  for (let i = 0; i < 128; i++) {
+    disposed.push(...exercise());
+    assert.equal(externrefs(), baseline, 'prepare/compare/reject/dispose releases every externref');
+  }
+  assert.equal(disposed.length, 256, 'disposed handles stay reachable during the invariant');
+});

@@ -36,3 +36,14 @@ test('former engine modules expose declarations and provenance constants only (#
     ACCEPTED_AMBIGUOUS_REASON: 'accepted:ambiguous',
   });
 });
+
+// Both entry points must share the same explicit owner, rather than allocating
+// incompatible handles or shipping a second implementation (#8042 A1).
+test('published root and internal entry share the handle API (#8042)', async () => {
+  const root: typeof import('../src/index.js') = await import(new URL('../dist/index.js', import.meta.url).href);
+  const internal: typeof import('../src/internal.js') = await import(new URL('../dist/internal.js', import.meta.url).href);
+  expect(typeof root.DiffModelHandle).toBe('function');
+  expect(root.DiffModelHandle).toBe(internal.DiffModelHandle);
+  expect(root.prepareDiffModel).toBe(internal.prepareDiffModel);
+  expect(typeof root.DiffModelHandle.prototype[Symbol.dispose]).toBe('function');
+});

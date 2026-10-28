@@ -8,7 +8,7 @@ import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
 import { loadDiffOracle } from './lib/diff-oracle.mjs';
 import * as publicDiff from '../packages/diff/dist/index.js';
-import { prepareDiffModel } from '../packages/diff/dist/internal.js';
+import { prepareDiffModel } from '../packages/diff/dist/index.js';
 import { fingerprintColumns } from '../packages/diff/dist/wasm-columns.js';
 import { restoreDiffReferences } from '../packages/diff/dist/wasm-result.js';
 import { initSync, DiffModel } from '../packages/wasm/pkg-diff/ifc-lite-diff.js';
@@ -58,6 +58,20 @@ for (const [basePath, headPath] of pairs) {
         const publicResult = publicDiff.diffModels(rows[0], rows[1], options);
         assert.deepEqual(publicResult, expected, `${basePath}: public binary facade`);
         assert.deepEqual(base.prepared.compare(head.prepared, options), expected, `${basePath}: retained snapshot facade`);
+        for (const stripPlacementGeometry of [false, true]) {
+          const strip = side => side.map(row => typeof row.geometryHash === 'string' && row.geometryHash.startsWith('p:')
+            ? { ...row, geometryHash: undefined } : row);
+          const projected = stripPlacementGeometry ? rows.map(strip) : rows;
+          const want = diffModels(projected[0], projected[1], options);
+          const opts = { ...options, stripPlacementGeometry };
+          const retained = base.prepared.compare(head.prepared, opts);
+          const transient = publicDiff.diffModels(rows[0], rows[1], opts);
+          assert.deepEqual(retained, want, `${basePath}: handle strip=${stripPlacementGeometry}`);
+          assert.deepEqual(transient, want, `${basePath}: one-shot strip=${stripPlacementGeometry}`);
+          const wire = value => JSON.stringify(value, (_, item) => item instanceof Map ? [...item] : typeof item === 'bigint' ? String(item) : item);
+          assert.equal(wire(retained), wire(want), 'handle property order and wire bytes');
+          assert.equal(wire(transient), wire(want), 'one-shot property order and wire bytes');
+        }
         comparisons++;
         const rawOptions = { ...options,
           ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
@@ -79,7 +93,7 @@ for (const [basePath, headPath] of pairs) {
   executedPairs++;
 }
 console.log(`Real IFC parity: ${executedPairs}/${pairs.length} pairs executed.`);
-console.log(`Real IFC parity: ${comparisons}/10 comparisons; ${pairs.length - executedPairs} skipped pairs.`);
+console.log(`Real IFC parity: ${comparisons}/10 comparisons in each placement-option mode; ${pairs.length - executedPairs} skipped pairs.`);
 if (executedPairs !== pairs.length) {
   console.error('INCOMPLETE: real IFC coverage missing; run pnpm fixtures and rerun parity.');
   process.exitCode = 2;

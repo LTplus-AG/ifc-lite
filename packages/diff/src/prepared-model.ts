@@ -11,7 +11,7 @@ import { compareWasmModels } from './wasm-diff.js';
  * Dispose in finally. Prepare again to observe edits to the source fingerprints.
  * Results refer to the owned snapshots, not mutable source fingerprint objects.
  */
-export class PreparedDiffModel<TRef = unknown> {
+export class DiffModelHandle<TRef = unknown> {
   private model: InstanceType<ReturnType<typeof diffModelConstructor>> | undefined;
   private rows: EntityFingerprint<TRef>[];
   private keys: string[];
@@ -33,10 +33,12 @@ export class PreparedDiffModel<TRef = unknown> {
       c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
   }
 
-  compare(head: PreparedDiffModel<TRef>, options: DiffOptions = {}): ModelDiff<TRef> {
-    if (!this.model || !head.model) throw new Error('Prepared diff model has been disposed.');
+  compare(head: DiffModelHandle<TRef>, options: DiffOptions = {}): ModelDiff<TRef> {
+    if (!this.model || !head.model) throw new Error('Diff model handle has been disposed.');
     return compareWasmModels(this.model, head.model, this.rows, head.rows, options, [this.keys, head.keys]);
   }
+
+  [Symbol.dispose](): void { this.dispose(); }
 
   /** Idempotent; results already returned remain valid after release. */
   dispose(): void {
@@ -49,6 +51,9 @@ export class PreparedDiffModel<TRef = unknown> {
 }
 
 /** Initialize the runtime first; ownership is explicit and never identity-cached. */
-export function prepareDiffModel<TRef>(entities: Iterable<EntityFingerprint<TRef>>): PreparedDiffModel<TRef> {
-  return new PreparedDiffModel(entities);
+export function prepareDiffModel<TRef>(entities: Iterable<EntityFingerprint<TRef>>): DiffModelHandle<TRef> {
+  return new DiffModelHandle(entities);
 }
+
+/** @internal Compatibility name for existing internal owners. */
+export type PreparedDiffModel<TRef = unknown> = DiffModelHandle<TRef>;

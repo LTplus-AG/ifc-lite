@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! smooth-within-face/1: angle-weighted, world-space, per-corner normals.
 use super::{Context, Requirement, ShapeOnlyProduct};
-use super::super::{budget_checkpoint, publication::ShapePart, OwnedResourceContext,
+use super::super::{error::budget_checkpoint, publication::ShapePart, OwnedResourceContext,
     RetainedExecutionError, runtime::RuntimeFault, Storage};
 use ifc_lite_geometry::resource;
 
@@ -55,7 +55,8 @@ fn corner_normals(part: &ShapePart, resources: &OwnedResourceContext, storage: &
         let mut points = [[0.; 3]; 3];
         for (corner, &index) in triangle.iter().enumerate() {
             let i = (index as usize).checked_mul(3).ok_or_else(invalid)?;
-            let xyz = part.positions.get(i..i + 3).ok_or_else(invalid)?;
+            let end = i.checked_add(3).ok_or_else(invalid)?;
+            let xyz = part.positions.get(i..end).ok_or_else(invalid)?;
             if xyz.iter().any(|v| !v.is_finite()) { return Err(invalid()); }
             points[corner].copy_from_slice(xyz);
         }

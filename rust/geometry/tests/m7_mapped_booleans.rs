@@ -115,18 +115,16 @@ fn m7_e17_multi_solid_operand_refuses_without_partial_plan() {
 }
 
 #[test]
-fn m7_e11_refusal_is_at_the_halfspace_operand() {
-    let (_, plan) = walk(156);
-    let error = match plan {
-        Err(e) => e,
-        Ok(_) => panic!("unqualified halfspace admitted"),
-    };
-    // #7955: CUT-0 dispatches halfspaces before constructor capture; preserve
-    // the typed unsupported refusal and the original halfspace entity.
-    assert_eq!(
-        error.kind(),
-        ifc_lite_geometry::program::transactions::TransactionFailureKind::OperationUnsupported
-    );
-    let (site, id, _) = error.origin_view().expect("typed refusal origin");
-    assert_eq!((site, id), ("boolean_second_operand", Some(145)));
+fn m7_e11_m5_plain_halfspace_composes_with_mapping() {
+    // #7955: M5 admits this mapped clip through the same three operations as
+    // an unmapped host: source construction, finite prism, Difference.
+    let (ops, plan) = walk(156);
+    assert_eq!(ops.len(), 3);
+    assert!(matches!(ops[0].kind(), OperationKind::Construction(_)));
+    assert!(matches!(ops[1].kind(), OperationKind::Construction(_)));
+    assert!(matches!(ops[2].kind(), OperationKind::Boolean { .. }));
+    let plan = plan.unwrap();
+    let values: Vec<_> = plan.values().collect();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].definition(), ops[2].value().definition());
 }

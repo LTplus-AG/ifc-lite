@@ -129,10 +129,22 @@ fn m7_sdk_oracle_closed_shapes() {
         reference
             .push(serde_json::json!({"expressId":id,"code":"published","volume":actual.volume}));
     }
+    // #7955 M5 × M7: e11 is the 2×1×3 box kept above z=1.5.
+    // The independent clip oracle now qualifies the formerly refused row.
+    let model = SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let sources = ifc_lite_processing::extract_analytic_quantity_sources(SOURCE.as_bytes(), None);
+    let clipped = ifc_lite_retained_native::oracle::clips::expected(&model, &sources, 156)
+        .unwrap().unwrap();
+    assert!((clipped.section_volume().unwrap() - 3.).abs() < 1e-12);
+    let actual = geometry_assertions::measured(shape(&outcomes, 156));
+    let clip_tolerance: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/cli-retained/tolerances.d/m5.json")).unwrap();
+    assert!(metrics::relative(actual.volume, 3.) <= clip_tolerance["clipSectionVolumeRelative"]["linear"].as_f64().unwrap());
+    assert_eq!(actual.defects, 0);
+    reference.push(serde_json::json!({"expressId":156,"code":"published","volume":actual.volume}));
     for (id, code) in [
         (133, "incomplete"),
         (141, "incomplete"),
-        (156, "operation_unsupported"),
         (173, "operation_unsupported"),
         (202, "empty_result"),
         (231, "operation_unsupported"),

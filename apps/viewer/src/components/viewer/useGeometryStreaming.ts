@@ -290,8 +290,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       invalidateLandXmlGpuOwnershipAfterSceneClear();
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
-      // Keep ownership so a later null/new load resets the instance-only fit.
-      lastGeometryRef.current = !appearanceSourceGeometry?.length && scene.getInstancedModelIndices().length > 0 ? geometry : null;
+      // Only preserve ownership established by a shard-only arrival below.
+      // A filtered/released flat snapshot must keep its existing reset behavior.
+      lastGeometryRef.current = lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
+        && scene.getInstancedModelIndices().length > 0 ? geometry : null;
       renderer.requestRender();
       return;
     }

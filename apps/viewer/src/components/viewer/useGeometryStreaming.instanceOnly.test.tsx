@@ -84,13 +84,15 @@ it('#7955 filtering flat geometry to empty does not turn its mixed batch into an
   assert.deepEqual(h.calls, ['shard']);
 });
 
-it('#7955 filtering a mixed model preserves its existing camera-reset ownership on unload', async () => {
+for (const [reason, source] of [['filtered', [flat]], ['released', []]] as const) {
+it(`#7955 a ${reason} mixed-model snapshot preserves its existing camera-reset ownership on unload`, async () => {
   const h = harness();
   await act(async () => update({ geometry: [flat], shard: buildShardBytes(31), streaming: true }));
   const target = { ...h.camera.getTarget() };
-  await act(async () => update({ geometry: [], source: [flat], streaming: true }));
-  assert.ok(h.scene.getInstancedEntityBounds(31), 'mixed model still owns its instance after filtering');
+  await act(async () => update({ geometry: [], source: [...source], streaming: true }));
+  assert.ok(h.scene.getInstancedEntityBounds(31), 'mixed model still owns its instance after the flat snapshot is emptied');
   await act(async () => update({ geometry: null, streaming: false }));
-  assert.deepEqual({ ...h.camera.getTarget() }, target, 'empty flat filtering retains the pre-existing reset behavior');
-  assert.deepEqual(h.calls, ['queue','fit','shard'], 'no extra fit or upload on filtering/unload');
+  assert.deepEqual({ ...h.camera.getTarget() }, target, 'empty flat snapshots retain the pre-existing reset behavior');
+  assert.deepEqual(h.calls, ['queue','fit','shard'], 'no extra fit or upload on clearing the snapshot/unload');
 });
+}

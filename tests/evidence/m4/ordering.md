@@ -47,3 +47,18 @@ and with those independently authored products, then validates assembly closure.
 
 Implementation deviation: CUT-0 has no `Select::Axis`; the canonical
 `Select::Where` representation selector uses the Axis identifier instead.
+
+
+The synthetic f-g fixture was independently reviewed by Opus on 2026-10-28
+(two rounds). IfcOpenShell 0.8.3 parsed all 310 IFC4 entities, found no EXPRESS
+issues, and preserved every entity type, reference and scalar in a write/read
+roundtrip. The review corrected the future top-clip flag and added inward
+CCW/POSITIVE #13055 (radii 9.9 and 9.7, first outside). Hand-derived fixture
+quantities are asserted in `m4_oracle.rs`; SDK behavior is asserted separately.
+The plane-clipped case remains unsupported until M5 composition lands.
+
+Cap tests are a private sibling `layer_caps_tests.rs` unit suite to avoid
+exposing presentation internals solely for integration tests. Native/browser
+band parity reuses the existing staged M3 reference file with additive M4 keys;
+no workflow is edited. Viewer rendering uses the existing double-sided mesh
+pipelines (`packages/renderer/src/pipeline.ts:254`, `:316`, `:374`, `:441`).

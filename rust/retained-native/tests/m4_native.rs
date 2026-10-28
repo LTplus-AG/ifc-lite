@@ -132,8 +132,7 @@ fn issue_7955_m4_single_and_thin_collapsed_layers_publish_unsliced() {
 #[test]
 fn issue_7955_m4_synthetic_bands_and_refusals() {
     let text=include_str!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc");
-    // Remains outside the coverage universe until the required independent
-    // fixture review and parser roundtrip have been accepted.
+    // Opus review and IFC4 EXPRESS validation/roundtrip accepted 2026-10-28.
     let Some(results)=run(text,&[1027,2027,3055,4055,5027,6027,7027,8027,9027,10027,11027,13055]) else {return;};
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     for id in [1027,2027,3055,4055,5027,6027,7027,13055] {

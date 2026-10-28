@@ -203,7 +203,9 @@ test('staged Emscripten runtime keeps its own license, while adapter sources req
     assert.equal(withLicenseHeader(`${staged}/ifclite_smlib_browser.mjs`, UNLICENSED_FILE), null);
     assert.notEqual(licenseHeaderFor(`${staged}/client.mjs`), null);
   }
-  assert.notEqual(licenseHeaderFor('native/smlib-adapter/browser/client.mjs'), null);
+  // A synthetic name exercises classification without implying a file read
+  // to the CI input-path audit (#7955).
+  assert.notEqual(licenseHeaderFor('native/smlib-adapter/browser/example-client.mjs'), null);
 });
 
 test('Windows-style separators classify the same as POSIX ones', () => {

@@ -1,13 +1,13 @@
 diff --git b/packages/ifcx/src/opinions.ts a/packages/ifcx/src/opinions.ts
-index 4cf221991e..e6ebd53da7 100644
+index 8a2618aa1f..85e72275b6 100644
 --- b/packages/ifcx/src/opinions.ts
 +++ a/packages/ifcx/src/opinions.ts
-@@ -105,7 +105,7 @@ export function findDivergentAttributes(
+@@ -116,7 +116,7 @@ export function findDivergentAttributes(
    const divergent: DivergentAttribute[] = [];
    for (const [path, byAttribute] of opinionsByPath) {
      for (const [attribute, opinions] of byAttribute) {
 -      if (opinions.length < 3) continue;
 +      if (opinions.length < 2) continue;
-       const fallback = new Map<unknown, string>();
-       const first = opinionKey(opinions[0].value, fallback);
-       const differs = opinions.some((o) => opinionKey(o.value, fallback) !== first);
+       const first = opinionKey(opinions[0].value);
+       const differs = opinions.some((o) => opinionKey(o.value) !== first);
+       if (differs) divergent.push({ path, attribute, opinions: [...opinions] });

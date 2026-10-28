@@ -1,13 +1,13 @@
 diff --git b/packages/ifcx/src/opinions.ts a/packages/ifcx/src/opinions.ts
-index 4ac32144ab..e6ebd53da7 100644
+index b10b3f10d3..85e72275b6 100644
 --- b/packages/ifcx/src/opinions.ts
 +++ a/packages/ifcx/src/opinions.ts
-@@ -80,7 +80,7 @@ export function recordLayerOpinions(
-  */
- function opinionKey(value: unknown, fallback: Map<unknown, string>): string {
-   try {
--    return JSON.stringify(value ?? null);
-+    return canonicalStringify(value ?? null);
-   } catch {
-     let key = fallback.get(value);
-     if (key === undefined) {
+@@ -94,7 +94,7 @@ function opinionKey(value: unknown, nested = false): string {
+     case 'object': {
+       if (Array.isArray(value)) return `[${value.map((item) => opinionKey(item, true)).join(',')}]`;
+       const record = value as Record<string, unknown>;
+-      const keys = Object.keys(record).filter((key) => record[key] !== undefined);
++      const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
+       return `{${keys.map((key) => `${JSON.stringify(key.normalize('NFC'))}:${opinionKey(record[key], true)}`).join(',')}}`;
+     }
+     default:

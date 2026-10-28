@@ -176,7 +176,8 @@ and drops them silently.
 Those same defaults carry a second load. Because the writer emits only the
 attribute keys a delivery actually changed, the delta layer asserts only what
 that party stated — which is what makes its opinions evaluable under the
-authority rule in `layer-prs/12-authority.md` §12.4 (#8210), discussed in §6.3.
+authority rule in [`layer-prs/12-authority.md`](../layer-prs/12-authority.md) §12.4,
+discussed in §6.3.
 Disabling the flags would not just lose removals; it would turn carried-over
 values into opinions the delivering party never expressed.
 
@@ -436,8 +437,8 @@ delivery that changes only `IsExternal` therefore carries its unchanged
 never expressed.
 
 **The fix is in what counts as an opinion, not in the key.**
-`layer-prs/12-authority.md` §12.4 ([#8210](https://github.com/LTplus-AG/ifc-lite/pull/8210),
-in review) defines an opinion as what a layer *asserts*:
+[`layer-prs/12-authority.md`](../layer-prs/12-authority.md) §12.4 (#8210,
+merged 2026-10-28) defines an opinion as what a layer *asserts*:
 an attribute key whose value differs from the same key in the layer's declared
 base (`manifest.base`, resolved against the ref's layer stack in
 `merge/src/ref-flow.ts`). Carried, unchanged members are not opinions. A layer

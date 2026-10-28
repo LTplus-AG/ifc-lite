@@ -119,7 +119,7 @@ fn issue_7955_m5_lineage_boundary_and_atomic_refusal(){
 #[test]
 fn issue_7955_m5_burkwil_beam_4548_two_clip_witness(){
     let Some(path)=std::env::var_os("IFCLITE_BURKWIL") else {
-        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"BURKWIL is locally available: supply IFCLITE_BURKWIL");
+        assert!(std::env::var_os("IFCLITE_REQUIRE_BURKWIL").is_none(),"IFCLITE_REQUIRE_BURKWIL set: supply IFCLITE_BURKWIL");
         eprintln!("SKIP M5 BURKWIL #4548: supply local IFC; not corpus evidence");return;
     };
     let text=std::fs::read_to_string(path).unwrap();

@@ -156,6 +156,11 @@ jobs:
           export IFCLITE_M11F_REFERENCE="$RUNNER_TEMP/m11-f-native-faces.json"
           export IFCLITE_M11_N_REFERENCE="$RUNNER_TEMP/m11-n-native.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
+          # Native parity references the browser lanes read (one file per
+          # slice, named after the /smlib path the browser test fetches).
+          mkdir -p "$RUNNER_TEMP/native-references"
+          export IFCLITE_M5_REFERENCE="$RUNNER_TEMP/native-references/m5-native-clips.json"
+          export IFCLITE_M5_LINEAGE_REFERENCE="$RUNNER_TEMP/native-references/m5-native-lineage.json"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
           for file in tests/evidence/*/witnesses.txt; do
             [[ -f "$file" ]] || continue
@@ -258,6 +263,13 @@ jobs:
           if [ -f "$RUNNER_TEMP/m11-n-native.json" ]; then
             cp "$RUNNER_TEMP/m11-n-native.json" rust/wasm-bindings/smlib/m11-n-native.json
           fi
+          # Generic: every reference a native lane wrote is served beside /smlib.
+          # Same rule as above: an absent file is reported by the browser test.
+          set -o pipefail
+          shopt -s nullglob
+          for reference in "$RUNNER_TEMP"/native-references/*.json; do
+            cp "$reference" "rust/wasm-bindings/smlib/$(basename "$reference")"
+          done
           node scripts/stage-retained-runtime-peer.mjs
           if [ -f "$RUNNER_TEMP/m8-native.json" ]; then
             cp "$RUNNER_TEMP/m8-native.json" rust/wasm-bindings/smlib/m8-native.json

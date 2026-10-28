@@ -117,3 +117,18 @@ if it has not converged. The 2,000,000 work cap, area checks, topology events,
 and acceptance tolerances are unchanged. Previously converged levels follow
 the same arithmetic. The regression reconstructs the exact trapezoid and
 plane, verifies the adjacent events, and compares with its hand integral.
+
+## CI scope of the real-corpus witness
+
+CI runs the synthetic three-chain witness (`m5_three_chain`), the committed
+FZK/issue_5314 corpus products and the lineage boundary. The BURKWIL beam
+#4548 witness needs a model that is not in the repository and CI does not
+download it. It runs locally with `IFCLITE_BURKWIL=<ifc>`; set
+`IFCLITE_REQUIRE_BURKWIL=1` to make an absent model fail instead of skip. It is
+therefore not in `tests/evidence/m5/witnesses.txt`.
+
+The native lane writes the M5 browser parity references to
+`$RUNNER_TEMP/native-references/` (`IFCLITE_M5_REFERENCE`,
+`IFCLITE_M5_LINEAGE_REFERENCE`). The workflow copies every `*.json` found there
+beside `/smlib`, the same copy-if-exists rule as the M3 reference, so later
+slices add a reference by naming a file, not by editing the staging step.

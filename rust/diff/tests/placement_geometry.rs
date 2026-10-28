@@ -43,5 +43,5 @@ fn placement_option_equals_explicit_stripping_without_mutating_models_8042() {
         }
     }
     assert_eq!(result_to_document(&diff_models(&base, &head, &Default::default())), before);
-    assert_eq!(base[0].geometry_hash.as_ref().unwrap(), &"p:before".into());
+    assert_eq!(base[0].geometry_hash.as_ref().and_then(ifc_lite_diff::JsString::as_str), Some("p:before"));
 }

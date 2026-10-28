@@ -22,30 +22,30 @@ for (const name of ['core', 'content', 'split', 'successor', 'lineage']) {
   const vectors = JSON.parse(readFileSync(new URL(`../../../rust/diff/tests/${name}_vectors.json`, import.meta.url), 'utf8')) as Vector[];
   test.skipIf(!existsSync(binary)).each(vectors)(`public handles: ${name} $name (#8042; missing WASM: pnpm build:wasm)`, vector => {
     initDiffSync({ module: readFileSync(binary) });
-      const options: DiffOptions = { ...vector.options,
-        ...(vector.options?.keyAliases ? { keyAliases: new Map(vector.options.keyAliases) } : { keyAliases: undefined }) };
-      // Real mesh tokens, symmetric placements, and mixed placements+mesh.
-      const placement = (rows: typeof vector.base) => rows.map(row => ({ ...row,
-        ...(row.geometryHash === undefined ? {} : { geometryHash: `p:${row.geometryHash}` }) }));
-      for (const [base, head] of [[vector.base, vector.head],
-        [placement(vector.base), placement(vector.head)], [vector.base, placement(vector.head)]]) {
-        const left = prepareDiffModel(base), right = prepareDiffModel(head);
-        try {
-          expect(left).toBeInstanceOf(DiffModelHandle);
-          for (const stripPlacementGeometry of [false, true, false]) {
-            const opts = { ...options, stripPlacementGeometry };
-            const expected = oracle(stripPlacementGeometry ? strip(base) : base,
-              stripPlacementGeometry ? strip(head) : head, options);
-            const actual = left.compare(right, opts);
-            expect(actual, vector.name).toEqual(expected);
-            expect(wire(actual), vector.name).toBe(wire(expected));
-            expect(wire(diffModels(base, head, opts)), vector.name).toBe(wire(expected));
-            if (base === vector.base && !stripPlacementGeometry) {
-              expect(JSON.parse(wire(actual)), vector.name).toEqual(vector.expected);
-            }
+    const options: DiffOptions = { ...vector.options,
+      ...(vector.options?.keyAliases ? { keyAliases: new Map(vector.options.keyAliases) } : { keyAliases: undefined }) };
+    // Real mesh tokens, symmetric placements, and mixed placements+mesh.
+    const placement = (rows: typeof vector.base) => rows.map(row => ({ ...row,
+      ...(row.geometryHash === undefined ? {} : { geometryHash: `p:${row.geometryHash}` }) }));
+    for (const [base, head] of [[vector.base, vector.head],
+      [placement(vector.base), placement(vector.head)], [vector.base, placement(vector.head)]]) {
+      const left = prepareDiffModel(base), right = prepareDiffModel(head);
+      try {
+        expect(left).toBeInstanceOf(DiffModelHandle);
+        for (const stripPlacementGeometry of [false, true, false]) {
+          const opts = { ...options, stripPlacementGeometry };
+          const expected = oracle(stripPlacementGeometry ? strip(base) : base,
+            stripPlacementGeometry ? strip(head) : head, options);
+          const actual = left.compare(right, opts);
+          expect(actual, vector.name).toEqual(expected);
+          expect(wire(actual), vector.name).toBe(wire(expected));
+          expect(wire(diffModels(base, head, opts)), vector.name).toBe(wire(expected));
+          if (base === vector.base && !stripPlacementGeometry) {
+            expect(JSON.parse(wire(actual)), vector.name).toEqual(vector.expected);
           }
-        } finally { left.dispose(); right[Symbol.dispose](); }
-      }
+        }
+      } finally { left.dispose(); right[Symbol.dispose](); }
+    }
   });
 }
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained-only nonzero-winding interpretation of exact, adjacent retraces.
-use super::{walk_error::WalkError, AnalyticCurveSegment, AnalyticProfileLoop};
+use super::{profile_topology::validate as validate_topology, walk_error::WalkError, AnalyticCurveSegment, AnalyticProfileLoop};
 use crate::kernel::{predicates::orient2d, DropAxis, ImplicitPoint, Sign};
 use std::cell::Cell;
 
@@ -19,8 +19,8 @@ pub(super) fn admitted() -> bool { ADMITTED.with(Cell::get) }
 pub(super) fn line_curve(curve: &ifc_lite_core::DecodedEntity) -> bool {
     match curve.ifc_type {
         ifc_lite_core::IfcType::IfcPolyline => true,
-        ifc_lite_core::IfcType::IfcIndexedPolyCurve => curve.get(1)
-            .and_then(|v| v.as_list()).is_some_and(|segments| !segments.is_empty() && segments.iter().all(|v|
+        ifc_lite_core::IfcType::IfcIndexedPolyCurve => curve.list_at(ifc_lite_core::slot::IfcIndexedPolyCurve::SEGMENTS)
+            .is_some_and(|segments| !segments.is_empty() && segments.iter().all(|v|
                 matches!(v, ifc_lite_core::AttributeValue::Typed { name, .. } if name.as_ref() == "IFCLINEINDEX"))),
         _ => false,
     }
@@ -103,7 +103,7 @@ pub(super) fn repair(
     if (residual.signed_area - boundary.signed_area).abs() > 1e-12 * boundary.signed_area.abs() {
         return Ok(None);
     }
-    match super::profile_topology::validate(std::slice::from_ref(&residual), clearance, join) {
+    match validate_topology(std::slice::from_ref(&residual), clearance, join) {
         Ok(()) => {},
         Err(WalkError::Unsupported(_)) => return Ok(None),
         Err(stop @ WalkError::Stopped(_)) => return Err(stop),
@@ -125,10 +125,10 @@ pub(super) fn validate(
         || result.loops.len() != 1 {
         return Ok(false);
     }
-    let curve = decoder.decode_by_id(profile.get_ref(2).ok_or("missing OuterCurve")?)
+    let curve = decoder.decode_by_id(profile.ref_at(ifc_lite_core::slot::IfcArbitraryClosedProfileDef::OUTER_CURVE).ok_or("missing OuterCurve")?)
         .map_err(|error| format!("OuterCurve: {error}"))?;
     if !line_curve(&curve) { return Ok(false); }
-    if let Err(original) = super::profile_topology::validate(&result.loops, clearance, join) {
+    if let Err(original) = validate_topology(&result.loops, clearance, join) {
         if let WalkError::Stopped(_) = original { return Err(original); }
         if let Some(mut residual) = repair(&result.loops[0], clearance, join, rebuild)? {
             residual.source = result.loops[0].source.take();

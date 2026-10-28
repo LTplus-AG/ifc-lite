@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #3641 source oracle: area-matched convex hull, independent of spur cancellation.
 use super::{convex::Convex, math::*};
-use ifc_lite_core::EntityDecoder;
+use ifc_lite_core::{slot, EntityDecoder};
 use ifc_lite_geometry::placement::Axis2Placement;
 use ifc_lite_processing::AnalyticQuantitySources;
 type Point = [f64; 3];
@@ -51,14 +51,14 @@ pub fn region(points: &[Point], relative: f64) -> Result<Vec<Point>, &'static st
 }
 pub fn authored_region(decoder: &mut EntityDecoder, relative: f64) -> Option<Vec<Point>> {
     let curve = decoder.decode_by_id(61273).ok()?;
-    if curve.get_ref(0)? != 61274 { return None; }
+    if curve.ref_at(slot::IfcIndexedPolyCurve::POINTS)? != 61274 { return None; }
     let list = decoder.decode_by_id(61274).ok()?;
-    let points: Option<Vec<Point>> = list.get(0)?.as_list()?.iter().map(|v| {
+    let points: Option<Vec<Point>> = list.list_at(slot::IfcCartesianPointList2D::COORD_LIST)?.iter().map(|v| {
         let xy = v.as_list()?;
-        Some([xy.first()?.as_float()?, xy.get(1)?.as_float()?, 0.])
+        Some([xy.first()?.as_float()?, xy.get(1)?.as_float()?, 0.]) // not-an-attribute: coordinate of a point
     }).collect();
     let points = points?;
-    let segments = curve.get(1)?.as_list()?;
+    let segments = curve.list_at(slot::IfcIndexedPolyCurve::SEGMENTS)?;
     if segments.len() != 1 { return None; }
     // Authenticate the authored selector rather than assuming point-list order.
     let ifc_lite_core::AttributeValue::Typed { name, value } = &segments[0] else { return None };
@@ -74,12 +74,12 @@ pub fn source(sources: &AnalyticQuantitySources, decoder: &mut EntityDecoder, or
     let polygon = authored_region(decoder, relative)?;
     let instance = sources.extrusion_definitions.instances.get(&72245)?.first()?;
     let solid = decoder.decode_by_id(61271).ok()?;
-    let placement = decoder.decode_by_id(solid.get_ref(1)?).ok()?;
+    let placement = decoder.decode_by_id(solid.ref_at(slot::IfcExtrudedAreaSolid::POSITION)?).ok()?;
     let local = Axis2Placement::read_3d(&placement, decoder).ok()?.matrix();
     let local: [f64;16] = std::array::from_fn(|i| local[(i%4,i/4)]);
     let mut frame = multiply(&instance.world_from_source?, &local);
     for k in 0..3 { frame[12+k] -= origin[k]; }
-    let direction = unit(decoder.direction3(solid.get_ref(2)?).ok()?)?;
-    let depth = solid.get_float(3)?;
+    let direction = unit(decoder.direction3(solid.ref_at(slot::IfcExtrudedAreaSolid::EXTRUDED_DIRECTION)?).ok()?)?;
+    let depth = solid.real_at(slot::IfcExtrudedAreaSolid::DEPTH)?;
     Convex::extrusion(&polygon.iter().map(|p| transform(&frame,*p)).collect::<Vec<_>>(), vector(&frame, direction.map(|v| v*depth)))
 }

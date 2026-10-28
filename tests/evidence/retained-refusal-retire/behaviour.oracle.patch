@@ -2,7 +2,7 @@
 +++ b/rust/processing/src/element/session_retained/cancellation.rs
 @@ -5,11 +5,11 @@
  impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
-     fn cancel(&mut self) {
+     pub(super) fn cancel(&mut self) {
          self.failed = true;
 -        let settled = self.pending.as_ref().is_some_and(|pending|
 -            pending.cancellation.stage.load(Ordering::Acquire) == SETTLED_FAULT);

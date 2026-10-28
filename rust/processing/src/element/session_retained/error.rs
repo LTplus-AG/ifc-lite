@@ -143,10 +143,18 @@ impl RetainedExecutionError {
     /// replacement. Runtime, receipt, and domain faults keep the recovery cap.
     pub(super) fn controller_cancelled(&self) -> bool {
         if let Self::Opening { inner, .. } = self { return inner.controller_cancelled(); }
+        use ifc_lite_geometry::program::transactions::TransactionFailureKind as Kind;
+        use ifc_lite_geometry::document::RetainedRefusal;
         matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_)
-            | Self::Common(_) | Self::Recipe(_) | Self::DeadlineExceeded
+            | Self::DeadlineExceeded
             | Self::Unsupported(_) | Self::InvalidTypeSource
-            | Self::Owner(WorkError::StaleSource | WorkError::Aborted))
+            | Self::Owner(WorkError::StaleSource | WorkError::Aborted)
+            | Self::Recipe(RetainedRefusal::InvalidSource(_)
+                | RetainedRefusal::UnsupportedSource(_) | RetainedRefusal::SourceNotCaptured))
+            || matches!(self, Self::Common(error) if matches!(error.kind(),
+                Kind::Source | Kind::OperationUnsupported | Kind::Unsupported
+                | Kind::EmptyResult | Kind::Empty | Kind::Incomplete
+                | Kind::Stopped | Kind::DeadlineExceeded | Kind::Cancelled))
     }
     pub(super) fn terminal(&self) -> bool {
         if let Self::Opening { inner, .. } = self { return inner.terminal(); }

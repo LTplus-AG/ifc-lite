@@ -65,13 +65,14 @@ fn extrusion(host: &ExtrudedHost) -> Option<Vec<Surface>> {
     let frame = &host.frame;
     let origin = transform(frame,[0.;3]);
     let normal = unit(cross(vector(frame,[1.,0.,0.]),vector(frame,[0.,1.,0.])))?;
-    let normal = scale(normal,dot(normal,host.direction).signum());
+    let sweep_sign = dot(normal,host.direction).signum();
+    let normal = scale(normal,sweep_sign);
     let mut result = vec![Surface::Plane {origin,normal:scale(normal,-1.)},
         Surface::Plane {origin:add(origin,scale(host.direction,host.depth)),normal}];
     for (outer,edges) in &host.loops {
         let area: f64 = edges.iter().map(Edge::integral).sum();
         if area == 0. || !area.is_finite() { return None; }
-        let sign = area.signum() * if *outer {1.} else {-1.};
+        let sign = sweep_sign * area.signum() * if *outer {1.} else {-1.};
         for edge in edges {
             result.push(match *edge {
                 Edge::Line(a,b) => Surface::Plane {

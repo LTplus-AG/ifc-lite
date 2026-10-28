@@ -40,3 +40,11 @@ fn m11_n_7955_source_trimmed_disk_respects_millimetres_and_mapped_directrix() {
     expected(&surfaces,[0.,0.,0.],[-1.,0.,0.]);
     expected(&surfaces,[2.75,0.,0.],[1.,0.,0.]);
 }
+
+#[test]
+fn m11_n_7955_negative_extrusion_keeps_outward_profile_sides() {
+    let text = include_str!("../../../tests/fixtures/synthetic-retained/f-c-extrusion.ifc")
+        .replace("#3=IFCDIRECTION((0.,0.,1.));","#3=IFCDIRECTION((0.,0.,-1.));");
+    // The +X side at local (2,.5,-1.5), under the fixture's authored frame.
+    expected(&source(text.as_bytes(),27),[3.76,-0.82,0.7],[0.36,0.48,-0.8]);
+}

@@ -27,6 +27,7 @@
 
 import { isCancelledError, isNetworkUnavailableError } from './cancelled-and-network-errors.js';
 import { isFileNotFoundMessage } from './file-not-found-errors.js';
+import { isInvalidArchiveError } from './invalid-archive-errors.js';
 import { isWebglUnavailable } from './webgl-unavailable.js';
 import { isWorkerScriptSkewMessage } from '@ifc-lite/geometry';
 
@@ -89,6 +90,13 @@ export type LoadErrorKind =
    * ./file-not-found-errors.ts.
    */
   | 'file_unreadable'
+  /**
+   * A readable .ifcZIP has zero/multiple model entries, or its declared/actual
+   * extracted size exceeds the parser's safety limit. A user-file problem,
+   * distinct from an unreadable file and from actual memory exhaustion.
+   * Only the anchored parser refusals in ./invalid-archive-errors.ts qualify.
+   */
+  | 'invalid_archive'
   /**
    * The WebAssembly geometry engine trapped at runtime on THIS thread — a Rust
    * panic, a failed `assert!` or an allocator abort, all of which reach JS
@@ -271,6 +279,10 @@ function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
  */
 export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKind {
   const message = messageOf(err);
+  // Before broad memory/engine/file matchers: entry names are user-controlled
+  // and may contain their keywords. Only complete parser refusals claim this
+  // warning-level kind; actual OOMs while decompressing keep their own kind.
+  if (isInvalidArchiveError(message)) return 'invalid_archive';
   // Checked before the memory/worker buckets: a NotReadableError says nothing
   // about the model or this device's capacity, and its message ("...could not
   // be read...permission problems...") must not be mistaken for one of them.

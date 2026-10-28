@@ -5,6 +5,21 @@
 use crate::{Error, GeometryRouter};
 use ifc_lite_core::{DecodedEntity, IfcType};
 
+// Keep source-target filters stable when the shared report boundary moves.
+macro_rules! nested_diagnostic {
+    ($target:literal, $item_id:expr, $error:expr) => {{
+        let _ = $item_id;
+        crate::diag::diag_debug!(
+            { target: $target, item_id = $item_id, error = %$error,
+              "skipping nested IfcMappedItem" }
+            else {
+                #[cfg(debug_assertions)]
+                eprintln!("[ifc-lite] Skipping nested IfcMappedItem #{}: {}", $item_id, $error);
+            }
+        );
+    }};
+}
+
 pub(super) enum DropReason<'a> {
     Item {
         item: &'a DecodedEntity,
@@ -40,7 +55,8 @@ pub(super) fn report_drop(
         DropReason::Item { item, walk } => {
             let _ = (item, walk);
             crate::diag::diag_debug!(
-                { item_id = item.id, ifc_type = ?item.ifc_type, walk, error = %_error,
+                { target: "ifc_lite_geometry::program::mapping::reduce",
+                  item_id = item.id, ifc_type = ?item.ifc_type, walk, error = %_error,
                   "skipping unsupported source item" }
                 else {
                     #[cfg(debug_assertions)]
@@ -51,15 +67,15 @@ pub(super) fn report_drop(
                 }
             );
         }
-        DropReason::NestedFailure { item_id } | DropReason::LogicalStop { item_id } => {
-            let _ = item_id;
-            crate::diag::diag_debug!(
-                { item_id = item_id, error = %_error, "skipping nested IfcMappedItem" }
-                else {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[ifc-lite] Skipping nested IfcMappedItem #{}: {}", item_id, _error);
-                }
+        DropReason::NestedFailure { item_id } => {
+            nested_diagnostic!(
+                "ifc_lite_geometry::program::mapping::reduce",
+                item_id,
+                _error
             );
+        }
+        DropReason::LogicalStop { item_id } => {
+            nested_diagnostic!("ifc_lite_geometry::program::mapping::stop", item_id, _error);
         }
     }
 }

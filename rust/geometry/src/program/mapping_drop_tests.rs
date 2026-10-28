@@ -62,7 +62,7 @@ fn issue_7781_drop_trace_preserves_siblings_parent_truncation_and_policy() {
     }
 }
 
-#[cfg(all(debug_assertions, not(feature = "observability")))]
+#[cfg(not(feature = "observability"))]
 #[test]
 fn issue_7781_drop_diagnostics_keep_item_before_nested_failure_even_when_suppressed() {
     let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -78,7 +78,11 @@ fn issue_7781_drop_diagnostics_keep_item_before_nested_failure_even_when_suppres
         .lines()
         .filter(|line| line.starts_with("[ifc-lite] Skipping"))
         .collect();
-    assert_eq!(lines.len(), 8, "{stderr}");
+    assert_eq!(
+        lines.len(),
+        if cfg!(debug_assertions) { 8 } else { 0 },
+        "{stderr}"
+    );
     for (index, pair) in lines.chunks_exact(2).enumerate() {
         let walk = if index < 2 {
             "mapped-source"
@@ -158,4 +162,93 @@ fn issue_7781_nested_terminal_stop_never_becomes_a_drop_or_runs_a_sibling() {
         assert!(router.take_unsupported_items().is_empty());
         assert_eq!(router.unsupported_scope_depth(), 0);
     }
+}
+
+#[cfg(feature = "observability")]
+#[test]
+fn issue_7781_structured_drop_events_preserve_targets_fields_and_order() {
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex},
+    };
+    use tracing::{span, Event, Metadata, Subscriber};
+    type Events = Vec<(String, BTreeMap<String, String>)>;
+    #[derive(Clone, Default)]
+    struct Capture(Arc<Mutex<Events>>);
+    #[derive(Default)]
+    struct Fields(BTreeMap<String, String>);
+    impl tracing::field::Visit for Fields {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.insert(field.name().to_owned(), value.to_owned());
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.insert(field.name().to_owned(), format!("{value:?}"));
+        }
+    }
+    impl Subscriber for Capture {
+        fn enabled(&self, _: &Metadata<'_>) -> bool {
+            true
+        }
+        fn new_span(&self, _: &span::Attributes<'_>) -> span::Id {
+            span::Id::from_u64(1)
+        }
+        fn record(&self, _: &span::Id, _: &span::Record<'_>) {}
+        fn record_follows_from(&self, _: &span::Id, _: &span::Id) {}
+        fn enter(&self, _: &span::Id) {}
+        fn exit(&self, _: &span::Id) {}
+        fn event(&self, event: &Event<'_>) {
+            let mut fields = Fields::default();
+            event.record(&mut fields);
+            if fields.0.contains_key("error") {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((event.metadata().target().to_owned(), fields.0));
+            }
+        }
+    }
+    let capture = Capture::default();
+    tracing::subscriber::with_default(capture.clone(), || {
+        issue_7781_drop_trace_preserves_siblings_parent_truncation_and_policy();
+        // The logical-stop report deliberately restores policy before logging.
+        // The separate controller regression covers its prefix/unwind effects.
+        super::report_drop(
+            super::DropReason::LogicalStop { item_id: 20 },
+            &Error::geometry("logical stop witness"),
+            false,
+            &GeometryRouter::new(),
+        );
+    });
+    let events = capture.0.lock().unwrap();
+    assert_eq!(events.len(), 9);
+    for (index, pair) in events[..8].chunks_exact(2).enumerate() {
+        for (target, _) in pair {
+            assert_eq!(target, "ifc_lite_geometry::program::mapping::reduce");
+        }
+        let item = &pair[0].1;
+        assert_eq!(item["item_id"], "1");
+        assert_eq!(item["ifc_type"], "IfcCartesianPoint");
+        assert_eq!(
+            item["walk"],
+            if index < 2 {
+                "mapped-source"
+            } else {
+                "styled-source"
+            }
+        );
+        assert_eq!(item["message"], "skipping unsupported source item");
+        let nested = &pair[1].1;
+        assert_eq!(nested["item_id"], "20");
+        assert_eq!(
+            nested["error"],
+            "Geometry processing error: Failed to resolve MappingSource"
+        );
+        assert_eq!(nested["message"], "skipping nested IfcMappedItem");
+    }
+    assert_eq!(events[8].0, "ifc_lite_geometry::program::mapping::stop");
+    assert_eq!(events[8].1["item_id"], "20");
+    assert_eq!(
+        events[8].1["error"],
+        "Geometry processing error: logical stop witness"
+    );
 }

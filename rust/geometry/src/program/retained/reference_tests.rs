@@ -48,7 +48,7 @@ fn assert_body_only(bytes: &str) {
             LogicalRetainedDefinition::Source { source_id: 13, .. }
         ));
     }
-    assert_eq!(plan.remaining.len(), 4, "construction is not completion");
+    assert_eq!(plan.remaining.len(), 5, "construction is not completion");
     assert_exact_unchanged(bytes, &exact_parts(SOURCE));
 }
 
@@ -183,7 +183,7 @@ fn selected_mapping_constructs_its_source_without_discharging_obligations() {
         [19., 38., 60.]);
     assert_eq!(plan.remaining, vec![RetainedRequirement::OpeningClosure,
         RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
-        RetainedRequirement::PersistentFaces]);
+        RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals]);
 }
 
 #[test]

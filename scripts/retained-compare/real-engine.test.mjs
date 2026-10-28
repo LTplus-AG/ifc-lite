@@ -61,3 +61,29 @@ test('#7955 M3 unreviewed synthetic cases, including the baked scaled cutter, ma
     await rm(scratch, { recursive: true, force: true });
   }
 });
+
+
+test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in the unmet-normals header', {
+  timeout: 120000,
+  skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT header identity evidence',
+}, async () => {
+  const { validateEngine } = await import('../../packages/cli/dist/retained/engine.js');
+  const { runRetained } = await import('../../packages/cli/dist/retained/run.js');
+  const { retainedObj } = await import('../../packages/cli/dist/retained/obj.js');
+  const source = await readFile('tests/fixtures/synthetic-retained/f-c-extrusion.ifc');
+  const outcomes = await runRetained(await validateEngine(engine), source);
+  assert.ok(outcomes.length > 0 && outcomes.every(p => p.status === 'published'));
+  for (const product of outcomes) {
+    assert.equal(product.obligationsUnmet.at(-1), 'SurfaceNormals');
+    for (const part of product.parts) {
+      assert.equal(part.revisionLocalFaces.length, part.indices.length / 3);
+      for (const key of ['normals', 'color', 'faces', 'instanceKey']) assert.equal(part[key], undefined);
+    }
+  }
+  const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');
+  const current = retainedObj(outcomes).split('\n');
+  assert.equal(current.length, previous.length, 'no added geometry, normals, groups or materials');
+  const changed = current.flatMap((line, index) => line === previous[index] ? [] : [index]);
+  assert.deepEqual(changed, [3], 'the ONLY changed line must be the presentation obligations header');
+  assert.equal(current[3], previous[3] + ', SurfaceNormals');
+});

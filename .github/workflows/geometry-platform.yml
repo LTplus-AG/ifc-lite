@@ -144,6 +144,7 @@ jobs:
           set -o pipefail
           export IFCLITE_REQUIRE_SMLIB=1
           export IFCLITE_M9_REFERENCE="$RUNNER_TEMP/m9-native-types.json"
+          export IFCLITE_M8_NATIVE_REFERENCE="$RUNNER_TEMP/m8-native.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
           for file in tests/evidence/*/witnesses.txt; do
@@ -242,6 +243,9 @@ jobs:
             cp "$RUNNER_TEMP/m9-native-types.json" rust/wasm-bindings/smlib/m9-native-types.json
           fi
           node scripts/stage-retained-runtime-peer.mjs
+          if [ -f "$RUNNER_TEMP/m8-native.json" ]; then
+            cp "$RUNNER_TEMP/m8-native.json" rust/wasm-bindings/smlib/m8-native.json
+          fi
           echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"
       - name: Actual module-Worker retained browser executor (ifc-lite-wasm)
         id: browser-runtime
@@ -249,9 +253,13 @@ jobs:
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 300
         run: |
+          # The default step shell has no pipefail: without it `| tee` would hide
+          # any failing retained_browser test behind the witness grep below.
+          set -o pipefail
           wasm-pack test --headless --chrome \
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
-            --features retained-browser -- retained_browser
+            --features retained-browser -- retained_browser --nocapture | tee "$RUNNER_TEMP/retained-browser.log"
+          grep -F "sdk witness executed: m8 real browser Worker parity" "$RUNNER_TEMP/retained-browser.log"
       - name: M3 native and browser opening parity
         id: m3-browser
         continue-on-error: true

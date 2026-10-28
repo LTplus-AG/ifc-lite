@@ -208,6 +208,7 @@ pub(crate) enum RetainedRequirement {
     MaterialLayers,
     IfcAppearance,
     PersistentFaces,
+    SurfaceNormals,
 }
 
 /// A bounded copy of logical references; no runtime receipt or object is cloned.

@@ -39,7 +39,7 @@ fn issue_7955_m9_orphan_maps_discharge_both_obligations_atomically() {
     assert!(plan.type_origin_placed(105, &[101, 103, 108]));
     let plan = plan.discharge_type_origin(105, &[101, 103, 108]).unwrap();
     assert_eq!(plan.requirements().collect::<Vec<_>>(), [Requirement::MaterialLayers,
-        Requirement::IfcAppearance, Requirement::PersistentFaces]);
+        Requirement::IfcAppearance, Requirement::PersistentFaces, Requirement::SurfaceNormals]);
     // Frames are not asserted here: discharge only edits obligations, so a
     // before/after frame comparison could not fail. Placement correctness is
     // checked in world space by m9_native (real SDK, all six cubes incl. the

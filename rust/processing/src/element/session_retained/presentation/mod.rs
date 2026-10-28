@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MPL-2.0
+//! M11 slice seams. Only a slice with its own proof may discharge an obligation.
+use super::{publication::ShapeOnlyProduct, RetainedProductPlan, OwnedMeshProductionContext, OwnedResourceContext};
+use ifc_lite_geometry::program::transactions::Requirement;
+mod appearance;
+mod normals;
+mod faces;
+mod instancing;
+
+// M11-A/N/F/I consume these immutable inputs in their own modules.
+#[allow(dead_code)] // Scaffold inputs become live when the independently gated slices land.
+pub(super) struct Context<'a> {
+    pub plan: &'a RetainedProductPlan,
+    pub model: &'a OwnedMeshProductionContext,
+    pub resources: &'a OwnedResourceContext,
+    pub element_color: [f32; 4],
+}
+
+pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Vec<Requirement> {
+    let mut discharged = Vec::new();
+    discharged.extend(appearance::apply(product, context));
+    discharged.extend(normals::apply(product, context));
+    discharged.extend(faces::apply(product, context));
+    discharged.extend(instancing::apply(product, context));
+    discharged
+}

@@ -6,7 +6,7 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
-use crate::representation::{product_shape, Select};
+use crate::representation::{is_drawing_camera_annotation, product_shape, Select};
 use crate::coord_is_large;
 use ifc_lite_core::{geometry_flags_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
@@ -55,7 +55,9 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
         let has_rep = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-        if !has_rep {
+        // A drawing camera is never meshed, so its placement is no evidence of
+        // where the model's geometry sits (#8211).
+        if !has_rep || is_drawing_camera_annotation(entity) {
             return None;
         }
         let mut transform = self

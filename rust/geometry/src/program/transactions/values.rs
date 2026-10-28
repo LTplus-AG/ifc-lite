@@ -55,7 +55,7 @@ impl Operation {
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppearance, PersistentFaces }
+pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppearance, PersistentFaces, SurfaceNormals }
 pub struct Plan {
     pub(super) inner: logical::RetainedProductPlan,
     _storage: Option<crate::resource::Reservation>,
@@ -72,11 +72,11 @@ impl Plan {
         let mut values = Vec::new();
         let storage = resources.reserve_headers(&mut values, count).map_err(super::TransactionError::stopped)?;
         let mut remaining = Vec::new();
-        let requirements_storage = resources.reserve_headers(&mut remaining, 5).map_err(super::TransactionError::stopped)?;
+        let requirements_storage = resources.reserve_headers(&mut remaining, 6).map_err(super::TransactionError::stopped)?;
         remaining.extend([
             logical::RetainedRequirement::ProductPlacement, logical::RetainedRequirement::OpeningClosure,
             logical::RetainedRequirement::MaterialLayers, logical::RetainedRequirement::IfcAppearance,
-            logical::RetainedRequirement::PersistentFaces,
+            logical::RetainedRequirement::PersistentFaces, logical::RetainedRequirement::SurfaceNormals,
         ]);
         for plan in plans { values.extend(plan.inner.values); }
         resources.check().map_err(super::TransactionError::stopped)?;
@@ -102,6 +102,7 @@ impl Plan {
             logical::RetainedRequirement::MaterialLayers => Requirement::MaterialLayers,
             logical::RetainedRequirement::IfcAppearance => Requirement::IfcAppearance,
             logical::RetainedRequirement::PersistentFaces => Requirement::PersistentFaces,
+            logical::RetainedRequirement::SurfaceNormals => Requirement::SurfaceNormals,
         })
     }
 }

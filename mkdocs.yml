@@ -47,6 +47,8 @@ not_in_nav: |
   architecture/evidence/**
   # #8042 diff stack preparation/qualification checkpoints (local paths, parent-only handoff notes); not user documentation.
   architecture/diff-8042/**
+  # #8259 streaming pre-pass allocation accounting; linked from scripts/perf/README.md, not user documentation.
+  architecture/prepass-memory.md
   research/**
 
 theme:

@@ -226,8 +226,8 @@
    628 packages/ids/src/translation/service.ts
    636 packages/ids/src/types.ts
    755 packages/ids/src/validation/validator.ts
-   468 packages/ifcx/src/federated-composition.ts
-   704 packages/ifcx/src/index.ts
+   425 packages/ifcx/src/federated-composition.ts
+   693 packages/ifcx/src/index.ts
    749 packages/lists/src/engine.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts

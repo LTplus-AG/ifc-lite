@@ -94,6 +94,54 @@ fn issue_7955_m11_f_overlapping_openings_follow_the_prism_bands() {
     println!("sdk witness executed: m11_f_bands");
 }
 
+/// Hand-built FZK equivalent: one opening #50 of two abutting boxes (A #46 then B #56, split at
+/// y = 0.15 across the 0.3 m wall #30), so their jambs and sill/head caps are coplanar and connected.
+const ABUTTING: &str = "ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m11-f-abutting','2026-10-28T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));ENDSEC;DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCDIRECTION((1.,0.,0.));#4=IFCDIRECTION((0.,0.,1.));
+#5=IFCAXIS2PLACEMENT3D(#1,#4,#2);#6=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#5,$);
+#7=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#6,$,.MODEL_VIEW.,$);#8=IFCLOCALPLACEMENT($,#5);
+#20=IFCCARTESIANPOINT((0.,0.));#21=IFCCARTESIANPOINT((4.,0.));#22=IFCCARTESIANPOINT((4.,0.3));#23=IFCCARTESIANPOINT((0.,0.3));
+#24=IFCPOLYLINE((#20,#21,#22,#23,#20));#25=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'Wall',#24);
+#26=IFCEXTRUDEDAREASOLID(#25,#5,#4,3.);#27=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#26));
+#28=IFCPRODUCTDEFINITIONSHAPE($,$,(#27));#29=IFCLOCALPLACEMENT(#8,#5);
+#30=IFCWALL('0000000000000000000W1',$,'Wall',$,$,#29,#28,$);
+#40=IFCCARTESIANPOINT((1.,-0.1));#41=IFCCARTESIANPOINT((2.,-0.1));#42=IFCCARTESIANPOINT((2.,0.15));#43=IFCCARTESIANPOINT((1.,0.15));
+#44=IFCPOLYLINE((#40,#41,#42,#43,#40));#45=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'A',#44);
+#47=IFCCARTESIANPOINT((0.,0.,0.5));#48=IFCAXIS2PLACEMENT3D(#47,#4,#2);#46=IFCEXTRUDEDAREASOLID(#45,#48,#4,2.);
+#51=IFCCARTESIANPOINT((1.,0.4));#52=IFCCARTESIANPOINT((2.,0.4));
+#54=IFCPOLYLINE((#43,#42,#52,#51,#43));#55=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'B',#54);
+#56=IFCEXTRUDEDAREASOLID(#55,#48,#4,2.);
+#57=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#46,#56));#58=IFCPRODUCTDEFINITIONSHAPE($,$,(#57));
+#59=IFCLOCALPLACEMENT(#8,#5);#50=IFCOPENINGELEMENT('0000000000000000000A1',$,'Door',$,$,#59,#58,$);
+#80=IFCRELVOIDSELEMENT('0000000000000000000R1',$,$,$,#30,#50);
+ENDSEC;END-ISO-10303-21;";
+/// Hand-derived: each jamb is one 0.3 m x 2 m face, each sill/head one 1 m x 0.3 m face, all on A.
+fn abutting_hand_keys() -> BTreeMap<String, f64> {
+    BTreeMap::from([("#26:side(0,0)", 10.), ("#26:side(0,2)", 10.), ("#26:side(0,1)", 0.9), ("#26:side(0,3)", 0.9),
+        ("#26:cap(start)", 1.2), ("#26:cap(end)", 1.2), ("#46>#50:side(0,1)", 0.6), ("#46>#50:side(0,3)", 0.6),
+        ("#46>#50:cap(start)", 0.3), ("#46>#50:cap(end)", 0.3)].map(|(k, v)| (k.to_owned(), v)))
+}
+
+#[test]
+fn issue_7955_m11_f_connected_coincident_faces_go_to_the_earliest_cut_oracle() {
+    let expected = face_bands::cut(&sources(ABUTTING), 30, &[50]).expect("abutting cutters are predicted");
+    let hand = abutting_hand_keys();
+    assert_eq!(expected.keys().collect::<Vec<_>>(), hand.keys().collect::<Vec<_>>(), "B #56 keeps no face");
+    for (key, area) in &hand { assert!((expected[key].area_m2 - area).abs() <= 1e-12, "{key}: {:?}", expected[key]); }
+}
+
+#[test]
+fn issue_7955_m11_f_connected_coincident_faces_go_to_the_earliest_cut() {
+    let Some(outcomes) = native(ABUTTING) else { return; };
+    // Gated on the real kernel: a kernel splitting the jamb or sill per box keys B #56 and fails here.
+    let actual = assert_matches("abutting #30", shape(&outcomes, 30), &face_bands::cut(&sources(ABUTTING), 30, &[50]).unwrap());
+    for (key, area) in abutting_hand_keys() {
+        assert!((actual[&key] - area).abs() / area <= limit(false), "{key}: {} vs {area}", actual[&key]);
+    }
+    println!("sdk witness executed: m11_f_connected_coincident");
+}
+
 // A real receipt whose one Boolean triangle claims another kernel face: the kernel
 // cross-check must refuse, never re-key or publish.
 struct Corrupt(NativeReceipt, Option<Vec<u32>>);
@@ -166,7 +214,7 @@ fn issue_7955_m11_f_corrupted_kernel_face_refuses_face_provenance_unproven() {
     println!("sdk witness executed: m11_f_kernel_cross_check");
 }
 
-/// Browser parity reference: every published product's sorted key set.
+/// Browser parity reference: every published product's keys with their triangle counts and areas.
 #[test]
 fn issue_7955_m11_f_stage_native_browser_reference() {
     let mut models = BTreeMap::new();
@@ -176,8 +224,13 @@ fn issue_7955_m11_f_stage_native_browser_reference() {
         let Some(outcomes) = native(&fixture(path)) else { return; };
         let rows: Vec<_> = outcomes.iter().map(|o| match o {
             ProductOutcome::Published(p) => {
-                let keys: BTreeSet<String> = p.parts.iter().flat_map(|part| part.faces.as_ref().unwrap().table.iter().map(ToString::to_string)).collect();
-                serde_json::json!({"id": p.product_id, "code": "published", "keys": keys})
+                let areas = face_check::measured(p).unwrap();
+                let mut triangles: BTreeMap<String, usize> = BTreeMap::new();
+                for faces in p.parts.iter().map(|part| part.faces.as_ref().unwrap()) {
+                    for &k in &faces.triangles { *triangles.entry(faces.table[k as usize].to_string()).or_default() += 1; }
+                }
+                let faces: BTreeMap<_, _> = areas.iter().map(|(k, a)| (k.clone(), serde_json::json!({"triangles": triangles[k], "area": a}))).collect();
+                serde_json::json!({"id": p.product_id, "code": "published", "keys": areas.keys().collect::<Vec<_>>(), "faces": faces})
             }
             ProductOutcome::Refused { product_id, refusal, .. } => serde_json::json!({"id": product_id, "code": refusal.code()}),
         }).collect();

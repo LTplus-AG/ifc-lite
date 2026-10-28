@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! M11-F cut-face areas through M3's prism bands (#7955): a host and convex
 //! cutters with parallel WORLD axes, clipped exactly (Green integrals and
-//! analytic split parameters, never a mesh). Coincident caps of overlapping
-//! cutters are one face owned by the earliest cut (the left operand); a
-//! configuration whose ownership hinges on merely touching boundaries is not
-//! predicted (`None`).
+//! analytic split parameters, never a mesh). Kernel-independent rule:
+//! CONNECTED coincident faces are one face owned by the earliest cut (the left
+//! operand), whether the cutters overlap or abut along a boundary of positive
+//! length; faces touching only at a point stay separate, and two cutter walls
+//! abutting back to back are interior (no face). Anything else hinging on a
+//! touching boundary is not predicted (`None`).
 use super::clipping::{clipped_area, convex_planes, Edge, HalfPlane};
 use super::faces::{add, key, FaceAreas};
 use super::prism::{self, Basis, Prism};
@@ -96,6 +98,118 @@ fn region(host: &Prism, a: &[&Cutter], b: &[&Cutter], work: &mut usize) -> Optio
     }
     Some(total)
 }
+/// Union-find root.
+fn root(parent: &mut [usize], mut i: usize) -> usize {
+    while parent[i] != i { parent[i] = parent[parent[i]]; i = parent[i]; }
+    i
+}
+/// +1 when two cutter edges lie on one line facing the same way, -1 back to back, else 0.
+fn facing(a: HalfPlane, b: HalfPlane) -> i8 {
+    let dot = a.n[0] * b.n[0] + a.n[1] * b.n[1];
+    if dot > 1. - 1e-9 && (a.d - b.d).abs() <= TOUCH { 1 } else if dot < -1. + 1e-9 && (a.d + b.d).abs() <= TOUCH { -1 } else { 0 }
+}
+/// Position along an edge line's unit direction.
+fn along(h: HalfPlane, p: [f64; 2]) -> f64 { p[0] * -h.n[1] + p[1] * h.n[0] }
+/// Two convex caps whose interiors are disjoint join when they share a boundary
+/// segment of positive length that survives inside the host and outside the
+/// cutters already open there; touching only at a point keeps them apart.
+fn abutting(host: &Prism, a: &Cutter, b: &Cutter, closed: &[&Cutter]) -> Option<bool> {
+    let planes: Vec<&[HalfPlane]> = closed.iter().map(|c| c.planes.as_slice()).collect();
+    for (ha, ea) in a.planes.iter().zip(&a.prism.loops[0].1) {
+        for (_, eb) in b.planes.iter().zip(&b.prism.loops[0].1).filter(|(hb, _)| facing(*ha, **hb) == -1) {
+            let (u0, u1) = (along(*ha, ea.point(0.)), along(*ha, ea.point(1.)));
+            let (v0, v1) = (along(*ha, eb.point(0.)), along(*ha, eb.point(1.)));
+            let (from, to) = (u0.min(u1).max(v0.min(v1)), u0.max(u1).min(v0.max(v1)));
+            if to - from <= TOUCH { continue; }
+            let shared = Edge::Line(ea.point((from - u0) / (u1 - u0)), ea.point((to - u0) / (u1 - u0)));
+            let surviving = kept(&shared, &planes, Some(&host.loops), |p| {
+                if closed.iter().any(|o| inside(&o.planes, p, -TOUCH) && !inside(&o.planes, p, TOUCH)) { return None; }
+                Some(in_region(&host.loops, p) && !closed.iter().any(|o| inside(&o.planes, p, 0.)))
+            })?;
+            if surviving > TOUCH { return Some(true); }
+        }
+    }
+    Some(false)
+}
+/// One surviving reveal span of a cutter edge line within one band.
+struct Piece { group: usize, band: usize, u: [f64; 2], cutter: usize, area: f64 }
+/// Reveal pieces of the cutters active in one band. A span on another cutter's
+/// boundary is the same face when that cutter's wall faces the same way (it is
+/// counted once, by the earlier cutter) and interior when the walls are back to
+/// back; any other touching span is not predicted.
+#[allow(clippy::too_many_arguments)] // One band of one host item, its cutters and their edge-line groups.
+fn reveals(h: &Prism, cutters: &[Cutter], now: &[&Cutter], groups: &[Vec<usize>], band: usize, height: f64,
+    pieces: &mut Vec<Piece>) -> Option<()> {
+    let planes: Vec<&[HalfPlane]> = now.iter().map(|c| c.planes.as_slice()).collect();
+    let index = |c: &Cutter| cutters.iter().position(|o| std::ptr::eq(o, c));
+    for &c in now {
+        let j = index(c)?;
+        for (s, (edge, plane)) in c.prism.loops[0].1.iter().zip(&c.planes).enumerate() {
+            let mut ts: Vec<f64> = vec![0., 1.];
+            ts.extend(planes.iter().flat_map(|p| p.iter()).flat_map(|h| edge.split_parameters(*h)));
+            if let Edge::Line(a, b) = edge {
+                let d = [b[0] - a[0], b[1] - a[1]];
+                ts.extend(h.loops.iter().flat_map(|(_, e)| e).flat_map(|e| hits(*a, d, e)).filter(|t| *t > 0. && *t < 1.));
+            }
+            ts.sort_by(f64::total_cmp);
+            ts.dedup();
+            'span: for span in ts.windows(2) {
+                let p = edge.point((span[0] + span[1]) / 2.);
+                if !in_region(&h.loops, p) { continue; }
+                for &o in now.iter().filter(|o| !std::ptr::eq(**o, c)) {
+                    if inside(&o.planes, p, TOUCH) { continue 'span; }
+                    if !inside(&o.planes, p, -TOUCH) { continue; }
+                    match o.planes.iter().map(|q| facing(*plane, *q)).find(|f| *f != 0)? {
+                        1 if index(o)? > j => {}
+                        _ => continue 'span,
+                    }
+                }
+                let (u0, u1) = (along(*plane, edge.point(span[0])), along(*plane, edge.point(span[1])));
+                pieces.push(Piece { group: groups[j][s], band, u: [u0.min(u1), u0.max(u1)], cutter: j,
+                    area: (span[1] - span[0]) * length(edge) * height });
+            }
+        }
+    }
+    Some(())
+}
+/// Connected pieces of one edge line (sharing a band and touching, or in adjacent
+/// bands and overlapping) are one face, keyed by its earliest cutter.
+fn own(pieces: &[Piece], cutters: &[Cutter], groups: &[Vec<usize>], areas: &mut FaceAreas) {
+    let mut parent: Vec<usize> = (0..pieces.len()).collect();
+    for i in 0..pieces.len() {
+        for k in 0..i {
+            let (a, b) = (&pieces[i], &pieces[k]);
+            let overlap = a.u[1].min(b.u[1]) - a.u[0].max(b.u[0]);
+            if a.group == b.group && ((a.band == b.band && overlap >= -TOUCH) || (a.band.abs_diff(b.band) == 1 && overlap > TOUCH)) {
+                let (x, y) = (root(&mut parent, i), root(&mut parent, k));
+                parent[x.max(y)] = x.min(y);
+            }
+        }
+    }
+    let mut owner = vec![usize::MAX; pieces.len()];
+    for i in 0..pieces.len() { let r = root(&mut parent, i); owner[r] = owner[r].min(pieces[i].cutter); }
+    for (i, piece) in pieces.iter().enumerate() {
+        let c = owner[root(&mut parent, i)];
+        let Some(s) = groups[c].iter().position(|g| *g == piece.group) else { continue };
+        add(areas, key(cutters[c].item, cutters[c].via, &format!("side(0,{s})")), piece.area, false);
+    }
+}
+/// Every cutter edge's line group: edges on one line facing the same way share it.
+fn edge_groups(cutters: &[Cutter]) -> Vec<Vec<usize>> {
+    let flat: Vec<(usize, usize)> = cutters.iter().enumerate().flat_map(|(j, c)| (0..c.planes.len()).map(move |s| (j, s))).collect();
+    let mut parent: Vec<usize> = (0..flat.len()).collect();
+    for i in 0..flat.len() {
+        for k in 0..i {
+            if facing(cutters[flat[i].0].planes[flat[i].1], cutters[flat[k].0].planes[flat[k].1]) == 1 {
+                let (x, y) = (root(&mut parent, i), root(&mut parent, k));
+                parent[x.max(y)] = x.min(y);
+            }
+        }
+    }
+    let mut groups: Vec<Vec<usize>> = cutters.iter().map(|c| vec![0; c.planes.len()]).collect();
+    for (i, &(j, s)) in flat.iter().enumerate() { groups[j][s] = root(&mut parent, i); }
+    groups
+}
 /// Convex polygons strictly apart (a separating edge line clears every corner by TOUCH).
 fn separated(a: &Cutter, b: &Cutter) -> bool {
     a.planes.iter().any(|h| b.corners.iter().all(|p| h.distance(*p) < -TOUCH))
@@ -118,6 +232,7 @@ pub fn cut(sources: &AnalyticQuantitySources, host: u32, openings: &[u32]) -> Op
     }
     let mut areas = FaceAreas::new();
     let mut work = 10_000_000usize;
+    let groups = edge_groups(&cutters);
     for (h, host_item) in hosts {
         let curved = h.loops.iter().flat_map(|(_, e)| e).any(|e| matches!(e, Edge::Arc { .. }));
         let mut bands = vec![h.low, h.high];
@@ -125,7 +240,8 @@ pub fn cut(sources: &AnalyticQuantitySources, host: u32, openings: &[u32]) -> Op
         bands.sort_by(f64::total_cmp);
         bands.dedup();
         let active = |z: f64| cutters.iter().filter(|c| c.prism.low < z && c.prism.high > z).collect::<Vec<_>>();
-        for band in bands.windows(2) {
+        let mut pieces = Vec::new();
+        for (index, band) in bands.windows(2).enumerate() {
             let (height, now) = (band[1] - band[0], active((band[0] + band[1]) / 2.));
             let planes: Vec<&[HalfPlane]> = now.iter().map(|c| c.planes.as_slice()).collect();
             // Host sides survive unless strictly inside a cutter: a flush cutter face is the host's (left).
@@ -135,41 +251,32 @@ pub fn cut(sources: &AnalyticQuantitySources, host: u32, openings: &[u32]) -> Op
                     add(&mut areas, key(host_item, 0, &format!("side({l},{s})")), outside * height, matches!(edge, Edge::Arc { .. }));
                 }
             }
-            for (j, c) in now.iter().enumerate() {
-                for (s, edge) in c.prism.loops[0].1.iter().enumerate() {
-                    let reveal = kept(edge, &planes, Some(&h.loops), |p| {
-                        let others = now.iter().enumerate().filter(|(i, _)| *i != j);
-                        // A reveal on another cutter's boundary is a coincident face: not predicted.
-                        if others.clone().any(|(_, o)| inside(&o.planes, p, -TOUCH) && !inside(&o.planes, p, TOUCH)) { return None; }
-                        Some(in_region(&h.loops, p) && !others.clone().any(|(_, o)| inside(&o.planes, p, 0.)))
-                    })?;
-                    if reveal > 0. { add(&mut areas, key(c.item, c.via, &format!("side(0,{s})")), reveal * height, false); }
-                }
-            }
+            reveals(&h, &cutters, &now, &groups, index, height, &mut pieces)?;
         }
+        own(&pieces, &cutters, &groups, &mut areas);
         // Host caps keep what the cutters spanning them do not remove.
         let mid = |i: usize| (bands[i] + bands[i + 1]) / 2.;
         for (z, now) in [(h.low, active(mid(0))), (h.high, active(mid(bands.len() - 2)))] {
             let role = if z == h.start { "cap(start)" } else { "cap(end)" };
             add(&mut areas, key(host_item, 0, role), host_area(&h, &[], &mut work)? - region(&h, &now, &[], &mut work)?, curved);
         }
-        // Cutter caps strictly inside: floors where cutters start, heads where they end.
+        // Cutter caps strictly inside: floors where cutters start, heads where they end;
+        // overlapping or abutting caps of one level are one face.
         for &z in &bands[1..bands.len() - 1] {
             let epsilon = TOUCH.max(z.abs() * 1e-12);
             let (below, above) = (active(z - epsilon), active(z + epsilon));
             for (open, closed) in [(&above, &below), (&below, &above)] {
                 let fresh: Vec<&Cutter> = open.iter().copied().filter(|c| !closed.iter().any(|o| std::ptr::eq(*o, *c))).collect();
-                // Overlapping coincident caps form one face; merely touching ones are not predicted.
+                // Overlapping caps, or caps sharing an edge segment, form one face; corner contact does not.
                 let mut owner: Vec<usize> = (0..fresh.len()).collect();
                 for i in 0..fresh.len() {
                     for k in 0..i {
                         let pair = region(&h, &[fresh[k], fresh[i]], &[], &mut work)?;
                         let apart = region(&h, &[fresh[k]], &[], &mut work)? + region(&h, &[fresh[i]], &[], &mut work)?;
-                        if apart - pair > 1e-12 {
+                        if apart - pair > 1e-12 || (!separated(fresh[k], fresh[i]) && abutting(&h, fresh[k], fresh[i], closed)?) {
                             let (root, old) = (owner[k], owner[i]);
                             owner.iter_mut().filter(|o| **o == old).for_each(|o| *o = root);
                         }
-                        else if !separated(fresh[k], fresh[i]) { return None; }
                     }
                 }
                 for root in 0..fresh.len() {

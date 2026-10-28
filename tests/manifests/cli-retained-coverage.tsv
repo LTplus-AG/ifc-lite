@@ -98,7 +98,7 @@ rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	100	
 rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	30	published	
 rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	50	published	
 rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	70	published	
-rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72209	refused	opening_unsupported
+rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72209	published	
 rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72216	published	
 rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72230	published	
 rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72245	published	

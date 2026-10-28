@@ -377,6 +377,9 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
       return { mode: payload.mode, rows: [1, 1], inputHashes: payload.mode === 'proof' ? ['a', 'b'] : undefined,
         proofs: payload.mode === 'proof' ? [{ sha256: 'same' }] : [], log: '',
         phases: { lifecycleTotalMs: 10 }, processWallMs: 11, maxRssKiB: 1,
+        callPath: payload.mode !== 'cold' && payload.implementation === 'rust-wasm' ? 'prepared-handles' : 'stateless-diffModels',
+        statelessTimes: payload.mode === 'warm' && payload.implementation === 'rust-wasm'
+          ? [1000, 1000, 9000].map(totalMs => ({ totalMs })) : [],
         retainedTimes: payload.mode === 'warm' ? [1, 1, 9].map(totalMs => ({ totalMs })) : [] };
     });
     assert.deepEqual(calls.slice(0, 2), ['proof', 'proof']);
@@ -385,6 +388,8 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     assert.equal(measured.state, 'incomplete', 'absent real scale coverage cannot pass');
     assert.equal(measured.cases[0].workloads.length, 2);
     assert.equal(measured.cases[0].workloads[1].summary.base.warmProcessMediansMs.n, 6);
+    assert.equal(measured.cases[0].workloads[1].summary.branch.statelessWarmProcessMediansMs.median, 1000);
+    assert.equal(measured.cases[0].workloads[1].timing.verdict, 'pass', 'secondary latency must never gate');
     assert.equal(measured.performanceVerdict, 'not-assessed');
     let count = 0;
     await assert.rejects(runUnit({ ...args, out: join(dir, 'mismatch') }, async payload => {

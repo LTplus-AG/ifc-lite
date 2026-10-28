@@ -5,6 +5,7 @@
 use super::normalize_optional_string;
 use crate::style::GeometryStyleInfo;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_geometry::representation::{mapped_item_representation_id, pds_representation_ids};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) fn collect_presentation_layer_assignments(
@@ -45,7 +46,7 @@ pub(super) fn resolve_presentation_layer_for_product_definition_shape(
     }
 
     let product_definition_shape = decoder.decode_by_id(product_definition_shape_id).ok()?;
-    let representation_ids = product_definition_shape.get_refs(2)?;
+    let representation_ids = pds_representation_ids(&product_definition_shape);
 
     for representation_id in representation_ids {
         if let Some(layer_name) = resolve_presentation_layer_name(
@@ -201,13 +202,7 @@ fn resolve_presentation_layer_name(
                 if item.ifc_type != IfcType::IfcMappedItem {
                     continue;
                 }
-                let Some(mapping_source_id) = item.get_ref(0) else {
-                    continue;
-                };
-                let Ok(mapping_source) = decoder.decode_by_id(mapping_source_id) else {
-                    continue;
-                };
-                let Some(mapped_representation_id) = mapping_source.get_ref(1) else {
+                let Some(mapped_representation_id) = mapped_item_representation_id(&item, decoder) else {
                     continue;
                 };
                 stack.push(Step::Representation { id: mapped_representation_id, parent: Some(owner) });

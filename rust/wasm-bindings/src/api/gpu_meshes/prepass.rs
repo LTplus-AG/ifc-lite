@@ -19,8 +19,7 @@ impl IfcAPI {
     /// Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
     #[wasm_bindgen(js_name = buildPrePassOnce)]
     pub fn build_pre_pass_once(&self, data: &[u8]) -> JsValue {
-        // Computed and encoded in two halves (`prepass_once.rs`) so the native
-        // C4-0 parity gate can hand `produce_batch` this exact wire.
+        // C4-0 shares this exact pre-FFI wire with the native-hosted parity gate.
         self.build_prepass_once_data(data).into_js()
     }
 

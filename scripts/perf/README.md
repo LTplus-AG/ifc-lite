@@ -4,6 +4,25 @@
 
 # Performance diagnosis kit
 
+## Diff binary boundary transport (#8042)
+
+An ordinary Haus diagnostic of the explicit batch and compact result transport
+eliminated fingerprint and model-construction host callbacks, and removed the
+per-result-property descriptor calls. Real IFC comparisons and the existing
+observable-host and decode-leak suites retained parity. This is a boundary-cost
+reduction, not a protocol-v3 acceptance verdict: fingerprint and public warm-call
+latency still exceeded the TypeScript arm, including with retained native models
+in the diagnostic. Removing callbacks alone does not remove native hashing,
+document allocation, result decoding or per-call model construction costs.
+
+Bulk CLI, MCP and viewer adapters use the explicit internal snapshot batch;
+the end-to-end harness reaches it through the CLI adapter without a protocol
+change. Unary functions keep the live host decoder for observable inputs.
+Public comparisons reconstruct models because fingerprints can mutate and
+getters remain observable; array-identity caching would serve stale data.
+Any next retention experiment needs explicit ownership and invalidation, and
+must measure the consumer path rather than only a retained comparison kernel.
+
 ## C2-5a void cutter vocabulary (#7781)
 
 The borrowed `Cutter` projections and shared admission helpers passed the local

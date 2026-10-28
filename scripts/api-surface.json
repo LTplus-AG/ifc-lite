@@ -5351,6 +5351,9 @@
     "validateIdentityMapSidecar: function",
     "validateLineageSidecar: function"
   ],
+  "@ifc-lite/diff/internal": [
+    "buildFingerprintBatch: function"
+  ],
   "@ifc-lite/documents-api": [
     "CallbackLink: interface",
     "DiscoverDocumentsServiceOptions: interface",

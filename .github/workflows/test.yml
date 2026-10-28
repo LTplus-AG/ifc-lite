@@ -1610,6 +1610,10 @@ jobs:
           # Once router/config.rs is on main, ordinary whole-change inversion resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/config.rs | grep -Fxq 'rust/geometry/src/router/config.rs'; then
             oracle_args+=(--mutation tests/evidence/router-config-7781/behaviour.oracle.patch)
+          # #7781 C2-5b: keep the extracted helper and its legacy test wiring.
+          # Shift the signed ray parameter; bit-equality witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/parity.rs | grep -Fxq 'rust/geometry/src/router/voids/parity.rs'; then
+            oracle_args+=(--mutation tests/evidence/c2-5b-voids-frames/behaviour.oracle.patch)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"

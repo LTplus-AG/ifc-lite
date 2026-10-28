@@ -2,6 +2,7 @@
 // #7955: actual SDK topology, shared native/Emscripten test executable.
 #include "triangulate.hpp"
 #include <SmApiPrimitives.h>
+#include <SmBrep.h>
 #include <array>
 #include <cmath>
 #include <cstdio>

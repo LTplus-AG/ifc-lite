@@ -25,7 +25,7 @@ use super::{core_attributes, set_to_json, sorted_entries, sorted_property_sets, 
 fn accept_all<T>(result: Result<T, Infallible>) -> T {
     match result { Ok(value) => value, Err(never) => match never {} }
 }
-fn has_holes(input: &DataFingerprintInput) -> bool {
+pub(super) fn has_holes(input: &DataFingerprintInput) -> bool {
     input.property_sets.holes() > 0 || input.quantity_sets.holes() > 0 || input.type_assignments.holes() > 0
         || input.property_sets.present().any(|set| set.properties.holes() > 0)
         || input.quantity_sets.present().any(|set| set.quantities.holes() > 0)
@@ -91,7 +91,14 @@ pub fn build_data_fingerprint_checked<E>(input: &DataFingerprintInput,
     mut check: impl FnMut(u64) -> Result<(), E>) -> Result<String, E> {
     check_property_sets(&input.property_sets, false, &mut check)?;
     check_quantity_sets(&input.quantity_sets, false, &mut check)?;
+    let (value, _) = project_data(input);
+    if has_holes(input) { check(utf16_length(&value, false))?; }
+    Ok(stable_hash_json(&value))
+}
+
+pub(super) fn project_data(input: &DataFingerprintInput) -> (JsonValue, usize) {
     let mut object = core_attributes(input);
+    let core_len = object.len();
 
     object.push((
         "TypeAssignments".into(),
@@ -115,10 +122,8 @@ pub fn build_data_fingerprint_checked<E>(input: &DataFingerprintInput,
         object.push(("Classifications".into(), string_array(&classifications)));
     }
 
-    let value = JsonValue::Object(object);
-    let holes = has_holes(input);
-    if holes { check(utf16_length(&value, false))?; }
-    Ok(stable_hash_json(&value))
+    (JsonValue::Object(object), core_len)
+
 }
 
 /// Per-component sub-hashes, making the conflict unit `(entity, componentKey)`.
@@ -201,9 +206,9 @@ pub fn build_component_fingerprint_entries_checked<E>(input: &DataFingerprintInp
     Ok(components.0)
 }
 
-struct OrderedComponents(Vec<(JsString, String)>);
+pub(super) struct OrderedComponents(pub(super) Vec<(JsString, String)>);
 impl OrderedComponents {
-    fn insert(&mut self, key: JsString, value: String) {
+    pub(super) fn insert(&mut self, key: JsString, value: String) {
         if let Some((_, old)) = self.0.iter_mut().find(|(name, _)| *name == key) { *old = value; }
         else { self.0.push((key, value)); }
     }

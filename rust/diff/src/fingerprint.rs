@@ -42,6 +42,10 @@ pub use checked::{
     check_property_sets, check_quantity_sets, check_type_assignments,
 };
 
+#[path = "fingerprint_pair.rs"]
+mod pair;
+pub use pair::build_fingerprint_pair_checked;
+
 /// A normalized scalar: what a property value collapses to before hashing.
 #[derive(Debug, Clone, PartialEq)]
 enum NormalizedValue {

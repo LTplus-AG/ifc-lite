@@ -5,7 +5,7 @@
 use ifc_lite_diff::{DocumentValue as Value, JsString, document_serde,
     input::{DataFingerprintInput, PropertyEntryInput, PropertySetInput, QuantitySetInput, TypeAssignmentInput},
     sparse_collection::SparseCollection,
-    fingerprint::{build_data_fingerprint_checked, build_component_fingerprint_entries_checked}};
+    fingerprint::build_fingerprint_pair_checked};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
@@ -54,8 +54,7 @@ pub(crate) fn build(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
     let mut results = Vec::new();
     for input in inputs {
         let input = input.into_input();
-        let data = build_data_fingerprint_checked(&input, fits)?;
-        let components = build_component_fingerprint_entries_checked(&input, fits)?;
+        let (data, components) = build_fingerprint_pair_checked(&input, fits)?;
         results.push(Value::Object(vec![
             ("dataHash".into(), Value::String(data.into())),
             ("components".into(), Value::Object(components.into_iter()

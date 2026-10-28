@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //! M11-N source normals: planes, ruled arcs and swept disks. No smoothing code,
 //! retained recipe or kernel normal enters the expected direction.
-use super::{clipping::Edge, math::*, sections::ExtrudedHost};
-use ifc_lite_geometry::analytic::AnalyticCurveSegment;
+use super::math::*;
+use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticExtrusion, AnalyticStatus, ProfileLoopKind};
 use ifc_lite_processing::{AnalyticQuantitySources, element::retained_runtime::ShapeOnlyProduct};
 #[path = "normals_sources.rs"]
 mod sources;
+#[path = "normals_types.rs"]
+mod types;
 pub use sources::surfaces;
 
 #[derive(Clone, Debug)]
@@ -61,27 +63,34 @@ fn scale(v: [f64; 3], s: f64) -> [f64; 3] { v.map(|x| x*s) }
 fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { std::array::from_fn(|i| a[i]+b[i]) }
 pub fn angle(a: [f64; 3], b: [f64; 3]) -> f64 { norm(cross(a,b)).atan2(dot(a,b)) }
 
-fn extrusion(host: &ExtrudedHost) -> Option<Vec<Surface>> {
-    let frame = &host.frame;
-    let origin = transform(frame,[0.;3]);
-    let normal = unit(cross(vector(frame,[1.,0.,0.]),vector(frame,[0.,1.,0.])))?;
-    let sweep_sign = dot(normal,host.direction).signum();
+fn extrusion(source: &AnalyticExtrusion, world: &[f64;16]) -> Option<Vec<Surface>> {
+    if source.status != AnalyticStatus::Complete {return None;}
+    let profile = source.profile.as_ref()?;
+    if profile.status != AnalyticStatus::Complete {return None;}
+    let solid = multiply(world,source.position_matrix.as_ref().unwrap_or(&IDENTITY));
+    let frame = multiply(&solid,profile.profile_position.as_ref().unwrap_or(&IDENTITY));
+    let direction = vector(&solid,source.axis_unit_vector?);
+    let depth = source.depth?;
+    let origin = transform(&frame,[0.;3]);
+    let normal = unit(cross(vector(&frame,[1.,0.,0.]),vector(&frame,[0.,1.,0.])))?;
+    let sweep_sign = dot(normal,direction).signum();
+    if sweep_sign == 0. || !depth.is_finite() || depth <= 0. {return None;}
     let normal = scale(normal,sweep_sign);
     let mut result = vec![Surface::Plane {origin,normal:scale(normal,-1.)},
-        Surface::Plane {origin:add(origin,scale(host.direction,host.depth)),normal}];
-    for (outer,edges) in &host.loops {
-        let area: f64 = edges.iter().map(Edge::integral).sum();
+        Surface::Plane {origin:add(origin,scale(direction,depth)),normal}];
+    for boundary in &profile.loops {
+        let area = boundary.signed_area;
         if area == 0. || !area.is_finite() { return None; }
-        let sign = sweep_sign * area.signum() * if *outer {1.} else {-1.};
-        for edge in edges {
+        let sign = sweep_sign * area.signum() * if boundary.kind == ProfileLoopKind::Outer {1.} else {-1.};
+        for edge in &boundary.segments {
             result.push(match *edge {
-                Edge::Line(a,b) => Surface::Plane {
-                    origin:transform(frame,[a[0],a[1],0.]),
-                    normal:scale(unit(cross(vector(frame,[b[0]-a[0],b[1]-a[1],0.]),host.direction))?,sign),
+                AnalyticCurveSegment::Line {start,end} => Surface::Plane {
+                    origin:transform(&frame,start),
+                    normal:scale(unit(cross(vector(&frame,sub(end,start)),direction))?,sign),
                 },
-                Edge::Arc {c,u,v,sweep,..} => Surface::ArcWall {center:transform(frame,[c[0],c[1],0.]),
-                    u:vector(frame,[u[0],u[1],0.]), v:vector(frame,[v[0],v[1],0.]), d:host.direction,
-                    sign:sign*sweep.signum()},
+                AnalyticCurveSegment::Arc {center,normal,x_axis,radius,sweep_angle,..} => Surface::ArcWall {
+                    center:transform(&frame,center),u:vector(&frame,scale(x_axis,radius)),
+                    v:vector(&frame,scale(cross(normal,x_axis),radius)),d:direction,sign:sign*sweep_angle.signum()},
             });
         }
     }

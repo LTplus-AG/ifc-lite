@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Source-only orientation walk. Frames come from the canonical analytic walk;
 //! this walk determines Difference polarity without reconstructing placements.
-use super::{disk, extrusion, AnalyticQuantitySources, ExtrudedHost, Surface};
+use super::{disk, extrusion, AnalyticQuantitySources, Surface};
 use ifc_lite_core::{slot, EntityDecoder, EntityScanner, IfcType, SourceBundle};
 use ifc_lite_geometry::{analytic::AnalyticStatus, meshed_representations, GeometryRouter};
 use std::collections::BTreeMap;
@@ -12,6 +12,9 @@ struct Node { id: u32, sign: f64, path: Vec<u32>, maps: Vec<u32> }
 pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -> Result<Vec<Surface>,String> {
     let bundle = SourceBundle::new(bytes.to_vec());
     let mut decoder = bundle.decoder();
+    if let Some(maps) = ifc_lite_processing::element::retained_runtime::canonical_type_maps(&bundle).get(&product) {
+        return super::types::surfaces(&mut decoder,maps);
+    }
     let mut products = vec![(product,1.)];
     let router = GeometryRouter::with_scale(decoder.length_unit_scale());
     let mut scan = EntityScanner::new(bytes);
@@ -30,9 +33,10 @@ pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -
         if extrusions.is_none() && disks.is_none() {continue;}
         let signs = orientations(&mut decoder,id)?;
         for i in extrusions.into_iter().flatten() {
-            let host = ExtrudedHost::from_sources(sources,i).ok_or("unresolved prism source")?;
+            let source = &sources.extrusion_definitions.sources.iter().find(|s| s.key==i.source).ok_or("missing prism source")?.source;
             for &sign in signs.get(&(i.solid_id,i.mapping_path.clone())).ok_or("missing prism polarity")? {
-                result.extend(extrusion(&host).ok_or("unresolved prism normals")?.into_iter().map(|s| s.reversed(sign*polarity)));
+                result.extend(extrusion(source,&i.world_from_source.ok_or("missing prism frame")?)
+                    .ok_or("unresolved prism normals")?.into_iter().map(|s| s.reversed(sign*polarity)));
             }
         }
         for i in disks.into_iter().flatten() {

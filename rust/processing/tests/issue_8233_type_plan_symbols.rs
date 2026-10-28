@@ -86,3 +86,19 @@ fn own_plan_representation_wins_over_the_type() {
     let x = xs(&data.polylines[0].points);
     assert!((x[0] - 10.0).abs() < 1e-4 && (x[1] - 10.5).abs() < 1e-4, "x: {x:?}");
 }
+
+/// The type's FootPrint map sits in a model context whose
+/// WorldCoordinateSystem is offset by (100, 0, 0). The fallback applies that
+/// context exactly as the occurrence's own representations get theirs, so the
+/// symbol lands at 100 + (10,20) + (1,2) + (0..1, 0).
+#[test]
+fn type_symbol_follows_its_representation_context() {
+    let source = String::from_utf8(fixture("#40")).unwrap()
+        .replace("#33=IFCSHAPEREPRESENTATION($,'FootPrint'", "#33=IFCSHAPEREPRESENTATION(#50,'FootPrint'")
+        .replace("ENDSEC;\nEND-ISO", "#50=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#51,$);\n#51=IFCAXIS2PLACEMENT3D(#52,$,$);\n#52=IFCCARTESIANPOINT((100.,0.,0.));\nENDSEC;\nEND-ISO");
+    assert!(source.contains("#33=IFCSHAPEREPRESENTATION(#50,") && source.contains("#52="), "fixture rewired");
+    let data = extract_symbolic_data(&source).expect("extraction completes");
+    assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
+    let x = xs(&data.polylines[0].points);
+    assert!((x[0] - 111.0).abs() < 1e-4 && (x[1] - 112.0).abs() < 1e-4, "x: {x:?}");
+}

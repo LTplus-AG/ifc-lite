@@ -7,13 +7,14 @@
 //! A product with no symbolic representation of its own inherits the
 //! Plan / Annotation / FootPrint / Axis maps of the `IfcTypeProduct` that
 //! `IfcRelDefinesByType` assigns it. The occurrence's `ObjectPlacement`
-//! composed with the map's `MappingOrigin` places the symbol, the same as an
-//! `IfcMappedItem` with an identity `MappingTarget`.
+//! composed with the map's `MappingOrigin` places the symbol, in the frame of
+//! the representation's context, the same as an `IfcMappedItem` with an
+//! identity `MappingTarget` inside an occurrence representation.
 
 use super::items::resolve_mapping_origin;
 use super::output_cap::SymbolicAccumulator;
 use super::rebase::RenderFrameRebase;
-use super::transform::{compose_transforms, resolve_object_placement};
+use super::transform::{compose_transforms, resolve_context_transform, resolve_object_placement};
 use super::representation_walk::{emit_shape_representation, is_symbolic_identifier};
 use ifc_lite_core::{keyword_eq, slot, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use rustc_hash::FxHashMap;
@@ -84,8 +85,15 @@ pub(super) fn walk_type_representation_maps(
         if !is_symbolic_identifier(rep_identifier) {
             continue;
         }
+        // As if wrapped in an occurrence representation of the same context
+        // holding an `IfcMappedItem` with an identity target: the context's
+        // WorldCoordinateSystem, then the placement, then the MappingOrigin
+        // (the own-representation walk composes context and placement the
+        // same way, #7779). Skipping the context would draw type symbols in a
+        // different frame from every other symbol of a rotated or offset model.
+        let context = resolve_context_transform(&shape_rep, decoder, unit_scale);
         let origin = resolve_mapping_origin(&rep_map, decoder, unit_scale);
-        let base = compose_transforms(&placement, &origin);
+        let base = compose_transforms(&compose_transforms(&context, &placement), &origin);
         emit_shape_representation(
             &shape_rep,
             rep_identifier,

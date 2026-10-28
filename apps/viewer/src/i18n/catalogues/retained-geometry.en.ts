@@ -32,6 +32,7 @@ export const retainedGeometryEn = {
   'retainedGeometry.obligation.MaterialLayers': 'material layers',
   'retainedGeometry.obligation.IfcAppearance': 'appearance',
   'retainedGeometry.obligation.PersistentFaces': 'persistent faces',
+  'retainedGeometry.obligation.SurfaceNormals': 'surface normals',
 
   'retainedGeometry.panel.title': 'Retained geometry',
   'retainedGeometry.panel.description': 'Shape-only geometry from the retained kernel. Products listed below have no geometry in the viewport, and no exact geometry stands in for them.',

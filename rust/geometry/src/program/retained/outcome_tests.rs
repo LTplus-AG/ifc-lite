@@ -23,7 +23,7 @@ fn s3_outcome_reaches_cached_occurrences_without_discharging_obligations() {
     assert!(plan.values.iter().all(LogicalRetainedValue::is_empty));
     assert_eq!(plan.remaining, vec![RetainedRequirement::OpeningClosure,
         RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
-        RetainedRequirement::PersistentFaces], "empty annotation grants no removal or closure authority");
+        RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals], "empty annotation grants no removal or closure authority");
 }
 
 #[test]

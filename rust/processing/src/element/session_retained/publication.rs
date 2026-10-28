@@ -23,6 +23,39 @@ pub struct ShapePart {
     /// Column-major object metres -> absolute IFC Z-up world metres.
     pub world_from_object: [f64; 16],
     pub curved: bool,
+    /// Kernel revision-local diagnostics, never persistent IFC face identity.
+    pub revision_local_faces: Vec<u32>,
+    /// Per-corner unit normals in absolute IFC Z-up axes (placement already applied).
+    pub normals: Option<Vec<f64>>,
+    pub appearance: Option<PartAppearance>,
+    pub faces: Option<PartFaces>,
+    pub instance_key: Option<[u8; 32]>,
+}
+#[derive(Debug)]
+pub struct PartAppearance {
+    pub color: [f32; 4],
+    pub material_name: Option<String>,
+    pub geometry_item_id: Option<u32>,
+    pub material_id: Option<u32>,
+}
+/// Source-derived key: item + optional cutter + canonical source role, never a kernel face index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FaceKey {
+    pub item: u32,
+    pub via: u32,
+    pub role: String,
+}
+impl std::fmt::Display for FaceKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.via == 0 { write!(f, "#{}:{}", self.item, self.role) }
+        else { write!(f, "#{}>#{}:{}", self.item, self.via, self.role) }
+    }
+}
+#[derive(Debug)]
+pub struct PartFaces {
+    pub table: Vec<FaceKey>,
+    /// One table index per triangle.
+    pub triangles: Vec<u32>,
 }
 #[derive(Debug)]
 pub struct PresentationObligationsUnmet(pub Vec<Requirement>);
@@ -54,37 +87,28 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             if realization.is_empty() {
                 return Err(protocol(ReceiptFailure::EmptyConstructionResult));
             }
-            let (positions, indices, curved) = match realization.kind.evidence() {
+            let (positions, indices, faces, curved) = match realization.kind.evidence() {
                 ReceiptEvidence::Construction(completion) => (
                     completion.tessellation.positions.as_slice(),
                     completion.tessellation.indices.as_slice(),
+                    completion.tessellation.revision_local_faces.as_slice(),
                     curved_recipe(completion.request().recipe()),
                 ),
                 ReceiptEvidence::Boolean { .. } => {
                     let mesh = realization.kind.mesh().ok_or_else(incomplete)?;
                     // Boolean comparisons have no nominal source expectation and
                     // follow the report-only curved policy, even with flat inputs.
-                    (mesh.positions, mesh.indices, true)
+                    (mesh.positions, mesh.indices, mesh.faces, true)
                 }
                 ReceiptEvidence::Affine { .. } => return Err(incomplete()),
             };
             if indices.is_empty() {
                 return Err(incomplete());
             }
-            let mut copied_positions = Vec::new();
-            let mut copied_indices = Vec::new();
-            storage.reserve(&self.resources, &mut copied_positions, positions.len())?;
-            storage.reserve(&self.resources, &mut copied_indices, indices.len())?;
-            copied_positions.extend_from_slice(positions);
-            copied_indices.extend_from_slice(indices);
-            parts.push(ShapePart {
-                positions: copied_positions,
-                indices: copied_indices,
-                // The controller composes each placement once in frame::compose_frame;
-                // object_frame is already the final accumulated occurrence frame.
-                world_from_object: *value.object_frame(),
-                curved,
-            });
+            parts.push(super::publication_mesh::copy_part(
+                runtime::ReceiptMesh { positions, indices, faces },
+                *value.object_frame(), curved, &self.resources, &mut storage,
+            )?);
         }
         if parts.is_empty() {
             return Err(incomplete());
@@ -108,14 +132,18 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         let mut cut_times_ms = Vec::new();
         storage.reserve(&self.resources, &mut cut_times_ms, self.cut_times_ms.len())?;
         cut_times_ms.extend_from_slice(&self.cut_times_ms);
-        Ok(ShapeOnlyProduct {
+        let mut product = ShapeOnlyProduct {
             cuts, consumed_parts, cut_times_ms,
             product_id: self.product_id,
             ifc_type: self.ifc_type.clone(),
             parts,
             obligations,
             _storage: storage,
-        })
+        };
+        let discharged = presentation::apply(&mut product, &self.plan);
+        product.obligations.0.retain(|r| !discharged.contains(r));
+        if product.obligations.0.is_empty() { return Err(incomplete()); }
+        Ok(product)
     }
 }
 fn curved_recipe(recipe: &RetainedRecipe) -> bool {

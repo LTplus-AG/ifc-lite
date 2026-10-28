@@ -183,7 +183,7 @@ fn selected_mapping_constructs_its_source_without_discharging_obligations() {
         [19., 38., 60.]);
     assert_eq!(plan.remaining, vec![RetainedRequirement::OpeningClosure,
         RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
-        RetainedRequirement::PersistentFaces]);
+        RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals]);
 }
 
 #[test]

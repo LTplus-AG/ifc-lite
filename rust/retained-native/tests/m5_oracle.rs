@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: hand integrals and source constraints, without a retained run.
 use ifc_lite_core::SourceBundle;
 use ifc_lite_retained_native::oracle::clips::{self, ClipExpectation};

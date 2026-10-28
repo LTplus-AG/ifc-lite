@@ -264,3 +264,19 @@ fn bonsai_drawing_camera_meshes_nothing_but_other_annotations_do() {
     assert_eq!(meshes("IFCANNOTATION", "$"), 1);
     assert_eq!(meshes("IFCWALL", "'DRAWING'"), 1);
 }
+
+/// A drawing camera placed far from an origin-local wall must not vote the RTC
+/// anchor: with two votes the median would be the camera's placement.
+#[test]
+fn bonsai_drawing_camera_casts_no_rtc_vote() {
+    let source = "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);#3=IFCLOCALPLACEMENT($,#2);
+#4=IFCCARTESIANPOINT((0.,0.));#5=IFCAXIS2PLACEMENT2D(#4,$);#6=IFCRECTANGLEPROFILEDEF(.AREA.,$,#5,3.,3.);
+#7=IFCDIRECTION((0.,0.,1.));#8=IFCEXTRUDEDAREASOLID(#6,#2,#7,2.);
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));#10=IFCPRODUCTDEFINITIONSHAPE($,$,(#9));
+#20=IFCCARTESIANPOINT((500000.,6000000.,0.));#21=IFCAXIS2PLACEMENT3D(#20,$,$);#22=IFCLOCALPLACEMENT($,#21);
+#30=IFCWALL('0000000000000000000001',$,'wall',$,$,#3,#10,$);
+#40=IFCANNOTATION('0000000000000000000002',$,'PLAN_VIEW',$,'DRAWING',#22,#10);";
+    let mut decoder = EntityDecoder::new(source);
+    let anchor = GeometryRouter::new().detect_rtc_anchor_for_file(source.as_bytes(), &mut decoder);
+    assert_eq!(anchor, Some((0.0, 0.0, 0.0)));
+}

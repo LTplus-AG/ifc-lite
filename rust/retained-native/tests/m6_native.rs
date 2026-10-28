@@ -113,7 +113,8 @@ fn m6_native_fzk_bounded_only_chains_publish() {
     let outcomes=run(&text,&[60012,67828]);
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     for id in [60012,67828] {
-        assert!(bounded::expected(text.as_bytes(),&sources,id).unwrap().section_volume.is_some(),"FZK #{id} requires the section oracle");
+        let e=bounded::expected(text.as_bytes(),&sources,id).unwrap();
+        assert!(e.section_volume.is_some(),"FZK #{id} requires the section oracle: {:?}",e.section_unavailable);
         verify(&text,shape(&outcomes,id),None);
     }
     println!("sdk witness executed: m6_fzk_bounded_chains");

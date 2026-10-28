@@ -8,6 +8,7 @@ use ifc_lite_processing::AnalyticQuantitySources;
 pub struct Expectation {
     pub host_volume:f64,
     pub section_volume:Option<f64>,
+    pub section_unavailable:Option<String>,
     pub curved:bool,
     clips:Vec<Clip>,
     basis:super::prism::Basis,
@@ -68,27 +69,30 @@ pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Optio
         }
         Some(cuts)
     });
-    let section_volume=if solid_cuts {None}else{extra.and_then(|extra|result_volume(&host,&clips,extra))};
-    Some(Expectation{host_volume,section_volume,curved,clips,basis})
+    let section=if solid_cuts {Err("solid Boolean operand outside section family".into())}
+        else {extra.ok_or_else(||"opening source cannot be partitioned".to_string()).and_then(|extra|result_volume(&host,&clips,extra))};
+    let (section_volume,section_unavailable)=match section {Ok(v)=>(Some(v),None),Err(reason)=>(None,Some(reason))};
+    Some(Expectation{host_volume,section_volume,section_unavailable,curved,clips,basis})
 }
-fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->Option<f64> {
-    if clips.len()>3{return None;}
-    let mut partitions=clips.iter().map(pieces).collect::<Option<Vec<_>>>()?;
-    partitions.extend(extra);if partitions.len()>12{return None;}
+fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->Result<f64,String> {
+    if clips.len()>3{return Err("more than three halfspace clips".into());}
+    let mut partitions=clips.iter().map(pieces).collect::<Option<Vec<_>>>().ok_or("curved or unpartitionable boundary")?;
+    partitions.extend(extra);if partitions.len()>12{return Err("more than twelve source partitions".into());}
     let mut work=4096usize;let mut volume=0.;
     for mask in 0..1usize<<partitions.len() {
         let selected=partitions.iter().enumerate().filter(|(i,_)|mask&(1<<i)!=0).map(|(_,p)|p).collect::<Vec<_>>();
         let mut tuples=vec![Vec::<Plane>::new()];
         for partition in selected {
-            if tuples.len().checked_mul(partition.len())?>work{return None;}
+            if tuples.len().checked_mul(partition.len()).ok_or("section work overflow")?>work{return Err("section work cap exceeded".into());}
             tuples=tuples.into_iter().flat_map(|base|partition.iter().map(move |piece| {
                 let mut planes=base.clone();planes.extend(piece);planes
             })).collect();
         }
         let sign=if mask.count_ones()%2==0{1.}else{-1.};
-        for tuple in tuples {work=work.checked_sub(1)?;volume+=sign*section_volume(host,&tuple)?;}
+        for tuple in tuples {work=work.checked_sub(1).ok_or("section work cap exceeded")?;
+            volume+=sign*section_volume(host,&tuple).ok_or_else(||format!("section integral unavailable: subset {mask}, {} planes, {} evaluations",tuple.len(),4096-work))?;}
     }
-    volume.is_finite().then_some(volume)
+    volume.is_finite().then_some(volume).ok_or_else(||"nonfinite section sum".into())
 }
 
 /// Whether this direct body walk contains M6's source family. The comparison

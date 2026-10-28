@@ -126,6 +126,12 @@ impl Select {
         rep: &DecodedEntity,
         has_direct_geometry: bool,
     ) -> bool {
+        // A drawing camera's box is no building geometry under any body
+        // policy: excluding it from meshing alone would leave it voting the
+        // RTC origin and feeding layer slicing (the drift noted above).
+        if matches!(self, Select::Body | Select::RtcVotable) && is_drawing_camera_annotation(element) {
+            return false;
+        }
         match self {
             Select::Meshed => meshed_admits(element, rep, has_direct_geometry),
             Select::Body => {
@@ -178,7 +184,8 @@ pub(crate) fn is_drawing_camera_annotation(element: &DecodedEntity) -> bool {
 }
 
 fn meshed_admits(element: &DecodedEntity, rep: &DecodedEntity, has_direct_geometry: bool) -> bool {
-    // A drawing camera meshes nothing; every meshing path selects through here.
+    // A drawing camera meshes nothing (`admits` also bars it from `Body` and
+    // `RtcVotable`); every meshing path selects through here.
     if is_drawing_camera_annotation(element) {
         return false;
     }

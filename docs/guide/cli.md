@@ -1807,7 +1807,7 @@ are included once per type, with all unreferenced maps placed at their MappingOr
 One unsupported map refuses the entire type. Instanced type-library shapes and
 types with only curve maps that exact does not mesh are absent. OBJ headers carry
 `PresentationObligationsUnmet`: output is shape-only and does not meet the display contract.
-The optional `ifc-lite.retained-report/2` JSON contains engine identity, settings, coverage
+The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
 refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.
@@ -1821,7 +1821,7 @@ material-layer hosts report `material_layer_strategy` before opening execution. 
 opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their OBJ marker
 lists `IfcAppearance, MaterialLayers, PersistentFaces, SurfaceNormals`. Layer, appearance,
 face identity, and surface-normal obligations still prevent final display-contract publication.
-The /2 report reserves optional per-part color, material name, item/material IDs, corner
+The report reserves additive, optional per-part color, material name, item/material IDs, corner
 normals, source-derived face keys with triangle counts/areas, and instance groups. These
 channels remain absent until their individual presentation proofs land. Retained OBJ
 accepts per-corner `vn` records when supplied; the scaffold continues to emit geometry

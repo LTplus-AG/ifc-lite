@@ -24,7 +24,7 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       ...(p.instanceGroup ? { instanceGroup: p.instanceGroup } : {}) };
   });
   const published = outcomes.filter(p => p.status === 'published').length;
-  return { format: 'ifc-lite.retained-report/2',
+  return { format: 'ifc-lite.retained-report/1',
     engine: { sdk: engine.sdk, manifestSha256: engine.manifestSha256, capabilities: engine.capabilities },
     settings: { kernel: 'retained', chordMetres: 0.001, angleDegrees: 5, maxBytes: 16 * 1024 * 1024,
       maxRestarts: 3, ids: ids ? Array.from(ids).sort((a, b) => a - b) : null },

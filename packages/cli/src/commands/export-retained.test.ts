@@ -102,7 +102,7 @@ it('#7955 M11-0 report /2 emits optional channels and OBJ indexes per-corner nor
     faces: { table: ['#13:cap(end)'], triangles: Uint32Array.of(0) } };
   const { obj, report } = retainedArtifacts(engine, [{ ...shape, parts: [part, shape.parts[0], part],
     instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } }], () => null);
-  expect(report.format).toBe('ifc-lite.retained-report/2');
+  expect(report.format).toBe('ifc-lite.retained-report/1');
   expect(obj).toContain('vn 0.000000 1.000000 -0.000000');
   expect(obj).toContain('f 1//1 2//2 3//3');
   expect(obj).toContain('f 4 5 6');

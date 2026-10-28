@@ -43,6 +43,26 @@ export function packDocument(value: unknown): Uint8Array {
   return result;
 }
 
+/** Typed dictionary input: avoid interning the already-interned strings again. */
+export function packStrings(strings: readonly string[]): Uint8Array {
+  const headerLength = 4 + strings.reduce((size, s) => size + 4 + s.length * 2, 0);
+  const bytes = new Uint8Array(headerLength + 5 + strings.length * 5);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, strings.length, true);
+  let offset = 4;
+  for (const value of strings) {
+    view.setUint32(offset, value.length, true); offset += 4;
+    for (let i = 0; i < value.length; i++, offset += 2) view.setUint16(offset, value.charCodeAt(i), true);
+  }
+  bytes[offset++] = 5;
+  view.setUint32(offset, strings.length, true); offset += 4;
+  for (let i = 0; i < strings.length; i++) {
+    bytes[offset++] = 4;
+    view.setUint32(offset, i, true); offset += 4;
+  }
+  return bytes;
+}
+
 export function unpackDocument(bytes: Uint8Array): unknown {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let cursor = 0;
@@ -60,6 +80,21 @@ export function unpackDocument(bytes: Uint8Array): unknown {
     }
     strings.push(value);
   }
+  const readEntry = () => {
+    const key = strings[word()];
+    const state = ['added', 'modified', 'deleted', 'unchanged'][view.getUint8(cursor++)];
+    const count = view.getUint8(cursor++), changeKinds: string[] = [];
+    for (let i = 0; i < count; i++) changeKinds.push(['data', 'geometry', 'container'][view.getUint8(cursor++)]);
+    const base = word(), head = word(), length = word();
+    const entry: { key: string; state: string; changeKinds: string[]; base?: number; head?: number; changedComponents?: string[] } = { key, state, changeKinds };
+    if (base !== 0xffff_ffff) entry.base = base;
+    if (head !== 0xffff_ffff) entry.head = head;
+    if (length !== 0xffff_ffff) {
+      entry.changedComponents = [];
+      for (let i = 0; i < length; i++) entry.changedComponents.push(strings[word()]);
+    }
+    return entry;
+  };
   const read = (): unknown => {
     switch (view.getUint8(cursor++)) {
       case 0: return null;
@@ -68,6 +103,7 @@ export function unpackDocument(bytes: Uint8Array): unknown {
       case 3: { const value = view.getFloat64(cursor, true); cursor += 8; return value; }
       case 4: return strings[word()];
       case 5: { const length = word(), values: unknown[] = []; for (let i = 0; i < length; i++) values.push(read()); return values; }
+      case 7: return readEntry();
       case 6: {
         const length = word(), entries: [string, unknown][] = [];
         for (let i = 0; i < length; i++) { const key = strings[word()]; entries.push([key, read()]); }

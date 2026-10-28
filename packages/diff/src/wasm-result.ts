@@ -17,17 +17,23 @@ export type IndexedDiff = Omit<ModelDiff, 'entries' | 'byKey' | 'appliedKeyAlias
 
 /** Reuse the original entity objects, including opaque refs, in every result. */
 export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly EntityFingerprint<TRef>[], head: readonly EntityFingerprint<TRef>[]): ModelDiff<TRef> {
-  const entries: DiffEntry<TRef>[] = raw.entries.map(entry => ({
-    key: entry.key, state: entry.state, changeKinds: entry.changeKinds,
-    ...(entry.base === undefined ? {} : { base: base[entry.base] }),
-    ...(entry.head === undefined ? {} : { head: head[entry.head] }),
-    ...(entry.changedComponents === undefined ? {} : { changedComponents: entry.changedComponents }),
-  }));
+  // The decoded records are owned by this call. Restore in place so a second
+  // object graph and an intermediate Map tuple array never become live (#8042).
+  const entries: DiffEntry<TRef>[] = [];
+  const byKey = new Map<string, DiffEntry<TRef>>();
+  for (const indexed of raw.entries) {
+    const baseIndex = indexed.base, headIndex = indexed.head;
+    const entry = indexed as unknown as DiffEntry<TRef>;
+    if (baseIndex !== undefined) entry.base = base[baseIndex];
+    if (headIndex !== undefined) entry.head = head[headIndex];
+    entries.push(entry);
+    byKey.set(entry.key, entry);
+  }
   return {
     scope: raw.scope,
     excludedTypes: raw.excludedTypes,
     entries,
-    byKey: new Map(entries.map(entry => [entry.key, entry])),
+    byKey,
     counts: raw.counts,
     ...(raw.contentMatches === undefined ? {} : {
       contentMatches: raw.contentMatches.map(match => ({

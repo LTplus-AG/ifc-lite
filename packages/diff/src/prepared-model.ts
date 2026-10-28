@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { DiffOptions, EntityFingerprint, ModelDiff } from './types.js';
 import { fingerprintColumns } from './wasm-columns.js';
-import { packDocument } from './wasm-binary.js';
+import { packStrings } from './wasm-binary.js';
 import { diffModelConstructor } from './wasm-runtime.js';
 import { compareWasmModels } from './wasm-diff.js';
 
@@ -27,7 +27,7 @@ export class PreparedDiffModel<TRef = unknown> {
       return Object.freeze(row);
     });
     const c = fingerprintColumns(this.rows);
-    this.model = Model.fromPacked(packDocument(c.strings), c.fields, c.flags,
+    this.model = Model.fromPacked(packStrings(c.strings), c.fields, c.flags,
       c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
   }
 

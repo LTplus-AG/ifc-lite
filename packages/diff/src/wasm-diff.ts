@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { DiffOptions, EntityFingerprint, ModelDiff } from './types.js';
-import { packDocument, unpackDocument } from './wasm-binary.js';
+import { packStrings, unpackStrings } from './wasm-binary.js';
 import { fingerprintColumns } from './wasm-columns.js';
 import { diffModelConstructor } from './wasm-runtime.js';
 import { restoreDiffReferences, type IndexedDiff } from './wasm-result.js';
@@ -14,7 +14,7 @@ export function compareWithWasm<TRef = unknown>(base: Iterable<EntityFingerprint
   const headRows = Array.from(head);
   const create = (entities: readonly EntityFingerprint<TRef>[]) => {
     const c = fingerprintColumns(entities);
-    return Model.fromPacked(packDocument(c.strings), c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
+    return Model.fromPacked(packStrings(c.strings), c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
   };
   const baseModel = create(baseRows);
   try {
@@ -32,7 +32,7 @@ export function compareWasmModels<TRef>(
   baseRows: readonly EntityFingerprint<TRef>[], headRows: readonly EntityFingerprint<TRef>[],
   options: DiffOptions,
 ): ModelDiff<TRef> {
-  const raw = unpackDocument(baseModel.comparePacked(headModel, {
+  const raw = unpackStrings(baseModel.comparePacked(headModel, {
     scope: options.scope,
     moveTolerance: options.moveTolerance,
     reshapeTolerance: options.reshapeTolerance,

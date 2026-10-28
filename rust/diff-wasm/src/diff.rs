@@ -40,9 +40,7 @@ impl DiffModel {
     #[allow(clippy::too_many_arguments)]
     pub fn from_packed(strings: &[u8], fields: Vec<u32>, flags: Vec<u8>, boxes: Vec<f64>,
         volumes: Vec<f64>, component_offsets: Vec<u32>, component_pairs: Vec<u32>) -> Result<DiffModel, JsValue> {
-        let value = crate::diff_binary::decode(strings).map_err(|e| JsValue::from_str(&e))?;
-        let strings = ifc_lite_diff::document_serde::from_document(value)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let strings = crate::diff_binary::decode_strings(strings).map_err(|e| JsValue::from_str(&e))?;
         let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
             volumes, component_offsets, component_pairs }).map_err(|e| JsValue::from_str(&e))?;
         let non_ascii_classes = crate::diff_class_normalization::model_classes(&entities);
@@ -59,7 +57,7 @@ impl DiffModel {
         let result = ifc_lite_diff::class_normalization::with_overrides(mappings, || {
             diff_models(&self.entities, &head.entities, &options)
         });
-        Ok(crate::diff_binary::encode(&result_to_document(&result)))
+        Ok(crate::diff_binary::encode_result(&result))
     }
 
     /// Compare this base model with a head model, returning row-index records.

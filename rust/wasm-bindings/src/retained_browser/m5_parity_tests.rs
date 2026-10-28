@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955: actual model API and module Worker; hand oracle plus native parity.
 #![cfg(target_arch = "wasm32")]
-use super::*;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::*;
+wasm_bindgen_test_configure!(run_in_browser);
 #[wasm_bindgen(inline_js = "export async function m5Reference() { const r=await fetch('/smlib/m5-native-clips.json'); if(!r.ok) throw new Error('M5 native reference missing'); return r.json(); }
 export async function m5LineageReference() { const r=await fetch('/smlib/m5-native-lineage.json'); if(!r.ok) throw new Error('M5 native lineage reference missing'); return r.json(); }
 export function m5Measure(outcome) {

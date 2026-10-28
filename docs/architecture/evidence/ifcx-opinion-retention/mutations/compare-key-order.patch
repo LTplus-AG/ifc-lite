@@ -1,13 +1,13 @@
 diff --git b/packages/ifcx/src/opinions.ts a/packages/ifcx/src/opinions.ts
-index b10b3f10d3..85e72275b6 100644
+index 9f04ceb3cd..e20575e23c 100644
 --- b/packages/ifcx/src/opinions.ts
 +++ a/packages/ifcx/src/opinions.ts
-@@ -94,7 +94,7 @@ function opinionKey(value: unknown, nested = false): string {
-     case 'object': {
-       if (Array.isArray(value)) return `[${value.map((item) => opinionKey(item, true)).join(',')}]`;
-       const record = value as Record<string, unknown>;
--      const keys = Object.keys(record).filter((key) => record[key] !== undefined);
-+      const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
-       return `{${keys.map((key) => `${JSON.stringify(key.normalize('NFC'))}:${opinionKey(record[key], true)}`).join(',')}}`;
+@@ -98,7 +98,7 @@ function opinionKey(value: unknown, nested = false): string {
+       const members = Object.keys(record)
+         .filter((key) => record[key] !== undefined)
+         .map((key) => [key.normalize('NFC'), key] as const)
+-        ;
++        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+       return `{${members.map(([nfc, key]) => `${JSON.stringify(nfc)}:${opinionKey(record[key], true)}`).join(',')}}`;
      }
      default:

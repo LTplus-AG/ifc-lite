@@ -3,7 +3,7 @@
 //! derived by source-surface incidence over the part's own Boolean lineage and
 //! cross-checked against the kernel's revision-local faces; it is never a
 //! `GetFaces` index. Unattributable or ambiguous parts refuse the product.
-use super::face_attribution::{candidates, resolve, Choice, Operand, Unproven};
+use super::face_attribution::{candidates, resolve, Choice, Halt, Operand, Support, Unproven};
 use super::face_surfaces::{self, NoFaces};
 use super::{Context, Requirement, ShapeOnlyProduct};
 use super::super::publication::{FaceKey, PartFaces};
@@ -78,7 +78,8 @@ pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealizati
                     Err(NoFaces::Hook(id)) => return unattributed(Some(id)),
                     Err(NoFaces::Malformed) => return unattributed(Some(item)),
                 };
-                charge(faces.len(), std::mem::size_of::<Operand>()
+                let setup: usize = faces.iter().map(|f| match &f.support { Support::Tube { curve, .. } => curve.setup_cost(), _ => 1 }).sum();
+                charge(setup, std::mem::size_of::<Operand>()
                     + faces.len() * std::mem::size_of::<super::face_attribution::SourceFace>())?;
                 let stretch = stretch(&from_part);
                 if !stretch.is_finite() { return unattributed(Some(item)); }
@@ -110,9 +111,13 @@ fn refuse(unproven: Unproven) -> RetainedExecutionError {
     }
 }
 
+fn halt(halt: Halt) -> RetainedExecutionError {
+    match halt { Halt::Unproven(unproven) => refuse(unproven), Halt::Stopped(stop) => RetainedExecutionError::Stopped(stop) }
+}
+
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Result<Vec<Requirement>, RetainedExecutionError> {
-    // Curved incidence is bounded by the evaluation chord; a coarser caller chord fails closed (unattributed).
-    let chord = super::super::model::ModelOptions::default().limits.chord_metres;
+    // Curved incidence is bounded by the chord the kernel tessellated with.
+    let chord = context.chord_metres;
     let ShapeOnlyProduct { parts, _storage: storage, .. } = product;
     if parts.len() != context.faces.len() { return Err(refuse(Unproven::Unattributed { entity: None })); }
     for (part, sources) in parts.iter_mut().zip(context.faces) {
@@ -120,6 +125,7 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
         let count = part.indices.len() / 3;
         let kernel = &part.revision_local_faces;
         if kernel.len() != count { return Err(refuse(Unproven::Unattributed { entity: None })); }
+        // Per triangle and source face; swept-disk foot points charge their own evaluations.
         let work: usize = operands.iter().map(|o| o.faces.len()).sum();
         let mut order: Vec<usize> = Vec::new();
         storage.reserve(context.resources, &mut order, count)?;
@@ -139,9 +145,9 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
                 };
                 let (Some(a), Some(b), Some(c)) = (corner(part.indices[3 * t]), corner(part.indices[3 * t + 1]),
                     corner(part.indices[3 * t + 2])) else { return Err(refuse(Unproven::Unattributed { entity: None })) };
-                lists.push(candidates(operands, &[a, b, c], chord).map_err(refuse)?);
+                lists.push(candidates(operands, &[a, b, c], chord).map_err(halt)?);
             }
-            let key = resolve(&lists).map_err(refuse)?;
+            let key = resolve(operands, &lists, chord).map_err(refuse)?;
             for &t in face { choices[t] = key; }
         }
         let mut used: Vec<Choice> = Vec::new();

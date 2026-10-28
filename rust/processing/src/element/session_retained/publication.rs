@@ -148,6 +148,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         let discharged = presentation::apply(&mut product, &presentation::Context {
             plan: &self.plan, model: &self.presentation_context,
             resources: &self.resources, element_color: self.element_color, faces: &face_sources,
+            chord_metres: self.chord_metres,
         })?;
         product.obligations.0.retain(|r| !discharged.contains(r));
         if product.obligations.0.is_empty() { return Err(incomplete()); }

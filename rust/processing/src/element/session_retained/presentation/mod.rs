@@ -6,6 +6,8 @@ mod appearance;
 mod normals;
 mod faces;
 mod face_attribution;
+mod face_coincidence;
+mod face_curve;
 mod face_surfaces;
 mod instancing;
 pub(super) use faces::{sources as face_sources, FaceSources};
@@ -19,6 +21,8 @@ pub(super) struct Context<'a> {
     pub element_color: [f32; 4],
     /// M11-F: each part's source operands, in part order.
     pub faces: &'a [FaceSources],
+    /// M11-F: the run's evaluation chord, bounding curved incidence.
+    pub chord_metres: f64,
 }
 
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Result<Vec<Requirement>, RetainedExecutionError> {

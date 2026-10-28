@@ -8,7 +8,13 @@ mod face_attribution;
 #[allow(dead_code)]
 #[path = "../src/element/session_retained/presentation/face_surfaces.rs"]
 mod face_surfaces;
-use face_attribution::{candidates, resolve, Choice, Extent, Operand, Role, SourceFace, Support, Unproven};
+#[path = "../src/element/session_retained/presentation/face_coincidence.rs"]
+mod face_coincidence;
+#[allow(dead_code)]
+#[path = "../src/element/session_retained/presentation/face_curve.rs"]
+mod face_curve;
+use face_attribution::{candidates, resolve, Choice, Extent, Halt, Operand, Role, SourceFace, Support, Unproven};
+use ifc_lite_geometry::resource::{self, Dimension, ProgramStop};
 use ifc_lite_processing::retained_requests::RetainedSources;
 
 const CHORD: f64 = 0.001;
@@ -45,9 +51,12 @@ fn tri(a: [f64; 3], b: [f64; 3], c: [f64; 3], outward: [f64; 3]) -> [[f64; 3]; 3
     let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
     if n[0] * outward[0] + n[1] * outward[1] + n[2] * outward[2] >= 0. { [a, b, c] } else { [a, c, b] }
 }
+fn proof(halt: Halt) -> Unproven {
+    match halt { Halt::Unproven(unproven) => unproven, Halt::Stopped(stop) => panic!("no budget is active: {stop:?}") }
+}
 /// One kernel face made of `triangles`: its single resolved source face.
 fn face(operands: &[Operand], triangles: &[[[f64; 3]; 3]]) -> Result<Choice, Unproven> {
-    resolve(&triangles.iter().map(|t| candidates(operands, t, CHORD)).collect::<Result<Vec<_>, _>>()?)
+    resolve(operands, &triangles.iter().map(|t| candidates(operands, t, CHORD)).collect::<Result<Vec<_>, _>>().map_err(proof)?, CHORD)
 }
 fn key(operands: &[Operand], corners: [[f64; 3]; 3]) -> Result<(u32, String), Unproven> {
     face(operands, &[corners]).map(|(o, f)| (operands[o].item, operands[o].faces[f].role.to_string()))
@@ -68,12 +77,12 @@ fn m11_f_7955_reversed_profile_keeps_authored_side_order_and_outward_faces() {
         let corners = tri([a[0], a[1], 0.], [b[0], b[1], 0.], [a[0], a[1], 3.], [n[0], n[1], 0.]);
         assert_eq!(key(&host, corners), Ok((13, format!("side(0,{k})"))), "authored edge {k}");
         // The same triangle facing inward is no outward source face: never guessed.
-        assert_eq!(key(&host, [corners[0], corners[2], corners[1]]), Err(Unproven::Unattributed { entity: None }));
+        assert_eq!(key(&host, [corners[0], corners[2], corners[1]]), Err(Unproven::Unattributed { entity: Some(13) }));
     }
     let cap = |z: f64, n: f64| tri([1., 0.5, z], [3., 0.5, z], [2., 1.5, z], [0., 0., n]);
     assert_eq!(key(&host, cap(0., -1.)), Ok((13, "cap(start)".into())));
     assert_eq!(key(&host, cap(3., 1.)), Ok((13, "cap(end)".into())));
-    assert_eq!(key(&host, cap(1.5, 1.)), Err(Unproven::Unattributed { entity: None }), "interior plane");
+    assert_eq!(key(&host, cap(1.5, 1.)), Err(Unproven::Unattributed { entity: Some(13) }), "interior plane");
 }
 
 #[test]
@@ -137,7 +146,7 @@ fn m11_f_7955_non_coincident_candidates_refuse_as_ambiguous() {
     let sliver = tri([1., -1e-4, 0.], [1., 1e-4, 0.], [1., 0., 1.], [1., 0., 0.]);
     assert_eq!(face(&operands, &[sliver]), Err(Unproven::Ambiguous { entity: Some(1) }));
     assert_eq!(face(&operands, &[tri([5., 5., 5.], [6., 5., 5.], [5., 6., 5.], [0., 0., 1.])]),
-        Err(Unproven::Unattributed { entity: None }));
+        Err(Unproven::Unattributed { entity: Some(1) }));
 }
 
 #[test]
@@ -158,7 +167,8 @@ fn m11_f_7955_kernel_face_merging_two_coincident_cutters_keeps_the_left_one() {
     let (o, f) = face(&operands, &jamb).unwrap();
     assert_eq!((operands[o].item, operands[o].faces[f].role), (100, Role::Side { boundary: 0, segment: 3 }),
         "coincident cutters: the left one, uniformly across the kernel face");
-    // Each half alone, as its own kernel face, keeps its own cutter.
+    // A kernel that splits the jamb keys each half by its own cutter: the face_bands
+    // oracle ("connected coincident faces go to the earliest cut") rejects that kernel.
     assert_eq!(face(&operands, &jamb[1..]).map(|(o, _)| operands[o].item), Ok(102));
 }
 
@@ -168,12 +178,12 @@ fn m11_f_7955_zero_area_triangles_never_choose_a_face() {
     // A point on the box corner lies on three planes: alone it is no evidence.
     let point = [[0.; 3]; 3];
     assert!(!candidates(&host, &point, CHORD).unwrap().oriented);
-    assert_eq!(face(&host, &[point]), Err(Unproven::Unattributed { entity: None }));
+    assert_eq!(face(&host, &[point]), Err(Unproven::Unattributed { entity: Some(13) }));
     // Beside an oriented triangle of the same kernel face it must lie on that face too.
     let base = tri([0., 0., 0.], [0., 1., 0.], [1., 0., 0.], [0., 0., -1.]);
     assert_eq!(face(&host, &[base, point]).map(|(_, f)| host[0].faces[f].role), Ok(Role::Cap { end: false }));
     let far = [[2., 1., 3.]; 3];
-    assert_eq!(face(&host, &[base, far]), Err(Unproven::Ambiguous { entity: None }));
+    assert_eq!(face(&host, &[base, far]), Err(Unproven::Ambiguous { entity: Some(13) }));
 }
 
 #[test]
@@ -183,7 +193,7 @@ fn m11_f_7955_kernel_face_without_a_common_source_face_refuses() {
     let side = tri([4., 0., 0.], [4., 2., 0.], [4., 0., 3.], [1., 0., 0.]);
     assert_eq!(face(&host, &[top, top]).map(|(_, f)| host[0].faces[f].role), Ok(Role::Cap { end: true }));
     // One revision-local face id across a cap and a side: the cross-check fails, nothing is guessed.
-    assert_eq!(face(&host, &[top, side]), Err(Unproven::Ambiguous { entity: None }));
+    assert_eq!(face(&host, &[top, side]), Err(Unproven::Ambiguous { entity: Some(13) }));
 }
 
 #[test]
@@ -195,4 +205,85 @@ fn m11_f_7955_swept_disk_wall_and_caps() {
     assert_eq!(key(&bar, tri(wall(0., 0.), wall(5., 0.), wall(0., 2.75), [0., 1., 0.04])), Ok((43, "disk(wall)".into())));
     assert_eq!(key(&bar, tri([0., 0., 0.], wall(0., 0.), wall(5., 0.), [-1., 0., 0.])), Ok((43, "disk(start)".into())));
     assert_eq!(key(&bar, tri([2.75, 0., 0.], wall(0., 2.75), wall(5., 2.75), [1., 0., 0.])), Ok((43, "disk(end)".into())));
+}
+
+#[test]
+fn m11_f_7955_rounding_skewed_sliver_carries_no_normal() {
+    let host = [operand(&wall(&BOX, 3., [0.; 3]), false, 1., IDENTITY)];
+    let top = tri([1., 0.5, 3.], [3., 0.5, 3.], [2., 1.5, 3.], [0., 0., 1.]);
+    // A T-junction filler on the top cap: collinear up to a 1e-12 m rounding skew
+    // out of the plane, so its facet normal points along -y instead of +z.
+    let sliver = [[1., 1., 3.], [3., 1., 3.], [2., 1., 3. + 1e-12]];
+    let list = candidates(&host, &sliver, CHORD).unwrap();
+    assert!(!list.oriented, "area / longest² = 2.5e-13 is below faceDegenerateAreaRatio");
+    assert_eq!(face(&host, &[top, sliver]).map(|(_, f)| host[0].faces[f].role), Ok(Role::Cap { end: true }));
+}
+
+#[test]
+fn m11_f_7955_kind_ambiguity_is_decided_per_kernel_face() {
+    let source = |role, support| SourceFace { role, support, extent: Extent::Wall };
+    let lone = |item, faces| Operand { item, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces, region: None };
+    let operands = [lone(1, vec![source(Role::Cap { end: true }, Support::Plane { origin: [1., 0., 0.], normal: [1., 0., 0.] })]),
+        lone(2, vec![source(Role::Side { boundary: 0, segment: 0 },
+            Support::Cylinder { center: [0., 0.], radius: 1., generator: [0., 0., 1.], outward: 1. })])];
+    // The tangent sliver alone lies on both; the rest of its kernel face only on the plane.
+    let sliver = tri([1., -1e-4, 0.], [1., 1e-4, 0.], [1., 0., 1.], [1., 0., 0.]);
+    assert_eq!(candidates(&operands, &sliver, CHORD).unwrap().matches.len(), 2);
+    let plane = tri([1., 0.5, 0.], [1., 0.9, 0.], [1., 0.5, 1.], [1., 0., 0.]);
+    assert_eq!(face(&operands, &[sliver, plane]), Ok((0, 0)));
+}
+
+#[test]
+fn m11_f_7955_crossing_planes_on_a_thin_strip_refuse() {
+    // A copy of the box tilted 3° about its top edge y = 0, z = 3: both top caps pass
+    // incidence and the 5° normal test on a strip 10 µm wide along that edge.
+    let (sin, cos) = 3f64.to_radians().sin_cos();
+    let tilt = [1., 0., 0., 0., 0., cos, sin, 0., 0., -sin, cos, 0., 0., 3. * sin, 3. - 3. * cos, 1.];
+    let mut tilted = operand(&wall(&BOX, 3., [0.; 3]), false, 1., tilt);
+    tilted.item = 77;
+    let operands = [operand(&wall(&BOX, 3., [0.; 3]), false, 1., IDENTITY), tilted];
+    let strip = tri([1.75, 0., 3.], [2.25, 0., 3.], [2., 1e-5, 3.], [0., 0., 1.]);
+    let list = candidates(&operands, &strip, CHORD).unwrap();
+    assert_eq!(list.matches.iter().filter(|(_, held)| *held).count(), 2, "both bounded caps hold it: {list:?}");
+    assert_eq!(face(&operands, &[strip]), Err(Unproven::Ambiguous { entity: Some(13) }), "never min() between crossing planes");
+    // The same caps without the tilt are one surface: the left operand keeps it.
+    let mut copy = operand(&wall(&BOX, 3., [0.; 3]), false, 1., IDENTITY);
+    copy.item = 77;
+    let flat = [operand(&wall(&BOX, 3., [0.; 3]), false, 1., IDENTITY), copy];
+    assert_eq!(face(&flat, &[strip]).map(|(o, _)| flat[o].item), Ok(13));
+}
+
+#[test]
+fn m11_f_7955_long_directrix_refuses_on_the_work_budget() {
+    // 8192 cubic controls zig-zagging along x: every span passes x = 0.5 and no span
+    // hull is farther from the wall than the curve, so each foot point samples all
+    // 8189 spans. Default product budget: 10M work units.
+    let points: Vec<[f64; 4]> = (0..8192).map(|i| [(i % 2) as f64, 0., 0., 1.]).collect();
+    let mut knots = vec![0.; 4];
+    knots.extend((1..8189).map(|i| i as f64));
+    knots.extend([8189.; 4]);
+    let curve = face_curve::Curve::new(3, points, knots, [0., 8189.]).unwrap();
+    let tube = SourceFace { role: Role::DiskWall, extent: Extent::Wall, support: Support::Tube { curve, radius: 0.01 } };
+    let bar = [Operand { item: 5, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces: vec![tube], region: None }];
+    let wall = tri([0.4, 0.01, 0.], [0.6, 0.01, 0.], [0.5, 0.01, 0.001], [0., 1., 0.]);
+    let run = || {
+        let account = resource::ExecutionAccount::new(resource::ExecutionPolicy::Bounded(Default::default()));
+        account.scope(|| {
+            let budget = resource::ProductBudget::new(resource::BudgetStart::now(), 10_000_000, 1 << 30, 30_000);
+            budget.scope(|| {
+                for triangle in 0.. {
+                    if let Err(halt) = candidates(&bar, &wall, CHORD) { return (triangle, halt); }
+                }
+                unreachable!()
+            })
+        })
+    };
+    let start = std::time::Instant::now();
+    let (attributed, halt) = run();
+    let elapsed = start.elapsed();
+    let Halt::Stopped(ProgramStop::ResourceRefused(failure)) = halt else { panic!("{halt:?}") };
+    assert_eq!(failure.dimension, Dimension::Work, "the work budget refuses, not the deadline");
+    assert!(attributed <= 2, "{attributed} triangles before refusal");
+    assert!(elapsed.as_secs_f64() < 10., "bounded wall time: {elapsed:?}");
+    assert_eq!(run().0, attributed, "deterministic refusal point");
 }

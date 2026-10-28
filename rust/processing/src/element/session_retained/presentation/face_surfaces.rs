@@ -4,6 +4,7 @@
 //! Roles keep the authored profile order: `side(loop, segment)` indexes the
 //! canonical profile lowering, even where the request reversed a loop.
 use super::face_attribution::{unit, Extent, Region, Role, Segment, SourceFace, Support};
+use super::face_curve::{Curve, MAX_DEGREE};
 use ifc_lite_geometry::document::{RetainedRecipe, SweepPayload};
 
 /// Why a construction has no source faces here.
@@ -104,7 +105,7 @@ fn disk(reader: &mut Reader<'_>) -> Option<Vec<SourceFace>> {
     let [radius, inner] = reader.f64s::<2>()?;
     let [kind, _, degree, controls, knots, _] =
         [reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?];
-    if header != [2, 1, 1, 0] || inner != 0. || kind != 4 || degree == 0
+    if header != [2, 1, 1, 0] || inner != 0. || kind != 4 || degree == 0 || degree as usize > MAX_DEGREE
         || controls as usize > reader.bytes.len() / 32 || knots as usize > reader.bytes.len() / 16 { return None; }
     let range = reader.f64s::<2>()?;
     let points = (0..controls).map(|_| reader.f64s::<4>().map(|[x, y, z, w]| [x * w, y * w, z * w, w]))
@@ -112,11 +113,11 @@ fn disk(reader: &mut Reader<'_>) -> Option<Vec<SourceFace>> {
     let mut expanded = Vec::new();
     for _ in 0..knots {
         let (knot, multiplicity, _) = (reader.f64()?, reader.u32()?, reader.u32()?);
-        if multiplicity as usize > degree as usize + 1 { return None; }
+        if multiplicity as usize > degree as usize + 1
+            || expanded.len() + multiplicity as usize > controls as usize + degree as usize + 1 { return None; }
         expanded.extend(std::iter::repeat_n(knot, multiplicity as usize));
     }
-    if expanded.len() != points.len() + degree as usize + 1 || !(range[0] < range[1]) { return None; }
-    let curve = Curve { degree: degree as usize, points, knots: expanded, range };
+    let curve = Curve::new(degree as usize, points, expanded, range)?;
     let [start, end] = range.map(|t| (curve.point(t), curve.tangent(t)));
     let cap = |end: bool, (center, tangent): ([f64; 3], [f64; 3])| SourceFace {
         role: Role::DiskCap { end }, extent: Extent::Disk { center, radius },
@@ -124,56 +125,4 @@ fn disk(reader: &mut Reader<'_>) -> Option<Vec<SourceFace>> {
     };
     Some(vec![SourceFace { role: Role::DiskWall, extent: Extent::Wall, support: Support::Tube { curve, radius } },
         cap(false, (start.0, start.1?)), cap(true, (end.0, end.1?))])
-}
-
-/// A clamped rational B-spline directrix in homogeneous form, over its active range.
-#[derive(Debug, Clone)]
-pub(crate) struct Curve { degree: usize, points: Vec<[f64; 4]>, knots: Vec<f64>, range: [f64; 2] }
-impl Curve {
-    pub(crate) fn point(&self, t: f64) -> [f64; 3] {
-        let (p, k) = (self.degree, &self.knots);
-        let t = t.clamp(self.range[0], self.range[1]);
-        // Span s with k[s] <= t < k[s+1], clamped so the last parameter uses the last span.
-        let s = (p..self.points.len()).rfind(|&s| k[s] <= t && k[s] < k[s + 1]).unwrap_or(p);
-        let mut d: Vec<[f64; 4]> = (0..=p).map(|j| self.points[s - p + j]).collect();
-        for r in 1..=p {
-            for j in (r..=p).rev() {
-                let i = s - p + j;
-                let a = (t - k[i]) / (k[i + p + 1 - r] - k[i]);
-                d[j] = std::array::from_fn(|c| (1. - a) * d[j - 1][c] + a * d[j][c]);
-            }
-        }
-        let h = d[p];
-        [h[0] / h[3], h[1] / h[3], h[2] / h[3]]
-    }
-    /// Unit tangent by a one-sided difference inside the range.
-    fn tangent(&self, t: f64) -> Option<[f64; 3]> {
-        let h = (self.range[1] - self.range[0]) * 1e-7;
-        let (a, b) = if t + h <= self.range[1] { (t, t + h) } else { (t - h, t) };
-        let (pa, pb) = (self.point(a), self.point(b));
-        unit([pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]])
-    }
-    /// Foot point on the curve: dense samples per knot span, then golden-section refinement.
-    pub(crate) fn closest(&self, q: [f64; 3]) -> [f64; 3] {
-        let distance = |t: f64| { let p = self.point(t); (0..3).map(|i| (p[i] - q[i]).powi(2)).sum::<f64>() };
-        let mut breaks: Vec<f64> = self.knots.iter().copied().filter(|k| *k > self.range[0] && *k < self.range[1]).collect();
-        breaks.insert(0, self.range[0]);
-        breaks.push(self.range[1]);
-        breaks.dedup();
-        let samples = breaks.windows(2).flat_map(|w| (0..=32).map(move |i| w[0] + (w[1] - w[0]) * i as f64 / 32.));
-        let (mut best, mut step) = (self.range[0], 0.);
-        let mut least = f64::INFINITY;
-        for t in samples {
-            let d = distance(t);
-            if d < least { (least, best) = (d, t); }
-        }
-        for w in breaks.windows(2) { if best >= w[0] && best <= w[1] { step = (w[1] - w[0]) / 32.; } }
-        let (mut lo, mut hi) = ((best - step).max(self.range[0]), (best + step).min(self.range[1]));
-        let ratio = (5f64.sqrt() - 1.) / 2.;
-        for _ in 0..80 {
-            let (a, b) = (hi - ratio * (hi - lo), lo + ratio * (hi - lo));
-            if distance(a) <= distance(b) { hi = b } else { lo = a }
-        }
-        self.point((lo + hi) / 2.)
-    }
 }

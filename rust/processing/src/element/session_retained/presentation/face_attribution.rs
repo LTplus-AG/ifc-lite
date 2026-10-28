@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Source-surface incidence (#7955 M11-F, spec §3.3). A regularized Boolean
 //! result satisfies ∂(A∘B) ⊆ ∂A ∪ ∂B, so every output triangle lies on one
-//! operand source face. Pure f64 geometry: no kernel, SDK, repair or guessing.
-use super::face_surfaces::Curve;
+//! operand source face. Pure f64 geometry: no kernel, SDK, repair or guessing;
+//! only curve foot points charge the product budget.
+use super::face_coincidence::coincident;
+use super::face_curve::Curve;
+use ifc_lite_geometry::resource::ProgramStop;
 
 /// Preregistered in tests/fixtures/cli-retained/tolerances.d/m11-f.json.
 pub(crate) const INCIDENCE_PLANAR_M: f64 = 1e-6;
 pub(crate) const INCIDENCE_CURVED_EXTRA_M: f64 = 1e-6;
 pub(crate) const NORMAL_RADIANS: f64 = 0.0873;
+/// Below this area per squared longest edge a triangle has no facet normal.
+pub(crate) const DEGENERATE_AREA_RATIO: f64 = 1e-6;
 
 /// Unbounded geometric support of one source face, in its operand's evaluation frame.
 #[derive(Debug, Clone)]
@@ -65,6 +70,11 @@ pub(crate) struct Operand {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Unproven { Unattributed { entity: Option<u32> }, Ambiguous { entity: Option<u32> } }
+/// Why a triangle has no candidates: no proof, or the product budget stopped the search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Halt { Unproven(Unproven), Stopped(ProgramStop) }
+impl From<Unproven> for Halt { fn from(u: Unproven) -> Self { Self::Unproven(u) } }
+impl From<ProgramStop> for Halt { fn from(s: ProgramStop) -> Self { Self::Stopped(s) } }
 /// Per triangle: (operand, face) chosen from the candidates.
 pub(crate) type Choice = (usize, usize);
 
@@ -167,12 +177,15 @@ impl Operand {
         }
     }
     /// Vertex and centroid incidence plus oriented facet-normal agreement.
-    fn incident(&self, face: &SourceFace, corners: &[V; 3], normal: Option<V>, chord: f64) -> bool {
+    fn incident(&self, face: &SourceFace, corners: &[V; 3], normal: Option<V>, chord: f64) -> Result<bool, ProgramStop> {
         let centroid = std::array::from_fn(|i| (corners[0][i] + corners[1][i] + corners[2][i]) / 3.);
         let tolerance = self.stretch * match face.support { Support::Plane { .. } => INCIDENCE_PLANAR_M, _ => chord + INCIDENCE_CURVED_EXTRA_M };
-        corners.iter().chain([&centroid]).all(|p| face.support.distance(*p) <= tolerance)
-            && normal.is_none_or(|n| face.support.normal(centroid)
-                .is_some_and(|o| angle(n, o.map(|v| v * self.sign)) <= NORMAL_RADIANS))
+        for corner in corners {
+            if face.support.probe(*corner)?.0 > tolerance { return Ok(false); }
+        }
+        let (distance, outward) = face.support.probe(centroid)?;
+        Ok(distance <= tolerance
+            && normal.is_none_or(|n| outward.is_some_and(|o| angle(n, o.map(|v| v * self.sign)) <= NORMAL_RADIANS)))
     }
 }
 impl Support {
@@ -180,72 +193,83 @@ impl Support {
         let s = p[2] / g[2];
         [p[0] - s * g[0] - center[0], p[1] - s * g[1] - center[1]]
     }
-    fn distance(&self, p: V) -> f64 {
+    /// Distance of a plane or cylinder from `p`; a swept-disk wall needs [`Self::probe`].
+    pub(crate) fn flat_distance(&self, p: V) -> Option<f64> {
         match self {
-            Self::Plane { origin, normal } => dot(sub(p, *origin), *normal).abs(),
+            Self::Plane { origin, normal } => Some(dot(sub(p, *origin), *normal).abs()),
             Self::Cylinder { center, radius, generator, .. } => {
                 let r = Self::radial(*center, *generator, p);
-                (r[0].hypot(r[1]) - radius).abs()
+                Some((r[0].hypot(r[1]) - radius).abs())
             }
-            Self::Tube { curve, radius } => { let d = sub(p, curve.closest(p)); (dot(d, d).sqrt() - radius).abs() }
+            Self::Tube { .. } => None,
         }
     }
-    /// The outward unit normal of the support at (the foot of) `p`.
-    fn normal(&self, p: V) -> Option<V> {
-        match self {
-            Self::Plane { normal, .. } => Some(*normal),
+    /// Distance from `p` and the outward unit normal at its foot, from one foot point.
+    fn probe(&self, p: V) -> Result<(f64, Option<V>), ProgramStop> {
+        Ok(match self {
+            Self::Plane { normal, .. } => (self.flat_distance(p).unwrap_or(f64::INFINITY), Some(*normal)),
             Self::Cylinder { center, generator, outward, .. } => {
                 let r = Self::radial(*center, *generator, p);
-                unit(cross([-r[1], r[0], 0.], *generator)).map(|n| n.map(|v| v * generator[2].signum() * outward))
+                (self.flat_distance(p).unwrap_or(f64::INFINITY),
+                    unit(cross([-r[1], r[0], 0.], *generator)).map(|n| n.map(|v| v * generator[2].signum() * outward)))
             }
-            Self::Tube { curve, .. } => unit(sub(p, curve.closest(p))),
-        }
+            Self::Tube { curve, radius } => {
+                let d = sub(p, curve.closest(p)?);
+                ((dot(d, d).sqrt() - radius).abs(), unit(d))
+            }
+        })
     }
 }
-fn same_kind(a: &Support, b: &Support) -> bool {
-    matches!((a, b), (Support::Plane { .. }, Support::Plane { .. })
-        | (Support::Cylinder { .. }, Support::Cylinder { .. }) | (Support::Tube { .. }, Support::Tube { .. }))
+/// Facet-normal evidence: false for a triangle whose area is below the
+/// preregistered ratio of its longest edge squared (a rounding-skewed sliver).
+fn oriented(t: &[V; 3]) -> bool {
+    let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
+    let longest = [sub(t[1], t[0]), sub(t[2], t[1]), sub(t[0], t[2])].iter().map(|e| dot(*e, *e)).fold(0., f64::max);
+    let area = dot(n, n).sqrt() / 2.;
+    area.is_finite() && area > 0. && area >= DEGENERATE_AREA_RATIO * longest
 }
 
 /// Every source face one triangle lies on, each with whether its bounded extent
-/// holds the centroid; `oriented` is false for a zero-area triangle, which has no
-/// normal to test. None is `unattributed`; oriented supports of different kinds
-/// are `ambiguous`.
+/// holds the centroid; `oriented` is false for a degenerate triangle, which has
+/// no normal to test. None is `unattributed` (naming the part's host item).
+/// Whether several candidates are one surface is decided per kernel face.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Candidates { pub matches: Vec<(Choice, bool)>, pub oriented: bool }
-pub(crate) fn candidates(operands: &[Operand], part: &[V; 3], chord: f64) -> Result<Candidates, Unproven> {
+pub(crate) fn candidates(operands: &[Operand], part: &[V; 3], chord: f64) -> Result<Candidates, Halt> {
     let mut matches: Vec<(Choice, bool)> = Vec::new();
-    let mut oriented = true;
+    let oriented = oriented(part);
     for (o, operand) in operands.iter().enumerate() {
         let corners = part.map(|p| transform(&operand.from_part, p));
         let normal = unit(cross(sub(corners[1], corners[0]), sub(corners[2], corners[0])));
-        oriented &= normal.is_some();
+        if oriented && normal.is_none() { continue; }
+        let normal = normal.filter(|_| oriented);
         let centroid = std::array::from_fn(|i| (corners[0][i] + corners[1][i] + corners[2][i]) / 3.);
         for (f, face) in operand.faces.iter().enumerate() {
-            if operand.incident(face, &corners, normal, chord) {
+            if operand.incident(face, &corners, normal, chord)? {
                 matches.push(((o, f), operand.contains(face, centroid, operand.stretch * (chord + INCIDENCE_CURVED_EXTRA_M))));
             }
         }
     }
-    let face = |(o, f): Choice| &operands[o].faces[f];
-    let Some(&(first, _)) = matches.first() else { return Err(Unproven::Unattributed { entity: None }) };
-    if oriented && matches.iter().any(|&(c, _)| !same_kind(&face(c).support, &face(first).support)) {
-        return Err(Unproven::Ambiguous { entity: Some(operands[first.0].item) });
-    }
+    if matches.is_empty() { return Err(Unproven::Unattributed { entity: operands.first().map(|o| o.item) }.into()); }
     Ok(Candidates { matches, oriented })
 }
 
 /// One key per revision-local kernel face. Its candidates are the source faces
 /// common to all its ORIENTED triangles (none: the kernel cross-check fails,
-/// `ambiguous`); zero-area triangles must lie on the chosen face too, and a face
-/// with no oriented triangle has no evidence (`unattributed`). Coincident
-/// candidates prefer faces whose bounded extent holds one of its triangles, then
-/// the LEFT (host) operand: operands are in left-first lineage order, and the
-/// left operand is where a Boolean's surviving boundary comes from. A key may
-/// span several kernel faces, never the reverse.
-pub(crate) fn resolve(face: &[Candidates]) -> Result<Choice, Unproven> {
+/// `ambiguous`); degenerate triangles must lie on the chosen face too, and a
+/// face with no oriented triangle has no evidence (`unattributed`). Candidates
+/// prefer faces whose bounded extent holds one of its triangles; those left
+/// must all be one surface (else `ambiguous`), and go to the LEFT (host)
+/// operand: operands are in left-first lineage order, and the left operand is
+/// where a Boolean's surviving boundary comes from. A key may span several
+/// kernel faces, never the reverse. Every refusal names the item it concerns.
+pub(crate) fn resolve(operands: &[Operand], face: &[Candidates], chord: f64) -> Result<Choice, Unproven> {
+    let item = |(o, _): Choice| Some(operands[o].item);
     let mut oriented = face.iter().filter(|c| c.oriented);
-    let first = oriented.next().ok_or(Unproven::Unattributed { entity: None })?;
+    let Some(first) = oriented.next() else {
+        let seen = face.iter().flat_map(|c| c.matches.first()).next();
+        return Err(Unproven::Unattributed { entity: seen.and_then(|&(c, _)| item(c)) });
+    };
     let common: Vec<(Choice, bool)> = first.matches.iter().filter_map(|&(choice, inside)| {
         let mut held = inside;
         for other in oriented.clone() {
@@ -254,10 +278,12 @@ pub(crate) fn resolve(face: &[Candidates]) -> Result<Choice, Unproven> {
         Some((choice, held))
     }).collect();
     let bounded = common.iter().any(|&(_, held)| held);
-    let choice = common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).min()
-        .ok_or(Unproven::Ambiguous { entity: None })?;
-    if face.iter().any(|c| !c.oriented && !c.matches.iter().any(|(m, _)| *m == choice)) {
-        return Err(Unproven::Ambiguous { entity: None });
+    let survivors: Vec<Choice> = common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).collect();
+    let choice = survivors.iter().copied().min()
+        .ok_or(Unproven::Ambiguous { entity: first.matches.first().and_then(|&(c, _)| item(c)) })?;
+    if survivors.iter().any(|&other| !coincident(operands, choice, other, chord))
+        || face.iter().any(|c| !c.oriented && !c.matches.iter().any(|(m, _)| *m == choice)) {
+        return Err(Unproven::Ambiguous { entity: item(choice) });
     }
     Ok(choice)
 }

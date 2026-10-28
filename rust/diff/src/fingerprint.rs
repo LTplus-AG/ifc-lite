@@ -122,9 +122,13 @@ struct NamedEntry {
 
 impl NamedEntry {
     fn to_json(&self) -> JsonValue {
+        // Fixed member field names account for two allocations per property.
+        // The shared code units are immutable and keep the same JSON order.
+        static KEYS: std::sync::OnceLock<[JsString; 2]> = std::sync::OnceLock::new();
+        let [name, value] = KEYS.get_or_init(|| ["name".into(), "value".into()]);
         JsonValue::Object(vec![
-            ("name".into(), JsonValue::String(self.name.clone())),
-            ("value".into(), self.value.to_json()),
+            (name.clone(), JsonValue::String(self.name.clone())),
+            (value.clone(), self.value.to_json()),
         ])
     }
 }

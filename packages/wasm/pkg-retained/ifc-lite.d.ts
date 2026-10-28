@@ -1242,7 +1242,8 @@ export class IfcAPI {
     /**
      * Run the opt-in retained engine, with no exact fallback. Buffers outcomes
      * until completion; next() then consumes them in canonical file order.
-     * Type products and representationless jobs are skipped. Some(empty ids)
+     * Orphan type products are included; instanced types and representationless
+     * jobs are skipped. Some(empty ids)
      * selects no products. One qualified worker is reused, with at most three
      * replacements, and a failed product is never retried.
      */

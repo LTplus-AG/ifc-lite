@@ -55,6 +55,8 @@ pub(super) mod refusal;
 mod inert_tests;
 #[cfg(test)]
 mod refusal_tests;
+#[cfg(test)]
+mod type_product_tests;
 use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, runtime_fault, geometry, common, check_resources};
 mod storage;
 mod construction_storage;
@@ -89,6 +91,7 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     opening_entities: &'a [DecodedEntity],
     type_values: Vec<RetainedProductPlan>,
     type_map_members: Vec<u32>,
+    type_map_members_planned: Vec<u32>,
     pending: Option<PendingRetainedTransaction<R>>,
     prepared: Option<SourceAdmission>,
     ledger: Vec<(LogicalRetainedValue, Arc<RuntimeRealization<R>>)>,

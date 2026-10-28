@@ -13,7 +13,7 @@ extern "C" {
     #[wasm_bindgen(catch, js_name = preparePeer)]
     async fn prepare_peer(fail_at: u32) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_name = assertPublished)]
-    fn assert_published(value: &JsValue, id: u32) -> Result<(), JsValue>;
+    fn assert_published(value: &JsValue, id: u32, ifc_type: &str) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = assertRefused)]
     fn assert_refused(value: &JsValue, id: u32, code: &str) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = assertPeers)]
@@ -24,7 +24,7 @@ fn append(extra: &str) -> String {
     BOX.replace("ENDSEC;\nEND-ISO", &format!("{extra}\nENDSEC;\nEND-ISO"))
 }
 
-// Refs #7955 E2: file ordering, typed refusal, skip empty/type jobs and reuse.
+// Refs #7955 E2/M9: products precede orphan types; empty jobs stay absent.
 #[wasm_bindgen_test(async)]
 async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_order() {
     let _driver = TestDriver::install(driver_factory().await.unwrap());
@@ -41,9 +41,10 @@ async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_or
     );
     let api = IfcAPI::new();
     let mut run = api.retained_model(source.as_bytes(), None).await.unwrap();
-    assert_published(&run.next_outcome(), 27).unwrap();
+    assert_published(&run.next_outcome(), 27, "IfcBuildingElementProxy").unwrap();
     assert_refused(&run.next_outcome(), 80, "material_layer_strategy").unwrap();
-    assert_published(&run.next_outcome(), 60).unwrap();
+    assert_published(&run.next_outcome(), 60, "IfcBuildingElementProxy").unwrap();
+    assert_published(&run.next_outcome(), 90, "IfcBoilerType").unwrap();
     assert!(run.next_outcome().is_undefined());
     assert!(run.next_outcome().is_undefined());
     assert_peers(&start, 1).await.unwrap();
@@ -81,9 +82,9 @@ async fn retained_browser_smlib_free_model_atomicity_and_worker_replacement() {
         .retained_model(source.as_bytes(), None)
         .await
         .unwrap();
-    assert_published(&run.next_outcome(), 27).unwrap();
+    assert_published(&run.next_outcome(), 27, "IfcBuildingElementProxy").unwrap();
     assert_refused(&run.next_outcome(), 100, "kernel_failure").unwrap();
-    assert_published(&run.next_outcome(), 110).unwrap();
+    assert_published(&run.next_outcome(), 110, "IfcBuildingElementProxy").unwrap();
     assert!(run.next_outcome().is_undefined());
     assert_peers(&start, 2).await.unwrap();
 }

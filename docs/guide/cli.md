@@ -1802,7 +1802,10 @@ ifc-lite export model.ifc --format obj --kernel retained --retained-engine /path
 The CLI checks every staged asset against `engine-manifest.json` before loading it.
 Use only an engine you trust: these hashes detect changed assets, not build provenance.
 Existing `--type`, `--where`, `--storey`, and `--limit` filters apply.
-Retained publishes complete products only, with no exact fallback. OBJ headers carry
+Retained publishes complete products only, with no exact fallback. Orphan type products
+are included once per type, with all unreferenced maps placed at their MappingOrigin.
+One unsupported map refuses the entire type. Instanced type-library shapes and
+types with only curve maps that exact does not mesh are absent. OBJ headers carry
 `PresentationObligationsUnmet`: output is shape-only and does not meet the display contract.
 The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,

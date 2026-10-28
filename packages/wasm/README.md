@@ -389,8 +389,14 @@ returns a `Promise<RetainedModelRun>`. The default `pkg` does not expose this me
 
 The run buffers results until completion. Call `run.next()` until it returns
 `undefined`, then `run.free()`. Results follow the canonical processor's file
-order; `ids` filters products, and an empty ID array selects none. Type products
-and representationless jobs are skipped (orphan type geometry remains exact-only).
+order; `ids` filters products and orphan type products, and an empty ID array
+selects none. Orphan types follow products, with one atomic outcome per type and
+all its unreferenced maps in source order. Their MappingOrigin supplies placement;
+nested mappings retain f64 world precision. Instanced types, types with only curve maps
+that exact does not mesh, and representationless jobs are absent. One unsupported
+map refuses the entire type; there is no partial publication or exact retry.
+Published orphan types leave MaterialLayers, IfcAppearance and PersistentFaces
+unmet. Instanced type-library geometry is unavailable in retained mode.
 
 A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
 Each part has object-local metre `Float64Array` positions, `Uint32Array` indices,

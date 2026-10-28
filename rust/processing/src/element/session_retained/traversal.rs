@@ -3,7 +3,9 @@
 use super::*;
 impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
     pub(super) fn init_type_maps(&mut self) -> Result<(),RetainedExecutionError> {
-        if !matches!(&self.state.stage,Stage::TypeMaps(_)) { return Ok(()); }
+        let Stage::TypeMaps(planned) = &self.state.stage else { return Ok(()); };
+        self.scratch.reserve(&self.resources, &mut self.type_map_members_planned, planned.len())?;
+        self.type_map_members_planned.extend(planned.clone().map(|&(id, _)| id));
         let Some(ifc_lite_core::AttributeValue::List(ids)) = self.state.job.entity.get(
             ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index()) else {
             return Err(RetainedExecutionError::Source(RetainedContextError::Mismatched));
@@ -28,7 +30,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         if resources.with_scope(|| self.start_opening_program())? { return Ok(()); }
         let Some(kind) = self.state.stage.next_kind() else {
             let values = std::mem::take(&mut self.type_values);
-            let plan = self.resources.with_scope(|| RetainedProductPlan::type_maps(values)).map_err(common)?;
+            let plan = self.resources.with_scope(|| RetainedProductPlan::type_maps(values).and_then(|p| p.discharge_type_origin(self.state.job.id, &self.type_map_members_planned))).map_err(common)?;
             if let Err(error) = self.validate_manifest(&plan) { self.failed = true; return Err(error); }
             self.plan = Some(plan);
             self.outer = None;

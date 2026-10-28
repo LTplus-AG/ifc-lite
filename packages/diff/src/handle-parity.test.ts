@@ -62,7 +62,7 @@ for (const name of ['core', 'content', 'split', 'successor', 'lineage']) {
               .toEqual(oracleProvenance.identityMapFromSuccessors(expected.successors));
             expect(publicDiff.lineageOfDiff(actual), vector.name).toEqual(oracleProvenance.lineageOfDiff(expected));
           }
-          if (base === vector.base && !stripPlacementGeometry) {
+          if (base === vector.base && head === vector.head && !stripPlacementGeometry) {
             expect(JSON.parse(wire(actual)), vector.name).toEqual(vector.expected);
           }
         }

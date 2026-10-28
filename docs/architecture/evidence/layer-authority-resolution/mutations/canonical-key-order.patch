@@ -1,13 +1,13 @@
 diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
-index b328c3c3c8..8c6ead26f7 100644
+index 91561f3000..7c9418537b 100644
 --- b/packages/extensions/src/authority/resolve.ts
 +++ a/packages/extensions/src/authority/resolve.ts
-@@ -90,7 +90,7 @@ export function canonicalValueKey(value: unknown, nested = false): string {
+@@ -91,7 +91,7 @@ export function canonicalValueKey(value: unknown, nested = false): string {
        const members = Object.keys(record)
          .filter((key) => record[key] !== undefined)
          .map((key) => [key.normalize('NFC'), key] as const)
 -        ;
-+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
++        .sort(([a, rawA], [b, rawB]) => (a !== b ? (a < b ? -1 : 1) : rawA < rawB ? -1 : rawA > rawB ? 1 : 0));
        return `{${members.map(([nfc, key]) => `${JSON.stringify(nfc)}:${canonicalValueKey(record[key], true)}`).join(',')}}`;
      }
      default:

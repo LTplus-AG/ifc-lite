@@ -1758,8 +1758,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       installedSourceSessionId = undefined;
       return;
     }
-  } catch (err) {
-    if (e.data.type === 'scan-shard') err = largeFilePrepassError(err, e.data.sharedBuffer.byteLength) ?? err;
+  } catch (caught) {
+    const err = e.data.type === 'scan-shard' ? largeFilePrepassError(caught, e.data.sharedBuffer.byteLength) ?? caught : caught;
     // Same #2527 follow-up forward as the top-level catch above.
     const panic = takeWasmPanicStash(self);
     (self as unknown as Worker).postMessage(

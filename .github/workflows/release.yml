@@ -24,6 +24,7 @@ on:
   push:
     branches:
       - main
+      - release/25.0.x
 
 # One Release run at a time, and no push's run is cancelled unstarted (#5646).
 #

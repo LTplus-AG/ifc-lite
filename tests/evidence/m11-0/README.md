@@ -32,3 +32,11 @@ outside the repository in the owning task's evidence directory.
 Performance verdict: no optimization or timing claim. Default-path identity is
 a separate build/geometry requirement; the opt-in retained path adds one budgeted
 u32 per triangle for revision-local diagnostics. No kernel evaluation changes.
+
+The committed `tests/fixtures/cli-retained/m11-0-base.obj` is the real SDK output
+of `f-c-extrusion.ifc` through the unmodified base Rust bundle and CLI encoder at
+`021882742fba0202a8d4532e7f277f5e7e16db62` (SHA-256
+`f496775572326ac8988b3320d11da9343dc9604b053d13ab021fbf265fc935f4`).
+It is an output-compatibility golden, not a substitute kernel or fabricated mesh.
+The actual-engine Node test compares every line and permits only the added unmet
+SurfaceNormals name in the fourth line.

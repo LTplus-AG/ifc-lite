@@ -100,7 +100,14 @@ test.describe('retained viewer acceptance', () => {
         }
       });
     });
-    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+    // #7955: move the storey outside the initial camera's frustum. A near-origin
+    // fixture can show a few occurrences even when automatic fitting is absent.
+    const source = readFileSync(MAPPED, 'utf8');
+    const shifted = source.replace('#22=IFCLOCALPLACEMENT(#20,#2);',
+      '#10001=IFCCARTESIANPOINT((500.,0.,0.));\n#10002=IFCAXIS2PLACEMENT3D(#10001,$,$);\n#22=IFCLOCALPLACEMENT(#20,#10002);');
+    expect(shifted).not.toBe(source);
+    await page.locator('#file-input-open').setInputFiles({ name: 'mapped-offset500.ifc',
+      mimeType: 'application/ifc', buffer: Buffer.from(shifted) });
     await complete(page, true);
     await expect.poll(() => page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11I!.draws)).toBeGreaterThan(0);
     const result = await snapshot(page);
@@ -112,7 +119,7 @@ test.describe('retained viewer acceptance', () => {
     expect(observed.shards[0]).toMatchObject({ templates: 1, instances: 64 });
     expect(observed.shards[0].triangles).toBeGreaterThan(0);
     const pixels = await mappedInstancePixels(page);
-    await record('m11-i-instancing', { ...observed, summary: result.summary, pixels: pixels.evidence });
+    await record('m11-i-instancing', { ...observed, summary: result.summary, flatProducts: result.meshIds.length, spans: result.spans, pixels: pixels.evidence });
     if (process.env.IFCLITE_VIEWER_OUT) await writeFile(join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing-gpu.png'), pixels.png);
     if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing.png') });
   });

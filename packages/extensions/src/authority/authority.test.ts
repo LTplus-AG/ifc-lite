@@ -240,6 +240,16 @@ describe('resolveAttribute (§12.5 golden table)', () => {
     expect(canonicalValueKey(JSON.parse('{"n":1e400}'))).not.toBe(canonicalValueKey({ n: null }));
     expect(canonicalValueKey(JSON.parse('[1e400]'))).not.toBe(canonicalValueKey(JSON.parse('[-1e400]')));
     expect(canonicalValueKey('1')).not.toBe(canonicalValueKey(1));
+    // Past the 512-level cap (or cyclic): identity, never a stack overflow.
+    const deep = (n: number) => { let v: unknown = 1; for (let i = 0; i < n; i++) v = [v]; return v; };
+    const deepValue = deep(20000);
+    expect(canonicalValueKey(deepValue)).toBe(canonicalValueKey(deepValue));
+    expect(canonicalValueKey(deep(20000))).not.toBe(canonicalValueKey(deep(20000)));
+    expect(canonicalValueKey(deep(100))).toBe(canonicalValueKey(deep(100)));
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic.self = cyclic;
+    expect(canonicalValueKey(cyclic)).toBe(canonicalValueKey(cyclic));
+    expect(canonicalValueKey(cyclic)).not.toBe(canonicalValueKey({ a: 1 }));
     expect(canonicalValueKey(Number.NaN)).not.toBe(canonicalValueKey(null));
     expect(canonicalValueKey(Infinity)).not.toBe(canonicalValueKey(-Infinity));
     expect(canonicalValueKey([Number.NaN])).not.toBe(canonicalValueKey([null]));

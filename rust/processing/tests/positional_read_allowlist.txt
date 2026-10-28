@@ -70,7 +70,7 @@
 17 rust/geometry/src/router/rtc_offset.rs
 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
 1 rust/geometry/src/router/transforms/mod.rs
-40 rust/geometry/src/router/voids/probe.rs
+7 rust/geometry/src/router/voids/probe.rs
 2 rust/geometry/src/router/voids/representation.rs
 5 rust/geometry/src/trimmed_curve.rs
 5 rust/geometry/src/void_index.rs
@@ -132,3 +132,4 @@
 6 rust/wasm-bindings/src/api/styling/color.rs
 8 rust/wasm-bindings/src/api/styling/prepass.rs
 1 rust/wasm-bindings/src/utils.rs
+17 rust/geometry/src/router/voids/probe/rectangular.rs

@@ -21,10 +21,10 @@ impl Basis {
             z,
         })
     }
-    fn vector(&self, p: [f64; 3]) -> [f64; 3] {
+    pub(super) fn vector(&self, p: [f64; 3]) -> [f64; 3] {
         [dot(p, self.x), dot(p, self.y), dot(p, self.z)]
     }
-    fn point(&self, p: [f64; 3]) -> [f64; 3] {
+    pub(super) fn point(&self, p: [f64; 3]) -> [f64; 3] {
         self.vector(sub(p, self.origin))
     }
 }

@@ -89,6 +89,23 @@ describe('classifyLoadError', () => {
     assert.equal(classifyLoadError(new Error('RuntimeError: unreachable executed')), 'unknown');
   });
 
+  it('attributes a streaming pre-pass worker trap to the geometry worker family (#8246)', () => {
+    // PostHog 01a18270: a 1.6 GB model trapped in the pre-pass and was filed
+    // as `unknown` because the pre-pass rethrew the bare trap text.
+    assert.equal(classifyLoadError(new Error('Pre-pass worker error: unreachable')), 'geometry_worker_crash');
+    assert.equal(
+      classifyLoadError(new Error('Pre-pass worker failed: worker terminated unexpectedly')),
+      'geometry_worker_crash',
+    );
+    // A stale-deploy script 404 still wins (#4886).
+    assert.equal(
+      classifyLoadError(
+        new Error('Pre-pass worker failed: worker script failed to load (possibly a stale deployment)'),
+      ),
+      'wasm_engine_load',
+    );
+  });
+
   it('prefers out_of_memory over worker_crash when the worker died with a clear OOM', () => {
     assert.equal(
       classifyLoadError(new Error('Geometry worker error: Cannot enlarge memory arrays')),

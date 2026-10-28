@@ -358,7 +358,7 @@ impl MaterialLayerIndex {
 ///
 /// Follows the one path that maps to planar cutting: `LayerSetUsage ->
 /// LayerSet -> Layers`. Anything else is `NotSliceable`.
-pub(crate) fn resolve_buildup(material_select_id: u32, decoder: &mut EntityDecoder) -> LayerBuildup {
+fn resolve_buildup(material_select_id: u32, decoder: &mut EntityDecoder) -> LayerBuildup {
     let entity = match decoder.decode_by_id(material_select_id) {
         Ok(e) => e,
         Err(_) => return LayerBuildup::NotSliceable,
@@ -466,6 +466,12 @@ fn resolve_layer_set_usage(usage: &DecodedEntity, decoder: &mut EntityDecoder) -
         direction_sense,
         offset_from_reference_line: offset,
     }
+}
+
+// #7955: retain exact's private helper; expose reuse only in retained builds.
+#[cfg(feature = "retained-runtime")]
+pub(crate) fn resolve_retained_buildup(id: u32, decoder: &mut EntityDecoder) -> LayerBuildup {
+    resolve_buildup(id, decoder)
 }
 
 #[cfg(test)]

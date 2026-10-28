@@ -18,7 +18,7 @@ pub(super) fn usage_id(id: u32, decoder: &mut EntityDecoder) -> Result<u32, &'st
         // insert_association keeps the FIRST Sliceable entry, including when
         // an earlier single-layer usage was NotSliceable. Reuse its resolver.
         if material.ifc_type == IfcType::IfcMaterialLayerSetUsage
-            && crate::material_layer_index::resolve_buildup(material.id,decoder).is_sliceable() {
+            && crate::material_layer_index::resolve_retained_buildup(material.id,decoder).is_sliceable() {
             return Ok(material.id);
         }
     }

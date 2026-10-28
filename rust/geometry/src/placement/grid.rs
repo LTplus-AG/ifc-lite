@@ -64,8 +64,9 @@ fn try_resolve_grid_intersection(
 
 /// Resolve an `IfcVirtualGridIntersection` to a grid-local point: intersect
 /// its two `IfcGridAxis` curves in the grid plane, shift by the optional
-/// per-axis lateral `OffsetDistances` (measured along each axis' own sense), and lift by the optional elevation
-/// (third offset → z). `None` when the axes are missing or parallel.
+/// per-axis lateral `OffsetDistances` (measured along each axis' own sense,
+/// see `grid_axis_line`), and lift by the optional elevation (third offset to
+/// z). `None` when the axes are missing or parallel.
 fn grid_intersection_point(
     intersection: &DecodedEntity,
     decoder: &mut EntityDecoder,

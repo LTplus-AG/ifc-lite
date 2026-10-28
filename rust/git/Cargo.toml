@@ -1,0 +1,51 @@
+[package]
+name = "ifc-lite-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Graph-based version control for IFC: content-addressed nodes, trees, commits and refs"
+keywords = ["ifc", "bim", "versioning", "git", "aec"]
+categories = ["algorithms", "data-structures"]
+readme = "../../README.md"
+
+[dependencies]
+# Content addressing. Measured rather than assumed, because the published
+# GB/s figures describe one long stream and this workload is the opposite: one
+# hash per node, hundreds of thousands of nodes, a few hundred bytes each. On
+# the shape we actually have (aarch64, `sha2` 0.10.9 with its runtime feature
+# detection, so SHA-256 is hardware-accelerated here) BLAKE3 is ~2.2x faster at
+# 200-600 B and ~3.8x at tree-chunk size. Both are collision-resistant, which
+# is the requirement: a node address must not be forgeable from an
+# attacker-supplied IFC.
+#
+# Also already this repo's content-address algorithm on the TypeScript side
+# (`computeLayerId` emits `blake3:<hex>`), so one algorithm covers both.
+#
+# `wasm32_simd` is opt-in and we take it. An earlier version of this comment
+# claimed BLAKE3 had no wasm SIMD backend; that was wrong. 1.8.7 ships
+# `src/wasm32_simd.rs` behind this feature, and without it the browser path
+# would run the portable implementation while `.cargo/config.toml` enables
+# `+simd128` for every other wasm32 build in the repo. The feature is a no-op
+# off wasm32 -- blake3's build script guards it with
+# `if is_wasm32() && is_wasm32_simd()` -- so enabling it unconditionally costs
+# host builds nothing. It does assume simd128 is available, which that same
+# config guarantees.
+#
+# Still unmeasured: the wasm ratio itself. Only the native numbers above are
+# measured, so no browser-diff throughput claim should rest on them.
+#
+# Licence: CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception.
+blake3 = { version = "1.8", features = ["wasm32_simd"] }
+
+# NFC normalization, required by the canonical encoding rather than optional to
+# it: `packages/provenance/SPEC.md` §3 normalizes every string before hashing
+# AND sorts sets by those normalized bytes, because sorting raw while encoding
+# normalized lets the producer's spelling pick the order -- one canonical set
+# yielding two hashes. Licence: (MIT OR Apache-2.0) AND Unicode-3.0.
+unicode-normalization = "0.1"
+
+
+[lints]
+workspace = true

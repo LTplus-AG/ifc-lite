@@ -13,6 +13,8 @@ mod partitioned_batch;
 mod batch_from_source;
 pub(in crate::api) mod batch_host;
 mod batch_partition;
+#[cfg(feature = "retained-browser")]
+pub(crate) use batch_partition::{is_instancing_candidate, INSTANCE_MIN_OCCURRENCES};
 mod instancing;
 pub(crate) mod prepass;
 #[allow(deprecated)] // C4-6b keeps tuple adapters until its browser discovery migration.

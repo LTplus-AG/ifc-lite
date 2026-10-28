@@ -19,8 +19,10 @@ export type RetainedPublished = Extract<SessionEvent<'published'>, { meshes: unk
 export type RetainedRefused = SessionEvent<'refused'>;
 
 export type RetainedHostEvent = RetainedStart
-  | (Omit<RetainedPublished, 'meshes'> & { meshes: MeshData[] })
+  | (Omit<RetainedPublished, 'meshes'> & { meshes: MeshData[]; instancedShards?: ArrayBuffer[];
+      meshCount?: number; bounds?: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } })
   | RetainedRefused
+  | { kind: 'progress' }
   | { kind: 'workerMemory'; wasmHeapBytes: number }
   | { kind: 'complete'; cancelled: boolean }
   | { kind: 'cancelled'; expressId: number; code: 'cancelled' };

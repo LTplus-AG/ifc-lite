@@ -132,9 +132,9 @@ function coordinateInfo(acc: Accumulator): CoordinateInfo {
   };
 }
 
-function grow(acc: Accumulator, meshes: MeshData[]): void {
-  if (meshes.length === 0) return;
-  const { bounds } = calculateMeshBounds(meshes);
+function grow(acc: Accumulator, meshes: MeshData[], supplied?: Accumulator['bounds']): void {
+  if (meshes.length === 0 && !supplied) return;
+  const bounds = supplied ?? calculateMeshBounds(meshes).bounds;
   if (!acc.bounds) { acc.bounds = bounds; return; }
   for (const axis of ['x', 'y', 'z'] as const) {
     acc.bounds.min[axis] = Math.min(acc.bounds.min[axis], bounds.min[axis]);
@@ -237,11 +237,11 @@ export async function* retainedGeometryEvents(
           acc.received.add(event.expressId);
           acc.summary.published++;
           for (const obligation of event.obligationsUnmet) acc.obligations.add(obligation);
-          grow(acc, event.meshes);
+          grow(acc, event.meshes, event.bounds);
           if (event.faces) acc.faces.set(event.expressId, faceRows(event.faces, event.meshes));
-          acc.meshes += event.meshes.length;
+          acc.meshes += event.meshCount ?? event.meshes.length;
           report(true);
-          yield { type: 'batch', meshes: event.meshes, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
+          yield { type: 'batch', meshes: event.meshes, instancedShards: event.instancedShards, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
           phase();
           break;
         }

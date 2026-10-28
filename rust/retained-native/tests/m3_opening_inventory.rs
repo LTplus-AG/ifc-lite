@@ -41,6 +41,12 @@ fn every_committed_opening_has_an_explicit_quantity_classification() {
         let name = std::path::Path::new(path).file_name().unwrap().to_str().unwrap();
         assert!(pins.iter().any(|p| p.0 == name), "base fixture needs a reviewed count");
     }
+    let pins: Vec<_> = pins.into_iter().chain([
+        // #7955 M9 expands the corpus: #85/#95 are mapped extrusion openings;
+        // the #4560 cutters are Boolean operands, not IfcOpeningElement entities.
+        ("issue_6446_mapped_source_frames.ifc", vec![85, 95], 0),
+        ("issue_4560_wall_roof_polygonal_cutters.ifc", vec![], 0),
+    ]).collect();
     for path in options::committed_models(&root).expect("valid per-slice universe") {
         let name = std::path::Path::new(&path).file_name().unwrap().to_str().unwrap();
         let bytes = std::fs::read(root.join(&path)).expect("committed fixture missing");

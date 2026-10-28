@@ -19,7 +19,7 @@ mod registry;
 #[path = "compare/checks/mod.rs"]
 mod checks;
 use ifc_lite_core::SourceBundle;
-use ifc_lite_processing::element::retained_runtime::canonical_element_jobs;
+use ifc_lite_processing::element::retained_runtime::{canonical_element_jobs, canonical_type_maps};
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;
 use ifc_lite_retained_native::{ModelOptions, NativeModelDriver, ProductOutcome};
 use metrics::{transform, Metrics};
@@ -129,14 +129,15 @@ fn compare(
     let mut decoder = source.decoder();
     for (&id, metrics) in &exact_metrics {
         let entity = decoder.decode_by_id(id)?;
-        if entity
+        if !candidates.contains(&id) && entity
             .ifc_type
             .is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct)
         {
             report
                 .exact_only_type_products
-                .push(json!({"model":model,"id":id,"scope":"out of M1 scope"}));
-            report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tout of M1 scope\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
+                .push(json!({"model":model,"id":id,"scope":"unexpected exact-only type product"}));
+            report.universe_mismatch.push(format!("{model}:{id}: exact type mesh omitted from canonical candidates"));
+            report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tunexpected exact-only type product\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
             report.rows.last_mut().unwrap().push_str("\t\t\t\t\t");
         } else if !candidates.contains(&id) {
             report.universe_mismatch.push(format!(
@@ -146,6 +147,11 @@ fn compare(
     }
     drop(decoder);
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes, None);
+    let type_maps = canonical_type_maps(&source);
+    report.type_candidates += type_maps.len();
+    let type_expectations: BTreeMap<_, _> = type_maps.iter().map(|(&id, maps)| {
+        ifc_lite_retained_native::oracle::type_maps::expected(&bytes, &sources, maps).map(|value| (id, value))
+    }).collect::<Result<_, _>>()?;
     let opening_expectations = openings::expectations(&bytes, &sources)?;
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
@@ -182,13 +188,19 @@ fn compare(
                             Err(error) => { report.violations.push(format!("{model}:{id}: {error}")); None }
                         }
                     });
+                    let expectation = if let Some(value) = type_expectations.get(&id) {
+                        if value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
+                            report.violations.push(format!("{model}:{id}: missing or incomplete type source oracle"));
+                        }
+                        value.as_ref().map(|v| (v.volume, v.bbox))
+                    } else { source::expected(&sources, id, shape.parts.len()) };
                     report.published(
                         &model,
                         &shape,
                         &actual,
                         rounded.as_ref(),
                         exact_metrics.get(&id),
-                        source::expected(&sources, id, shape.parts.len()),
+                        expectation,
                         tolerances,
                         ms,
                         opening_expectations.get(&id),

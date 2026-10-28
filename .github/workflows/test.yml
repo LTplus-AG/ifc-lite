@@ -942,6 +942,11 @@ jobs:
           # profile publication. These mutations remain bounded.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
+          # #7781 C2-2: retain the new structural entries and regression wiring;
+          # reverse only the opening predecode bound. The 65-entry witness must
+          # fail an assertion, not lose its imported helper during collection.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/representation/structural.rs | grep -Fxq 'rust/geometry/src/representation/structural.rs'; then
+            oracle_args+=(--mutation tests/evidence/c2-2-finish/behaviour.oracle.patch)
           # #7781 C2-6: retain the shared wrapper helper and its test wiring;
           # reverse only first-vs-single mapped-item admission.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-6-probe-walk/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-6-probe-walk/behaviour.oracle.patch'; then

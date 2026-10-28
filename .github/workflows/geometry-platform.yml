@@ -137,6 +137,7 @@ jobs:
           # a failing cargo test whose witness markers were already printed.
           set -o pipefail
           export IFCLITE_REQUIRE_SMLIB=1
+          export IFCLITE_M9_REFERENCE="$RUNNER_TEMP/m9-native-types.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
           for file in tests/evidence/*/witnesses.txt; do
@@ -230,6 +231,9 @@ jobs:
           # later independent lanes; m3-browser then fails with its own message.
           if [ -f "$RUNNER_TEMP/m3-native-openings.json" ]; then
             cp "$RUNNER_TEMP/m3-native-openings.json" rust/wasm-bindings/smlib/m3-native-openings.json
+          fi
+          if [ -f "$RUNNER_TEMP/m9-native-types.json" ]; then
+            cp "$RUNNER_TEMP/m9-native-types.json" rust/wasm-bindings/smlib/m9-native-types.json
           fi
           node scripts/stage-retained-runtime-peer.mjs
           echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"

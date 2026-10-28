@@ -164,3 +164,33 @@ impl GeometryRouter {
         Ok(out)
     }
 }
+
+#[cfg(feature = "retained-runtime")]
+impl GeometryRouter {
+    /// Whether an orphan map has an item the exact type-map walk can mesh.
+    /// This only applies exact's dispatch selection; it never executes geometry.
+    /// Invalid or budget-limited sources return `None` and remain candidates so
+    /// the retained walk reports their fault.
+    #[doc(hidden)]
+    pub fn type_map_has_exact_mesh_items(&self, map_id: u32, decoder: &mut EntityDecoder)
+        -> Option<bool> {
+        let mut pending = vec![map_id];
+        let mut visited = rustc_hash::FxHashSet::default();
+        let mut budget = LogicalBudget::default();
+        while let Some(id) = pending.pop() {
+            // This is an existence predicate, not accumulated geometry. A
+            // repeated map has the same dispatch answer on every path.
+            if !visited.insert(id) { continue; }
+            let map = decoder.decode_by_id(id).ok()?;
+            let (_, items) = self.admit_type_map(&map, decoder, &mut budget).ok()?;
+            for item in items {
+                if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
+                    pending.push(item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?);
+                } else if self.processor_for(&item.ifc_type).is_some() {
+                    return Some(true);
+                }
+            }
+        }
+        Some(false)
+    }
+}

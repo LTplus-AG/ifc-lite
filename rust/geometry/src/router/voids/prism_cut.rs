@@ -1262,25 +1262,11 @@ fn point_inside(tris: &[PTri], aabbs: &[(V3, V3)], point: V3) -> bool {
         if hi[0] < point[0] || hi[1] < point[1] || hi[2] < point[2] {
             continue;
         }
-        let e1 = sub(t.p[1], t.p[0]);
-        let e2 = sub(t.p[2], t.p[0]);
-        let pvec = cross(RAY_DIR, e2);
-        let det = dot(e1, pvec);
-        if det.abs() < 1.0e-12 {
+        let Some(dist) = super::geom::parity::ray_triangle_param(
+            point, RAY_DIR, t.p[0], t.p[1], t.p[2], 1.0e-12, 1.0e-9,
+        ) else {
             continue;
-        }
-        let inv = 1.0 / det;
-        let tvec = sub(point, t.p[0]);
-        let u = dot(tvec, pvec) * inv;
-        if !(-1.0e-9..=1.0 + 1.0e-9).contains(&u) {
-            continue;
-        }
-        let qvec = cross(tvec, e1);
-        let v = dot(RAY_DIR, qvec) * inv;
-        if v < -1.0e-9 || u + v > 1.0 + 1.0e-9 {
-            continue;
-        }
-        let dist = dot(e2, qvec) * inv;
+        };
         if dist > 1.0e-9 {
             crossings += 1;
         }

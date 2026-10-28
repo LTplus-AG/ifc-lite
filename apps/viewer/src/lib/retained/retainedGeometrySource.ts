@@ -5,8 +5,8 @@
 /**
  * Host messages → the loader's `StreamingGeometryEvent`s (#7955 M2-C).
  *
- * One published product becomes one `batch` (products are atomic, so a batch
- * never carries part of one). A refused or never-reached product produces no
+ * A published product or complete instance shard becomes one atomic `batch`.
+ * A refused or never-reached product produces no
  * mesh at all; it only becomes a row of the `RetainedGeometrySummary`, which
  * is reported after every change. Nothing here ever asks the exact kernel for
  * anything: a refused product stays absent.
@@ -234,9 +234,11 @@ export async function* retainedGeometryEvents(
           break;
         }
         case 'published': {
-          acc.received.add(event.expressId);
-          acc.summary.published++;
-          for (const obligation of event.obligationsUnmet) acc.obligations.add(obligation);
+          for (const product of event.instanceProducts ?? [event]) {
+            acc.received.add(product.expressId);
+            acc.summary.published++;
+            for (const obligation of product.obligationsUnmet) acc.obligations.add(obligation);
+          }
           grow(acc, event.meshes, event.bounds);
           if (event.faces) acc.faces.set(event.expressId, faceRows(event.faces, event.meshes));
           acc.meshes += event.meshCount ?? event.meshes.length;

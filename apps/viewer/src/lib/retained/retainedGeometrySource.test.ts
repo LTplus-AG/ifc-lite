@@ -40,23 +40,26 @@ async function collect(events: AsyncIterator<StreamingGeometryEvent>, until?: (e
 const ids = (events: StreamingGeometryEvent[]) => events.flatMap((e) => e.type === 'batch' ? e.meshes.map((m) => m.expressId) : []);
 
 describe('#7955 M2-C retained geometry source', () => {
-  it('M11-I forwards IFNS without losing product counts or grouped bounds', async () => {
+  it('M11-I Cancel keeps every product already published in an atomic IFNS shard', async () => {
     const shard = new ArrayBuffer(32);
     const base = published(1);
     if (base.kind !== 'published') throw new Error('expected published fixture');
-    const event = { ...base, meshes: [], instancedShards: [shard], meshCount: 1,
+    const event = { ...base, meshes: [], instancedShards: [shard], meshCount: 3,
+      instanceProducts: [1, 2, 3].map(expressId => ({ expressId, ifcType: base.ifcType, obligationsUnmet: base.obligationsUnmet })),
       bounds: { min: { x: 3, y: 5, z: 7 }, max: { x: 4, y: 6, z: 8 } } };
-    const value = run(new ScriptedHostWorker([start([1]), event, complete]));
-    const events = await collect(value.events);
+    const value = run(new ScriptedHostWorker([start([1, 2, 3, 4]), event]));
+    const events = await collect(value.events, e => e.type === 'batch');
+    value.client.cancel();
+    await collect(value.events);
     const batch = events.find(e => e.type === 'batch');
     assert.equal(batch?.type, 'batch');
     if (batch?.type !== 'batch') throw new Error('missing batch');
     assert.deepEqual(batch.instancedShards, [shard]);
-    assert.equal(batch.totalSoFar, 1);
+    assert.equal(batch.totalSoFar, 3);
     assert.deepEqual(batch.coordinateInfo?.originalBounds, event.bounds);
     assert.deepEqual(batch.meshes, []);
-    assert.equal(value.last().published, 1);
-    assert.equal(value.last().completeness, 'complete');
+    assert.equal(value.last().published, 3);
+    assert.deepEqual(value.last().refused.map(p => [p.expressId, p.code]), [[4, 'cancelled']]);
     value.client.unload();
   });
   it('completeness is complete exactly when every candidate published', async () => {

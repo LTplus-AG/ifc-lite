@@ -51,13 +51,18 @@ export class RetainedInstancing {
     const encoded = this.encode(pending.map(event => ({ ...event.meshes[0],
       worldFromObject: event.instanceWorldFromObject! })), pending.map(event => event.instanceKey!), this.rtc);
     const flat = new Set(encoded.flatIndices);
-    let shard: ArrayBuffer | undefined = encoded.shard.byteLength ? Uint8Array.from(encoded.shard).buffer : undefined;
+    const grouped: Published[] = [];
     for (const [index, event] of pending.entries()) {
-      const grouped = !flat.has(index);
-      this.emit({ ...event, meshes: grouped ? [] : event.meshes, meshCount: event.meshes.length,
-        bounds: calculateMeshBounds(event.meshes).bounds,
-        ...(shard ? { instancedShards: [shard] } : {}) });
-      shard = undefined;
+      if (flat.has(index)) this.emit(event);
+      else grouped.push(event);
+    }
+    if (grouped.length) {
+      // One message owns the entire shard and every product it renders. Cancel
+      // cannot receive geometry while dropping the remaining publication rows.
+      this.emit({ ...grouped[0], meshes: [], meshCount: grouped.length,
+        bounds: calculateMeshBounds(grouped.flatMap(event => event.meshes)).bounds,
+        instanceProducts: grouped.map(({ expressId, ifcType, obligationsUnmet }) => ({ expressId, ifcType, obligationsUnmet })),
+        instancedShards: [Uint8Array.from(encoded.shard).buffer] });
     }
   }
 

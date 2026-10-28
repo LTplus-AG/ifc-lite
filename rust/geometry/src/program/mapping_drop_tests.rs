@@ -165,14 +165,26 @@ fn issue_7781_nested_terminal_stop_never_becomes_a_drop_or_runs_a_sibling() {
 }
 
 #[cfg(feature = "observability")]
-#[test]
-fn issue_7781_structured_drop_events_preserve_targets_fields_and_order() {
+mod diagnostics {
+    use super::*;
     use std::{
+        cell::RefCell,
         collections::BTreeMap,
+        rc::Weak,
         sync::{Arc, Mutex},
     };
     use tracing::{span, Event, Metadata, Subscriber};
-    type Events = Vec<(String, BTreeMap<String, String>)>;
+    // The router is thread-confined; a weak TLS reference lets the subscriber
+    // observe it synchronously without unsafe pointers or retaining test state.
+    thread_local! {
+        static OBSERVED_ROUTER: RefCell<Weak<GeometryRouter>> = const { RefCell::new(Weak::new()) };
+    }
+    type Events = Vec<(
+        String,
+        BTreeMap<String, String>,
+        tracing::Level,
+        Option<usize>,
+    )>;
     #[derive(Clone, Default)]
     struct Capture(Arc<Mutex<Events>>);
     #[derive(Default)]
@@ -200,55 +212,133 @@ fn issue_7781_structured_drop_events_preserve_targets_fields_and_order() {
             let mut fields = Fields::default();
             event.record(&mut fields);
             if fields.0.contains_key("error") {
-                self.0
-                    .lock()
-                    .unwrap()
-                    .push((event.metadata().target().to_owned(), fields.0));
+                let depth = OBSERVED_ROUTER.with_borrow(|router| {
+                    router
+                        .upgrade()
+                        .map(|router| router.unsupported_scope_depth())
+                });
+                self.0.lock().unwrap().push((
+                    event.metadata().target().to_owned(),
+                    fields.0,
+                    *event.metadata().level(),
+                    depth,
+                ));
             }
         }
     }
-    let capture = Capture::default();
-    tracing::subscriber::with_default(capture.clone(), || {
-        issue_7781_drop_trace_preserves_siblings_parent_truncation_and_policy();
-        // The logical-stop report deliberately restores policy before logging.
-        // The separate controller regression covers its prefix/unwind effects.
-        super::report_drop(
-            super::DropReason::LogicalStop { item_id: 20 },
-            &Error::geometry("logical stop witness"),
-            false,
-            &GeometryRouter::new(),
-        );
-    });
-    let events = capture.0.lock().unwrap();
-    assert_eq!(events.len(), 9);
-    for (index, pair) in events[..8].chunks_exact(2).enumerate() {
-        for (target, _) in pair {
-            assert_eq!(target, "ifc_lite_geometry::program::mapping::reduce");
-        }
-        let item = &pair[0].1;
-        assert_eq!(item["item_id"], "1");
-        assert_eq!(item["ifc_type"], "IfcCartesianPoint");
-        assert_eq!(
-            item["walk"],
-            if index < 2 {
-                "mapped-source"
-            } else {
-                "styled-source"
+
+    #[test]
+    fn issue_7781_structured_drop_events_preserve_targets_fields_and_order() {
+        let capture = Capture::default();
+        tracing::subscriber::with_default(capture.clone(), || {
+            issue_7781_drop_trace_preserves_siblings_parent_truncation_and_policy();
+        });
+        let events = capture.0.lock().unwrap();
+        assert_eq!(events.len(), 8);
+        for (index, pair) in events[..8].chunks_exact(2).enumerate() {
+            for (target, _, level, _) in pair {
+                assert_eq!(target, "ifc_lite_geometry::program::mapping::reduce");
+                assert_eq!(*level, tracing::Level::DEBUG);
             }
-        );
-        assert_eq!(item["message"], "skipping unsupported source item");
-        let nested = &pair[1].1;
-        assert_eq!(nested["item_id"], "20");
-        assert_eq!(
-            nested["error"],
-            "Geometry processing error: Failed to resolve MappingSource"
-        );
-        assert_eq!(nested["message"], "skipping nested IfcMappedItem");
+            let item = &pair[0].1;
+            assert_eq!(item["item_id"], "1");
+            assert_eq!(item["ifc_type"], "IfcCartesianPoint");
+            assert_eq!(
+                item["walk"],
+                if index < 2 {
+                    "mapped-source"
+                } else {
+                    "styled-source"
+                }
+            );
+            assert_eq!(item["message"], "skipping unsupported source item");
+            let nested = &pair[1].1;
+            assert_eq!(nested["item_id"], "20");
+            assert_eq!(
+                nested["error"],
+                "Geometry processing error: Failed to resolve MappingSource"
+            );
+            assert_eq!(nested["message"], "skipping nested IfcMappedItem");
+        }
     }
-    assert_eq!(events[8].0, "ifc_lite_geometry::program::mapping::stop");
-    assert_eq!(events[8].1["item_id"], "20");
-    assert_eq!(
-        events[8].1["error"],
-        "Geometry processing error: logical stop witness"
-    );
+
+    /// #7781 / PR #8253: select the logical-stop diagnostic through the real
+    /// controller, and observe restoration DURING emission, not after drain.
+    #[test]
+    fn issue_7781_logical_stop_event_restores_outer_policy_before_emission() {
+        for body in [false, true] {
+            for outer_depth in [0, 1] {
+                let source = SOURCE
+                    .replace(
+                        "#20=IFCMAPPEDITEM($,#3);",
+                        "#20=IFCMAPPEDITEM(#41,#3);\
+                        #40=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));\
+                        #41=IFCREPRESENTATIONMAP(#2,#40);",
+                    )
+                    .replace("(#10,#1,#20,#11)", "(#20,#20,#20)")
+                    .replace(
+                        "#30=IFCSHAPEREPRESENTATION($,'Body','CSG'",
+                        if body {
+                            "#30=IFCSHAPEREPRESENTATION($,'Body','CSG'"
+                        } else {
+                            "#30=IFCSHAPEREPRESENTATION($,'FootPrint',''"
+                        },
+                    );
+                let mut decoder = EntityDecoder::new(&source);
+                let item = decoder.decode_by_id(32).unwrap();
+                let mut router = GeometryRouter::new();
+                let cache = GeometryRouter::new_mapped_item_cache();
+                router.enable_shared_mapped_item_cache(cache.clone());
+                let router = Rc::new(router);
+                OBSERVED_ROUTER.set(Rc::downgrade(&router));
+                let outer = (outer_depth == 1).then(|| router.enter_unsupported_policy(false));
+                let program = GeometryProgram::styled_item(
+                    &item,
+                    crate::SubMeshCollection::new(),
+                    false,
+                    None,
+                    (0., 0., 0.),
+                )
+                // Root Items costs three; the first child's one-item source
+                // fits, then the second occurrence exhausts the logical budget.
+                .with_logical_limit(4);
+                let capture = Capture::default();
+                let meshes = tracing::subscriber::with_default(capture.clone(), || {
+                    program.drain_styled(&router, &mut decoder).unwrap()
+                });
+                assert_eq!(meshes.sub_meshes.len(), 1, "completed prefix survives");
+                assert_eq!(meshes.sub_meshes[0].mesh.indices.len(), 36);
+                assert!(cache.lock().unwrap().is_empty(), "no partial publication");
+                let drops = router.take_unsupported_items();
+                assert_eq!(drops.len(), usize::from(body));
+                assert_eq!(
+                    drops.get("IfcMappedItem").copied().unwrap_or(0),
+                    u64::from(body)
+                );
+                assert_eq!(router.unsupported_scope_depth(), outer_depth);
+                assert_eq!(
+                    *capture.0.lock().unwrap(),
+                    vec![(
+                        "ifc_lite_geometry::program::mapping::stop".to_owned(),
+                        BTreeMap::from([
+                            ("item_id".to_owned(), "20".to_owned()),
+                            (
+                                "message".to_owned(),
+                                "skipping nested IfcMappedItem".to_owned()
+                            ),
+                            (
+                                "error".to_owned(),
+                                "Geometry processing error: Representation expansion exceeded the work budget of 4 levels or item references at #20".to_owned()
+                            ),
+                        ]),
+                        tracing::Level::DEBUG,
+                        Some(outer_depth),
+                    )],
+                    "logical stop must close its reporting scope before emission (body={body})",
+                );
+                drop(outer);
+                assert_eq!(router.unsupported_scope_depth(), 0);
+            }
+        }
+    }
 }

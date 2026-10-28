@@ -17,6 +17,14 @@ fn limited(mut program: GeometryProgram<'_>, limit: u32) -> GeometryProgram<'_> 
     program
 }
 
+// Share the existing budget setup with observability witnesses outside inner.
+#[cfg(feature = "observability")]
+impl<'a> GeometryProgram<'a> {
+    pub(in crate::program) fn with_logical_limit(self, limit: u32) -> Self {
+        limited(self, limit)
+    }
+}
+
 fn run<'s>(
     mode: u8,
     source: &'s str,

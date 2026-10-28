@@ -89,9 +89,15 @@ fn qualifies_after_m5_m6_native_mixed_chain_and_boxed_publication() {
 #[test]
 fn qualifies_after_m5_m6_native_consumed_provenance() {
     if worker().is_none(){return;}
-    let outcomes=run(SOURCE,&[1011]);
-    let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("consumed host must refuse atomically");};
-    assert_eq!(refusal.code(),"empty_result");let origin=origin.unwrap();assert_eq!(origin.site,"bounded_halfspace");assert_eq!(origin.cause,"consumed");
+    // An invalid second operand after the consumed first clip must never be
+    // reached; the consumed origin survives instead of a missing-entity error.
+    let chained=SOURCE.replace("#356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);",
+        "#9356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);\n#356=IFCBOOLEANRESULT(.DIFFERENCE.,#9356,#999999);");
+    for source in [SOURCE,chained.as_str()] {
+        let outcomes=run(source,&[1011]);
+        let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("consumed host must refuse atomically");};
+        assert_eq!(refusal.code(),"empty_result");let origin=origin.unwrap();assert_eq!(origin.site,"bounded_halfspace");assert_eq!(origin.cause,"consumed");
+    }
 }
 #[test]
 fn m6_native_fzk_bounded_only_chains_publish() {

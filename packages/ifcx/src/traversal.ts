@@ -88,18 +88,25 @@ export function collectIncomingEdgeNames(composed: Map<string, ComposedNode>): M
 export function collectSiblingEdgeNames(composed: Map<string, ComposedNode>): Map<string, ReadonlySet<string>> {
   // One shared set per parent, not a copy per child (O(k) rather than O(k²) for k children); a child held by
   // several parents gets the union, built only for that child.
-  const byChild = new Map<string, ReadonlySet<string>[]>();
+  // A parent that holds one child under many edge names contributes its set once, not once per edge.
+  const byChild = new Map<string, Set<ReadonlySet<string>>>();
   for (const node of composed.values()) {
     const names: ReadonlySet<string> = new Set(node.children.keys());
     for (const child of node.children.values()) {
       const sets = byChild.get(child.path);
-      if (sets) sets.push(names);
-      else byChild.set(child.path, [names]);
+      if (sets) sets.add(names);
+      else byChild.set(child.path, new Set([names]));
     }
   }
   const siblings = new Map<string, ReadonlySet<string>>();
   for (const [path, sets] of byChild) {
-    siblings.set(path, sets.length === 1 ? sets[0] : new Set(sets.flatMap((set) => [...set])));
+    if (sets.size === 1) {
+      siblings.set(path, sets.values().next().value as ReadonlySet<string>);
+      continue;
+    }
+    const union = new Set<string>();
+    for (const set of sets) for (const name of set) union.add(name);
+    siblings.set(path, union);
   }
   return siblings;
 }

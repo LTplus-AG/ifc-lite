@@ -33,6 +33,14 @@ describe('the effective entity set of an IFCX store', () => {
     expect(countEffectiveEntityTypes({ entityIndex: emptyIndex, entities, schemaVersion: 'IFC4' }, null).size).toBe(0);
   });
 
+  it('keeps a zero row for an IFCX class whose every row is deleted', () => {
+    const ifcx: EffectiveEntitySource = { entityIndex: emptyIndex, entities, schemaVersion: 'IFC5' };
+    const overlay = { isDeleted: (id: number) => id === 2, getNewEntities: () => [] };
+    const counts = countEffectiveEntityTypes(ifcx, overlay);
+    expect(counts.get('IFCWALL')).toBe(0);
+    expect(counts.get('IFCSPACE')).toBe(2);
+  });
+
   it('buckets the table once per model: a second filtered call does not rescan it', () => {
     const rows = 2000;
     const ids = new Uint32Array(rows).map((_, i) => i + 1);

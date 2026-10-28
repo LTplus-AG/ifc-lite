@@ -81,6 +81,10 @@ export function countEffectiveEntityTypes(
   const ifc5Table = !sourceIds && byType.size === 0 && source.schemaVersion === 'IFC5' && !!source.entities?.expressId;
   const walk = !!sourceIds || ifc5Table || !!(overlay && !tombstones);
   for (const [type, ids] of byType) counts.set(type, walk ? 0 : ids.length);
+  // The same zero rows for an IFCX store's source classes, so a class whose every row is deleted still reads 0.
+  if (ifc5Table && source.entities) {
+    for (const type of bucketsOf(source.entities).keys()) if (type !== 'UNKNOWN') counts.set(type, 0);
+  }
   if (walk) {
     for (const entity of iterateEffectiveEntities(source, overlay, undefined, sourceIds)) {
       counts.set(entity.type, (counts.get(entity.type) ?? 0) + 1);
@@ -256,6 +260,15 @@ function idsOfClasses(
   table: NonNullable<EffectiveEntitySource['entities']>,
   classes: ReadonlySet<string>,
 ): number[] {
+  const byClass = bucketsOf(table);
+  const out: number[] = [];
+  // A loop, not `push(...bucket)`: spreading a large class bucket can exceed the engine's argument limit.
+  for (const key of classes) for (const id of byClass.get(key) ?? []) out.push(id);
+  return out;
+}
+
+/** An entity table's rows by class (upper case), built once per table and rebuilt if its row count changes. */
+function bucketsOf(table: NonNullable<EffectiveEntitySource['entities']>): Map<string, number[]> {
   const rows = table.expressId ?? [];
   let held = BUCKETS.get(table);
   if (!held || held.count !== rows.length) {
@@ -268,8 +281,5 @@ function idsOfClasses(
     }
     BUCKETS.set(table, held);
   }
-  const out: number[] = [];
-  // A loop, not `push(...bucket)`: spreading a large class bucket can exceed the engine's argument limit.
-  for (const key of classes) for (const id of held.byClass.get(key) ?? []) out.push(id);
-  return out;
+  return held.byClass;
 }

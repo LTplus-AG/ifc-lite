@@ -657,9 +657,6 @@ pub(super) fn compare_refusals(
     }
 }
 
-/// Sum additive diagnostic counters, merge reason histograms by reason,
-/// and retain all host records (sorted only for scheduler-order independence).
-/// This is comparison of returned diagnostics, never a second router drain.
 #[cfg(test)]
 mod tests {
     //! The comparators must be able to fail: each test builds the smallest

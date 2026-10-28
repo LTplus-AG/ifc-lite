@@ -378,7 +378,7 @@ fn every_expected_row_names_a_gated_fixture_and_reason_7782() {
     let expected: Vec<serde_json::Value> = serde_json::from_str(EXPECTED_DIFF).unwrap();
     for row in expected {
         assert!(gated.contains(row["evidence"]["fixture"].as_str().unwrap()));
-        for key in ["reason", "resolution"] {
+        for key in ["owner", "reason", "resolution"] {
             assert!(!row[key].as_str().unwrap().trim().is_empty());
         }
     }

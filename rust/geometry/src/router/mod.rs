@@ -494,11 +494,7 @@ impl GeometryRouter {
     /// per-ITEM dedup unit, but a true 4-router simulation showed that costs
     /// essentially no extra meshing — 1.01× — because the shared items still land
     /// on one worker, so the simpler whole-representation hash is used.)
-    pub fn geometry_routing_key(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Option<u128> {
+    pub fn geometry_routing_key(&self, element: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
         let rep = crate::representation::structural::product_shape_id(element)?;
         let mut memo = self.content_sig_memo.borrow_mut();
         let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();

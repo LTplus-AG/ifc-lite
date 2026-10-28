@@ -201,7 +201,7 @@
 # defaults move into router/config.rs (`RouterConfig`), and the `with_*`
 # constructors become `from_config` delegates. Current main: 724 -> 706 lines
 # (including formatting of changed hunks); allowance lowered from 727.
-     705 rust/geometry/src/router/mod.rs
+     701 rust/geometry/src/router/mod.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
 # C2-5b (#7781): geom.rs is 240 lines after frame/parity extraction; its row is removed.

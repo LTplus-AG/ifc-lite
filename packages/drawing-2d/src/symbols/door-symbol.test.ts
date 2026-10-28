@@ -147,4 +147,10 @@ describe('DoorSymbolGenerator.generateFromOpening with the door frame (#8232)', 
     const r = generator.generateFromOpening(opening('SINGLE_SWING_RIGHT'), bounds, X);
     expect((r.symbol.parameters as DoorSwingParameters).hingePoint.x).toBeCloseTo(11);
   });
+
+  it('a non-finite frame falls back to wallDirection', () => {
+    const nan = { x: { x: Number.NaN, y: 0 }, y: { x: 0, y: 1 } };
+    const r = generator.generateFromOpening(opening('SINGLE_SWING_RIGHT'), bounds, X, nan);
+    expect((r.symbol.parameters as DoorSwingParameters).hingePoint.x).toBeCloseTo(11);
+  });
 });

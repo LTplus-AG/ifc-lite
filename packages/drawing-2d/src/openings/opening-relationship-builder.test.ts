@@ -158,9 +158,14 @@ describe('OpeningRelationshipBuilder door operation source (#8232)', () => {
   const fzk = new URL('../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
   it.skipIf(!existsSync(fzk))('draws the FZK door typed SINGLE_SWING_RIGHT as RIGHT (fixture; pnpm fixtures)', () => {
     const text = readFileSync(fzk, 'latin1');
-    const type = /IFCDOORTYPE\([^;]*?,\.NOTDEFINED\.,\.(SINGLE_SWING_RIGHT)\.,/.exec(text);
-    expect(type, 'FZK has a SINGLE_SWING_RIGHT door type').not.toBeNull();
+    // Resolve the door's own type through IfcRelDefinesByType and pass that type's OperationType
+    // as the file spells it (dots included), so the builder normalises the raw enum of the type
+    // actually assigned rather than receiving the expected answer pre-cleaned.
     expect(/#17468=\s*IFCDOOR\([^;]*?,2\.01,0\.885,\$,\$,\$\);/.test(text)).toBe(true);
+    const rel = /IFCRELDEFINESBYTYPE\([^;]*?\((?:[^)]*,)?#17468[,)][^;]*?,#(\d+)\);/.exec(text);
+    expect(rel, '#17468 has a type').not.toBeNull();
+    const type = new RegExp(`#${rel![1]}=\\s*IFCDOORTYPE\\([^;]*?,\\.NOTDEFINED\\.,(\\.[A-Z_]+\\.),`).exec(text);
+    expect(type?.[1], "#17468's type states SINGLE_SWING_RIGHT").toBe('.SINGLE_SWING_RIGHT.');
     expect(operationOf({ ifcType: 'IfcDoor', typeOperationType: type![1] })).toBe('SINGLE_SWING_RIGHT');
   });
 });

@@ -6,10 +6,10 @@
 
 import type { Point2D, Line2D } from '../types.js';
 
-/** Unit vector, or null for a degenerate (near-zero) one. */
+/** Unit vector, or null for a degenerate (near-zero or non-finite) one. */
 export function unit(v: Point2D): Point2D | null {
   const l = Math.hypot(v.x, v.y);
-  return l < 1e-9 ? null : { x: v.x / l, y: v.y / l };
+  return Number.isFinite(l) && l >= 1e-9 ? { x: v.x / l, y: v.y / l } : null;
 }
 
 /** +1 when `swing` is `wall` rotated counter-clockwise (the right-handed frame), -1 when clockwise (mirrored). */

@@ -2,47 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { MeshCollection } from '@ifc-lite/wasm';
 import type { MeshData } from '@ifc-lite/geometry';
+import type {
+  RetainedProductRefusal, RetainedRunOptions, RetainedSessionEvent,
+} from '../../../../../packages/wasm/pkg-retained/ifc-lite.js';
 
-// TEMPORARY M2-B boundary: replace the session/event interfaces with generated
-// pkg-retained d.ts imports when M2-A lands. This is §3.2's view-only contract;
-// the unchanged default MeshCollection type describes shared storage. The start
-// frame is NOT the default RtcFrame {x,y,z}: M2-A emits RetainedRtcFrame.
-export interface RetainedRtcFrame { rtcOffset: Float64Array; needsShift: boolean }
-export interface RetainedStart {
-  kind: 'start';
-  candidateIds: Uint32Array;
-  frame: RetainedRtcFrame;
-}
-export interface RetainedPublished {
-  kind: 'published';
-  expressId: number;
-  ifcType: string;
-  marker: 'PresentationObligationsUnmet';
-  obligationsUnmet: string[];
-  meshes: MeshCollection;
-}
-export interface RetainedRefused {
-  kind: 'refused';
-  status: 'refused';
-  expressId: number;
-  ifcType: string;
-  code: string;
-  origin?: { site: string; entity?: number; cause: string };
-  kernelStatus?: number;
-}
-export type RetainedSessionEvent = RetainedStart | RetainedPublished | RetainedRefused;
-export interface RetainedRunOptions { ids?: Uint32Array; detail: 'view' }
-export interface RetainedModelSession {
-  run(bytes: Uint8Array, options: RetainedRunOptions,
-    onEvent: (event: RetainedSessionEvent) => void): Promise<unknown>;
-  free(): void;
-}
-export interface RetainedSessionModule {
-  RetainedModelSession: new () => RetainedModelSession;
-  get_memory(): WebAssembly.Memory;
-}
+// The session contract is M2-A's generated pkg-retained d.ts (type-only, so
+// nothing of pkg-retained enters any bundle). Only the host protocol below is
+// viewer-owned: what the host Worker posts after extracting view meshes.
+export type { RetainedProductRefusal, RetainedRtcFrame, RetainedRunOptions, RetainedSessionEvent } from '../../../../../packages/wasm/pkg-retained/ifc-lite.js';
+export type RetainedRefusalCode = RetainedProductRefusal['code'];
+type SessionEvent<K extends RetainedSessionEvent['kind']> = Extract<RetainedSessionEvent, { kind: K }>;
+export type RetainedStart = SessionEvent<'start'>;
+/** The `detail: 'view'` publication: the shape-only variant carries `parts`, not meshes. */
+export type RetainedPublished = Extract<SessionEvent<'published'>, { meshes: unknown }>;
+export type RetainedRefused = SessionEvent<'refused'>;
 
 export type RetainedHostEvent = RetainedStart
   | (Omit<RetainedPublished, 'meshes'> & { meshes: MeshData[] })
@@ -60,7 +34,7 @@ export class RetainedHostError extends Error {
 export interface RetainedHostRequest {
   runId: number;
   bytes: Uint8Array;
-  options: RetainedRunOptions;
+  options: RetainedRunOptions & { detail: 'view' };
 }
 export type RetainedHostResponse = { runId: number } & (RetainedHostEvent
   | { kind: 'error'; code: RetainedHostErrorCode; message: string });

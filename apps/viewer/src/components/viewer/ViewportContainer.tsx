@@ -23,6 +23,7 @@ import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LandXmlUnitsRefusalPrompt } from './LandXmlUnitsRefusalPrompt';
+import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { LandXmlAssumptionRefusalPromptSlot } from './LandXmlGeorefAssumptionsLazy';
 import { VisibilityChips } from '@/components/viewport-ui/hud/VisibilityChips';
 import { ToolOverlays } from './ToolOverlays';
@@ -860,6 +861,8 @@ export function ViewportContainer() {
           model in place (full page reload would drop it — no boot auto-restore). */}
       <MergeLayersBanner onReload={handleMergeLayersReload} />
       <GeometryModeBanner onReload={handleGeometryModeReload} />
+      {/* #7955 M2: the retained chip + panel; `null` (nothing) in a default build. */}
+      {retainedKernel && <retainedKernel.Chip reload={loadFile} />}
       {/* #5175: offers a retry with a user-chosen linear unit when a LandXML
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />

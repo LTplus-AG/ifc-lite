@@ -196,7 +196,8 @@ test.describe('retained viewer acceptance', () => {
       }, 30_000);
       child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { output += data; });
       child.once('error', error => { clearTimeout(timeout); reject(error); });
-      child.once('exit', code => { clearTimeout(timeout); done({ code, output }); });
+      // `close` fires after stdout/stderr drain; `exit` can precede the last chunk.
+      child.once('close', code => { clearTimeout(timeout); done({ code, output }); });
     });
     expect(result.code).not.toBe(0);
     expect(result.output).toContain('Retained export requires --retained-engine DIR or IFCLITE_RETAINED_ENGINE');

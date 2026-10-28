@@ -1,6 +1,6 @@
---- a/rust/geometry/src/program/retained/halfspace/bounded.rs
-+++ b/rust/geometry/src/program/retained/halfspace/bounded.rs
-@@ -104,7 +104,7 @@
+--- a/rust/geometry/src/program/retained/halfspace/bounded_projection.rs
++++ b/rust/geometry/src/program/retained/halfspace/bounded_projection.rs
+@@ -10,7 +10,7 @@
  impl Projection {
      fn point(&self, source: [f64; 3]) -> [f64; 2] {
          let q = self.frame.transform_point(&Point3::from(Vector3::from(source) * self.scale)).coords;
@@ -8,4 +8,4 @@
 +        let projected = q - self.z * (self.r.dot(&(q - self.p)) / self.dot);
          [self.u.dot(&(projected - self.p)), self.v.dot(&(projected - self.p))]
      }
-     fn segment(&self, segment: &AnalyticCurveSegment) -> PrismSegment {
+     pub(super) fn segment(&self, segment: &AnalyticCurveSegment) -> PrismSegment {

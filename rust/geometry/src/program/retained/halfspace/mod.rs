@@ -3,6 +3,8 @@
 mod plane;
 mod boxed;
 mod bounded;
+#[cfg(feature = "retained-runtime")]
+mod bounded_projection;
 pub(in crate::program) mod plane_source;
 use super::{cutter::CutterStep, failure::{FailureHandle, FailureSite, OriginCause}, LogicalRetainedValue};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};

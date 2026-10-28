@@ -6,13 +6,13 @@ pub(super) fn step(ctx: super::Context<'_, '_>) -> crate::Result<super::CutterSt
 
 #[cfg(feature = "retained-runtime")]
 use {
-    super::{Context, CutterStep, FailureSite, OriginCause},
+    super::{Context, CutterStep, FailureSite, OriginCause, bounded_projection::Projection},
     super::super::cutter,
     crate::analytic::{analytic_boundary_loop, AnalyticCurveSegment},
     crate::document::{PrismLoop, PrismRole, PrismSegment, RetainedPrism, RetainedRefusal, retained_frames},
     crate::math::{mat4::col_major_array, tol::RETAINED_RIGID_DOT_EPS},
     ifc_lite_core::IfcType,
-    nalgebra::{Matrix4, Point3, Vector3},
+    nalgebra::{Matrix4, Vector3},
 };
 
 #[cfg(feature = "retained-runtime")]
@@ -101,36 +101,4 @@ fn bounded_step(ctx: &mut Context<'_, '_>) -> crate::Result<CutterStep> {
         depth: (h + margin) / dot.abs(), loops: vec![PrismLoop { outer: true, segments }],
     };
     cutter::prism_operation(ctx.host, prism).map(CutterStep::Cutter)
-}
-
-#[cfg(feature = "retained-runtime")]
-struct Projection {
-    frame: Matrix4<f64>, scale: f64, p: Vector3<f64>, r: Vector3<f64>,
-    z: Vector3<f64>, u: Vector3<f64>, v: Vector3<f64>, dot: f64,
-}
-#[cfg(feature = "retained-runtime")]
-impl Projection {
-    fn point(&self, source: [f64; 3]) -> [f64; 2] {
-        let q = self.frame.transform_point(&Point3::from(Vector3::from(source) * self.scale)).coords;
-        let projected = q - self.z * (self.r.dot(&(q - self.p)) / self.dot);
-        [self.u.dot(&(projected - self.p)), self.v.dot(&(projected - self.p))]
-    }
-    fn segment(&self, segment: &AnalyticCurveSegment) -> PrismSegment {
-        match *segment {
-            AnalyticCurveSegment::Line { start, end } => PrismSegment::Line { start: self.point(start), end: self.point(end) },
-            AnalyticCurveSegment::Arc { center, normal, x_axis, radius, start_angle, sweep_angle } => {
-                let center2 = self.point(center);
-                let radius = radius * self.scale;
-                if sweep_angle.abs() >= std::f64::consts::TAU - crate::math::tol::RETAINED_ARC_INTERVAL_EPS_RAD {
-                    return PrismSegment::Circle { center: center2, radius };
-                }
-                let x = Vector3::from(x_axis);
-                let y = Vector3::from(normal).cross(&x);
-                let radial = self.frame.transform_vector(&(x * start_angle.cos() + y * start_angle.sin()));
-                let start_angle = self.v.dot(&radial).atan2(self.u.dot(&radial));
-                let sense = self.r.dot(&self.frame.transform_vector(&Vector3::from(normal))).signum();
-                PrismSegment::Arc { center: center2, radius, start_angle, sweep_angle: sweep_angle * sense }
-            }
-        }
-    }
 }

@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
 // Served only by the parity harness; one qualified session stays warm across models.
-let wasm, api, session, importMs;
-export async function initialize() {
+let wasm, api, session, importMs, qualificationMs = 0;
+export async function initialize(driverUrl) {
   const started = performance.now();
   wasm = await import('/pkg/ifc-lite.js');
   await wasm.default();
   api = new wasm.IfcAPI(); session = new wasm.RetainedModelSession();
   importMs = performance.now() - started;
+  const { RetainedDriver } = await import(driverUrl);
+  const qualify = RetainedDriver.prototype.qualify;
+  // Observe the real qualification, which the browser controller times inside
+  // invoke/productMs (acquireMs only covers synchronous Worker construction).
+  RetainedDriver.prototype.qualify = async function (...args) {
+    const began = performance.now();
+    try { return await qualify.apply(this, args); }
+    finally { qualificationMs += performance.now() - began; }
+  };
 }
 const frame = value => ({ needsShift: value.needsShift, rtcOffset: Array.from(value.rtcOffset) });
 export async function runModel(model) {
@@ -17,13 +26,16 @@ export async function runModel(model) {
   const runs = {};
   for (const detail of ['shape', 'view']) {
     const outcomes = [], elapsed = [];
-    let start, previous = performance.now();
+    const qualificationBefore = qualificationMs;
+    let start, previous = performance.now(), previousQualification = qualificationMs;
     const summary = await session.run(bytes, { detail }, event => {
       if (event.kind === 'start') {
         start = { candidateIds: Array.from(event.candidateIds), frame: frame(event.frame) };
         previous = performance.now(); return;
       }
-      const now = performance.now(); elapsed.push(now - previous); previous = now;
+      const now = performance.now();
+      elapsed.push(Math.max(0, now - previous - (qualificationMs - previousQualification)));
+      previous = now; previousQualification = qualificationMs;
       const common = { ...event, status: event.kind };
       delete common.kind;
       if (event.kind === 'published' && detail === 'shape') {
@@ -42,9 +54,8 @@ export async function runModel(model) {
         outcomes.push({ ...common, meshes });
       } else outcomes.push(common);
     });
-    // Acquisition includes SDK startup/qualification, not product throughput.
-    if (elapsed.length) elapsed[0] = Math.max(0, elapsed[0] - summary.acquireMs);
-    runs[detail] = { start, outcomes, summary, productWallMs: elapsed, wasmHeapBytes: wasm.get_memory().buffer.byteLength };
+    runs[detail] = { start, outcomes, summary, qualificationMs: qualificationMs - qualificationBefore,
+      productWallMs: elapsed, wasmHeapBytes: wasm.get_memory().buffer.byteLength };
   }
   return { ...runs, prepass, importMs };
 }

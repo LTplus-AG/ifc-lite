@@ -41,7 +41,13 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
     const page = await browser.newPage();
     page.on('pageerror', error => pageErrors.push(String(error)));
     await page.goto(`http://127.0.0.1:${server.address().port}/page/index.html`);
-    await page.evaluate(async () => { window.harness = await import('/harness/browser-page.mjs'); await window.harness.initialize(); });
+    const bindings = await readFile(join(validated.directory, 'pkg-retained/ifc-lite.js'), 'utf8');
+    const driver = bindings.match(/from ['"](\.\/snippets\/[^'"]+\/retained-driver\.mjs)['"]/);
+    if (!driver) throw new Error('Built retained package has no driver import to observe');
+    await page.evaluate(async driverUrl => {
+      window.harness = await import('/harness/browser-page.mjs');
+      await window.harness.initialize(driverUrl);
+    }, `/pkg/${driver[1].slice(2)}`);
     for (const model of [...new Set(blessed.map(p => p.model))].sort()) {
       const result = await page.evaluate(model => window.harness.runModel(model), model);
       // Playwright serializes typed arrays as plain data; restore the API's
@@ -53,8 +59,8 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
       products.push(...report.products.map(p => ({ ...p, model })));
       const view = compareView(result.shape, result.view, result.prepass);
       models.push({ model, ...report.summary, ...view, importMs: result.importMs,
-        shape: { ...result.shape.summary, productWallMs: result.shape.productWallMs, wasmHeapBytes: result.shape.wasmHeapBytes },
-        view: { ...result.view.summary, wasmHeapBytes: result.view.wasmHeapBytes } });
+        shape: { ...result.shape.summary, qualificationMs: result.shape.qualificationMs, productWallMs: result.shape.productWallMs, wasmHeapBytes: result.shape.wasmHeapBytes },
+        view: { ...result.view.summary, qualificationMs: result.view.qualificationMs, wasmHeapBytes: result.view.wasmHeapBytes } });
       console.log(`${model}: ${report.summary.published}/${report.summary.candidates} published; view violations=${view.violations.length}`);
     }
     // This API includes nested Workers when available. It does not isolate the
@@ -75,9 +81,9 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
       corpus, evidence: violations.length === 0, candidates: products.length, published: products.filter(p => p.status === 'published').length,
       byCode, ...parity, violations, maxVertexMetres: Math.max(0, ...models.map(m => m.maxVertexMetres)),
       maxVertexUlps: Math.max(0, ...models.map(m => m.maxVertexUlps)),
-      startupMs: (models[0]?.importMs ?? 0) + (models[0]?.shape.acquireMs ?? 0),
-      productMs: models.reduce((sum, m) => sum + m.shape.productMs, 0),
-      msPerProduct: { p50: percentile(timings, 0.5), p95: percentile(timings, 0.95), basis: 'shape callback wall time minus initial acquisition; warm session' },
+      startupMs: (models[0]?.importMs ?? 0) + (models.find(m => m.shape.qualificationMs > 0)?.shape.qualificationMs ?? 0),
+      productMs: models.reduce((sum, m) => sum + Math.max(0, m.shape.productMs - m.shape.qualificationMs), 0),
+      msPerProduct: { p50: percentile(timings, 0.5), p95: percentile(timings, 0.95), basis: 'shape callback wall time minus observed real SDK qualification; warm session' },
       wasmHeapPeakBytes: Math.max(0, ...models.flatMap(m => [m.shape.wasmHeapBytes, m.view.wasmHeapBytes])),
       browserMemory: memory, smlibHeapBytes: null, smlibHeapReason: 'SDK linear heap is private to its module Worker; browserMemory includes Workers when supported', models };
     if (!(await readFile(native)).equals(nativeBytes)) throw new Error('Native products.tsv changed during parity');

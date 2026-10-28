@@ -37,8 +37,8 @@ against the native and browser engine runs first. A missing engine reports
 `SKIP: no staged SMLib engine; this is NOT parity evidence`. CI checks the engine
 and native files exist before running, so absence cannot make the lane green.
 
-`summary.json` records acquisition plus module import startup, controller product
-time, callback wall time p50/p95 (initial acquisition subtracted), and the peak
+`summary.json` records real SDK qualification plus module import startup, controller product
+time and callback wall time p50/p95 (observed qualification subtracted), and the peak
 retained WASM heap across runs. The SDK linear heap is private to its Worker;
 when supported, `measureUserAgentSpecificMemory` records aggregate browser/Worker
 memory, explicitly not an isolated SDK heap measurement. These are observational

@@ -7743,6 +7743,8 @@
     "resolveFetch: function"
   ],
   "@ifc-lite/parser": [
+    "AttributeOpinion: interface",
+    "AttributeOpinions: type",
     "AuthoredKeySpec: interface",
     "AutoParseResult: type",
     "BlockStoreCounters: interface",
@@ -7787,6 +7789,7 @@
     "CurrentTypeQuantityResult: interface",
     "DEFAULT_BLOCK_SIZE: const",
     "DEFAULT_CACHE_BYTES: const",
+    "DivergentAttribute: interface",
     "DocumentInfo: interface",
     "DropCategory: type",
     "DropCensus: interface",
@@ -8957,6 +8960,7 @@
     "extractTypeEntityOwnQuantities: function",
     "extractTypePropertiesOnDemand: function",
     "extractTypeQuantitiesOnDemand: function",
+    "findDivergentAttributes: function",
     "findSourceProjectLengthUnit: function",
     "generateHeader: function",
     "generateStepFile: function",

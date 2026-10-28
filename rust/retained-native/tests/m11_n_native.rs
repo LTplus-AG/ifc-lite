@@ -17,7 +17,8 @@ fn universe(root: &Path) -> BTreeMap<String,BTreeMap<u32,String>> {
     for path in paths {
         for line in std::fs::read_to_string(path).unwrap().lines().filter(|s| !s.is_empty() && !s.starts_with('#') && !s.starts_with("model\t")) {
             let fields: Vec<_> = line.split('\t').collect();
-            assert!(models.entry(fields[0].into()).or_default().insert(fields[1].parse().unwrap(), fields[2].into()).is_none());
+            let status = if fields[2] == "refused" {format!("refused:{}",fields[3])} else {fields[2].into()};
+            assert!(models.entry(fields[0].into()).or_default().insert(fields[1].parse().unwrap(), status).is_none());
         }
     }
     models
@@ -63,7 +64,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                         println!("normal source witness {model}:{} {check:?}; exact/source angle histogram (report-only): {histogram:?}",product.product_id);
                     }
                     ProductOutcome::Refused {product_id,refusal,..} => {
-                        actual.insert(product_id,"refused".to_string());
+                        actual.insert(product_id,format!("refused:{}",refusal.code()));
                         rows.push(json!({"id":product_id,"status":"refused","code":refusal.code()}));
                     }
                 }

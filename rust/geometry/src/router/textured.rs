@@ -185,7 +185,7 @@ impl GeometryRouter {
             let (_, items) = self.admit_type_map(&map, decoder, &mut budget).ok()?;
             for item in items {
                 if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
-                    pending.push(item.get_ref(0)?);
+                    pending.push(item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?);
                 } else if self.processor_for(&item.ifc_type).is_some() {
                     return Some(true);
                 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Source-derived orphan type quantities, independent of retained plans and meshes.
 use super::math::{extend_bbox, multiply, transform, IDENTITY};
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{slot, EntityDecoder, IfcType};
 use ifc_lite_geometry::{analytic::AnalyticCurveSegment, GeometryRouter};
 use ifc_lite_processing::{extrusion_nominal_quantities, AnalyticQuantitySources};
 
@@ -50,7 +50,7 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, maps: &[(u32, u
         let item = decoder.decode_by_id(node.id).map_err(|e| e.to_string())?;
         match item.ifc_type {
             IfcType::IfcMappedItem => {
-                let map_id = item.get_ref(0).ok_or("mapped item missing MappingSource")?;
+                let map_id = item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE).ok_or("mapped item missing MappingSource")?;
                 if node.path.contains(&map_id) { return Err(format!("type-map source cycle at #{map_id}")); }
                 let map = decoder.decode_by_id(map_id).map_err(|e| e.to_string())?;
                 let local = router.resolve_scaled_mapped_item_transform(&item, &map, &mut decoder)
@@ -121,12 +121,12 @@ fn local_bbox(source: &ifc_lite_geometry::analytic::AnalyticExtrusion) -> Option
 fn push_items(map: &ifc_lite_core::DecodedEntity, frame: [f64; 16], path: Vec<u32>,
     decoder: &mut EntityDecoder, stack: &mut Vec<Item>) -> Result<(), String> {
     if map.ifc_type != IfcType::IfcRepresentationMap { return Err("expected IfcRepresentationMap".into()); }
-    let id = map.get_ref(1).ok_or("map missing MappedRepresentation")?;
+    let id = map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION).ok_or("map missing MappedRepresentation")?;
     let representation = decoder.decode_by_id(id).map_err(|e| e.to_string())?;
-    let ids = representation.get(3).and_then(|v| v.as_list()).ok_or("representation missing Items")?;
+    let ids = representation.ref_list_at(slot::IfcRepresentation::ITEMS).ok_or("representation missing or invalid Items")?;
     if stack.len().saturating_add(ids.len()) > 100_000 { return Err("type-map source frontier exceeds work bound".into()); }
-    for id in ids.iter().rev() {
-        stack.push(Item { id: id.as_entity_ref().ok_or("invalid representation item")?, frame, path: path.clone() });
+    for &id in ids.iter().rev() {
+        stack.push(Item { id, frame, path: path.clone() });
     }
     Ok(())
 }

@@ -169,26 +169,13 @@ pub(super) fn finish(
         "Geometry processing complete"
     );
 
-    let extract_georeferencing = || {
-        crate::georeferencing::extract_georeferencing_from_candidates(
-            &mut entity_index.decoder(content),
-            &facts.georeferencing_candidates,
-        )
-    };
-    // #3987: jobs and instance finalization have finished using these caches.
-    // Keep metadata on the caller thread; join ALL disposal before returning,
-    // including on unwind. No cleanup survives the full-load readiness boundary.
-    #[cfg(not(target_arch = "wasm32"))]
-    let georeferencing = rayon::in_place_scope(|scope| {
-        scope.spawn(move |_| drop(decoder));
-        scope.spawn(move |_| drop(item_dedup_cache));
-        extract_georeferencing()
-    });
-    #[cfg(target_arch = "wasm32")]
-    let georeferencing = {
-        let _ = item_dedup_cache;
-        extract_georeferencing()
-    };
+    let georeferencing = extract_georeferencing(
+        content,
+        decoder,
+        item_dedup_cache,
+        &entity_index,
+        &facts.georeferencing_candidates,
+    );
 
     let frame = facts.frame;
     ProcessingResult {
@@ -231,4 +218,36 @@ pub(super) fn finish(
             geometry_diagnostics,
         },
     }
+}
+
+/// Dispose the warm caches before returning, while extracting metadata on the caller.
+fn extract_georeferencing(
+    content: &[u8],
+    decoder: ifc_lite_core::EntityDecoder<'_>,
+    item_dedup_cache: ifc_lite_geometry::ItemDedupCache,
+    entity_index: &super::entity_index::ProcessingIndex,
+    candidates: &[(u32, ifc_lite_core::IfcType)],
+) -> Option<crate::georeferencing::Georeferencing> {
+    let extract_georeferencing = || {
+        crate::georeferencing::extract_georeferencing_from_candidates(
+            &mut entity_index.decoder(content),
+            candidates,
+        )
+    };
+    // #3987: jobs and instance finalization have finished using these caches.
+    // Keep metadata on the caller thread; join ALL disposal before returning,
+    // including on unwind. No cleanup survives the full-load readiness boundary.
+    #[cfg(not(target_arch = "wasm32"))]
+    let georeferencing = rayon::in_place_scope(|scope| {
+        scope.spawn(move |_| drop(decoder));
+        scope.spawn(move |_| drop(item_dedup_cache));
+        extract_georeferencing()
+    });
+    #[cfg(target_arch = "wasm32")]
+    let georeferencing = {
+        let _ = item_dedup_cache;
+        extract_georeferencing()
+    };
+
+    georeferencing
 }

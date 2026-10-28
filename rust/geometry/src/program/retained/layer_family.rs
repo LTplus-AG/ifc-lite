@@ -81,7 +81,7 @@ pub(crate) fn admit(element: &DecodedEntity, router: &GeometryRouter, decoder: &
         // the latched stop preserves the product resource refusal precedence.
         let n = layers.len() as u64;
         crate::resource::charge(crate::resource::Cost {
-            work: n.saturating_mul(n), live_bytes: n.saturating_mul(32),
+            work: n.saturating_mul(n), live_bytes: n.saturating_mul(64),
             ..Default::default()
         }).map_err(|_| "layer_budget")?.retain();
     }

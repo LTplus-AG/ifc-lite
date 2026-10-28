@@ -64,15 +64,19 @@ fn m4_nonzero_offset_is_transported_before_each_sense() {
 }
 
 #[test]
-fn m4_usage_provenance_follows_the_exact_indexes_last_association() {
+fn m4_usage_provenance_follows_the_exact_indexes_first_sliceable_association() {
     let text=CURVED.replace("ENDSEC;\nEND-ISO",concat!(
         "#9000=IFCMATERIALLAYERSETUSAGE(#22,.AXIS2.,.POSITIVE.,0.25,$);\n",
         "#9001=IFCRELASSOCIATESMATERIAL('last',$,$,$,(#55),#9000);\nENDSEC;\nEND-ISO"));
-    with(&text,55,|spec,_,_,_| {
-        assert_eq!(spec.source_id,9000);
-        assert_eq!((spec.sense,spec.offset_m),(1.,0.25));
-        assert!((spec.radius_at(0.1).unwrap()-9.65).abs()<1e-12);
-    });
+    let earlier_single=CURVED.replace("#56=IFCRELASSOCIATESMATERIAL",concat!(
+        "#9000=IFCMATERIALLAYERSET((#17),'single',$);\n",
+        "#9001=IFCMATERIALLAYERSETUSAGE(#9000,.AXIS2.,.POSITIVE.,0.25,$);\n",
+        "#9002=IFCRELASSOCIATESMATERIAL('first',$,$,$,(#55),#9001);\n#56=IFCRELASSOCIATESMATERIAL"));
+    for source in [text,earlier_single] { with(&source,55,|spec,_,_,_| {
+        assert_eq!(spec.source_id,23);
+        assert_eq!((spec.sense,spec.offset_m),(-1.,0.));
+        assert!((spec.radius_at(0.1).unwrap()-10.1).abs()<1e-12);
+    }); }
 }
 
 #[test]

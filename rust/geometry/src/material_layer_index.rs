@@ -358,7 +358,7 @@ impl MaterialLayerIndex {
 ///
 /// Follows the one path that maps to planar cutting: `LayerSetUsage ->
 /// LayerSet -> Layers`. Anything else is `NotSliceable`.
-fn resolve_buildup(material_select_id: u32, decoder: &mut EntityDecoder) -> LayerBuildup {
+pub(crate) fn resolve_buildup(material_select_id: u32, decoder: &mut EntityDecoder) -> LayerBuildup {
     let entity = match decoder.decode_by_id(material_select_id) {
         Ok(e) => e,
         Err(_) => return LayerBuildup::NotSliceable,

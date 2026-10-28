@@ -44,8 +44,13 @@ fn resolve_aliases(
 }
 
 pub(crate) fn changed_components(base: &HashMap<JsString, JsString>, head: &HashMap<JsString, JsString>) -> Vec<JsString> {
-    let mut keys: Vec<_> = base.keys().chain(head.keys()).collect::<HashSet<_>>()
-        .into_iter().filter(|key| base.get(*key) != head.get(*key)).cloned().collect();
+    // #8042: visit each map directly, without allocating and hashing a union.
+    // Equal cardinality plus no changed base members proves equality; the
+    // overwhelmingly common unchanged case needs only one lookup per member.
+    let mut keys: Vec<_> = base.iter().filter(|(key, value)| head.get(*key) != Some(*value))
+        .map(|(key, _)| key.clone()).collect();
+    if keys.is_empty() && base.len() == head.len() { return keys; }
+    keys.extend(head.keys().filter(|key| !base.contains_key(*key)).cloned());
     keys.sort_by(cmp_code_units);
     keys
 }

@@ -58,8 +58,6 @@ pub(super) mod refusal;
 #[cfg(test)]
 mod inert_tests;
 #[cfg(test)]
-mod lifecycle_tests;
-#[cfg(test)]
 mod refusal_tests;
 #[cfg(test)]
 mod type_product_tests;

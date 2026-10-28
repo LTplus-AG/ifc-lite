@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955: lifecycle invariants, not numerical SDK qualification. A counted
 //! rectangle peer supplies box receipts; source admission/publication are real.
-use super::*;
-use super::runtime::*;
+#![cfg(feature = "retained-runtime")]
+use ifc_lite_processing::element::retained_runtime::*;
 use ifc_lite_geometry::document::{RetainedCompletion, RetainedTessellation};
 use std::{cell::Cell, future::Future, rc::Rc, task::{Context, Poll, Waker}};
 
-const CASCADE: &str = include_str!("../../../../../tests/fixtures/synthetic-retained/refusal-cascade.ifc");
+const CASCADE: &str = include_str!("../../../tests/fixtures/synthetic-retained/refusal-cascade.ifc");
 #[derive(Default)]
 struct Counts { retired: Cell<usize>, live: Cell<usize>, calls: Cell<usize> }
 #[derive(Clone)]
@@ -85,8 +85,8 @@ fn issue_7955_eight_terminal_refusals_then_publication_without_retirement_or_lea
     let acquisitions = Cell::new(0);
     let mut worker = None;
     let mut rows = Vec::new();
-    let summary = ready(model::run_model_with_worker(ifc_lite_core::SourceBundle::new(text.into_bytes()),
-        &model::ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
+    let summary = ready(run_model_with_worker(ifc_lite_core::SourceBundle::new(text.into_bytes()),
+        &ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
         &mut worker, || {
             acquisitions.set(acquisitions.get() + 1);
             Ok(Peer(domain.clone(), false))
@@ -99,14 +99,14 @@ fn issue_7955_eight_terminal_refusals_then_publication_without_retirement_or_lea
     assert_eq!(summary.by_code.get("opening_unsupported"), Some(&8));
     assert_eq!((summary.restarts, acquisitions.get(), domain.0.retired.get()), (0,1,0));
     assert_eq!(domain.0.calls.get(), 9, "each refused host actually completed kernel work");
-    assert!(rows[..8].iter().all(|row| matches!(row, model::ProductOutcome::Refused { .. })));
-    let model::ProductOutcome::Published(reused) = rows.pop().unwrap() else { panic!("#104 must publish") };
+    assert!(rows[..8].iter().all(|row| matches!(row, ProductOutcome::Refused { .. })));
+    let ProductOutcome::Published(reused) = rows.pop().unwrap() else { panic!("#104 must publish") };
     let fresh_domain = Domain(Rc::new(Counts::default()));
     let mut fresh = Vec::new();
-    ready(model::run_model(ifc_lite_core::SourceBundle::new(CASCADE.as_bytes().to_vec()),
-        &model::ModelOptions { ids: Some([104].into_iter().collect()), ..Default::default() },
+    ready(run_model(ifc_lite_core::SourceBundle::new(CASCADE.as_bytes().to_vec()),
+        &ModelOptions { ids: Some([104].into_iter().collect()), ..Default::default() },
         || Ok(Peer(fresh_domain.clone(), false)), |o| fresh.push(o))).unwrap();
-    let model::ProductOutcome::Published(fresh) = fresh.pop().unwrap() else { panic!("fresh #104") };
+    let ProductOutcome::Published(fresh) = fresh.pop().unwrap() else { panic!("fresh #104") };
     assert_eq!(reused.product_id, 104);
     assert_eq!(reused.parts.len(), 1);
     assert_eq!(reused.parts[0].positions, fresh.parts[0].positions);
@@ -125,8 +125,8 @@ fn issue_7955_unsettled_resource_cancellations_retire_without_spending_fault_bud
     text = text.replace("#104=IFCWALL", &(extra + "#104=IFCWALL"));
     let mut domains = Vec::new();
     let mut outcomes = Vec::new();
-    let summary = ready(model::run_model(ifc_lite_core::SourceBundle::new(text.into_bytes()),
-        &model::ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
+    let summary = ready(run_model(ifc_lite_core::SourceBundle::new(text.into_bytes()),
+        &ModelOptions { ids: Some((100..109).collect()), max_restarts: 0, ..Default::default() },
         || {
             let domain = Domain(Rc::new(Counts::default()));
             domains.push(domain.clone());
@@ -134,8 +134,8 @@ fn issue_7955_unsettled_resource_cancellations_retire_without_spending_fault_bud
         }, |o| outcomes.push(o))).unwrap();
     assert_eq!(summary.by_code.get("resource_exhausted"), Some(&8));
     assert_eq!((summary.published, summary.restarts, domains.len()), (1,0,9));
-    assert!(outcomes[..8].iter().all(|o| matches!(o, model::ProductOutcome::Refused { .. })));
-    assert!(matches!(outcomes.last(), Some(model::ProductOutcome::Published(s)) if s.product_id == 104));
+    assert!(outcomes[..8].iter().all(|o| matches!(o, ProductOutcome::Refused { .. })));
+    assert!(matches!(outcomes.last(), Some(ProductOutcome::Published(s)) if s.product_id == 104));
     for (i, domain) in domains.iter().enumerate() {
         assert_eq!(domain.0.live.get(), 0, "all temporary receipts released");
         assert_eq!(domain.0.calls.get(), 1, "no product replay");

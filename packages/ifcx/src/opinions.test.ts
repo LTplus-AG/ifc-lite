@@ -131,12 +131,19 @@ describe('opinion retention (federated composition)', () => {
     assert.deepEqual(findDivergentAttributes(opinionsByPath(composed)), []);
   });
 
-  it('compares values canonicalStringify rejects by identity instead of throwing', () => {
+  it('compares values canonicalStringify rejects by value, without throwing', () => {
     const op = (value: unknown) => ({ layerId: 'l', layerName: 'l', value });
-    const nan = new Map([['wall-1', new Map([[FIRE, [op(Number.NaN), op(Number.NaN)]]])]]);
-    assert.deepEqual(findDivergentAttributes(nan), []);
-    const mixed = new Map([['wall-1', new Map([[FIRE, [op(Infinity), op('EI 90')]]])]]);
-    assert.equal(findDivergentAttributes(mixed).length, 1);
+    const divergent = (...values: unknown[]) =>
+      findDivergentAttributes(new Map([['wall-1', new Map([[FIRE, values.map(op)]])]])).length === 1;
+    assert.equal(divergent(Number.NaN, Number.NaN), false);
+    // Two layers each parsing {"n":1e400} hold equal values.
+    assert.equal(divergent(JSON.parse('{"n":1e400}'), JSON.parse('{"n":1e400}')), false);
+    assert.equal(divergent(Infinity, 'EI 90'), true);
+    assert.equal(divergent(Number.NaN, null), true);
+    assert.equal(divergent(1n, 1), true);
+    // An in-memory undefined keeps the attribute; null removes it.
+    assert.equal(divergent(undefined, null), true);
+    assert.equal(divergent({ a: 1, b: undefined }, { a: 1 }), false);
   });
 });
 

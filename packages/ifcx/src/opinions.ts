@@ -26,7 +26,6 @@
  */
 
 import type { IfcxLayer } from './layer-stack.js';
-import { canonicalStringify } from './canonical.js';
 import { getProvenance } from './provenance.js';
 import { IFCLITE_ATTR } from './types.js';
 
@@ -73,21 +72,33 @@ export function recordLayerOpinions(
 }
 
 /**
- * Comparison key for an opinion value. Canonical for every IFCX value;
- * values `canonicalStringify` rejects (non-finite numbers, functions,
- * nesting past its depth limit) cannot come from a parsed file, so they
- * fall back to identity (`Object.is`) instead of throwing.
+ * Comparison key for an opinion value. Identical to `canonicalStringify`
+ * for every value it accepts (NFC strings, -0 as 0, sorted keys, object
+ * members holding `undefined` skipped), and total for the rest: a
+ * top-level `undefined` (an in-memory layer keeping the attribute) is
+ * distinct from a `null` removal, and values JSON cannot carry (non-finite
+ * numbers such as a parsed `1e400`, bigint, functions, symbols) get tagged
+ * keys, so equal values agree and nothing throws.
  */
-function opinionKey(value: unknown, fallback: Map<unknown, string>): string {
-  try {
-    return canonicalStringify(value ?? null);
-  } catch {
-    let key = fallback.get(value);
-    if (key === undefined) {
-      key = `\u0000uncanonical:${fallback.size}`;
-      fallback.set(value, key);
+function opinionKey(value: unknown, nested = false): string {
+  if (value === undefined && !nested) return '\u0000undefined';
+  if (value === null || value === undefined) return 'null';
+  switch (typeof value) {
+    case 'string':
+      return JSON.stringify(value.normalize('NFC'));
+    case 'number':
+      if (!Number.isFinite(value)) return `\u0000number:${value}`;
+      return JSON.stringify(value === 0 ? 0 : value);
+    case 'boolean':
+      return value ? 'true' : 'false';
+    case 'object': {
+      if (Array.isArray(value)) return `[${value.map((item) => opinionKey(item, true)).join(',')}]`;
+      const record = value as Record<string, unknown>;
+      const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
+      return `{${keys.map((key) => `${JSON.stringify(key.normalize('NFC'))}:${opinionKey(record[key], true)}`).join(',')}}`;
     }
-    return key;
+    default:
+      return `\u0000${typeof value}:${String(value)}`;
   }
 }
 
@@ -106,9 +117,8 @@ export function findDivergentAttributes(
   for (const [path, byAttribute] of opinionsByPath) {
     for (const [attribute, opinions] of byAttribute) {
       if (opinions.length < 2) continue;
-      const fallback = new Map<unknown, string>();
-      const first = opinionKey(opinions[0].value, fallback);
-      const differs = opinions.some((o) => opinionKey(o.value, fallback) !== first);
+      const first = opinionKey(opinions[0].value);
+      const differs = opinions.some((o) => opinionKey(o.value) !== first);
       if (differs) divergent.push({ path, attribute, opinions: [...opinions] });
     }
   }

@@ -80,11 +80,13 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
     const parity = compare(nativeRows, products, blessed, tolerances.nativeWasmVolumeRelative);
     const byCode = {};
     for (const p of products) if (p.code) byCode[p.code] = (byCode[p.code] ?? 0) + 1;
+    const published = products.filter(p => p.status === 'published').length;
     const timings = models.flatMap(m => m.shape.productWallMs);
     const violations = [...parity.violations, ...models.flatMap(m => m.violations.map(v => `${m.model}: ${v}`)), ...pageErrors];
     const summary = { source: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
       engineManifestSha256: validated.manifestSha256, nativeProductsSha256: createHash('sha256').update(nativeBytes).digest('hex'),
-      corpus, evidence: violations.length === 0, candidates: products.length, published: products.filter(p => p.status === 'published').length,
+      corpus, evidence: violations.length === 0, candidates: products.length, published, refused: products.length - published,
+      coverage: products.length ? published / products.length : 0,
       byCode, ...parity, violations, maxVertexMetres: Math.max(0, ...models.map(m => m.maxVertexMetres)),
       maxVertexUlps: Math.max(0, ...models.map(m => m.maxVertexUlps)),
       startupMs: (models[0]?.importMs ?? 0) + (models.find(m => m.shape.qualificationMs > 0)?.shape.qualificationMs ?? 0),

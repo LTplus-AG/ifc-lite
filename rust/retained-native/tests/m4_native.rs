@@ -25,7 +25,9 @@ fn shape(results: &[ProductOutcome], id: u32) -> &ShapeOnlyProduct {
         .unwrap_or_else(|| panic!("#{id} not published: {results:?}"))
 }
 fn measure(p: &ShapeOnlyProduct) -> metrics::Metrics {
-    let mut result = metrics::Metrics::default();
+    let mut result = if p.parts.iter().any(|part| part.layer.is_some()) {
+        metrics::Metrics::assembly()
+    } else { metrics::Metrics::default() };
     for part in &p.parts {
         // All parts share the same host evaluation frame. Avoid transforming
         // exact-key seams independently through absolute survey coordinates.

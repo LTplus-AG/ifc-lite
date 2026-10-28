@@ -105,6 +105,7 @@ fn compare(
     let mut exact_metrics: BTreeMap<u32, Metrics> = BTreeMap::new();
     let mut exact_origins: BTreeMap<u32, Vec<[f64; 3]>> = BTreeMap::new();
     let mut exact_items: BTreeMap<u32, (BTreeSet<u32>, bool)> = BTreeMap::new();
+    let layer_candidates = layer_report::candidates(&bytes);
     for mesh in &exact.meshes {
         let items = exact_items.entry(mesh.express_id).or_default();
         match mesh.geometry_item_id { Some(item) => { items.0.insert(item); } None => items.1 = true }
@@ -123,7 +124,10 @@ fn compare(
                 ])
             })
             .collect();
-        let measurement = exact_metrics.entry(mesh.express_id).or_default();
+        let measurement = exact_metrics.entry(mesh.express_id).or_insert_with(|| {
+            if layer_candidates.contains(&mesh.express_id) { Metrics::assembly() }
+            else { Metrics::default() }
+        });
         measurement.add_mesh(&points, &mesh.indices)?;
     }
     let source = SourceBundle::new(bytes.clone());
@@ -165,7 +169,6 @@ fn compare(
         opening_expectations.insert(72209, Some(expected));
     }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
-    let layer_candidates = layer_report::candidates(&bytes);
     let mut seen = BTreeSet::new();
     let (summary, timings) = driver.run_model(
         source,
@@ -187,7 +190,8 @@ fn compare(
                     if let Err(error) = report.layers.published(&model, &shape, &exact) {
                         report.violations.push(format!("{model}:{id}: layer report: {error}"));
                     }
-                    let mut actual = Metrics::default();
+                    let layered = shape.parts.iter().any(|p| p.layer.is_some());
+                    let mut actual = if layered { Metrics::assembly() } else { Metrics::default() };
                     for part in &shape.parts {
                         let points: Vec<_> = part
                             .positions
@@ -210,7 +214,10 @@ fn compare(
                             report.violations.push(format!("{model}:{id}: missing or incomplete type source oracle"));
                         }
                         value.as_ref().map(|v| (v.volume, v.bbox))
-                    } else { retraced.or_else(|| source::expected(&sources, id, shape.parts.len())) };
+                    } else {
+                        // Bands partition one admitted source host.
+                        retraced.or_else(|| source::expected(&sources, id, if layered { 1 } else { shape.parts.len() }))
+                    };
                     report.published(
                         &model,
                         &shape,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955: actual module Worker, layered tags, and native band volume parity.
-use super::*;
+use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
+use wasm_bindgen_test::wasm_bindgen_test;
 #[wasm_bindgen(inline_js="export async function m4Reference() { const r=await fetch('/smlib/m3-native-openings.json'); if(!r.ok) throw new Error('M4 staged native reference missing'); return r.json(); }
 export function m4Measure(p) {
  if(p.status!=='published') return {id:p.expressId,code:p.code,bands:[]};

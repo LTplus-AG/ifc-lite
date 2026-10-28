@@ -10,6 +10,7 @@ pub struct Metrics {
     pub(crate) edges: BTreeMap<([u64;3],[u64;3]), usize>,
     pub(crate) origin: Option<[f64;3]>,
     pub(crate) signed_volume: f64,
+    pub(crate) assembly: bool,
 }
 impl Default for Metrics {
     fn default() -> Self {
@@ -25,7 +26,7 @@ impl Default for Metrics {
                 f64::NEG_INFINITY,
             ],
             defects: 0,
-            edges: BTreeMap::new(), origin: None, signed_volume: 0.,
+            edges: BTreeMap::new(), origin: None, signed_volume: 0., assembly: false,
         }
     }
 }
@@ -55,6 +56,8 @@ fn key(p: [f64; 3]) -> [u64; 3] {
     p.map(|x| if x == 0. { 0 } else { x.to_bits() })
 }
 impl Metrics {
+    /// Open material bands form one skin; ordinary parts remain separate solids.
+    pub fn assembly() -> Self { Self { assembly: true, ..Self::default() } }
     pub fn add_mesh(&mut self, points: &[[f64; 3]], indices: &[u32]) -> Result<(), String> {
         if points.iter().flatten().any(|x| !x.is_finite()) || !indices.len().is_multiple_of(3) {
             return Err("nonfinite positions or incomplete triangle".into());
@@ -62,6 +65,7 @@ impl Metrics {
         let Some(origin) = points.first() else {
             return Err("empty mesh".into());
         };
+        if !self.assembly { self.origin = None; self.edges.clear(); }
         let origin = *self.origin.get_or_insert(*origin);
         let mut volume = 0.;
         for triangle in indices.chunks_exact(3) {
@@ -83,9 +87,15 @@ impl Metrics {
         }
         // Material bands are open. Accumulate signed contributions and coordinate
         // edges in one shared frame across the entire closed product skin.
-        self.signed_volume += volume;
-        self.volume = self.signed_volume.abs();
-        self.defects = self.edges.values().filter(|&&n| n != 2).count();
+        let defects = self.edges.values().filter(|&&n| n != 2).count();
+        if self.assembly {
+            self.signed_volume += volume;
+            self.volume = self.signed_volume.abs();
+            self.defects = defects;
+        } else {
+            self.volume += volume.abs();
+            self.defects += defects;
+        }
         Ok(())
     }
 }

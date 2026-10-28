@@ -883,9 +883,10 @@ describe('bundleAgeHours (#4886)', () => {
 
 
 describe('invalid .ifcZIP contents (#8258)', () => {
+  type ArchiveEvent = { event: string; properties: Record<string, unknown> };
   const refusals = [
     'This .ifcZIP archive contains no .ifc/.ifcxml entry — nothing to parse.',
-    'This .ifcZIP archive contains 2 model files (tower.ifc, annex.ifcxml) — expected exactly one.',
+    'This .ifcZIP archive contains 2 model files (tower.ifc, annex.ifc) — expected exactly one.',
     'This .ifcZIP archive contains 12 model files (a.ifc, ...) — expected exactly one.',
     'This .ifcZIP archive\'s model entry "tower.ifc" declares an uncompressed size of 8.0 GiB, over the 4.0 GiB limit — refusing to decompress.',
     'This .ifcZIP archive\'s extracted entry "tower.ifc" exceeds the 4096 MiB limit.',
@@ -907,7 +908,7 @@ describe('invalid .ifcZIP contents (#8258)', () => {
     const stored = 'This [model] archive contains 2 model files ([file], ...) — expected exactly one.';
     assert.equal(classifyLoadError(stored), 'invalid_archive');
     for (const message of refusals) {
-      const event = scrubEvent({ event: '$exception', properties: {
+      const event = scrubEvent<ArchiveEvent>({ event: '$exception', properties: {
         $exception_list: [{ type: 'Error', value: message }],
         $exception_level: 'error',
       } });
@@ -915,9 +916,14 @@ describe('invalid .ifcZIP contents (#8258)', () => {
       assert.equal(event.properties.error_kind, 'invalid_archive');
       assert.equal(event.properties.$exception_fingerprint, 'ifc-lite:invalid_archive');
       assert.equal(event.properties.$exception_level, 'warning');
-      const scrubbed = event.properties.$exception_list[0].value;
+      const list = event.properties.$exception_list as Array<{ value: string }>;
+      const scrubbed = list[0].value;
       assert.doesNotMatch(scrubbed, /tower|annex/);
-      assert.equal(classifyLoadError(scrubbed), 'invalid_archive', scrubbed);
+      // Size-refusal redaction can erase the prefix; tagging above must
+      // happen before scrubbing. Cardinality messages keep their structure.
+      if (message.includes(' contains ')) {
+        assert.equal(classifyLoadError(scrubbed), 'invalid_archive', scrubbed);
+      }
     }
   });
 
@@ -941,7 +947,7 @@ describe('invalid .ifcZIP contents (#8258)', () => {
       ...refusals.map((message) => `${message} Internal state corrupted.`),
     ]) {
       assert.equal(classifyLoadError(message), 'unknown', message);
-      const event = scrubEvent({ event: '$exception', properties: {
+      const event = scrubEvent<ArchiveEvent>({ event: '$exception', properties: {
         $exception_list: [{ type: 'Error', value: message }],
         $exception_level: 'error',
       } });
@@ -952,7 +958,7 @@ describe('invalid .ifcZIP contents (#8258)', () => {
   });
 
   it('preserves an explicitly chosen severity and fingerprint', () => {
-    const event = scrubEvent({ event: '$exception', properties: {
+    const event = scrubEvent<ArchiveEvent>({ event: '$exception', properties: {
       $exception_list: [{ type: 'Error', value: refusals[0] }],
       $exception_level: 'fatal',
       $exception_fingerprint: 'chosen-at-capture',

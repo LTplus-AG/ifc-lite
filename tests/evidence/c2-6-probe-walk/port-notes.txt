@@ -1,0 +1,27 @@
+C2-6 / #7781 reconciliation, base 93cc587c79bc3bac3b1647c9bb47898f5d1a7e33
+
+Transplant plan: recovery/c2-l08-representation-main61b-stack-49a6-r3
+(84f82f034afb23ef4528d2a0b04a65d96e068aad), not a merge.
+Qualification is pending; this is an early durable implementation checkpoint.
+
+Architecture decisions against C2.md sections 1.1/1.2, row 6, 3.2 row 8, 6, 8:
+- Share wrapper traversal in representation, with explicit boolean and single-item
+  policies. The existing branching RepresentationWalk / NestedMaps::FirstChain
+  cannot replace the probe chains: FirstChain visits non-mapped siblings and then
+  the first MAPPED item; probes take the first ITEM, regardless of its type.
+- Keep layer boolean-only traversal uncapped, cycle guarded, and allocation-free
+  for a direct leaf (#960). Never expand mapped items for layer eligibility.
+- ProductShape/Select and MappedLevel are the shared structural vocabulary.
+  Body probes retain their narrower body-only filter after Meshed duplicate
+  exclusion. Opening source retains unchecked shape-type admission and its old
+  errors; the recovery patch's new type rejection is an out-of-scope X change.
+- Preserve direction's absent initial mapping chain versus rectangular/extrusion
+  identity multiplication, transform-before-Items ordering, and 32 visited nodes
+  including the leaf. Typed ProgramStopped outcomes remain typed.
+- Axis2Placement::read_3d and EntityDecoder::direction3_of reproduce the deleted
+  pub(crate) delegates. Counting direction3_at refusals would change diagnostics
+  and is deferred. The public transitional reader remains present.
+- Keep permissive inline 2D profile reads unchanged (C2-X2).
+- Do not transplant unrelated Reference-only opening or RTC changes.
+
+No public API removal/addition is intended; no rust-major-offset or changeset.

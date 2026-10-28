@@ -34,12 +34,12 @@ target_include_directories(smlib_api BEFORE PRIVATE "${SMLIB_SOURCE}/source/SM_A
 target_link_libraries(smlib_api PUBLIC smlib_kernel)
 # Upstream C++ types/includes stay private to the adapter.
 add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src/mesh.cpp
-  src/triangulate.cpp src/sweep.cpp src/disk.cpp src/protocol.cpp)
+  src/mesh_diagonals.cpp src/sweep.cpp src/disk.cpp src/protocol.cpp)
 target_include_directories(ifclite_smlib PUBLIC include)
 target_link_libraries(ifclite_smlib PRIVATE smlib_api)
 
 add_executable(ifclite_smlib_tests tests/adapter_tests.cpp tests/mesh_tests.cpp
-  tests/triangulate_tests.cpp tests/empty_tests.cpp tests/affine_tests.cpp
+  tests/mesh_diagonals_tests.cpp tests/empty_tests.cpp tests/affine_tests.cpp
   tests/context_metadata_tests.cpp tests/c_header.c)
 target_compile_features(ifclite_smlib_tests PRIVATE c_std_11 cxx_std_17)
 target_link_libraries(ifclite_smlib_tests PRIVATE ifclite_smlib smlib_api)

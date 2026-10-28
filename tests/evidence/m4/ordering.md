@@ -82,10 +82,16 @@ diagonal. Its capped volumes were 14.169965548346143 and 14.16996229702047 m³,
 a relative difference 2.2945191091677772e-7, failing the unchanged 1e-9 parity
 gate. This is not an IFC ordering disagreement with the authored products.
 
-M4 therefore also owns a narrow adapter correction: for a single-loop quad,
-the SDK must validate both diagonals' endpoint sectors and absence of an
-existing diagonal before the adapter selects the shorter diagonal. Splitting
-still uses `SmPolyFace::MakeManifoldEdge`; vertices, frames, SDK sources and
-tolerances are unchanged. Other polygons retain the SDK triangulators. The
-actual SDK tests exercise loop rotation, reversed winding, a concave quad and
-the captured four-vertex reproducer on both native and Emscripten targets.
+The SDK emits the differing triangles inside `SmApiTessellate`, before the
+adapter's polygon triangulation. The initial single-quad correction therefore
+did not fix the replay and has been removed. M4 instead normalizes an interior
+edge of two triangles only when they share a source face, form a strictly
+convex noncoplanar quad, and the other diagonal is strictly shorter and absent
+from the mesh. Each flip preserves all four directed boundary edges, vertex
+bits, triangle count and source IDs; normals are recomputed from the new
+triangles. Coplanar, concave, boundary and cross-source-face pairs are unchanged.
+The walk has a linear work budget and fails closed on exhaustion. No SDK source,
+frame or tolerance changes. Hand-derived invariants cover either starting
+diagonal, cyclic starts, reversed winding, a concave pair and the captured cap.
+Actual native/browser qualification remains required; these invariants alone
+are not a parity result.

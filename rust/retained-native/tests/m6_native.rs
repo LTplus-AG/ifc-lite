@@ -89,3 +89,50 @@ fn m6_native_fzk_bounded_only_chains_publish() {
     for id in [60012,67828] {verify(&text,shape(&outcomes,id),None);}
     println!("sdk witness executed: m6_fzk_bounded_chains");
 }
+#[test]
+fn m6_native_stage_browser_reference() {
+    let outcomes=run(SOURCE,&(1000..1016).filter(|id|![1004,1011].contains(id)).collect::<Vec<_>>());
+    let rows=outcomes.iter().map(|o|match o {
+        ProductOutcome::Published(s)=>serde_json::json!({"id":s.product_id,"code":"published","volume":measure(s).volume}),
+        ProductOutcome::Refused{product_id,refusal,..}=>serde_json::json!({"id":product_id,"code":refusal.code(),"volume":null}),
+    }).collect::<Vec<_>>();
+    if let Some(path)=std::env::var_os("IFCLITE_M6_REFERENCE") {std::fs::write(path,serde_json::to_vec_pretty(&rows).unwrap()).unwrap();}
+    println!("sdk witness executed: m6_native_reference");
+}
+// Inject only the transport status; all successful constructions/Booleans use
+// NativeWorker and authenticated SDK receipts, never a geometry mock.
+struct Observed {
+    worker:ifc_lite_retained_native::NativeWorker,
+    calls:std::rc::Rc<std::cell::Cell<usize>>,
+    fail:Option<usize>,
+}
+use ifc_lite_processing::element::retained_runtime::{RetainedRuntime,AsyncRetainedExecutor,Invocation,NumericalLimits,RuntimeFault};
+impl RetainedRuntime for Observed {
+    type Receipt=ifc_lite_retained_native::NativeReceipt;
+    fn domain(&self)->ifc_lite_retained_native::NativeDomain{self.worker.domain()}
+    fn incarnation(&self)->u64{self.worker.incarnation()}
+}
+impl AsyncRetainedExecutor for Observed {
+    async fn invoke(&mut self,call:Invocation<'_,Self::Receipt>,limits:NumericalLimits)->Result<Self::Receipt,RuntimeFault> {
+        if matches!(call,Invocation::Boolean{..}) {
+            self.calls.set(self.calls.get()+1);
+            if self.fail==Some(self.calls.get()){return Err(RuntimeFault::kernel(7,"M6 second Boolean fault"));}
+        }
+        self.worker.invoke(call,limits).await
+    }
+}
+fn observed(ids:&[u32],fail:Option<usize>)->(Vec<ProductOutcome>,usize) {
+    let calls=std::rc::Rc::new(std::cell::Cell::new(0));let mut outcomes=Vec::new();let path=worker();
+    ifc_lite_retained_native::block_on(ifc_lite_processing::element::retained_runtime::run_model(
+        SourceBundle::new(SOURCE.as_bytes().to_vec()),&ModelOptions{ids:Some(ids.iter().copied().collect()),..Default::default()},
+        ||ifc_lite_retained_native::NativeWorker::spawn(&path).map(|worker|Observed{worker,calls:calls.clone(),fail}),|o|outcomes.push(o))).unwrap();
+    (outcomes,calls.get())
+}
+#[test]
+fn m6_native_second_boolean_fault_is_atomic_and_next_product_succeeds() {
+    let (outcomes,calls)=observed(&[1003,1010],Some(2));assert_eq!(calls,2);assert_eq!(outcomes.len(),2);
+    assert_eq!(code(&outcomes[0]),"kernel_failure");verify(SOURCE,shape(&outcomes,1010),Some(64.));
+    let (refused,calls)=observed(&[1006,1012,1013],None);assert_eq!(calls,0);
+    for o in refused {assert_eq!(code(&o),"operation_unsupported");}
+    println!("sdk witness executed: m6_atomic_failure");
+}

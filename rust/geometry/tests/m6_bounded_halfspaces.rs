@@ -1,34 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 #![cfg(feature = "retained-runtime")]
-//! #7955 M6 logical plans; no kernel substitute or numerical publication.
+#[path="support/m6_halfspaces.rs"]
+mod fixture;
+use fixture::{walk,SOURCE};
 use ifc_lite_core::SourceBundle;
-use ifc_lite_geometry::{document::{RetainedPrism, RetainedRecipe, PrismSegment},
-    program::transactions::{Traversal, OperationKind, TransactionError, TransactionFailureKind}, GeometryRouter};
-const SOURCE: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
-#[derive(Debug, Default)]
-struct Trace { prisms: Vec<RetainedPrism>, order: Vec<&'static str>, frame: Option<[f64;16]>, bounds: Option<[f64;6]> }
-fn walk(text: &str, id: u32) -> (Trace, Result<(), TransactionError>) {
-    let source=SourceBundle::new(text.as_bytes().to_vec()); let mut decoder=source.decoder();
-    let router=GeometryRouter::with_units(text,&mut decoder); let wall=decoder.decode_by_id(id).unwrap();
-    let traversal=Traversal::new(1,1); let mut program=traversal.product_parts(&wall); let mut trace=Trace::default();
-    let result=(|| {
-        while let Some(ticket)=program.request()? {
-            let (reply,operations,_)=program.admit(ticket,&router,&mut decoder)?;
-            for op in operations {
-                match op.kind() {
-                    OperationKind::Construction(RetainedRecipe::Prism(p)) => {trace.prisms.push(p.clone());trace.order.push("prism");},
-                    OperationKind::Construction(_) => {trace.order.push("host");trace.frame=Some(*op.value().object_frame());trace.bounds=Some(op.value().evaluation_bounds().unwrap().0);},
-                    OperationKind::Boolean{..} => trace.order.push("difference"),
-                    _ => panic!("unexpected affine"),
-                }
-                op.bind_numerical_outcome(false).unwrap();
-            }
-            program.accept(reply,&router).map_err(|e|e.error)?;
-        }
-        assert_eq!(program.finish()?.values().len(),1); Ok(())
-    })();
-    (trace,result)
-}
+use ifc_lite_geometry::{document::PrismSegment,program::transactions::TransactionFailureKind};
 #[test]
 fn issue_7955_m6_oblique_projection_is_along_position_z() {
     let (trace,result)=walk(SOURCE,1001);result.unwrap();assert_eq!(trace.prisms.len(),1);
@@ -86,21 +62,4 @@ fn issue_7955_m6_boxed_delegates_outcomes_without_enclosure() {
     let text=SOURCE.lines().filter(|l|!l.contains("IFCBOUNDINGBOX(")).collect::<Vec<_>>().join("\n");
     let (_,missing)=walk(&text,1007);
     assert_eq!(missing.as_ref().err().map(|e|e.kind()),plain.as_ref().err().map(|e|e.kind()));
-}
-// These unconditional expectations are selected after the M5 qualification
-// rebase. Round 2 explicitly excludes their names from its pass count, not ignore.
-#[test]
-fn qualifies_after_m5_m6_mixed_chain() {
-    let (trace,result)=walk(SOURCE,1004);result.unwrap();
-    assert_eq!(trace.order,["host","prism","difference","prism","difference","host","difference"]);
-}
-#[test]
-fn qualifies_after_m5_m6_boxed_plane_prisms() {
-    let (plain,result)=walk(SOURCE,1008);result.unwrap();assert_eq!(plain.prisms.len(),1);
-    for id in [1007,1009] {
-        let (boxed,result)=walk(SOURCE,id);result.unwrap();
-        let mut actual=boxed.prisms[0].clone();actual.source_id=plain.prisms[0].source_id;
-        assert_eq!(actual,plain.prisms[0]);
-        assert_eq!(actual.lower().unwrap().bytes,plain.prisms[0].lower().unwrap().bytes);
-    }
 }

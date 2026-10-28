@@ -165,7 +165,11 @@ pub(super) fn scan_entities(
     scan.types.append_orphan_jobs(&mut scan.out.entity_jobs);
     #[cfg(feature = "parity-test-support")]
     crate::parity_test_support::record(scan.out.entity_jobs.iter().map(|j| {
-        (j.id, j.representation_map_id, u8::from(j.representation_map_id.is_some()))
+        (
+            j.id,
+            j.representation_map_id,
+            u8::from(j.representation_map_id.is_some()),
+        )
     }));
     scan.out
 }

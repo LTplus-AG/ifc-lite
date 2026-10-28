@@ -35,7 +35,7 @@ mod observe;
 #[path = "batch_parity_plan_tests.rs"]
 mod plan;
 
-#[allow(dead_code)] // Shared entry-point helper also serves processing sink tests.
+#[allow(dead_code)]// Shared entry-point helper also serves processing sink tests.
 #[path = "../../../../processing/tests/common/entry_trace.rs"]
 mod entry_trace;
 
@@ -205,9 +205,22 @@ fn observe_fixture(
     );
 
     let mut drifts = Vec::new();
-    plan::compare(name, &planned_native, &browser.batches.iter()
-        .flat_map(|b| b.planned_jobs.iter().copied()).collect::<Vec<_>>(), &mut drifts);
-    plan::units(name, native.metadata.length_unit_refused, &browser.prepass.meta, &mut drifts);
+    plan::compare(
+        name,
+        &planned_native,
+        &browser
+            .batches
+            .iter()
+            .flat_map(|b| b.planned_jobs.iter().copied())
+            .collect::<Vec<_>>(),
+        &mut drifts,
+    );
+    plan::units(
+        name,
+        native.metadata.length_unit_refused,
+        &browser.prepass.meta,
+        &mut drifts,
+    );
     let native_frame = native.frame;
     let browser_frame = browser.prepass.meta.frame;
     frames.insert(

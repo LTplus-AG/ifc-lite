@@ -402,7 +402,7 @@ fn world_normals(m: &MeshData, frame: MeshFrame) -> Vec<[f64; 3]> {
 
 /// Global element emission is parallel/chunked; only per-element submesh order
 /// is contractual (including transparent draw order). Never sort these meshes.
-fn ordered<'a>(meshes: &[&'a MeshData], frame: MeshFrame) -> Vec<(&'a MeshData, Vec<[f64; 3]>)> {
+fn ordered<'a>(meshes: &[&'a MeshData], frame: MeshFrame) -> Vec<(&'a MeshData, Vec<[f64; 3]>)>{
     meshes.iter().map(|m| (*m, world_points(m, frame))).collect()
 }
 

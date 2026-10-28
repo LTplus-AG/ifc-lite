@@ -30,6 +30,32 @@ struct Walk<'a, 'b> {
     work: usize,
 }
 impl Walk<'_, '_> {
+    fn subtract_product(&mut self, tree: &mut Tree, id: u32, host_inverse: &Frame) -> Option<()> {
+        let product = self.decoder.decode_by_id(id).ok()?;
+        let world = source::placement(self.decoder, product.get_ref(5))?;
+        let frame = multiply(host_inverse, &world);
+        let shape = self.decoder.decode_by_id(product.get_ref(6)?).ok()?;
+        let mut parts = 0;
+        for id in shape.get_refs(2)? {
+            let rep = self.decoder.decode_by_id(id).ok()?;
+            if rep.get_string(1) != Some("Body") {
+                continue;
+            }
+            for item in rep.get_refs(3)? {
+                let cut = self.item(item, &frame, 0, 0)?;
+                let original = tree.terms.clone();
+                // H minus C = H - HC; intersect with the actual Boolean host,
+                // not its bounding box or the sum of nominal cutter volumes.
+                for (ka, va) in original {
+                    for (kb, vb) in &cut.terms {
+                        *tree.terms.entry(ka | kb).or_default() -= va * vb;
+                    }
+                }
+                parts += 1;
+            }
+        }
+        (parts > 0).then_some(())
+    }
     fn item(&mut self, id: u32, frame: &Frame, depth: usize, map_depth: usize) -> Option<Tree> {
         self.work = self.work.checked_sub(1)?;
         if depth > 3 || map_depth > 8 {
@@ -138,8 +164,31 @@ impl Walk<'_, '_> {
 /// never a fabricated zero. Product placement is applied after map-space volume
 /// integration, preserving small cuts at survey coordinates.
 pub fn expected(bytes: &[u8], product: u32) -> Option<MappedExpectation> {
+    evaluate(bytes, product, &[])
+}
+/// Compose the caller's canonical cut set with a bounded Boolean host tree.
+/// Unsupported frames, units or leaves remain unverified rather than guessed.
+pub fn opened(bytes: &[u8], host: u32, cutters: &[u32]) -> Option<super::openings::OpeningExpectation> {
+    if cutters.len() > 8 {
+        return None;
+    }
+    let nominal = expected(bytes, host)?;
+    let result = evaluate(bytes, host, cutters)?;
+    let cutter_volume = cutters.iter().try_fold(0., |v, id| Some(v + expected(bytes, *id)?.volume))?;
+    Some(super::openings::OpeningExpectation {
+        nominal_host_volume: nominal.volume,
+        volume_bounds: [(nominal.volume - cutter_volume).max(0.), nominal.volume],
+        result_volume: Some(result.volume),
+        host_bbox: Some(nominal.bbox),
+        curved: result.curved,
+    })
+}
+fn evaluate(bytes: &[u8], product: u32, cutters: &[u32]) -> Option<MappedExpectation> {
     let bundle = SourceBundle::new(bytes.to_vec());
     let mut decoder = bundle.decoder();
+    if decoder.length_unit_scale() != 1. {
+        return None;
+    }
     let e = decoder.decode_by_id(product).ok()?;
     let world = source::placement(&mut decoder, e.get_ref(5))?;
     let shape = decoder.decode_by_id(e.get_ref(6)?).ok()?;
@@ -167,7 +216,10 @@ pub fn expected(bytes: &[u8], product: u32) -> Option<MappedExpectation> {
                 leaves: Vec::new(),
                 work: 256,
             };
-            let tree = walk.item(item, &IDENTITY, 0, 0)?;
+            let mut tree = walk.item(item, &IDENTITY, 0, 0)?;
+            for cutter in cutters {
+                walk.subtract_product(&mut tree, *cutter, &source::inverse_rigid(&world))?;
+            }
             result.volume += walk.volume(&tree)?;
             result.curved |= walk.leaves.iter().any(|p| p.curved);
             result.parts += 1;

@@ -59,14 +59,7 @@ pub(super) fn mapping(
 ) -> Option<(Frame, Vec<u32>)> {
     let map = d.decode_by_id(source).ok()?;
     let origin = axes(d, Some(map.get_ref(0)?))?;
-    let mut inverse = IDENTITY;
-    for i in 0..3 {
-        for j in 0..3 {
-            inverse[i + 4 * j] = origin[j + 4 * i];
-        }
-    }
-    let p = vector(&inverse, [-origin[12], -origin[13], -origin[14]]);
-    inverse[12..15].copy_from_slice(&p);
+    let inverse = inverse_rigid(&origin);
     let e = d.decode_by_id(target).ok()?;
     if e.ifc_type != IfcType::IfcCartesianTransformationOperator3D {
         return None;
@@ -89,6 +82,17 @@ pub(super) fn mapping(
     );
     let rep = d.decode_by_id(map.get_ref(1)?).ok()?;
     Some((multiply(&target, &inverse), rep.get_refs(3)?))
+}
+pub(super) fn inverse_rigid(origin: &Frame) -> Frame {
+    let mut inverse = IDENTITY;
+    for i in 0..3 {
+        for j in 0..3 {
+            inverse[i + 4 * j] = origin[j + 4 * i];
+        }
+    }
+    let p = vector(&inverse, [-origin[12], -origin[13], -origin[14]]);
+    inverse[12..15].copy_from_slice(&p);
+    inverse
 }
 pub(super) fn leaf(d: &mut EntityDecoder<'_>, id: u32, frame: &Frame) -> Option<Leaf> {
     let e = d.decode_by_id(id).ok()?;

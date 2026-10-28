@@ -46,14 +46,36 @@ fn tolerances() -> serde_json::Value {
 // Opening=.4³=.064; circular through-cut=pi*.2²*3=.12*pi.
 // e13's opening is [.1,.5]x[.3,.7]x[0,.4], wholly inside B and
 // disjoint from H (whose x starts at .75): net=5.25-.064=5.186.
-// The mapped oracle evaluates the body; compose its independent opening volume
-// here rather than asking it to interpret relationships outside its contract.
+// Supply the known cut set; the source oracle intersects it with the Boolean
+// body independently of the runtime and its opening traversal.
 fn expectation(id: u32) -> mapped::MappedExpectation {
     let mut expected = mapped::expected(SOURCE.as_bytes(), id).unwrap();
     if id == 181 {
-        expected.volume -= mapped::expected(SOURCE.as_bytes(), 190).unwrap().volume;
+        expected.volume = mapped::opened(SOURCE.as_bytes(), id, &[190])
+            .unwrap().result_volume.unwrap();
     }
     expected
+}
+#[test]
+fn m7_opening_oracle_intersects_boolean_host_instead_of_subtracting_nominal_volume() {
+    // #7955: the corpus gate must qualify e13 after M3-A. Move its .4 cube
+    // into the existing through-hole, partially across it, and outside B.
+    for (x, removed) in [(0.3, 0.064), (1., 0.), (0.75, 0.032), (4., 0.)] {
+        let source = SOURCE.replace(
+            "#182=IFCCARTESIANPOINT((0.3,0.5));",
+            &format!("#182=IFCCARTESIANPOINT(({x},0.5));"),
+        );
+        let value = mapped::opened(source.as_bytes(), 181, &[190]).unwrap();
+        assert!((value.result_volume.unwrap() - (5.25 - removed)).abs() < 1e-12);
+    }
+    // Cutting the same region twice must not remove its volume twice.
+    let value = mapped::opened(SOURCE.as_bytes(), 181, &[190, 190]).unwrap();
+    assert!((value.result_volume.unwrap() - 5.186).abs() < 1e-12);
+    // A different product placement moves the opening clear of the host.
+    let moved = SOURCE.replace("#9,#189,$,.OPENING.", "#62,#189,$,.OPENING.");
+    assert_ne!(moved, SOURCE);
+    let value = mapped::opened(moved.as_bytes(), 181, &[190]).unwrap();
+    assert!((value.result_volume.unwrap() - 5.25).abs() < 1e-12);
 }
 #[test]
 fn m7_source_oracle_matches_hand_arithmetic() {

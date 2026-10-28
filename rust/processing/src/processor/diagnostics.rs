@@ -239,10 +239,11 @@ pub(super) fn unit_metadata(units: &crate::prepass::UnitScales, unit_scale: f64)
 /// The pass router at the geometry scale, refused with the length unit, so no
 /// site or building placement it resolves reads file units as metres (#7678).
 pub(super) fn unit_router(units: &crate::prepass::UnitScales) -> ifc_lite_geometry::GeometryRouter {
-    let mut router = ifc_lite_geometry::GeometryRouter::from_config(ifc_lite_geometry::RouterConfig {
-        unit_scale: units.geometry_length_scale(),
-        ..Default::default()
-    });
+    let mut router =
+        ifc_lite_geometry::GeometryRouter::from_config(ifc_lite_geometry::RouterConfig {
+            unit_scale: units.geometry_length_scale(),
+            ..Default::default()
+        });
     if units.length_unit_refused.is_some() {
         router.refuse_length_unit();
     }

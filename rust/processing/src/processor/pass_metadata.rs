@@ -9,7 +9,7 @@ use super::jobs::build_color_updates_for_jobs;
 use super::pass::PassContext;
 use super::ProcessingSink;
 use ifc_lite_core::EntityDecoder;
-#[cfg(not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 

@@ -55,7 +55,7 @@ pub fn options() -> Result<Options, Box<dyn std::error::Error>> {
         bless,
     })
 }
-pub fn base_models() -> [&'static str; 14] {
+pub fn base_models() -> [&'static str; 15] {
     [
         "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
         "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",

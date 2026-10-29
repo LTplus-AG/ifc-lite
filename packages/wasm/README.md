@@ -419,7 +419,8 @@ revision-local face and a 10° crease guard, after applying the composed world f
 and indices stay unchanged, and `SurfaceNormals` is discharged. Band parts carry their own
 `materialId`, resolved colour and material name through exact’s colour resolver.
 `instanceKey` identifies eligible byte-equal mapped geometry, including its persistent
-face keys, for optional view instancing.
+face keys, for optional view instancing. Products with the canonical layer class,
+including source-proven unsliced skips, are excluded from instancing.
 Every published part carries `faces`: a string table of persistent source keys
 `#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
 `disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes

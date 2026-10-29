@@ -31,9 +31,15 @@ fn brep(base: u32, width: f64) -> String {
     )
 }
 
+fn cached_router(api: &IfcAPI) -> GeometryRouter {
+    ifc_lite_processing::execution::build_router(
+        Default::default(), ifc_lite_processing::execution::SchedulerPolicy::PerBatch,
+        api.batch_caches(), None, None, None,
+    )
+}
+
 fn widths(api: &IfcAPI, content: &[u8], ids: &[u32]) -> Vec<f32> {
-    let mut router = GeometryRouter::with_scale(1.0);
-    api.arm_batch_caches(&mut router);
+    let mut router = cached_router(api);
     // Isolate signature lifetime from the independent item-mesh cache lifetime.
     router.enable_content_dedup_shared(GeometryRouter::new_dedup_cache());
     let mut decoder = EntityDecoder::new(content);
@@ -93,8 +99,7 @@ fn c4_10a_warm_router_reuses_brep_walk_across_batches_7782() {
     let api = IfcAPI::new();
     let content = brep(0, 1.0);
     for warm in [false, true] {
-        let mut router = GeometryRouter::with_scale(1.0);
-        api.arm_batch_caches(&mut router);
+        let router = cached_router(&api);
         let mut decoder = EntityDecoder::new(content.as_bytes());
         let item = decoder.decode_by_id(8).unwrap();
         let mesh = router

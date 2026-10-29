@@ -412,7 +412,9 @@ Planar faces use the attributed source-plane normal after every vertex passes
 planarity verification. Other faces use angle-weighted smoothing within each
 revision-local face and a 10° crease guard, after applying the composed world frame. Positions
 and indices stay unchanged, and `SurfaceNormals` is discharged. Optional `color`, `materialName`,
-`geometryItemId`, `materialId` and `instanceKey` remain reserved for independently qualified slices.
+`geometryItemId` and `materialId` remain reserved for independently qualified slices.
+`instanceKey` identifies eligible byte-equal mapped geometry, including its persistent
+face keys, for optional view instancing.
 Every published part carries `faces`: a string table of persistent source keys
 `#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
 `disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
@@ -456,3 +458,16 @@ releases the worker; terminate the host Worker for immediate cancellation.
 Callback exceptions reject after controller cleanup, rather than cancel work.
 The source buffer moves into the Rust source bundle without a second Rust copy.
 `IfcAPI.retainedModel` and the default WASM engine remain unchanged.
+
+Eligible single-part view events also carry `instanceKey` and optional
+`instanceWorldFromObject`, the controller's composed IFC frame. The retained-only
+`encodeInstancedShard(meshes, keys, rtc)` accepts up to 256 extracted Y-up meshes,
+their full keys, and the session RTC offset. Supply each event's frame as the
+mesh's `worldFromObject`. It returns IFNS `shard` bytes, `flatIndices` into the
+input, and instance, group and pairing-rejection counts. The retained-only
+`instanceMinOccurrences()` returns the engine’s minimum eligible occurrence count,
+shared by the encoder and CLI reports. Groups must meet that threshold and pass
+the existing geometric pairing check;
+rejected groups remain flat. Render each input exactly once, through its shard
+or its flat mesh. The viewer flushes every 256 completed products and at session
+completion. CLI OBJ export continues to bake every occurrence.

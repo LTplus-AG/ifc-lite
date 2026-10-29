@@ -241,7 +241,7 @@ recognition; the larger total diff is predominantly relocated oracle/tests.
 `stack/8042-v3-acceptance-harness` depends on the public cutover.
 The exact integrated real-geometry parity harness, bounded derived-revision
 claims, geometry extraction helpers and packed Node 22 acceptance runner arrive
-with their documentation. The existing CI real-IFC parity step retains its
+with their documentation. The existing CI real-IFC parity step now has a
 five-minute timeout. Historical real-geometry preparation evidence is copied
 unchanged as source provenance, not a result for these layer commits.
 

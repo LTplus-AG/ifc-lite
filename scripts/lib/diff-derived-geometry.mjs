@@ -89,8 +89,8 @@ export function derivedGeometryCases(rows, fingerprintApi) {
  * path independently, including opaque callback refs that cannot cross WASM. */
 export function assertOriginalReferences(actual, base, head) {
   const inSide = (row, side) => {
+    // Reference membership implies the original `ref` is carried with it.
     assert.ok(side.includes(row), `${row.key}: result must reuse the original fingerprint`);
-    assert.strictEqual(row.ref, side.find(candidate => candidate === row).ref);
   };
   for (const entry of actual.entries) {
     assert.strictEqual(actual.byKey.get(entry.key), entry);

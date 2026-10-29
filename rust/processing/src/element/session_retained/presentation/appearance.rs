@@ -68,18 +68,17 @@ pub fn resolve_appearances(
 
 /// The fallback colour exact's job carries for a product: the first style found under its representation, else
 /// the material chain's fallback, else the class default. The plan cannot supply it (a retained job is built
-/// with `element_color: None`, so `ElementPlan` holds only the class default), so this composes it as the two
-/// other copies do and must stay equal to them: `processor::job::ColorLayerResolver::resolve` (exact's job
-/// metadata) and `appearance::canonical::produce_with_context` (the authoring pipeline).
+/// with `element_color: None`, so `ElementPlan` holds only the class default), so this composes it through
+/// the precedence exact's job resolver (`processor::job::AppearanceResolver::resolve`) and the authoring
+/// pipeline (`appearance::canonical::produce_with_context`) share: `processor::resolve_product_element_color`.
 fn product_element_color(
     entity: &DecodedEntity,
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     default: [f32; 4],
 ) -> [f32; 4] {
-    entity.ref_at(slot::IfcProduct::REPRESENTATION)
-        .and_then(|shape| crate::processor::resolve_element_color_for_product_definition_shape(shape, ctx.geometry_style_index, decoder))
-        .or_else(|| ctx.element_material_colors.get(&entity.id).and_then(|colors| crate::style::element_material_fallback_color(colors)))
+    crate::processor::resolve_product_element_color(entity.ref_at(slot::IfcProduct::REPRESENTATION), entity.id,
+        ctx.geometry_style_index, ctx.element_material_colors, decoder)
         .unwrap_or(default)
 }
 

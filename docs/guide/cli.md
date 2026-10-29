@@ -1837,3 +1837,7 @@ internal interface caps are removed. The product's `volumeM3` measures the publi
 assembled outer skin after seam conformity. The report includes `layeredProducts` and
 `bands` counts. Failed cap matching or seam validation refuses the whole product
 with `layer_caps_unresolved`.
+
+Each surviving material-band triangle keeps the host or opening source face key,
+qualified with `;band(<index>)`. Internal interface caps have no published key.
+The band and cap timings measure their own phases without restarting the product deadline.

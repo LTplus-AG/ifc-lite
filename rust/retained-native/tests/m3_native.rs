@@ -265,7 +265,7 @@ fn issue_7955_m3_stage_native_browser_reference() {
         let m4synthetic=run(include_str!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc"),&[1027,2027,3055,4055,5027,6027,7027,8027,9027,13055]).unwrap();
         let m4curved=run(include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"),&[55]).unwrap();
         let layers=|outcomes:&[ProductOutcome]| outcomes.iter().map(|o|match o {
-            ProductOutcome::Published(s)=>serde_json::json!({"id":s.product_id,"code":"published","bands":s.parts.iter().map(|p|serde_json::json!({"index":p.layer.map(|l|l.index),"materialId":p.layer.map(|l|l.material_id),"volume":p.capped_volume_m3})).collect::<Vec<_>>()}),
+            ProductOutcome::Published(s)=>serde_json::json!({"id":s.product_id,"code":"published","bands":s.parts.iter().map(|p|serde_json::json!({"index":p.layer.map(|l|l.index),"materialId":p.layer.map(|l|l.material_id),"volume":p.capped_volume_m3,"keys":p.faces.as_ref().map(|f| f.table.iter().map(ToString::to_string).collect::<std::collections::BTreeSet<_>>())})).collect::<Vec<_>>()}),
             ProductOutcome::Refused{product_id,refusal,..}=>serde_json::json!({"id":product_id,"code":refusal.code(),"bands":[]}),
         }).collect::<Vec<_>>();
         std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({"issue2019":rows(&issue),"synthetic":rows(&synthetic),"nonbakeable":rows(&nonbakeable),"m4straight":layers(&m4straight),"m4curved":layers(&m4curved),"m4synthetic":layers(&m4synthetic)})).unwrap()).unwrap();

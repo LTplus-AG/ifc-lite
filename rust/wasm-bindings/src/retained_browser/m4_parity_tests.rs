@@ -8,6 +8,15 @@ export function m4Measure(p) {
  if(p.obligationsUnmet.includes('MaterialLayers')) throw new Error('Layer obligation remains');
  const edges=new Map();
  for(const part of p.parts) {
+   if(!part.faces || part.faces.triangles.length!==part.indices.length/3 ||
+      part.revisionLocalFaces.length!==part.indices.length/3) throw new Error('M4 complete face partition required');
+   const kernelKeys=new Map();
+   for(let t=0;t<part.faces.triangles.length;t++) {
+     const face=part.faces.table[part.faces.triangles[t]], kernel=part.revisionLocalFaces[t];
+     if(!face?.endsWith(`;band(${part.layer.index})`)) throw new Error('M4 band-qualified source key required');
+     if(kernelKeys.has(kernel) && kernelKeys.get(kernel)!==face) throw new Error('M4 kernel face has multiple keys');
+     kernelKeys.set(kernel,face);
+   }
    const key=i=>Array.from(part.positions.subarray(i*3,i*3+3)).map(x=>Object.is(x,-0)?0:x).join(',');
    for(let i=0;i<part.indices.length;i+=3) {
      const t=Array.from(part.indices.subarray(i,i+3),key);
@@ -15,14 +24,14 @@ export function m4Measure(p) {
    }
  }
  if([...edges.values()].some(n=>n!==2)) throw new Error('M4 union has closure defects');
- return {id:p.expressId,code:p.status,bands:p.parts.map(part=>({index:part.layer?.index,materialId:part.layer?.materialId,volume:part.cappedVolumeM3}))};
+ return {id:p.expressId,code:p.status,bands:p.parts.map(part=>({index:part.layer?.index,materialId:part.layer?.materialId,volume:part.cappedVolumeM3,keys:[...new Set(part.faces.table)].sort()}))};
 }")]
 extern "C" {
     #[wasm_bindgen(catch,js_name=m4Reference)] async fn reference()->Result<JsValue,JsValue>;
     #[wasm_bindgen(catch,js_name=m4Measure)] fn measure(p:&JsValue)->Result<JsValue,JsValue>;
 }
 #[derive(serde::Deserialize)]
-struct Band { index:u16, #[serde(rename="materialId")] material_id:u32, volume:f64 }
+struct Band { index:u16, #[serde(rename="materialId")] material_id:u32, volume:f64, keys:std::collections::BTreeSet<String> }
 #[derive(serde::Deserialize)]
 struct Row { id:u32,code:String,bands:Vec<Band> }
 #[derive(serde::Deserialize)]
@@ -65,6 +74,7 @@ async fn retained_browser_m4_layers_native_parity() {
             }
             for (a,b) in actual.bands.iter().zip(expected.bands) {
                 assert_eq!((a.index,a.material_id),(b.index,b.material_id));
+                assert_eq!(a.keys,b.keys,"#{} band{} persistent face keys",actual.id,a.index);
                 assert!((a.volume-b.volume).abs()/b.volume.abs()<=1e-9,"#{} band{}: {} vs {}",actual.id,a.index,a.volume,b.volume);
             }
         }

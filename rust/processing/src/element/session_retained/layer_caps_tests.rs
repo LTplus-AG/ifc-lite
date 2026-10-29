@@ -36,6 +36,20 @@ fn m4_boxes_remove_caps_and_conform_t_junction() {
         let before:usize = parts.iter().map(|p|p.indices.len()).sum();
         assert_eq!(remove(&mut parts,&layers()).unwrap(),0.);
         closed(&parts).unwrap(); assert!((volume(&parts,[0.;3])-2.).abs()<1e-12);
+        // #7955 M11-F: stripped triangles disappear from the partition and
+        // every child of a rim split retains its original supporting face.
+        for (band, part) in parts.iter().enumerate() {
+            assert_eq!(part.revision_local_faces.len(), part.indices.len()/3);
+            for (t, &face) in part.indices.chunks_exact(3).zip(&part.revision_local_faces) {
+                let (axis, expected) = match face {
+                    0 => (2, 0.), 1 => (2, 1.), 2 => (1, 0.), 3 => (1, 1.),
+                    4 => { assert_eq!(band, 0); (0, 0.) },
+                    5 => { assert_eq!(band, 1); (0, 2.) },
+                    _ => panic!("invented face id"),
+                };
+                assert!(t.iter().all(|&i| point(part, i)[axis] == expected));
+            }
+        }
         assert!(parts.iter().all(|p| !boundary(p).unwrap().is_empty()),"published bands must be open");
         assert!(parts.iter().map(|p|p.indices.len()).sum::<usize>()<before+12);
     }

@@ -46,6 +46,7 @@ fn issue_7955_m4_curved_ifc_normal_matches_independently_authored_bands() {
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(CURVED.as_bytes(),None);
     let independent=ifc_lite_retained_native::oracle::layers::expected(CURVED.as_bytes(),&sources,55).expect("IFC source oracle");
     let wall = shape(&results,55);
+    assert_band_faces(wall);
     assert_eq!(wall.parts.len(),3); assert_eq!(wall.cuts,1);
     let limits: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m4.json")).unwrap();
     let tolerance = limits["layerBandVolumeRelative"]["curved"].as_f64().unwrap();
@@ -78,6 +79,8 @@ fn issue_7955_m4_curved_ifc_normal_matches_independently_authored_bands() {
 fn issue_7955_m4_straight_hand_volumes_and_closed_union() {
     let Some(results) = run(STRAIGHT,&[27]) else {return;};
     let wall = shape(&results,27); assert_eq!(wall.parts.len(),2);
+    assert_band_faces(wall);
+    assert!(wall.parts.iter().flat_map(|p| &p.faces.as_ref().unwrap().table).all(|k| k.item == 19 && k.via == 0));
     // y=[0,1], x width2, height3: first .1*2*3=.6, remainder .9*2*3=5.4.
     for (part,expected) in wall.parts.iter().zip([0.6,5.4]) { close(part.capped_volume_m3.unwrap(),expected,1e-6); }
     let measured = measure(wall); close(measured.volume,6.,1e-6); assert_eq!(measured.defects,0);
@@ -143,6 +146,7 @@ fn issue_7955_m4_synthetic_bands_and_refusals() {
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     for id in [1027,2027,3055,4055,5027,6027,7027,13055] {
         let product=shape(&results,id);
+        assert_band_faces(product);
         let oracle=ifc_lite_retained_native::oracle::layers::expected(text.as_bytes(),&sources,id).unwrap();
         let tolerance=if oracle.curved {2e-3} else {1e-6};
         for part in &product.parts {
@@ -155,4 +159,25 @@ fn issue_7955_m4_synthetic_bands_and_refusals() {
         assert!(results.iter().any(|o|matches!(o,ProductOutcome::Refused{product_id,refusal,..} if *product_id==id && refusal.code()==code)),"#{id} expected {code}: {results:?}");
     }
     println!("sdk witness executed: m4_synthetic");
+}
+
+// #7955 M4/M11-F: every final triangle has a host/opening source key,
+// including rim-split children. Cutter usage IDs must never become face keys.
+fn assert_band_faces(product: &ShapeOnlyProduct) {
+    use std::collections::{BTreeMap, BTreeSet};
+    assert!(!product.obligations.0.contains(&ifc_lite_geometry::program::transactions::Requirement::PersistentFaces));
+    let mut qualified = BTreeSet::new();
+    for part in &product.parts {
+        let band = part.layer.expect("band");
+        let faces = part.faces.as_ref().expect("persistent face proof");
+        assert_eq!(faces.triangles.len(), part.indices.len()/3);
+        assert_eq!(part.revision_local_faces.len(), faces.triangles.len());
+        let mut kernel_keys = BTreeMap::new();
+        for (&key, &kernel) in faces.triangles.iter().zip(&part.revision_local_faces) {
+            let key = &faces.table[key as usize];
+            assert!(key.role.ends_with(&format!(";band({})", band.index)));
+            if let Some(previous) = kernel_keys.insert(kernel, key) { assert_eq!(previous, key); }
+        }
+        for key in &faces.table { assert!(qualified.insert(key.to_string())); }
+    }
 }

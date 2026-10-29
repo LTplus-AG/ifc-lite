@@ -36,6 +36,49 @@ fn c4_11b_metadata_shares_index_and_scan_resumes_with_complete_last_record_wins(
     assert_eq!(actual.starts()[0] as usize, last);
 }
 
+// #7782: observe the actual scan callback, not just the trigger helper. A
+// large scan must emit with a genuinely partial index; a small scan emits
+// once with the complete index. Both must finish with every tail record.
+#[test]
+fn c4_11b_mid_scan_meta_leases_a_partial_index_and_tail_meta_a_complete_one() {
+    use ifc_lite_processing::stream_meta::MetaMode;
+    for jobs in [10, 61] {
+        let mut source = String::from("DATA;\n");
+        for id in 1..=jobs {
+            source.push_str(&format!("#{id}=IFCWALL('wall',$,$,$,$,$,#9998,$,$);\n"));
+        }
+        source.push_str("#9999=IFCDIRECTION((1.,0.,0.));ENDSEC;");
+        let bytes = source.as_bytes();
+        let mut calls = 0;
+        let scan = super::super::prepass_scan::scan_serial(
+            bytes,
+            &Default::default(),
+            |discovery, decoder, mode| {
+                calls += 1;
+                if jobs > 50 {
+                    assert!(matches!(mode, MetaMode::StreamingPartial { .. }));
+                    assert_eq!(discovery.buffered_jobs.len(), 50);
+                    assert!(
+                        decoder.decode_by_id(9999).is_err(),
+                        "tail cannot already be scanned"
+                    );
+                } else {
+                    assert!(matches!(mode, MetaMode::SmallFileSingle));
+                    assert!(decoder.decode_by_id(9999).is_ok());
+                }
+                Ok(1.0)
+            },
+        )
+        .unwrap();
+        assert_eq!(calls, 1);
+        assert_eq!(scan.discovery.total_jobs, jobs);
+        let expected = ColumnarEntityIndex::from_scan(bytes).unwrap();
+        assert_eq!(scan.index.ids(), expected.ids());
+        assert_eq!(scan.index.starts(), expected.starts());
+        assert_eq!(scan.index.lengths(), expected.lengths());
+    }
+}
+
 // Native allocation measurement for the exact old/new metadata-index handoff.
 // This is NOT an end-to-end timing or browser peak-memory benchmark.
 #[cfg(not(target_arch = "wasm32"))]

@@ -77,15 +77,16 @@ pub(super) fn scan(
                 external_styles: true,
             })
         }
-        PrepassMode::Serial => scan_serial(api, content, on_event, disabled_types),
+        PrepassMode::Serial => scan_serial(content, disabled_types, |discovery, decoder, mode| {
+            emit_meta(api, content, on_event, discovery, decoder, mode)
+        }),
     }
 }
 
-fn scan_serial(
-    api: &IfcAPI,
-    content: &[u8],
-    on_event: &Function,
+pub(super) fn scan_serial<'a>(
+    content: &'a [u8],
     disabled_types: &rustc_hash::FxHashSet<String>,
+    mut on_meta: impl FnMut(&ColumnsDiscovery, &mut EntityDecoder<'a>, MetaMode) -> Result<f64, JsValue>,
 ) -> Result<ScannedPrepass, JsValue> {
     let mut index = SerialIndex::new(content.len());
     let mut discovery = ColumnsDiscovery::default();
@@ -107,10 +108,7 @@ fn scan_serial(
         // This temporary decoder must drop before the next index insertion.
         if let Some(scanned_through) = discovery.early_meta_end(plane_angle.is_some()) {
             let mut decoder = index.decoder(content);
-            plane_angle = Some(emit_meta(
-                api,
-                content,
-                on_event,
+            plane_angle = Some(on_meta(
                 &discovery,
                 &mut decoder,
                 MetaMode::StreamingPartial { scanned_through },
@@ -120,10 +118,7 @@ fn scan_serial(
     discovery.prepass_spans = shared.prepass_spans;
     let plane_angle_to_radians = match plane_angle {
         Some(scale) => scale,
-        None => emit_meta(
-            api,
-            content,
-            on_event,
+        None => on_meta(
             &discovery,
             &mut index.decoder(content),
             MetaMode::SmallFileSingle,

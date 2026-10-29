@@ -37,7 +37,7 @@ pub(crate) fn combined_pre_pass(content: &[u8], decoder: &mut ifc_lite_core::Ent
 
     let estimated_elements = content.len() / 2000;
 
-    let mut discovery = ifc_lite_processing::discovery::Discovery::browser();
+    let mut discovery = ifc_lite_processing::discovery::Discovery::default();
     let mut site_position: Option<(u32, usize, usize)> = None;
     let mut simple_jobs = Vec::with_capacity(estimated_elements / 2);
     let mut complex_jobs = Vec::with_capacity(estimated_elements / 2);

@@ -46,7 +46,7 @@ fn c4_5_shard_named_result_retains_diagnostics_and_optional_classes() {
 #[test]
 fn c4_6b_browser_scope_preserves_discovery_without_native_type_state() {
     let content = b"#1=IFCPROJECT();#2=IFCSITE();#3=IFCWALL();#4=IFCWALLTYPE('g',$,$,$,$,$,(#10,#11));#5=IFCMAPPEDITEM(#10,#9);#6=IFCRELDEFINESBYTYPE('g',$,$,$,(#3),#4);";
-    let mut browser = Discovery::browser();
+    let mut browser = Discovery::default();
     let mut native = Discovery::new(true);
     let mut scanner = EntityScanner::new(content);
     let mut jobs = Vec::new();

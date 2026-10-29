@@ -409,7 +409,7 @@ fn c4_6b_shared_discovery_preserves_browser_order() {
     let lengths: Vec<_> = scan.records.iter().map(|r| (r.2 - r.1) as u32).collect();
     let disabled = Default::default();
     let columns = discover_from_columns(bytes, &ids, &starts, &lengths, &scan.classes.unwrap(), &disabled);
-    let mut shared = ifc_lite_processing::discovery::Discovery::browser();
+    let mut shared = ifc_lite_processing::discovery::Discovery::default();
     let mut serial = ColumnsDiscovery::default();
     let mut scanner = EntityScanner::new(bytes);
     while let Some((id, kw, start, end)) = scanner.next_entity() {
@@ -457,7 +457,7 @@ fn c4_6b_early_meta_precedes_late_project_after_fifty_accepted_jobs() {
     source.push_str("#901=IFCPROJECT($);\nENDSEC;");
     let bytes = source.as_bytes();
     let disabled = ["IFCSITE".to_owned(), "IFCSPACE".to_owned()].into_iter().collect();
-    let mut shared = ifc_lite_processing::discovery::Discovery::browser();
+    let mut shared = ifc_lite_processing::discovery::Discovery::default();
     let mut d = ColumnsDiscovery::default();
     let mut scanner = ifc_lite_core::EntityScanner::new(bytes);
     let mut events = Vec::new();

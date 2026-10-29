@@ -237,7 +237,7 @@ impl IfcAPI {
             has_layer_set = d.has_layer_set;
         } else {
         let mut discovery = ColumnsDiscovery::default();
-        let mut shared = ifc_lite_processing::discovery::Discovery::browser();
+        let mut shared = ifc_lite_processing::discovery::Discovery::default();
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             if prebuilt_arc.is_none() {
                 entity_index.insert(id, (start, end)); // prebuilt mode: map unused

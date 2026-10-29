@@ -74,11 +74,6 @@ impl Discovery {
         }
     }
 
-    /// Browser callers use `observe_browser` to omit native-only type/mapping state.
-    pub fn browser() -> Self {
-        Self::default()
-    }
-
     /// Observe one record in file order. Returns the type of a geometry job;
     /// callers retain the raw keyword when decorating metadata (#1910).
     #[inline(always)]

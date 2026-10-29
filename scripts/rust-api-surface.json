@@ -69,7 +69,6 @@
     "find_project_id": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "find_project_ids": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "geometry_flags_by_name": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
-    "geometry_job_reason": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "get_si_prefix_multiplier": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "has_geometry_by_name": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "ifc_type_from_keyword": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

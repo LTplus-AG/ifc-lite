@@ -101,7 +101,7 @@ fn m10_sdk_source_oracles_and_native_reference() {
     let mut clip_tolerance:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m5.json")).unwrap();
     let faces:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m11-f.json")).unwrap();
     clip_tolerance.as_object_mut().unwrap().extend(faces.as_object().unwrap().clone());
-    let results=checks::check(clipped,&checks::SourceContext {product_id:313,analytic:&analytic,clips:&clips},&clip_tolerance);
+    let results=checks::check(clipped,&checks::SourceContext {product_id:313,analytic:&analytic,clips:&clips},&clip_tolerance,None);
     let section:Vec<_>=results.iter().filter(|r|r.family=="clipSectionVolumeRelative").collect();
     assert_eq!(section.len(),clipped.parts.len());
     assert!(section.iter().all(|r|r.gated&&r.pass),"#313 M5 section-volume gate must execute and pass");

@@ -62,9 +62,9 @@ pub(super) fn run(
     let (outputs, diagnostics, occurrences) = api.produce_batch(content, &crate::api::gpu_meshes::batch_wire::BatchWire {
             jobs_flat: jobs,
             unit_scale: stream_meta_unit_scale(&prepass.meta),
-            rtc_x: rtc_x,
-            rtc_y: rtc_y,
-            rtc_z: rtc_z,
+            rtc_x,
+            rtc_y,
+            rtc_z,
             needs_shift: prepass.meta.frame.needs_shift(),
             void_keys: &prepass.void_keys,
             void_counts: &prepass.void_counts,

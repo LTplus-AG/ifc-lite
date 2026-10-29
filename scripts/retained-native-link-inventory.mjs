@@ -40,6 +40,7 @@ export function collect(binary, build) {
     }
     const owner = owners.split('\n').find(line => line.endsWith(`: ${resolved}`) || line.endsWith(`: ${path}`))?.split(': ')[0];
     if (!owner || owner.includes(', ')) throw new Error(`Ambiguous/unowned runtime: ${path}`);
+    // eslint-disable-next-line no-template-curly-in-string -- dpkg-query's own format field, not a JS template
     const version = command('dpkg-query', ['--show', '--showformat=${Version}', owner]);
     const copyrightPath = `/usr/share/doc/${owner.split(':')[0]}/copyright`;
     return { ...file(resolved), loaderPath: path, package: owner, version,

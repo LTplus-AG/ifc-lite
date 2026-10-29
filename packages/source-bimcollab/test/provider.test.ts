@@ -105,12 +105,13 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect(init && 'headers' in init ? new Headers(init.headers as HeadersInit).has('Authorization') : false).toBe(false);
     expect(init && 'headers' in init).toBe(false);
   });
-  it('falls back on the specific 404, probes locations sequentially, caches the index and downloads numeric version', async () => {
+  it('falls back on the specific 404, reads every candidate location once, caches the index and downloads numeric version', async () => {
     const { provider, ctx, fetchFn } = setup();
     expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
     await provider.download(ctx, ref);
     const indexes = fetchFn.mock.calls.map(call => String(call[0])).filter(url => url.includes('/index?'));
-    expect(indexes).toEqual(['/api/bimcollab/space/demo/index?locationId=1', '/api/bimcollab/space/demo/index?locationId=2']);
+    // One read of locations 1–10 for the first download; the second uses the cache.
+    expect(indexes).toEqual(Array.from({ length: 10 }, (_, i) => `/api/bimcollab/space/demo/index?locationId=${i + 1}`));
     expect(fetchFn.mock.calls.filter(call => String(call[0]).endsWith('/space/demo/download/42'))).toHaveLength(2);
   });
   it('expires cached indexes after a short TTL', async () => {
@@ -120,7 +121,7 @@ describe('BIMcollab source provider (fake transport only)', () => {
       await provider.download(ctx, ref);
       now.mockReturnValue(62_000);
       await provider.download(ctx, ref);
-      expect(fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(4);
+      expect(fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(20); // two full reads of locations 1–10: the first entry expired
     } finally { now.mockRestore(); }
   });
   it('accepts a project-name match when the location name is unavailable', async () => {
@@ -150,7 +151,15 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/42'))).toBe(true);
     // No index carries the location name and two locations hold the project: refuse to guess.
     const twice = setup({ byLocation: { 2: [shadow], 4: [{ ...shadow, versionId: 88, locationName: 'Third' }] } });
-    await expect(twice.provider.download(twice.ctx, ref)).rejects.toThrow('cannot tell which');
+    await expect(twice.provider.download(twice.ctx, ref)).rejects.toThrow('cannot tell these documents apart');
+    expect(twice.fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
+  });
+  it('refuses when two same-named locations each hold a same-named project with the same document', async () => {
+    const first = { ...record, versionId: 55, locationId: 2 };
+    const second = { ...record, versionId: 56, locationId: 3 };
+    const { provider, ctx, fetchFn } = setup({ byLocation: { 2: [first], 3: [second] } });
+    await expect(provider.download(ctx, ref)).rejects.toThrow('cannot tell these documents apart');
+    expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
   });
   it('matches a phase-attached document (no project on the web-app record) through the project phase names', async () => {
     const phaseRecord = { ...record, projectId: null, projectName: null, projectPhaseName: 'Design' };

@@ -4,8 +4,8 @@
          for i in 0..3 { p[i] = m[i]*q[0] + m[4+i]*q[1] + m[8+i]*q[2]; }
      }
      if Matrix3::from_column_slice(&linear(m)).determinant() < 0. {
--        for triangle in indices.chunks_exact_mut(3) { triangle.swap(1, 2); }
-+        for triangle in indices.chunks_exact_mut(3) { triangle.swap(1, 1); }
+-        for triangle in indices.chunks_exact_mut(3) { triangle.swap(1, 1); }
++        for triangle in indices.chunks_exact_mut(3) { triangle.swap(1, 2); }
      }
  }
  /// Pure witness of the production in-place transform; publication reserves before copying.

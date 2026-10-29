@@ -1,0 +1,2 @@
+# SPDX-License-Identifier: MPL-2.0
+tests/fixtures/synthetic-retained/f-m11a-appearance.ifc

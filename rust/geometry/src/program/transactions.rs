@@ -13,7 +13,7 @@ mod error;
 mod values;
 mod type_origin;
 pub use error::{TransactionError, TransactionFailureKind};
-pub use values::{Definition, Operation, OperationKind, Plan, Requirement, Slot, Value, ValueRef};
+pub use values::{Definition, Operation, OperationKind, Plan, PresentationFacts, Requirement, Slot, Value, ValueRef};
 
 /// The original stop/account domain; contains no execution or TLS guard.
 #[derive(Clone)]

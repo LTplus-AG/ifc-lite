@@ -7,7 +7,7 @@ mod key;
 fn part() -> ShapePart {
     ShapePart { layer: None, capped_volume_m3: None, halfspace_clipped: false, positions: vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0.],
         indices: vec![0,1,2, 0,2,3], world_from_object: [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.],
-        curved: false, revision_local_faces: vec![0,0], normals: None,
+        curved: false, halfspace_clipped: false, revision_local_faces: vec![0,0], normals: None,
         appearance: None, faces: None, instance_key: None }
 }
 

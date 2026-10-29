@@ -244,6 +244,11 @@ never registers as a change) and tolerance-quantized. This package only
 See the [ifc-lite docs](https://ifclite.dev/docs/) and the
 [API Reference](https://ifclite.dev/docs/api/typescript/).
 
+`@ifc-lite/diff/internal` is for in-repository consumers only and has no semver
+stability guarantee. `buildFingerprintBatch` snapshots fresh adapter DTOs once
+and computes data and component fingerprints together. It never caches inputs;
+call it again after changes. Public unary fingerprint APIs remain supported.
+
 ## License
 
 MPL-2.0

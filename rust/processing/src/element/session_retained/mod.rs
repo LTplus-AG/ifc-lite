@@ -23,7 +23,7 @@ pub(super) mod witness;
 pub(super) mod publication;
 mod phase_timer;
 mod publication_mesh;
-mod presentation;
+pub(super) mod presentation;
 pub(super) mod model;
 mod restart_budget;
 mod cancellation;

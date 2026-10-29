@@ -33,7 +33,7 @@ test('#7955 actual retainedModel yields deterministic CLI report and no partial 
     const { obj, report } = retainedArtifacts(engine, instanceMinOccurrences, outcomes, () => null);
     assert.deepEqual(report.summary, { layeredProducts: 0, bands: 0, candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
     assert.equal(report.products[0].parts.length, 1);
-    assert.deepEqual(report.products[0].obligationsUnmet, ['IfcAppearance']);
+    assert.deepEqual(report.products[0].obligationsUnmet, ['MaterialLayers']);
     assert.equal(report.products[1].code, 'material_layer_strategy');
     assert.ok(!('parts' in report.products[1]));
     assert.equal(obj.split('\n').filter(line => line === '# PresentationObligationsUnmet').length, 1);

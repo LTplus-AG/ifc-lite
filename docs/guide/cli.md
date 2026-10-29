@@ -1824,12 +1824,16 @@ A consumed host part refuses the complete product with `empty_result`; partial o
 removal is not published. Unsupported opening geometry reports `opening_unsupported`, while
 unsupported layer-axis families report `material_layer_strategy` before opening execution. Successful
 opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their OBJ marker
-lists `IfcAppearance` after layer completion or a source-proven layer skip. Every published
-product discharges `MaterialLayers`, `SurfaceNormals` and `PersistentFaces`; the appearance
-obligation still prevents final display-contract publication.
+lists `MaterialLayers`. Every published product discharges
+`SurfaceNormals`, `PersistentFaces` and `IfcAppearance`; the layer obligation still prevents final publication.
 Every part reports persistent source face keys (`#item[>#opening]:role`) with triangle counts
-and areas; unproven faces refuse `face_provenance_unproven`. Color and material
-channels remain reserved for their independently qualified presentation slices.
+and areas; unproven faces refuse `face_provenance_unproven`. Every published part also carries its
+resolved appearance (`color`, `materialName`, `geometryItemId`): the IFC source decides, through the same
+colour resolver the exact engine uses, so the retained and exact colours of a part are bitwise equal.
+A product whose binding carries a texture or an indexed colour palette refuses with
+`appearance_unsupported` instead of publishing a plain colour; none exists in the committed
+corpus, and tessellated bodies, the only carriers, refuse upstream. The material-ID
+channel remains reserved for its independently qualified presentation slice.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°
 guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored frames refuse `incomplete` until winding and normals can be flipped together. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible

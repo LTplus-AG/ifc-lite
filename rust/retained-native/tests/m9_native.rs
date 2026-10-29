@@ -57,9 +57,7 @@ fn check(shape: &ShapeOnlyProduct, parts: usize, volume: f64, bbox: [f64; 6]) {
     assert_eq!(actual.defects, 0);
     assert!(metrics::relative(actual.volume, volume) <= 1e-6, "{} vs {volume}", actual.volume);
     assert!(metrics::bbox_deviation(&actual.bbox, &bbox) <= 1e-5);
-    // M4: an orphan type has no occurrence LayerSetUsage or layer phase (#7955), so
-    // MaterialLayers is discharged; M11-N/M11-F discharge normals and persistent faces.
-    assert_eq!(shape.obligations.0, [ifc_lite_geometry::program::transactions::Requirement::IfcAppearance]);
+    assert_eq!(shape.obligations.0, [ifc_lite_geometry::program::transactions::Requirement::MaterialLayers]);
 }
 #[test]
 fn issue_7955_m9_native_mixed_frames_and_survey_origin() {

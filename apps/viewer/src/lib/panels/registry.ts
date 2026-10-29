@@ -62,7 +62,8 @@ export type WorkspacePanelId =
   | 'semantic'
   | 'review'
   | 'assistant'
-  | 'idsStudio';
+  | 'idsStudio'
+  | 'influx';
 
 /** Shared task grouping for the rail, ribbon panel browser, and palette commands (#5873). */
 export type PanelGroup = 'coordinate' | 'check' | 'quantify' | 'automate' | 'site' | 'author';
@@ -211,6 +212,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // `@ifc-lite/ids-authoring`. Results stay in Data validation. APPENDED (no
   // Alt shortcut). Flag-free like 'review'; no model gate, an IDS is
   // authored before any model is loaded.
+  { id: 'influx', titleKey: 'influx.title', Icon: BarChart3, group: 'site', region: 'side' },
   { id: 'idsStudio', titleKey: 'idsStudio.title', Icon: ClipboardPen, group: 'check', region: 'side', prefersWide: true },
 ];
 

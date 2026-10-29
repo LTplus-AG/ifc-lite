@@ -17,19 +17,17 @@ pub(crate) mod parallel_scan;
 mod shard_classes;
 #[allow(deprecated)] // Compatibility exports until C10.
 pub use parallel_scan::{
-    scan_shard_result, ShardScan, scan_shard_with_diagnostics,
-    build_entity_index_parallel, scan_shard, scan_shard_with_refusals, ShardRecords, ShardRefusals,
+    build_entity_index_parallel, scan_shard, scan_shard_result, scan_shard_with_diagnostics, scan_shard_with_refusals,
+    ShardRecords, ShardRefusals, ShardScan,
 };
 #[allow(deprecated)] // Compatibility exports until C10.
 pub use shard_classes::{
-    classify_type_name, scan_shard_classified, scan_shard_classified_with_refusals,
-    PREPASS_CLASS_CODE_MASK,
-    PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
-    PREPASS_CLASS_INDEXED_COLOUR_MAP, PREPASS_CLASS_MATERIAL_DEF_REPR,
-    PREPASS_CLASS_MAPPED_ITEM, PREPASS_CLASS_MATERIAL_LAYER_SET, PREPASS_CLASS_NONE,
-    PREPASS_CLASS_PROJECT, PREPASS_CLASS_REL_DEFINES_BY_TYPE,
-    PREPASS_CLASS_REL_AGGREGATES, PREPASS_CLASS_REL_ASSOCIATES_MATERIAL, PREPASS_CLASS_REL_FILLS,
-    PREPASS_CLASS_REL_VOIDS, PREPASS_CLASS_SITE, PREPASS_CLASS_STYLED_ITEM,
+    classify_type_name, scan_shard_classified, scan_shard_classified_with_refusals, PREPASS_CLASS_CODE_MASK,
+    PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_TYPE_CANDIDATE, PREPASS_CLASS_INDEXED_COLOUR_MAP,
+    PREPASS_CLASS_MAPPED_ITEM, PREPASS_CLASS_MATERIAL_DEF_REPR, PREPASS_CLASS_MATERIAL_LAYER_SET, PREPASS_CLASS_NONE,
+    PREPASS_CLASS_PROJECT, PREPASS_CLASS_REL_AGGREGATES, PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
+    PREPASS_CLASS_REL_DEFINES_BY_TYPE, PREPASS_CLASS_REL_FILLS, PREPASS_CLASS_REL_VOIDS, PREPASS_CLASS_SITE,
+    PREPASS_CLASS_STYLED_ITEM,
 };
 // `determinism::diff_report` unit tests (#1549) live in this sibling
 // `_tests.rs` file, declared from here rather than inside `determinism.rs`,
@@ -62,9 +60,9 @@ mod prepass_type_material;
 mod processor;
 mod product_geometry_audit;
 pub use product_geometry_audit::ProductGeometryAudit;
-pub mod scan;
 pub mod discovery;
 pub(crate) mod point_pca;
+pub mod scan;
 pub mod scan_proposals;
 pub mod scan_segmentation;
 pub(crate) mod simplify_math;
@@ -111,7 +109,7 @@ pub use ifc_lite_geometry::TessellationQuality;
 /// batch (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so the mapping
 /// has one home rather than two clones. See its doc comment.
 pub use processor::instancing::recover_occurrences_flat;
-#[allow(deprecated)] // the deprecated delegates stay exported until the next major
+#[allow(deprecated)]// the deprecated delegates stay exported until the next major
 pub use processor::{
     convert_mesh_to_site_local, detect_schema_version, is_quick_spatial_type_ci, native_to_baked,
     process, Batching, Features, FrameEvent, OnBatch, ProcessingRequest, ProcessingSink,

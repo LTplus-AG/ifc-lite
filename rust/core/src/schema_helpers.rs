@@ -125,7 +125,8 @@ pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
 #[inline]
 pub fn is_geometry_job(type_name: &str, entity_bytes: &[u8]) -> bool {
     let (geometry, spatial) = geometry_flags_by_name(type_name);
-    geometry || (spatial && crate::nth_attribute_is_present(entity_bytes, 6))
+    geometry
+        || (spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::REPRESENTATION.index()))
 }
 
 fn compute_has_geometry(upper: &str) -> bool {

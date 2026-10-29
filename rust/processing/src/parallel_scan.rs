@@ -73,11 +73,7 @@ pub type ShardRefusals = Vec<usize>;
 /// that DOES must take the offsets and attribute them, or it reports refusals
 /// that no retained record produced.
 #[deprecated(note = "use scan_shard_result and its named fields")]
-pub fn scan_shard(
-    content: &[u8],
-    range_start: usize,
-    range_end: usize,
-) -> (ShardRecords, Option<usize>) {
+pub fn scan_shard(content: &[u8], range_start: usize, range_end: usize) -> (ShardRecords, Option<usize>) {
     let scan = scan_shard_result(content, range_start, range_end, false);
     (scan.records, scan.handoff)
 }
@@ -185,11 +181,16 @@ pub fn scan_shard_result(content: &[u8], range_start: usize, range_end: usize, c
         }
         records.push((id, start, entity_end));
         if let Some(classes) = classes.as_mut() {
-            classes.push(crate::shard_classes::classify_type_name_with_content(type_name, &content[start..entity_end]));
+            classes.push(crate::shard_classes::classify_type_name_with_content(
+                type_name,
+                &content[start..entity_end],
+            ));
         }
     }
     ShardScan {
-        records, classes, handoff,
+        records,
+        classes,
+        handoff,
         refusals: scanner.skipped_oversized_id_starts().to_vec(),
         malformed_starts: scanner.malformed_record_starts().to_vec(),
     }

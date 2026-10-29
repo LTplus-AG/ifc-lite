@@ -6,8 +6,8 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
-use crate::representation::{is_drawing_camera_annotation, product_shape, Select};
 use crate::coord_is_large;
+use crate::representation::{is_drawing_camera_annotation, product_shape, Select};
 use ifc_lite_core::{is_geometry_job, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 mod mapped_vote;

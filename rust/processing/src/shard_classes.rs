@@ -92,7 +92,12 @@ pub fn scan_shard_classified_with_refusals(
     range_end: usize,
 ) -> (ShardRecords, Vec<u8>, Option<usize>, ShardRefusals) {
     let scan = crate::parallel_scan::scan_shard_result(content, range_start, range_end, true);
-    (scan.records, scan.classes.unwrap_or_default(), scan.handoff, scan.refusals)
+    (
+        scan.records,
+        scan.classes.unwrap_or_default(),
+        scan.handoff,
+        scan.refusals,
+    )
 }
 
 /// [`classify_type_name`] plus the #1910 instance-level exception: a spatial
@@ -105,14 +110,7 @@ pub fn scan_shard_classified_with_refusals(
 /// discovery paths agree on what counts as geometry. `entity_bytes` is the
 /// full `#id=KEYWORD(...)` span for this record.
 pub fn classify_type_name_with_content(type_name: &str, entity_bytes: &[u8]) -> u8 {
-    let mut class = classify_type_name(type_name);
-    if class & PREPASS_CLASS_FLAG_GEOMETRY_JOB == 0
-        && class & PREPASS_CLASS_CODE_MASK == PREPASS_CLASS_NONE
-        && ifc_lite_core::is_geometry_job(type_name, entity_bytes)
-    {
-        class |= PREPASS_CLASS_FLAG_GEOMETRY_JOB;
-    }
-    class
+    classify_with_geometry(type_name, || ifc_lite_core::is_geometry_job(type_name, entity_bytes))
 }
 
 /// Classify a scanned STEP keyword into the prepass class byte: a named-arm
@@ -129,7 +127,12 @@ pub fn classify_type_name_with_content(type_name: &str, entity_bytes: &[u8]) -> 
 /// every other named/flag arm here stays byte-identical to what it was
 /// before #1910 -- the only new code path is the explicit OR-in above.
 pub fn classify_type_name(type_name: &str) -> u8 {
-    use ifc_lite_core::{has_geometry_by_name, type_product_ifc_type};
+    classify_with_geometry(type_name, || ifc_lite_core::has_geometry_by_name(type_name))
+}
+
+#[inline]
+fn classify_with_geometry(type_name: &str, geometry: impl FnOnce() -> bool) -> u8 {
+    use ifc_lite_core::type_product_ifc_type;
     // The named keywords come from the one table (`ScanClass`).
     let named = crate::scan::ScanClass::classify(type_name).wire_code();
     if named != PREPASS_CLASS_NONE {
@@ -141,7 +144,7 @@ pub fn classify_type_name(type_name: &str) -> u8 {
     if type_product_ifc_type(type_name).is_some() {
         class |= PREPASS_CLASS_FLAG_TYPE_CANDIDATE;
     }
-    if has_geometry_by_name(type_name) {
+    if geometry() {
         class |= PREPASS_CLASS_FLAG_GEOMETRY_JOB;
     }
     class

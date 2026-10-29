@@ -305,17 +305,30 @@ fn a_foreign_keyword_on_an_occupied_slot_is_not_that_type() {
 // products and exporter aliases retain name-based geometry admission.
 #[test]
 fn c4_5_geometry_job_spatial_and_raw_schema_contract() {
-    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
-        .chain(["IFCREINFORCINGVENDORBAR", "IFCSOLIDSTRATUM", "IFCVENDORWIDGET"]) {
+    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str).chain([
+        "IFCREINFORCINGVENDORBAR",
+        "IFCSOLIDSTRATUM",
+        "IFCVENDORWIDGET",
+    ]) {
         for representation in ["$", "*", "#42"] {
             let bytes = format!("#1={name}('g',$,'n',$,$,$,{representation});");
             let expected = has_geometry_by_name(name)
                 || (is_representationless_spatial_container_by_name(name) && representation != "$");
-            assert_eq!(is_geometry_job(name, bytes.as_bytes()), expected, "{name}/{representation}");
+            assert_eq!(
+                is_geometry_job(name, bytes.as_bytes()),
+                expected,
+                "{name}/{representation}"
+            );
             assert_eq!(is_geometry_job(&name.to_ascii_lowercase(), bytes.as_bytes()), expected);
         }
     }
     assert!(is_geometry_job("IFCBUILDING", b"#1=IFCBUILDING('g',$,$,$,$,$,#42);"));
-    assert!(is_geometry_job("IFCBUILDINGSTOREY", b"#1=IFCBUILDINGSTOREY('g',$,$,$,$,$,#42);"));
-    assert!(!is_geometry_job("IFCBUILDINGSTOREY", b"#1=IFCBUILDINGSTOREY('g',$,$,$,$,$,$);"));
+    assert!(is_geometry_job(
+        "IFCBUILDINGSTOREY",
+        b"#1=IFCBUILDINGSTOREY('g',$,$,$,$,$,#42);"
+    ));
+    assert!(!is_geometry_job(
+        "IFCBUILDINGSTOREY",
+        b"#1=IFCBUILDINGSTOREY('g',$,$,$,$,$,$);"
+    ));
 }

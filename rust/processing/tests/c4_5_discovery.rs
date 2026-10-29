@@ -1,6 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! #7782: shared discovery preserves ordering, type maps and shard diagnostics.
-use ifc_lite_processing::{discovery::Discovery, scan::ScanClass, scan_shard_result};
 use ifc_lite_core::EntityScanner;
+use ifc_lite_processing::{discovery::Discovery, scan::ScanClass, scan_shard_result};
 
 #[test]
 fn c4_5_discovery_retains_first_spatial_and_type_map_inputs() {
@@ -9,7 +13,10 @@ fn c4_5_discovery_retains_first_spatial_and_type_map_inputs() {
     let mut scanner = EntityScanner::new(content);
     let mut jobs = Vec::new();
     while let Some((id, name, start, end)) = scanner.next_entity() {
-        if discovery.observe(content, ScanClass::classify(name), id, name, start, end).is_some() {
+        if discovery
+            .observe(content, ScanClass::classify(name), id, name, start, end)
+            .is_some()
+        {
             jobs.push(id);
         }
     }

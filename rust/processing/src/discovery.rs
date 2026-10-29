@@ -1,6 +1,13 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Shared record discovery; native metadata and geometry-job decoration remain consumers.
 use crate::{prepass::PrepassSpans, scan::ScanClass};
-use ifc_lite_core::{IfcType, parser::{parse_ref, StepRecord}, StepListItems};
+use ifc_lite_core::{
+    parser::{parse_ref, StepRecord},
+    IfcType, StepListItems,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
@@ -61,23 +68,44 @@ pub struct Discovery {
 
 impl Discovery {
     pub fn new(instancing: bool) -> Self {
-        Self { instancing, ..Self::default() }
+        Self {
+            instancing,
+            ..Self::default()
+        }
     }
 
     /// Observe one record in file order. Returns the type of a geometry job;
     /// callers retain the raw keyword when decorating metadata (#1910).
     #[inline(always)]
-    pub fn observe(&mut self, content: &[u8], class: ScanClass, id: u32,
-                   type_name: &str, start: usize, end: usize) -> Option<IfcType> {
+    pub fn observe(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<IfcType> {
         self.prepass_spans.stash_class(class, id, start, end);
-        if matches!(class, ScanClass::IndexedColourMap | ScanClass::StyledItem
-            | ScanClass::MaterialDefinitionRepresentation | ScanClass::RelAssociatesMaterial) {
+        if matches!(
+            class,
+            ScanClass::IndexedColourMap
+                | ScanClass::StyledItem
+                | ScanClass::MaterialDefinitionRepresentation
+                | ScanClass::RelAssociatesMaterial
+        ) {
             return None;
         }
         match class {
-            ScanClass::Project => { self.project_id.get_or_insert(id); }
-            ScanClass::Site => { self.site_entity_pos.get_or_insert((start, end)); }
-            ScanClass::Building => { self.building_entity_pos.get_or_insert((start, end)); }
+            ScanClass::Project => {
+                self.project_id.get_or_insert(id);
+            }
+            ScanClass::Site => {
+                self.site_entity_pos.get_or_insert((start, end));
+            }
+            ScanClass::Building => {
+                self.building_entity_pos.get_or_insert((start, end));
+            }
             _ => {}
         }
         if ifc_lite_core::is_geometry_job(type_name, &content[start..end]) {
@@ -95,7 +123,15 @@ impl Discovery {
     // pre-filter keeps the is_subtype_of check off the hot path for the
     // ~all-non-type majority of entities.
     #[inline(always)]
-    fn note_type_geometry(&mut self, content: &[u8], class: ScanClass, id: u32, type_name: &str, start: usize, end: usize) {
+    fn note_type_geometry(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) {
         if class == ScanClass::MappedItem {
             if let Some(source_id) = record_ref_at(&content[start..end], 0) {
                 self.types.referenced_representation_maps.insert(source_id);

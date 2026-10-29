@@ -12,7 +12,7 @@ use super::quick_collector::QuickCollector;
 use super::{EntityJob, ProcessingRequest};
 use crate::scan::ScanClass;
 use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
-use rustc_hash::{FxHashMap};
+use rustc_hash::FxHashMap;
 
 impl EntityJob {
     /// A product job: no appearance or metadata yet, the type's default colour.
@@ -118,11 +118,14 @@ pub(super) fn scan_entities(
     let discovery = scan.discovery;
     for (id, start, end, ty, maps) in discovery.types.products {
         for (map, _) in crate::element::plan_type_geometry(
-            &maps, &discovery.types.referenced_representation_maps,
+            &maps,
+            &discovery.types.referenced_representation_maps,
             discovery.types.instantiated_type_ids.contains(&id),
             crate::element::TypeGeometryMode::SuppressInstanced,
         ) {
-            scan.out.entity_jobs.push(EntityJob::new(id, ty.clone(), start, end).for_type_map(map));
+            scan.out
+                .entity_jobs
+                .push(EntityJob::new(id, ty.clone(), start, end).for_type_map(map));
         }
     }
     scan.out.prepass_spans = discovery.prepass_spans;
@@ -162,8 +165,8 @@ impl Scan<'_, '_> {
         }
         if let Some(ifc_type) = self.discovery.observe(self.content, class, id, type_name, start, end) {
             // Spatial exception jobs already have a hierarchy row (#1910).
-            if ifc_lite_core::has_geometry_by_name(type_name) {
-                if let Some(quick) = self.out.quick.as_mut() {
+            if let Some(quick) = self.out.quick.as_mut() {
+                if ifc_lite_core::has_geometry_by_name(type_name) {
                     quick.note_element(id, type_name);
                 }
             }
@@ -207,5 +210,4 @@ impl Scan<'_, '_> {
             _ => false,
         }
     }
-
 }

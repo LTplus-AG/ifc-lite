@@ -120,6 +120,16 @@ describe('constraint names are quoted once in every message (#8306)', () => {
     });
   }
 
+  it('t() renders raw-name callers exactly as before #8306', () => {
+    const en = createTranslationService('en');
+    expect(en.t('requirements.attribute.mustExist', { name: 'Name' })).toBe('Attribute "Name" must exist');
+    expect(en.t('applicability.property.exists', { pset: 'Pset_WallCommon', property: 'FireRating' }))
+      .toBe('Elements with property "FireRating" in "Pset_WallCommon"');
+    expect(en.t('failures.psetMissing', { pset: 'Pset_X' })).toBe('Property set "Pset_X" not found');
+    expect(createTranslationService('de').t('requirements.classification.mustBeInSystem', { system: 'Uniclass' }))
+      .toBe('Muss in "Uniclass" klassifiziert sein');
+  });
+
   it('t() still renders raw pset + property callers on the {path} templates', () => {
     expect(createTranslationService('en').t('requirements.property.mustNotExist', { pset: 'Pset_WallCommon', property: 'FireRating' }))
       .toBe('Property "Pset_WallCommon.FireRating" must not exist');

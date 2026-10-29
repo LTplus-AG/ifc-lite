@@ -25,6 +25,7 @@ import {
 import { en, de, fr, it, ru } from './locales/index.js';
 import { describeWithNestedFacets } from '../preview/partof-nested.js';
 import { failedName } from '../validation/format-failure-reason.js';
+import { legacyParams } from './legacy-slots.js';
 
 type Translations = typeof en;
 
@@ -71,10 +72,8 @@ class IDSTranslationServiceImpl implements TranslationService {
 
     // Interpolate parameters
     if (params) {
-      // Property templates name one `{path}` since #8306; a caller still
-      // passing raw `pset` + `property` gets the path they used to get.
-      const legacyPath = params.path === undefined && params.pset !== undefined && params.property !== undefined;
-      return this.interpolate(value, legacyPath ? { ...params, path: `"${params.pset}.${params.property}"` } : params);
+      // Callers pass raw names; keep the quoting they got before #8306.
+      return this.interpolate(value, legacyParams(key, params));
     }
 
     return value;

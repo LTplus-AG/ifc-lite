@@ -1638,6 +1638,9 @@ jobs:
           # policy to the box tolerance. Prism threshold witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5-finish/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5-finish/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-5-finish/behaviour.oracle.patch)
+          # #7782 C4-0: preserve harness wiring and perturb a production colour payload.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
@@ -2842,6 +2845,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@f360235162158ca4526b07999d99c38ade05a414 # cargo-nextest (snapshot pinned 2026-10)
       - name: Rust tests
+        id: rust_tests
         # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
         # so a missing one here is fixture drift, not a legitimate local skip
         # (rust/export/src/test_support.rs) — make that a hard failure.
@@ -2852,6 +2856,32 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo nextest run --workspace --profile ci
+      # C4-0 (#7782): the native/browser parity gate already ran above, inside
+      # nextest, and fails the job on any difference its EXPECTED_DIFF table
+      # does not enumerate (or on a row nothing produces any more). This runs
+      # it once more on its own so the difference table -- every observed
+      # native/browser difference, the row that accounts for it and the
+      # charter item that removes it -- lands in the job summary, pass or
+      # fail. Same profile env, so the test binary built above is reused.
+      - name: C4-0 native/browser parity report
+        if: ${{ !cancelled() && steps.rust_tests.outcome != 'skipped' }}
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+          CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+          CARGO_PROFILE_TEST_OPT_LEVEL: "1"
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
+          IFC_LITE_C4_0_PARITY_REPORT: ${{ runner.temp }}/c4-0-parity.md
+        run: |
+          status=0
+          cargo nextest run -p ifc-lite-wasm --profile ci --no-capture \
+            -E 'test(=api::gpu_meshes::batch::parity::c4_0_native_browser_parity)' || status=$?
+          if [ -f "$IFC_LITE_C4_0_PARITY_REPORT" ]; then
+            cat "$IFC_LITE_C4_0_PARITY_REPORT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "C4-0 parity report was not written (the gate did not reach its verdict)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
       # nextest does not run doctests; `cargo test --workspace` did. Run them
       # here so the lane's coverage is exactly what it was. Same profile env,
       # so the libraries built above are reused rather than rebuilt.

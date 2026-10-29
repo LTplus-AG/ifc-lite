@@ -62,7 +62,7 @@ const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
     ("rust/export", 2156577647744325171),
     ("rust/geometry", 11397570038707335151),
     ("rust/processing", 13893874914636572431),
-    ("rust/wasm-bindings", 15352919613211233683),
+    ("rust/wasm-bindings", 392542867555300280),
 ];
 
 /// Lower bound on how many non-exempt `.rs` files the walk must reach before

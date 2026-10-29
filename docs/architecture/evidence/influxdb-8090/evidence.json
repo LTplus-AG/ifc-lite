@@ -1,0 +1,94 @@
+{
+  "issue": "https://github.com/LTplus-AG/ifc-lite/issues/8090",
+  "baseCommit": "e94015a2e0e2aafb22165ae37bebaee0d69acce4",
+  "source": "Spike validated as a dirty worktree based on baseCommit; source file hashes below identify the executed implementation.",
+  "host": "louistrue-pc / WSL x86_64",
+  "sourceSha256": {
+    "examples/headless-workflows/src/influx-report.mts": "c014ef4326127078ab365ff979cca1f689dd7d714750f8dad268ce087fe0a919",
+    "examples/headless-workflows/src/influx-flow.mts": "4e8294349aa93a792c1b0dbf06e46dd98f9c7079bfe153afc1076fe59a5d79a4",
+    "examples/headless-workflows/src/influx-query.mts": "fe4aeb6b5468e658a132e25f96f16dede05f595644cb6472e50ee83dd9233f77",
+    "examples/headless-workflows/src/influx.mts": "72fb02b2a3a73ccd1d6090d9bace53eaafc19e95e813c1a734f468135100c9b7",
+    "examples/headless-workflows/test/influx.test.ts": "d05c1e1ee43f05a9e421fa8f21aee92cfc0d9b0be82a3d619e2abcf91c56bd9b",
+    "scripts/spikes/influx-report-browser.mjs": "b146f9b1a84d3db3a5f10703045ce1a9bdd1613a0963801f1395fef42ece66de",
+    "scripts/spikes/influxdb-live.mjs": "20e7d7249a425d9eab3c91fcbda0ac7d4664f6e3dc778806e8d252a80b4df5ef"
+  },
+  "model": {
+    "path": "apps/viewer/public/samples/building-architecture.ifc",
+    "authoringTool": "SketchUp 2024 / IFC-manager for SketchUp 5.3.3",
+    "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5"
+  },
+  "database": {
+    "image": "influxdb:2.7.12",
+    "digest": "influxdb@sha256:b8d940ca9376f85118260f5b6bd236b8a00b1749c3350c5578d4cde8e27f31f2",
+    "telemetry": "synthetic points seeded into actual InfluxDB",
+    "tlsVerified": true,
+    "readTokenWriteStatus": 403,
+    "containerRemoved": true
+  },
+  "result": {
+    "historySamples": 6,
+    "matchedSeries": 1,
+    "unmatchedSeries": 1,
+    "ambiguousSeries": 2,
+    "entity": "living room",
+    "latest": 22.5,
+    "unit": "\u00b0C",
+    "selectedHistorySamples": 3
+  },
+  "checks": {
+    "regressionsPassed": 6,
+    "rootTargetedTests": {
+      "passed": 7,
+      "skipped": 5,
+      "skipReason": "existing FZK fixture-dependent examples; fixture not present"
+    },
+    "rootTypecheck": "passed including tail audit",
+    "browser": {
+      "desktop": "960x650",
+      "mobile": "375x700",
+      "pageErrors": 0,
+      "outboundRequests": 0,
+      "mobileOverflow": false
+    },
+    "sourceGuards": [
+      "module-size",
+      "source-text-assertions",
+      "CSV escaper copies",
+      "main-entry guards",
+      "test wiring",
+      "i18n literals"
+    ],
+    "rootLint": "Not executed: registered launcher refused admission; 288 GiB required, about 230 GiB free under current reservations."
+  },
+  "lessons": [
+    "Flow HTTP transport, secret handling, RFC CSV parser and GUID join are reusable.",
+    "Remove only the validated leading empty Influx CSV envelope column.",
+    "Group query to one table with annotations disabled; do not claim arbitrary annotated CSV support.",
+    "Join latest-per-tag-set readings; joining all history falsely reports entity ambiguity.",
+    "Browser Flow still refuses secret-bearing graphs; this is a headless recipe and offline inspector."
+  ],
+  "limits": [
+    "one loaded IFC model",
+    "numeric field only",
+    "no production CORS/gateway validation",
+    "no viewer panel or 3D selection",
+    "no real building sensor data",
+    "display chart uses millisecond positions; latest comparison preserves nanoseconds"
+  ],
+  "resourceCleanup": {
+    "regenerableCacheRemovedBytes": 73054560256,
+    "sourcePreserved": true,
+    "foreignJobsPreserved": true
+  },
+  "inlinePreview": "T3 preview and render endpoints returned Authentication required; local Playwright checks and screenshots passed.",
+  "receiptIds": [
+    "a825ff3c-c4ba-4487-a792-e83a6932a5c4",
+    "e3ab3308-3e10-48ad-a842-968edddbf82e",
+    "4b1f8030-35ef-4f98-9b4d-807e4547a035",
+    "5db7a81c-cf4f-4b89-941e-fc0f5500487b",
+    "2b9e0b4a-1f49-40e5-ba82-0ecf506f0a1d",
+    "8e8323ea-4d96-44d8-bb8f-9baa0c79ea9b"
+  ],
+  "evidenceManifest": "pc-wsl-influx-8090-spike-v1-selected",
+  "managedTaskState": "released"
+}

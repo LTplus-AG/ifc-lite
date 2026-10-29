@@ -6430,6 +6430,19 @@
   "@ifc-lite/flow-nodes/bcf-publication-node": [
     "createNativeBcfWriteGateway: function"
   ],
+  "@ifc-lite/flow-nodes/influx": [
+    "InfluxRequestError: class",
+    "InfluxSelection: interface",
+    "containsInfluxToken: function",
+    "dataTable: function",
+    "fetchInfluxReadings: function",
+    "latestPerSeries: function",
+    "matchInfluxSeries: function",
+    "parseInfluxCsv: function",
+    "queryRequest: function",
+    "redactInfluxError: function",
+    "selectionContainsToken: function"
+  ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",
     "CheckpointErrorCode: type",

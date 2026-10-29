@@ -85,7 +85,7 @@ pub(super) async fn replay_by_client_hash(
     if !is_file_digest(sha256) {
         return Err(not_a_file_digest(sha256));
     }
-    let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
+    let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality, query.layer_slicing);
 
     let geometry = if has_parquet_metadata(&state.cache, &cache_key).await?
         && has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await?

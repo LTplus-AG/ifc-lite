@@ -95,7 +95,8 @@ pub(crate) fn resolve_request_cache_key(key: &str) -> Result<RequestCacheKey<'_>
         opening_filters().into_iter().any(|filter| {
             tessellation_qualities()
                 .into_iter()
-                .any(|quality| cache_key_from_parts(digest, filter, quality) == key)
+                .any(|quality| [false, true].into_iter().any(|slicing|
+                    cache_key_from_parts(digest, filter, quality, slicing) == key))
         })
     });
     match resolved {

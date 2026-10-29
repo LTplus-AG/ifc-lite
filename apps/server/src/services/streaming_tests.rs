@@ -90,8 +90,7 @@ async fn a_consumer_that_stops_reading_parks_the_producer_instead_of_buffering_t
         1,
         OpeningFilterMode::Default,
         TessellationQuality::default(),
-        None,
-    );
+        None, false);
 
     let first = timeout(DRAIN_BUDGET, stream.next())
         .await

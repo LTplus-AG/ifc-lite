@@ -29,12 +29,14 @@ pub(crate) fn cache_key_from_parts(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
+    layer_slicing: bool,
 ) -> String {
     format!(
-        "{}-{}{}",
+        "{}-{}{}{}",
         hash,
         opening_filter.cache_key_suffix(),
-        quality_cache_suffix(quality)
+        quality_cache_suffix(quality),
+        if layer_slicing { "-layers" } else { "" }
     )
 }
 
@@ -72,8 +74,7 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
     cache_key_from_parts(
         &DiskCache::generate_key(data),
         query.opening_filter,
-        quality,
-    )
+        quality, query.layer_slicing)
 }
 
 /// Typed `ParseResponse` cache key for the JSON transport.
@@ -163,8 +164,9 @@ pub(crate) fn parquet_cache_key(
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
     layout: ParquetLayout,
+    layer_slicing: bool,
 ) -> String {
-    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality), layout)
+    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality, layer_slicing), layout)
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.
@@ -172,8 +174,9 @@ pub(crate) fn parquet_metadata_cache_key(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
+    layer_slicing: bool,
 ) -> String {
-    parquet_metadata_key(&cache_key_from_parts(hash, opening_filter, quality))
+    parquet_metadata_key(&cache_key_from_parts(hash, opening_filter, quality, layer_slicing))
 }
 
 /// Build the optimized-Parquet body cache key for a given file cache key.

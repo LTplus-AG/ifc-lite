@@ -943,3 +943,38 @@ Use `detail: 'shape'` for the M1 f64 shape parts. A session reuses its qualified
 worker across runs; free the session when finished, or terminate the host Worker
 to cancel immediately. Consumers must continue to show the shape-only marker.
 
+
+## Pipeline refusal diagnostics
+
+`IfcAPI.getPipelineDiagnostics()` returns a versioned object after a browser
+geometry batch has run or a prepass has recorded a refusal. The additive
+schema version 1 field `refusedInputElements` counts
+attempted jobs whose own input decode or geometry reads refused a record.
+A second attempt counts again; a valid neighbour after a refusal does not.
+`refusedPrepassRecords` counts distinct refused record IDs observed in prepass
+or batch resolution on that worker. Plain syntax/decode failures are excluded,
+matching native admission-refusal semantics. Repeated reads and batches do not add the same
+record twice. These counters are separate from owned-producer refusal warnings
+and CSG failure diagnostics. They do not change which geometry is emitted.
+
+The counts are per `IfcAPI`, not a deduplicated model-wide sum over workers.
+They survive `clearPrePassCache()` for inspection after a load, and reset on
+load start (`buildPrePassOnce`, streaming prepass, `setEntityIndex`, or
+`setSourceBytes`). Before any batch or refusal, the getter returns `undefined`.
+
+Rust callers can use
+`ifc_lite_processing::pipeline_diagnostics::PipelineDiagnosticsReport` via
+`Default` or `from_processing_stats`. It contains the original counters/timings
+and the two refusal counters, serialized as one flat object. The published
+`PipelineDiagnostics` v1 struct and its constructor remain available unchanged;
+the new report is non-exhaustive so future counters can be added without
+breaking struct literals. Inspection of the published `ifc-lite-processing`
+27.0.0 crate confirmed that directly adding fields or `#[non_exhaustive]` to
+that existing v1 struct would break Rust callers.
+
+Browser BREP signatures are cached only within one source epoch. Installing an
+index or source, starting a prepass, or clearing derived caches discards them.
+Tessellation, scheduling, template selection and instancing policy still use
+the existing batch decisions. Native material-layer index construction remains
+gated by the explicit `ProcessingRequest.layer_slicing` opt-in; the default
+native pass does not build the index or slice layers.

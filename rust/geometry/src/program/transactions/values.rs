@@ -19,6 +19,19 @@ impl<'a> ValueRef<'a> {
     pub fn bindings(self) -> impl Iterator<Item = (u32, u32, Option<(u32, u8)>)> + 'a {
         self.0.presentation().iter().map(|p| (p.geometry_id, p.style_source_id, p.type_product))
     }
+    /// Complete source bindings for appearance resolution: the same facts
+    /// [`Self::bindings`] reports plus the map, class colour and pending flags.
+    pub fn presentation(self) -> impl Iterator<Item = PresentationFacts> + 'a {
+        self.0.presentation().iter().map(|p| PresentationFacts {
+            geometry_id: p.geometry_id,
+            style_source_id: p.style_source_id,
+            representation_map: p.representation_map,
+            type_product: p.type_product,
+            fallback_color: p.fallback_color,
+            indexed_palette_pending: p.indexed_palette_pending,
+            texture_pending: p.texture_pending.is_some(),
+        })
+    }
     pub fn definition(self) -> Definition { Definition(self.0.definition().clone()) }
     pub fn slot(self) -> Slot { Slot(self.0.slot()) }
     /// Conservative bounds in the runtime object evaluation frame.
@@ -28,6 +41,18 @@ impl<'a> ValueRef<'a> {
     pub fn world_from_source(self) -> Option<&'a [f64; 16]> { self.0.world_from_source() }
     pub fn source_from_evaluation(self) -> &'a [f64; 16] { self.0.source_from_evaluation() }
     pub fn evaluation_from_source(self) -> &'a [f64; 16] { self.0.evaluation_from_source() }
+}
+/// One source binding of a logical value. Texture and palette bindings are
+/// reported as pending, never resolved here.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PresentationFacts {
+    pub geometry_id: u32,
+    pub style_source_id: u32,
+    pub representation_map: Option<u32>,
+    pub type_product: Option<(u32, u8)>,
+    pub fallback_color: Option<[f32; 4]>,
+    pub indexed_palette_pending: bool,
+    pub texture_pending: bool,
 }
 pub struct Operation(pub(super) logical::RetainedPlanOperation);
 pub enum OperationKind<'a> {

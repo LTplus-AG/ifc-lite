@@ -91,11 +91,11 @@ fn diff_by_key_impl<'a, R>(
         head_index = head_order.iter().map(|(key, i)| (key, *i)).collect();
     }
     let base_has_geometry = base_order.iter().any(|(key, i)| {
-        base[*i].geometry_hash.is_some() && !is_excluded(&base[*i])
+        base[*i].geometry_hash(options.strip_placement_geometry).is_some() && !is_excluded(&base[*i])
             && head_index.get(key).is_none_or(|j| !is_excluded(&head[*j]))
     });
     let head_has_geometry = head_order.iter().any(|(key, i)| {
-        head[*i].geometry_hash.is_some() && !is_excluded(&head[*i])
+        head[*i].geometry_hash(options.strip_placement_geometry).is_some() && !is_excluded(&head[*i])
             && base_index.get(key).is_none_or(|j| !is_excluded(&base[*j]))
     });
     let consider_data = options.scope != DiffScope::Geometry;
@@ -113,7 +113,7 @@ fn diff_by_key_impl<'a, R>(
             if consider_data && (base_entity.ifc_type != other.ifc_type || base_entity.data_hash != other.data_hash) {
                 entry.change_kinds.push(DiffChangeKind::Data);
             }
-            if use_geometry && base_entity.geometry_hash != other.geometry_hash {
+            if use_geometry && base_entity.geometry_hash(options.strip_placement_geometry) != other.geometry_hash(options.strip_placement_geometry) {
                 entry.change_kinds.push(DiffChangeKind::Geometry);
             }
             if consider_data {
@@ -150,7 +150,7 @@ fn diff_by_key_impl<'a, R>(
     }
     let mut excluded_types: Vec<_> = excluded.into_iter().collect();
     excluded_types.sort_by(cmp_code_units);
-    KeyDiff { scope: options.scope, excluded_types, entries, by_key, counts, applied_key_aliases, use_geometry }
+    KeyDiff { scope: options.scope, excluded_types, entries, by_key, counts, applied_key_aliases, use_geometry, strip_placement_geometry: options.strip_placement_geometry }
 }
 
 #[cfg(test)]

@@ -26,7 +26,7 @@ impl DiffModel {
         let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
             volumes, component_offsets, component_pairs }).map_err(|error| JsValue::from_str(&error))?;
         let non_ascii_classes = crate::diff_class_normalization::model_classes(&entities);
-        Ok(Self { entities, non_ascii_classes })
+        Ok(Self::owned(entities, non_ascii_classes))
     }
 
     /// Explicit internal batch; no retained input or implicit cache.
@@ -44,7 +44,7 @@ impl DiffModel {
         let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
             volumes, component_offsets, component_pairs }).map_err(|e| JsValue::from_str(&e))?;
         let non_ascii_classes = crate::diff_class_normalization::model_classes(&entities);
-        Ok(Self { entities, non_ascii_classes })
+        Ok(Self::owned(entities, non_ascii_classes))
     }
 
     /// One result buffer preserves absent fields and every UTF-16 code unit.
@@ -76,4 +76,23 @@ impl DiffModel {
 
     #[wasm_bindgen(getter, js_name = entityCount)]
     pub fn entity_count(&self) -> usize { self.entities.len() }
+}
+
+impl DiffModel {
+    fn owned(entities: Vec<EntityFingerprint<usize>>, non_ascii_classes: Vec<ifc_lite_diff::JsString>) -> Self {
+        #[cfg(feature = "decode-leak-test")]
+        LIVE_MODELS.with(|count| count.set(count.get() + 1));
+        Self { entities, non_ascii_classes }
+    }
+}
+
+#[cfg(feature = "decode-leak-test")]
+thread_local! { static LIVE_MODELS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
+
+#[cfg(feature = "decode-leak-test")]
+pub(crate) fn live_count() -> u32 { LIVE_MODELS.with(std::cell::Cell::get) }
+
+#[cfg(feature = "decode-leak-test")]
+impl Drop for DiffModel {
+    fn drop(&mut self) { LIVE_MODELS.with(|count| count.set(count.get() - 1)); }
 }

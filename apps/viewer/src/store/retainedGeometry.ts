@@ -21,6 +21,14 @@ export interface RetainedUnpublishedRow {
   kernelStatus?: number;
 }
 
+/** One persistent source face of a published product (#7955 M11-F): `#item[>#via]:role`. */
+export interface RetainedFaceRow {
+  key: string;
+  triangles: number;
+  /** Display-precision area of its triangles, square metres. */
+  areaM2: number;
+}
+
 export interface RetainedGeometrySummary {
   kernel: 'retained';
   /** Products the run planned (`start.candidateIds`); 0 until the engine started. */
@@ -43,6 +51,8 @@ export interface RetainedGeometrySummary {
   completeness: 'running' | 'complete' | 'incomplete';
   /** Model-level failure (engine missing, host crash, stall), if the run ended in one. */
   failure?: string;
+  /** Persistent face table per published product id (M11-F), source order. */
+  faces?: Record<number, RetainedFaceRow[]>;
 }
 
 /** Tooltip/reason for every mesh-derived export and tool refused on a retained model. */

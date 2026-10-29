@@ -56,7 +56,7 @@ impl Edge {
             }
         }
     }
-    fn split_parameters(&self, h: HalfPlane) -> Vec<f64> {
+    pub(super) fn split_parameters(&self, h: HalfPlane) -> Vec<f64> {
         let mut ts = vec![0., 1.];
         match *self {
             Self::Line(a, b) => {
@@ -103,7 +103,7 @@ pub(super) struct HalfPlane {
     pub(super) d: f64,
 }
 impl HalfPlane {
-    fn distance(self, p: Point) -> f64 {
+    pub(super) fn distance(self, p: Point) -> f64 {
         self.n[0] * p[0] + self.n[1] * p[1] + self.d
     }
 }

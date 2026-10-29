@@ -3,6 +3,7 @@
 mod layers;
 mod clips;
 mod bounded;
+pub mod faces;
 use ifc_lite_retained_native::ShapeOnlyProduct;
 use ifc_lite_processing::AnalyticQuantitySources;
 pub struct OracleResult { pub family: &'static str, pub value: f64, pub limit: f64, pub pass: bool, pub gated: bool }
@@ -10,5 +11,6 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
     let mut results = layers::check(product, sources, tolerances);
     results.extend(clips::check(product, sources, tolerances));
     results.extend(bounded::check(product, sources, tolerances));
+    results.extend(faces::check(product, sources, tolerances));
     results
 }

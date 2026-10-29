@@ -1819,11 +1819,12 @@ A consumed host part refuses the complete product with `empty_result`; partial o
 removal is not published. Unsupported opening geometry reports `opening_unsupported`, while
 material-layer hosts report `material_layer_strategy` before opening execution. Successful
 opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their OBJ marker
-lists `IfcAppearance, MaterialLayers, PersistentFaces, SurfaceNormals`. Layer, appearance,
-face identity, and surface-normal obligations still prevent final display-contract publication.
-The report reserves additive, optional per-part color, material name, item/material IDs, corner
-normals, source-derived face keys with triangle counts/areas, and instance groups. These
-channels remain absent until their individual presentation proofs land. Retained OBJ
+lists `IfcAppearance, MaterialLayers, SurfaceNormals`. Layer, appearance and surface-normal
+obligations still prevent final display-contract publication. Every published part reports its
+persistent source face keys (`#item[>#opening]:role`) with triangle counts and areas; a product
+whose faces cannot be proven refuses `face_provenance_unproven`. The report reserves additive,
+optional per-part color, material name, item/material IDs, corner normals and instance groups;
+these channels remain absent until their individual presentation proofs land. Retained OBJ
 accepts per-corner `vn` records when supplied; the scaffold continues to emit geometry
 without them. Textures and indexed palettes are proven absent from retained-eligible
 products; unsupported tessellated bodies continue to refuse explicitly.

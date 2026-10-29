@@ -21,6 +21,7 @@ import { toGlobalIdFromModels, useViewerStore } from '@/store';
 import { chooseGeometryKernel } from '@/store/geometryKernel';
 import type { RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
 import { RetainedEngineDetails } from './RetainedEngineDetails';
+import { RetainedFaceTable } from './RetainedFaceTable';
 
 registerEnglish(retainedGeometryEn);
 
@@ -120,6 +121,7 @@ export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOp
           })}</p>
           {notApplied && <p className="text-muted-foreground">{t('retainedGeometry.panel.notApplied', { obligations: notApplied })}</p>}
         </div>
+        <RetainedFaceTable modelId={modelId} faces={summary.faces} />
         {summary.refused.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('retainedGeometry.panel.none')}</p>
         ) : (

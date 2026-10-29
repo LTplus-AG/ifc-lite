@@ -2959,6 +2959,7 @@ jobs:
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
           cargo test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*'
           # Includes M11-0 m11_presentation (SDK-free face-copy mutation witness).
+          # Includes M11-F m11_faces (SDK-free face attribution and tie-break mutation witness).
           cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
           cargo test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
           cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser

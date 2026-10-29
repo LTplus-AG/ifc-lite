@@ -565,6 +565,7 @@ impl IfcAPI {
             && ifc_lite_core::find_keyword(content, b"IFCREPRESENTATIONMAP").is_some()
         {
             let type_jobs = crate::api::styling::collect_type_geometry_jobs_from_spans(
+                content,
                 &mapped_item_spans,
                 &type_candidate_spans,
                 &mut decoder,

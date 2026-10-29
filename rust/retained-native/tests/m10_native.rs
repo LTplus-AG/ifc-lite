@@ -53,7 +53,14 @@ fn m10_sdk_source_oracles_and_native_reference() {
     }
     for (id,volume) in [(119,2.*(1.35+std::f64::consts::PI*0.45f64.powi(2)/2.)),(133,0.0225*std::f64::consts::PI),
         (161,5.*std::f64::consts::PI),(175,0.015*std::f64::consts::PI)] {
-        let actual=geometry_assertions::measured(support::shape(&outcomes,id));
+        let p=support::shape(&outcomes,id);
+        let actual=geometry_assertions::measured(p);
+        for (part,e) in p.parts.iter().zip(affine::expected(SOURCE.as_bytes(),id).unwrap()) {
+            let (v,c)=affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap();
+            assert!(v>0.);
+            let bound=e.extent*tolerance["affineFinalCentroidMetres"]["curved"]["extentFactor"].as_f64().unwrap();
+            assert!(c.iter().zip(e.centroid).all(|(a,b)|(a-b).abs()<=bound),"#{id}: curved centroid {c:?} != {:?}",e.centroid);
+        }
         assert_eq!(actual.defects,0,"#{id}");
         assert!((actual.volume-volume).abs()/volume<=tolerance["affineFinalVolumeRelative"]["curved"].as_f64().unwrap(),"#{id}: {actual:?}");
     }
@@ -82,6 +89,13 @@ fn m10_sdk_source_oracles_and_native_reference() {
         ProductOutcome::Published(p)=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":p.product_id,"code":"published","volume":geometry_assertions::measured(p).volume})),
         ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":product_id,"code":refusal.code()})),
     }}
+    for (fixture,text) in [("scaled",include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc")),
+        ("submm",include_str!("../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc"))] {
+        for outcome in support::native(text).unwrap() {match outcome {
+            ProductOutcome::Published(p)=>reference.push(serde_json::json!({"fixture":fixture,"expressId":p.product_id,"code":"published","volume":geometry_assertions::measured(&p).volume})),
+            ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":fixture,"expressId":product_id,"code":refusal.code()})),
+        }}
+    }
     let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../wasm-bindings/m10-native-reference.output.json");
     std::fs::write(path,serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
     eprintln!("sdk witness executed: m10_sdk_source_oracles_and_native_reference");
@@ -91,7 +105,7 @@ fn m10_sdk_issue_1985_scales_publish() {
     for (text,ids) in [(include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc"),vec![74]),
         (include_str!("../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc"),vec![74,81,88,99])] {
         let Some(outcomes)=support::native(text) else {return};
-        for id in ids {let p=support::shape(&outcomes,id);for part in &p.parts {assert!(affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap()0.0>0.);}}
+        for id in ids {let p=support::shape(&outcomes,id);for part in &p.parts {assert!(affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap().0>0.);}}
     }
     eprintln!("sdk witness executed: m10_sdk_issue_1985_scales_publish");
 }

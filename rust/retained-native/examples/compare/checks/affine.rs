@@ -20,14 +20,12 @@ pub fn record(report:&mut Report, bytes:&[u8], product:&ShapeOnlyProduct, tolera
                 let volume_error=(volume-e.volume).abs()/e.volume;
                 let volume_limit=tolerances["affineFinalVolumeRelative"][kind].as_f64().unwrap_or(f64::NAN);
                 let mut pass=volume_error<=volume_limit;
-                let mut centroid_error=0f64;
-                let mut centroid_limit=None;
+                let centroid_error=centroid.iter().zip(e.centroid).map(|(a,b)|(a-b).abs()).fold(0.,f64::max);
+                let t=&tolerances["affineFinalCentroidMetres"][kind];
+                let centroid_limit=t["absolute"].as_f64().unwrap_or(0.)+e.extent*t["extentFactor"].as_f64().unwrap_or(f64::NAN);
+                pass &= centroid_error<=centroid_limit;
                 if let Some(b)=e.bbox {
                     let extent=(0..3).map(|i|b[i+3]-b[i]).fold(0.,f64::max);
-                    let tolerance=&tolerances["affineFinalCentroidMetres"]["linear"];
-                    let limit=tolerance["absolute"].as_f64().unwrap_or(f64::NAN)+extent*tolerance["extentFactor"].as_f64().unwrap_or(f64::NAN);
-                    centroid_error=centroid.iter().zip(e.centroid).map(|(a,b)|(a-b).abs()).fold(0.,f64::max);
-                    centroid_limit=Some(limit);pass &= centroid_error<=limit;
                     let mut actual=[f64::INFINITY,f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
                     for p in part.positions.chunks_exact(3) {let m=part.world_from_object;for i in 0..3 {
                         let v=m[i]*p[0]+m[i+4]*p[1]+m[i+8]*p[2]+m[i+12];actual[i]=actual[i].min(v);actual[i+3]=actual[i+3].max(v);

@@ -8,6 +8,9 @@ pub struct AffineExpectation {
     pub volume: f64,
     pub centroid: [f64;3],
     pub bbox: Option<[f64;6]>,
+    /// Source support points give a lower bound on the true maximum bbox extent.
+    /// Using this for curved centroid tolerances can only tighten the gate.
+    pub extent: f64,
     pub radius: f64,
     pub matrix: Frame,
     pub sigma_max: f64,
@@ -136,13 +139,13 @@ fn curve_profile(d:&mut EntityDecoder<'_>,root:u32) -> Option<ProfileMoments> {
                     (r*x*sn-r*y*cs+r*r*t)/2.,
                     r*(x*x*sn+2.*x*r*(t/2.+(2.*t).sin()/4.)+r*r*(sn-sn.powi(3)/3.))/2.,
                     r*(-y*y*cs+2.*y*r*(t/2.-(2.*t).sin()/4.)+r*r*(-cs+cs.powi(3)/3.))/2.]};
+                for t in [a,b] {points.push([x+r*t.cos(),y+r*t.sin(),0.]);}
                 let (lo,hi)=(integrals(a),integrals(b));area+=hi[0]-lo[0];mx+=hi[1]-lo[1];my+=hi[2]-lo[2];
             }
             _=>return None,
         }
     }
     if !area.is_finite()||area.abs()<1e-30{return None}
-    if radius>0.{points.clear();}
     Some((area.abs(),[mx/area,my/area,0.],points,radius))
 }
 fn solid(d:&mut EntityDecoder<'_>,mut id:u32, depth:usize, work:&mut usize) -> Option<Solid> {
@@ -181,7 +184,7 @@ fn solid(d:&mut EntityDecoder<'_>,mut id:u32, depth:usize, work:&mut usize) -> O
         }
         IfcType::IfcCircleProfileDef => {
             profile_frame=axes(d,p.ref_at(slot::IfcParameterizedProfileDef::POSITION))?;
-            let r=p.real_at(slot::IfcCircleProfileDef::RADIUS)?;(std::f64::consts::PI*r*r,[0.;3],Vec::new(),r)
+            let r=p.real_at(slot::IfcCircleProfileDef::RADIUS)?;(std::f64::consts::PI*r*r,[0.;3],vec![[r,0.,0.],[-r,0.,0.],[0.,r,0.],[0.,-r,0.]],r)
         }
         _=>return None,
     };
@@ -269,10 +272,12 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
         let s=solid(&mut d,id,0,&mut 8192)?;let mut matrix=multiply(&world,&mapping_matrix);
         for col in 0..4 {for row in 0..3 {matrix[col*4+row]*=units;}}
         let det=dot([matrix[0],matrix[1],matrix[2]],cross([matrix[4],matrix[5],matrix[6]],[matrix[8],matrix[9],matrix[10]]));
-        let bbox=if s.points.is_empty(){None}else{let mut b=[f64::INFINITY,f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
+        let support_bounds=if s.points.is_empty(){None}else{let mut b=[f64::INFINITY,f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
             for p in s.points {extend_bbox(&mut b,transform(&matrix,p));}Some(b)};
+        let extent=support_bounds.map(|b|(0..3).map(|i|b[i+3]-b[i]).fold(0.,f64::max))?;
+        let bbox=if s.radius==0. {support_bounds} else {None};
         let (min,max)=stretches(&mapping_matrix)?;
-        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min});
+        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,extent,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min});
     }
     (!result.is_empty()).then_some(result)
 }

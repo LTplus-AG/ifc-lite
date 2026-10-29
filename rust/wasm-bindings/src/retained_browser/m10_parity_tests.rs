@@ -10,7 +10,10 @@ export async function m10NativeReference() {
   const response = await fetch('/m10-native-reference.output.json');
   if (!response.ok) throw new Error('M10 requires a staged real native reference: ' + response.status);
   const rows = await response.json();
-  if (rows.length !== 23) throw new Error('M10 reference must contain 22 qualified and 1 adversarial candidates');
+  for (const [fixture,count] of [['main',22],['adversarial',1],['scaled',5],['submm',4]]) {
+    if (rows.filter(r => (r.fixture ?? 'main') === fixture).length !== count)
+      throw new Error('M10 incomplete native reference for ' + fixture);
+  }
   return rows;
 }
 export function m10AssertOutcome(value, rows, tolerance, fixture) {
@@ -90,6 +93,17 @@ async fn retained_browser_m10_native_module_worker_parity() {
             break;
         }
         assert_outcome(&value, &native, relative, "adversarial").unwrap();
+    }
+    for (fixture,bytes) in [
+        ("scaled",include_bytes!("../../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc").as_slice()),
+        ("submm",include_bytes!("../../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc").as_slice()),
+    ] {
+        let mut run=IfcAPI::new().retained_model(bytes,None).await.unwrap();
+        loop {
+            let value=run.next_outcome();
+            if value.is_undefined() {break}
+            assert_outcome(&value,&native,relative,fixture).unwrap();
+        }
     }
     assert_complete(&native).unwrap();
 }

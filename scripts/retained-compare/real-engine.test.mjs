@@ -74,10 +74,11 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
   const outcomes = await runRetained(await validateEngine(engine), source);
   assert.ok(outcomes.length > 0 && outcomes.every(p => p.status === 'published'));
   for (const product of outcomes) {
-    assert.equal(product.obligationsUnmet.at(-1), 'SurfaceNormals');
+    assert.ok(!product.obligationsUnmet.includes('SurfaceNormals'), 'M11-N discharges surface normals');
     for (const part of product.parts) {
       assert.equal(part.revisionLocalFaces.length, part.indices.length / 3);
-      for (const key of ['normals', 'color', 'instanceKey']) assert.equal(part[key], undefined);
+      assert.ok(part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3, 'M11-N: one f64 normal per corner');
+      for (const key of ['color', 'instanceKey']) assert.equal(part[key], undefined);
       // M11-F: every triangle carries a persistent source face key.
       assert.equal(part.faces.triangles.length, part.indices.length / 3);
     }

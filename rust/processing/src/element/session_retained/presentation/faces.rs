@@ -123,18 +123,23 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
     for (part, sources) in parts.iter_mut().zip(context.faces) {
         let operands = sources.as_ref().map_err(|unproven| refuse(*unproven))?;
         let count = part.indices.len() / 3;
-        let kernel = &part.revision_local_faces;
-        if kernel.len() != count { return Err(refuse(Unproven::Unattributed { entity: None })); }
+        if part.revision_local_faces.len() != count { return Err(refuse(Unproven::Unattributed { entity: None })); }
         // Per triangle and source face; swept-disk foot points charge their own evaluations.
         let work: usize = operands.iter().map(|o| o.faces.len()).sum();
         let mut order: Vec<usize> = Vec::new();
         storage.reserve(context.resources, &mut order, count)?;
         order.extend(0..count);
-        order.sort_unstable_by_key(|&t| (kernel[t], t));
+        order.sort_unstable_by_key(|&t| (part.revision_local_faces[t], t));
         let mut choices: Vec<Choice> = Vec::new();
         storage.reserve(context.resources, &mut choices, count)?;
         choices.resize(count, (0, 0));
-        for face in order.chunk_by(|&a, &b| kernel[a] == kernel[b]) {
+        let mut start = 0;
+        while start < order.len() {
+            let id = part.revision_local_faces[order[start]];
+            let mut end = start + 1;
+            while end < order.len() && part.revision_local_faces[order[end]] == id { end += 1; }
+            let face = &order[start..end];
+            start = end;
             let mut lists = Vec::with_capacity(face.len());
             charge(face.len(), face.len() * std::mem::size_of::<super::face_attribution::Candidates>())?;
             for &t in face {

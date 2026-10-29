@@ -198,11 +198,15 @@ pub async fn get_cached_geometry(
         &hash,
         query.opening_filter,
         query.resolved_tessellation_quality()?,
-        query.parquet_layout, query.layer_slicing);
+        query.parquet_layout,
+        query.layer_slicing,
+    );
     let metadata_cache_key = parquet_metadata_cache_key(
         &hash,
         query.opening_filter,
-        query.resolved_tessellation_quality()?, query.layer_slicing);
+        query.resolved_tessellation_quality()?,
+        query.layer_slicing,
+    );
 
     // Admitted for the two entries' stored size before either is read
     // (#7676, SERVER-6); the reservation rides the body. A damaged entry is

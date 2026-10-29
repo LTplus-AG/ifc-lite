@@ -220,7 +220,9 @@ pub async fn parse_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(std::sync::Arc::new(admission_guard)), query.layer_slicing)
+        Some(std::sync::Arc::new(admission_guard)),
+        query.layer_slicing,
+    )
     .map(|mut event: StreamEvent| {
             // Same Y-up wire frame as every other transport (issue #1841) —
             // `process_streaming` yields raw IFC Z-up meshes, and the parquet

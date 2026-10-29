@@ -1749,7 +1749,10 @@ pub fn try_export_glb(content: &[u8], opts: &GltfOptions) -> Result<Vec<u8>, Exp
 /// expansion, not observed in practice); a caller that must be panic-proof even
 /// then can force the checked bounded path with
 /// `IFC_LITE_GLB_STREAM_THRESHOLD_MB=1`.
-pub fn try_export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> Result<(Vec<u8>, GltfStats), ExportError> {
+pub fn try_export_glb_with_stats(
+    content: &[u8],
+    opts: &GltfOptions,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
     if content.len() >= glb_stream_threshold_bytes() {
         return try_export_glb_streaming_bounded(content, opts);
     }

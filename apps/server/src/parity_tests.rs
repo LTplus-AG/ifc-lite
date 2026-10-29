@@ -362,7 +362,9 @@ async fn streaming_complete_event_carries_symbolic_data() {
         1000,
         ifc_lite_processing::OpeningFilterMode::Default,
         ifc_lite_processing::TessellationQuality::default(),
-        None, false)
+        None,
+        false,
+    )
     .collect()
     .await;
 
@@ -564,7 +566,9 @@ async fn issue_4706_every_route_ships_symbols_in_its_mesh_frame() {
         1000,
         ifc_lite_processing::OpeningFilterMode::Default,
         ifc_lite_processing::TessellationQuality::default(),
-        None, false)
+        None,
+        false,
+    )
     .collect()
     .await;
     let streamed = events
@@ -591,7 +595,9 @@ async fn streaming_zero_batch_sizes_still_complete() {
             0,
             ifc_lite_processing::OpeningFilterMode::Default,
             ifc_lite_processing::TessellationQuality::default(),
-            None, false)
+            None,
+            false,
+        )
         .collect::<Vec<_>>(),
     )
     .await

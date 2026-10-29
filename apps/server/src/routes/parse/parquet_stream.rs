@@ -178,7 +178,9 @@ pub async fn parse_parquet_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(Arc::clone(&admission)), query.layer_slicing)
+        Some(Arc::clone(&admission)),
+        query.layer_slicing,
+    )
     .map(move |event: StreamEvent| {
         let sse_event = match event {
             StreamEvent::Start { total_estimate } => {

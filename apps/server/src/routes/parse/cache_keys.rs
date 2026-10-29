@@ -67,12 +67,14 @@ pub(crate) fn not_a_file_digest(value: &str) -> crate::error::ApiError {
     ))
 }
 
-/// Request-level cache key: file hash + opening-filter suffix + quality suffix.
+/// Request-level cache key: file hash plus opening-filter, quality and layer-slicing suffixes.
 pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
     cache_key_from_parts(
         &DiskCache::generate_key(data),
         query.opening_filter,
-        quality, query.layer_slicing)
+        quality,
+        query.layer_slicing,
+    )
 }
 
 /// Typed `ParseResponse` cache key for the JSON transport.

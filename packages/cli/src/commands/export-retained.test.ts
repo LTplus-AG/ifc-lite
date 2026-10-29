@@ -118,4 +118,8 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
   }
   expect(report.products[0]).toMatchObject({ instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } });
   expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(0, 0, 1) }] }], () => null)).toThrow(/corner normals/);
+  const signed = retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(-0, -0, 1, 0, -0, 1, -0, 0, 1) }] }], () => null);
+  const written = (signed.report.products[0] as unknown as { parts: { normals: number[] }[] }).parts[0].normals;
+  expect(written.some(v => Object.is(v, -0))).toBe(false);
+  expect(JSON.parse(JSON.stringify(written))).toStrictEqual(written);
 });

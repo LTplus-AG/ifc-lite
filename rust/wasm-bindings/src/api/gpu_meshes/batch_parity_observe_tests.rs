@@ -59,25 +59,23 @@ pub(super) fn run(
     jobs: &[u32],
 ) -> (Vec<ElementMeshOutput>, GeometryDiagnostics) {
     let (rtc_x, rtc_y, rtc_z) = prepass.meta.frame.rtc_offset();
-    let (outputs, diagnostics, occurrences) = api.produce_batch(
-        content,
-        jobs,
-        stream_meta_unit_scale(&prepass.meta),
-        rtc_x,
-        rtc_y,
-        rtc_z,
-        prepass.meta.frame.needs_shift(),
-        &prepass.void_keys,
-        &prepass.void_counts,
-        &prepass.void_values,
-        &prepass.style_ids,
-        &prepass.style_colors,
-        Some(prepass.meta.plane_angle_to_radians),
-        Some(prepass.material_element_ids.clone()),
-        Some(prepass.material_color_counts.clone()),
-        Some(prepass.material_colors.clone()),
-        false,
-    );
+    let (outputs, diagnostics, occurrences) = api.produce_batch(content, &super::super::batch_wire::BatchWire {
+            jobs_flat: jobs,
+            unit_scale: stream_meta_unit_scale(&prepass.meta),
+            rtc_x: rtc_x,
+            rtc_y: rtc_y,
+            rtc_z: rtc_z,
+            needs_shift: prepass.meta.frame.needs_shift(),
+            void_keys: &prepass.void_keys,
+            void_counts: &prepass.void_counts,
+            void_values: &prepass.void_values,
+            style_ids: &prepass.style_ids,
+            style_colors: &prepass.style_colors,
+            plane_angle_to_radians: Some(prepass.meta.plane_angle_to_radians),
+            material_element_ids: Some(prepass.material_element_ids.clone()),
+            material_color_counts: Some(prepass.material_color_counts.clone()),
+            material_colors_rgba: Some(prepass.material_colors.clone()),
+        }, false);
     assert!(
         occurrences.is_empty(),
         "an unarmed batch emits no don't-bake occurrence"

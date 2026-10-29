@@ -6,15 +6,16 @@
 set -euo pipefail
 case "${1:-native}" in
   native)
-    cargo test -p ifc-lite-wasm c4_11a -- --nocapture
-    cargo test -p ifc-lite-wasm c4_0_native_browser_parity -- --nocapture
-    cargo test -p ifc-lite-wasm c4_10a -- --nocapture
-    cargo test -p ifc-lite-processing --test module_size_ratchet --test function_length_ratchet --test positional_read_ratchet
+    cargo test -p ifc-lite-wasm -p ifc-lite-processing -- --nocapture
     cargo clippy --workspace --all-targets -- -D warnings
     ;;
   mutation)
     patch=tests/evidence/c4-11a/behaviour.oracle.patch
     git apply --reverse --check "$patch"
+    if git apply --check "$patch"; then
+      echo 'Oracle unexpectedly forward-applies' >&2
+      exit 1
+    fi
     git apply --reverse "$patch"
     trap 'git apply "$patch"' EXIT
     set +e
@@ -23,9 +24,10 @@ case "${1:-native}" in
     set -e
     cat /tmp/c4-11a-mutation.log
     test "$result" -eq 101
-    # Compilation failure is not observation. Require actual assertion failures.
+    # Compilation/epoch failures are not stale-cache observation.
     rg 'test result: FAILED' /tmp/c4-11a-mutation.log
     rg 'c4_11a_install_rebuilds_texture_type_layer_caches_and_expires_snapshots_7782.*FAILED' /tmp/c4-11a-mutation.log
+    rg 'stale content cache cached_parts_to_skip' /tmp/c4-11a-mutation.log
     git apply "$patch"
     trap - EXIT
     cargo test -p ifc-lite-wasm c4_11a -- --nocapture

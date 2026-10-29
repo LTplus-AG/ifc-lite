@@ -61,18 +61,21 @@ references describe the frame, not another default prepass installation.
 
 ## Witnesses and boundaries
 
-The native tests decode a textured, typed, layered file and an unrelated file
-with colliding ids, verifying rebuilt texture/type/layer results and stale-source
-refusal. Additional witnesses cover finish transaction consumption, cleanup,
+The native tests decode a textured, typed, layered extension of PLAIN and then
+PLAIN itself, a strict subset with colliding ids. They verify rebuilt
+texture/type/layer results, stale-source refusal, and discard of every populated
+derived slot. The JS/WASM witnesses use the truly different file pair. Additional witnesses cover finish transaction consumption, cleanup,
 source/index ordering and persistent settings. Real WASM tests compare reused
 and fresh APIs on colliding style signatures, shape and colour changes, authored
 finish removal, streaming abort, SAB and owned-buffer retries. Existing C4-10a
 BRep collision witnesses and the C4-0 full payload gate remain unchanged.
 
-`behaviour.oracle.patch` is applied in reverse: it removes only content reset
-from `begin_content_install`, retaining APIs and test wiring. The top CI oracle
+`behaviour.oracle.patch` is applied in reverse: it removes only the new
+`discard(...)` calls in `clear_content_derived`, retaining source-epoch and BRep
+signature invalidation, diagnostics, APIs and test wiring. The top CI oracle
 branch selects the new native witnesses. `validate.sh mutation` requires actual
-assertion failures, restores the patch and requires green again.
+a stale-content-cache assertion failure after the epoch assertion passes,
+rejects forward application, restores the patch and requires green again.
 
 Performance verdict: correctness change at explicit load boundaries. No
 end-to-end worker-pool timing or speedup claim. Successful single-file output is
@@ -85,8 +88,9 @@ established by these focused tests. Native Rust processing is untouched.
 Exact fleet argv, source pins, receipt paths, corrected failures and named skips
 are in [validation.json](validation.json). Native C4-0 passed over all 15 fixtures;
 all three new native tests, C4-10a witnesses, the three ratchets and workspace
-clippy passed. The surgical mutation produced two assertion failures and passed
-again after restoration. Fresh real-WASM focused contracts passed 23/23 with no
+clippy passed. The original broad mutation produced two assertion failures (including the
+epoch check); it did not establish stale-cache observation. The review update
+uses the narrowed mutation and records its stale-cache observation separately. Fresh real-WASM focused contracts passed 23/23 with no
 skips; the root suite passed 239 with zero failures and seven named skips after
 16 root Turbo dependency builds. Committed bindings did not change.
 

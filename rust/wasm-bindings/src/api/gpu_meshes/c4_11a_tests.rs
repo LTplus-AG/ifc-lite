@@ -34,11 +34,48 @@ fn check_rebuilt(api: &IfcAPI, source: &[u8], present: bool) {
     assert_eq!(api.get_or_build_material_layer_index(source, &mut decoder).get(43).is_some(), present);
 }
 
+// #8320 P3-2: exercise real builders/installs, then require every derived slot
+// to be discarded, even when its cached value happens to be empty for this IFC.
+fn warm_derived_slots(api: &IfcAPI, source: &[u8]) {
+    check_rebuilt(api, source, true);
+    let mut decoder = EntityDecoder::new(source);
+    api.get_or_build_parts_to_skip(source, &mut decoder);
+    api.get_or_build_indexed_colour_maps(source, &mut decoder);
+    api.set_referenced_repmaps(&[44]);
+    api.set_instantiated_type_ids(&[43]);
+    api.set_mapped_instance_plan(&[44]);
+    api.set_style_finishes(&[48], &[1.0, 0.1]);
+    // A batch populates the mesh registries, wire styles, units and index through
+    // the production path; no source-text or mock assertions stand in for it.
+    api.produce_batch(source, &[], 1.0, 0.0, 0.0, 0.0, false,
+        &[], &[], &[], &[48], &[255, 255, 255, 255], None,
+        None, None, None, false);
+    // The column setters intentionally expire the type plan; warm it again.
+    check_rebuilt(api, source, true);
+    check_derived_slots(api, true, "warm");
+}
+
+fn check_derived_slots(api: &IfcAPI, populated: bool, install: &str) {
+    macro_rules! check {
+        ($($slot:ident),+ $(,)?) => {$(
+            assert_eq!(api.$slot.lock().unwrap().is_some(), populated,
+                "{install}: stale content cache {}", stringify!($slot));
+        )+};
+    }
+    check!(cached_parts_to_skip, cached_material_layer_index,
+        cached_referenced_repmaps, cached_instantiated_type_ids,
+        cached_type_geometry_plan, cached_mapped_instance_plan,
+        cached_texture_index, cached_indexed_colour_maps,
+        cached_plane_angle_to_radians, cached_geometry_styles, style_finishes,
+        cached_item_dedup, cached_mapped_item, cached_brep_signatures);
+}
+
 #[test]
 fn c4_11a_install_rebuilds_texture_type_layer_caches_and_expires_snapshots_7782() {
     for install in ["once", "index", "rejected", "empty", "cleanup"] {
         let api = IfcAPI::new();
-        check_rebuilt(&api, authored().as_bytes(), true);
+        warm_derived_slots(&api, authored().as_bytes());
+        let old_index = api.cached_entity_index.lock().unwrap().clone().unwrap();
         let snapshot = api.production_model.snapshot(OwnedMeshProductionData::default());
         match install {
             "once" => { api.build_prepass_once_data(PLAIN.as_bytes()); }
@@ -51,6 +88,14 @@ fn c4_11a_install_rebuilds_texture_type_layer_caches_and_expires_snapshots_7782(
             _ => api.clear_pre_pass_cache(),
         }
         assert!(snapshot.validate_source().is_err(), "{install}: source epoch must expire");
+        check_derived_slots(&api, false, install);
+        let index = api.cached_entity_index.lock().unwrap().clone();
+        if matches!(install, "once" | "index") {
+            assert!(!std::sync::Arc::ptr_eq(&old_index, index.as_ref().unwrap()),
+                "{install}: the installed index must replace the old one");
+        } else {
+            assert!(index.is_none(), "{install}: old index must be cleared");
+        }
         check_rebuilt(&api, PLAIN.as_bytes(), false);
     }
 }

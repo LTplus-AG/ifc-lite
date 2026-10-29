@@ -37,6 +37,7 @@ export function applyStyleFinishes(
   if (typeof set !== 'function') return;
   const next = styleFinishes ?? NO_FINISHES;
   const prev = appliedFinishes.get(api);
+  // Re-send finishes after any setEntityIndex/prepass install on this IfcAPI: Rust clears them.
   if (prev === next || (prev === undefined && next.length === 0)) return;
   set.call(api, styleIds, next);
   appliedFinishes.set(api, next);

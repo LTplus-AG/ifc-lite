@@ -45,7 +45,7 @@ headers; the host must enforce credential omission and the public-network
 allowlist. Progress reports actual bytes through `DownloadOptions.onProgress`.
 
 Locations × projects map to projects with `locationId` and `locationName` metadata.
-Phases become leaf containers; projects with no phases get a `root` container.
+Every project offers a `root` container (documents attached to the project itself), then one leaf container per phase.
 Listings page incrementally (maximum 100 raw documents); filtered pages may be
 empty with a continuation cursor. Search uses project-level `searchText`.
 Archived and confidential records are excluded. Revisions use public GUIDs.

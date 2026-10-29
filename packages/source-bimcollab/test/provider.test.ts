@@ -56,10 +56,11 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect((await provider.listProjects(ctx)).items[0]).toEqual({ id: 'p', name: 'Project', meta: { locationId: 'loc', locationName: 'Location' } });
     expect((await provider.listProjects(ctx, { query: 'phased' })).items).toHaveLength(1);
   });
-  it('lists phases or a root leaf when there are no phases', async () => {
+  it('always lists the project-level container, then its phases', async () => {
     const { provider, ctx } = setup();
     expect((await provider.listContainers(ctx, 'p')).items).toEqual([{ id: 'root', name: 'Project', hasChildren: false }]);
-    expect((await provider.listContainers(ctx, 'phased')).items[0]?.id).toBe('phase');
+    // A phased project still offers its project-level documents first.
+    expect((await provider.listContainers(ctx, 'phased')).items.map(item => item.id)).toEqual(['root', 'phase']);
     expect((await provider.listContainers(ctx, 'phased', 'phase')).items).toEqual([]);
   });
   it('pages raw documents before filtering, clamps page sizes, routes phase listings and search', async () => {

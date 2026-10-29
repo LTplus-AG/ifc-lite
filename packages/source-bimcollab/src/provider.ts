@@ -47,8 +47,10 @@ export class BimcollabProvider implements FileSourceProvider {
     const row = (await this.structure(ctx, options?.signal)).find(row => row.project.projectId === projectId);
     if (!row) throw new Error('BIMcollab project is no longer accessible.');
     const phases = row.project.projectPhases ?? [];
-    return { items: phases.length ? phases.map(phase => ({ id: phase.projectPhaseId, name: phase.name, hasChildren: false }))
-      : [{ id: ROOT, name: row.project.name, hasChildren: false }] };
+    // Documents can be attached to the project itself as well as to a phase,
+    // so the project-level container is always offered, then each phase.
+    return { items: [{ id: ROOT, name: row.project.name, hasChildren: false },
+      ...phases.map(phase => ({ id: phase.projectPhaseId, name: phase.name, hasChildren: false }))] };
   }
   private async documents(ctx: PluginContext, projectId: string, containerId: string, options?: ListOptions, query?: string) {
     const { offset, limit } = paging(options?.cursor, options?.limit);

@@ -13,7 +13,7 @@ use crate::zero_copy::{GeometryFingerprint, MeshCollection};
 use ifc_lite_geometry::GeometryDiagnostics;
 use ifc_lite_processing::prepass::finish_to_wire;
 
-/// Per-element output of [`IfcAPI::produce_batch`] — the canonical producer's
+/// Per-element output of [`crate::api::IfcAPI::produce_batch`] — the canonical producer's
 /// meshes (with `instance` metadata intact, BEFORE the MeshDataJs Z-up→Y-up
 /// swap) plus everything the element's geometry-hash pass measured. The flat
 /// path converts each to MeshDataJs; the instanced path collates them into an

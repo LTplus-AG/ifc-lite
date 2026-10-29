@@ -71,7 +71,7 @@ impl IfcAPI {
 
     /// Like [`IfcAPI::process_geometry_batch`] but reads the source bytes held by
     /// [`IfcAPI::set_source_bytes`] instead of taking `data`. Byte-for-byte
-    /// identical output — it uses the shared held-source adapter.
+    /// identical output — it delegates to the legacy twin with the held slice.
     #[wasm_bindgen(js_name = processGeometryBatchFromSource)]
     #[allow(clippy::too_many_arguments)]
     pub fn process_geometry_batch_from_source(
@@ -100,7 +100,7 @@ impl IfcAPI {
 
     /// Like [`IfcAPI::process_geometry_batch_partitioned`] but reads the source
     /// bytes held by [`IfcAPI::set_source_bytes`] instead of taking `data`.
-    /// Byte-for-byte identical output — it uses the shared held-source adapter.
+    /// Byte-for-byte identical output — it delegates to the legacy twin.
     #[wasm_bindgen(js_name = processGeometryBatchPartitionedFromSource)]
     #[allow(clippy::too_many_arguments)]
     pub fn process_geometry_batch_partitioned_from_source(

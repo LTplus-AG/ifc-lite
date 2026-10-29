@@ -131,3 +131,7 @@ pub(super) mod parity;
 #[cfg(test)]
 #[path = "c4_10a_tests.rs"]
 mod c4_10a_tests;
+
+#[cfg(test)]
+#[path = "batch_adapter_tests.rs"]
+mod adapter_tests;

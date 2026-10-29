@@ -299,11 +299,8 @@ fn m7_sdk_affine_boundary_and_authenticated_empty() {
     if worker_path().is_none() {
         return;
     }
-    for id in [133, 141] {
-        let (outcomes, counts) = counted(id).unwrap();
-        assert_eq!(refusal(&outcomes, id).code(), "incomplete");
-        assert_eq!(counts.calls.get(), 0);
-    }
+    // M10: e9/e10 (#133/#141) are affine finals that now publish; their
+    // source-oracle volumes are gated in m7_sdk_oracle_closed_shapes.
     let (outcomes, counts) = counted(202).unwrap();
     assert_eq!(refusal(&outcomes, 202).code(), "empty_result");
     assert_eq!(counts.booleans.get(), 1);

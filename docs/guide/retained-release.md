@@ -18,7 +18,11 @@ node scripts/retained-package-proof.mjs npm
 ```
 
 `cargo` invokes `cargo package --list` and `cargo publish --dry-run --locked`
-for every entry in `scripts/lib/crates-io.mjs`, plus a feature-on runtime dry-run.
+for every entry in `scripts/lib/crates-io.mjs` **plus the unbootstrapped runtime
+candidate**, followed by a feature-on runtime dry-run. The qualification list
+is separate from the automatic release list. Runtime stays out of `CRATES`
+until its first registry release exists: the always-on semver gate correctly
+rejects a listed crate without a baseline. Both crate-count floors remain eight.
 `cargo-graph` runs a combined dry-run of those same nine crates, first default
 and then with runtime/processing/browser retained features. Cargo's multi-package
 mode can stage their real normalized archives together before the prerequisite
@@ -67,8 +71,9 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
 1. Obtain explicit authorization for the exact **source-only archive hash,
    source commit, name and version**, and complete review of the release list.
 2. Publish prerequisite versions in the release script's actual dependency
-   order. At this source: core, clash, geometry, geometry-runtime, processing,
-   landxml, export, ffi, wasm. Runtime's first 26.0.0 upload cannot resolve
+   order: core, clash, geometry, processing, landxml, export, ffi, wasm. Runtime
+   is deliberately absent from this automatic list; bootstrap it separately
+   after its prerequisites are available. Runtime's first 26.0.0 upload cannot resolve
    geometry 26.0.0 until that prerequisite is visible in the registry index.
    Some versioned dev-dependencies also constrain this order.
 3. Before uploading runtime, repeat `cargo package -p ifc-lite-geometry-runtime`
@@ -94,7 +99,16 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
    every crate in the release list, not just runtime. Record verification in
    private release evidence; absence of a public API result is not a verified
    setting. Revoke the bootstrap token after registry confirmation.
-7. The existing workflow uses `id-token: write` and
+7. **Only after bootstrap and publisher verification, add
+   `ifc-lite-geometry-runtime` to `CRATES` in `scripts/lib/crates-io.mjs`, after
+   geometry.** In that same reviewed change, run `pnpm rust-api-surface:update`
+   and commit the newly enrolled API snapshot; run the semver and API-surface
+   gates plus release-order and version-sync checks. Do not lower `CRATE_FLOOR`
+   or exempt `NO_BASELINE`. The crate already inherits `version.workspace` and
+   is a workspace member, so version synchronization does not depend on release
+   enrollment. Removing `publish = false` permits the explicit authorized
+   bootstrap command; it does not add the crate to automated publishing.
+8. The existing workflow uses `id-token: write` and
    `rust-lang/crates-io-auth-action` under `release-publish`. Its next authorized
    release proves OIDC exchange and package permission. A local dry-run cannot.
    Do not trigger publication merely to test the configuration.

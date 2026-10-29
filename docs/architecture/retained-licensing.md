@@ -52,6 +52,8 @@ OpenUSD licence text must never substitute for its complete licence if OpenUSD
 is added to a future artifact. `proposals/NOTICE` belongs to unshipped proposals.
 
 `ifc-lite-geometry-runtime` now has an explicit source-only Cargo include list.
+It remains outside the automatic `CRATES` release list until manual bootstrap;
+explicit package qualification still includes it.
 Its retained feature forwards to `ifc-lite-geometry/retained-runtime`. Processing's
 current retained feature also forwards directly to geometry; it does **not** have
 an optional runtime dependency. The unpublished `ifc-lite-retained-native` harness
@@ -93,6 +95,28 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
   `files`. Retained SDK/runtime binaries remain excluded; WASM ships the loader
   and retained declarations only. Do not describe `npm install` as installation
   of the retained engine.
+
+## Why the default npm package includes the notice file
+
+`@ifc-lite/wasm` ships the default Rust WASM/wasm-bindgen runtime as well as
+`retained.js`, `retained.d.ts` and `pkg-retained/ifc-lite.d.ts`. Its explicit
+`files` list excludes retained JS/WASM implementation files and the SMLib SDK.
+The loader and declarations alone do **not** establish a requirement to ship
+NVIDIA/Emscripten notices. Many Rust and wasm-bindgen notices in the generated
+inventory do apply to the default compiled runtime. We retain one conservative
+notice superset for this package and the separately staged retained engine,
+avoiding a second, independently maintained attribution list. Human review
+still determines which notices are legally required for the final artifact.
+
+The file is standalone npm archive content, not imported JavaScript, a runtime
+fetch, or input to WASM compilation. It increases npm archive contents (the
+notice is about 955 KB uncompressed); it does not enter the default viewer or
+WASM code bundle. Default Rust source, dependency lock and compiler flags are
+unchanged by this branch. The only `build-wasm.sh` changes copy licence texts
+inside `BUILD_RETAINED=1`. This establishes unchanged compilation inputs, **not
+an observed base-versus-branch WASM SHA match**; no paired default build has yet
+been recorded. The complete npm tarball is intentionally not byte-identical,
+because it now includes this notice file.
 
 ## Open release decisions and evidence gaps
 

@@ -5,6 +5,10 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { CRATES } from './lib/crates-io.mjs';
+// Qualification includes the bootstrap candidate without enrolling it in the
+// always-on semver/publish gates before a registry baseline exists.
+const qualificationCrates = [...new Set(CRATES.flatMap(crate => crate === 'ifc-lite-geometry'
+  ? [crate, 'ifc-lite-geometry-runtime'] : [crate]))];
 const results = [];
 function run(command, args) {
   console.log(`\nPROOF_COMMAND ${JSON.stringify([command, ...args])}`);
@@ -15,7 +19,7 @@ function run(command, args) {
 }
 const mode = process.argv[2];
 if (mode === 'cargo') {
-  for (const crate of CRATES) {
+  for (const crate of qualificationCrates) {
     run('cargo', ['package', '-p', crate, '--list']);
     run('cargo', ['publish', '-p', crate, '--dry-run', '--locked']);
   }
@@ -24,7 +28,7 @@ if (mode === 'cargo') {
   // Cargo packages the selected interdependent crates together; this exercises
   // the real versioned archive graph before prerequisite versions are uploaded.
   // The separate single-crate mode still records current registry readiness.
-  const packages = CRATES.flatMap(crate => ['-p', crate]);
+  const packages = qualificationCrates.flatMap(crate => ['-p', crate]);
   run('cargo', ['publish', '--dry-run', '--locked', ...packages]);
   run('cargo', ['publish', '--dry-run', '--locked', ...packages, '--features',
     'ifc-lite-geometry-runtime/retained-runtime,ifc-lite-processing/retained-runtime,ifc-lite-wasm/retained-browser']);

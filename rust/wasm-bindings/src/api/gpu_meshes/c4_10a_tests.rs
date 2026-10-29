@@ -33,8 +33,8 @@ fn brep(base: u32, width: f64) -> String {
 
 fn cached_router(api: &IfcAPI) -> GeometryRouter {
     ifc_lite_processing::execution::build_router(
-        Default::default(), ifc_lite_processing::execution::ExecutionPolicy::PerBatch,
-        &api.batch_caches(), None, None, None,
+        Default::default(), ifc_lite_processing::execution::SchedulerPolicy::PerBatch,
+        api.batch_caches(), None, None, None,
     )
 }
 

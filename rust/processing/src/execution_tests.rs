@@ -18,15 +18,15 @@ fn c4_10b_decode_policy_preserves_warm_span_and_scanned_keyword_7782() {
         end: source.len(),
     };
     let mut decoder = EntityDecoder::new(source);
-    let entity = decode_job(&mut decoder, span, ExecutionPolicy::PerBatch).unwrap();
+    let entity = decode_job(&mut decoder, span, SchedulerPolicy::PerBatch).unwrap();
     let invalid_span = JobSpan {
         start: usize::MAX,
         end: usize::MAX,
         ..span
     };
-    let warm = decode_job(&mut decoder, invalid_span, ExecutionPolicy::PerBatch).unwrap();
+    let warm = decode_job(&mut decoder, invalid_span, SchedulerPolicy::PerBatch).unwrap();
     assert!(Arc::ptr_eq(&entity.attributes, &warm.attributes));
-    assert!(decode_job(&mut decoder, invalid_span, ExecutionPolicy::PerJob).is_err());
+    assert!(decode_job(&mut decoder, invalid_span, SchedulerPolicy::PerJob).is_err());
     assert_eq!(job_type(&entity, source, span, None), IfcType::IfcWall);
     assert_eq!(
         job_type(&entity, source, invalid_span, Some(&IfcType::IfcSlab)),
@@ -51,8 +51,8 @@ fn c4_10b_builder_preserves_mesh_world_frame_and_unit_refusal_7782() {
                 rtc_offset: (rtc[0], rtc[1], rtc[2]),
                 ..Default::default()
             },
-            ExecutionPolicy::PerBatch,
-            &caches(),
+            SchedulerPolicy::PerBatch,
+            caches(),
             None,
             None,
             None,
@@ -87,4 +87,20 @@ fn c4_10b_builder_preserves_mesh_world_frame_and_unit_refusal_7782() {
     assert!(world.meshes[0].origin != shifted.meshes[0].origin
         || world.meshes[0].positions != shifted.meshes[0].positions);
     assert!(run([0.0; 3], f64::NAN).meshes.is_empty());
+}
+
+// #7782: a native router must use the model-wide template even when it has an
+// instancing plan; only a serial browser batch selects its first occurrence.
+#[test]
+fn c4_10b_scheduler_policy_selects_instancing_template_scope_7782() {
+    let plan = MappedInstancePlan::default();
+    for (policy, batch_local) in [
+        (SchedulerPolicy::PerJob, false),
+        (SchedulerPolicy::PerBatch, true),
+    ] {
+        let router = build_router(
+            RouterConfig::default(), policy, caches(), None, Some(&plan), None,
+        );
+        assert_eq!(router.config().instancing_batch_local, batch_local);
+    }
 }

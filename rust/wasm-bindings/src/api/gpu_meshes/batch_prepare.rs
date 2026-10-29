@@ -102,8 +102,8 @@ impl IfcAPI {
                 rtc_offset: if needs_shift { (rtc_x, rtc_y, rtc_z) } else { (0.0, 0.0, 0.0) },
                 ..Default::default()
             },
-            ifc_lite_processing::execution::ExecutionPolicy::PerBatch,
-            &caches, layers, instance_plan.as_ref(), indexed_colour.split_guard_ids.as_ref(),
+            ifc_lite_processing::execution::SchedulerPolicy::PerBatch,
+            caches, layers, instance_plan.as_ref(), indexed_colour.split_guard_ids.as_ref(),
         );
 
         // The canonical styled-item index the shared producer consumes — built

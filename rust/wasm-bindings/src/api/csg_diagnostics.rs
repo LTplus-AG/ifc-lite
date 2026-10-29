@@ -40,7 +40,8 @@ pub(super) fn drain_and_log_csg_diagnostics(
     collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
 ) -> ifc_lite_geometry::GeometryDiagnostics {
     let drain = ifc_lite_processing::execution::RouterDrain::take(router);
-    let cls = drain.classification;    let mut csg_failures = router.take_csg_failures();
+    let cls = drain.classification;
+    let mut csg_failures = router.take_csg_failures();
     for (product_id, fails) in collected_failures {
         csg_failures.entry(product_id).or_default().extend(fails);
     }
@@ -51,6 +52,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
     let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
 
+    // Only emit the headline at WARN level when something was recorded.
     // "Failure" here is the record channel, not "the kernel dropped a cut":
     // `CutterUnionUnavailable`, `PolygonalBoundedHalfSpaceFallback` and
     // #3440's open-topology record all leave the cut applied. The per-reason

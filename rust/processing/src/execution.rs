@@ -12,12 +12,12 @@ use std::sync::Arc;
 /// Native jobs choose the model-wide template; serial browser batches choose
 /// their first occurrence. The policy also selects uncached versus warm decode.
 #[derive(Clone, Copy)]
-pub enum ExecutionPolicy {
+pub enum SchedulerPolicy {
     PerJob,
     PerBatch,
 }
 
-/// Model-owned caches; the builder clones handles, never their entries.
+/// Model-owned cache handles, transferred into the router without extra clones.
 pub struct RouterCaches {
     pub items: ItemDedupCache,
     pub brep_signatures: SharedBrepSignatureCache,
@@ -25,23 +25,23 @@ pub struct RouterCaches {
 }
 
 /// Arm a router completely before the first owned product leases it. Native
-/// callers pass no layer index by default; browser callers retain their merge
-/// toggle. Indexed-colour exclusion is meaningful only with instancing armed.
+/// callers forward the model material-layer index; browser callers retain their
+/// merge toggle. Indexed-colour exclusion is meaningful only with instancing armed.
 pub fn build_router(
     mut config: RouterConfig,
-    policy: ExecutionPolicy,
-    caches: &RouterCaches,
+    policy: SchedulerPolicy,
+    caches: RouterCaches,
     layers: Option<Arc<MaterialLayerIndex>>,
     instances: Option<&MappedInstancePlan>,
     indexed_colours: Option<&Arc<FxHashSet<u32>>>,
 ) -> GeometryRouter {
     config.instancing_batch_local =
-        instances.is_some() && matches!(policy, ExecutionPolicy::PerBatch);
+        instances.is_some() && matches!(policy, SchedulerPolicy::PerBatch);
     // Preserve the caller's world-frame rebase.
     let mut router = GeometryRouter::from_config(config);
-    router.enable_content_dedup_shared(caches.items.clone());
-    router.enable_shared_brep_signature_cache(caches.brep_signatures.clone());
-    router.enable_shared_mapped_item_cache(caches.mapped_items.clone());
+    router.enable_content_dedup_shared(caches.items);
+    router.enable_shared_brep_signature_cache(caches.brep_signatures);
+    router.enable_shared_mapped_item_cache(caches.mapped_items);
     if let Some(layers) = layers {
         router.set_material_layer_index(layers);
     }
@@ -83,13 +83,13 @@ impl std::ops::Deref for JobEntity {
 pub fn decode_job(
     decoder: &mut EntityDecoder,
     span: JobSpan,
-    policy: ExecutionPolicy,
+    policy: SchedulerPolicy,
 ) -> ifc_lite_core::Result<JobEntity> {
     match policy {
-        ExecutionPolicy::PerJob => decoder
+        SchedulerPolicy::PerJob => decoder
             .decode_at(span.start, span.end)
             .map(JobEntity::Owned),
-        ExecutionPolicy::PerBatch => decoder
+        SchedulerPolicy::PerBatch => decoder
             .decode_and_cache(span.id, span.start, span.end)
             .map(JobEntity::Cached),
     }

@@ -333,14 +333,14 @@ fn issue_7955_worker_that_dies_on_a_resource_limit_is_still_charged() {
 #[test]
 fn issue_7955_band_phase_faults_do_not_spend_non_layer_restarts() {
     const LAYERED: &str = include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc");
-    let layered: String = (29..32).map(|id| format!(
+    let layered: String = (29..33).map(|id| format!(
         "#{id}=IFCWALL('layered{id}',$,$,$,$,#24,#26,$,.NOTDEFINED.);\n")).collect();
     let plain: String = (40..43).map(|id| format!(
         "#{id}=IFCWALL('plain{id}',$,$,$,$,#24,#26,$,.NOTDEFINED.);\n")).collect();
-    let text = LAYERED.replace("(#27),#83);", "(#27,#29,#30,#31),#83);")
+    let text = LAYERED.replace("(#27),#83);", "(#27,#29,#30,#31,#32),#83);")
         .replace("#28=IFCRELCONTAINED", &(layered + "#28=IFCRELCONTAINED"))
         .replace("ENDSEC;\nEND-ISO", &(plain + "ENDSEC;\nEND-ISO"));
-    assert_eq!(text.matches("=IFCWALL(").count(), 7);
+    assert_eq!(text.matches("=IFCWALL(").count(), 8);
     let domains = std::cell::RefCell::new(Vec::new());
     let mut rows = Vec::new();
     let summary = ready(run_model(ifc_lite_core::SourceBundle::new(text.into_bytes()),
@@ -353,23 +353,24 @@ fn issue_7955_band_phase_faults_do_not_spend_non_layer_restarts() {
         ProductOutcome::Refused { product_id, refusal, origin, .. } if *product_id == id => Some((*refusal, *origin)),
         _ => None,
     });
-    // Four layered products would fault; the allowance absorbs three.
-    for id in [27, 29, 30] {
+    // Four real band faults exceed max_restarts=3; a fifth layered product
+    // must refuse early, then every following plain product must publish.
+    for id in [27, 29, 30, 31] {
         assert_eq!(refusal(id), Some((RetainedProductRefusal::WorkerFault, None)), "#{id}");
     }
-    let (code, origin) = refusal(31).expect("spent allowance refuses the fourth layered product");
+    let (code, origin) = refusal(32).expect("spent allowance refuses the fifth layered product");
     assert_eq!(code, RetainedProductRefusal::WorkerFault);
     assert_eq!(origin.map(|o| (o.site, o.cause)), Some(("layer_band", "layer_retirement_allowance")));
     for id in 40..43 {
         assert!(rows.iter().any(|row| matches!(row, ProductOutcome::Published(s) if s.product_id == id)),
             "non-layer #{id} must publish: {rows:?}");
     }
-    assert_eq!((summary.candidates, summary.published, summary.restarts), (7, 3, 0));
+    assert_eq!((summary.candidates, summary.published, summary.restarts), (8, 3, 0));
     let domains = domains.borrow();
-    assert_eq!(domains.len(), 4, "three uncharged replacements, then the non-layer worker");
-    for domain in &domains[..3] {
+    assert_eq!(domains.len(), 5, "four uncharged replacements, then the non-layer worker");
+    for domain in &domains[..4] {
         assert_eq!((domain.0.calls.get(), domain.0.retired.get() > 0), (1, true));
     }
-    assert_eq!(domains[3].0.calls.get(), 3, "the fourth layered product made no kernel call");
-    assert_eq!(domains[3].0.retired.get(), 0);
+    assert_eq!(domains[4].0.calls.get(), 3, "the fifth layered product made no kernel call");
+    assert_eq!(domains[4].0.retired.get(), 0);
 }

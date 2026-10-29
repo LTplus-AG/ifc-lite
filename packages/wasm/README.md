@@ -439,7 +439,7 @@ failures. It has no parts. A failed part refuses the entire product. There is no
 exact fallback. One independently qualified worker is reused; worker failures
 retire it and contract faults preserve it. Ordinary fault replacement is capped
 at three per model. Band-phase transport retirements have a separate allowance
-of three; exhaustion refuses remaining layered products before kernel work,
+of four; exhaustion refuses remaining layered products before kernel work,
 without consuming the allowance used by non-layer products. Known synchronized
 band kernel refusals preserve the live worker. Each failed product stays atomic.
 The worker is released before the completed run is returned.

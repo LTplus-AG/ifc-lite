@@ -5,7 +5,7 @@ use super::runtime::RuntimeFault;
 
 /// Band-phase retirements replaced without charging `max`. Once spent, the
 /// model refuses its remaining layered products before any kernel call.
-const LAYER_RETIREMENTS: u8 = 3;
+const LAYER_RETIREMENTS: u8 = 4;
 
 pub(super) struct RestartBudget {
     max: u8,

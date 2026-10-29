@@ -92,3 +92,20 @@ fn m11_n_7955_source_plane_gate_is_independent_of_sliver_facet_noise() {
     off_plane[8] = 2e-6;
     assert_eq!(normals::check_mesh(&off_plane,&[0,1,2],&frame,&normals,&source).unwrap().unattributed,3);
 }
+
+
+#[test]
+fn m11_n_7955_disk_cap_near_rim_does_not_select_radial_surface() {
+    use ifc_lite_geometry::analytic::AnalyticCurveSegment;
+    let source = [
+        Surface::Disk {directrix:AnalyticCurveSegment::Line {start:[0.;3],end:[1.,0.,0.]},radius:1.,sign:1.},
+        Surface::Plane {origin:[0.;3],normal:[-1.,0.,0.]},
+    ];
+    // Cap points also satisfy radial incidence near the rim. A tiny facet
+    // perturbation must not let its positive radial dot product select the wall.
+    let positions = [0.,0.999,0., 1e-16,0.9995,1e-4, 0.,0.9995,-1e-4];
+    let frame = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+    let check = normals::check_mesh(&positions,&[0,1,2],&frame,&[-1.,0.,0.].repeat(3),&source).unwrap();
+    assert_eq!((check.planar,check.curved,check.unattributed),(3,0,0));
+    assert_eq!(check.planar_radians,0.);
+}

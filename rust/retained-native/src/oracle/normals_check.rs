@@ -105,7 +105,8 @@ pub fn check_mesh(positions: &[f64], indices: &[u32], frame: &[f64;16], normals:
         let surface_index = source.iter().position(|s| {
             let incidence = if s.curved() {0.001001} else {1e-6};
             points.iter().chain([&centroid]).all(|&p| s.sample(p).is_some_and(|(_,d)| d.is_finite() && d <= incidence))
-                && s.sample(centroid).is_some_and(|(n,_)| dot(n,facet) > 0.)
+                && s.sample(centroid).is_some_and(|(n,_)|
+                    if s.curved() {angle(n,facet) <= 0.0873} else {dot(n,facet) > 0.})
         });
         result.surface_indices.push(surface_index);
         let surface = surface_index.map(|i| &source[i]);

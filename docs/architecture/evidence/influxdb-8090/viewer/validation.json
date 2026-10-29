@@ -1,0 +1,115 @@
+{
+  "status": "INCOMPLETE: fleet capacity blocks acceptance; no viewer screenshot is claimed",
+  "implementationCommit": "5ed55dbc4e77e241fbe266d187ea7a7c758b303e",
+  "sharedModuleTree": "c1bf396e01db88d482801c868eeb5838374bda2a",
+  "executed": {
+    "host": "pc-wsl (louistrue-pc)",
+    "commit": "6ca75d3e1f1f66ae5c838e314f12415fd6df299c",
+    "command": "pnpm test --filter=@ifc-lite/flow-nodes --filter=ifc-lite-headless-workflows --concurrency=2",
+    "exitCode": 0,
+    "sharedTestsPassed": 270,
+    "exampleTestsPassed": 7,
+    "exampleTestsSkipped": 5,
+    "skipReason": "FZK fixture absent; pnpm fixtures required",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/9c515244-d72d-4078-a4ab-24793aef94b1/receipt.json",
+    "evidencePublication": "pending owner reconciliation; original receipt and log preserved",
+    "moduleTreeMatchesImplementation": true
+  },
+  "preHandoff": {
+    "host": "pop-os",
+    "commit": "5ed55dbc4e77e241fbe266d187ea7a7c758b303e",
+    "command": "node scripts/pre-handoff.mjs",
+    "exitCode": 0,
+    "passed": [
+      "test-wiring",
+      "module-size",
+      "ci-path-coverage",
+      "ci-aggregate-coverage",
+      "agents-md-size",
+      "license-headers",
+      "pr-review-signal lanes",
+      "oracle discovery (0 added manifests)"
+    ],
+    "skipped": [
+      "source-text-assertions: no local typescript installation",
+      "workflow-report-paths: no local yaml installation",
+      "retained-free viewer: no built local viewer dist"
+    ]
+  },
+  "admissionRefusals": [
+    {
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/b4b6b7ea-3533-4466-b55f-169ea6f23d52/receipt.json",
+      "reason": "Dependency install: storage guard"
+    },
+    {
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/6733fab5-e2f2-4197-bbeb-6113dfffdbef/receipt.json",
+      "reason": "Qualified Node typecheck profile: storage guard"
+    },
+    {
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/12de695f-37ce-4078-8b3d-b5b4f22758c2/receipt.json",
+      "reason": "Install/build/API snapshot preparation: storage guard"
+    },
+    {
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/35ee0dc7-9ed1-4cfb-bc91-2337e3051f97/receipt.json",
+      "reason": "Root package build: storage guard"
+    },
+    {
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/99fd78fe-b677-4c95-9ca0-90ff7b400824/receipt.json",
+      "reason": "Mounted panel test: storage guard"
+    },
+    {
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/947860cd-798d-420b-9c11-d42705f38912/receipt.json",
+      "reason": "Earlier mounted panel test request: storage guard"
+    },
+    {
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/cdcd6486-83bf-41ea-85bb-2fec627e4665/receipt.json",
+      "reason": "Live desktop witness: storage guard; command did not execute"
+    }
+  ],
+  "setupFailures": [
+    {
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/1e5455e2-2373-40b6-9cf1-1805177730c9/receipt.json",
+      "reason": "Root lint: fresh checkout lacked built sibling declarations"
+    },
+    {
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/0639c99d-805b-4091-afff-d469d9893843/receipt.json",
+      "reason": "Initial typecheck invocation omitted dependency installation; Turbo missing"
+    }
+  ],
+  "pending": {
+    "requestId": "auto-5641957b5b6f47d298e32073b395674a",
+    "host": "pc-wsl",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/a96abab6-c933-4a83-9f53-d5e903b31b4b/receipt.json",
+    "command": "pnpm exec env NODE_OPTIONS=--max-old-space-size=8192 TURBO_CONCURRENCY=1 pnpm typecheck",
+    "state": "queued at handoff; inspect original request, do not resubmit uncertain work"
+  },
+  "outstanding": [
+    "pnpm api-surface:update after root build",
+    "final pnpm lint",
+    "final pnpm typecheck",
+    "mounted panel test on final source",
+    "live synthetic InfluxDB desktop screenshot"
+  ],
+  "containersStartedByThisViewerTask": 0,
+  "scopeDeviations": [
+    "MVP fixes lookback at one hour rather than exposing a control",
+    "Required desktop witness and full acceptance remain blocked"
+  ],
+  "followUps": [
+    "Test connection",
+    "polling",
+    "stale indicator",
+    "configurable lookback",
+    "mobile witness",
+    "UI polish"
+  ]
+}

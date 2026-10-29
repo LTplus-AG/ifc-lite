@@ -1846,4 +1846,8 @@ with `layer_caps_unresolved`.
 
 Each surviving material-band triangle keeps the host or opening source face key,
 qualified with `;band(<index>)`. Internal interface caps have no published key.
+Band-phase transport retirements use a separate three-replacement allowance;
+exhaustion refuses later layered products before kernel work while preserving
+non-layer recovery. Known synchronized band kernel refusals keep the live worker.
+
 The comparison `summary.json` contains band/cap timings and maximum seam displacement; the reproducible CLI product report omits these diagnostics. Timings measure their own phases without restarting the product deadline.

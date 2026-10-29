@@ -427,15 +427,21 @@ and a nonempty `obligationsUnmet` list; consumers must display that marker. This
 is shape-only output. Supported openings are cut individually; completed cuts and
 plan-proven unvoided products discharge `OpeningClosure`. `cuts` reports completed
 cuts and `consumedParts` is zero: a consumed part refuses the entire product with
-`empty_result`. Layer and appearance obligations remain unmet.
-Unsupported opening bodies report `opening_unsupported`; hosts with internal
-material-layer boundaries refuse `material_layer_strategy` before opening work.
+`empty_result`. Eligible material-layer hosts publish open planar or curved
+bands after opening cuts, with internal caps removed and a closed combined skin.
+Unsupported layer families refuse `material_layer_strategy`; unresolved cap or
+seam conformity refuses `layer_caps_unresolved`. Appearance obligations remain
+unmet. Unsupported opening bodies report `opening_unsupported`.
 
 A refusal has `status: 'refused'`, `expressId`, `ifcType`, a typed snake-case
 `code`, optional `{site, entity?, cause}` `origin`, and `kernelStatus` for kernel
 failures. It has no parts. A failed part refuses the entire product. There is no
 exact fallback. One independently qualified worker is reused; worker failures
-retire it, contract faults preserve it, and replacement is capped at three.
+retire it and contract faults preserve it. Ordinary fault replacement is capped
+at three per model. Band-phase transport retirements have a separate allowance
+of three; exhaustion refuses remaining layered products before kernel work,
+without consuming the allowance used by non-layer products. Known synchronized
+band kernel refusals preserve the live worker. Each failed product stays atomic.
 The worker is released before the completed run is returned.
 
 For progressive display, the same opt-in bundle exports `RetainedModelSession`.

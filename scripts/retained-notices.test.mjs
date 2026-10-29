@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { renderNotices, inventoryInputs, checkNotices } from './retained-notices.mjs';
+import { renderNotices, inventoryInputs, checkNotices, applySupplemental } from './retained-notices.mjs';
 
 test('Refs #7955 notice bundle preserves attribution bytes and refuses corrupted inputs', () => {
   const text = 'Copyright Example Author\nPermission and disclaimer\n';
@@ -93,4 +93,40 @@ test('Refs #7955 removing a declared closure component cannot be hidden by regen
   const f = fixture(t);
   f.change('licenses/retained/manifest.json', text => JSON.stringify({ ...JSON.parse(text), components: [] }));
   assert.throws(() => checkNotices(f.root, false), /Missing inventory component: external/);
+});
+
+// Refs #7955: an OR election preserves the declaration and supplies an identified text.
+test('Refs #7955 Apache election renders attribution and preserves the licence text', () => {
+  const text = 'Apache licence fixture\n';
+  const component = { name: 'wasm_sync', version: '0.1.2', license: 'MIT OR Apache-2.0',
+    source: 'crates.io', scope: 'fixture', notices: [] };
+  const supplement = { name: component.name, version: component.version, election: 'Apache-2.0',
+    attribution: 'wasm_sync 0.1.2 (crates.io), licensed under Apache-2.0 by election from MIT OR Apache-2.0',
+    notices: [{ file: 'apache.txt', origin: 'SPDX fixture', sha256: createHash('sha256').update(text).digest('hex') }] };
+  applySupplemental([component], [supplement]);
+  const rendered = renderNotices({ components: [component] }, () => text);
+  assert.match(rendered, /Licence declaration: MIT OR Apache-2.0/);
+  assert.match(rendered, /Licence election: Apache-2.0/);
+  assert.ok(rendered.includes(supplement.attribution));
+  assert.ok(rendered.includes(text));
+  assert.doesNotMatch(rendered, /OPEN:/);
+  for (const license of ['MIT', 'MIT AND Apache-2.0', '(MIT OR Apache-2.0)']) {
+    assert.throws(() => applySupplemental([{ ...component, license, notices: [] }], [supplement]), /Invalid licence election/);
+  }
+  assert.throws(() => applySupplemental([component], [{ ...supplement, election: 'BSD-3-Clause' }]), /Invalid licence election/);
+  assert.throws(() => applySupplemental([component], [{ ...supplement, notices: [] }]), /Invalid licence election/);
+  assert.throws(() => applySupplemental([], [supplement]), /Stale supplemental notice/);
+});
+
+test('Refs #7955 notice check refuses omitted election evidence even after output regeneration', t => {
+  const f = fixture(t);
+  const supplement = { name: 'external', version: '1.0.0', election: 'Apache-2.0',
+    attribution: 'external by election', notices: [] };
+  f.change('licenses/retained/supplemental.json', () => JSON.stringify([supplement]));
+  f.change('licenses/retained/manifest.json', text => {
+    const manifest = JSON.parse(text);
+    manifest.inputs = inventoryInputs(f.root);
+    return JSON.stringify(manifest);
+  });
+  assert.throws(() => checkNotices(f.root, false), /Missing supplemental evidence/);
 });

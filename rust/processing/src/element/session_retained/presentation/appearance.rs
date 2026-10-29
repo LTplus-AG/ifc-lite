@@ -2,7 +2,7 @@
 //! M11-A IfcAppearance. A product discharges the obligation only when every
 //! part resolves through exact's own colour resolver and none binds a texture
 //! or indexed palette; those refuse `appearance_unsupported` (proven absent).
-use super::appearance_resolve::{bind, resolve_parts, unsupported};
+use super::appearance_resolve::{bind, resolve_parts, unsupported, Bound};
 use super::{Context, OwnedMeshProductionContext, RetainedProductPlan, Requirement, ShapeOnlyProduct};
 use crate::element::assembly_job::AssemblyJob;
 use crate::element::session_retained::error::RetainedExecutionError as Error;
@@ -16,7 +16,7 @@ use ifc_lite_geometry::resource::Cost;
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Result<Vec<Requirement>, Error> {
     let appearances = resolve_plan(context.model, product.product_id, &product.ifc_type, context.plan, context.element_color)?;
     if appearances.len() != product.parts.len() {
-        return Err(unsupported(0, "binding"));
+        return Err(unsupported(product.product_id, "binding"));
     }
     for appearance in &appearances {
         let name = appearance.material_name.as_ref().map_or(0, String::len);
@@ -39,13 +39,13 @@ fn resolve_plan(
     element_color: [f32; 4],
 ) -> Result<Vec<PartAppearance>, Error> {
     let source = model.source().ok_or(Error::Source(RetainedContextError::Missing))?;
-    let parts: Vec<_> = plan.values().map(|value| bind(&value.presentation().collect::<Vec<_>>())).collect();
+    let parts: Vec<Bound> = plan.values().map(|value| bind(&value.presentation().collect::<Vec<_>>())).collect::<Result<_, _>>()?;
     let mut decoder = source.decoder();
     let entity = decoder.decode_by_id(product_id).map_err(Error::Core)?;
     let job = ElementMeshJob { id: product_id, ifc_type: ifc_type.clone(), entity: &entity,
         kind: ElementJobKind::Product, element_color: None, metadata: None };
     let ctx = model.borrowed();
-    let element_color = if parts.iter().any(|(_, fact)| fact.type_product.is_some()) {
+    let element_color = if parts.iter().any(|part| part.fact.type_product.is_some()) {
         element_color
     } else {
         product_element_color(&entity, &ctx, &mut decoder, element_color)
@@ -66,8 +66,11 @@ pub fn resolve_appearances(
     resolve_plan(&ProductionModel::from_source(source.clone()).snapshot(data), product_id, ifc_type, plan, element_color)
 }
 
-/// The fallback colour exact's job carries for a product (`processor::populate_entity_job_metadata`): the first
-/// style found under its representation, else the material chain's fallback, else the class default.
+/// The fallback colour exact's job carries for a product: the first style found under its representation, else
+/// the material chain's fallback, else the class default. The plan cannot supply it (a retained job is built
+/// with `element_color: None`, so `ElementPlan` holds only the class default), so this composes it as the two
+/// other copies do and must stay equal to them: `processor::job::ColorLayerResolver::resolve` (exact's job
+/// metadata) and `appearance::canonical::produce_with_context` (the authoring pipeline).
 fn product_element_color(
     entity: &DecodedEntity,
     ctx: &MeshProductionContext<'_>,

@@ -81,11 +81,31 @@ fn universe() -> BTreeMap<String, Vec<(u32, bool, String)>> {
 fn published(outcomes: &[ProductOutcome]) -> impl Iterator<Item = &ShapeOnlyProduct> {
     outcomes.iter().filter_map(|o| match o { ProductOutcome::Published(p) => Some(p), _ => None })
 }
-
+/// The M11-A gate (spec §3.1/§6), with no fallback, in both directions. Every part of a published product must find
+/// exact's mesh under the same `(product, geometry_item_id)` key and equal it bit for bit in RGBA and material name;
+/// a key exact does not emit is a violation, not something to match against "any colour of the product". And every
+/// key exact emits for the product must be carried by a retained part.
+fn exact_violations(model: &str, product: &ShapeOnlyProduct, exact: &BTreeMap<Key, BTreeSet<Look>>) -> Vec<String> {
+    let id = product.product_id;
+    let mut violations: Vec<String> = product.parts.iter().filter_map(|part| {
+        let item = part.appearance.as_ref().unwrap().geometry_item_id;
+        let ours = look(part);
+        match exact.get(&(id, item)) {
+            Some(theirs) if theirs.contains(&ours) => None,
+            Some(theirs) => Some(format!("{model} #{id} item {item:?}: retained {ours:?} is not among exact's {theirs:?}")),
+            None => Some(format!("{model} #{id} item {item:?}: exact emits no mesh under this key; its keys {:?}",
+                exact.keys().filter(|(p, _)| *p == id).map(|(_, k)| *k).collect::<Vec<_>>())),
+        }
+    }).collect();
+    let ours: BTreeSet<_> = product.parts.iter().map(|part| part.appearance.as_ref().unwrap().geometry_item_id).collect();
+    violations.extend(exact.keys().filter(|(p, item)| *p == id && !ours.contains(item))
+        .map(|(_, item)| format!("{model} #{id} item {item:?}: exact emits this key but no retained part carries it")));
+    violations
+}
 #[test]
-fn m11_a_every_committed_published_row_resolves_and_matches_exact_where_exact_has_the_key() {
+fn m11_a_every_committed_published_row_resolves_and_matches_exact_per_product_and_item() {
     if support::worker_path().is_none() { return; }
-    let (mut rows, mut unmatched, mut styled_products) = (0usize, Vec::new(), BTreeSet::new());
+    let (mut rows, mut violations, mut styled_products) = (0usize, Vec::new(), BTreeSet::new());
     for (model, coverage) in universe() {
         let ids: Vec<u32> = coverage.iter().map(|(id, ..)| *id).collect();
         let outcomes = retained(&model, Some(&ids)).unwrap();
@@ -100,20 +120,10 @@ fn m11_a_every_committed_published_row_resolves_and_matches_exact_where_exact_ha
                     assert!(is_published, "{model} #{id} published but the coverage row says {code}");
                     rows += 1;
                     assert!(!product.obligations.0.contains(&Requirement::IfcAppearance), "{model} #{id}");
-                    for part in &product.parts {
-                        let ours = look(part);
-                        let item = part.appearance.as_ref().unwrap().geometry_item_id;
-                        if part.appearance.as_ref().unwrap().style_id.is_some() { styled_products.insert((model.clone(), *id)); }
-                        match exact.get(&(*id, item)) {
-                            Some(theirs) => assert!(theirs.contains(&ours), "{model} #{id} item {item:?}: retained {ours:?} exact {theirs:?}"),
-                            None => {
-                                // Exact keys this mesh differently (or not at all): fall back to the product's own looks.
-                                let keys: Vec<_> = exact.keys().filter(|(p, _)| p == id).map(|(_, k)| *k).collect();
-                                let any = exact.iter().filter(|((p, _), _)| p == id).any(|(_, looks)| looks.iter().any(|look| look.0 == ours.0));
-                                unmatched.push(format!("{model} #{id} item {item:?} exact keys {keys:?} product-level {}", if keys.is_empty() { "no-exact-mesh" } else if any { "equal" } else { "DIFFERENT" }));
-                            }
-                        }
+                    if product.parts.iter().any(|part| part.appearance.as_ref().unwrap().style_id.is_some()) {
+                        styled_products.insert((model.clone(), *id));
                     }
+                    violations.extend(exact_violations(&model, product, &exact));
                 }
                 ProductOutcome::Refused { refusal, .. } => {
                     assert!(!is_published, "{model} #{id} refused {} but the coverage row says published", refusal.code());
@@ -128,12 +138,7 @@ fn m11_a_every_committed_published_row_resolves_and_matches_exact_where_exact_ha
     assert!(rows >= 131);
     let fzk: Vec<_> = styled_products.iter().filter(|(model, _)| model == FZK).collect();
     assert_eq!(fzk.len(), 14, "FZK-Haus has 14 products with a direct IfcStyledItem colour: {fzk:?}");
-    // Exact keys these meshes differently (cached mapped path: no item; layered walls: per material; repeated single-solid
-    // maps: the map's solid), so the product's own exact colours stand in: every RGBA must be among them, bit for bit.
-    // The material name is compared only under a shared key (exact names a style only when it keys the styled item).
-    let different: Vec<_> = unmatched.iter().filter(|row| row.ends_with("DIFFERENT")).collect();
-    assert!(different.is_empty(), "retained colour absent from exact's meshes of the same product: {different:#?}");
-    println!("M11-A unmatched (retained key absent from exact, product-level colour checked): {} {unmatched:?}", unmatched.len());
+    assert!(violations.is_empty(), "retained appearance differs from exact per (product, geometry_item_id): {violations:#?}");
     println!("sdk witness executed: m11_a_universe");
 }
 
@@ -171,16 +176,10 @@ fn m11_a_synthetic_fixture_meets_its_hand_authored_colours() {
         None => failures.push("g-type: not published".into()),
     }
     assert!(failures.is_empty(), "hand-authored appearance violations: {failures:#?}");
-    // The same fixture must also agree bitwise with exact (same resolver, same keys).
+    // The same fixture must also agree bitwise with exact under every (product, geometry_item_id) key.
     let exact = exact_looks(APPEARANCE);
-    for product in published(&outcomes) {
-        for part in &product.parts {
-            let item = part.appearance.as_ref().unwrap().geometry_item_id;
-            if let Some(theirs) = exact.get(&(product.product_id, item)) {
-                assert!(theirs.contains(&look(part)), "#{} item {item:?}: {:?} vs {theirs:?}", product.product_id, look(part));
-            }
-        }
-    }
+    let violations: Vec<_> = published(&outcomes).flat_map(|product| exact_violations(APPEARANCE, product, &exact)).collect();
+    assert!(violations.is_empty(), "synthetic fixture differs from exact: {violations:#?}");
     println!("sdk witness executed: m11_a_synthetic");
 }
 
@@ -213,25 +212,9 @@ fn m11_a_shared_f_i_fixture_meets_its_hand_derived_colours() {
         }
         if product.obligations.0.contains(&Requirement::IfcAppearance) { failures.push(format!("{name} #{id}: IfcAppearance unmet")); }
     }
-    // Same resolver: every published RGBA is among exact's colours for its product, bit for bit. The material name can
-    // differ and is reported: exact keys a repeated single-solid styled map by the map's solid (#308, #706) and names the
-    // style there, while retained keys the IfcMappedItem (no don't-bake plan) where only the colour is chased.
+    // Same resolver, same keys: RGBA and material name bitwise equal to exact per (product, geometry_item_id).
     let exact = exact_looks(F_I);
-    let mut name_only = Vec::new();
-    for product in published(&outcomes) {
-        let theirs: Vec<_> = exact.iter().filter(|((p, _), _)| *p == product.product_id).flat_map(|(key, looks)| looks.iter().map(move |l| (key.1, l))).collect();
-        for part in &product.parts {
-            let ours = look(part);
-            if theirs.is_empty() { continue; }
-            if !theirs.iter().any(|(_, theirs)| theirs.0 == ours.0) {
-                failures.push(format!("#{}: retained {:?} is not among exact's colours", product.product_id, ours.0.map(f32::from_bits)));
-            } else if !theirs.iter().any(|(_, theirs)| **theirs == ours) {
-                name_only.push(format!("#{} item {:?} name {:?}; exact {:?}", product.product_id, part.appearance.as_ref().unwrap().geometry_item_id, ours.1,
-                    theirs.iter().map(|(item, l)| (*item, l.1.clone())).collect::<Vec<_>>()));
-            }
-        }
-    }
-    println!("M11-A f-i material-name differences (colours bitwise equal; report-only): {name_only:#?}");
+    failures.extend(published(&outcomes).flat_map(|product| exact_violations(F_I, product, &exact)));
     assert!(failures.is_empty(), "f-i appearance violations: {failures:#?}");
     println!("M11-A f-i published products: {:?}", published(&outcomes).map(|p| p.product_id).collect::<Vec<_>>());
     println!("sdk witness executed: m11_a_f_i");

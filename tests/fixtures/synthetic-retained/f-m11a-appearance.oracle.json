@@ -40,6 +40,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -56,6 +57,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -72,6 +74,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -88,6 +91,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -104,6 +108,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -120,6 +125,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -136,6 +142,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -152,6 +159,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -168,6 +176,7 @@
       "parts": [
         {
           "geometryClass": 0,
+          "geometryItemId": 51,
           "materialName": null,
           "rgba": [
             0.7,
@@ -257,6 +266,146 @@
         }
       ],
       "role": "f-window"
+    },
+    {
+      "id": 265,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 240,
+          "materialName": "Window_Glass",
+          "rgba": [
+            0.5,
+            0.75,
+            1.0,
+            0.25
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 244,
+          "materialName": "Window_Frame_244",
+          "rgba": [
+            0.25,
+            0.125,
+            0.0625,
+            1
+          ]
+        }
+      ],
+      "role": "h-window-map"
+    },
+    {
+      "id": 286,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 269,
+          "materialName": "Window_Glass",
+          "rgba": [
+            0.5,
+            0.75,
+            1.0,
+            0.5
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 273,
+          "materialName": "Window_Frame_273",
+          "rgba": [
+            0.25,
+            0.125,
+            0.0625,
+            1
+          ]
+        }
+      ],
+      "role": "i-window-map-materials"
+    },
+    {
+      "id": 331,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 306,
+          "materialName": null,
+          "rgba": [
+            0.75,
+            0.25,
+            0.25,
+            1
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 310,
+          "materialName": null,
+          "rgba": [
+            0.25,
+            0.25,
+            0.75,
+            1
+          ]
+        }
+      ],
+      "role": "j-mapped-item-style"
+    },
+    {
+      "id": 374,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 335,
+          "materialName": null,
+          "rgba": [
+            0.25,
+            0.75,
+            0.25,
+            1
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 339,
+          "materialName": null,
+          "rgba": [
+            0.75,
+            0.75,
+            0.25,
+            1
+          ]
+        }
+      ],
+      "role": "k-nested-map"
+    },
+    {
+      "id": 396,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 378,
+          "materialName": "Window_Glass",
+          "rgba": [
+            0.5,
+            0.75,
+            1.0,
+            0.5
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 378,
+          "materialName": "Window_Frame_378",
+          "rgba": [
+            0.25,
+            0.125,
+            0.0625,
+            1
+          ]
+        }
+      ],
+      "role": "l-window-twice"
     }
   ],
   "typeMap": {

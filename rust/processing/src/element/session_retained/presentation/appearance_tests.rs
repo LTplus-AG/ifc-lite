@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! M11-A internals, SMLib-free: the seams the kernel-free witness in `tests/m11_a_appearance.rs` cannot reach
 //! (pending bindings, material bands, part-count and cursor sharing).
-use super::super::appearance_resolve::{bind, resolve_parts, PartSource};
+use super::super::appearance_resolve::{bind, resolve_parts, Bound, PartSource};
 use super::{apply, Context, Requirement};
 use crate::element::assembly_job::AssemblyJob;
 use crate::element::session_retained::error::RetainedExecutionError;
@@ -87,7 +87,17 @@ fn fact(geometry_id: u32) -> PresentationFacts {
     PresentationFacts { geometry_id, style_source_id: geometry_id, representation_map: None, type_product: None,
         fallback_color: None, indexed_palette_pending: false, texture_pending: false }
 }
-fn resolve(parts: &[(PartSource, PresentationFacts)]) -> Result<Vec<PartAppearance>, RetainedExecutionError> {
+/// An `IfcMappedItem` occurrence's binding: the map item decides nothing, it only encloses.
+fn occurrence(item: u32, map: u32) -> PresentationFacts {
+    PresentationFacts { geometry_id: item, style_source_id: item, representation_map: Some(map), ..fact(item) }
+}
+fn bound(fact: PresentationFacts) -> Bound {
+    Bound { source: PartSource::Item(fact.geometry_id), fact, occurrences: Vec::new() }
+}
+fn under(fact: PresentationFacts, occurrences: &[u32]) -> Bound {
+    Bound { occurrences: occurrences.to_vec(), ..bound(fact) }
+}
+fn resolve(parts: &[Bound]) -> Result<Vec<PartAppearance>, RetainedExecutionError> {
     let source = source("#10", WALL);
     let model = snapshot(&source);
     let mut decoder = source.decoder();
@@ -108,14 +118,15 @@ fn m11_a_textures_and_indexed_palettes_refuse_as_explicit_absence() {
     // committed, 0/94,567 heavy-eligible). A binding that still carries one never gets plain colour.
     let mut texture = fact(7);
     texture.texture_pending = true;
-    assert_unsupported(resolve(&[(PartSource::Item(7), texture)]).unwrap_err(), 7, "texture_pending");
+    assert_unsupported(resolve(&[bound(texture)]).unwrap_err(), 7, "texture_pending");
     let mut palette = fact(8);
     palette.indexed_palette_pending = true;
-    assert_unsupported(resolve(&[(PartSource::Item(7), fact(7)), (PartSource::Item(8), palette)]).unwrap_err(), 8, "indexed_palette_pending");
+    assert_unsupported(resolve(&[bound(fact(7)), bound(palette)]).unwrap_err(), 8, "indexed_palette_pending");
 }
 #[test]
 fn m11_a_band_parts_keyed_by_material_refuse_until_layers_land() {
-    assert_unsupported(resolve(&[(PartSource::Material(31), fact(31))]).unwrap_err(), 31, "material_band");
+    let band = Bound { source: PartSource::Material(31), ..bound(fact(31)) };
+    assert_unsupported(resolve(&[band]).unwrap_err(), 31, "material_band");
 }
 #[test]
 fn m11_a_a_part_count_that_differs_from_the_plan_refuses() {
@@ -127,19 +138,31 @@ fn m11_a_a_part_count_that_differs_from_the_plan_refuses() {
     let model = snapshot(&source);
     let error = apply(&mut product, &Context { plan: &plan, model: &model, resources: &OwnedResourceContext::capture_current(),
         element_color: [0.; 4], faces: &[], chord_metres: 0.001 }).unwrap_err();
-    assert_unsupported(error, 0, "binding");
+    assert_unsupported(error, 14, "binding");
 }
 #[test]
 fn m11_a_binding_selection_prefers_the_type_binding_and_keeps_every_pending_flag() {
     let mut item = fact(7);
     item.texture_pending = true;
     let typed = PresentationFacts { type_product: Some((60, 1)), representation_map: Some(61), ..fact(60) };
-    let (source, chosen) = bind(&[item, typed]);
+    let Bound { source, fact: chosen, .. } = bind(&[item, typed]).unwrap();
     assert_eq!((source, chosen.type_product, chosen.texture_pending), (PartSource::Item(60), Some((60, 1)), true));
-    assert_unsupported(resolve(&[(source, chosen)]).unwrap_err(), 60, "texture_pending");
-    assert_eq!(bind(&[]).0, PartSource::Unbound);
-    // Inner item first, enclosing occurrence last: the outermost decides, as exact keys a mapped result.
-    assert_eq!(bind(&[fact(1), fact(2)]).0, PartSource::Item(2));
+    assert_unsupported(resolve(&[Bound { source, fact: chosen, occurrences: Vec::new() }]).unwrap_err(), 60, "texture_pending");
+    assert_eq!(bind(&[]).unwrap().source, PartSource::Unbound);
+}
+#[test]
+fn m11_a_the_walk_item_decides_never_the_enclosing_occurrence() {
+    // The walk appends the leaf's binding, then each enclosing IfcMappedItem's, inner to outer. Exact keys the
+    // sub-mesh by the leaf (`Merging::Styled(item.item().id, ..)`), so every occurrence is skipped.
+    let mapped = bind(&[fact(1), occurrence(2, 90)]).unwrap();
+    assert_eq!((mapped.source, mapped.fact.geometry_id, mapped.occurrences), (PartSource::Item(1), 1, vec![2]));
+    let nested = bind(&[fact(1), occurrence(2, 90), occurrence(3, 91)]).unwrap();
+    assert_eq!((nested.source, nested.occurrences), (PartSource::Item(1), vec![2, 3]));
+    // A Boolean result's own binding follows its host's: the result's item is the sub-mesh identity.
+    assert_eq!(bind(&[fact(1), fact(2)]).unwrap().source, PartSource::Item(2));
+    assert_eq!(bind(&[fact(1), fact(2), occurrence(3, 90)]).unwrap().source, PartSource::Item(2));
+    // Only occurrences: no sub-mesh identity to match exact with, so it refuses rather than keys by the map.
+    assert_unsupported(bind(&[occurrence(2, 90)]).err().expect("refuses"), 2, "binding");
 }
 #[test]
 fn m11_a_frames_of_one_item_are_one_sub_mesh_and_advance_the_material_cursor_once() {
@@ -149,9 +172,28 @@ fn m11_a_frames_of_one_item_are_one_sub_mesh_and_advance_the_material_cursor_onc
     let entity = decoder.decode_by_id(14).unwrap();
     let job = ElementMeshJob { id: 14, ifc_type: IfcType::IfcWindow, entity: &entity, kind: ElementJobKind::Product,
         element_color: None, metadata: None };
-    let parts = [(PartSource::Item(10), fact(10)), (PartSource::Item(10), fact(10)), (PartSource::Item(11), fact(11))];
+    let parts = [bound(fact(10)), bound(fact(10)), bound(fact(11))];
     let resolved = resolve_parts(&AssemblyJob::from(&job), &parts, [0.6, 0.8, 1.0, 0.4], &model.borrowed(), &mut decoder).unwrap();
     near(resolved[0].rgba, [0.6, 0.8, 1.0, 0.35]);
     near(resolved[1].rgba, [0.6, 0.8, 1.0, 0.35]);
     near(resolved[2].rgba, [0.3, 0.2, 0.1, 1.]);
+}
+#[test]
+fn m11_a_one_leaf_under_two_occurrences_is_two_sub_meshes_and_two_cursor_steps() {
+    let source = window();
+    let model = snapshot(&source);
+    let mut decoder = source.decoder();
+    let entity = decoder.decode_by_id(14).unwrap();
+    let job = ElementMeshJob { id: 14, ifc_type: IfcType::IfcWindow, entity: &entity, kind: ElementJobKind::Product,
+        element_color: None, metadata: None };
+    // Exact calls `color` once per sub-mesh: the same leaf walked under two map items is two (glass, then frame).
+    // Two frames under one chain are one. Chains that differ only in an inner occurrence still differ.
+    let parts = [under(fact(10), &[20]), under(fact(10), &[20]), under(fact(10), &[21]), under(fact(10), &[22, 30]),
+        under(fact(10), &[23, 30])];
+    let resolved = resolve_parts(&AssemblyJob::from(&job), &parts, [0.6, 0.8, 1.0, 0.4], &model.borrowed(), &mut decoder).unwrap();
+    let alphas: Vec<f32> = resolved.iter().map(|part| part.rgba[3]).collect();
+    // The cursor alternates over [glass .35, frame 1.]: the two frames of #20 share the first step.
+    near([alphas[0], alphas[1], alphas[2], alphas[3]], [0.35, 0.35, 1., 0.35]);
+    near([alphas[4], 0., 0., 0.], [1., 0., 0., 0.]);
+    assert!(resolved.iter().all(|part| part.geometry_item_id == Some(10)));
 }

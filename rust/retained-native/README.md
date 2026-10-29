@@ -22,8 +22,9 @@ Published parts contain f64 object-local metres and column-major placement
 matrices into absolute IFC Z-up world metres. Every product carries
 `PresentationObligationsUnmet`. Completed opening cuts and plan-proven unvoided
 products discharge `OpeningClosure`, and every published part carries its resolved
-appearance (`IfcAppearance` is discharged through exact's own colour resolver);
-material, normal and persistent-face obligations remain. Final affine-only values remain
+appearance (`IfcAppearance` is discharged through exact's own colour resolver), and
+persistent source face keys (`PersistentFaces`); `MaterialLayers` and `SurfaceNormals`
+remain, so `obligations` is `[MaterialLayers, SurfaceNormals]`. Final affine-only values remain
 `incomplete` in M1. `require_final_product` still refuses.
 
 Build the real worker using `native/smlib-adapter/README.md`, then run from the

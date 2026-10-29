@@ -28,23 +28,46 @@ impl PartSource {
     }
 }
 
-/// The one binding a value is coloured by: the LAST, which is the outermost. The walk appends the inner
-/// item bindings first and each enclosing `IfcMappedItem` occurrence (or the type completion) after them,
-/// and exact keys a mapped result, like a type part, by the outermost item alone. A texture or palette
-/// flag on ANY of the value's bindings is kept, so it refuses whichever binding decides.
-pub(super) fn bind(facts: &[PresentationFacts]) -> (PartSource, PresentationFacts) {
-    let Some(&outermost) = facts.last() else { return (PartSource::Unbound, PresentationFacts::default()) };
-    let chosen = PresentationFacts {
-        texture_pending: facts.iter().any(|fact| fact.texture_pending),
-        indexed_palette_pending: facts.iter().any(|fact| fact.indexed_palette_pending),
-        ..outermost
-    };
-    (PartSource::of(&chosen), chosen)
+/// A value's deciding binding, with the `IfcMappedItem` occurrences that enclose it.
+pub(super) struct Bound {
+    pub(super) source: PartSource,
+    pub(super) fact: PresentationFacts,
+    /// Style-source ids of the enclosing `IfcMappedItem` occurrences, inner to outer. They never decide the
+    /// colour; they say which exact sub-mesh the part belongs to (one leaf under two occurrences is two).
+    pub(super) occurrences: Vec<u32>,
+}
+impl Bound {
+    fn unbound() -> Self {
+        Self { source: PartSource::Unbound, fact: PresentationFacts::default(), occurrences: Vec::new() }
+    }
 }
 
-/// What one item's (or occurrence's) first frame resolved to, reused by its later frames.
+/// The one binding a value is coloured by. The walk appends the item's own binding first, then one per
+/// enclosing `IfcMappedItem` occurrence (`mapping_retained.rs`), and exact keys a styled sub-mesh by the
+/// item the walk reached (`mapping_accept.rs` `Merging::Styled(item.item().id, ..)`), calling `color` once
+/// per such leaf: so the LAST item binding decides (a Boolean result's own binding follows its host's), never
+/// the occurrence. A type part is the exception: exact colours it through its representation map, so the
+/// type completion decides. A texture or palette flag on ANY of the value's bindings is kept, so it refuses
+/// whichever binding decides. A value with bindings but no item or type binding has no sub-mesh identity
+/// in exact to match, and refuses.
+pub(super) fn bind(facts: &[PresentationFacts]) -> Result<Bound, Error> {
+    let Some(first) = facts.first() else { return Ok(Bound::unbound()) };
+    let decider = facts.iter().rev().find(|fact| fact.type_product.is_some())
+        .or_else(|| facts.iter().rev().find(|fact| fact.representation_map.is_none()))
+        .ok_or_else(|| unsupported(first.geometry_id, "binding"))?;
+    let fact = PresentationFacts {
+        texture_pending: facts.iter().any(|fact| fact.texture_pending),
+        indexed_palette_pending: facts.iter().any(|fact| fact.indexed_palette_pending),
+        ..*decider
+    };
+    let occurrences = facts.iter().filter(|fact| fact.representation_map.is_some() && fact.type_product.is_none())
+        .map(|fact| fact.style_source_id).collect();
+    Ok(Bound { source: PartSource::of(&fact), fact, occurrences })
+}
+
+/// What one sub-mesh's first frame resolved to, reused by its later frames.
 struct Shared {
-    key: (PartSource, u32),
+    key: (PartSource, Vec<u32>),
     rgba: [f32; 4],
     material_name: Option<String>,
     style_id: Option<u32>,
@@ -55,7 +78,7 @@ struct Shared {
 /// colour overrides the result as `session_run::apply_fixed_color` does.
 pub(super) fn resolve_parts(
     job: &AssemblyJob<'_>,
-    parts: &[(PartSource, PresentationFacts)],
+    parts: &[Bound],
     element_color: [f32; 4],
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
@@ -64,9 +87,9 @@ pub(super) fn resolve_parts(
     let fixed = crate::style::fixed_display_color_for_type(job.ifc_type).map(|fixed| fixed.to_array());
     let mut next_material = 0;
     let mut resolved = Vec::with_capacity(parts.len());
-    // Frames of one item or occurrence are ONE sub-mesh in exact: one resolution, one cursor step.
+    // Frames of one item under one occurrence chain are ONE sub-mesh in exact: one resolution, one cursor step.
     let mut last: Option<Shared> = None;
-    for (source, fact) in parts {
+    for Bound { source, fact, occurrences } in parts {
         // The controller's flags, plus the snapshot's own palette/texture maps: exact binds both by
         // the same item id, so neither can slip through as plain colour.
         if fact.texture_pending || ctx.texture_index.contains_key(&fact.geometry_id) {
@@ -89,13 +112,12 @@ pub(super) fn resolve_parts(
             (None, PartSource::Unbound) => PartAppearance { rgba: element_color, geometry_class: 0, style_id: None,
                 material_name: None, geometry_item_id: None, material_id: None },
             (None, PartSource::Item(id)) => {
-                let key = (*source, fact.style_source_id);
                 let shared = match last.take() {
-                    Some(shared) if shared.key == key => shared,
+                    Some(shared) if shared.key.0 == *source && shared.key.1 == *occurrences => shared,
                     _ => {
                         let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
                         let style_id = find_geometry_item_style_source(*id, &|id| ctx.geometry_style_index.contains_key(&id), decoder);
-                        Shared { key, rgba, material_name, style_id }
+                        Shared { key: (*source, occurrences.clone()), rgba, material_name, style_id }
                     }
                 };
                 let part = PartAppearance { rgba: shared.rgba, geometry_class: 0, style_id: shared.style_id,

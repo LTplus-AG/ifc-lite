@@ -13,7 +13,7 @@ import type { TranslationValue } from '../types';
  * of these strings.
  */
 export const retainedGeometryEn = {
-  'retainedGeometry.shapeOnlyReason': 'Unavailable on a Retained · shape-only model: its meshes have no openings, layers or appearance. Reload it with the exact kernel to use this.',
+  'retainedGeometry.shapeOnlyReason': 'Unavailable on a Retained · shape-only model: its meshes have no material layers or surface normals yet. Reload it with the exact kernel to use this.',
 
   'retainedGeometry.chip.starting': 'Retained · shape-only · starting engine',
   'retainedGeometry.chip.running': 'Retained · shape-only · {done}/{candidates} products',

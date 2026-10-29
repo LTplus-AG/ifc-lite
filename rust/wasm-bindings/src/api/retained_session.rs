@@ -93,7 +93,11 @@ impl RetainedModelSession {
         on_event.call1(&JsValue::UNDEFINED, &start)?;
         let mut error = None;
         let mut workers_acquired = 0u32;
-        // The authored finish is joined once per run, lazily, from the same source bytes.
+        // The authored finish is joined once per RUN (one run is one model; the session keeps only the peer), and
+        // lazily, so a run that publishes nothing pays nothing. The run's own prepass cannot be reused here: its
+        // `PrepassSpans` live inside `run_model_with_worker`, and `ModelFinishes<'c>` borrows its source, so handing
+        // either out would change the sink signature the native and wasm callers share. The price is one more
+        // entity scan of the file (spans only; styled items are decoded only if the file authors a finish).
         let finish_source = source.clone();
         let mut finishes = None;
         let summary = run_model_with_worker(

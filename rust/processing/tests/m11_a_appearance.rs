@@ -182,3 +182,99 @@ fn m11_a_an_unbound_frame_part_takes_the_element_colour_as_exact_fallback_bodies
         assert_eq!((part.geometry_item_id, part.material_name.as_deref()), (None, None));
     }
 }
+
+// ---- Mapped occurrences. Exact keys a styled sub-mesh by the LEAF item the walk reached
+// (`mapping_accept.rs`: `Merging::Styled(item.item().id, ..)`) and calls `color` once per leaf, so an enclosing
+// IfcMappedItem never decides. Each expectation below is authored from those rules, not read from the resolver.
+const OCCURRENCE: &str = "#42=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,1.,$);";
+const WINDOW: &str = "#14=IFCWINDOW('w',$,'Win',$,$,#7,#13,$,1.,1.,$,$,$);";
+/// Materials [glass(alpha .35), frame(opaque)] on #14.
+fn glass_and_frame() -> String {
+    format!("#15=IFCMATERIAL('Glass');#16=IFCMATERIAL('Frame');#17=IFCMATERIALLIST((#15,#16));\
+        #18=IFCRELASSOCIATESMATERIAL('r',$,$,$,(#14),#17);\
+        #30=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#31),#15);#31=IFCSTYLEDREPRESENTATION(#2,'S','Material',(#32));\
+        #32=IFCSTYLEDITEM($,(#33),$);{}\
+        #50=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#51),#16);#51=IFCSTYLEDREPRESENTATION(#2,'S','Material',(#52));\
+        #52=IFCSTYLEDITEM($,(#53),$);{}", style(33, [0.6, 0.8, 1.0], 0.65), style(53, [0.3, 0.2, 0.1], 0.))
+}
+/// The one map #41 over a representation #40 of `items`.
+fn map_of(items: &str) -> String {
+    format!("#40=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',({items}));#41=IFCREPRESENTATIONMAP(#5,#40);{OCCURRENCE}")
+}
+
+#[test]
+fn m11_a_a_mapped_windows_leaves_keep_their_own_style_name_and_item() {
+    // Body = ONE IfcMappedItem #43 -> map of [#10 glass-styled, #11 frame-styled]. Exact: two sub-meshes keyed #10 and
+    // #11, coloured by their own styles; Window_Glass (alpha .35 <= .65) and Window_Frame_<leaf id>.
+    let rest = format!("{WINDOW}{}#43=IFCMAPPEDITEM(#41,#42);#25=IFCSTYLEDITEM(#10,(#20),$);#26=IFCSTYLEDITEM(#11,(#27),$);{}{}",
+        map_of("#10,#11"), style(20, [0.6, 0.8, 1.0], 0.65), style(27, [0.3, 0.2, 0.1], 0.));
+    let source = source("#43", &rest);
+    let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWindow, [0.6, 0.8, 1.0, 0.4]);
+    assert_eq!(parts.len(), 2);
+    near(parts[0].rgba, [0.6, 0.8, 1.0, 0.35]);
+    near(parts[1].rgba, [0.3, 0.2, 0.1, 1.]);
+    assert_eq!((parts[0].geometry_item_id, parts[1].geometry_item_id), (Some(10), Some(11)));
+    assert_eq!(parts[0].material_name.as_deref(), Some("Window_Glass"));
+    assert_eq!(parts[1].material_name.as_deref(), Some("Window_Frame_11"));
+}
+
+#[test]
+fn m11_a_the_material_cursor_runs_across_the_leaves_of_a_map() {
+    // The same window with UNSTYLED leaves and materials [glass, frame]: one cursor per product over the leaves, so
+    // glass (step 0) then frame (step 1). Keyed by the map, both parts would take the one resolution (glass).
+    let rest = format!("{WINDOW}{}#43=IFCMAPPEDITEM(#41,#42);{}", map_of("#10,#11"), glass_and_frame());
+    let source = source("#43", &rest);
+    let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWindow, [0.6, 0.8, 1.0, 0.4]);
+    assert_eq!(parts.len(), 2);
+    near(parts[0].rgba, [0.6, 0.8, 1.0, 0.35]);
+    near(parts[1].rgba, [0.3, 0.2, 0.1, 1.]);
+    assert_eq!((parts[0].geometry_item_id, parts[1].geometry_item_id), (Some(10), Some(11)));
+    assert_eq!(parts[0].material_name.as_deref(), Some("Window_Glass"));
+    assert_eq!(parts[1].material_name.as_deref(), Some("Window_Frame_11"));
+}
+
+#[test]
+fn m11_a_one_leaf_under_two_occurrences_is_two_sub_meshes_with_two_cursor_steps() {
+    // One single-leaf map used by two IfcMappedItems of the same window: exact walks both, so the leaf is two
+    // sub-meshes and the cursor moves twice (glass, then frame).
+    let rest = format!("{WINDOW}{}#43=IFCMAPPEDITEM(#41,#42);#44=IFCMAPPEDITEM(#41,#42);{}", map_of("#10"), glass_and_frame());
+    let source = source("#43,#44", &rest);
+    let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWindow, [0.6, 0.8, 1.0, 0.4]);
+    assert_eq!(parts.len(), 2);
+    near(parts[0].rgba, [0.6, 0.8, 1.0, 0.35]);
+    near(parts[1].rgba, [0.3, 0.2, 0.1, 1.]);
+    assert_eq!((parts[0].geometry_item_id, parts[1].geometry_item_id), (Some(10), Some(10)));
+}
+
+#[test]
+fn m11_a_a_style_on_the_mapped_item_reaches_a_bare_leaf_only_as_the_element_colour() {
+    // #10 is styled red; #11 is bare; the IfcMappedItem itself is styled blue. Exact: #10 keeps its direct style; #11
+    // has no style, no chase (it is not a mapped item) and no material, so it takes the element colour, which is the
+    // first style the product reaches: the mapped item's own (blue). Keyed by the map, #10 would turn blue too.
+    let rest = format!("{WALL}{}#43=IFCMAPPEDITEM(#41,#42);#25=IFCSTYLEDITEM(#10,(#20),$);#26=IFCSTYLEDITEM(#43,(#27),$);{}{}",
+        map_of("#10,#11"), style(20, [0.75, 0.25, 0.25], 0.), style(27, [0.25, 0.25, 0.75], 0.));
+    let source = source("#43", &rest);
+    let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWall, WALL_GREY);
+    assert_eq!(parts.len(), 2);
+    near(parts[0].rgba, [0.75, 0.25, 0.25, 1.]);
+    near(parts[1].rgba, [0.25, 0.25, 0.75, 1.]);
+    assert_eq!((parts[0].geometry_item_id, parts[1].geometry_item_id), (Some(10), Some(11)));
+    assert_eq!((parts[0].style_id, parts[1].style_id), (Some(10), None));
+}
+
+#[test]
+fn m11_a_a_nested_map_keeps_the_leaf_of_every_level() {
+    // Body = #46 -> map #45 of [#43 -> map #41 of [#10 green], #47 -> map #49 of [#11 yellow]]. Exact keys the leaves #10
+    // and #11, each inside two enclosing occurrences; neither occurrence is a sub-mesh.
+    let rest = format!("{WALL}{}#43=IFCMAPPEDITEM(#41,#42);\
+        #48=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#11));#49=IFCREPRESENTATIONMAP(#5,#48);#47=IFCMAPPEDITEM(#49,#42);\
+        #44=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#43,#47));#45=IFCREPRESENTATIONMAP(#5,#44);#46=IFCMAPPEDITEM(#45,#42);\
+        #25=IFCSTYLEDITEM(#10,(#20),$);#26=IFCSTYLEDITEM(#11,(#27),$);{}{}",
+        map_of("#10"), style(20, [0.25, 0.75, 0.25], 0.), style(27, [0.75, 0.75, 0.25], 0.));
+    let source = source("#46", &rest);
+    let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWall, WALL_GREY);
+    assert_eq!(parts.len(), 2);
+    near(parts[0].rgba, [0.25, 0.75, 0.25, 1.]);
+    near(parts[1].rgba, [0.75, 0.75, 0.25, 1.]);
+    assert_eq!((parts[0].geometry_item_id, parts[1].geometry_item_id), (Some(10), Some(11)));
+}

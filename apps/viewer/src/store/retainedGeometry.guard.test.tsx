@@ -79,7 +79,7 @@ describe('#7955 M2 shape-only guard', () => {
       const detect = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Detect all clashes');
       assert.ok(detect);
       assert.equal(detect.disabled, retained);
-      const reason = 'Unavailable on a Retained · shape-only model: its meshes have no openings, layers or appearance. Reload it with the exact kernel to use this.';
+      const reason = 'Unavailable on a Retained · shape-only model: its meshes have no material layers or surface normals yet. Reload it with the exact kernel to use this.';
       assert.equal(detect.title, retained ? reason : '');
       for (const label of ['Find duplicates', 'Discipline matrix']) {
         const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);

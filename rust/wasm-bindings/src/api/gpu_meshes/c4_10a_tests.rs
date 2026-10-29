@@ -114,7 +114,7 @@ fn run(
     jobs: &[u32],
 ) {
     let (x, y, z) = pre.meta.frame.rtc_offset();
-    api.produce_batch(content, &super::super::batch_wire::BatchWire {
+    api.produce_batch(content, &crate::api::gpu_meshes::batch_wire::BatchWire {
             jobs_flat: jobs,
             unit_scale: super::super::prepass_sharded::stream_meta_unit_scale(&pre.meta),
             rtc_x: x,

@@ -59,7 +59,7 @@ pub(super) fn run(
     jobs: &[u32],
 ) -> (Vec<ElementMeshOutput>, GeometryDiagnostics) {
     let (rtc_x, rtc_y, rtc_z) = prepass.meta.frame.rtc_offset();
-    let (outputs, diagnostics, occurrences) = api.produce_batch(content, &super::super::batch_wire::BatchWire {
+    let (outputs, diagnostics, occurrences) = api.produce_batch(content, &crate::api::gpu_meshes::batch_wire::BatchWire {
             jobs_flat: jobs,
             unit_scale: stream_meta_unit_scale(&prepass.meta),
             rtc_x: rtc_x,

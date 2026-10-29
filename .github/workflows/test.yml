@@ -974,7 +974,7 @@ jobs:
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
           # #7782 C4-11a: retain source/BRep epochs; break derived cache resets.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-11a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-11a/behaviour.oracle.patch'; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-11a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-11a/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs)
           # #7782 C4-10a: retain cache/report APIs and test wiring; suppress
           # input-refusal counting so the per-attempt witnesses must fail.

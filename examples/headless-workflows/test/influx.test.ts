@@ -49,6 +49,8 @@ test('#8090 query is bounded and rejects interpolation, credentials and unsuppor
   assert.ok(body.query.includes('limit(n: 13)'));
   assert.ok(body.query.includes('group(columns: [])'));
   assert.deepEqual(body.dialect.annotations, []);
+  // This literal payload verifies Flux interpolation rejection.
+  // eslint-disable-next-line no-template-curly-in-string
   assert.throws(() => queryRequest({ ...selection, bucket: '${http.post()}' }), /interpolation/);
   assert.throws(() => queryRequest({ ...selection, url: 'http://192.168.1.2:8086' }), /HTTPS/);
   assert.throws(() => queryRequest({ ...selection, url: 'https://user:pass@influx.example.com' }), /credentials/);

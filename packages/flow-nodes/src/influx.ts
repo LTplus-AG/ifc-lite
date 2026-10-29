@@ -11,12 +11,14 @@ import { dataTable, latestPerSeries } from './influx-table.js';
 export { queryRequest, dataTable, latestPerSeries };
 export type { InfluxSelection };
 
-/** Redact both representations before strings reach diagnostics or data tables. */
+function influxTokenForms(token: string): string[] {
+  return token ? [...new Set([token, encodeURIComponent(token)])] : [];
+}
+
+/** Share raw/URI-encoded redaction for every surfaced error. */
 function redactInfluxText(message: string, token: string): string {
-  if (token) {
-    for (const secret of new Set([token, encodeURIComponent(token)])) {
-      message = message.split(secret).join('[REDACTED]');
-    }
+  for (const secret of influxTokenForms(token)) {
+    message = message.split(secret).join('[REDACTED]');
   }
   return message;
 }
@@ -26,8 +28,18 @@ export function redactInfluxError(error: unknown, token: string): string {
 }
 
 export function parseInfluxCsv(csv: string, selection: InfluxSelection): { history: Table; latest: Table } {
+  return parseInfluxResponse(csv, selection, '');
+}
+
+function parseInfluxResponse(csv: string, selection: InfluxSelection, token: string): { history: Table; latest: Table } {
   if (new TextEncoder().encode(csv).length > 2 * 1024 * 1024) throw new Error('InfluxDB response exceeds 2 MiB');
   const parsed = parseCsvText(csv, ',', true);
+  const secrets = influxTokenForms(token);
+  const containsToken = (cell: string) => secrets.some(secret => cell.includes(secret));
+  // Decode CSV escaping first, then reject before grouping can change identity.
+  if (secrets.length && (parsed.header.some(containsToken) || parsed.rows.some(row => row.fields.some(containsToken)))) {
+    throw new InfluxRequestError('data', redactInfluxText('InfluxDB response contains credentials', token));
+  }
   if (parsed.rows.some(row => row.fieldCountMismatch)) throw new Error('Malformed or multi-table CSV response');
   const table: Table = {
     key: selection.guidTag,
@@ -98,10 +110,7 @@ export async function fetchInfluxReadings(selection: InfluxSelection, token: str
           reader.releaseLock();
         }
       }
-      // A hostile upstream could echo credentials into a tag. Redact before
-      // parsing so neither data displays nor downstream diagnostics leak it.
-      csv = redactInfluxText(csv, token);
-      return parseInfluxCsv(csv, selection);
+      return parseInfluxResponse(csv, selection, token);
     } catch (error) {
       // Parser errors contain only fixed validation messages; transport stream
       // exceptions may contain anything, so do not publish their text.

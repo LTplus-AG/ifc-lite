@@ -23,6 +23,8 @@ describe('InfluxDB shared adapters (#8090)', () => {
     for (const url of ['http://192.168.1.2:8086', 'http://localhost.evil', 'https://u:p@example.com', 'https://example.com?token=secret']) {
       expect(() => queryRequest({ ...selection, url })).toThrow();
     }
+    // Deliberately literal Flux interpolation is hostile input for this regression.
+    // eslint-disable-next-line no-template-curly-in-string
     for (const patch of [{ bucket: '${http.post()}' }, { minutes: 1441 }, { maxSamples: 10001 }, { guidTag: '_value' }]) {
       expect(() => queryRequest({ ...selection, ...patch })).toThrow();
     }
@@ -67,17 +69,25 @@ describe('InfluxDB shared adapters (#8090)', () => {
       await expect(fetchInfluxReadings(selection, token, transport)).rejects.not.toThrow(token);
     }
     await expect(fetchInfluxReadings(selection, token, async () => { throw new TypeError(token); })).rejects.toMatchObject({ kind: 'network' });
-    const echoed = await fetchInfluxReadings(selection, token, async () => new Response(header + row('20', token)));
-    expect(JSON.stringify(echoed)).not.toContain(token);
+    await expect(fetchInfluxReadings(selection, token, async () => new Response(header + row('20', token)))).rejects.toMatchObject({ kind: 'data' });
   });
-  it('#8297 removes raw and URI-encoded token echoes from history and latest tags', async () => {
+  it('#8297 rejects CSV-escaped token echoes in decoded cells and headers', async () => {
+    const credential = 'secret"quote';
+    for (const echoed of [header + row('20', 'space', '"prefix-secret""quote-suffix"'), header.replace('device', '"secret""quote"') + row()]) {
+      await expect(fetchInfluxReadings(selection, credential, async () => new Response(echoed))).rejects.toMatchObject({
+        kind: 'data', message: 'InfluxDB response contains credentials',
+      });
+    }
+  });
+  it('#8297 rejects raw/encoded token echoes instead of collapsing distinct series', async () => {
     const credential = 'secret/a+b';
-    const encoded = encodeURIComponent(credential);
-    const echoed = await fetchInfluxReadings(selection, credential, async () => new Response(header + row('20', 'space', `${credential}:${encoded}`)));
-    expect(echoed.history.rows[0].device).toBe('[REDACTED]:[REDACTED]');
-    expect(echoed.latest.rows[0].device).toBe('[REDACTED]:[REDACTED]');
-    expect(JSON.stringify(echoed)).not.toContain(credential);
-    expect(JSON.stringify(echoed)).not.toContain(encoded);
+    const echoed = header + row('20', 'space', credential) + row('21', 'space', encodeURIComponent(credential), '2026-10-24T10:00:00.000000002Z');
+    const unchanged = parseInfluxCsv(echoed, selection).latest;
+    expect(unchanged.rows).toHaveLength(2);
+    expect(matchInfluxSeries(unchanged, [{ GlobalId: 'space' }]).ambiguous).toHaveLength(2);
+    await expect(fetchInfluxReadings(selection, credential, async () => new Response(echoed))).rejects.toMatchObject({
+      kind: 'data', message: 'InfluxDB response contains credentials',
+    });
   });
   it('uses direct authenticated POST, fails oversized responses and sends no request with invalid config', async () => {
     let count = 0;

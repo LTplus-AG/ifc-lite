@@ -24,8 +24,9 @@ fn universe(root: &Path) -> BTreeMap<String,BTreeMap<u32,String>> {
             assert!(models.entry(fields[0].into()).or_default().insert(fields[1].parse().unwrap(), status).is_none());
         }
     }
-    // f-i remains outside the coverage ledger; M11-N preregisters only (d)/(e).
-    assert!(models.insert(fi::MODEL.into(),fi::IDS.into_iter().map(|id| (id,"published".into())).collect()).is_none());
+    // Ruling A (#7955): (e) has an upstream multi-segment directrix refusal.
+    // This assertion must flag when that route lands so its bend gate is enabled.
+    assert!(models.insert(fi::MODEL.into(),[(425,"published".into()),(507,"refused:operation_unsupported".into())].into_iter().collect()).is_none());
     models
 }
 
@@ -76,13 +77,20 @@ fn m11_n_7955_committed_corpus_source_normals() {
                         }
                         rows.push(json!({"id":product.product_id,"status":"published","sourceSurfaces":source,"parts":product.parts.iter().map(|p|
                             json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object,
-                                "revisionLocalFaces":p.revision_local_faces}))
+                                "revisionLocalFaces":p.revision_local_faces,
+                                "surfaceIndices":normals::check_mesh(&p.positions,&p.indices,&p.world_from_object,
+                                    p.normals.as_ref().unwrap(),&source).unwrap().surface_indices}))
                             .collect::<Vec<_>>() }));
                         println!("normal source witness {model}:{} {check:?}; exact/source angle histogram (report-only): {histogram:?}",product.product_id);
                     }
                     ProductOutcome::Refused {product_id,refusal,..} => {
                         refused += 1;
-                        if model == fi::MODEL { println!("f-i refusal #{product_id}: {refusal:?}"); }
+                        if model == fi::MODEL {
+                            println!("f-i refusal #{product_id}: {refusal:?}");
+                            assert_eq!(product_id,507,"only the upstream bend may refuse");
+                            assert_eq!(refusal.code(),"operation_unsupported");
+                            println!("sdk witness executed: m11_n_fi_bend_upstream_refusal");
+                        }
                         actual.insert(product_id,format!("refused:{}",refusal.code()));
                         rows.push(json!({"id":product_id,"status":"refused","code":refusal.code()}));
                     }

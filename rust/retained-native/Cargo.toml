@@ -12,6 +12,7 @@ default = []
 retained-runtime = ["ifc-lite-processing/retained-runtime", "ifc-lite-geometry-runtime/retained-runtime"]
 
 [dependencies]
+serde.workspace = true
 ifc-lite-core.workspace = true
 ifc-lite-geometry.workspace = true
 ifc-lite-processing.workspace = true

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 m11_n_corpus_normals
 m11_n_fi_arc
-m11_n_fi_bend
+m11_n_fi_bend_upstream_refusal
+# Ruling A: f-i (e) bend-crease oracle pending the multi-segment disk route.

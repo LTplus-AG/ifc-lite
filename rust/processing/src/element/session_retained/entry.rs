@@ -6,9 +6,11 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         context: &'a OwnedMeshProductionContext,
         options: &MeshProductionOptions,
         openings: &'a [DecodedEntity],
+        layers: super::layers::ProductLayers,
         decoder: &mut EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<Self, RetainedExecutionError> {
+        let mut layers = layers;
         if context.source().is_none() {
             return Err(RetainedExecutionError::Source(
                 RetainedContextError::Missing,
@@ -47,12 +49,18 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                     }
                     let (planned, terminal) = scopes
                         .with_scope(|| plan_in_scope(job, &context.borrowed(), options, d, r));
-                    // Plan precedence is authoritative: layers refuse before opening identity/source work.
-                    if matches!(planned.as_ref(), Some(((super::super::plan::PlanKind::Product { layer_class, .. }, _), _, _, _)) if *layer_class != 0) {
-                        return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy));
-                    }
+                    // Exact admission/merge precedes any opening source validation.
+                    let layers = if matches!(planned.as_ref(), Some(((super::super::plan::PlanKind::Product { layer_class, .. }, _), _, _, _)) if *layer_class != 0) {
+                        check_resources(&resources)?;
+                        // The caller admitted under the plan's own predicate.
+                        let admitted = layers.take().ok_or(RetainedExecutionError::Source(RetainedContextError::Mismatched))?;
+                        match admitted.map_err(RetainedExecutionError::LayerStrategy)? {
+                            ifc_lite_geometry::program::transactions::LayerAdmission::Bands(spec) => Some(spec),
+                            _ => None,
+                        }
+                    } else { None };
                     openings::validate_openings(context, job.id, openings, d, r)?;
-                    Ok::<_, RetainedExecutionError>((resources, planned, terminal))
+                    Ok::<_, RetainedExecutionError>((resources, planned, terminal, layers))
                 })
                 .map_err(protocol)
                 .and_then(|(result, stamp)| result.map(|result| (result, stamp)));
@@ -61,8 +69,12 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             if let Some(resources) = captured_resources {
                 check_resources(&resources)?;
             }
-            let ((resources, planned, terminal), _) = prepared?;
+            let ((resources, planned, terminal, layers), _) = prepared?;
             check_resources(&resources)?;
+            let layer_class = match planned.as_ref() {
+                Some(((super::super::plan::PlanKind::Product { layer_class, .. }, _), _, _, _)) => *layer_class,
+                _ => 0,
+            };
             let state = ProductState::planned(job, planned, terminal, Some(context.id()), None);
             if let Some(stop) = state.terminal() {
                 return Err(RetainedExecutionError::Stopped(stop));
@@ -80,6 +92,11 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 outer: None,
                 traversal,
                 openings: None,
+                layer_class,
+                layer_spec: layers,
+                layer_active: false,
+                layer_start: None,
+                band_ms: 0.,
                 opening_entities: openings,
                 type_values: Vec::new(),
                 type_map_members: Default::default(),

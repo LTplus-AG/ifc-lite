@@ -9,6 +9,8 @@
 
 mod affinity_chunks;
 mod batch;
+mod batch_prepare;
+mod batch_wire;
 mod batch_caches;
 mod partitioned_batch;
 mod batch_from_source;

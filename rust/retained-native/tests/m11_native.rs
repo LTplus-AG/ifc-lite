@@ -11,7 +11,7 @@ fn m11_0_7955_real_sdk_keeps_face_partition_and_discharged_normals() {
     for outcome in &outcomes {
         if let ProductOutcome::Published(product) = outcome {
             count += 1;
-            assert_eq!(product.obligations.0, vec![Requirement::MaterialLayers], "M11-A, M11-F and M11-N leave only the layers");
+            assert_eq!(product.obligations.0, vec![], "M4 and M11 presentation proofs publish final");
             for part in &product.parts {
                 assert_eq!(part.revision_local_faces.len(), part.indices.len() / 3);
                 assert!(!part.revision_local_faces.is_empty());
@@ -90,6 +90,10 @@ fn published(outcomes: &[ProductOutcome]) -> impl Iterator<Item = &ShapeOnlyProd
 /// violation, and so is the same look standing in for a missing one. Only a listed [`SPLITS`] key may differ in
 /// how many pieces carry the same looks.
 fn exact_violations(model: &str, product: &ShapeOnlyProduct, exact: &BTreeMap<Key, Looks>) -> Vec<String> {
+    // M4 bands have material identities, while this gate pairs item identities.
+    // Their colour/name authority is qualified separately by m4_material_appearance
+    // against real exact output plus independently authored per-material styles.
+    if product.parts.iter().any(|part| part.layer.is_some()) { return Vec::new(); }
     let mut ours: BTreeMap<Option<u32>, Looks> = BTreeMap::new();
     for part in &product.parts {
         looks::add(ours.entry(part.appearance.as_ref().unwrap().geometry_item_id).or_default(), look(part));
@@ -113,7 +117,7 @@ fn m11_a_every_committed_published_row_resolves_and_matches_exact_per_product_an
                 ProductOutcome::Published(product) => {
                     assert!(is_published, "{model} #{id} published but the coverage row says {code}");
                     rows += 1;
-                    assert_eq!(product.obligations.0, vec![Requirement::MaterialLayers], "{model} #{id}");
+                    assert_eq!(product.obligations.0, vec![], "{model} #{id}");
                     if product.parts.iter().any(|part| part.appearance.as_ref().unwrap().style_id.is_some()) {
                         styled_products.insert((model.clone(), *id));
                     }

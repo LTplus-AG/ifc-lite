@@ -30,7 +30,8 @@ async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_or
     let _driver = TestDriver::install(driver_factory().await?);
     let start = prepare_peer(0).await?;
     let source = append(
-        "#80=IFCBUILDINGELEMENTPROXY('p',$,$,$,$,#24,#26,$,.NOTDEFINED.);\n\
+        "#80=IFCBUILDINGELEMENTPROXY('p',$,$,$,$,#24,#9004,$,.NOTDEFINED.);\n\
+#9000=IFCPOLYLINE((#1,#1,#1));#9003=IFCSHAPEREPRESENTATION(#4,'Axis','Curve2D',(#9000));#9004=IFCPRODUCTDEFINITIONSHAPE($,$,(#25,#9003));\n\
 #81=IFCMATERIALLAYER($,0.1,$);#85=IFCMATERIALLAYER($,0.2,$);#82=IFCMATERIALLAYERSET((#81,#85),'layers');\n\
 #83=IFCMATERIALLAYERSETUSAGE(#82,.AXIS2.,.POSITIVE.,0.);\n\
 #84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#80),#83);\n\

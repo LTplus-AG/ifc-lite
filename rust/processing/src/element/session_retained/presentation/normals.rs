@@ -53,6 +53,7 @@ mod tests {
     #[test]
     fn m11_n_7955_unbaked_negative_frame_is_refused() {
         let mut part = super::super::super::publication::ShapePart {
+            layer: None, capped_volume_m3: None,
             positions: vec![], indices: vec![], revision_local_faces: vec![],
             world_from_object: [-2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 0.,0.,0.,1.],
             curved: false, halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None,

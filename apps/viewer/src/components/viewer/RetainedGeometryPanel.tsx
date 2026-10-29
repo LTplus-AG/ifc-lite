@@ -119,6 +119,7 @@ export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOp
             published: String(summary.published), candidates: String(summary.candidates),
             refused: String(refused), cancelled: String(summary.cancelled),
           })}</p>
+          {summary.published > 0 && !notApplied && <p>{t('retainedGeometry.panel.final')}</p>}
           {notApplied && <p className="text-muted-foreground">{t('retainedGeometry.panel.notApplied', { obligations: notApplied })}</p>}
         </div>
         <RetainedFaceTable modelId={modelId} faces={summary.faces} />

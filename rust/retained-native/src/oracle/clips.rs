@@ -23,6 +23,15 @@ pub struct ClipPart {
     pub curved: bool,
     pub mixed: bool,
 }
+impl ClipPart {
+    /// Independent host section with additional source-derived constraints (M4).
+    pub fn volume_with_planes(&self, extra: &[([f64; 3], f64)]) -> Option<f64> {
+        if self.mixed { return None; }
+        let mut planes: Vec<_> = self.planes.iter().map(Plane::equation).collect();
+        planes.extend_from_slice(extra);
+        section_volume(self.host.as_ref()?, &planes)
+    }
+}
 pub struct ClipExpectation { pub parts: Vec<ClipPart> }
 impl ClipExpectation {
     pub fn section_volume(&self) -> Option<f64> { self.parts.iter().try_fold(0., |v,p| Some(v+p.section_volume?)) }

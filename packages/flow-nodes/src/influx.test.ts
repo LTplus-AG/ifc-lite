@@ -27,6 +27,12 @@ describe('InfluxDB shared adapters (#8090)', () => {
       expect(() => queryRequest({ ...selection, ...patch })).toThrow();
     }
   });
+  it('#8297 accepts an empty display unit while required Flux fields remain non-empty', () => {
+    expect(queryRequest({ ...selection, unit: '' })).toEqual(queryRequest(selection));
+    for (const field of ['bucket', 'measurement', 'field', 'guidTag'] as const) {
+      expect(() => queryRequest({ ...selection, [field]: '' })).toThrow(/empty/);
+    }
+  });
   it('retains nanosecond ordering, history and separate tag sets', () => {
     const parsed = parseInfluxCsv(csv, selection);
     expect(parsed.history.rows).toHaveLength(5);

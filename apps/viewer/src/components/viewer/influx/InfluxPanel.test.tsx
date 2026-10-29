@@ -88,3 +88,22 @@ test('#8297 short and URI-encoded tokens skip persistence without rewriting fiel
     localStorage.setItem(INFLUX_CONFIG_KEY, saved!);
   }
 });
+
+// #8297: first-open Load must work when the optional display unit stays blank.
+test('#8297 Load accepts the default blank display unit', async () => {
+  useViewerStore.setState({ ...fixtureModels(), ifcDataStore: null, selectedEntityId: null, mutationViews: new Map() });
+  let requests = 0;
+  globalThis.fetch = async () => { requests++; return new Response(''); };
+  const ui = render(<InfluxPanel />);
+  const inputs = ui.querySelectorAll('input');
+  const values = ['http://localhost:8086', 'spike', 'monitoring', 'environment', 'temperature', 'ifc_guid'];
+  values.forEach((value, index) => type(inputs[index], value));
+  assert.equal(inputs[6].value, '');
+  type(inputs[7], 'valid-token-8297');
+  click(ui.querySelector('button')!);
+  await waitFor(() => Boolean(ui.querySelector('output')), 'Load with a blank unit');
+  assert.equal(requests, 1);
+  assert.match(ui.querySelector('output')?.textContent ?? '', /Loaded 0 samples/);
+  assert.equal(ui.querySelector('[role="alert"]'), null);
+  assert.equal(JSON.parse(localStorage.getItem(INFLUX_CONFIG_KEY)!).unit, '');
+});

@@ -33,7 +33,7 @@ export function queryRequest(selection: InfluxSelection) {
     throw new Error('Use an HTTPS (or http://localhost) InfluxDB base URL without credentials, query, or fragment');
   }
   literal(selection.org);
-  literal(selection.unit);
+  // unit is a display label, never interpolated into the Flux query.
   const minutes = selection.minutes ?? 60;
   const maxSamples = selection.maxSamples ?? 1000;
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new Error('minutes must be 1..1440');

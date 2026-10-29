@@ -39,14 +39,13 @@ export function bimcollabRelayRoute(): Plugin {
             );
             res.statusCode = response.status;
             response.headers.forEach((value, key) => res.setHeader(key, value));
-            // STREAM rather than buffer. The proxy this replaces streamed, and
-            // the relay's biggest response by far is a revision's file content:
-            // buffering would materialise a whole IFC in the Vite process
-            // before sending a byte, while the browser-side client then
-            // materialises its own copy. Replacing a streaming path with a
-            // buffering one is a regression even in dev, where the models are
-            // the same size they are anywhere else.
-            if (response.body) Readable.fromWeb(response.body as WebReadableStream).pipe(res);
+            // Preserve backpressure for 10–500 MB model downloads.
+            if (response.body) {
+              const body = Readable.fromWeb(response.body as WebReadableStream);
+              body.on('error', (error: Error) => res.destroy(error));
+              res.on('close', () => body.destroy());
+              body.pipe(res);
+            }
             else res.end();
           } catch (err) {
             res.statusCode = 502;

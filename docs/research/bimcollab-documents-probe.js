@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // BIMcollab Documents API — Phase 0 probe (see bimcollab-documents-api.md).
 // Paste into DevTools on the viewer AFTER connecting to a BIMcollab space via
 // BCF → server → BIMcollab. Read-only: it creates, uploads and changes nothing.

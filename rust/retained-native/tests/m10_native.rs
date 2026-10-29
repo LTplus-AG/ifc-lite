@@ -114,7 +114,7 @@ fn m10_sdk_native_parity_reference() {
     // Invalid IFC Scale remains a controller-only test; never corpus qualification.
     for outcome in &adversarial {match outcome {
         ProductOutcome::Published(p)=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":p.product_id,"code":"published","volume":geometry_assertions::measured(p).volume})),
-        ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":product_id,"code":refusal.code(),"kernelStatus":kernel_status(refusal)})),
+        ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":product_id,"code":refusal.code(),"kernelStatus":kernel_status(*refusal)})),
     }}
     for (fixture,text) in [("scaled",include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc")),
         ("submm",include_str!("../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc"))] {

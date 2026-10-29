@@ -60,6 +60,11 @@ fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
         _ => true,
     }
 }
+fn charge_scan(len: usize) -> Result<(), RetainedExecutionError> {
+    resource::charge(resource::Cost { work: len as u64 + 1, ..Default::default() })
+        .map_err(RetainedExecutionError::Stopped)?.retain();
+    Ok(())
+}
 /// Source facts of one logical operation; `chain` is `M_k...M_1` for Affine values.
 #[derive(Clone, Copy, Default)]
 pub(super) struct Lineage { curved: bool, uncertified: bool, chain: Option<[f64; 16]> }
@@ -68,6 +73,7 @@ pub(super) struct Lineage { curved: bool, uncertified: bool, chain: Option<[f64;
 pub(super) fn record(resources: &OwnedResourceContext, storage: &mut Storage,
     facts: &mut Vec<(LogicalRetainedDefinition, Lineage)>, operation: &RetainedPlanOperation)
     -> Result<(), RetainedExecutionError> {
+    charge_scan(facts.len())?;
     let find = |v: ValueRef<'_>| { let d = v.definition(); facts.iter().find(|(k, _)| *k == d).map(|(_, f)| *f).unwrap_or_default() };
     let fact = match operation.kind() {
         RetainedOperationKind::Construction(recipe) =>
@@ -92,6 +98,7 @@ pub(super) fn refuse_predicted<'a>(facts: &[(LogicalRetainedDefinition, Lineage)
     finals: impl Iterator<Item = ValueRef<'a>>) -> Result<(), RetainedExecutionError> {
     if facts.iter().any(|(_, f)| f.chain.is_some() && f.uncertified) { return Err(incomplete()); }
     for value in finals {
+        charge_scan(facts.len())?;
         let d = value.definition();
         let Some((_, f)) = facts.iter().find(|(k, _)| *k == d) else { continue };
         if let Some(m) = f.chain {

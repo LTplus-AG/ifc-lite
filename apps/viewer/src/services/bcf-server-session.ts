@@ -25,7 +25,7 @@ export function loadApi() {
 export async function completeSignIn(
   baseUrl: string,
   token: { access_token: string; refresh_token?: string; expires_in?: number },
-  appCredentials?: { clientId: string; clientSecret: string },
+  appCredentials?: { clientId: string; clientSecret: string; tokenRelay?: string },
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
   const client = new api.BcfApiClient({ baseUrl, getAccessToken: () => token.access_token });
@@ -38,6 +38,7 @@ export async function completeSignIn(
     tokenExpiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : 0,
     clientId: appCredentials?.clientId ?? '',
     clientSecret: appCredentials?.clientSecret ?? '',
+    tokenRelay: appCredentials?.tokenRelay ?? '',
     projectId: '',
     projectName: '',
   };

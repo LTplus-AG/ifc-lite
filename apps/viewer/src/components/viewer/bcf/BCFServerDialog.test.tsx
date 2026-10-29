@@ -433,6 +433,7 @@ describe('BCFServerDialog', () => {
       tokenExpiresAt: 0,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: 'p1',
       projectName: 'Project One',
     });
@@ -449,6 +450,7 @@ describe('BCFServerDialog', () => {
       tokenExpiresAt: 0,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: 'p1',
       projectName: 'Project One',
     };
@@ -487,6 +489,7 @@ describe('BCFServerDialog', () => {
       tokenExpiresAt: 0,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: 'p1',
       projectName: 'Project One',
     });
@@ -505,6 +508,7 @@ describe('BCFServerDialog', () => {
       tokenExpiresAt: 0,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: 'p1',
       projectName: 'Project One',
     };

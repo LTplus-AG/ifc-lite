@@ -393,18 +393,41 @@ returns a `Promise<RetainedModelRun>`. The default `pkg` does not expose this me
 
 The run buffers results until completion. Call `run.next()` until it returns
 `undefined`, then `run.free()`. Results follow the canonical processor's file
-order; `ids` filters products, and an empty ID array selects none. Type products
-and representationless jobs are skipped (orphan type geometry remains exact-only).
+order; `ids` filters products and orphan type products, and an empty ID array
+selects none. Orphan types follow products, with one atomic outcome per type and
+all its unreferenced maps in source order. Their MappingOrigin supplies placement;
+nested mappings retain f64 world precision. Instanced types, types with only curve maps
+that exact does not mesh, and representationless jobs are absent. One unsupported
+map refuses the entire type; there is no partial publication or exact retry.
+Published orphan types leave MaterialLayers and IfcAppearance unmet.
+Instanced type-library geometry is unavailable in retained mode.
 
 A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
 Each part has object-local metre `Float64Array` positions, `Uint32Array` indices,
 a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
-and `curved`. Every publication carries `marker: 'PresentationObligationsUnmet'`
+and `curved`. The optional `revisionLocalFaces` array preserves one kernel diagnostic
+index per triangle; these indices are not persistent IFC face identities. Optional
+`normals` are populated on every published part (per corner, absolute IFC Z-up axes).
+Planar faces use the attributed source-plane normal after every vertex passes
+planarity verification. Other faces use angle-weighted smoothing within each
+revision-local face and a 10° crease guard, after applying the composed world frame. Positions
+and indices stay unchanged, and `SurfaceNormals` is discharged. Optional `color`, `materialName`,
+`geometryItemId` and `materialId` remain reserved for independently qualified slices.
+`instanceKey` identifies eligible byte-equal mapped geometry, including its persistent
+face keys, for optional view instancing.
+Every published part carries `faces`: a string table of persistent source keys
+`#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
+`disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
+and cross-checked against the kernel's faces; `PersistentFaces` is discharged.
+Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambiguous`).
+`appearance_unsupported` remains reserved. Textures and indexed palettes
+are proven absent for retained-eligible products; tessellated bodies still refuse.
+Every publication carries `marker: 'PresentationObligationsUnmet'`
 and a nonempty `obligationsUnmet` list; consumers must display that marker. This
 is shape-only output. Supported openings are cut individually; completed cuts and
 plan-proven unvoided products discharge `OpeningClosure`. `cuts` reports completed
 cuts and `consumedParts` is zero: a consumed part refuses the entire product with
-`empty_result`. Layer, appearance and persistent-face obligations remain unmet.
+`empty_result`. Layer and appearance obligations remain unmet.
 Unsupported opening bodies report `opening_unsupported`; hosts with internal
 material-layer boundaries refuse `material_layer_strategy` before opening work.
 
@@ -425,7 +448,7 @@ The synchronous callback receives `start` (canonical `candidateIds` and a
 `buildPrePassOnce`, regardless of the ID filter.
 
 View events own a `MeshCollection`: extract its meshes and free every mesh
-handle and collection in `finally` blocks. Positions, flat normals and f64
+handle and collection in `finally` blocks. Positions, smoothed corner normals and f64
 origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
 Z-up metres. Colours are type defaults, and the shape-only marker still applies.
 The returned summary counts candidates, publications, refusals, restarts and
@@ -435,3 +458,16 @@ releases the worker; terminate the host Worker for immediate cancellation.
 Callback exceptions reject after controller cleanup, rather than cancel work.
 The source buffer moves into the Rust source bundle without a second Rust copy.
 `IfcAPI.retainedModel` and the default WASM engine remain unchanged.
+
+Eligible single-part view events also carry `instanceKey` and optional
+`instanceWorldFromObject`, the controller's composed IFC frame. The retained-only
+`encodeInstancedShard(meshes, keys, rtc)` accepts up to 256 extracted Y-up meshes,
+their full keys, and the session RTC offset. Supply each event's frame as the
+mesh's `worldFromObject`. It returns IFNS `shard` bytes, `flatIndices` into the
+input, and instance, group and pairing-rejection counts. The retained-only
+`instanceMinOccurrences()` returns the engine’s minimum eligible occurrence count,
+shared by the encoder and CLI reports. Groups must meet that threshold and pass
+the existing geometric pairing check;
+rejected groups remain flat. Render each input exactly once, through its shard
+or its flat mesh. The viewer flushes every 256 completed products and at session
+completion. CLI OBJ export continues to bake every occurrence.

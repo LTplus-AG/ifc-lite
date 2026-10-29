@@ -65,8 +65,11 @@ export function ifc5EntityRows(store: IfcDataStore, mutationView: MutablePropert
   // @raw-entity-enumeration-ok map the columnar source domain for the canonical effective iterator below
   for (let i = 0; i < entities.count; i++) {
     const id = entities.expressId[i];
+    // Written as the file states it: a derived row (a material from a class-less node) is not written, and a
+    // reclassified one (a window type the file calls IfcWindow) keeps the file's class.
+    if (store.derivedEntities?.added.has(id)) continue;
     const fromEnum = IfcTypeEnumToString(entities.typeEnum[i] as IfcTypeEnum);
-    const type = fromEnum !== 'Unknown' ? fromEnum : entities.getTypeName(id);
+    const type = store.derivedEntities?.retyped.get(id) ?? (fromEnum !== 'Unknown' ? fromEnum : entities.getTypeName(id));
     sourceIds.push(id);
     sourceRows.set(id, i);
     byId.set(id, { type: type === 'Unknown' ? 'IFCUNCLASSIFIED' : type });

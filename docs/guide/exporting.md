@@ -1366,3 +1366,5 @@ Crop each federation source before merging when sources use different project
 length units. The viewer follows this order automatically. Section export needs
 the built WASM runtime; it is deliberately opt-in and does not run during normal
 model loading or ordinary IFC export.
+
+Native export options expose `layer_slicing` (GLB: `with_layer_slicing(true)`); it defaults to false for GLB, OBJ, USD and BOS. Native callers can use `ProcessingRequest::layer_slicing(true)` directly.

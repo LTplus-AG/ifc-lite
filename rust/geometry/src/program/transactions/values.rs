@@ -15,12 +15,35 @@ impl Value {
     pub fn as_ref(&self) -> ValueRef<'_> { ValueRef(&self.0) }
 }
 impl<'a> ValueRef<'a> {
+    /// M11-I: source-only, single mapped occurrence with existing proper-rigid
+    /// placement authority. Derived Boolean/clip/layer/affine values have no
+    /// source definition and cannot acquire instancing authority here.
+    pub fn instance_representation_map(self) -> Option<u32> {
+        if self.world_from_source().is_none() || !self.0.is_product_placed() {
+            return None;
+        }
+        let placements = self.0.placements();
+        if placements.iter().filter(|p| matches!(p.stage, logical::RetainedPlacementStage::Mapping { .. })).count() != 1
+            || placements.iter().any(|p| logical::proper_rigid(&nalgebra::Matrix4::from_column_slice(&p.matrix)).is_err())
+            || logical::proper_rigid(&self.0.world_from_evaluation()).is_err() {
+            return None;
+        }
+        let bindings = self.0.presentation();
+        if bindings.iter().any(|p| p.texture_pending.is_some() || p.indexed_palette_pending || p.type_product.is_some()) {
+            return None;
+        }
+        let mut maps = bindings.iter().filter_map(|p| p.representation_map);
+        let map = maps.next()?;
+        maps.next().is_none().then_some(map)
+    }
     /// Source binding facts for diagnostics, not complete appearance authority.
     pub fn bindings(self) -> impl Iterator<Item = (u32, u32, Option<(u32, u8)>)> + 'a {
         self.0.presentation().iter().map(|p| (p.geometry_id, p.style_source_id, p.type_product))
     }
     pub fn definition(self) -> Definition { Definition(self.0.definition().clone()) }
     pub fn slot(self) -> Slot { Slot(self.0.slot()) }
+    /// Conservative bounds in the runtime object evaluation frame.
+    pub fn evaluation_bounds(self) -> Option<crate::document::EvaluationBounds> { self.0.bounds }
     pub fn evaluated_empty(self) -> Option<bool> { self.0.evaluated_empty() }
     pub fn object_frame(self) -> &'a [f64; 16] { self.0.object_frame() }
     pub fn world_from_source(self) -> Option<&'a [f64; 16]> { self.0.world_from_source() }
@@ -53,7 +76,7 @@ impl Operation {
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppearance, PersistentFaces }
+pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppearance, PersistentFaces, SurfaceNormals }
 pub struct Plan {
     pub(super) inner: logical::RetainedProductPlan,
     _storage: Option<crate::resource::Reservation>,
@@ -70,11 +93,11 @@ impl Plan {
         let mut values = Vec::new();
         let storage = resources.reserve_headers(&mut values, count).map_err(super::TransactionError::stopped)?;
         let mut remaining = Vec::new();
-        let requirements_storage = resources.reserve_headers(&mut remaining, 5).map_err(super::TransactionError::stopped)?;
+        let requirements_storage = resources.reserve_headers(&mut remaining, 6).map_err(super::TransactionError::stopped)?;
         remaining.extend([
             logical::RetainedRequirement::ProductPlacement, logical::RetainedRequirement::OpeningClosure,
             logical::RetainedRequirement::MaterialLayers, logical::RetainedRequirement::IfcAppearance,
-            logical::RetainedRequirement::PersistentFaces,
+            logical::RetainedRequirement::PersistentFaces, logical::RetainedRequirement::SurfaceNormals,
         ]);
         for plan in plans { values.extend(plan.inner.values); }
         resources.check().map_err(super::TransactionError::stopped)?;
@@ -100,6 +123,7 @@ impl Plan {
             logical::RetainedRequirement::MaterialLayers => Requirement::MaterialLayers,
             logical::RetainedRequirement::IfcAppearance => Requirement::IfcAppearance,
             logical::RetainedRequirement::PersistentFaces => Requirement::PersistentFaces,
+            logical::RetainedRequirement::SurfaceNormals => Requirement::SurfaceNormals,
         })
     }
 }

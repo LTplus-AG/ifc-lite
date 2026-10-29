@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 import { build } from 'vite';
 
 describe('BCF vendor app production bundle', () => {
-  it('includes allowlisted public values but never a configured VITE_ client secret', async () => {
+  it('includes allowlisted public values but never a configured client secret', async () => {
     const envDir = await mkdtemp(join(tmpdir(), 'ifc-lite-bcf-env-'));
     try {
       await writeFile(
@@ -19,6 +19,10 @@ describe('BCF vendor app production bundle', () => {
           'VITE_BCF_APP_BIMCOLLAB_CLIENT_ID=PUBLIC_CLIENT_SENTINEL',
           'VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI=https://viewer.example/Callback',
           'VITE_BCF_APP_BIMCOLLAB_CLIENT_SECRET=SECRET_MUST_NOT_SHIP_SENTINEL',
+          'VITE_BCF_APP_BIMCOLLAB_TOKEN_RELAY=/api/RELAY_PATH_SENTINEL',
+          // The token relay's server-only secret (#4919), as a developer
+          // would put it in apps/viewer/.env.local next to the VITE_ values.
+          'BCF_BIMCOLLAB_CLIENT_SECRET=SERVER_SECRET_MUST_NOT_SHIP_SENTINEL',
         ].join('\n'),
       );
 
@@ -49,6 +53,9 @@ describe('BCF vendor app production bundle', () => {
       assert.match(emitted, /PUBLIC_CLIENT_SENTINEL/, 'the build loaded the synthetic env');
       assert.doesNotMatch(emitted, /SECRET_MUST_NOT_SHIP_SENTINEL/);
       assert.doesNotMatch(emitted, /VITE_BCF_APP_BIMCOLLAB_CLIENT_SECRET/);
+      assert.match(emitted, /RELAY_PATH_SENTINEL/, 'the relay path is public configuration');
+      assert.doesNotMatch(emitted, /SERVER_SECRET_MUST_NOT_SHIP_SENTINEL/);
+      assert.doesNotMatch(emitted, /BCF_BIMCOLLAB_CLIENT_SECRET/);
     } finally {
       await rm(envDir, { recursive: true, force: true });
     }

@@ -17,10 +17,12 @@
  * but healthy product.
  */
 
-import type { CoordinateInfo, MeshData, StreamingGeometryEvent } from '@ifc-lite/geometry';
+import type { CoordinateInfo, StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { calculateMeshBounds, createCoordinateInfo } from '@/utils/localParsingUtils';
-import type { RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
+import type { RetainedFaceRow, RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
 import type { RetainedHostEvent, RetainedStart } from './retained-protocol';
+import { recordRetainedPublication } from './retainedPublication';
+export { faceRows } from './retainedFaces';
 
 /** The host client surface the source drives (`RetainedClient`, or a protocol fixture). */
 export interface RetainedRunner {
@@ -68,11 +70,14 @@ interface Accumulator {
   bounds: ReturnType<typeof calculateMeshBounds>['bounds'] | null;
   frame: RetainedStart['frame'] | null;
   meshes: number;
+  faces: Map<number, RetainedFaceRow[]>;
 }
 
 function snapshot(acc: Accumulator): RetainedGeometrySummary {
-  return { ...acc.summary, refused: [...acc.summary.refused], obligationsUnmet: [...acc.obligations].sort() };
+  return { ...acc.summary, refused: [...acc.summary.refused], obligationsUnmet: [...acc.obligations].sort(),
+    ...(acc.faces.size > 0 ? { faces: Object.fromEntries(acc.faces) } : {}) };
 }
+
 
 function unpublished(acc: Accumulator, row: RetainedUnpublishedRow): void {
   acc.received.add(row.expressId);
@@ -102,16 +107,6 @@ function coordinateInfo(acc: Accumulator): CoordinateInfo {
     ...(frame.needsShift ? { wasmRtcOffset: { x, y, z } } : {}),
     wasmRtcFrame: { x, y, z, needsShift: frame.needsShift },
   };
-}
-
-function grow(acc: Accumulator, meshes: MeshData[]): void {
-  if (meshes.length === 0) return;
-  const { bounds } = calculateMeshBounds(meshes);
-  if (!acc.bounds) { acc.bounds = bounds; return; }
-  for (const axis of ['x', 'y', 'z'] as const) {
-    acc.bounds.min[axis] = Math.min(acc.bounds.min[axis], bounds.min[axis]);
-    acc.bounds.max[axis] = Math.max(acc.bounds.max[axis], bounds.max[axis]);
-  }
 }
 
 type Pulled = { event: RetainedHostEvent } | { done: true } | { idle: true };
@@ -148,7 +143,7 @@ export async function* retainedGeometryEvents(
 ): AsyncGenerator<StreamingGeometryEvent> {
   const acc: Accumulator = {
     summary: { kernel: 'retained', candidates: 0, published: 0, refused: [], cancelled: 0, obligationsUnmet: [], completeness: 'running' },
-    candidateIds: new Uint32Array(), received: new Set(), obligations: new Set(), bounds: null, frame: null, meshes: 0,
+    candidateIds: new Uint32Array(), received: new Set(), obligations: new Set(), bounds: null, frame: null, meshes: 0, faces: new Map(),
   };
   // Every product would otherwise copy the whole row list into the store: at
   // most one mid-run summary per interval, and every boundary at once.
@@ -194,6 +189,9 @@ export async function* retainedGeometryEvents(
       if ('done' in pulled) break;
       const event = pulled.event;
       switch (event.kind) {
+        case 'progress':
+          yield { type: 'progress', phase: 'workers' };
+          break;
         case 'start': {
           started = true;
           acc.candidateIds = event.candidateIds;
@@ -206,13 +204,9 @@ export async function* retainedGeometryEvents(
           break;
         }
         case 'published': {
-          acc.received.add(event.expressId);
-          acc.summary.published++;
-          for (const obligation of event.obligationsUnmet) acc.obligations.add(obligation);
-          grow(acc, event.meshes);
-          acc.meshes += event.meshes.length;
+          recordRetainedPublication(acc, event);
           report(true);
-          yield { type: 'batch', meshes: event.meshes, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
+          yield { type: 'batch', meshes: event.meshes, instancedShards: event.instancedShards, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
           phase();
           break;
         }

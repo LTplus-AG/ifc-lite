@@ -8,6 +8,7 @@
 //! module-size ratchet.
 
 use crate::csg::ClippingProcessor;
+use crate::math::aabb::Aabb3;
 use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
 use crate::{Mesh, Point3, Vector3};
 use nalgebra::Matrix3;
@@ -218,15 +219,14 @@ pub(super) fn opening_obb_if_malformed(m: &Mesh) -> Option<OpeningBox> {
         .try_normalize(1.0e-9)?;
     let a2 = a0.cross(&a1).try_normalize(1.0e-9)?;
     let axes = [a0, a1, a2];
-    let mut lo = [f64::MAX; 3];
-    let mut hi = [f64::MIN; 3];
+    let mut bounds = Aabb3 {
+        min: [f64::MAX; 3],
+        max: [f64::MIN; 3],
+    };
     for v in &inliers {
-        for k in 0..3 {
-            let t = v.dot(&axes[k]);
-            lo[k] = lo[k].min(t);
-            hi[k] = hi[k].max(t);
-        }
+        bounds.extend(std::array::from_fn(|k| v.dot(&axes[k])));
     }
+    let (lo, hi) = (bounds.min, bounds.max);
     let half = [
         (hi[0] - lo[0]) * 0.5,
         (hi[1] - lo[1]) * 0.5,

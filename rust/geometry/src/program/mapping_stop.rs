@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Logical exhaustion stops siblings but closes entered sources normally, so
 //! completed prefix meshes receive every enclosing transform, innermost first.
+use super::drop::{report_drop, DropReason};
 use super::{Action, Event, MappingControl, Sink, Template};
 use crate::program::mapping_budget::LogicalRefusal;
 use crate::GeometryRouter;
-use ifc_lite_core::IfcType;
 
 impl MappingControl<'_> {
     pub(super) fn stop_logical(
@@ -38,16 +38,11 @@ impl MappingControl<'_> {
             self.complete(Err(error));
             return;
         };
-        {
-            let _policy = router.enter_unsupported_policy(parent.policy);
-            router.record_unsupported_item(IfcType::IfcMappedItem);
-        }
-        crate::diag::diag_debug!(
-            { item_id = item_id, error = %error, "skipping nested IfcMappedItem" }
-            else {
-                #[cfg(debug_assertions)]
-                eprintln!("[ifc-lite] Skipping nested IfcMappedItem #{}: {}", item_id, error);
-            }
+        report_drop(
+            DropReason::LogicalStop { item_id },
+            &error,
+            parent.policy,
+            router,
         );
         for level in &mut self.levels {
             level.truncated = true;

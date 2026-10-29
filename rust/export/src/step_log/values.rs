@@ -74,6 +74,12 @@ pub(crate) fn typed_marker(type_name: &str, value: &Value) -> Result<String, Unw
     if !token.starts_with("IFC") {
         token = format!("IFC{token}");
     }
+    // The token is written bare, outside any string quotes: a `(`, `;` or
+    // newline in an untrusted `typed.type` would close the attribute list and
+    // inject whole records into DATA (the class-name guard of EXPORT-STEP-26).
+    if !super::entities::is_entity_name(&token) {
+        return Err(Unwritable(format!("Cannot write {type_name:?} as a STEP type name: it is not an IFC identifier")));
+    }
     Ok(format!("{token}({inner})"))
 }
 

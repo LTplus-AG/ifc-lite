@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/publication_mesh.rs
++++ b/rust/processing/src/element/session_retained/publication_mesh.rs
+@@ -12,7 +12,7 @@
+     storage.reserve(resources, &mut revision_local_faces, mesh.faces.len())?;
+     positions.extend_from_slice(mesh.positions);
+     indices.extend_from_slice(mesh.indices);
+-    revision_local_faces.extend_from_slice(&[]);
++    revision_local_faces.extend_from_slice(mesh.faces);
+     Ok(ShapePart { positions, indices, world_from_object, curved, revision_local_faces,
+         normals: None, appearance: None, faces: None, instance_key: None })
+ }

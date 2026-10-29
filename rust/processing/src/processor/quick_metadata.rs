@@ -7,8 +7,8 @@ use crate::types::response::{
     QuickMetadataSpatialNode,
 };
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
-use ifc_lite_core::parser::{parse_ref, StepRecord};
-use ifc_lite_core::{keyword_eq, optional_text, parse_step_real, IfcType, StepListItems, IFC_TYPES};
+use ifc_lite_core::parser::StepRecord;
+use ifc_lite_core::{keyword_eq, optional_text, parse_step_real, IfcType, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -87,18 +87,7 @@ pub fn is_quick_spatial_type_ci(type_name: &str) -> bool {
         .any(|candidate| keyword_eq(type_name, candidate))
 }
 
-/// The references in attribute `index`: every `#n` item of a list, or the one
-/// reference the attribute is. An item that is not exactly `#digits` (`#+5`,
-/// `#12abc`, an id past `u32::MAX`) is skipped, not guessed.
-pub(super) fn ref_items(record: Option<&StepRecord<'_>>, index: usize) -> Vec<u32> {
-    let Some(token) = record.and_then(|record| record.attr(index)) else {
-        return Vec::new();
-    };
-    match StepListItems::of_list(token) {
-        Some(items) => items.filter_map(parse_ref).collect(),
-        None => parse_ref(token).into_iter().collect(),
-    }
-}
+pub(super) use crate::discovery::ref_items;
 
 /// The spatial node's `Name` (attribute 2), or `fallback` when it is absent,
 /// `$`, or blank.
@@ -136,18 +125,6 @@ pub(super) fn spatial_node_entry(bytes: &[u8], type_name: &str, id: u32) -> Quic
 pub(super) fn rel_links(bytes: &[u8], parent_index: usize, list_index: usize) -> Option<(u32, Vec<u32>)> {
     let record = StepRecord::parse(bytes)?;
     Some((record.ref_at(parent_index)?, ref_items(Some(&record), list_index)))
-}
-
-/// Attribute `index` of a scanned record when it is exactly one reference.
-#[inline(never)]
-pub(super) fn record_ref_at(bytes: &[u8], index: usize) -> Option<u32> {
-    StepRecord::parse(bytes)?.ref_at(index)
-}
-
-/// The references in attribute `index` of a scanned record ([`ref_items`]).
-#[inline(never)]
-pub(super) fn record_refs_at(bytes: &[u8], index: usize) -> Vec<u32> {
-    ref_items(StepRecord::parse(bytes).as_ref(), index)
 }
 
 /// A storey's elevation as the scan reads it, in the file's own length unit.
@@ -355,16 +332,7 @@ fn build_subtree(
             element_summaries
                 .get(element_id)
                 .cloned()
-                .unwrap_or(QuickMetadataEntitySummary {
-                express_id: *element_id,
-                type_name: "IfcProduct".to_string(),
-                name: format!("IfcProduct #{}", element_id),
-                global_id: None,
-                kind: "element".to_string(),
-                has_children: false,
-                element_count: None,
-                elevation: None,
-            })
+                .unwrap_or_else(|| element_placeholder(*element_id, "IfcProduct"))
         })
         .collect();
     Ok(QuickMetadataSpatialNode {
@@ -381,6 +349,20 @@ fn build_subtree(
         children,
         elements,
     })
+}
+
+/// Placeholder for an element whose authored metadata has not been decoded yet.
+pub(super) fn element_placeholder(id: u32, type_name: &str) -> QuickMetadataEntitySummary {
+    QuickMetadataEntitySummary {
+        express_id: id,
+        type_name: type_name.to_string(),
+        name: format!("{type_name} #{id}"),
+        global_id: None,
+        kind: "element".to_string(),
+        has_children: false,
+        element_count: None,
+        elevation: None,
+    }
 }
 
 #[cfg(test)]

@@ -20,6 +20,7 @@ pub enum TransactionFailureKind {
     Empty,
     OperationUnsupported,
     DeadlineExceeded,
+    EmptyResult,
 }
 #[derive(Debug)]
 pub struct TransactionError(RetainedFailure);
@@ -64,18 +65,26 @@ impl TransactionError {
             FailureSite::BooleanOperator => "boolean_operator",
             FailureSite::BooleanFirstOperand => "boolean_first_operand",
             FailureSite::BooleanSecondOperand => "boolean_second_operand",
+            FailureSite::BooleanStep => "boolean_step",
             FailureSite::ProductPlacement => "product_placement",
             FailureSite::MappingPlacement => "mapping_placement",
             FailureSite::TypeMapPlacement => "type_map_placement",
             FailureSite::MappingAffine => "mapping_affine",
             FailureSite::TypeMapAffine => "type_map_affine",
+            FailureSite::HalfSpaceClip => "halfspace_clip",
         };
         let cause = match &origin.cause {
+            OriginCause::Recipe(crate::document::RetainedRefusal::UnsupportedSource(reason))
+                if origin.site == FailureSite::BooleanSecondOperand && reason == "halfspace_union" => "halfspace_union",
+            OriginCause::Recipe(crate::document::RetainedRefusal::UnsupportedSource(reason))
+                if origin.site == FailureSite::BooleanSecondOperand && reason == "halfspace_intersection" => "halfspace_intersection",
             OriginCause::Recipe(_) => "recipe",
             OriginCause::Shape(_) => "shape",
             OriginCause::Core(_) => "core",
             OriginCause::Structure(_) => "structure",
             OriginCause::Mapping(_) => "mapping",
+            OriginCause::Boolean(super::logical::failure::BooleanReason::EmptyHost)
+                if origin.site == FailureSite::HalfSpaceClip => "consumed",
             OriginCause::Boolean(_) => "boolean",
             OriginCause::Value(_) => "value",
             OriginCause::Processor(_) => "processor",
@@ -100,6 +109,7 @@ impl TransactionError {
                         | OriginCause::Structure(StructuralReason::UnsupportedProduct)
                         | OriginCause::Processor(_),
                     ) => Kind::OperationUnsupported,
+                    Some(OriginCause::Boolean(super::logical::failure::BooleanReason::EmptyHost)) => Kind::EmptyResult,
                     _ => Kind::Source,
                 }
             }

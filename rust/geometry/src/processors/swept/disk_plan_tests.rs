@@ -93,3 +93,64 @@ fn owned_disk_keeps_empty_directrix_and_dangling_reference_distinct() {
         .lower(&missing, &mut decoder, TessellationQuality::Medium)
         .is_err());
 }
+
+/// Ring segment count chosen for a rod of `radius` file units at `quality`, in a file whose
+/// project declares millimetres (`mm`) or metres.
+fn ring_segments(radius: &str, mm: bool, quality: TessellationQuality) -> usize {
+    let unit = if mm { ".MILLI." } else { "$" };
+    let source = format!(
+        "#1=IFCCARTESIANPOINT((0.,0.,0.));\n\
+        #2=IFCCARTESIANPOINT((4.,0.,0.));\n\
+        #3=IFCPOLYLINE((#1,#2));\n\
+        #4=IFCSWEPTDISKSOLID(#3,{radius},$,$,$);\n\
+        #10=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#11);\n\
+        #11=IFCUNITASSIGNMENT((#12));\n\
+        #12=IFCSIUNIT(*,.LENGTHUNIT.,{unit},.METRE.);"
+    );
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(4).unwrap();
+    SweptDiskSolidProcessor::new(IfcSchema::new())
+        .lower(&entity, &mut decoder, quality)
+        .unwrap()
+        .unwrap()
+        .segments
+}
+
+#[test]
+fn thin_rods_coarsen_below_medium_by_their_size_in_metres() {
+    use TessellationQuality::*;
+    // A 12 mm bar, authored in millimetres and in metres: the same rod either way.
+    for (radius, mm) in [("6.", true), ("0.006", false)] {
+        assert_eq!(ring_segments(radius, mm, Lowest), 4, "{radius} mm={mm}");
+        assert_eq!(ring_segments(radius, mm, Low), 6, "{radius} mm={mm}");
+        assert_eq!(ring_segments(radius, mm, Medium), 24, "{radius} mm={mm}");
+        assert_eq!(ring_segments(radius, mm, Highest), 96, "{radius} mm={mm}");
+    }
+    // A 300 mm pipe, and a value of 6 that is metres, not millimetres: never a thin rod.
+    for (radius, mm) in [("150.", true), ("6.", false)] {
+        assert_eq!(ring_segments(radius, mm, Lowest), 6, "{radius} mm={mm}");
+        assert_eq!(ring_segments(radius, mm, Low), 12, "{radius} mm={mm}");
+        assert_eq!(ring_segments(radius, mm, Medium), 24, "{radius} mm={mm}");
+    }
+}
+
+#[test]
+fn thin_rod_at_low_meshes_a_closed_hexagonal_tube() {
+    let source = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n\
+        #2=IFCCARTESIANPOINT((4.,0.,0.));\n\
+        #3=IFCPOLYLINE((#1,#2));\n\
+        #4=IFCSWEPTDISKSOLID(#3,0.006,$,$,$);";
+    let mut decoder = EntityDecoder::new(source);
+    let entity = decoder.decode_by_id(4).unwrap();
+    let mesh = SweptDiskSolidProcessor::new(IfcSchema::new())
+        .lower(&entity, &mut decoder, TessellationQuality::Low)
+        .unwrap()
+        .unwrap()
+        .evaluate();
+    let hexagon = 0.5 * 6.0 * (2.0 * std::f64::consts::PI / 6.0).sin() * 0.006_f64.powi(2);
+    assert!((signed_volume(&mesh) - hexagon * 4.0).abs() < 1e-9);
+    for vertex in mesh.positions.chunks_exact(3) {
+        let radius = (f64::from(vertex[1]).powi(2) + f64::from(vertex[2]).powi(2)).sqrt();
+        assert!(radius < 1e-9 || (radius - 0.006).abs() < 1e-7);
+    }
+}

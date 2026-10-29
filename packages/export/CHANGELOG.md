@@ -1,5 +1,19 @@
 # @ifc-lite/export
 
+## 4.13.1
+
+### Patch Changes
+
+- [#8195](https://github.com/LTplus-AG/ifc-lite/pull/8195) [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0) Thanks [@petruconduraru](https://github.com/petruconduraru)! - The IFC5 exporter writes the classes the source IFCX file states: a window type the reader derived keeps the file's `IfcWindow`, and the `IfcMaterial` rows the reader added from class-less nodes are not written.
+
+- [#8307](https://github.com/LTplus-AG/ifc-lite/pull/8307) [`e07f142`](https://github.com/LTplus-AG/ifc-lite/commit/e07f142fb7bd9c0f389048d40ffde3eaa140f429) Thanks [@louistrue](https://github.com/louistrue)! - Security: a `{ typed: { type, value } }` attribute value whose type name is not an IFC identifier is now refused instead of being written bare into the STEP output, where it could break out of the attribute list and inject records (GHSA-hw42-92fr-x9vc).
+- Updated dependencies [[`1764bb8`](https://github.com/LTplus-AG/ifc-lite/commit/1764bb8a4658d3f7f00db1f651f6fb248aa53135), [`87f917e`](https://github.com/LTplus-AG/ifc-lite/commit/87f917e646ee7b9769dfab8b236cfe27432a6196), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`934eb31`](https://github.com/LTplus-AG/ifc-lite/commit/934eb3192eaf6fa3ea685f4e7bdac1c5dba3f622)]:
+  - @ifc-lite/codegen@1.19.1
+  - @ifc-lite/geometry@8.0.1
+  - @ifc-lite/data@6.4.0
+  - @ifc-lite/parser@9.8.0
+  - @ifc-lite/ifcx@4.6.0
+
 ## 4.13.0
 
 ### Minor Changes

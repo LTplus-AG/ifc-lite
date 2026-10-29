@@ -27,10 +27,22 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
                 self,
             ));
         }
-        let completed = self
-            .execute_started_async(worker, limits)
-            .await
-            .map_err(RuntimeRejectedExecution::terminal)?;
+        let completed = match self.execute_started_async(worker, limits).await {
+            Ok(completed) => completed,
+            Err(reason) => {
+                // Every invocation has returned. Source/resource refusals can
+                // release their receipts normally; no kernel work is in flight.
+                self.armed = false;
+                self.cancellation.stage.store(SETTLED_FAULT, Ordering::Release);
+                let contract = matches!(&reason, RetainedExecutionError::Runtime(fault)
+                    if fault.kind == RuntimeFaultKind::Contract);
+                if !reason.controller_cancelled() && !contract {
+                    // Fault recovery, never a controller-owned cancellation.
+                    self.cancellation.owner.retire();
+                }
+                return Err(RuntimeRejectedExecution::terminal(reason));
+            }
+        };
         self.armed = false;
         Ok(completed)
     }
@@ -50,18 +62,11 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
             // its captured domain, including a still-running Worker operation.
             let permit = self.reserve_receipt()?;
             let result = worker.invoke(operation.invocation(), limits).await;
+            // A transport/kernel fault wins over a deadline that elapsed while
+            // awaiting it. Do not relabel a dead worker as a cooperative stop.
+            let result = result?;
             self.checkpoint()?;
-            let result = match result {
-                Err(fault) if fault.kind == RuntimeFaultKind::Contract => {
-                    // invoke settled without an outstanding numerical operation.
-                    // A cancelled/checkpoint-failed invocation remains armed above.
-                    self.armed = false;
-                    self.cancellation.stage.store(SETTLED_FAULT, Ordering::Release);
-                    return Err(fault.into());
-                }
-                result => result,
-            };
-            realizations.push(operation.seal(result?, permit, &self.resources)?);
+            realizations.push(operation.seal(result, permit, &self.resources)?);
         }
         self.finish(realizations, storage)
     }

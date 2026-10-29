@@ -360,3 +360,23 @@ fn issue_7694_latin1_bytes_in_a_string_parse_like_the_ascii_twin() {
     assert_eq!(meshes(&latin_json), meshes(&ascii_json));
     assert_eq!(latin_json["meshes"], ascii_json["meshes"], "geometry must be identical");
 }
+
+#[test]
+fn issue_7782_d66_flags_reach_layer_slicing() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../processing/tests/fixtures/c4_native_unsliced_layers_7782.ifc");
+    let path = path.to_str().unwrap().as_bytes();
+    for (flags, count) in [(0, 1), (1, 3)] {
+        let mut ptr = std::ptr::null_mut();
+        let mut len = 0;
+        unsafe {
+            assert_eq!(
+                ifc_lite_parse_with_flags(path.as_ptr(), path.len(), 0, flags, &mut ptr, &mut len),
+                0
+            );
+            let data: serde_json::Value = serde_json::from_slice(std::slice::from_raw_parts(ptr, len)).unwrap();
+            ifc_lite_free(ptr, len);
+            assert_eq!(data["meshes"].as_array().unwrap().len(), count);
+        }
+    }
+}

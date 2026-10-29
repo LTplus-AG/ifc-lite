@@ -63,7 +63,7 @@ test('#7955 M3 unreviewed synthetic cases, including the baked scaled cutter, ma
 });
 
 
-test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in the unmet-normals header', {
+test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in the obligations header and the M11-N corner normals', {
   timeout: 120000,
   skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT header identity evidence',
 }, async () => {
@@ -84,9 +84,26 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
     }
   }
   const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');
-  const current = retainedObj(outcomes).split('\n');
-  assert.equal(current.length, previous.length, 'no added geometry, normals, groups or materials');
+  const written = retainedObj(outcomes).split('\n');
+  // M11-N: the writer emits one `vn` per triangle corner and faces reference them as `v//n`.
+  // Everything else (vertices, groups, materials, face vertex order) must stay byte-identical.
+  const corners = outcomes.flatMap(p => p.parts).reduce((n, part) => n + part.indices.length, 0);
+  assert.equal(written.filter(line => line.startsWith('vn ')).length, corners, 'exactly one normal per triangle corner');
+  assert.ok(!previous.some(line => line.startsWith('vn ')), 'the M11-0 base golden carries no normals');
+  let normal = 0;
+  const current = written.filter(line => !line.startsWith('vn ')).map(line => {
+    if (!line.startsWith('f ')) return line;
+    const refs = line.slice(2).split(' ').map(corner => {
+      const [vertex, empty, n] = corner.split('/');
+      assert.equal(empty, '', 'face corners are v//n');
+      assert.equal(Number(n), ++normal, 'face corners reference their own normal in order');
+      return vertex;
+    });
+    return `f ${refs.join(' ')}`;
+  });
+  assert.equal(current.length, previous.length, 'no added geometry, groups or materials beyond the corner normals');
   const changed = current.flatMap((line, index) => line === previous[index] ? [] : [index]);
-  assert.deepEqual(changed, [3], 'the ONLY changed line must be the presentation obligations header');
-  assert.equal(current[3], previous[3].replace(', PersistentFaces', '') + ', SurfaceNormals', 'M11-F discharges PersistentFaces');
+  assert.deepEqual(changed, [3], 'the ONLY other changed line must be the presentation obligations header');
+  assert.equal(current[3], previous[3].replace(', PersistentFaces', ''),
+    'M11-F discharges PersistentFaces and M11-N SurfaceNormals: neither is listed as unmet');
 });

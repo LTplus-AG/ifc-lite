@@ -97,6 +97,17 @@ fn issue_7955_source_oracle_clipped_opening_composes_after_host_clip(){
 }
 
 #[test]
+fn issue_7955_unknown_clip_host_never_qualifies_as_curved() {
+    // A valid CSG primitive outside this extrusion oracle supplies no positive
+    // curvature evidence. Its outer plane remains an independent constraint.
+    let text=fixture::SOURCE.replace("IFCEXTRUDEDAREASOLID(#4,#2,#3,2.)","IFCBLOCK(#2,4.,6.,2.)");
+    let e=oracle(&text,13);
+    assert_eq!(e.parts[0].planes.len(),1);
+    assert!(e.parts[0].host_volume.is_none());
+    assert!(!e.parts[0].curved,"unknown source must never widen parity tolerance");
+}
+
+#[test]
 fn issue_7955_outer_clips_survive_unknown_union_and_intersection_subtrees() {
     for operator in ["UNION","INTERSECTION"] {
         let e=oracle(&fixture::clipped_solid(operator),13);

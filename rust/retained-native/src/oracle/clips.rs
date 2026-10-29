@@ -94,7 +94,7 @@ fn part(mut current: DecodedEntity, mut world: Matrix4<f64>, sources: &AnalyticQ
                 });
                 let host = instance.as_ref().and_then(|i| ExtrudedHost::from_sources(sources,i));
                 let curved = instance.as_ref().and_then(|i| sources.extrusion_definitions.sources.iter().find(|s|s.key==i.source))
-                    .and_then(|s|s.source.profile.as_ref()).is_none_or(|p|p.loops.iter().flat_map(|l|&l.segments)
+                    .and_then(|s|s.source.profile.as_ref()).is_some_and(|p|p.loops.iter().flat_map(|l|&l.segments)
                         .any(|s|!matches!(s,ifc_lite_geometry::analytic::AnalyticCurveSegment::Line{..})));
                 let host_volume = host.as_ref().and_then(|h| section_volume(h,&[]));
                 let section_volume = if mixed {None} else {host.as_ref().and_then(|h| section_volume(h,&planes.iter().map(Plane::equation).collect::<Vec<_>>()))};

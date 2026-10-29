@@ -5,7 +5,14 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { renderNotices, inventoryInputs, checkNotices, applySupplemental } from './retained-notices.mjs';
+import * as notices from './retained-notices.mjs';
+
+const { renderNotices, inventoryInputs, checkNotices } = notices;
+// Namespace access: a missing election helper fails an assertion, not the module load.
+const applySupplemental = (...args) => {
+  assert.equal(typeof notices.applySupplemental, 'function', 'retained-notices exports applySupplemental (licence elections)');
+  return notices.applySupplemental(...args);
+};
 
 test('Refs #7955 notice bundle preserves attribution bytes and refuses corrupted inputs', () => {
   const text = 'Copyright Example Author\nPermission and disclaimer\n';

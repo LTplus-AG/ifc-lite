@@ -22,8 +22,8 @@ pub(super) enum Nest {
 impl AddState<'_, '_> {
     /// `r`'s id, how a new `class` is tied to it, and `r`'s class. A spatial
     /// structure element is refused: its decomposition is its aggregation.
-    /// So is a port in a spatial container: a port on an element is held
-    /// by the element alone, and only an element holds one.
+    /// So is an object with a container: a nested object is held by its host
+    /// alone. Only an element holds a port.
     pub(super) fn check_nest(&self, r: &ObjectRef, class: &str, spatial: bool, contained: bool) -> Result<(u32, Nest, String), String> {
         if spatial {
             return Err(format!("a new {class} is aggregated into its container and cannot also be nested"));
@@ -36,8 +36,8 @@ impl AddState<'_, '_> {
         if port && !self.is_a(&host, "IFCELEMENT") {
             return Err(format!("nesting host {r} is {host}: a port is nested only in an element"));
         }
-        if port && contained {
-            return Err(format!("a new {class} nested in an element cannot also have a container"));
+        if contained {
+            return Err(format!("a new {class} nested in {r} is held by it and cannot also have a container"));
         }
         if !crate::schema_convert::targets_ifc2x3(self.schema) {
             return Ok((id, Nest::Nested, host));

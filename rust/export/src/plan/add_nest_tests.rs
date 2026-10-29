@@ -101,13 +101,19 @@ fn a_port_under_a_host_with_no_nesting_gets_one() {
 fn a_host_that_cannot_hold_the_object_is_refused_and_nothing_is_written() {
     let storey = object(IfcClass::BuildingStorey, gid(1), Some(ObjectRef::Id(60)), Representation::None).with_nest_in(ObjectRef::Id(70));
     let contained = port(1, ObjectRef::Id(10)).with_container(ObjectRef::Id(70));
-    let cases: [(&str, NewObject, bool, &str); 10] = [
+    let cases: [(&str, NewObject, bool, &str); 11] = [
         ("IFC4", port(1, ObjectRef::Guid(gid(99).encode())), false, "not found"),
         ("IFC4", port(1, ObjectRef::Id(40)), false, "IFCWALLTYPE, not a product"),
         ("IFC2X3", port(1, ObjectRef::Id(70)), false, "a port is nested only in an element"),
         ("IFC4", port(1, ObjectRef::Id(70)), false, "a port is nested only in an element"),
         ("IFC4X3", contained, false, "cannot also have a container"),
         ("IFC2X3", port(1, ObjectRef::Id(10)).with_container(ObjectRef::Id(70)), false, "cannot also have a container"),
+        (
+            "IFC4",
+            object(IfcClass::BuildingElementProxy, gid(1), Some(ObjectRef::Id(70)), Representation::None).with_nest_in(ObjectRef::Id(10)),
+            false,
+            "cannot also have a container",
+        ),
         ("IFC4", port(1, ObjectRef::Id(70)).with_container(ObjectRef::Id(40)), false, "a port is nested only in an element"),
         (
             "IFC2X3",
@@ -143,21 +149,20 @@ fn ifc2x3_nests_an_object_under_one_of_its_own_class() {
     assert_eq!(nests.get_refs(5).unwrap(), [id_in(&out, gid(1))]);
 }
 
-/// A host with no placement of its own leaves the object placed by its
-/// container, as it would be without a host.
+/// A host with no placement of its own leaves the object placed absolutely,
+/// as it would be with no host and no container.
 #[test]
-fn an_object_nested_under_a_host_without_a_placement_is_placed_by_its_container() {
+fn an_object_nested_under_a_host_without_a_placement_is_placed_absolutely() {
     let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap();
     let wall = "'Wall 1',$,$,#20,";
     assert!(source.contains(wall), "the fixture's wall line changed");
     let source = source.replacen(wall, "'Wall 1',$,$,$,", 1);
-    let mut proxy = object(IfcClass::BuildingElementProxy, gid(1), Some(ObjectRef::Id(70)), Representation::None);
-    proxy.nest_in = Some(ObjectRef::Id(10));
+    let proxy = object(IfcClass::BuildingElementProxy, gid(1), None, Representation::None).with_nest_in(ObjectRef::Id(10));
     let (out, report) = run(source.as_bytes(), vec![add(proxy)]);
     assert_clean(&report, "IFC4");
     let mut decoder = EntityDecoder::new(&out);
     let placement = decoder.decode_by_id(id_in(&out, gid(1))).unwrap().get_ref(5).unwrap();
-    assert_eq!(decoder.decode_by_id(placement).unwrap().get_ref(0), Some(73), "the storey's placement");
+    assert_eq!(decoder.decode_by_id(placement).unwrap().get_ref(0), None, "placed absolutely");
     assert_eq!(nested_in(&out, 10), [id_in(&out, gid(1))]);
 }
 

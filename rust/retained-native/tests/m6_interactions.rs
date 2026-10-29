@@ -74,3 +74,19 @@ fn m6_sdk_mirrored_scaled_boxed_final_keeps_shape_and_clip_lineage() {
     assert!((volume-192.).abs()<192e-6);
     println!("sdk witness executed: m6_affine_boxed_interaction");
 }
+#[test]
+fn m6_sdk_authored_style_survives_bounded_clip() {
+    let text = SOURCE.replace("ENDSEC;\nEND-ISO", "\
+        #9100=IFCCOLOURRGB($,0.2,0.4,0.6);\n\
+        #9101=IFCSURFACESTYLERENDERING(#9100,0.25,$,$,$,$,$,$,.NOTDEFINED.);\n\
+        #9102=IFCSURFACESTYLE($,.BOTH.,(#9101));\n\
+        #9103=IFCSTYLEDITEM(#333,(#9102),$);\nENDSEC;\nEND-ISO");
+    let Some(outcomes) = support::native(&text) else {return};
+    let p = support::shape(&outcomes,1000);
+    assert!(p.cuts>0);
+    for part in &p.parts {
+        assert_eq!(part.appearance.as_ref().unwrap().rgba,[0.2,0.4,0.6,0.75]);
+        assert!(part.instance_key.is_none());
+    }
+    println!("sdk witness executed: m6_clipped_style");
+}

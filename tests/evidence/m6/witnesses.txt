@@ -9,3 +9,4 @@ m6_960_bounded_report
 m6_circle_boundary
 m6_presentation_interactions
 m6_affine_boxed_interaction
+m6_clipped_style

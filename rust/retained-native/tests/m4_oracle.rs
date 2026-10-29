@@ -80,3 +80,20 @@ fn m4_source_association_order_matches_the_hand_authored_stack() {
         }
     }
 }
+
+// #7955 review: planar interfaces do not make an arc-profile host linear.
+#[test]
+fn m4_planar_layer_source_keeps_host_curvature_and_hand_volumes() {
+    let text=std::str::from_utf8(CURVED).unwrap().lines()
+        .filter(|line|!line.contains("IFCRELVOIDSELEMENT"))
+        .collect::<Vec<_>>().join("\n")
+        .replace(".AXIS2.,.NEGATIVE.,0.,$)",".AXIS3.,.POSITIVE.,0.,$)");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let oracle=expected(text.as_bytes(),&sources,55).unwrap();
+    assert!(oracle.curved);
+    let area=std::f64::consts::PI*(10.6_f64.powi(2)-10_f64.powi(2))/4.;
+    for (volume,height) in oracle.volumes.iter().zip([0.1,0.2,2.7]) {
+        assert!((volume-area*height).abs()<1e-10);
+    }
+    assert!((oracle.opened_volume-area*3.).abs()<1e-10);
+}

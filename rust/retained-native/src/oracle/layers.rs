@@ -19,7 +19,7 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
         None => None,
     };
     let mut sum=0.; let boundaries:Vec<_>=usage.thickness.iter().take(usage.thickness.len()-1).map(|t|{sum+=t;sum}).collect();
-    let volumes=if let Some((center,radius,sigma))=usage.circle {
+    let (volumes,curved)=if let Some((center,radius,sigma))=usage.circle {
         let basis=Basis::new(&prism::profile_frame(sources,&instances[0])?)?;
         let center=basis.point(transform(&usage.frame,center));
         let mut hosts=prism::prisms(sources,id,&basis)?; if hosts.len()!=1 {return None;}
@@ -40,10 +40,12 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
             let band=radial_band(&host,a,b)?;
             result.push(super::openings::cut_prisms_volume(vec![band],cuts.clone())?);
         }
-        result
+        (result,true)
     } else {
         if !usage.openings.is_empty() {return None;}
         let host=ExtrudedHost::from_sources(sources,&instances[0])?;
+        let curved=host.loops.iter().flat_map(|(_,edges)|edges)
+            .any(|edge|matches!(edge,Edge::Arc{..}));
         let a=std::array::from_fn(|i|if i==usage.axis {1.} else {0.});
         let n=vector(&usage.frame,a).map(|v|v*usage.sense);
         let base=dot(n,transform(&usage.frame,a.map(|v|v*usage.offset)));
@@ -55,13 +57,13 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
             result.push(if let Some(clip) = clip { clip.volume_with_planes(&planes)? }
                 else { section_volume(&host,&planes)? });
         }
-        result
+        (result,curved)
     };
     let opened_volume = if let Some(clips) = clips {
         if !usage.openings.is_empty() || usage.circle.is_some() { return None; }
         clips.section_volume()?
     } else { super::openings::prism_result_volume(sources,id,&usage.openings)? };
-    Some(LayerExpectation{volumes,opened_volume,curved:usage.circle.is_some()})
+    Some(LayerExpectation{volumes,opened_volume,curved})
 }
 fn sector(host: &Prism,center:[f64;3]) -> Option<(f64,f64)> {
     if host.loops.len()!=1 || host.loops[0].1.len()!=4 {return None;}

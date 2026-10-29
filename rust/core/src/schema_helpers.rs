@@ -171,12 +171,6 @@ fn compute_has_geometry(upper: &str) -> bool {
 /// (under `IfcFacility`), their `*Part` variants (under `IfcFacilityPart`),
 /// and any future concrete spatial container all collapse to the same answer
 /// without the whitelist needing to enumerate them.
-/// Classify an already resolved type without repeating a keyword lookup.
-/// Used by quick metadata after geometry admission has succeeded (#7782).
-pub fn is_representationless_spatial_container_type(t: IfcType) -> bool {
-    is_non_geometric_spatial(t)
-}
-
 fn is_non_geometric_spatial(t: IfcType) -> bool {
     if t.is_subtype_of(IfcType::IfcSpace)
         || t.is_subtype_of(IfcType::IfcSite)

@@ -332,22 +332,3 @@ fn c4_5_geometry_job_spatial_and_raw_schema_contract() {
         b"#1=IFCBUILDINGSTOREY('g',$,$,$,$,$,$);"
     ));
 }
-
-// #7782: quick metadata sees only jobs admitted by is_geometry_job. Across
-// every schema keyword (plus raw exporter names), its resolved-type test must
-// equal the name-based geometry rule for those jobs.
-#[test]
-fn c4_5_quick_metadata_type_predicate_matches_name_classification() {
-    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str).chain([
-        "IFCREINFORCINGVENDORBAR",
-        "IFCSOLIDSTRATUM",
-        "IFCVENDORWIDGET",
-    ]) {
-        let ty = ifc_type_from_keyword(name);
-        assert_eq!(
-            is_representationless_spatial_container_type(ty),
-            is_representationless_spatial_container_by_name(name),
-            "{name}"
-        );
-    }
-}

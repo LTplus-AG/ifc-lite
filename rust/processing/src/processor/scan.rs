@@ -166,7 +166,7 @@ impl Scan<'_, '_> {
         if let Some(ifc_type) = self.discovery.observe(self.content, class, id, type_name, start, end) {
             // Spatial exception jobs already have a hierarchy row (#1910).
             if let Some(quick) = self.out.quick.as_mut() {
-                if !ifc_lite_core::is_representationless_spatial_container_type(ifc_type.clone()) {
+                if ifc_lite_core::has_geometry_by_name(type_name) {
                     quick.note_element(id, type_name);
                 }
             }

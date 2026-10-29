@@ -37,7 +37,10 @@ checksum="${'a'.repeat(64)}"
   put('.github/workflows/geometry-platform.yml', `repository: emscripten-core/emsdk\nref: ${'c'.repeat(40)}\nrun: emsdk/emsdk install 4.0.15\n`);
   put('licenses/retained/supplemental.json', '[]');
   for (const dir of ['packages/cli', 'packages/wasm']) mkdirSync(join(root, dir), { recursive: true });
-  put('licenses/retained/manifest.json', JSON.stringify({ inputs: inventoryInputs(root), components: [] }));
+  put('licenses/retained/manifest.json', JSON.stringify({ inputs: inventoryInputs(root), components: [{
+    name: 'external', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index',
+    license: 'MIT', scope: 'inert fixture', notices: [],
+  }] }));
   checkNotices(root, false);
   return { root, change(path, replace) { put(path, replace(readFileSync(join(root, path), 'utf8'))); } };
 }
@@ -84,4 +87,10 @@ test('Refs #7955 changing the emsdk pin requires notice review', t => {
   const f = fixture(t);
   f.change('.github/workflows/geometry-platform.yml', text => text.replace('c'.repeat(40), 'd'.repeat(40)));
   assert.throws(() => checkNotices(f.root), /inventory inputs changed/);
+});
+
+test('Refs #7955 removing a declared closure component cannot be hidden by regenerating outputs', t => {
+  const f = fixture(t);
+  f.change('licenses/retained/manifest.json', text => JSON.stringify({ ...JSON.parse(text), components: [] }));
+  assert.throws(() => checkNotices(f.root, false), /Missing inventory component: external/);
 });

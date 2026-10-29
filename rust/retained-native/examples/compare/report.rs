@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 pub struct Report {
     pub candidates: usize,
     pub published: usize,
+    pub normal_planar_fallbacks: usize,
     pub type_candidates: usize,
     pub type_published: usize,
     pub histogram: BTreeMap<String, usize>,
@@ -49,6 +50,7 @@ impl Report {
         exact_report_only: bool,
     ) {
         self.published += 1;
+        self.normal_planar_fallbacks += shape.normal_planar_fallbacks;
         self.cuts += shape.cuts;
         self.cut_times_ms.extend_from_slice(&shape.cut_times_ms);
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
@@ -250,7 +252,7 @@ impl Report {
     pub fn summary(&self) -> Value {
         json!({"schema":"ifc-lite.native-retained-comparison/1", "candidates":self.candidates,
             "typeProducts":{"candidates":self.type_candidates,"published":self.type_published},
-            "published":self.published, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
+            "published":self.published, "normalPlanarFallbacks":self.normal_planar_fallbacks, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),

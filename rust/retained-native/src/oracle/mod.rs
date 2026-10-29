@@ -18,3 +18,5 @@ pub mod bounded;
 pub mod type_maps;
 pub mod faces;
 pub mod face_bands;
+pub mod normals;
+

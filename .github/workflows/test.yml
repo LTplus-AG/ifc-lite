@@ -455,6 +455,9 @@ jobs:
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              - 'licenses/retained/**'
+              - 'LICENSE'
+              - '.github/actions/**'
               # `check-ci-path-coverage` reads .gitignore to decide which paths
               # are committed source and which are build output it must not
               # walk. That makes .gitignore an INPUT to the gate: an edit to it
@@ -962,6 +965,9 @@ jobs:
           # #7782 C4-8a: retain additive APIs; reject wrongly typed map sources.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-8a-shallow/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-8a-shallow/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-8a-shallow/behaviour.oracle.patch)
+          # #7782 D66: drop the job-router index hand-off; sliced witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-d66-slicing/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-d66-slicing/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-d66-slicing/behaviour.oracle.patch)
           # #7782 C4-9: keep the shared adapter; drop its geometry-style hit so
           # only the element fallback answers. Item-style witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-9-colour/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-9-colour/behaviour.oracle.patch'; then
@@ -2198,6 +2204,13 @@ jobs:
       # gate's own source and fails when one of them cannot trigger the job
       # that reads it -- an unreachable gate reports success, because a skipped
       # job counts as success in the aggregate `test` gate below (#3312).
+      # retained-notice-inputs.py needs tomllib (Python 3.11+); node-guards may run on
+      # the self-hosted runner, whose image is not guaranteed to provide it.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check retained notice inventory and generated bundles
+        run: node scripts/retained-notices.mjs --check
       - name: Check CI path coverage
         run: node scripts/check-ci-path-coverage.mjs
       # The neighbouring class, and the one the comment above names in passing:

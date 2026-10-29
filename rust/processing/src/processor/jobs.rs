@@ -147,6 +147,9 @@ fn job_router(ctx: &PassContext<'_>) -> GeometryRouter {
         rtc_offset: ctx.rtc_offset,
         ..RouterConfig::default()
     });
+    if let Some(layers) = &ctx.material_layers {
+        local_router.set_material_layer_index(std::sync::Arc::clone(layers));
+    }
     local_router.enable_content_dedup_shared(ctx.item_dedup_cache.clone());
     local_router.enable_shared_brep_signature_cache(ctx.brep_signature_cache.clone());
     local_router.enable_shared_mapped_item_cache(ctx.mapped_item_cache.clone());

@@ -428,3 +428,26 @@ fn deleting_instantiated_browser_job_or_output_fails_coverage_7782() {
             .any(|d| d.axis == Axis::TypeGeometry && d.element == Some(101)));
     }
 }
+
+#[test]
+fn c4_d66_opt_in_layer_payloads_match_browser_7782() {
+    let content = observe::fixture(LAYERS);
+    let browser = observe::browser_cold(&content);
+    let native = ifc_lite_processing::process(
+        &content,
+        &ifc_lite_processing::ProcessingRequest::full_pass().layer_slicing(true),
+        &mut (),
+    );
+    let expected: Vec<_> = browser.meshes().collect();
+    let actual: Vec<_> = native.meshes.iter().collect();
+    assert_eq!(expected.iter().filter(|m| m.express_id == 100).count(), 3);
+    // Use the C4-0 geometry/appearance contract: the browser obtains element
+    // names, GlobalIds and properties from its parser worker, not this batch.
+    // Keep per-element submesh order and every geometry/appearance axis intact.
+    let mut drifts = Vec::new();
+    let normalized = compare::frame_rule(
+        short(LAYERS), native.frame, browser.prepass.meta.frame, &mut drifts,
+    ).then_some((native.frame, browser.prepass.meta.frame));
+    compare::compare_meshes(short(LAYERS), &actual, &expected, normalized, &mut drifts);
+    assert!(drifts.is_empty(), "D66 opt-in geometry/appearance drift: {drifts:#?}");
+}

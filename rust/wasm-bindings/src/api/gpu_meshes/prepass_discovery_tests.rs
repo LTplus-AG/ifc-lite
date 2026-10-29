@@ -44,6 +44,40 @@ fn read_fixture() -> String {
 }
 
 #[test]
+fn c4_6b_flagged_named_classes_do_not_change_discovery() {
+    let mut content = LEGACY_JOB_FIXTURE.to_owned();
+    let end = content.rfind("ENDSEC;").expect("DATA terminator");
+    content.insert_str(end, "#31=IFCSTYLEDITEM($,(#4),$);\n");
+    let bytes = content.as_bytes();
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
+    let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
+    let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
+    let disabled = rustc_hash::FxHashSet::default();
+    let plain = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
+    let flagged: Vec<u8> = classes.iter().map(|&class| {
+        if class & ifc_lite_processing::PREPASS_CLASS_CODE_MASK != 0 {
+            class | ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB
+                | ifc_lite_processing::PREPASS_CLASS_FLAG_TYPE_CANDIDATE
+        } else {
+            class
+        }
+    }).collect();
+    let marked = discover_from_columns(bytes, &ids, &starts, &lengths, &flagged, &disabled);
+    assert!(!plain.buffered_jobs.is_empty());
+    assert_eq!(marked.buffered_jobs, plain.buffered_jobs);
+    assert_eq!(marked.total_jobs, plain.total_jobs);
+    assert_eq!(marked.project_id, plain.project_id);
+    assert_eq!(marked.site_position, plain.site_position);
+    assert_eq!(format!("{:?}", marked.prepass_spans), format!("{:?}", plain.prepass_spans));
+    assert_eq!(marked.mapped_item_spans, plain.mapped_item_spans);
+    assert_eq!(marked.type_candidate_spans, plain.type_candidate_spans);
+    assert_eq!(marked.has_layer_set, plain.has_layer_set);
+}
+
+#[test]
 fn sharded_column_discovery_schedules_storey_geometry_job() {
     let mut content = read_fixture();
     // #1910 review follow-up: the fixture only ever proved a storey

@@ -1,0 +1,78 @@
+{
+  "base": "1cf390dc5cdd0b461673693e1f7cbc2734801257",
+  "head": "3a8b7eeda6e63895b258fcbaf7a116b7289d2b93",
+  "finalFormattingHead": "6a3cc08c09825f5cf311750c109f3914cdbca7ce",
+  "host": "pc-wsl",
+  "runner": "c4-d66-fix-qualify-runner-r2.py",
+  "receipt": "732f3f6b-3e9b-4945-afdf-4186b47ea9f3",
+  "gate": "every phase <= 1.0005 and all identity fields identical",
+  "facetWeldReservation": false,
+  "rows": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "ratios": {
+        "parseIr": 0.9995820514161166,
+        "entityScanIr": 1.0000000181120428,
+        "lookupIr": 0.9999945143688272,
+        "preprocessIr": 0.9983604899532901,
+        "geometryIr": 1.000047370480165,
+        "totalIr": 0.9999558014424933
+      },
+      "identity": {
+        "meshes": true,
+        "vertices": true,
+        "triangles": true,
+        "inputSha256": true,
+        "captureSha256": true,
+        "geometryPayloadFnv1a64": true,
+        "diagnosticsSha256": true,
+        "perExpressId": true
+      },
+      "pass": true
+    },
+    {
+      "fixture": "duplex.ifc",
+      "ratios": {
+        "parseIr": 0.9977047794873175,
+        "entityScanIr": 1.0000000190824432,
+        "lookupIr": 0.999993112601976,
+        "preprocessIr": 0.9811307035905052,
+        "geometryIr": 1.0002096565461842,
+        "totalIr": 0.9999990046133335
+      },
+      "identity": {
+        "meshes": true,
+        "vertices": true,
+        "triangles": true,
+        "inputSha256": true,
+        "captureSha256": true,
+        "geometryPayloadFnv1a64": true,
+        "diagnosticsSha256": true,
+        "perExpressId": true
+      },
+      "pass": true
+    },
+    {
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "ratios": {
+        "parseIr": 0.9971620863495996,
+        "entityScanIr": 1.0000000039880794,
+        "lookupIr": 1.0,
+        "preprocessIr": 0.8821887481621966,
+        "geometryIr": 1.0003268756970511,
+        "totalIr": 1.0002982024794491
+      },
+      "identity": {
+        "meshes": true,
+        "vertices": true,
+        "triangles": true,
+        "inputSha256": true,
+        "captureSha256": true,
+        "geometryPayloadFnv1a64": true,
+        "diagnosticsSha256": true,
+        "perExpressId": true
+      },
+      "pass": true
+    }
+  ]
+}

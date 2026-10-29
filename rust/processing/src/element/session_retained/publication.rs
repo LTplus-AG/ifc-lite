@@ -12,6 +12,8 @@ pub struct ShapeOnlyProduct {
     pub cuts: u64,
     pub consumed_parts: usize,
     pub cut_times_ms: Vec<f64>,
+    /// Report-only M8 geometry diagnostic: attributed planes with off-plane vertices.
+    pub normal_planar_fallbacks: usize,
     pub obligations: PresentationObligationsUnmet,
     pub(super) _storage: Storage,
 }
@@ -138,7 +140,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         storage.reserve(&self.resources, &mut cut_times_ms, self.cut_times_ms.len())?;
         cut_times_ms.extend_from_slice(&self.cut_times_ms);
         let mut product = ShapeOnlyProduct {
-            cuts, consumed_parts, cut_times_ms,
+            cuts, consumed_parts, cut_times_ms, normal_planar_fallbacks: 0,
             product_id: self.product_id,
             ifc_type: self.ifc_type.clone(),
             parts,
@@ -148,7 +150,8 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         let discharged = presentation::apply(&mut product, &presentation::Context {
             plan: &self.plan, model: &self.presentation_context,
             resources: &self.resources, element_color: self.element_color, faces: &face_sources,
-            chord_metres: self.chord_metres,
+            chord_metres: self.limits.chord_metres,
+            angle_degrees: self.limits.angle_degrees,
         })?;
         product.obligations.0.retain(|r| !discharged.contains(r));
         if product.obligations.0.is_empty() { return Err(incomplete()); }

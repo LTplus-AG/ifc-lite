@@ -126,7 +126,7 @@ test('#7955 M11-A Node/wasm appearance equals the native run bit for bit', {
   const { runRetained } = await import('../../packages/cli/dist/retained/run.js');
   const bits = value => new Uint32Array(Float32Array.of(value).buffer)[0];
   for (const { path, rows } of reference) {
-    const outcomes = await runRetained(await validateEngine(engine), await readFile(path), Uint32Array.from(rows.map(row => row.id)));
+    const { outcomes } = await runRetained(await validateEngine(engine), await readFile(path), Uint32Array.from(rows.map(row => row.id)));
     assert.equal(outcomes.length, rows.length, path);
     for (const row of rows) {
       const actual = outcomes.find(outcome => outcome.expressId === row.id);

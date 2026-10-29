@@ -224,7 +224,11 @@ fn m4_band_appearance_missing_style_matches_exact_bits_and_names() {
     let parts = [23, 31, 33].map(|id| Bound { source: PartSource::Material(id), ..bound(fact(id)) });
     let appearances = resolve_parts(&AssemblyJob::from(&job), &parts, [0.8, 0.2, 0.1, 1.],
         &model.borrowed(), &mut decoder).unwrap();
-    let exact = crate::process_geometry(text.as_bytes());
+    let mut router = GeometryRouter::with_units(source.bytes(), &mut decoder);
+    decoder.seed_unit_scales(router.unit_scale(), 1.);
+    router.set_material_layer_index(Arc::new(ifc_lite_geometry::MaterialLayerIndex::from_content(
+        source.bytes(), &mut decoder)));
+    let exact = crate::element::produce_element_meshes(&job, &model.borrowed(), &Default::default(), &mut decoder, &router);
     let meshes: Vec<_> = exact.meshes.iter().filter(|mesh| mesh.express_id == 22).collect();
     assert_eq!(meshes.len(), 3, "exact must slice all three material bands");
     for appearance in &appearances {

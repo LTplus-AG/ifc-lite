@@ -299,7 +299,8 @@ fn measure_exact(exact: &ifc_lite_processing::ProcessingResult) -> Result<BTreeM
 #[test]
 fn exact_closed_layer_meshes_have_zero_closure_defects() {
     let text = include_str!("../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
-    let exact = ifc_lite_processing::process_geometry(text.as_bytes());
+    let exact = ifc_lite_processing::process(text.as_bytes(),
+        &ifc_lite_processing::ProcessingRequest::full_pass().layer_slicing(true), &mut ());
     assert_eq!(exact.meshes.iter().filter(|mesh| mesh.express_id == 22).count(), 3);
     let measured = measure_exact(&exact).unwrap();
     let wall = measured.get(&22).unwrap();

@@ -7,6 +7,8 @@ use ifc_lite_retained_native::run_model_native;
 #[allow(dead_code)]
 #[path = "../examples/compare/metrics.rs"]
 mod metrics;
+#[path = "common/m4_band_exact.rs"]
+mod band_exact;
 const CURVED: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc");
 const STRAIGHT: &str = include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc");
 fn run(text: &str, ids: &[u32]) -> Option<Vec<ProductOutcome>> {
@@ -239,8 +241,8 @@ fn issue_7955_m4_material_appearance_uses_each_bands_exact_resolver_key() {
     let text = include_str!("../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
     let outcomes = run(text, &[22]).unwrap();
     let host = shape(&outcomes, 22);
-    let exact = ifc_lite_processing::process_geometry(text.as_bytes());
-    let meshes: Vec<_> = exact.meshes.iter().filter(|mesh| mesh.express_id == 22).collect();
+    let exact = band_exact::produce(text);
+    let meshes: Vec<_> = exact.iter().filter(|mesh| mesh.express_id == 22).collect();
     assert_eq!(host.parts.len(), 3, "native must publish three slices");
     assert_eq!(meshes.len(), 3, "exact must publish three slices");
     let mut seen = std::collections::BTreeSet::new();

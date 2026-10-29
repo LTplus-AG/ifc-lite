@@ -115,6 +115,29 @@ describe('resident compare ownership (#8042 A2)', () => {
     assert.equal(useViewerStore.getState().compareError, null);
   });
 
+  for (const [name, change] of [
+    ['scope', () => useViewerStore.setState({ compareScope: 'data' })],
+    ['exclusions', () => useViewerStore.setState({ compareExcludedTypes: ['IfcWall'] })],
+    ['matching', () => useViewerStore.setState({ compareMatchByContent: true })],
+    ['accepted identities', () => useViewerStore.setState({ compareAcceptedIdentity: [] })],
+  ] as const) {
+    it(`does not retain a stale result after cancelling a cached run then changing ${name} (#8271)`, async () => {
+      await run();
+      assert.ok(useViewerStore.getState().compareResult);
+      let pending: Promise<void>;
+      act(() => { pending = hook.runComparison(); hook.cancelComparison(); });
+      assert.equal(frees.mock.callCount(), 2, 'cancel still releases the cached pair');
+      await act(async () => { await pending; change(); });
+      assert.equal(useViewerStore.getState().compareResult, null,
+        'a result without reusable handles must not disagree with the controls');
+      assert.equal(useViewerStore.getState().compareRunning, false);
+      assert.equal(creates.mock.callCount(), 2, 'cancelled continuation must not rebuild');
+      await run();
+      assert.ok(useViewerStore.getState().compareResult, 'Run can rebuild after cancellation');
+      assert.equal(creates.mock.callCount(), 4);
+    });
+  }
+
   for (const action of ['cancel', 'clear', 'unmount', 'supersede', 'selection', 'key', 'teardown'] as const) {
     it(`releases a locally owned build when ${action} happens after allocation, before publication`, async () => {
       const original = createModel;

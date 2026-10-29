@@ -189,9 +189,10 @@ fn produce_with_context(
     }
     let styles = production.borrowed();
     let element_color = resolve_color.then(|| {
-        product_shape_id(&product).and_then(|pds| crate::processor::resolve_element_color_for_product_definition_shape(
-            pds, styles.geometry_style_index, &mut source.decoder))
-            .or_else(|| styles.element_material_colors.get(&product_id).and_then(|colors| crate::style::element_material_fallback_color(colors)))
+        crate::processor::resolve_product_element_color(
+            product_shape_id(&product), product_id,
+            styles.geometry_style_index, styles.element_material_colors,
+            &mut source.decoder)
     }).flatten();
     let context = source.context.as_ref().ok_or("Missing canonical load context")?;
     if context.layers.is_sliceable(product_id) {

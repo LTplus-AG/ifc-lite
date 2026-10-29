@@ -1,0 +1,13 @@
+--- a/rust/processing/src/element/session_retained/presentation/appearance_resolve.rs
++++ b/rust/processing/src/element/session_retained/presentation/appearance_resolve.rs
+@@ -52,7 +52,9 @@
+ /// in exact to match, and refuses.
+ pub(super) fn bind(facts: &[PresentationFacts]) -> Result<Bound, Error> {
+     let Some(first) = facts.first() else { return Ok(Bound::unbound()) };
+-    let decider = facts.last().ok_or_else(|| unsupported(first.geometry_id, "binding"))?;
++    let decider = facts.iter().rev().find(|fact| fact.type_product.is_some())
++        .or_else(|| facts.iter().rev().find(|fact| fact.representation_map.is_none()))
++        .ok_or_else(|| unsupported(first.geometry_id, "binding"))?;
+     let fact = PresentationFacts {
+         texture_pending: facts.iter().any(|fact| fact.texture_pending),
+         indexed_palette_pending: facts.iter().any(|fact| fact.indexed_palette_pending),

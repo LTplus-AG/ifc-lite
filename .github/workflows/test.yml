@@ -973,6 +973,10 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
+          # #7782 C4-7a-R: keep the shared plan and mutate its browser class
+          # decision; the mode witness must observe the wrong class.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-r/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-r/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-7a-r/behaviour.oracle.patch --test rust/processing/tests/type_geometry_plan_7782.rs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-x/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-7a-x/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then

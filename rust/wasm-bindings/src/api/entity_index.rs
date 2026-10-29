@@ -92,6 +92,10 @@ impl IfcAPI {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+        self.cached_type_geometry_plan
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         self.cached_instantiated_type_ids
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

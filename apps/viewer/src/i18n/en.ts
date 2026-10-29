@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { influxEn } from './catalogues/influx.en';
 import { errorReportEn } from './catalogues/error-report.en';
 import { structuralReviewEn } from './catalogues/structural-review.en';
 import { groupReviewEn } from './catalogues/group-review.en';
@@ -161,6 +162,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...influxEn,
   ...zoneEmissionEn,
   ...newIfcEn,
   ...errorReportEn,

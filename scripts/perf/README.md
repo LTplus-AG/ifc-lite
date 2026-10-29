@@ -5318,3 +5318,19 @@ enum variants to default-compiled types changed the default WASM bytes even
 when their operations were unreachable. Gate the state as well as its entry
 points, and qualify fresh base/branch builds at the same source path; preserved
 archive mtimes can otherwise make Cargo reuse the wrong side of a comparison.
+
+## C4-9 browser colour resolver consolidation (#7782)
+
+The browser's flat colour-map adapter now delegates to processing's canonical
+style-source walk. This is a code-ownership change, not a native optimisation:
+the native caller already used that walk. Base/branch Callgrind qualification
+on Haus, duplex and ISSUE_129 found unchanged ordered mesh fingerprints and
+instruction counts within the existing run-to-run variation. Browser old/new
+resolver comparisons cover the moved wrapper regressions, mapped cycles and
+five styling-prepass fixtures. No wall-time speedup is claimed.
+
+Qualification lesson: switching a shared profiling target from an archived base
+to a branch can reuse a dependency set that predates a newly added module.
+Check the rebuilt executable's dependency file for the new module, not just
+Cargo's success status. The initial cached branch run was rejected; processing
+was rebuilt and the branch measurements repeated before accepting the result.

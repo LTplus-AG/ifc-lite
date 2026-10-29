@@ -86,6 +86,33 @@ impl Discovery {
         start: usize,
         end: usize,
     ) -> Option<IfcType> {
+        self.observe_inner::<false>(content, class, id, type_name, start, end)
+    }
+
+    /// Observe a browser record without collecting native type/mapping state.
+    #[inline(always)]
+    pub fn observe_browser(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<IfcType> {
+        self.observe_inner::<true>(content, class, id, type_name, start, end)
+    }
+
+    #[inline(always)]
+    fn observe_inner<const BROWSER: bool>(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<IfcType> {
         if matches!(
             class,
             ScanClass::IndexedColourMap
@@ -115,7 +142,9 @@ impl Discovery {
         if ifc_lite_core::is_geometry_job(type_name, &content[start..end]) {
             Some(ifc_lite_core::ifc_type_from_keyword(type_name))
         } else {
-            self.note_type_geometry(content, class, id, type_name, start, end);
+            if !BROWSER {
+                self.note_type_geometry(content, class, id, type_name, start, end);
+            }
             None
         }
     }

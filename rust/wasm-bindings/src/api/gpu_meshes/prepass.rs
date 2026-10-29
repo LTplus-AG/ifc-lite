@@ -7,7 +7,7 @@ use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
 use super::prepass_affinity::fold_u128_to_u32;
-use super::prepass_discovery::is_disabled;
+use super::prepass_discovery::ColumnsDiscovery;
 use super::prepass_memory::snapshot_entity_index;
 
 // The per-submesh #858 palette split lives inside the canonical per-element
@@ -90,7 +90,7 @@ impl IfcAPI {
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
         // Load START on the streaming pre-pass path (see build_pre_pass_once).
         self.reset_pipeline_diagnostics();
-        use ifc_lite_core::{has_geometry_by_name, keyword_eq, EntityDecoder, EntityScanner, IfcType};
+        use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
@@ -128,8 +128,8 @@ impl IfcAPI {
         let mut entity_index: rustc_hash::FxHashMap<u32, (usize, usize)> =
             rustc_hash::FxHashMap::with_capacity_and_hasher(estimated, Default::default());
 
-        let mut buffered_jobs: Vec<(u32, usize, usize, IfcType)> = Vec::with_capacity(chunk_size);
-        let mut total_jobs: u32 = 0;
+        let mut buffered_jobs;
+        let mut total_jobs;
         let mut project_id: Option<u32> = None;
         let mut site_position: Option<(u32, usize, usize)> = None;
         let mut meta_emitted = false;
@@ -140,18 +140,18 @@ impl IfcAPI {
         // layer index). Collect the spans they need HERE, during the one scan the
         // pre-pass already runs, then build + ship each ONCE below (`rel_associates_material`
         // and `defines_by_type` spans are already stashed in `prepass_spans`).
-        let mut mapped_item_spans: Vec<(u32, usize, usize)> = Vec::new();
+        let mapped_item_spans;
         // #957/#962: IfcTypeProduct candidates (id, span, resolved type), stashed
         // here so the orphan-type-geometry pass reuses THIS scan instead of a
         // second full EntityScanner walk over the file. `IfcType` is captured
         // from the scanner's `type_name` so it matches `collect_type_geometry_jobs`
         // byte-for-byte.
-        let mut type_candidate_spans: Vec<(u32, usize, usize, IfcType)> = Vec::new();
+        let type_candidate_spans;
         // Mirror `get_or_build_material_layer_index`'s `IFCMATERIALLAYERSET`
         // substring gate exactly, but detect it from the scan (a layer-set
         // keyword only appears as an entity type) so we never re-scan the file:
         // an `IfcMaterialLayerSet`/`...Usage` entity is present iff the gate fires.
-        let mut has_layer_set = false;
+        let has_layer_set;
         // Plane-angle scale, resolved with the meta by the shared resolver and
         // carried on the meta event so workers seed their batch decoders.
         let mut plane_angle_to_radians = 1.0f64;
@@ -163,7 +163,6 @@ impl IfcAPI {
         // Not a sample window: the RTC window is the file's (#4611). This is
         // only how many geometry jobs must be buffered before the meta event
         // is worth dispatching.
-        const META_EMIT_JOB_THRESHOLD: usize = 50;
 
         // Dispatch the `meta` event. One writer for both emission points (the
         // mid-scan one and the tail one) so they cannot ship different property
@@ -218,7 +217,7 @@ impl IfcAPI {
         // Stash them in the SHARED span container and resolve after the scan
         // with `ifc_lite_processing::prepass::resolve_prepass` — the exact
         // resolver the native pipeline and `buildPrePassOnce` run.
-        let mut prepass_spans = ifc_lite_processing::prepass::PrepassSpans::default();
+        let mut prepass_spans;
 
         // STAGE 2: fill collectors from the class columns; no byte scan.
         if let Some(columns) = columns {
@@ -237,67 +236,16 @@ impl IfcAPI {
             type_candidate_spans = d.type_candidate_spans;
             has_layer_set = d.has_layer_set;
         } else {
+        let mut discovery = ColumnsDiscovery::default();
+        let mut shared = ifc_lite_processing::discovery::Discovery::default();
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             if prebuilt_arc.is_none() {
                 entity_index.insert(id, (start, end)); // prebuilt mode: map unused
             }
 
-            if prepass_spans.stash(type_name, id, start, end) {
-                // span-list record, nothing else to do for it
-            } else if keyword_eq(type_name, "IFCPROJECT") {
-                if project_id.is_none() {
-                    project_id = Some(id);
-                }
-            } else if keyword_eq(type_name, "IFCSITE") {
-                site_position.get_or_insert((id, start, end));
-                if !is_disabled(&disabled_types, type_name) {
-                    let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-                    buffered_jobs.push((id, start, end, ifc_type));
-                    total_jobs += 1;
-                }
-            } else if keyword_eq(type_name, "IFCMAPPEDITEM") {
-                mapped_item_spans.push((id, start, end));
-            } else if keyword_eq(type_name, "IFCMATERIALLAYERSET")
-                || keyword_eq(type_name, "IFCMATERIALLAYERSETUSAGE")
-            {
-                has_layer_set = true;
-            } else {
-                // #957/#962: an IfcTypeProduct subtype (its geometry is
-                // authored on RepresentationMaps, not the type itself, so it
-                // never matches `has_geometry_by_name`). Stash it for the
-                // orphan-type pass; the RepresentationMaps attr-6 decode +
-                // referenced-filter happens later in
-                // `collect_type_geometry_jobs_from_spans`.
-                if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
-                    type_candidate_spans.push((id, start, end, type_ty));
-                }
-                if has_geometry_by_name(type_name) && !is_disabled(&disabled_types, type_name) {
-                    let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-                    // We don't bucket by simple/complex here — the host
-                    // distributes work across N geometry workers anyway, and
-                    // nothing else reads the split: RTC sampling has its own
-                    // file-scoped window (#4611).
-                    buffered_jobs.push((id, start, end, ifc_type));
-                    total_jobs += 1;
-                } else if !is_disabled(&disabled_types, type_name)
-                    && ifc_lite_core::is_representationless_spatial_container_by_name(
-                        type_name,
-                    )
-                    && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
-                {
-                    // #1910: mirrors the identical exception in
-                    // `rust/processing/src/processor/mod.rs` — a spatial
-                    // container `has_geometry_by_name` blocks by name
-                    // (`IfcBuilding` et al.) that exceptionally carries a
-                    // real `Representation` (e.g. a DGM/terrain export
-                    // with no `IfcBuildingElement` children at all) must
-                    // still be scheduled for meshing, or the browser
-                    // viewer renders nothing despite a correct scene tree.
-                    let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-                    buffered_jobs.push((id, start, end, ifc_type));
-                    total_jobs += 1;
-                }
-            }
+            discovery.observe(&mut shared, content, id, type_name, start, end, &disabled_types);
+            project_id = discovery.project_id;
+            site_position = discovery.site_position;
 
             // Once enough sample jobs are buffered, resolve the meta (unit
             // scales + RTC offset + building rotation) and emit it along with
@@ -309,7 +257,7 @@ impl IfcAPI {
             // substring search and resolves partial-index chains against a
             // full index instead of silently defaulting (a millimetre model
             // resolved as metres renders 1000× oversized).
-            if !meta_emitted && buffered_jobs.len() >= META_EMIT_JOB_THRESHOLD {
+            if let Some(scanned_through) = discovery.early_meta_end(meta_emitted) {
                 // MID-SCAN meta emission — the streaming win (~17 s → ~3 s
                 // time-to-first-geometry on a 986 MB file). The RESOLUTION logic
                 // (3-stage RTC ladder: partial-index detect → full-index
@@ -329,7 +277,6 @@ impl IfcAPI {
                 // PREBUILT index (sharded): full index available, so run the
                 // single-stage full-index ladder (what the partial ladder
                 // escalates to anyway) — no mid-scan full-rescan detour.
-                let scanned_through = buffered_jobs.last().map_or(0, |&(_, _, end, _)| end);
                 let (mut decoder, mode) = match &prebuilt_arc {
                     Some(pi) => (
                         EntityDecoder::with_arc_columnar_index(content, pi.clone()),
@@ -352,6 +299,12 @@ impl IfcAPI {
             }
         }
 
+        buffered_jobs = discovery.buffered_jobs;
+        total_jobs = discovery.total_jobs;
+        prepass_spans = shared.prepass_spans;
+        mapped_item_spans = discovery.mapped_item_spans;
+        type_candidate_spans = discovery.type_candidate_spans;
+        has_layer_set = discovery.has_layer_set;
         }
 
         // Tail meta: small files (scan path) + every columns-path file.

@@ -111,7 +111,8 @@ function checkSingleAttribute(
         : `attribute "${attrName}" to exist`,
       failure: {
         type: 'ATTRIBUTE_MISSING',
-        field: attrName,
+        // Rendered like the no-match branch's name constraint, quotes included.
+        field: formatConstraint({ type: 'simpleValue', value: attrName }),
         expected: facet.value ? formatConstraint(facet.value) : 'any value',
       },
     };

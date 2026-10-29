@@ -12,7 +12,7 @@ import type {
   PropertySetInfo,
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
-import { matchConstraint, formatConstraint } from '../constraints/index.js';
+import { matchConstraint, formatConstraint, formatPropertyPath } from '../constraints/index.js';
 import { ifcMeasureToXsdTypes, literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
 import { isExpressStringOnlyMeasure } from '../constraints/express-base.js';
 import { dataTypeFailure, dataTypePasses } from './property-datatype.js';
@@ -199,7 +199,7 @@ export function checkPropertyFacet(
   if (propertySets.length === 0) {
     return {
       passed: false,
-      expectedValue: `property "${formatConstraint(facet.baseName)}" in "${formatConstraint(facet.propertySet)}"`,
+      expectedValue: `property ${formatConstraint(facet.baseName)} in ${formatConstraint(facet.propertySet)}`,
       failure: {
         type: 'PSET_MISSING',
         field: formatConstraint(facet.propertySet),
@@ -282,7 +282,7 @@ export function checkPropertyFacet(
   return {
     passed: false,
     actualValue: availableProps || '(none)',
-    expectedValue: `${formatConstraint(facet.propertySet)}.${formatConstraint(facet.baseName)}`,
+    expectedValue: formatPropertyPath(facet.propertySet, facet.baseName),
     failure: {
       type: 'PROPERTY_MISSING',
       field: formatConstraint(facet.baseName),

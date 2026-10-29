@@ -19,6 +19,7 @@ import type {
 
 import {
   describeConstraint as renderConstraint,
+  describePropertyPath,
   interpolate as interpolateTemplate,
 } from './describe-constraint.js';
 import { en, de, fr, it, ru } from './locales/index.js';
@@ -184,61 +185,54 @@ class IDSTranslationServiceImpl implements TranslationService {
     context: 'applicability' | 'requirement'
   ): string {
     const t = this.translations;
-    const pset = this.describeConstraint(facet.propertySet);
-    const property = this.describeConstraint(facet.baseName);
+    // `exists` names the set and property apart; every other template
+    // names the joined `path`.
+    const names = {
+      pset: this.describeConstraint(facet.propertySet),
+      property: this.describeConstraint(facet.baseName),
+      path: describePropertyPath(facet.propertySet, facet.baseName, t),
+    };
 
     if (context === 'applicability') {
       if (facet.value) {
         if (facet.value.type === 'pattern') {
           return this.interpolate(t.applicability.property.pattern, {
-            pset,
-            property,
+            ...names,
             pattern: this.describeConstraint(facet.value),
           });
         }
         if (facet.value.type === 'bounds') {
           return this.interpolate(t.applicability.property.bounded, {
-            pset,
-            property,
+            ...names,
             bounds: this.describeConstraint(facet.value),
           });
         }
         return this.interpolate(t.applicability.property.equals, {
-          pset,
-          property,
+          ...names,
           value: this.describeConstraint(facet.value),
         });
       }
-      return this.interpolate(t.applicability.property.exists, {
-        pset,
-        property,
-      });
+      return this.interpolate(t.applicability.property.exists, names);
     } else {
       if (facet.value) {
         if (facet.value.type === 'pattern') {
           return this.interpolate(t.requirements.property.mustMatch, {
-            pset,
-            property,
+            ...names,
             pattern: this.describeConstraint(facet.value),
           });
         }
         if (facet.value.type === 'bounds') {
           return this.interpolate(t.requirements.property.mustBeBounded, {
-            pset,
-            property,
+            ...names,
             bounds: this.describeConstraint(facet.value),
           });
         }
         return this.interpolate(t.requirements.property.mustEqual, {
-          pset,
-          property,
+          ...names,
           value: this.describeConstraint(facet.value),
         });
       }
-      return this.interpolate(t.requirements.property.mustExist, {
-        pset,
-        property,
-      });
+      return this.interpolate(t.requirements.property.mustExist, names);
     }
   }
 

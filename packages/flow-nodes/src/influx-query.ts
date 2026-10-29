@@ -19,9 +19,7 @@ export interface InfluxSelection {
 // Flux interpolates ${...} inside strings. Reject that syntax rather than
 // accepting an expression disguised as a bucket, field, or tag value.
 function literal(value: string): string {
-  // Matching control bytes is intentional validation of untrusted Flux literals.
-  // eslint-disable-next-line no-control-regex
-  if (typeof value !== 'string' || !value || /[\u0000-\u001f]|\$\{|\{\{secret:/.test(value)) {
+  if (typeof value !== 'string' || !value || [...value].some(character => character.charCodeAt(0) < 0x20) || /\$\{|\{\{secret:/.test(value)) {
     throw new Error('Influx selection contains an empty, control, interpolation, or secret-reference value');
   }
   return JSON.stringify(value);

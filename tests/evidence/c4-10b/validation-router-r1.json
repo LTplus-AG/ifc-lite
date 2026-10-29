@@ -1,0 +1,174 @@
+{
+  "issue": 7782,
+  "lane": "C4-10b router",
+  "pr": 8317,
+  "reviewRound": 1,
+  "parent": "02efa507f9c981eaa049df0b43d4fed5c278e624",
+  "validation": {
+    "job": "e663b940-7385-435a-85c1-921e8868f842",
+    "host": "pc-wsl",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/e663b940-7385-435a-85c1-921e8868f842/receipt.json",
+    "source": "f44d5a2741e8156c5eb3089c6683f89e79bef590",
+    "tools": {
+      "git": "git version 2.53.0",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+      "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+      "node": "v24.21.0",
+      "pnpm": "10.8.1"
+    },
+    "command": [
+      "bash",
+      "-c",
+      "set -eu\nexport CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4\ncargo clippy --workspace --all-targets -- -D warnings\ncargo test --workspace\nnode --test scripts/lib/module-size-ratchet.test.mjs\nnode scripts/check-test-revert-oracle.mjs --base 02efa507f9 --mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs --mutation tests/evidence/c4-10b/behaviour.oracle.patch --test rust/processing/src/execution_tests.rs --mutation tests/evidence/c4-10b/behaviour.adapters.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/batch_tests.rs --mutation tests/evidence/c4-10b/policy.oracle.patch --test rust/processing/src/execution_tests.rs --verify-restored --ci --json\npnpm install --frozen-lockfile --prefer-offline\npnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc\npnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export...\nCI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh\npnpm test:wasm-contract\ngit diff --exit-code 02efa507f9 -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts rust/wasm-bindings/src/api/gpu_meshes/batch_parity_expected.json\nsha256sum packages/wasm/pkg/ifc-lite_bg.wasm\n"
+    ],
+    "exitCode": 0,
+    "processExitCode": 0,
+    "sourceUnchanged": true,
+    "outputSha256": "4a31dd7aac06ee0a625d44bd9eec21e3d440cb6b9ce41536b44887c5cff4489b",
+    "workspace": {
+      "passed": 7504,
+      "failed": 0,
+      "ignored": 48
+    },
+    "oracles": [
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 6,
+          "total": 6
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 3,
+          "failed": 3,
+          "total": 6,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "940062fa-9ab5-4c3d-9e3d-ddecfda249f8",
+        "tests": [
+          "rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs"
+        ]
+      },
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 3,
+          "total": 3
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 2,
+          "failed": 1,
+          "total": 3,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "cdb0a119-14c0-4825-8c67-607f5f39d165",
+        "tests": [
+          "rust/processing/src/execution_tests.rs"
+        ]
+      },
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 5,
+          "total": 5
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 4,
+          "failed": 1,
+          "total": 5,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "abb15140-0451-42af-a882-14605ff40c37",
+        "tests": [
+          "rust/wasm-bindings/src/api/gpu_meshes/batch_tests.rs"
+        ]
+      },
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 3,
+          "total": 3
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 2,
+          "failed": 1,
+          "total": 3,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "b6347274-66f7-4419-af4e-b9933cafff03",
+        "tests": [
+          "rust/processing/src/execution_tests.rs"
+        ]
+      }
+    ]
+  },
+  "validatedRustTree": "e9dbb8fc39e725c4da730e78a09d8e8d9a2e7e9f",
+  "priorAttempts": [
+    {
+      "job": "60edce6e-c23e-49bb-b5c2-e55c2a41511b",
+      "source": "381a6689fd35c24a2f0c2feefc26d343cb013eb0",
+      "exitCode": 1,
+      "processExitCode": 1,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/60edce6e-c23e-49bb-b5c2-e55c2a41511b/receipt.json",
+      "result": "7503 workspace tests passed; clippy and ratchets passed; refusal/RTC/policy OBSERVED and restored. Metadata UNOBSERVED with parity-only witnesses; corrected with public-output fixture test."
+    },
+    {
+      "job": "ab3b7728-cc84-4ce3-a744-620dd7b1fc6a",
+      "source": "f44d5a2741e8156c5eb3089c6683f89e79bef590",
+      "exitCode": 1,
+      "processExitCode": null,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/ab3b7728-cc84-4ce3-a744-620dd7b1fc6a/receipt.json",
+      "result": "Storage admission refused before project execution; inspected original receipt, ran guarded maintenance and confirmed guard exit 0 before new submission."
+    }
+  ],
+  "results": {
+    "clippy": "PASS: cargo clippy --workspace --all-targets -- -D warnings",
+    "workspace": {
+      "passed": 7504,
+      "failed": 0,
+      "ignored": 48
+    },
+    "C4-0": "PASS: 15 committed fixtures; expected exceptions unchanged",
+    "ratchets": "PASS: module-size, function-length, positional-read; Node ratchet tests 18/18",
+    "rootTurboBuild": "16/16 tasks passed",
+    "realWasm": {
+      "passed": 231,
+      "failed": 0,
+      "skipped": 1,
+      "skip": "optional historical fingerprint fallback comparison"
+    },
+    "wasmSha256": "44f426260873c921435f6e794538e54d113fa5bc7525b469842a9ae80b9eb116",
+    "unchangedVsParent": {
+      "packages/wasm/pkg/ifc-lite.d.ts": "0e9471316d96c4039873c0cfe9d5d866b76c25ffdac6dfb056173b96ee5b9fde",
+      "packages/wasm/pkg-retained/ifc-lite.d.ts": "fc526bb1239bd2e7e8611d0b4050dc558f636dec7cd1420fd501a72209ecc737",
+      "rust/wasm-bindings/src/api/gpu_meshes/batch_parity_expected.json": "ec6b6974c54448c2d16ba1c19046f05c70a32df84951d3ac565ea32660183f2a"
+    }
+  },
+  "findings": {
+    "refusalBoundaries": "Decode failure drains genuine refusals only; production Err drains locally; success drains after finish join, before next element. The extracted layer must port these three boundaries into batch_element.rs.",
+    "regressions": "C4-10a finish-join valid-B-not-charged and warm split-batch raw-byte/metadata equality tests retained. Only cache-arm helper adapted to shared router.",
+    "policy": "SchedulerPolicy replaces execution::ExecutionPolicy. PerJob+Some(plan) stays model-wide; PerBatch+Some(plan) is batch-local. Independent mutation OBSERVED and restored.",
+    "cacheOwnership": "RouterCaches taken by value, removing the second native Arc bump. Native material-layer documentation corrected.",
+    "csgDiagnostics": "Statements split; WARN-headline comment restored. Accurate function budget 274.",
+    "workflow": "C4-10b then C4-10a then C4-7a-R, with each comment directly above its own conditional; policy and output metadata mutations wired.",
+    "ratchets": "Accurate router-layer batch module 700 lines, produce_batch 313, prepass function 504. Extracted-layer batch budgets remain removable.",
+    "metadataCoverage": "New public flat batch fixture assertion observes the dropped-fingerprint mutation; prior parity-only UNOBSERVED retained above.",
+    "FromSourceDocs": "Unchanged; both generated declarations verified unchanged."
+  },
+  "performanceVerdict": "Unmeasured; no speedup, neutrality or headed-GPU claim.",
+  "storage": {
+    "task": "c4-10b-router-r1-a11bb92f",
+    "policy": "Publish compact logs/results, close task after outcomes reconcile; managed compatibility cache is bounded. No permanent target retention."
+  }
+}

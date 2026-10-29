@@ -100,6 +100,18 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   }
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets }));
   expect((await validateEngine(dir)).instanceMinOccurrences).toBe(11);
+  // Refs #7955: an engine staged before the threshold export names the re-stage remedy.
+  const stale = await mkdtemp(join(tmpdir(), 'retained-stale-')); dirs.push(stale);
+  const staleAssets = [];
+  for (const path of paths) {
+    const value = path === 'pkg-retained/ifc-lite.js' ? 'export default async function init() {}'
+      : path === 'pkg-retained/package.json' ? '{"type":"module"}'
+      : path === 'smlib/node/hooks.mjs' ? 'export {};' : content;
+    await mkdir(join(stale, path, '..'), { recursive: true }); await writeFile(join(stale, path), value);
+    staleAssets.push({ path, bytes: value.length, sha256: createHash('sha256').update(value).digest('hex') });
+  }
+  await writeFile(join(stale, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets: staleAssets }));
+  await expect(validateEngine(stale)).rejects.toThrow(/predates the instancing threshold export; re-stage the engine/);
   // Refs #7955: an internally consistent inventory still requires the root notice.
   const manifestBytes = await readFile(join(dir, 'engine-manifest.json'));
   const withoutNotice = JSON.parse(manifestBytes.toString());

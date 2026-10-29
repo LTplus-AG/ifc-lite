@@ -76,6 +76,12 @@ export async function validateEngine(directory?: string): Promise<RetainedEngine
   await registerSmlibHooks({ url });
   const module: typeof import('../../../wasm/pkg-retained/ifc-lite.js') =
     await import(new URL('pkg-retained/ifc-lite.js', url).href);
+  // An engine staged before the instancing threshold export has a consistent inventory;
+  // name the remedy instead of failing on an undefined function.
+  if (typeof (module as { instanceMinOccurrences?: unknown }).instanceMinOccurrences !== 'function') {
+    throw new Error('Retained engine predates the instancing threshold export; ' +
+      're-stage the engine with the current scripts/stage-cli-retained-engine.mjs');
+  }
   await module.default({ module_or_path: await readFile(new URL('pkg-retained/ifc-lite_bg.wasm', url)) });
   return { directory: root, url, sdk: manifest.sdk,
     capabilities: manifest.capabilities, manifestSha256: digest(bytes),

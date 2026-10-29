@@ -1019,6 +1019,12 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8302: keep the binary transport and batch modules/exports loadable.
+          # Break ONLY signed-zero preservation in packed numeric values; the
+          # changed round-trip witness must fail an assertion, not its imports.
+          # Once this patch is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/boundary-transport-8302/behaviour.oracle.patch | grep -Fxq 'tests/evidence/boundary-transport-8302/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/boundary-transport-8302/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/test/oracle/index.ts | grep -Fxq 'packages/diff/test/oracle/index.ts'; then
             # #8042/#8111: pin the relocated TS oracle while observing the
             # changed public dispatch. A full-source scope includes production

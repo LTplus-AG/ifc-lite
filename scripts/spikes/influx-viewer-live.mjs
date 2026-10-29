@@ -174,7 +174,7 @@ try {
   });
   if (gateway) await cleanup('gateway', () => new Promise((done, reject) => gateway.close(error => error ? reject(error) : done())));
   if (owned) await cleanup('docker', () => execFile('docker', ['rm', '-f', name]));
-  if (database && database.exitCode === null && database.signalCode === null) await cleanup('influxd', async () => {
+  if (database?.pid && database.exitCode === null && database.signalCode === null) await cleanup('influxd', async () => {
     const exited = new Promise(done => database.once('exit', done));
     database.kill('SIGTERM');
     const timer = setTimeout(() => database.kill('SIGKILL'), 10000);

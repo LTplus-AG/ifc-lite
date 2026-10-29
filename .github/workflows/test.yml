@@ -951,6 +951,9 @@ jobs:
           # fail an assertion, not lose its imported helper during collection.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/representation/structural.rs | grep -Fxq 'rust/geometry/src/representation/structural.rs'; then
             oracle_args+=(--mutation tests/evidence/c2-2-finish/behaviour.oracle.patch)
+          # #7782 C4-6b: preserve first-site selection in all browser adapters.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-6b-browser/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-6b-browser/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-6b-browser/behaviour.oracle.patch)
           # #7782 C4-5: keep additive APIs and mutate only spatial admission.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-5-scan/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-5-scan/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-5-scan/behaviour.oracle.patch)

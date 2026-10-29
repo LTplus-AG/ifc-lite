@@ -26,12 +26,26 @@ pub(super) struct ColumnsDiscovery {
 }
 
 impl ColumnsDiscovery {
+    /// The serial path emits meta at the 50th accepted job, before EOF or a
+    /// late project. Columns already have a full index and use tail meta.
+    pub(super) fn early_meta_end(&self, emitted: bool) -> Option<usize> {
+        if !emitted && self.buffered_jobs.len() >= 50 {
+            self.buffered_jobs.last().map(|job| job.2)
+        } else {
+            None
+        }
+    }
+
     /// Browser scheduling decorates the shared collector without changing its order.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn observe(
         &mut self,
         shared: &mut ifc_lite_processing::discovery::Discovery,
-        content: &[u8], id: u32, kw: &str, start: usize, end: usize,
+        content: &[u8],
+        id: u32,
+        kw: &str,
+        start: usize,
+        end: usize,
         disabled: &rustc_hash::FxHashSet<String>,
     ) {
         use ifc_lite_processing::scan::ScanClass;

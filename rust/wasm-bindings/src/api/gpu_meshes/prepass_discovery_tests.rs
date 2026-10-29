@@ -401,12 +401,12 @@ fn keyword_at_skips_trivia_between_the_equals_and_the_keyword() {
 /// are observable even though the entity index later sorts and deduplicates.
 #[test]
 fn c4_6b_shared_discovery_preserves_browser_order() {
-    use ifc_lite_core::{EntityScanner, EntityDecoder, build_entity_index};
+    use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
     let bytes = b"DATA;\n#90=IFCPROJECT($);\n#70=IFCSITE($);\n#50=IFCWINDOW($);\n#40=IFCWALL($);\n#30=IFCSTYLEDITEM($,(),$);\n#20=IFCSTYLEDITEM($,(),$);\n#10=IFCPROJECT($);\n#5=IFCSITE($);\n#40=IFCSPACE($);\nENDSEC;";
     let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
     let ids: Vec<_> = scan.records.iter().map(|r| r.0).collect();
     let starts: Vec<_> = scan.records.iter().map(|r| r.1 as u32).collect();
-    let lengths: Vec<_> = scan.records.iter().map(|r| (r.2-r.1) as u32).collect();
+    let lengths: Vec<_> = scan.records.iter().map(|r| (r.2 - r.1) as u32).collect();
     let disabled = Default::default();
     let columns = discover_from_columns(bytes, &ids, &starts, &lengths, &scan.classes.unwrap(), &disabled);
     let mut shared = ifc_lite_processing::discovery::Discovery::new(false);
@@ -416,13 +416,24 @@ fn c4_6b_shared_discovery_preserves_browser_order() {
         serial.observe(&mut shared, bytes, id, kw, start, end, &disabled);
     }
     assert_eq!(serial.buffered_jobs, columns.buffered_jobs);
-    assert_eq!(serial.buffered_jobs.iter().map(|j| j.0).collect::<Vec<_>>(), [70,50,40,5,40]);
+    assert_eq!(
+        serial.buffered_jobs.iter().map(|j| j.0).collect::<Vec<_>>(),
+        [70, 50, 40, 5, 40]
+    );
     assert_eq!(serial.project_id, Some(90));
     assert_eq!(columns.project_id, serial.project_id);
     assert_eq!(columns.site_position, serial.site_position);
     assert_eq!(serial.site_position.unwrap().0, 70);
     assert_eq!(columns.prepass_spans.styled_items, shared.prepass_spans.styled_items);
-    assert_eq!(columns.prepass_spans.styled_items.iter().map(|s| s.0).collect::<Vec<_>>(), [30,20]);
+    assert_eq!(
+        columns
+            .prepass_spans
+            .styled_items
+            .iter()
+            .map(|s| s.0)
+            .collect::<Vec<_>>(),
+        [30, 20]
+    );
     let mut decoder = EntityDecoder::with_index(bytes, build_entity_index(bytes));
     let once = crate::api::styling::combined_pre_pass(bytes, &mut decoder);
     assert_eq!(once.project_id, serial.project_id);
@@ -433,4 +444,37 @@ fn c4_6b_shared_discovery_preserves_browser_order() {
     let mut expected = serial.buffered_jobs.clone();
     expected.sort_by_key(|j| !ifc_lite_core::is_simple_geometry_type(j.3.as_str()));
     assert_eq!(jobs, expected.iter().map(|j| j.0).collect::<Vec<_>>());
+}
+
+/// #7782: disabled rows do not advance the early-meta trigger; the first site
+/// remains the rotation source even when disabled. Project can occur at EOF.
+#[test]
+fn c4_6b_early_meta_precedes_late_project_after_fifty_accepted_jobs() {
+    let mut source = String::from("DATA;\n#900=IFCSITE($);\n");
+    for id in 1..=51 {
+        source.push_str(&format!("#{id}=IFCWALL($);\n#{}=IFCSPACE($);\n", id + 100));
+    }
+    source.push_str("#901=IFCPROJECT($);\nENDSEC;");
+    let bytes = source.as_bytes();
+    let disabled = ["IFCSITE".to_owned(), "IFCSPACE".to_owned()].into_iter().collect();
+    let mut shared = ifc_lite_processing::discovery::Discovery::new(false);
+    let mut d = ColumnsDiscovery::default();
+    let mut scanner = ifc_lite_core::EntityScanner::new(bytes);
+    let mut events = Vec::new();
+    let mut emitted = false;
+    while let Some((id, kw, start, end)) = scanner.next_entity() {
+        d.observe(&mut shared, bytes, id, kw, start, end, &disabled);
+        if let Some(boundary) = d.early_meta_end(emitted) {
+            assert_eq!(id, 50);
+            assert_eq!(boundary, end);
+            assert_eq!(d.project_id, None);
+            events.push("meta");
+            emitted = true;
+        }
+    }
+    assert_eq!(d.total_jobs, 51);
+    assert_eq!(d.site_position.unwrap().0, 900);
+    assert_eq!(d.project_id, Some(901));
+    assert_eq!(events, ["meta"]);
+    assert_eq!(d.early_meta_end(true), None);
 }

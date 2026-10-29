@@ -31,14 +31,9 @@ pub(crate) struct PrePassData {
 /// chain, voids + #845 aggregate propagation) runs in the SHARED
 /// `ifc_lite_processing::prepass::resolve_prepass` — the same code the native
 /// pipeline and `buildPrePassStreaming` run.
-pub(crate) fn combined_pre_pass(
-    content: &[u8],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> PrePassData {
+pub(crate) fn combined_pre_pass(content: &[u8], decoder: &mut ifc_lite_core::EntityDecoder) -> PrePassData {
     use ifc_lite_core::EntityScanner;
-    use ifc_lite_processing::prepass::{
-        resolve_geometry_finishes, resolve_prepass, ResolveOptions,
-    };
+    use ifc_lite_processing::prepass::{resolve_geometry_finishes, resolve_prepass, ResolveOptions};
 
     let estimated_elements = content.len() / 2000;
 

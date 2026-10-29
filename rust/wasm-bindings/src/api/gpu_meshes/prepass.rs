@@ -163,7 +163,6 @@ impl IfcAPI {
         // Not a sample window: the RTC window is the file's (#4611). This is
         // only how many geometry jobs must be buffered before the meta event
         // is worth dispatching.
-        const META_EMIT_JOB_THRESHOLD: usize = 50;
 
         // Dispatch the `meta` event. One writer for both emission points (the
         // mid-scan one and the tail one) so they cannot ship different property
@@ -258,7 +257,7 @@ impl IfcAPI {
             // substring search and resolves partial-index chains against a
             // full index instead of silently defaulting (a millimetre model
             // resolved as metres renders 1000× oversized).
-            if !meta_emitted && discovery.buffered_jobs.len() >= META_EMIT_JOB_THRESHOLD {
+            if let Some(scanned_through) = discovery.early_meta_end(meta_emitted) {
                 // MID-SCAN meta emission — the streaming win (~17 s → ~3 s
                 // time-to-first-geometry on a 986 MB file). The RESOLUTION logic
                 // (3-stage RTC ladder: partial-index detect → full-index
@@ -278,7 +277,6 @@ impl IfcAPI {
                 // PREBUILT index (sharded): full index available, so run the
                 // single-stage full-index ladder (what the partial ladder
                 // escalates to anyway) — no mid-scan full-rescan detour.
-                let scanned_through = discovery.buffered_jobs.last().map_or(0, |&(_, _, end, _)| end);
                 let (mut decoder, mode) = match &prebuilt_arc {
                     Some(pi) => (
                         EntityDecoder::with_arc_columnar_index(content, pi.clone()),

@@ -99,12 +99,7 @@ impl IfcAPI {
     /// what makes the number attributable to a record the stitch retained
     /// (#3430).
     #[wasm_bindgen(js_name = scanEntityIndexShard)]
-    pub fn scan_entity_index_shard(
-        &self,
-        data: &[u8],
-        range_start: u32,
-        range_end: u32,
-    ) -> JsValue {
+    pub fn scan_entity_index_shard(&self, data: &[u8], range_start: u32, range_end: u32) -> JsValue {
         let total = data.len();
         let start = (range_start as usize).min(total);
         let end = (range_end as usize).min(total);

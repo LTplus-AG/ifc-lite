@@ -179,7 +179,7 @@ impl IfcAPI {
     }
 
     fn batch_styles(&self, style_ids: &[u32], style_colors: &[u8]) -> StyleMaps {
-        let style_maps: StyleMaps = {
+        {
             let sig_len = style_ids.len();
             let sig_first = style_ids.first().copied().unwrap_or(0);
             let sig_last = style_ids.last().copied().unwrap_or(0);
@@ -205,7 +205,6 @@ impl IfcAPI {
                     arc
                 }
             }
-        };
-        style_maps
+        }
     }
 }

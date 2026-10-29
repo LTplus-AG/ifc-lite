@@ -17,10 +17,7 @@ impl IfcAPI {
                 .cached_item_dedup
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let cache = slot
-                .get_or_insert_with(GeometryRouter::new_dedup_cache)
-                .clone();
-            cache
+            slot.get_or_insert_with(GeometryRouter::new_dedup_cache).clone()
         };
 
         // Arm the shared IfcMappedItem source cache (#1623) against the per-worker
@@ -34,10 +31,7 @@ impl IfcAPI {
                 .cached_mapped_item
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let cache = slot
-                .get_or_insert_with(GeometryRouter::new_mapped_item_cache)
-                .clone();
-            cache
+            slot.get_or_insert_with(GeometryRouter::new_mapped_item_cache).clone()
         };
 
         let cache = self

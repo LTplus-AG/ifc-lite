@@ -27,7 +27,7 @@ pub struct ClipExpectation { pub parts: Vec<ClipPart> }
 impl ClipExpectation {
     pub fn section_volume(&self) -> Option<f64> { self.parts.iter().try_fold(0., |v,p| Some(v+p.section_volume?)) }
     pub fn host_volume(&self) -> Option<f64> { self.parts.iter().try_fold(0., |v,p| Some(v+p.host_volume?)) }
-    pub fn curved(&self) -> bool { self.parts.iter().any(|p| p.curved) }
+
 }
 fn reference(entity: &DecodedEntity, index: usize, decoder: &mut EntityDecoder) -> Result<DecodedEntity, String> {
     decoder.resolve_ref(entity.get(index).ok_or_else(|| format!("#{} missing attribute {index}", entity.id))?)
@@ -40,9 +40,11 @@ fn plane(entity: &DecodedEntity, world: &Matrix4<f64>, decoder: &mut EntityDecod
     let local = Axis2Placement::read_3d(&position, decoder).map_err(|e| e.to_string())?.matrix();
     let p = world.transform_point(&Point3::new(local[(0,3)],local[(1,3)],local[(2,3)]));
     let normal = Vector3::new(local[(0,2)],local[(1,2)],local[(2,2)]);
-    // Independent source decode, including IFC's omitted-flag default. Do not
-    // call HalfSpacePlan, plane_source, halfspace_box or any retained lowering.
-    let sign = if entity.get_bool(slot::IfcHalfSpaceSolid::AGREEMENT_FLAG.index()).unwrap_or(true) { -1. } else { 1. };
+    // Exact (and therefore retained) defaults an unreadable AgreementFlag to
+    // TRUE. The oracle must flag this invalid mandatory source independently.
+    let agreement = entity.get_bool(slot::IfcHalfSpaceSolid::AGREEMENT_FLAG.index())
+        .ok_or_else(|| format!("#{} invalid AgreementFlag", entity.id))?;
+    let sign = if agreement { -1. } else { 1. };
     let inverse = world.try_inverse().ok_or("singular clip source frame")?;
     // A normal is a covector. Only the linear inverse-transpose applies;
     // Matrix4::transform_vector performs projective division using row 4,
@@ -66,17 +68,18 @@ fn part(mut current: DecodedEntity, mut world: Matrix4<f64>, sources: &AnalyticQ
                     if !difference { return Err("published non-Difference halfspace".into()); }
                     planes.push(plane(&right, &world, decoder)?);
                 } else {
-                    // A later Union could reintroduce material behind an earlier
-                    // clip. Do not apply a kept-side predicate to that union.
-                    if !difference { return Ok(ClipPart { host:None, planes: Vec::new(),host_volume:None,section_volume:None,curved:true,mixed:true }); }
+                    // We walk outside-in: collected planes execute AFTER this
+                    // subtree, so all remain valid constraints on its result.
+                    // Its volume/curvature are unknown; expose that limitation.
+                    if !difference { return Ok(ClipPart { host:None, planes,host_volume:None,section_volume:None,curved:false,mixed:true }); }
                     mixed = true;
                 }
                 current = reference(&current, slot::IfcBooleanResult::FIRST_OPERAND.index(), decoder)?;
             }
-            IfcType::IfcCsgSolid => current = reference(&current, 0, decoder)?,
+            IfcType::IfcCsgSolid => current = reference(&current, slot::IfcCsgSolid::TREE_ROOT_EXPRESSION.index(), decoder)?,
             IfcType::IfcMappedItem => {
-                let map = reference(&current, 0, decoder)?;
-                let mapped_rep = reference(&map, 1, decoder)?;
+                let map = reference(&current, slot::IfcMappedItem::MAPPING_SOURCE.index(), decoder)?;
+                let mapped_rep = reference(&map, slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index(), decoder)?;
                 let level = MappedLevel { item:current, map, mapped_rep };
                 if let Some(local) = level.local_transform(decoder).map_err(|e| e.to_string())? { world *= local; }
                 let mut items = rep_items(&level.mapped_rep, decoder).map_err(|e| format!("{e:?}"))?;
@@ -129,8 +132,8 @@ fn source_parts(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, pr
         if item.ifc_type == IfcType::IfcMappedItem {
             if path.contains(&item.id) { return Err("cyclic clip mapping source".into()); }
             path.push(item.id);
-            let map = reference(&item,0,&mut decoder)?;
-            let mapped_rep = reference(&map,1,&mut decoder)?;
+            let map = reference(&item,slot::IfcMappedItem::MAPPING_SOURCE.index(),&mut decoder)?;
+            let mapped_rep = reference(&map,slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index(),&mut decoder)?;
             let level = MappedLevel {item,map,mapped_rep};
             let frame = frame * level.local_transform(&mut decoder).map_err(|e|e.to_string())?.unwrap_or_else(Matrix4::identity);
             let items = rep_items(&level.mapped_rep,&mut decoder).map_err(|e|format!("{e:?}"))?;
@@ -142,18 +145,28 @@ fn source_parts(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, pr
     }
     Ok(parts)
 }
-/// Source-plane expectations for IfcProduct occurrences. Other IFC families
-/// return `None`, as do occurrences with no supported plain-plane clip.
-/// A discovered but unsupported oracle remains explicit in parts, never zero.
-pub fn expected(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
-    -> Result<Option<ClipExpectation>, String> {
-    let mut parts=source_parts(model,sources,product)?;
-    if parts.iter().all(|p|p.planes.is_empty()) { return Ok(None); }
-    let cuts=openings::cutters(model,sources,product)?;
-    if !cuts.is_empty() {
-        for part in &mut parts {
-            part.section_volume=if part.mixed {None} else {part.host.as_ref().and_then(|h|openings::net_volume(h,&part.planes,&cuts))};
-        }
+/// Model-scoped source oracle. Relationship extraction runs once, not once per
+/// clipped product. The cache borrows the source so it cannot outlive its model.
+pub struct ClipOracle<'a> {
+    model: &'a Arc<SourceBundle>,
+    sources: &'a AnalyticQuantitySources,
+    openings: std::collections::BTreeMap<u32, Vec<u32>>,
+}
+impl<'a> ClipOracle<'a> {
+    pub fn new(model: &'a Arc<SourceBundle>, sources: &'a AnalyticQuantitySources) -> Self {
+        Self { model, sources, openings: openings::index(model) }
     }
-    Ok(Some(ClipExpectation {parts}))
+    /// A supported outer plane always supplies kept-side and closure gates,
+    /// including when a mixed subtree has no independent volume prediction.
+    pub fn expected(&self, product: u32) -> Result<Option<ClipExpectation>, String> {
+        let mut parts=source_parts(self.model,self.sources,product)?;
+        if parts.iter().all(|p|p.planes.is_empty()) { return Ok(None); }
+        let cuts=openings::cutters(self.model,self.sources,self.openings.get(&product).map_or(&[],Vec::as_slice))?;
+        if !cuts.is_empty() {
+            for part in &mut parts {
+                part.section_volume=if part.mixed {None} else {part.host.as_ref().and_then(|h|openings::net_volume(h,&part.planes,&cuts))};
+            }
+        }
+        Ok(Some(ClipExpectation {parts}))
+    }
 }

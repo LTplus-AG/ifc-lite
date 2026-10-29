@@ -133,7 +133,7 @@ fn m7_sdk_oracle_closed_shapes() {
     // The independent clip oracle now qualifies the formerly refused row.
     let model = SourceBundle::new(SOURCE.as_bytes().to_vec());
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(SOURCE.as_bytes(), None);
-    let clipped = ifc_lite_retained_native::oracle::clips::expected(&model, &sources, 156)
+    let clipped = ifc_lite_retained_native::oracle::clips::ClipOracle::new(&model, &sources).expected(156)
         .unwrap().unwrap();
     assert!((clipped.section_volume().unwrap() - 3.).abs() < 1e-12);
     let actual = geometry_assertions::measured(shape(&outcomes, 156));

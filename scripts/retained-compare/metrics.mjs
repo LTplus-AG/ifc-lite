@@ -12,8 +12,12 @@ function volumeTolerance(row, base, clippedCurved) {
   if (clippedCurved === undefined || !row.src_oracle) return base;
   const checks = JSON.parse(row.src_oracle);
   if (!Array.isArray(checks)) throw new Error('Expected source-oracle result array');
-  const qualified = checks.some(r => r.family === 'clipSectionVolumeRelative' &&
-    r.sourceCurved === true && r.gated === true && r.pass === true) &&
+  // Product volumes cannot attribute a gap to one part. Every part must
+  // independently be curved and have an executed host clip (not a bounds skip).
+  const parts = checks.filter(r => r.family === 'clipPart');
+  const qualified = parts.length > 0 && parts.every(r =>
+    r.sourceCurved === true && r.clipExecuted === true && r.pass === true) &&
+    checks.some(r => r.family === 'clipSectionVolumeRelative' && r.gated && r.pass) &&
     checks.every(r => !r.gated || (r.pass === true && Number.isFinite(r.value) &&
       Number.isFinite(r.limit) && r.value <= r.limit));
   return qualified ? clippedCurved : base;

@@ -139,8 +139,9 @@ fn issue_7955_m5_committed_corpus_matches_source_sections() {
         ifc_lite_retained_native::run_model_native(model.clone(),&worker,
             &ModelOptions{ids:Some(ids.iter().copied().collect()),..Default::default()},|o|outcomes.push(o)).unwrap();
         assert_eq!(outcomes.len(),ids.len());
+        let oracle=clips::ClipOracle::new(&model,&sources);
         for (outcome,id) in outcomes.into_iter().zip(ids) {
-            let expected=clips::expected(&model,&sources,id).unwrap().unwrap();
+            let expected=oracle.expected(id).unwrap().unwrap();
             volume(outcome,expected.section_volume().unwrap_or_else(||panic!("#{id}: required source section")));
         }
     }

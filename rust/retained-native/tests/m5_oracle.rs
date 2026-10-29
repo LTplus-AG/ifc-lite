@@ -8,15 +8,16 @@ mod fixture;
 fn oracle(text: &str,id:u32)->ClipExpectation {
     let model=SourceBundle::new(text.as_bytes().to_vec());
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
-    clips::expected(&model,&sources,id).unwrap().expect("clip source must be recognized")
+    clips::ClipOracle::new(&model,&sources).expected(id).unwrap().expect("clip source must be recognized")
 }
 #[test]
 fn issue_7955_clip_oracle_preserves_type_map_authority_and_occurrence_errors() {
     let text=include_str!("../../geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc");
     let model=SourceBundle::new(text.as_bytes().to_vec());
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
-    assert!(clips::expected(&model,&sources,105).unwrap().is_none());
-    assert!(clips::expected(&model,&sources,70).unwrap().is_none());
+    let context=clips::ClipOracle::new(&model,&sources);
+    assert!(context.expected(105).unwrap().is_none());
+    assert!(context.expected(70).unwrap().is_none());
     let maps=ifc_lite_processing::element::retained_runtime::canonical_type_maps(&model);
     let expected=ifc_lite_retained_native::oracle::type_maps::expected(text.as_bytes(),&sources,&maps[&105])
         .unwrap().expect("M9 must still qualify the orphan type");
@@ -27,7 +28,7 @@ fn issue_7955_clip_oracle_preserves_type_map_authority_and_occurrence_errors() {
     let malformed=fixture::SOURCE.replace("#12,$,$);","#8,$,$);");
     let model=SourceBundle::new(malformed.as_bytes().to_vec());
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(malformed.as_bytes(),None);
-    assert!(clips::expected(&model,&sources,13).is_err());
+    assert!(clips::ClipOracle::new(&model,&sources).expected(13).is_err());
 }
 #[test]
 fn issue_7955_section_integrals_match_hand_authored_constraints() {
@@ -35,7 +36,7 @@ fn issue_7955_section_integrals_match_hand_authored_constraints() {
         (fixture::SOURCE.replace("#8,.T.","#8,.F."),12.),(fixture::chain(),1229./48.)] {
         let e=oracle(&text,13);let v=e.section_volume().expect("section oracle must execute");
         assert!((v-expected).abs()/expected<1e-12,"{v} vs {expected}");
-        assert!(!e.curved());assert!(e.host_volume().unwrap()>=v);
+        assert!(!e.parts.iter().any(|p|p.curved));assert!(e.host_volume().unwrap()>=v);
     }
 }
 #[test]
@@ -93,4 +94,28 @@ fn issue_7955_source_oracle_clipped_opening_composes_after_host_clip(){
     let text=text.replace("'SweptSolid',(#115)","'CSG',(#505)")
         .replace("ENDSEC;\nEND-ISO","#500=IFCCARTESIANPOINT((0.,0.,1.));#501=IFCAXIS2PLACEMENT3D(#500,$,$);#502=IFCPLANE(#501);#503=IFCHALFSPACESOLID(#502,.T.);#505=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#115,#503);ENDSEC;\nEND-ISO");
     assert!((oracle(&text,200).section_volume().unwrap()-35.).abs()<1e-10);
+}
+
+#[test]
+fn issue_7955_outer_clips_survive_unknown_union_and_intersection_subtrees() {
+    for operator in ["UNION","INTERSECTION"] {
+        let e=oracle(&fixture::clipped_solid(operator),13);
+        assert_eq!(e.parts[0].planes.len(),1,"outer constraint must never disappear");
+        let plane=&e.parts[0].planes[0];
+        assert_eq!(plane.point,[0.,0.,0.5]);assert_eq!(plane.normal,[0.,0.,-1.]);
+        assert_eq!(plane.excess([0.,0.,0.]),0.5);
+        assert_eq!(plane.excess([0.,0.,0.5]),0.);
+        assert!(e.parts[0].mixed);assert!(!e.parts[0].curved,"unknown is not curved qualification");
+        assert!(e.host_volume().is_none());assert!(e.section_volume().is_none());
+    }
+}
+#[test]
+fn issue_7955_oracle_flags_invalid_agreement_independently_of_exact_default() {
+    for flag in ["$",".U.",".UNKNOWN."] {
+        let text=fixture::SOURCE.replace("#8,.T.",&format!("#8,{flag}"));
+        let model=SourceBundle::new(text.as_bytes().to_vec());
+        let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+        let error=clips::ClipOracle::new(&model,&sources).expected(13).err().expect("invalid mandatory flag must fail oracle");
+        assert!(error.contains("AgreementFlag"),"{error}");
+    }
 }

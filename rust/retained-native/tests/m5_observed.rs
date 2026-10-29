@@ -133,7 +133,7 @@ fn issue_7955_m5_burkwil_beam_4548_two_clip_witness(){
     }
     assert_eq!(measurement.defects,0);
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
-    let expected=ifc_lite_retained_native::oracle::clips::expected(&SourceBundle::new(text.as_bytes().to_vec()),&sources,4548).unwrap().unwrap();
+    let expected=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&SourceBundle::new(text.as_bytes().to_vec()),&sources).expected(4548).unwrap().unwrap();
     let volume=expected.section_volume().expect("BURKWIL source integral required");
     assert!(metrics::relative(measurement.volume,volume)<1e-6,"{} vs {volume}",measurement.volume);
     println!("sdk witness executed: m5_burkwil");
@@ -145,8 +145,15 @@ fn issue_7955_m5_issue1155_delta_requires_unclipped_profile_admission(){
     let Some((base,base_rows))=observed(&uncut,Some(vec![113218]),None) else{return};
     let Some((clipped,clip_rows))=observed(text,Some(vec![113218]),None) else{return};
     assert_eq!(base.len(),1);assert_eq!(clipped.len(),1);
-    if matches!(clipped[0],ProductOutcome::Published(_)){
-        assert!(matches!(base[0],ProductOutcome::Published(_)),"no delta from a refused base profile");
+    // Spec §2: this profile currently refuses before any Boolean. Pin BOTH
+    // outcomes so a new M5 refusal cannot be hidden by a one-way implication.
+    for (label,outcome) in [("unclipped",&base[0]),("clipped",&clipped[0])] {
+        let ProductOutcome::Refused {refusal,origin,..}=outcome else {panic!("{label}: expected constructor refusal; update both expectations when profile admission lands")};
+        assert_eq!(refusal.code(),"operation_unsupported","{label}");
+        let origin=origin.as_ref().expect("constructor refusal must retain origin");
+        assert_eq!(origin.site,"constructor","{label}");
+        assert_eq!(origin.entity,Some(113155),"{label}");
+        assert_eq!(origin.cause,"recipe","{label}");
     }
     println!("issue1155 unclipped={}, clipped={}",base_rows[0]["code"],clip_rows[0]["code"]);
     println!("sdk witness executed: m5_issue1155_profile");

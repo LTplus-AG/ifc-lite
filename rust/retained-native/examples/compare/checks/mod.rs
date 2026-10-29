@@ -9,8 +9,8 @@ use ifc_lite_processing::AnalyticQuantitySources;
 /// Borrowed model context shared by every slice. Decode independently of the
 /// retained result; the analytical summaries alone omit Boolean/plane sources.
 pub struct SourceContext<'a> {
-    pub model: &'a std::sync::Arc<ifc_lite_core::SourceBundle>,
     pub product_id: u32,
+    pub clips: &'a ifc_lite_retained_native::oracle::clips::ClipOracle<'a>,
     pub analytic: &'a AnalyticQuantitySources,
 }
 // Existing slices can continue accepting their old analytic-only argument.
@@ -24,9 +24,11 @@ impl std::ops::Deref for SourceContext<'_> {
 /// This is not a product-id allowlist or an alternative publication path.
 #[derive(Clone, Copy)]
 pub struct SourceAuthority { pub volume: f64, pub bbox: Option<[f64; 6]>, pub curved: bool }
+pub struct ClipPartEvidence { pub index: usize, pub curved: bool, pub executed: bool }
 pub struct OracleResult {
     pub family: &'static str, pub value: f64, pub limit: f64, pub pass: bool, pub gated: bool,
     pub authority: Option<SourceAuthority>,
+    pub clip_part: Option<ClipPartEvidence>,
 }
 pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, tolerances: &serde_json::Value) -> Vec<OracleResult> {
     let mut results = layers::check(product, sources, tolerances);

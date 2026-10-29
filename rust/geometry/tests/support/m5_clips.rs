@@ -23,3 +23,11 @@ pub fn chain() -> String {
 ";
     SOURCE.replace("'CSG',(#10)", "'CSG',(#37)").replace("ENDSEC;END-ISO", &format!("{extra}ENDSEC;END-ISO"))
 }
+
+/// Two overlapping boxes: union x=[-2,4], intersection x=[0,2], y=[-3,3],
+/// z=[0,2]. The outer clip keeps z>=.5: volumes 54 and 18 respectively.
+#[allow(dead_code)] // Shared fixture: only oracle/SDK review harnesses use this variant.
+pub fn clipped_solid(operator: &str) -> String {
+    SOURCE.replace(".DIFFERENCE.,#5,#9", ".DIFFERENCE.,#23,#9")
+        .replace("ENDSEC;END-ISO", &format!("#20=IFCCARTESIANPOINT((2.,0.,0.));#21=IFCAXIS2PLACEMENT3D(#20,$,$);#22=IFCEXTRUDEDAREASOLID(#4,#21,#3,2.);#23=IFCBOOLEANRESULT(.{operator}.,#5,#22);ENDSEC;END-ISO"))
+}

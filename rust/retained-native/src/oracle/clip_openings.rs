@@ -6,14 +6,17 @@ use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::prepass::{resolve_prepass,PrepassSpans,ResolveOptions};
 type ConvexCut = Vec<([f64; 3], f64)>;
 
-pub(super) fn cutters(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
-    -> Result<Vec<ConvexCut>,String> {
+pub(super) fn index(model: &Arc<SourceBundle>) -> std::collections::BTreeMap<u32, Vec<u32>> {
     let mut scanner=EntityScanner::new(model.bytes());let mut spans=PrepassSpans::default();
     while let Some((id,name,start,end))=scanner.next_entity(){spans.stash(name,id,start,end);}
-    let mut decoder=model.decoder();let prepass=resolve_prepass(&spans,&mut decoder,ResolveOptions::default());
+    resolve_prepass(&spans,&mut model.decoder(),ResolveOptions::default()).void_index.into_iter().collect()
+}
+pub(super) fn cutters(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, ids: &[u32])
+    -> Result<Vec<ConvexCut>,String> {
+    let mut decoder=model.decoder();
     let router=ifc_lite_geometry::GeometryRouter::with_scale(sources.extrusion_definitions.length_unit_scale);
     let mut result=Vec::new();
-    for id in prepass.void_index.get(&product).into_iter().flatten() {
+    for id in ids {
         if !router.opening_requires_subtraction(*id,&mut decoder){continue;}
         let parts=source_parts(model,sources,*id)?;
         if parts.is_empty(){return Err("opening has no analytic parts".into());}

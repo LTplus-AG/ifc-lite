@@ -52,7 +52,7 @@ test('#7955 M5 planar injected 1e-8 gap still fails the scoped parity gate', () 
       volume_m3: '1', curved: 'true', src_oracle: JSON.stringify(clipped ? [{
         family: 'clipSectionVolumeRelative', sourceCurved, gated: true, pass,
         value: 0, limit: sourceCurved ? 2e-3 : 1e-6,
-      }] : []) }];
+      }, { family: 'clipPart', part: 0, sourceCurved, clipExecuted: true, pass: true, gated: false }] : []) }];
     const actual = [{ model: 'source.ifc', id: 7, status: 'published', volumeM3: 1 + gap }];
     return compare(native, actual, native, t.nativeWasmVolumeRelative, scoped);
   };
@@ -65,3 +65,27 @@ test('#7955 M5 planar injected 1e-8 gap still fails the scoped parity gate', () 
   assert.deepEqual(accepted.scopedVolumeRows.map(r => [r.product, r.limit]), [['source.ifc#7', 1e-7]]);
   assert.ok(check(true, true, 2e-7).violations.length, 'curved clip remains bounded');
 });
+
+// #7955 round 7: product-level mixtures and skipped operations cannot inherit
+// the exception from unrelated source geometry or a merely authored plane.
+for (const [name, parts] of [
+  ['unclipped round plus clipped planar box', [
+    { sourceCurved: true, clipExecuted: false },
+    { sourceCurved: false, clipExecuted: true },
+  ]],
+  ['curved host with bounds-skipped clip', [{ sourceCurved: true, clipExecuted: false }]],
+]) {
+  test(`#7955 M5 ${name} stays at 1e-9`, () => {
+    const checks = parts.map((part, index) => ({ family: 'clipPart', part: index,
+      ...part, gated: false, pass: true, value: 0, limit: 0 }));
+    // Even a passing curved section result cannot widen these products.
+    checks.push({ family: 'clipSectionVolumeRelative', sourceCurved: true,
+      gated: true, pass: true, value: 0, limit: 2e-3 });
+    const native = [{ model: 'mixed.ifc', id: 13, status: 'published', code: '',
+      volume_m3: '1', src_oracle: JSON.stringify(checks) }];
+    const actual = [{ model: 'mixed.ifc', id: 13, status: 'published', volumeM3: 1 + 1e-8 }];
+    const result = compare(native, actual, native, 1e-9, 1e-7);
+    assert.match(result.violations.join('\n'), /volume relative/);
+    assert.deepEqual(result.scopedVolumeRows, []);
+  });
+}

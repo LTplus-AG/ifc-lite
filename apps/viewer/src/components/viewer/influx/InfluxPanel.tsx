@@ -33,7 +33,7 @@ export function InfluxPanel() {
   const targets = useMemo(() => influxTargets(useViewerStore.getState()), [models, ifcDataStore, mutationViews]);
   const joined = useMemo(() => data ? matchInfluxSeries(data.latest, targets) : null, [data, targets]);
   const selected = selectedId === null ? null : resolveEntityRef(selectedId);
-  const match = joined?.matched.find(item => item.target.modelId === selected?.modelId && item.target.expressId === selected.expressId);
+  const match = joined?.matched.find(item => item.target.modelId === selected?.modelId && item.target.expressId === selected?.expressId);
   const history = match && data ? data.history.rows.filter(row => row[config.guidTag] === match.target.GlobalId) : [];
 
   useEffect(() => () => { generation.current++; request.current?.abort(); }, []);

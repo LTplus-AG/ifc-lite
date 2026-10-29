@@ -137,6 +137,7 @@ export function assertDerivedClaims(actual, scenario) {
     // only against each other: a shared error in both engines must still fail.
     const [whole] = scenario.kind === 'split' ? scenario.base : scenario.head;
     const pieces = scenario.kind === 'split' ? scenario.head : scenario.base;
+    assert.ok(pieces.every(piece => claim.pieces.includes(piece)), 'claim must name every derived piece');
     assert.equal(claim.wholeVolume, whole.volume, 'whole volume must match the derived whole');
     assert.equal(claim.piecesVolume, pieces.reduce((sum, piece) => sum + piece.volume, 0),
       'pieces volume must match the derived pieces');

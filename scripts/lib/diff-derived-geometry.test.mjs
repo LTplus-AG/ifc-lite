@@ -93,6 +93,7 @@ for (const [name, corrupt] of [
   ['unequal volumes', a => { a.splitMerges[0].piecesVolume = 11; }],
   ['volumes agreeing but not measured', a => { a.splitMerges[0].wholeVolume = 0; a.splitMerges[0].piecesVolume = 0; }],
   ['missing piece', a => { a.splitMerges[0].pieces.pop(); }],
+  ['duplicated piece', a => { const [first] = a.splitMerges[0].pieces; a.splitMerges[0].pieces = [first, first]; }],
   ['competing successor', a => { a.successors = [{}]; }],
 ]) {
   test(`#8112 rejects split with ${name}`, () => {

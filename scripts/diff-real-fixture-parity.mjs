@@ -96,8 +96,8 @@ console.log(JSON.stringify({ comparisons, skipped, coverage: 'real geometry plus
 if (comparisons === 0) {
   console.error('INCOMPLETE: no real IFC pairs executed; run pnpm fixtures and rerun parity.');
   process.exitCode = 2;
-} else if (skipped > 0 && process.env.CI) {
-  // CI restores every fixture, so a skip there means one went missing.
-  console.error(`INCOMPLETE: ${skipped} parity section(s) skipped in CI; every fixture must be present.`);
+} else if (skipped > 0) {
+  // A skipped section is missing coverage, not a pass: every fixture must be present.
+  console.error(`INCOMPLETE: ${skipped} parity section(s) skipped; run pnpm fixtures and rerun parity.`);
   process.exitCode = 2;
 }

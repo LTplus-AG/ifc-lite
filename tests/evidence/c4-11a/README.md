@@ -95,10 +95,13 @@ point stays at its unchanged 2,095-line budget.
 
 The parent directed this refresh to be pushed and marked ready after these
 local gates: GitHub CI is the merge gate and must be fully green. Both fleet
-hosts currently refuse admission for storage headroom. One admission waiter
-remains for post-push confirmation; no fresh native, mutation-execution or WASM
-runtime result is claimed. Exact pending commands and the refused preflight
-request are recorded in validation.json. No foreign output or job was reclaimed,
+hosts initially refused admission for storage headroom. Pop later admitted the
+one pending native request at source `50f8b0cb44`: workspace all-target clippy
+passed, and workspace tests are running. Oracle execution and fresh retained/
+default WASM runtime contracts remain pending. No full-test, mutation-execution
+or WASM pass is claimed. Original request/job IDs, receipt paths, and remaining
+commands are recorded in validation.json; inspect that request rather than
+resubmitting it. No foreign output or job was reclaimed,
 interrupted or signalled, and no guard was relaxed.
 
 Historical qualification remains available at the previousEvidence source pin

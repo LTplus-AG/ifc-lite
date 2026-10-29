@@ -5,7 +5,7 @@
   "previousEvidence": "aaae4e06dc1ba8a71469933eecaa728efe1a1853:tests/evidence/c4-11a/validation.json",
   "source": "d235fc1be5f387d36a94cb0aa4d141d4dc13158f",
   "base": "298693424041c38f0a44433e770e0b3e75b101ec",
-  "status": "Ready for GitHub CI; post-push fleet confirmation pending admission",
+  "status": "Pushed and ready for GitHub CI; post-push fleet confirmation running",
   "parentDirection": "Push and mark ready after cheap local gates. GitHub CI is the merge gate; full green required. Do not reclaim other sessions outputs or relax guards.",
   "conflictResolutions": {
     "workflow": "C4-11a oracle first; C4-10a and C4-7a-R branches remain inert because their patches are already on main.",
@@ -66,21 +66,36 @@
       "state": "blocked at preflight; no job dispatched",
       "exitCode": 69
     },
-    "pending": "One admission waiter; no duplicate validation job. It submits native qualification once Pop admission opens.",
+    "pending": {
+      "requestId": "auto-792cb75afd3a4c53aee1517e27d7d22d",
+      "jobId": "58dcbb5b-2a73-43b9-8d20-d57036ea1008",
+      "source": "50f8b0cb44458e8adbc76d0b7d9015f274e528ae",
+      "state": "running; clippy passed, workspace tests compiling",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/58dcbb5b-2a73-43b9-8d20-d57036ea1008/receipt.json",
+      "log": "/home/louistrue/build-workers/worker-state/jobs/58dcbb5b-2a73-43b9-8d20-d57036ea1008/output.log",
+      "inspect": "~/build-workers/ifc-fleet job --id auto-792cb75afd3a4c53aee1517e27d7d22d",
+      "resubmit": false
+    },
     "commands": [
       "cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace -- --nocapture",
       "node scripts/check-test-revert-oracle.mjs --base origin/main --mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs --verify-restored --ci --json",
       "pnpm install --frozen-lockfile && pnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export... && pnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc && CI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh && pnpm test:wasm-contract && git diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts"
     ],
-    "coverage": "No fresh clippy, cargo test, cargo check, oracle execution, WASM build or runtime contract result is claimed. All are heavy and require fleet admission.",
-    "blocker": "Both hosts storage-guard blocked. Pop initially required 588 GiB with two active jobs; after one finished it required 492 GiB with about 489 GiB free. Foreign jobs, outputs, locks and guard settings untouched."
+    "coverage": "Fresh clippy passed. Full workspace tests remain running; oracle execution and fresh retained/default WASM runtime contracts remain pending. No fresh full-test, oracle or WASM pass is claimed.",
+    "blocker": "Both hosts storage-guard blocked. Pop initially required 588 GiB with two active jobs; after one finished it required 492 GiB with about 489 GiB free. Foreign jobs, outputs, locks and guard settings untouched.",
+    "postPushConfirmation": {
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "result": "PASS: finished dev profile in 1m35s; shell && advanced to cargo test --workspace. Original job still running; no final receipt or full-test pass claimed.",
+      "evidence": "Original Pop output.log; job 58dcbb5b-2a73-43b9-8d20-d57036ea1008 at source 50f8b0cb44."
+    }
   },
   "performanceVerdict": "End-to-end worker-pool timing and whole-host memory remain unmeasured. No speedup or performance-neutrality claim.",
   "cleanup": {
-    "newGeneratedWorkspaces": 0,
-    "newBuildArtifacts": 0,
+    "newGeneratedWorkspaces": 1,
+    "newBuildArtifacts": "Managed shared Cargo cache in use by the live native job; preserve until its original outcome is reconciled.",
     "bytesReclaimed": 0,
     "priorOwnTask": "c4-11a-review-3f49607b",
     "priorOwnTaskReclaim": "Attempt refused by live process/T3 reference guard; no bypass. Other sessions outputs preserved. Close new owning task after post-push fleet results and evidence publication."
-  }
+  },
+  "pushedHead": "50f8b0cb44458e8adbc76d0b7d9015f274e528ae"
 }

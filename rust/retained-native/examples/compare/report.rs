@@ -105,10 +105,10 @@ impl Report {
             let maximum = self.oracle_maxima.entry(result.family.into()).or_default();
             *maximum = maximum.max(if result.value.is_finite() { result.value } else { f64::INFINITY });
             if result.gated && (!result.pass || !result.value.is_finite() || !result.limit.is_finite()) {
-                self.violations.push(format!("{model}:{}: {} source oracle failed", shape.product_id, result.family));
+                self.violations.push(format!("{model}:{}: {} source oracle failed", shape.product_id, result.family)+&result.reason.as_ref().map(|r|format!(": {r}")).unwrap_or_default());
             }
         }
-        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated,"sourceCurved":r.clip_part.as_ref().map(|p|p.curved).or(r.authority.map(|a|a.curved)),"part":r.clip_part.as_ref().map(|p|p.index),"clipExecuted":r.clip_part.as_ref().map(|p|p.executed)})).collect::<Vec<_>>()).expect("oracle results serialize")));
+        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"reason":r.reason,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated,"sourceCurved":r.clip_part.as_ref().map(|p|p.curved).or(r.authority.map(|a|a.curved)),"part":r.clip_part.as_ref().map(|p|p.index),"clipExecuted":r.clip_part.as_ref().map(|p|p.executed)})).collect::<Vec<_>>()).expect("oracle results serialize")));
         self.coverage
             .push(format!("{model}\t{}\tpublished\t", shape.product_id));
     }

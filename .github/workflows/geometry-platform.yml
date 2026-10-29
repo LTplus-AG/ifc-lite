@@ -143,7 +143,13 @@ jobs:
           test -x "$IFCLITE_SMLIB_PATH"
           IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
             cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+      - name: Check generated halfspace boundary fixtures
+        id: halfspace-generated
+        continue-on-error: true
+        run: python3 tests/fixtures/synthetic-retained/generate-halfspace-boundaries.py --check
       - name: Fetch required native halfspace witnesses
+        id: halfspace-fetch
+        continue-on-error: true
         run: |
           node scripts/fixtures/fetch-fixtures.mjs \
             ara3d/AC20-FZK-Haus.ifc issues/960_house_segmented_roof_clip.ifc
@@ -397,6 +403,8 @@ jobs:
         env:
           M3_NATIVE: ${{ steps.m3-native.outcome }}
           M3_BROWSER: ${{ steps.m3-browser.outcome }}
+          HALFSPACE_GENERATED: ${{ steps.halfspace-generated.outcome }}
+          HALFSPACE_FETCH: ${{ steps.halfspace-fetch.outcome }}
           NATIVE_COMPARE: ${{ steps.native-compare.outcome }}
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
@@ -411,7 +419,7 @@ jobs:
           VIEWER_RETAINED: ${{ steps.viewer-retained.outcome }}
         run: |
           failed=0
-          for lane in M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED; do
+          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

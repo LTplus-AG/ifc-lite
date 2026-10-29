@@ -11,11 +11,12 @@ pub(super) fn pieces(clip:&Clip)->Option<Vec<Vec<Plane>>> {
     if area<0.{points.reverse();}
     let triangles=triangles(points)?;
     let axis=unit(vector(&clip.frame,[0.,0.,1.]))?;
+    let sign=super::bounded_source::orientation(&clip.frame)?;
     triangles.into_iter().map(|t| {
         let mut planes=vec![clip.plane];
         for i in 0..3 {
             let p=transform(&clip.frame,[t[i][0],t[i][1],0.]);let q=transform(&clip.frame,[t[(i+1)%3][0],t[(i+1)%3][1],0.]);
-            let n=unit(cross(sub(q,p),axis))?;planes.push((n,dot(n,p)));
+            let n=unit(cross(sub(q,p),axis))?.map(|v|v*sign);planes.push((n,dot(n,p)));
         }
         Some(planes)
     }).collect()

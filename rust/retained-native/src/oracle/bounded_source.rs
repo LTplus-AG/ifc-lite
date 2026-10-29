@@ -19,7 +19,9 @@ impl Clip {
         let position=decoder.decode_by_id(surface.get_ref(slot::IfcPlane::POSITION.index())?).ok()?;
         let local=Axis2Placement::read_3d(&position,decoder).ok()?.matrix();
         let frame=multiply(world,local.as_slice().try_into().ok()?);
-        let mut normal=unit(cross(vector(&frame,[1.,0.,0.]),vector(&frame,[0.,1.,0.])))?;
+        // cross(Mx,My) carries det(M); remove its sign to obtain M^-T z.
+        let sign=orientation(&frame)?;
+        let mut normal=unit(cross(vector(&frame,[1.,0.,0.]),vector(&frame,[0.,1.,0.])))?.map(|v|v*sign);
         if !half.get_bool(slot::IfcHalfSpaceSolid::AGREEMENT_FLAG.index())? {normal=normal.map(|v|-v);}
         let plane=(normal,dot(normal,transform(&frame,[0.;3])));
         if half.ifc_type!=IfcType::IfcPolygonalBoundedHalfSpace {
@@ -34,8 +36,16 @@ impl Clip {
     pub fn lateral_point(&self,p:[f64;3])->[f64;2] {
         let delta=sub(p,transform(&self.frame,[0.;3]));
         let x=vector(&self.frame,[1.,0.,0.]);let y=vector(&self.frame,[0.,1.,0.]);
-        [dot(delta,x)/dot(x,x),dot(delta,y)/dot(y,y)]
+        let z=vector(&self.frame,[0.,0.,1.]);let det=dot(x,cross(y,z));
+        // Reciprocal basis pulls back to authored XY, preserving local winding
+        // and circular arc crossing orientation even through mirrors/shear.
+        [dot(delta,cross(y,z))/det,dot(delta,cross(z,x))/det]
     }
+}
+/// Handedness of an invertible source frame; singular frames have no oracle.
+pub(super) fn orientation(frame:&[f64;16])->Option<f64> {
+    let det=dot(vector(frame,[1.,0.,0.]),cross(vector(frame,[0.,1.,0.]),vector(frame,[0.,0.,1.])));
+    (det.is_finite() && det!=0.).then_some(det.signum())
 }
 pub(super) struct Chain {
     pub host: u32,
@@ -166,6 +176,31 @@ mod tests {
             let removed=plain.plane.1-dot(plain.plane.0,p);
             let mirrored=reflected.plane.1-dot(reflected.plane.0,transform(&mirror,p));
             assert_eq!(removed,mirrored,"removed side at {p:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn m6_7955_reflected_boundary_pullback_and_partition_sides() {
+    let bytes=include_bytes!("../../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
+    let bundle=ifc_lite_core::SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    // Reflect X or Z, then also exercise non-orthogonal mapped axes.
+    for (x,z,shear) in [(-2.,1.,0.),(2.,-1.,0.),(-2.,1.,0.5)] {
+        let mut frame=IDENTITY;frame[0]=x;frame[5]=3.;frame[10]=z;frame[4]=shear;
+        for id in [307,340] { // linear interior boundary and analytic arc
+            let plain=Clip::read(id,&IDENTITY,&mut decoder).unwrap();
+            let clip=Clip::read(id,&frame,&mut decoder).unwrap();
+            for p in [[1.,1.,3.],[3.,1.,3.],[0.5,0.5,3.]] {
+                let world=transform(&frame,p);
+                let a=super::bounded_partition::inside_distance(plain.edges.as_ref().unwrap(),plain.lateral_point(p));
+                let b=super::bounded_partition::inside_distance(clip.edges.as_ref().unwrap(),clip.lateral_point(world));
+                assert!((a-b).abs()<1e-12,"boundary #{id}, {world:?}: {a} vs {b}");
+                if id==307 {
+                    let contains=|c:&Clip,q|super::bounded_partition::pieces(c).unwrap().iter().any(|piece|piece.iter().all(|(n,d)|dot(*n,q)<=*d+1e-12));
+                    assert_eq!(contains(&plain,p),contains(&clip,world),"partition {p:?}");
+                }
+            }
         }
     }
 }

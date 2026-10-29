@@ -29,6 +29,7 @@ pub struct ClipPartEvidence { pub index: usize, pub curved: bool, pub executed: 
 pub struct OracleResult {
     pub family: &'static str, pub value: f64, pub limit: f64, pub pass: bool, pub gated: bool,
     pub authority: Option<SourceAuthority>,
+    pub reason: Option<String>,
     pub clip_part: Option<ClipPartEvidence>,
 }
 pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, tolerances: &serde_json::Value, bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>) -> Vec<OracleResult> {

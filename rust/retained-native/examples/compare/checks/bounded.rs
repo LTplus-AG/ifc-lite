@@ -18,7 +18,10 @@ pub(crate) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&s
         row("bounded_closure",m.defects as f64,0.),
     ];
     if let Some(volume)=e.section_volume {rows.push(row("bounded_section_volume",crate::metrics::relative(m.volume,volume),t["boundedSectionVolumeRelative"][key].as_f64().unwrap()));}
-    else if e.curved {rows.push(row("bounded_curved_volume_unavailable",f64::INFINITY,0.));}
+    else {
+        let mut unavailable=row(if e.curved {"bounded_curved_volume_unavailable"}else{"bounded_linear_volume_unavailable"},f64::INFINITY,0.);
+        unavailable.reason=e.section_unavailable.clone();rows.push(unavailable);
+    }
     rows
 }
 fn row(family:&'static str,value:f64,limit:f64)->OracleResult {OracleResult{family,value,limit,pass:value.is_finite()&&value<=limit,gated:true,..Default::default()}}

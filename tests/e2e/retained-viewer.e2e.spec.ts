@@ -252,6 +252,62 @@ test.describe('retained viewer acceptance', () => {
       farOccurrenceFlat: result.meshIds.includes(391), summary: result.summary });
   });
 
+  test('M11-A x M11-I: one shard, every occurrence keeps its own authored colour', async ({ page }) => {
+    await setup(page, 'retained');
+    await page.evaluate(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals;
+      const seen = new Set<ArrayBuffer>();
+      globals.__m11I = { draws: 0, shards: [] };
+      (globals as typeof globals & { __m11Colours?: Record<number, number[]> }).__m11Colours = {};
+      globals.__ifc_lite_viewer_store__.subscribe(state => {
+        for (const { bytes } of state.pendingInstancedShards ?? []) {
+          if (seen.has(bytes)) continue;
+          seen.add(bytes);
+          // Header u32s: magic, version, templates, instances, ..., stride at +28 (a v1 shard has none: 88).
+          const wire = new DataView(bytes), templates = wire.getUint32(8, true), instances = wire.getUint32(12, true);
+          const stride = wire.getUint32(4, true) >= 2 ? wire.getUint32(28, true) || 88 : 88;
+          globals.__m11I!.shards.push({ templates, instances, triangles: 0 });
+          for (let i = 0; i < instances; i++) {
+            const record = 32 + templates * 48 + i * stride;
+            (globals as typeof globals & { __m11Colours: Record<number, number[]> }).__m11Colours[wire.getUint32(record + 4, true)] =
+              [0, 4, 8, 12].map(offset => wire.getFloat32(record + 8 + offset, true));
+          }
+        }
+      });
+    });
+    // One shared representation map and one shared leaf: the geometry is byte-equal, so the instance key is too.
+    // Each occurrence's own IfcMappedItem carries the style, which an unstyled leaf takes as its element colour.
+    const source = readFileSync(MAPPED, 'utf8');
+    const styles = '#20001=IFCCOLOURRGB($,0.9,0.1,0.1);#20002=IFCSURFACESTYLERENDERING(#20001,0.,$,$,$,$,$,$,.NOTDEFINED.);'
+      + '#20003=IFCSURFACESTYLE($,.BOTH.,(#20002));#20004=IFCCOLOURRGB($,0.1,0.1,0.9);'
+      + '#20005=IFCSURFACESTYLERENDERING(#20004,0.,$,$,$,$,$,$,.NOTDEFINED.);#20006=IFCSURFACESTYLE($,.BOTH.,(#20005));\n'
+      + Array.from({ length: 64 }, (_, i) => `#${20010 + i}=IFCSTYLEDITEM(#${25 + 7 * i},(#${i % 2 === 0 ? 20003 : 20006}),$);`).join('\n') + '\n';
+    const styled = source.replace('ENDSEC;\nEND-ISO', `${styles}ENDSEC;\nEND-ISO`);
+    expect(styled, 'the fixture ends with a single DATA section').not.toBe(source);
+    await page.locator('#file-input-open').setInputFiles({ name: 'mapped-two-colours.ifc',
+      mimeType: 'application/ifc', buffer: Buffer.from(styled) });
+    await complete(page, true);
+    const result = await snapshot(page);
+    expect(result.error).toBeNull();
+    expect(result.summary?.published).toBe(64);
+    expect(result.summary?.refused).toEqual([]);
+    const observed = await page.evaluate(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals & { __m11Colours: Record<number, number[]> };
+      return { shards: globals.__m11I!.shards, colours: globals.__m11Colours };
+    });
+    // The same geometry still groups into ONE template: appearance is per instance, never part of the grouping key.
+    expect(observed.shards).toHaveLength(1);
+    expect(observed.shards[0]).toMatchObject({ templates: 1, instances: 64 });
+    const near = (actual: number[], expected: number[]) => actual.every((v, i) => Math.abs(v - expected[i]) < 1e-3);
+    const red = [0.9, 0.1, 0.1, 1], blue = [0.1, 0.1, 0.9, 1];
+    for (let i = 0; i < 64; i++) {
+      const colour = observed.colours[31 + 7 * i];
+      expect(colour, `occurrence #${31 + 7 * i} has a shard colour`).toBeDefined();
+      expect(near(colour, i % 2 === 0 ? red : blue), `occurrence #${31 + 7 * i}: ${JSON.stringify(colour)}`).toBe(true);
+    }
+    await record('m11-a-x-m11-i', { shards: observed.shards, red: 32, blue: 32, colours: observed.colours });
+  });
+
   test('positive: current corpus outcomes are absent/listed, with no exact cache lookup', async ({ page }) => {
     const requests: string[] = [];
     page.context().on('request', req => requests.push(req.url()));

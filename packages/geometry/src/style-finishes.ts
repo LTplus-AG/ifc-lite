@@ -56,8 +56,8 @@ export function buildPrePassWithFinishes(
   api: { buildPrePassOnce(data: Uint8Array): unknown },
   buffer: Uint8Array,
 ): ByteStreamingPrePassResult {
+  forgetAppliedFinishes(api); // cleared in Rust even if the prepass throws
   const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-  forgetAppliedFinishes(api);
   applyStyleFinishes(api, prePass.styleIds, prePass.styleFinishes);
   return prePass;
 }

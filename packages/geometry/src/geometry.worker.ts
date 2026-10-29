@@ -662,8 +662,8 @@ let entityIndexApplied: boolean = false;
 function applyEntityIndexToApi(): void {
   const ifcApi = api;
   if (!ifcApi || entityIndexApplied || !cachedEntityIndex) return;
+  forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
   ifcApi.setEntityIndex(cachedEntityIndex.ids, cachedEntityIndex.starts, cachedEntityIndex.lengths);
-  forgetAppliedFinishes(ifcApi);
   entityIndexApplied = true;
 }
 
@@ -1668,8 +1668,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       cachedEntityIndex = null;
       cachedPrepassColumns = null;
       prepassColumnsApplied = false;
+      forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
-      forgetAppliedFinishes(ifcApi);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = true;
       return;

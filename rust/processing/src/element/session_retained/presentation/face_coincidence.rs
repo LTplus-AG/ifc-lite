@@ -43,6 +43,15 @@ fn probes(operand: &Operand, face: &SourceFace) -> Option<Vec<V>> {
             let s = if face.role == (Role::Cap { end: true }) { region.depth } else { 0. };
             Some(region.loops.iter().flatten().flat_map(marks).map(|q| lift(region, q, s)).collect())
         }
+        (Extent::Plane, _, Support::Plane { origin, normal }) => {
+            // Three non-collinear points determine the unbounded source plane.
+            // They are support probes, never artificial finite cutter extents.
+            let helper = if normal[0].abs() < 0.9 { [1., 0., 0.] } else { [0., 1., 0.] };
+            let u = super::face_attribution::unit(cross(*normal, helper))?;
+            let v = cross(*normal, u);
+            Some(vec![*origin, std::array::from_fn(|i| origin[i] + u[i]),
+                std::array::from_fn(|i| origin[i] + v[i])])
+        }
         (Extent::Disk { center, radius }, _, Support::Plane { normal, .. }) => {
             let helper = if normal[0].abs() < 0.9 { [1., 0., 0.] } else { [0., 1., 0.] };
             let u = super::face_attribution::unit(cross(*normal, helper))?;

@@ -46,7 +46,7 @@ impl Report {
         tolerances: &Value,
         ms: f64,
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
-        sources: &ifc_lite_processing::AnalyticQuantitySources,
+        sources: &super::checks::SourceContext<'_>,
         exact_report_only: bool,
     ) {
         self.published += 1;
@@ -56,18 +56,26 @@ impl Report {
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
         self.type_published += usize::from(type_product);
         let curved = shape.parts.iter().any(|p| p.curved);
+        let results = super::checks::check(shape, sources, tolerances);
+        let authorities: Vec<_> = results.iter().filter_map(|r| r.authority).collect();
+        let authority = authorities.first();
+        if authorities.iter().any(|a| authority.is_some_and(|first|
+            a.volume != first.volume || a.bbox != first.bbox || a.curved != first.curved)) {
+            self.violations.push(format!("{model}:{}: conflicting source authorities", shape.product_id));
+        }
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             &format!("{model}:{}", shape.product_id),
-            curved || opening.is_some(),
+            authority.map_or(curved || opening.is_some(), |a| a.curved),
             type_product,
             actual,
             rounded,
             exact,
-            if opening.is_some() { None } else { source },
+            authority.map(|a| (a.volume, a.bbox)).or(if opening.is_some() { None } else { source }),
             tolerances,
             exact_report_only,
         );
         let cut_rel = opening.and_then(|e| {
+            if let Some(authority) = authority { return Some(relative(actual.volume, authority.volume)); }
             super::openings::check_opened(
                 &format!("{model}:{}", shape.product_id),
                 actual,
@@ -92,7 +100,6 @@ impl Report {
             shape.cuts, shape.cut_times_ms.iter().sum::<f64>(), shape.consumed_parts,
             format(cut_rel)
         ));
-        let results = super::checks::check(shape, sources, tolerances);
         for result in &results {
             let maximum = self.oracle_maxima.entry(result.family.into()).or_default();
             *maximum = maximum.max(if result.value.is_finite() { result.value } else { f64::INFINITY });
@@ -100,7 +107,7 @@ impl Report {
                 self.violations.push(format!("{model}:{}: {} source oracle failed", shape.product_id, result.family));
             }
         }
-        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated})).collect::<Vec<_>>()).expect("oracle results serialize")));
+        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated,"sourceCurved":r.clip_part.as_ref().map(|p|p.curved).or(r.authority.map(|a|a.curved)),"part":r.clip_part.as_ref().map(|p|p.index),"clipExecuted":r.clip_part.as_ref().map(|p|p.executed)})).collect::<Vec<_>>()).expect("oracle results serialize")));
         self.coverage
             .push(format!("{model}\t{}\tpublished\t", shape.product_id));
     }

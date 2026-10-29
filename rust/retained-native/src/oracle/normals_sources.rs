@@ -48,6 +48,10 @@ pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -
                     .into_iter().map(|s| s.reversed(sign*polarity)));
             }
         }
+        // An authored IfcHalfSpaceSolid plane is a source surface of the face it cuts:
+        // outward normal toward the removed side, reversed for an opening cutter.
+        result.extend(crate::oracle::clips::source_planes(&bundle,sources,id)?.into_iter()
+            .map(|p| Surface::Plane {origin:p.point,normal:p.normal}.reversed(polarity)));
     }
     Ok(result)
 }

@@ -16,10 +16,12 @@ use support::{native, shape, worker_path};
 #[path = "../examples/compare/tolerances.rs"]
 mod tolerances;
 #[allow(dead_code)]
-#[path = "../examples/compare/checks/faces.rs"]
-mod face_check;
+#[path = "../examples/compare/metrics.rs"]
+mod metrics;
 #[allow(dead_code)]
-pub struct OracleResult { pub family: &'static str, pub value: f64, pub limit: f64, pub pass: bool, pub gated: bool }
+#[path = "../examples/compare/checks/mod.rs"]
+mod checks;
+use checks::faces as face_check;
 
 fn fixture(path: &str) -> String { std::fs::read_to_string(format!("{}/../../{path}", env!("CARGO_MANIFEST_DIR"))).unwrap() }
 fn limit(curved: bool) -> f64 {
@@ -152,6 +154,7 @@ fn issue_7955_m11_f_presentation_fixture_faces() {
     let mut mapped = BTreeSet::new();
     for outcome in &outcomes {
         let ProductOutcome::Published(product) = outcome else { continue };
+        if product.product_id == 610 { continue; } // Clipped: hand-derived cut/flush authority below.
         let expected = if product.product_id == 425 { face_bands::cut(&sources, 425, &[433]) } else { faces::uncut(&sources, product.product_id) };
         let actual = assert_matches(&format!("f-i #{}", product.product_id), product, &expected.expect("predicted"));
         if (311..=391).contains(&product.product_id) { mapped.insert(actual.into_keys().collect::<Vec<_>>()); }
@@ -168,14 +171,21 @@ fn issue_7955_m11_f_presentation_fixture_faces() {
         assert!((measured - area).abs() / area <= limit(curved), "(d) {key}: {measured} vs {area}");
     }
     assert_eq!(actual.len(), 10, "(d) no other keys: {actual:?}");
-    // Not reachable on main: (e) the bent swept disk, (f) the halfspace clip (its tie-break needs M5/M6).
-    for (id, entity) in [(507, 504), (610, 607)] {
-        let refused = outcomes.iter().find_map(|o| match o {
-            ProductOutcome::Refused { product_id, refusal, origin, .. } if *product_id == id => Some((refusal.code(), origin.and_then(|o| o.entity))),
-            _ => None,
-        });
-        assert_eq!(refused, Some(("operation_unsupported", Some(entity))), "f-i #{id} became reachable: add its face case");
-    }
+    // M5 makes (f) reachable: the cut top and the disjoint flush step have
+    // distinct keys. Hand areas: two 1.4 m² caps, seven surviving profile sides,
+    // and the 0.4 m² halfspace face. The flush 0.4 m² step keeps the host key.
+    let clipped=shape(&outcomes,610);
+    let expected:FaceAreas=[("#603:cap(start)",1.4),("#603:cap(end)",1.4),
+        ("#603:side(0,0)",2.),("#603:side(0,1)",1.),("#603:side(0,2)",0.4),
+        ("#603:side(0,3)",0.5),("#603:side(0,4)",1.2),("#603:side(0,5)",0.5),
+        ("#603:side(0,7)",1.),("#607:halfspace",0.4)]
+        .into_iter().map(|(key,area_m2)|(key.into(),faces::FaceArea {area_m2,curved:false})).collect();
+    assert_matches("f-i(f) cut and flush halfspace",clipped,&expected);
+    let refused=outcomes.iter().find_map(|o|match o {
+        ProductOutcome::Refused {product_id:507,refusal,origin,..}=>Some((refusal.code(),origin.and_then(|o|o.entity))),
+        _=>None,
+    });
+    assert_eq!(refused,Some(("operation_unsupported",Some(504))),"bent swept disk remains upstream");
     println!("sdk witness executed: m11_f_presentation_fixture");
 }
 

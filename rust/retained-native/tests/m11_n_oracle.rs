@@ -74,3 +74,21 @@ fn m11_n_7955_retraced_profile_uses_independent_m8_source_region() {
     expected(&surfaces,[2.,0.,12.816],[0.,1.,3e-10]);
     expected(&surfaces,[2.+25.632e-9,-0.2+25.632*3e-10,-12.816],[0.,0.,-1.]);
 }
+
+
+#[test]
+fn m11_n_7955_source_plane_gate_is_independent_of_sliver_facet_noise() {
+    let source = [Surface::Plane {origin:[0.;3],normal:[0.,0.,1.]}];
+    let positions = [0.,0.,0., 1.,0.,0., 0.5,1e-5,7e-8];
+    let frame = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+    let normals = [0.,0.,1.].repeat(3);
+    let check = normals::check_mesh(&positions,&[0,1,2],&frame,&normals,&source).unwrap();
+    assert_eq!(check.unattributed,0);
+    assert_eq!(check.planar_radians,0.);
+    let flipped = normals.iter().map(|v| -v).collect::<Vec<_>>();
+    assert_eq!(normals::check_mesh(&positions,&[0,1,2],&frame,&flipped,&source)
+        .unwrap().planar_radians,std::f64::consts::PI);
+    let mut off_plane = positions;
+    off_plane[8] = 2e-6;
+    assert_eq!(normals::check_mesh(&off_plane,&[0,1,2],&frame,&normals,&source).unwrap().unattributed,3);
+}

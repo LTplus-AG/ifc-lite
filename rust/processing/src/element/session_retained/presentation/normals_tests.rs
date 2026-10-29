@@ -128,20 +128,45 @@ fn m11_n_7955_budget_bounds_backing_and_high_valence_work() {
     // vertices instead creates quadratic adjacency scans that must refuse.
     let separate = part([0.,0.,0., 1.,0.,0., 0.,1.,0.].repeat(1_000),
         (0..3_000).collect(), (0..1_000).collect());
-    ProductBudget::new(BudgetStart::now(), 20_000, 10_000_000, 10000).scope(|| {
+    ProductBudget::new(BudgetStart::now(), 45_000, 10_000_000, 10000).scope(|| {
         for n in normals(&separate).chunks_exact(3) { near(n, [0.,0.,1.]); }
     });
-    // Distinct face ids prove rejected neighbours consume work too.
-    for (work, bytes) in [(1_000_000, 1), (20_000, 10_000_000)] {
+    // Two nonplanar faces retain quadratic scans, including rejected neighbours.
+    for (work, bytes) in [(1_000_000, 1), (45_000, 10_000_000)] {
         let budget = ProductBudget::new(BudgetStart::now(), work, bytes, 10000);
         let started = std::time::Instant::now();
         budget.scope(|| {
-            let mut p = fan(&[0.; 1_000], &[90.; 1_000]);
-            p.revision_local_faces = (0..1_000).collect();
+            let tilts: Vec<_> = (0..1_000).map(|i| (i%4) as f64*8.).collect();
+            let mut p = fan(&tilts, &[90.; 1_000]);
+            p.revision_local_faces = (0..1_000).map(|i| i%2).collect();
             assert_eq!(corner_normals(&p, &OwnedResourceContext::capture_current(), &mut Storage::default())
                 .unwrap_err().refusal().0.code(), "resource_exhausted");
         });
         assert!(!budget.deadline_fired(), "work/backing must refuse before the deadline");
         assert!(started.elapsed() < std::time::Duration::from_secs(2), "bounded high-valence refusal");
     }
+}
+
+
+#[test]
+fn m11_n_7955_planar_face_slivers_use_one_verified_plane_normal() {
+    // The source plane is z=0. One interior tessellation vertex is 70 nm off
+    // that plane; a 10 micrometre altitude amplifies its facet-normal error.
+    // The entire face boundary still defines the exact plane normal.
+    let p = part(vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.5,1e-5,7e-8],
+        vec![0,1,4, 1,2,4, 2,3,4, 3,0,4],vec![7;4]);
+    let facet = unit(cross([1.,0.,0.],[0.5,1e-5,7e-8])).unwrap();
+    assert!(length(cross(facet,[0.,0.,1.])) > 1e-3);
+    for normal in normals(&p).chunks_exact(3) {near(normal,[0.,0.,1.]);}
+}
+
+#[test]
+fn m11_n_7955_nonplanar_face_retains_per_corner_crease_rule() {
+    let p = fan(&[0.,8.],&[90.;2]);
+    // The whole face is far outside faceIncidence, so four-degree smoothing
+    // at the shared edge remains; it must not collapse to one plane normal.
+    let result = normals(&p);
+    near(&result[..3],[0.,-4_f64.to_radians().sin(),4_f64.to_radians().cos()]);
+    near(&result[6..9],[0.,0.,1.]);
+    near(&result[15..18],[0.,-8_f64.to_radians().sin(),8_f64.to_radians().cos()]);
 }

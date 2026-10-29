@@ -1824,7 +1824,7 @@ lists `IfcAppearance, MaterialLayers`. Every published product discharges
 Every part reports persistent source face keys (`#item[>#opening]:role`) with triangle counts
 and areas; unproven faces refuse `face_provenance_unproven`. Color, material and instance
 channels remain reserved for their independently qualified presentation slices.
-Retained OBJ emits per-corner `vn` records. Normals use an angle-weighted mean within
-each kernel face, with a 10° guard relative to each triangle; caps and sharp bends remain
-creased. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
+Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
+verified against every face vertex. Other faces use an angle-weighted mean with a 10°
+guard relative to each triangle; caps and sharp bends remain creased. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
 products; unsupported tessellated bodies continue to refuse explicitly.

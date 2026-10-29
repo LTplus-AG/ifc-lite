@@ -56,7 +56,7 @@ fn scale(v: [f64; 3], s: f64) -> [f64; 3] { v.map(|x| x*s) }
 fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { std::array::from_fn(|i| a[i]+b[i]) }
 pub fn angle(a: [f64; 3], b: [f64; 3]) -> f64 { norm(cross(a,b)).atan2(dot(a,b)) }
 
-#[derive(Debug, Default, serde::Serialize)]
+#[derive(Default, serde::Serialize)]
 pub struct Check {
     pub surface_indices: Vec<Option<usize>>,
     pub corners: usize,
@@ -68,6 +68,15 @@ pub struct Check {
     pub planar_radians: f64,
     pub curved_radians: f64,
     pub unit_error: f64,
+}
+impl std::fmt::Debug for Check {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Check").field("corners",&self.corners)
+            .field("planar",&self.planar).field("curved",&self.curved)
+            .field("smoothed_curved",&self.smoothed_curved).field("flat",&self.flat)
+            .field("unattributed",&self.unattributed).field("planar_radians",&self.planar_radians)
+            .field("curved_radians",&self.curved_radians).field("unit_error",&self.unit_error).finish()
+    }
 }
 fn facet(local: [[f64;3];3], frame: &[f64;16]) -> Option<[f64;3]> {
     // Translation cancels analytically. Subtracting absolute world points

@@ -1,7 +1,7 @@
 --- a/rust/processing/src/element/session_retained/presentation/normals_mesh.rs
 +++ b/rust/processing/src/element/session_retained/presentation/normals_mesh.rs
-@@ -5,7 +5,7 @@
- use ifc_lite_geometry::resource;
+@@ -8,7 +8,7 @@
+ mod plane;
 
  // Twice the retained model driver's fixed 5 degree tessellation tolerance.
 -const CREASE_RADIANS: f64 = std::f64::consts::PI;

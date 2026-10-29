@@ -41,7 +41,7 @@ const angle=(a,b)=>Math.atan2(Math.hypot(a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2]
 const field=(part,kinds)=>{
   const vertices=Array.from({length:part.positions.length/3},(_,i)=>({p:Array.from(part.positions.slice(3*i,3*i+3)),corners:[]}));
   for(let i=0;i<part.indices.length;i++)vertices[part.indices[i]].corners.push({
-    n:Array.from(part.normals.slice(3*i,3*i+3)),surface:kinds[Math.floor(i/3)]});
+    n:Array.from(part.normals.slice(3*i,3*i+3)),surface:kinds[Math.floor(i/3)]??null});
   return vertices.filter(v=>v.corners.length);
 };
 // #7955 ruling B: absolute 1e-9 metre mesh-local position matching, independent

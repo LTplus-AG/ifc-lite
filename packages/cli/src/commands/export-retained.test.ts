@@ -113,7 +113,7 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
     color: [1, 0, 0, 1] as [number, number, number, number], materialName: 'surface', geometryItemId: 13,
     faces: { table: ['#13:cap(end)'], triangles: Uint32Array.of(0) } };
   const { obj, report } = retainedArtifacts(engine, [{ ...shape, parts: [part, shape.parts[0], part],
-    instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } }], () => null);
+    instanceKey: 'a'.repeat(64) }], () => null);
   expect(report.format).toBe('ifc-lite.retained-report/1');
   expect(obj).toContain('vn 0.000000 1.000000 -0.000000');
   expect(obj).toContain('f 1//1 2//2 3//3');
@@ -128,7 +128,7 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
   for (const key of ['color', 'materialName', 'geometryItemId', 'materialId', 'normals', 'faces']) {
     expect(parts[1]).not.toHaveProperty(key);
   }
-  expect(report.products[0]).toMatchObject({ instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } });
+  expect(report.products[0]).not.toHaveProperty('instanceGroup');
   expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(0, 0, 1) }] }], () => null)).toThrow(/corner normals/);
   const signed = retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(-0, -0, 1, 0, -0, 1, -0, 0, 1) }] }], () => null);
   const written = (signed.report.products[0] as unknown as { parts: { normals: number[] }[] }).parts[0].normals;

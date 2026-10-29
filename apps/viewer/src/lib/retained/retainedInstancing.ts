@@ -53,11 +53,13 @@ export class RetainedInstancing {
       ifcType: event.meshes[0].ifcType ?? event.ifcType,
       worldFromObject: event.instanceWorldFromObject! })), pending.map(event => event.instanceKey!), this.rtc);
     const flat = new Set(encoded.flatIndices);
-    const grouped: Published[] = [];
-    for (const [index, event] of pending.entries()) {
-      if (flat.has(index)) this.emit(event);
-      else grouped.push(event);
+    const grouped = pending.filter((_, index) => !flat.has(index));
+    // A partial encoder result cannot publish product rows without geometry.
+    if (encoded.instanceCount !== grouped.length) {
+      for (const event of pending) this.emit(event);
+      return;
     }
+    for (const [index, event] of pending.entries()) if (flat.has(index)) this.emit(event);
     if (grouped.length) {
       // One message owns the entire shard and every product it renders. Cancel
       // cannot receive geometry while dropping the remaining publication rows.
@@ -65,7 +67,7 @@ export class RetainedInstancing {
         bounds: calculateMeshBounds(grouped.flatMap(event => event.meshes)).bounds,
         instanceProducts: grouped.map(({ meshes, ...product }) => ({ ...product,
           ...(product.faces ? { faceRows: faceRows(product.faces, meshes) } : {}) })),
-        instancedShards: [Uint8Array.from(encoded.shard).buffer] });
+        instancedShards: [encoded.shard.buffer as ArrayBuffer] });
     }
   }
 

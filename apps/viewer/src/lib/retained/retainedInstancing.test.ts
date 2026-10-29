@@ -69,3 +69,35 @@ it('#7955 M11-I supplies the source product type when optional viewer mesh metad
   batcher.flush();
   assert.equal(encodedType, 'IfcBeam', 'the required WASM field comes from the publication, never an invented type');
 });
+
+for (const instanceCount of [0, 1, 3]) {
+  it(`#7955 inconsistent encoder count ${instanceCount} conserves all products as flat geometry`, () => {
+    const published: Extract<RetainedHostResponse, { kind: 'published' }>[] = [];
+    const batcher = new RetainedInstancing(() => ({ shard: Uint8Array.of(1),
+      flatIndices: Uint32Array.of(0), instanceCount, groupCount: 1, verificationRejections: 0 }),
+    1, event => { if (event.kind === 'published') published.push(event); });
+    const products = [candidate(31), candidate(32), candidate(33)];
+    for (const product of products) batcher.accept(product);
+    batcher.flush();batcher.flush();
+    assert.deepEqual(published.map(event => event.expressId), [31, 32, 33]);
+    assert.ok(published.every((event, i) => event.meshes === products[i].meshes && !event.instancedShards));
+  });
+}
+
+it('#7955 transfers the encoder-owned shard without copying its bytes', () => {
+  const shard = Uint8Array.of(1, 2, 3);
+  let transferred = false;
+  const batcher = new RetainedInstancing(() => ({ shard, flatIndices: new Uint32Array(),
+    instanceCount: 8, groupCount: 1, verificationRejections: 0 }), 1, (event, transfer) => {
+    if (event.kind !== 'published') return;
+    assert.equal(event.instancedShards?.[0], shard.buffer);
+    assert.deepEqual(transfer, [shard.buffer]);
+    const received = structuredClone(event, { transfer });
+    assert.equal(shard.byteLength, 0, 'sender relinquishes the encoder buffer');
+    assert.deepEqual(new Uint8Array(received.instancedShards![0]), Uint8Array.of(1, 2, 3));
+    transferred = true;
+  });
+  for (let id = 1; id <= 8; id++) batcher.accept(candidate(id));
+  batcher.flush();
+  assert.equal(transferred, true);
+});

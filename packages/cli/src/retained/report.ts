@@ -34,7 +34,7 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
       ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= 8
         ? { instanceGroup: { templateProductId: groups.get(p.instanceKey)!.templateProductId, key: p.instanceKey } }
-        : p.instanceGroup ? { instanceGroup: p.instanceGroup } : {}) };
+        : {}) };
   });
   const published = outcomes.filter(p => p.status === 'published').length;
   return { format: 'ifc-lite.retained-report/1',

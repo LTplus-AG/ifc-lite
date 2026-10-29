@@ -69,7 +69,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
     const events = [];
     const empty = await session.run(bytes, { detail: 'shape', ids: new Uint32Array() }, event => events.push(event));
     assert(empty.candidates === 0 && events.length === 1 && events[0].candidateIds.length === 0, 'empty ids selects nothing');
-    return { passed: true, summaries, instancing: instances.finish(wasm, prepass.rtcOffset) };
+    return { passed: true, summaries, instancing: await instances.finish(wasm, prepass.rtcOffset) };
   } finally {
     RetainedDriver.prototype.qualify = qualify;
     api.clearPrePassCache();

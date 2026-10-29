@@ -46,6 +46,7 @@ fn issue_7955_m11_i_native_64_byte_identical_mapped_occurrences() {
     let key_hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
     let reference = serde_json::json!({ "key":key_hex, "groups":1, "occurrences":64,
         "faceKeysPerPart":faces.table.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "triangleFacesPerPart":faces.triangles,
         "triangles":parts.iter().map(|(p,_)| p.indices.len()/3).sum::<usize>(),
         "ids":parts.iter().map(|(_,id)| id).collect::<Vec<_>>() });
     println!("M11-I native: {reference}");

@@ -2,36 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MutableRefObject } from 'react';
-import { decodeInstancedShard, type DecodedInstancedShard } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
-import { liftNewInstancedOccurrences } from '@/lib/level-arrival';
 import { robustFitBoundsFull } from './robustFitBoundsAccumulator.js';
 import { userMovedCamera, type Bounds } from './streamingBounds.js';
-
-/** Existing upload order and per-shard failure containment, shared by both kernels. */
-export function drainInstancedShards(
-  scene: ReturnType<Renderer['getScene']>, device: GPUDevice,
-  pending: Array<{ modelId: string; bytes: ArrayBuffer }>,
-  offsets: ReadonlyMap<string, number> | undefined, indices: ReadonlyMap<string, number> | undefined,
-  levelY: ReadonlyMap<number, number> | undefined,
-  offsetShard: (shard: DecodedInstancedShard, offset: number) => void,
-): void {
-  const trace = activeLoadTrace();
-  for (const { modelId, bytes } of pending) {
-    // A failed GPU allocation must stay inside this drain, not tear down the viewport.
-    try {
-      const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
-      if (!shard) continue;
-      offsetShard(shard, offsets?.get(modelId) ?? 0);
-      liftNewInstancedOccurrences(shard, levelY ?? new Map());
-      const modelIndex = indices?.get(modelId) ?? 0;
-      trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
-    } catch (err) {
-      console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
-    }
-  }
-}
 
 interface FitParams {
   renderer: Renderer;

@@ -1795,9 +1795,9 @@ export function useIfcLoader() {
                     percent: progressPercent
                   });
                 }
-                // #7955: a shard-only batch still publishes bounds and a first
-                // frame. Keep the flat-batch calls/order/throttle above unchanged.
-                if (event.meshes.length === 0 && (event.instancedShards?.length ?? 0) > 0) {
+                // #7955: only retained shard-only batches publish bounds and a first
+                // frame here. Exact keeps its original flat-batch throttle.
+                if (geometryKernel.kind === 'retained' && event.meshes.length === 0 && (event.instancedShards?.length ?? 0) > 0) {
                   if (firstAppendGeometryBatchMs === null) {
                     firstAppendGeometryBatchMs = trace.milestone('geometry.firstAppend');
                   }

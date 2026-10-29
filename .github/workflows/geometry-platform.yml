@@ -147,6 +147,7 @@ jobs:
           export IFCLITE_M8_NATIVE_REFERENCE="$RUNNER_TEMP/m8-native.json"
           export IFCLITE_M11F_REFERENCE="$RUNNER_TEMP/m11-f-native-faces.json"
           export IFCLITE_M11_N_REFERENCE="$RUNNER_TEMP/m11-n-native.json"
+          export IFCLITE_M11_I_REFERENCE="$RUNNER_TEMP/m11-i-native-instances.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
           for file in tests/evidence/*/witnesses.txt; do
@@ -249,6 +250,9 @@ jobs:
           fi
           if [ -f "$RUNNER_TEMP/m11-n-native.json" ]; then
             cp "$RUNNER_TEMP/m11-n-native.json" rust/wasm-bindings/smlib/m11-n-native.json
+            fi
+          if [ -f "$RUNNER_TEMP/m11-i-native-instances.json" ]; then
+            cp "$RUNNER_TEMP/m11-i-native-instances.json" rust/wasm-bindings/smlib/m11-i-native-instances.json
           fi
           node scripts/stage-retained-runtime-peer.mjs
           if [ -f "$RUNNER_TEMP/m8-native.json" ]; then

@@ -10,6 +10,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { Camera } from '../../../../../packages/renderer/src/camera.js';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
+import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 import { cleanup, render, advance } from '@/test/render.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 
@@ -18,11 +19,11 @@ let update: (input: Input) => void;
 const flat: MeshData = { expressId: 91, positions: Float32Array.of(20,0,0,21,0,0,20,1,0), normals: new Float32Array(9), indices: Uint32Array.of(0,1,2), color: [0.6,0.6,0.6,1] };
 const box = { min: { x: 20, y: 0, z: 0 }, max: { x: 21, y: 1, z: 0 } };
 const coordinateInfo: CoordinateInfo = { originalBounds: box, shiftedBounds: box, originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false };
-function View({ renderer }: { renderer: Renderer }) {
+function View({ renderer, geometryKernel }: { renderer: Renderer; geometryKernel: 'exact' | 'retained' }) {
   const [input, set] = useState<Input>({ geometry: null, streaming: false });update = set;
   const rendererRef = useRef<Renderer | null>(renderer), geometryBoundsRef = useRef(box);
   const clearColorRef = useRef<[number, number, number, number]>([0,0,0,1]);
-  useGeometryStreaming({ rendererRef, geometry: input.geometry, appearanceSourceGeometry: input.source ?? input.geometry ?? [],
+  useGeometryStreaming({ rendererRef, geometryKernel, geometry: input.geometry, appearanceSourceGeometry: input.source ?? input.geometry ?? [],
     coordinateInfo, isInitialized: true, isStreaming: input.streaming, geometryBoundsRef, clearColorRef,
     pendingInstancedShards: input.shard ? [{ modelId: 'm', bytes: input.shard }] : null,
     clearInstancedShards: () => set(current => ({ ...current, shard: undefined })),
@@ -32,7 +33,7 @@ function View({ renderer }: { renderer: Renderer }) {
     pruneGeometryMeshes() {}, clearPendingMeshTranslations() {}, clearPendingMeshRotations() {} });
   return null;
 }
-function harness() {
+function harness(geometryKernel: 'exact' | 'retained' = 'retained') {
   const native = appearanceInstanceScene([]), camera = new Camera(), calls: string[] = [];
   const renderer = { getScene: () => native.scene, getGPUDevice: () => native.device, getPipeline: () => native.pipeline,
     getCamera: () => camera, getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }), clearCaches() {}, requestRender() {} } as unknown as Renderer;
@@ -40,7 +41,7 @@ function harness() {
   mock.method(camera, 'fitBoundsAdaptive', (...args: Parameters<typeof fit>) => { calls.push('fit');return fit(...args); });
   mock.method(native.scene, 'queueMeshes', (...args: Parameters<typeof queue>) => { calls.push('queue');return queue(...args); });
   mock.method(native.scene, 'addInstancedShard', (...args: Parameters<typeof add>) => { calls.push('shard');return add(...args); });
-  render(<View renderer={renderer} />);return { ...native, camera, calls };
+  render(<View renderer={renderer} geometryKernel={geometryKernel} />);return { ...native, camera, calls };
 }
 afterEach(() => { cleanup();mock.restoreAll(); });
 
@@ -97,4 +98,30 @@ it(`#7955 a ${reason} mixed-model snapshot preserves its existing camera-reset o
   assert.deepEqual({ ...h.camera.getTarget() }, target, 'empty flat snapshots retain the pre-existing reset behavior');
   assert.deepEqual(h.calls, ['queue','fit','shard'], 'no extra fit or upload on clearing the snapshot/unload');
 });
+}
+
+it('#7955 exact shard-only then flat arrival preserves main camera sequence', async () => {
+  const h = harness('exact');
+  await act(async () => update({ geometry: [], shard: buildShardBytes(31), streaming: true }));
+  assert.deepEqual(h.calls, ['shard'], 'main uploads the shard without fitting the camera');
+  await act(async () => update({ geometry: [flat], streaming: true }));
+  assert.deepEqual(h.calls, ['shard', 'queue', 'fit'], 'first camera fit belongs to flat geometry');
+  assert.ok(Math.abs(h.camera.getTarget().x - 20.5) < 0.01);
+});
+
+for (const kernel of ['retained', 'exact'] as const) {
+  it(`#7955 ${kernel} completion with near flat walls and far instanced columns`, async () => {
+    const h = harness(kernel), shard = buildShardBytes(31);
+    new DataView(shard).setFloat32(116, 1000, true);
+    const geometry = [flat];
+    await act(async () => update({ geometry, shard, streaming: true }));
+    // The real scene queue normally drains in the render loop; this fixture
+    // drives that same upload before allowing streaming finalization.
+    flushPlacementGeometry(h.scene, h.device, h.pipeline, false);
+    await act(async () => update({ geometry, streaming: false }));await advance(50);
+    assert.equal(h.calls.filter(call => call === 'fit').length, 2);
+    const target = h.camera.getTarget();
+    assert.ok(Math.abs(target.x - (kernel === 'retained' ? 510.5 : 20.5)) < 0.01,
+      'retained final framing covers columns; exact preserves main flat-only framing');
+  });
 }

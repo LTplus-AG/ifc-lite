@@ -5,4 +5,5 @@
 
 Add optional retained-only GPU instancing for byte-identical rigid mapped products.
 Retained reports identify candidate instance groups; OBJ keeps all occurrences baked.
-The default exact engine and viewer remain unchanged.
+Retained-only bounds and first-frame updates use the loaded source kernel; exact
+loads keep their existing shard drain, camera fitting, and milestone timing.

@@ -19,14 +19,15 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
  */
 
 import { useEffect, useRef } from 'react';
-import type { MeshData, DecodedInstance } from '@ifc-lite/geometry';
+import { decodeInstancedShard } from '@ifc-lite/geometry';
+import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
 import { toast } from '../ui/toast.js';
 import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { geometryMeshKey } from './geometry-mesh-key';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
-import { placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
+import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
@@ -35,34 +36,11 @@ import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
 let linearFitHintShown = false;
 
-/**
- * The instanced half of "every express id is global": re-home, in place, the
- * ids each occurrence of a decoded IFNS shard carries onto its owning model's
- * global id space. The flat half, `applyFederationOffsetToMesh` in
- * `hooks/useIfcLoader.ts`, carries the reasoning and the absence rules; the two
- * must move together because `Scene.getInstancedMeshDataPieces` materializes an
- * occurrence into a `MeshData` and stamps `itemId` onto its `geometryItemId`,
- * so a shard left in local space feeds the flat field a local number.
- *
- * Typed to the one field it touches rather than to `DecodedInstancedShard`, so
- * a header field added to the wire format does not become part of this
- * function's contract, or of every fixture that exercises it.
- */
-export function applyFederationOffsetToShard(
-  shard: { instances: DecodedInstance[] },
-  idOffset: number,
-): void {
-  if (idOffset <= 0) return;
-  for (const instance of shard.instances) {
-    instance.entityId = instance.entityId + idOffset;
-    if (typeof instance.itemId === 'number') {
-      instance.itemId = instance.itemId + idOffset;
-    }
-  }
-}
+import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
+export { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 
 import { refitCompletedStreamBounds } from './streamingCompletionBounds.js';
-import { drainInstancedShards, fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
+import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
 import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
 import { useFinalizationRecoveryWake } from './useFinalizationRecoveryWake.js';
 import type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
@@ -92,6 +70,7 @@ function traceGeometrySync(message: string): void {
 export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const {
     rendererRef,
+    geometryKernel = 'exact',
     isInitialized,
     gpuRecoveryEpoch = 0,
     geometry,
@@ -292,7 +271,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryLengthRef.current = 0;
       // Only preserve ownership established by a shard-only arrival below.
       // A filtered/released flat snapshot must keep its existing reset behavior.
-      lastGeometryRef.current = lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
+      lastGeometryRef.current = geometryKernel === 'retained' && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
         && scene.getInstancedModelIndices().length > 0 ? geometry : null;
       renderer.requestRender();
       return;
@@ -592,11 +571,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             `finalize start geometryLength=${capturedGeometry?.length ?? 0} releaseAfterFinalize=${releaseGeometryAfterFinalize}`
           );
 
-          if (capturedGeometry?.length === 0 && lastGeometryRef.current?.length === 0
+          if (geometryKernel === 'retained' && capturedGeometry?.length === 0 && lastGeometryRef.current?.length === 0
             && !appearanceSourceGeometry?.length) fitInstanceOnlyBounds({ renderer: r,
             cameraFittedRef, cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef,
             lastFitPolicyKindRef, complete: true });
-          refitCompletedStreamBounds({ renderer: r, capturedGeometry, cameraFittedRef,
+          refitCompletedStreamBounds({ renderer: r, geometryKernel, capturedGeometry, cameraFittedRef,
             finalBoundsRefittedRef, robustFitAccRef, cameraSnapshotRef,
             lastFitPolicyKindRef, geometryBoundsRef, trace,
             notifyLinearFit: () => {
@@ -671,7 +650,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       };
     }
     prevIsStreamingRef.current = isStreaming;
-  }, [isStreaming, isInitialized, gpuRecoveryEpoch, finalizeWake, geometry, geometryReplacementVersion, releaseGeometryAfterFinalize, onGeometryReleased, wakeAfterFailure]);
+  }, [geometryKernel, isStreaming, isInitialized, gpuRecoveryEpoch, finalizeWake, geometry, geometryReplacementVersion, releaseGeometryAfterFinalize, onGeometryReleased, wakeAfterFailure]);
 
   // ─── Mesh color updates (style/material deferred colors) ─────────────
   useEffect(() => {
@@ -705,9 +684,27 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (!device) return;
 
     if (pendingInstancedShards.length > 0) {
-      drainInstancedShards(scene, device, pendingInstancedShards, modelIdToOffset, modelIdToIndex,
-        currentLevelY, applyFederationOffsetToShard);
-      if (geometry?.length === 0 && !appearanceSourceGeometry?.length && scene.getInstancedModelIndices().length > 0) {
+      const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
+      for (const { modelId, bytes } of pendingInstancedShards) {
+        // CRITICAL: never let a shard decode/upload throw OUT of this effect.
+        // addInstancedShard creates GPU buffers; on a degraded
+        // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
+        // throws — and an uncaught throw in a React effect tears down the Viewport
+        // subtree via the error boundary, unmounting the <canvas> entirely. Instanced
+        // overlays are non-essential, so swallow per-shard failures: the flat geometry
+        // still renders.
+        try {
+          const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
+          if (!shard) continue;
+          applyFederationOffsetToShard(shard, modelIdToOffset?.get(modelId) ?? 0);
+          liftNewInstancedOccurrences(shard, currentLevelY ?? new Map());
+          const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
+          trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
+        } catch (err) {
+          console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
+        }
+      }
+      if (geometryKernel === 'retained' && geometry?.length === 0 && !appearanceSourceGeometry?.length && scene.getInstancedModelIndices().length > 0) {
         fitInstanceOnlyBounds({ renderer, cameraFittedRef, cameraSnapshotRef,
           geometryBoundsRef, finalBoundsRefittedRef, lastFitPolicyKindRef, complete: false });
         lastGeometryRef.current = geometry;
@@ -715,7 +712,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       renderer.requestRender();
     }
     clearInstancedShards();
-  }, [pendingInstancedShards, modelIdToIndex, modelIdToOffset, isInitialized, gpuRecoveryEpoch, clearInstancedShards]);
+  }, [geometryKernel, pendingInstancedShards, modelIdToIndex, modelIdToOffset, isInitialized, gpuRecoveryEpoch, clearInstancedShards]);
 
   usePlacementMutationDrain({ rendererRef, isInitialized, gpuRecoveryEpoch,
     kind: 'translations', pending: pendingMeshTranslations, clearPending: clearPendingMeshTranslations });

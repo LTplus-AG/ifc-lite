@@ -47,7 +47,7 @@ fn m6_sdk_clipped_faces_normals_appearance_and_instance_exclusion() {
         let p = support::shape(&outcomes,id);
         let check = normals::check(p,&source(SOURCE,id)).unwrap();
         assert_eq!(check.unattributed,0,"#{id}: {check:?}");
-        assert!(check.planar_radians<1e-6&&check.curved_radians<0.0873&&check.unit_error<1e-12,"#{id}: {check:?}");
+        assert!(check.planar_radians<1e-9&&check.curved_radians<0.0873&&check.unit_error<1e-12,"#{id}: {check:?}");
         for part in &p.parts {
             assert!(part.instance_key.is_none(),"#{id}: clipped products cannot instance");
             assert!(part.appearance.is_some(),"#{id}: appearance must be discharged");
@@ -68,7 +68,7 @@ fn m6_sdk_mirrored_scaled_boxed_final_keeps_shape_and_clip_lineage() {
     let p = support::shape(&outcomes,1007);
     let check = normals::check(p,&source(&text,1007)).unwrap();
     assert_eq!(check.unattributed,0,"{check:?}");
-    assert!(check.planar_radians<1e-6&&check.unit_error<1e-12,"{check:?}");
+    assert!(check.planar_radians<1e-9&&check.unit_error<1e-12,"{check:?}");
     let mut volume = 0.;
     for part in &p.parts {
         let (v,c) = affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap();

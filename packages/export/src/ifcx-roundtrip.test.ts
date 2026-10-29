@@ -81,7 +81,12 @@ const FULL_FIDELITY: Ifc5ExportOptions = {
 
 /** Entity node paths (IFCX uses the node path as GlobalId). */
 function pathSet(parsed: IfcxParseResult): Set<string> {
-  return new Set(parsed.idToPath.values());
+  const out = new Set<string>();
+  for (const [id, path] of parsed.idToPath) {
+    // A derived row (a material from a class-less node) is the reader's, not the file's: export does not write it.
+    if (!parsed.derivedEntities.added.has(id)) out.add(path);
+  }
+  return out;
 }
 
 /** path -> { name, ifcClass } */
@@ -90,10 +95,12 @@ function entityInfoByPath(parsed: IfcxParseResult): Map<string, { name: string; 
   const { entities, strings } = parsed;
   for (let i = 0; i < entities.count; i++) {
     const path = parsed.idToPath.get(entities.expressId[i]);
-    if (!path) continue;
+    if (!path || parsed.derivedEntities.added.has(entities.expressId[i])) continue;
     out.set(path, {
       name: strings.get(entities.name[i]) ?? '',
-      ifcClass: IfcTypeEnumToString(entities.typeEnum[i] as IfcTypeEnum),
+      // The class the file states: a reclassified row (a window type the file calls IfcWindow) keeps the file's.
+      ifcClass: parsed.derivedEntities.retyped.get(entities.expressId[i])
+        ?? IfcTypeEnumToString(entities.typeEnum[i] as IfcTypeEnum),
     });
   }
   return out;
@@ -132,7 +139,7 @@ function propsByPath(parsed: IfcxParseResult): Map<string, Set<string>> {
   for (let i = 0; i < entities.count; i++) {
     const expressId = entities.expressId[i];
     const path = parsed.idToPath.get(expressId);
-    if (!path) continue;
+    if (!path || parsed.derivedEntities.added.has(expressId)) continue;
     const flat = new Set<string>();
     for (const pset of parsed.properties.getForEntity(expressId)) {
       for (const prop of pset.properties) {
@@ -199,7 +206,7 @@ describe.skipIf(!FIXTURE_AVAILABLE)('IFCX export round-trip fidelity (Hello Wall
     const reparsed = await roundTrip(original, FULL_FIDELITY);
 
     expect(pathSet(reparsed)).toEqual(pathSet(original));
-    expect(reparsed.entityCount).toBe(original.entityCount);
+    expect(reparsed.entityCount).toBe(pathSet(original).size);
   });
 
   it('preserves IFC class and name for every entity', async () => {

@@ -14,7 +14,7 @@ import type { RetainedShapeProduct } from '../../../wasm/pkg-retained/ifc-lite.j
 const dirs: string[] = [];
 afterEach(async () => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true }); });
 const engine: RetainedEngine = { directory: '/unused', url: new URL('file:///unused/'), sdk: 'protocol-test', capabilities: null, manifestSha256: '0'.repeat(64) };
-const shape: RetainedShapeProduct = { status: 'published', expressId: 27, ifcType: 'IfcBuildingElementProxy', marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'],
+const shape: RetainedShapeProduct = { status: 'published', cuts: 0, consumedParts: 0, expressId: 27, ifcType: 'IfcBuildingElementProxy', marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'],
   parts: [{ positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0), indices: Uint32Array.of(0, 1, 2),
     worldFromObject: Float64Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1), curved: false }] };
 
@@ -62,7 +62,7 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
     'smlib/node/client.mjs', 'smlib/node/worker.mjs', 'smlib/node/hooks.mjs', 'smlib/worker.mjs', 'smlib/module.mjs',
     'smlib/sweep.mjs', 'smlib/sweep-contract.mjs', 'smlib/contract.mjs',
     'smlib/ifclite_smlib_browser.mjs', 'smlib/ifclite_smlib_browser.wasm', 'LICENSES/SMLib/LICENSE',
-    'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE'];
+    'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE', 'THIRD_PARTY_NOTICES.txt'];
   const content = 'must never execute';
   const assets = [];
   for (const path of paths) {
@@ -71,6 +71,15 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   }
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets }));
   await validateEngine(dir);
+  // Refs #7955: an internally consistent inventory still requires the root notice.
+  const manifestBytes = await readFile(join(dir, 'engine-manifest.json'));
+  const withoutNotice = JSON.parse(manifestBytes.toString());
+  withoutNotice.assets = assets.filter(asset => asset.path !== 'THIRD_PARTY_NOTICES.txt');
+  await rm(join(dir, 'THIRD_PARTY_NOTICES.txt'));
+  await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify(withoutNotice));
+  await expect(validateEngine(dir)).rejects.toThrow(/inventory is incomplete \(missing: THIRD_PARTY_NOTICES\.txt\); re-stage the engine/);
+  await writeFile(join(dir, 'THIRD_PARTY_NOTICES.txt'), content);
+  await writeFile(join(dir, 'engine-manifest.json'), manifestBytes);
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', dir);
   expect((await exportKernel(['--kernel', 'retained'], 'obj'))?.directory).toBe(dir);
   await writeFile(join(dir, paths[0]), 'tampered');
@@ -93,4 +102,33 @@ it('reads the input path after value-taking flags', () => {
   expect(exportFilePath(['--format', 'obj', 'model.ifc'])).toBe('model.ifc');
   expect(exportFilePath(['model.ifc', '--format', 'csv'])).toBe('model.ifc');
   expect(exportFilePath(['--format', 'obj'])).toBeUndefined();
+});
+
+
+it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normals across parts', () => {
+  const part = { ...shape.parts[0], normals: Float64Array.of(0, 0, 1, 0, 0, 1, 0, 0, 1),
+    color: [1, 0, 0, 1] as [number, number, number, number], materialName: 'surface', geometryItemId: 13,
+    faces: { table: ['#13:cap(end)'], triangles: Uint32Array.of(0) } };
+  const { obj, report } = retainedArtifacts(engine, [{ ...shape, parts: [part, shape.parts[0], part],
+    instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } }], () => null);
+  expect(report.format).toBe('ifc-lite.retained-report/1');
+  expect(obj).toContain('vn 0.000000 1.000000 -0.000000');
+  expect(obj).toContain('f 1//1 2//2 3//3');
+  expect(obj).toContain('f 4 5 6');
+  expect(obj).toContain('f 7//4 8//5 9//6');
+  const channels = { color: [1, 0, 0, 1], materialName: 'surface', geometryItemId: 13,
+    normals: [0, 0, 1, 0, 0, 1, 0, 0, 1], faces: [{ key: '#13:cap(end)', triangles: 1, areaM2: 0.5 }] };
+  const parts = (report.products[0] as unknown as { parts: Record<string, unknown>[] }).parts;
+  expect(parts).toHaveLength(3);
+  expect(parts[0]).toMatchObject(channels);
+  expect(parts[2]).toMatchObject(channels);
+  for (const key of ['color', 'materialName', 'geometryItemId', 'materialId', 'normals', 'faces']) {
+    expect(parts[1]).not.toHaveProperty(key);
+  }
+  expect(report.products[0]).toMatchObject({ instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } });
+  expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(0, 0, 1) }] }], () => null)).toThrow(/corner normals/);
+  const signed = retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(-0, -0, 1, 0, -0, 1, -0, 0, 1) }] }], () => null);
+  const written = (signed.report.products[0] as unknown as { parts: { normals: number[] }[] }).parts[0].normals;
+  // JSON has no -0: a written -0 would not round-trip. Removing the `v + 0` canonicalisation fails here.
+  expect(written.some(v => Object.is(v, -0))).toBe(false);
 });

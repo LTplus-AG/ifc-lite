@@ -11,6 +11,7 @@
  */
 
 import type { flowReviewEn } from './catalogues/flow-review.en';
+import type { retainedGeometryEn } from './catalogues/retained-geometry.en';
 
-export type LazyTranslationKey = keyof typeof flowReviewEn;
+export type LazyTranslationKey = keyof typeof flowReviewEn | keyof typeof retainedGeometryEn;
 

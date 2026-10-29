@@ -3,7 +3,9 @@
 use super::*;
 impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
     pub(super) fn init_type_maps(&mut self) -> Result<(),RetainedExecutionError> {
-        if !matches!(&self.state.stage,Stage::TypeMaps(_)) { return Ok(()); }
+        let Stage::TypeMaps(planned) = &self.state.stage else { return Ok(()); };
+        self.scratch.reserve(&self.resources, &mut self.type_map_members_planned, planned.len())?;
+        self.type_map_members_planned.extend(planned.clone().map(|&(id, _)| id));
         let Some(ifc_lite_core::AttributeValue::List(ids)) = self.state.job.entity.get(
             ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index()) else {
             return Err(RetainedExecutionError::Source(RetainedContextError::Mismatched));
@@ -22,23 +24,26 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
     pub(super) fn start_next_program(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter)
         -> Result<(), RetainedExecutionError> {
         self.validate(decoder,router)?;
+        if self.program.is_some() { return Ok(()); }
         self.state.protocol.idle().map_err(protocol)?;
+        let resources = self.resources.clone();
+        if resources.with_scope(|| self.start_opening_program())? { return Ok(()); }
         let Some(kind) = self.state.stage.next_kind() else {
             let values = std::mem::take(&mut self.type_values);
-            let plan = self.resources.with_scope(|| RetainedProductPlan::type_maps(values)).map_err(common)?;
+            let plan = self.resources.with_scope(|| RetainedProductPlan::type_maps(values).and_then(|p| p.discharge_type_origin(self.state.job.id, &self.type_map_members_planned))).map_err(common)?;
             if let Err(error) = self.validate_manifest(&plan) { self.failed = true; return Err(error); }
             self.plan = Some(plan);
             self.outer = None;
             return Ok(());
         };
-        if !matches!(kind, WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, .. }
-            | WorkKind::PlainParts | WorkKind::TypeMap { .. }) {
-            self.failed = true;
-            return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedOpeningStrategy));
-        }
         if matches!(kind, WorkKind::Primary { layer_class, .. } if layer_class != 0) {
             self.failed = true;
             return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy));
+        }
+        if !matches!(kind, WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes | super::super::plan::PrimaryStrategy::VoidedSubmeshes, .. }
+            | WorkKind::PlainParts | WorkKind::TypeMap { .. }) {
+            self.failed = true;
+            return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedOpeningStrategy));
         }
         let resources = self.resources.clone();
         let prepared = resources.with_scope(|| self.owner.work(decoder,router,|decoder,_| {
@@ -70,7 +75,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         Ok(())
     }
     pub(super) fn finish_current_program(&mut self, outer: WorkRequest) -> Result<(), RetainedExecutionError> {
-        let result = self.complete_current_program(outer);
+        let result = self.complete_current_program(outer).map_err(|e| self.opening_error(e));
         if result.is_err() { self.failed = true; }
         result
     }
@@ -84,14 +89,18 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         self.state.protocol.executed(outer);
         self.state.protocol.accepted();
         self.outer = None;
-        match outer.kind {
+        self.complete_opening_plan(plan, outer.kind)?;
+        Ok(())
+    }
+    pub(super) fn complete_unvoided_plan(&mut self, plan: RetainedProductPlan, kind: WorkKind) -> Result<(), RetainedExecutionError> {
+        match kind {
             WorkKind::TypeMap { .. } => {
                 self.scratch.reserve(&self.resources, &mut self.type_values, 1)?;
                 self.type_values.push(plan);
             }
             WorkKind::Primary { .. } if plan.values().len() == 0 => self.state.stage = Stage::PlainParts,
             _ => {
-                self.plan = Some(plan);
+                self.plan = Some(plan.discharge_unvoided());
                 self.state.stage = Stage::Complete;
             }
         }

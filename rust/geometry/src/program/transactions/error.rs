@@ -17,8 +17,10 @@ pub enum TransactionFailureKind {
     Cancelled,
     Source,
     Incomplete,
+    Empty,
     OperationUnsupported,
     DeadlineExceeded,
+    EmptyResult,
 }
 #[derive(Debug)]
 pub struct TransactionError(RetainedFailure);
@@ -36,6 +38,9 @@ impl TransactionError {
     /// Allocation-free view of the original typed source failure.
     pub fn origin_view(&self) -> Option<(&'static str, Option<u32>, &'static str)> {
         use super::logical::failure::{FailureSite, OriginCause};
+        if let RetainedFailure::Completion(super::logical::failure::CompletionReason::OpeningConsumed { opening }) = &self.0 {
+            return Some(("opening_cut", Some(*opening), "consumed"));
+        }
         let RetainedFailure::Origin(handle) = &self.0 else {
             return None;
         };
@@ -55,10 +60,12 @@ impl TransactionError {
             FailureSite::MappingItems => "mapping_items",
             FailureSite::MappingScale => "mapping_scale",
             FailureSite::MappingDirection => "mapping_direction",
+            FailureSite::OpeningCut => "opening_cut",
             FailureSite::BooleanSource => "boolean_source",
             FailureSite::BooleanOperator => "boolean_operator",
             FailureSite::BooleanFirstOperand => "boolean_first_operand",
             FailureSite::BooleanSecondOperand => "boolean_second_operand",
+            FailureSite::BooleanStep => "boolean_step",
             FailureSite::ProductPlacement => "product_placement",
             FailureSite::MappingPlacement => "mapping_placement",
             FailureSite::TypeMapPlacement => "type_map_placement",
@@ -86,15 +93,20 @@ impl TransactionError {
             RetainedFailure::Origin(handle) => {
                 use super::logical::failure::{OriginCause, StructuralReason};
                 let origin = handle.origin();
+                if origin.as_ref().is_some_and(|o| o.site == super::logical::failure::FailureSite::OpeningCut) {
+                    return Kind::OperationUnsupported;
+                }
                 match origin.as_deref().map(|origin| &origin.cause) {
                     Some(
                         OriginCause::Recipe(crate::document::RetainedRefusal::UnsupportedSource(_))
                         | OriginCause::Structure(StructuralReason::UnsupportedProduct)
                         | OriginCause::Processor(_),
                     ) => Kind::OperationUnsupported,
+                    Some(OriginCause::Boolean(super::logical::failure::BooleanReason::EmptyHost)) => Kind::EmptyResult,
                     _ => Kind::Source,
                 }
             }
+            RetainedFailure::Completion(super::logical::failure::CompletionReason::OpeningConsumed { .. }) => Kind::Empty,
             RetainedFailure::Completion(_) => Kind::Incomplete,
             RetainedFailure::Protocol(error) => match error {
                 RetainedProgramError::Stopped(_) => Kind::Stopped,
@@ -106,6 +118,7 @@ impl TransactionError {
                 RetainedProgramError::AlreadyExecuted => Kind::AlreadyExecuted,
                 RetainedProgramError::NotExecuted => Kind::NotExecuted,
                 RetainedProgramError::Cancelled => Kind::Cancelled,
+                RetainedProgramError::OpeningConsumed { .. } => Kind::Empty,
             },
         }
     }

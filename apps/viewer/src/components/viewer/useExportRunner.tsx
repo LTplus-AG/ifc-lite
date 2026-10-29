@@ -86,7 +86,7 @@ export function useExportRunner(surface: ExportSurface = 'palette') {
     // CSV also needs source bytes: `handleExportCSV` returns silently without them.
     const noCsvSource = request.id === 'csv' && !(ifcDataStore && ifcDataStore.source.byteLength > 0);
     if (resolved.disabled || noCsvSource) {
-      toast.info(t('commandPalette.export.unavailable'));
+      toast.info(t(resolved.disabledReasonKey ?? 'commandPalette.export.unavailable'));
       return;
     }
     const { command } = resolved;

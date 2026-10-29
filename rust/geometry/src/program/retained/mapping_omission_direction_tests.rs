@@ -17,9 +17,10 @@ fn positive(bytes: &str, orientation: f64, nonuniform: bool) {
     // unit orthogonal frames have |det|=1, or 2*3*4 for the nonuniform case.
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
-    let router = GeometryRouter::with_units(bytes, &mut decoder);
     let entity = decoder.decode_by_id(96).unwrap();
-    let matrix = router.parse_cartesian_transformation_operator(&entity, &mut decoder).unwrap();
+    let matrix =
+        crate::router::transforms::operator::parse_transformation_operator(&entity, &mut decoder)
+            .unwrap();
     let expected = orientation * if nonuniform { 24.0 } else { 1.0 };
     assert!((matrix.determinant() - expected).abs() < 1e-12, "{bytes}: {matrix:?}");
 }

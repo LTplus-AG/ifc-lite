@@ -101,6 +101,15 @@ export interface ComposedNode {
   path: string;
   attributes: Map<string, unknown>;
   children: Map<string, ComposedNode>;
+  /**
+   * The node's own `inherits` references (edge name to the inherited node's
+   * path), null removal masks dropped. Composition copies an inherited node's
+   * attributes and children INTO this node and forgets where they came from;
+   * this keeps the reference, which is what says "this node is typed by that
+   * one" or "this node is made of that material". Absent when the node
+   * inherits nothing.
+   */
+  inherits?: Record<string, string>;
 }
 
 // ============================================================================

@@ -5,6 +5,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         job: &'a ElementMeshJob<'a>,
         context: &'a OwnedMeshProductionContext,
         options: &MeshProductionOptions,
+        openings: &'a [DecodedEntity],
         decoder: &mut EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<Self, RetainedExecutionError> {
@@ -46,6 +47,11 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                     }
                     let (planned, terminal) = scopes
                         .with_scope(|| plan_in_scope(job, &context.borrowed(), options, d, r));
+                    // Plan precedence is authoritative: layers refuse before opening identity/source work.
+                    if matches!(planned.as_ref(), Some(((super::super::plan::PlanKind::Product { layer_class, .. }, _), _, _, _)) if *layer_class != 0) {
+                        return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy));
+                    }
+                    openings::validate_openings(context, job.id, openings, d, r)?;
                     Ok::<_, RetainedExecutionError>((resources, planned, terminal))
                 })
                 .map_err(protocol)
@@ -73,14 +79,18 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 program: None,
                 outer: None,
                 traversal,
+                openings: None,
+                opening_entities: openings,
                 type_values: Vec::new(),
                 type_map_members: Default::default(),
+                type_map_members_planned: Default::default(),
                 pending: None,
                 prepared: None,
                 ledger: Vec::new(),
                 permits: Storage::default(),
                 scratch: Storage::default(),
                 plan: None,
+                cut_times_ms: Vec::new(),
                 failed: false,
                 runtime_domain: None,
             };

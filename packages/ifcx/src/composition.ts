@@ -9,6 +9,7 @@
 
 import type { IfcxFile, IfcxNode, ComposedNode } from './types.js';
 import { applyTombstones } from './tombstones.js';
+import { inheritsField } from './definitions.js';
 
 interface PreComposedNode {
   path: string;
@@ -171,6 +172,8 @@ function composeNode(
       node.children.set(name, child);
     }
   }
+
+  Object.assign(node, inheritsField(pre.inherits, (p) => p));
 
   composed.set(path, node);
   return node;

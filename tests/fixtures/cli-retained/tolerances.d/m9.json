@@ -1,0 +1,5 @@
+{
+  "typeProductSourceVolumeRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "typeProductSourceWorldBboxMetres": { "absolute": 1e-5, "extentFactor": 2.4e-7 },
+  "typeProductExactComparison": "report only"
+}

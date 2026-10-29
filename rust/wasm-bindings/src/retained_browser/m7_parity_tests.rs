@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: MPL-2.0
+//! #7955 M7: whole-model API over the real module Worker, no kernel mocks.
+#![cfg(target_arch = "wasm32")]
+use crate::api::IfcAPI;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::*;
+
+#[wasm_bindgen(inline_js = r#"
+export async function m7NativeReference() {
+  const response = await fetch('/m7-native-reference.output.json');
+  if (!response.ok) throw new Error('M7 requires a staged real native reference: ' + response.status);
+  const rows = await response.json();
+  if (rows.length !== 18) throw new Error('M7 reference must contain 16 qualified and 2 adversarial candidates');
+  return rows;
+}
+export function m7AssertOutcome(value, rows, tolerance) {
+  const row = rows.find(row => row.expressId === value.expressId);
+  if (!row || row.seen) throw new Error('Unexpected/duplicate product ' + value.expressId);
+  row.seen = true;
+  const code = value.status === 'published' ? 'published' : value.code;
+  if (row.code !== code) throw new Error(`${value.expressId}: native ${row.code}, browser ${code}`);
+  if (code !== 'published') return;
+  let volume = 0;
+  for (const part of value.parts) {
+    const p = part.positions, m = part.worldFromObject, ids = part.indices;
+    // Integrate in object coordinates; remove translation first so the georef
+    // case tests placement rather than cancellation of survey-sized numbers.
+    const point = id => [p[3*id]-p[0], p[3*id+1]-p[1], p[3*id+2]-p[2]];
+    let signed = 0;
+    for (let i=0;i<ids.length;i+=3) {
+      const a=point(ids[i]), b=point(ids[i+1]), c=point(ids[i+2]);
+      signed += (a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;
+    }
+    const det=m[0]*(m[5]*m[10]-m[6]*m[9])-m[4]*(m[1]*m[10]-m[2]*m[9])+m[8]*(m[1]*m[6]-m[2]*m[5]);
+    volume += Math.abs(signed*det);
+  }
+  if (!Number.isFinite(volume) || Math.abs(volume-row.volume)/row.volume > tolerance)
+    throw new Error(`${value.expressId}: native volume ${row.volume}, browser ${volume}`);
+}
+export function m7AssertComplete(rows) {
+  if (rows.some(row => !row.seen)) throw new Error('M7 omitted a native candidate');
+}
+"#)]
+extern "C" {
+    #[wasm_bindgen(catch, js_name = m7NativeReference)]
+    async fn native_reference() -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = m7AssertOutcome)]
+    fn assert_outcome(value: &JsValue, rows: &JsValue, tolerance: f64) -> Result<(), JsValue>;
+    #[wasm_bindgen(catch, js_name = m7AssertComplete)]
+    fn assert_complete(rows: &JsValue) -> Result<(), JsValue>;
+}
+
+#[wasm_bindgen_test(async)]
+async fn retained_browser_m7_native_module_worker_parity() {
+    let native = native_reference().await.unwrap();
+    let tolerance: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/cli-retained/tolerances.json"
+    ))
+    .unwrap();
+    let relative = tolerance["nativeWasmVolumeRelative"].as_f64().unwrap();
+    let mut run = IfcAPI::new()
+        .retained_model(
+            include_bytes!("../../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc"),
+            None,
+        )
+        .await
+        .unwrap();
+    loop {
+        let value = run.next_outcome();
+        if value.is_undefined() {
+            break;
+        }
+        assert_outcome(&value, &native, relative).unwrap();
+    }
+    // Separate controller-extension parity; these non-schema products are not
+    // in the coverage universe and are not evidence of IFC qualification.
+    let mut adversarial = IfcAPI::new()
+        .retained_model(
+            include_bytes!(
+                "../../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans-adversarial.ifc"
+            ),
+            None,
+        )
+        .await
+        .unwrap();
+    loop {
+        let value = adversarial.next_outcome();
+        if value.is_undefined() {
+            break;
+        }
+        assert_outcome(&value, &native, relative).unwrap();
+    }
+    assert_complete(&native).unwrap();
+}

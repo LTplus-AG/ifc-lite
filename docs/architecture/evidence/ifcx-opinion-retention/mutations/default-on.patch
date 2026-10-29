@@ -1,0 +1,13 @@
+diff --git a/packages/ifcx/src/federated-composition.ts b/packages/ifcx/src/federated-composition.ts
+index 2d83f09a88..f26dcb53f8 100644
+--- a/packages/ifcx/src/federated-composition.ts
++++ b/packages/ifcx/src/federated-composition.ts
+@@ -43,7 +43,7 @@ export function composeFederated(
+   layerStack: LayerStack,
+   options: ComposeOptions = {}
+ ): FederatedCompositionResult {
+-  const { onProgress, maxInheritDepth = 10, retainOpinions = true } = options;
++  const { onProgress, maxInheritDepth = 10, retainOpinions = false } = options;
+ 
+   onProgress?.('indexing', 0);
+ 

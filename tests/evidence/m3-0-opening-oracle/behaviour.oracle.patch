@@ -1,0 +1,13 @@
+--- a/rust/retained-native/src/oracle/openings.rs
++++ b/rust/retained-native/src/oracle/openings.rs
+@@ -111,9 +111,7 @@
+                     area +=
+                         (if *outer { 1. } else { -1. }) * clipped_area(edges, &planes, &mut work)?;
+                 }
+-                let sign = if mask.count_ones() == 2 {
+-                    1.
+-                } else if mask.count_ones().is_multiple_of(2) {
++                let sign = if mask.count_ones().is_multiple_of(2) {
+                     -1.
+                 } else {
+                     1.

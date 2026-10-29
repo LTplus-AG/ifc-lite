@@ -1802,11 +1802,29 @@ ifc-lite export model.ifc --format obj --kernel retained --retained-engine /path
 The CLI checks every staged asset against `engine-manifest.json` before loading it.
 Use only an engine you trust: these hashes detect changed assets, not build provenance.
 Existing `--type`, `--where`, `--storey`, and `--limit` filters apply.
-Retained publishes complete products only, with no exact fallback. OBJ headers carry
+Retained publishes complete products only, with no exact fallback. Orphan type products
+are included once per type, with all unreferenced maps placed at their MappingOrigin.
+One unsupported map refuses the entire type. Instanced type-library shapes and
+types with only curve maps that exact does not mesh are absent. OBJ headers carry
 `PresentationObligationsUnmet`: output is shape-only and does not meet the display contract.
 The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
-refusal code/origin or part metrics and unmet obligations. Volumes use unrounded f64
+refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
+
+Retained opening subtraction runs each opening body value separately in relationship order.
+A consumed host part refuses the complete product with `empty_result`; partial or whole-product
+removal is not published. Unsupported opening geometry reports `opening_unsupported`, while
+material-layer hosts report `material_layer_strategy` before opening execution. Successful
+opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their OBJ marker
+lists `IfcAppearance, MaterialLayers`. Every published product discharges
+`SurfaceNormals` and `PersistentFaces`; layer and appearance obligations still prevent final publication.
+Every part reports persistent source face keys (`#item[>#opening]:role`) with triangle counts
+and areas; unproven faces refuse `face_provenance_unproven`. Color, material and instance
+channels remain reserved for their independently qualified presentation slices.
+Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
+verified against every face vertex. Other faces use an angle-weighted mean with a 10°
+guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored frames refuse `incomplete` until winding and normals can be flipped together. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
+products; unsupported tessellated bodies continue to refuse explicitly.

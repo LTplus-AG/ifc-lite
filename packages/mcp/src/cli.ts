@@ -17,6 +17,7 @@
 import { resolve } from 'node:path';
 import { parseArgs } from './cli-args.js';
 import { StdioTransport } from './transport/stdio.js';
+import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
 import { loadIfcModel } from './loader.js';
@@ -99,6 +100,8 @@ async function main(): Promise<void> {
 
   const registry = new InMemoryModelRegistry();
   if (opts.transport === 'stdio') {
+    // Before the first model loads: the engine logs while it works.
+    routeConsoleToStderr();
     for (const file of opts.files) {
       const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
       registry.add(m);

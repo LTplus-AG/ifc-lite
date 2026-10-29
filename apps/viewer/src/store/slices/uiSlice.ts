@@ -22,6 +22,7 @@ import {
 } from './geometryLoadSettings.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
+import { hasRetainedShapeOnlyModel } from '../retainedGeometry.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
@@ -243,6 +244,9 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // duplicating the clear here, keeping one place that knows what
     // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
     const leavingMeasure = get().activeTool === 'measure' && activeTool !== 'measure';
+    // Measuring snaps to meshes; a retained model's are shape-only (#7955 M2), so no entry point may open the tool.
+    const { models } = get() as unknown as { models?: Map<string, FederatedModel> };
+    if (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models)) return;
     if (AUTHORING_TOOLS.has(activeTool)) {
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only

@@ -23,6 +23,7 @@ import {
 } from './bcf-server-config.js';
 import type { BcfServerConfig } from './bcf-server-config.js';
 import { completeSignIn, loadApi } from './bcf-server-session.js';
+import { withTokenRelay } from './bcf-token-relay.js';
 export {
   clearBcfServerConfig,
   loadBcfServerConfig,
@@ -158,14 +159,22 @@ async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
     const { authInfo } = await api.discoverBcfService({ baseUrl: config.serverUrl });
     const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
     // OAuth-app sessions must present the app credentials on the refresh
-    // grant too; token servers that never issued a client ignore them.
+    // grant too; token servers that never issued a client ignore them. A
+    // relayed session's app credentials are the relay's to add.
     const token = config.refreshToken
-      ? await api.refreshAccessToken({
-          tokenUrl,
-          refreshToken: config.refreshToken,
-          clientId: config.clientId || undefined,
-          clientSecret: config.clientSecret || undefined,
-        })
+      ? (
+          await withTokenRelay(
+            config.tokenRelay,
+            (fetchFn) => api.refreshAccessToken({ tokenUrl, refreshToken: config.refreshToken, fetchFn }),
+            () =>
+              api.refreshAccessToken({
+                tokenUrl,
+                refreshToken: config.refreshToken,
+                clientId: config.clientId || undefined,
+                clientSecret: config.clientSecret || undefined,
+              }),
+          )
+        ).result
       : await api.requestClientCredentialsToken({
           tokenUrl,
           clientId: config.clientId,

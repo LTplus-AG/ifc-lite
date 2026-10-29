@@ -1540,11 +1540,11 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "ifc-lite-clash"
-version = "25.0.0"
+version = "26.0.0"
 
 [[package]]
 name = "ifc-lite-cloud-import"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "gltf",
  "nalgebra",
@@ -1554,7 +1554,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "bytemuck",
  "fast-float2",
@@ -1572,7 +1572,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-diff"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "ryu-js",
  "serde",
@@ -1581,7 +1581,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-diff-wasm"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "ifc-lite-diff",
  "js-sys",
@@ -1592,7 +1592,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-export"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "arrow",
  "bytemuck",
@@ -1614,7 +1614,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-ffi"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "ifc-lite-processing",
  "mimalloc",
@@ -1624,7 +1624,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "approx",
  "bnum",
@@ -1655,7 +1655,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry-runtime"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -1667,7 +1667,7 @@ version = "0.1.0"
 
 [[package]]
 name = "ifc-lite-landxml"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "geometry-predicates",
  "ifc-lite-geometry",
@@ -1680,11 +1680,12 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-testkit",
+ "libm",
  "nalgebra",
  "png",
  "rayon",
@@ -1697,19 +1698,20 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-retained-native"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-geometry-runtime",
  "ifc-lite-processing",
  "libc",
+ "serde",
  "serde_json",
 ]
 
 [[package]]
 name = "ifc-lite-server"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1745,14 +1747,14 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-testkit"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "ifc-lite-geometry",
 ]
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "25.0.0"
+version = "26.0.0"
 dependencies = [
  "console_error_panic_hook",
  "ifc-lite-clash",

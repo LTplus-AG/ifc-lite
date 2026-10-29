@@ -29,6 +29,10 @@ validation:
 # Autodesk's delivery plan records qualification work; public usage belongs in
 # the web viewer guide rather than the implementation checklist.
 not_in_nav: |
+  # Release-owner review inputs and draft opt-in deployment; not general installation guidance.
+  architecture/retained-licensing.md
+  guide/retained-release.md
+  guide/retained-installation.md
   # IDS Studio campaign plan, tracker and handover; internal engineering docs, linked from the IDS guide once Studio ships.
   architecture/ids-studio/**
   # Issue-scoped viewer AI charter; linked from its user guide as layers ship.
@@ -47,6 +51,8 @@ not_in_nav: |
   architecture/evidence/**
   # #8042 diff stack preparation/qualification checkpoints (local paths, parent-only handoff notes); not user documentation.
   architecture/diff-8042/**
+  # #8259 streaming pre-pass allocation accounting; linked from scripts/perf/README.md, not user documentation.
+  architecture/prepass-memory.md
   research/**
 
 theme:
@@ -270,6 +276,7 @@ nav:
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
+    - Retained Cutters: architecture/retained-cutters.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
@@ -320,6 +327,7 @@ nav:
         - Review Workflow: architecture/layer-prs/08-review.md
         - CLI & CI: architecture/layer-prs/09-cli.md
         - Registry: architecture/layer-prs/10-registry.md
+        - Authority: architecture/layer-prs/12-authority.md
     - IFC Git:
         - Overview: architecture/ifc-git/index.md
         - Concepts: architecture/ifc-git/01-concepts.md

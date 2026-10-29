@@ -9,6 +9,7 @@ use crate::resource::{OwnedResourceContext, ProgramStop, Reservation};
 
 mod error;
 mod values;
+mod type_origin;
 pub use error::{TransactionError, TransactionFailureKind};
 pub use values::{Definition, Operation, OperationKind, Plan, Requirement, Slot, Value, ValueRef};
 
@@ -35,6 +36,15 @@ impl Traversal {
     pub fn product_submeshes<'a>(&self, root: &'a DecodedEntity,
         textures: &'a rustc_hash::FxHashMap<u32, ResolvedTextureMap>) -> Program<'a> {
         Program(self.0.product_submeshes(root, true, Some(textures)))
+    }
+    pub fn opening_body<'a>(&self, root: &'a DecodedEntity) -> Program<'a> {
+        self.product_parts(root)
+    }
+    pub fn opening_cuts(&self, host: Plan, cutters: Vec<(u32, Plan)>) -> Result<Program<'static>, TransactionError> {
+        let mut plans = Vec::new();
+        crate::resource::reserve_headers(&mut plans, cutters.len()).map_err(TransactionError::stopped)?.retain();
+        plans.extend(cutters.into_iter().map(|(id, plan)| (id, plan.inner)));
+        self.0.opening_cuts(host.inner, plans).map(Program).map_err(Into::into)
     }
     pub fn type_map<'a>(&self, root: DecodedEntity,
         textures: &'a rustc_hash::FxHashMap<u32, ResolvedTextureMap>) -> Program<'a> {
@@ -100,4 +110,9 @@ impl Program<'_> {
 pub fn same_admission(request: &crate::document::RetainedRequest,
     completed: &crate::document::RetainedRequest) -> bool {
     request.same_admission(completed)
+}
+/// `inverse(a) * b` for two controller-composed proper rigid metre frames,
+/// translations cancelled before rotating (survey-scale safe). No new frame math.
+pub fn relative_frame(a: [f64; 16], b: [f64; 16]) -> Result<[f64; 16], &'static str> {
+    crate::document::retained_frames::relative(a, b)
 }

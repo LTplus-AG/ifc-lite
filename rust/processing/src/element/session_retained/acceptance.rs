@@ -16,7 +16,6 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             return Err(protocol(ReceiptFailure::ForeignConstructionReceipt));
         }
         if let Err(error) = self.context.lifecycle().validate() {
-            pending.cancellation.cancel();
             return Err(RetainedExecutionError::Source(error));
         }
         let owner = self.validate(decoder, router)?;
@@ -68,7 +67,12 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if let Err(reason) = validation {
             // Retire only this controller's captured domain on its terminal
             // fault. Never cancel the supplied (possibly foreign) envelope.
-            if reason.terminal() { self.cancel(); }
+            if reason.terminal() {
+                if let Some(pending) = &self.pending {
+                    pending.cancellation.refuse_completion(&reason);
+                }
+                self.refuse(&reason);
+            }
             return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
         }
         if work
@@ -93,8 +97,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         for (operation, receipt) in pending.operations.iter().zip(&work.realizations) {
             if let Err(error) = operation.expected().bind_numerical_outcome(receipt.is_empty()) {
                 self.failed = true;
-                pending.cancellation.cancel();
-                return Err(Box::new(RuntimeRejectedCompletion { reason: geometry(error), work }));
+                let reason = geometry(error);
+                pending.cancellation.refuse_completion(&reason);
+                return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
             }
         }
         let result = self
@@ -116,7 +121,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .and_then(|()| self.validate(decoder, router).map(|_| ()));
         if let Err(reason) = result {
             self.failed = true;
-            pending.cancellation.cancel();
+            pending.cancellation.refuse_completion(&reason);
             return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
         }
         // Never overwrite a cancellation which raced the synchronous consume.
@@ -124,7 +129,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             || pending.cancellation.owner.incarnation().is_none()
         {
             self.failed = true;
-            pending.cancellation.cancel();
+            pending.cancellation.fault();
             return Err(Box::new(RuntimeRejectedCompletion {
                 reason: protocol(ReceiptFailure::CancelledDelivery), work,
             }));

@@ -260,6 +260,7 @@ fn issue_7955_common_refusal_rows_and_stop_precedence() {
         (Kind::Source, Refusal::SourceInvalid),
         (Kind::Unsupported, Refusal::SourceInvalid),
         (Kind::Incomplete, Refusal::Incomplete),
+        (Kind::Empty, Refusal::EmptyResult),
         (Kind::Stopped, Refusal::ResourceExhausted),
         (Kind::DeadlineExceeded, Refusal::DeadlineExceeded),
     ] {
@@ -366,4 +367,20 @@ fn issue_7955_common_deadline_survives_scope_exit() {
         Refusal::DeadlineExceeded,
         "deadline_exceeded",
     );
+}
+
+#[test]
+fn issue_7955_opening_wrapper_only_reclassifies_unsupported() {
+    check(RetainedExecutionError::Opening { opening: 50,
+        inner: Box::new(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)) },
+        Refusal::OpeningUnsupported, "opening_unsupported");
+    for (inner, expected) in [
+        (fault(RuntimeFaultKind::Kernel { status: 7 }), Refusal::KernelFailure { status: 7 }),
+        (fault(RuntimeFaultKind::ResourceLimit), Refusal::ResourceExhausted),
+        (RetainedExecutionError::Core(ifc_lite_core::Error::InvalidEntityRef(99)), Refusal::SourceInvalid),
+        (RetainedExecutionError::DeadlineExceeded, Refusal::DeadlineExceeded),
+    ] {
+        let error = RetainedExecutionError::Opening { opening: 50, inner: Box::new(inner) };
+        assert_eq!(error.refusal().0, expected);
+    }
 }

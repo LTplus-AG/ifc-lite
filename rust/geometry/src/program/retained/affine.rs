@@ -14,8 +14,10 @@ impl LogicalRetainedValue {
         self.slot = next_slot(self.slot.program)?;
         self.outcome = outcome;
         self.definition = LogicalRetainedDefinition::Operation(self.slot);
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        { self.bounds = self.bounds.and_then(|b| b.transformed(&matrix)); }
         self.object_frame = crate::math::mat4::col_major_array(&nalgebra::Matrix4::identity());
-        Ok(Some(RetainedPlanOperation { value: self.try_copy()?,
+        Ok(Some(RetainedPlanOperation { #[cfg(any(test, feature = "retained-runtime"))] opening: None, value: self.try_copy()?,
             kind: RetainedOperationKind::Affine { input, matrix: crate::math::mat4::col_major_array(&matrix) } }))
     }
 }

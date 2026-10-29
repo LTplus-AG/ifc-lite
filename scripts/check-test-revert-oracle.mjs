@@ -63,8 +63,11 @@
  *   --mutation <file>   use this patch instead of the derived one. Written in
  *                       the same orientation as `git diff base...head`; it is
  *                       reverse-applied. Use it for sub-expression findings and
- *                       to escape an INCONCLUSIVE.
- *   --test <path>       restrict the tests that get run (repeatable)
+ *                       to escape an INCONCLUSIVE. Repeat for independent cases;
+ *                       following --test flags belong to that mutation.
+ *   --timeout-ms <n>    hard per-runner timeout (default 600000)
+ *   --verify-restored   rerun witnesses green after restoring the mutation
+ *   --test <path>       select explicit witnesses, even unchanged (repeatable)
  *   --root <dir>        repository to operate on (default: this script's repo).
  *                       Lets you point a version of the oracle you trust at a
  *                       checkout that predates it.
@@ -72,6 +75,7 @@
  *   --ci                block UNOBSERVED, broken baselines and capability gaps
  */
 
+import { runMutationBatch } from './lib/revert-oracle-batch.mjs';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
@@ -205,18 +209,14 @@ function gitOrDie(args) {
   return r.stdout;
 }
 
-// planRuns() (./lib/revert-oracle-plan-runs.mjs, #4090), the browser planner
-// and the measurement sequence (#6267) live in siblings: this file sits at its
-// module-size budget with zero headroom.
-
-// ---------------------------------------------------------------------------
 // Main
-// ---------------------------------------------------------------------------
 
 const opts = parseRevertOracleArgs(
   process.argv.slice(2),
   (message) => die(EXIT_NOTHING_CHECKED, message),
 );
+const batchExit = !opts.help && runMutationBatch(process.argv.slice(2), fileURLToPath(import.meta.url));
+if (batchExit !== null && batchExit !== false) process.exit(batchExit);
 if (opts.help) {
   console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]);
   emitResult(ORACLE_CHANNEL, 'HELP', 0, 'help requested');
@@ -322,8 +322,8 @@ if (partialCargoSelection) {
 // #6267: Playwright specs run in a browser, and only when no cheaper test observes the revert.
 let { runnable: testPaths, browser: browserSpecs } = partitionBrowserSpecs(testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p))), (p) => readFileSync(join(ROOT, p), 'utf8'));
 if (opts.tests.length > 0) {
-  [testPaths, browserSpecs] = [testPaths, browserSpecs].map((paths) => paths.filter((p) => opts.tests.includes(p)));
-  if (testPaths.length + browserSpecs.length === 0) die(EXIT_NOTHING_CHECKED, '--test matched none of the branch\'s changed test files.');
+  if (opts.tests.some((p) => !existsSync(join(ROOT, p)))) die(EXIT_NOTHING_CHECKED, '--test names a missing witness file.');
+  ({ runnable: testPaths, browser: browserSpecs } = partitionBrowserSpecs(opts.tests, (p) => readFileSync(join(ROOT, p), 'utf8')));
 }
 resultContext = { ...resultContext, production: prodPaths, tests: [...testPaths, ...browserSpecs] };
 
@@ -447,7 +447,7 @@ let result = null;
 
 try {
   const measured = measure({
-    plans,
+    plans, timeoutMs: opts.timeoutMs, verifyRestored: opts.verifyRestored,
     root: ROOT,
     revert: () => {
       const applyR = git(['-c', 'core.autocrlf=false', 'apply', '-R', '--verbose', patchPath]);

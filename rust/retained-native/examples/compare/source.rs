@@ -1,66 +1,68 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Independent authored expectations from the canonical analytic source walk.
-use super::metrics::{extend_bbox, transform};
-use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticStatus};
-use ifc_lite_processing::{extrusion_nominal_quantities, AnalyticQuantitySources};
+pub use ifc_lite_retained_native::oracle::quantities::expected;
+type SourceExpectation = (f64, Option<[f64; 6]>);
 
-pub fn expected(
-    sources: &AnalyticQuantitySources,
-    id: u32,
-    parts: usize,
-) -> Option<(f64, Option<[f64; 6]>)> {
-    let definitions = &sources.extrusion_definitions;
-    let instances = definitions.instances.get(&id)?;
-    if instances.len() != parts
-        || instances
-            .iter()
-            .any(|i| i.source_modified || i.status != AnalyticStatus::Complete)
-    {
-        return None;
+/// The authored #3641 spur has no ordinary analytic quantity. Its independent
+/// region oracle is mandatory before exact metrics become report-only (M8).
+pub fn retraced(
+    model: &std::path::Path,
+    sources: &ifc_lite_processing::AnalyticQuantitySources,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    tolerances: &serde_json::Value,
+) -> Result<Option<SourceExpectation>, &'static str> {
+    if model != std::path::Path::new("rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc") {
+        return Ok(None);
     }
-    let mut volume = 0.;
-    let mut bbox = Some([
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-    ]);
-    for instance in instances {
-        let definition = definitions
-            .sources
-            .iter()
-            .find(|s| s.key == instance.source)?;
-        let source = &definition.source;
-        let frame = instance.world_from_source?;
-        let det = frame[0] * (frame[5] * frame[10] - frame[9] * frame[6])
-            - frame[4] * (frame[1] * frame[10] - frame[9] * frame[2])
-            + frame[8] * (frame[1] * frame[6] - frame[5] * frame[2]);
-        volume += extrusion_nominal_quantities(source)?.nominal_volume * det.abs();
-        let profile = source.profile.as_ref()?;
-        let identity = [
-            1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
-        ];
-        let solid = source.position_matrix.as_ref().unwrap_or(&identity);
-        let profile_frame = profile.profile_position.as_ref().unwrap_or(&identity);
-        let depth = source.depth?;
-        let axis = source.axis_unit_vector?;
-        for segment in profile.loops.iter().flat_map(|b| &b.segments) {
-            let AnalyticCurveSegment::Line { start, end } = segment else {
-                bbox = None;
-                break;
-            };
-            for point in [*start, *end] {
-                let p = transform(profile_frame, point);
-                for z in [0., depth] {
-                    let p = std::array::from_fn(|i| p[i] + z * axis[i]);
-                    if let Some(bounds) = &mut bbox {
-                        extend_bbox(bounds, transform(&frame, transform(solid, p)));
-                    }
-                }
-            }
-        }
+    let relative = tolerances["retraceAreaRelative"].as_f64().ok_or("M8 area tolerance absent")?;
+    if tolerances["voidingExactComparison"] != "report only"
+        || tolerances["convexLeafVolumeRelative"]["linear"] != tolerances["sourceVolumeRelative"]["linear"] {
+        return Err("M8 comparison policy differs from preregistration");
     }
-    Some((volume, bbox))
+    let frame = sources.extrusion_definitions.instances.get(&72245)
+        .and_then(|instances| instances.first()).and_then(|instance| instance.world_from_source)
+        .ok_or("M8 source placement absent")?;
+    let origin = [frame[12], frame[13], frame[14]];
+    let region = ifc_lite_retained_native::oracle::retrace::source(sources, decoder, origin, relative)
+        .ok_or("oracle cannot model this profile")?;
+    let mut bounds = region.bbox();
+    for i in 0..3 { bounds[i] += origin[i]; bounds[i + 3] += origin[i]; }
+    Ok(Some((region.volume(), Some(bounds))))
+}
+
+/// M8's arbitrarily oriented, overlapping three-cut chain needs the convex
+/// inclusion/exclusion oracle rather than M3's parallel-prism oracle.
+pub fn retraced_opening(
+    model: &std::path::Path,
+    sources: &ifc_lite_processing::AnalyticQuantitySources,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    tolerances: &serde_json::Value,
+) -> Result<Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>, &'static str> {
+    use ifc_lite_retained_native::oracle::{convex, retrace, openings::OpeningExpectation};
+    if model != std::path::Path::new("rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc") {
+        return Ok(None);
+    }
+    // Reuse the existing opening gate only while its thresholds are exactly
+    // the independently preregistered M8 thresholds. No tolerance fallback.
+    if tolerances["convexDifferenceVolumeRelative"]["linear"] != tolerances["openingPrismVolumeRelative"]["linear"]
+        || tolerances["voidingResultBboxWithinHost"] != tolerances["openingResultBboxWithinHost"] {
+        return Err("M8 opening comparison policy differs from preregistration");
+    }
+    let relative = tolerances["retraceAreaRelative"].as_f64().ok_or("M8 area tolerance absent")?;
+    let frame = sources.extrusion_definitions.instances.get(&72209)
+        .and_then(|instances| instances.first()).and_then(|instance| instance.world_from_source)
+        .ok_or("M8 host placement absent")?;
+    let origin = [frame[12], frame[13], frame[14]];
+    let host = convex::source(sources, 72209, origin).ok_or("M8 host oracle absent")?;
+    let cutters = [
+        convex::source(sources, 72216, origin).ok_or("M8 rectangle oracle absent")?,
+        convex::source(sources, 72230, origin).ok_or("M8 polygon oracle absent")?,
+        retrace::source(sources, decoder, origin, relative).ok_or("M8 retrace oracle absent")?,
+    ];
+    let volume = convex::difference_volume(&host, &cutters).ok_or("M8 cut oracle absent")?;
+    let mut bbox = host.bbox();
+    for i in 0..3 { bbox[i] += origin[i]; bbox[i+3] += origin[i]; }
+    Ok(Some(OpeningExpectation {
+        nominal_host_volume: host.volume(), result_volume: Some(volume),
+        volume_bounds: [volume, host.volume()], host_bbox: Some(bbox), curved: false,
+    }))
 }

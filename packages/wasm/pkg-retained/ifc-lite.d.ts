@@ -197,6 +197,23 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 
+export interface RetainedRunOptions { ids?: Uint32Array; detail: 'view' | 'shape'; }
+export interface RetainedRtcFrame { rtcOffset: Float64Array; needsShift: boolean; }
+export type RetainedSessionEvent =
+| { kind: 'start'; candidateIds: Uint32Array; frame: RetainedRtcFrame }
+| (RetainedShapeProduct & { kind: 'published' })
+| (RetainedProductRefusal & { kind: 'refused' })
+| { kind: 'published'; expressId: number; ifcType: string;
+marker: 'PresentationObligationsUnmet';
+obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
+meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string };
+export interface RetainedRunSummary {
+    candidates: number; published: number; refused: number; restarts: number;
+    workersAcquired: number; productMs: number; acquireMs: number;
+}
+
+
+
 export interface RetainedShapePart {
     /** Object-local metres. */
     positions: Float64Array;
@@ -204,23 +221,40 @@ export interface RetainedShapePart {
     /** Column-major object metres to absolute IFC Z-up world metres. */
     worldFromObject: Float64Array;
     curved: boolean;
+    revisionLocalFaces?: Uint32Array;
+    /** Per-corner unit normals in absolute IFC Z-up axes, placement already applied. */
+    normals?: Float64Array;
+    color?: [number, number, number, number];
+    materialName?: string;
+    geometryItemId?: number;
+    materialId?: number;
+    faces?: { table: string[]; triangles: Uint32Array };
+    instanceKey?: string;
 }
 export interface RetainedShapeProduct {
     status: 'published';
+    /** Opening cuts applied (M3). Always set by retainedModel/RetainedModelSession;
+     * optional so consumer-built literals stay valid across minor versions. */
+    cuts?: number;
+    /** Host parts consumed by a cut; always 0 on a published product. */
+    consumedParts?: number;
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
     marker: 'PresentationObligationsUnmet';
-    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces'>;
+    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
+    instanceKey?: string;
+    instanceGroup?: { templateProductId: number; key: string };
 }
 export interface RetainedProductRefusal {
     status: 'refused';
     expressId: number;
     ifcType: string;
-    code: 'opening_strategy' | 'material_layer_strategy' | 'operation_unsupported'
+    code: 'opening_strategy' | 'opening_unsupported' | 'material_layer_strategy' | 'operation_unsupported'
     | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
     | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
-    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';
+    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach'
+    | 'appearance_unsupported' | 'face_provenance_unproven';
     origin?: { site: string; entity?: number; cause: string };
     kernelStatus?: number;
 }
@@ -1220,7 +1254,8 @@ export class IfcAPI {
     /**
      * Run the opt-in retained engine, with no exact fallback. Buffers outcomes
      * until completion; next() then consumes them in canonical file order.
-     * Type products and representationless jobs are skipped. Some(empty ids)
+     * Orphan type products are included; instanced types and representationless
+     * jobs are skipped. Some(empty ids)
      * selects no products. One qualified worker is reused, with at most three
      * replacements, and a failed product is never retried.
      */
@@ -2051,6 +2086,19 @@ export class RetainedModelRun {
     next(): RetainedProductOutcome | undefined;
 }
 
+export class RetainedModelSession {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor();
+    /**
+     * Runs one model in canonical order, reusing the qualified worker. The
+     * callback owns each MeshCollection and must free it after extraction.
+     * Callback exceptions reject the run after controller cleanup; terminate
+     * the host Worker to cancel work immediately.
+     */
+    run(content: Uint8Array, options: RetainedRunOptions, on_event: (event: RetainedSessionEvent) => void): Promise<RetainedRunSummary>;
+}
+
 /**
  * The traced outline. Owns wasm memory: call `free()`.
  */
@@ -2751,6 +2799,7 @@ export interface InitOutput {
     readonly __wbg_retainedbrowserexecutor_free: (a: number, b: number) => void;
     readonly __wbg_retainedbrowsersources_free: (a: number, b: number) => void;
     readonly __wbg_retainedmodelrun_free: (a: number, b: number) => void;
+    readonly __wbg_retainedmodelsession_free: (a: number, b: number) => void;
     readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -2980,6 +3029,8 @@ export interface InitOutput {
     readonly retainedbrowsersources_refused: (a: number, b: number) => void;
     readonly retainedbrowsersources_sources: (a: number, b: number) => void;
     readonly retainedmodelrun_next: (a: number) => number;
+    readonly retainedmodelsession_new: () => number;
+    readonly retainedmodelsession_run: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly scanoutlinejs_coords: (a: number) => number;
     readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
     readonly scanoutlinejs_ringCount: (a: number) => number;

@@ -121,3 +121,43 @@ fn an_unreadable_items_list_fails_the_product() {
     assert!(router.process_element_with_submeshes(&element, &mut decoder).is_err());
     assert!(calls.borrow().is_empty(), "no item after the refused list is reached");
 }
+
+/// #7781: the product prepass is source-only; its report publishes at accept.
+#[test]
+fn issue_7781_product_logical_refusal_publishes_only_when_admission_is_accepted() {
+    let cap = crate::representation::MAX_WALK_LEVELS as usize;
+    let source = PRODUCT.replace(
+        "(#10,#14)",
+        &format!("({})", vec!["#10"; cap + 1].join(",")),
+    );
+    let mut decoder = EntityDecoder::new(&source);
+    let (router, calls) = recording_router();
+    let element = decoder.decode_by_id(40).unwrap();
+    let mut program = GeometryProgram::product(&element, SourceHygiene::Watertight);
+    let request = program.request().unwrap().unwrap();
+    assert_eq!(request.stage(), ProgramStage::Source);
+    let reply = program.execute(request, &router, &mut decoder).unwrap();
+    assert!(calls.borrow().is_empty());
+    assert!(
+        router.take_unsupported_items().is_empty(),
+        "unaccepted reply owns the report"
+    );
+    assert!(
+        decoder.get_cached(10).is_none(),
+        "over-budget root list never decodes its first member"
+    );
+    program.accept(reply, &router).ok().unwrap();
+    assert_eq!(
+        router
+            .take_unsupported_items()
+            .get("IfcShapeRepresentation"),
+        Some(&1)
+    );
+    let parts = program.drain_parts(&router, &mut decoder).unwrap();
+    assert!(parts.iter().all(Mesh::is_empty));
+    assert!(calls.borrow().is_empty());
+    assert!(
+        router.take_unsupported_items().is_empty(),
+        "no duplicate report on drain"
+    );
+}

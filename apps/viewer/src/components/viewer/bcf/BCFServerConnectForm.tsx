@@ -131,10 +131,13 @@ export function BCFServerConnectForm({
         }
         const preparation = await prepareBcfOAuth(serverUrl, {
           clientId: vendorApp?.clientId ?? clientId,
-          // A build-time vendor app is a browser public client. Never carry a
-          // manually entered secret across a preset switch into that flow.
+          // A build-time vendor app never has a secret in the browser: a
+          // public client needs none, and a confidential one gets it added by
+          // the token relay. Never carry a manually entered secret across a
+          // preset switch into that flow.
           clientSecret: vendorApp ? '' : clientSecret,
           redirectUri: vendorApp?.redirectUri || undefined,
+          tokenRelay: vendorApp?.tokenRelay || undefined,
           scope: preset.oauthScope,
           missingClientIdMessage,
         });

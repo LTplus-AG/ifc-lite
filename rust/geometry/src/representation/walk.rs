@@ -12,18 +12,26 @@
 //! walks"): the set is entered on `enter_map` and left on `leave_map`, so a
 //! source reached twice along different branches is a shared DAG node, not a
 //! cycle. The nesting is at most [`MAX_MAPPED_ITEM_DEPTH`](ifc_lite_core::MAX_MAPPED_ITEM_DEPTH)
-//! levels for every geometry caller, so the recursion below is bounded.
+//! levels for geometry callers. An explicit task stack avoids native recursion;
+//! a finite expansion budget also bounds branching acyclic DAGs.
 
-use super::{product_shape, rep_items, Select, ShapeError};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use rustc_hash::FxHashSet;
+use super::{product_shape, Select, ShapeError};
+use ifc_lite_core::slot::IfcRepresentationMap;
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
+
+mod engine;
+
+#[cfg(test)]
+mod engine_tests;
 
 /// What an `IfcMappedItem` among the items means to the walk.
 #[derive(Clone, Copy)]
 pub enum NestedMaps {
     /// Descend into every mapped item, in list order, to `max_depth` levels
-    /// (the mesh walks).
-    Expand { max_depth: u32 },
+    /// (the mesh walks). `max_levels` independently caps mapped-level attempts
+    /// and materialized Items members across one walk. Every DAG occurrence
+    /// pays again; exhaustion reports [`WalkRefusal::Budget`] and stops globally.
+    Expand { max_depth: u32, max_levels: u32 },
     /// A nested map ends the walk with [`WalkRefusal::TooDeep`] and nothing
     /// after it is visited: the source is not shareable (don't-bake instancing).
     Refuse,
@@ -46,18 +54,10 @@ pub enum Flow {
     Stop,
 }
 
-/// Why the walk declined to enter or continue past a mapped item.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum WalkRefusal {
-    /// A reference does not resolve (or the item has no `MappingSource`).
-    Dangling,
-    /// The mapped item is already on the path.
-    Cyclic,
-    /// The depth cap, or a nested map under [`NestedMaps::Refuse`].
-    TooDeep,
-    /// The map has no `MappedRepresentation`, or its `Items` cannot be read.
-    Malformed,
-}
+pub use super::refusal::WalkRefusal;
+
+/// Recommended default for both independent Expand work meters.
+pub const MAX_WALK_LEVELS: u32 = 1 << 16;
 
 /// One `IfcMappedItem → IfcRepresentationMap → MappedRepresentation` level.
 #[derive(Clone)]
@@ -68,6 +68,18 @@ pub struct MappedLevel {
     pub map: DecodedEntity,
     /// The map's `MappedRepresentation`.
     pub mapped_rep: DecodedEntity,
+}
+
+impl MappedLevel {
+    /// `MappingTarget · MappingOrigin` of this level, unscaled (file units);
+    /// `None` when neither contributes. Callers scale: the router with its
+    /// `scale_transform`, the symbolic walk with its unit scale.
+    pub fn local_transform(
+        &self,
+        decoder: &mut EntityDecoder,
+    ) -> crate::Result<Option<nalgebra::Matrix4<f64>>> {
+        super::mapped_transform::mapped_item_local_transform(&self.item, &self.map, decoder)
+    }
 }
 
 /// Where a visit happens.
@@ -87,8 +99,13 @@ pub trait WalkVisitor {
     }
     /// A representation item. Under every policy but [`NestedMaps::Leaf`] it is
     /// never an `IfcMappedItem`.
-    fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow;
-    /// A mapped level was entered; its items follow unless `SkipChildren`.
+    fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder)
+        -> Flow;
+    /// The source and mapped representation resolved. Only `Continue` reads,
+    /// charges and decodes its Items, after this callback; `SkipChildren` and
+    /// `Stop` suppress those operations and their errors. The level entities
+    /// are snapshots, but child references resolve through the decoder as
+    /// mutated by this callback.
     fn enter_map(
         &mut self,
         _level: &MappedLevel,
@@ -100,8 +117,13 @@ pub trait WalkVisitor {
     /// Pairs every `enter_map`, whatever it answered and however the level's
     /// items ended.
     fn leave_map(&mut self, _level: &MappedLevel) {}
-    /// A mapped item at `at` (its id) was not entered.
-    fn refused(&mut self, _at: u32, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {}
+    /// A refused mapped item, or the holding representation for a root-list
+    /// budget refusal. `ctx.path` excludes the refused level. Nested Items
+    /// failures follow `enter_map` and are paired with `leave_map`; source,
+    /// depth, cycle and level-budget failures occur before entry.
+    /// Implementors must report refusal or explicitly abstain; `Ok(())` does
+    /// not certify that every item was visited.
+    fn refused(&mut self, item: &DecodedEntity, why: WalkRefusal, ctx: &WalkCtx<'_>);
 }
 
 /// The walk: which representations ([`Select`]) and how mapped items nest.
@@ -113,8 +135,13 @@ pub struct RepresentationWalk {
 struct Run<'a, V> {
     visitor: &'a mut V,
     element: Option<&'a DecodedEntity>,
-    path: Vec<MappedLevel>,
-    on_path: FxHashSet<u32>,
+    /// The levels entered, outermost first: also the path-scoped visited set
+    /// (at most `max_depth` entries, so a scan is the cheapest set).
+    path: smallvec::SmallVec<[MappedLevel; 1]>,
+    /// Mapped-level attempts admitted after depth/cycle checks (Expand only).
+    levels: u32,
+    /// Items members admitted before allocating/decoding a list, per occurrence.
+    items: u32,
 }
 
 impl RepresentationWalk {
@@ -125,20 +152,100 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) -> Result<(), ShapeError> {
+        self.product_lists(
+            element,
+            decoder,
+            visitor,
+            |walk, run, rep, items, decoder| walk.items(run, Some(rep), &items, decoder),
+        )
+    }
+
+    pub(crate) fn product_admission(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        visitor: &mut super::product_budget::ProductItems,
+    ) -> Result<(), ShapeError> {
+        self.product_lists(element, decoder, visitor, Self::admit_roots)
+    }
+
+    fn product_lists<V: WalkVisitor>(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        visitor: &mut V,
+        mut visit: impl FnMut(
+            &Self,
+            &mut Run<'_, V>,
+            &DecodedEntity,
+            Vec<DecodedEntity>,
+            &mut EntityDecoder,
+        ) -> Flow,
+    ) -> Result<(), ShapeError> {
         let Some(shape) = product_shape(element, decoder)? else {
             return Ok(());
         };
-        let mut run = Run { visitor, element: Some(element), path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run {
+            visitor,
+            element: Some(element),
+            path: smallvec::SmallVec::new(),
+            levels: 0,
+            items: 0,
+        };
         for rep in shape.select(element, self.select) {
             if run.visitor.shape_rep(rep) == Flow::Stop {
                 break;
             }
-            let items = rep_items(rep, decoder)?;
-            if self.items(&mut run, Some(rep), &items, decoder) == Flow::Stop {
+            let Some(items) = self.root_items(&mut run, rep, decoder)? else {
+                break;
+            };
+            if visit(self, &mut run, rep, items, decoder) == Flow::Stop {
                 break;
             }
         }
         Ok(())
+    }
+
+    /// Continue strict retained root admission without decoding or charging
+    /// those members twice. Skipped representations have already paid too.
+    pub(crate) fn admitted_product(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        visitor: &mut super::product_budget::ProductItems,
+        roots: super::product_budget::AdmittedRoots,
+    ) {
+        let mut run = Run {
+            visitor,
+            element: Some(element),
+            path: smallvec::SmallVec::new(),
+            levels: 0,
+            items: roots.items,
+        };
+        for (rep, items) in roots.representations {
+            if run.visitor.shape_rep(&rep) == Flow::Stop
+                || self.admit_roots(&mut run, &rep, items, decoder) == Flow::Stop
+            {
+                break;
+            }
+        }
+    }
+
+    fn admit_roots(
+        &self,
+        run: &mut Run<'_, super::product_budget::ProductItems>,
+        rep: &DecodedEntity,
+        items: Vec<DecodedEntity>,
+        decoder: &mut EntityDecoder,
+    ) -> Flow {
+        if items
+            .iter()
+            .all(|item| item.ifc_type != ifc_lite_core::IfcType::IfcMappedItem)
+        {
+            run.visitor.direct_items(items)
+        } else {
+            self.items(run, Some(rep), &items, decoder)
+        }
     }
 
     /// Walk the items of an `IfcRepresentationMap`'s mapped representation (a
@@ -149,11 +256,24 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) -> Result<(), ShapeError> {
-        let Some(rep) = map.get(1).map(|a| decoder.resolve_ref(a)).transpose()?.flatten() else {
+        let Some(rep) = map
+            .get(IfcRepresentationMap::MAPPED_REPRESENTATION.index())
+            .map(|a| decoder.resolve_ref(a))
+            .transpose()?
+            .flatten()
+        else {
             return Err(ShapeError::MissingItems);
         };
-        let items = rep_items(&rep, decoder)?;
-        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run {
+            visitor,
+            element: None,
+            path: smallvec::SmallVec::new(),
+            levels: 0,
+            items: 0,
+        };
+        let Some(items) = self.root_items(&mut run, &rep, decoder)? else {
+            return Ok(());
+        };
         self.items(&mut run, Some(&rep), &items, decoder);
         Ok(())
     }
@@ -165,87 +285,32 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) {
-        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default() };
-        self.enter(&mut run, item, decoder);
+        let mut run = Run {
+            visitor,
+            element: None,
+            path: smallvec::SmallVec::new(),
+            levels: 0,
+            items: 0,
+        };
+        self.execute(&mut run, engine::Task::Enter(item.clone()), decoder);
     }
 
-    /// Visit one list of items in order; the flow of the last visit.
-    fn items<V: WalkVisitor>(
+    /// Private continuation for roots already admitted for this product. This
+    /// walk's actual traversal meters remain separate from product admission.
+    pub(crate) fn items_of<V: WalkVisitor>(
         &self,
-        run: &mut Run<'_, V>,
-        rep: Option<&DecodedEntity>,
+        rep: &DecodedEntity,
         items: &[DecodedEntity],
         decoder: &mut EntityDecoder,
-    ) -> Flow {
-        let chain = matches!(self.nested, NestedMaps::FirstChain { .. });
-        let mut first_mapped: Option<&DecodedEntity> = None;
-        for item in items {
-            if item.ifc_type == IfcType::IfcMappedItem && !matches!(self.nested, NestedMaps::Leaf) {
-                if chain {
-                    first_mapped = first_mapped.or(Some(item));
-                } else if self.enter(run, item, decoder) == Flow::Stop {
-                    return Flow::Stop;
-                }
-                continue;
-            }
-            let at = WalkCtx { element: run.element, shape_rep: rep, path: &run.path };
-            if run.visitor.item(item, &at, decoder) == Flow::Stop {
-                return Flow::Stop;
-            }
-        }
-        match first_mapped {
-            Some(item) => self.enter(run, item, decoder),
-            None => Flow::Continue,
-        }
-    }
-
-    /// Enter the level of one `IfcMappedItem`, visit its items, leave it.
-    fn enter<V: WalkVisitor>(
-        &self,
-        run: &mut Run<'_, V>,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Flow {
-        let max_depth = match self.nested {
-            NestedMaps::Expand { max_depth } | NestedMaps::FirstChain { max_depth } => max_depth,
-            NestedMaps::Refuse | NestedMaps::Leaf => 0,
+        visitor: &mut V,
+    ) {
+        let mut run = Run {
+            visitor,
+            element: None,
+            path: smallvec::SmallVec::new(),
+            levels: 0,
+            items: 0,
         };
-        let bail = matches!(self.nested, NestedMaps::Refuse);
-        let refuse = |run: &mut Run<'_, V>, why| {
-            let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path };
-            run.visitor.refused(item.id, why, &at);
-            if bail { Flow::Stop } else { Flow::Continue }
-        };
-        if run.path.len() >= max_depth as usize {
-            return refuse(run, WalkRefusal::TooDeep);
-        }
-        if run.on_path.contains(&item.id) {
-            return refuse(run, WalkRefusal::Cyclic);
-        }
-        let Some(source) = item.get(0).map(|a| decoder.resolve_ref(a)) else {
-            return refuse(run, WalkRefusal::Dangling);
-        };
-        let Ok(Some(map)) = source else {
-            return refuse(run, WalkRefusal::Dangling);
-        };
-        let mapped_rep = match map.get(1).map(|a| decoder.resolve_ref(a)) {
-            Some(Ok(Some(rep))) => rep,
-            _ => return refuse(run, WalkRefusal::Malformed),
-        };
-        let Ok(items) = rep_items(&mapped_rep, decoder) else {
-            return refuse(run, WalkRefusal::Malformed);
-        };
-        let level = MappedLevel { item: item.clone(), map, mapped_rep };
-        let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path };
-        let mut flow = run.visitor.enter_map(&level, &at, decoder);
-        run.path.push(level.clone());
-        run.on_path.insert(item.id);
-        if flow == Flow::Continue {
-            flow = self.items(run, Some(&level.mapped_rep), &items, decoder);
-        }
-        run.on_path.remove(&item.id);
-        run.path.pop();
-        run.visitor.leave_map(&level);
-        if flow == Flow::Stop { Flow::Stop } else { Flow::Continue }
+        self.items(&mut run, Some(rep), items, decoder);
     }
 }

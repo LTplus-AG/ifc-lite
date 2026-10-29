@@ -14,6 +14,7 @@ use nalgebra::Matrix4;
 use super::frame_parts::{single_frame_source, SourceParts};
 use super::GeometryRouter;
 use crate::processors::texture::TextureAttachment;
+use crate::program::mapping_budget::{LogicalBudget, SourceResult};
 use crate::{Error, Mesh, Result, SubMeshCollection};
 
 /// The accounted header admission for one retained UV-carrying part, out of line.
@@ -106,16 +107,24 @@ impl GeometryRouter {
 
     /// Admit a type's representation map for the type-map walk: its
     /// `MappedRepresentation` and that representation's whole Items list.
-    pub(crate) fn admit_type_map(&self, rep_map: &DecodedEntity, decoder: &mut EntityDecoder)
-        -> Result<(DecodedEntity, Vec<DecodedEntity>)> {
-        let mapped_rep_attr = rep_map.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
-            .ok_or_else(|| Error::geometry("RepresentationMap missing MappedRepresentation".to_string()))?;
+    pub(crate) fn admit_type_map(
+        &self,
+        rep_map: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        budget: &mut LogicalBudget,
+    ) -> SourceResult<(DecodedEntity, Vec<DecodedEntity>)> {
+        let mapped_rep_attr = rep_map
+            .get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
+            .ok_or_else(|| {
+                Error::geometry("RepresentationMap missing MappedRepresentation".to_string())
+            })?;
         let mapped_rep = decoder
             .resolve_ref(mapped_rep_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
         let items_attr = mapped_rep
             .get(slot::IfcRepresentation::ITEMS.index())
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
+        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
         let items = decoder.resolve_ref_list(items_attr)?;
         Ok((mapped_rep, items))
     }
@@ -153,5 +162,35 @@ impl GeometryRouter {
             out.push((mesh, Vec::new(), None));
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "retained-runtime")]
+impl GeometryRouter {
+    /// Whether an orphan map has an item the exact type-map walk can mesh.
+    /// This only applies exact's dispatch selection; it never executes geometry.
+    /// Invalid or budget-limited sources return `None` and remain candidates so
+    /// the retained walk reports their fault.
+    #[doc(hidden)]
+    pub fn type_map_has_exact_mesh_items(&self, map_id: u32, decoder: &mut EntityDecoder)
+        -> Option<bool> {
+        let mut pending = vec![map_id];
+        let mut visited = rustc_hash::FxHashSet::default();
+        let mut budget = LogicalBudget::default();
+        while let Some(id) = pending.pop() {
+            // This is an existence predicate, not accumulated geometry. A
+            // repeated map has the same dispatch answer on every path.
+            if !visited.insert(id) { continue; }
+            let map = decoder.decode_by_id(id).ok()?;
+            let (_, items) = self.admit_type_map(&map, decoder, &mut budget).ok()?;
+            for item in items {
+                if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
+                    pending.push(item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?);
+                } else if self.processor_for(&item.ifc_type).is_some() {
+                    return Some(true);
+                }
+            }
+        }
+        Some(false)
     }
 }

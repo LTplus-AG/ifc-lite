@@ -24,7 +24,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.txt"
   ],
   "dependencies": {
     "@ifc-lite/ai": "workspace:^",

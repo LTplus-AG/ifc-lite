@@ -455,6 +455,9 @@ jobs:
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              - 'licenses/retained/**'
+              - 'LICENSE'
+              - '.github/actions/**'
               # `check-ci-path-coverage` reads .gitignore to decide which paths
               # are committed source and which are build output it must not
               # walk. That makes .gitignore an INPUT to the gate: an edit to it
@@ -743,6 +746,11 @@ jobs:
           node scripts/diff-sidecar-vectors.mjs --check
           node scripts/diff-sidecar-validation-vectors.mjs --check
 
+      # #7955 M2-B: the default (flag-off) viewer dist built above must not
+      # contain retained/SMLib code or assets.
+      - name: Verify default viewer is retained-free
+        run: node scripts/check-viewer-retained-free.mjs
+
       # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
       # built the engine wasm and the viewer's dist/ (turbo builds apps/*
       # too), so this only reads them: no second build. It MEASURES here and
@@ -958,25 +966,46 @@ jobs:
           # #7943: preserve the extracted rational oracle helper. Accepting a
           # partition when ANY vertex is coplanar must fail the nonplanar
           # rational-oracle witnesses; the first face alone is insufficient.
-          # #7955 E3b: the new resource::detached seam, the steal tests and the
-          # live-epoch tests import symbols a whole-change revert deletes
-          # (unparseable reverted evidence). Keep every API and test and break
-          # ONLY four rules: detached() stops hiding resource state, the
-          # faceted-brep wait is no longer wrapped in it, the opaque-log
-          # boundary is never settled at a top-level epoch, and a reply from a
-          # foreign owner is accepted.
-          # #7955 J5: preserve the new provenance and export APIs while
-          # mutating palette, UV, normal, texture and URI behaviour. A whole
-          # production revert removes types imported by the changed tests.
+          # C2 lane #7781: preserve new modules and test wiring while disturbing
+          # reporting, balanced leaves, controller debits, root retention and
+          # profile publication. These mutations remain bounded.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
+          # #7781 C2-3: preserve report-module test wiring; suppress drop counts
+          # and change the strict precheck message so the policy witnesses fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-3-reconcile/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-3-reconcile/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-3-reconcile/behaviour.oracle.patch)
+          # #7781 C2-2: retain the new structural entries and regression wiring;
+          # reverse only the opening predecode bound. The 65-entry witness must
+          # fail an assertion, not lose its imported helper during collection.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/representation/structural.rs | grep -Fxq 'rust/geometry/src/representation/structural.rs'; then
+            oracle_args+=(--mutation tests/evidence/c2-2-finish/behaviour.oracle.patch)
+          # #7782 C4-6b: preserve first-site selection in all browser adapters.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-6b-browser/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-6b-browser/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-6b-browser/behaviour.oracle.patch)
+          # #7782 C4-5: keep additive APIs and mutate only spatial admission.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-5-scan/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-5-scan/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-5-scan/behaviour.oracle.patch)
+          # #7782 C4-8a: retain additive APIs; reject wrongly typed map sources.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-8a-shallow/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-8a-shallow/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-8a-shallow/behaviour.oracle.patch)
+          # #7782 D66: drop the job-router index hand-off; sliced witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-d66-slicing/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-d66-slicing/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-d66-slicing/behaviour.oracle.patch)
+          # #7782 C4-9: keep the shared adapter; drop its geometry-style hit so
+          # only the element fallback answers. Item-style witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-9-colour/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-9-colour/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-9-colour/behaviour.oracle.patch)
+          # #7781 C2-6: retain the shared wrapper helper and its test wiring;
+          # reverse only first-vs-single mapped-item admission.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-6-probe-walk/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-6-probe-walk/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-6-probe-walk/behaviour.oracle.patch)
+          # #7781 C2-5a: keep cutter types and test wiring; disturb engulf
+          # admission and restoration of a diagonal cutter's f64 origin.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch)
           # #7711: preserve the new independent probe module so its tests load;
           # disable only placement/fill checks and require assertion failures.
-          # #7955 M1 F: keep added CLI modules; restore zero-publication success.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/cli/src/commands/export-retained.ts | grep -Fxq 'packages/cli/src/commands/export-retained.ts'; then
-            oracle_args+=(--mutation tests/evidence/m1-f-cli-retained/behaviour.oracle.patch --test packages/cli/src/commands/export-retained.test.ts)
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- native/smlib-adapter/node/client.mjs | grep -Fxq 'native/smlib-adapter/node/client.mjs'; then
-            # #7955 M1 F: preserve the added modules so inert tests still load;
-            # break captured-owner retirement and engine asset digest recording.
-            oracle_args+=(--mutation tests/evidence/m1-f1/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
           # Exact globe placement: preserve the new modules so the tests load;
@@ -988,28 +1017,6 @@ jobs:
           # Once geo-warp.ts is on main, this clause can go.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/lib/geo/geo-warp.ts | grep -Fxq 'apps/viewer/src/lib/geo/geo-warp.ts'; then
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
-          # #7955 M1 E2: preserve APIs; erase the typed host refusal code.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/api/retained_model.rs | grep -Fxq 'rust/wasm-bindings/src/api/retained_model.rs'; then
-            oracle_args+=(--mutation tests/evidence/m1-e2-retained-model/behaviour.oracle.patch --test rust/wasm-bindings/tests/m1_retained_model.rs)
-          # #7955 M1 E: retain wire APIs; relax the production mesh byte bound.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained_wire.rs | grep -Fxq 'rust/geometry/src/document/retained_wire.rs'; then
-            oracle_args+=(--mutation tests/evidence/m1-e-wasm-runtime/behaviour.oracle.patch)
-          # #7955 M1 D: retain APIs; remove the permitted worker restarts.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_retained/model.rs | grep -Fxq 'rust/processing/src/element/session_retained/model.rs'; then
-            oracle_args+=(--mutation tests/evidence/m1-d-native-driver/behaviour.oracle.patch)
-          # #7955 M1 C: retain executor types; misreport the real layer refusal.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_retained/traversal.rs | grep -Fxq 'rust/processing/src/element/session_retained/traversal.rs'; then
-            oracle_args+=(--mutation tests/evidence/m1-c-executor-core/behaviour.oracle.patch)
-          # #7955 M1 B: retain budget APIs; lose the expired-deadline cause.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/budget.rs | grep -Fxq 'rust/geometry/src/resource/budget.rs'; then
-            oracle_args+=(--mutation tests/evidence/m1-b-product-budget/behaviour.oracle.patch)
-          # #7955 M1 A: preserve added controller types; break one unmet obligation.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/completion.rs | grep -Fxq 'rust/geometry/src/program/retained/completion.rs'; then
-            oracle_args+=(--mutation tests/evidence/m1-a-controller-core/behaviour.oracle.patch)
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/j5-presentation/behaviour.oracle.patch | grep -Fxq 'tests/evidence/j5-presentation/behaviour.oracle.patch'; then
-            oracle_args+=(--mutation tests/evidence/j5-presentation/behaviour.oracle.patch)
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/e3b-followups/behaviour.oracle.patch | grep -Fxq 'tests/evidence/e3b-followups/behaviour.oracle.patch'; then
-            oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/test/oracle/index.ts | grep -Fxq 'packages/diff/test/oracle/index.ts'; then
@@ -1102,47 +1109,6 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
-          # #7955 E3: the linear product protocol adds element/session*.rs and
-          # owned_session.rs and deletes element/execution.rs, so a
-          # whole-change revert cannot compile the changed session tests
-          # (INCONCLUSIVE). Keep the protocol and break ONLY four rules: an
-          # executed ticket executes again, a grandchild product reaches only
-          # the innermost live frame instead of any ancestor's owners, a
-          # product's exact-work budget leaks into its caller's, and a stop
-          # reached in the final drain no longer discards the product. Listed
-          # before the E2b parent it is stacked on; once
-          # element/session_protocol.rs is on main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_protocol.rs | grep -Fxq 'rust/processing/src/element/session_protocol.rs'; then
-            oracle_args+=(--mutation tests/evidence/product-state-e3/behaviour.oracle.patch)
-          # #7955 E2b: the native and browser consumers add
-          # processor/run_snapshot.rs, and the changed browser test names the
-          # new IfcAPI model field, so a whole-change revert cannot compile it
-          # (INCONCLUSIVE). Keep the snapshots and break ONLY the native swap:
-          # the deferred style replay no longer re-takes the run snapshot.
-          # Listed before the E2a parent it is stacked on; once
-          # processor/run_snapshot.rs is on main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/run_snapshot.rs | grep -Fxq 'rust/processing/src/processor/run_snapshot.rs'; then
-            oracle_args+=(--mutation tests/evidence/run-snapshot-e2b/behaviour.oracle.patch)
-          # #7955 E2a: the owned model context adds element/model_context.rs
-          # (and appearance/owned_context.rs), which the changed context tests
-          # drive, so a whole-change revert cannot compile them (INCONCLUSIVE).
-          # Keep the snapshots and break ONLY two lifecycle rules: an
-          # explicitly invalidated source still validates, and an appearance
-          # style edit keeps serving the snapshot it replaced. Listed before
-          # the E1b parent it is stacked on; once element/model_context.rs is
-          # on main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/model_context.rs | grep -Fxq 'rust/processing/src/element/model_context.rs'; then
-            oracle_args+=(--mutation tests/evidence/model-context-e2a/behaviour.oracle.patch)
-          # #7955 E1b: late presentation adds element/presentation_source.rs
-          # (and the assembly_* modules), which the changed presentation tests
-          # drive, so a whole-change revert cannot compile them (INCONCLUSIVE).
-          # Keep the funnel and break ONLY two presentation rules: an
-          # occurrence colours from a private copy of the material cursor, and
-          # a submesh keeps a texture whose UVs no longer match its vertices.
-          # Listed before the E1 parent it is stacked on; once
-          # element/presentation_source.rs is on main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/presentation_source.rs | grep -Fxq 'rust/processing/src/element/presentation_source.rs'; then
-            oracle_args+=(--mutation tests/evidence/presentation-e1b/behaviour.oracle.patch)
           # #7955 E1: canonical element production adds element/execution.rs
           # (and plan.rs), which the changed phase tests drive, so a
           # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
@@ -1152,105 +1118,6 @@ jobs:
           # once element/execution.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/execution.rs | grep -Fxq 'rust/processing/src/element/execution.rs'; then
             oracle_args+=(--mutation tests/evidence/processing-plan-e1/behaviour.oracle.patch)
-          # #7955 D4c-2: the spine-step split adds program/boolean/spine.rs,
-          # which the continuation and its tests drive, so a whole-change
-          # revert cannot compile them (INCONCLUSIVE). Keep the steps and
-          # break ONLY the boundary: the plane clip and the batched prism
-          # build are reported as source steps. Listed before the D4c-1
-          # parent it is stacked on; once program/boolean/spine.rs is on
-          # main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/boolean/spine.rs | grep -Fxq 'rust/geometry/src/program/boolean/spine.rs'; then
-            oracle_args+=(--mutation tests/evidence/boolean-steps-d4c2/behaviour.oracle.patch)
-          # #7955 D4c: the Boolean entry adds program/boolean/mod.rs (the
-          # continuation moved out of the boolean processor), which the item
-          # control and its tests drive, so a whole-change revert cannot
-          # compile them (INCONCLUSIVE). Keep the continuation and break ONLY
-          # the behaviour: the solid/solid boolean is reported as a source
-          # step and a stop between boolean steps is not observed. Listed
-          # before the D4b parent it is stacked on; once
-          # program/boolean/mod.rs is on main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/boolean/mod.rs | grep -Fxq 'rust/geometry/src/program/boolean/mod.rs'; then
-            oracle_args+=(--mutation tests/evidence/boolean-entry-d4c/behaviour.oracle.patch)
-          # #7955 D4b: the layer control and the styled entries add
-          # program/layers.rs and program/styled.rs, which the production
-          # gateways and their tests drive, so a whole-change revert cannot
-          # compile them (INCONCLUSIVE). Keep the controls and break ONLY the
-          # behaviour: the planes are reported as a source step, a stop in the
-          # layer host is recorded as a base-mesh skip and the voided entry
-          # skips its uncut-host attempt. Listed before the D4 parent it is
-          # stacked on; once program/layers.rs is on main, whole-change revert
-          # resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/layers.rs | grep -Fxq 'rust/geometry/src/program/layers.rs'; then
-            oracle_args+=(--mutation tests/evidence/layers-d4b/behaviour.oracle.patch)
-          # #7955 D4: the product and void controls add program/product.rs
-          # and program/voids.rs, which the production gateways and their
-          # tests drive, so a whole-change revert cannot compile them
-          # (INCONCLUSIVE). Keep the controls and break ONLY the behaviour:
-          # the walk reads every representation instead of the meshed ones,
-          # placement admission is reported numerical and a voided host
-          # completes uncut. Listed before the C5c and D3b parents it is
-          # stacked on; once program/product.rs is on main, whole-change
-          # revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/product.rs | grep -Fxq 'rust/geometry/src/program/product.rs'; then
-            oracle_args+=(--mutation tests/evidence/product-adapters-d4/behaviour.oracle.patch)
-          # #7955 D3b: the styled and type-map walks add program/mapping_accept.rs,
-          # which the controller its tests drive needs, so a whole-change revert
-          # cannot compile them (INCONCLUSIVE). Keep the walks and break ONLY
-          # the behaviour: a type map's nested item no longer starts a fresh
-          # depth path, styled plain items escape the depth bound, a styled
-          # source never claims its drop count and a provisional template
-          # claim is never rolled back. Listed before D3 because this branch
-          # also adds program/mapping.rs. Once program/mapping_accept.rs is on
-          # main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/mapping_accept.rs | grep -Fxq 'rust/geometry/src/program/mapping_accept.rs'; then
-            oracle_args+=(--mutation tests/evidence/styled-type-map-d3b/behaviour.oracle.patch)
-          # #7955 C5c: the opening cutover adds program/openings/execute.rs,
-          # effects.rs, host.rs, planar.rs and rectangular.rs, which its tests
-          # drive, so a whole-change revert cannot compile them (INCONCLUSIVE).
-          # Keep the controller and execution and break ONLY the behaviour: a
-          # stopped cut publishes every effect and its telemetry, an unwind
-          # skips the failure drain, the staged residual cuts on the parent
-          # and the quiet residual classifier records. Listed before the C5b
-          # parent it is stacked on; once program/openings/execute.rs is on
-          # main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/openings/execute.rs | grep -Fxq 'rust/geometry/src/program/openings/execute.rs'; then
-            oracle_args+=(--mutation tests/evidence/opening-cutover-c5c/behaviour.oracle.patch)
-          # #7955 C5b: owned opening capture adds program/openings/, which its
-          # tests drive, so a whole-change revert cannot compile them
-          # (INCONCLUSIVE). Keep the controls and break ONLY the behaviour:
-          # reached stops become ordinary misses, neither drain checks the
-          # sticky stop between requests, and quiet residual classification
-          # publishes. Listed before the D2/D3 parents it is stacked on; once
-          # program/openings/classify.rs is on main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/openings/classify.rs | grep -Fxq 'rust/geometry/src/program/openings/classify.rs'; then
-            oracle_args+=(--mutation tests/evidence/opening-source-c5b/behaviour.oracle.patch)
-          # #7955 D3: the mapping controller adds program/mapping.rs and
-          # mapping_reduce.rs, which its tests drive, so a whole-change revert
-          # cannot compile them (INCONCLUSIVE). Keep the controller and break
-          # ONLY the behaviour: every source records its drops (no Body gate,
-          # no once-per-source claim) and a failed nested map no longer marks
-          # its parent truncated. Once program/mapping.rs is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/mapping.rs | grep -Fxq 'rust/geometry/src/program/mapping.rs'; then
-            oracle_args+=(--mutation tests/evidence/mapping-controller-d3/behaviour.oracle.patch)
-          # #7955 D1b: cache ownership adds mapped_cache_ownership.rs, which
-          # the tests name, so a whole-change revert cannot compile them
-          # (REVERT-BROKE-BUILD). Keep the module and break ONLY the behaviour:
-          # caches stop retaining the publishing account, coverage refusals
-          # never fire, a source-walk stop becomes an ordinary drop and observe
-          # stops translating typed stops. Once
-          # mapped_cache_ownership.rs is on main, whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/mapped_cache_ownership.rs | grep -Fxq 'rust/geometry/src/router/mapped_cache_ownership.rs'; then
-            oracle_args+=(--mutation tests/evidence/d1b-resource-raii-terminal/behaviour.oracle.patch)
-          # #7955 D1: the new resource module carries the audited mesh clone and
-          # merge admission. Whole-change revert removes the module the tests
-          # import, so no assertion runs; this reverses ONLY the cost charged
-          # before reserve/copy: zero copy/live/output allowances then admit
-          # the merge and the accounted-merge tests turn RED. All changed tests
-          # still run on both sides. Once resource/mesh.rs is on main, ordinary
-          # whole-change revert resumes automatically.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/mesh.rs | grep -Fxq 'rust/geometry/src/resource/mesh.rs'; then
-            oracle_args+=(--mutation tests/evidence/resource-accounts-d1/behaviour.oracle.patch)
           # #7495: deleting the newly introduced report service prevents test
           # collection. Its initial qualification instead removes ONLY the
           # approved NDA digest check: wrong-digest acceptance must turn RED.
@@ -1384,90 +1251,6 @@ jobs:
           # geometry_pool.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/geometry_pool.rs | grep -Fxq 'rust/processing/src/geometry_pool.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-pool-7673/stack-size.oracle.patch)
-          # #7955 I2: the IFCX consumer adds imported-graph.ts, imported-kernel.ts
-          # and the generated imported-geometry artifact, which its tests name,
-          # so a whole-change revert cannot load them (REVERT-BROKE-BUILD).
-          # Keep the modules and break ONLY the behaviour: the graph driver
-          # stops forwarding authored point colours and mesh normals to the
-          # Rust kernel. Listed before I1 because this branch also adds the I1
-          # crate. Once packages/ifcx/src/imported-graph.ts is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/ifcx/src/imported-graph.ts | grep -Fxq 'packages/ifcx/src/imported-graph.ts'; then
-            oracle_args+=(--mutation tests/evidence/ifcx-imported-kernel-i2/behaviour.oracle.patch)
-          # #7955 I1: the imported-geometry crate adds math.rs, graph.rs and
-          # scene.rs, which its tests name, so a whole-change revert cannot
-          # compile them (INCONCLUSIVE). Keep the types and break ONLY the
-          # behaviour: mesh placement transforms are not applied and
-          # homogeneous-denominator checks never reject. Once
-          # rust/imported-geometry/src/math.rs is on main, ordinary whole-change
-          # revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/imported-geometry/src/math.rs | grep -Fxq 'rust/imported-geometry/src/math.rs'; then
-            oracle_args+=(--mutation tests/evidence/imported-geometry-i1/behaviour.oracle.patch)
-          # #7955 B5: owned advanced-face plans add advanced_face/plan.rs,
-          # advanced_plan.rs and the structural plans, which their tests name,
-          # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep
-          # the types and break ONLY the behaviour: parameterized faces ignore
-          # a false SameSense; oriented edges ignore their orientation;
-          # structural_face_plan.rs turns a dangling FaceSurface into an error
-          # instead of an empty plan, swaps rtc_applied between the planar and
-          # non-planar branches and stops reversing planar indices; the B3
-          # mutations (faceted-brep bound refusal, surface-model report replay
-          # order and the late collection error) and the A2 scope mutations
-          # (census, budget_state, pending_diagnostics, element_degenerate
-          # scope restore and peak folding) are stacked, as the patch still
-          # carries their hunks. Once
-          # advanced_plan.rs is on main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/advanced_plan.rs | grep -Fxq 'rust/geometry/src/processors/advanced_plan.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-advanced-face-b5/behaviour.oracle.patch)
-          # #7955 B3: owned brep plans add faceted_plan.rs and
-          # surface_model_plan.rs, which their tests name, so a whole-change
-          # revert cannot compile them (INCONCLUSIVE). Keep the types and break
-          # ONLY the behaviour: faces with unreadable bounds are no longer
-          # refused, surface-model reports are not replayed in order, the late
-          # collection error is dropped, and the A2 scope mutation is stacked
-          # (this branch includes A2). Once faceted_plan.rs is on main,
-          # ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/faceted_plan.rs | grep -Fxq 'rust/geometry/src/processors/brep/faceted_plan.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-brep-plans-b3/behaviour.oracle.patch)
-          # #7955 C4: layer slicing is split into planes.rs, slice.rs,
-          # stack.rs, source.rs and stages.rs, which the layer tests name, so a
-          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
-          # modules and break ONLY the behaviour: interface offsets stop
-          # accumulating, the carve no longer advances its remainder, thin
-          # layers are not merged, an empty host is accepted, frames ignore the
-          # placement and the slice diagnostic misreports; the A2 scope
-          # mutation is stacked (this branch includes A2). Once slice.rs is on
-          # main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/layers/slice.rs | grep -Fxq 'rust/geometry/src/router/layers/slice.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-layer-slicing-c4/behaviour.oracle.patch)
-          # #7955 A2: diagnostic scopes add pending_diagnostics.rs,
-          # budget_state.rs, CsgCensus and ElementState, which its tests name,
-          # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep
-          # the types and break ONLY the behaviour: scopes stop restoring the
-          # caller's budget counters, pending reports and CSG sink, and the
-          # degenerate tally is no longer retained by its owner. Once
-          # pending_diagnostics.rs is on main, ordinary whole-change revert
-          # resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/pending_diagnostics.rs | grep -Fxq 'rust/geometry/src/pending_diagnostics.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-diagnostic-scopes-a2/behaviour.oracle.patch)
-          # #7955 G1: the SMLib adapter adds the ifc-lite-geometry-runtime crate,
-          # whose protocol, supervisor and process-control tests name the new
-          # production types, so a whole-change revert cannot compile them
-          # (INCONCLUSIVE). Keep the types and break ONLY the behaviour: response
-          # request ids are no longer matched and oversized mesh chunk requests
-          # are encoded. Once rust/geometry-runtime/src/protocol.rs is on main,
-          # ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/protocol.rs | grep -Fxq 'rust/geometry-runtime/src/protocol.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-runtime-g1/behaviour.oracle.patch)
-          # #7955 A1: core execution ownership adds execution_owner.rs,
-          # source_bundle.rs and source caches, which its tests name, so a
-          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
-          # types and break ONLY the behaviour: configuration changes stop
-          # advancing the owner generation, foreign caches are accepted and
-          # every decoder counts as bundle-owned. Once execution_owner.rs is
-          # on main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/execution_owner.rs | grep -Fxq 'rust/core/src/execution_owner.rs'; then
-            oracle_args+=(--mutation tests/evidence/core-execution-owner-a1/behaviour.oracle.patch)
           # #7676: the upload admission change adds ApiError::UploadTimeout, which
           # its tests name, so a whole-change revert cannot compile them
           # (INCONCLUSIVE). Keep the type and break ONLY the behaviour: the
@@ -1551,46 +1334,6 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/indices.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/indices.rs'; then
             oracle_args+=(--mutation tests/evidence/tessellation-indices-7689/index-rule.oracle.patch)
-          # #7955 B2: the owned tessellated plans add triangulated_plan.rs and
-          # polygonal_plan.rs, which their tests import, so a whole-change revert cannot
-          # compile them (INCONCLUSIVE). Keep the plan types and break ONLY the behaviour:
-          # closed shells are no longer oriented outward when a plan is evaluated. Once
-          # triangulated_plan.rs is on main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/triangulated_plan.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/triangulated_plan.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-tessellated-plans-b2/behaviour.oracle.patch)
-          # #7955 B1: the owned extrusion/primitive plans add extrusion_plan.rs,
-          # extrusion_tapered_plan.rs and primitive_plan.rs, which their tests import, so a
-          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the plan types and
-          # break ONLY the behaviour: the Position transform is skipped when a plan is
-          # evaluated. Once extrusion_plan.rs is on main, ordinary whole-change revert
-          # resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/extrusion_plan.rs | grep -Fxq 'rust/geometry/src/processors/extrusion_plan.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-extrusion-plans-b1/behaviour.oracle.patch)
-          # #7955 B4: the owned swept plans add disk_plan.rs, revolved_plan.rs and
-          # surface_plan.rs, which their tests import, so a whole-change revert cannot
-          # compile them (INCONCLUSIVE). Keep the plan types and break ONLY the behaviour:
-          # disk smooth normals are skipped, the revolved Position transform is skipped
-          # and the surface sweep vertex budget is not enforced. Once disk_plan.rs is on
-          # main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/swept/disk_plan.rs | grep -Fxq 'rust/geometry/src/processors/swept/disk_plan.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-swept-plans-b4/behaviour.oracle.patch)
-          # #7955 B6: the owned alignment, sectioned and surface plans add
-          # alignment_plan.rs, sectioned_plan.rs and surface_plan.rs, which their tests
-          # import, so a whole-change revert cannot compile them (INCONCLUSIVE). Keep the
-          # plan types and break ONLY the behaviour: ribbon winding is reversed, the
-          # sectioned end cap is dropped and the surface RTC rebase is skipped. Once
-          # alignment_plan.rs is on main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/alignment_plan.rs | grep -Fxq 'rust/geometry/src/processors/alignment_plan.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-alignment-section-plans-b6/behaviour.oracle.patch)
-          # #7955 C1: the construction graph adds construction/ and program/, which
-          # its tests import, so a whole-change revert cannot compile them
-          # (INCONCLUSIVE). Keep the graph and break ONLY the behaviour: unresolved
-          # roots no longer block evaluation, a custom processor is no longer
-          # refused, the RTC frame is dropped from lowering and repeated roots lose
-          # their occurrence order. Once construction/lowering.rs is on main,
-          # ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/construction/lowering.rs | grep -Fxq 'rust/geometry/src/construction/lowering.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-construction-graph-c1/behaviour.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,
@@ -1788,6 +1531,11 @@ jobs:
           # `from_streaming`, and the id allow-list ignored by the
           # `_and_ids` delegate. Once request.rs is on main, ordinary
           # whole-change revert resumes.
+          # C4-4b moves the orchestration and lowers structural ratchets. Keep
+          # those modules wired and disable cancellation: the real sink witness
+          # must observe an extra batch. Remove this selector once on main.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-4b-native/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-4b-native/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-4b-native/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/request.rs | grep -Fxq 'rust/processing/src/processor/request.rs'; then
             oracle_args+=(--mutation tests/evidence/processing-7782/behaviour.oracle.patch)
           # #7783: C6-7 adds data_model/property.rs, which the changed export and
@@ -1825,139 +1573,6 @@ jobs:
           # rejected attempts must leak failures and telemetry (RED).
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/attempt.rs | grep -Fxq 'rust/geometry/src/router/voids/attempt.rs'; then
             oracle_args+=(--mutation tests/evidence/opening-telemetry-c5a/behaviour.oracle.patch)
-          # #7955: F1a adds analytic/source.rs, which the changed analytic tests
-          # import. Keep the module and make source capture record nothing: the
-          # retained coefficients, trim selectors and traversal flags must turn RED.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/source.rs | grep -Fxq 'rust/geometry/src/analytic/source.rs'; then
-            oracle_args+=(--mutation tests/evidence/analytic-source-7955/behaviour.oracle.patch)
-          # #7955 D2: the item/cache controller adds program/inner.rs, item.rs,
-          # inner_cache.rs and router/item_cache_program.rs, which its tests
-          # name, so a whole-change revert cannot compile them (INCONCLUSIVE).
-          # Keep the controller and break ONLY the behaviour: foreign owners are
-          # no longer refused, a ticket is marked executed only after its
-          # callback returns, the selected RTC hook is skipped and shared cache
-          # hits are ignored. Once program/inner.rs is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
-            oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
-          # #7955 G4b: bounded affine copies add geometry-runtime
-          # worker_affine.rs, whose types the changed runtime tests name, so a
-          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
-          # types and break ONLY admission: a singular matrix passes the
-          # pre-dispatch check and opcode 18 is sent to an adapter that never
-          # advertised it (RED, unit and protocol peer only). Checked before
-          # G4a so the stacked branch uses its own patch. Once
-          # rust/geometry-runtime/src/worker_affine.rs is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_affine.rs | grep -Fxq 'rust/geometry-runtime/src/worker_affine.rs'; then
-            oracle_args+=(--mutation tests/evidence/affine-copy-g4b/behaviour.oracle.patch)
-          # #7955 G4a: sealed empty outcomes add geometry-runtime
-          # worker_empty.rs, whose NumericalOutcome the changed runtime tests
-          # name, so a whole-change revert cannot compile them (INCONCLUSIVE).
-          # Keep the types and break ONLY the certificate: an all-zero strict
-          # mesh is sealed empty without querying the actual solid (RED,
-          # protocol peer only). Checked before G3a so the stacked branch uses
-          # its own patch. Once rust/geometry-runtime/src/worker_empty.rs is on
-          # main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_empty.rs | grep -Fxq 'rust/geometry-runtime/src/worker_empty.rs'; then
-            oracle_args+=(--mutation tests/evidence/sealed-empty-g4a/behaviour.oracle.patch)
-          # #7955 H1c: the retained browser host contract adds ifc-lite-wasm
-          # src/api/retained_browser.rs and the capability selection its native
-          # unit tests name, so a whole-change revert cannot compile them
-          # (INCONCLUSIVE). Keep the contract and break ONLY behaviour: SDK
-          # capability bits alone open the curved families, witnesses open a
-          # format the adapter lacks, and the opt-in retained-engine loader
-          # caches a failed load forever (RED). Checked before H1b so the stacked
-          # branch uses its own patch. Once
-          # rust/wasm-bindings/src/api/retained_browser.rs is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/api/retained_browser.rs | grep -Fxq 'rust/wasm-bindings/src/api/retained_browser.rs'; then
-            oracle_args+=(--mutation tests/evidence/browser-host-h1c/behaviour.oracle.patch)
-          # #7955 H1b: the private retained browser executor adds ifc-lite-wasm
-          # src/retained_browser/mod.rs (its unit tests live beside it) and
-          # js/retained-driver.mjs, which the changed driver tests import, so a
-          # whole-change revert cannot compile or load them (INCONCLUSIVE). Keep
-          # them and break ONLY the behaviour: an abandoned in-flight future
-          # leaves its Worker live, a dropped lease stays live until its release
-          # runs and the next command no longer waits for queued releases (RED,
-          # protocol peer only). Checked before H1a so the stacked branch uses
-          # its own patch. Once rust/wasm-bindings/src/retained_browser/mod.rs is
-          # on main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/retained_browser/mod.rs | grep -Fxq 'rust/wasm-bindings/src/retained_browser/mod.rs'; then
-            oracle_args+=(--mutation tests/evidence/browser-driver-h1b/behaviour.oracle.patch)
-          # #7955 H1a: the browser module-Worker transport adds
-          # native/smlib-adapter/browser/client.mjs and module.mjs, which the
-          # changed transport tests import, so a whole-change revert cannot load
-          # them (INCONCLUSIVE). Keep the modules and break ONLY the behaviour:
-          # a stale retirement kills the replacement Worker and owned dispatch
-          # accepts responses above one frame (RED, fixture Workers only).
-          # Checked before G3a so the stacked branch uses its own patch. Once
-          # native/smlib-adapter/browser/client.mjs is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- native/smlib-adapter/browser/client.mjs | grep -Fxq 'native/smlib-adapter/browser/client.mjs'; then
-            oracle_args+=(--mutation tests/evidence/browser-transport-h1a/behaviour.oracle.patch)
-          # #7955 G3a: managed object cleanup adds geometry-runtime
-          # worker_objects.rs, which its unit tests live beside, so a
-          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
-          # types and break ONLY the behaviour: a dropped receipt retires the
-          # whole worker instead of queueing its one object, and any rejected
-          # handle drains the queue (RED, protocol peer only). Checked before
-          # G3b so the stacked branch uses its own patch. Once
-          # rust/geometry-runtime/src/worker_objects.rs is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_objects.rs | grep -Fxq 'rust/geometry-runtime/src/worker_objects.rs'; then
-            oracle_args+=(--mutation tests/evidence/managed-objects-g3a/behaviour.oracle.patch)
-          # #7955 G3b: retained sweeps add geometry-runtime worker_sweep.rs and
-          # worker_upload.rs, which the changed runtime tests reach, so a
-          # whole-change revert cannot compile them (INCONCLUSIVE). Most of
-          # those tests need the native SDK worker; the protocol and peer tests
-          # do not. Keep the types and break ONLY the behaviour: curved regions
-          # and disks skip their same-incarnation witness gate and oversized
-          # chunk frames are encoded (RED). Checked before F2c so the stacked
-          # branch uses its own patch. Once
-          # rust/geometry-runtime/src/worker_sweep.rs is on main, ordinary
-          # whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_sweep.rs | grep -Fxq 'rust/geometry-runtime/src/worker_sweep.rs'; then
-            oracle_args+=(--mutation tests/evidence/retained-sweep-g3b/behaviour.oracle.patch)
-          # #7955 F2c: retained swept-disk requests add document/retained_disk.rs
-          # and processing tests/retained_disk_requests.rs, which name the new
-          # types, so a whole-change revert cannot compile them (INCONCLUSIVE).
-          # Keep the types and break ONLY the behaviour: hollow and closed disks
-          # are admitted, controls lose the anchor rebase and their original
-          # weights, the active range widens to the knot ends, conic middles
-          # leave the circle and inherited rational status refuses every
-          # occurrence (RED). Checked before F2b so the stacked branch uses its
-          # own patch. Once rust/geometry/src/document/retained_disk.rs is on
-          # main, ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained_disk.rs | grep -Fxq 'rust/geometry/src/document/retained_disk.rs'; then
-            oracle_args+=(--mutation tests/evidence/retained-disk-f2c/behaviour.oracle.patch)
-          # #7955 F2b: retained extrusion requests add document/retained.rs and
-          # processing retained_requests.rs, which their tests name, so a
-          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
-          # types and break ONLY the behaviour: any worker incarnation and
-          # stale revisions are accepted, completion frames go unchecked, every
-          # display claim is admitted, inner loops keep authored winding, depth
-          # skips unit scaling, boolean operands and non-rigid placements are
-          # admitted (RED). Checked before F2a so the stacked branch uses its
-          # own patch. Once rust/geometry/src/document/retained.rs is on main,
-          # ordinary whole-change revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained.rs | grep -Fxq 'rust/geometry/src/document/retained.rs'; then
-            oracle_args+=(--mutation tests/evidence/retained-requests-f2b/behaviour.oracle.patch)
-          # #7955 F2a: the geometry document adds document/mod.rs and processing
-          # retained_geometry.rs, which their tests name, so a whole-change
-          # revert cannot compile them (INCONCLUSIVE). Keep the types and break
-          # ONLY the behaviour: foreign handles resolve, framed origins and
-          # singular transforms are admitted, definitions stop advancing the
-          # revision and instances drop the template origin (RED). Once
-          # rust/geometry/src/document/mod.rs is on main, ordinary whole-change
-          # revert resumes.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/mod.rs | grep -Fxq 'rust/geometry/src/document/mod.rs'; then
-            oracle_args+=(--mutation tests/evidence/geometry-document-f2a/behaviour.oracle.patch)
-          # #7955 F1b: adds analytic/owned_directrix.rs, whose types the changed
-          # disk and definitions tests import. Keep it and never open the swept-
-          # disk capture: the directrix source and owned rational must turn RED.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/owned_directrix.rs | grep -Fxq 'rust/geometry/src/analytic/owned_directrix.rs'; then
-            oracle_args+=(--mutation tests/evidence/analytic-directrix-source-7955/behaviour.oracle.patch)
           # Export plan removal reasons: the new plan/removal.rs and its tests
           # compile only together. Keep them and record a dangling referrer as
           # released: the per-record reason test must turn RED. Checked
@@ -2058,7 +1673,33 @@ jobs:
           # Once plan/skeleton.rs is on main, this clause can go.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/plan/skeleton.rs | grep -Fxq 'rust/export/src/plan/skeleton.rs'; then
             oracle_args+=(--mutation tests/evidence/export-plan-skeleton/behaviour.oracle.patch)
+          # #7781 C2-4: retain RouterConfig/from_config and all test wiring.
+          # Flip only the forwarded batch-local flag: existing real geometry
+          # assertions must distinguish materialized templates from placeholders.
+          # Keep every earlier route's precedence and the full changed collection.
+          # Once router/config.rs is on main, ordinary whole-change inversion resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/config.rs | grep -Fxq 'rust/geometry/src/router/config.rs'; then
+            oracle_args+=(--mutation tests/evidence/router-config-7781/behaviour.oracle.patch)
+          # #7781 C2-5c: preserve the internal f32 helper and legacy fold witnesses.
+          # Reverse the lower-bound update; the per-site bit comparisons must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch)
+          # #7781 C2-5b: keep the extracted helper and its legacy test wiring.
+          # Shift the signed ray parameter; bit-equality witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/parity.rs | grep -Fxq 'rust/geometry/src/router/voids/parity.rs'; then
+            oracle_args+=(--mutation tests/evidence/c2-5b-voids-frames/behaviour.oracle.patch)
+          # #7781 R3: retain the new adapter/test wiring; change only its cosine
+          # policy to the box tolerance. Prism threshold witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5-finish/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5-finish/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-5-finish/behaviour.oracle.patch)
+          # #7782 C4-0: preserve harness wiring and perturb a production colour payload.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
           fi
+          # #7955 slices register independently; discovery must fail before mapfile.
+          node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
+          mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"
+          oracle_args+=("${slice_args[@]}")
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #8091: observe provisional-report preservation independently of the
           # existing owner/scope mutations. Dropping the quarantined batch must
@@ -2594,6 +2235,13 @@ jobs:
       # gate's own source and fails when one of them cannot trigger the job
       # that reads it -- an unreachable gate reports success, because a skipped
       # job counts as success in the aggregate `test` gate below (#3312).
+      # retained-notice-inputs.py needs tomllib (Python 3.11+); node-guards may run on
+      # the self-hosted runner, whose image is not guaranteed to provide it.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check retained notice inventory and generated bundles
+        run: node scripts/retained-notices.mjs --check
       - name: Check CI path coverage
         run: node scripts/check-ci-path-coverage.mjs
       # The neighbouring class, and the one the comment above names in passing:
@@ -3165,13 +2813,24 @@ jobs:
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
     # Standard GitHub runners keep routine Rust validation out of Depot's
     # metered pool. The longer cap accommodates a cold GitHub cache restore.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || ((vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
+      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
+      # target dir per job on the runner's rust-target volume, outside the
+      # workspace that the runner wipes. A job killed mid-compile (reboot) can
+      # leave truncated dep-info, so an unfinished marker discards the dir.
+      - name: Warm target dir (self-hosted Rust runner)
+        if: startsWith(runner.name, 'ifclite-rust')
+        run: |
+          dir="/cache/rust-target/${GITHUB_JOB}"
+          if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
+          mkdir -p "$dir" && touch "$dir/.unfinished"
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Use lld for host links
@@ -3185,6 +2844,8 @@ jobs:
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
+        # Skipped only where the warm target dir above was set.
+        if: env.CARGO_TARGET_DIR == ''
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           # `-o1-lt`: the test steps below build at opt-level 1 with line-tables
@@ -3273,6 +2934,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@f360235162158ca4526b07999d99c38ade05a414 # cargo-nextest (snapshot pinned 2026-10)
       - name: Rust tests
+        id: rust_tests
         # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
         # so a missing one here is fixture drift, not a legitimate local skip
         # (rust/export/src/test_support.rs) — make that a hard failure.
@@ -3283,6 +2945,32 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo nextest run --workspace --profile ci
+      # C4-0 (#7782): the native/browser parity gate already ran above, inside
+      # nextest, and fails the job on any difference its EXPECTED_DIFF table
+      # does not enumerate (or on a row nothing produces any more). This runs
+      # it once more on its own so the difference table -- every observed
+      # native/browser difference, the row that accounts for it and the
+      # charter item that removes it -- lands in the job summary, pass or
+      # fail. Same profile env, so the test binary built above is reused.
+      - name: C4-0 native/browser parity report
+        if: ${{ !cancelled() && steps.rust_tests.outcome != 'skipped' }}
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+          CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+          CARGO_PROFILE_TEST_OPT_LEVEL: "1"
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
+          IFC_LITE_C4_0_PARITY_REPORT: ${{ runner.temp }}/c4-0-parity.md
+        run: |
+          status=0
+          cargo nextest run -p ifc-lite-wasm --profile ci --no-capture \
+            -E 'test(=api::gpu_meshes::batch::parity::c4_0_native_browser_parity)' || status=$?
+          if [ -f "$IFC_LITE_C4_0_PARITY_REPORT" ]; then
+            cat "$IFC_LITE_C4_0_PARITY_REPORT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "C4-0 parity report was not written (the gate did not reach its verdict)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
       # nextest does not run doctests; `cargo test --workspace` did. Run them
       # here so the lane's coverage is exactly what it was. Same profile env,
       # so the libraries built above are reused rather than rebuilt.
@@ -3294,6 +2982,10 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
+
+      - name: Mark warm target dir finished
+        if: always() && env.CARGO_TARGET_DIR != ''
+        run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,
@@ -3309,13 +3001,24 @@ jobs:
     name: Rust tests (retained)
     needs: changes
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || ((vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
+      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
+      # target dir per job on the runner's rust-target volume, outside the
+      # workspace that the runner wipes. A job killed mid-compile (reboot) can
+      # leave truncated dep-info, so an unfinished marker discards the dir.
+      - name: Warm target dir (self-hosted Rust runner)
+        if: startsWith(runner.name, 'ifclite-rust')
+        run: |
+          dir="/cache/rust-target/${GITHUB_JOB}"
+          if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
+          mkdir -p "$dir" && touch "$dir/.unfinished"
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Use lld for host links
@@ -3324,6 +3027,8 @@ jobs:
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
+        # Skipped only where the warm target dir above was set.
+        if: env.CARGO_TARGET_DIR == ''
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-retained
@@ -3332,6 +3037,24 @@ jobs:
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: rust-retained-runtime
+      # Hosted Ubuntu images ship a matched chromedriver; the runner image has
+      # only Chrome. Fetch the Chrome-for-Testing driver for the EXACT installed
+      # Chrome build once onto the runner volume.
+      - name: ChromeDriver matching Chrome (self-hosted Rust runner)
+        if: startsWith(runner.name, 'ifclite-rust')
+        run: |
+          set -euo pipefail
+          version=$(google-chrome --version | grep -oE '[0-9]+(\.[0-9]+){3}')
+          dir="/cache/rust-target/chromedriver-${version}"
+          if [ ! -x "$dir/chromedriver-linux64/chromedriver" ]; then
+            tmp=$(mktemp -d)
+            curl --fail --silent --show-error --location --retry 3 \
+              --output "$tmp/driver.zip" \
+              "https://storage.googleapis.com/chrome-for-testing-public/${version}/linux64/chromedriver-linux64.zip"
+            mkdir -p "$dir" && unzip -q -o "$tmp/driver.zip" -d "$dir" && rm -rf "$tmp"
+          fi
+          "$dir/chromedriver-linux64/chromedriver" --version
+          echo "IFCLITE_REAL_CHROMEDRIVER=$dir/chromedriver-linux64/chromedriver" >> "$GITHUB_ENV"
       - name: SMLib-free retained runtime in a real WASM module
         run: node scripts/retained-browser-runtime-tests.mjs
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -3343,7 +3066,7 @@ jobs:
         run: |
           BUILD_RETAINED=1 bash scripts/build-wasm.sh
           pnpm build --filter=@ifc-lite/cli
-          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs
+          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs
 
       - name: Rust tests and Clippy (retained controller and executor)
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
@@ -3353,8 +3076,11 @@ jobs:
           cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
           cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
-          cargo test -p ifc-lite-processing --features retained-runtime --test m1_executor
+          cargo test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle
+          # Includes M11-0 m11_presentation (SDK-free face-copy mutation witness).
+          # Includes M11-F m11_faces (SDK-free face attribution and tie-break mutation witness).
           cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
+          cargo test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
           cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser
           cargo clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
           # Match geometry-platform's wasm test target: testkit exposes the
@@ -3363,6 +3089,9 @@ jobs:
           cargo test -p ifc-lite-retained-native --features retained-runtime
           cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
+      - name: Mark warm target dir finished
+        if: always() && env.CARGO_TARGET_DIR != ''
+        run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
 
   # THE FULL RUST LANE, OFF THE PR (CI redesign, step 5). Everything here is
   # an off-by-default feature build: the workspace never compiles these, so a

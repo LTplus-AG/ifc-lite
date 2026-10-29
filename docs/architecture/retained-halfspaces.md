@@ -56,7 +56,17 @@ prove zero-volume intersections before triangle tuple expansion; this avoids
 spending the fixed work budget on disjoint FZK opening parts. Neither change
 alters the preregistered acceptance tolerances or the 4,096-section cap.
 
-The synthetic universe/coverage fragment is a post-M5 qualification step: its
-consumed and plain-plane cases must satisfy their unconditional expectations
-before the complete fixture can enter the committed coverage gate. This round
-uses individually asserted SDK outcomes for the bounded-only and twin cases.
+The synthetic fixture is registered in the committed universe and M6 coverage
+fragment. Its consumed, mixed-chain and plain-plane cases run unconditionally.
+Four existing coverage rows change from `operation_unsupported` to published:
+the two FZK walls and mapped PBHS products #173/#231 in `f-e-mapped-booleans`.
+The new fragment has twelve published rows and four typed refusals.
+
+Persistent face attribution uses the authored plane and boundary walls; the
+artificial far cap never gains an IFC source identity. The independent normal
+oracle reads those same surfaces from IFC source, including boxed planes,
+circular walls, Boolean polarity and mapped frames. It never uses the retained
+cutter or output normals as its expected direction. Clipped products retain
+appearance and face provenance and remain excluded from instancing. The affine
+interaction witness mirrors and nonuniformly scales a boxed result, checking
+positive signed volume, its authored centroid and executed-clip lineage.

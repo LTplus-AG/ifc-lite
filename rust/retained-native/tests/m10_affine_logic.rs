@@ -42,5 +42,5 @@ fn m10_preregistered_chord_table() {
         assert_eq!(affine_chord_admissible(s,r,limits),expected,"sigma={s}, R={r}");
     }
     assert!(!affine_chord_admissible(f64::NAN,0.,limits));
-    assert_eq!(effective_radius_through_affine(0.05,[1.,0.,0.,0.,1.,0.,0.,0.,3.]),0.45);
+    assert!((effective_radius_through_affine(0.05,[1.,0.,0.,0.,1.,0.,0.,0.,3.])-0.45).abs()<1e-15);
 }

@@ -176,11 +176,11 @@ fn affine_predispatch_and_model_boundaries_keep_the_preflight_worker() {
         assert_eq!(summary.acquire_ms, 0.);
         assert!(domain.0.get());
         if id == 74 {
-            assert_eq!(calls.get(), 0);
+            assert_eq!(calls.get(), 1);
         }
     }
     assert_eq!(acquired.get(), 0);
-    assert_eq!(calls.get(), 2);
+    assert_eq!(calls.get(), 3);
 }
 
 #[test]

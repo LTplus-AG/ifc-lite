@@ -21,8 +21,10 @@ const SOURCE: &str =
     include_str!("../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
 const ADVERSARIAL: &str =
     include_str!("../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans-adversarial.ifc");
-const POSITIVE: [(u32, f64); 10] = [
+const POSITIVE: [(u32, f64); 12] = [
     (38, 5.25),
+    (133, 5.25),
+    (141, 42.),
     (46, 5.25),
     (54, 5.25),
     (65, 5.25),

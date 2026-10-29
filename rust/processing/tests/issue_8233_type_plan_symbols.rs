@@ -87,18 +87,52 @@ fn own_plan_representation_wins_over_the_type() {
     assert!((x[0] - 10.0).abs() < 1e-4 && (x[1] - 10.5).abs() < 1e-4, "x: {x:?}");
 }
 
-/// The type's FootPrint map sits in a model context whose
-/// WorldCoordinateSystem is offset by (100, 0, 0). The fallback applies that
-/// context exactly as the occurrence's own representations get theirs, so the
-/// symbol lands at 100 + (10,20) + (1,2) + (0..1, 0).
+/// The type fallback draws in the same frame as the map wrapped in the
+/// occurrence's own representation. The model context's WorldCoordinateSystem
+/// is offset (100, 0, 0) AND rotated 90° about Z, so the composition order of
+/// context, placement and MappingOrigin is observable (pure translations would
+/// commute). Two files differ only in where the map is reached from:
+/// - `fallback`: the occurrence has only a Body, so the type's FootPrint map
+///   is drawn through the #8233 fallback;
+/// - `wrapped`: the occurrence's own Plan representation, in the same context,
+///   holds an `IfcMappedItem` of that map with an identity target.
+/// Both must give the same points.
 #[test]
-fn type_symbol_follows_its_representation_context() {
-    let source = String::from_utf8(fixture("#40")).unwrap()
-        .replace("#33=IFCSHAPEREPRESENTATION($,'FootPrint'", "#33=IFCSHAPEREPRESENTATION(#50,'FootPrint'")
-        .replace("ENDSEC;\nEND-ISO", "#50=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#51,$);\n#51=IFCAXIS2PLACEMENT3D(#52,$,$);\n#52=IFCCARTESIANPOINT((100.,0.,0.));\nENDSEC;\nEND-ISO");
-    assert!(source.contains("#33=IFCSHAPEREPRESENTATION(#50,") && source.contains("#52="), "fixture rewired");
-    let data = extract_symbolic_data(&source).expect("extraction completes");
-    assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
-    let x = xs(&data.polylines[0].points);
-    assert!((x[0] - 111.0).abs() < 1e-4 && (x[1] - 112.0).abs() < 1e-4, "x: {x:?}");
+fn type_symbol_matches_the_same_map_wrapped_in_the_occurrence() {
+    let context = "#50=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#51,$);\n\
+                   #51=IFCAXIS2PLACEMENT3D(#52,#53,#54);\n\
+                   #52=IFCCARTESIANPOINT((100.,0.,0.));\n\
+                   #53=IFCDIRECTION((0.,0.,1.));\n\
+                   #54=IFCDIRECTION((0.,1.,0.));\n\
+                   #60=IFCPRODUCTDEFINITIONSHAPE($,$,(#45,#61));\n\
+                   #61=IFCSHAPEREPRESENTATION(#50,'Plan','MappedRepresentation',(#62));\n\
+                   #62=IFCMAPPEDITEM(#30,#63);\n\
+                   #63=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#64,$,$);\n\
+                   #64=IFCCARTESIANPOINT((0.,0.,0.));\n";
+    let with_context = |occurrence_rep: &str| {
+        String::from_utf8(fixture(occurrence_rep))
+            .unwrap()
+            .replace("#33=IFCSHAPEREPRESENTATION($,'FootPrint'", "#33=IFCSHAPEREPRESENTATION(#50,'FootPrint'")
+            .replace("ENDSEC;\nEND-ISO", &format!("{context}ENDSEC;\nEND-ISO"))
+    };
+    let fallback = with_context("#40");
+    let wrapped = with_context("#60");
+    assert!(fallback.contains("#33=IFCSHAPEREPRESENTATION(#50,") && fallback.contains("#54="), "fixture rewired");
+
+    let points = |source: &str, representation: &str| {
+        let data = extract_symbolic_data(source).expect("extraction completes");
+        assert_eq!(data.polylines.len(), 1, "{representation}: {:?}", data.polylines);
+        assert_eq!(data.polylines[0].representation, representation);
+        data.polylines[0].points.clone()
+    };
+    let via_type = points(&fallback, "FootPrint");
+    let via_own = points(&wrapped, "Plan");
+    assert_eq!(via_type.len(), via_own.len());
+    for (a, b) in via_type.iter().zip(&via_own) {
+        assert!((a - b).abs() < 1e-4, "type fallback {via_type:?} vs wrapped map {via_own:?}");
+    }
+    // And not merely equal by accident: the rotation moved the symbol off the
+    // translation-only answer (x = 111..112).
+    let x = xs(&via_type);
+    assert!(x.iter().all(|v| (v - 111.0).abs() > 1.0 && (v - 112.0).abs() > 1.0), "rotation had no effect: {x:?}");
 }

@@ -6,7 +6,8 @@ the default; this change changes packaging, not geometry execution.
 
 ## Evidence and scope
 
-The machine-readable [inventory](../../licenses/retained/manifest.json) records
+The [component table](../../licenses/retained/README.md) lists every collected
+component and links its preserved texts. The machine-readable [inventory](../../licenses/retained/manifest.json) records
 component name, version, licence declaration, source, artifact scope and the
 SHA-256 of every preserved notice. The [generated notice bundle](../../licenses/retained/THIRD_PARTY_NOTICES.txt)
 contains the actual text, deduplicated by content hash. Immutable upstream texts
@@ -122,13 +123,11 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 
 ## Regeneration
 
-After fetching the exact Cargo dependencies (metadata is not a build):
+The refresh resolves the current locked Cargo graph itself (metadata is not a build):
 
 ```sh
-cargo metadata --locked --format-version 1 --filter-platform wasm32-unknown-unknown \
-  --features ifc-lite-wasm/retained-browser > /tmp/retained-metadata.json
 node scripts/retained-notices.mjs --refresh --sdk /absolute/pinned-usd-brep \
-  --emscripten /absolute/emsdk/upstream/emscripten --metadata /tmp/retained-metadata.json
+  --emscripten /absolute/emsdk/upstream/emscripten
 node scripts/retained-notices.mjs --check
 ```
 

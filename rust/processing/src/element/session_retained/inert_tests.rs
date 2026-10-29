@@ -320,10 +320,9 @@ fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
     }
 }
 
-// #7955: a final affine has no mesh publication operation in M1. Even an
-// earlier construction in this product must not reach the numerical peer.
+// #7955 M10: an affine final must reach its construction invocation.
 #[test]
-fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
+fn final_affine_reaches_construction_dispatch() {
     let text = include_str!("../../../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc");
     let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
     let mut decoder = source.decoder();
@@ -342,22 +341,12 @@ fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
         &mut decoder,
         &router,
     );
-    let error = match result {
-        Err(error) => error,
-        Ok(mut execution) => {
-            let issued = execution
-                .issue_next(&mut decoder, &router, &peer)
-                .unwrap()
-                .unwrap();
-            let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
-            let _ = future
-                .as_mut()
-                .poll(&mut Context::from_waker(Waker::noop()));
-            panic!("affine final value reached dispatch");
-        }
-    };
-    assert_eq!(error.refusal().0.code(), "incomplete");
-    assert_eq!(peer.invocations, 0);
+    let mut execution = result.unwrap();
+    let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
+    let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+    let _ = future.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+    drop(future);
+    assert_eq!(peer.invocations, 1);
     assert!(peer.domain().same_domain(&domain));
     assert!(
         domain.incarnation().is_some(),

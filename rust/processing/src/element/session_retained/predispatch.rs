@@ -85,16 +85,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     _ => traversal.product_submeshes(
                         self.state.job.entity, self.context.borrowed().texture_index),
                 };
-                let mut affines = Vec::new();
-                let mut storage = Storage::default();
                 while let Some(ticket) = program.request().map_err(common)? {
-                    let (reply, operations, _reservation) = program.admit(ticket, r, d).map_err(common)?;
-                    for operation in operations {
-                        if matches!(operation.kind(), RetainedOperationKind::Affine { .. }) {
-                            storage.reserve(&resources, &mut affines, 1)?;
-                            affines.push(operation.value().definition());
-                        }
-                    }
+                    let (reply, _operations, _reservation) = program.admit(ticket, r, d).map_err(common)?;
                     program.accept(reply, r).map_err(|e| common(e.error))?;
                 }
                 let plan = match outer.kind {
@@ -106,14 +98,6 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     && !matches!(outer.kind, WorkKind::TypeMap { map_id, .. } if plan.type_origin_placed(self.state.job.id, &[map_id])) {
                     return Err(RetainedExecutionError::Unsupported(
                         Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));
-                }
-                for value in plan.values() {
-                    resource::charge(resource::Cost { work: affines.len() as u64 + 1, ..Default::default() })
-                        .map_err(RetainedExecutionError::Stopped)?.retain();
-                    if affines.contains(&value.definition()) {
-                        return Err(RetainedExecutionError::Unsupported(
-                            Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));
-                    }
                 }
                 Ok(())
             })

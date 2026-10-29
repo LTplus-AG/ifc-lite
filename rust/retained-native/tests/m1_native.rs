@@ -137,7 +137,7 @@ fn contract_fault_keeps_one_worker_for_the_next_product() {
 }
 
 // #7955: model boundaries do not reacquire a healthy preflight peer. A final
-// affine refuses before the first invocation and spends no replacement budget.
+// affine now dispatches; a settled contract fault spends no replacement budget.
 #[test]
 fn affine_predispatch_and_model_boundaries_keep_the_preflight_worker() {
     let mut transport = peer();
@@ -150,7 +150,7 @@ fn affine_predispatch_and_model_boundaries_keep_the_preflight_worker() {
         (
             include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc"),
             74,
-            "incomplete",
+            "contract_breach",
         ),
         (SOURCE, 10, "contract_breach"),
         (SOURCE, 20, "contract_breach"),

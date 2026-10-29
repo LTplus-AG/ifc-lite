@@ -62,3 +62,57 @@ async fn retained_browser_consumed_hosts_preserve_settled_worker() {
     assert_eq!(JsFuture::from(worker.owner.driver.live_object_count()).await.unwrap().as_f64(), Some(0.));
     web_sys::console::log_1(&"sdk witness executed: retained consumed-host browser lifecycle".into());
 }
+
+// #7955 / Holter R5: synchronized band failures are product-local. Unknown
+// statuses still retire the Worker, even if a faulty executor leaves it live.
+#[wasm_bindgen_test(async)]
+async fn retained_browser_layer_kernel_refusal_preserves_following_product() {
+    use super::{BrowserCancellation, receipt::BrowserReceipt};
+    use ifc_lite_geometry::BoolOp;
+    const CURVED: &[u8] = include_bytes!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc");
+    struct Refusing { inner: BrowserWorker, intersections: usize, status: i32 }
+    impl RetainedRuntime for Refusing {
+        type Receipt = BrowserReceipt;
+        fn domain(&self) -> BrowserCancellation { self.inner.domain() }
+        fn incarnation(&self) -> u64 { self.inner.incarnation() }
+    }
+    impl AsyncRetainedExecutor for Refusing {
+        async fn invoke(&mut self, call: Invocation<'_, BrowserReceipt>, limits: NumericalLimits)
+            -> Result<BrowserReceipt, RuntimeFault> {
+            if matches!(&call, Invocation::Boolean { operation: BoolOp::Intersection, .. }) {
+                self.intersections += 1;
+                if self.intersections == 2 {
+                    return Err(RuntimeFault::kernel(self.status, "M4 injected second band refusal"));
+                }
+            }
+            self.inner.invoke(call, limits).await
+        }
+    }
+    for status in [4,8] {
+        let mut inner = BrowserWorker::new().unwrap();
+        inner.qualify().await.unwrap();
+        let incarnation = inner.incarnation();
+        let mut worker = Some(Refusing { inner, intersections: 0, status });
+        let mut rows = Vec::new();
+        let summary = run_model_with_worker(SourceBundle::new(CURVED.to_vec()),
+            &ModelOptions { ids: Some([55,122].into_iter().collect()), max_restarts: 0, ..Default::default() },
+            &mut worker, || panic!("zero restarts forbids replacement"), |o, _| rows.push(o)).await.unwrap();
+        assert_eq!((summary.candidates, summary.restarts), (2,0));
+        assert!(matches!(rows[0], ProductOutcome::Refused {
+            product_id: 55, refusal: RetainedProductRefusal::KernelFailure { status: s }, ..
+        } if s == status));
+        if status == 4 {
+            assert_eq!(summary.published, 1);
+            assert!(matches!(rows[1], ProductOutcome::Published(ref p) if p.product_id == 122));
+            let worker = worker.as_ref().expect("settled Worker retained");
+            assert_eq!(worker.incarnation(), incarnation);
+            assert_eq!(JsFuture::from(worker.inner.owner.driver.live_object_count()).await.unwrap().as_f64(), Some(0.));
+        } else {
+            assert!(matches!(rows[1], ProductOutcome::Refused {
+                product_id: 122, refusal: RetainedProductRefusal::WorkerFault, ..
+            }));
+            assert!(worker.is_none(), "unknown kernel status must retire the Worker");
+        }
+    }
+    web_sys::console::log_1(&"sdk witness executed: retained M4 refusal browser lifecycle".into());
+}

@@ -93,12 +93,12 @@ fn issue_7955_m4_opening_precedes_bands_and_failed_intersection_is_atomic() {
     use ifc_lite_retained_native::{NativeWorker,NativeReceipt,NativeDomain,block_on};
     use ifc_lite_processing::element::retained_runtime::*;
     use ifc_lite_geometry::BoolOp;
-    use std::{rc::Rc,cell::RefCell};
+    use std::{rc::Rc,cell::{Cell,RefCell}};
     let Some(path)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
         assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
         eprintln!("SKIP M4 fault witness: real SDK missing"); return;
     };
-    struct Observed { inner:NativeWorker, calls:Rc<RefCell<Vec<BoolOp>>> }
+    struct Observed { inner:NativeWorker, calls:Rc<RefCell<Vec<BoolOp>>>, status:i32 }
     impl RetainedRuntime for Observed {
         type Receipt=NativeReceipt;
         fn domain(&self)->NativeDomain {self.inner.domain()}
@@ -109,20 +109,39 @@ fn issue_7955_m4_opening_precedes_bands_and_failed_intersection_is_atomic() {
             if let Invocation::Boolean{operation,..}=&call {
                 self.calls.borrow_mut().push(*operation);
                 if *operation==BoolOp::Intersection && self.calls.borrow().iter().filter(|&&o|o==BoolOp::Intersection).count()==2 {
-                    return Err(RuntimeFault::kernel(7,"M4 injected second Intersection failure"));
+                    return Err(RuntimeFault::kernel(self.status,"M4 injected second Intersection refusal"));
                 }
             }
             self.inner.invoke(call,limits).await
         }
     }
-    let calls=Rc::new(RefCell::new(Vec::new())); let mut results=Vec::new();
-    block_on(run_model(SourceBundle::new(CURVED.as_bytes().to_vec()),
-        &ModelOptions{ids:Some([55,122].into_iter().collect()),..Default::default()},
-        ||NativeWorker::spawn(&path).map(|inner|Observed{inner,calls:calls.clone()}),|o|results.push(o))).unwrap();
-    assert_eq!(results.len(),2);
-    assert!(matches!(results[0],ProductOutcome::Refused{product_id:55,refusal:RetainedProductRefusal::KernelFailure{status:7},..}));
-    shape(&results,122);
-    assert_eq!(*calls.borrow(),[BoolOp::Difference,BoolOp::Intersection,BoolOp::Intersection,BoolOp::Difference]);
+    let control=run(CURVED,&[122]).unwrap();
+    for status in [4,7,8] {
+        let calls=Rc::new(RefCell::new(Vec::new())); let mut results=Vec::new();
+        let acquisitions=Cell::new(0);
+        let summary=block_on(run_model(SourceBundle::new(CURVED.as_bytes().to_vec()),
+            &ModelOptions{ids:Some([55,122].into_iter().collect()),max_restarts:0,..Default::default()},
+            || { acquisitions.set(acquisitions.get()+1);
+                NativeWorker::spawn(&path).map(|inner|Observed{inner,calls:calls.clone(),status}) },
+            |o|results.push(o))).unwrap();
+        assert_eq!(results.len(),2);
+        assert!(matches!(results[0],ProductOutcome::Refused{product_id:55,refusal:RetainedProductRefusal::KernelFailure{status:s},..} if s==status));
+        assert_eq!((acquisitions.get(),summary.restarts),(1,0));
+        if status<=7 {
+            // A settled band refusal must not poison the following non-layer
+            // product even when no replacement worker is allowed (Holter R5).
+            let reused=shape(&results,122); let fresh=shape(&control,122);
+            assert_eq!(reused.parts.len(),fresh.parts.len());
+            for (a,b) in reused.parts.iter().zip(&fresh.parts) {
+                assert_eq!(a.positions,b.positions); assert_eq!(a.indices,b.indices);
+                assert_eq!(a.world_from_object,b.world_from_object);
+            }
+            assert_eq!(*calls.borrow(),[BoolOp::Difference,BoolOp::Intersection,BoolOp::Intersection,BoolOp::Difference]);
+        } else {
+            assert!(matches!(results[1],ProductOutcome::Refused{product_id:122,refusal:RetainedProductRefusal::WorkerFault,..}));
+            assert_eq!(*calls.borrow(),[BoolOp::Difference,BoolOp::Intersection,BoolOp::Intersection]);
+        }
+    }
     println!("sdk witness executed: m4_order_atomicity");
 }
 

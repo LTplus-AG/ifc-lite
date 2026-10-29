@@ -513,3 +513,26 @@ fn settled_completion_fault_is_charged_and_cancelled_program_is_not_a_source_sto
         assert!(!cancellation.controller_retired(), "later packet drop cannot relabel a fault");
     });
 }
+
+// #7955: preserving settled M4 refusals must not change non-layer recovery.
+#[test]
+fn non_layer_kernel_refusals_still_retire_the_original_domain() {
+    for status in [1,4,7,8] {
+        with_execution(|execution, decoder, router| {
+            let mut peer = InertPeer::new(false);
+            peer.fault = RuntimeFaultKind::Kernel { status };
+            let issued = execution.issue_next(decoder, router, &peer).unwrap().unwrap();
+            let cancellation = issued.cancellation.clone();
+            let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+            let Poll::Ready(Err(rejected)) = future.as_mut().poll(&mut Context::from_waker(Waker::noop())) else {
+                panic!("kernel refusal must settle");
+            };
+            assert_eq!(rejected.reason.refusal().0.code(), "kernel_failure");
+            drop(future);
+            assert!(peer.domain.incarnation().is_none());
+            assert!(!cancellation.controller_retired());
+            assert_eq!(execution.discharged_count(), 0);
+            assert!(execution.validate_witness().is_err());
+        });
+    }
+}

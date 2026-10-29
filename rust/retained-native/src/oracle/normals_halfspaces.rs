@@ -14,7 +14,7 @@ pub(super) fn surfaces(id: u32, world: &[f64;16], decoder: &mut EntityDecoder<'_
     // the enclosing Difference reverses it in the orientation walk.
     let mut result = vec![Surface::Plane {
         origin:clip.plane.0.map(|v|v*clip.plane.1),
-        normal:clip.plane.0.map(|v|v*handedness(world)),
+        normal:clip.plane.0,
     }];
     let Some(edges) = clip.edges else {return Ok(result)};
     let area: f64 = edges.iter().map(Edge::integral).sum();

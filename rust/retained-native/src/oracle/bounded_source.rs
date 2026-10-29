@@ -170,7 +170,7 @@ mod tests {
         let bundle=ifc_lite_core::SourceBundle::new(bytes.to_vec());
         let mut decoder=bundle.decoder();
         let plain=Clip::read(344,&IDENTITY,&mut decoder).unwrap();
-        let mut mirror=IDENTITY;mirror[0]=-2.;mirror[5]=3.;
+        let mut mirror=IDENTITY;mirror[0]= -2.;mirror[5]=3.;
         let reflected=Clip::read(344,&mirror,&mut decoder).unwrap();
         for p in [[1.,1.,0.],[1.,1.,3.]] {
             let removed=plain.plane.1-dot(plain.plane.0,p);

@@ -15,9 +15,12 @@ pub mod determinism;
 mod fingerprint;
 pub(crate) mod parallel_scan;
 mod shard_classes;
+#[allow(deprecated)] // Compatibility exports until C10.
 pub use parallel_scan::{
+    scan_shard_result, ShardScan, scan_shard_with_diagnostics,
     build_entity_index_parallel, scan_shard, scan_shard_with_refusals, ShardRecords, ShardRefusals,
 };
+#[allow(deprecated)] // Compatibility exports until C10.
 pub use shard_classes::{
     classify_type_name, scan_shard_classified, scan_shard_classified_with_refusals,
     PREPASS_CLASS_CODE_MASK,
@@ -60,6 +63,7 @@ mod processor;
 mod product_geometry_audit;
 pub use product_geometry_audit::ProductGeometryAudit;
 pub mod scan;
+pub mod discovery;
 pub(crate) mod point_pca;
 pub mod scan_proposals;
 pub mod scan_segmentation;

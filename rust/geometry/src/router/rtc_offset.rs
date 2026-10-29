@@ -8,7 +8,7 @@
 use super::GeometryRouter;
 use crate::representation::{is_drawing_camera_annotation, product_shape, Select};
 use crate::coord_is_large;
-use ifc_lite_core::{geometry_flags_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
+use ifc_lite_core::{is_geometry_job, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 mod mapped_vote;
 mod raw_coordinate;
@@ -379,9 +379,7 @@ impl GeometryRouter {
 fn file_geometry_spans(content: &[u8]) -> impl Iterator<Item = (u32, usize, usize)> + '_ {
     let mut scanner = ifc_lite_core::EntityScanner::new(content);
     std::iter::from_fn(move || scanner.next_entity()).filter_map(move |(id, type_name, start, end)| {
-        let (geometry, spatial) = geometry_flags_by_name(type_name);
-        let has_representation = || ifc_lite_core::nth_attribute_is_present(&content[start..end], 6);
-        (geometry || (spatial && has_representation())).then_some((id, start, end))
+        is_geometry_job(type_name, &content[start..end]).then_some((id, start, end))
     })
 }
 

@@ -8,7 +8,7 @@
 //! browser's sharded pre-pass consumes).
 
 use crate::parallel_scan::{ShardRecords, ShardRefusals};
-use ifc_lite_core::EntityScanner;
+
 
 /// Per-record prepass class emitted by [`scan_shard_classified`].
 ///
@@ -57,14 +57,14 @@ pub const PREPASS_CLASS_CODE_MASK: u8 = 0x3F;
 /// `PREPASS_CLASS_*` codes). Same records, same handoff; the class byte lets
 /// the browser host extract pre-pass span lists (today: styled items) from the
 /// stitched shard columns WITHOUT waiting for the serial pre-pass scan.
+#[deprecated(note = "use scan_shard_result with classification enabled")]
 pub fn scan_shard_classified(
     content: &[u8],
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Vec<u8>, Option<usize>) {
-    let (records, classes, handoff, _refusals) =
-        scan_shard_classified_with_refusals(content, range_start, range_end);
-    (records, classes, handoff)
+    let scan = crate::parallel_scan::scan_shard_result(content, range_start, range_end, true);
+    (scan.records, scan.classes.unwrap_or_default(), scan.handoff)
 }
 
 /// [`scan_shard_classified`] plus the byte offset of every record this shard
@@ -85,36 +85,14 @@ pub fn scan_shard_classified(
 /// — can tell a real refusal from an artefact of where the shard started.
 /// Handing back a count instead would let a clean file be reported as
 /// incomplete.
+#[deprecated(note = "use scan_shard_result with classification enabled")]
 pub fn scan_shard_classified_with_refusals(
     content: &[u8],
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Vec<u8>, Option<usize>, ShardRefusals) {
-    let mut scanner = if range_start == 0 {
-        EntityScanner::new(content)
-    } else {
-        EntityScanner::new_at(content, range_start)
-    };
-    let mut records = Vec::new();
-    let mut classes = Vec::new();
-    let mut handoff = None;
-    while let Some((id, type_name, start, entity_end)) = scanner.next_entity() {
-        if start >= range_end {
-            handoff = Some(start);
-            break;
-        }
-        records.push((id, start, entity_end));
-        classes.push(classify_type_name_with_content(
-            type_name,
-            &content[start..entity_end],
-        ));
-    }
-    (
-        records,
-        classes,
-        handoff,
-        scanner.skipped_oversized_id_starts().to_vec(),
-    )
+    let scan = crate::parallel_scan::scan_shard_result(content, range_start, range_end, true);
+    (scan.records, scan.classes.unwrap_or_default(), scan.handoff, scan.refusals)
 }
 
 /// [`classify_type_name`] plus the #1910 instance-level exception: a spatial
@@ -129,8 +107,8 @@ pub fn scan_shard_classified_with_refusals(
 pub fn classify_type_name_with_content(type_name: &str, entity_bytes: &[u8]) -> u8 {
     let mut class = classify_type_name(type_name);
     if class & PREPASS_CLASS_FLAG_GEOMETRY_JOB == 0
-        && ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
-        && ifc_lite_core::nth_attribute_is_present(entity_bytes, 6)
+        && class & PREPASS_CLASS_CODE_MASK == PREPASS_CLASS_NONE
+        && ifc_lite_core::is_geometry_job(type_name, entity_bytes)
     {
         class |= PREPASS_CLASS_FLAG_GEOMETRY_JOB;
     }

@@ -119,6 +119,15 @@ pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
     )
 }
 
+/// Whether this scanned record schedules geometry, including spatial containers
+/// carrying an exceptional non-null Representation (#1910). Raw exporter names
+/// retain the same classification as the name-only schema helpers.
+#[inline]
+pub fn is_geometry_job(type_name: &str, entity_bytes: &[u8]) -> bool {
+    let (geometry, spatial) = geometry_flags_by_name(type_name);
+    geometry || (spatial && crate::nth_attribute_is_present(entity_bytes, 6))
+}
+
 fn compute_has_geometry(upper: &str) -> bool {
     if crate::is_exporter_stratum_alias(upper) {
         return true;

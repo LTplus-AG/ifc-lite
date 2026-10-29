@@ -72,13 +72,14 @@ pub type ShardRefusals = Vec<usize>;
 /// callers that build no index from the result (the parity tests) — a caller
 /// that DOES must take the offsets and attribute them, or it reports refusals
 /// that no retained record produced.
+#[deprecated(note = "use scan_shard_result and its named fields")]
 pub fn scan_shard(
     content: &[u8],
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Option<usize>) {
-    let (records, handoff, _refusals) = scan_shard_with_refusals(content, range_start, range_end);
-    (records, handoff)
+    let scan = scan_shard_result(content, range_start, range_end, false);
+    (scan.records, scan.handoff)
 }
 
 /// [`scan_shard_with_diagnostics`] without the malformed-record offset.
@@ -88,14 +89,14 @@ pub fn scan_shard(
 /// published crate and adding a return value in place would be a breaking
 /// change (the same reasoning [`crate::scan_shard_classified`] documents for
 /// staying a 3-tuple after #3395 added refusal offsets).
+#[deprecated(note = "use scan_shard_result and its named fields")]
 pub fn scan_shard_with_refusals(
     content: &[u8],
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Option<usize>, ShardRefusals) {
-    let (records, handoff, refusals, _malformed_starts) =
-        scan_shard_with_diagnostics(content, range_start, range_end);
-    (records, handoff, refusals)
+    let scan = scan_shard_result(content, range_start, range_end, false);
+    (scan.records, scan.handoff, scan.refusals)
 }
 
 /// One shard's speculative scan over `[range_start, range_end)`, plus the byte
@@ -143,38 +144,56 @@ pub fn scan_shard_with_refusals(
 /// hold a speculative drop inside a quoted value AND a real one after it, and
 /// [`native::stitch`] must be able to find the real one. Same
 /// speculative-prefix caveat as a refusal, so it is not reported here either.
+#[deprecated(note = "use scan_shard_result and its named fields")]
 pub fn scan_shard_with_diagnostics(
     content: &[u8],
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Option<usize>, ShardRefusals, Vec<usize>) {
-    // Deliberately NOT delegating to `scan_shard_classified`: index-only
-    // callers (native exporters / georeferencing via
-    // `build_entity_index_parallel`) would pay a per-entity keyword
-    // classification — string matches + the `has_geometry_by_name` cache —
-    // across every record for a column they never read.
+    let scan = scan_shard_result(content, range_start, range_end, false);
+    (scan.records, scan.handoff, scan.refusals, scan.malformed_starts)
+}
+
+/// A speculative shard; diagnostics are attributed only after the handoff stitch.
+#[non_exhaustive]
+#[derive(Debug)]
+pub struct ShardScan {
+    pub records: ShardRecords,
+    /// Present only when classification was requested.
+    pub classes: Option<Vec<u8>>,
+    pub handoff: Option<usize>,
+    pub refusals: ShardRefusals,
+    pub malformed_starts: Vec<usize>,
+}
+
+/// Scan one shard, optionally classifying it without making index-only callers
+/// pay for keyword classification. Preserve file order and speculative diagnostics.
+pub fn scan_shard_result(content: &[u8], range_start: usize, range_end: usize, classified: bool) -> ShardScan {
+    // Index-only scans do not allocate or compute a class column.
     let mut scanner = if range_start == 0 {
         EntityScanner::new(content)
     } else {
         EntityScanner::new_at(content, range_start)
     };
     let mut records = Vec::new();
+    let mut classes = classified.then(Vec::new);
     let mut handoff = None;
-    while let Some((id, _type_name, start, entity_end)) = scanner.next_entity() {
+    while let Some((id, type_name, start, entity_end)) = scanner.next_entity() {
         if start >= range_end {
             handoff = Some(start);
             break;
         }
         records.push((id, start, entity_end));
+        if let Some(classes) = classes.as_mut() {
+            classes.push(crate::shard_classes::classify_type_name_with_content(type_name, &content[start..entity_end]));
+        }
     }
-    (
-        records,
-        handoff,
-        scanner.skipped_oversized_id_starts().to_vec(),
-        scanner.malformed_record_starts().to_vec(),
-    )
+    ShardScan {
+        records, classes, handoff,
+        refusals: scanner.skipped_oversized_id_starts().to_vec(),
+        malformed_starts: scanner.malformed_record_starts().to_vec(),
+    }
 }
-
 /// Build the entity index (expressId -> byte span) across all available cores.
 ///
 /// Byte-identical to [`ifc_lite_core::build_entity_index`] over the same

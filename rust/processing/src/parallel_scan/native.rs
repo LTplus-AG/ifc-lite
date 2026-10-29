@@ -81,8 +81,8 @@ fn scan_chunk(content: &[u8], i: usize, n_chunks: usize) -> ChunkScan {
     // semantics (`scan_shard` selects it on `range_start == 0`); every other
     // chunk starts speculatively at its byte offset. Same shard primitive the
     // wasm sharded pre-pass calls per worker, so the merge cannot drift.
-    let (records, handoff, refusals, malformed_starts) =
-        super::scan_shard_with_diagnostics(content, start, end);
+    let super::ShardScan { records, handoff, refusals, malformed_starts, .. } =
+        super::scan_shard_result(content, start, end, false);
     ChunkScan {
         records,
         handoff,

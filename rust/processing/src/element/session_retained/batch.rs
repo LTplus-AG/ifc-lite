@@ -33,9 +33,12 @@ impl<R: NumericalReceipt> RuntimeCancellation<R> {
     pub(super) fn controller_retired(&self) -> bool {
         self.stage.controller_retired.load(Ordering::Acquire)
     }
+    /// Settle as a fault and retire the captured domain exactly once: a fault
+    /// already settled by execution (which retired it then) is not retired again.
     pub(super) fn fault(&self) {
-        self.stage.store(SETTLED_FAULT, Ordering::Release);
-        self.owner.retire();
+        if self.stage.swap(SETTLED_FAULT, Ordering::AcqRel) != SETTLED_FAULT {
+            self.owner.retire();
+        }
     }
     /// Completion refusals share one rule: preserve a settled healthy peer for
     /// source/resource stops; retire faults. An undelivered packet still cancels.

@@ -210,6 +210,8 @@ fn issue_7955_fault_after_deadline_is_charged_and_three_restarts_exhaust_the_cap
         assert_eq!(summary.restarts, 3);
         assert_eq!(domains.len(), 4, "initial worker plus exactly three replacements");
         assert!(domains.iter().all(|d| d.0.calls.get() == 1 && d.incarnation().is_none()));
+        // The peer's own crash plus exactly one controller retirement per fault.
+        assert!(domains.iter().all(|d| d.0.retired.get() == 2), "a fault retires its domain once");
         for outcome in &outcomes[..4] {
             let ProductOutcome::Refused { refusal, message, .. } = outcome else { panic!("fault must refuse") };
             assert_eq!(refusal.code(), expected, "invocation fault wins over deadline");

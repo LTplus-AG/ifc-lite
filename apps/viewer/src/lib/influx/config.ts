@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { containsInfluxToken, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
+import { containsInfluxToken, queryRequest, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
 
 export const INFLUX_CONFIG_KEY = 'ifc-lite.influx.experimental.v1';
 export const DEFAULT_INFLUX_CONFIG = {
@@ -26,14 +26,15 @@ export function readInfluxConfig(): InfluxConfig {
 export function saveInfluxConfig(config: InfluxConfig, token: string): void {
   // Refused connection fields must not overwrite the last usable configuration.
   if (configFields.some(key => containsInfluxToken(config[key], token))) return;
-  // URL userinfo is a credential too; the query rejects it, so never persist it.
-  if (hasUrlCredentials(config.url)) return;
+  // Persist only what the query would accept: this refuses URL userinfo, query strings
+  // (e.g. `?token=`), fragments and other rejected values in one place.
+  if (!isQueryable(config)) return;
   const safe = Object.fromEntries(configFields.map(key => [key, config[key]]));
   localStorage.setItem(INFLUX_CONFIG_KEY, JSON.stringify(safe));
 }
 
-function hasUrlCredentials(value: string): boolean {
-  try { const url = new URL(value); return Boolean(url.username || url.password); } catch { return false; }
+function isQueryable(config: InfluxConfig): boolean {
+  try { queryRequest(influxSelection(config)); return true; } catch { return false; }
 }
 
 export function influxSelection(config: InfluxConfig): InfluxSelection {

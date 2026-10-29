@@ -73,7 +73,7 @@ test('#8090 selected real IFC space shows latest/history, ambiguity stays explic
 
 // #8297: token overlap must never corrupt a previously saved connection.
 test('#8297 short and URI-encoded tokens skip persistence without rewriting fields', () => {
-  const previous = { ...DEFAULT_INFLUX_CONFIG, url: 'https://monitor.example.org', bucket: 'monitoring' };
+  const previous = { ...DEFAULT_INFLUX_CONFIG, url: 'https://monitor.example.org', org: 'o', bucket: 'monitoring', measurement: 'm', field: 'f' };
   saveInfluxConfig(previous, 'safe-token');
   const saved = localStorage.getItem(INFLUX_CONFIG_KEY);
   assert.deepEqual(JSON.parse(saved!), previous);
@@ -89,10 +89,15 @@ test('#8297 short and URI-encoded tokens skip persistence without rewriting fiel
   }
 });
 
-test('#8297 a URL with embedded credentials is never persisted', () => {
+test('#8297 a URL the query would reject (credentials, query string) is never persisted', () => {
   localStorage.removeItem(INFLUX_CONFIG_KEY);
-  saveInfluxConfig({ ...DEFAULT_INFLUX_CONFIG, url: 'https://alice:password@influx.example.com' }, 'safe-token');
-  assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY), null);
+  const valid = { ...DEFAULT_INFLUX_CONFIG, org: 'o', bucket: 'b', measurement: 'm', field: 'f' };
+  for (const url of ['https://alice:password@influx.example.com', 'https://influx.example.com/?token=other-secret']) {
+    saveInfluxConfig({ ...valid, url }, 'safe-token');
+    assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY), null, url);
+  }
+  saveInfluxConfig({ ...valid, url: 'https://influx.example.com' }, 'safe-token');
+  assert.notEqual(localStorage.getItem(INFLUX_CONFIG_KEY), null, 'a queryable config is saved');
 });
 
 // #8297: first-open Load must work when the optional display unit stays blank.

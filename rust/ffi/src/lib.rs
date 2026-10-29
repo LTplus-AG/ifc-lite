@@ -237,7 +237,8 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
 }
 
 /// Parse with additive flags: bit 0 enables material-layer wall slicing.
-/// Unknown flags return error 1. Existing parse functions remain unsliced.
+/// Unknown flags return error 1 (also used for invalid pointers and UTF-8).
+/// Existing parse functions remain unsliced.
 ///
 /// # Safety
 /// The pointer and buffer requirements are identical to [`ifc_lite_parse_ex`].
@@ -267,7 +268,8 @@ pub unsafe extern "C" fn ifc_lite_parse_with_flags(
     run_parse(path_ptr, path_len, mode, flags & 1 != 0, out_ptr, out_len)
 }
 
-/// Free a buffer previously returned by `ifc_lite_parse` or `ifc_lite_parse_ex`.
+/// Free a buffer previously returned by `ifc_lite_parse`, `ifc_lite_parse_ex`,
+/// or `ifc_lite_parse_with_flags`.
 ///
 /// # Safety
 /// `ptr` and `len` must be exactly a pointer and length written by a parse

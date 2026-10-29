@@ -135,6 +135,8 @@ fn run_export(
 /// every curved primitive (swept-disk tubes, cylinders, revolutions, arcs).
 /// `ids` optionally restricts tessellation to those IFC STEP ids. `None` keeps
 /// every occurrence, while an empty set produces an empty geometry export.
+/// `layer_slicing=true` slices material-layer walls into per-layer meshes;
+/// the default is false (unsliced).
 #[pyfunction]
 #[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false, layer_slicing = false))]
 fn geometry_data_buffers(
@@ -201,6 +203,8 @@ fn geometry_data_buffers(
 ///
 /// `ifc_bytes` is the raw IFC file content (e.g. `open(path, "rb").read()`).
 /// `quality` and `ids` are as documented on [`geometry_data_buffers`].
+/// `layer_slicing=true` slices material-layer walls into per-layer meshes;
+/// the default is false (unsliced).
 #[pyfunction]
 #[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false, layer_slicing = false))]
 fn geometry_data_json(

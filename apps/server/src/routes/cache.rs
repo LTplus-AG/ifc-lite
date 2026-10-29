@@ -27,7 +27,7 @@ use ifc_lite_processing::TessellationQuality;
 use serde::Serialize;
 
 /// A request `cache_key` checked against the writer's own key builder: the
-/// file's sha256 plus the opening-filter and tessellation-quality suffixes,
+/// file's sha256 plus the opening-filter, tessellation-quality and layer-slicing suffixes,
 /// exactly as [`cache_key_from_parts`] spells them. Borrowed from the path
 /// segment it was resolved from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -451,6 +451,9 @@ def geometry_data_buffers(
     ids absent from the file are ignored. Relationship and representation
     dependencies needed by selected products are still resolved.
 
+    ``layer_slicing=True`` slices material-layer walls into per-layer meshes;
+    the default is False (unsliced).
+
     ``include_directrices=True`` adds ``swept_disks`` (keyed by occurrence STEP
     id) and ``directrix_diagnostics``. Each sweep preserves its IFC Radius,
     InnerRadius, ordered analytic line/arc Directrix, and centreline lengths and
@@ -480,6 +483,8 @@ def geometry_data_json(
     Same geometry as :func:`geometry_data_buffers`, but vertices/faces are JSON
     arrays (no numpy needed) and each element also carries ``global_id`` and
     ``name`` when present. ``quality`` and ``ids`` are as documented there.
+    ``layer_slicing=True`` slices material-layer walls into per-layer meshes;
+    the default is False (unsliced).
     ``include_directrices=True`` adds the same swept-disk descriptions with
     JSON object keys for occurrence STEP ids.
 

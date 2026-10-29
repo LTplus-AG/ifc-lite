@@ -106,7 +106,8 @@ pub async fn get_symbolic(
 /// Allows client to skip upload if file is already processed.
 ///
 /// The optional `opening_filter` query parameter must match the value used when
-/// the file was uploaded — different filter modes produce distinct cache entries.
+/// the file was uploaded. Tessellation quality and `layer_slicing` must also
+/// match: each combination produces a distinct cache entry.
 ///
 /// An existence check: every entry is looked up and none is read (#7676,
 /// SERVER-6), so it needs no admission slot. It used to read and

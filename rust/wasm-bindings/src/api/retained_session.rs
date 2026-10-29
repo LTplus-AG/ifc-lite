@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Streaming retained model boundary; the session owns one reusable qualified peer.
 use super::retained_model::{obligation_name, set, to_js};
-use crate::zero_copy::{MeshCollection, MeshDataJs};
+use super::gpu_meshes::style_finishes::mesh_js_with_finish;
+use crate::zero_copy::MeshCollection;
 use crate::{retained_browser::model::ModelWorker, retained_view::view_meshes};
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{
     canonical_element_jobs, run_model_with_worker, ModelOptions, ProductOutcome,
 };
 use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
+use ifc_lite_processing::style::ModelFinishes;
 use js_sys::{Array, Float64Array, Object, Reflect, Uint32Array};
 use wasm_bindgen::prelude::*;
 
@@ -91,6 +93,9 @@ impl RetainedModelSession {
         on_event.call1(&JsValue::UNDEFINED, &start)?;
         let mut error = None;
         let mut workers_acquired = 0u32;
+        // The authored finish is joined once per run, lazily, from the same source bytes.
+        let finish_source = source.clone();
+        let mut finishes = None;
         let summary = run_model_with_worker(
             source,
             &options,
@@ -101,7 +106,7 @@ impl RetainedModelSession {
             },
             |outcome, _| {
                 if error.is_none() {
-                    error = event(outcome, view, rtc)
+                    error = event(outcome, view, rtc, &mut finishes, finish_source.bytes())
                         .and_then(|value| on_event.call1(&JsValue::UNDEFINED, &value))
                         .err();
                 }
@@ -153,7 +158,8 @@ fn parse_options(options: &RetainedRunOptions) -> Result<(ModelOptions, bool), J
     ))
 }
 
-fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, JsValue> {
+fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut Option<ModelFinishes<'c>>,
+    content: &'c [u8]) -> Result<JsValue, JsValue> {
     if view {
         if let ProductOutcome::Published(product) = outcome {
             let result = Object::new();
@@ -171,7 +177,8 @@ fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, 
             let mut meshes = MeshCollection::with_capacity(product.parts.len());
             meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
             for mesh in view_meshes(&product, rtc) {
-                meshes.add(MeshDataJs::from_mesh_data(mesh));
+                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_content(content)).finish_for_mesh(&mesh);
+                meshes.add(mesh_js_with_finish(mesh, finish));
             }
             super::retained_presentation::product_fields(&result, &product, true)?;
             set(&result, "meshes", &meshes.into())?;

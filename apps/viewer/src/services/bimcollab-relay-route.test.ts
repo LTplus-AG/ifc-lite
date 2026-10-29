@@ -18,7 +18,7 @@ test('BIMcollab relay task: Vite uses the real handler and respects route bounda
     assert.equal(new Headers(init?.headers).get('cookie'), null);
     return new Response('model', { headers: { 'content-disposition': 'attachment; filename="a.ifc"', 'set-cookie': 'drop=1' } });
   });
-  const vite = await createServer({ configFile: false, root: process.cwd(),
+  const vite = await createServer({ configFile: false, appType: 'custom', root: process.cwd(),
     plugins: [bimcollabRelayRoute()], server: { middlewareMode: true, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
   });

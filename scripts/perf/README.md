@@ -72,6 +72,10 @@ Demo's warm candidate spread exceeds the predeclared noise limit, which blocks
 a clean pass. Do not advertise performance acceptance or infer a regression
 from the report-only warm ratio against TS. No further cohort was submitted.
 The table and preserved raw evidence are linked from the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042).
+Canonical publication failed at vault ingest, and the bounded free-vault wait
+expired. The original job remains `evidence_pending`; raw results and a compact
+evidence bundle are preserved on Pop and locally. Lifecycle closure is
+requested, but workspace release remains blocked until publication verifies.
 
 The new active task used separate admission and output paths while reading the
 original verified preparation arms and frozen protocol in place. Both original

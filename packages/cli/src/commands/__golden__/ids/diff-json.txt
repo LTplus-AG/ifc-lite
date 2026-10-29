@@ -32,14 +32,14 @@ exit: 1
       "field": "optionality",
       "before": "required",
       "after": "optional",
-      "text": "Fire rating on all doors: requirement changed from required to optional: Property \"\"Pset_DoorCommon\".\"FireRating\"\" must exist"
+      "text": "Fire rating on all doors: requirement changed from required to optional: Property \"Pset_DoorCommon.FireRating\" must exist"
     },
     {
       "change": "added",
       "node": "facet",
       "spec": "Fire rating on all doors",
       "path": "specifications[0].requirements[1]",
-      "text": "Fire rating on all doors: requirement added: Attribute \"\"Name\"\" must exist"
+      "text": "Fire rating on all doors: requirement added: Attribute \"Name\" must exist"
     },
     {
       "change": "added",

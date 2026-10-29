@@ -24,7 +24,10 @@ f-window     window of two unstyled boxes with materials [glass(alpha .35), fram
 pixel        a second, tiny fixture (f-m11a-pixel.ifc) for the viewer e2e: an opaque red box
              rgb(.9,.1,.1) and an opaque yellow material wall rgb(.9,.8,.1), side by side near the
              origin so the default camera fit keeps both large on screen. The e2e asserts these
-             colours at the renderer's input; canvas pixels are recorded evidence only.
+             colours at the renderer's input, then reads the renderer's own colour frame with each product
+             framed alone and requires the authored hue. f-m11a-pixel-grey.ifc is the same scene with
+             both colours lost to grey (rgb .5): the negative control proving the pixel witness fails
+             when the colour is not the authored one.
 g-type       orphan IfcRepresentationMap of a type, its solid styled rgb(.3,.6,.9)/alpha .5:
              published type geometry takes the map's style and its planned class.
 
@@ -202,26 +205,26 @@ def generate():
                                'typeMap': {'type': int(g_type[1:]), 'map': int(g_map[1:]), 'rgba': [.3, .6, .9, .5], 'geometryClass': 1, 'item': int(g_item[1:])}})
 
 
-def generate_pixel():
+def generate_pixel(red_rgb=(.9, .1, .1), yellow_rgb=(.9, .8, .1), name='f-m11a-pixel.ifc'):
     m = Model('m11a-pixel')
     expected = []
     red = m.box((2, 2, 2), (1, 1))
-    colour = m.add('IFCCOLOURRGB', '$', real(.9), real(.1), real(.1))
+    colour = m.add('IFCCOLOURRGB', '$', *map(real, red_rgb))
     rendering = m.add('IFCSURFACESTYLERENDERING', colour, real(0), '$', '$', '$', '$', '$', '$', '.NOTDEFINED.')
     m.add('IFCSTYLEDITEM', red, seq([m.add('IFCSURFACESTYLE', '$', '.BOTH.', seq([rendering]))]), '$')
     red_box = m.product('pixel-red', red, placement=m.place((0, 0, 0)))
-    expected.append({'role': 'pixel-red', 'id': int(red_box[1:]), 'rgba': [.9, .1, .1, 1]})
+    expected.append({'role': 'pixel-red', 'id': int(red_box[1:]), 'rgba': [*red_rgb, 1]})
     yellow = m.box((2, 2, 2), (1, 1))
     wall = m.product('pixel-yellow', yellow, entity='IFCWALL', placement=m.place((4, 0, 0)))
     material = m.add('IFCMATERIAL', "'Yellow'")
-    colour = m.add('IFCCOLOURRGB', '$', real(.9), real(.8), real(.1))
+    colour = m.add('IFCCOLOURRGB', '$', *map(real, yellow_rgb))
     rendering = m.add('IFCSURFACESTYLERENDERING', colour, real(0), '$', '$', '$', '$', '$', '$', '.NOTDEFINED.')
     shape = m.add('IFCSTYLEDREPRESENTATION', m.context, "'Style'", "'Material'", seq([m.add('IFCSTYLEDITEM', '$', seq([m.add('IFCSURFACESTYLE', '$', '.BOTH.', seq([rendering]))]), '$')]))
     m.add('IFCMATERIALDEFINITIONREPRESENTATION', '$', '$', seq([shape]), material)
     m.add('IFCRELASSOCIATESMATERIAL', m.gid('pixel-yellow:material'), '$', '$', '$', seq([wall]), material)
-    expected.append({'role': 'pixel-yellow', 'id': int(wall[1:]), 'rgba': [.9, .8, .1, 1]})
+    expected.append({'role': 'pixel-yellow', 'id': int(wall[1:]), 'rgba': [*yellow_rgb, 1]})
     text = m.finish().replace('SYNTHETIC; issue 7955; not authoring-tool evidence', 'SYNTHETIC qualification M11-A pixel probe')
-    return text, expectations({'fixture': 'f-m11a-pixel.ifc', 'products': expected})
+    return text, expectations({'fixture': name, 'products': expected})
 
 
 if __name__ == '__main__':
@@ -230,8 +233,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     text, oracle = generate()
     pixel, pixel_oracle = generate_pixel()
+    grey, grey_oracle = generate_pixel((.5, .5, .5), (.5, .5, .5), 'f-m11a-pixel-grey.ifc')
     for name, body in [('f-m11a-appearance.ifc', text), ('f-m11a-appearance.oracle.json', oracle),
-                       ('f-m11a-pixel.ifc', pixel), ('f-m11a-pixel.oracle.json', pixel_oracle)]:
+                       ('f-m11a-pixel.ifc', pixel), ('f-m11a-pixel.oracle.json', pixel_oracle),
+                       ('f-m11a-pixel-grey.ifc', grey), ('f-m11a-pixel-grey.oracle.json', grey_oracle)]:
         path = Path(__file__).with_name(name)
         if args.check:
             if path.read_text() != body:

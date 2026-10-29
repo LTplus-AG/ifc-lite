@@ -410,8 +410,14 @@ Colour components are dyadic (exact in f32). Cases h to l were added after revie
 that c1..c9 (a single-solid map styled on its solid) cannot tell the leaf from the
 enclosing occurrence. `f-m11a-pixel` (an opaque red box and a
 material-only yellow wall) is the viewer fixture: `tests/e2e/retained-viewer.e2e.spec.ts`
-asserts the colours handed to the renderer (the viewer store, then the renderer scene's own
-parts via `__ifc_lite_scene_owner__`) against its oracle, and that the default exact path never
-takes the retained route. Canvas pixels are recorded evidence only (for both kernels, so an
-artifact carries its own control): headless software WebGPU does not present the canvas, and a
-hardware-GPU headless run lost its device, so no real-pixel assertion is made.
+asserts, against its oracle and never against the path under test, the colours handed to the
+renderer (the viewer store), the colours its scene holds (`__ifc_lite_scene_owner__`) and the
+pixels it draws: each product is isolated and framed, the renderer's own colour attachment is read
+back (`__ifc_lite_capture_color_frame__`, not the compositor), and at least 90% of the product's
+pixels must sit nearest its authored hue (shading scales a colour, it does not turn it). The
+scene hooks and the readback are required, so a renderer that cannot produce them fails the test.
+`f-m11a-pixel-grey` is the same scene with both colours lost to grey: the witness must read
+grey and none of the authored hue, which proves it fails when the colour is not the authored one.
+The default exact path is read with the same witness as a control. The pixel witness needs the
+lane's software WebGPU (`--use-angle=swiftshader`); a hardware NVIDIA device under default headless
+flags is destroyed by the browser before any frame, so it is not a supported configuration.

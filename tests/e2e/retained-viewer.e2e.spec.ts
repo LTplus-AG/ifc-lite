@@ -12,6 +12,8 @@ import type { LoadTraceSnapshot } from '../../packages/load-trace/src';
 const WALL = 'rust/geometry/tests/fixtures/issue_098_wall_W.ifc';
 const MAPPED = 'rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc';
 const PIXEL = 'tests/fixtures/synthetic-retained/f-m11a-pixel.ifc';
+// The same scene with both authored colours lost to grey: the pixel witness's negative control.
+const PIXEL_GREY = 'tests/fixtures/synthetic-retained/f-m11a-pixel-grey.ifc';
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
 // Trace DOM snapshots add work to the Cancel latency sample; keep real UI/Worker
 // assertions and failure screenshots, without tracing this timing-sensitive file.
@@ -71,30 +73,87 @@ async function record(name: string, result: unknown) {
   }
 }
 
-/** Count strongly red and strongly yellow pixels of a PNG data URL (shaded opaque faces keep the authored hue). */
-function pngHues(page: Page, dataUrl: string) {
-  return page.evaluate(async data => {
-    const image = new Image();
-    image.src = data;
-    await image.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width; canvas.height = image.height;
-    const context = canvas.getContext('2d')!;
-    context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    let red = 0, yellow = 0;
-    for (let i = 0; i < pixels.length; i += 4) {
-      const [r, g, b] = [pixels[i], pixels[i + 1], pixels[i + 2]];
-      if (r > 60 && r > 2.2 * g && r > 2.2 * b) red++;
-      else if (r > 60 && g > 60 && r > 2.5 * b && g > 2.5 * b) yellow++;
-    }
-    return { red, yellow };
-  }, dataUrl);
+/** What the renderer's own colour attachment shows once one product is framed alone. */
+interface FrameWitness {
+  png: string;
+  width: number;
+  height: number;
+  /** Pixels differing from the frame's background. */
+  object: number;
+  /** Of those, how many sit nearest (by hue angle) to each palette colour. */
+  share: Record<string, number>;
+  mean: number[];
 }
-/** The page region of the first canvas, DOM overlays included (the axes gizmo's red X alone is ~20 "red" pixels): evidence only, since headless WebGPU may not present the canvas. */
-async function canvasHues(page: Page) {
-  const png = (await page.locator('canvas').first().screenshot()).toString('base64');
-  return pngHues(page, `data:image/png;base64,${png}`);
+/** The renderer's colour attachment (framebuffer readback; the compositor may discard a WebGPU canvas) classified against a palette. */
+function readFrame(page: Page, palette: Record<string, number[]>): Promise<FrameWitness | null> {
+  return page.evaluate(async palette => {
+    const host = globalThis as unknown as { __ifc_lite_capture_color_frame__?: () => Promise<string | null> };
+    const png = (await host.__ifc_lite_capture_color_frame__?.()) ?? null;
+    if (!png) return null;
+    const bitmap = await createImageBitmap(await (await fetch(png)).blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext('2d')!;
+    context.drawImage(bitmap, 0, 0);
+    const { width, height } = bitmap;
+    const { data } = context.getImageData(0, 0, width, height);
+    bitmap.close();
+    const unit = (v: number[]) => { const n = Math.hypot(...v) || 1; return v.map(x => x / n); };
+    const candidates = Object.entries(palette).map(([name, rgb]) => ({ name, rgb: unit(rgb) }));
+    const share = Object.fromEntries(candidates.map(({ name }) => [name, 0]));
+    const mean = [0, 0, 0];
+    let object = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.max(Math.abs(data[i] - data[0]), Math.abs(data[i + 1] - data[1]), Math.abs(data[i + 2] - data[2])) <= 8) continue;
+      object++;
+      for (let c = 0; c < 3; c++) mean[c] += data[i + c] / 255;
+      // Shading scales a colour, it does not turn it: the nearest palette direction is the product's hue.
+      const p = unit([data[i], data[i + 1], data[i + 2]]);
+      let best = candidates[0], bestDot = -1;
+      for (const candidate of candidates) {
+        const dot = p[0] * candidate.rgb[0] + p[1] * candidate.rgb[1] + p[2] * candidate.rgb[2];
+        if (dot > bestDot) { best = candidate; bestDot = dot; }
+      }
+      share[best.name]++;
+    }
+    return { png, width, height, object, share, mean: mean.map(v => v / Math.max(object, 1)) };
+  }, palette);
+}
+/**
+ * Show only `globalId`, frame the camera on it, and read the renderer's colour frame until it has settled (the
+ * framing animates): two consecutive frames with the same, non-trivial object coverage. A renderer that returns
+ * no frame, or never settles, fails; nothing here degrades to a weaker check.
+ */
+async function framedWitness(page: Page, globalId: number, palette: Record<string, number[]>): Promise<FrameWitness> {
+  await page.evaluate(id => {
+    const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+    state.clearEntitySelection();
+    state.showAll();
+    state.isolateEntity(id);
+    state.cameraCallbacks.frameEntities!([id]);
+  }, globalId);
+  const deadline = Date.now() + 60_000;
+  let previous = -1, frame: FrameWitness | null = null, captures = 0, empty = 0, last = 'no frame requested';
+  while (Date.now() < deadline) {
+    const read = await readFrame(page, palette);
+    captures++;
+    if (read === null) empty++;
+    else last = `${read.width}x${read.height}, ${read.object} object pixels`;
+    const covered = read !== null && read.object >= read.width * read.height * 0.02;
+    if (covered && read!.object === previous) { frame = read; break; }
+    previous = read?.object ?? -1;
+    await page.waitForTimeout(300);
+  }
+  expect(frame, `renderer colour frame of #${globalId}: captured, covered by the framed product, and settled (${captures} captures, ${empty} empty, last ${last})`).not.toBeNull();
+  return frame!;
+}
+const SHARE = 0.9;
+/** The authored hue must own at least SHARE of the product's pixels; shading and anti-aliasing take the rest. */
+const shareOf = (frame: FrameWitness, name: string) => frame.share[name] / frame.object;
+async function keepFrame(name: string, frame: FrameWitness) {
+  if (process.env.IFCLITE_VIEWER_OUT) {
+    await mkdir(process.env.IFCLITE_VIEWER_OUT, { recursive: true });
+    await writeFile(join(process.env.IFCLITE_VIEWER_OUT, `${name}.png`), Buffer.from(frame.png.split(',')[1], 'base64'));
+  }
 }
 
 test.describe('retained viewer acceptance', () => {
@@ -134,13 +193,14 @@ test.describe('retained viewer acceptance', () => {
     }
   });
 
-  // M11-A. Headless WebGPU (swiftshader) does not reliably present the canvas in CI, so a pixel hue is not an
-  // assertion here (screenshots are evidence only, as in appearance-face-mask.e2e.spec.ts). The assertion is at the
-  // renderer's INPUT: the colour the viewer hands the renderer for each product, then the colour the renderer's own
-  // scene holds for it. Expected values are hand-authored in generate-appearance.py (opaque red box, material-only
-  // yellow wall), never read from the retained path under test.
-  const authored = () => (JSON.parse(readFileSync('tests/fixtures/synthetic-retained/f-m11a-pixel.oracle.json', 'utf8')) as
+  // M11-A. Three levels, every one REQUIRED, all against the colours hand-authored in generate-appearance.py
+  // (never read back from the path under test): (1) the colour the viewer hands the renderer, (2) the colour the
+  // renderer's own scene holds, (3) the pixels the renderer draws, read from its colour attachment with each
+  // product framed alone. The scene hooks and the colour-frame hook are installed once the renderer has a
+  // WebGPU device; their absence fails the test instead of weakening it to a store check.
+  const authored = (fixture = PIXEL) => (JSON.parse(readFileSync(fixture.replace(/\.ifc$/, '.oracle.json'), 'utf8')) as
     { products: { role: string; id: number; rgba: number[] }[] }).products;
+  const palette = () => ({ ...Object.fromEntries(authored().map(p => [p.role, p.rgba.slice(0, 3)])), grey: authored(PIXEL_GREY)[0].rgba.slice(0, 3) });
   const storedColours = (page: Page) => page.evaluate(() => {
     const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
     const model = [...state.models.values()][0];
@@ -148,8 +208,12 @@ test.describe('retained viewer acceptance', () => {
       meshes: (model?.geometryResult?.meshes ?? []).map(m => ({ global: m.expressId, id: state.resolveGlobalIdFromModels(m.expressId)?.expressId,
         color: [...m.color], geometryItemId: m.geometryItemId })) };
   });
+  const rendererHooks = (page: Page) => page.waitForFunction(() => {
+    const host = globalThis as typeof globalThis & ViewerGlobals & { __ifc_lite_capture_color_frame__?: unknown };
+    return typeof host.__ifc_lite_scene_owner__ === 'function' && typeof host.__ifc_lite_capture_color_frame__ === 'function';
+  }, undefined, { timeout: 60_000 });
 
-  test('M11-A: the renderer is handed each retained product\'s authored colour', async ({ page }) => {
+  test('M11-A: the renderer is handed, holds and draws each retained product\'s authored colour', async ({ page }) => {
     await setup(page, 'retained');
     await page.locator('#file-input-open').setInputFiles(resolve(PIXEL));
     await complete(page, true);
@@ -161,34 +225,48 @@ test.describe('retained viewer acceptance', () => {
       expect(own.length, `${product.role} meshes in the viewer store`).toBe(1);
       product.rgba.forEach((v, i) => expect(own[0].color[i], `${product.role} store channel ${i}`).toBeCloseTo(v, 5));
     }
-    // The renderer's own scene, once its debug hooks are installed (they are not without a WebGPU device). The scene
-    // is fed from the store on the animation loop, so poll for the parts instead of trusting the load event.
-    const rendererUp = await page.waitForFunction(() => typeof (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_scene_owner__ === 'function',
-      undefined, { timeout: 20_000 }).then(() => true, () => false);
-    evidence.level = rendererUp ? 'store+scene' : 'store';
-    if (rendererUp) {
-      const scene: unknown[] = [];
-      evidence.scene = scene;
-      for (const product of authored()) {
-        const global = meshes.find(m => m.id === product.id)!.global;
-        const owner = () => page.evaluate(id => (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_scene_owner__!(id), global);
-        await expect.poll(async () => (await owner()).flat?.length ?? 0, { timeout: 45_000, intervals: [500] }).toBeGreaterThan(0);
-        const parts = (await owner()).flat!;
-        expect(parts.length, `${product.role} parts in the renderer scene`).toBe(1);
-        product.rgba.forEach((v, i) => expect(parts[0].color[i], `${product.role} scene channel ${i}`).toBeCloseTo(v, 5));
-        scene.push({ role: product.role, color: parts[0].color, geometryItemId: parts[0].geometryItemId });
-      }
-    } else {
-      test.info().annotations.push({ type: 'renderer', description: 'no WebGPU device: asserted the viewer store only; the scene hooks were not installed' });
+    await rendererHooks(page);
+    // The scene is fed from the store on the animation loop, so poll for the parts instead of trusting the load event.
+    const scene: unknown[] = [], pixels: unknown[] = [];
+    evidence.scene = scene; evidence.pixels = pixels;
+    for (const product of authored()) {
+      const global = meshes.find(m => m.id === product.id)!.global;
+      const owner = () => page.evaluate(id => (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_scene_owner__!(id), global);
+      await expect.poll(async () => (await owner()).flat?.length ?? 0, { timeout: 45_000, intervals: [500] }).toBeGreaterThan(0);
+      const parts = (await owner()).flat!;
+      expect(parts.length, `${product.role} parts in the renderer scene`).toBe(1);
+      product.rgba.forEach((v, i) => expect(parts[0].color[i], `${product.role} scene channel ${i}`).toBeCloseTo(v, 5));
+      scene.push({ role: product.role, color: parts[0].color, geometryItemId: parts[0].geometryItemId });
+      const frame = await framedWitness(page, global, palette());
+      await keepFrame(`appearance-${product.role}`, frame);
+      pixels.push({ role: product.role, object: frame.object, share: frame.share, mean: frame.mean, width: frame.width, height: frame.height });
+      expect(shareOf(frame, product.role), `${product.role}: share of its pixels nearest the authored hue ${JSON.stringify(frame.share)}`).toBeGreaterThanOrEqual(SHARE);
     }
-    // Recorded evidence, never an assertion: what the canvas looks like on this machine.
-    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
-    evidence.canvasHues = await canvasHues(page);
     await record('appearance', evidence);
     if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'appearance.png') });
   });
 
-  test('M11-A: the default exact path never takes the retained route and renders the same authored colours', async ({ page }) => {
+  test('M11-A: the pixel witness fails when the authored colour is lost (grey twin of the same scene)', async ({ page }) => {
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(resolve(PIXEL_GREY));
+    await complete(page, true);
+    const { meshes } = await storedColours(page);
+    await rendererHooks(page);
+    const evidence: unknown[] = [];
+    for (const product of authored(PIXEL_GREY)) {
+      const global = meshes.find(m => m.id === product.id)!.global;
+      const frame = await framedWitness(page, global, palette());
+      await keepFrame(`appearance-lost-${product.role}`, frame);
+      evidence.push({ role: product.role, object: frame.object, share: frame.share, mean: frame.mean });
+      // The colour the viewer was given is grey, so the authored hue must own (almost) none of the pixels...
+      expect(shareOf(frame, product.role), `${product.role}: lost colour must not read as the authored hue ${JSON.stringify(frame.share)}`).toBeLessThan(0.02);
+      // ...and the witness must see the grey that is there (the same classifier, so the probe itself is live).
+      expect(shareOf(frame, 'grey'), `${product.role}: the lost colour is the grey ${JSON.stringify(frame.share)}`).toBeGreaterThanOrEqual(SHARE);
+    }
+    await record('appearance-lost', evidence);
+  });
+
+  test('M11-A: the default exact path never takes the retained route and draws the same authored colours', async ({ page }) => {
     const requests: string[] = [];
     page.context().on('request', req => requests.push(req.url()));
     await setup(page, 'exact');
@@ -206,9 +284,16 @@ test.describe('retained viewer acceptance', () => {
       expect(own.length, `${product.role} meshes in the viewer store`).toBeGreaterThan(0);
       for (const mesh of own) product.rgba.forEach((v, i) => expect(Math.abs(mesh.color[i] - v), `${product.role} exact channel ${i}`).toBeLessThanOrEqual(1 / 255));
     }
-    // Control evidence, never an assertion: the exact path's canvas on this machine, to read beside the retained one.
-    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
-    await record('appearance-exact', { canvasHues: await canvasHues(page) });
+    // Control: the same pixel witness on the exact path's own frame, so the retained pixels above are read against a
+    // renderer that is known to show these colours.
+    await rendererHooks(page);
+    const evidence: unknown[] = [];
+    for (const product of authored()) {
+      const frame = await framedWitness(page, meshes.find(m => m.id === product.id)!.global, palette());
+      evidence.push({ role: product.role, object: frame.object, share: frame.share, mean: frame.mean });
+      expect(shareOf(frame, product.role), `${product.role} (exact): ${JSON.stringify(frame.share)}`).toBeGreaterThanOrEqual(SHARE);
+    }
+    await record('appearance-exact', evidence);
     if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'appearance-exact.png') });
   });
 

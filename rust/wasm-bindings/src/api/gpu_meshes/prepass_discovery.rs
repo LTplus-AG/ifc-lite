@@ -123,8 +123,29 @@ pub(super) fn discover_from_columns(
         let start = start as usize;
         let end = start.saturating_add(length as usize);
         let kw = keyword_at(content, start, end);
-        // Invalid spans must not turn a malformed column into an indexing trap.
+        // #4614: retain invalid-span jobs for the decoder to refuse/count.
+        // The shared observer requires an in-bounds record; malformed wire
+        // columns still carry their original class and positions.
         if content.get(start..end).is_none() {
+            use ifc_lite_processing::{scan::ScanClass, PREPASS_CLASS_CODE_MASK, PREPASS_CLASS_FLAG_GEOMETRY_JOB};
+            let kind = ScanClass::try_from(class & PREPASS_CLASS_CODE_MASK).unwrap_or(ScanClass::Other);
+            shared.prepass_spans.stash_class(kind, id, start, end);
+            match kind {
+                ScanClass::Project => {
+                    shared.project_id.get_or_insert(id);
+                    d.project_id = shared.project_id;
+                }
+                ScanClass::Site => { d.site_position.get_or_insert((id, start, end)); }
+                ScanClass::MappedItem => d.mapped_item_spans.push((id, start, end)),
+                ScanClass::MaterialLayerSet => d.has_layer_set = true,
+                _ => {}
+            }
+            let site = kind == ScanClass::Site;
+            let keyword = if site { "IFCSITE" } else { kw };
+            if (site || class & PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0) && !is_disabled(disabled_types, keyword) {
+                d.buffered_jobs.push((id, start, end, ifc_lite_core::ifc_type_from_keyword(keyword)));
+                d.total_jobs += 1;
+            }
             continue;
         }
         d.observe(&mut shared, content, id, kw, start, end, disabled_types);

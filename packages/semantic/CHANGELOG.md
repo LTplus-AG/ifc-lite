@@ -1,5 +1,14 @@
 # @ifc-lite/semantic
 
+## 0.2.2
+
+### Patch Changes
+
+- [#8239](https://github.com/LTplus-AG/ifc-lite/pull/8239) [`605f9da`](https://github.com/LTplus-AG/ifc-lite/commit/605f9da40f2d430ad48e9b2d990486232e7229fe) Thanks [@petruconduraru](https://github.com/petruconduraru)! - Resolve the N3 `Writer.end` callback with `value ?? ''` so the package still type-checks against `@types/n3` 1.26.5 and later, which type the callback result as possibly undefined.
+- Updated dependencies [[`af23dac`](https://github.com/LTplus-AG/ifc-lite/commit/af23dac7f84b3bdcc2a179359521600406e07c4e)]:
+  - @ifc-lite/extensions@0.12.0
+  - @ifc-lite/sandbox@2.12.1
+
 ## 0.2.1
 
 ### Patch Changes

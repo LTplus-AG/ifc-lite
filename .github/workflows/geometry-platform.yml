@@ -64,6 +64,7 @@ on:
       - 'scripts/lib/__fixtures__/smlib-node/**'
       - 'tests/evidence/m1-f1/**'
       - 'LICENSE'
+      - 'licenses/retained/**'
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
@@ -119,6 +120,13 @@ jobs:
           cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
           cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
+      - name: Collect native runtime licence review inputs and verify installation
+        run: |
+          node scripts/retained-native-link-inventory.mjs "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" \
+            "$RUNNER_TEMP/smlib-native" "$RUNNER_TEMP/retained-native-link-inventory.json"
+          cmake --install "$RUNNER_TEMP/smlib-native" --prefix "$RUNNER_TEMP/retained-native-install"
+          cmp "$RUNNER_TEMP/retained-native-install/share/licenses/ifclite-smlib/THIRD_PARTY_NOTICES.txt" \
+            licenses/retained/THIRD_PARTY_NOTICES.txt
       - name: Execute every native owned boundary
         id: native-ctest
         continue-on-error: true
@@ -346,6 +354,7 @@ jobs:
         with:
           name: retained-viewer-comparison
           path: |
+            ${{ runner.temp }}/retained-native-link-inventory.json
             ${{ runner.temp }}/viewer-retained/
             ${{ runner.temp }}/viewer-retained-corpus/
             test-results/

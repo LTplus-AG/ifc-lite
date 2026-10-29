@@ -16,6 +16,8 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const sdk = join(root, 'sdk'), build = join(root, 'build'), repoRoot = join(root, 'repo'), pkgRetained = join(root, 'pkg');
   const adapter = join(repoRoot, 'native/smlib-adapter');
+  await mkdir(join(repoRoot, 'licenses/retained'), { recursive: true });
+  await writeFile(join(repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'Retained notice fixture\n');
   for (const path of [build, pkgRetained, join(adapter, 'browser'), join(adapter, 'node'), join(sdk, 'source/SMLib'), join(sdk, 'source/SM_API')]) {
     await mkdir(path, { recursive: true });
   }
@@ -80,6 +82,10 @@ test('self-contained engine has exact licenses, complete asset hashes and a tool
     assert.deepEqual(await readFile(join(options.out, 'LICENSES/SMLib', name)), await readFile(join(options.sdk, name)));
   }
   assert.deepEqual(await readFile(join(options.out, 'LICENSES/ifc-lite/LICENSE')), await readFile(join(options.repoRoot, 'LICENSE')));
+  for (const path of ['THIRD_PARTY_NOTICES.txt', 'smlib/IFC_LITE_THIRD_PARTY_NOTICES.txt']) {
+    assert.deepEqual(await readFile(join(options.out, path)),
+      await readFile(join(options.repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt')), path);
+  }
   const [notice] = manifest.toolchainNotices;
   assert.equal(notice.name, 'runtime-LICENSE');
   assert.equal(sha256(await readFile(join(options.out, notice.path))), notice.sha256);

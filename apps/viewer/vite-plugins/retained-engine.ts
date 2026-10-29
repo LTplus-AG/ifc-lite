@@ -41,7 +41,7 @@ async function middleware(directory?: string): Promise<Connect.NextHandleFunctio
       }
       const path = decoded.startsWith('/smlib/') ? decoded.slice(1) : decoded.slice('/retained-engine/'.length);
       if (!allowed.has(path) || (!decoded.startsWith('/smlib/') &&
-          !/^(pkg-retained\/|LICENSES\/|engine-manifest\.json$)/.test(path))) {
+          !/^(pkg-retained\/|LICENSES\/|engine-manifest\.json$|THIRD_PARTY_NOTICES\.txt$)/.test(path))) {
         res.statusCode = 404; res.end(); return;
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') {

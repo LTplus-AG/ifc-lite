@@ -162,7 +162,7 @@ impl PrepassOnceData {
         crate::api::set_js_prop(
             &result,
             "styleFinishes",
-            &js_sys::Float32Array::from(self.content.style_finishes.as_slice()),
+            &js_sys::Float32Array::from(self.style_finishes.as_slice()),
         );
         // #407/#913 §2.3: per-element material colour lists so the batch path
         // can run the transparent/opaque sub-mesh alternation.

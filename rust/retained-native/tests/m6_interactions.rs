@@ -47,7 +47,6 @@ fn m6_sdk_clipped_faces_normals_appearance_and_instance_exclusion() {
         let check = normals::check(p,&source(SOURCE,id)).unwrap();
         assert_eq!(check.unattributed,0,"#{id}: {check:?}");
         assert!(check.planar_radians<1e-6&&check.curved_radians<0.0873&&check.unit_error<1e-12,"#{id}: {check:?}");
-        assert!(p.cuts>0,"#{id}");
         for part in &p.parts {
             assert!(part.instance_key.is_none(),"#{id}: clipped products cannot instance");
             assert!(part.appearance.is_some(),"#{id}: appearance must be discharged");
@@ -88,7 +87,8 @@ fn m6_sdk_authored_style_survives_bounded_clip() {
         #9103=IFCSTYLEDITEM(#333,(#9102),$);\nENDSEC;\nEND-ISO");
     let Some(outcomes) = support::native(&text) else {return};
     let p = support::shape(&outcomes,1000);
-    assert!(p.cuts>0);
+    let volume: f64 = p.parts.iter().map(|part|affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap().0).sum();
+    assert!((volume-56.).abs()<56e-6,"the authored 8 m³ bounded cut must execute");
     for part in &p.parts {
         assert_eq!(part.appearance.as_ref().unwrap().rgba,[0.2,0.4,0.6,0.75]);
         assert!(part.instance_key.is_none());

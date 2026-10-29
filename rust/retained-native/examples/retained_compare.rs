@@ -254,6 +254,7 @@ fn compare(
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),
                     ));
+                    checks::affine::refusal(report, &bytes, id, code);
                     report
                         .coverage
                         .push(format!("{model}\t{id}\trefused\t{code}"));

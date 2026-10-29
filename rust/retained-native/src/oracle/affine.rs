@@ -15,6 +15,7 @@ pub struct AffineExpectation {
     pub matrix: Frame,
     pub sigma_max: f64,
     pub kappa: f64,
+    pub affine_final: bool,
 }
 impl AffineExpectation {
     pub fn chord_admitted(&self, chord:f64, angle_degrees:f64) -> bool {
@@ -277,7 +278,10 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
         let extent=support_bounds.map(|b|(0..3).map(|i|b[i+3]-b[i]).fold(0.,f64::max))?;
         let bbox=if s.radius==0. {support_bounds} else {None};
         let (min,max)=stretches(&mapping_matrix)?;
-        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,extent,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min});
+        let m=&mapping_matrix;
+        let reflected=dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.;
+        let affine_final=reflected||(min-1.).abs()>1e-12||(max-1.).abs()>1e-12;
+        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,extent,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min,affine_final});
     }
     (!result.is_empty()).then_some(result)
 }

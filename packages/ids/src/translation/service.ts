@@ -70,7 +70,10 @@ class IDSTranslationServiceImpl implements TranslationService {
 
     // Interpolate parameters
     if (params) {
-      return this.interpolate(value, params);
+      // Property templates name one `{path}` since #8306; a caller still
+      // passing raw `pset` + `property` gets the path they used to get.
+      const legacyPath = params.path === undefined && params.pset !== undefined && params.property !== undefined;
+      return this.interpolate(value, legacyPath ? { ...params, path: `"${params.pset}.${params.property}"` } : params);
     }
 
     return value;

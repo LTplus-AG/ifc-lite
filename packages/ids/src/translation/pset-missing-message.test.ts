@@ -117,6 +117,13 @@ describe('constraint names are quoted once in every message (#8306)', () => {
     });
   }
 
+  it('t() still renders raw pset + property callers on the {path} templates', () => {
+    expect(createTranslationService('en').t('requirements.property.mustNotExist', { pset: 'Pset_WallCommon', property: 'FireRating' }))
+      .toBe('Property "Pset_WallCommon.FireRating" must not exist');
+    expect(createTranslationService('en').t('requirements.property.mustExist', { path: '"P.N"', pset: 'x', property: 'y' }))
+      .toBe('Property "P.N" must exist');
+  });
+
   it('an exact property path is one quoted name in every locale', () => {
     const requirement = { id: 'r', optionality: 'required' as const, facet: { type: 'property', propertySet: sv('Pset_WallCommon'), baseName: sv('FireRating') } as IDSFacet };
     for (const locale of LOCALES) {

@@ -137,13 +137,11 @@ pub(crate) fn collect_type_geometry_jobs(
                 }
             }
         } else if let Some(ifc_type) = ifc_lite_core::type_product_ifc_type(type_name) {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+            if decoder.decode_at_with_id(id, start, end).is_ok() {
                 // IfcTypeProduct.RepresentationMaps = attr 6.
-                let rep_maps: Vec<u32> = entity
-                    .get(6)
-                    .and_then(|a| a.as_list())
-                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-                    .unwrap_or_default();
+                let rep_maps = ifc_lite_processing::discovery::record_refs_at(
+                    &content[start..end], 6,
+                );
                 if !rep_maps.is_empty() {
                     candidates.push((id, start, end, ifc_type, rep_maps));
                 }

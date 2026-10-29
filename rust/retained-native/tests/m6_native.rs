@@ -7,6 +7,9 @@ use ifc_lite_retained_native::oracle::bounded;
 #[allow(dead_code)]
 #[path="../examples/compare/metrics.rs"]
 mod metrics;
+#[allow(dead_code)]
+#[path="../examples/compare/hand_volumes.rs"]
+mod hand_volumes;
 const SOURCE:&str=include_str!("../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
 #[path="support/m6_boundary_equivalence.rs"]
 mod boundary_equivalence;
@@ -91,7 +94,10 @@ fn m6_native_mixed_chain_and_boxed_publication() {
     if worker().is_none(){return;}
     let outcomes=run(SOURCE,&[1004,1007,1008,1009]);
     for id in [1007,1008,1009] {verify(SOURCE,shape(&outcomes,id),Some(32.));}
-    let mixed=measure(shape(&outcomes,1004));assert!((mixed.volume-41.).abs()<=41e-6);assert_eq!(mixed.defects,0);
+    let mut hand=hand_volumes::HandVolumes::parse(hand_volumes::REGISTERED).unwrap();
+    let volume=hand.take("tests/fixtures/synthetic-retained/f-f-halfspaces.ifc",1004).unwrap();
+    hand.finish().unwrap();
+    verify(SOURCE,shape(&outcomes,1004),Some(volume));
 }
 #[test]
 fn m6_native_consumed_provenance() {

@@ -10,6 +10,7 @@ use ifc_lite_processing::AnalyticQuantitySources;
 /// retained result; the analytical summaries alone omit Boolean/plane sources.
 pub struct SourceContext<'a> {
     pub product_id: u32,
+    pub hand_volume: Option<f64>,
     pub clips: &'a ifc_lite_retained_native::oracle::clips::ClipOracle<'a>,
     pub analytic: &'a AnalyticQuantitySources,
 }
@@ -35,7 +36,7 @@ pub struct OracleResult {
 pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, tolerances: &serde_json::Value, bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>) -> Vec<OracleResult> {
     let mut results = layers::check(product, sources, tolerances);
     results.extend(clips::check(product, sources, tolerances));
-    results.extend(bounded::check(product, bounded, tolerances));
+    results.extend(bounded::check(product, bounded, tolerances, sources.hand_volume));
     results.extend(faces::check(product, sources, tolerances));
     results
 }

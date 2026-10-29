@@ -20,6 +20,8 @@ mod tolerances;
 mod registry;
 #[path = "compare/checks/mod.rs"]
 mod checks;
+#[path = "compare/hand_volumes.rs"]
+mod hand_volumes;
 #[cfg(test)]
 #[path="compare/checks/bounded_tests.rs"]
 mod bounded_tests;
@@ -39,6 +41,7 @@ type Error = Box<dyn std::error::Error>;
 fn main() -> Result<(), Error> {
     let options = options::options()?;
     let tolerances = tolerances::registered()?;
+    let mut hand = hand_volumes::HandVolumes::parse(hand_volumes::REGISTERED)?;
     // Fail before reporting coverage if no qualified numerical engine exists.
     let startup = Instant::now();
     let qualified = ifc_lite_retained_native::NativeWorker::spawn(&options.worker)
@@ -55,9 +58,10 @@ fn main() -> Result<(), Error> {
                 .push(format!("{}: absent; run pnpm fixtures", path.display()));
             continue;
         }
-        compare(path, &mut driver, &tolerances, &mut report)?;
+        compare(path, &mut driver, &tolerances, &mut report, &mut hand)?;
         write_report(&options, &mut report, false)?;
     }
+    if let Err(error) = hand.finish() { report.violations.push(error); }
     report.rows.sort();
     report.coverage.sort();
     if options.bless && (!report.violations.is_empty() || !report.universe_mismatch.is_empty() || !report.skipped.is_empty()) {
@@ -97,6 +101,7 @@ fn compare(
     driver: &mut NativeModelDriver,
     tolerances: &serde_json::Value,
     report: &mut report::Report,
+    hand: &mut hand_volumes::HandVolumes,
 ) -> Result<(), Error> {
     let bytes = std::fs::read(path)?;
     let model = path.to_string_lossy();
@@ -225,7 +230,7 @@ fn compare(
                         tolerances,
                         ms,
                         opening_expectations.get(&id),
-                        &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
+                        &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle, hand_volume: bounded.as_ref().and_then(|_| hand.take(&model, id)) },
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
                         bounded.as_ref(),
                     );

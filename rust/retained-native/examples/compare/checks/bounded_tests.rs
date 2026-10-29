@@ -27,11 +27,11 @@ fn m6_7955_uncut_box_fails_internal_circle_volume_gate() {
     let e=bounded::expected(text.as_bytes(),&sources,1062).unwrap();
     let t:serde_json::Value=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
     let correct=publish(&text,&worker);
-    let correct_rows=check(&correct,Some(&e),&t);
+    let correct_rows=check(&correct,Some(&e),&t,None);
     assert!(correct_rows.iter().all(|r|r.pass),"correct cut must pass");
     let uncut=publish(&text.replace("#1060=IFCSHAPEREPRESENTATION(#4,'Body','Clipping',(#125));",
         "#1060=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19));"),&worker);
-    let uncut_rows=check(&uncut,Some(&e),&t);
+    let uncut_rows=check(&uncut,Some(&e),&t,None);
     assert!(uncut_rows.iter().filter(|r|r.family!="bounded_section_volume").all(|r|r.pass),
         "the historical bounds/clearance/closure checks alone accept the uncut box");
     assert!(uncut_rows.iter().any(|r|r.family=="bounded_section_volume"&&r.gated&&!r.pass),"uncut box falsely passed every bounded check");
@@ -70,7 +70,7 @@ fn m6_7955_opened_bounded_result_never_uses_opening_only_volume() {
     assert!((actual.volume-(63.75-std::f64::consts::FRAC_PI_2)).abs()<0.002);
     let bundle=SourceBundle::new(text.as_bytes().to_vec());
     let clips=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&bundle,&sources);
-    let context=crate::checks::SourceContext{product_id:1062,analytic:&sources,clips:&clips};
+    let context=crate::checks::SourceContext{product_id:1062,analytic:&sources,clips:&clips,hand_volume:None};
     let mut report=crate::report::Report::default();
     report.published("combined",&shape,&actual,None,None,None,&crate::tolerances::registered().unwrap(),0.,
         Some(opening),&context,true,Some(&bounded));
@@ -98,8 +98,67 @@ fn m6_7955_linear_pbhs_solid_difference_requires_volume_authority() {
         &ModelOptions{ids:Some([1000].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
     let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("uncut box must publish")};
     let t=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
-    let rows=check(&shape,Some(&e),&t);
+    let rows=check(&shape,Some(&e),&t,None);
     assert!(rows.iter().filter(|r|!r.family.ends_with("volume_unavailable")).all(|r|r.pass));
     let unavailable=rows.iter().find(|r|r.gated&&!r.pass).expect("uncut box passed without volume authority");
     assert_eq!(unavailable.reason.as_deref(),Some("solid Boolean operand outside section family"));
+}
+
+#[test]
+fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_missing_and_stale() {
+    let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
+        eprintln!("SKIP M6 hand-volume witness: SDK absent");return;
+    };
+    let path="tests/fixtures/synthetic-retained/f-f-halfspaces.ifc";
+    let text=include_str!("../../../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,1004).unwrap();
+    assert!(e.section_volume.is_none());
+    let mut products=Vec::new();
+    run_model_native(SourceBundle::new(text.as_bytes().to_vec()),&worker,
+        &ModelOptions{ids:Some([1004].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
+    let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("mixed chain must publish")};
+    let bundle=SourceBundle::new(text.as_bytes().to_vec());
+    let clips=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&bundle,&sources);
+    let mut actual=crate::metrics::Metrics::default();
+    for part in &shape.parts {
+        let points=part.positions.chunks_exact(3).map(|p|crate::metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();
+        actual.add_mesh(&points,&part.indices).unwrap();
+    }
+    let registered=crate::hand_volumes::REGISTERED;
+    for (label,table,failure) in [
+        ("registered",registered.to_owned(),None),
+        ("wrong",registered.replace("\"volume\": 41","\"volume\": 40"),Some("bounded_hand_volume")),
+        ("missing","{}".to_owned(),Some("bounded_linear_volume_unavailable")),
+    ] {
+        let mut hand=crate::hand_volumes::HandVolumes::parse(&table).unwrap();
+        let context=crate::checks::SourceContext{product_id:1004,analytic:&sources,clips:&clips,hand_volume:hand.take(path,1004)};
+        let mut report=crate::report::Report::default();
+        report.published(path,&shape,&actual,None,None,None,&crate::tolerances::registered().unwrap(),0.,
+            None,&context,true,Some(&e));
+        hand.finish().unwrap();
+        if let Some(failure)=failure {
+            assert_eq!(report.violations.len(),1,"{label}: {:?}",report.violations);
+            assert!(report.violations[0].contains(failure),"{:?}",report.violations);
+            if label=="missing" {assert!(report.violations[0].contains("solid Boolean operand outside section family"));}
+        } else {assert!(report.violations.is_empty(),"{:?}",report.violations);}
+        println!("M6 hand authority {label}: volume={} violations={:?}",actual.volume,report.violations);
+    }
+    let mut stale=crate::hand_volumes::HandVolumes::parse(&registered.replace("\"1004\"","\"999999\"")).unwrap();
+    assert!(stale.take(path,1004).is_none());
+    let error=stale.finish().unwrap_err();assert!(error.contains("999999"));
+    println!("M6 hand authority stale: {error}");
+}
+
+#[test]
+fn m6_7955_hand_authority_rejects_malformed_tables() {
+    use crate::hand_volumes::{HandVolumes, REGISTERED};
+    for text in ["null".to_owned(),"{".to_owned(),
+        REGISTERED.replace("\"volume\": 41","\"volume\": -1"),
+        REGISTERED.replace("\"derivation\"", "\"unknown\""),
+        REGISTERED.replace("\"1004\"", "\"01004\""),
+        REGISTERED.replace("\"volume\": 41", "\"volume\": 41, \"volume\": 40"),
+        REGISTERED.replace("\"1004\":", "\"1004\": {\"volume\": 40, \"derivation\": \"duplicate\"}, \"1004\":"),
+    ] {assert!(HandVolumes::parse(&text).is_err(),"malformed authority accepted: {text}");}
 }

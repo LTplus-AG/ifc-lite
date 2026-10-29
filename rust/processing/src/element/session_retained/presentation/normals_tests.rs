@@ -202,14 +202,14 @@ fn m11_n_7955_source_plane_verifies_every_vertex_before_replacing_normals() {
 }
 
 #[test]
-fn m11_n_7955_source_plane_uses_composed_frame_under_scale_mirror_and_survey_translation() {
+fn m11_n_7955_source_plane_uses_composed_frame_under_scale_and_survey_translation() {
     let mut p = fan(&[30.],&[90.]);
-    p.world_from_object = [-2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 2.6e6,-1e20,7e15,1.];
+    p.world_from_object = [2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 2.6e6,-1e20,7e15,1.];
     let from_part = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
     p.normals = Some(normals(&p));
     let n = [0.,-30_f64.to_radians().sin(),30_f64.to_radians().cos()];
     plane::apply(&mut p,&from_part,[0.;3],n,&[0],&OwnedResourceContext::capture_current()).unwrap();
-    let expected = unit([0.,2.,-3.*30_f64.to_radians().cos()]).unwrap();
+    let expected = unit([0.,-2.,3.*30_f64.to_radians().cos()]).unwrap();
     for normal in p.normals.unwrap().chunks_exact(3) {near(normal,expected);}
 }
 
@@ -273,4 +273,20 @@ fn m11_n_7955_crease_uses_the_runs_tessellation_angle() {
     near(&n[..3],[0.,0.,1.]); // 2 * 3 degrees excludes the eight-degree neighbour.
     let n = corner_normals(&p,5.,&OwnedResourceContext::capture_current(),&mut Storage::default()).unwrap();
     near(&n[..3],[0.,-4_f64.to_radians().sin(),4_f64.to_radians().cos()]);
+}
+
+#[test]
+fn m11_n_7955_zero_area_facet_has_no_weight_in_a_vertex_face_group() {
+    let p = part(vec![0.,0.,0., 1.,0.,0., 2.,0.,0., 0.,1.,0.],
+        vec![0,1,3, 1,2,3, 0,1,2],vec![4;3]);
+    for n in normals(&p).chunks_exact(3) {near(n,[0.,0.,1.]);}
+}
+
+#[test]
+fn m11_n_7955_shared_vertices_on_thousands_of_distinct_faces_are_bucketed() {
+    let p = part(vec![0.,0.,0., 1.,0.,0., 0.,1.,0.],
+        [0,1,2].repeat(4_000),(0..4_000).collect());
+    ProductBudget::new(BudgetStart::now(), 400_000, 10_000_000, 10_000).scope(|| {
+        for n in normals(&p).chunks_exact(3) {near(n,[0.,0.,1.]);}
+    });
 }

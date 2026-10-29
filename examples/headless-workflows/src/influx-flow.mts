@@ -8,7 +8,7 @@ import {
   buildRedactionMap, createStandardRegistry, headlessFeatures, interpolateSecrets,
   redactDeep, resolveSecretValues, validateSecretReferences, type FlowHost, type FlowNodeDef,
 } from '@ifc-lite/flow-nodes';
-import { queryRequest, parseInfluxCsv, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
+import { queryRequest, parseInfluxCsv, selectionContainsToken, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
 export { latestPerSeries } from '@ifc-lite/flow-nodes/influx';
 
 const tablePort = { kind: 'table', access: 'item' } as const;
@@ -79,6 +79,7 @@ export async function runInfluxSpike(selection: InfluxSelection, host: FlowHost,
   const values = resolveSecretValues(graph, env);
   if ([...values.values()].some(value => value.length < 6)) throw new Error('Token is too short for reliable output redaction');
   const [token = ''] = values.values();
+  if (selectionContainsToken(selection, token)) throw new Error('INFLUX_TOKEN must not appear in selection fields or tags; supply it only through the environment');
   const parsed = parseCapabilities(graph.capabilities);
   if (!parsed.ok) throw new Error('Invalid graph capabilities');
   const registry = createStandardRegistry().registerAll(spikeNodes(selection, token));

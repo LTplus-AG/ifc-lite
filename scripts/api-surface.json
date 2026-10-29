@@ -6434,7 +6434,8 @@
     "matchInfluxSeries: function",
     "parseInfluxCsv: function",
     "queryRequest: function",
-    "redactInfluxError: function"
+    "redactInfluxError: function",
+    "selectionContainsToken: function"
   ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",

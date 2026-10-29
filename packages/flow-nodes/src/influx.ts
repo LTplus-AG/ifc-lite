@@ -61,16 +61,19 @@ export class InfluxRequestError extends Error {
   }
 }
 
+/** True when any selection value or tag (sent in the URL or Flux body) carries the token. */
+export function selectionContainsToken(selection: InfluxSelection, token: string): boolean {
+  const publicValues = [...Object.values(selection), ...Object.entries(selection.tags ?? {}).flat()];
+  return influxTokenForms(token).some(secret => publicValues.some(value => typeof value === 'string' && value.includes(secret)));
+}
+
 /** Request/response byte and time bounds supplement the server-side sample cap.
  * Never surface response bodies or transport exception messages (may echo auth). */
 export async function fetchInfluxReadings(selection: InfluxSelection, token: string, transport: typeof fetch = fetch, signal?: AbortSignal) {
   let request: ReturnType<typeof queryRequest>;
   try {
     if (token.length < 6 || /[\r\n]/.test(token)) throw new Error('Enter a valid token');
-    const publicValues = [...Object.values(selection), ...Object.entries(selection.tags ?? {}).flat()];
-    if (publicValues.some(value => typeof value === 'string' && (value.includes(token) || value.includes(encodeURIComponent(token))))) {
-      throw new Error('Keep the token only in the password input');
-    }
+    if (selectionContainsToken(selection, token)) throw new Error('Keep the token only in the password input');
     request = queryRequest(selection);
   } catch (error) {
     throw new InfluxRequestError('config', redactInfluxError(error, token));

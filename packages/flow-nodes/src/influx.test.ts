@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, it, expect } from 'vitest';
-import { fetchInfluxReadings, latestPerSeries, matchInfluxSeries, parseInfluxCsv, queryRequest, redactInfluxError, type InfluxSelection } from './influx.js';
+import { fetchInfluxReadings, latestPerSeries, matchInfluxSeries, parseInfluxCsv, queryRequest, redactInfluxError, selectionContainsToken, type InfluxSelection } from './influx.js';
 
 const selection: InfluxSelection = {
   url: 'https://influx.example.com', org: 'test', bucket: 'monitoring', measurement: 'environment',
@@ -110,5 +110,10 @@ describe('InfluxDB shared adapters (#8090)', () => {
     await expect(fetchInfluxReadings({ ...selection, org: token }, token, transport)).rejects.toMatchObject({ kind: 'config' });
     expect(count).toBe(1);
     await expect(fetchInfluxReadings(selection, token, async () => new Response('x'.repeat(2 * 1024 * 1024 + 1)))).rejects.toMatchObject({ kind: 'data' });
+  });
+  it('#8297 flags a token in any selection field or tag', () => {
+    expect(selectionContainsToken({ ...selection, org: 'org-secret/a+b' }, 'secret/a+b')).toBe(true);
+    expect(selectionContainsToken({ ...selection, tags: { site: encodeURIComponent('secret/a+b') } }, 'secret/a+b')).toBe(true);
+    expect(selectionContainsToken(selection, 'secret/a+b')).toBe(false);
   });
 });

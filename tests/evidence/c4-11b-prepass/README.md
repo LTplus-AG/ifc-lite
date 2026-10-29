@@ -48,7 +48,9 @@ All commands use `~/build-workers/ifc-fleet run --cwd
 - Same native command at b02a8108e0, auto-a0331bbf508946bdb18c1590a99ba868:
   storage job-open refused before project start (original receipt reconciled).
 - Same task and route, `bash tests/evidence/c4-11b-prepass/validate.sh wasm`,
-  auto-ffae4ffb8e5e482c8a2a9e456d232afe at b02a8108e0: in progress.
+  auto-ffae4ffb8e5e482c8a2a9e456d232afe at b02a8108e0: both fresh builds and
+  declaration check passed; contracts could not load missing renderer dist. The
+  recipe now builds its TS dependencies through root pnpm/Turbo first.
 
 The first task's close attempt failed at remote manifest-release; source, logs,
 receipts and unresolved storage remain preserved. No foreign process or output

@@ -50,6 +50,7 @@ elif [[ "$phase" == wasm ]]; then
   git archive "$base" | tar -x -C "$scratch"
   (cd "$scratch"; CI=1 bash scripts/build-wasm.sh)
   pnpm install --frozen-lockfile --prefer-offline
+  CI=1 pnpm build --concurrency=2 --filter=@ifc-lite/renderer... --filter=@ifc-lite/geometry... --filter=@ifc-lite/export...
   # Fresh build is mandatory: CI=1 forbids build-wasm's developer soft skip.
   CI=1 pnpm build:wasm
   git diff --exit-code -- 'packages/wasm/pkg*/ifc-lite.d.ts'

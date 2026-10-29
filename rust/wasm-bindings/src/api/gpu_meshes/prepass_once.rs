@@ -100,6 +100,7 @@ impl IfcAPI {
                 &pre_pass.resolved.element_material_colors,
             );
 
+        self.collect_pipeline_refusals(&decoder);
         PrepassOnceData {
             simple_jobs: pre_pass.simple_jobs,
             complex_jobs: pre_pass.complex_jobs,

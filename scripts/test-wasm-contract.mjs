@@ -1498,7 +1498,7 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
     const one = diagApi.getPipelineDiagnostics();
     assert.ok(one && typeof one === 'object', 'diagnostics must be an object after a batch');
     // Versioned wire shape: the schema-stability contract on the real boundary.
-    assert.equal(one.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
+    assert.equal(one.schemaVersion, 2, 'schemaVersion must match the pinned contract (bump = breaking)');
     assert.equal(one.batches, 1, 'exactly one batch recorded');
     // Real VALUES, not just key presence: the column fixture has geometry, so a
     // serde bug emitting zero/wrong counts would be caught.
@@ -1516,6 +1516,8 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
     // A second processGeometryBatch of the SAME load ACCUMULATES: record_batch
     // sums per batch, so batches increments and the counts never decrease.
     runBatch();
+    assert.equal(one.refusedInputElements, 0);
+    assert.equal(one.refusedPrepassRecords, 0);
     const two = diagApi.getPipelineDiagnostics();
     assert.equal(two.batches, 2, 'batches accumulate across processGeometryBatch calls');
     assert.ok(two.meshCount >= one.meshCount, 'meshCount accumulates (monotonic)');

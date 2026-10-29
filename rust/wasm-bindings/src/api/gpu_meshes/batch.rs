@@ -367,6 +367,7 @@ impl IfcAPI {
         // Process only the entities specified in jobs_flat — every job runs
         // THE canonical per-element producer (`ifc_lite_processing::element`),
         // the same code the native pipeline runs.
+        self.collect_pipeline_refusals(&decoder);
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
                 break;
@@ -384,6 +385,9 @@ impl IfcAPI {
             // marshalling cost across ~60-110 K jobs. produce_element_meshes
             // takes `&DecodedEntity`, so we deref the Arc at the call site.
             let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
+                let _ = decoder.refuse_record(id);
+                self.collect_pipeline_refusals(&decoder);
+                self.note_refused_input();
                 continue;
             };
             // Schema-resolved, like the native pre-pass at
@@ -469,6 +473,7 @@ impl IfcAPI {
                 &mut decoder,
                 &router,
             );
+            if self.collect_pipeline_refusals(&decoder) { self.note_refused_input(); }
             let Ok(produced) = produced else { batch_refused += 1; continue };
 
             for (product_id, fails) in produced.csg_failures {
@@ -579,6 +584,7 @@ impl IfcAPI {
         // already hoisted here), so its cumulative point-cache stats ARE this
         // batch's faceted-brep memoization tally.
         let (point_cache_hits, point_cache_misses) = decoder.point_cache_stats();
+        self.collect_pipeline_refusals(&decoder);
         self.record_pipeline_batch(
             batch_elements,
             batch_meshes,

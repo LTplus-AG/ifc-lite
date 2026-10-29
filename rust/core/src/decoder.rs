@@ -292,20 +292,24 @@ impl<'a> EntityDecoder<'a> {
         Error::UnrepresentableReal(id)
     }
 
-    /// How many records this decoder has refused under input admission: an
-    /// unrepresentable REAL (#7678) or a malformed point/direction leaf
-    /// (`leaf_read`, F3b, D29). One counter, so a geometry job that sees it
-    /// move refused input.
+    /// Distinct input-admission refusals since the last diagnostic drain.
     pub fn refused_records(&self) -> u64 {
         self.refused_record_ids().len() as u64
     }
 
-    /// The distinct record ids this decoder has refused (#7678), so callers
-    /// that combine several decoders count each record once.
+    /// Distinct input-admission refusals (#7678).
     pub fn refused_record_ids(&self) -> Vec<u32> {
         let ids = self.refused_records.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         ids.iter().copied().collect()
     }
+
+    /// Drain diagnostic refusals at an element boundary without changing decoded
+    /// entities. Re-reading a refused record in another job counts that job too.
+    pub fn take_refused_record_ids(&self) -> Vec<u32> {
+        self.refused_records.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain().collect()
+    }
+
 
     /// Decode the entity in `[start, end)` **without** touching the cache.
     ///

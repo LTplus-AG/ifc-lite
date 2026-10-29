@@ -35,6 +35,10 @@
 //!   shipping producer; the native constructor is available API, not a second
 //!   projection kept in lockstep.
 
+#[path = "pipeline_diagnostics_report.rs"]
+mod report;
+pub use report::PipelineDiagnosticsReport;
+
 use crate::types::response::ProcessingStats;
 use ifc_lite_geometry::{GeometryDiagnostics, RectFastSummary};
 

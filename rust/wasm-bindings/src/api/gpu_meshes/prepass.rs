@@ -435,6 +435,7 @@ impl IfcAPI {
         // `get_or_build_material_layer_index`, which ships an EMPTY index when the
         // file authors no layer set (its substring bail-out). from_spans reuses
         // the already-stashed IfcRelAssociatesMaterial spans — no extra walk.
+        self.collect_pipeline_refusals(&decoder);
         let material_layer_flat = if has_layer_set {
             ifc_lite_geometry::MaterialLayerIndex::from_spans(
                 &prepass_spans.rel_associates_material,

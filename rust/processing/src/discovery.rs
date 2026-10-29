@@ -150,6 +150,8 @@ impl TypeGeometryPlan {
     ) {
         for (id, start, end, ty) in candidates {
             if decoder.decode_at_with_id(*id, *start, *end).is_err() {
+                // #7782/F2: syntax refusals also omit this prepass type record.
+                let _ = decoder.refuse_record(*id);
                 continue;
             }
             let maps = record_refs_at(

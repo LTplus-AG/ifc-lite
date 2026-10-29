@@ -295,7 +295,8 @@ pub struct IfcAPI {
     /// `buildPrePassStreaming`, `setEntityIndex`) - deliberately NOT by
     /// `clearPrePassCache`, which runs at end-of-load before a host reads the
     /// diagnostics.
-    pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnostics>,
+    pipeline_refusals: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
+    pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnosticsReport>,
     /// The loaded content's model lifecycle: each geometry batch snapshots its
     /// maps under it, and a content swap invalidates every earlier snapshot.
     production_model: ifc_lite_processing::element::ProductionModel,
@@ -336,8 +337,9 @@ impl IfcAPI {
             cached_geometry_styles: std::sync::Mutex::new(None),
             style_finishes: std::sync::Mutex::new(None),
             pending_geometry_finishes: std::sync::Mutex::new(None),
+            pipeline_refusals: std::sync::Mutex::default(),
             pipeline_diagnostics: std::sync::Mutex::new(
-                ifc_lite_processing::PipelineDiagnostics::default(),
+                ifc_lite_processing::PipelineDiagnosticsReport::default(),
             ),
             production_model: ifc_lite_processing::element::ProductionModel::new(),
         }

@@ -73,13 +73,35 @@ impl IfcAPI {
         );
     }
 
+    /// Union record identities, never decoder totals. Returns whether this
+    /// element's own scope saw a refusal; earlier jobs have already drained.
+    pub(crate) fn collect_pipeline_refusals(&self, decoder: &ifc_lite_core::EntityDecoder) -> bool {
+        let ids = decoder.take_refused_record_ids();
+        let refused = !ids.is_empty();
+        let mut records = self.pipeline_refusals.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        records.extend(ids);
+        self.pipeline_diagnostics.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .refused_prepass_records = records.len() as u64;
+        refused
+    }
+
+    pub(crate) fn note_refused_input(&self) {
+        self.pipeline_diagnostics.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .refused_input_elements += 1;
+    }
+
     /// Reset the accumulator (a new load on a reused IfcAPI). Called from
     /// `clearPrePassCache` and `setEntityIndex`.
     pub(crate) fn reset_pipeline_diagnostics(&self) {
+        self.pipeline_refusals.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner).clear();
         let mut acc = self
             .pipeline_diagnostics
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *acc = ifc_lite_processing::PipelineDiagnostics::default();
+        *acc = ifc_lite_processing::PipelineDiagnosticsReport::default();
     }
 }

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PluginContext } from '@ifc-lite/plugin-api';
-import { checked, type BimcollabTransport } from './http-client.js';
+import { BimcollabHttpError, checked, type BimcollabTransport } from './http-client.js';
 import type { BimcollabSession, IndexRecord } from './types.js';
 
 interface CachedIndex { expires: number; records: IndexRecord[] }
@@ -16,22 +16,30 @@ export interface LegacyNames {
 /**
  * Whether an index record belongs to the requested project. A document
  * attached to a project PHASE carries no project on the web-app record, only
- * the phase, so phase names from the public structure stand in for it.
+ * the phase, so phase names from the public structure stand in for it. Safe
+ * because the fallback only serves current versions (see download): the
+ * requested document's own row is then always in the index, so a lookalike
+ * makes the match ambiguous and refused rather than silently unique.
  */
-export function inProject(row: IndexRecord, names: Pick<LegacyNames, 'project' | 'phases' | 'latest'>): boolean {
+export function inProject(row: IndexRecord, names: Pick<LegacyNames, 'project' | 'phases'>): boolean {
   if (row.projectName !== null) return row.projectName === names.project;
-  // A phase name is not a project identity. It is accepted only for the current
-  // version: then the requested document's own row is in the (current-versions)
-  // index, so a same-named phase elsewhere makes the match ambiguous and refused
-  // instead of silently unique. For a historical version it could be the only match.
-  if (names.latest === false) return false;
   return row.projectPhaseName !== null && (names.phases ?? []).includes(row.projectPhaseName);
 }
+
+/** An index the user cannot read is a location they cannot hold the document in. */
+const NO_ACCESS = new Set([401, 403, 404]);
+
 export class LegacyDownload {
   private readonly cache = new Map<string, CachedIndex>();
   constructor(private readonly transport: BimcollabTransport, private readonly ttl = 60_000) {}
   async download(ctx: PluginContext, session: BimcollabSession, names: LegacyNames,
     documentNumber: string, versionNumber: string, signal?: AbortSignal): Promise<Response> {
+    // The web-app index lists CURRENT versions only. For an older revision the
+    // requested row is never present, so any match would be another document's
+    // current version that merely shares the numbers: never a safe answer.
+    if (names.latest === false) {
+      throw new Error('BIMcollab cannot download older versions of this document yet; open the current version, or download this one in BIMcollab.');
+    }
     const key = JSON.stringify([session.spaceGuid, session.spaceLabel, names.locationGuid]);
     // Expire entries eagerly so browsing many spaces does not retain their indexes.
     for (const [id, entry] of this.cache) if (entry.expires <= Date.now()) this.cache.delete(id);
@@ -68,8 +76,16 @@ export class LegacyDownload {
     signal?: AbortSignal): Promise<IndexRecord[]> {
     signal?.throwIfAborted();
     const indexes = await Promise.all(Array.from({ length: 10 }, async (_, i) => {
-      const result = await checked(await this.transport.index(ctx, session, i + 1, signal));
-      return (await result.json() as { records: IndexRecord[] }).records;
+      try {
+        const result = await checked(await this.transport.index(ctx, session, i + 1, signal));
+        return (await result.json() as { records: IndexRecord[] }).records;
+      } catch (error) {
+        // No access to a location means it cannot hold the user's document. Any
+        // other failure aborts: skipping it could hide a duplicate and make an
+        // ambiguous match look unique.
+        if (error instanceof BimcollabHttpError && NO_ACCESS.has(error.status)) return [];
+        throw error;
+      }
     }));
     const named = indexes.map(records => records.filter(row => row.locationName === names.location))
       .filter(rows => rows.some(row => inProject(row, names)));

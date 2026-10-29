@@ -59,9 +59,11 @@ On the specific public download-unavailable 404, the default fallback probes
 numeric locations 1–10 sequentially by location/project name, caches the matching
 index for 60 seconds, and requires exactly one document-number/version-number
 match. It honors `allowDownload: false`. An inaccessible or ambiguous match fails
-explicitly. The index exposes current versions: an older revision downloads only
-if the public endpoint serves it or the index contains that exact version; the
-provider never silently substitutes the latest bytes. Set
+explicitly. The index exposes current versions only, so the fallback serves only a
+document's current version; an older revision downloads only if the public
+endpoint serves it, and is otherwise refused (never substituted). An index the
+user cannot read (401/403/404) counts as an empty location; any other index
+failure aborts the fallback. Set
 `legacyDownloadFallback: false` once BIMcollab fixes its public endpoint.
 
 For Node/CLI, inject `new DirectBimcollabTransport(fetchFn)` (optional second

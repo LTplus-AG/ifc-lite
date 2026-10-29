@@ -19,7 +19,7 @@ const record = { documentId: 1, documentNumber: 'D1', versionNumber: '1', versio
   allowDownload: true, locationId: 2, locationName: 'Location', projectId: 1, projectName: 'Project', projectPhaseName: null };
 const ref = { projectId: 'p', containerId: 'root', fileId: 'd' };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; versions?: unknown[]; legacy?: boolean } = {}) {
+function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; versions?: unknown[]; indexStatus?: Record<number, number>; legacy?: boolean } = {}) {
   const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer secret-token');
@@ -29,6 +29,8 @@ function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: 
     if (url.includes('/document-versions') && !url.endsWith('/download')) return json(options.versions ?? [version]);
     if (url.includes('/index?')) {
       const locationId = Number(new URL(url, 'https://x').searchParams.get('locationId'));
+      const status = options.indexStatus?.[locationId];
+      if (status) return json({ error: 'upstream_error' }, status);
       // Default: the space's only populated location is 2.
       const records = options.byLocation ? options.byLocation[locationId] ?? [] : locationId === 2 ? options.records ?? [record] : [];
       return json({ records });
@@ -170,14 +172,22 @@ describe('BIMcollab source provider (fake transport only)', () => {
     const foreign = setup({ records: [{ ...phaseRecord, projectPhaseName: 'Unknown phase' }] });
     await expect(foreign.provider.download(foreign.ctx, phasedRef)).rejects.toThrow();
   });
-  it('never matches a phase-only row for a historical revision (the right row is not in the index)', async () => {
-    // Another project's same-named phase whose CURRENT version equals the requested historical one.
-    const lookalike = { ...record, versionId: 91, projectId: null, projectName: null, projectPhaseName: 'Design' };
+  it('refuses a historical revision outright: the web-app index only knows current versions', async () => {
+    // Another project's document whose CURRENT version equals the requested historical one.
+    const lookalike = { ...record, versionId: 91, projectName: 'Project' };
     const { provider, ctx, fetchFn } = setup({ records: [lookalike],
       versions: [version, { ...version, documentVersionId: 'old', versionNumber: '1' }] });
-    const historical = { projectId: 'phased', containerId: 'phase', fileId: 'd', revisionId: 'old' };
-    await expect(provider.download(ctx, historical)).rejects.toThrow(/BIMcollab legacy download/);
-    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/91'))).toBe(false);
+    const historical = { projectId: 'p', containerId: 'root', fileId: 'd', revisionId: 'old' };
+    await expect(provider.download(ctx, historical)).rejects.toThrow('cannot download older versions');
+    expect(fetchFn.mock.calls.some(call => String(call[0]).includes('/index?'))).toBe(false);
+    expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
+  });
+  it('treats an inaccessible location index as empty, but aborts on any other index failure', async () => {
+    const forbidden = setup({ indexStatus: { 7: 403, 9: 404 } });
+    expect(new TextDecoder().decode(await forbidden.provider.download(forbidden.ctx, ref))).toBe('IFC');
+    const broken = setup({ indexStatus: { 7: 502 } });
+    await expect(broken.provider.download(broken.ctx, ref)).rejects.toThrow(BimcollabHttpError);
+    expect(broken.fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
   });
   it('refuses (never guesses) when two projects have a same-named phase holding the same document number', async () => {
     const phaseRecord = { ...record, projectId: null, projectName: null, projectPhaseName: 'Design' };
@@ -198,7 +208,7 @@ describe('BIMcollab source provider (fake transport only)', () => {
     await expect(empty.provider.download(empty.ctx, ref)).rejects.toThrow('1–10');
     expect(empty.fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(10);
     const old = setup();
-    await expect(old.provider.download(old.ctx, { ...ref, revisionId: 'unknown-old' })).rejects.toThrow('version number');
+    await expect(old.provider.download(old.ctx, { ...ref, revisionId: 'unknown-old' })).rejects.toThrow(/version number|older versions/);
   });
   it('can disable the legacy fallback and does not fallback on unrelated 404', async () => {
     const disabled = setup({ fallback: false });

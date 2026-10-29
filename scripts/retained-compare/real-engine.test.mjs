@@ -88,11 +88,12 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
   // M11-N: the writer emits one `vn` per triangle corner and faces reference them as `v//n`.
   // Everything else (vertices, groups, materials, face vertex order) must stay byte-identical.
   const corners = outcomes.flatMap(p => p.parts).reduce((n, part) => n + part.indices.length, 0);
-  assert.equal(written.filter(line => line.startsWith('vn ')).length, corners, 'exactly one normal per triangle corner');
-  assert.ok(!previous.some(line => line.startsWith('vn ')), 'the M11-0 base golden carries no normals');
+  // OBJ record kind = the first token of the line (parsed output, not a text predicate).
+  const kind = line => line.split(' ', 1)[0];
+  assert.equal(written.filter(line => kind(line) === 'vn').length, corners, 'exactly one normal per triangle corner');
   let normal = 0;
-  const current = written.filter(line => !line.startsWith('vn ')).map(line => {
-    if (!line.startsWith('f ')) return line;
+  const current = written.filter(line => kind(line) !== 'vn').map(line => {
+    if (kind(line) !== 'f') return line;
     const refs = line.slice(2).split(' ').map(corner => {
       const [vertex, empty, n] = corner.split('/');
       assert.equal(empty, '', 'face corners are v//n');

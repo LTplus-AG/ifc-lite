@@ -25,16 +25,9 @@ fn m6_source_normals_include_bounded_sides_arcs_and_boxed_plane() {
     let absent = SOURCE.lines().filter(|s|!s.contains("IFCBOUNDINGBOX(")).collect::<Vec<_>>().join("\n");
     assert_eq!(serde_json::to_value(source(&absent,1007)).unwrap(),serde_json::to_value(source(SOURCE,1007)).unwrap());
 }
-fn affine_boxed() -> String {
-    SOURCE.replace("#383=IFCSHAPEREPRESENTATION(#4,'Body','CSG',(#345));",
-        "#383=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#9004));\n\
-         #9001=IFCSHAPEREPRESENTATION(#4,'Body','CSG',(#345));\n\
-         #9002=IFCREPRESENTATIONMAP(#2,#9001);\n\
-         #9003=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM(#9005,#9006,#1,2.,#3,3.,1.);\n\
-         #9004=IFCMAPPEDITEM(#9002,#9003);\n\
-         #9005=IFCDIRECTION((-1.,0.,0.));\n\
-         #9006=IFCDIRECTION((0.,1.,0.));")
-}
+#[path="support/m6_affine.rs"]
+mod m6_affine;
+use m6_affine::affine_boxed;
 #[test]
 fn m6_source_boxed_plane_survives_mirrored_nonuniform_final() {
     direction(&source(&affine_boxed(),1007),[-2.,3.,2.],[0.,0.,1.]);

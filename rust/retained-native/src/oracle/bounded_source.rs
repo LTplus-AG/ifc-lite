@@ -150,3 +150,22 @@ fn arc(a:[f64;2],b:[f64;2],c:[f64;2])->Option<Edge> {
     let sweep=if d>0.{(end-start).rem_euclid(tau)}else{-((start-end).rem_euclid(tau))};
     Some(Edge::Arc{c:center,u:[radius,0.],v:[0.,radius],a:start,sweep})
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn m6_7955_mirrored_plane_preserves_removed_side() {
+        let bytes=include_bytes!("../../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
+        let bundle=ifc_lite_core::SourceBundle::new(bytes.to_vec());
+        let mut decoder=bundle.decoder();
+        let plain=Clip::read(344,&IDENTITY,&mut decoder).unwrap();
+        let mut mirror=IDENTITY;mirror[0]=-2.;mirror[5]=3.;
+        let reflected=Clip::read(344,&mirror,&mut decoder).unwrap();
+        for p in [[1.,1.,0.],[1.,1.,3.]] {
+            let removed=plain.plane.1-dot(plain.plane.0,p);
+            let mirrored=reflected.plane.1-dot(reflected.plane.0,transform(&mirror,p));
+            assert_eq!(removed,mirrored,"removed side at {p:?}");
+        }
+    }
+}

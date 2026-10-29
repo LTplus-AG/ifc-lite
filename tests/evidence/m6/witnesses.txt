@@ -13,3 +13,4 @@ m6_clipped_style
 m6_equivalent_boundaries
 m6_mapped_boundaries
 m6_circle_volume_false_pass
+m6_mirrored_bounded

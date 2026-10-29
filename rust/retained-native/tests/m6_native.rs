@@ -242,3 +242,15 @@ fn m6_native_mapped_pbhs_products_receive_bounded_source_checks() {
     }
     println!("sdk witness executed: m6_mapped_boundaries");
 }
+
+#[path="support/m6_affine.rs"]
+mod m6_affine;
+#[test]
+fn m6_native_mirrored_bounded() {
+    if worker().is_none(){return;}
+    // Refs #7955: full source volume, clearance and closure gate on diag(-2,3,1).
+    let text=m6_affine::affine_boxed();
+    let outcomes=run(&text,&[1007]);
+    verify(&text,shape(&outcomes,1007),Some(192.));
+    println!("sdk witness executed: m6_mirrored_bounded");
+}

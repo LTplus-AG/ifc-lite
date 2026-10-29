@@ -9,11 +9,11 @@
     },
     {
       "file": "f-h-affine-finals-adversarial.ifc",
-      "sha256": "fcf7635c1b0c0793240045b53225a10173972b272d91e3dcdeb117b82ebefc5e",
+      "sha256": "e1a3affb656d780cfa0bf270610b1ca6bcbb0fa1f6f1ca5219f56c29bcb2fb30",
       "errors": [
         {
           "attribute": "IfcCartesianTransformationOperator.ScaleGreaterZero",
-          "message": "(scl > 0.0)\n\nViolated by:\n    (-1.0 > 0.0)\n\nOn instance:\n    #45=IfcCartesianTransformationOperator3D(#42,#43,#44,-1.,#3)\n"
+          "message": "(scl > 0.0)\n\nViolated by:\n    (-1.0 > 0.0)\n\nOn instance:\n    #30=IfcCartesianTransformationOperator3D(#27,#28,#29,-1.,#3)\n"
         }
       ],
       "roundtrip": true

@@ -74,6 +74,9 @@ fn m10_sdk_source_oracles_and_native_reference() {
         }
     }
     let adversarial=support::native(ADVERSARIAL).unwrap();
+    let negative=support::shape(&adversarial,34);
+    assert!((geometry_assertions::measured(negative).volume-0.56).abs()<1e-9);
+    for part in &negative.parts {assert!(affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap().0>0.);}
     // Invalid IFC Scale remains a controller-only test; never corpus qualification.
     for outcome in &adversarial {match outcome {
         ProductOutcome::Published(p)=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":p.product_id,"code":"published","volume":geometry_assertions::measured(p).volume})),

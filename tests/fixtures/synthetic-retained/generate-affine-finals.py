@@ -38,11 +38,16 @@ def generate(adversarial=False):
         result=m.add('IFCBUILDINGELEMENTPROXY',m.gid(case),'$',repr(case),'$','$',placement or m.placement,rep,'$','.NOTDEFINED.')
         m.products.append(result); cases.append(f'/* {case}: product {result}; hand volume {volume} */')
         return result
+    def finish():
+        text=m.finish().replace("'SYNTHETIC; issue 7955; not authoring-tool evidence'","'SYNTHETIC qualification M10'")
+        return text.replace('DATA;\n','DATA;\n'+'\n'.join(cases)+'\n')
     src=mapping([p])
+    if adversarial:
+        product('h4',[occurrence(src,scales=(-1,-1,-1))],.56)
+        return finish()
     product('h1',[occurrence(src)],.56)
     product('h2',[occurrence(src,x=(-1,0,0))],.56)
     product('h3',[occurrence(src,y=(0,-1,0))],.56)
-    if adversarial: product('h4',[occurrence(src,scales=(-1,-1,-1))],.56)
     product('h5',[occurrence(src,scales=(2,2,2))],4.48)
     product('h6',[occurrence(src,scales=(.5,.5,.5))],.07)
     product('h7',[occurrence(src,scales=(2,3,4))],13.44)
@@ -85,8 +90,8 @@ def generate(adversarial=False):
     half=m.add('IFCHALFSPACESOLID',plane,'.T.')
     clip=m.add('IFCBOOLEANCLIPPINGRESULT','.DIFFERENCE.',b,half)
     product('h22',[occurrence(mapping([clip],'Clipping'),scales=(2,3,1))],15)
-    text=m.finish().replace("'SYNTHETIC; issue 7955; not authoring-tool evidence'","'SYNTHETIC qualification M10'")
-    return text.replace('DATA;\n','DATA;\n'+'\n'.join(cases)+'\n')
+    return finish()
+
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(); parser.add_argument('--check',action='store_true'); args=parser.parse_args()

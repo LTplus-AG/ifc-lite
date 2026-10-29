@@ -13,8 +13,8 @@ export async function m10NativeReference() {
   if (rows.length !== 23) throw new Error('M10 reference must contain 22 qualified and 1 adversarial candidates');
   return rows;
 }
-export function m10AssertOutcome(value, rows, tolerance) {
-  const row = rows.find(row => row.expressId === value.expressId);
+export function m10AssertOutcome(value, rows, tolerance, fixture) {
+  const row = rows.find(row => row.expressId === value.expressId && (row.fixture ?? 'main') === fixture);
   if (!row || row.seen) throw new Error('Unexpected/duplicate product ' + value.expressId);
   row.seen = true;
   const code = value.status === 'published' ? 'published' : value.code;
@@ -46,7 +46,7 @@ extern "C" {
     #[wasm_bindgen(catch, js_name = m10NativeReference)]
     async fn native_reference() -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_name = m10AssertOutcome)]
-    fn assert_outcome(value: &JsValue, rows: &JsValue, tolerance: f64) -> Result<(), JsValue>;
+    fn assert_outcome(value: &JsValue, rows: &JsValue, tolerance: f64, fixture: &str) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = m10AssertComplete)]
     fn assert_complete(rows: &JsValue) -> Result<(), JsValue>;
 }
@@ -71,7 +71,7 @@ async fn retained_browser_m10_native_module_worker_parity() {
         if value.is_undefined() {
             break;
         }
-        assert_outcome(&value, &native, relative).unwrap();
+        assert_outcome(&value, &native, relative, "main").unwrap();
     }
     // Separate controller-extension parity; these non-schema products are not
     // in the coverage universe and are not evidence of IFC qualification.
@@ -89,7 +89,7 @@ async fn retained_browser_m10_native_module_worker_parity() {
         if value.is_undefined() {
             break;
         }
-        assert_outcome(&value, &native, relative).unwrap();
+        assert_outcome(&value, &native, relative, "adversarial").unwrap();
     }
     assert_complete(&native).unwrap();
 }

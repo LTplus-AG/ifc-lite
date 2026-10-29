@@ -45,9 +45,9 @@ export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] =
   () => import.meta.env.VITE_CLOUD_HOSTED === 'true' ? hostedDropbox() : new DropboxProvider(),
   () => import.meta.env.VITE_CLOUD_HOSTED === 'true' ? hostedMsGraph() : new MsGraphProvider(),
   // BIMcollab Documents rides on the saved BIMcollab BCF connection and the
-  // /api/bimcollab relay; flagged until its undocumented download fallback has
-  // run in production (docs/research/bimcollab-documents-api.md).
-  ...(import.meta.env.VITE_SOURCE_BIMCOLLAB === 'true' ? [() => new ViewerBimcollabProvider()] : []),
+  // /api/bimcollab relay. VITE_SOURCE_BIMCOLLAB=false is the kill switch, e.g.
+  // for a deployment without the relay (docs/research/bimcollab-documents-api.md).
+  ...(import.meta.env.VITE_SOURCE_BIMCOLLAB === 'false' ? [] : [() => new ViewerBimcollabProvider()]),
 ];
 
 /** Every built-in provider, constructed. The drift guard's view of the list above. */

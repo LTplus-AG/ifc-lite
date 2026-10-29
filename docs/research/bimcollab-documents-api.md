@@ -1,6 +1,6 @@
 # BIMcollab Documents API — spike & implementation plan
 
-Status: spike (2026-10-29). Spike code: `apps/viewer/src/services/bimcollab-documents.ts` (+ test).
+Status: shipped (2026-10-29). Code: `server/sources/bimcollab-relay*.ts` + `api/bimcollab.ts` (relay), `packages/source-bimcollab` (provider), `apps/viewer/src/services/sources/bimcollab-source.ts` (viewer binding). On by default; `VITE_SOURCE_BIMCOLLAB=false` removes it.
 
 ## What the API is
 

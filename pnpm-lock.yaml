@@ -709,6 +709,9 @@ importers:
       '@ifc-lite/source-autodesk':
         specifier: workspace:^
         version: link:../../packages/source-autodesk
+      '@ifc-lite/source-bimcollab':
+        specifier: workspace:^
+        version: link:../../packages/source-bimcollab
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux

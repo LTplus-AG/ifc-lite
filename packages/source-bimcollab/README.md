@@ -11,7 +11,12 @@ import {
   spaceIdFromAccessToken, spaceLabelFromServerUrl,
 } from '@ifc-lite/source-bimcollab';
 
-// Host callbacks, backed by the existing BCF login and refresh lifecycle.
+// Supplied by the host: its BCF login (with refresh), the saved BCF server
+// URL, and a fetch that can only reach the same-origin relay.
+declare const getAccessToken: () => Promise<string>;
+declare const savedBcfServerUrl: string;
+declare const approvedRelayFetch: typeof fetch;
+
 const session = {
   spaceGuid: spaceIdFromAccessToken(await getAccessToken()),
   spaceLabel: spaceLabelFromServerUrl(savedBcfServerUrl),

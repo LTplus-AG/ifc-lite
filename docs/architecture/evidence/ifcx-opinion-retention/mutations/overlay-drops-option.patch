@@ -1,0 +1,12 @@
+diff --git a/packages/ifcx/src/index.ts b/packages/ifcx/src/index.ts
+index 05c938a911..c18e0e8b7f 100644
+--- a/packages/ifcx/src/index.ts
++++ b/packages/ifcx/src/index.ts
+@@ -669,6 +669,7 @@ export async function addIfcxOverlay(
+         options.onProgress?.({ phase: `compose-${phase}`, percent });
+       },
+       maxInheritDepth: options.maxInheritDepth,
++      retainOpinions: options.retainOpinions,
+     });
+     options.onProgress?.({ phase: 'compose', percent: 100 });
+ 

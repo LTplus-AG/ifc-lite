@@ -32,7 +32,7 @@ describe('InfluxDB shared adapters (#8090)', () => {
   it('#8297 accepts ordinary ASCII punctuation and rejects control bytes', () => {
     const request = queryRequest({ ...selection, bucket: 'ABC[]^_@' });
     expect(JSON.parse(request.body).query).toContain('from(bucket: "ABC[]^_@")');
-    expect(() => queryRequest({ ...selection, bucket: '\u0001' })).toThrow(/control/);
+    expect(() => queryRequest({ ...selection, bucket: String.fromCharCode(1) })).toThrow(/control/);
   });
   it('#8297 accepts an empty display unit while required Flux fields remain non-empty', () => {
     expect(queryRequest({ ...selection, unit: '' })).toEqual(queryRequest(selection));

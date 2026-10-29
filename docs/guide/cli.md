@@ -1807,7 +1807,7 @@ are included once per type, with all unreferenced maps placed at their MappingOr
 One unsupported map refuses the entire type. Instanced type-library shapes and
 types with only curve maps that exact does not mesh are absent. OBJ headers carry
 `PresentationObligationsUnmet`: output is shape-only and does not meet the display contract.
-The optional `ifc-lite.retained-report/2` JSON contains engine identity, settings, coverage
+The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
 refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.

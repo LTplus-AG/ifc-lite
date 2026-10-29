@@ -18,8 +18,3 @@ Supplements [root AGENTS.md](../AGENTS.md).
 - **Kernel booleans:** `subtract[_many]` / `union[_many]` / `intersection` (`geometry/src/kernel/mesh_bridge.rs`). Group cuts go through `ClippingProcessor::subtract_mesh_many` (`geometry/src/csg/group_cut.rs`).
 
 **G3 (#7779):** `scripts/check-leaf-reader-copies.mjs` rejects copied production leaf spellings; only the canonical decoder reader is exempt. It masks comments, literals, test files and simple `cfg(test)` blocks, but scans compound cfg. Zero hits prove spelling only, not semantics or native/WASM/server parity. CI runs the scanner and synthetic controls.
-
-- **Shared scheduler boundaries:** `processing/src/execution.rs` builds routers
-  from `RouterConfig`, caches and `SchedulerPolicy`, decodes job spans and drains
-  router diagnostics. Keep native worker cache guards and browser batch-local
-  state in their schedulers; the owned context/session remains the production body.

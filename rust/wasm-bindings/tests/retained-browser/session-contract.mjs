@@ -54,7 +54,9 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
             }
           } else {
             assert(event.parts.length > 0 && event.parts.every(part => part.positions instanceof Float64Array), 'shape detail preserves M1 f64 parts');
-            assert(event.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3 && part.color === undefined && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === undefined), 'M11-0 copies every revision-local face; M11-F keys every triangle; M11-N supplies every corner normal');
+            assert(event.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3 && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === undefined), 'M11-0 copies every revision-local face; M11-F keys every triangle; M11-N supplies every corner normal');
+            assert(event.parts.every(part => Array.isArray(part.color) && part.color.length === 4 && Number.isInteger(part.geometryItemId)), 'M11-A resolves an appearance for every part');
+            assert(!event.obligationsUnmet.includes('IfcAppearance'), 'M11-A discharges IfcAppearance');
           }
         } finally { event.meshes?.free(); }
       });

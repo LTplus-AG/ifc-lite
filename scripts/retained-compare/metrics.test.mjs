@@ -74,6 +74,12 @@ for (const [name, parts] of [
     { sourceCurved: false, clipExecuted: true },
   ]],
   ['curved host with bounds-skipped clip', [{ sourceCurved: true, clipExecuted: false }]],
+  // A product volume cannot attribute its gap to the one qualified part, so
+  // a qualified curved clip beside an unclipped round part must not widen.
+  ['clipped round plus unclipped round', [
+    { sourceCurved: true, clipExecuted: true },
+    { sourceCurved: true, clipExecuted: false },
+  ]],
 ]) {
   test(`#7955 M5 ${name} stays at 1e-9`, () => {
     const checks = parts.map((part, index) => ({ family: 'clipPart', part: index,

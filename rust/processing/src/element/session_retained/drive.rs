@@ -71,5 +71,5 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
             return Err(rejected.reason);
         }
     }
-    execution.into_witness(limits.chord_metres)
+    execution.into_witness(limits)
 }

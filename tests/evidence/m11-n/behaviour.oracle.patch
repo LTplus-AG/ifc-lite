@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/presentation/normals_mesh.rs
++++ b/rust/processing/src/element/session_retained/presentation/normals_mesh.rs
+@@ -132,7 +132,7 @@
+             for &adjacent in group {
+                 work(resources,1)?;
+                 let candidate = corners[adjacent];
+-                if candidate.angle > 0. && dot(own.normal,candidate.normal) >= -1. {
++                if candidate.angle > 0. && dot(own.normal,candidate.normal) >= threshold {
+                     for (s,n) in sum.iter_mut().zip(candidate.normal) { *s += candidate.angle * n; }
+                 }
+             }

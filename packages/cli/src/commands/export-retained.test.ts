@@ -62,7 +62,7 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
     'smlib/node/client.mjs', 'smlib/node/worker.mjs', 'smlib/node/hooks.mjs', 'smlib/worker.mjs', 'smlib/module.mjs',
     'smlib/sweep.mjs', 'smlib/sweep-contract.mjs', 'smlib/contract.mjs',
     'smlib/ifclite_smlib_browser.mjs', 'smlib/ifclite_smlib_browser.wasm', 'LICENSES/SMLib/LICENSE',
-    'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE'];
+    'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE', 'THIRD_PARTY_NOTICES.txt'];
   const content = 'must never execute';
   const assets = [];
   for (const path of paths) {
@@ -71,6 +71,15 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   }
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets }));
   await validateEngine(dir);
+  // Refs #7955: an internally consistent inventory still requires the root notice.
+  const manifestBytes = await readFile(join(dir, 'engine-manifest.json'));
+  const withoutNotice = JSON.parse(manifestBytes.toString());
+  withoutNotice.assets = assets.filter(asset => asset.path !== 'THIRD_PARTY_NOTICES.txt');
+  await rm(join(dir, 'THIRD_PARTY_NOTICES.txt'));
+  await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify(withoutNotice));
+  await expect(validateEngine(dir)).rejects.toThrow(/inventory is incomplete \(missing: THIRD_PARTY_NOTICES\.txt\); re-stage the engine/);
+  await writeFile(join(dir, 'THIRD_PARTY_NOTICES.txt'), content);
+  await writeFile(join(dir, 'engine-manifest.json'), manifestBytes);
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', dir);
   expect((await exportKernel(['--kernel', 'retained'], 'obj'))?.directory).toBe(dir);
   await writeFile(join(dir, paths[0]), 'tampered');
@@ -118,6 +127,10 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
   }
   expect(report.products[0]).toMatchObject({ instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } });
   expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(0, 0, 1) }] }], () => null)).toThrow(/corner normals/);
+  const signed = retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(-0, -0, 1, 0, -0, 1, -0, 0, 1) }] }], () => null);
+  const written = (signed.report.products[0] as unknown as { parts: { normals: number[] }[] }).parts[0].normals;
+  // JSON has no -0: a written -0 would not round-trip. Removing the `v + 0` canonicalisation fails here.
+  expect(written.some(v => Object.is(v, -0))).toBe(false);
 });
 
 it('#7955 M4 OBJ labels bands and reports their closed volumes', () => {

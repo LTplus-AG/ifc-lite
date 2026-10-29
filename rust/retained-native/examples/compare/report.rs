@@ -9,6 +9,7 @@ pub struct Report {
     pub layers: super::layer_report::LayerReport,
     pub candidates: usize,
     pub published: usize,
+    pub normal_planar_fallbacks: usize,
     pub type_candidates: usize,
     pub type_published: usize,
     pub histogram: BTreeMap<String, usize>,
@@ -58,6 +59,7 @@ impl Report {
         let bands=shape.parts.iter().filter(|p|p.layer.is_some()).count();
         self.layered_products+=usize::from(bands>0); self.bands+=bands;
         self.band_ms+=shape.band_ms; self.cap_ms+=shape.cap_ms;
+        self.normal_planar_fallbacks += shape.normal_planar_fallbacks;
         self.cuts += shape.cuts;
         self.cut_times_ms.extend_from_slice(&shape.cut_times_ms);
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
@@ -259,7 +261,7 @@ impl Report {
     pub fn summary(&self) -> Value {
         json!({"schema":"ifc-lite.native-retained-comparison/1", "candidates":self.candidates,
             "typeProducts":{"candidates":self.type_candidates,"published":self.type_published},
-            "published":self.published,"layeredProducts":self.layered_products,"bands":self.bands,"bandMs":self.band_ms,"capMs":self.cap_ms, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
+            "published":self.published,"layeredProducts":self.layered_products,"bands":self.bands,"bandMs":self.band_ms,"capMs":self.cap_ms, "normalPlanarFallbacks":self.normal_planar_fallbacks, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),

@@ -17,7 +17,8 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       ...(part.materialName === undefined ? {} : { materialName: part.materialName }),
       ...(part.geometryItemId === undefined ? {} : { geometryItemId: part.geometryItemId }),
       ...(part.materialId === undefined ? {} : { materialId: part.materialId }),
-      ...(part.normals ? { normals: Array.from(part.normals) } : {}),
+      // JSON has no negative zero; canonicalise so the written report round-trips exactly.
+      ...(part.normals ? { normals: Array.from(part.normals, v => v + 0) } : {}),
       ...(part.faces ? { faces: faceReport(part) } : {}) }));
     return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, bandMs: p.bandMs, capMs: p.capMs, maxSnapMetres: p.maxSnapMetres, parts, volumeM3: productVolume(p.parts),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,

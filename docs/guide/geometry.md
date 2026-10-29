@@ -919,13 +919,14 @@ returned meshes. An empty ID filter selects no jobs. Orphan type products follow
 product occurrences, once per type, with all unreferenced maps processed atomically
 at their MappingOrigin. Instanced types, types with only curve maps that exact does not mesh,
 and jobs without representations are skipped. Published orphan types leave
-MaterialLayers, IfcAppearance and PersistentFaces unmet.
+only IfcAppearance unmet (they have no layer phase).
 
 Published outcomes contain `expressId`, `ifcType`, and atomic `parts` with f64
 object-local metre positions, u32 indices, and column-major `worldFromObject`
 matrices into IFC Z-up world metres. Consumers must show the
-`PresentationObligationsUnmet` marker and its `obligationsUnmet` list. Openings,
-layers, appearance and persistent faces remain unmet. Refused outcomes carry
+`PresentationObligationsUnmet` marker and its `obligationsUnmet` list. A published
+product discharges opening closure, material layers, persistent faces and surface
+normals; only `IfcAppearance` remains unmet until the appearance slice lands. Refused outcomes carry
 an ID, typed code and optional origin, with no partial product or exact fallback.
 See the [WASM package contract](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#experimental-retained-whole-model-engine)
 for lifecycle, transport and result details. The default engine is unchanged.

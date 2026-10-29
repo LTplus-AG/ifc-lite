@@ -23,7 +23,7 @@ async function fixture(t: TestContext) {
     'smlib/node/client.mjs', 'smlib/node/worker.mjs', 'smlib/node/hooks.mjs', 'smlib/worker.mjs', 'smlib/module.mjs',
     'smlib/sweep.mjs', 'smlib/sweep-contract.mjs', 'smlib/contract.mjs', 'smlib/client.mjs',
     'smlib/ifclite_smlib_browser.mjs', 'smlib/ifclite_smlib_browser.wasm', 'LICENSES/SMLib/LICENSE',
-    'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE', 'smlib/x'];
+    'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE', 'THIRD_PARTY_NOTICES.txt', 'smlib/x'];
   const assets = [];
   for (const path of paths) {
     const content = `inert ${path}`;
@@ -62,12 +62,14 @@ for (const mode of ['dev', 'preview'] as const) {
       ['/smlib/x', 'text/plain'], ['/smlib/client.mjs', 'text/javascript'],
       ['/smlib/ifclite_smlib_browser.wasm', 'application/wasm'],
       ['/retained-engine/LICENSES/SMLib/LICENSE', 'text/plain'],
+      ['/retained-engine/THIRD_PARTY_NOTICES.txt', 'text/plain'],
       ['/retained-engine/LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'text/plain'],
       ['/retained-engine/engine-manifest.json', 'application/json'],
       ['/retained-engine/pkg-retained/ifc-lite.js', 'text/javascript'],
     ]) {
       const result = await get(address.port, path);
       assert.equal(result.status, 200, path);
+      if (path === '/retained-engine/THIRD_PARTY_NOTICES.txt') assert.equal(result.body, 'inert THIRD_PARTY_NOTICES.txt');
       assert(result.headers['content-type']?.startsWith(mime));
       assert.equal(result.headers.etag, f.etag);
       assert.equal(result.headers['cache-control'], 'no-cache');

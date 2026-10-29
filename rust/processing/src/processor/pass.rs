@@ -45,6 +45,7 @@ pub(super) struct PassContext<'c> {
     /// element would re-pay an O(file) IFCPROJECT scan.
     pub(super) seed_plane_angle_to_radians: f64,
     pub(super) quality: TessellationQuality,
+    pub(super) material_layers: Option<Arc<ifc_lite_geometry::MaterialLayerIndex>>,
     pub(super) skipped_entity_ids: HashSet<u32>,
     /// Swapped once, after the first batch, when styles were deferred.
     pub(super) geometry_style_index: Arc<FxHashMap<u32, GeometryStyleInfo>>,
@@ -176,6 +177,7 @@ impl<'c> PassContext<'c> {
             rtc_offset,
             seed_plane_angle_to_radians: facts.unit_scales.plane_angle_to_radians,
             quality: req.quality,
+            material_layers: facts.material_layers.clone(),
             skipped_entity_ids,
             geometry_style_index,
             run,

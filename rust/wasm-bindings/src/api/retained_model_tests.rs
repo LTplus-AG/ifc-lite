@@ -26,9 +26,9 @@ fn append(extra: &str) -> String {
 
 // Refs #7955 E2/M9: products precede orphan types; empty jobs stay absent.
 #[wasm_bindgen_test(async)]
-async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_order() {
-    let _driver = TestDriver::install(driver_factory().await.unwrap());
-    let start = prepare_peer(0).await.unwrap();
+async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_order() -> Result<(),JsValue> {
+    let _driver = TestDriver::install(driver_factory().await?);
+    let start = prepare_peer(0).await?;
     let source = append(
         "#80=IFCBUILDINGELEMENTPROXY('p',$,$,$,$,#24,#9004,$,.NOTDEFINED.);\n\
 #9000=IFCPOLYLINE((#1,#1,#1));#9003=IFCSHAPEREPRESENTATION(#4,'Axis','Curve2D',(#9000));#9004=IFCPRODUCTDEFINITIONSHAPE($,$,(#25,#9003));\n\
@@ -41,37 +41,36 @@ async fn retained_browser_smlib_free_model_publishes_and_refuses_in_canonical_or
 #95=IFCBUILDINGELEMENTPROXY('empty',$,$,$,$,#24,$,$,.NOTDEFINED.);",
     );
     let api = IfcAPI::new();
-    let mut run = api.retained_model(source.as_bytes(), None).await.unwrap();
-    assert_published(&run.next_outcome(), 27, "IfcBuildingElementProxy").unwrap();
-    assert_refused(&run.next_outcome(), 80, "material_layer_strategy").unwrap();
-    assert_published(&run.next_outcome(), 60, "IfcBuildingElementProxy").unwrap();
-    assert_published(&run.next_outcome(), 90, "IfcBoilerType").unwrap();
-    assert!(run.next_outcome().is_undefined());
-    assert!(run.next_outcome().is_undefined());
-    assert_peers(&start, 1).await.unwrap();
+    let mut run = api.retained_model(source.as_bytes(), None).await?;
+    assert_published(&run.next_outcome(), 27, "IfcBuildingElementProxy")?;
+    assert_refused(&run.next_outcome(), 80, "material_layer_strategy")?;
+    assert_published(&run.next_outcome(), 60, "IfcBuildingElementProxy")?;
+    assert_published(&run.next_outcome(), 90, "IfcBoilerType")?;
+    finished(run.next_outcome())?;
+    finished(run.next_outcome())?;
+    assert_peers(&start, 1).await?;
 
-    let start = prepare_peer(0).await.unwrap();
+    let start = prepare_peer(0).await?;
     let mut run = api
         .retained_model(source.as_bytes(), Some(vec![]))
-        .await
-        .unwrap();
-    assert!(run.next_outcome().is_undefined());
-    assert_peers(&start, 0).await.unwrap();
+        .await?;
+    finished(run.next_outcome())?;
+    assert_peers(&start, 0).await?;
     let mut run = api
         .retained_model(source.as_bytes(), Some(vec![80]))
-        .await
-        .unwrap();
-    assert_refused(&run.next_outcome(), 80, "material_layer_strategy").unwrap();
-    assert!(run.next_outcome().is_undefined());
-    assert_peers(&start, 0).await.unwrap();
+        .await?;
+    assert_refused(&run.next_outcome(), 80, "material_layer_strategy")?;
+    finished(run.next_outcome())?;
+    assert_peers(&start, 0).await?;
+    Ok(())
 }
 
 // #7955 E2: after one accepted part, a second-part runtime failure exposes no
 // mesh for that product. The next product gets a new, independently qualified peer.
 #[wasm_bindgen_test(async)]
-async fn retained_browser_smlib_free_model_atomicity_and_worker_replacement() {
-    let _driver = TestDriver::install(driver_factory().await.unwrap());
-    let start = prepare_peer(3).await.unwrap();
+async fn retained_browser_smlib_free_model_atomicity_and_worker_replacement() -> Result<(),JsValue> {
+    let _driver = TestDriver::install(driver_factory().await?);
+    let start = prepare_peer(3).await?;
     let source = append(
         "#105=IFCEXTRUDEDAREASOLID(#18,#2,#3,4.);\n\
 #102=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19,#105));\n\
@@ -81,13 +80,13 @@ async fn retained_browser_smlib_free_model_atomicity_and_worker_replacement() {
     );
     let mut run = IfcAPI::new()
         .retained_model(source.as_bytes(), None)
-        .await
-        .unwrap();
-    assert_published(&run.next_outcome(), 27, "IfcBuildingElementProxy").unwrap();
-    assert_refused(&run.next_outcome(), 100, "kernel_failure").unwrap();
-    assert_published(&run.next_outcome(), 110, "IfcBuildingElementProxy").unwrap();
-    assert!(run.next_outcome().is_undefined());
-    assert_peers(&start, 2).await.unwrap();
+        .await?;
+    assert_published(&run.next_outcome(), 27, "IfcBuildingElementProxy")?;
+    assert_refused(&run.next_outcome(), 100, "kernel_failure")?;
+    assert_published(&run.next_outcome(), 110, "IfcBuildingElementProxy")?;
+    finished(run.next_outcome())?;
+    assert_peers(&start, 2).await?;
+    Ok(())
 }
 
 // #8188: a bad fixture URL must reject inside a running test, not prevent the
@@ -95,4 +94,28 @@ async fn retained_browser_smlib_free_model_atomicity_and_worker_replacement() {
 #[wasm_bindgen_test(async)]
 async fn retained_browser_smlib_free_model_missing_module_reports_failure() {
     assert_missing_module_reported().await.unwrap();
+}
+
+// wasm32 panic=abort cannot unwind a driver guard. Propagate caught JS test
+// failures as Results so ordinary assertion errors release injection before
+// wasm-bindgen-test records a failure (and the next test starts).
+fn finished(value: JsValue) -> Result<(),JsValue> {
+    if value.is_undefined() { Ok(()) } else { Err(JsValue::from_str("unexpected additional outcome")) }
+}
+
+#[wasm_bindgen_test(async)]
+async fn retained_browser_smlib_free_assertion_error_releases_driver() -> Result<(),JsValue> {
+    async fn failing_assertion() -> Result<(),JsValue> {
+        let _driver = TestDriver::install(driver_factory().await?);
+        assert_published(&JsValue::NULL,27,"IfcBuildingElementProxy")?;
+        Ok(())
+    }
+    assert!(failing_assertion().await.is_err());
+    let _driver = TestDriver::install(driver_factory().await?);
+    let start = prepare_peer(0).await?;
+    let mut run = IfcAPI::new().retained_model(BOX.as_bytes(),None).await?;
+    assert_published(&run.next_outcome(),27,"IfcBuildingElementProxy")?;
+    finished(run.next_outcome())?;
+    assert_peers(&start,1).await?;
+    Ok(())
 }

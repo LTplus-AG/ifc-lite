@@ -29,6 +29,10 @@ validation:
 # Autodesk's delivery plan records qualification work; public usage belongs in
 # the web viewer guide rather than the implementation checklist.
 not_in_nav: |
+  # Release-owner review inputs and draft opt-in deployment; not general installation guidance.
+  architecture/retained-licensing.md
+  guide/retained-release.md
+  guide/retained-installation.md
   # IDS Studio campaign plan, tracker and handover; internal engineering docs, linked from the IDS guide once Studio ships.
   architecture/ids-studio/**
   # Issue-scoped viewer AI charter; linked from its user guide as layers ship.

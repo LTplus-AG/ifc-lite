@@ -32,7 +32,7 @@ test('#7955 actual retainedModel yields deterministic CLI report and no partial 
     const { obj, report } = retainedArtifacts(engine, outcomes, () => null);
     assert.deepEqual(report.summary, { layeredProducts: 0, bands: 0, candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
     assert.equal(report.products[0].parts.length, 1);
-    assert.deepEqual(report.products[0].obligationsUnmet, ['IfcAppearance', 'SurfaceNormals']);
+    assert.deepEqual(report.products[0].obligationsUnmet, ['IfcAppearance']);
     assert.equal(report.products[1].code, 'material_layer_strategy');
     assert.ok(!('parts' in report.products[1]));
     assert.equal(obj.split('\n').filter(line => line === '# PresentationObligationsUnmet').length, 1);
@@ -72,6 +72,8 @@ test('#7955 real CLI zero-publication refusal writes neither OBJ nor report', as
     const path = join(directory, 'LICENSES', name); await mkdir(dirname(path), { recursive: true });
     await writeFile(path, 'Inert test inventory, never distributed as an engine.');
   }
+  // The CLI requires the root notice bundle in every staged engine (#7955).
+  await writeFile(join(directory, 'THIRD_PARTY_NOTICES.txt'), 'Inert test inventory, never distributed as an engine.');
   const assets = [];
   async function inventory(prefix = '') {
     for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {

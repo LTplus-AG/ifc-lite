@@ -64,6 +64,7 @@ on:
       - 'scripts/lib/__fixtures__/smlib-node/**'
       - 'tests/evidence/m1-f1/**'
       - 'LICENSE'
+      - 'licenses/retained/**'
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
@@ -119,6 +120,13 @@ jobs:
           cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
           cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
+      - name: Collect native runtime licence review inputs and verify installation
+        run: |
+          node scripts/retained-native-link-inventory.mjs "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" \
+            "$RUNNER_TEMP/smlib-native" "$RUNNER_TEMP/retained-native-link-inventory.json"
+          cmake --install "$RUNNER_TEMP/smlib-native" --prefix "$RUNNER_TEMP/retained-native-install"
+          cmp "$RUNNER_TEMP/retained-native-install/share/licenses/ifclite-smlib/THIRD_PARTY_NOTICES.txt" \
+            licenses/retained/THIRD_PARTY_NOTICES.txt
       - name: Execute every native owned boundary
         id: native-ctest
         continue-on-error: true
@@ -146,6 +154,7 @@ jobs:
           export IFCLITE_M9_REFERENCE="$RUNNER_TEMP/m9-native-types.json"
           export IFCLITE_M8_NATIVE_REFERENCE="$RUNNER_TEMP/m8-native.json"
           export IFCLITE_M11F_REFERENCE="$RUNNER_TEMP/m11-f-native-faces.json"
+          export IFCLITE_M11_N_REFERENCE="$RUNNER_TEMP/m11-n-native.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
           for file in tests/evidence/*/witnesses.txt; do
@@ -246,6 +255,9 @@ jobs:
           if [ -f "$RUNNER_TEMP/m11-f-native-faces.json" ]; then
             cp "$RUNNER_TEMP/m11-f-native-faces.json" rust/wasm-bindings/smlib/m11-f-native-faces.json
           fi
+          if [ -f "$RUNNER_TEMP/m11-n-native.json" ]; then
+            cp "$RUNNER_TEMP/m11-n-native.json" rust/wasm-bindings/smlib/m11-n-native.json
+          fi
           node scripts/stage-retained-runtime-peer.mjs
           if [ -f "$RUNNER_TEMP/m8-native.json" ]; then
             cp "$RUNNER_TEMP/m8-native.json" rust/wasm-bindings/smlib/m8-native.json
@@ -342,6 +354,7 @@ jobs:
         with:
           name: retained-viewer-comparison
           path: |
+            ${{ runner.temp }}/retained-native-link-inventory.json
             ${{ runner.temp }}/viewer-retained/
             ${{ runner.temp }}/viewer-retained-corpus/
             test-results/

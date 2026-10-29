@@ -66,7 +66,7 @@
 4 rust/geometry/src/router/annotation.rs
 2 rust/geometry/src/router/instancing.rs
 3 rust/geometry/src/router/mapped_item.rs
-16 rust/geometry/src/router/rtc_offset.rs
+15 rust/geometry/src/router/rtc_offset.rs
 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
 1 rust/geometry/src/router/transforms/mod.rs
 7 rust/geometry/src/router/voids/probe.rs
@@ -106,8 +106,6 @@
 3 rust/processing/src/processor/opening_filter.rs
 16 rust/processing/src/processor/properties.rs
 1 rust/processing/src/processor/quick_metadata.rs
-1 rust/processing/src/processor/scan.rs
-1 rust/processing/src/shard_classes.rs
 8 rust/processing/src/style/fill.rs
 2 rust/processing/src/style/finish_join.rs
 5 rust/processing/src/style/indexed_colour.rs
@@ -125,7 +123,6 @@
 1 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
 3 rust/wasm-bindings/src/api/grid_lines.rs
 2 rust/wasm-bindings/src/api/scan_outline.rs
-6 rust/wasm-bindings/src/api/styling/color.rs
 8 rust/wasm-bindings/src/api/styling/prepass.rs
 1 rust/wasm-bindings/src/utils.rs
 17 rust/geometry/src/router/voids/probe/rectangular.rs

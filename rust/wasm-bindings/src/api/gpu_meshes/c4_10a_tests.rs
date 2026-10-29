@@ -8,11 +8,27 @@ use ifc_lite_geometry::GeometryRouter;
 
 fn brep(base: u32, width: f64) -> String {
     let n = |id| base + id;
-    format!("#{}=IFCCARTESIANPOINT((0.,0.,0.));\n#{}=IFCCARTESIANPOINT(({width},0.,0.));\n\
+    format!(
+        "#{}=IFCCARTESIANPOINT((0.,0.,0.));\n#{}=IFCCARTESIANPOINT(({width},0.,0.));\n\
         #{}=IFCCARTESIANPOINT((0.,1.,0.));\n#{}=IFCPOLYLOOP((#{},#{},#{}));\n\
         #{}=IFCFACEOUTERBOUND(#{},.T.);\n#{}=IFCFACE((#{}));\n\
         #{}=IFCCLOSEDSHELL((#{}));\n#{}=IFCFACETEDBREP(#{});\n",
-        n(1),n(2),n(3),n(4),n(1),n(2),n(3),n(5),n(4),n(6),n(5),n(7),n(6),n(8),n(7))
+        n(1),
+        n(2),
+        n(3),
+        n(4),
+        n(1),
+        n(2),
+        n(3),
+        n(5),
+        n(4),
+        n(6),
+        n(5),
+        n(7),
+        n(6),
+        n(8),
+        n(7)
+    )
 }
 
 fn widths(api: &IfcAPI, content: &[u8], ids: &[u32]) -> Vec<f32> {
@@ -21,12 +37,19 @@ fn widths(api: &IfcAPI, content: &[u8], ids: &[u32]) -> Vec<f32> {
     // Isolate signature lifetime from the independent item-mesh cache lifetime.
     router.enable_content_dedup_shared(GeometryRouter::new_dedup_cache());
     let mut decoder = EntityDecoder::new(content);
-    ids.iter().map(|&id| {
-        let item = decoder.decode_by_id(id).unwrap();
-        let mesh = router.process_representation_item(&item, &mut decoder).unwrap();
-        assert!(!mesh.positions.is_empty());
-        mesh.positions.chunks_exact(3).map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max)
-    }).collect()
+    ids.iter()
+        .map(|&id| {
+            let item = decoder.decode_by_id(id).unwrap();
+            let mesh = router
+                .process_representation_item(&item, &mut decoder)
+                .unwrap();
+            assert!(!mesh.positions.is_empty());
+            mesh.positions
+                .chunks_exact(3)
+                .map(|p| p[0])
+                .fold(f32::NEG_INFINITY, f32::max)
+        })
+        .collect()
 }
 
 #[test]
@@ -42,10 +65,18 @@ fn c4_10a_brep_cache_invalidates_colliding_ids_at_every_source_install_7782() {
             0 => api.clear_pre_pass_cache(),
             1 => api.set_entity_index(&[], &[], &[]).unwrap(),
             2 => api.set_source_bytes(second.as_bytes().to_vec()),
-            3 => { api.build_prepass_once_data(second.as_bytes()); }
-            _ => { assert!(api.set_entity_index(&[8], &[], &[]).is_err()); }
+            3 => {
+                api.build_prepass_once_data(second.as_bytes());
+            }
+            _ => {
+                assert!(api.set_entity_index(&[8], &[], &[]).is_err());
+            }
         }
-        assert_eq!(widths(&api, second.as_bytes(), &[8, 108]), [2.0, 1.0], "reset {reset}");
+        assert_eq!(
+            widths(&api, second.as_bytes(), &[8, 108]),
+            [2.0, 1.0],
+            "reset {reset}"
+        );
     }
 }
 
@@ -58,33 +89,55 @@ fn c4_10a_warm_router_reuses_brep_walk_across_batches_7782() {
         api.arm_batch_caches(&mut router);
         let mut decoder = EntityDecoder::new(content.as_bytes());
         let item = decoder.decode_by_id(8).unwrap();
-        let mesh = router.process_representation_item(&item, &mut decoder).unwrap();
+        let mesh = router
+            .process_representation_item(&item, &mut decoder)
+            .unwrap();
         assert!(!mesh.positions.is_empty());
         let (hits, misses) = decoder.point_cache_stats();
-        if warm { assert_eq!(hits + misses, 0, "completed signature avoids point walk"); }
-        else { assert!(hits + misses > 0); }
+        if warm {
+            assert_eq!(hits + misses, 0, "completed signature avoids point walk");
+        } else {
+            assert!(hits + misses > 0);
+        }
     }
 }
 
 fn run(api: &IfcAPI, content: &[u8], pre: &super::prepass_once::PrepassOnceData, jobs: &[u32]) {
-    let (x,y,z) = pre.meta.frame.rtc_offset();
-    api.produce_batch(content, jobs, 1.0, x,y,z, pre.meta.frame.needs_shift(),
-        &pre.void_keys, &pre.void_counts, &pre.void_values, &pre.style_ids,
-        &pre.style_colors, Some(pre.meta.plane_angle_to_radians),
-        Some(pre.material_element_ids.clone()), Some(pre.material_color_counts.clone()),
-        Some(pre.material_colors.clone()), false);
+    let (x, y, z) = pre.meta.frame.rtc_offset();
+    api.produce_batch(
+        content,
+        jobs,
+        1.0,
+        x,
+        y,
+        z,
+        pre.meta.frame.needs_shift(),
+        &pre.void_keys,
+        &pre.void_counts,
+        &pre.void_values,
+        &pre.style_ids,
+        &pre.style_colors,
+        Some(pre.meta.plane_angle_to_radians),
+        Some(pre.material_element_ids.clone()),
+        Some(pre.material_color_counts.clone()),
+        Some(pre.material_colors.clone()),
+        false,
+    );
 }
 
 #[test]
 fn c4_10a_refusals_are_per_attempt_and_distinct_per_load_7782() {
     let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc");
     // F2: scanner recognizes a type and its maps, full decoder refuses the token.
-    let source = source.replace("ENDSEC;\nEND-ISO", "#400=IFCWALL('bad',$,$,$,1.E400,#5,#303,$,.NOTDEFINED.);\n#500=IFCBOILERTYPE('bad',$,$,$,INVALID,$,(#501),$,$,.NOTDEFINED.);\n#501=IFCREPRESENTATIONMAP(#4,#302);\nENDSEC;\nEND-ISO");
+    let source = source.replace("ENDSEC;\nEND-ISO", "#400=IFCWALL('bad',$,$,$,INVALID,#5,#303,$,.NOTDEFINED.);\n#500=IFCBOILERTYPE('bad',$,$,$,INVALID,$,(#501),$,$,.NOTDEFINED.);\n#501=IFCREPRESENTATIONMAP(#4,#302);\nENDSEC;\nEND-ISO");
     let api = IfcAPI::new();
     let pre = api.build_prepass_once_data(source.as_bytes());
-    assert!(!pre.complex_jobs.iter().any(|j| j.0 == 500), "undecodable type stays omitted");
-    let mut jobs = vec![0; pre.total_jobs()*3];
-    pre.write_jobs(|i,v| jobs[i as usize]=v);
+    assert!(
+        !pre.complex_jobs.iter().any(|j| j.0 == 500),
+        "undecodable type stays omitted"
+    );
+    let mut jobs = vec![0; pre.total_jobs() * 3];
+    pre.write_jobs(|i, v| jobs[i as usize] = v);
     // Deliberately repeat the two bad-leaf attempts in another batch. The good
     // neighbour follows failures and must never inherit a cumulative refusal.
     run(&api, source.as_bytes(), &pre, &jobs);
@@ -96,8 +149,16 @@ fn c4_10a_refusals_are_per_attempt_and_distinct_per_load_7782() {
     assert_eq!(second.refused_input_elements, 6);
     assert_eq!(second.refused_prepass_records, 3);
     api.clear_pre_pass_cache();
-    assert_eq!(api.pipeline_diagnostics.lock().unwrap().refused_prepass_records, 3);
-    api.build_prepass_once_data(include_bytes!("../../../../processing/tests/fixtures/c4_bare_type_map_7782.ifc"));
+    assert_eq!(
+        api.pipeline_diagnostics
+            .lock()
+            .unwrap()
+            .refused_prepass_records,
+        3
+    );
+    api.build_prepass_once_data(include_bytes!(
+        "../../../../processing/tests/fixtures/c4_bare_type_map_7782.ifc"
+    ));
     let new = api.pipeline_diagnostics.lock().unwrap();
     assert_eq!(new.refused_input_elements, 0);
     assert_eq!(new.refused_prepass_records, 0);

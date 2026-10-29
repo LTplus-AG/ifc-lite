@@ -396,12 +396,6 @@ impl IfcAPI {
             // owned unknown keyword where decoding could not retain it (#3179,
             // #4203).
             //
-            // Not every dropped keyword reaches this line: the four arms with
-            // `has_geometry: false` are refused by `has_geometry_by_name` in
-            // all three element producers, so this fix misses them. #3187 has
-            // the trace, including the type-geometry gate that would make
-            // THREE of the four eligible -- eligible, not certain.
-            //
             // Recomputed from the SOURCE KEYWORD rather than recovered from
             // `entity.ifc_type` -- why it cannot be recovered is on
             // `ifc_type_from_record` itself. What is specific to
@@ -444,11 +438,13 @@ impl IfcAPI {
                     ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
                 );
                 if rep_map_ids.is_empty() {
+                    self.record_input_refusals(&decoder);
                     continue;
                 }
                 let type_plan = self.get_or_build_type_geometry_plan(content, &mut decoder);
                 let rep_maps = type_plan.maps_for(id, &rep_map_ids);
                 if rep_maps.is_empty() {
+                    self.record_input_refusals(&decoder);
                     continue;
                 }
                 ElementJobKind::TypeProduct { rep_maps }
@@ -473,7 +469,7 @@ impl IfcAPI {
                 &mut decoder,
                 &router,
             );
-            if self.collect_pipeline_refusals(&decoder) { self.note_refused_input(); }
+            self.record_input_refusals(&decoder);
             let Ok(produced) = produced else { batch_refused += 1; continue };
 
             for (product_id, fails) in produced.csg_failures {

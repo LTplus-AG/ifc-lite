@@ -40,15 +40,20 @@ impl IfcAPI {
             cache
         };
 
-        let cache = self.cached_brep_signatures.lock()
+        let cache = self
+            .cached_brep_signatures
+            .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get_or_insert_with(GeometryRouter::new_brep_signature_cache).clone();
+            .get_or_insert_with(GeometryRouter::new_brep_signature_cache)
+            .clone();
         router.enable_shared_brep_signature_cache(cache);
         mapped_item_cache
     }
 
     pub(crate) fn invalidate_brep_signatures(&self) {
-        self.cached_brep_signatures.lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        self.cached_brep_signatures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
     }
 }

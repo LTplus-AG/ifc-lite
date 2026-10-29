@@ -87,6 +87,12 @@ impl IfcAPI {
         true
     }
 
+    pub(crate) fn record_input_refusals(&self, decoder: &ifc_lite_core::EntityDecoder) {
+        if self.collect_pipeline_refusals(decoder) {
+            self.note_refused_input();
+        }
+    }
+
     pub(crate) fn note_refused_input(&self) {
         self.pipeline_diagnostics.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -94,7 +100,7 @@ impl IfcAPI {
     }
 
     /// Reset the accumulator (a new load on a reused IfcAPI). Called from
-    /// `clearPrePassCache` and `setEntityIndex`.
+    /// load-start entry points. End-of-load cleanup preserves the counters.
     pub(crate) fn reset_pipeline_diagnostics(&self) {
         self.pipeline_refusals.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner).clear();

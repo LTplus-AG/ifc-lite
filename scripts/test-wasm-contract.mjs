@@ -1544,7 +1544,7 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
 test('C4-10a #7782: refused input attempts and distinct type/leaf records cross real WASM', () => {
   const diagApi = new IfcAPI();
   const source = readFileSync(join(ROOT_DIR, 'rust/processing/tests/fixtures/c4_0_refusal_parity_7782.ifc'), 'utf8')
-    .replace('ENDSEC;\nEND-ISO', "#400=IFCWALL('bad',$,$,$,1.E400,#5,#303,$,.NOTDEFINED.);\n#500=IFCBOILERTYPE('bad',$,$,$,INVALID,$,(#501),$,$,.NOTDEFINED.);\n#501=IFCREPRESENTATIONMAP(#4,#302);\nENDSEC;\nEND-ISO");
+    .replace('ENDSEC;\nEND-ISO', "#400=IFCWALL('bad',$,$,$,INVALID,#5,#303,$,.NOTDEFINED.);\n#500=IFCBOILERTYPE('bad',$,$,$,INVALID,$,(#501),$,$,.NOTDEFINED.);\n#501=IFCREPRESENTATIONMAP(#4,#302);\nENDSEC;\nEND-ISO");
   const bytes = new TextEncoder().encode(source);
   try {
     const pre = diagApi.buildPrePassOnce(bytes);

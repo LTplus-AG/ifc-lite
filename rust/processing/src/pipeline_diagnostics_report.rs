@@ -26,7 +26,10 @@ pub struct PipelineDiagnosticsReport {
 impl Default for PipelineDiagnosticsReport {
     fn default() -> Self {
         Self {
-            pipeline: PipelineDiagnostics { schema_version: 2, ..Default::default() },
+            pipeline: PipelineDiagnostics {
+                schema_version: 2,
+                ..Default::default()
+            },
             refused_input_elements: 0,
             refused_prepass_records: 0,
         }
@@ -48,11 +51,15 @@ impl PipelineDiagnosticsReport {
 
 impl std::ops::Deref for PipelineDiagnosticsReport {
     type Target = PipelineDiagnostics;
-    fn deref(&self) -> &Self::Target { &self.pipeline }
+    fn deref(&self) -> &Self::Target {
+        &self.pipeline
+    }
 }
 
 impl std::ops::DerefMut for PipelineDiagnosticsReport {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.pipeline }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.pipeline
+    }
 }
 
 #[cfg(test)]
@@ -62,7 +69,8 @@ mod tests {
     #[test]
     fn c4_10a_report_preserves_v1_and_projects_native_refusals_7782() {
         let stats = ProcessingStats {
-            refused_input_elements: 2, refused_prepass_records: 1,
+            refused_input_elements: 2,
+            refused_prepass_records: 1,
             ..Default::default()
         };
         let report = PipelineDiagnosticsReport::from_processing_stats(&stats, 3);

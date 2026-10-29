@@ -292,7 +292,8 @@ impl<'a> EntityDecoder<'a> {
         Error::UnrepresentableReal(id)
     }
 
-    /// Distinct input-admission refusals since the last diagnostic drain.
+    /// Distinct input-admission refusals since the last diagnostic drain:
+    /// unrepresentable REALs or malformed point/direction leaves (#7678, F3b).
     pub fn refused_records(&self) -> u64 {
         self.refused_record_ids().len() as u64
     }
@@ -309,7 +310,6 @@ impl<'a> EntityDecoder<'a> {
         self.refused_records.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
             .drain().collect()
     }
-
 
     /// Decode the entity in `[start, end)` **without** touching the cache.
     ///

@@ -281,7 +281,7 @@ fn m8_convex_opening_expectation_rejects_wrong_volume_and_escaped_bbox() {
     let volume = expected.result_volume.unwrap();
     let bbox = expected.host_bbox.unwrap();
     for defect in 0..3 {
-        let mut actual = Metrics { volume, area: 0., bbox, defects: 0 };
+        let mut actual = Metrics { volume, area: 0., bbox, defects: 0, ..Default::default() };
         match defect {
             1 => actual.volume *= 1.001,
             2 => actual.bbox[0] -= 1.,

@@ -22,7 +22,12 @@ if (expected.summary.published) {
   actual = JSON.parse(await readFile(report, 'utf8'));
   assert.deepEqual(actual.summary, expected.summary);
   assert.deepEqual(actual.products.map(({ globalId, ...p }) => p), expected.products.map(({ globalId, ...p }) => p));
-  assert.match(await readFile(obj, 'utf8'), /# PresentationObligationsUnmet/);
+  const exported = await readFile(obj, 'utf8');
+  const unmet = actual.products.some(p => p.status === 'published' && p.obligationsUnmet.length);
+  assert.ok(exported.includes(unmet ? '# PresentationObligationsUnmet\n' : '# retained final\n# final\n'));
+  for (const product of actual.products) for (const part of product.parts ?? []) {
+    if (part.layer) assert.ok(exported.includes(`# layer ${part.layer.index} material #${part.layer.materialId}\n`));
+  }
 } else {
   await assert.rejects(access(obj));
   await assert.rejects(access(report));

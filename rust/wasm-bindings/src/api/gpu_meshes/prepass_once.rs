@@ -42,6 +42,8 @@ impl IfcAPI {
         // pipeline diagnostics must not accumulate into this one. (The worker
         // path resets via setEntityIndex; every load-start entry point resets.)
         self.reset_pipeline_diagnostics();
+        self.production_model.invalidate_source();
+        self.invalidate_brep_signatures();
 
         let content = data;
 
@@ -98,6 +100,7 @@ impl IfcAPI {
                 &pre_pass.resolved.element_material_colors,
             );
 
+        self.collect_pipeline_refusals(&decoder);
         PrepassOnceData {
             simple_jobs: pre_pass.simple_jobs,
             complex_jobs: pre_pass.complex_jobs,

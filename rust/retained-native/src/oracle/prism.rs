@@ -24,10 +24,16 @@ impl Basis {
     pub(super) fn vector(&self, p: [f64; 3]) -> [f64; 3] {
         [dot(p, self.x), dot(p, self.y), dot(p, self.z)]
     }
+    /// Convert a host-relative halfspace n·p <= c to world coordinates.
+    pub(super) fn world_plane(&self, n: [f64; 3], c: f64) -> ([f64; 3], f64) {
+        let world = std::array::from_fn(|i| n[0]*self.x[i]+n[1]*self.y[i]+n[2]*self.z[i]);
+        (world, c+dot(world,self.origin))
+    }
     pub(super) fn point(&self, p: [f64; 3]) -> [f64; 3] {
         self.vector(sub(p, self.origin))
     }
 }
+#[derive(Clone)]
 pub(super) struct Prism {
     pub loops: Vec<(bool, Vec<Edge>)>,
     pub low: f64,

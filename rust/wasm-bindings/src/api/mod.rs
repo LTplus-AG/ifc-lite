@@ -111,6 +111,10 @@ pub struct IfcAPI {
     /// before any `*FromSource` batch, so the held bytes always match the index.
     cached_source_bytes: std::sync::Mutex<Option<std::sync::Arc<Vec<u8>>>>,
 
+    /// Completed BREP signatures shared by batch routers within one source
+    /// epoch; invalidated by source/index installation and prepass/cache resets.
+    cached_brep_signatures: std::sync::Mutex<Option<ifc_lite_geometry::SharedBrepSignatureCache>>,
+
     /// Per-worker shared content-dedup cache (#1109 follow-up). The
     /// `GeometryRouter` is rebuilt every `processGeometryBatch`, so its item-mesh
     /// dedup cache would reset each batch. Holding ONE cache here and injecting it
@@ -292,16 +296,20 @@ pub struct IfcAPI {
     pending_geometry_finishes:
         std::sync::Mutex<Option<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::SpecularMaterial>>>,
 
+    /// Distinct refused record identities for the current load; repeated reads
+    /// and batches are unioned before publishing the diagnostics counter.
+    pipeline_refusals: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
+
     /// Per-load structured pipeline diagnostics (`PipelineDiagnostics`
     /// contract, see `api::pipeline_diagnostics`): every
     /// `processGeometryBatch*` call folds one batch record in — cheap
     /// counters plus per-batch JS wall time, so it is always on. Read by JS
     /// via `getPipelineDiagnostics`; reset at load START by every entry point
     /// that begins a new file on a reused IfcAPI (`buildPrePassOnce`,
-    /// `buildPrePassStreaming`, `setEntityIndex`) - deliberately NOT by
+    /// `buildPrePassStreaming`, `setEntityIndex`, `setSourceBytes`) - deliberately NOT by
     /// `clearPrePassCache`, which runs at end-of-load before a host reads the
     /// diagnostics.
-    pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnostics>,
+    pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnosticsReport>,
     /// The loaded content's model lifecycle: each geometry batch snapshots its
     /// maps under it, and a content swap invalidates every earlier snapshot.
     production_model: ifc_lite_processing::element::ProductionModel,
@@ -320,6 +328,7 @@ impl IfcAPI {
             initialized: true,
             cached_entity_index: std::sync::Mutex::new(None),
             cached_source_bytes: std::sync::Mutex::new(None),
+            cached_brep_signatures: std::sync::Mutex::new(None),
             cached_item_dedup: std::sync::Mutex::new(None),
             cached_mapped_item: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
@@ -341,8 +350,9 @@ impl IfcAPI {
             cached_geometry_styles: std::sync::Mutex::new(None),
             style_finishes: std::sync::Mutex::new(None),
             pending_geometry_finishes: std::sync::Mutex::new(None),
+            pipeline_refusals: std::sync::Mutex::default(),
             pipeline_diagnostics: std::sync::Mutex::new(
-                ifc_lite_processing::PipelineDiagnostics::default(),
+                ifc_lite_processing::PipelineDiagnosticsReport::default(),
             ),
             production_model: ifc_lite_processing::element::ProductionModel::new(),
         }
@@ -419,6 +429,7 @@ impl IfcAPI {
             .take();
         // The geometry-style maps belong to the previous load's wire styles.
         self.production_model.invalidate_source();
+        self.invalidate_brep_signatures();
         self.cached_geometry_styles
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

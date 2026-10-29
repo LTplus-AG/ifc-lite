@@ -7,6 +7,21 @@ pub(super) fn instance_key(representation_map: u32, part: &ShapePart) -> [u8; 32
     let mut hash = Sha256::new();
     hash.update(b"ifc-lite.retained-instance/1");
     hash.update(representation_map.to_le_bytes());
+    // #7955 M4: include semantic band identity and the pre-cap volume even
+    // though open band products are currently ineligible for sharing.
+    match part.layer {
+        // Preserve main's key bytes for ordinary products.
+        None => {},
+        Some(layer) => {
+            hash.update([1]);
+            hash.update(layer.index.to_le_bytes());
+            hash.update(layer.material_id.to_le_bytes());
+        }
+    }
+    match part.capped_volume_m3 {
+        None => {},
+        Some(volume) => { hash.update([1]); hash.update(volume.to_le_bytes()); }
+    }
     hash.update((part.positions.len() as u64).to_le_bytes());
     for value in &part.positions { hash.update(value.to_le_bytes()); }
     hash.update((part.indices.len() as u64).to_le_bytes());

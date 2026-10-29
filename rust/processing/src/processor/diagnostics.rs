@@ -148,7 +148,8 @@ impl DiagnosticCollectors {
     /// across jobs mirrors the wasm batch router's accumulate-then-drain, giving
     /// the same GeometryDiagnostics counts.
     pub(super) fn drain_router(&self, router: &ifc_lite_geometry::GeometryRouter) {
-        let cls = router.take_classification_stats();
+        let drain = crate::execution::RouterDrain::take(router);
+        let cls = drain.classification;
         if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
             if let Ok(mut acc) = self.classification.lock() {
                 acc.rectangular += cls.rectangular;
@@ -156,7 +157,7 @@ impl DiagnosticCollectors {
                 acc.non_rectangular += cls.non_rectangular;
             }
         }
-        let host_diags = router.take_host_opening_diagnostics();
+        let host_diags = drain.hosts;
         if !host_diags.is_empty() {
             if let Ok(mut acc) = self.host_diags.lock() {
                 // Product ids are disjoint across jobs (one product = one job), so
@@ -165,13 +166,13 @@ impl DiagnosticCollectors {
             }
         }
         // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
-        let oversized_refs = router.take_content_hash_oversized_ref_drops() as u64;
+        let oversized_refs = drain.oversized_refs;
         self.oversized_ref_drops
             .fetch_add(oversized_refs, std::sync::atomic::Ordering::Relaxed);
         // Drain this job's router rect_fast counters into the request-local
         // collector (process-global counters are gone; see
         // GeometryRouter::record_rect_fast).
-        let rf = router.take_rect_fast_stats();
+        let rf = drain.rect_fast;
         if rf.fired != 0
             || rf.openings_cut != 0
             || rf.defer_host_not_box != 0

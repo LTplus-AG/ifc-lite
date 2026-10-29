@@ -73,7 +73,7 @@ fn m6_7955_opened_bounded_result_never_uses_opening_only_volume() {
     let context=crate::checks::SourceContext{product_id:1062,analytic:&sources,clips:&clips,hand_volume:None};
     let mut report=crate::report::Report::default();
     report.published("combined",&shape,&actual,None,None,None,&crate::tolerances::registered().unwrap(),0.,
-        Some(opening),&context,true,Some(&bounded));
+        Some(opening),&context,true,Some(&bounded),text.as_bytes());
     assert!(!report.violations.iter().any(|v|v.contains("opening prism volume deviation")||v.contains("opening volume outside nominal bounds")),
         "wrong opening-only authority: {:?}",report.violations);
     assert!(report.violations.iter().any(|v|v.contains("bounded_curved_volume_unavailable")),"combined source must fail closed");
@@ -136,7 +136,7 @@ fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_missing_and_stale() 
         let context=crate::checks::SourceContext{product_id:1004,analytic:&sources,clips:&clips,hand_volume:hand.take(path,1004)};
         let mut report=crate::report::Report::default();
         report.published(path,&shape,&actual,None,None,None,&crate::tolerances::registered().unwrap(),0.,
-            None,&context,true,Some(&e));
+            None,&context,true,Some(&e),text.as_bytes());
         hand.finish().unwrap();
         if let Some(failure)=failure {
             assert_eq!(report.violations.len(),1,"{label}: {:?}",report.violations);

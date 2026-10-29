@@ -47,5 +47,18 @@
         "sha256": "ed60d479b8fd1f64e9cbc3de449a16a53ac1b3d1b6aeb9bf9d190a8e93061b44"
       }
     ]
+  },
+  {
+    "name": "wasm_sync",
+    "version": "0.1.2",
+    "election": "Apache-2.0",
+    "attribution": "wasm_sync 0.1.2 (crates.io), licensed under Apache-2.0 by election from MIT OR Apache-2.0",
+    "notices": [
+      {
+        "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+        "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+        "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+      }
+    ]
   }
 ]

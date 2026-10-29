@@ -173,11 +173,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Attribute \"\"Name\"\" must exist"
+                  "label": "Attribute \"Name\" must exist"
                 },
                 "status": "pass",
                 "facetType": "attribute",
-                "checkedDescription": "Attribute \"\"Name\"\" must exist",
+                "checkedDescription": "Attribute \"Name\" must exist",
                 "actualValue": "living room",
                 "expectedValue": "attribute \"Name\" to exist"
               }
@@ -206,11 +206,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Attribute \"\"Name\"\" must exist"
+                  "label": "Attribute \"Name\" must exist"
                 },
                 "status": "pass",
                 "facetType": "attribute",
-                "checkedDescription": "Attribute \"\"Name\"\" must exist",
+                "checkedDescription": "Attribute \"Name\" must exist",
                 "actualValue": "entry hall",
                 "expectedValue": "attribute \"Name\" to exist"
               }
@@ -311,11 +311,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                  "label": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\""
                 },
                 "status": "pass",
                 "facetType": "property",
-                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "checkedDescription": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\"",
                 "actualValue": "Pset_WallCommon.IsExternal = true",
                 "expectedValue": "\"true\""
               }
@@ -356,11 +356,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                  "label": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\""
                 },
                 "status": "pass",
                 "facetType": "property",
-                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "checkedDescription": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\"",
                 "actualValue": "Pset_WallCommon.IsExternal = true",
                 "expectedValue": "\"true\""
               }
@@ -401,11 +401,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                  "label": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\""
                 },
                 "status": "pass",
                 "facetType": "property",
-                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "checkedDescription": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\"",
                 "actualValue": "Pset_WallCommon.IsExternal = true",
                 "expectedValue": "\"true\""
               }
@@ -446,11 +446,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                  "label": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\""
                 },
                 "status": "fail",
                 "facetType": "property",
-                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "checkedDescription": "Property \"Pset_WallCommon.IsExternal\" must equal \"true\"",
                 "failureReason": "Property \"Pset_WallCommon.IsExternal\" value \"false\" does not match expected \"true\"",
                 "actualValue": "false",
                 "expectedValue": "\"true\"",
@@ -534,11 +534,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                  "label": "Attribute \"ObjectType\" must exist"
                 },
                 "status": "fail",
                 "facetType": "attribute",
-                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "checkedDescription": "Attribute \"ObjectType\" must exist",
                 "failureReason": "Attribute \"ObjectType\" is missing",
                 "expectedValue": "attribute \"ObjectType\" to exist",
                 "failure": {
@@ -572,11 +572,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                  "label": "Attribute \"ObjectType\" must exist"
                 },
                 "status": "fail",
                 "facetType": "attribute",
-                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "checkedDescription": "Attribute \"ObjectType\" must exist",
                 "failureReason": "Attribute \"ObjectType\" is missing",
                 "expectedValue": "attribute \"ObjectType\" to exist",
                 "failure": {
@@ -610,11 +610,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                  "label": "Attribute \"ObjectType\" must exist"
                 },
                 "status": "pass",
                 "facetType": "attribute",
-                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "checkedDescription": "Attribute \"ObjectType\" must exist",
                 "actualValue": "subgrade",
                 "expectedValue": "attribute \"ObjectType\" to exist"
               }
@@ -643,11 +643,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                  "label": "Attribute \"ObjectType\" must exist"
                 },
                 "status": "pass",
                 "facetType": "attribute",
-                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "checkedDescription": "Attribute \"ObjectType\" must exist",
                 "actualValue": "origin",
                 "expectedValue": "attribute \"ObjectType\" to exist"
               }
@@ -676,11 +676,11 @@
                     }
                   },
                   "optionality": "required",
-                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                  "label": "Attribute \"ObjectType\" must exist"
                 },
                 "status": "pass",
                 "facetType": "attribute",
-                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "checkedDescription": "Attribute \"ObjectType\" must exist",
                 "actualValue": "origin",
                 "expectedValue": "attribute \"ObjectType\" to exist"
               }

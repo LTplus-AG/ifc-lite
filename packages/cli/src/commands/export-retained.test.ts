@@ -73,7 +73,7 @@ it('#7955 shape-only OBJ transforms world f64 points to Y-up and keeps refusal o
   expect(obj).toContain('v 10.000000 30.000000 -20.000000');
   expect(obj).toContain('f 1 2 3');
   expect(obj).not.toContain('_80');
-  expect(report.summary).toEqual({ candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
+  expect(report.summary).toEqual({ layeredProducts: 0, bands: 0, candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
   expect(report.products.map(p => p.id)).toEqual([27, 80]);
   expect(report.products[1]).toMatchObject({ globalId: 'guid-80', code: refusal.code, origin: refusal.origin });
   expect(report.products[1]).not.toHaveProperty('parts');
@@ -175,4 +175,49 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
   const written = (signed.report.products[0] as unknown as { parts: { normals: number[] }[] }).parts[0].normals;
   // JSON has no -0: a written -0 would not round-trip. Removing the `v + 0` canonicalisation fails here.
   expect(written.some(v => Object.is(v, -0))).toBe(false);
+});
+
+it('#7955 M4 OBJ labels bands and reports their closed volumes', () => {
+  // A single open triangle has zero divergence volume at its own origin;
+  // the retained volume certificate must survive export of the open band.
+  const band = { ...shape.parts[0], layer: { index: 1, materialId: 20 }, cappedVolumeM3: 5.4 };
+  const { obj, report } = retainedArtifacts(engine, 8, [{ ...shape, parts: [band] }], () => null);
+  expect(obj).toContain('# layer 1 material #20\nf 1 2 3');
+  expect(report.summary).toMatchObject({ layeredProducts: 1, bands: 1 });
+  expect(report.products[0]).toMatchObject({ parts: [{ layer: { index: 1, materialId: 20 }, volumeM3: 5.4 }] });
+  expect(() => retainedArtifacts(engine, 8, [{ ...shape, parts: [{ ...band, cappedVolumeM3: undefined }] }], () => null)).toThrow(/closed band volume/);
+});
+
+it('#7955 M4 open parts measure the closed assembly with a common origin', () => {
+  // Unit tetrahedron: det(eX,eY,eZ)/6 = 1/6. Partition its outer skin into
+  // two open meshes with different first vertices; neither has its own volume.
+  const first = { ...shape.parts[0], layer: { index: 0, materialId: 16 }, cappedVolumeM3: 1 / 12,
+    positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1), indices: Uint32Array.of(0, 2, 1, 0, 1, 3) };
+  const second = { ...first, layer: { index: 1, materialId: 20 },
+    positions: Float64Array.of(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0), indices: Uint32Array.of(3, 2, 1, 0, 1, 2) };
+  const report = retainedReport(engine, 8, [{ ...shape, parts: [first, second] }], () => null);
+  expect(report.products[0]).toMatchObject({ volumeM3: expect.closeTo(1 / 6, 14) });
+});
+
+it('#7955 M4 phase samples do not change the reproducible CLI report', () => {
+  const first = retainedReport(engine, 8, [{ ...shape, bandMs: 1, capMs: 2, maxSnapMetres: 1e-7 }], () => null);
+  const second = retainedReport(engine, 8, [{ ...shape, bandMs: 5, capMs: 9, maxSnapMetres: 2e-7 }], () => null);
+  expect(reportJson(first)).toBe(reportJson(second));
+  expect(first.products[0]).not.toHaveProperty('bandMs');
+  expect(first.products[0]).not.toHaveProperty('capMs');
+  expect(first.products[0]).not.toHaveProperty('maxSnapMetres');
+});
+
+// #7955 M11-Z: consumers enforce the marker/obligation contract for both states.
+it('M11-Z accepts final products in OBJ and the stable report, retaining shape-only behavior', () => {
+  const final: RetainedShapeProduct = { ...shape, marker: 'final', obligationsUnmet: [] };
+  const result = retainedArtifacts(engine, 8, [final], () => null);
+  expect(result.obj).toContain('# retained final\n# final\n');
+  expect(result.obj).not.toContain('obligations unmet');
+  expect(result.report.products[0]).toMatchObject({ marker: 'final', obligationsUnmet: [] });
+  const mixed = retainedArtifacts(engine, 8, [final, { ...shape, expressId: 28 }], () => null);
+  expect(mixed.obj).toContain('# PresentationObligationsUnmet');
+  expect(mixed.report.products[1]).toMatchObject({ marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'] });
+  expect(() => retainedArtifacts(engine, 8, [{ ...final, marker: 'PresentationObligationsUnmet' }], () => null)).toThrow(/Invalid retained publication/);
+  expect(() => retainedArtifacts(engine, 8, [{ ...shape, marker: 'final' }], () => null)).toThrow(/Invalid retained publication/);
 });

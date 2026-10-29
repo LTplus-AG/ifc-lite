@@ -24,7 +24,9 @@ pub fn measure(
     if !common && origins.len() != shape.parts.len() {
         return Err("cannot pair distinct exact mesh origins with retained parts".into());
     }
-    let mut measured = Metrics::default();
+    let mut measured = if shape.parts.iter().any(|p| p.layer.is_some()) {
+        Metrics::assembly()
+    } else { Metrics::default() };
     for (index, part) in shape.parts.iter().enumerate() {
         let origin = if common { *first } else { origins[index] };
         let points: Vec<_> = part

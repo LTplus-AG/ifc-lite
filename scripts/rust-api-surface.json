@@ -362,6 +362,7 @@
     "PaletteBinding": "enum { Absent { map_id: u32; reason: PaletteAbsence }; Bound { face_set_id: u32; map_id: u32; palette_index: u32 } }",
     "ParseResponse": "struct { building_transform: Option<Vec<f64>>; cache_key: String; mesh_coordinate_space: Option<MeshCoordinateSpace>; meshes: Vec<MeshData>; metadata: ModelMetadata; site_transform: Option<Vec<f64>>; stats: ProcessingStats; symbolic_data: SymbolicData }",
     "PipelineDiagnostics": "struct { backstop_count: u64; batches: u64; element_count: u64; faceted_brep_ms: u64; hosts_with_openings: u64; mesh_count: u64; phase_ms: PipelinePhaseTimings; point_cache_hits: u64; point_cache_misses: u64; products_with_failures: u64; rect_fast: RectFastSummary; schema_version: u32; silent_no_ops: u64; total_csg_failures: u64; triangle_count: u64 }",
+    "PipelineDiagnosticsReport": "struct (non_exhaustive)",
     "PipelinePhaseTimings": "struct { entity_scan_ms: u64; geometry_ms: u64; lookup_ms: u64; parse_ms: u64; preprocess_ms: u64; total_ms: u64 }",
     "ProcessingRequest": "struct (non_exhaustive)",
     "ProcessingResult": "struct { building_transform: Option<Vec<f64>>; frame: MeshFrame; instances: Vec<InstanceRecord>; mesh_coordinate_space: MeshCoordinateSpace; meshes: Vec<MeshData>; metadata: ModelMetadata; site_transform: Option<Vec<f64>>; stats: ProcessingStats }",

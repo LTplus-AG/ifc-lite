@@ -36,7 +36,16 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
                 self.cancellation.stage.store(SETTLED_FAULT, Ordering::Release);
                 let contract = matches!(&reason, RetainedExecutionError::Runtime(fault)
                     if fault.kind == RuntimeFaultKind::Contract);
-                if !reason.controller_cancelled() && !contract {
+                // #7955: a failed band is still atomic, but a synchronized
+                // transactional refusal must not consume the host model's
+                // restart budget. Native and browser executors preserve their
+                // domain only for known pre-copy statuses 1..7. Unknown status,
+                // transport loss, and non-layer faults retain fault recovery.
+                let layer_refusal = self.layer_phase
+                    && self.cancellation.owner.incarnation().is_some()
+                    && matches!(&reason, RetainedExecutionError::Runtime(fault)
+                        if matches!(fault.kind, RuntimeFaultKind::Kernel { status: 1..=7 }));
+                if !reason.controller_cancelled() && !contract && !layer_refusal {
                     // Fault recovery, never a controller-owned cancellation.
                     self.cancellation.owner.retire();
                 }

@@ -1,7 +1,6 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
 use super::batch_partition::{
     encode_shard_routing_refusals_back, is_instancing_candidate, meets_instance_threshold,
     take_back_rejected, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
@@ -9,11 +8,9 @@ use super::batch_partition::{
 use super::partitioned_batch::PartitionedBatch;
 use super::style_finishes::{finish_at, mesh_js_with_finish, BatchFinishes};
 use ifc_lite_processing::prepass::finish_to_wire;
-use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
 use crate::zero_copy::{GeometryFingerprint, MeshCollection};
 use wasm_bindgen::prelude::*;
-
 /// Per-element output of [`IfcAPI::produce_batch`] — the canonical producer's
 /// meshes (with `instance` metadata intact, BEFORE the MeshDataJs Z-up→Y-up
 /// swap) plus everything the element's geometry-hash pass measured. The flat
@@ -34,7 +31,6 @@ struct ElementMeshOutput {
     /// Packed closure verdict; `0` when nothing was hashed.
     geometry_closure_bits: u8,
 }
-
 impl ElementMeshOutput {
     /// The element's diff-engine record, or `None` when hashing was off / it
     /// produced nothing. Built in ONE place so the two push sites (flat and
@@ -50,14 +46,6 @@ impl ElementMeshOutput {
         })
     }
 }
-
-/// Session-constant style lookups shared across batches: colour map plus
-/// per-style `GeometryStyleInfo` index (see the #1097 cache note below).
-type StyleMaps = std::sync::Arc<(
-    rustc_hash::FxHashMap<u32, [f32; 4]>,
-    std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>>,
-)>;
-
 impl IfcAPI {
     /// Shared core for both batch outputs: run the canonical per-element
     /// producer over `jobs_flat` (setup + loop + CSG/layer diagnostics),
@@ -104,277 +92,24 @@ impl IfcAPI {
         Vec<super::instancing::ShardOccurrence>,
     ) {
         use crate::api::styling::resolve_element_color;
-        use ifc_lite_core::EntityDecoder;
-        use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
             produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
-            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData,
         };
-        use ifc_lite_processing::style::GeometryStyleInfo;
-
         // Batch wall-clock for the PipelineDiagnostics channel. std::time::Instant
         // traps on wasm32, so the host clock is the JS one there (two Date.now()
         // reads per batch — negligible, always on); see `batch_host`.
         let batch_clock = super::batch_host::BatchClock::start();
-
         let content = data;
-
-        // Geometry fingerprinting for the viewer's revision-diff feature.
-        // When enabled we hash each entity's meshes *before* MeshDataJs::new
-        // applies the Z-up→Y-up swap, in the native IFC frame, reconstructing
-        // world coordinates as `local + rtc` so the file's RTC choice never
-        // registers as a change. Disabled (None) => zero overhead.
-        let hash_tolerance = self.geometry_hash_tolerance();
-        let hash_world_rtc: [f64; 3] = if needs_shift {
-            [rtc_x, rtc_y, rtc_z]
-        } else {
-            [0.0, 0.0, 0.0]
+        let wire = super::batch_wire::BatchWire {
+            jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba,
         };
-
-        // Reuse the cached Arc<EntityIndex> across calls so we don't
-        // re-clone the 14 M-entry HashMap on every batch. On streaming
-        // paths this turns ~36 calls/worker into 1 build + 35 Arc::clone()
-        // (a single refcount bump) instead of 36 full HashMap clones.
-        //
-        // If the cache is empty (which happens on every process worker
-        // because they're separate WASM realms from the pre-pass worker),
-        // build once here and store under Arc so subsequent calls hit
-        // the fast path.
-        let entity_index_arc: std::sync::Arc<ifc_lite_core::ColumnarEntityIndex> = {
-            // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
-            // The clone is what gets handed to rayon — no lock contention
-            // on the per-job hot path that follows. Poison panics here
-            // (an earlier panic-with-lock-held has corrupted the cache).
-            let mut slot = self
-                .cached_entity_index
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(existing) = slot.as_ref() {
-                std::sync::Arc::clone(existing)
-            } else {
-                // No setEntityIndex was delivered (non-streaming path): scan the
-                // file straight into sorted columns, skipping the FxHashMap.
-                let built = std::sync::Arc::new(super::scan_columnar_index(content));
-                *slot = Some(std::sync::Arc::clone(&built));
-                built
-            }
-        };
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc).with_strict_reals(); // #7678
-        // Seed the unit-scale caches so curve/arc tessellation never re-pays the
-        // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
-        // and `plane_angle_to_radians()` would otherwise walk the whole DATA
-        // section per batch on files whose IFCPROJECT sits near the end
-        // (IfcOpenShell exports) — the geometry-stream stall on large models.
-        let plane_angle_to_radians = plane_angle_to_radians
-            .unwrap_or_else(|| self.get_or_resolve_plane_angle(&mut decoder));
-        decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
-
-        // Create geometry router with unit scale and the consumer-selected
-        // tessellation quality (issue #976) — Medium unless JS called
-        // `setTessellationQuality`, so default output is byte-for-byte
-        // identical to the pre-quality pipeline.
-        let mut router =
-            GeometryRouter::with_scale_and_quality(unit_scale, self.tessellation_quality());
-
-        // Apply the consumer-selected small-cut skip (#1286) for this batch.
-        // Independent of the tessellation tier so the viewer can skip tiny steel
-        // cuts while keeping full-density curves. Scoped to this router (not a
-        // process-wide flag), so an export's router, which never enables it,
-        // keeps every cut regardless of a concurrent display build.
-        router.set_skip_small_cuts(self.skip_small_cuts());
-
-        // Arm content-dedup against the per-worker shared cache so byte-identical
-        // geometry (e.g. Tekla parts the exporter failed to share via
-        // IfcMappedItem) is meshed ONCE across batches, not once per batch.
-        {
-            let mut slot = self
-                .cached_item_dedup
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let cache = slot
-                .get_or_insert_with(GeometryRouter::new_dedup_cache)
-                .clone();
-            router.enable_content_dedup_shared(cache);
-        }
-
-        // Arm the shared IfcMappedItem source cache (#1623) against the per-worker
-        // cache so a RepresentationMap source shared across owning elements is
-        // meshed ONCE across batches, not once per batch. Held on the IfcApi like
-        // the item-dedup cache above (one per worker session). Keep a clone for the
-        // Phase 3 don't-bake finalize below (sub-threshold occurrences recover flat
-        // from this registry).
-        let mapped_item_cache = {
-            let mut slot = self
-                .cached_mapped_item
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let cache = slot
-                .get_or_insert_with(GeometryRouter::new_mapped_item_cache)
-                .clone();
-            router.enable_shared_mapped_item_cache(cache.clone());
-            cache
-        };
-
-        // #1623 Phase 3 "don't-bake": arm the batch router in BATCH-LOCAL mode when
-        // the partitioned path asked for it AND a plan is installed. Gated on
-        // `!needs_shift` (unshifted models only): the browser shard math is
-        // coordinate-space-agnostic (collate reduces to the post-RTC frame and the
-        // renderer applies any site rotation uniformly), but georef/site-local
-        // byte-identity needs a headed-browser check, so — mirroring the native
-        // `coord_space != site_local` guard — georef routes to flat here for now
-        // (loosen this predicate once the coord space is verified in-browser). Also
-        // gated on hashing being OFF: the #924 per-element geometry-diff fingerprint
-        // is computed during the per-occurrence materialize, which the don't-bake
-        // path skips — so when the diff feature needs those hashes, every occurrence
-        // materializes exactly as before. `None` ⇒ router unarmed ⇒ every occurrence
-        // materializes (byte-identical to the pre-Phase-3 partitioned path).
-        let instancing_armed = arm_instancing && !needs_shift && hash_tolerance.is_none();
-        let instance_plan = if instancing_armed {
-            self.mapped_instance_plan()
-        } else {
-            None
-        };
-        if let Some(plan) = instance_plan.as_ref() {
-            router.enable_output_instancing(plan.clone());
-            router.set_instancing_batch_local(true);
-        }
-
-        // Attach the per-content material-layer index so single-solid walls and
-        // slabs carrying an IfcMaterialLayerSetUsage slice into one coloured
-        // sub-mesh per layer (#563). Built once per load and Arc-shared across
-        // batches; #874 dropped this wiring, silently disabling layered-wall
-        // rendering for the entire browser stream. Cheap on files with no layer
-        // set (substring bail-out inside the index builder).
-        //
-        // "Merge Multilayer Walls" (the merge_layers toggle, #540) means exactly
-        // "render walls as ONE solid": NOT attaching the index leaves each wall as
-        // its single swept solid (no per-layer slice). So gate the index on the
-        // flag — off (default) ⇒ slice into layers; on ⇒ one solid. The separate
-        // part-skip path below keeps its own index, so IfcBuildingElementPart
-        // merging is unaffected.
-        if !self.merge_layers() {
-            router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
-        }
-
-        // Set RTC offset if needed
-        if needs_shift {
-            router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
-        }
-
-        // Reconstruct void_index from the flat wire arrays. Length-guarded so
-        // upstream drift drops the index instead of trapping the whole wasm
-        // instance under panic=abort (see reconstruct_void_index).
-        let void_index = reconstruct_void_index(void_keys, void_counts, void_values);
-
-        // #1097: the wire styles are session-constant, so build the colour map
-        // AND the GeometryStyleInfo index the producer consumes ONCE per worker
-        // and reuse across batches (was ~18 M HashMap inserts each on a 140 K-
-        // styled model). Keyed by a cheap (len, first_id, last_id) signature.
-        let style_maps: StyleMaps = {
-            let sig_len = style_ids.len();
-            let sig_first = style_ids.first().copied().unwrap_or(0);
-            let sig_last = style_ids.last().copied().unwrap_or(0);
-            let mut slot = self
-                .cached_geometry_styles
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            match slot.as_ref() {
-                Some((l, f, la, arc)) if *l == sig_len && *f == sig_first && *la == sig_last => {
-                    std::sync::Arc::clone(arc)
-                }
-                _ => {
-                    let colors = super::batch_partition::style_colors_from_wire(
-                        style_ids,
-                        style_colors,
-                    );
-                    let index: rustc_hash::FxHashMap<u32, GeometryStyleInfo> = colors
-                        .iter()
-                        .map(|(&id, &c)| (id, GeometryStyleInfo::from_color(c)))
-                        .collect();
-                    let arc = std::sync::Arc::new((colors, std::sync::Arc::new(index)));
-                    *slot = Some((sig_len, sig_first, sig_last, std::sync::Arc::clone(&arc)));
-                    arc
-                }
-            }
-        };
+        let super::batch_prepare::BatchSetup {
+            mut decoder, router, ctx, opts, style_maps, parts_to_skip, mapped_item_cache,
+        } = self.prepare_batch(content, &wire, arm_instancing);
         let geometry_styles = &style_maps.0;
-        // #5984: finishes `setStyleFinishes` installed for this style wire, joined
-        // per mesh from the style its colour came from.
         let installed_finishes = self.style_finishes_for(style_ids);
         let mut batch_finishes = BatchFinishes::new(installed_finishes.as_deref(), geometry_styles);
-        // #1097: element colours were resolved in a separate pre-pass that
-        // re-decoded every job entity (a second full decode + deep-clone pass).
-        // That resolution is now folded into the main loop below — each entity
-        // is decoded ONCE (as an Arc, no deep clone), so we no longer build an
-        // `element_styles` map up front.
-
-        // Pre-allocate
-        let num_jobs = jobs_flat.len() / 3;
-        decoder.reserve_cache(num_jobs * 2);
-        let mut outputs: Vec<ElementMeshOutput> = Vec::with_capacity(num_jobs);
-
-        // When merge-layers is on, fetch (or lazily build) the set of
-        // IfcBuildingElementPart express IDs to skip. Built once per worker
-        // and reused across every subsequent batch on the same content via
-        // the cached_parts_to_skip slot on IfcAPI.
-        let parts_to_skip: std::sync::Arc<rustc_hash::FxHashSet<u32>> = if self.merge_layers() {
-            self.get_or_build_parts_to_skip(content, &mut decoder)
-        } else {
-            std::sync::Arc::new(rustc_hash::FxHashSet::default())
-        };
-
-        // IfcIndexedColourMap index (geometry id → full per-triangle palette),
-        // built once per worker (#858) — the canonical producer splits face
-        // sets per palette group so multi-coloured triangles don't collapse to
-        // the single dominant colour the prepass `geometry_styles` carries.
-        let indexed_colour = self.get_or_build_indexed_colour_maps(content, &mut decoder);
-        // #858 / EDGE-WASM-5 (#7691): with the don't-bake plan armed, keep
-        // multi-colour indexed-colour sources flat so their palette split
-        // survives; an instance placeholder carries ONE colour. The same id set
-        // the native orchestrator arms (`style::indexed_colour_split_guard_ids`),
-        // derived once per content alongside the maps.
-        if instance_plan.is_some() {
-            if let Some(ids) = indexed_colour.split_guard_ids.as_ref() {
-                router.enable_indexed_colour_split_guard(std::sync::Arc::clone(ids));
-            }
-        }
-
-        // The canonical styled-item index the shared producer consumes — built
-        // once per worker alongside `geometry_styles` above (#1097).
-        // Surface textures + UV maps (#961), built once per worker (cheap
-        // substring bail-out for untextured files).
-        let texture_index = self.get_or_build_texture_index(content, &mut decoder);
-        // #407/#913 §2.3: per-element material colour lists from the prepass
-        // wire, so the canonical producer's transparent/opaque sub-mesh
-        // alternation fires in the browser exactly like on the server.
-        // Absent (older callers) ⇒ empty map ⇒ alternation never fires.
-        let element_material_colors: rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> = match (
-            material_element_ids.as_deref(),
-            material_color_counts.as_deref(),
-            material_colors_rgba.as_deref(),
-        ) {
-            (Some(ids), Some(counts), Some(rgba)) => {
-                ifc_lite_processing::prepass::material_colors_from_flat(ids, counts, rgba)
-            }
-            _ => rustc_hash::FxHashMap::default(),
-        };
-
-        // One snapshot per batch: session caches shared, the batch's wire maps moved in.
-        let ctx = self.production_model.snapshot(OwnedMeshProductionData {
-            void_index: std::sync::Arc::new(void_index),
-            geometry_style_index: std::sync::Arc::clone(&style_maps.1),
-            indexed_colour_full: std::sync::Arc::clone(&indexed_colour.maps),
-            element_material_colors: std::sync::Arc::new(element_material_colors),
-            texture_index: std::sync::Arc::clone(&texture_index),
-            // The browser's axis change (IFC Z-up → WebGL Y-up) happens at the
-            // FFI boundary in `MeshDataJs::from_mesh_data`, not here.
-            site_local_rotation: None,
-        });
-        let opts = MeshProductionOptions {
-            geometry_hash: hash_tolerance.map(|tolerance| GeometryHashConfig { tolerance, world_rtc: hash_world_rtc }),
-            ..Default::default()
-        };
-
+        let mut outputs = Vec::with_capacity(jobs_flat.len() / 3);
         // CSG diagnostics, aggregated across the batch: the canonical producer
         // drains the (warm, batch-shared) router per element so one element's
         // failures never bleed into the next; we collect them here and hand
@@ -397,6 +132,7 @@ impl IfcAPI {
         // Process only the entities specified in jobs_flat — every job runs
         // THE canonical per-element producer (`ifc_lite_processing::element`),
         // the same code the native pipeline runs.
+        self.collect_pipeline_refusals(&decoder);
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
                 break;
@@ -413,7 +149,11 @@ impl IfcAPI {
             // not a deep clone of the DecodedEntity — was the dominant per-job
             // marshalling cost across ~60-110 K jobs. produce_element_meshes
             // takes `&DecodedEntity`, so we deref the Arc at the call site.
-            let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
+            let span = ifc_lite_processing::execution::JobSpan { id, start, end };
+            let Ok(entity) = ifc_lite_processing::execution::decode_job(
+                &mut decoder, span, ifc_lite_processing::execution::SchedulerPolicy::PerBatch,
+            ) else {
+                self.record_input_refusals(&decoder, false);
                 continue;
             };
             // Schema-resolved, like the native pre-pass at
@@ -444,17 +184,14 @@ impl IfcAPI {
             // Cheaper than widening the jobs wire, which is 3 u32 per job
             // across Rust and TS and would have paid marshalling cost on every
             // job to fix the few that are legacy.
-            let ifc_type = ifc_lite_core::ifc_type_from_record(
-                entity.ifc_type.clone(),
-                content.get(start..end).unwrap_or_default(),
-            );
+            let ifc_type = ifc_lite_processing::execution::job_type(&entity, content, span, None);
 
             // Resolve the element-level colour inline (folded from the deleted
             // pre-pass) so the entity is decoded exactly once.
             let element_color = if !geometry_styles.is_empty()
                 && entity.get(6).map(|a| !a.is_null()).unwrap_or(false)
             {
-                resolve_element_color(entity.as_ref(), geometry_styles, &mut decoder)
+                resolve_element_color(&entity, geometry_styles, &mut decoder)
             } else {
                 None
             };
@@ -470,11 +207,13 @@ impl IfcAPI {
                     ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
                 );
                 if rep_map_ids.is_empty() {
+                    self.record_input_refusals(&decoder, router.length_unit_refused());
                     continue;
                 }
                 let type_plan = self.get_or_build_type_geometry_plan(content, &mut decoder);
                 let rep_maps = type_plan.maps_for(id, &rep_map_ids);
                 if rep_maps.is_empty() {
+                    self.record_input_refusals(&decoder, router.length_unit_refused());
                     continue;
                 }
                 ElementJobKind::TypeProduct { rep_maps }
@@ -488,7 +227,7 @@ impl IfcAPI {
                 &ElementMeshJob {
                     id,
                     ifc_type,
-                    entity: entity.as_ref(),
+                    entity: &entity,
                     kind,
                     element_color,
                     // The viewer gets element metadata from the parser worker.
@@ -499,7 +238,11 @@ impl IfcAPI {
                 &mut decoder,
                 &router,
             );
-            let Ok(produced) = produced else { batch_refused += 1; continue };
+            let Ok(produced) = produced else {
+                self.record_input_refusals(&decoder, router.length_unit_refused());
+                batch_refused += 1;
+                continue;
+            };
 
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);
@@ -520,6 +263,9 @@ impl IfcAPI {
                     .geometry_closure
                     .map_or(0, |c| c.bits()),
             });
+            // Finish resolution can re-decode refused items too. Drain the whole
+            // element scope only after the join, before the next job starts.
+            self.record_input_refusals(&decoder, router.length_unit_refused());
         }
 
         // Surface refused products and the opening / CSG diagnostics. The
@@ -609,6 +355,7 @@ impl IfcAPI {
         // already hoisted here), so its cumulative point-cache stats ARE this
         // batch's faceted-brep memoization tally.
         let (point_cache_hits, point_cache_misses) = decoder.point_cache_stats();
+        self.collect_pipeline_refusals(&decoder);
         self.record_pipeline_batch(
             batch_elements,
             batch_meshes,
@@ -947,3 +694,7 @@ mod tests;
 #[cfg(test)]
 #[path = "batch_parity_tests.rs"]
 mod parity;
+
+#[cfg(test)]
+#[path = "c4_10a_tests.rs"]
+mod c4_10a_tests;

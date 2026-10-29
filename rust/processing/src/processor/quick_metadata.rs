@@ -355,16 +355,7 @@ fn build_subtree(
             element_summaries
                 .get(element_id)
                 .cloned()
-                .unwrap_or(QuickMetadataEntitySummary {
-                express_id: *element_id,
-                type_name: "IfcProduct".to_string(),
-                name: format!("IfcProduct #{}", element_id),
-                global_id: None,
-                kind: "element".to_string(),
-                has_children: false,
-                element_count: None,
-                elevation: None,
-            })
+                .unwrap_or_else(|| element_placeholder(*element_id, "IfcProduct"))
         })
         .collect();
     Ok(QuickMetadataSpatialNode {
@@ -381,6 +372,20 @@ fn build_subtree(
         children,
         elements,
     })
+}
+
+/// Placeholder for an element whose authored metadata has not been decoded yet.
+pub(super) fn element_placeholder(id: u32, type_name: &str) -> QuickMetadataEntitySummary {
+    QuickMetadataEntitySummary {
+        express_id: id,
+        type_name: type_name.to_string(),
+        name: format!("{type_name} #{id}"),
+        global_id: None,
+        kind: "element".to_string(),
+        has_children: false,
+        element_count: None,
+        elevation: None,
+    }
 }
 
 #[cfg(test)]

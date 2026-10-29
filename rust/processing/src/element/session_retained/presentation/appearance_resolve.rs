@@ -108,8 +108,9 @@ pub(super) fn resolve_parts(
             }
             (None, PartSource::Material(id)) => {
                 // The model prepass joins material styles under their own ids, as
-                // exact's flat style wire does. Never rotate the host's material cursor.
-                let (rgba, material_name) = color(job, *id, element_color, None, &mut 0, ctx, decoder, true);
+                // exact's flat style wire does. Missing styles use the same product-wide
+                // material cursor as exact's collection; styled bands do not advance it.
+                let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
                 PartAppearance { rgba, geometry_class: crate::element::GEOM_CLASS_LAYER_SLICE,
                     style_id: ctx.geometry_style_index.contains_key(id).then_some(*id),
                     material_name, geometry_item_id: None, material_id: Some(*id) }

@@ -104,10 +104,10 @@ fn compare(
     let exact_ms = start.elapsed().as_secs_f64() * 1000.;
     report.exact_ms += exact_ms;
     let exact_rss = report::rss(false)?;
-    let mut exact_metrics: BTreeMap<u32, Metrics> = BTreeMap::new();
     let mut exact_origins: BTreeMap<u32, Vec<[f64; 3]>> = BTreeMap::new();
     let mut exact_items: BTreeMap<u32, (BTreeSet<u32>, bool)> = BTreeMap::new();
     let layer_candidates = layer_report::candidates(&bytes);
+    let exact_metrics = measure_exact(&exact)?;
     for mesh in &exact.meshes {
         let items = exact_items.entry(mesh.express_id).or_default();
         match mesh.geometry_item_id { Some(item) => { items.0.insert(item); } None => items.1 = true }
@@ -115,22 +115,6 @@ fn compare(
             .entry(mesh.express_id)
             .or_default()
             .push(mesh.origin);
-        let points: Vec<_> = mesh
-            .positions
-            .chunks_exact(3)
-            .map(|p| {
-                exact.frame.to_world([
-                    mesh.origin[0] + p[0] as f64,
-                    mesh.origin[1] + p[1] as f64,
-                    mesh.origin[2] + p[2] as f64,
-                ])
-            })
-            .collect();
-        let measurement = exact_metrics.entry(mesh.express_id).or_insert_with(|| {
-            if layer_candidates.contains(&mesh.express_id) { Metrics::assembly() }
-            else { Metrics::default() }
-        });
-        measurement.add_mesh(&points, &mesh.indices)?;
     }
     let source = SourceBundle::new(bytes.clone());
     let candidates: BTreeSet<_> = canonical_element_jobs(&source)
@@ -296,4 +280,41 @@ fn compare(
         "openingCounters":"M3-A: cuts/cutMs include attempted cuts of refused products; any consumed part refuses the whole product",
         "memorySemantics":"getrusage process lifetime high-water marks; children includes reaped workers"}));
     Ok(())
+}
+
+// Exact's layer meshes are individually closed, including their interface caps.
+// Only retained's open bands share an assembly edge ledger.
+fn measure_exact(exact: &ifc_lite_processing::ProcessingResult) -> Result<BTreeMap<u32, Metrics>, String> {
+    let mut measured: BTreeMap<u32, Metrics> = BTreeMap::new();
+    for mesh in &exact.meshes {
+        let points: Vec<_> = mesh.positions.chunks_exact(3).map(|p| {
+            exact.frame.to_world(std::array::from_fn(|i| mesh.origin[i] + f64::from(p[i])))
+        }).collect();
+        measured.entry(mesh.express_id).or_default().add_mesh(&points, &mesh.indices)?;
+    }
+    Ok(measured)
+}
+
+// #7955 / PR #8324: shared interface edges between closed exact bands are not defects.
+#[test]
+fn exact_closed_layer_meshes_have_zero_closure_defects() {
+    let text = include_str!("../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
+    let exact = ifc_lite_processing::process_geometry(text.as_bytes());
+    assert_eq!(exact.meshes.iter().filter(|mesh| mesh.express_id == 22).count(), 3);
+    let measured = measure_exact(&exact).unwrap();
+    let wall = measured.get(&22).unwrap();
+    assert_eq!(wall.defects, 0);
+    assert!((wall.volume - 3.6).abs() < 1e-6);
+    // Demonstrate why assembly counting is wrong for these closed solids.
+    let mut assembly = Metrics::assembly();
+    for mesh in exact.meshes.iter().filter(|mesh| mesh.express_id == 22) {
+        let points: Vec<_> = mesh.positions.chunks_exact(3).map(|p| {
+            exact.frame.to_world(std::array::from_fn(|i| mesh.origin[i] + f64::from(p[i])))
+        }).collect();
+        assembly.add_mesh(&points, &mesh.indices).unwrap();
+    }
+    assert!(assembly.defects > 0, "old assembly metric falsely reports shared cap edges");
+    assert!((assembly.volume - wall.volume).abs() < 1e-6);
+    assert_eq!(assembly.area, wall.area);
+    assert_eq!(assembly.bbox, wall.bbox);
 }

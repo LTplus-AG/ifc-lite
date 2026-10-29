@@ -90,7 +90,6 @@ mod tests {
         assert!(oracle.is_affine_final(42));
         assert!(oracle.expected(42).is_none());
         assert_winding_gate(&source,42,false);
-        eprintln!("sdk witness executed: m10_affine_winding_without_analytic_source");
     }
     // #7955: opening cuts must not bypass the per-part winding gate (#130/#133/#145/#146).
     #[test]

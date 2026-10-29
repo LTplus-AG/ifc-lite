@@ -35,6 +35,11 @@ pub(in crate::program) fn prism_operation(host: &LogicalRetainedValue, prism: Re
 /// `source_id` is the halfspace's id, so the derived Source retains its attribution.
 pub(in crate::program) fn halfspace_box(host: &LogicalRetainedValue, source_id: u32, p_e: [f64; 3], r_e: [f64; 3])
     -> Result<CutterStep, CutterError> {
+    let Some(prism) = halfspace_prism(host, source_id, p_e, r_e)? else { return Ok(CutterStep::Skip); };
+    prism_operation(host, prism).map(CutterStep::Cutter).map_err(CutterError::Control)
+}
+pub(super) fn halfspace_prism(host: &LogicalRetainedValue, source_id: u32, p_e: [f64; 3], r_e: [f64; 3])
+    -> Result<Option<RetainedPrism>, CutterError> {
     let b = host.bounds.filter(|b| b.valid())
         .ok_or_else(|| RetainedRefusal::UnsupportedSource("unbounded_host".into()))?;
     let (p, r) = (Vector3::from(p_e), Vector3::from(r_e));
@@ -44,7 +49,7 @@ pub(in crate::program) fn halfspace_box(host: &LogicalRetainedValue, source_id: 
     }
     let corners = b.corners().map(Vector3::from);
     let h = corners.iter().map(|c| r.dot(&(c - p))).fold(f64::NEG_INFINITY, f64::max);
-    if h <= 0. { return Ok(CutterStep::Skip); }
+    if h <= 0. { return Ok(None); }
     let center = Vector3::from(std::array::from_fn::<_, 3, _>(|i| b.0[i] / 2. + b.0[i + 3] / 2.));
     let origin = center - r * r.dot(&(center - p));
     let k = (0..3).min_by(|&a, &b| r[a].abs().total_cmp(&r[b].abs())).unwrap();
@@ -65,8 +70,7 @@ pub(in crate::program) fn halfspace_box(host: &LogicalRetainedValue, source_id: 
         loops: vec![PrismLoop { outer: true, segments: (0..4).map(|i| PrismSegment::Line {
             start: vertices[i], end: vertices[(i + 1) % 4] }).collect() }] };
     prism.lower()?;
-    prism_operation(host, prism).map(CutterStep::Cutter)
-        .map_err(CutterError::Control)
+    Ok(Some(prism))
 }
 
 #[cfg(test)]

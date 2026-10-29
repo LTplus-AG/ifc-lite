@@ -15,7 +15,7 @@ export type { RetainedProductRefusal, RetainedRtcFrame, RetainedRunOptions, Reta
 export type RetainedRefusalCode = RetainedProductRefusal['code'];
 type SessionEvent<K extends RetainedSessionEvent['kind']> = Extract<RetainedSessionEvent, { kind: K }>;
 export type RetainedStart = SessionEvent<'start'>;
-/** The `detail: 'view'` publication: the shape-only variant carries `parts`, not meshes. */
+/** The `detail: 'view'` publication: `detail: 'shape'` carries `parts` instead of meshes; either may be final. */
 export type RetainedPublished = Extract<SessionEvent<'published'>, { meshes: unknown }>;
 export type RetainedRefused = SessionEvent<'refused'>;
 type PublishedMetadata = Omit<RetainedPublished, 'meshes'> & { faceRows?: RetainedFaceRow[] };

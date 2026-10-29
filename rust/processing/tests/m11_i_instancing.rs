@@ -5,7 +5,7 @@ use ifc_lite_processing::element::retained_runtime::{ShapePart, PartFaces, FaceK
 mod key;
 
 fn part() -> ShapePart {
-    ShapePart { positions: vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0.],
+    ShapePart { layer: None, capped_volume_m3: None, positions: vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0.],
         indices: vec![0,1,2, 0,2,3], world_from_object: [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.],
         curved: false, halfspace_clipped: false, revision_local_faces: vec![0,0], normals: None,
         appearance: None, faces: None, instance_key: None }
@@ -92,4 +92,26 @@ fn issue_7955_m11_i_world_normals_hash_in_object_axes_after_m11_n() {
         assert_ne!(key::instance_key(16, &a), key::instance_key(16, &b),
             "no tolerance may hide a changed normal payload");
     }
+}
+
+// #7955 M4 integration: band identity and pre-cap volume are part of payload identity.
+#[test]
+fn issue_7955_m4_band_and_cap_data_partition_instance_keys() {
+    use ifc_lite_geometry::program::transactions::ShapeLayer;
+    let a = part();
+    let mut b = part();
+    b.layer = Some(ShapeLayer { index: 0, material_id: 80 });
+    let band = key::instance_key(16, &b);
+    assert_ne!(key::instance_key(16, &a), band);
+    b.layer.as_mut().unwrap().index = 1;
+    assert_ne!(key::instance_key(16, &b), band);
+    b.layer.as_mut().unwrap().index = 0;
+    b.layer.as_mut().unwrap().material_id = 81;
+    assert_ne!(key::instance_key(16, &b), band);
+    b = part();
+    b.capped_volume_m3 = Some(1.);
+    assert_ne!(key::instance_key(16, &a), key::instance_key(16, &b));
+    let capped = key::instance_key(16, &b);
+    b.capped_volume_m3 = Some(2.);
+    assert_ne!(key::instance_key(16, &b), capped);
 }

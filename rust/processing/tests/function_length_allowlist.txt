@@ -69,7 +69,7 @@
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
    165 rust/processing/src/simplify_session.rs simplify_element
    296 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
-   296 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
+   272 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
    158 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::process_geometry_batch_partitioned
-   589 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
+   561 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
    563 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl

@@ -34,6 +34,12 @@ export const retainedGeometryEn = {
   'retainedGeometry.obligation.PersistentFaces': 'persistent faces',
   'retainedGeometry.obligation.SurfaceNormals': 'surface normals',
 
+  'retainedGeometry.faces.hint': 'Select a published product to list its persistent faces.',
+  'retainedGeometry.faces.title': 'Persistent faces of #{id} ({count})',
+  'retainedGeometry.faces.column.key': 'Source face',
+  'retainedGeometry.faces.column.triangles': 'Triangles',
+  'retainedGeometry.faces.column.area': 'Area (m²)',
+
   'retainedGeometry.panel.title': 'Retained geometry',
   'retainedGeometry.panel.description': 'Shape-only geometry from the retained kernel. Products listed below have no geometry in the viewport, and no exact geometry stands in for them.',
   'retainedGeometry.panel.counts': '{published} of {candidates} products published · {refused} refused · {cancelled} cancelled',

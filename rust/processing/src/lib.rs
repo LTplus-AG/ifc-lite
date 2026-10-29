@@ -141,3 +141,7 @@ pub use types::response::{
     QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataPrunedEdge,
     QuickMetadataPrunedEdgeKind, QuickMetadataSpatialNode,
 };
+
+#[cfg(feature = "parity-test-support")]
+#[doc(hidden)]
+pub mod parity_test_support;

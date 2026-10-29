@@ -102,7 +102,10 @@ fn compare(
     let exact_rss = report::rss(false)?;
     let mut exact_metrics: BTreeMap<u32, Metrics> = BTreeMap::new();
     let mut exact_origins: BTreeMap<u32, Vec<[f64; 3]>> = BTreeMap::new();
+    let mut exact_items: BTreeMap<u32, (BTreeSet<u32>, bool)> = BTreeMap::new();
     for mesh in &exact.meshes {
+        let items = exact_items.entry(mesh.express_id).or_default();
+        match mesh.geometry_item_id { Some(item) => { items.0.insert(item); } None => items.1 = true }
         exact_origins
             .entry(mesh.express_id)
             .or_default()
@@ -214,6 +217,7 @@ fn compare(
                         &sources,
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
                     );
+                    report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }
                 ProductOutcome::Refused {
                     ifc_type,

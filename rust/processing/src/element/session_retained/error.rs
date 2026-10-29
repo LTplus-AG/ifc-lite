@@ -64,6 +64,8 @@ pub enum RetainedExecutionError {
     Transition(u8),
     DomainRetired,
     Unsupported(Unsupported),
+    /// #7955 M11-F: a published triangle has no unique source face (`unattributed`/`ambiguous`).
+    FaceProvenance { cause: &'static str, entity: Option<u32> },
     Stopped(ProgramStop),
     // Refs #7955: D's model driver validates type-product source before admission.
     #[cfg_attr(not(test), allow(dead_code))]

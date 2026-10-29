@@ -163,6 +163,14 @@ pub(super) fn scan_entities(
     ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
 
     scan.types.append_orphan_jobs(&mut scan.out.entity_jobs);
+    #[cfg(feature = "parity-test-support")]
+    crate::parity_test_support::record(scan.out.entity_jobs.iter().map(|j| {
+        (
+            j.id,
+            j.representation_map_id,
+            u8::from(j.representation_map_id.is_some()),
+        )
+    }));
     scan.out
 }
 

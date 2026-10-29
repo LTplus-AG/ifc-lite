@@ -16,3 +16,5 @@ pub mod layers;
 pub mod clips;
 pub mod bounded;
 pub mod type_maps;
+pub mod faces;
+pub mod face_bands;

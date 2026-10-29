@@ -77,7 +77,9 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
     assert.equal(product.obligationsUnmet.at(-1), 'SurfaceNormals');
     for (const part of product.parts) {
       assert.equal(part.revisionLocalFaces.length, part.indices.length / 3);
-      for (const key of ['normals', 'color', 'faces', 'instanceKey']) assert.equal(part[key], undefined);
+      for (const key of ['normals', 'color', 'instanceKey']) assert.equal(part[key], undefined);
+      // M11-F: every triangle carries a persistent source face key.
+      assert.equal(part.faces.triangles.length, part.indices.length / 3);
     }
   }
   const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');
@@ -85,5 +87,5 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
   assert.equal(current.length, previous.length, 'no added geometry, normals, groups or materials');
   const changed = current.flatMap((line, index) => line === previous[index] ? [] : [index]);
   assert.deepEqual(changed, [3], 'the ONLY changed line must be the presentation obligations header');
-  assert.equal(current[3], previous[3] + ', SurfaceNormals');
+  assert.equal(current[3], previous[3].replace(', PersistentFaces', '') + ', SurfaceNormals', 'M11-F discharges PersistentFaces');
 });

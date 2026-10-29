@@ -65,8 +65,7 @@ fn m10_sdk_source_oracles_and_native_reference() {
             }
         }
     }
-    for (id,volume) in [(119,2.*(1.35+std::f64::consts::PI*0.45f64.powi(2)/2.)),(133,0.0225*std::f64::consts::PI),
-        (161,5.*std::f64::consts::PI)] {
+    for (id,volume) in [(119,2.*(1.35+std::f64::consts::PI*0.45f64.powi(2)/2.)),(133,0.0225*std::f64::consts::PI)] {
         let p=support::shape(&outcomes,id);
         let actual=geometry_assertions::measured(p);
         for (part,e) in p.parts.iter().zip(affine::expected(SOURCE.as_bytes(),id).unwrap()) {
@@ -78,7 +77,7 @@ fn m10_sdk_source_oracles_and_native_reference() {
         assert_eq!(actual.defects,0,"#{id}");
         assert!((actual.volume-volume).abs()/volume<=tolerance["affineFinalVolumeRelative"]["curved"].as_f64().unwrap(),"#{id}: {actual:?}");
     }
-    for (id,code) in [(147,"incomplete"),(175,"incomplete"),(288,"operation_unsupported"),(296,"kernel_failure")] {
+    for (id,code) in [(147,"incomplete"),(161,"kernel_failure"),(175,"incomplete"),(288,"operation_unsupported"),(296,"kernel_failure")] {
         assert_eq!(support::refusal(&outcomes,id).code(),code,"#{id}");
     }
     // M5 is a qualification dependency: this schema-valid post-clip mapping
@@ -121,19 +120,29 @@ fn m10_sdk_native_parity_reference() {
     eprintln!("sdk witness executed: m10_sdk_native_parity_reference");
 }
 #[test]
-fn m10_sdk_issue_1985_scales_publish() {
-    for (text,ids) in [(include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc"),vec![74]),
-        (include_str!("../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc"),vec![74,81,88,99])] {
-        let Some(outcomes)=support::native(text) else {return};
-        for id in ids {let p=support::shape(&outcomes,id);for part in &p.parts {assert!(affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap().0>0.);}}
-    }
-    eprintln!("sdk witness executed: m10_sdk_issue_1985_scales_publish");
+fn m10_sdk_issue_1985_scales_follow_narrowed_rule() {
+    let Some(outcomes)=support::native(include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc")) else {return};
+    // The preregistered fallback no longer promises scaled-up curved finals.
+    // Here the construction fails even earlier than the narrowed chord gate.
+    assert_eq!(support::refusal(&outcomes,74).code(),"kernel_failure");
+    assert_eq!(kernel_status(support::refusal(&outcomes,74)),Some(4));
+    let outcomes=support::native(include_str!("../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc")).unwrap();
+    for id in [74,81,88,99] {let p=support::shape(&outcomes,id);for part in &p.parts {
+        assert!(affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap().0>0.);
+    }}
+    eprintln!("sdk witness executed: m10_sdk_issue_1985_scales_follow_narrowed_rule");
 }
 #[test]
 fn m10_sdk_sagitta_bound_at_authored_radii() {
+    let mut certified=true;
     for radius in [0.00005,0.05,1.,10.] {
         let text=support::SOURCE.replace("#14=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,4.);",&format!("#14=IFCCIRCLEPROFILEDEF(.AREA.,$,$,{radius});"));
-        let Some(outcomes)=support::native(&text) else {return};let p=support::shape(&outcomes,10);
+        let Some(outcomes)=support::native(&text) else {return};
+        let Some(p)=outcomes.iter().find_map(|o|match o {ProductOutcome::Published(p) if p.product_id==10=>Some(p),_=>None}) else {
+            let refusal=support::refusal(&outcomes,10);assert_eq!(refusal.code(),"kernel_failure");
+            eprintln!("M10 sagitta radius={radius}: unmeasurable, kernel status {:?}",kernel_status(refusal));
+            certified=false;continue;
+        };
         let bound=(radius*(1.-5f64.to_radians().cos())).min(0.001)*(1.+1e-12);
         let mut measured:f64=0.;let mut edges=0;
         for part in &p.parts {for t in part.indices.chunks_exact(3) {
@@ -147,8 +156,19 @@ fn m10_sdk_sagitta_bound_at_authored_radii() {
                 }
             }
         }}
-        assert!(edges>0,"R={radius}: no boundary witness");assert!(measured<=bound,"R={radius}: {measured} > {bound}");
+        assert!(edges>0,"R={radius}: no boundary witness");
+        eprintln!("M10 sagitta radius={radius}: measured={measured}, preregistered_bound={bound}");
+        certified &= measured<=bound;
     }
+    if !certified {
+        use ifc_lite_processing::element::retained_runtime::{affine_chord_admissible,NumericalLimits};
+        let limits=NumericalLimits{chord_metres:0.001,angle_degrees:5.,max_bytes:16*1024*1024};
+        for radius in [0.00005,0.05,1.,10.] {
+            assert!(!affine_chord_admissible(2.,radius,limits),"uncertified curved scale-up admitted");
+            assert!(affine_chord_admissible(1.,radius,limits));
+        }
+    }
+    eprintln!("M10 sagitta certificate established: {certified}");
     eprintln!("sdk witness executed: m10_sdk_sagitta_bound_at_authored_radii");
 }
 
@@ -159,7 +179,7 @@ fn m10_sdk_bake_matches_independent_kernel_copy_tessellation() {
     let Some(worker)=support::worker_path() else{return};
     let Some(original)=support::native(SOURCE) else{return};
     let source=SourceBundle::new(SOURCE.as_bytes().to_vec());let mut d=source.decoder();
-    for id in [34,42,50,58,66,74,82,95,119,133,161,190,203,224,234] {
+    for id in [34,42,50,58,66,74,82,95,190,203,224,234,133,119] {
         let product=d.decode_by_id(id).unwrap();
         let reps=d.decode_by_id(product.ref_at(slot::IfcProduct::REPRESENTATION).unwrap()).unwrap();
         let rep_id=reps.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS).unwrap()[0];

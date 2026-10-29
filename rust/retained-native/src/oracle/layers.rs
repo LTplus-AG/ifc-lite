@@ -10,7 +10,14 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
     let bundle=ifc_lite_core::SourceBundle::new(bytes.to_vec()); let mut decoder=bundle.decoder();
     let usage=source::read(bytes,id,&mut decoder)?;
     let instances=sources.extrusion_definitions.instances.get(&id)?;
-    if instances.len()!=1 || instances[0].source_modified || usage.thickness.len()<2 {return None;}
+    let clips = super::clips::ClipOracle::new(&bundle, sources).expected(id).ok()?;
+    if instances.len()!=1 || usage.thickness.len()<2 {return None;}
+    if instances[0].source_modified && clips.is_none() {return None;}
+    let clip = match &clips {
+        Some(c) if c.parts.len() == 1 => Some(&c.parts[0]),
+        Some(_) => return None,
+        None => None,
+    };
     let mut sum=0.; let boundaries:Vec<_>=usage.thickness.iter().take(usage.thickness.len()-1).map(|t|{sum+=t;sum}).collect();
     let volumes=if let Some((center,radius,sigma))=usage.circle {
         let basis=Basis::new(&prism::profile_frame(sources,&instances[0])?)?;
@@ -45,11 +52,15 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
             let mut planes=Vec::new();
             if k>0 {planes.push((n.map(|v|-v),-base-boundaries[k-1]));}
             if let Some(c)=boundaries.get(k) {planes.push((n,base+c));}
-            result.push(section_volume(&host,&planes)?);
+            result.push(if let Some(clip) = clip { clip.volume_with_planes(&planes)? }
+                else { section_volume(&host,&planes)? });
         }
         result
     };
-    let opened_volume=super::openings::prism_result_volume(sources,id,&usage.openings)?;
+    let opened_volume = if let Some(clips) = clips {
+        if !usage.openings.is_empty() || usage.circle.is_some() { return None; }
+        clips.section_volume()?
+    } else { super::openings::prism_result_volume(sources,id,&usage.openings)? };
     Some(LayerExpectation{volumes,opened_volume,curved:usage.circle.is_some()})
 }
 fn sector(host: &Prism,center:[f64;3]) -> Option<(f64,f64)> {

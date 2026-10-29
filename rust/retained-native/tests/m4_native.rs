@@ -174,6 +174,13 @@ fn issue_7955_m4_synthetic_bands_and_refusals() {
     let clipped=shape(&results,11027);
     assert_band_faces(clipped);
     assert!(clipped.parts.iter().all(|p| p.halfspace_clipped && p.instance_key.is_none()));
+    let clip_oracle=ifc_lite_retained_native::oracle::layers::expected(text.as_bytes(),&sources,11027).unwrap();
+    // Authored z=2 clip keeps a height-2, width-2, thickness-.6 box.
+    close(measure(clipped).volume,2.4,1e-6);
+    for (part,expected) in clipped.parts.iter().zip([0.4,0.8,1.2]) {
+        close(part.capped_volume_m3.unwrap(),expected,1e-6);
+    }
+    close(clip_oracle.opened_volume,2.4,1e-12);
     let single=shape(&results,10027); assert_eq!(single.parts.len(),1); assert!(single.parts[0].layer.is_none()); close(measure(single).volume,3.6,1e-6);
     for (id,code) in [(8027,"material_layer_strategy"),(9027,"layer_caps_unresolved")] {
         assert!(results.iter().any(|o|matches!(o,ProductOutcome::Refused{product_id,refusal,..} if *product_id==id && refusal.code()==code)),"#{id} expected {code}: {results:?}");

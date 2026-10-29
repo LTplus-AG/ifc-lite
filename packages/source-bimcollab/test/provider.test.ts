@@ -36,7 +36,7 @@ function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: 
         : options.byLocation ? options.byLocation[locationId] ?? [] : locationId === 2 ? options.records ?? [record] : [];
       return json({ records });
     }
-    if (url.includes('/space/') && url.endsWith('/download/42')) return new Response('IFC');
+    if (url.includes('/space/') && /\/download\/\d+$/.test(url)) return new Response('IFC');
     if (url.endsWith('/download')) return options.legacy === false ? json({ downloadUrl: 'https://storage.blob.core.windows.net/model?sas=private' })
       : json('No download URL available for this document', 404);
     if (url.includes('/documents?')) return json([document]);
@@ -116,6 +116,16 @@ describe('BIMcollab source provider (fake transport only)', () => {
     // Every location id 1–100 is read once; the second download uses the cache.
     expect(indexes).toEqual(Array.from({ length: 100 }, (_, i) => `/api/bimcollab/space/demo/index?locationId=${i + 1}`));
     expect(fetchFn.mock.calls.filter(call => String(call[0]).endsWith('/space/demo/download/42'))).toHaveLength(2);
+  });
+  it('reuses one cached scan for every project in the space (no stale per-project filter)', async () => {
+    const phaseRecord = { ...record, versionId: 43, projectId: null, projectName: null, projectPhaseName: 'Design' };
+    const { provider, ctx, fetchFn } = setup({ records: [record, phaseRecord] });
+    expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
+    const phased = { projectId: 'phased', containerId: 'phase', fileId: 'd' };
+    expect(new TextDecoder().decode(await provider.download(ctx, phased))).toBe('IFC');
+    // Second project within the TTL: no rescan, and its own row (43) is downloaded.
+    expect(fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(100);
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/43'))).toBe(true);
   });
   it('expires cached indexes after a short TTL', async () => {
     const { provider, ctx, fetchFn } = setup();

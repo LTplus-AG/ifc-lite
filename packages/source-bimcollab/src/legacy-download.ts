@@ -47,18 +47,20 @@ export class LegacyDownload {
     if (names.latest === false) {
       throw new Error('BIMcollab cannot download older versions of this document yet; open the current version, or download this one in BIMcollab.');
     }
-    const key = JSON.stringify([session.spaceGuid, session.spaceLabel, names.locationGuid]);
+    // The cache holds the space's WHOLE scan, unfiltered: every project in the
+    // space reuses it, and each request applies its own project filter below.
+    const key = JSON.stringify([session.spaceGuid, session.spaceLabel]);
     // Expire entries eagerly so browsing many spaces does not retain their indexes.
     for (const [id, entry] of this.cache) if (entry.expires <= Date.now()) this.cache.delete(id);
     let records = this.cache.get(key)?.records;
     if (!records) {
-      records = await this.probe(ctx, session, names, signal);
+      records = await this.scan(ctx, session, signal);
       this.cache.set(key, { records, expires: Date.now() + this.ttl });
     }
-    // Document numbers are unique per project, not per location; the probe
-    // already pinned the location, so project + number + version identifies it.
-    const matches = records.filter(row => inProject(row, names)
-      && row.documentNumber === documentNumber && row.versionNumber === versionNumber);
+    const inThisProject = records.filter(row => inProject(row, names));
+    if (inThisProject.length === 0) throw new Error('BIMcollab legacy download: project not found in any readable location index.');
+    // Document numbers are unique per project; project + number + version identifies it.
+    const matches = inThisProject.filter(row => row.documentNumber === documentNumber && row.versionNumber === versionNumber);
     // Fail closed: a phase-attached record names only its phase, so the same
     // phase name + document number in two projects is indistinguishable here.
     // Refusing beats serving another project's model.
@@ -71,14 +73,13 @@ export class LegacyDownload {
   }
 
   /**
-   * Every index row that belongs to this project, from every readable location.
+   * Every row of every readable location index in the space, unfiltered.
    * Names are never used to prefer one location over another (a location's
-   * web-app name can differ from its public one, so a preference can pick a
-   * lookalike); the caller's uniqueness check over this union decides, and
-   * refuses anything ambiguous. All ten indexes must be read completely.
+   * web-app name can differ from its public one); the caller filters to the
+   * project and its uniqueness check decides, refusing anything ambiguous.
+   * Each index must be read completely.
    */
-  private async probe(ctx: PluginContext, session: BimcollabSession, names: LegacyNames,
-    signal?: AbortSignal): Promise<IndexRecord[]> {
+  private async scan(ctx: PluginContext, session: BimcollabSession, signal?: AbortSignal): Promise<IndexRecord[]> {
     const readIndex = async (locationId: number): Promise<IndexRecord[]> => {
       try {
         const result = await checked(await this.transport.index(ctx, session, locationId, signal));
@@ -104,8 +105,6 @@ export class LegacyDownload {
       signal?.throwIfAborted();
       indexes.push(...await Promise.all(Array.from({ length: LOCATION_BATCH }, (_, i) => readIndex(first + i))));
     }
-    const rows = indexes.flat().filter(row => inProject(row, names));
-    if (rows.length) return rows;
-    throw new Error('BIMcollab legacy download: project not found in any readable location index.');
+    return indexes.flat();
   }
 }

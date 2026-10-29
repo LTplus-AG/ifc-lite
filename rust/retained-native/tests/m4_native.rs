@@ -235,27 +235,32 @@ fn issue_7955_m4_material_appearance_uses_each_bands_exact_resolver_key() {
         assert!(exact_host.iter().all(|mesh| mesh.color.map(f32::to_bits) == appearance.rgba.map(f32::to_bits)
             && mesh.material_name == appearance.material_name), "unstyled layered fixture: exact RGBA/name parity");
     }
-    let styles = "#90=IFCMATERIAL('First');#91=IFCMATERIAL('Second');
-#92=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#93),#90);
-#93=IFCSTYLEDREPRESENTATION(#4,'S','Material',(#94));#94=IFCSTYLEDITEM($,(#95),$);
-#95=IFCSURFACESTYLE('Red band',.BOTH.,(#96));#96=IFCSURFACESTYLERENDERING(#97,0.,$,$,$,$,$,$,.NOTDEFINED.);#97=IFCCOLOURRGB($,0.8,0.2,0.1);
-#98=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#99),#91);
-#99=IFCSTYLEDREPRESENTATION(#4,'S','Material',(#100));#100=IFCSTYLEDITEM($,(#101),$);
-#101=IFCSURFACESTYLE('Blue band',.BOTH.,(#102));#102=IFCSURFACESTYLERENDERING(#103,0.25,$,$,$,$,$,$,.NOTDEFINED.);#103=IFCCOLOURRGB($,0.1,0.2,0.8);
-";
-    let text = STRAIGHT.replace("#80=IFCMATERIALLAYER($", "#80=IFCMATERIALLAYER(#90")
-        .replace("#81=IFCMATERIALLAYER($", "#81=IFCMATERIALLAYER(#91")
-        .replace("ENDSEC;\nEND-ISO-10303-21;", &format!("{styles}ENDSEC;\nEND-ISO-10303-21;"));
-    let outcomes = run(&text, &[27]).unwrap();
-    let host = shape(&outcomes, 27);
-    for (part, (id, rgba, name)) in host.parts.iter().zip([
-        (90, [0.8_f32, 0.2, 0.1, 1.], "Red band"), (91, [0.1_f32, 0.2, 0.8, 0.75], "Blue band")]) {
+    // #7955 / PR #8324: direct red, missing style, direct transparent blue.
+    let text = include_str!("../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
+    let outcomes = run(text, &[22]).unwrap();
+    let host = shape(&outcomes, 22);
+    let exact = ifc_lite_processing::process_geometry(text.as_bytes());
+    let meshes: Vec<_> = exact.meshes.iter().filter(|mesh| mesh.express_id == 22).collect();
+    assert_eq!(host.parts.len(), 3, "native must publish three slices");
+    assert_eq!(meshes.len(), 3, "exact must publish three slices");
+    let mut seen = std::collections::BTreeSet::new();
+    for part in &host.parts {
+        let id = part.layer.expect("native sliced output").material_id;
+        assert!(seen.insert(id), "one native band per material key");
         let appearance = part.appearance.as_ref().unwrap();
         assert_eq!(appearance.material_id, Some(id));
-        assert_eq!(appearance.rgba.map(f32::to_bits), rgba.map(f32::to_bits));
-        assert_eq!(appearance.material_name.as_deref(), Some(name));
+        let mesh = meshes.iter().find(|mesh| mesh.material_id == Some(id)).expect("exact band key");
+        assert_eq!(appearance.rgba.map(f32::to_bits), mesh.color.map(f32::to_bits), "material #{id}");
+        assert_eq!(appearance.material_name, mesh.material_name, "material #{id}");
+        let (rgba, name) = match id {
+            23 => ([0.8_f32, 0.2, 0.1, 1.], Some("Red band")),
+            31 => ([0.1_f32, 0.2, 0.8, 0.75], None),
+            33 => ([0.1_f32, 0.2, 0.8, 0.75], Some("Blue band")),
+            _ => panic!("unexpected material #{id}"),
+        };
+        assert_eq!(mesh.color.map(f32::to_bits), rgba.map(f32::to_bits));
+        assert_eq!(mesh.material_name.as_deref(), name);
     }
-    assert_eq!(host.parts.len(), 2);
     println!("sdk witness executed: m4_material_appearance");
 }
 

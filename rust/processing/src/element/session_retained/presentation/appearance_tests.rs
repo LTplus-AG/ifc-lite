@@ -201,3 +201,44 @@ fn m11_a_one_leaf_under_two_occurrences_is_two_sub_meshes_and_two_cursor_steps()
     near([alphas[4], 0., 0., 0.], [1., 0., 0., 0.]);
     assert!(resolved.iter().all(|part| part.geometry_item_id == Some(10)));
 }
+
+// #7955 / PR #8324: material-key styling must retain exact's fallback cursor.
+#[test]
+fn m4_band_appearance_missing_style_matches_exact_bits_and_names() {
+    let text = include_str!("../../../../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
+    let source = SourceBundle::new(text.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let mut spans = PrepassSpans::default();
+    let mut scanner = EntityScanner::new(source.bytes());
+    while let Some((id, name, start, end)) = scanner.next_entity() { spans.stash(name, id, start, end); }
+    let mut resolved = resolve_prepass(&spans, &mut decoder, Default::default());
+    super::super::material_styles::join(&mut resolved, &mut decoder);
+    let model = ProductionModel::from_source(source.clone()).snapshot(OwnedMeshProductionData {
+        geometry_style_index: Arc::new(resolved.geometry_style_index),
+        element_material_colors: Arc::new(resolved.element_material_colors),
+        ..Default::default()
+    });
+    let entity = decoder.decode_by_id(22).unwrap();
+    let job = ElementMeshJob { id: 22, ifc_type: IfcType::IfcWall, entity: &entity,
+        kind: ElementJobKind::Product, element_color: None, metadata: None };
+    let parts = [23, 31, 33].map(|id| Bound { source: PartSource::Material(id), ..bound(fact(id)) });
+    let appearances = resolve_parts(&AssemblyJob::from(&job), &parts, [0.8, 0.2, 0.1, 1.],
+        &model.borrowed(), &mut decoder).unwrap();
+    let exact = crate::process_geometry(text.as_bytes());
+    let meshes: Vec<_> = exact.meshes.iter().filter(|mesh| mesh.express_id == 22).collect();
+    assert_eq!(meshes.len(), 3, "exact must slice all three material bands");
+    for appearance in &appearances {
+        let mesh = meshes.iter().find(|mesh| mesh.material_id == appearance.material_id).unwrap();
+        assert_eq!(appearance.rgba.map(f32::to_bits), mesh.color.map(f32::to_bits),
+            "material {:?}", appearance.material_id);
+        assert_eq!(appearance.material_name, mesh.material_name);
+    }
+    near(appearances[1].rgba, [0.1, 0.2, 0.8, 0.75]);
+    assert_eq!(appearances[1].material_name, None);
+    // Missing-style parts consume successive entries; styled keys consume none.
+    let parts = [23, 31, 33, 31].map(|id| Bound { source: PartSource::Material(id), ..bound(fact(id)) });
+    let appearances = resolve_parts(&AssemblyJob::from(&job), &parts, [0.8, 0.2, 0.1, 1.],
+        &model.borrowed(), &mut decoder).unwrap();
+    near(appearances[1].rgba, [0.1, 0.2, 0.8, 0.75]);
+    near(appearances[3].rgba, [0.8, 0.2, 0.1, 1.]);
+}

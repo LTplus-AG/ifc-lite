@@ -38,6 +38,9 @@ export const CRATES = [
   // front.
   'ifc-lite-clash',
   'ifc-lite-geometry',
+  // Source-only worker client; its retained feature forwards to geometry.
+  // Bootstrap the new registry name and configure its publisher before release.
+  'ifc-lite-geometry-runtime',
   'ifc-lite-processing',
   // ifc-lite-landxml depends on geometry and must precede wasm, which pins it
   // by version. It was missing from this list, so the release after #5078

@@ -13,6 +13,8 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const sdk = join(root, 'sdk'), build = join(root, 'build'), repoRoot = join(root, 'repo');
   const adapter = join(repoRoot, 'native/smlib-adapter');
+  await mkdir(join(repoRoot, 'licenses/retained'), { recursive: true });
+  await writeFile(join(repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'Retained notice fixture\n');
   await mkdir(join(adapter, 'browser'), { recursive: true });
   await mkdir(build);
   await mkdir(join(sdk, 'source/SMLib'), { recursive: true });
@@ -44,8 +46,8 @@ test('stages exact bytes, licenses and checkable hashes without executing genera
   const manifest = await stageRetainedBrowserAssets(options);
   assert.equal(manifest.qualified, false);
   assert.equal(manifest.buildAttestation, false);
-  assert.equal(manifest.assets.length, 10);
-  assert.equal((await readdir(options.out)).length, 11);
+  assert.equal(manifest.assets.length, 11);
+  assert.equal((await readdir(options.out)).length, 12);
   for (const asset of manifest.assets) {
     const bytes = await readFile(join(options.out, asset.path));
     assert.equal(bytes.length, asset.bytes);
@@ -81,4 +83,12 @@ test('refuses changed SDK source, non-WASM output, foreign CMake source and sour
   await assert.rejects(stageRetainedBrowserAssets({ ...options, out: join(options.sdk, '..hidden') }), /overlap/);
   await writeFile(join(options.build, 'CMakeCache.txt'), `CMAKE_HOME_DIRECTORY:INTERNAL=${options.sdk}\nSMLIB_SOURCE:PATH=${options.sdk}\n`);
   await assert.rejects(stageRetainedBrowserAssets(options), /different adapter or SDK/);
+});
+
+// Refs #7955: a missing notice must fail before any staging output appears.
+test('retained staging refuses a missing notice bundle', async t => {
+  const options = await fixture(t);
+  await rm(join(options.repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt'));
+  await assert.rejects(stageRetainedBrowserAssets(options), /ENOENT/);
+  await assert.rejects(access(options.out), /ENOENT/);
 });

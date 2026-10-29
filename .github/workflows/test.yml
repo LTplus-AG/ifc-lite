@@ -319,6 +319,7 @@ jobs:
               # check (that allowlist's own header says so), and the cost is one
               # 5-minute free-runner job with no install and no build artifact.
               - 'scripts/**'
+              - 'licenses/retained/**'
             # The MPL-2.0 header gate (`add-license-headers.mjs --check`). Its
             # own job for the same reasons agents_md has one: it needs no build
             # artifact, no pnpm install and no Depot runner, and its INPUT is
@@ -351,6 +352,7 @@ jobs:
               # The gate's own source and its scanned `scripts/` tree, one
               # glob covering both.
               - 'scripts/**'
+              - 'licenses/retained/**'
               # The REPO ROOT, scanned non-recursively by extension (it used to
               # be one named file, `playwright.config.ts`, which is still the
               # only root-level file any of these match today). A gate that
@@ -455,6 +457,7 @@ jobs:
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              - 'licenses/retained/**'
               # `check-ci-path-coverage` reads .gitignore to decide which paths
               # are committed source and which are build output it must not
               # walk. That makes .gitignore an INPUT to the gate: an edit to it
@@ -2193,6 +2196,8 @@ jobs:
       # gate's own source and fails when one of them cannot trigger the job
       # that reads it -- an unreachable gate reports success, because a skipped
       # job counts as success in the aggregate `test` gate below (#3312).
+      - name: Check retained notice inventory and generated bundles
+        run: node scripts/retained-notices.mjs --check
       - name: Check CI path coverage
         run: node scripts/check-ci-path-coverage.mjs
       # The neighbouring class, and the one the comment above names in passing:

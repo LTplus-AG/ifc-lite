@@ -26,7 +26,8 @@
     "pkg-diff/ifc-lite-diff.js",
     "pkg-diff/ifc-lite-diff_bg.wasm",
     "pkg-diff/ifc-lite-diff.d.ts",
-    "pkg-diff/snippets/**"
+    "pkg-diff/snippets/**",
+    "THIRD_PARTY_NOTICES.txt"
   ],
   "main": "./pkg/ifc-lite.js",
   "module": "./pkg/ifc-lite.js",

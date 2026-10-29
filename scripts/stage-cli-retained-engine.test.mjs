@@ -16,6 +16,8 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const sdk = join(root, 'sdk'), build = join(root, 'build'), repoRoot = join(root, 'repo'), pkgRetained = join(root, 'pkg');
   const adapter = join(repoRoot, 'native/smlib-adapter');
+  await mkdir(join(repoRoot, 'licenses/retained'), { recursive: true });
+  await writeFile(join(repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'Retained notice fixture\n');
   for (const path of [build, pkgRetained, join(adapter, 'browser'), join(adapter, 'node'), join(sdk, 'source/SMLib'), join(sdk, 'source/SM_API')]) {
     await mkdir(path, { recursive: true });
   }

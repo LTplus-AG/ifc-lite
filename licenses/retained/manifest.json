@@ -1,0 +1,2042 @@
+{
+  "format": 1,
+  "inputs": {
+    ".github/actions/setup-wasm-build/action.yml": "6ab6f6d96cacd67dbe60878406df56b79abaf048e5f0671a282fba88c71feafd",
+    ".github/workflows/geometry-platform.yml": "c95f4297d2e82e5e2d39934930fce46f5f175f2aaf015ae6354be11b7f0dc470",
+    "Cargo.lock": "dde757434e2d3754458c1c817a8807838daf0679473509abd876da5a7b279032",
+    "Cargo.toml": "8cfd8245282a1cc6b77068762a0932dcdbcabd9b01a308830a1bcc0556bf8267",
+    "native/smlib-adapter/CMakeLists.txt": "eb6fd87f9ff497098667296d1e3bd9d3d677e25d47809eef091e914c9b0d87c6",
+    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "rust/clash/Cargo.toml": "e8e2bc0e5fd61c5024798e23459c8d8e6ddaa255462d6a11e0d1a258751effa6",
+    "rust/cloud-import/Cargo.toml": "55896fc2755f8b8f63b71a23a44597bc5339ca85f842061f99358aae9c0051be",
+    "rust/core/Cargo.toml": "5cfd94437e4e5ea8a48c7601d468eed9707ae6921a3658691740d12a32ab85c3",
+    "rust/core/fuzz/Cargo.toml": "5125fa6ab21d604a6b4ab808401a89d4bfedfdc99aa5a74a5aeba55d00e46e6d",
+    "rust/csg-thread-bench/Cargo.toml": "dda0a211f5cfcea742f39d27e4f7f5f0b61562cf688b963836a35aab42fde84f",
+    "rust/diff-wasm/Cargo.toml": "475b6d225b2d8436cb4bd2f5bfe70c12152d780f0ed4477359a622d5db4f33c7",
+    "rust/diff/Cargo.toml": "885e9ce39f83c56446ab7fff2d971b6e9015511c89a7abbd7cd844d1a591947e",
+    "rust/export/Cargo.toml": "8d380c743ee16117f85d9fc615a6f9698274bc4b353a8f98822cd152807cb261",
+    "rust/ffi/Cargo.toml": "b21876316f7f55bd2d0a1aca8152c2c71db2b711081afef8fd6324cadadd1e8b",
+    "rust/geometry-runtime/Cargo.toml": "fe61d2a0beedb65a6ff4468d04b568dd1252a07940bfd774860fa3ff8a9ab87d",
+    "rust/geometry/Cargo.toml": "f0b4b8ce5fe2ef15d01a53c4e6d7c0d77d554268160c6ca46ea4972ec2498be4",
+    "rust/geometry/fuzz/Cargo.toml": "1a4c029b41ac2c9e804af0a3a14891b16b63cf157621cf1ae5589d09f9cabdb0",
+    "rust/imported-geometry/Cargo.toml": "adddc152ed0a19cea23d756aebcceb412e4f32921f4ff417053ac3e74713f837",
+    "rust/landxml/Cargo.toml": "1300e95113d983e3127b1745632ab4c0a97f9cf5f34a5301c46bdb880f5ad612",
+    "rust/landxml/fuzz/Cargo.toml": "bd7e179612e7a5d6c7e4064b1f91613ef55ec4f1fd3570938aa8b6a45ec0559c",
+    "rust/processing/Cargo.toml": "380f6872b209784a69d2825cdffa9c81f95737c2fad0f4f703ea7c4760f40dd2",
+    "rust/python/Cargo.toml": "8013b50430437000518ec0f88ec1a09404a02fad2203343abd1cc664771815f2",
+    "rust/retained-native/Cargo.toml": "102aedf59f2afc220ad042289a0a5d57f3b1fc7d1b99c285ec89c64caeb23787",
+    "rust/testkit/Cargo.toml": "2e710a50c932fd4b57b80ea38c24c95b724cddb347fd608c4342bb032a9d051f",
+    "rust/wasm-bindings/Cargo.toml": "623d260e8fc1417a798301a1cb246c33319d4f130862e449d7a27a8098391890",
+    "scripts/build-wasm.sh": "faedbf9f91372d81edbf6bb193e6e2b0089618d02ad024f1914d744d96d23b1a"
+  },
+  "components": [
+    {
+      "name": "NVIDIA usd-brep SMLib + SM_API",
+      "version": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+      "license": "Apache-2.0 (kernel/API)",
+      "source": "https://github.com/NVIDIA-Omniverse/usd-brep/tree/c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+      "scope": "native worker and Emscripten SDK module; full upstream notices retained conservatively",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/83ab8ebac4587a65c32ed2dbdba3c00a86c315a6562929ddff3ec17a175e6065.txt",
+          "sha256": "83ab8ebac4587a65c32ed2dbdba3c00a86c315a6562929ddff3ec17a175e6065"
+        },
+        {
+          "origin": "THIRD_PARTY_NOTICES.md",
+          "file": "texts/9fcacebdd1d3e2559959cc504331b0f58d3b3f460b9da5caea4efc84fd20eb7b.txt",
+          "sha256": "9fcacebdd1d3e2559959cc504331b0f58d3b3f460b9da5caea4efc84fd20eb7b"
+        }
+      ]
+    },
+    {
+      "name": "Emscripten runtime (including Node path portions)",
+      "version": "4.0.15",
+      "license": "MIT OR NCSA",
+      "source": "https://github.com/emscripten-core/emscripten/tree/4.0.15",
+      "scope": "SMLib wasm/JS, CLI engine; compiler tools are not shipped",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86.txt",
+          "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+        }
+      ]
+    },
+    {
+      "name": "musl",
+      "version": "bundled with Emscripten 4.0.15",
+      "license": "MIT AND BSD variants (see text)",
+      "source": "https://github.com/emscripten-core/emscripten/tree/4.0.15/system/lib/libc/musl/COPYRIGHT",
+      "scope": "conservative runtime inventory; final linker map must identify used portions",
+      "notices": [
+        {
+          "origin": "libc/musl/COPYRIGHT",
+          "file": "texts/f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af.txt",
+          "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+        }
+      ]
+    },
+    {
+      "name": "libc++",
+      "version": "bundled with Emscripten 4.0.15",
+      "license": "Apache-2.0 WITH LLVM-exception AND legacy notices",
+      "source": "https://github.com/emscripten-core/emscripten/tree/4.0.15/system/lib/libcxx/LICENSE.TXT",
+      "scope": "conservative runtime inventory; final linker map must identify used portions",
+      "notices": [
+        {
+          "origin": "libcxx/LICENSE.TXT",
+          "file": "texts/539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b.txt",
+          "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b"
+        }
+      ]
+    },
+    {
+      "name": "libc++abi",
+      "version": "bundled with Emscripten 4.0.15",
+      "license": "Apache-2.0 WITH LLVM-exception AND legacy notices",
+      "source": "https://github.com/emscripten-core/emscripten/tree/4.0.15/system/lib/libcxxabi/LICENSE.TXT",
+      "scope": "conservative runtime inventory; final linker map must identify used portions",
+      "notices": [
+        {
+          "origin": "libcxxabi/LICENSE.TXT",
+          "file": "texts/e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c.txt",
+          "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c"
+        }
+      ]
+    },
+    {
+      "name": "libunwind",
+      "version": "bundled with Emscripten 4.0.15",
+      "license": "Apache-2.0 WITH LLVM-exception AND legacy notices",
+      "source": "https://github.com/emscripten-core/emscripten/tree/4.0.15/system/lib/libunwind/LICENSE.TXT",
+      "scope": "conservative runtime inventory; final linker map must identify used portions",
+      "notices": [
+        {
+          "origin": "libunwind/LICENSE.TXT",
+          "file": "texts/b5efebcaca80879234098e52d1725e6d9eb8fb96a19fce625d39184b705f7b6d.txt",
+          "sha256": "b5efebcaca80879234098e52d1725e6d9eb8fb96a19fce625d39184b705f7b6d"
+        }
+      ]
+    },
+    {
+      "name": "compiler-rt",
+      "version": "bundled with Emscripten 4.0.15",
+      "license": "Apache-2.0 WITH LLVM-exception AND legacy notices",
+      "source": "https://github.com/emscripten-core/emscripten/tree/4.0.15/system/lib/compiler-rt/LICENSE.TXT",
+      "scope": "conservative runtime inventory; final linker map must identify used portions",
+      "notices": [
+        {
+          "origin": "compiler-rt/LICENSE.TXT",
+          "file": "texts/1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d.txt",
+          "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d"
+        }
+      ]
+    },
+    {
+      "name": "llvm-libc",
+      "version": "bundled with Emscripten 4.0.15",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "source": "https://github.com/emscripten-core/emscripten/tree/4.0.15/system/lib/llvm-libc/LICENSE.TXT",
+      "scope": "conservative runtime inventory; final linker map must identify used portions",
+      "notices": [
+        {
+          "origin": "llvm-libc/LICENSE.TXT",
+          "file": "texts/ebcd9bbf783a73d05c53ba4d586b8d5813dcdf3bbec50265860ccc885e606f47.txt",
+          "sha256": "ebcd9bbf783a73d05c53ba4d586b8d5813dcdf3bbec50265860ccc885e606f47"
+        }
+      ]
+    },
+    {
+      "name": "adler2",
+      "version": "2.0.1",
+      "license": "0BSD OR MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-0BSD",
+          "file": "texts/861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17.txt",
+          "sha256": "861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17"
+        },
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb.txt",
+          "sha256": "8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "approx",
+      "version": "0.5.1",
+      "license": "Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5.txt",
+          "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+        }
+      ]
+    },
+    {
+      "name": "autocfg",
+      "version": "1.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac.txt",
+          "sha256": "27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac"
+        }
+      ]
+    },
+    {
+      "name": "bitflags",
+      "version": "2.11.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ]
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.txt",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef.txt",
+          "sha256": "d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef"
+        }
+      ]
+    },
+    {
+      "name": "bnum",
+      "version": "0.14.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "COPYRIGHT",
+          "file": "texts/e6d44adfb5731e0c855b3814b877cd3c37eee58cf8b7a0658b37a44770a15bc3.txt",
+          "sha256": "e6d44adfb5731e0c855b3814b877cd3c37eee58cf8b7a0658b37a44770a15bc3"
+        },
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/eb1cfebd2a5760e95f672ba77e5e43f047ada1641173a70990a822c6f0c4b873.txt",
+          "sha256": "eb1cfebd2a5760e95f672ba77e5e43f047ada1641173a70990a822c6f0c4b873"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/d584283c484685cbd9a881194fb2192d103819b783ad1a286ad989c3735918f3.txt",
+          "sha256": "d584283c484685cbd9a881194fb2192d103819b783ad1a286ad989c3735918f3"
+        },
+        {
+          "origin": "licenses/LICENSE-rand",
+          "file": "texts/cc367a7134c2b07d995a2f8dea591094a1d100e49c68513f729fdf3eaf580a21.txt",
+          "sha256": "cc367a7134c2b07d995a2f8dea591094a1d100e49c68513f729fdf3eaf580a21"
+        }
+      ]
+    },
+    {
+      "name": "bumpalo",
+      "version": "3.20.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee.txt",
+          "sha256": "65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee"
+        }
+      ]
+    },
+    {
+      "name": "bytemuck",
+      "version": "1.25.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb.txt",
+          "sha256": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/9df9ba60a11af705f2e451b53762686e615d86f76b169cf075c3237730dbd7e2.txt",
+          "sha256": "9df9ba60a11af705f2e451b53762686e615d86f76b169cf075c3237730dbd7e2"
+        },
+        {
+          "origin": "LICENSE-ZLIB",
+          "file": "texts/84b34dd7608f7fb9b17bd588a6bf392bf7de504e2716f024a77d89f1b145a151.txt",
+          "sha256": "84b34dd7608f7fb9b17bd588a6bf392bf7de504e2716f024a77d89f1b145a151"
+        }
+      ]
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "console_error_panic_hook",
+      "version": "0.1.7",
+      "license": "Apache-2.0/MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/353b508bbc50274d47a23729f568bab2618e3d0eaa10208616f5fd475255b896.txt",
+          "sha256": "353b508bbc50274d47a23729f568bab2618e3d0eaa10208616f5fd475255b896"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/77674336af8ded214dc3ae07da631c7dd35cc8205f39298474ba98a889e57272.txt",
+          "sha256": "77674336af8ded214dc3ae07da631c7dd35cc8205f39298474ba98a889e57272"
+        }
+      ]
+    },
+    {
+      "name": "crc32fast",
+      "version": "1.5.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08.txt",
+          "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf.txt",
+          "sha256": "61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf"
+        }
+      ]
+    },
+    {
+      "name": "crossbeam-deque",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/5734ed989dfca1f625b40281ee9f4530f91b2411ec01cb748223e7eb87e201ab.txt",
+          "sha256": "5734ed989dfca1f625b40281ee9f4530f91b2411ec01cb748223e7eb87e201ab"
+        }
+      ]
+    },
+    {
+      "name": "crossbeam-epoch",
+      "version": "0.9.18",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/5734ed989dfca1f625b40281ee9f4530f91b2411ec01cb748223e7eb87e201ab.txt",
+          "sha256": "5734ed989dfca1f625b40281ee9f4530f91b2411ec01cb748223e7eb87e201ab"
+        }
+      ]
+    },
+    {
+      "name": "crossbeam-utils",
+      "version": "0.8.21",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/5734ed989dfca1f625b40281ee9f4530f91b2411ec01cb748223e7eb87e201ab.txt",
+          "sha256": "5734ed989dfca1f625b40281ee9f4530f91b2411ec01cb748223e7eb87e201ab"
+        }
+      ]
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.1.7",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.txt",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897.txt",
+          "sha256": "3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897"
+        }
+      ]
+    },
+    {
+      "name": "digest",
+      "version": "0.10.7",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.txt",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba.txt",
+          "sha256": "9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba"
+        }
+      ]
+    },
+    {
+      "name": "earcutr",
+      "version": "0.5.0",
+      "license": "ISC",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/ac0e50e523dd0ea36f077c373833f1ae6c7ad130ea5ac6ff23bfa8d3f402145f.txt",
+          "sha256": "ac0e50e523dd0ea36f077c373833f1ae6c7ad130ea5ac6ff23bfa8d3f402145f"
+        }
+      ]
+    },
+    {
+      "name": "either",
+      "version": "1.15.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545.txt",
+          "sha256": "7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545"
+        }
+      ]
+    },
+    {
+      "name": "fast-float2",
+      "version": "0.2.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/2aec41511a0274b6841a1d197ca5f8eecefa5f93faeb6dca48f8f9137398fd93.txt",
+          "sha256": "2aec41511a0274b6841a1d197ca5f8eecefa5f93faeb6dca48f8f9137398fd93"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "fdeflate",
+      "version": "0.3.7",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3.txt",
+          "sha256": "c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3"
+        }
+      ]
+    },
+    {
+      "name": "flate2",
+      "version": "1.1.10",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112.txt",
+          "sha256": "025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112"
+        }
+      ]
+    },
+    {
+      "name": "futures-channel",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "name": "futures-io",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "name": "futures-macro",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "name": "futures-sink",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "name": "generic-array",
+      "version": "0.14.7",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583.txt",
+          "sha256": "c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583"
+        }
+      ]
+    },
+    {
+      "name": "geometry-predicates",
+      "version": "0.3.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/916dc6e78d62a1d3da8e2cf7baacc211e19baf0c89e6d306412b6f9699f3a441.txt",
+          "sha256": "916dc6e78d62a1d3da8e2cf7baacc211e19baf0c89e6d306412b6f9699f3a441"
+        }
+      ]
+    },
+    {
+      "name": "glam",
+      "version": "0.30.10",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585.txt",
+          "sha256": "be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "glam",
+      "version": "0.31.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585.txt",
+          "sha256": "be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "glam",
+      "version": "0.32.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585.txt",
+          "sha256": "be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "glam",
+      "version": "0.33.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585.txt",
+          "sha256": "be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "i_float",
+      "version": "4.1.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt",
+          "sha256": "260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e"
+        }
+      ]
+    },
+    {
+      "name": "i_key_sort",
+      "version": "0.11.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": []
+    },
+    {
+      "name": "i_overlay",
+      "version": "8.1.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": []
+    },
+    {
+      "name": "i_shape",
+      "version": "4.0.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt",
+          "sha256": "260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e"
+        }
+      ]
+    },
+    {
+      "name": "i_tree",
+      "version": "0.19.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt",
+          "sha256": "47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc"
+        }
+      ]
+    },
+    {
+      "name": "itertools",
+      "version": "0.14.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545.txt",
+          "sha256": "7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545"
+        }
+      ]
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "jpeg-decoder",
+      "version": "0.3.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/22b83fb92a50418c7df9564b9c179fa2a0e74f293bc58b72dd7e218fc0902143.txt",
+          "sha256": "22b83fb92a50418c7df9564b9c179fa2a0e74f293bc58b72dd7e218fc0902143"
+        }
+      ]
+    },
+    {
+      "name": "js-sys",
+      "version": "0.3.103",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "libm",
+      "version": "0.2.16",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE.txt",
+          "file": "texts/3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7.txt",
+          "sha256": "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7"
+        }
+      ]
+    },
+    {
+      "name": "log",
+      "version": "0.4.29",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ]
+    },
+    {
+      "name": "matrixmultiply",
+      "version": "0.3.10",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/792d075c7bad6dac258a44e799eb64cbf465e24d9932d27669be08c5ec957e27.txt",
+          "sha256": "792d075c7bad6dac258a44e799eb64cbf465e24d9932d27669be08c5ec957e27"
+        }
+      ]
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "license": "Unlicense OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "COPYING",
+          "file": "texts/01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f.txt",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f.txt",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+        }
+      ]
+    },
+    {
+      "name": "minimal-lexical",
+      "version": "0.2.1",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90.txt",
+          "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        },
+        {
+          "origin": "LICENSE.md",
+          "file": "texts/dbe1fff0fb1314b6af94f161511406275cf01c5a32441fbf24528a57a051d599.txt",
+          "sha256": "dbe1fff0fb1314b6af94f161511406275cf01c5a32441fbf24528a57a051d599"
+        }
+      ]
+    },
+    {
+      "name": "miniz_oxide",
+      "version": "0.8.9",
+      "license": "MIT OR Zlib OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b.txt",
+          "sha256": "4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b"
+        },
+        {
+          "origin": "LICENSE-APACHE.md",
+          "file": "texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "origin": "LICENSE-MIT.md",
+          "file": "texts/799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d.txt",
+          "sha256": "799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d"
+        },
+        {
+          "origin": "LICENSE-ZLIB.md",
+          "file": "texts/0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39.txt",
+          "sha256": "0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39"
+        }
+      ]
+    },
+    {
+      "name": "miniz_oxide",
+      "version": "0.9.1",
+      "license": "MIT OR Zlib OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b.txt",
+          "sha256": "4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b"
+        },
+        {
+          "origin": "LICENSE-APACHE.md",
+          "file": "texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "origin": "LICENSE-MIT.md",
+          "file": "texts/799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d.txt",
+          "sha256": "799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d"
+        },
+        {
+          "origin": "LICENSE-ZLIB.md",
+          "file": "texts/0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39.txt",
+          "sha256": "0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39"
+        }
+      ]
+    },
+    {
+      "name": "nalgebra",
+      "version": "0.35.0",
+      "license": "Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c.txt",
+          "sha256": "ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c"
+        }
+      ]
+    },
+    {
+      "name": "nom",
+      "version": "7.1.3",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/4dbda04344456f09a7a588140455413a9ac59b6b26a1ef7cdf9c800c012d87f0.txt",
+          "sha256": "4dbda04344456f09a7a588140455413a9ac59b6b26a1ef7cdf9c800c012d87f0"
+        }
+      ]
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.4.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ]
+    },
+    {
+      "name": "num-complex",
+      "version": "0.4.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ]
+    },
+    {
+      "name": "num-integer",
+      "version": "0.1.46",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ]
+    },
+    {
+      "name": "num-rational",
+      "version": "0.4.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ]
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ]
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "png",
+      "version": "0.18.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/eaf40297c75da471f7cda1f3458e8d91b4b2ec866e609527a13acfa93b638652.txt",
+          "sha256": "eaf40297c75da471f7cda1f3458e8d91b4b2ec866e609527a13acfa93b638652"
+        }
+      ]
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.106",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "quick-xml",
+      "version": "0.42.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-MIT.md",
+          "file": "texts/f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc.txt",
+          "sha256": "f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc"
+        }
+      ]
+    },
+    {
+      "name": "quote",
+      "version": "1.0.45",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "rawpointer",
+      "version": "0.2.1",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545.txt",
+          "sha256": "7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545"
+        }
+      ]
+    },
+    {
+      "name": "rayon-core",
+      "version": "1.13.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720.txt",
+          "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720"
+        }
+      ]
+    },
+    {
+      "name": "rayon",
+      "version": "1.12.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720.txt",
+          "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720"
+        }
+      ]
+    },
+    {
+      "name": "rustc-hash",
+      "version": "2.1.3",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc.txt",
+          "sha256": "95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652.txt",
+          "sha256": "30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652"
+        }
+      ]
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.22",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "serde-wasm-bindgen",
+      "version": "0.6.5",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/62a81c033fcf173693b50f068939cd903d8a414d915776ff1fef5d5869aabcb7.txt",
+          "sha256": "62a81c033fcf173693b50f068939cd903d8a414d915776ff1fef5d5869aabcb7"
+        }
+      ]
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "sha2",
+      "version": "0.10.9",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.txt",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1.txt",
+          "sha256": "b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1"
+        }
+      ]
+    },
+    {
+      "name": "simba",
+      "version": "0.10.0",
+      "license": "Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c.txt",
+          "sha256": "ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c"
+        }
+      ]
+    },
+    {
+      "name": "simd-adler32",
+      "version": "0.3.9",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE.md",
+          "file": "texts/42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d.txt",
+          "sha256": "42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d"
+        }
+      ]
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18.txt",
+          "sha256": "8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18"
+        }
+      ]
+    },
+    {
+      "name": "smallvec",
+      "version": "1.16.3",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9.txt",
+          "sha256": "0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9"
+        }
+      ]
+    },
+    {
+      "name": "syn",
+      "version": "2.0.117",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "syn",
+      "version": "3.0.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "2.0.21",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.21",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "tracing-attributes",
+      "version": "0.1.31",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1.txt",
+          "sha256": "898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1"
+        }
+      ]
+    },
+    {
+      "name": "tracing-core",
+      "version": "0.1.36",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1.txt",
+          "sha256": "898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1"
+        },
+        {
+          "origin": "src/spin/LICENSE",
+          "file": "texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt",
+          "sha256": "58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79"
+        }
+      ]
+    },
+    {
+      "name": "tracing",
+      "version": "0.1.44",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1.txt",
+          "sha256": "898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1"
+        }
+      ]
+    },
+    {
+      "name": "twox-hash",
+      "version": "2.1.5",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE.txt",
+          "file": "texts/f59bcb1c02654665f78a5f290bae76b6358137675f6459f51e6d474a4623d8ea.txt",
+          "sha256": "f59bcb1c02654665f78a5f290bae76b6358137675f6459f51e6d474a4623d8ea"
+        }
+      ]
+    },
+    {
+      "name": "typenum",
+      "version": "1.20.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/db11fec9946737df39ca3898d9cd8c10ec6f6c3a884a6802b0ad0b81b4e8f23a.txt",
+          "sha256": "db11fec9946737df39ca3898d9cd8c10ec6f6c3a884a6802b0ad0b81b4e8f23a"
+        },
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/516b24e051bf5630880ebbd55c40a25ce9552ebaf8970a53e8976eb70e522406.txt",
+          "sha256": "516b24e051bf5630880ebbd55c40a25ce9552ebaf8970a53e8976eb70e522406"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/a825bd853ab71619a4923d7b4311221427848070ff44d990da39b0b274c1683f.txt",
+          "sha256": "a825bd853ab71619a4923d7b4311221427848070ff44d990da39b0b274c1683f"
+        }
+      ]
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.24",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        },
+        {
+          "origin": "LICENSE-UNICODE",
+          "file": "texts/f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1.txt",
+          "sha256": "f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1"
+        }
+      ]
+    },
+    {
+      "name": "value-bag",
+      "version": "1.12.0",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/5d1bf69a3993489f96efc2ec5af6252cc4f5ff524b023ab6a43a08414f23ddb0.txt",
+          "sha256": "5d1bf69a3993489f96efc2ec5af6252cc4f5ff524b023ab6a43a08414f23ddb0"
+        }
+      ]
+    },
+    {
+      "name": "version_check",
+      "version": "0.9.5",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e.txt",
+          "sha256": "b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e"
+        }
+      ]
+    },
+    {
+      "name": "wasm-bindgen-futures",
+      "version": "0.4.76",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.126",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.126",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.126",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "wasm-bindgen",
+      "version": "0.2.126",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "wasm_sync",
+      "version": "0.1.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": []
+    },
+    {
+      "name": "web-sys",
+      "version": "0.3.103",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-APACHE",
+          "file": "texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ]
+    },
+    {
+      "name": "wide",
+      "version": "1.4.0",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-ZLIB.md",
+          "file": "texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt",
+          "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
+        }
+      ]
+    },
+    {
+      "name": "zlib-rs",
+      "version": "0.6.4",
+      "license": "Zlib",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE",
+          "file": "texts/e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba.txt",
+          "sha256": "e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba"
+        }
+      ]
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.21",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
+      "notices": [
+        {
+          "origin": "LICENSE-MIT",
+          "file": "texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "name": "Rust standard library",
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+      "license": "MIT OR Apache-2.0 plus bundled components",
+      "source": "https://github.com/rust-lang/rust",
+      "scope": "pkg-retained wasm; COPYRIGHT-library.html enumerates bundled library components",
+      "notices": [
+        {
+          "origin": "COPYRIGHT-library.html",
+          "file": "texts/c90d52b09be83ce6e930d00f4b26559611eadcee806b2307184e04f2c78ad522.txt",
+          "sha256": "c90d52b09be83ce6e930d00f4b26559611eadcee806b2307184e04f2c78ad522"
+        },
+        {
+          "origin": "licenses/Apache-2.0.txt",
+          "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+          "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+        },
+        {
+          "origin": "licenses/BSD-2-Clause.txt",
+          "file": "texts/f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df.txt",
+          "sha256": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df"
+        },
+        {
+          "origin": "licenses/CC-BY-SA-4.0.txt",
+          "file": "texts/23ee78c8bae49cf08ea2f0c84945c66b987ebe4520881fb51b3dad4fb43d07c2.txt",
+          "sha256": "23ee78c8bae49cf08ea2f0c84945c66b987ebe4520881fb51b3dad4fb43d07c2"
+        },
+        {
+          "origin": "licenses/GCC-exception-3.1.txt",
+          "file": "texts/a3966c9410ef94a1efbfa9ec04e9c1994026a70623fbf0885ce36737bfba3b54.txt",
+          "sha256": "a3966c9410ef94a1efbfa9ec04e9c1994026a70623fbf0885ce36737bfba3b54"
+        },
+        {
+          "origin": "licenses/GPL-2.0-only.txt",
+          "file": "texts/54b212ba1f97f6948fa5486239ab505dd820b02e50cbfd296b4062c8609a70af.txt",
+          "sha256": "54b212ba1f97f6948fa5486239ab505dd820b02e50cbfd296b4062c8609a70af"
+        },
+        {
+          "origin": "licenses/GPL-3.0-or-later.txt",
+          "file": "texts/05315fce6c35f79b8a35454828995fa26336f235895ac64557abc028f4ffcea2.txt",
+          "sha256": "05315fce6c35f79b8a35454828995fa26336f235895ac64557abc028f4ffcea2"
+        },
+        {
+          "origin": "licenses/ISC.txt",
+          "file": "texts/0ff61769b238634e042ab759dddfd104a8e69d091e3600ae3410e401a6164381.txt",
+          "sha256": "0ff61769b238634e042ab759dddfd104a8e69d091e3600ae3410e401a6164381"
+        },
+        {
+          "origin": "licenses/LLVM-exception.txt",
+          "file": "texts/e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e.txt",
+          "sha256": "e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e"
+        },
+        {
+          "origin": "licenses/MIT.txt",
+          "file": "texts/b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0.txt",
+          "sha256": "b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0"
+        },
+        {
+          "origin": "licenses/NCSA.txt",
+          "file": "texts/39cb0234065c92b9e6cee3830cbb52b1aa289aa8fe9ba2e66730fec5cf05c630.txt",
+          "sha256": "39cb0234065c92b9e6cee3830cbb52b1aa289aa8fe9ba2e66730fec5cf05c630"
+        },
+        {
+          "origin": "licenses/OFL-1.1.txt",
+          "file": "texts/8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd.txt",
+          "sha256": "8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd"
+        },
+        {
+          "origin": "licenses/Unicode-3.0.txt",
+          "file": "texts/f5062c9a188d81dfe66b56db4182dcf9e4b17c0d9b0d311a8e20b3a1b075c443.txt",
+          "sha256": "f5062c9a188d81dfe66b56db4182dcf9e4b17c0d9b0d311a8e20b3a1b075c443"
+        }
+      ]
+    }
+  ]
+}

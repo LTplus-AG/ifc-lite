@@ -111,3 +111,12 @@ add_test(NAME smlib_affine_failure_boundary
 add_test(NAME smlib_retained_sweeps COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_sweep_tests>)
 set_tests_properties(smlib_owned_boundary smlib_copy_failure_boundary
   smlib_affine_failure_boundary smlib_retained_sweeps PROPERTIES TIMEOUT 60)
+
+# Installation is explicit; no default runtime or SDK distribution is enabled.
+if(NOT EMSCRIPTEN)
+  install(TARGETS ifclite_smlib_worker RUNTIME DESTINATION bin)
+  install(FILES "${SMLIB_SOURCE}/LICENSE" "${SMLIB_SOURCE}/THIRD_PARTY_NOTICES.md"
+    DESTINATION share/licenses/ifclite-smlib)
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../licenses/retained/THIRD_PARTY_NOTICES.txt"
+    DESTINATION share/licenses/ifclite-smlib)
+endif()

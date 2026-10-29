@@ -2,6 +2,21 @@
 # Run ONLY through ifc-fleet. No nested admission, retries or guard overrides.
 set -euo pipefail
 phase=${1:?native or wasm}
+# Reuse the host's verified fixture cache without changing its files. Only
+# missing, gitignored links in this disposable checkout are created.
+export IFC_C4_FIXTURE_CACHE="${IFC_C4_FIXTURE_CACHE:-$HOME/build-workers/ifc-lite/tests/models}"
+python3 - <<'PYFIX'
+import os
+from pathlib import Path
+cache = Path(os.environ['IFC_C4_FIXTURE_CACHE'])
+if cache.is_dir():
+    for source in cache.rglob('*'):
+        dest = Path('tests/models') / source.relative_to(cache)
+        if source.is_file() and not dest.exists() and not dest.is_symlink():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.symlink_to(source.resolve())
+PYFIX
+node scripts/fixtures/fetch-fixtures.mjs
 if [[ "$phase" == native ]]; then
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace

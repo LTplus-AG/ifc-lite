@@ -102,21 +102,22 @@ pub use decoder::{build_entity_index, EntityDecoder, EntityIndex, GridAxisIndex}
 pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};
 pub use fast_parse::{
-    extract_coordinate_list_from_entity, extract_coordinate_list_from_entity_f64, extract_face_indices_from_entity,
-    parse_coordinates_direct, parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path,
-    FastMeshData, INVALID_INDEX,
+    extract_coordinate_list_from_entity, extract_coordinate_list_from_entity_f64,
+    extract_face_indices_from_entity, parse_coordinates_direct,
+    parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
+    INVALID_INDEX,
 };
 pub use generated::{
-    attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, IfcType, SchemaEntityInfo,
-    SchemaVersion, UnknownIfcType, IFC_TYPES,
+    attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, IfcType,
+    SchemaEntityInfo, SchemaVersion, UnknownIfcType, IFC_TYPES,
 };
 pub use georef::{CoordinateOperationKind, GeoRefExtractor, GeoRefSource, GeoReference, GeoReferenceDetails};
 pub use limits::{RtcVerdict, MAX_CONTEXT_DEPTH, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
     declared_schema_bounded, entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
-    nth_attribute_is_present, oversized_id_report, parse_entity, parse_step_real, read_step_number,
-    report_malformed_records, report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
+    nth_attribute_is_present, oversized_id_report, parse_entity, parse_step_real, read_step_number, report_malformed_records,
+    report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
     EntityScanner, StepListItems, StepNumber, Token,
 };
 pub use project_locator::{find_project_id, find_project_ids};
@@ -126,19 +127,20 @@ pub use project_units::{
 };
 pub use schema_family::SchemaFamily;
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
+pub use typed_value::Logical;
 pub use schema_helpers::{
-    geometry_flags_by_name, has_geometry_by_name, ifc_type_from_keyword, ifc_type_from_record, is_geometry_job,
-    is_representationless_spatial_container_by_name, is_simple_geometry_type, type_product_ifc_type,
+    geometry_flags_by_name, is_geometry_job, has_geometry_by_name, is_representationless_spatial_container_by_name,
+    ifc_type_from_keyword, ifc_type_from_record, is_simple_geometry_type, type_product_ifc_type,
 };
 pub use step_encoding::{decode_ifc_string, decode_step_binary, optional_text};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
-pub use typed_value::Logical;
 pub use unit_labels::{
     is_us_survey_foot_key, is_us_survey_foot_tokens, si_prefix, SiPrefix, SI_PREFIXES, US_SURVEY_FOOT_M,
 };
 pub use units::{
-    extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier, resolve_length_unit,
-    try_extract_length_unit_scale, try_extract_plane_angle_to_radians, LengthUnit,
+    extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,
+    resolve_length_unit, LengthUnit,
+    try_extract_length_unit_scale, try_extract_plane_angle_to_radians,
 };
 
 /// Fixed resource terminal signals shared by scoped execution owners.
@@ -149,3 +151,4 @@ pub mod source_bundle;
 pub use source_bundle::SourceBundle;
 
 pub use decoder::source_caches::{SourceCache, TrustedDecoderInputs};
+

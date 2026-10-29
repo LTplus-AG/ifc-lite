@@ -127,8 +127,6 @@ pub(super) fn rel_links(bytes: &[u8], parent_index: usize, list_index: usize) ->
     Some((record.ref_at(parent_index)?, ref_items(Some(&record), list_index)))
 }
 
-pub(super) use crate::discovery::record_ref_at;
-
 /// A storey's elevation as the scan reads it, in the file's own length unit.
 ///
 /// The quick-metadata scan runs before the project's unit scale can be

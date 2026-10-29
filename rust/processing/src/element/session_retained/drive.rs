@@ -55,5 +55,5 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
             .accept(completed, decoder, router)
             .map_err(|rejected| rejected.reason)?;
     }
-    execution.into_witness()
+    execution.into_witness(limits.chord_metres)
 }

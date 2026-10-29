@@ -16,7 +16,8 @@ impl<R: NumericalReceipt> PendingRetainedOperation<R> {
     }
 }
 pub(super) enum IssuedRetainedOperation<R: NumericalReceipt> {
-    Boolean { inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp, definition: LogicalRetainedDefinition },
+    /// `opening`: the opening element a cut subtracts (M11-F `via`), sealed with the definition.
+    Boolean { inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp, definition: LogicalRetainedDefinition, opening: Option<u32> },
     Construction { request: RetainedRequest, definition: LogicalRetainedDefinition, backing: Arc<Storage> },
     Affine { input: Arc<RuntimeRealization<R>>, matrix: [f64; 16], definition: LogicalRetainedDefinition },
 }
@@ -95,7 +96,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             }
             issued.push(match operation {
                 PendingRetainedOperation::Boolean { expected, inputs, operation } => IssuedRetainedOperation::Boolean {
-                    inputs: inputs.clone(), operation: *operation, definition: expected.value().definition().clone() },
+                    inputs: inputs.clone(), operation: *operation, definition: expected.value().definition().clone(),
+                    opening: expected.opening().map(|(opening, ..)| opening) },
                 PendingRetainedOperation::Construction { expected, request, backing, .. } => IssuedRetainedOperation::Construction { request: request.clone(), definition: expected.value().definition().clone(), backing: backing.clone() },
                 PendingRetainedOperation::Affine { expected, input, matrix } => IssuedRetainedOperation::Affine { input: input.clone(), matrix: *matrix, definition: expected.value().definition().clone() },
             });

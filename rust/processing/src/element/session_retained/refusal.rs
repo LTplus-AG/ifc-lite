@@ -91,6 +91,10 @@ impl RetainedExecutionError {
                     });
                 common_kind_refusal(error.kind(), error.original_stop())
             }
+            Self::FaceProvenance { cause, entity } => {
+                origin = Some(RefusalOrigin { site: "faces", entity: *entity, cause });
+                Refusal::FaceProvenanceUnproven
+            }
             Self::Recipe(ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_)) => {
                 Refusal::OperationUnsupported
             }

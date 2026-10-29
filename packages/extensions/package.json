@@ -19,6 +19,10 @@
       "import": "./dist/capability/index.js",
       "types": "./dist/capability/index.d.ts"
     },
+    "./authority": {
+      "import": "./dist/authority/index.js",
+      "types": "./dist/authority/index.d.ts"
+    },
     "./when": {
       "import": "./dist/when/index.js",
       "types": "./dist/when/index.d.ts"

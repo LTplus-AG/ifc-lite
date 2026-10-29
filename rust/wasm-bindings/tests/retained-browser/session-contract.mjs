@@ -37,12 +37,13 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
           assert(event.expressId === start.candidateIds[published.length], 'sink follows canonical job order');
           assert(event.marker === 'PresentationObligationsUnmet' && event.obligationsUnmet.length > 0, 'shape-only marker retained');
           assert(event.obligationsUnmet.at(-1) === 'SurfaceNormals', 'M11-0 surface normals remain unmet');
-          assert(event.faces === undefined && event.instanceKey === undefined, 'M11-0 optional presentation stays absent');
+          assert(event.instanceKey === undefined, 'M11-0 optional presentation stays absent');
           published.push(event.expressId);
           if (detail === 'view') {
             assert(event.cuts === 0 && event.consumedParts === 0, 'view event carries the M3 cut diagnostics (no openings here)');
             const collection = event.meshes;
             assert(collection.length > 0, 'view publishes a real mesh collection');
+            assert(Array.isArray(event.faces) && event.faces.length > 0 && event.faces.every(f => f.table.length > 0 && f.triangles instanceof Uint32Array), 'M11-F view event carries each part face table');
             assert([collection.rtcOffsetX, collection.rtcOffsetY, collection.rtcOffsetZ].every((v, i) => Object.is(v, start.frame.rtcOffset[i])), 'collection uses start frame');
             for (let i = 0; i < collection.length; i++) {
               const mesh = collection.get(i);
@@ -53,7 +54,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
             }
           } else {
             assert(event.parts.length > 0 && event.parts.every(part => part.positions instanceof Float64Array), 'shape detail preserves M1 f64 parts');
-            assert(event.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals === undefined && part.color === undefined && part.faces === undefined && part.instanceKey === undefined), 'M11-0 copies every revision-local face without discharging presentation');
+            assert(event.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals === undefined && part.color === undefined && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === undefined), 'M11-0 copies every revision-local face; M11-F keys every triangle');
           }
         } finally { event.meshes?.free(); }
       });

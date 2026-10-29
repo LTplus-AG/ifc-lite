@@ -1,0 +1,1081 @@
+{
+  "shown-strongest-authoritative": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 12,
+      "failed": 4,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 12,
+          "failed": 4,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/resolve.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "d6bccb4c-a86b-4392-888a-c412d82419a5",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:32.341Z",
+      "finishedAt": "2026-10-28T22:42:37.884Z"
+    },
+    "restoration": "verified"
+  },
+  "split-before-contested": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/resolve.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "05196a25-5a77-4ba5-bdf5-0c5c20bea9b9",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:37.951Z",
+      "finishedAt": "2026-10-28T22:42:41.749Z"
+    },
+    "restoration": "verified"
+  },
+  "dissent-outside-role": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/resolve.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "c62bf0fa-dee8-4811-b60f-a3d1a21d727d",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:41.857Z",
+      "finishedAt": "2026-10-28T22:42:45.315Z"
+    },
+    "restoration": "verified"
+  },
+  "signature-required": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/resolve.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "0f4c5c2f-675e-4bee-871b-40a407a70fd1",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:45.372Z",
+      "finishedAt": "2026-10-28T22:42:48.657Z"
+    },
+    "restoration": "verified"
+  },
+  "no-rule-divergent": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 14,
+      "failed": 2,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 14,
+          "failed": 2,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/resolve.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "236f1e40-f559-42c2-996e-1980a374df2b",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:48.776Z",
+      "finishedAt": "2026-10-28T22:42:52.025Z"
+    },
+    "restoration": "verified"
+  },
+  "unconfirmed-row": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 14,
+      "failed": 2,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 14,
+          "failed": 2,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/resolve.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "23905614-804d-4071-a755-096e0f94311e",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:52.094Z",
+      "finishedAt": "2026-10-28T22:42:55.418Z"
+    },
+    "restoration": "verified"
+  },
+  "canonical-key-order": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 14,
+      "failed": 2,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 14,
+          "failed": 2,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/resolve.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "7a7a76a3-4aac-4829-b83b-8780f6fc18f0",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:55.504Z",
+      "finishedAt": "2026-10-28T22:42:58.688Z"
+    },
+    "restoration": "verified"
+  },
+  "exact-type-beats-glob": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/charter.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "b4af9389-1228-4b5e-8f69-51c30b99f551",
+    "timing": {
+      "startedAt": "2026-10-28T22:42:58.813Z",
+      "finishedAt": "2026-10-28T22:43:01.935Z"
+    },
+    "restoration": "verified"
+  },
+  "same-role-not-ambiguous": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/charter.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "9b48d4f3-4e72-4063-8579-f74e4eea07c5",
+    "timing": {
+      "startedAt": "2026-10-28T22:43:02.022Z",
+      "finishedAt": "2026-10-28T22:43:05.127Z"
+    },
+    "restoration": "verified"
+  },
+  "disjoint-types-not-ambiguous": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/charter.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "eee7938b-5d21-4241-b785-fdc6bdc6be61",
+    "timing": {
+      "startedAt": "2026-10-28T22:43:05.234Z",
+      "finishedAt": "2026-10-28T22:43:08.238Z"
+    },
+    "restoration": "verified"
+  },
+  "constraints-fail-closed": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/charter.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "6af240d3-18c3-4b22-9a2a-da0406630321",
+    "timing": {
+      "startedAt": "2026-10-28T22:43:08.341Z",
+      "finishedAt": "2026-10-28T22:43:11.357Z"
+    },
+    "restoration": "verified"
+  },
+  "set-covers-members": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 14,
+      "failed": 2,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 14,
+          "failed": 2,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/attribute-path.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "aedf74af-85fa-474c-a4b6-fa8d62d9f1e1",
+    "timing": {
+      "startedAt": "2026-10-28T22:43:11.454Z",
+      "finishedAt": "2026-10-28T22:43:14.492Z"
+    },
+    "restoration": "verified"
+  },
+  "xformop-is-placement": {
+    "observer": "tests",
+    "baseline": {
+      "kind": "pass",
+      "passed": 16,
+      "total": 16
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 15,
+      "failed": 1,
+      "total": 16,
+      "evidence": []
+    },
+    "ledger": [
+      {
+        "file": "packages/extensions/src/authority/authority.test.ts",
+        "role": "executable",
+        "runKey": "test:packages/extensions/src/authority/authority.test.ts",
+        "adapter": "vitest",
+        "runner": {
+          "family": "vitest",
+          "command": [
+            "vitest",
+            "run",
+            "--reporter=default",
+            "src/authority/authority.test.ts"
+          ]
+        },
+        "features": [],
+        "attribution": "runtime-v8-file",
+        "baseline": {
+          "kind": "pass",
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "exitCode": 0,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 15,
+          "failed": 1,
+          "total": 16,
+          "exitCode": 1,
+          "signal": null,
+          "toolchain": "v24.21.0",
+          "attributed": true,
+          "files": [
+            "packages/extensions/src/authority/authority.test.ts"
+          ],
+          "testIdentities": [],
+          "evidence": []
+        }
+      }
+    ],
+    "schemaVersion": 2,
+    "channel": "pull-request",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/extensions/src/authority/authority.test.ts; that file has a green, attributable baseline.",
+    "base": "80b18cbb72f63c4a0d52b23e4c129b70c6c3e054",
+    "head": "83432d42588cc92b15e7710315cd83062dae515e",
+    "production": [
+      "packages/extensions/src/authority/attribute-path.ts"
+    ],
+    "tests": [
+      "packages/extensions/src/authority/authority.test.ts"
+    ],
+    "invocationId": "2a55a630-c56f-43a4-9002-6c1e675bb9e2",
+    "timing": {
+      "startedAt": "2026-10-28T22:43:14.564Z",
+      "finishedAt": "2026-10-28T22:43:17.569Z"
+    },
+    "restoration": "verified"
+  }
+}

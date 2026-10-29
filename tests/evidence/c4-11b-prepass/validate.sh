@@ -20,6 +20,7 @@ node scripts/fixtures/fetch-fixtures.mjs
 if [[ "$phase" == native ]]; then
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace
+  cargo test -p ifc-lite-wasm --lib c4_11b_metadata_handoff_allocations -- --nocapture
   for spec in 'c4-11b c4_11b_concurrent_batches' 'c4-11b-prepass c4_11b_metadata'; do
     read -r lane filter <<< "$spec"
     patch="tests/evidence/$lane/behaviour.oracle.patch"

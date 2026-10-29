@@ -117,7 +117,7 @@ arched door) also refuses `incomplete` before dispatch rather than reporting a
 `kernel_failure`. The comparison reports `affine_kappa` without claiming that
 nonuniform scale preserves the facet-angle bound. Source centroids and signed
 volumes supplement the existing absolute-volume checks. The mapped oblique-clip
-fixture remains a qualification dependency on M5.
+fixture qualifies M5 clip execution and section volume through the M10 bake.
 
 The decoder-only M10 oracle uses IFC's +Y default for omitted Axis2. The default
 router currently derives that axis by a cross product; an omitted Axis2 with

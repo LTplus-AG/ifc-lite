@@ -322,10 +322,16 @@ fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
 
 /// Begin one product of `text` against an inert peer; dispatch once if admitted.
 fn affine_product(text: &str, id: u32) -> (Result<(), &'static str>, usize, bool) {
+    affine_product_with_opening(text, id, false)
+}
+fn affine_product_with_opening(text: &str, id: u32, has_opening: bool) -> (Result<(), &'static str>, usize, bool) {
+    let text=if has_opening {text.replace("ENDSEC;\nEND-ISO", "#900000=IFCOPENINGELEMENT('o',$,$,$,$,#9,#132,$,$);\nENDSEC;\nEND-ISO")} else {text.to_owned()};
     let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
     let mut decoder = source.decoder();
-    let router = GeometryRouter::with_units(text, &mut decoder);
-    let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
+    let router = GeometryRouter::with_units(&text, &mut decoder);
+    let data=if has_opening {OwnedMeshProductionData {void_index:Arc::new([(id,vec![900000])].into_iter().collect()),..Default::default()}} else {Default::default()};
+    let context = ProductionModel::from_source(source.clone()).snapshot(data);
+    let openings=if has_opening {vec![decoder.decode_by_id(900000).unwrap()]} else {vec![]};
     let entity = decoder.decode_by_id(id).unwrap();
     let metadata = metadata(id);
     let job = job(&entity, &metadata);
@@ -333,7 +339,7 @@ fn affine_product(text: &str, id: u32) -> (Result<(), &'static str>, usize, bool
     peer.fault = RuntimeFaultKind::Contract;
     let domain = peer.domain();
     let result = match RuntimeProductExecution::<InertReceipt>::begin(
-        &job, &context, &options(), &[], &mut decoder, &router) {
+        &job, &context, &options(), &openings, &mut decoder, &router) {
         Err(error) => Err(error.refusal().0.code()),
         Ok(mut execution) => {
             let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
@@ -521,4 +527,22 @@ fn settled_completion_fault_is_charged_and_cancelled_program_is_not_a_source_sto
         drop(issued);
         assert!(!cancellation.controller_retired(), "later packet drop cannot relabel a fault");
     });
+}
+
+// #7955 M10 §3.4: openings replace the host affine final by a kernel-meshed Boolean.
+#[test]
+fn curved_scale_up_with_opening_reaches_host_dispatch() {
+    assert_eq!(affine_product_with_opening(AFFINE_FINALS,147,true),(Ok(()),1,true));
+    assert_eq!(affine_product(AFFINE_FINALS,147),(Err("incomplete"),0,true));
+}
+
+// #7955: no real-SDK surface certificate exists for affine swept disks.
+#[test]
+fn mirrored_and_contracted_swept_disks_refuse_before_invocation() {
+    let swept=AFFINE_FINALS.replace("#123=IFCEXTRUDEDAREASOLID(#122,#2,#3,2.);",
+        "#900001=IFCCARTESIANPOINT((0.,0.,2.));\n#900002=IFCPOLYLINE((#1,#900001));\n#123=IFCSWEPTDISKSOLID(#900002,0.3,$,$,$);");
+    assert_eq!(affine_product(&swept,133),(Err("incomplete"),0,true));
+    let mirror=swept.replace("#126=IFCDIRECTION((1.,0.,0.));","#126=IFCDIRECTION((-1.,0.,0.));")
+        .replace("#128,0.5,#3);","#128,1.,#3);");
+    assert_eq!(affine_product(&mirror,133),(Err("incomplete"),0,true));
 }

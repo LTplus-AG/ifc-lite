@@ -19,11 +19,12 @@ pub struct AffineExpectation {
     /// The swept profile has no partial circular arc and the extrusion is
     /// normal to it: the only sweeps whose surfaces opcode 18 can certify.
     pub surface_certified: bool,
+    pub has_openings: bool,
 }
 impl AffineExpectation {
     /// The preregistered fallback after the real SDK sagitta witness failed.
     pub fn chord_admitted(&self) -> bool {
-        self.radius == 0. || self.sigma_max <= 1.
+        self.has_openings || self.radius == 0. || self.sigma_max <= 1. + 1e-12
     }
     /// Source prediction of the code: affine finals publish only if both hold.
     pub fn admitted(&self) -> bool {
@@ -264,26 +265,70 @@ fn length_unit(bytes:&[u8],d:&mut EntityDecoder<'_>) -> Option<f64> {
     }
     None
 }
-/// One result per authored final part. Unsupported oracle families return None,
-/// never an invented geometric expectation or a measured-runtime baseline.
-pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
-    let source=SourceBundle::new(bytes.to_vec());let mut d=source.decoder();let units=length_unit(bytes,&mut d)?;let p=d.decode_by_id(id).ok()?;
-    let world=placement(&mut d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
+/// One decoder and source index per model, shared by publication/refusal checks.
+pub struct AffineOracle<'a> {
+    decoder: EntityDecoder<'a>,
+    units: Option<f64>,
+    openings: std::collections::BTreeSet<u32>,
+}
+impl<'a> AffineOracle<'a> {
+    pub fn new(source: &'a std::sync::Arc<SourceBundle>) -> Self {
+        let mut decoder=source.decoder();
+        let units=length_unit(source.bytes(),&mut decoder);
+        let mut openings=std::collections::BTreeSet::new();
+        let mut scanner=ifc_lite_core::EntityScanner::new(source.bytes());
+        while let Some((id,name,_,_))=scanner.next_entity() {
+            if name.eq_ignore_ascii_case("IFCRELVOIDSELEMENT") {
+                if let Ok(e)=decoder.decode_by_id(id) {
+                    if let Some(host)=e.ref_at(slot::IfcRelVoidsElement::RELATING_BUILDING_ELEMENT) {openings.insert(host);}
+                }
+            }
+        }
+        Self {decoder,units,openings}
+    }
+    /// Mapping classification does not depend on an analytic solid oracle.
+    pub fn is_affine_final(&mut self,id:u32) -> bool {
+        final_items(&mut self.decoder,id).is_some_and(|items| items.iter().any(|(_,_,_,affine)|*affine))
+    }
+    pub fn expected(&mut self,id:u32) -> Option<Vec<AffineExpectation>> {
+        expected_decoded(&mut self.decoder,self.units?,id,self.openings.contains(&id))
+    }
+}
+fn nonrigid(m:&Frame) -> bool {
+    let Some((min,max))=stretches(m) else {return false};
+    dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.
+        || (min-1.).abs()>1e-12 || (max-1.).abs()>1e-12
+}
+fn final_items(d:&mut EntityDecoder<'_>,id:u32) -> Option<Vec<(u32,Frame,Frame,bool)>> {
+    let p=d.decode_by_id(id).ok()?;
+    let world=placement(d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
     let reps=d.decode_by_id(p.ref_at(slot::IfcProduct::REPRESENTATION)?).ok()?.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS)?;
     let mut stack=Vec::new();
     for id in reps {let rep=d.decode_by_id(id).ok()?;if rep.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER)==Some("Body") {
-        for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS)?.into_iter().rev() {stack.push((id,world,IDENTITY,0));}
+        for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS)?.into_iter().rev() {stack.push((id,world,IDENTITY,0,false));}
     }}
     let mut result=Vec::new();let mut work=0;
-    while let Some((id,world,mapping_matrix,depth))=stack.pop() {
+    while let Some((id,world,mapping_matrix,depth,affine))=stack.pop() {
         work+=1;if work>8192||depth>128 {return None}
         let e=d.decode_by_id(id).ok()?;
         if e.ifc_type==IfcType::IfcMappedItem {
-            let (map,items)=mapping(&mut d,e.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?,e.ref_at(slot::IfcMappedItem::MAPPING_TARGET)?)?;
-            for item in items.into_iter().rev() {stack.push((item,world,multiply(&mapping_matrix,&map),depth+1));}
-            continue;
-        }
-        let s=solid(&mut d,id,0,&mut 8192)?;let mut matrix=multiply(&world,&mapping_matrix);
+            let (map,items)=mapping(d,e.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?,e.ref_at(slot::IfcMappedItem::MAPPING_TARGET)?)?;
+            for item in items.into_iter().rev() {stack.push((item,world,multiply(&mapping_matrix,&map),depth+1,affine||nonrigid(&map)));}
+        } else {result.push((id,world,mapping_matrix,affine));}
+    }
+    Some(result)
+}
+/// Convenience for single-product witnesses; model comparisons use AffineOracle.
+pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
+    let source=SourceBundle::new(bytes.to_vec());
+    AffineOracle::new(&source).expected(id)
+}
+/// Unsupported oracle families return None, never an invented geometric baseline.
+fn expected_decoded(d:&mut EntityDecoder<'_>,units:f64,id:u32,has_openings:bool) -> Option<Vec<AffineExpectation>> {
+    let items=final_items(d,id)?;
+    let mut result=Vec::new();
+    for (id,world,mapping_matrix,affine_final) in items {
+        let s=solid(d,id,0,&mut 8192)?;let mut matrix=multiply(&world,&mapping_matrix);
         for col in 0..4 {for row in 0..3 {matrix[col*4+row]*=units;}}
         let det=dot([matrix[0],matrix[1],matrix[2]],cross([matrix[4],matrix[5],matrix[6]],[matrix[8],matrix[9],matrix[10]]));
         let support_bounds=if s.points.is_empty(){None}else{let mut b=[f64::INFINITY,f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
@@ -291,11 +336,8 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
         let extent=support_bounds.map(|b|(0..3).map(|i|b[i+3]-b[i]).fold(0.,f64::max))?;
         let bbox=if s.radius==0. {support_bounds} else {None};
         let (min,max)=stretches(&mapping_matrix)?;
-        let m=&mapping_matrix;
-        let reflected=dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.;
-        let affine_final=reflected||(min-1.).abs()>1e-12||(max-1.).abs()>1e-12;
         result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,extent,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min,affine_final,
-            surface_certified:s.certified});
+            surface_certified:s.certified,has_openings});
     }
     (!result.is_empty()).then_some(result)
 }

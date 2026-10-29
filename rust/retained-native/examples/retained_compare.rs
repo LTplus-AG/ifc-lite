@@ -167,6 +167,7 @@ fn compare(
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
     let oracle_source = source.clone();
+    let mut affine_oracle = ifc_lite_retained_native::oracle::affine::AffineOracle::new(&oracle_source);
     let clip_oracle = ifc_lite_retained_native::oracle::clips::ClipOracle::new(&oracle_source, &sources);
     let (summary, timings) = driver.run_model(
         source,
@@ -221,7 +222,7 @@ fn compare(
                         &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
                     );
-                    affine::record(report, &bytes, &shape, tolerances);
+                    affine::record(report, &mut affine_oracle, &shape, tolerances);
                     report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }
                 ProductOutcome::Refused {
@@ -256,7 +257,7 @@ fn compare(
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),
                     ));
-                    affine::refusal(report, &bytes, id, code);
+                    affine::refusal(report, &mut affine_oracle, id, code);
                     report
                         .coverage
                         .push(format!("{model}\t{id}\trefused\t{code}"));

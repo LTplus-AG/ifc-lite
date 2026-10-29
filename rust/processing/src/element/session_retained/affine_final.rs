@@ -29,7 +29,7 @@ pub fn affine_chord_admissible(sigma_max: f64, radius_m: f64, limits: NumericalL
         || limits.validate().is_err() { return false; }
     contracting_or_linear(sigma_max, radius_m != 0.)
 }
-fn contracting_or_linear(sigma_max: f64, curved: bool) -> bool { !curved || sigma_max <= 1. }
+fn contracting_or_linear(sigma_max: f64, curved: bool) -> bool { !curved || sigma_max <= 1. + 1e-12 }
 /// Opcode 18 certifies only BSpline/plane/cylinder/cone/sphere/torus surfaces
 /// (`affine.cpp` `surface_class`, status 7 otherwise). Pinned SDK c9c5979
 /// `SmPrimitiveCreation.cpp:1258-1340` (`CreateLinearSweep`) makes an SmPlane
@@ -44,7 +44,7 @@ fn partial(sweep_angle: f64) -> bool {
     (sweep_angle.abs() - std::f64::consts::TAU).abs() >= ifc_lite_geometry::math::tol::RETAINED_ARC_INTERVAL_EPS_RAD
 }
 /// Format-1 recipes lowered exactly as `retained_sweep`/`retained_prism` do.
-/// Swept disks use another SDK constructor and stay with the kernel's verdict.
+/// Swept disks use another SDK constructor without a surface-class certificate.
 fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
     match recipe {
         RetainedRecipe::Extrusion(e) => {
@@ -57,6 +57,7 @@ fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
         }
         RetainedRecipe::Prism(p) => affine_sweep_surfaces_certifiable(
             p.loops.iter().flat_map(|l| &l.segments).any(|s| matches!(s, PrismSegment::Arc { .. })), p.direction),
+        RetainedRecipe::SweptDisk(_) => false,
         _ => true,
     }
 }
@@ -95,8 +96,10 @@ pub(super) fn record(resources: &OwnedResourceContext, storage: &mut Storage,
 /// opcode 18 over an uncertifiable SDK surface class, and curved finals the
 /// preregistered contraction-only fallback refuses. `admit` repeats the latter.
 pub(super) fn refuse_predicted<'a>(facts: &[(LogicalRetainedDefinition, Lineage)],
-    finals: impl Iterator<Item = ValueRef<'a>>) -> Result<(), RetainedExecutionError> {
+    finals: impl Iterator<Item = ValueRef<'a>>, has_openings: bool) -> Result<(), RetainedExecutionError> {
     if facts.iter().any(|(_, f)| f.chain.is_some() && f.uncertified) { return Err(incomplete()); }
+    // Opening cuts produce a Boolean tessellated by the kernel (spec §3.4).
+    if has_openings { return Ok(()); }
     for value in finals {
         charge_scan(facts.len())?;
         let d = value.definition();
@@ -217,6 +220,7 @@ pub(super) fn bake<R: NumericalReceipt>(ledger: &[(LogicalRetainedValue, Arc<Run
     translation[12..15].copy_from_slice(&matrix[12..15]);
     let frame = retained_wire::multiply(*object_frame, translation);
     let mut part = super::publication_mesh::copy_part(mesh, frame, curved, resources, storage)?;
+    part.halfspace_clipped = realization.halfspace_clipped();
     resource::charge(resource::Cost { work: 1, ..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
     transform(matrix, &mut part.positions, &mut part.indices);
     if part.positions.iter().chain(part.world_from_object.iter()).any(|x| !x.is_finite()) { return Err(contract()); }
@@ -227,4 +231,25 @@ pub(super) fn bake<R: NumericalReceipt>(ledger: &[(LogicalRetainedValue, Arc<Run
         for operand in operands { operand.from_part = retained_wire::multiply(operand.from_part, translation); }
     }
     Ok((part, sources))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn issue_7955_rotated_mirror_uses_preregistered_roundoff_factor() {
+        let limits=NumericalLimits {chord_metres:0.001,angle_degrees:5.,max_bytes:16*1024*1024};
+        let mut strict_would_refuse=false;
+        for angle in [0.1_f64,0.2,0.3,0.7,1.1] {
+            let (s,c)=(2.*angle).sin_cos();
+            let mirror=[c,s,0., s,-c,0., 0.,0.,1.];
+            assert!(Matrix3::from_column_slice(&mirror).determinant()<0.);
+            let sigma=singular(mirror).1;
+            strict_would_refuse |= sigma>1.;
+            assert!(contracting_or_linear(sigma,true));
+            assert!(affine_chord_admissible(sigma,1.,limits));
+        }
+        assert!(strict_would_refuse,"witness must distinguish the old strict comparison");
+        assert!(!affine_chord_admissible(1.+2e-12,1.,limits));
+    }
 }

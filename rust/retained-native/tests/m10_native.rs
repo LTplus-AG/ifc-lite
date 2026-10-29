@@ -8,6 +8,9 @@ mod metrics;
 #[path = "support/geometry_assertions.rs"]
 #[allow(dead_code)]
 mod geometry_assertions;
+#[path = "../examples/compare/checks/mod.rs"]
+#[allow(dead_code)]
+mod checks;
 use ifc_lite_retained_native::oracle::affine;
 use ifc_lite_processing::element::retained_runtime::ProductOutcome;
 fn kernel_status(refusal:ifc_lite_processing::element::retained_runtime::RetainedProductRefusal)->Option<i32> {
@@ -90,6 +93,18 @@ fn m10_sdk_source_oracles_and_native_reference() {
     }
     // #7955 M5 × M10: h22 maps the clipped 3.5 m³ source by (2,3,1).
     // LINEAR above requires publication, source-oracle centroid and volume 21.
+    let clipped=support::shape(&outcomes,313);
+    assert!(clipped.parts.iter().all(|p|p.halfspace_clipped),"#313 must retain executed-clip lineage");
+    let source=ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let analytic=ifc_lite_processing::extract_analytic_quantity_sources(SOURCE.as_bytes(),None);
+    let clips=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&source,&analytic);
+    let mut clip_tolerance:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m5.json")).unwrap();
+    let faces:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m11-f.json")).unwrap();
+    clip_tolerance.as_object_mut().unwrap().extend(faces.as_object().unwrap().clone());
+    let results=checks::check(clipped,&checks::SourceContext {product_id:313,analytic:&analytic,clips:&clips},&clip_tolerance);
+    let section:Vec<_>=results.iter().filter(|r|r.family=="clipSectionVolumeRelative").collect();
+    assert_eq!(section.len(),clipped.parts.len());
+    assert!(section.iter().all(|r|r.gated&&r.pass),"#313 M5 section-volume gate must execute and pass");
     assert_eq!(outcomes.len(),22);
     eprintln!("sdk witness executed: m10_sdk_source_oracles_and_native_reference");
 }
@@ -240,4 +255,13 @@ fn m10_sdk_affine_phase_observations() {
     }
     if let Some(path)=std::env::var_os("IFCLITE_M10_AFFINE_TIMINGS") {std::fs::write(path,serde_json::to_vec_pretty(&rows).unwrap()).unwrap();}
     eprintln!("sdk witness executed: m10_sdk_affine_phase_observations");
+}
+
+#[test]
+fn m10_oracle_preregistered_mirror_roundoff_factor() {
+    let mut e=affine::expected(SOURCE.as_bytes(),133).unwrap().remove(0);
+    e.sigma_max=1.+4e-16;
+    assert!(e.chord_admitted());
+    e.sigma_max=1.+2e-12;
+    assert!(!e.chord_admitted());
 }

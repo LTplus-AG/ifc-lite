@@ -110,4 +110,5 @@ async fn retained_browser_m10_native_module_worker_parity() {
         }
     }
     assert_complete(&native).unwrap();
+    web_sys::console::log_1(&"sdk witness executed: m10_browser_parity".into());
 }

@@ -4,18 +4,21 @@ use ifc_lite_retained_native::{oracle::affine, ShapeOnlyProduct};
 use serde_json::{json,Value};
 use super::report::Report;
 
-pub fn record(report:&mut Report, bytes:&[u8], product:&ShapeOnlyProduct, tolerances:&Value) {
+pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:&ShapeOnlyProduct, tolerances:&Value) {
     if product.cuts!=0 {return}
-    let Some(expected)=affine::expected(bytes,product.product_id).filter(|e|e.iter().any(|p|p.affine_final)) else {return};
-    if expected.len()!=product.parts.len() {
-        report.violations.push(format!("{}: affine source part count",product.product_id));return;
-    }
+    if !oracle.is_affine_final(product.product_id) {return}
     let mut results=Vec::new();
     for (index,part) in product.parts.iter().enumerate() {
         let signed=affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).map(|v|v.0);
         let pass=signed.is_some_and(|v|v>0.);
         if !pass {report.violations.push(format!("{} part {index}: affine signed-volume invariant",product.product_id));}
         results.push(json!({"family":"affineSignedVolume","part":index,"pass":pass,"gated":true}));
+    }
+    // Winding is mandatory even when the analytic source family is unsupported.
+    let Some(expected)=oracle.expected(product.product_id) else {append(report,results);return};
+    if expected.len()!=product.parts.len() {
+        report.violations.push(format!("{}: affine source part count",product.product_id));
+        append(report,results);return;
     }
     for (index,(part,e)) in product.parts.iter().zip(expected).enumerate() {
         let Some((volume,centroid))=affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object) else {continue};
@@ -57,8 +60,8 @@ fn append(report:&mut Report,results:Vec<Value>) {
 /// Check the source chord/surface-class prediction only at its refusal stage:
 /// earlier typed refusals (layers, unsupported items) keep their precedence, and
 /// a predicted refusal must never surface as a kernel failure.
-pub fn refusal(report:&mut Report,bytes:&[u8],id:u32,code:&str) {
-    let Some(expected)=affine::expected(bytes,id).filter(|e|e.iter().any(|p|p.affine_final)) else {return};
+pub fn refusal(report:&mut Report,oracle:&mut affine::AffineOracle<'_>,id:u32,code:&str) {
+    let Some(expected)=oracle.expected(id).filter(|e|e.iter().any(|p|p.affine_final)) else {return};
     let admitted=expected.iter().all(|e|e.admitted());
     let pass=match code {"incomplete"=>!admitted,"kernel_failure"=>admitted,_=>true};
     if !pass {report.violations.push(format!("{id}: {code} affine final contradicts source chord/surface prediction"));}
@@ -68,4 +71,40 @@ pub fn refusal(report:&mut Report,bytes:&[u8],id:u32,code:&str) {
     // Refusal rows have an empty oracle column until this family contributes.
     if let Some(row)=report.rows.last_mut() {row.push_str("[]");}
     append(report,results);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // #7955: an unsupported analytic family must still gate EVERY part's winding.
+    #[test]
+    fn affine_boolean_without_source_volume_still_gates_signed_volume() {
+        use ifc_lite_retained_native::{ModelOptions,ProductOutcome};
+        let text=include_str!("../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc")
+            .replace("#24=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);",
+                "#900001=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);\n#24=IFCBOOLEANRESULT(.UNION.,#900001,#900001);")
+            .replace("#25=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid'", "#25=IFCSHAPEREPRESENTATION(#4,'Body','CSG'");
+        let source=ifc_lite_core::SourceBundle::new(text.into_bytes());
+        let mut oracle=affine::AffineOracle::new(&source);
+        assert!(oracle.is_affine_final(42));
+        assert!(oracle.expected(42).is_none());
+        let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+            assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
+            eprintln!("SKIP M10 affine winding reporter: real SDK missing");return;
+        };
+        let mut shapes=Vec::new();
+        ifc_lite_retained_native::run_model_native(source.clone(),worker,
+            &ModelOptions {ids:Some([42].into_iter().collect()),..Default::default()},|o|shapes.push(o)).unwrap();
+        let ProductOutcome::Published(mut shape)=shapes.remove(0) else {panic!("expected mirrored Boolean publication")};
+        let mut report=Report {rows:vec!["test\t[]".into()],..Default::default()};
+        record(&mut report,&mut oracle,&shape,&Value::Null);
+        assert!(report.violations.is_empty());
+        let results:Vec<Value>=serde_json::from_str(report.rows[0].split('\t').next_back().unwrap()).unwrap();
+        assert_eq!(results.len(),shape.parts.len());
+        assert!(results.iter().all(|r|r["family"]=="affineSignedVolume"&&r["gated"]==true&&r["pass"]==true));
+        for t in shape.parts[0].indices.chunks_exact_mut(3) {t.swap(1,2);}
+        record(&mut report,&mut oracle,&shape,&Value::Null);
+        assert!(report.violations.iter().any(|v|v.contains("signed-volume invariant")));
+        eprintln!("sdk witness executed: m10_affine_winding_without_analytic_source");
+    }
 }

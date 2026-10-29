@@ -103,7 +103,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     return Err(RetainedExecutionError::Unsupported(
                         Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));
                 }
-                affine_final::refuse_predicted(&lineage, plan.values())
+                affine_final::refuse_predicted(&lineage, plan.values(), !self.opening_entities.is_empty())
             })
         })).map_err(protocol).and_then(|(result, _)| result);
         check_resources(&resources)?;

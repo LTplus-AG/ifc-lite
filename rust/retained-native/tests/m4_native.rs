@@ -48,6 +48,7 @@ fn issue_7955_m4_curved_ifc_normal_matches_independently_authored_bands() {
     let wall = shape(&results,55);
     assert!(wall.parts.iter().all(|p| p.curved && p.instance_key.is_none()));
     assert_band_faces(wall);
+    assert_eq!(wall.marker(), "final"); assert!(wall.obligations.0.is_empty());
     assert_eq!(wall.parts.len(),3); assert_eq!(wall.cuts,1);
     let limits: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m4.json")).unwrap();
     let tolerance = limits["layerBandVolumeRelative"]["curved"].as_f64().unwrap();

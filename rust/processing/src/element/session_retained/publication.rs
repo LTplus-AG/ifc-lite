@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Atomic shape-only publication after opening and layer completion.
+//! Atomic final or shape-only publication after all available proofs.
 use super::runtime::ReceiptEvidence;
 use super::*;
 use ifc_lite_geometry::program::transactions::Requirement;
@@ -19,6 +19,12 @@ pub struct ShapeOnlyProduct {
     pub normal_planar_fallbacks: usize,
     pub obligations: PresentationObligationsUnmet,
     pub(super) _storage: Storage,
+}
+impl ShapeOnlyProduct {
+    /// M11-Z: publication is final exactly when every presentation proof is discharged.
+    pub fn marker(&self) -> &'static str {
+        if self.obligations.0.is_empty() { "final" } else { "PresentationObligationsUnmet" }
+    }
 }
 #[derive(Debug)]
 pub struct ShapePart {
@@ -160,13 +166,6 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         )?;
         remaining.extend(self.plan.requirements());
         let obligations = PresentationObligationsUnmet(remaining);
-        // Appearance/face obligations remain after opening and layer completion. This
-        // guards the shape-only invariant, not a supported fully discharged
-        // path: final-product publication needs separate authority, and
-        // require_final_product deliberately still refuses (M1 spec section 3).
-        if obligations.0.is_empty() {
-            return Err(incomplete());
-        }
         let (_, cuts, consumed_parts) = self.plan.opening().unwrap_or_default();
         let mut cut_times_ms = Vec::new();
         storage.reserve(&self.resources, &mut cut_times_ms, self.cut_times_ms.len())?;
@@ -187,7 +186,6 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             angle_degrees: self.limits.angle_degrees,
         })?;
         product.obligations.0.retain(|r| !discharged.contains(r));
-        if product.obligations.0.is_empty() { return Err(incomplete()); }
         Ok(product)
     }
 }

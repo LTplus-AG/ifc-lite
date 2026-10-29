@@ -5,7 +5,7 @@ use wasm_bindgen_test::wasm_bindgen_test;
 #[wasm_bindgen(inline_js="export async function m4Reference() { const r=await fetch('/smlib/m3-native-openings.json'); if(!r.ok) throw new Error('M4 staged native reference missing'); return r.json(); }
 export function m4Measure(p) {
  if(p.status!=='published') return {id:p.expressId,code:p.code,bands:[]};
- if(p.obligationsUnmet.includes('MaterialLayers')) throw new Error('Layer obligation remains');
+ if(p.obligationsUnmet.length || p.marker !== 'final') throw new Error('M11-Z layered product must publish final');
  const edges=new Map();
  for(const part of p.parts) {
    if(!part.faces || part.faces.triangles.length!==part.indices.length/3 ||

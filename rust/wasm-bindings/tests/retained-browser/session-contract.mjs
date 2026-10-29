@@ -37,7 +37,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
         try {
           assert(start && event.kind === 'published', `every mapped product publishes: ${JSON.stringify(event)}`);
           assert(event.expressId === start.candidateIds[published.length], 'sink follows canonical job order');
-          assert(event.marker === 'PresentationObligationsUnmet' && event.obligationsUnmet.length > 0, 'shape-only marker retained');
+          assert(event.marker === (event.obligationsUnmet.length ? 'PresentationObligationsUnmet' : 'final'), 'M11-Z publication marker matches obligations');
           assert(!event.obligationsUnmet.includes('SurfaceNormals'), 'M11-N discharges surface normals');
           instances.collect(event);
           published.push(event.expressId);

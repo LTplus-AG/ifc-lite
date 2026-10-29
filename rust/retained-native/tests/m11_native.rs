@@ -11,7 +11,7 @@ fn m11_0_7955_real_sdk_keeps_face_partition_and_discharged_normals() {
     for outcome in &outcomes {
         if let ProductOutcome::Published(product) = outcome {
             count += 1;
-            assert_eq!(product.obligations.0, vec![Requirement::MaterialLayers], "M11-A, M11-F and M11-N leave only the layers");
+            assert_eq!(product.obligations.0, vec![], "M4 and M11 presentation proofs publish final");
             for part in &product.parts {
                 assert_eq!(part.revision_local_faces.len(), part.indices.len() / 3);
                 assert!(!part.revision_local_faces.is_empty());
@@ -113,7 +113,7 @@ fn m11_a_every_committed_published_row_resolves_and_matches_exact_per_product_an
                 ProductOutcome::Published(product) => {
                     assert!(is_published, "{model} #{id} published but the coverage row says {code}");
                     rows += 1;
-                    assert_eq!(product.obligations.0, vec![Requirement::MaterialLayers], "{model} #{id}");
+                    assert_eq!(product.obligations.0, vec![], "{model} #{id}");
                     if product.parts.iter().any(|part| part.appearance.as_ref().unwrap().style_id.is_some()) {
                         styled_products.insert((model.clone(), *id));
                     }

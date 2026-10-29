@@ -33,10 +33,10 @@ test('#7955 actual retainedModel yields deterministic CLI report and no partial 
     const { obj, report } = retainedArtifacts(engine, instanceMinOccurrences, outcomes, () => null);
     assert.deepEqual(report.summary, { layeredProducts: 0, bands: 0, candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
     assert.equal(report.products[0].parts.length, 1);
-    assert.deepEqual(report.products[0].obligationsUnmet, ['MaterialLayers']);
+    assert.deepEqual(report.products[0].obligationsUnmet, []);
     assert.equal(report.products[1].code, 'material_layer_strategy');
     assert.ok(!('parts' in report.products[1]));
-    assert.equal(obj.split('\n').filter(line => line === '# PresentationObligationsUnmet').length, 1);
+    assert.equal(obj.split('\n').filter(line => line === '# final').length, 1);
     assert.ok(peers.every(peer => peer.retired));
     assert.deepEqual(await collectRetained(api, new TextEncoder().encode(source), new Uint32Array()), []);
     nextPeer().then(peer => { peer.failOpcode = 10; peer.failAtOccurrence = 2; peer.kernelStatus = 4; });

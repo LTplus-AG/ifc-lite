@@ -44,7 +44,7 @@ export interface RetainedShapeProduct {
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
-    marker: 'PresentationObligationsUnmet';
+    marker: 'final' | 'PresentationObligationsUnmet';
     obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
     instanceKey?: string;
 }
@@ -71,7 +71,7 @@ pub struct RetainedModelRun {
 }
 #[wasm_bindgen]
 impl RetainedModelRun {
-    /// Returns one atomic shape-only product or typed refusal, undefined at end.
+    /// Returns one atomic final or shape-only product or typed refusal, undefined at end.
     #[wasm_bindgen(js_name = next, unchecked_return_type = "RetainedProductOutcome | undefined")]
     pub fn next_outcome(&mut self) -> JsValue {
         self.outcomes.next().unwrap_or(JsValue::UNDEFINED)
@@ -150,7 +150,7 @@ pub(super) fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
             set(&result, "maxSnapMetres", &product.max_snap_metres.into())?;
             set(&result, "cuts", &(product.cuts as f64).into())?;
             set(&result, "consumedParts", &(product.consumed_parts as f64).into())?;
-            set(&result, "marker", &"PresentationObligationsUnmet".into())?;
+            set(&result, "marker", &product.marker().into())?;
             let obligations = Array::new();
             for obligation in &product.obligations.0 {
                 obligations.push(&obligation_name(*obligation).into());

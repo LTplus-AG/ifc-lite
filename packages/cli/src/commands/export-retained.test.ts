@@ -207,3 +207,17 @@ it('#7955 M4 phase samples do not change the reproducible CLI report', () => {
   expect(first.products[0]).not.toHaveProperty('capMs');
   expect(first.products[0]).not.toHaveProperty('maxSnapMetres');
 });
+
+// #7955 M11-Z: consumers enforce the marker/obligation contract for both states.
+it('M11-Z accepts final products in OBJ and the stable report, retaining shape-only behavior', () => {
+  const final: RetainedShapeProduct = { ...shape, marker: 'final', obligationsUnmet: [] };
+  const result = retainedArtifacts(engine, 8, [final], () => null);
+  expect(result.obj).toContain('# retained final\n# final\n');
+  expect(result.obj).not.toContain('obligations unmet');
+  expect(result.report.products[0]).toMatchObject({ marker: 'final', obligationsUnmet: [] });
+  const mixed = retainedArtifacts(engine, 8, [final, { ...shape, expressId: 28 }], () => null);
+  expect(mixed.obj).toContain('# PresentationObligationsUnmet');
+  expect(mixed.report.products[1]).toMatchObject({ marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'] });
+  expect(() => retainedArtifacts(engine, 8, [{ ...final, marker: 'PresentationObligationsUnmet' }], () => null)).toThrow(/Invalid retained publication/);
+  expect(() => retainedArtifacts(engine, 8, [{ ...shape, marker: 'final' }], () => null)).toThrow(/Invalid retained publication/);
+});

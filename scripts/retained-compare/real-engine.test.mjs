@@ -113,7 +113,8 @@ test('#7955 M4 and M11 committed extrusion OBJ differs from its base golden only
   const { outcomes } = await runRetained(await validateEngine(engine), source);
   assert.ok(outcomes.length > 0 && outcomes.every(p => p.status === 'published'));
   for (const product of outcomes) {
-    assert.deepEqual(product.obligationsUnmet, ['MaterialLayers'], 'M11-A, M11-F and M11-N discharge everything but the layers');
+    assert.deepEqual(product.obligationsUnmet, [], 'M4 and M11 discharge every obligation');
+    assert.equal(product.marker, 'final');
     for (const part of product.parts) {
       assert.equal(part.revisionLocalFaces.length, part.indices.length / 3);
       assert.ok(part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3, 'M11-N: one f64 normal per corner');
@@ -144,14 +145,9 @@ test('#7955 M4 and M11 committed extrusion OBJ differs from its base golden only
   });
   assert.equal(current.length, previous.length, 'no added geometry, groups or materials beyond the corner normals');
   const changed = current.flatMap((line, index) => line === previous[index] ? [] : [index]);
-  assert.deepEqual(changed, [3], 'the ONLY other changed line must be the presentation obligations header');
-  // The expected header is the base golden's list minus every obligation a slice now discharges.
-  const discharged = new Set(['IfcAppearance', 'PersistentFaces', 'SurfaceNormals']);
-  const split = previous[3].lastIndexOf(': ') + 2;
-  const prefix = previous[3].slice(0, split);
-  const listed = previous[3].slice(split);
-  const expected = `${prefix}${listed.split(', ').filter(name => !discharged.has(name)).join(', ')}`;
-  assert.equal(current[3], expected, 'M11-A, M11-F and M11-N discharge IfcAppearance, PersistentFaces and SurfaceNormals: none is listed as unmet');
+  assert.deepEqual(changed, [3, 4], 'only final publication headers change beyond the corner normals');
+  assert.equal(current[3], '# retained final');
+  assert.equal(current[4], '# final');
 });
 
 test('#7955 M11-A Node/wasm appearance equals the native run bit for bit', {

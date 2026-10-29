@@ -61,13 +61,14 @@ function fixed(value: number): string {
 export function retainedObj(products: RetainedShapeProduct[]): string {
   const obligations = [...new Set(products.flatMap(p => p.obligationsUnmet))].sort();
   const lines = ['# ifc-lite OBJ export', '# units: metres (renderer Y-up frame, origin-folded world coords)',
-    '# kernel: retained', `# retained shape-only: presentation obligations unmet: ${obligations.join(', ')}`,
-    '# PresentationObligationsUnmet'];
+    '# kernel: retained', ...(obligations.length
+      ? [`# retained shape-only: presentation obligations unmet: ${obligations.join(', ')}`, '# PresentationObligationsUnmet']
+      : ['# retained final', '# final'])];
   let base = 1, normalBase = 1;
   for (const product of products) {
-    if (product.marker !== 'PresentationObligationsUnmet' || !product.obligationsUnmet.length || !product.parts.length ||
+    if (product.marker !== (product.obligationsUnmet.length ? 'PresentationObligationsUnmet' : 'final') || !product.parts.length ||
         !/^Ifc[A-Za-z0-9]+$/.test(product.ifcType) || !Number.isSafeInteger(product.expressId)) {
-      throw new Error('Invalid retained shape-only product');
+      throw new Error('Invalid retained publication');
     }
     lines.push(`o ${product.ifcType}_${product.expressId}`, `g ${product.ifcType}_${product.expressId}`);
     for (const part of product.parts) {

@@ -21,7 +21,14 @@ export class RetainedDriver {
   #releases = [];
   #cleanup;
   #dispatchListeners = [];
-  constructor() {
+  constructor(observeForTests = false) {
+    // Only the cfg(test) Rust constructor enables handle observation. Ordinary
+    // retained instances do not expose this test-support method.
+    if (observeForTests) this.liveObjectCount = async () => {
+      await this.#awaitCleanup();
+      if (!this.live()) throw new Error('retired retained worker');
+      return this.#objects.size;
+    };
     // Called only by explicit BrowserWorker construction. Importing the IFC
     // wasm package, or loading a model, never reaches this constructor.
     this.#ready = loadSdkModule('/smlib/client.mjs').then(({ SmlibWorkerTransport }) => {

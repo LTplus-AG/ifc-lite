@@ -217,6 +217,25 @@ cannot establish smooth-normal correctness, relative opening/map-frame handling,
 internal-cap suppression, UV seams, engine sidecar loading, retained/Worker/
 viewer/GPU behavior or persistent engine-provided face ancestry.
 
+## Refusal lifecycle regression
+
+`refusal-cascade.ifc` is a **synthetic lifecycle regression**, derived from the
+minimal unlayered cascade reproducer for #7955. It contains four identical
+extruded hosts (#100–#103) with unsupported faceted-BRep openings, followed by
+the same unvoided host #104. Unused spatial hierarchy records were removed and
+the synthetic GlobalIds normalized. It is not authoring-tool or geometry
+qualification evidence and is not added to the committed coverage universe.
+The required outcomes are four `opening_unsupported`, one publication (#104),
+and four `operation_unsupported` opening products, with zero worker restarts.
+The SMLib-free controller test extends this to eight refused hosts; native and
+browser witnesses use the real engine. The native witness drains receipt
+releases and asserts the acknowledged live solid/mesh handle count returns to
+zero before every subsequent invocation and after the run. This is a handle
+ownership check, not an SDK allocator/RSS measurement.
+Native and browser tests also substitute the host's representation for every
+cutter: four certified empty differences must produce `empty_result`, then
+#104 must still publish on the original worker with all handles released.
+
 ## M3 opening candidate — unreviewed, non-evidence
 
 `f-d-openings.ifc` is generated separately by `generate-openings.py` (`--check`

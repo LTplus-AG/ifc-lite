@@ -10,6 +10,7 @@ description = "Explicit isolated native geometry worker client for IFC-Lite (opt
 
 [features]
 retained-runtime = ["ifc-lite-geometry/retained-runtime"]
+test-support = []
 
 [dependencies]
 # Retained requests and completions are GeometryDocument types. Nothing in

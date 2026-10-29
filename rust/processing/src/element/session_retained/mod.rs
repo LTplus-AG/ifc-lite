@@ -24,6 +24,8 @@ pub(super) mod publication;
 mod publication_mesh;
 mod presentation;
 pub(super) mod model;
+mod restart_budget;
+mod cancellation;
 mod drive;
 mod acceptance;
 mod validation;
@@ -68,8 +70,8 @@ const EXECUTING: u8 = 1;
 const DELIVERED: u8 = 2;
 const ACCEPTED: u8 = 3;
 const CANCELLED: u8 = 4;
-/// The runtime settled a contract fault: nothing is outstanding on the worker,
-/// so dropping the refused product must not retire its healthy domain.
+/// A refused execution has settled: nothing is outstanding on the worker.
+/// Faults have already retired it; typed refusals release receipts normally.
 const SETTLED_FAULT: u8 = 5;
 struct PendingRetainedTransaction<R: NumericalReceipt> {
     outer: WorkRequest,
@@ -127,8 +129,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn issue_next(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter,
         worker: &impl RetainedRuntime<Receipt = R>) -> Result<Option<RuntimeIssued<R>>, RetainedExecutionError> {
         let result = self.issue_next_checked(decoder, router, worker);
-        let result = check_resources(&self.resources).and(result);
-        if result.as_ref().is_err_and(|error| error.terminal()) { self.cancel(); }
+        let result = result.and_then(|issued| check_resources(&self.resources).map(|()| issued));
+        if let Err(error) = &result { self.refuse(error); }
         result
     }
     fn issue_next_checked(
@@ -175,21 +177,6 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             _storage: storage,
         });
         Ok(Some(issued))
-    }
-    fn cancel(&mut self) {
-        self.failed = true;
-        let settled = self.pending.as_ref().is_some_and(|pending|
-            pending.cancellation.stage.load(Ordering::Acquire) == SETTLED_FAULT);
-        if !settled {
-            if let Some(owner) = &self.runtime_domain { owner.retire(); }
-            if let Some(pending) = &self.pending {
-                pending.cancellation.cancel();
-            }
-        }
-        if let Some(program) = &mut self.program {
-            program.cancel();
-        }
-        self.plan = None;
     }
     fn traversal_plan(&self) -> Option<&RetainedProductPlan> {
         self.plan.as_ref().filter(|_| !self.failed)

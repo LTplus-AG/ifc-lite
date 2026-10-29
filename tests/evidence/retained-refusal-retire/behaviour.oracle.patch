@@ -1,0 +1,30 @@
+--- a/rust/processing/src/element/session_retained/cancellation.rs
++++ b/rust/processing/src/element/session_retained/cancellation.rs
+@@ -19,11 +19,11 @@
+
+     pub(super) fn cancel(&mut self) {
+         self.failed = true;
+-        let settled = self.pending.as_ref().is_some_and(|pending|
+-            pending.cancellation.stage.load(Ordering::Acquire) == SETTLED_FAULT);
+-        if !settled {
+-            if let Some(owner) = &self.runtime_domain { owner.retire(); }
+-            if let Some(pending) = &self.pending {
++        // A source refusal after acceptance has no outstanding kernel work.
++        // Its ledger drops normally, releasing receipts on the healthy peer.
++        // Only an unsettled packet needs the conservative retire-on-cancel path.
++        if let Some(pending) = &self.pending {
++            if pending.cancellation.stage.load(Ordering::Acquire) != SETTLED_FAULT {
+                 pending.cancellation.cancel();
+             }
+         }
+--- a/rust/processing/src/element/session_retained/acceptance.rs
++++ b/rust/processing/src/element/session_retained/acceptance.rs
+@@ -121,7 +121,7 @@
+             .and_then(|()| self.validate(decoder, router).map(|_| ()));
+         if let Err(reason) = result {
+             self.failed = true;
+-            pending.cancellation.cancel();
++            pending.cancellation.refuse_completion(&reason);
+             return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
+         }
+         // Never overwrite a cancellation which raced the synchronous consume.

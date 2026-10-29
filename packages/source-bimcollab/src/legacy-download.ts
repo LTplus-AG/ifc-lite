@@ -95,16 +95,14 @@ export class LegacyDownload {
       }
     };
     // Every location id up to the bound is read (in parallel batches): an empty
-    // location answers exactly like a missing one, so no run of empties proves
-    // the end. Documents in the last id mean more may exist past the bound, and
-    // a partial scan never decides.
+    // location answers exactly like a missing one, so none is skipped. The bound
+    // only limits availability, never correctness: names are unique among the
+    // user's projects (checked by the caller), so a location beyond it can hide
+    // the document (not found) but cannot hide a lookalike.
     const indexes: IndexRecord[][] = [];
     for (let first = 1; first <= LOCATION_LIMIT; first += LOCATION_BATCH) {
       signal?.throwIfAborted();
       indexes.push(...await Promise.all(Array.from({ length: LOCATION_BATCH }, (_, i) => readIndex(first + i))));
-    }
-    if (indexes[LOCATION_LIMIT - 1]!.length > 0) {
-      throw new Error(`BIMcollab legacy download: documents continue past location ${LOCATION_LIMIT}; cannot scan them all.`);
     }
     const rows = indexes.flat().filter(row => inProject(row, names));
     if (rows.length) return rows;

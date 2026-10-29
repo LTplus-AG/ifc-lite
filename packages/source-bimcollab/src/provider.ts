@@ -108,8 +108,21 @@ export class BimcollabProvider implements FileSourceProvider {
     return readWithProgress(await checked(response), options?.onProgress);
   }
   private async fallback(ctx: PluginContext, ref: SourceFileRef, signal?: AbortSignal) {
-    const row = (await this.structure(ctx, signal)).find(row => row.project.projectId === ref.projectId);
+    const rows = await this.structure(ctx, signal);
+    const row = rows.find(row => row.project.projectId === ref.projectId);
     if (!row) throw new Error('BIMcollab project is no longer accessible.');
+    // The web-app index identifies projects and phases by NAME only. The public
+    // structure lists every project this user can access, so a name unique there
+    // can only mean this project in the index: no lookalike can exist, however
+    // many locations are scanned. A shared project name makes the fallback refuse.
+    const sameName = rows.filter(other => other.project.name === row.project.name).length;
+    if (sameName > 1) {
+      throw new Error(`BIMcollab legacy download: ${sameName} accessible projects are named "${row.project.name}", so the fallback cannot tell them apart; download it in BIMcollab.`);
+    }
+    const foreignPhases = new Set(rows.filter(other => other !== row)
+      .flatMap(other => (other.project.projectPhases ?? []).map(phase => phase.name)));
+    // A phase name also used by another project is no identity: rows carrying only it are not matched.
+    const ownPhases = (row.project.projectPhases ?? []).map(phase => phase.name).filter(name => !foreignPhases.has(name));
     let document: Document | undefined;
     let cursor: string | undefined;
     for (let pageCount = 0; pageCount < 1000; pageCount++) {
@@ -124,7 +137,7 @@ export class BimcollabProvider implements FileSourceProvider {
       : document.latestVersion;
     if (!document.documentNumber || !version?.versionNumber) throw new Error('BIMcollab legacy download needs a document number and version number.');
     return this.legacy.download(ctx, this.options.session, { location: row.location.name, project: row.project.name,
-      phases: (row.project.projectPhases ?? []).map(phase => phase.name),
+      phases: ownPhases,
       // The web-app index lists current versions only. Rows without a project
       // (phase-attached) are only safe to match when the CURRENT version is
       // requested, because then the right row is guaranteed to be present.

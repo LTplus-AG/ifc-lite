@@ -132,6 +132,19 @@ describe('ViewerBimcollabProvider sign-out', () => {
     assert.ok(await provider.auth.restore(memoryCtx()));
   });
 
+  it('an explicit sign-in outranks a stale sign-out marker left in another context', async () => {
+    const provider = new ViewerBimcollabProvider(() => config(), (async () => Response.json({ locations: [] })) as typeof fetch);
+    const ctxA = memoryCtx();
+    await provider.auth.signOut(ctxA);
+    await provider.auth.signIn(memoryCtx());
+    // ctxA still holds the old marker; the later explicit sign-in wins.
+    assert.ok(await provider.auth.restore(ctxA));
+    assert.deepEqual((await provider.listProjects(ctxA)).items, []);
+    // Signing out again applies everywhere.
+    await provider.auth.signOut(memoryCtx());
+    assert.equal(await provider.auth.restore(ctxA), null);
+  });
+
   it('remembers every signed-out account: signing out of B does not sign A back in', async () => {
     const a = config();
     const b = config({ userId: 'b@example.com' });

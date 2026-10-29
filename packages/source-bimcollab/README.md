@@ -57,12 +57,15 @@ Archived and confidential records are excluded. Revisions use public GUIDs.
 
 On the specific public download-unavailable 404, the default fallback reads the
 web-app indexes of numeric locations 1–100 in parallel batches (an empty location
-reads like a missing one, so all are read; documents in location 100 mean more may
-exist and the fallback refuses), keeps every row belonging
+reads like a missing one, so all are read), keeps every row belonging
 to the project (by project name, or by phase name for phase-attached documents)
 from every readable location, caches them for 60 seconds, and requires exactly
 one document-number/version-number match across all of them. Location names are
-never used to pick between candidates; an incomplete or over-limit index aborts. It honors `allowDownload: false`. An inaccessible or ambiguous match fails
+never used to pick between candidates; an incomplete or over-limit index aborts.
+Because the index names projects and phases only by name, the fallback requires the
+project name to be unique among the user's accessible projects (otherwise it
+refuses) and ignores phase-only rows whose phase name another project shares, so a
+location outside the scan can make a document "not found" but never mistaken. It honors `allowDownload: false`. An inaccessible or ambiguous match fails
 explicitly. The index exposes current versions only, so the fallback serves only a
 document's current version; an older revision downloads only if the public
 endpoint serves it, and is otherwise refused (never substituted). An index the

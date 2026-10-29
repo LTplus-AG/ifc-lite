@@ -19,13 +19,13 @@ const record = { documentId: 1, documentNumber: 'D1', versionNumber: '1', versio
   allowDownload: true, locationId: 2, locationName: 'Location', projectId: 1, projectName: 'Project', projectPhaseName: null };
 const ref = { projectId: 'p', containerId: 'root', fileId: 'd' };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; versions?: unknown[]; indexStatus?: Record<number, number>; everyLocation?: boolean; legacy?: boolean } = {}) {
+function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; versions?: unknown[]; indexStatus?: Record<number, number>; everyLocation?: boolean; structure?: unknown; legacy?: boolean } = {}) {
   const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer secret-token');
     expect(init?.credentials).toBe('omit');
     expect(init?.redirect).toBe('error');
-    if (url.endsWith('project-structure')) return json(structure);
+    if (url.endsWith('project-structure')) return json(options.structure ?? structure);
     if (url.includes('/document-versions') && !url.endsWith('/download')) return json(options.versions ?? [version]);
     if (url.includes('/index?')) {
       const locationId = Number(new URL(url, 'https://x').searchParams.get('locationId'));
@@ -209,10 +209,26 @@ describe('BIMcollab source provider (fake transport only)', () => {
     const beyond = setup({ byLocation: { 11: [{ ...record, locationId: 11 }] } });
     expect(new TextDecoder().decode(await beyond.provider.download(beyond.ctx, ref))).toBe('IFC');
   });
-  it('refuses when documents continue to the scan bound (the scan may be incomplete)', async () => {
+  it('reads every location id up to the bound; past it a document is only ever "not found", never mistaken', async () => {
     const { provider, ctx, fetchFn } = setup({ everyLocation: true });
-    await expect(provider.download(ctx, ref)).rejects.toThrow('continue past location 100');
+    await expect(provider.download(ctx, ref)).rejects.toThrow('found 0');
     expect(fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(100);
+  });
+  it('refuses the fallback when another accessible project shares the project name (no lookalike can be excluded)', async () => {
+    const twin = { locations: [...structure.locations, { locationId: 'loc2', name: 'Other', projects: [
+      { projectId: 'p2', name: 'Project', projectPhases: [] },
+    ] }] };
+    const { provider, ctx, fetchFn } = setup({ structure: twin });
+    await expect(provider.download(ctx, ref)).rejects.toThrow('2 accessible projects are named "Project"');
+    expect(fetchFn.mock.calls.some(call => String(call[0]).includes('/index?'))).toBe(false);
+  });
+  it('ignores phase-only rows whose phase name another project also uses', async () => {
+    const sharedPhase = { locations: [{ ...structure.locations[0]!, projects: [...structure.locations[0]!.projects,
+      { projectId: 'p3', name: 'Third', projectPhases: [{ projectPhaseId: 'x', name: 'Design' }] }] }] };
+    const phaseRecord = { ...record, projectId: null, projectName: null, projectPhaseName: 'Design' };
+    const { provider, ctx, fetchFn } = setup({ structure: sharedPhase, records: [phaseRecord] });
+    await expect(provider.download(ctx, { projectId: 'phased', containerId: 'phase', fileId: 'd' })).rejects.toThrow();
+    expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
   });
   it('surfaces a 401 from an index as re-authentication, never as an empty location', async () => {
     const { provider, ctx, fetchFn } = setup({ indexStatus: { 4: 401 } });

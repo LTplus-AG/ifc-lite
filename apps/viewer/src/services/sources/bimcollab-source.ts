@@ -91,6 +91,12 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
    * keeps a sign-out effective for the provider's lifetime regardless.
    */
   private readonly signedOutInSession = new Set<string>();
+  /**
+   * Accounts explicitly signed in during this session. With per-context
+   * fallback storage, another context may still hold an older sign-out marker
+   * for the account; an explicit sign-in outranks it until signed out again.
+   */
+  private readonly signedInInSession = new Set<string>();
 
   constructor(
     private readonly loadConfig: () => BcfServerConfig | null = loadBcfServerConfig,
@@ -103,7 +109,10 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
         const identity = this.identity();
         if (!identity) throw new BimcollabNotConnectedError();
         const key = this.sessionKey();
-        if (key) await this.writeSignedOut(ctx, (await this.readSignedOut(ctx)).filter(k => k !== key));
+        if (key) {
+          this.signedInInSession.add(key);
+          await this.writeSignedOut(ctx, (await this.readSignedOut(ctx)).filter(k => k !== key));
+        }
         return identity;
       },
       // The tokens belong to the BCF connection, which stays connected; this
@@ -112,6 +121,7 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
         this.bound = null;
         const key = this.sessionKey();
         if (!key) return;
+        this.signedInInSession.delete(key);
         const signedOut = await this.readSignedOut(ctx);
         if (!signedOut.includes(key)) await this.writeSignedOut(ctx, [...signedOut, key]);
       },
@@ -149,7 +159,8 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
 
   private async signedOut(ctx: PluginContext): Promise<boolean> {
     const key = this.sessionKey();
-    return key !== null && (await this.readSignedOut(ctx)).includes(key);
+    if (key === null || this.signedInInSession.has(key)) return false;
+    return (await this.readSignedOut(ctx)).includes(key);
   }
 
   private async active(ctx: PluginContext): Promise<BimcollabProvider> {

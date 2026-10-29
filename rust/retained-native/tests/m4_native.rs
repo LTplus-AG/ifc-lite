@@ -220,3 +220,41 @@ fn issue_7955_m4_planar_bands_preserve_curved_host_classification() {
     assert!(wall.parts.len() >= 2);
     assert!(wall.parts.iter().all(|p| p.curved && p.layer.is_some() && p.instance_key.is_none()));
 }
+
+#[test]
+fn issue_7955_m4_material_appearance_uses_each_bands_exact_resolver_key() {
+    let Some(outcomes) = run(CURVED, &[55]) else { return; };
+    let host = shape(&outcomes, 55);
+    let exact = ifc_lite_processing::process_geometry(CURVED.as_bytes());
+    let exact_host: Vec<_> = exact.meshes.iter().filter(|mesh| mesh.express_id == 55).collect();
+    assert!(!exact_host.is_empty(), "real exact witness must mesh the layered host");
+    for part in &host.parts {
+        let appearance = part.appearance.as_ref().unwrap();
+        assert_eq!(appearance.material_id, Some(part.layer.unwrap().material_id));
+        assert_eq!(appearance.geometry_item_id, None);
+        assert!(exact_host.iter().all(|mesh| mesh.color.map(f32::to_bits) == appearance.rgba.map(f32::to_bits)
+            && mesh.material_name == appearance.material_name), "unstyled layered fixture: exact RGBA/name parity");
+    }
+    let styles = "#90=IFCMATERIAL('First');#91=IFCMATERIAL('Second');
+#92=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#93),#90);
+#93=IFCSTYLEDREPRESENTATION(#4,'S','Material',(#94));#94=IFCSTYLEDITEM($,(#95),$);
+#95=IFCSURFACESTYLE('Red band',.BOTH.,(#96));#96=IFCSURFACESTYLERENDERING(#97,0.,$,$,$,$,$,$,.NOTDEFINED.);#97=IFCCOLOURRGB($,0.8,0.2,0.1);
+#98=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#99),#91);
+#99=IFCSTYLEDREPRESENTATION(#4,'S','Material',(#100));#100=IFCSTYLEDITEM($,(#101),$);
+#101=IFCSURFACESTYLE('Blue band',.BOTH.,(#102));#102=IFCSURFACESTYLERENDERING(#103,0.25,$,$,$,$,$,$,.NOTDEFINED.);#103=IFCCOLOURRGB($,0.1,0.2,0.8);
+";
+    let text = STRAIGHT.replace("#80=IFCMATERIALLAYER($", "#80=IFCMATERIALLAYER(#90")
+        .replace("#81=IFCMATERIALLAYER($", "#81=IFCMATERIALLAYER(#91")
+        .replace("ENDSEC;\nEND-ISO-10303-21;", &format!("{styles}ENDSEC;\nEND-ISO-10303-21;"));
+    let outcomes = run(&text, &[27]).unwrap();
+    let host = shape(&outcomes, 27);
+    for (part, (id, rgba, name)) in host.parts.iter().zip([
+        (90, [0.8_f32, 0.2, 0.1, 1.], "Red band"), (91, [0.1_f32, 0.2, 0.8, 0.75], "Blue band")]) {
+        let appearance = part.appearance.as_ref().unwrap();
+        assert_eq!(appearance.material_id, Some(id));
+        assert_eq!(appearance.rgba.map(f32::to_bits), rgba.map(f32::to_bits));
+        assert_eq!(appearance.material_name.as_deref(), Some(name));
+    }
+    assert_eq!(host.parts.len(), 2);
+    println!("sdk witness executed: m4_material_appearance");
+}

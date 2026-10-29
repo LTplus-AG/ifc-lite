@@ -4,6 +4,7 @@ use super::{publication::ShapeOnlyProduct, RetainedProductPlan, OwnedMeshProduct
 use ifc_lite_geometry::program::transactions::Requirement;
 mod appearance;
 mod appearance_resolve;
+pub(super) mod material_styles;
 pub use appearance::resolve_appearances;
 mod normals;
 mod faces;

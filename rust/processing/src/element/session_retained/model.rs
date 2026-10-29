@@ -100,15 +100,7 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
         spans.stash(name, id, start, end);
     }
     let mut resolved = crate::prepass::resolve_prepass(&spans, &mut decoder, Default::default());
-    // M4 material keys use exact's own material-chain resolver and opaque-first
-    // selection, once per model (the same join as exact's flat style wire).
-    let material_styles = crate::style::build_material_style_index(
-        &resolved.material_def_reprs, &resolved.orphan_styled_items, &mut decoder);
-    for (id, color) in crate::style::flatten_material_color_index(&material_styles) {
-        resolved.geometry_style_index.entry(id).or_insert(crate::style::GeometryStyleInfo {
-            color, ..Default::default()
-        });
-    }
+    super::presentation::material_styles::join(&mut resolved, &mut decoder);
     let snapshot = ProductionModel::from_source(source.clone()).snapshot(OwnedMeshProductionData {
         void_index: Arc::new(resolved.void_index),
         geometry_style_index: Arc::new(resolved.geometry_style_index),

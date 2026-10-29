@@ -90,6 +90,10 @@ fn published(outcomes: &[ProductOutcome]) -> impl Iterator<Item = &ShapeOnlyProd
 /// violation, and so is the same look standing in for a missing one. Only a listed [`SPLITS`] key may differ in
 /// how many pieces carry the same looks.
 fn exact_violations(model: &str, product: &ShapeOnlyProduct, exact: &BTreeMap<Key, Looks>) -> Vec<String> {
+    // M4 bands have material identities, while this gate pairs item identities.
+    // Their colour/name authority is qualified separately by m4_material_appearance
+    // against real exact output plus independently authored per-material styles.
+    if product.parts.iter().any(|part| part.layer.is_some()) { return Vec::new(); }
     let mut ours: BTreeMap<Option<u32>, Looks> = BTreeMap::new();
     for part in &product.parts {
         looks::add(ours.entry(part.appearance.as_ref().unwrap().geometry_item_id).or_default(), look(part));

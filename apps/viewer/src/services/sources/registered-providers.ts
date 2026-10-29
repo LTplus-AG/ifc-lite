@@ -8,6 +8,7 @@ import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
 import { DropboxProvider } from '@ifc-lite/source-dropbox';
 import { MsGraphProvider } from '@ifc-lite/source-msgraph';
 import { hostedDropbox, hostedMsGraph } from './hosted-cloud-providers';
+import { ViewerBimcollabProvider } from './bimcollab-source';
 import type { FileSourceProviderFactory } from './source-host';
 
 /**
@@ -43,6 +44,10 @@ export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] =
   () => new DaluxBuildProvider(),
   () => import.meta.env.VITE_CLOUD_HOSTED === 'true' ? hostedDropbox() : new DropboxProvider(),
   () => import.meta.env.VITE_CLOUD_HOSTED === 'true' ? hostedMsGraph() : new MsGraphProvider(),
+  // BIMcollab Documents rides on the saved BIMcollab BCF connection and the
+  // /api/bimcollab relay. VITE_SOURCE_BIMCOLLAB=false is the kill switch, e.g.
+  // for a deployment without the relay (docs/research/bimcollab-documents-api.md).
+  ...(import.meta.env.VITE_SOURCE_BIMCOLLAB === 'false' ? [] : [() => new ViewerBimcollabProvider()]),
 ];
 
 /** Every built-in provider, constructed. The drift guard's view of the list above. */

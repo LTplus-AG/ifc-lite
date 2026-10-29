@@ -919,3 +919,7 @@ mod tests;
 #[cfg(test)]
 #[path = "batch_parity_tests.rs"]
 mod parity;
+
+#[cfg(test)]
+#[path = "c4_10a_tests.rs"]
+mod c4_10a_tests;

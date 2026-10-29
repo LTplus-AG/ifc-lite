@@ -102,7 +102,7 @@ fn c4_10a_warm_router_reuses_brep_walk_across_batches_7782() {
     }
 }
 
-fn run(api: &IfcAPI, content: &[u8], pre: &super::prepass_once::PrepassOnceData, jobs: &[u32]) {
+fn run(api: &IfcAPI, content: &[u8], pre: &super::super::prepass_once::PrepassOnceData, jobs: &[u32]) {
     let (x, y, z) = pre.meta.frame.rtc_offset();
     api.produce_batch(
         content,

@@ -2,7 +2,7 @@
 //! M10 signed volume and source-derived mapped centroids, never abs-only evidence.
 use ifc_lite_retained_native::{oracle::affine, ShapeOnlyProduct};
 use serde_json::{json,Value};
-use super::super::report::Report;
+use super::report::Report;
 
 pub fn record(report:&mut Report, bytes:&[u8], product:&ShapeOnlyProduct, tolerances:&Value) {
     if product.cuts!=0 {return}

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Native M1 coverage and independent numerical comparison. Never repairs meshes.
+#[path = "compare/affine.rs"]
+mod affine;
 #[path = "compare/metrics.rs"]
 mod metrics;
 #[path = "compare/openings.rs"]
@@ -219,7 +221,7 @@ fn compare(
                         &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
                     );
-                    checks::affine::record(report, &bytes, &shape, tolerances);
+                    affine::record(report, &bytes, &shape, tolerances);
                     report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }
                 ProductOutcome::Refused {
@@ -254,7 +256,7 @@ fn compare(
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),
                     ));
-                    checks::affine::refusal(report, &bytes, id, code);
+                    affine::refusal(report, &bytes, id, code);
                     report
                         .coverage
                         .push(format!("{model}\t{id}\trefused\t{code}"));

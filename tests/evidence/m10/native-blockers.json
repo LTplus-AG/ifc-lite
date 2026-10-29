@@ -22,7 +22,7 @@
       "rust/processing/src/element/session_retained/inert_tests.rs: uncertifiable_affine_surface_class_refuses_before_invocation, curved_scale_up_affine_final_refuses_before_invocation, final_affine_reaches_construction_dispatch (SMLib-free)",
       "rust/retained-native/tests/m10_affine_logic.rs: m10_sdk_sweep_surface_class_table (SMLib-free)",
       "rust/retained-native/tests/m10_native.rs: m10_sdk_source_oracles_and_native_reference (real SDK) asserts #119/#147/#161/#175 `incomplete` and the source oracle's prediction",
-      "examples/compare/checks/affine.rs: a source-predicted refusal surfacing as kernel_failure is a gated violation"
+      "examples/compare/affine.rs: a source-predicted refusal surfacing as kernel_failure is a gated violation"
     ]
   }
 }

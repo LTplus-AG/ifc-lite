@@ -14,5 +14,5 @@ pub(super) fn copy_part(mesh: ReceiptMesh<'_>, world_from_object: [f64; 16], cur
     indices.extend_from_slice(mesh.indices);
     revision_local_faces.extend_from_slice(mesh.faces);
     Ok(ShapePart { positions, indices, world_from_object, curved, revision_local_faces,
-        normals: None, appearance: None, faces: None, instance_key: None })
+        halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None })
 }

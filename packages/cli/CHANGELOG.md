@@ -1,5 +1,54 @@
 # @ifc-lite/cli
 
+## 0.43.0
+
+### Minor Changes
+
+- [#8284](https://github.com/LTplus-AG/ifc-lite/pull/8284) [`1cf390d`](https://github.com/LTplus-AG/ifc-lite/commit/1cf390dc5cdd0b461673693e1f7cbc2734801257) Thanks [@louistrue](https://github.com/louistrue)! - Compute world-space corner normals for retained products, smoothing within each kernel face while preserving sharp creases. Discharge SurfaceNormals and carry the normals into retained viewer meshes and OBJ exports without changing positions or triangles. The default exact engine is unchanged.
+
+- [#8229](https://github.com/LTplus-AG/ifc-lite/pull/8229) [`0218827`](https://github.com/LTplus-AG/ifc-lite/commit/021882742fba0202a8d4532e7f277f5e7e16db62) Thanks [@louistrue](https://github.com/louistrue)! - Include orphan type-product geometry in the opt-in retained model APIs, preserving source map order, MappingOrigin placement and atomic typed refusals. Document instanced and curve-only type exclusions. Files with orphan types now yield additional retained outcomes (one per orphan type, after the product outcomes), so the retained outcome stream grows for those files.
+
+- [#8216](https://github.com/LTplus-AG/ifc-lite/pull/8216) [`91ca463`](https://github.com/LTplus-AG/ifc-lite/commit/91ca46369e02e60ea304910390235929903725a8) Thanks [@louistrue](https://github.com/louistrue)! - Cut supported openings in the opt-in retained geometry path and report typed opening refusals without partial geometry or an exact retry. Completed opening cuts and plan-proven unvoided products discharge OpeningClosure; retained OBJ exports keep the remaining presentation obligations explicit.
+
+- [#8252](https://github.com/LTplus-AG/ifc-lite/pull/8252) [`a772159`](https://github.com/LTplus-AG/ifc-lite/commit/a772159ec7a0f414c0d056f065ddf90896366051) Thanks [@louistrue](https://github.com/louistrue)! - Add optional retained presentation channels and reserve typed appearance/face refusals. Retained shape-only output now reports unmet SurfaceNormals, and the CLI report (still `ifc-lite.retained-report/1`) gains additive, optional per-part channels. OBJ supports optional per-corner normals; scaffold geometry and the default exact engine remain unchanged.
+
+- [#8292](https://github.com/LTplus-AG/ifc-lite/pull/8292) [`e890f5e`](https://github.com/LTplus-AG/ifc-lite/commit/e890f5e7a018403675e3768d8f78eacb0b046d26) Thanks [@louistrue](https://github.com/louistrue)! - Ship a generated THIRD_PARTY_NOTICES.txt in the @ifc-lite/wasm and @ifc-lite/cli
+  packages. It is a conservative superset that also covers the opt-in retained
+  engine (NVIDIA SMLib, Emscripten runtime); the retained runtime assets themselves
+  are still not included in these packages and remain separately deployed. Refs [#7955](https://github.com/LTplus-AG/ifc-lite/issues/7955).
+  A retained engine directory staged before this change lacks THIRD_PARTY_NOTICES.txt
+  and is rejected with a message naming it; re-stage it with the current
+  `scripts/stage-cli-retained-engine.mjs`.
+
+- [#8278](https://github.com/LTplus-AG/ifc-lite/pull/8278) [`a6c07ae`](https://github.com/LTplus-AG/ifc-lite/commit/a6c07ae5defae5016d4df90771db704b9ad03ef1) Thanks [@louistrue](https://github.com/louistrue)! - Retained products now carry persistent IFC face identity: every published triangle has a source key `#item[>#opening]:role` (cap, profile side, disk wall/cap), derived from the product's own authored recipes and cross-checked against the kernel's faces, so `PersistentFaces` is no longer listed as unmet. A product whose faces cannot be proven refuses `face_provenance_unproven` (cause `unattributed` or `ambiguous`) instead of publishing a guess. The CLI report's optional per-part `faces` rows are now populated; retained OBJ geometry lines and the default exact engine are unchanged.
+
+- [#8194](https://github.com/LTplus-AG/ifc-lite/pull/8194) [`07ece4e`](https://github.com/LTplus-AG/ifc-lite/commit/07ece4ebb857cc0371bdd8659ed498a18fbb1971) Thanks [@louistrue](https://github.com/louistrue)! - Add experimental OBJ export with `--kernel retained`, an externally staged engine, and deterministic coverage/refusal reports. Exact remains the default; retained output declares unmet presentation obligations and never falls back to exact geometry.
+
+### Patch Changes
+
+- [#8240](https://github.com/LTplus-AG/ifc-lite/pull/8240) [`e29414b`](https://github.com/LTplus-AG/ifc-lite/commit/e29414bc35f6d137717b464f0379d48939a4e191) Thanks [@petruconduraru](https://github.com/petruconduraru)! - The stdio server no longer writes the geometry engine's `[IFC-LITE]` diagnostic lines to stdout, where they broke clients that parse the JSON-RPC stream strictly. `console.log`, `console.info` and `console.debug` are routed to stderr when the stdio transport owns the process stdout, and both `ifc-lite-mcp` and `ifc-lite mcp` do the same before they load models. The routing is exported as `routeConsoleToStderr`. HTTP transports are unchanged.
+
+- [#8275](https://github.com/LTplus-AG/ifc-lite/pull/8275) [`51f4d47`](https://github.com/LTplus-AG/ifc-lite/commit/51f4d4739199347f3bfc83cee7996755f2b520d4) Thanks [@louistrue](https://github.com/louistrue)! - The 2D plan symbol extraction now falls back to the type's `RepresentationMaps` for a product with no Plan, Annotation, FootPrint or Axis representation of its own. A furniture or sanitary occurrence typed through `IfcRelDefinesByType` whose symbol is held only on its type is drawn, placed by the occurrence's placement composed with the map's `MappingOrigin`. Products that carry their own symbolic representation are unchanged.
+- Updated dependencies [[`91664f0`](https://github.com/LTplus-AG/ifc-lite/commit/91664f0d0efbdea31b6c537631431c58a974d512), [`704aa7e`](https://github.com/LTplus-AG/ifc-lite/commit/704aa7e7e108de83e001eeea0e3104ab339c34fe), [`fd67a97`](https://github.com/LTplus-AG/ifc-lite/commit/fd67a97aa9bb4f5019f6430e6795d327fb91b613), [`8d3ffe9`](https://github.com/LTplus-AG/ifc-lite/commit/8d3ffe9d1f6220e1fcf54201a551e94b454c03c0), [`853d7c9`](https://github.com/LTplus-AG/ifc-lite/commit/853d7c9781b34fb41c83425d38de58c39141fc69), [`41f1ed8`](https://github.com/LTplus-AG/ifc-lite/commit/41f1ed8615cf38c37026aebd9dc5b3e924d8f1bc), [`80b18cb`](https://github.com/LTplus-AG/ifc-lite/commit/80b18cbb72f63c4a0d52b23e4c129b70c6c3e054), [`a74ba25`](https://github.com/LTplus-AG/ifc-lite/commit/a74ba259ba0bdf634e7ea3509a1a0b4891651988), [`f713740`](https://github.com/LTplus-AG/ifc-lite/commit/f713740fb5b20dfef563fe99bac28be41f318998), [`87f917e`](https://github.com/LTplus-AG/ifc-lite/commit/87f917e646ee7b9769dfab8b236cfe27432a6196), [`8a268b6`](https://github.com/LTplus-AG/ifc-lite/commit/8a268b6750ed97823654492b708e2d7c801981d5), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`934eb31`](https://github.com/LTplus-AG/ifc-lite/commit/934eb3192eaf6fa3ea685f4e7bdac1c5dba3f622), [`e62a506`](https://github.com/LTplus-AG/ifc-lite/commit/e62a506dd6cacec073c6d4e2f1268141784d3445), [`2b8dd0f`](https://github.com/LTplus-AG/ifc-lite/commit/2b8dd0ff13722c15f19bb720e12df3e5b358ece9), [`af23dac`](https://github.com/LTplus-AG/ifc-lite/commit/af23dac7f84b3bdcc2a179359521600406e07c4e), [`1cf390d`](https://github.com/LTplus-AG/ifc-lite/commit/1cf390dc5cdd0b461673693e1f7cbc2734801257), [`0218827`](https://github.com/LTplus-AG/ifc-lite/commit/021882742fba0202a8d4532e7f277f5e7e16db62), [`e29414b`](https://github.com/LTplus-AG/ifc-lite/commit/e29414bc35f6d137717b464f0379d48939a4e191), [`c7c9b31`](https://github.com/LTplus-AG/ifc-lite/commit/c7c9b3171f8d0281d8a47c4e65f5522abde74400), [`91ca463`](https://github.com/LTplus-AG/ifc-lite/commit/91ca46369e02e60ea304910390235929903725a8), [`a772159`](https://github.com/LTplus-AG/ifc-lite/commit/a772159ec7a0f414c0d056f065ddf90896366051), [`e890f5e`](https://github.com/LTplus-AG/ifc-lite/commit/e890f5e7a018403675e3768d8f78eacb0b046d26), [`a6c07ae`](https://github.com/LTplus-AG/ifc-lite/commit/a6c07ae5defae5016d4df90771db704b9ad03ef1), [`605f9da`](https://github.com/LTplus-AG/ifc-lite/commit/605f9da40f2d430ad48e9b2d990486232e7229fe), [`69e151b`](https://github.com/LTplus-AG/ifc-lite/commit/69e151b7c0573402702a9a3ae8f1d54735e24be0), [`62ae255`](https://github.com/LTplus-AG/ifc-lite/commit/62ae255524a275cf6abc6f931829e1fadc8c6cdf), [`921bceb`](https://github.com/LTplus-AG/ifc-lite/commit/921bceb16a8844f1186355564af894e29c979320), [`70cbe7d`](https://github.com/LTplus-AG/ifc-lite/commit/70cbe7d2428722fc306356adabfa9c8f899731a2), [`8821987`](https://github.com/LTplus-AG/ifc-lite/commit/882198715d5e1a700147c441b0758c174772c217), [`8134e00`](https://github.com/LTplus-AG/ifc-lite/commit/8134e00214d63f4214cb2532f6610666c0859aa8), [`51f4d47`](https://github.com/LTplus-AG/ifc-lite/commit/51f4d4739199347f3bfc83cee7996755f2b520d4), [`e07f142`](https://github.com/LTplus-AG/ifc-lite/commit/e07f142fb7bd9c0f389048d40ffde3eaa140f429)]:
+  - @ifc-lite/wasm@12.0.0
+  - @ifc-lite/diff@0.12.0
+  - @ifc-lite/geometry@8.0.1
+  - @ifc-lite/data@6.4.0
+  - @ifc-lite/export@4.13.1
+  - @ifc-lite/parser@9.8.0
+  - @ifc-lite/ifcx@4.6.0
+  - @ifc-lite/extensions@0.12.0
+  - @ifc-lite/mcp@0.28.0
+  - @ifc-lite/semantic@0.2.2
+  - @ifc-lite/clash@2.4.7
+  - @ifc-lite/viewer-core@0.2.28
+  - @ifc-lite/ids@3.4.2
+  - @ifc-lite/merge@0.4.9
+  - @ifc-lite/ids-authoring@0.3.2
+  - @ifc-lite/rules@0.7.10
+  - @ifc-lite/flow-nodes@0.11.1
+  - @ifc-lite/sandbox@2.12.1
+
 ## 0.42.2
 
 ### Patch Changes

@@ -18,6 +18,32 @@ pub(super) struct RuntimeRealization<R: NumericalReceipt> {
     pub(super) _inputs: [Option<Arc<Self>>; 2],
 }
 impl<R: NumericalReceipt> RuntimeRealization<R> {
+    /// Follow only the host spine. A clipped opening/cutter does not qualify
+    /// its host, and an unknown Union/Intersection does not qualify its branches.
+    pub(super) fn halfspace_clipped(&self) -> bool {
+        use super::runtime::ReceiptEvidence;
+        use ifc_lite_geometry::{BoolOp, document::PrismRole};
+        let mut current = self;
+        // Real runtime lineage is capped at 128 operations on both targets.
+        for _ in 0..=128 {
+            match current.kind.evidence() {
+                ReceiptEvidence::Boolean { operation: BoolOp::Difference, .. } => {
+                    if let Some(right) = current._inputs[1].as_deref() {
+                        if let ReceiptEvidence::Construction(completion) = right.kind.evidence() {
+                            if matches!(completion.request().recipe(), RetainedRecipe::Prism(p) if p.role == PrismRole::HalfSpace) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                ReceiptEvidence::Affine { .. } => {}
+                _ => return false,
+            }
+            let Some(left) = current._inputs[0].as_deref() else { return false; };
+            current = left;
+        }
+        false
+    }
     pub(super) fn is_empty(&self) -> bool { self.empty }
     pub(super) fn validate_live(&self) -> Result<(), R::Error> {
         self.kind.validate_live()

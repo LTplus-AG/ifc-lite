@@ -104,17 +104,16 @@ impl IfcAPI {
     /// what makes the number attributable to a record the stitch retained
     /// (#3430).
     #[wasm_bindgen(js_name = scanEntityIndexShard)]
-    pub fn scan_entity_index_shard(
-        &self,
-        data: &[u8],
-        range_start: u32,
-        range_end: u32,
-    ) -> JsValue {
+    pub fn scan_entity_index_shard(&self, data: &[u8], range_start: u32, range_end: u32) -> JsValue {
         let total = data.len();
         let start = (range_start as usize).min(total);
         let end = (range_end as usize).min(total);
-        let (records, classes, handoff, oversized_id_starts) =
-            ifc_lite_processing::scan_shard_classified_with_refusals(data, start, end);
+        // Shared named-result scanner; preserve the established JS wire.
+        let scan = ifc_lite_processing::scan_shard_result(data, start, end, true);
+        let records = scan.records;
+        let classes = scan.classes.expect("classified scan");
+        let handoff = scan.handoff;
+        let oversized_id_starts = scan.refusals;
 
         let n = records.len() as u32;
         let ids = js_sys::Uint32Array::new_with_length(n);

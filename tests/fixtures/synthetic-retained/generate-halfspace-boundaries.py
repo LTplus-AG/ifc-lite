@@ -10,7 +10,7 @@ from pathlib import Path
 from step import Model, real, rows, seq
 
 
-def generate():
+def generate(include_opening=True):
     m = Model('M6-equivalent-boundaries')
     host = m.box((4, 4, 4), (2, 2))
     plane_axes = m.add('IFCAXIS2PLACEMENT3D', m.point((0, 0, 2)), '$', '$')
@@ -53,7 +53,7 @@ def generate():
                     f'(IFCPARAMETERVALUE({real(a)}))', f'(IFCPARAMETERVALUE({real(b)}))', '.T.', '.PARAMETER.')
               for a, b in [(0, math.pi), (math.pi, 2*math.pi)]]
     boundaries.append(composite(halves))
-    names.append('circle-with-opening')
+    names.append('circle-with-opening' if include_opening else 'circle-only')
     for i, (name, boundary) in enumerate(zip(names, boundaries)):
         half = m.add('IFCPOLYGONALBOUNDEDHALFSPACE', plane, '.F.', m.axes, boundary)
         difference = m.add('IFCBOOLEANCLIPPINGRESULT', '.DIFFERENCE.', host, half)
@@ -71,11 +71,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    path = Path(__file__).with_name('m6-equivalent-boundaries.ifc')
-    source = generate()
-    if args.check:
-        if path.read_text() != source:
-            raise SystemExit('stale generated fixture: '+str(path))
-    else:
-        path.write_text(source)
-    print(path.name)
+    for name, include_opening in [('m6-equivalent-boundaries.ifc', True),
+                                  ('m6-equivalent-boundaries-no-opening.ifc', False)]:
+        path = Path(__file__).with_name(name)
+        source = generate(include_opening)
+        if args.check:
+            if path.read_text() != source:
+                raise SystemExit('stale generated fixture: '+str(path))
+        else:
+            path.write_text(source)
+        print(path.name)

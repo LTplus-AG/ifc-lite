@@ -94,8 +94,8 @@ pub(super) fn instanced((outputs, _, _): BatchOutput, wire: &BatchWire<'_>) -> V
         })
         .filter(|(m, _)| m.geometry_class == 0)
         .unzip();
-    // `refs` borrows the geometry in `meshes`; both live to the end of this
-    // method and collate_and_encode consumes them synchronously below.
+    // `refs` borrows the geometry in `meshes`; both live through synchronous
+    // collation and encoding below.
     //
     // ONLY ordinary occurrences (geometry_class == 0) are instanced. Type-
     // product geometry — orphan type maps (class 1) and instanced type maps

@@ -175,3 +175,51 @@ fn m6_7955_hand_authority_rejects_malformed_tables() {
         REGISTERED.replace("\"1004\":", "\"1004\": {\"volume\": 40, \"derivation\": \"duplicate\"}, \"1004\":"),
     ] {assert!(HandVolumes::parse(&text).is_err(),"malformed authority accepted: {text}");}
 }
+
+// Refs #7955, review 4418985144: a second Body item must not hide M6.
+#[test]
+fn m6_7955_unmodelled_multi_item_body_fails_closed() {
+    let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");return;
+    };
+    let base=include_str!("../../../../../tests/fixtures/synthetic-retained/m6-equivalent-boundaries-no-opening.ifc");
+    let text=base.replace("'Clipping',(#125)","'Clipping',(#125,#19)");
+    assert_ne!(text,base);
+    let shape=publish(&text,&worker);
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,1062);
+    assert!(e.is_none());
+    let bundle=SourceBundle::new(text.as_bytes().to_vec());
+    let clips=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&bundle,&sources);
+    let context=crate::checks::SourceContext{product_id:1062,analytic:&sources,clips:&clips,hand_volume:Some(1.)};
+    let rows=crate::checks::check(&shape,&context,text.as_bytes(),&crate::tolerances::registered().unwrap(),e.as_ref());
+    let failure=rows.iter().find(|r|r.family=="bounded_chain_unmodelled"&&r.gated&&!r.pass)
+        .expect("published multi-item PBHS silently escaped M6 gates");
+    assert!(failure.reason.as_deref().unwrap().contains("multi-item body: 2"));
+    assert!(bounded::applies(text.as_bytes(),1062));
+    println!("M6 multi-item PBHS: typed gated violation {:?}",failure.reason);
+}
+
+#[test]
+fn m6_7955_mapped_pbhs_keeps_full_checks_and_plain_extrusion_is_not_m6() {
+    let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");return;
+    };
+    let text=include_str!("../../../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    for id in [173,231] {
+        assert!(bounded::applies(text.as_bytes(),id));
+        let e=bounded::expected(text.as_bytes(),&sources,id).unwrap();
+        let mut products=Vec::new();
+        run_model_native(SourceBundle::new(text.as_bytes().to_vec()),&worker,
+            &ModelOptions{ids:Some([id].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
+        let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("mapped PBHS must publish")};
+        let rows=check(&shape,Some(&e),&crate::tolerances::registered().unwrap(),None);
+        for family in ["bounded_outside_material","bounded_volume_bounds","bounded_closure","bounded_section_volume"] {
+            assert!(rows.iter().any(|r|r.family==family&&r.gated&&r.pass),"#{id}: {family}");
+        }
+    }
+    let base=include_str!("../../../../../tests/fixtures/synthetic-retained/m6-equivalent-boundaries-no-opening.ifc");
+    let plain=base.replace("'Clipping',(#125)","'SweptSolid',(#19)");
+    assert!(!bounded::applies(plain.as_bytes(),1062));
+}

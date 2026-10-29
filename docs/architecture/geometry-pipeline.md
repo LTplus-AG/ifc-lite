@@ -27,6 +27,17 @@ prepass resolution exist exactly once, in `ifc-lite-processing`:
   incremental job emission), but they only span-stash — all semantics resolve
   in the shared module.
 
+The native `process(content, request, sink)` entry sequences private phases:
+`scan` discovers jobs and plans mapped sources; `resolve` installs the index,
+resolves prepass data and filters, then publishes the bootstrap and frame;
+`pass` resolves job metadata and meshes chunks; `finalize` collates diagnostics,
+instances and result metadata. The bodies live under `processing/src/processor/`.
+Native metadata identity runs in parallel and appearance resolution runs serially;
+wasm32 uses those same identity and appearance bodies serially. The pass checks
+cancellation before each chunk, emits its batches, retains meshes if requested,
+and then replays deferred styles. Each job borrows a `PassContext`, with a fresh
+`GeometryRouter::from_config` and the existing shared caches and model snapshot.
+
 The native scanner uses `ifc_lite_core::geometry_flags_by_name` to obtain
 `(has_geometry, representationless_spatial)` with one lookup of the existing
 immutable schema table. These are the same predicates exposed separately by

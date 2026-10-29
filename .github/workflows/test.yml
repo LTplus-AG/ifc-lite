@@ -1482,6 +1482,11 @@ jobs:
           # `from_streaming`, and the id allow-list ignored by the
           # `_and_ids` delegate. Once request.rs is on main, ordinary
           # whole-change revert resumes.
+          # C4-4b moves the orchestration and lowers structural ratchets. Keep
+          # those modules wired and disable cancellation: the real sink witness
+          # must observe an extra batch. Remove this selector once on main.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-4b-native/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-4b-native/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-4b-native/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/request.rs | grep -Fxq 'rust/processing/src/processor/request.rs'; then
             oracle_args+=(--mutation tests/evidence/processing-7782/behaviour.oracle.patch)
           # #7783: C6-7 adds data_model/property.rs, which the changed export and

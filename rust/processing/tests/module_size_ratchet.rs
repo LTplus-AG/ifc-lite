@@ -61,7 +61,7 @@ const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
     ("rust/core", 16604054656275753038),
     ("rust/export", 2156577647744325171),
     ("rust/geometry", 11397570038707335151),
-    ("rust/processing", 13893874914636572431),
+    ("rust/processing", 8290136214471633490),
     ("rust/wasm-bindings", 392542867555300280),
 ];
 

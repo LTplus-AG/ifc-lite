@@ -23,7 +23,7 @@ pub(super) fn emit_scanned(
 ) -> Result<u32, JsValue> {
     let ScannedPrepass {
         index: entity_index_arc,
-        discovery,
+        mut discovery,
         plane_angle_to_radians,
         oversized_id_count,
         malformed_record_found,
@@ -118,6 +118,9 @@ pub(super) fn emit_scanned(
             |jobs_chunk, affinity| emit_jobs_chunk(on_event, jobs_chunk, affinity),
         )?;
     }
+
+    // Release occurrence payloads before the type-library tail, as before.
+    discovery.buffered_jobs.clear();
 
     if want_types {
         type_plan.decode_products(content, &discovery.type_candidate_spans, &mut decoder);

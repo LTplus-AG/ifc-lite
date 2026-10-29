@@ -19,7 +19,7 @@ const record = { documentId: 1, documentNumber: 'D1', versionNumber: '1', versio
   allowDownload: true, locationId: 2, locationName: 'Location', projectId: 1, projectName: 'Project', projectPhaseName: null };
 const ref = { projectId: 'p', containerId: 'root', fileId: 'd' };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; versions?: unknown[]; indexStatus?: Record<number, number>; legacy?: boolean } = {}) {
+function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; versions?: unknown[]; indexStatus?: Record<number, number>; everyLocation?: boolean; legacy?: boolean } = {}) {
   const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer secret-token');
@@ -32,7 +32,8 @@ function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: 
       const status = options.indexStatus?.[locationId];
       if (status) return json({ error: 'upstream_error' }, status);
       // Default: the space's only populated location is 2.
-      const records = options.byLocation ? options.byLocation[locationId] ?? [] : locationId === 2 ? options.records ?? [record] : [];
+      const records = options.everyLocation ? [{ ...record, documentNumber: `other-${locationId}` }]
+        : options.byLocation ? options.byLocation[locationId] ?? [] : locationId === 2 ? options.records ?? [record] : [];
       return json({ records });
     }
     if (url.includes('/space/') && url.endsWith('/download/42')) return new Response('IFC');
@@ -112,8 +113,8 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
     await provider.download(ctx, ref);
     const indexes = fetchFn.mock.calls.map(call => String(call[0])).filter(url => url.includes('/index?'));
-    // One read of locations 1–10 for the first download; the second uses the cache.
-    expect(indexes).toEqual(Array.from({ length: 10 }, (_, i) => `/api/bimcollab/space/demo/index?locationId=${i + 1}`));
+    // Every location id 1–100 is read once; the second download uses the cache.
+    expect(indexes).toEqual(Array.from({ length: 100 }, (_, i) => `/api/bimcollab/space/demo/index?locationId=${i + 1}`));
     expect(fetchFn.mock.calls.filter(call => String(call[0]).endsWith('/space/demo/download/42'))).toHaveLength(2);
   });
   it('expires cached indexes after a short TTL', async () => {
@@ -123,7 +124,7 @@ describe('BIMcollab source provider (fake transport only)', () => {
       await provider.download(ctx, ref);
       now.mockReturnValue(62_000);
       await provider.download(ctx, ref);
-      expect(fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(20); // two full reads of locations 1–10: the first entry expired
+      expect(fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(200); // two full scans of locations 1–100: the first entry expired
     } finally { now.mockRestore(); }
   });
   it('accepts a project-name match when the location name is unavailable', async () => {
@@ -197,6 +198,22 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect(fetchFn.mock.calls.some(call => String(call[0]).includes('/index?'))).toBe(false);
     expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
   });
+  it('scans past location 10 while documents keep appearing, so a project in location 11 is a candidate too', async () => {
+    // The reviewer's case: the requested project lives in location 11, a lookalike in 2.
+    const lookalike = { ...record, versionId: 77 };
+    const real = { ...record, locationId: 11 };
+    const { provider, ctx, fetchFn } = setup({ byLocation: { 2: [lookalike], 11: [real] } });
+    await expect(provider.download(ctx, ref)).rejects.toThrow('cannot tell these documents apart');
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('locationId=11'))).toBe(true);
+    // Only location 11 holds it, after ten empty ids: still found and downloaded.
+    const beyond = setup({ byLocation: { 11: [{ ...record, locationId: 11 }] } });
+    expect(new TextDecoder().decode(await beyond.provider.download(beyond.ctx, ref))).toBe('IFC');
+  });
+  it('refuses when documents continue to the scan bound (the scan may be incomplete)', async () => {
+    const { provider, ctx, fetchFn } = setup({ everyLocation: true });
+    await expect(provider.download(ctx, ref)).rejects.toThrow('continue past location 100');
+    expect(fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(100);
+  });
   it('surfaces a 401 from an index as re-authentication, never as an empty location', async () => {
     const { provider, ctx, fetchFn } = setup({ indexStatus: { 4: 401 } });
     const failure = await provider.download(ctx, ref).catch((error: unknown) => error);
@@ -240,8 +257,8 @@ describe('BIMcollab source provider (fake transport only)', () => {
   });
   it('bounds location probing and refuses historical-version substitution', async () => {
     const empty = setup({ records: [] });
-    await expect(empty.provider.download(empty.ctx, ref)).rejects.toThrow('1–10');
-    expect(empty.fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(10);
+    await expect(empty.provider.download(empty.ctx, ref)).rejects.toThrow('any readable location');
+    expect(empty.fetchFn.mock.calls.filter(call => String(call[0]).includes('/index?'))).toHaveLength(100);
     const old = setup();
     await expect(old.provider.download(old.ctx, { ...ref, revisionId: 'unknown-old' })).rejects.toThrow(/version number|older versions/);
   });

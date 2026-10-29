@@ -56,7 +56,9 @@ empty with a continuation cursor. Search runs `searchText` over the project leve
 Archived and confidential records are excluded. Revisions use public GUIDs.
 
 On the specific public download-unavailable 404, the default fallback reads the
-web-app indexes of numeric locations 1–10 in parallel, keeps every row belonging
+web-app indexes of numeric locations 1–100 in parallel batches (an empty location
+reads like a missing one, so all are read; documents in location 100 mean more may
+exist and the fallback refuses), keeps every row belonging
 to the project (by project name, or by phase name for phase-attached documents)
 from every readable location, caches them for 60 seconds, and requires exactly
 one document-number/version-number match across all of them. Location names are
@@ -64,8 +66,9 @@ never used to pick between candidates; an incomplete or over-limit index aborts.
 explicitly. The index exposes current versions only, so the fallback serves only a
 document's current version; an older revision downloads only if the public
 endpoint serves it, and is otherwise refused (never substituted). An index the
-user cannot read (401/403/404) counts as an empty location; any other index
-failure aborts the fallback. Set
+user is refused (403) or that does not exist (404) counts as an empty location;
+a 401 surfaces as re-authentication, and any other index failure aborts the
+fallback. Set
 `legacyDownloadFallback: false` once BIMcollab fixes its public endpoint.
 
 For Node/CLI, inject `new DirectBimcollabTransport(fetchFn)` (optional second

@@ -33,6 +33,8 @@ export function inProject(row: IndexRecord, names: Pick<LegacyNames, 'project' |
  * read as "not found".
  */
 const NO_ACCESS = new Set([403, 404]);
+const LOCATION_BATCH = 10;
+const LOCATION_LIMIT = 100;
 
 export class LegacyDownload {
   private readonly cache = new Map<string, CachedIndex>();
@@ -77,24 +79,35 @@ export class LegacyDownload {
    */
   private async probe(ctx: PluginContext, session: BimcollabSession, names: LegacyNames,
     signal?: AbortSignal): Promise<IndexRecord[]> {
-    signal?.throwIfAborted();
-    const indexes = await Promise.all(Array.from({ length: 10 }, async (_, i) => {
+    const readIndex = async (locationId: number): Promise<IndexRecord[]> => {
       try {
-        const result = await checked(await this.transport.index(ctx, session, i + 1, signal));
+        const result = await checked(await this.transport.index(ctx, session, locationId, signal));
         const index = await result.json() as { records: IndexRecord[]; incomplete?: boolean };
         // A partial index could hide a duplicate: never decide on one.
         if (index.incomplete) throw new Error('BIMcollab legacy download: a location index could not be read completely.');
         return index.records;
       } catch (error) {
-        // No access to a location means it cannot hold the user's document. Any
-        // other failure aborts: skipping it could hide a duplicate and make an
-        // ambiguous match look unique.
+        // Refused or missing: a location the user cannot hold the document in.
+        // Any other failure aborts: skipping it could hide a duplicate and make
+        // an ambiguous match look unique.
         if (error instanceof BimcollabHttpError && NO_ACCESS.has(error.status)) return [];
         throw error;
       }
-    }));
+    };
+    // Every location id up to the bound is read (in parallel batches): an empty
+    // location answers exactly like a missing one, so no run of empties proves
+    // the end. Documents in the last id mean more may exist past the bound, and
+    // a partial scan never decides.
+    const indexes: IndexRecord[][] = [];
+    for (let first = 1; first <= LOCATION_LIMIT; first += LOCATION_BATCH) {
+      signal?.throwIfAborted();
+      indexes.push(...await Promise.all(Array.from({ length: LOCATION_BATCH }, (_, i) => readIndex(first + i))));
+    }
+    if (indexes[LOCATION_LIMIT - 1]!.length > 0) {
+      throw new Error(`BIMcollab legacy download: documents continue past location ${LOCATION_LIMIT}; cannot scan them all.`);
+    }
     const rows = indexes.flat().filter(row => inProject(row, names));
     if (rows.length) return rows;
-    throw new Error('BIMcollab legacy download: project not found in indexes 1–10.');
+    throw new Error('BIMcollab legacy download: project not found in any readable location index.');
   }
 }

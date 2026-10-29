@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/charter.ts a/packages/extensions/src/authority/charter.ts
+index e0f3b95496..61809f1bee 100644
+--- b/packages/extensions/src/authority/charter.ts
++++ a/packages/extensions/src/authority/charter.ts
+@@ -197,7 +197,7 @@ export function parseCharter(raw: unknown): ValidationResult<Charter> {
+     for (let j = i + 1; j < rules.length; j += 1) {
+       const a = rules[i];
+       const b = rules[j];
+-      if (compareSpecificity(a.specificity, b.specificity) !== 0) continue;
++      if (a.role === b.role || compareSpecificity(a.specificity, b.specificity) !== 0) continue;
+       if (!rulesOverlap(a.claim, b.claim)) continue;
+       errors.push(error(
+         'rules',

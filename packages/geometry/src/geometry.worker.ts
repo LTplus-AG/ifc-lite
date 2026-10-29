@@ -7,7 +7,7 @@ import { ownedWasmBuffer } from './wasm-owned-buffer.js';
 import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
-import { applyStyleFinishes } from './style-finishes.js';
+import { applyStyleFinishes, forgetAppliedFinishes } from './style-finishes.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import * as wasmBindings from '@ifc-lite/wasm';
 import { createInCallHeartbeat, installInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
@@ -663,6 +663,7 @@ function applyEntityIndexToApi(): void {
   const ifcApi = api;
   if (!ifcApi || entityIndexApplied || !cachedEntityIndex) return;
   ifcApi.setEntityIndex(cachedEntityIndex.ids, cachedEntityIndex.starts, cachedEntityIndex.lengths);
+  forgetAppliedFinishes(ifcApi);
   entityIndexApplied = true;
 }
 
@@ -1668,6 +1669,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       cachedPrepassColumns = null;
       prepassColumnsApplied = false;
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+      forgetAppliedFinishes(ifcApi);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = true;
       return;

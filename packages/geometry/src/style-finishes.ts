@@ -37,10 +37,18 @@ export function applyStyleFinishes(
   if (typeof set !== 'function') return;
   const next = styleFinishes ?? NO_FINISHES;
   const prev = appliedFinishes.get(api);
-  // Re-send finishes after any setEntityIndex/prepass install on this IfcAPI: Rust clears them.
   if (prev === next || (prev === undefined && next.length === 0)) return;
   set.call(api, styleIds, next);
   appliedFinishes.set(api, next);
+}
+
+/**
+ * Every content install on an IfcAPI (`setEntityIndex`, `buildPrePassOnce`,
+ * streaming prepass) clears its installed finishes in Rust (#7782 C4-11a), so
+ * the next {@link applyStyleFinishes} must re-send even the same array.
+ */
+export function forgetAppliedFinishes(api: object): void {
+  appliedFinishes.delete(api);
 }
 
 /** `buildPrePassOnce`, then hand its finishes to the same instance. */
@@ -49,6 +57,7 @@ export function buildPrePassWithFinishes(
   buffer: Uint8Array,
 ): ByteStreamingPrePassResult {
   const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+  forgetAppliedFinishes(api);
   applyStyleFinishes(api, prePass.styleIds, prePass.styleFinishes);
   return prePass;
 }

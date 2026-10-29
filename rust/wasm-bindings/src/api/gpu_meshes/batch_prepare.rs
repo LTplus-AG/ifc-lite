@@ -20,7 +20,7 @@ pub(super) type StyleMaps = std::sync::Arc<(
 pub(super) struct BatchSetup<'a> {
     pub decoder: EntityDecoder<'a>,
     pub router: GeometryRouter,
-    pub ctx: OwnedMeshProductionContext,
+    pub ctx: Arc<OwnedMeshProductionContext>,
     pub opts: MeshProductionOptions,
     pub style_maps: StyleMaps,
     pub parts_to_skip: Arc<rustc_hash::FxHashSet<u32>>,

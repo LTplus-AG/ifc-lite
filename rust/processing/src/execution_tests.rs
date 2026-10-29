@@ -35,34 +35,55 @@ fn c4_10b_decode_policy_preserves_warm_span_and_scanned_keyword_7782() {
     assert_eq!(job_type(&warm, source, invalid_span, None), warm.ifc_type);
 }
 
+// Actual mesh-frame invariant: rebasing changes local coordinates, while
+// reconstructing world bounds and hashing with the applied RTC stays identical.
 #[test]
-fn c4_10b_builder_preserves_rtc_quality_and_unit_refusal_7782() {
-    let config = RouterConfig {
-        unit_scale: 0.001,
-        rtc_offset: (100.0, 200.0, 300.0),
-        skip_small_cuts: true,
-        tessellation_quality: ifc_lite_geometry::TessellationQuality::High,
-        ..Default::default()
+fn c4_10b_builder_preserves_mesh_world_frame_and_unit_refusal_7782() {
+    use crate::element::*;
+    let source = include_str!("../tests/fixtures/c4_0_refusal_parity_7782.ifc");
+    let run = |rtc: [f64; 3], scale: f64| {
+        let mut decoder = EntityDecoder::new(source).with_strict_reals();
+        decoder.seed_unit_scales(scale, 1.0);
+        let entity = decoder.decode_by_id(300).unwrap();
+        let router = build_router(
+            RouterConfig {
+                unit_scale: scale,
+                rtc_offset: (rtc[0], rtc[1], rtc[2]),
+                ..Default::default()
+            },
+            ExecutionPolicy::PerBatch,
+            &caches(),
+            None,
+            None,
+            None,
+        );
+        produce_element_meshes_owned(
+            &ElementMeshJob {
+                id: 300,
+                ifc_type: entity.ifc_type.clone(),
+                entity: &entity,
+                kind: ElementJobKind::Product,
+                element_color: None,
+                metadata: None,
+            },
+            &ProductionModel::new().snapshot(Default::default()),
+            &MeshProductionOptions {
+                geometry_hash: Some(GeometryHashConfig {
+                    tolerance: 1e-5,
+                    world_rtc: rtc,
+                }),
+                ..Default::default()
+            },
+            &mut decoder,
+            &router,
+        )
+        .unwrap()
     };
-    let router = build_router(
-        config.clone(),
-        ExecutionPolicy::PerBatch,
-        &caches(),
-        None,
-        None,
-        None,
-    );
-    assert_eq!(router.config(), &config);
-    let refused = build_router(
-        RouterConfig {
-            unit_scale: f64::NAN,
-            ..config
-        },
-        ExecutionPolicy::PerJob,
-        &caches(),
-        None,
-        None,
-        None,
-    );
-    assert!(refused.length_unit_refused());
+    let world = run([0.0; 3], 1.0);
+    let shifted = run([100.0, 200.0, 300.0], 1.0);
+    assert!(!world.meshes.is_empty());
+    assert_eq!(world.geometry_hash, shifted.geometry_hash);
+    assert_eq!(world.geometry_aabb, shifted.geometry_aabb);
+    assert_ne!(world.meshes[0].origin, shifted.meshes[0].origin);
+    assert!(run([0.0; 3], f64::NAN).meshes.is_empty());
 }

@@ -170,6 +170,7 @@ nav:
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
+    - InfluxDB Time Series (Experimental): guide/influxdb.md
     - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
     - MCP for AI Agents: guide/mcp.md

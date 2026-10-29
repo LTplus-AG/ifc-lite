@@ -107,8 +107,8 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
-            plan_type_geometry, produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
-            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData, TypeGeometryMode,
+            produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
+            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData,
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
 
@@ -472,14 +472,8 @@ impl IfcAPI {
                 if rep_map_ids.is_empty() {
                     continue;
                 }
-                let referenced = self.get_or_build_referenced_repmaps(content, &mut decoder);
-                let instantiated = self.get_or_build_instantiated_type_ids(content, &mut decoder);
-                let rep_maps = plan_type_geometry(
-                    &rep_map_ids,
-                    &referenced,
-                    instantiated.contains(&id),
-                    TypeGeometryMode::EmitTagged,
-                );
+                let type_plan = self.get_or_build_type_geometry_plan(content, &mut decoder);
+                let rep_maps = type_plan.maps_for(id, &rep_map_ids);
                 if rep_maps.is_empty() {
                     continue;
                 }

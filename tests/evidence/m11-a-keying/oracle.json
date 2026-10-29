@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/presentation/appearance_resolve.rs",
+  "mutation": "tests/evidence/m11-a-keying/behaviour.oracle.patch",
+  "test": "rust/processing/tests/m11_a_appearance.rs",
+  "why": "Keying a mapped product's part by the enclosing IfcMappedItem instead of the leaf item the walk reached must fail the mapped-window, material-cursor, mapped-item-style and nested-map witnesses without an SDK or kernel mock."
+}

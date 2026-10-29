@@ -419,25 +419,18 @@ impl IfcAPI {
         // workers apply messages FIFO, so the injected data is always in place
         // before any `processGeometryBatch` — the lazy per-worker build (the
         // byte-identical fallback) never fires on the streaming path.
-        let referenced_repmaps =
-            crate::api::styling::build_referenced_representation_maps_from_spans(
-                &mapped_item_spans,
-                &mut decoder,
-            );
-        let instantiated_type_ids =
-            crate::api::styling::build_instantiated_type_ids_from_spans(
-                &prepass_spans.defines_by_type,
-                &mut decoder,
-            );
+        let want_types = !skip_type_geometry
+            && ifc_lite_core::find_keyword(content, b"IFCREPRESENTATIONMAP").is_some();
+        let mut type_plan = ifc_lite_processing::discovery::TypeGeometryPlan::from_spans(
+            content, &mapped_item_spans, &prepass_spans.defines_by_type,
+            &[], &mut decoder,
+            ifc_lite_processing::element::TypeGeometryMode::EmitTagged,
+        );
         // #1623 Phase 3 don't-bake plan: the RepresentationMap ids an IfcMappedItem
         // instantiates >= 2 times, tallied from the SAME spans (no extra scan). The
         // batch path arms its router with these so a repeated single-solid mapped
         // source materializes once per batch and the rest ride as shard instances.
-        let mapped_instance_plan =
-            crate::api::styling::build_mapped_instance_plan_from_spans(
-                &mapped_item_spans,
-                &mut decoder,
-            );
+        let mapped_instance_plan = type_plan.browser_instance_sources();
         // Gate on `has_layer_set` to stay bit-identical to
         // `get_or_build_material_layer_index`, which ships an EMPTY index when the
         // file authors no layer set (its substring bail-out). from_spans reuses
@@ -452,8 +445,8 @@ impl IfcAPI {
             ifc_lite_geometry::MaterialLayerFlat::default()
         };
 
-        let repmaps_arr: Vec<u32> = referenced_repmaps.into_iter().collect();
-        let type_ids_arr: Vec<u32> = instantiated_type_ids.into_iter().collect();
+        let repmaps_arr: Vec<u32> = type_plan.referenced_representation_maps.iter().copied().collect();
+        let type_ids_arr: Vec<u32> = type_plan.instantiated_type_ids.iter().copied().collect();
         let columns_event = js_sys::Object::new();
         crate::api::set_js_prop(&columns_event, "type", &"prepass-columns".into());
         crate::api::set_js_prop(
@@ -561,14 +554,9 @@ impl IfcAPI {
         // #1097 perf: the viewer's default Model view does not render the
         // type-library (#957) geometry, so skip producing it at load when the
         // caller asks (the Types view re-loads on demand).
-        if !skip_type_geometry
-            && ifc_lite_core::find_keyword(content, b"IFCREPRESENTATIONMAP").is_some()
-        {
-            let type_jobs = crate::api::styling::collect_type_geometry_jobs_from_spans(
-                content, &mapped_item_spans,
-                &type_candidate_spans,
-                &mut decoder,
-            );
+        if want_types {
+            type_plan.decode_products(content, &type_candidate_spans, &mut decoder);
+            let type_jobs = type_plan.jobs();
             if !type_jobs.is_empty() {
                 total_jobs += type_jobs.len() as u32;
                 // Type-library geometry is a small, usually-suppressed tail; route

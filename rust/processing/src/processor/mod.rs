@@ -63,7 +63,7 @@ pub use site_local::{convert_mesh_to_site_local, native_to_baked};
 pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
 use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
-pub(crate) use color_layer::resolve_element_color_for_product_definition_shape;
+pub(crate) use color_layer::resolve_product_element_color;
 
 /// Controls how IfcWindow / IfcDoor openings are exported.
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Deserialize)]

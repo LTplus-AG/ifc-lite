@@ -25,6 +25,11 @@
       "types": "./dist/bcf-publication-node.d.ts",
       "import": "./dist/bcf-publication-node.js",
       "default": "./dist/bcf-publication-node.js"
+    },
+    "./influx": {
+      "types": "./dist/influx.d.ts",
+      "import": "./dist/influx.js",
+      "default": "./dist/influx.js"
     }
   },
   "scripts": {

@@ -1,0 +1,566 @@
+{
+  "status": "INCOMPLETE: final clean-checkpoint Pop typecheck was refused before execution by disk admission",
+  "implementationCommit": "62298066a310bfdb8f8f733debe072e27b9bea35",
+  "checks": {
+    "panel": {
+      "command": "TEST_PATTERN=components/viewer/influx/InfluxPanel.test.tsx pnpm test --filter=@ifc-lite/viewer --filter=@ifc-lite/flow-nodes --filter=ifc-lite-headless-workflows --concurrency=1",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json",
+      "passed": 3,
+      "skipped": 0,
+      "selectedFiles": 1,
+      "selectorVerified": {
+        "receipt": "pc-wsl:/home/louistrue/build-workers/worker-state/jobs/f542b1cd-ba79-4e7e-bd09-66be5a22b431/receipt.json",
+        "configuredHash": "4ece70e3d0847eeaad424fe637854515d0d962479231545f09210ece3e13fd78"
+      }
+    },
+    "flowNodes": {
+      "passed": 273,
+      "influxPassed": 9,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json",
+      "note": "Full suite passed before the equivalent control-byte refactor; the clean-checkpoint focused Influx run below covers its new regression."
+    },
+    "headless": {
+      "passed": 8,
+      "skipped": 5,
+      "skipReason": "Unrelated FZK fixture absent; pnpm fixtures required",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json"
+    },
+    "apiSurface": {
+      "exitCode": 0,
+      "surfaces": 108,
+      "exports": 10292,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json",
+      "generatorReceipt": "pc-wsl:/home/louistrue/build-workers/worker-state/jobs/694f5989-5b80-4277-bf66-6ba29f996c4e/receipt.json",
+      "generationNote": "pnpm api-surface:update exited 0; qualified source-mutation guard flagged its intentional snapshot write. Only the Influx export surface changed."
+    },
+    "lint": {
+      "command": "pnpm lint",
+      "exitCode": 0,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json",
+      "accessibilityBaselineChanged": false,
+      "touchedFilesFocusedOxlintWarnings": 0
+    },
+    "typecheck": {
+      "command": "pnpm typecheck",
+      "exitCode": 0,
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/675ecad1-8bca-4254-b292-de00bd7c4865/receipt.json",
+      "testFilesAudited": 4335,
+      "memoryGiB": 24,
+      "nodeHeapMiB": 8192,
+      "turboConcurrency": 1,
+      "qualificationPassed": false,
+      "note": "Earlier compiler, tail, and 4335-file audit passed with the Pop heap profile; its source qualifier observed review commits arriving while queued. Final clean-checkpoint qualification was refused before execution. No diagnostics were produced by the refused run.",
+      "finalCleanAttempt": {
+        "sourceCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/b6baf68d-4c98-4186-b975-e268918ba5cf/receipt.json",
+        "launcherExitCode": 1,
+        "processExitCode": null,
+        "state": "refused_before_execution",
+        "reason": "Disk admission: 564.6 GiB free; 588.0 GiB required (reserve plus scratch).",
+        "resubmitted": false
+      },
+      "observedNodeHeapsMiB": [
+        8192
+      ],
+      "measurementErrors": []
+    },
+    "focusedInflux": {
+      "command": "pnpm test --filter=@ifc-lite/flow-nodes --concurrency=1 -- src/influx.test.ts",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/0337bfe7-52dc-4928-9e8e-a6786ed3f861/receipt.json",
+      "sourceCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "sourceUnchanged": true,
+      "selectedFiles": 1,
+      "passed": 10,
+      "skipped": 0,
+      "fixtureSpellingNote": "62298066a3 changes only the spelling of the same U+0001 fixture to String.fromCharCode(1). Production sources are unchanged from the tested checkpoint.",
+      "dependencyBuildSkips": [
+        "IFCX hello-wall verification: four optional fixture files absent; pnpm fixtures required. This does not skip any selected Influx test."
+      ]
+    }
+  },
+  "witness": {
+    "source": "synthetic-live-influxdb-2-viewer",
+    "commit": "cbe33a7db52e9b35b8122978db263307b5bdb5a5",
+    "database": {
+      "mode": "binary",
+      "version": "InfluxDB v2.7.12 (git: ec9dcde5d6) build_date: 2025-05-20T22:48:39Z",
+      "sha256": "c7b2b83976f5f5971a3fee323f2f0baf6a3f9b0f692a1efadf8756da90b8766f"
+    },
+    "model": "apps/viewer/public/samples/building-architecture.ifc",
+    "modelSha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+    "latest": 22.5,
+    "unit": "\u00b0C",
+    "historySamples": 3,
+    "unmatched": 1,
+    "ambiguous": 2,
+    "queryCount": 1,
+    "preflightCount": 1,
+    "tokenPersisted": false,
+    "readTokenWriteStatus": 403,
+    "pageErrors": 0,
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "screenshot": "docs/architecture/evidence/influxdb-8090/viewer/final/desktop.png",
+    "screenshotSha256": "c0e0f4e215dee4c8d9dd66fc0f481c0f449767c16016954735402af666b94a72",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json",
+    "nativeProcessExited": true,
+    "temporaryDatabaseStorageRemoved": true,
+    "containersStarted": 0,
+    "binaryDownload": {
+      "archiveUrl": "https://dl.influxdata.com/influxdb/releases/v2.7.12/influxdb2-2.7.12_linux_amd64.tar.gz",
+      "archiveSha256": "825641e678b4a0f6e2094293f326b472269f30c3d02a989bee8c37bfa706f8d7",
+      "checksumSource": "https://github.com/influxdata/influxdb/releases/tag/v2.7.12",
+      "binarySha256": "c7b2b83976f5f5971a3fee323f2f0baf6a3f9b0f692a1efadf8756da90b8766f",
+      "version": "InfluxDB v2.7.12 (git: ec9dcde5d6) build_date: 2025-05-20T22:48:39Z",
+      "downloadDirectoryRemoved": true
+    }
+  },
+  "reviewFixCommits": [
+    "ab61098f384c46db5c37206799bd0dfda2261f6b fix(viewer): address Influx persistence, chunk failure and witness cleanup review",
+    "6289d087e12b523c0c0314db32dc76e3c9230ed6 fix(api): regenerate the Influx export surface snapshot",
+    "aff80dd3fc9aa43d346518bed4e546fbd710ca96 fix(influx): share strict parsing and redact encoded response credentials",
+    "90c0527dc2bf1f7f9b8bd222e765f6fa5d24af1e test(influx): support a disposable local influxd witness without Docker",
+    "0b137d2116552d4f2899e4c863f4c684ded8d769 fix(influx): skip process teardown when influxd did not spawn",
+    "36f1f7a9639c526fec1c49d5b85261bf0464f16b fix(viewer): use native accessible Influx chart and status semantics",
+    "d401163ff5828ab32e8f99350c68b164b98e189f fix(influx): allow Load with an empty display unit",
+    "e10bf6b5cb3a5265ebb009fc8bdaf13df386a0d1 fix(influx): reject decoded token echoes without altering series identity",
+    "cbe33a7db52e9b35b8122978db263307b5bdb5a5 fix(influx): validate control bytes with explicit character codes",
+    "62298066a3 test(influx): spell control-byte fixture with a character code"
+  ],
+  "attempts": [
+    {
+      "id": "1b193979-cb83-422b-9347-76859c59146a",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/1b193979-cb83-422b-9347-76859c59146a/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "0b137d2116552d4f2899e4c863f4c684ded8d769",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "f063f26b-5d00-4f7d-be9c-47ed73efa922",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/f063f26b-5d00-4f7d-be9c-47ed73efa922/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": 1,
+      "error": null,
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "0b137d2116552d4f2899e4c863f4c684ded8d769",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "9689035d-29e3-4911-a996-66ec3ed1ef12",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/9689035d-29e3-4911-a996-66ec3ed1ef12/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": 1,
+      "error": null,
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "0b137d2116552d4f2899e4c863f4c684ded8d769",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "4d08c24b-cd5a-4971-a1f7-0ff7680b5f4e",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/4d08c24b-cd5a-4971-a1f7-0ff7680b5f4e/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": 1,
+      "error": null,
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "0b137d2116552d4f2899e4c863f4c684ded8d769",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "df8cc7c2-00e6-4c63-95fa-b1c84b91cb23",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/df8cc7c2-00e6-4c63-95fa-b1c84b91cb23/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "68817b75-a26d-4aea-9e92-98244e0bb1c4",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/68817b75-a26d-4aea-9e92-98244e0bb1c4/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "6536ee6e-20eb-45c0-8c09-2bc99cf92616",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/6536ee6e-20eb-45c0-8c09-2bc99cf92616/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "f542b1cd-ba79-4e7e-bd09-66be5a22b431",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/f542b1cd-ba79-4e7e-bd09-66be5a22b431/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "694f5989-5b80-4277-bf66-6ba29f996c4e",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/694f5989-5b80-4277-bf66-6ba29f996c4e/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": 0,
+      "error": "qualified command changed source",
+      "queuedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "finishedCommit": "ab61098f384c46db5c37206799bd0dfda2261f6b",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "5dc4ac9d-56d6-4661-b04d-e40fddeb69c3",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/5dc4ac9d-56d6-4661-b04d-e40fddeb69c3/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "aff80dd3fc9aa43d346518bed4e546fbd710ca96",
+      "finishedCommit": "aff80dd3fc9aa43d346518bed4e546fbd710ca96",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "dd538bee-0fdf-44e9-977d-38b07bfe2f2c",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/dd538bee-0fdf-44e9-977d-38b07bfe2f2c/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "aff80dd3fc9aa43d346518bed4e546fbd710ca96",
+      "finishedCommit": "aff80dd3fc9aa43d346518bed4e546fbd710ca96",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "413027be-ab19-451f-8ba2-f1b7f6a38372",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/413027be-ab19-451f-8ba2-f1b7f6a38372/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "aff80dd3fc9aa43d346518bed4e546fbd710ca96",
+      "finishedCommit": "aff80dd3fc9aa43d346518bed4e546fbd710ca96",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "1d07bd65-e609-423d-a19d-dd8a9864b5d5",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/1d07bd65-e609-423d-a19d-dd8a9864b5d5/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": 1,
+      "error": null,
+      "queuedCommit": "6289d087e12b523c0c0314db32dc76e3c9230ed6",
+      "finishedCommit": "6289d087e12b523c0c0314db32dc76e3c9230ed6",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "cf807905-dea0-4702-8884-96291253a4ad",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/cf807905-dea0-4702-8884-96291253a4ad/receipt.json",
+      "state": "orphaned",
+      "exitCode": null,
+      "processExitCode": null,
+      "error": "Wrapper exited; no live child group remains. Command outcome is unknown.",
+      "queuedCommit": "90c0527dc2bf1f7f9b8bd222e765f6fa5d24af1e",
+      "finishedCommit": null,
+      "sourceUnchanged": null
+    },
+    {
+      "id": "dea40248-e5f8-4a16-814e-069128bef318",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/dea40248-e5f8-4a16-814e-069128bef318/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": 1,
+      "error": null,
+      "queuedCommit": "0b137d2116552d4f2899e4c863f4c684ded8d769",
+      "finishedCommit": "36f1f7a9639c526fec1c49d5b85261bf0464f16b",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "940c2f10-c8ef-433a-bbc8-c6d7e824c05d",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/940c2f10-c8ef-433a-bbc8-c6d7e824c05d/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "0b137d2116552d4f2899e4c863f4c684ded8d769",
+      "finishedCommit": "36f1f7a9639c526fec1c49d5b85261bf0464f16b",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "cbf43d23-057a-497b-b45b-97aa7fde5ac1",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/cbf43d23-057a-497b-b45b-97aa7fde5ac1/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "36f1f7a9639c526fec1c49d5b85261bf0464f16b",
+      "finishedCommit": "e10bf6b5cb3a5265ebb009fc8bdaf13df386a0d1",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "675ecad1-8bca-4254-b292-de00bd7c4865",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/675ecad1-8bca-4254-b292-de00bd7c4865/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "36f1f7a9639c526fec1c49d5b85261bf0464f16b",
+      "finishedCommit": "e10bf6b5cb3a5265ebb009fc8bdaf13df386a0d1",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "516461d7-881f-4155-8708-c49d6c9cfd45",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "e10bf6b5cb3a5265ebb009fc8bdaf13df386a0d1",
+      "finishedCommit": "cbe33a7db52e9b35b8122978db263307b5bdb5a5",
+      "sourceUnchanged": false
+    },
+    {
+      "id": "bdc9b07b-2f15-4a63-b962-af228f1919ab",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/bdc9b07b-2f15-4a63-b962-af228f1919ab/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "cbe33a7db52e9b35b8122978db263307b5bdb5a5",
+      "finishedCommit": "cbe33a7db52e9b35b8122978db263307b5bdb5a5",
+      "sourceUnchanged": false
+    },
+    {
+      "requestId": "auto-8685154c1c264fc8a54574baaf89b904",
+      "host": "pc-wsl",
+      "state": "owner_failed_before_job_creation",
+      "originalRecords": "/home/louistrue/build-workers/worker-state/owned-receives/auto-8685154c1c264fc8a54574baaf89b904",
+      "records": "{\n  \"exitCode\": 1,\n  \"finishedAt\": 1793265365.7475295,\n  \"projectCommandRetried\": false\n}\n{\n  \"errorType\": \"ValueError\",\n  \"error\": \"Owner failed; inspect original request.\",\n  \"at\": 1793265365.7294827\n}\n",
+      "resubmitted": false
+    },
+    {
+      "requestId": "auto-56fd5ac7d2ec45ab842150cb4334ffaf",
+      "host": "pc-wsl",
+      "state": "owner_failed_before_job_creation",
+      "originalRecords": "/home/louistrue/build-workers/worker-state/owned-receives/auto-56fd5ac7d2ec45ab842150cb4334ffaf",
+      "records": "{\n  \"exitCode\": 1,\n  \"finishedAt\": 1793265366.8573968,\n  \"projectCommandRetried\": false\n}\n{\n  \"errorType\": \"ValueError\",\n  \"error\": \"Owner failed; inspect original request.\",\n  \"at\": 1793265366.8528829\n}\n",
+      "resubmitted": false
+    },
+    {
+      "id": "b6baf68d-4c98-4186-b975-e268918ba5cf",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/b6baf68d-4c98-4186-b975-e268918ba5cf/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "finishedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "0337bfe7-52dc-4928-9e8e-a6786ed3f861",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/0337bfe7-52dc-4928-9e8e-a6786ed3f861/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "finishedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "sourceUnchanged": true
+    }
+  ],
+  "outstanding": [
+    "Final clean-source pnpm typecheck via the qualified Pop heap profile; original attempt was refused before execution."
+  ],
+  "historicalValidation": {
+    "status": "INCOMPLETE: fleet capacity blocks acceptance; no viewer screenshot is claimed",
+    "implementationCommit": "5ed55dbc4e77e241fbe266d187ea7a7c758b303e",
+    "sharedModuleTree": "c1bf396e01db88d482801c868eeb5838374bda2a",
+    "executed": {
+      "host": "pc-wsl (louistrue-pc)",
+      "commit": "6ca75d3e1f1f66ae5c838e314f12415fd6df299c",
+      "command": "pnpm test --filter=@ifc-lite/flow-nodes --filter=ifc-lite-headless-workflows --concurrency=2",
+      "exitCode": 0,
+      "sharedTestsPassed": 270,
+      "exampleTestsPassed": 7,
+      "exampleTestsSkipped": 5,
+      "skipReason": "FZK fixture absent; pnpm fixtures required",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/9c515244-d72d-4078-a4ab-24793aef94b1/receipt.json",
+      "evidencePublication": "pending owner reconciliation; original receipt and log preserved",
+      "moduleTreeMatchesImplementation": true
+    },
+    "preHandoff": {
+      "host": "pop-os",
+      "commit": "5ed55dbc4e77e241fbe266d187ea7a7c758b303e",
+      "command": "node scripts/pre-handoff.mjs",
+      "exitCode": 0,
+      "passed": [
+        "test-wiring",
+        "module-size",
+        "ci-path-coverage",
+        "ci-aggregate-coverage",
+        "agents-md-size",
+        "license-headers",
+        "pr-review-signal lanes",
+        "oracle discovery (0 added manifests)"
+      ],
+      "skipped": [
+        "source-text-assertions: no local typescript installation",
+        "workflow-report-paths: no local yaml installation",
+        "retained-free viewer: no built local viewer dist"
+      ]
+    },
+    "admissionRefusals": [
+      {
+        "host": "pop-os",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/b4b6b7ea-3533-4466-b55f-169ea6f23d52/receipt.json",
+        "reason": "Dependency install: storage guard"
+      },
+      {
+        "host": "pop-os",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/6733fab5-e2f2-4197-bbeb-6113dfffdbef/receipt.json",
+        "reason": "Qualified Node typecheck profile: storage guard"
+      },
+      {
+        "host": "pop-os",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/12de695f-37ce-4078-8b3d-b5b4f22758c2/receipt.json",
+        "reason": "Install/build/API snapshot preparation: storage guard"
+      },
+      {
+        "host": "pc-wsl",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/35ee0dc7-9ed1-4cfb-bc91-2337e3051f97/receipt.json",
+        "reason": "Root package build: storage guard"
+      },
+      {
+        "host": "pc-wsl",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/99fd78fe-b677-4c95-9ca0-90ff7b400824/receipt.json",
+        "reason": "Mounted panel test: storage guard"
+      },
+      {
+        "host": "pc-wsl",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/947860cd-798d-420b-9c11-d42705f38912/receipt.json",
+        "reason": "Earlier mounted panel test request: storage guard"
+      },
+      {
+        "host": "pc-wsl",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/cdcd6486-83bf-41ea-85bb-2fec627e4665/receipt.json",
+        "reason": "Live desktop witness: storage guard; command did not execute"
+      },
+      {
+        "host": "pc-wsl",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/a96abab6-c933-4a83-9f53-d5e903b31b4b/receipt.json",
+        "reason": "Deferred full root typecheck: host capacity guard refused admission; command did not execute"
+      }
+    ],
+    "setupFailures": [
+      {
+        "host": "pc-wsl",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/1e5455e2-2373-40b6-9cf1-1805177730c9/receipt.json",
+        "reason": "Root lint: fresh checkout lacked built sibling declarations"
+      },
+      {
+        "host": "pc-wsl",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/0639c99d-805b-4091-afff-d469d9893843/receipt.json",
+        "reason": "Initial typecheck invocation omitted dependency installation; Turbo missing"
+      }
+    ],
+    "outstanding": [
+      "pnpm api-surface:update after root build",
+      "final pnpm lint",
+      "final pnpm typecheck",
+      "mounted panel test on final source",
+      "live synthetic InfluxDB desktop screenshot"
+    ],
+    "containersStartedByThisViewerTask": 0,
+    "scopeDeviations": [
+      "MVP fixes lookback at one hour rather than exposing a control",
+      "Required desktop witness and full acceptance remain blocked"
+    ],
+    "followUps": [
+      "Test connection",
+      "polling",
+      "stale indicator",
+      "configurable lookback",
+      "mobile witness",
+      "UI polish"
+    ],
+    "deferredTypecheck": {
+      "requestId": "auto-5641957b5b6f47d298e32073b395674a",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/a96abab6-c933-4a83-9f53-d5e903b31b4b/receipt.json",
+      "command": "pnpm exec env NODE_OPTIONS=--max-old-space-size=8192 TURBO_CONCURRENCY=1 pnpm typecheck",
+      "state": "refused_before_execution",
+      "launcherExitCode": 1,
+      "processExitCode": null,
+      "reason": "host capacity guard refused admission",
+      "sourceCommit": "6ca75d3e1f1f66ae5c838e314f12415fd6df299c",
+      "evidencePublication": "pending: storage job-finish requires owner reconciliation; original receipt preserved",
+      "resubmitted": false
+    }
+  },
+  "evidenceCheckpointCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+  "preHandoff": {
+    "command": "node scripts/pre-handoff.mjs",
+    "validatedCheckpoint": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+    "exitCode": 0,
+    "passed": [
+      "source-text-assertions",
+      "test-wiring",
+      "module-size",
+      "ci-path-coverage",
+      "ci-aggregate-coverage",
+      "workflow-report-paths",
+      "agents-md-size",
+      "license-headers",
+      "pr-review-signal lanes",
+      "retained-free viewer",
+      "oracle discovery"
+    ],
+    "skipped": []
+  }
+}

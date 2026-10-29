@@ -973,7 +973,7 @@ jobs:
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-10b/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.oracle.patch --test rust/processing/src/execution_tests.rs)
             oracle_args+=(--mutation tests/evidence/c4-10b/policy.oracle.patch --test rust/processing/src/execution_tests.rs)
-            oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.adapters.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/batch_parity_tests.rs)
+            oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.adapters.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/batch_tests.rs)
           # #7782 C4-10a: retain cache/report APIs and test wiring; suppress
           # input-refusal counting so the per-attempt witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-10a/behaviour.oracle.patch'; then

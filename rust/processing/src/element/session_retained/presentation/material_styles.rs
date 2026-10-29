@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! M4's retained-only material keys, resolved once from exact's style functions.
 use crate::prepass::{extract_style_info_from_styled_item, ResolvedPrepass};
-use ifc_lite_core::EntityDecoder;
+use ifc_lite_core::{slot, EntityDecoder};
 
 pub(crate) fn join(resolved: &mut ResolvedPrepass, decoder: &mut EntityDecoder) {
     let styles = crate::style::build_material_style_index(
@@ -12,7 +12,7 @@ pub(crate) fn join(resolved: &mut ResolvedPrepass, decoder: &mut EntityDecoder) 
         let mut info = None;
         'selected: for repr_id in resolved.material_def_reprs.get(&material).into_iter().flatten() {
             let Ok(repr) = decoder.decode_by_id(*repr_id) else { continue };
-            for id in repr.get_refs(3).unwrap_or_default() {
+            for id in repr.ref_list_at(slot::IfcRepresentation::ITEMS).unwrap_or_default() {
                 let Ok(item) = decoder.decode_by_id(id) else { continue };
                 info = extract_style_info_from_styled_item(&item, decoder).filter(|info| info.color == color);
                 if info.is_some() { break 'selected; }

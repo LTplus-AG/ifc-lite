@@ -71,8 +71,10 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
 
     // Stage 1: shard-scan + classify, exactly as `scan_entity_index_shard`
     // does before handing the columns to the host.
-    let (records, classes, handoff) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let handoff = scan.handoff;
     assert!(handoff.is_none(), "single shard must cover the whole fixture");
 
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
@@ -143,8 +145,9 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
 #[test]
 fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
-    let (records, classes, _) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
     // Every record start shifted past the end of the buffer.
@@ -186,8 +189,9 @@ fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
 #[test]
 fn a_short_column_ends_the_walk_instead_of_panicking() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
-    let (records, classes, _) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
@@ -270,8 +274,10 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
         ifc_lite_core::IfcType::IfcDoorStyle
     );
 
-    let (records, classes, handoff) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let handoff = scan.handoff;
     assert!(handoff.is_none(), "single shard must cover the whole fixture");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
@@ -318,8 +324,10 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
         ifc_lite_core::IfcType::IfcBeamStandardCase
     );
 
-    let (records, classes, handoff) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let handoff = scan.handoff;
     assert!(handoff.is_none(), "single shard must cover the whole fixture");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
@@ -387,4 +395,42 @@ fn keyword_at_skips_trivia_between_the_equals_and_the_keyword() {
     ] {
         assert_eq!(keyword_at(record, 0, record.len()), keyword, "{}", String::from_utf8_lossy(record));
     }
+}
+
+/// #7782 C4-6b: file order, duplicate ids, first site/project, and span order
+/// are observable even though the entity index later sorts and deduplicates.
+#[test]
+fn c4_6b_shared_discovery_preserves_browser_order() {
+    use ifc_lite_core::{EntityScanner, EntityDecoder, build_entity_index};
+    let bytes = b"DATA;\n#90=IFCPROJECT($);\n#70=IFCSITE($);\n#50=IFCWINDOW($);\n#40=IFCWALL($);\n#30=IFCSTYLEDITEM($,(),$);\n#20=IFCSTYLEDITEM($,(),$);\n#10=IFCPROJECT($);\n#5=IFCSITE($);\n#40=IFCSPACE($);\nENDSEC;";
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let ids: Vec<_> = scan.records.iter().map(|r| r.0).collect();
+    let starts: Vec<_> = scan.records.iter().map(|r| r.1 as u32).collect();
+    let lengths: Vec<_> = scan.records.iter().map(|r| (r.2-r.1) as u32).collect();
+    let disabled = Default::default();
+    let columns = discover_from_columns(bytes, &ids, &starts, &lengths, &scan.classes.unwrap(), &disabled);
+    let mut shared = ifc_lite_processing::discovery::Discovery::new(false);
+    let mut serial = ColumnsDiscovery::default();
+    let mut scanner = EntityScanner::new(bytes);
+    while let Some((id, kw, start, end)) = scanner.next_entity() {
+        serial.observe(&mut shared, bytes, id, kw, start, end, &disabled);
+    }
+    assert_eq!(serial.buffered_jobs, columns.buffered_jobs);
+    assert_eq!(serial.buffered_jobs.iter().map(|j| j.0).collect::<Vec<_>>(), [70,50,40,5,40]);
+    assert_eq!(serial.project_id, Some(90));
+    assert_eq!(columns.project_id, serial.project_id);
+    assert_eq!(columns.site_position, serial.site_position);
+    assert_eq!(serial.site_position.unwrap().0, 70);
+    assert_eq!(columns.prepass_spans.styled_items, shared.prepass_spans.styled_items);
+    assert_eq!(columns.prepass_spans.styled_items.iter().map(|s| s.0).collect::<Vec<_>>(), [30,20]);
+    let mut decoder = EntityDecoder::with_index(bytes, build_entity_index(bytes));
+    let once = crate::api::styling::combined_pre_pass(bytes, &mut decoder);
+    assert_eq!(once.project_id, serial.project_id);
+    assert_eq!(once.site_position, serial.site_position);
+    // The one-shot wire is historically partitioned. Removing the distinction
+    // without retaining this order changes scheduling even if meshes agree.
+    let jobs: Vec<_> = once.simple_jobs.iter().chain(&once.complex_jobs).map(|j| j.0).collect();
+    let mut expected = serial.buffered_jobs.clone();
+    expected.sort_by_key(|j| !ifc_lite_core::is_simple_geometry_type(j.3.as_str()));
+    assert_eq!(jobs, expected.iter().map(|j| j.0).collect::<Vec<_>>());
 }

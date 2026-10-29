@@ -74,13 +74,8 @@ impl IfcAPI {
     /// full entity index (byte-identical to the single-threaded
     /// `build_entity_index`) by binary-searching each shard for the previous
     /// shard's `handoff`. Delegates to
-    /// `ifc_lite_processing::scan_shard_classified_with_refusals` — a
-    /// separately-maintained loop over the same `EntityScanner` primitive as
-    /// `scan_shard` (the one the native `build_entity_index_parallel` fans across
-    /// cores), plus a per-record class column this sharded path also needs. The
-    /// two loops' records/handoff are kept in parity by a dedicated test
-    /// (`rust/processing/tests/issue_2053_shard_scan_parity.rs`), not by
-    /// delegation — edit one without the other and that test catches the drift.
+    /// `ifc_lite_processing::scan_shard_result` with classification enabled.
+    /// Named fields preserve the existing shard wire and refusal attribution.
     ///
     /// Byte offsets returned are GLOBAL (relative to file start), so shards
     /// concatenate without rewriting. Returns a plain object:
@@ -113,8 +108,11 @@ impl IfcAPI {
         let total = data.len();
         let start = (range_start as usize).min(total);
         let end = (range_end as usize).min(total);
-        let (records, classes, handoff, oversized_id_starts) =
-            ifc_lite_processing::scan_shard_classified_with_refusals(data, start, end);
+        let scan = ifc_lite_processing::scan_shard_result(data, start, end, true);
+        let records = scan.records;
+        let classes = scan.classes.expect("classified scan");
+        let handoff = scan.handoff;
+        let oversized_id_starts = scan.refusals;
 
         let n = records.len() as u32;
         let ids = js_sys::Uint32Array::new_with_length(n);

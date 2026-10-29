@@ -15,13 +15,10 @@ pub(in crate::api) mod batch_host;
 mod batch_partition;
 mod instancing;
 pub(crate) mod prepass;
-#[allow(deprecated)] // C4-6b keeps tuple adapters until its browser discovery migration.
 mod prepass_discovery;
 mod prepass_memory;
 mod prepass_once;
-#[allow(deprecated)] // C4-6b keeps tuple adapters until its browser discovery migration.
 mod prepass_owned_columns;
-#[allow(deprecated)] // C4-6b keeps tuple adapters until its browser discovery migration.
 mod prepass_sharded;
 mod source_fingerprint;
 mod style_finishes;

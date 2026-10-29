@@ -35,15 +35,14 @@ pub(crate) fn combined_pre_pass(
     content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> PrePassData {
-    use ifc_lite_core::{keyword_eq, EntityScanner};
+    use ifc_lite_core::EntityScanner;
     use ifc_lite_processing::prepass::{
-        resolve_geometry_finishes, resolve_prepass, PrepassSpans, ResolveOptions,
+        resolve_geometry_finishes, resolve_prepass, ResolveOptions,
     };
 
     let estimated_elements = content.len() / 2000;
 
-    let mut spans = PrepassSpans::default();
-    let mut project_id: Option<u32> = None;
+    let mut discovery = ifc_lite_processing::discovery::Discovery::new(false);
     let mut site_position: Option<(u32, usize, usize)> = None;
     let mut simple_jobs = Vec::with_capacity(estimated_elements / 2);
     let mut complex_jobs = Vec::with_capacity(estimated_elements / 2);
@@ -51,45 +50,22 @@ pub(crate) fn combined_pre_pass(
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if spans.stash(type_name, id, start, end) {
-            continue;
+        let class = ifc_lite_processing::scan::ScanClass::classify(type_name);
+        let job = discovery.observe(content, class, id, type_name, start, end);
+        if class == ifc_lite_processing::scan::ScanClass::Site {
+            site_position.get_or_insert((id, start, end));
         }
-        if keyword_eq(type_name, "IFCPROJECT") {
-            if project_id.is_none() {
-                project_id = Some(id);
-            }
-        } else if keyword_eq(type_name, "IFCSITE") {
-            if site_position.is_none() {
-                site_position = Some((id, start, end));
-            }
-            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-            complex_jobs.push((id, start, end, ifc_type));
-        } else if ifc_lite_core::has_geometry_by_name(type_name) {
-            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-            if ifc_lite_core::is_simple_geometry_type(type_name) {
-                simple_jobs.push((id, start, end, ifc_type));
+        if let Some(ty) = job {
+            let jobs = if ifc_lite_core::is_simple_geometry_type(type_name) {
+                &mut simple_jobs
             } else {
-                complex_jobs.push((id, start, end, ifc_type));
-            }
-        } else if ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
-            && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
-        {
-            // #1910 (third instance, Greptile-flagged displaced-path
-            // gap: this single-shot `buildPrePassOnce` combined scan
-            // is a third geometry-job discovery path, alongside the
-            // serial streaming scan (`gpu_meshes/prepass.rs`) and the
-            // sharded column scan (`processing/shard_classes.rs`),
-            // and had the identical `has_geometry_by_name` gap. A
-            // spatial container it blocks by name (`IfcBuilding` et
-            // al.) that exceptionally carries a non-null
-            // Representation must still be scheduled, or small files
-            // routed through this one-shot path keep rendering
-            // nothing. Filed as complex (not simple) — it is never
-            // one of the named simple element types.
-            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-            complex_jobs.push((id, start, end, ifc_type));
+                &mut complex_jobs
+            };
+            jobs.push((id, start, end, ty));
         }
     }
+    let spans = discovery.prepass_spans;
+    let project_id = discovery.project_id;
 
     // Shared post-scan resolution. Full per-triangle palettes stay per-worker
     // rebuilds (`get_or_build_indexed_colour_maps`); the prepass only ships

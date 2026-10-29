@@ -105,7 +105,6 @@ impl IfcAPI {
     ) {
         use crate::api::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
-        use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
             produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
             GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData,
@@ -169,21 +168,8 @@ impl IfcAPI {
             .unwrap_or_else(|| self.get_or_resolve_plane_angle(&mut decoder));
         decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
 
-        // Create geometry router with unit scale and the consumer-selected
-        // tessellation quality (issue #976) — Medium unless JS called
-        // `setTessellationQuality`, so default output is byte-for-byte
-        // identical to the pre-quality pipeline.
-        let mut router =
-            GeometryRouter::with_scale_and_quality(unit_scale, self.tessellation_quality());
-
-        // Apply the consumer-selected small-cut skip (#1286) for this batch.
-        // Independent of the tessellation tier so the viewer can skip tiny steel
-        // cuts while keeping full-density curves. Scoped to this router (not a
-        // process-wide flag), so an export's router, which never enables it,
-        // keeps every cut regardless of a concurrent display build.
-        router.set_skip_small_cuts(self.skip_small_cuts());
-
-        let mapped_item_cache = self.arm_batch_caches(&mut router);
+        let caches = self.batch_caches();
+        let mapped_item_cache = &caches.mapped_items;
 
         // #1623 Phase 3 "don't-bake": arm the batch router in BATCH-LOCAL mode when
         // the partitioned path asked for it AND a plan is installed. Gated on
@@ -204,32 +190,9 @@ impl IfcAPI {
         } else {
             None
         };
-        if let Some(plan) = instance_plan.as_ref() {
-            router.enable_output_instancing(plan.clone());
-            router.set_instancing_batch_local(true);
-        }
-
-        // Attach the per-content material-layer index so single-solid walls and
-        // slabs carrying an IfcMaterialLayerSetUsage slice into one coloured
-        // sub-mesh per layer (#563). Built once per load and Arc-shared across
-        // batches; #874 dropped this wiring, silently disabling layered-wall
-        // rendering for the entire browser stream. Cheap on files with no layer
-        // set (substring bail-out inside the index builder).
-        //
-        // "Merge Multilayer Walls" (the merge_layers toggle, #540) means exactly
-        // "render walls as ONE solid": NOT attaching the index leaves each wall as
-        // its single swept solid (no per-layer slice). So gate the index on the
-        // flag — off (default) ⇒ slice into layers; on ⇒ one solid. The separate
-        // part-skip path below keeps its own index, so IfcBuildingElementPart
-        // merging is unaffected.
-        if !self.merge_layers() {
-            router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
-        }
-
-        // Set RTC offset if needed
-        if needs_shift {
-            router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
-        }
+        let layers = if !self.merge_layers() {
+            Some(self.get_or_build_material_layer_index(content, &mut decoder))
+        } else { None };
 
         // Reconstruct void_index from the flat wire arrays. Length-guarded so
         // upstream drift drops the index instead of trapping the whole wasm
@@ -303,11 +266,17 @@ impl IfcAPI {
         // survives; an instance placeholder carries ONE colour. The same id set
         // the native orchestrator arms (`style::indexed_colour_split_guard_ids`),
         // derived once per content alongside the maps.
-        if instance_plan.is_some() {
-            if let Some(ids) = indexed_colour.split_guard_ids.as_ref() {
-                router.enable_indexed_colour_split_guard(std::sync::Arc::clone(ids));
-            }
-        }
+        let router = ifc_lite_processing::execution::build_router(
+            ifc_lite_geometry::RouterConfig {
+                unit_scale,
+                tessellation_quality: self.tessellation_quality(),
+                skip_small_cuts: self.skip_small_cuts(),
+                rtc_offset: if needs_shift { (rtc_x, rtc_y, rtc_z) } else { (0.0, 0.0, 0.0) },
+                ..Default::default()
+            },
+            ifc_lite_processing::execution::ExecutionPolicy::PerBatch,
+            &caches, layers, instance_plan.as_ref(), indexed_colour.split_guard_ids.as_ref(),
+        );
 
         // The canonical styled-item index the shared producer consumes — built
         // once per worker alongside `geometry_styles` above (#1097).
@@ -384,7 +353,10 @@ impl IfcAPI {
             // not a deep clone of the DecodedEntity — was the dominant per-job
             // marshalling cost across ~60-110 K jobs. produce_element_meshes
             // takes `&DecodedEntity`, so we deref the Arc at the call site.
-            let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
+            let span = ifc_lite_processing::execution::JobSpan { id, start, end };
+            let Ok(entity) = ifc_lite_processing::execution::decode_job(
+                &mut decoder, span, ifc_lite_processing::execution::ExecutionPolicy::PerBatch,
+            ) else {
                 let _ = decoder.refuse_record(id);
                 self.collect_pipeline_refusals(&decoder);
                 self.note_refused_input();
@@ -412,17 +384,14 @@ impl IfcAPI {
             // Cheaper than widening the jobs wire, which is 3 u32 per job
             // across Rust and TS and would have paid marshalling cost on every
             // job to fix the few that are legacy.
-            let ifc_type = ifc_lite_core::ifc_type_from_record(
-                entity.ifc_type.clone(),
-                content.get(start..end).unwrap_or_default(),
-            );
+            let ifc_type = ifc_lite_processing::execution::job_type(&entity, content, span, None);
 
             // Resolve the element-level colour inline (folded from the deleted
             // pre-pass) so the entity is decoded exactly once.
             let element_color = if !geometry_styles.is_empty()
                 && entity.get(6).map(|a| !a.is_null()).unwrap_or(false)
             {
-                resolve_element_color(entity.as_ref(), geometry_styles, &mut decoder)
+                resolve_element_color(&entity, geometry_styles, &mut decoder)
             } else {
                 None
             };
@@ -458,7 +427,7 @@ impl IfcAPI {
                 &ElementMeshJob {
                     id,
                     ifc_type,
-                    entity: entity.as_ref(),
+                    entity: &entity,
                     kind,
                     element_color,
                     // The viewer gets element metadata from the parser worker.
@@ -540,7 +509,7 @@ impl IfcAPI {
             let mut shard = super::instancing::resolve_batch_occurrences(
                 std::mem::take(&mut all_occurrences),
                 &template_by_rep,
-                &mapped_item_cache,
+                mapped_item_cache,
                 rtc,
                 INSTANCE_MIN_OCCURRENCES as usize,
                 &mut recovered_flats,

@@ -42,6 +42,7 @@ pub use shard_classes::{
 #[path = "determinism_tests.rs"]
 mod determinism_tests;
 pub mod element;
+pub mod execution;
 pub mod retained_geometry;
 pub mod retained_requests;
 mod geometry_pool;

@@ -71,5 +71,5 @@
    296 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
    272 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
    158 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::process_geometry_batch_partitioned
-   526 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
+   480 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
    503 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl

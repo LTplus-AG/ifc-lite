@@ -4,14 +4,15 @@
 
 //! Content-scoped browser router caches. No scheduling or instancing policy.
 use crate::api::IfcAPI;
-use ifc_lite_geometry::{GeometryRouter, SharedMappedItemCache};
+use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_processing::execution::RouterCaches;
 
 impl IfcAPI {
-    pub(super) fn arm_batch_caches(&self, router: &mut GeometryRouter) -> SharedMappedItemCache {
+    pub(super) fn batch_caches(&self) -> RouterCaches {
         // Arm content-dedup against the per-worker shared cache so byte-identical
         // geometry (e.g. Tekla parts the exporter failed to share via
         // IfcMappedItem) is meshed ONCE across batches, not once per batch.
-        {
+        let items = {
             let mut slot = self
                 .cached_item_dedup
                 .lock()
@@ -19,8 +20,8 @@ impl IfcAPI {
             let cache = slot
                 .get_or_insert_with(GeometryRouter::new_dedup_cache)
                 .clone();
-            router.enable_content_dedup_shared(cache);
-        }
+            cache
+        };
 
         // Arm the shared IfcMappedItem source cache (#1623) against the per-worker
         // cache so a RepresentationMap source shared across owning elements is
@@ -36,7 +37,6 @@ impl IfcAPI {
             let cache = slot
                 .get_or_insert_with(GeometryRouter::new_mapped_item_cache)
                 .clone();
-            router.enable_shared_mapped_item_cache(cache.clone());
             cache
         };
 
@@ -46,8 +46,7 @@ impl IfcAPI {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_or_insert_with(GeometryRouter::new_brep_signature_cache)
             .clone();
-        router.enable_shared_brep_signature_cache(cache);
-        mapped_item_cache
+        RouterCaches { items, brep_signatures: cache, mapped_items: mapped_item_cache }
     }
 
     pub(crate) fn invalidate_brep_signatures(&self) {

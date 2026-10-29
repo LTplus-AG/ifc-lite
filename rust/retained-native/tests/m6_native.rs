@@ -93,11 +93,11 @@ fn m6_native_consumed_provenance() {
     // reached; the consumed origin survives instead of a missing-entity error.
     let chained=SOURCE.replace("#356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);",
         "#9356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);\n#356=IFCBOOLEANRESULT(.DIFFERENCE.,#9356,#999999);");
-    for source in [SOURCE,chained.as_str()] {
+    for (label,source) in [("plain",SOURCE),("chained",chained.as_str())] {
         let outcomes=run(source,&[1011]);
-        let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("consumed host must refuse atomically");};
+        let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("{label}: consumed host must refuse atomically");};
         // Attribution comes from M5's shared HalfSpaceClip hook.
-        assert_eq!(refusal.code(),"empty_result");let origin=origin.unwrap();assert_eq!(origin.site,"halfspace_clip");assert_eq!(origin.cause,"consumed");
+        assert_eq!(refusal.code(),"empty_result","{label}: {refusal:?} {origin:?}");let origin=origin.unwrap();assert_eq!(origin.site,"halfspace_clip");assert_eq!(origin.cause,"consumed");
     }
 }
 #[test]

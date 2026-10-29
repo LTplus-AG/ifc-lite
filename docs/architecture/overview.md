@@ -677,3 +677,18 @@ graph TB
 - [Parsing Pipeline](parsing-pipeline.md) - Parser architecture
 - [Geometry Pipeline](geometry-pipeline.md) - Geometry processing
 - [Rendering Pipeline](rendering-pipeline.md) - WebGPU rendering
+
+### Record discovery (C4-5)
+
+`ifc_lite_core::is_geometry_job` admits a scanned record using its raw STEP
+keyword and bytes. It preserves schema/legacy classification and the #1910
+spatial-container exception for a present `Representation`.
+`ifc_lite_processing::discovery::Discovery` collects shared prepass spans,
+first spatial records, and type-map inputs. Native `scan_entities` decorates
+jobs and retains native metadata, property and georeferencing handling.
+
+`scan_shard_result(content, start, end, classified)` returns a non-exhaustive
+`ShardScan`: records, optional class column, handoff, refusal offsets and
+malformed-record offsets. Diagnostics remain speculative until stitching.
+The five tuple APIs remain deprecated compatibility adapters until C10;
+browser discovery migration is C4-6b.

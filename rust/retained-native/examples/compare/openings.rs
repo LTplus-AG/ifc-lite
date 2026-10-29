@@ -121,6 +121,7 @@ mod tests {
             area: 0.,
             bbox: [0., 0., 0., 2., 1., 3.],
             defects: 0,
+            ..Default::default()
         };
         let mut violations = Vec::new();
         check_opened("e13", &actual, Some(expected), &crate::tolerances::registered().unwrap(), &mut violations);

@@ -2,7 +2,7 @@
   "format": 1,
   "inputs": {
     ".github/actions/setup-wasm-build/action.yml": "6ab6f6d96cacd67dbe60878406df56b79abaf048e5f0671a282fba88c71feafd",
-    ".github/workflows/geometry-platform.yml": "c95f4297d2e82e5e2d39934930fce46f5f175f2aaf015ae6354be11b7f0dc470",
+    ".github/workflows/geometry-platform.yml": "9f12f977d565eff72cb4cc32502149552ac866f9114ac76d37eeb8cce3e3ad84",
     "Cargo.lock": "dde757434e2d3754458c1c817a8807838daf0679473509abd876da5a7b279032",
     "Cargo.toml": "8cfd8245282a1cc6b77068762a0932dcdbcabd9b01a308830a1bcc0556bf8267",
     "native/smlib-adapter/CMakeLists.txt": "eb6fd87f9ff497098667296d1e3bd9d3d677e25d47809eef091e914c9b0d87c6",

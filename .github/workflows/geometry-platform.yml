@@ -64,6 +64,7 @@ on:
       - 'scripts/lib/__fixtures__/smlib-node/**'
       - 'tests/evidence/m1-f1/**'
       - 'LICENSE'
+      - 'licenses/retained/**'
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.

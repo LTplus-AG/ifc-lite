@@ -48,7 +48,7 @@ it('preserves bar widths, values and labels (#8090)', () => {
 it('keeps an empty line chart free of marks (#8090)', () => {
   const ui = chart('line', []);
   assert.equal(ui.querySelectorAll('polyline, circle, rect, .bg-primary').length, 0);
-  assert.ok(ui.textContent?.includes('line'));
+  assert.match(ui.textContent ?? '', /line/i);
 });
 
 it('renders a single zero reading without invalid coordinates (#8090)', () => {

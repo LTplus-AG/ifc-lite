@@ -12,12 +12,19 @@ graph and pinned toolchain. On the provisioned fleet run the following with
 
 ```sh
 node scripts/retained-package-proof.mjs cargo
+node scripts/retained-package-proof.mjs cargo-graph
 node scripts/retained-package-proof.mjs build
 node scripts/retained-package-proof.mjs npm
 ```
 
 `cargo` invokes `cargo package --list` and `cargo publish --dry-run --locked`
 for every entry in `scripts/lib/crates-io.mjs`, plus a feature-on runtime dry-run.
+`cargo-graph` runs a combined dry-run of those same nine crates, first default
+and then with runtime/processing/browser retained features. Cargo's multi-package
+mode can stage their real normalized archives together before the prerequisite
+versions exist in the registry; it does not use path patches or remove edges.
+See [Cargo package registry semantics](https://doc.rust-lang.org/cargo/commands/cargo-package.html#option-cargo-package---registry).
+That graph check does not replace the single-crate registry-readiness result.
 `build` runs default workspace tests, the excluded Python consumer build and
 strict all-target Clippy. `npm` builds through root `pnpm build` then invokes
 `npm pack --dry-run --json` for WASM and CLI. A failed command does not suppress
@@ -39,6 +46,17 @@ feature forwarding. No build script may fetch an SDK. Published npm archives
 must include `THIRD_PARTY_NOTICES.txt`. The current npm WASM archive deliberately
 excludes `pkg-retained/*.js`, `pkg-retained/*.wasm` and SDK assets; installing it
 alone does not install a retained engine.
+
+## Observed Cargo package results
+
+At `5d159aeca6a1f143c027153c8952def85e45e790`, all nine `cargo package --list`
+commands passed. Runtime lists 32 source/package-metadata files and no SDK,
+worker executable or WASM. Core and clash verified their archives and passed
+`cargo publish --dry-run --locked` (upload explicitly aborted). Geometry,
+runtime, processing, landxml, export, ffi and wasm failed with exit 101 on
+unpublished 26.0.0 prerequisites. Runtime's retained-feature dry-run failed at
+the same geometry-version resolution. Source remained clean and unchanged.
+The combined graph dry-run is a separate pending qualification, not a claimed pass.
 
 ## First crates.io publication (human operation)
 

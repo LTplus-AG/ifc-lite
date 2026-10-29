@@ -20,6 +20,14 @@ if (mode === 'cargo') {
     run('cargo', ['publish', '-p', crate, '--dry-run', '--locked']);
   }
   run('cargo', ['publish', '-p', 'ifc-lite-geometry-runtime', '--features', 'retained-runtime', '--dry-run', '--locked']);
+} else if (mode === 'cargo-graph') {
+  // Cargo packages the selected interdependent crates together; this exercises
+  // the real versioned archive graph before prerequisite versions are uploaded.
+  // The separate single-crate mode still records current registry readiness.
+  const packages = CRATES.flatMap(crate => ['-p', crate]);
+  run('cargo', ['publish', '--dry-run', '--locked', ...packages]);
+  run('cargo', ['publish', '--dry-run', '--locked', ...packages, '--features',
+    'ifc-lite-geometry-runtime/retained-runtime,ifc-lite-processing/retained-runtime,ifc-lite-wasm/retained-browser']);
 } else if (mode === 'build') {
   run('cargo', ['test', '--workspace']);
   run('cargo', ['build', '--manifest-path', 'rust/python/Cargo.toml', '--locked']);
@@ -27,6 +35,6 @@ if (mode === 'cargo') {
 } else if (mode === 'npm') {
   run('pnpm', ['build', '--filter=@ifc-lite/cli...', '--filter=@ifc-lite/wasm']);
   for (const pkg of ['wasm', 'cli']) run('npm', ['pack', '--dry-run', '--json', `./packages/${pkg}`]);
-} else throw new Error('Expected cargo, build or npm');
+} else throw new Error('Expected cargo, cargo-graph, build or npm');
 writeFileSync(`retained-package-proof-${mode}.json`, `${JSON.stringify(results, null, 2)}\n`);
 process.exitCode = results.every(result => result.exitCode === 0) ? 0 : 1;

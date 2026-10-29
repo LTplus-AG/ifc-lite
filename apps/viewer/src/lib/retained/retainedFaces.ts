@@ -29,4 +29,3 @@ export function faceRows(faces: { table: string[]; triangles: Uint32Array }[], m
   });
   return [...rows.values()].filter((row) => row.triangles > 0);
 }
-

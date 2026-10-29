@@ -87,7 +87,6 @@ impl IfcAPI {
             PrepassMode::Serial => (None, false),
             PrepassMode::Sharded(columns) => (Some(columns), true),
         };
-        let have_columns = external_styles;
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
         self.begin_content_install();
         use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
@@ -120,7 +119,7 @@ impl IfcAPI {
         const PREPASS_INDEX_RESERVE_CAP: usize = 40_000_000; // ~0.5GB reserved
         // #3985: a prebuilt index serves every lookup and is retained below;
         // its unused staging map must not reserve another source-sized table.
-        let estimated = if have_columns {
+        let estimated = if external_styles {
             0
         } else {
             (content.len() / 50).min(PREPASS_INDEX_RESERVE_CAP)

@@ -9,6 +9,7 @@
 
 mod affinity_chunks;
 mod batch;
+mod batch_caches;
 mod partitioned_batch;
 mod batch_from_source;
 pub(in crate::api) mod batch_host;

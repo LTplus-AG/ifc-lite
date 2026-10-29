@@ -42,6 +42,8 @@ impl IfcAPI {
         // pipeline diagnostics must not accumulate into this one. (The worker
         // path resets via setEntityIndex; every load-start entry point resets.)
         self.reset_pipeline_diagnostics();
+        self.production_model.invalidate_source();
+        self.invalidate_brep_signatures();
 
         let content = data;
 

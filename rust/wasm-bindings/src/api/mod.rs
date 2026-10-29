@@ -119,16 +119,10 @@ pub struct IfcAPI {
     /// emitted as thousands of separate items instead of one `IfcMappedItem`.
     /// Built lazily on first batch; one model per `IfcApi` instance, exactly like
     /// `cached_entity_index`.
+    cached_brep_signatures: std::sync::Mutex<Option<ifc_lite_geometry::SharedBrepSignatureCache>>,
     cached_item_dedup: std::sync::Mutex<Option<ifc_lite_geometry::ItemDedupCache>>,
 
-    /// Per-worker shared `IfcMappedItem` source cache (#1623). The `GeometryRouter`
-    /// is rebuilt every `processGeometryBatch`, so its per-router `mapped_item_cache`
-    /// would reset each batch and only dedup within a batch. Holding ONE cache here
-    /// and injecting it into every batch router meshes each RepresentationMap source
-    /// once across the whole worker's workload. Built lazily on first batch; one
-    /// model per `IfcApi` instance, exactly like `cached_item_dedup`. Dropped on a
-    /// content swap AND on `setTessellationQuality` (a quality change invalidates
-    /// the source-coord tessellation — the key is the source id, not the quality).
+    /// Model-scoped mapped sources; reset on content/quality changes (#1623).
     cached_mapped_item: std::sync::Mutex<Option<ifc_lite_geometry::SharedMappedItemCache>>,
 
     /// When `true`, `processGeometryBatch` suppresses geometry emission for
@@ -320,6 +314,7 @@ impl IfcAPI {
             initialized: true,
             cached_entity_index: std::sync::Mutex::new(None),
             cached_source_bytes: std::sync::Mutex::new(None),
+            cached_brep_signatures: std::sync::Mutex::new(None),
             cached_item_dedup: std::sync::Mutex::new(None),
             cached_mapped_item: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
@@ -419,6 +414,7 @@ impl IfcAPI {
             .take();
         // The geometry-style maps belong to the previous load's wire styles.
         self.production_model.invalidate_source();
+        self.invalidate_brep_signatures();
         self.cached_geometry_styles
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

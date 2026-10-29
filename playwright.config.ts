@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { BEGIN_FRAME_CHROME_ARGS } from './tests/benchmark/frames/begin-frame-driver';
 
 // One preview server per run. Every project shares it; `reuseExistingServer`
@@ -10,6 +12,13 @@ import { BEGIN_FRAME_CHROME_ARGS } from './tests/benchmark/frames/begin-frame-dr
 // instead, so a host with several checkouts sets PLAYWRIGHT_PORT per run.
 const PORT = process.env.PLAYWRIGHT_PORT ?? '3000';
 const BASE_URL = `http://localhost:${PORT}`;
+const retainedProject = process.argv.some((arg, i) => arg === '--project=viewer-retained' ||
+  (arg === '--project' && process.argv[i + 1] === 'viewer-retained'));
+const retainedDefaultProject = process.argv.some((arg, i) => arg === '--project=viewer-retained-default' ||
+  (arg === '--project' && process.argv[i + 1] === 'viewer-retained-default'));
+const isolatedRetainedPreview = retainedProject || retainedDefaultProject;
+const retainedEngine = process.env.IFCLITE_RETAINED_ENGINE;
+const retainedAvailable = Boolean(retainedEngine && existsSync(join(retainedEngine, 'engine-manifest.json')));
 
 /**
  * `playwright test --project=viewer-collab-e2e` (and nothing else): that
@@ -22,7 +31,8 @@ function onlyCollabProject(): boolean {
   const projects = argv.flatMap((arg, i) =>
     arg.startsWith('--project=') ? [arg.slice('--project='.length)] : arg === '--project' && argv[i + 1] ? [argv[i + 1]] : [],
   );
-  return projects.length > 0 && projects.every((p) => p === 'viewer-collab-e2e');
+  return projects.length > 0 && projects.every((p) => p === 'viewer-collab-e2e' ||
+    (p === 'viewer-retained' && !retainedAvailable));
 }
 
 export default defineConfig({
@@ -41,15 +51,46 @@ export default defineConfig({
   webServer: onlyCollabProject()
     ? undefined
     : {
-        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}`,
+        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}${isolatedRetainedPreview ? ' --strictPort' : ''}`,
         port: Number(PORT),
-        reuseExistingServer: true,
+        reuseExistingServer: !isolatedRetainedPreview,
         timeout: 90000,
         env: {
           BROWSER: 'none',
+          ...(retainedProject ? { VITE_RETAINED_GEOMETRY: 'on' } : {}),
         },
       },
   projects: [
+    {
+      // Opt-in real-engine acceptance, run only by geometry-platform.
+      name: 'viewer-retained',
+      testMatch: /retained-viewer\.e2e\.spec\.ts/,
+      timeout: 240000,
+      use: {
+        baseURL: BASE_URL,
+        headless: true,
+        channel: process.env.IFCLITE_BROWSER_CHANNEL || 'chrome',
+        trace: 'retain-on-failure',
+        screenshot: 'only-on-failure',
+        launchOptions: { args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan',
+          '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--disable-vulkan-surface',
+          '--ignore-gpu-blocklist', '--enable-gpu'] },
+      },
+    },
+    {
+      // Run the same event-driven exact-load assertion against an unflagged dist.
+      name: 'viewer-retained-default',
+      testMatch: /retained-viewer\.e2e\.spec\.ts/,
+      grep: /build without a kernel choice/,
+      use: {
+        baseURL: BASE_URL,
+        headless: true,
+        channel: process.env.IFCLITE_BROWSER_CHANNEL || 'chrome',
+        launchOptions: { args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan',
+          '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--disable-vulkan-surface',
+          '--ignore-gpu-blocklist', '--enable-gpu'] },
+      },
+    },
     {
       name: 'viewer-e2e',
       testMatch: /(assistant-context|assistant-report-claims|compare-impact-6921|assistant-check-authoring|assistant-artifacts|viewer-smoke|semantic-linked-records|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|copc-lod|copc-deviation|deviation-attribution|model-reposition|document-text|content-storage|document-chart-source-6629|saved-clash-reports-6947|validation-colors|ids-bcf-export|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap|ortho-depth-nudge|selection-mask-depth|projection-depth|projection-texture|reporter-6729|section-extra-planes|selective-clipping|symbolic-parse-outcomes|flow-ai-review|semantic-assist|review-workspace|retained-browser-never-fetch)\.e2e\.spec\.ts/,

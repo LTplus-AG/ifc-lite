@@ -72,10 +72,12 @@ impl NumericalReceipt for NativeReceipt {
             RealizationKind::Construction(value) => Some(ReceiptMesh {
                 positions: &value.completion().tessellation.positions,
                 indices: &value.completion().tessellation.indices,
+                faces: &value.completion().tessellation.revision_local_faces,
             }),
             RealizationKind::Boolean(value) => Some(ReceiptMesh {
                 positions: &value.mesh().positions,
                 indices: &value.mesh().indices,
+                faces: &value.mesh().source_faces,
             }),
             RealizationKind::Affine(_) => None,
         }

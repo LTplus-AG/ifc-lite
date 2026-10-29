@@ -615,7 +615,7 @@ fn prototypes_author_no_xform_ops() {
 #[test]
 fn instance_transform_reconstructs_baked_world() {
     for bytes in [hello_wall(), synthetic_instances()] {
-        let on = run_instanced(&bytes);
+        let on = run_instanced(&bytes, false);
         assert!(!on.instances.is_empty(), "instancing did not fire");
         let flat = process_geometry(&bytes);
 

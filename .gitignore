@@ -183,3 +183,6 @@ __pycache__/
 apps/viewer/public/smlib/
 rust/*/smlib/
 rust/wasm-bindings/retained-test/
+
+# Local retained release proof summaries (fleet receipt is authoritative).
+/retained-package-proof-*.json

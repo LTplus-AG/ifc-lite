@@ -3,6 +3,10 @@ use super::*;
 /// Owned intermediate evidence. This deliberately exposes no final mesh/product.
 pub struct RuntimeProductWitness<R: NumericalReceipt> {
     pub(super) cut_times_ms: Vec<f64>,
+    pub(super) presentation_context: OwnedMeshProductionContext,
+    pub(super) element_color: [f32; 4],
+    /// The run's evaluation chord: curved face incidence is bounded by it (M11-F).
+    pub(super) limits: runtime::NumericalLimits,
     pub(super) plan: RetainedProductPlan,
     pub(super) product_id: u32,
     pub(super) ifc_type: IfcType,
@@ -40,6 +44,7 @@ impl<R: NumericalReceipt> RuntimeProductWitness<R> {
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     pub(super) fn into_witness(
         mut self,
+        limits: runtime::NumericalLimits,
     ) -> Result<RuntimeProductWitness<R>, RetainedExecutionError> {
         self.validate_witness()?;
         let plan = self
@@ -47,6 +52,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .take()
             .ok_or_else(|| protocol(ReceiptFailure::UnfinishedProduct))?;
         Ok(RuntimeProductWitness {
+            presentation_context: self.context.presentation_snapshot(),
+            element_color: self.state.element_color,
+            limits,
             plan,
             cut_times_ms: std::mem::take(&mut self.cut_times_ms),
             product_id: self.state.job.id,

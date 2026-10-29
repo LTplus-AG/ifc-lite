@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/diff": minor
+"@ifc-lite/wasm": minor
 ---
 
 Expose explicitly owned DiffModelHandle snapshots with prepareDiffModel, compare,

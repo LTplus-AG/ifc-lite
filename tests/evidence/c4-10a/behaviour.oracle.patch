@@ -1,0 +1,11 @@
+--- a/rust/wasm-bindings/src/api/pipeline_diagnostics.rs
++++ b/rust/wasm-bindings/src/api/pipeline_diagnostics.rs
+@@ -90,7 +90,7 @@
+     pub(crate) fn note_refused_input(&self) {
+         self.pipeline_diagnostics.lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .refused_input_elements += 0;
++            .refused_input_elements += 1;
+     }
+ 
+     /// Reset the accumulator (a new load on a reused IfcAPI). Called from

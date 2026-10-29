@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/presentation/appearance_resolve.rs
++++ b/rust/processing/src/element/session_retained/presentation/appearance_resolve.rs
+@@ -105,7 +105,7 @@
+             }
+         };
+         if let Some(fixed) = fixed {
+-            let _ = fixed;
++            part.rgba = fixed;
+         }
+         resolved.push(part);
+     }

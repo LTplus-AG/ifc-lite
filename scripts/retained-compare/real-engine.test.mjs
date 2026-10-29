@@ -61,3 +61,81 @@ test('#7955 M3 unreviewed synthetic cases, including the baked scaled cutter, ma
     await rm(scratch, { recursive: true, force: true });
   }
 });
+
+
+test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in the obligations header and the M11-N corner normals', {
+  timeout: 120000,
+  skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT header identity evidence',
+}, async () => {
+  const { validateEngine } = await import('../../packages/cli/dist/retained/engine.js');
+  const { runRetained } = await import('../../packages/cli/dist/retained/run.js');
+  const { retainedObj } = await import('../../packages/cli/dist/retained/obj.js');
+  const source = await readFile('tests/fixtures/synthetic-retained/f-c-extrusion.ifc');
+  const { outcomes } = await runRetained(await validateEngine(engine), source);
+  assert.ok(outcomes.length > 0 && outcomes.every(p => p.status === 'published'));
+  for (const product of outcomes) {
+    assert.deepEqual(product.obligationsUnmet, ['MaterialLayers'], 'M11-A, M11-F and M11-N discharge everything but the layers');
+    for (const part of product.parts) {
+      assert.equal(part.revisionLocalFaces.length, part.indices.length / 3);
+      assert.ok(part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3, 'M11-N: one f64 normal per corner');
+      assert.equal(part.instanceKey, undefined);
+      // M11-F: every triangle carries a persistent source face key.
+      assert.equal(part.faces.triangles.length, part.indices.length / 3);
+      assert.ok(Array.isArray(part.color) && part.color.length === 4 && (part.geometryItemId === undefined || (Number.isInteger(part.geometryItemId) && part.geometryItemId > 0)), 'M11-A resolved appearance; geometryItemId only for item-bound parts, never 0');
+    }
+  }
+  const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');
+  const written = retainedObj(outcomes).split('\n');
+  // M11-N: the writer emits one `vn` per triangle corner and faces reference them as `v//n`.
+  // Everything else (vertices, groups, materials, face vertex order) must stay byte-identical.
+  const corners = outcomes.flatMap(p => p.parts).reduce((n, part) => n + part.indices.length, 0);
+  // OBJ record kind = the first token of the line (parsed output, not a text predicate).
+  const kind = line => line.split(' ', 1)[0];
+  assert.equal(written.filter(line => kind(line) === 'vn').length, corners, 'exactly one normal per triangle corner');
+  let normal = 0;
+  const current = written.filter(line => kind(line) !== 'vn').map(line => {
+    if (kind(line) !== 'f') return line;
+    const refs = line.slice(2).split(' ').map(corner => {
+      const [vertex, empty, n] = corner.split('/');
+      assert.equal(empty, '', 'face corners are v//n');
+      assert.equal(Number(n), ++normal, 'face corners reference their own normal in order');
+      return vertex;
+    });
+    return `f ${refs.join(' ')}`;
+  });
+  assert.equal(current.length, previous.length, 'no added geometry, groups or materials beyond the corner normals');
+  const changed = current.flatMap((line, index) => line === previous[index] ? [] : [index]);
+  assert.deepEqual(changed, [3], 'the ONLY other changed line must be the presentation obligations header');
+  // The expected header is the base golden's list minus every obligation a slice now discharges.
+  const discharged = new Set(['IfcAppearance', 'PersistentFaces', 'SurfaceNormals']);
+  const split = previous[3].lastIndexOf(': ') + 2;
+  const prefix = previous[3].slice(0, split);
+  const listed = previous[3].slice(split);
+  const expected = `${prefix}${listed.split(', ').filter(name => !discharged.has(name)).join(', ')}`;
+  assert.equal(current[3], expected, 'M11-A, M11-F and M11-N discharge IfcAppearance, PersistentFaces and SurfaceNormals: none is listed as unmet');
+});
+
+test('#7955 M11-A Node/wasm appearance equals the native run bit for bit', {
+  timeout: 600000,
+  skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT parity evidence',
+}, async () => {
+  assert.ok(process.env.IFCLITE_M11A_REFERENCE, 'M11-A native reference is required');
+  const reference = JSON.parse(await readFile(process.env.IFCLITE_M11A_REFERENCE, 'utf8'));
+  assert.ok(reference.length > 0 && reference.every(model => model.rows.length > 0), 'native observations required');
+  const { validateEngine } = await import('../../packages/cli/dist/retained/engine.js');
+  const { runRetained } = await import('../../packages/cli/dist/retained/run.js');
+  const bits = value => new Uint32Array(Float32Array.of(value).buffer)[0];
+  for (const { path, rows } of reference) {
+    const { outcomes } = await runRetained(await validateEngine(engine), await readFile(path), Uint32Array.from(rows.map(row => row.id)));
+    assert.equal(outcomes.length, rows.length, path);
+    for (const row of rows) {
+      const actual = outcomes.find(outcome => outcome.expressId === row.id);
+      assert.ok(actual, `${path} #${row.id}`);
+      assert.equal(actual.status === 'published' ? 'published' : actual.code, row.code, `${path} #${row.id}`);
+      if (row.code !== 'published') continue;
+      assert.deepEqual(actual.obligationsUnmet.filter(name => name === 'IfcAppearance'), [], `${path} #${row.id}`);
+      assert.deepEqual(actual.parts.map(part => ({ rgbaBits: part.color.map(bits), materialName: part.materialName ?? null, geometryItemId: part.geometryItemId ?? null })),
+        row.parts, `${path} #${row.id}: Node/wasm appearance differs from native`);
+    }
+  }
+});

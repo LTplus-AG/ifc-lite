@@ -6,7 +6,7 @@
 //! definition of which `IfcShapeRepresentation`s carry renderable body geometry
 //! ([`Select::Meshed`]) and the other questions asked of the same list.
 
-use ifc_lite_core::{DecodedEntity, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, IfcType};
 
 /// Whether an `IfcShapeRepresentation.RepresentationType` names a meshable
 /// body/surface (as opposed to a curve/axis/annotation/footprint/box). This is
@@ -126,6 +126,12 @@ impl Select {
         rep: &DecodedEntity,
         has_direct_geometry: bool,
     ) -> bool {
+        // A drawing camera's box is no building geometry under any body
+        // policy: excluding it from meshing alone would leave it voting the
+        // RTC origin and feeding layer slicing (the drift noted above).
+        if matches!(self, Select::Body | Select::RtcVotable) && is_drawing_camera_annotation(element) {
+            return false;
+        }
         match self {
             Select::Meshed => meshed_admits(element, rep, has_direct_geometry),
             Select::Body => {
@@ -162,7 +168,27 @@ pub(super) fn has_direct_geometry(element: &DecodedEntity, representations: &[De
         })
 }
 
+/// Whether `element` is a Bonsai drawing camera: an `IfcAnnotation` whose
+/// `ObjectType` is `DRAWING`. Bonsai makes each
+/// drawing (plan, section, elevation, schedule) such an annotation, with an
+/// `EPset_Drawing` property set and the camera's extent as a box body; it is
+/// the drawing's frame, never part of the building. Bonsai itself selects
+/// drawings by this test: IfcOpenShell `src/bonsai/bonsai/bim/module/drawing/operator.py`
+/// (`ObjectType == "DRAWING"` over `IfcAnnotation`) and `prop.py`
+/// (`EPset_Drawing`). Other annotations (grid, text, markup) are untouched.
+pub(crate) fn is_drawing_camera_annotation(element: &DecodedEntity) -> bool {
+    element.ifc_type == IfcType::IfcAnnotation
+        && element
+            .string_at(slot::IfcAnnotation::OBJECT_TYPE)
+            .is_some_and(|t| t.trim().eq_ignore_ascii_case("DRAWING"))
+}
+
 fn meshed_admits(element: &DecodedEntity, rep: &DecodedEntity, has_direct_geometry: bool) -> bool {
+    // A drawing camera meshes nothing (`admits` also bars it from `Body` and
+    // `RtcVotable`); every meshing path selects through here.
+    if is_drawing_camera_annotation(element) {
+        return false;
+    }
     // A structural curve member's edge geometry lives on an
     // `IfcTopologyRepresentation`, not an `IfcShapeRepresentation` — a
     // different entity type entirely, though both are `IfcRepresentation`

@@ -203,8 +203,8 @@
    599 packages/drawing-2d/src/sheet/title-block-renderer.ts
    489 packages/drawing-2d/src/styles.ts
    537 packages/drawing-2d/src/svg-exporter.ts
-   573 packages/drawing-2d/src/symbols/door-symbol.ts
-   808 packages/drawing-2d/src/types.ts
+   530 packages/drawing-2d/src/symbols/door-symbol.ts
+   807 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    680 packages/export/src/ifc5-exporter.ts
   1585 packages/export/src/merged-exporter.ts
@@ -225,8 +225,8 @@
    628 packages/ids/src/translation/service.ts
    636 packages/ids/src/types.ts
    755 packages/ids/src/validation/validator.ts
-   468 packages/ifcx/src/federated-composition.ts
-   704 packages/ifcx/src/index.ts
+   425 packages/ifcx/src/federated-composition.ts
+   693 packages/ifcx/src/index.ts
    749 packages/lists/src/engine.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
@@ -317,5 +317,5 @@
    559 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2163 scripts/test-wasm-contract.mjs
+  2095 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

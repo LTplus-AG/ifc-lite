@@ -1795,6 +1795,15 @@ export function useIfcLoader() {
                     percent: progressPercent
                   });
                 }
+                // #7955: only retained shard-only batches publish bounds and a first
+                // frame here. Exact keeps its original flat-batch throttle.
+                if (geometryKernel.kind === 'retained' && event.meshes.length === 0 && (event.instancedShards?.length ?? 0) > 0) {
+                  if (firstAppendGeometryBatchMs === null) {
+                    firstAppendGeometryBatchMs = trace.milestone('geometry.firstAppend');
+                  }
+                  appendGeometryBatch(modelId, [], event.coordinateInfo);
+                  markFirstVisibleGeometry();
+                }
               } else {
                 // Federated add: accumulate into allMeshes only (done above) and
                 // surface progress — it paints atomically at completion via

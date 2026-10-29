@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/publication_mesh.rs",
+  "mutation": "tests/evidence/m11-0/behaviour.oracle.patch",
+  "test": "rust/processing/tests/m11_presentation.rs",
+  "why": "Dropping the authenticated revision-local face partition must fail the hand-mesh copy invariant without an SDK or kernel mock."
+}

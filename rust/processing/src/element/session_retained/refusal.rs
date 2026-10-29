@@ -25,6 +25,8 @@ pub enum RetainedProductRefusal {
     DeadlineExceeded,
     Cancelled,
     ContractBreach,
+    AppearanceUnsupported,
+    FaceProvenanceUnproven,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +55,8 @@ impl RetainedProductRefusal {
             Self::DeadlineExceeded => "deadline_exceeded",
             Self::Cancelled => "cancelled",
             Self::ContractBreach => "contract_breach",
+            Self::AppearanceUnsupported => "appearance_unsupported",
+            Self::FaceProvenanceUnproven => "face_provenance_unproven",
         }
     }
 }
@@ -87,6 +91,10 @@ impl RetainedExecutionError {
                     });
                 common_kind_refusal(error.kind(), error.original_stop())
             }
+            Self::FaceProvenance { cause, entity } => {
+                origin = Some(RefusalOrigin { site: "faces", entity: *entity, cause });
+                Refusal::FaceProvenanceUnproven
+            }
             Self::Recipe(ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_)) => {
                 Refusal::OperationUnsupported
             }
@@ -115,6 +123,10 @@ impl RetainedExecutionError {
             Self::Stopped(ProgramStop::Cancelled) | Self::Transition(CANCELLED) => {
                 Refusal::Cancelled
             }
+            Self::Presentation { refusal, origin: declined } => {
+                origin = Some(*declined);
+                *refusal
+            }
             Self::Owner(_) | Self::Transition(_) => Refusal::ContractBreach,
         };
         (refusal, origin)
@@ -129,6 +141,7 @@ pub(super) fn common_kind_refusal(kind: Kind, stop: Option<ProgramStop>) -> Reta
         Kind::Source | Kind::Unsupported => Refusal::SourceInvalid,
         Kind::Empty => Refusal::EmptyResult,
         Kind::Incomplete => Refusal::Incomplete,
+        Kind::EmptyResult => Refusal::EmptyResult,
         Kind::DeadlineExceeded => Refusal::DeadlineExceeded,
         Kind::Cancelled => Refusal::Cancelled,
         Kind::Stopped => match stop {

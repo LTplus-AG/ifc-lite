@@ -9,8 +9,8 @@ import { runRetained } from '../../packages/cli/dist/retained/run.js';
 import { retainedReport } from '../../packages/cli/dist/retained/report.js';
 const [directory, model, output] = process.argv.slice(2);
 const engine = await validateEngine(directory);
-const outcomes = await runRetained(engine, await readFile(model));
-const expected = retainedReport(engine, outcomes, () => null);
+const { outcomes, instanceMinOccurrences } = await runRetained(engine, await readFile(model));
+const expected = retainedReport(engine, instanceMinOccurrences, outcomes, () => null);
 const obj = join(output, 'model.obj'), report = join(output, 'report.json');
 const cli = spawnSync(process.execPath, ['packages/cli/dist/index.js', 'export', model, '--format', 'obj',
   '--kernel', 'retained', '--retained-engine', directory, '--retained-report', report, '--out', obj], { encoding: 'utf8', timeout: 300000 });

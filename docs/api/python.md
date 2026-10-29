@@ -694,6 +694,8 @@ for diagnostic in report["diagnostics"]:
 The capability adapts GeoBIM's published `alignment_axes` idea through the
 canonical evaluator, rather than duplicating evaluation or sampling renderer
 Float32 lines. Source: <https://github.com/geobim-app/geobim> (MPL-2.0).
+
+Both geometry functions accept `layer_slicing=True` to slice material-layer walls; the default is `False`.
 <!-- END GENERATED: python-api -->
 
 ## Source

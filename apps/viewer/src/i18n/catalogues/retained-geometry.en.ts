@@ -13,7 +13,7 @@ import type { TranslationValue } from '../types';
  * of these strings.
  */
 export const retainedGeometryEn = {
-  'retainedGeometry.shapeOnlyReason': 'Unavailable on a Retained · shape-only model: its meshes have no openings, layers or appearance. Reload it with the exact kernel to use this.',
+  'retainedGeometry.shapeOnlyReason': 'Unavailable on a Retained · shape-only model: its meshes have no material layers yet. Reload it with the exact kernel to use this.',
 
   'retainedGeometry.chip.starting': 'Retained · shape-only · starting engine',
   'retainedGeometry.chip.running': 'Retained · shape-only · {done}/{candidates} products',
@@ -32,6 +32,13 @@ export const retainedGeometryEn = {
   'retainedGeometry.obligation.MaterialLayers': 'material layers',
   'retainedGeometry.obligation.IfcAppearance': 'appearance',
   'retainedGeometry.obligation.PersistentFaces': 'persistent faces',
+  'retainedGeometry.obligation.SurfaceNormals': 'surface normals',
+
+  'retainedGeometry.faces.hint': 'Select a published product to list its persistent faces.',
+  'retainedGeometry.faces.title': 'Persistent faces of #{id} ({count})',
+  'retainedGeometry.faces.column.key': 'Source face',
+  'retainedGeometry.faces.column.triangles': 'Triangles',
+  'retainedGeometry.faces.column.area': 'Area (m²)',
 
   'retainedGeometry.panel.title': 'Retained geometry',
   'retainedGeometry.panel.description': 'Shape-only geometry from the retained kernel. Products listed below have no geometry in the viewport, and no exact geometry stands in for them.',
@@ -84,6 +91,9 @@ export const retainedGeometryEn = {
   'retainedGeometry.code.deadline_exceeded': 'The product exceeded its time budget.',
   'retainedGeometry.code.cancelled': 'Not computed: the run stopped before this product.',
   'retainedGeometry.code.contract_breach': 'The kernel returned output that broke its contract.',
+  'retainedGeometry.code.opening_unsupported': 'Uses an opening the retained kernel cannot cut yet.',
+  'retainedGeometry.code.appearance_unsupported': 'Uses textures or indexed colour palettes, which the retained kernel does not reproduce.',
+  'retainedGeometry.code.face_provenance_unproven': 'Its faces could not be traced back to the source geometry.',
   'retainedGeometry.code.other': 'Refused with code {code}.',
 
   'retainedGeometry.setting.title': 'Geometry kernel',

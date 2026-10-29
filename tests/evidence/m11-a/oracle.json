@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/presentation/appearance_resolve.rs",
+  "mutation": "tests/evidence/m11-a/behaviour.oracle.patch",
+  "test": "rust/processing/tests/m11_a_appearance.rs",
+  "why": "Skipping the fixed opening display colour must fail the hand-authored opening-element appearance witness without an SDK or kernel mock."
+}

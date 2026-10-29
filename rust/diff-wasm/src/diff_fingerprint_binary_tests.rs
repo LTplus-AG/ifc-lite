@@ -51,3 +51,18 @@ fn issue_8042_packed_input_refuses_bad_fields_and_hole_counts() {
     assert!(decode_inputs(Value::Array(vec![Value::Object(fields)])).is_err());
     assert!(decode_inputs(Value::Array(vec![Value::Object(vec![])])).is_err());
 }
+
+#[test]
+fn issue_8303_packed_input_rejects_outer_property_set_holes() {
+    let mut value = record();
+    value["propertySets"]["holes"] = Value::Number(1.0);
+    let error = decode_inputs(Value::Array(vec![value])).unwrap_err();
+    assert_eq!(error, "expected present records in `propertySets`");
+}
+#[test]
+fn issue_8303_packed_input_rejects_outer_quantity_set_holes() {
+    let mut value = record();
+    value["quantitySets"]["holes"] = Value::Number(1.0);
+    let error = decode_inputs(Value::Array(vec![value])).unwrap_err();
+    assert_eq!(error, "expected present records in `quantitySets`");
+}

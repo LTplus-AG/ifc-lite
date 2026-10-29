@@ -374,3 +374,23 @@ test('#7377: literal, template, comment and escaped specifier traps stay opaque'
     assert.doesNotMatch(prologue(trap), /Promise\.all/, trap);
   }
 });
+
+test('#7955: the retained worker URL prologue is classifiable without counting literal contents', async () => {
+  const { chunkFormatting, prologue } = await import('./lib/tla-chunk-prologue.mjs');
+  const minified = '(async()=>{const e=new URL(`/retained-engine/pkg-retained/ifc-lite.js`,self.location.origin),t=new Map;import(e).then(async m=>{await m.__tla;return m})})();';
+  assert.equal(chunkFormatting(minified), 'minified');
+  assert.doesNotMatch(prologue(minified), /retained-engine/);
+  const good = runOn({ 'store-abc.js': TLA_CHUNK, 'retained.worker-def.js': minified });
+  assert.equal(good.status, 0, good.out);
+  const pretty = '(async () => {\n  const e = new URL(`/retained-engine/pkg-retained/ifc-lite.js`, self.location.origin);\n  import(e).then(async m => { await m.__tla; return m; });\n})();';
+  const bad = runOn({ 'store-abc.js': TLA_CHUNK, 'retained.worker-def.js': pretty });
+  assert.equal(bad.status, 1, bad.out);
+  assert.match(bad.out, /UNMINIFIED/);
+  // Neither pretty-looking text nor punctuation inside the URL changes the
+  // classification, and syntax we do not parse stays conservatively unknown.
+  assert.equal(chunkFormatting(minified.replace('/retained-engine/pkg-retained/ifc-lite.js', 'let __tla = [{  ; }];')), 'minified');
+  // eslint-disable-next-line no-template-curly-in-string -- a literal sample of minified source text, not a template
+  for (const url of ['`/${location.host}/x`', String.raw`"/x\";(){}"`, '/*(){}*/"/x"']) {
+    assert.equal(chunkFormatting(`(async()=>{const e=new URL(${url},self.location.origin);`), 'unknown');
+  }
+});

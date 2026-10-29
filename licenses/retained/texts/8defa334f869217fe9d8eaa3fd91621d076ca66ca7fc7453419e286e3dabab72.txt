@@ -1,0 +1,10 @@
+ This is a version (aka dlmalloc) of malloc/free/realloc written by
+ Doug Lea and released to the public domain, as explained at
+ http://creativecommons.org/publicdomain/zero/1.0/ Send questions,
+ comments, complaints, performance data, etc to dl@cs.oswego.edu
+ 
+ * Version 2.8.6 Wed Aug 29 06:57:58 2012  Doug Lea
+ Note: There may be an updated version of this malloc obtainable at
+ ftp://gee.cs.oswego.edu/pub/misc/malloc.c
+ Check before installing!
+ 

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/export/src/plan/add_nest.rs",
+  "mutation": "tests/evidence/export-nest-new-objects/behaviour.oracle.patch",
+  "test": "rust/export/src/plan/add_nest_tests.rs",
+  "why": "A nest that writes no relationship must fail the nesting witnesses in every schema."
+}

@@ -1,0 +1,11 @@
+--- a/packages/diff/src/prepared-model.ts
++++ b/packages/diff/src/prepared-model.ts
+@@ -33,7 +33,7 @@
+ 
+   compare(head: PreparedDiffModel<TRef>, options: DiffOptions = {}): ModelDiff<TRef> {
+     if (!this.model || !head.model) throw new Error('Prepared diff model has been disposed.');
+-    return compareWasmModels(this.model, head.model, this.rows, this.rows, options);
++    return compareWasmModels(this.model, head.model, this.rows, head.rows, options);
+   }
+ 
+   /** Idempotent; results already returned remain valid after release. */

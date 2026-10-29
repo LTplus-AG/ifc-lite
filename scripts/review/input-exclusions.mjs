@@ -28,4 +28,10 @@ export const EXCLUDED = [
   /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm|ico|parquet|bcf|woff|gif|webp)$/i,
   /(^|\/)dist\//,
   /(^|\/)api-surface\.json$/,
+  // Generated third-party licence bundles (scripts/retained-notices.mjs): the
+  // inventory manifest, its README, verbatim upstream licence texts and the
+  // concatenated THIRD_PARTY_NOTICES.txt copies. Drift is gated by
+  // `retained-notices.mjs --check`; the generator itself stays reviewed.
+  /^licenses\/retained\//,
+  /(^|\/)THIRD_PARTY_NOTICES\.txt$/,
 ];

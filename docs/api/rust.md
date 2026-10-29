@@ -20,6 +20,21 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
+## Record discovery
+
+`ifc_lite_core::is_geometry_job` admits a scanned record using its raw STEP
+keyword and bytes. It preserves schema/legacy classification and the #1910
+spatial-container exception for a present `Representation`.
+`ifc_lite_processing::discovery::Discovery` collects shared prepass spans,
+first spatial records, and type-map inputs. Native `scan_entities` decorates
+jobs and retains native metadata, property and georeferencing handling.
+
+`scan_shard_result(content, start, end, classified)` returns a non-exhaustive
+`ShardScan`: records, optional class column, handoff, refusal offsets and
+malformed-record offsets. Diagnostics remain speculative until stitching.
+The five tuple APIs remain deprecated compatibility adapters until C10;
+browser discovery migration is C4-6b.
+
 ## Placement readers
 
 Use `ifc_lite_geometry::placement::Axis2Placement::{read_3d, read_2d, read_id}`
@@ -640,7 +655,14 @@ Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 `ifc_lite_geometry::representation` is the decoder-only home of a product's
 representation chain (`Representation(6)` to `IfcProductDefinitionShape.Representations(2)`
 to `Items(3)`, and `IfcMappedItem` to `MappingSource` to `MappedRepresentation`).
-It meshes nothing and owns no cache.
+It meshes nothing and owns no cache. `ProductShape::representations()` exposes
+the decoded list in file order; `select()` applies the caller's named policy.
+The crate-private `representation/structural.rs` serves consumers that need
+less: `product_shape_id` reads identity without decoding, `rep_item_ids` yields
+references for lazy RTC sampling, and `reference_only_opening` checks the
+bounded representation list without inspecting geometry. `representation/unwrap.rs`
+contains first-item mapped/boolean probe chains with explicit caller policies;
+it does not replace the branching visitor walk.
 
 ```rust
 pub fn product_shape(element: &DecodedEntity, d: &mut EntityDecoder) -> Result<Option<ProductShape>, ShapeError>;
@@ -760,8 +782,14 @@ sticky. Source-step debits become controller state only after reply acceptance.
 The don't-bake eligibility probe accepts exactly one raw reference and decodes
 at most that member after root mapped-attempt admission. Malformed multi-slot
 Items with ignored members fall through to guarded flat materialization.
-This is neither a memory bound nor whole-product, cache-independent admission
-spanning representations; that and drawing policy remain separate #7887 work.
+These controller meters bound expanded rendering work, not memory. Whole-product,
+cache-independent admission is implemented in `representation/product_budget.rs`
+and called by `program/product/admission.rs` before rendering. It charges root
+members and repeated mapped occurrences across `Select::Meshed` representations,
+retains completed roots, and withholds the current and later roots on budget
+exhaustion. `profile_extractor.rs` uses that same admission and walks the admitted
+roots for extrusion profiles, reporting refusals through its drawing diagnostics.
+The controllers remain responsible for rendering the admitted roots.
 
 #### mesh_check (test-support)
 
@@ -864,6 +892,10 @@ preflight; a readable header does not certify a complete or valid image stream.
 ---
 
 ## ifc-lite-processing
+
+The processing `style::resolve_element_color` adapter accepts a product, a flat
+`FxHashMap<u32, [f32; 4]>` prepass colour index, and a decoder. It uses the
+canonical style-source walk before the element-keyed material fallback.
 
 Shared processing pipeline used by the native server, the FFI DLL, the Python bindings, and the WASM bindings. Parallelised with rayon on native targets.
 
@@ -1428,6 +1460,14 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
     out_ptr: *mut *mut u8, out_len: *mut usize,
 ) -> i32;
 
+/// Same, with additive flags (bit 0 enables material-layer wall slicing).
+/// Unknown flag bits return 1; the existing parse functions stay unsliced.
+pub unsafe extern "C" fn ifc_lite_parse_with_flags(
+    path_ptr: *const u8, path_len: usize,
+    opening_filter_mode: u8, flags: u32,
+    out_ptr: *mut *mut u8, out_len: *mut usize,
+) -> i32;
+
 /// Free a buffer returned by the parse calls
 pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize);
 ```
@@ -1440,9 +1480,9 @@ caller owns the following guarantees:
   writes. A null pointer or non-UTF-8 path returns `1` and writes nothing.
 - **Success (`0`).** `*out_ptr` receives a heap buffer of `*out_len` serialized
   JSON bytes. The buffer is owned by the caller from that point on.
-- **Failure.** Non-zero return codes leave the out-parameters untouched (no
-  buffer is allocated, so there is nothing to free): `1` null pointer or invalid
-  path, `2` file could not be read, `3` geometry processing panicked, `4` JSON
+- **Failure.** Non-zero return codes zero the out-parameters (no
+  buffer is allocated, so there is nothing to free): `1` null pointer, invalid
+  path, or unsupported flag bits; `2` file could not be read, `3` geometry processing panicked, `4` JSON
   serialization failed.
 - **Freeing.** Pass the exact `ptr` and `len` you received from a successful
   parse to `ifc_lite_free` **exactly once**. Do not free on a non-zero return,

@@ -1,0 +1,13 @@
+diff --git a/rust/export/src/plan/add_nest.rs b/rust/export/src/plan/add_nest.rs
+--- a/rust/export/src/plan/add_nest.rs
++++ b/rust/export/src/plan/add_nest.rs
+@@ -59,9 +59,6 @@
+ /// Adds' like containment, or an `IfcRelConnectsPortToElement`, which relates
+ /// one port to one element and so is written here.
+ pub(super) fn nest_object(emit: &mut Emit, (host, nest): (u32, Nest), object: u32, gid: GlobalId, owh: &str, requests: &mut Vec<RelRequest>) -> Result<(), String> {
+-    if true {
+-        return Ok(());
+-    }
+     match nest {
+         Nest::Nested => requests.push(RelRequest { kind: RelKind::Nests, relating: host, related: object, seed: gid }),
+         Nest::PortOf => {

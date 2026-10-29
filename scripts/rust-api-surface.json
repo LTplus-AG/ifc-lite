@@ -74,6 +74,7 @@
     "ifc_type_from_keyword": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "ifc_type_from_record": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "is_exporter_stratum_alias": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "is_geometry_job": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "is_representationless_spatial_container_by_name": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "is_simple_geometry_type": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "is_subtype_of_for_schema": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
@@ -361,6 +362,7 @@
     "PaletteBinding": "enum { Absent { map_id: u32; reason: PaletteAbsence }; Bound { face_set_id: u32; map_id: u32; palette_index: u32 } }",
     "ParseResponse": "struct { building_transform: Option<Vec<f64>>; cache_key: String; mesh_coordinate_space: Option<MeshCoordinateSpace>; meshes: Vec<MeshData>; metadata: ModelMetadata; site_transform: Option<Vec<f64>>; stats: ProcessingStats; symbolic_data: SymbolicData }",
     "PipelineDiagnostics": "struct { backstop_count: u64; batches: u64; element_count: u64; faceted_brep_ms: u64; hosts_with_openings: u64; mesh_count: u64; phase_ms: PipelinePhaseTimings; point_cache_hits: u64; point_cache_misses: u64; products_with_failures: u64; rect_fast: RectFastSummary; schema_version: u32; silent_no_ops: u64; total_csg_failures: u64; triangle_count: u64 }",
+    "PipelineDiagnosticsReport": "struct (non_exhaustive)",
     "PipelinePhaseTimings": "struct { entity_scan_ms: u64; geometry_ms: u64; lookup_ms: u64; parse_ms: u64; preprocess_ms: u64; total_ms: u64 }",
     "ProcessingRequest": "struct (non_exhaustive)",
     "ProcessingResult": "struct { building_transform: Option<Vec<f64>>; frame: MeshFrame; instances: Vec<InstanceRecord>; mesh_coordinate_space: MeshCoordinateSpace; meshes: Vec<MeshData>; metadata: ModelMetadata; site_transform: Option<Vec<f64>>; stats: ProcessingStats }",
@@ -376,6 +378,7 @@
     "Rgba": "struct([f32; 4])",
     "ShardRecords": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "ShardRefusals": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "ShardScan": "struct (non_exhaustive)",
     "SimplifiedElement": "struct { cavity_components_dropped: u32; local_indices: Vec<u32>; local_positions: Vec<f64>; render_indices: Vec<u32>; render_normals: Vec<f32>; render_origin: [f64; 3]; render_positions: Vec<f32>; tris_after: u32; tris_before: u32 }",
     "SimplifyRecordInput": "struct { indices: &'a [u32]; local_to_world: Option<[f64; 16]>; normals: &'a [f32]; origin: [f64; 3]; positions: &'a [f32] }",
     "SimplifySkip": "enum { EmptyResult; InvalidUnitScale; MissingPlacement; NoGeometry; SingularPlacement }",
@@ -447,6 +450,8 @@
     "scan_shard": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "scan_shard_classified": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "scan_shard_classified_with_refusals": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "scan_shard_result": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "scan_shard_with_diagnostics": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "scan_shard_with_refusals": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "simplify_element": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)"
   },
@@ -610,9 +615,9 @@
     "ModelOptions": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "MutationKind": "enum (non_exhaustive)",
     "MutationLog": "struct (non_exhaustive)",
-    "ObjOptions": "struct { hidden: Vec<u32>; include_normals: bool; isolated: Option<Vec<u32>> }",
+    "ObjOptions": "struct { hidden: Vec<u32>; include_normals: bool; isolated: Option<Vec<u32>>; layer_slicing: bool }",
     "ObjStats": "struct { meshes: usize; triangles: usize; vertices: usize }",
-    "ParquetBosOptions": "struct { include_geometry: bool }",
+    "ParquetBosOptions": "struct { include_geometry: bool; layer_slicing: bool }",
     "Placement": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "ProductQuantities": "struct (non_exhaustive)",
     "ProductQuantityAnalysis": "struct (non_exhaustive)",
@@ -652,7 +657,7 @@
     "TessellationQuality": "external re-export",
     "UnitReconciliation": "enum { AssumeShared; Auto; Normalize }",
     "UnitScales": "external re-export",
-    "UsdOptions": "struct { author: String; instancing: bool }",
+    "UsdOptions": "struct { author: String; instancing: bool; layer_slicing: bool }",
     "ValueKind": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "analyze_authored_quantities": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "analyze_quantities": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
@@ -714,7 +719,8 @@
   "ifc-lite-ffi": {
     "ifc_lite_free": "fn",
     "ifc_lite_parse": "fn",
-    "ifc_lite_parse_ex": "fn"
+    "ifc_lite_parse_ex": "fn",
+    "ifc_lite_parse_with_flags": "fn"
   },
   "ifc-lite-wasm": {
     "AlignmentAxisJs": "struct {  }",

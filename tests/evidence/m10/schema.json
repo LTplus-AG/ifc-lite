@@ -1,0 +1,57 @@
+{
+  "engine": "0.9.0.post1",
+  "command": [
+    "/home/louistrue/build-workers/qualification/6940-rectmerge-complete-consumers-51558969-v3/venv/bin/python",
+    "/home/louistrue/build-workers/landing-perf/m10/schema-check.py",
+    "/home/louistrue/.t3/worktrees/ifc-lite/f778-m10"
+  ],
+  "results": [
+    {
+      "file": "f-h-affine-finals.ifc",
+      "sha256": "dda650da2667daa4412f96e01271cab827d438cf311f1bb2674178722ad43d59",
+      "errors": [],
+      "roundtrip": true
+    },
+    {
+      "file": "f-h-affine-finals-adversarial.ifc",
+      "sha256": "e1a3affb656d780cfa0bf270610b1ca6bcbb0fa1f6f1ca5219f56c29bcb2fb30",
+      "errors": [
+        {
+          "attribute": "IfcCartesianTransformationOperator.ScaleGreaterZero",
+          "message": "(scl > 0.0)\n\nViolated by:\n    (-1.0 > 0.0)\n\nOn instance:\n    #30=IfcCartesianTransformationOperator3D(#27,#28,#29,-1.,#3)\n"
+        }
+      ],
+      "roundtrip": true
+    }
+  ],
+  "omittedAxis2": {
+    "operator": 38,
+    "matrix": [
+      [
+        -1.0,
+        -0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        -0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        -0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "meaning": "Axis1=-X and omitted Axis2 is a mirror; default router uses another convention"
+  }
+}

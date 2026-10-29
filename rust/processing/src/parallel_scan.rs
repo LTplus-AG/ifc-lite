@@ -228,4 +228,5 @@ mod native;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "parallel_scan_tests.rs"]
+#[allow(deprecated)] // Keep exercising tuple compatibility until C10.
 mod tests;

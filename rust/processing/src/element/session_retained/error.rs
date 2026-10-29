@@ -67,6 +67,9 @@ pub enum RetainedExecutionError {
     /// #7955 M11-F: a published triangle has no unique source face (`unattributed`/`ambiguous`).
     FaceProvenance { cause: &'static str, entity: Option<u32> },
     Stopped(ProgramStop),
+    /// A presentation slice (M11) declined to attest the product: explicit
+    /// absence with its typed origin, never a fabricated value.
+    Presentation { refusal: refusal::RetainedProductRefusal, origin: refusal::RefusalOrigin },
     // Refs #7955: D's model driver validates type-product source before admission.
     #[cfg_attr(not(test), allow(dead_code))]
     InvalidTypeSource,

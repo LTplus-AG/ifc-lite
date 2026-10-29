@@ -5418,6 +5418,79 @@ when their operations were unreachable. Gate the state as well as its entry
 points, and qualify fresh base/branch builds at the same source path; preserved
 archive mtimes can otherwise make Cargo reuse the wrong side of a comparison.
 
+### Native diff allocations and explicit retention (#8042)
+
+The boundary transport alone left native fingerprint projection and comparison
+slower than the TypeScript oracle. Ordinary Pop profiles identified eager JSON
+construction in sort comparators, repeated UTF-16/string conversions, duplicate
+canonical projections, map unions, and serialization of already-built result
+documents. Make tiebreak projection lazy, share immutable UTF-16 storage, stream
+canonical JSON into the existing hasher, reuse the paired projection, and move
+owned documents and decoded strings instead of round-tripping through serde.
+Preserve UTF-16 ordering, sparse length-check order, first-key semantics and the
+original output wire; the optimization does not change the canonical format.
+
+Verdict: native slice diagnostics improved substantially. Bounded dense transport
+puts LARGE fingerprinting inside the requested diagnostic comparison band; Haus
+fingerprinting and retained warm comparison on both fixtures still miss the
+target. Explicit internal model owners remove pack/construct/free from repeated
+comparisons. These ordinary runs are diagnostic evidence, not exclusive-host
+acceptance or a worker-pool geometry performance claim. Public one-shot calls still pay setup;
+there is no hidden identity cache. CLI and viewer callers currently compare each
+fresh fingerprint pair once, so retention is exercised by repeated-call consumers
+and the diagnostic harness rather than imposed on those one-shot lifetimes.
+
+Lesson: count projection, native compute, wire encoding, JS decoding and lifetime
+cost separately. A large native-only win does not establish end-to-end parity.
+The remaining full-path deficit needs further profiling and a separate bounded
+follow-up; do not replace the independent oracle or relax parity to meet a timing
+target. When profiling archived revisions with a shared Cargo target, refresh
+copied source mtimes and verify recompilation for every arm: one early diagnostic
+reused a stale library and was discarded before repeating the comparison.
+
+The full-model profiler then exposed GC and large transport dictionaries beyond
+native compute. An interleaved diagnostic kept the complete adapter snapshot but
+sent bounded dense chunks to the same native batch function. This reduced
+packing and native live-memory costs while preserving row order and hashes;
+sparse inputs retain whole-document validation and host length-check order.
+Final timings must not retain the temporary DTO capture used to export native
+profile slices: that capture extends a large graph's lifetime into the next call
+and can inflate GC cost. Use the non-capturing production-lifetime harness for
+end-to-end conclusions, and the slice harness only for native investigation.
+
+### Warm-call transport follow-up (#8042, 2026-10-28)
+
+Ordinary diagnostics only; measured code `625b2beb8f`, starting point
+`70847c1ccc`. Typed dictionary decoding, streamed compact result records,
+construction-time key snapshots, fused reference/Map restoration, omitted
+destination-owned native indexes and bounded component-map reservations preserve
+canonical outputs and original references. No hidden public input cache was added.
+
+With the protocol's options, conditioned public calls improved from 2.207 to
+1.258 ms on Haus and 29.994 to 18.091 ms on a changed 2,000-row LARGE slice.
+Final phase medians (Haus / slice, ms): pack 0.384 / 6.425; construct
+0.186 / 2.664; WASM compare plus encoding 0.224 / 4.425; JS decode
+0.015 / 0.169; fused restoration plus Map 0.020 / 0.191; model free
+0.128 / 1.358. Phase medians are not additive; checkpoint effects are combined,
+not isolated commit measurements.
+
+Separate full-model data-scope diagnostics: TS / Rust public / Rust retained
+were 0.185 / 0.928 / 0.195 ms on Haus and 30.786 / 144.575 / 36.012 ms
+on LARGE (17,010 rows per side). Canonical hashes matched exactly. Final-source
+validation passed native tests (129), strict workspace clippy, a WASM-inclusive
+root build, root typecheck, diff tests (527), independent-oracle raw WASM (70)
+and leak tests (12), real-fixture parity (10/10, zero skips), and API snapshot.
+Native/clippy/build receipt: `90d2cef7-219e-48ff-a52f-6aa6506d9e41`
+(later wrapper failure); remaining checks and profiles:
+`a133ce2e-3950-4496-96db-daab45598bcb` (exit 0, verified publication recovered).
+
+The user intentionally cancelled the official v3 cohort before submission:
+public warm parity remains unmet, and Pop time is reserved for a later v4
+explicit-handle protocol. There is no v3 acceptance verdict or cohort job.
+Lesson: removing result graphs helps, but retained JavaScript inputs still pay
+packing, construction and release on every public call. Explicit internal model
+retention is a different lifetime contract and cannot qualify that endpoint.
+
 ## C4-9 browser colour resolver consolidation (#7782)
 
 The browser's flat colour-map adapter now delegates to processing's canonical

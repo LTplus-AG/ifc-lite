@@ -1,0 +1,25 @@
+{
+  "source": "synthetic-live-influxdb-2-viewer",
+  "commit": "e10bf6b5cb3a5265ebb009fc8bdaf13df386a0d1",
+  "database": {
+    "mode": "binary",
+    "version": "InfluxDB v2.7.12 (git: ec9dcde5d6) build_date: 2025-05-20T22:48:39Z",
+    "sha256": "c7b2b83976f5f5971a3fee323f2f0baf6a3f9b0f692a1efadf8756da90b8766f"
+  },
+  "model": "apps/viewer/public/samples/building-architecture.ifc",
+  "modelSha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+  "latest": 22.5,
+  "unit": "°C",
+  "historySamples": 3,
+  "unmatched": 1,
+  "ambiguous": 2,
+  "queryCount": 1,
+  "preflightCount": 1,
+  "tokenPersisted": false,
+  "readTokenWriteStatus": 403,
+  "pageErrors": 0,
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  }
+}

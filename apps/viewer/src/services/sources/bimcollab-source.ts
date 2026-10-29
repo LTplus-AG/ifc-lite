@@ -39,6 +39,24 @@ export function relayOnlyFetch(origin: string, relayPath = BIMCOLLAB_RELAY_PATH)
   };
 }
 
+/**
+ * One refresh-and-retry on 401, as the BCF client does: a token without a
+ * recorded expiry is only discovered stale by the server, and its refresh
+ * token may still be valid.
+ */
+export function retryUnauthorized(fetchFn: typeof fetch, refresh: () => Promise<string | null>): typeof fetch {
+  return async (input, init) => {
+    const response = await fetchFn(input, init);
+    if (response.status !== 401) return response;
+    const freshToken = await refresh();
+    if (freshToken === null) return response;
+    await response.body?.cancel();
+    const headers = new Headers(init?.headers);
+    headers.set('Authorization', `Bearer ${freshToken}`);
+    return fetchFn(input, { ...init, headers });
+  };
+}
+
 export class BimcollabNotConnectedError extends Error {
   constructor() {
     super('Connect your BIMcollab space first: open BCF Topics, choose BCF server, pick BIMcollab and sign in. Then return here.');
@@ -99,7 +117,7 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
         key, config: session.config,
         provider: new BimcollabProvider({
           session: { spaceGuid: session.spaceGuid, spaceLabel: session.spaceLabel, getAccessToken: tokens.getAccessToken },
-          transport: new RelayBimcollabTransport(BIMCOLLAB_RELAY_PATH, this.fetchFn),
+          transport: new RelayBimcollabTransport(BIMCOLLAB_RELAY_PATH, retryUnauthorized(this.fetchFn, tokens.refreshAfterUnauthorized)),
         }),
       };
     }

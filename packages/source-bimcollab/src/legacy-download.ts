@@ -29,7 +29,10 @@ export class LegacyDownload {
       }
     }
     if (!records) throw new Error('BIMcollab legacy download: location not found in indexes 1–10.');
-    const matches = records.filter(row => row.documentNumber === documentNumber && row.versionNumber === versionNumber);
+    // Document numbers are unique per project, not per location: scope to the
+    // requested project first so two projects' `D1 v1` are never conflated.
+    const matches = records.filter(row => row.projectName === names.project
+      && row.documentNumber === documentNumber && row.versionNumber === versionNumber);
     if (matches.length !== 1) throw new Error(`BIMcollab legacy download requires one unique documentNumber + versionNumber match; found ${matches.length}.`);
     const match = matches[0]!;
     if (!match.allowDownload) throw new Error('BIMcollab does not allow downloading this document.');

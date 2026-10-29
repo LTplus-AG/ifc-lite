@@ -86,13 +86,18 @@ describe('BIMcollab source provider (fake transport only)', () => {
   });
   it('never attaches bearer credentials to a SAS URL in the concrete fetchPublic adapter', async () => {
     const { provider, ctx } = setup({ legacy: false });
-    const publicFetch = vi.fn<typeof fetch>(async (_url, init) => {
-      expect(new Headers(init?.headers).has('Authorization')).toBe(false);
-      expect(init?.credentials).toBe('omit');
+    // Pass the provider's init through untouched, so a regression that adds
+    // Authorization (or any header) to the SAS fetch is observed here.
+    const seen: unknown[] = [];
+    const publicFetch: typeof ctx.fetchPublic = async (_url, init) => {
+      seen.push(init);
       return new Response('IFC');
-    });
-    await provider.download({ ...ctx, fetchPublic: (url, init) => publicFetch(url, { signal: init?.signal, credentials: 'omit' }) }, ref);
-    expect(publicFetch).toHaveBeenCalledTimes(1);
+    };
+    await provider.download({ ...ctx, fetchPublic: publicFetch }, ref);
+    expect(seen).toHaveLength(1);
+    const init = seen[0] as Record<string, unknown> | undefined;
+    expect(init && 'headers' in init ? new Headers(init.headers as HeadersInit).has('Authorization') : false).toBe(false);
+    expect(init && 'headers' in init).toBe(false);
   });
   it('falls back on the specific 404, probes locations sequentially, caches the index and downloads numeric version', async () => {
     const { provider, ctx, fetchFn } = setup();
@@ -122,6 +127,13 @@ describe('BIMcollab source provider (fake transport only)', () => {
       const { provider, ctx } = setup({ records: [...records] });
       await expect(provider.download(ctx, ref)).rejects.toThrow(message);
     }
+  });
+  it('scopes the match to the requested project when two projects share a document number', async () => {
+    const other = { ...record, versionId: 99, projectId: 2, projectName: 'Phased' };
+    const { provider, ctx, fetchFn } = setup({ records: [other, record] });
+    expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/42'))).toBe(true);
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/99'))).toBe(false);
   });
   it('bounds location probing and refuses historical-version substitution', async () => {
     const empty = setup({ records: [] });

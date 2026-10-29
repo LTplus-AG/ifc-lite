@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import type { PluginContext } from '@ifc-lite/plugin-api';
 import type { BcfServerConfig } from '../bcf-server-config.js';
 import {
-  BimcollabNotConnectedError, ViewerBimcollabProvider, bimcollabSessionFromConfig, relayOnlyFetch,
+  BimcollabNotConnectedError, ViewerBimcollabProvider, bimcollabSessionFromConfig, relayOnlyFetch, retryUnauthorized,
 } from './bimcollab-source.js';
 
 const SPACE = '728fc6a4-92dc-4724-a4d0-fa0e4085d2ee';
@@ -88,5 +88,32 @@ describe('ViewerBimcollabProvider', () => {
     await provider.listProjects(ctx);
     assert.equal(calls[1].url, `/api/bimcollab/docs/${other}/project-structure`);
     assert.equal(calls[1].auth, `Bearer ${current.accessToken}`);
+  });
+});
+
+describe('retryUnauthorized', () => {
+  it('refreshes once on 401 and retries with the new bearer', async () => {
+    const seen: (string | null)[] = [];
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const auth = new Headers(init?.headers).get('authorization');
+      seen.push(auth);
+      return new Response(null, { status: auth === 'Bearer fresh' ? 200 : 401 });
+    }) as typeof fetch;
+    let refreshes = 0;
+    const response = await retryUnauthorized(fetchFn, async () => { refreshes++; return 'fresh'; })('/api/bimcollab/docs/x', { headers: { Authorization: 'Bearer stale' } });
+    assert.equal(response.status, 200);
+    assert.deepEqual(seen, ['Bearer stale', 'Bearer fresh']);
+    assert.equal(refreshes, 1);
+  });
+
+  it('returns the 401 untouched when no refresh is possible, and passes other statuses through', async () => {
+    let calls = 0;
+    const unauthorized = (async () => { calls++; return new Response(null, { status: 401 }); }) as typeof fetch;
+    assert.equal((await retryUnauthorized(unauthorized, async () => null)('/api/bimcollab/x')).status, 401);
+    assert.equal(calls, 1);
+    const forbidden = (async () => new Response(null, { status: 403 })) as typeof fetch;
+    let refreshed = false;
+    assert.equal((await retryUnauthorized(forbidden, async () => { refreshed = true; return 'x'; })('/api/bimcollab/x')).status, 403);
+    assert.equal(refreshed, false);
   });
 });

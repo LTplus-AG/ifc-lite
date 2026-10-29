@@ -90,6 +90,8 @@ impl IfcAPI {
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
         // Load START on the streaming pre-pass path (see build_pre_pass_once).
         self.reset_pipeline_diagnostics();
+        self.production_model.invalidate_source();
+        self.invalidate_brep_signatures();
         use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
@@ -134,12 +136,7 @@ impl IfcAPI {
         let mut site_position: Option<(u32, usize, usize)> = None;
         let mut meta_emitted = false;
 
-        // #957 / #563 single-scan hoist: the workers each re-walk the whole file
-        // on their first batch to rebuild these three per-content structures
-        // (referenced RepresentationMaps, instantiated type ids, the material-
-        // layer index). Collect the spans they need HERE, during the one scan the
-        // pre-pass already runs, then build + ship each ONCE below (`rel_associates_material`
-        // and `defines_by_type` spans are already stashed in `prepass_spans`).
+        // #957/#563: collect type/material spans in this scan, build and ship once.
         let mapped_item_spans;
         // #957/#962: IfcTypeProduct candidates (id, span, resolved type), stashed
         // here so the orphan-type-geometry pass reuses THIS scan instead of a
@@ -567,6 +564,7 @@ impl IfcAPI {
             }
         }
 
+        self.collect_pipeline_refusals(&decoder);
         // Complete event.
         let done = js_sys::Object::new();
         crate::api::set_js_prop(&done, "type", &"complete".into());

@@ -49,6 +49,23 @@ fn c4_10a_brep_cache_invalidates_colliding_ids_at_every_source_install_7782() {
     }
 }
 
+#[test]
+fn c4_10a_warm_router_reuses_brep_walk_across_batches_7782() {
+    let api = IfcAPI::new();
+    let content = brep(0, 1.0);
+    for warm in [false, true] {
+        let mut router = GeometryRouter::with_scale(1.0);
+        api.arm_batch_caches(&mut router);
+        let mut decoder = EntityDecoder::new(content.as_bytes());
+        let item = decoder.decode_by_id(8).unwrap();
+        let mesh = router.process_representation_item(&item, &mut decoder).unwrap();
+        assert!(!mesh.positions.is_empty());
+        let (hits, misses) = decoder.point_cache_stats();
+        if warm { assert_eq!(hits + misses, 0, "completed signature avoids point walk"); }
+        else { assert!(hits + misses > 0); }
+    }
+}
+
 fn run(api: &IfcAPI, content: &[u8], pre: &super::prepass_once::PrepassOnceData, jobs: &[u32]) {
     let (x,y,z) = pre.meta.frame.rtc_offset();
     api.produce_batch(content, jobs, 1.0, x,y,z, pre.meta.frame.needs_shift(),

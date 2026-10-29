@@ -1541,6 +1541,27 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
   }
 });
 
+test('C4-10a #7782: refused input attempts and distinct type/leaf records cross real WASM', () => {
+  const diagApi = new IfcAPI();
+  const source = readFileSync(join(ROOT_DIR, 'rust/processing/tests/fixtures/c4_0_refusal_parity_7782.ifc'), 'utf8')
+    .replace('ENDSEC;\nEND-ISO', "#400=IFCWALL('bad',$,$,$,1.E400,#5,#303,$,.NOTDEFINED.);\n#500=IFCBOILERTYPE('bad',$,$,$,INVALID,$,(#501),$,$,.NOTDEFINED.);\n#501=IFCREPRESENTATIONMAP(#4,#302);\nENDSEC;\nEND-ISO");
+  const bytes = new TextEncoder().encode(source);
+  try {
+    const pre = diagApi.buildPrePassOnce(bytes);
+    assert.ok(!Array.from(pre.jobs).filter((_, i) => i % 3 === 0).includes(500));
+    for (const attempts of [3, 6]) {
+      const meshes = diagApi.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
+        ...pre.rtcOffset, pre.needsShift, pre.voidKeys, pre.voidCounts, pre.voidValues,
+        pre.styleIds, pre.styleColors, pre.planeAngleToRadians);
+      meshes.free();
+      const diag = diagApi.getPipelineDiagnostics();
+      assert.equal(diag.schemaVersion, 2);
+      assert.equal(diag.refusedInputElements, attempts);
+      assert.equal(diag.refusedPrepassRecords, 3);
+    }
+  } finally { diagApi.clearPrePassCache(); diagApi.free(); }
+});
+
 // ===== setEntityIndex (production load-start reset path, #1551) =====
 // The `getPipelineDiagnostics` test above only exercises the buildPrePassOnce
 // reset. `setEntityIndex` is the OTHER load-start reset path: the geometry

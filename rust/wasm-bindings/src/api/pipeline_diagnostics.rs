@@ -77,14 +77,14 @@ impl IfcAPI {
     /// element's own scope saw a refusal; earlier jobs have already drained.
     pub(crate) fn collect_pipeline_refusals(&self, decoder: &ifc_lite_core::EntityDecoder) -> bool {
         let ids = decoder.take_refused_record_ids();
-        let refused = !ids.is_empty();
+        if ids.is_empty() { return false; }
         let mut records = self.pipeline_refusals.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         records.extend(ids);
         self.pipeline_diagnostics.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .refused_prepass_records = records.len() as u64;
-        refused
+        true
     }
 
     pub(crate) fn note_refused_input(&self) {

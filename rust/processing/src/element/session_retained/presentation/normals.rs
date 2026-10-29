@@ -12,8 +12,10 @@ pub(super) fn prepare(product: &mut ShapeOnlyProduct, context: &Context<'_>)
         mesh::validate(part)?;
         require_frame(part)?;
         let mut normals = Vec::new();
-        product._storage.reserve(context.resources, &mut normals, part.indices.len() * 3)?;
-        normals.resize(part.indices.len() * 3, 0.);
+        let count = part.indices.len().checked_mul(3)
+            .ok_or_else(|| RetainedExecutionError::Stopped(ifc_lite_geometry::resource::overflow()))?;
+        product._storage.reserve(context.resources, &mut normals, count)?;
+        normals.resize(count, 0.);
         part.normals = Some(normals);
     }
     Ok(())
@@ -36,6 +38,7 @@ pub(super) fn apply_plane(part: &mut super::super::publication::ShapePart, from_
 }
 
 fn require_frame(part: &super::super::publication::ShapePart) -> Result<(), RetainedExecutionError> {
+    // M10 handoff: mirrored publication must flip winding AND normals together.
     if !mesh::positive_frame(part)? {
         return Err(RetainedExecutionError::Unsupported(super::super::Unsupported::
             RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));

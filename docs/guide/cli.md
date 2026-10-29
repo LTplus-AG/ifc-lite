@@ -1826,5 +1826,5 @@ and areas; unproven faces refuse `face_provenance_unproven`. Color, material and
 channels remain reserved for their independently qualified presentation slices.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°
-guard relative to each triangle; caps and sharp bends remain creased. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
+guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored frames refuse `incomplete` until winding and normals can be flipped together. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
 products; unsupported tessellated bodies continue to refuse explicitly.

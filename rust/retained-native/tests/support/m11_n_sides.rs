@@ -2,9 +2,7 @@
 //! #7955: every F-A source side, including its unsmoothed terminal corners.
 use ifc_lite_processing::element::retained_runtime::ShapeOnlyProduct;
 use ifc_lite_retained_native::oracle::normals::{self, Surface};
-#[path = "../../examples/compare/metrics.rs"]
-#[allow(dead_code)]
-mod metrics;
+use super::fi::metrics;
 
 pub fn check(product: &ShapeOnlyProduct, source: &[Surface], limit: f64) {
     let mut counts = vec![(0_usize,0_usize);source.len()];

@@ -13,7 +13,6 @@ struct Corner {
     normal: [f64; 3],
     angle: f64,
     face: u32,
-
 }
 
 fn invalid() -> RetainedExecutionError {

@@ -227,19 +227,35 @@ fn m11_n_7955_zero_area_cap_corner_uses_the_verified_plane() {
 
 #[test]
 fn m11_n_7955_curved_slivers_have_neither_weight_nor_crease_authority() {
-    // Local cylinder-wall tangent patch, with three good supporting triangles.
-    // The thin triangle has a 0.1 micrometre altitude and 8/16 degree noise.
-    // All its vertices have good same-face neighbours (the third is duplicated
-    // in a good triangle's plane); it must use their mean even beyond the guard.
-    for degrees in [0_f64,8.,16.] {
-        let h = 1e-7;
-        let z = h * degrees.to_radians().tan();
-        let p = part(vec![0.,0.,0., 1.,0.,0., 0.5,h,z, 0.,1.,0., 1.,1.,0., 0.5,1.,z],
-            vec![0,1,3, 1,4,3, 2,4,5, 0,1,2],vec![4;4]);
+    for degrees in [8_f64,18.] {
+        let mut p = prism(72);
+        let h = 1e-8;
+        // Split the first cylinder wall quad with a vertex almost on its
+        // vertical edge. The last triangle's facet tilts 8/18 degrees, while
+        // the two non-slivers retain the cylinder's 2.5-degree secant normal.
+        p.positions.extend([1.-h*degrees.to_radians().tan(),h,1.]);
+        p.indices[3..6].copy_from_slice(&[0,73,144]);
+        p.indices.extend([73,72,144, 72,0,144]);
+        p.revision_local_faces.extend([4,4]);
         let output = normals(&p);
-        for n in output.chunks_exact(3) {
-            assert!(length(cross([n[0],n[1],n[2]],[0.,0.,1.])) < 1e-6,
-                "{degrees} degree sliver must not drag neighbours or retain its own normal: {n:?}");
+        let angle = |n: &[f64]| libm::atan2(n[1],n[0]).to_degrees();
+        let last = output.len()-9;
+        // Sliver corners use the vertex/face mean. Its interior corner has
+        // only the two reliable side facets: exactly the 2.5-degree secant.
+        assert!((angle(&output[last+6..last+9])-2.5).abs() < 1e-4,
+            "{degrees}-degree sliver retained its own normal: {:?}",&output[last+6..last+9]);
+        // Every wall corner still meets the analytic radial oracle, including
+        // the two good triangles adjacent to that noisy sliver.
+        for (corner,n) in output.chunks_exact(3).enumerate() {
+            if p.revision_local_faces[corner/3] != 4 {continue;}
+            let i = p.indices[corner] as usize*3;
+            let radial = unit([p.positions[i],p.positions[i+1],0.]).unwrap();
+            assert!(libm::atan2(length(cross([n[0],n[1],n[2]],radial)),dot([n[0],n[1],n[2]],radial)) < 0.0873);
+        }
+        // At the interior vertex, the two reliable triangle corners must not
+        // be dragged towards the sliver, even while it is within the guard.
+        for corner in [5,p.indices.len()-4] {
+            assert!((angle(&output[corner*3..corner*3+3])-2.5).abs() < 1e-4);
         }
     }
 }

@@ -5,7 +5,7 @@ use ifc_lite_processing::element::retained_runtime::{ShapeOnlyProduct, ShapePart
 use ifc_lite_retained_native::oracle::normals;
 #[path = "../../examples/compare/metrics.rs"]
 #[allow(dead_code)] // Reuse the existing frame transform; other measurements are unrelated here.
-mod metrics;
+pub(super) mod metrics;
 use metrics::transform;
 
 pub const MODEL: &str = "tests/fixtures/synthetic-retained/f-i-presentation.ifc";

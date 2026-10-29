@@ -1,7 +1,7 @@
 ISO-10303-21;
 /* SPDX-License-Identifier: MPL-2.0 */
 HEADER;
-FILE_DESCRIPTION(('SYNTHETIC UNREVIEWED; M6 issue 7955'),'2;1');
+FILE_DESCRIPTION(('SYNTHETIC M6; issue 7955'),'2;1');
 FILE_NAME('f-f-halfspaces.ifc','2026-10-28T00:00:00',('ifc-lite'),(''),'synthetic generator','ifc-lite','MPL-2.0');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;

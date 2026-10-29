@@ -5409,6 +5409,46 @@ when their operations were unreachable. Gate the state as well as its entry
 points, and qualify fresh base/branch builds at the same source path; preserved
 archive mtimes can otherwise make Cargo reuse the wrong side of a comparison.
 
+### Native diff allocations and explicit retention (#8042)
+
+The boundary transport alone left native fingerprint projection and comparison
+slower than the TypeScript oracle. Ordinary Pop profiles identified eager JSON
+construction in sort comparators, repeated UTF-16/string conversions, duplicate
+canonical projections, map unions, and serialization of already-built result
+documents. Make tiebreak projection lazy, share immutable UTF-16 storage, stream
+canonical JSON into the existing hasher, reuse the paired projection, and move
+owned documents and decoded strings instead of round-tripping through serde.
+Preserve UTF-16 ordering, sparse length-check order, first-key semantics and the
+original output wire; the optimization does not change the canonical format.
+
+Verdict: native slice diagnostics improved substantially. Bounded dense transport
+puts LARGE fingerprinting inside the requested diagnostic comparison band; Haus
+fingerprinting and retained warm comparison on both fixtures still miss the
+target. Explicit internal model owners remove pack/construct/free from repeated
+comparisons. These ordinary runs are diagnostic evidence, not exclusive-host
+acceptance or a worker-pool geometry performance claim. Public one-shot calls still pay setup;
+there is no hidden identity cache. CLI and viewer callers currently compare each
+fresh fingerprint pair once, so retention is exercised by repeated-call consumers
+and the diagnostic harness rather than imposed on those one-shot lifetimes.
+
+Lesson: count projection, native compute, wire encoding, JS decoding and lifetime
+cost separately. A large native-only win does not establish end-to-end parity.
+The remaining full-path deficit needs further profiling and a separate bounded
+follow-up; do not replace the independent oracle or relax parity to meet a timing
+target. When profiling archived revisions with a shared Cargo target, refresh
+copied source mtimes and verify recompilation for every arm: one early diagnostic
+reused a stale library and was discarded before repeating the comparison.
+
+The full-model profiler then exposed GC and large transport dictionaries beyond
+native compute. An interleaved diagnostic kept the complete adapter snapshot but
+sent bounded dense chunks to the same native batch function. This reduced
+packing and native live-memory costs while preserving row order and hashes;
+sparse inputs retain whole-document validation and host length-check order.
+Final timings must not retain the temporary DTO capture used to export native
+profile slices: that capture extends a large graph's lifetime into the next call
+and can inflate GC cost. Use the non-capturing production-lifetime harness for
+end-to-end conclusions, and the slice harness only for native investigation.
+
 ## C4-9 browser colour resolver consolidation (#7782)
 
 The browser's flat colour-map adapter now delegates to processing's canonical

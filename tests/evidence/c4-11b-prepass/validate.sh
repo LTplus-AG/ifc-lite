@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run ONLY through ifc-fleet. No nested admission, retries or guard overrides.
 set -euo pipefail
-phase=${1:?native or wasm}
+phase=${1:?native, proof or wasm}
 # Reuse the host's verified fixture cache without changing its files. Only
 # missing, gitignored links in this disposable checkout are created.
 export IFC_C4_FIXTURE_CACHE="${IFC_C4_FIXTURE_CACHE:-$HOME/build-workers/ifc-lite/tests/models}"
@@ -17,13 +17,15 @@ if cache.is_dir():
             dest.symlink_to(source.resolve())
 PYFIX
 node scripts/fixtures/fetch-fixtures.mjs
-if [[ "$phase" == native ]]; then
+if [[ "$phase" == native || "$phase" == proof ]]; then
+  if [[ "$phase" == native ]]; then
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace
+  fi
   cargo test -p ifc-lite-wasm --lib c4_11b_metadata_handoff_allocations -- --nocapture
-  for spec in 'c4-11b c4_11b_concurrent_batches' 'c4-11b-prepass c4_11b_metadata'; do
-    read -r lane filter <<< "$spec"
-    patch="tests/evidence/$lane/behaviour.oracle.patch"
+  for spec in 'c4-11b c4_11b_concurrent_batches' 'c4-11b-prepass c4_11b_metadata' 'c4-11b-prepass c4_11b_mid_scan_meta meta'; do
+    read -r lane filter mutation <<< "$spec"
+    patch="tests/evidence/$lane/${mutation:-behaviour}.oracle.patch"
     git apply --reverse --check "$patch"
     git apply --reverse "$patch"
     trap 'git apply "$patch"' EXIT
@@ -37,7 +39,7 @@ if [[ "$phase" == native ]]; then
     grep -q "^test result: FAILED" .c4-oracle.log
     rm .c4-oracle.log
     [[ $status == 101 ]] || { echo "oracle did not fail with Rust test failure: $status"; exit 1; }
-    echo "C4_ORACLE_CAUGHT $lane"
+    echo "C4_ORACLE_CAUGHT $lane/${mutation:-behaviour}"
   done
 elif [[ "$phase" == wasm ]]; then
   # Temporary source export lives in this managed task checkout, shares only

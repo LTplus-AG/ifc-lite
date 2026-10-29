@@ -10303,6 +10303,25 @@
     "AutodeskService: interface",
     "createAutodeskService: function"
   ],
+  "@ifc-lite/source-bimcollab": [
+    "BIMCOLLAB_MANIFEST: const",
+    "BimcollabHttpError: class",
+    "BimcollabProvider: class",
+    "BimcollabProviderOptions: interface",
+    "BimcollabSession: interface",
+    "BimcollabTransport: interface",
+    "DirectBimcollabTransport: class",
+    "RelayBimcollabTransport: class",
+    "isBimcollabServerUrl: function",
+    "spaceIdFromAccessToken: function",
+    "spaceLabelFromServerUrl: function"
+  ],
+  "@ifc-lite/source-bimcollab/lite": [
+    "BIMCOLLAB_MANIFEST: const",
+    "isBimcollabServerUrl: function",
+    "spaceIdFromAccessToken: function",
+    "spaceLabelFromServerUrl: function"
+  ],
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"

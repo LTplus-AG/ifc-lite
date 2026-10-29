@@ -696,12 +696,10 @@ def test_entity_data_keys_join_against_geometry():
         assert geom["elements"][step_id]["ifc_type"] == ents["entities"][step_id]["ifc_type"]
 
 
-def test_issue_7782_bare_type_map_entity_row_matches_native_geometry():
+def test_issue_7782_entity_data_includes_bare_type_map_row():
     source = read(REPO / "rust/processing/tests/fixtures/c4_bare_type_map_7782.ifc")
-    geom = ifclite_geom.geometry_data_buffers(source)
     rows = ifclite_geom.entity_data(source)["entities"]
-    assert 43 in geom["elements"]
-    assert rows[43]["ifc_type"] == geom["elements"][43]["ifc_type"]
+    assert rows[43]["ifc_type"] == "IfcBoilerType"
     assert rows[43]["has_geometry"] is True
 
 

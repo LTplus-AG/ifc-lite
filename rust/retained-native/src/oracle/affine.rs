@@ -301,10 +301,19 @@ fn nonrigid(m:&Frame) -> bool {
 }
 fn final_items(d:&mut EntityDecoder<'_>,id:u32) -> Option<Vec<(u32,Frame,Frame,bool)>> {
     let p=d.decode_by_id(id).ok()?;
-    let world=placement(d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
-    let reps=d.decode_by_id(p.ref_at(slot::IfcProduct::REPRESENTATION)?).ok()?.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS)?;
+    let mut reps=Vec::new();
+    if p.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
+        for id in p.ref_list_at(slot::IfcTypeProduct::REPRESENTATION_MAPS)? {
+            let map=d.decode_by_id(id).ok()?;
+            reps.push((map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?,IDENTITY));
+        }
+    } else {
+        let world=placement(d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
+        let ids=d.decode_by_id(p.ref_at(slot::IfcProduct::REPRESENTATION)?).ok()?.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS)?;
+        reps.extend(ids.into_iter().map(|id|(id,world)));
+    }
     let mut stack=Vec::new();
-    for id in reps {let rep=d.decode_by_id(id).ok()?;if rep.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER)==Some("Body") {
+    for (id,world) in reps {let rep=d.decode_by_id(id).ok()?;if rep.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER)==Some("Body") {
         for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS)?.into_iter().rev() {stack.push((id,world,IDENTITY,0,false));}
     }}
     let mut result=Vec::new();let mut work=0;
@@ -325,6 +334,8 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
 }
 /// Unsupported oracle families return None, never an invented geometric baseline.
 fn expected_decoded(d:&mut EntityDecoder<'_>,units:f64,id:u32,has_openings:bool) -> Option<Vec<AffineExpectation>> {
+    // M9 owns type-map placement/quantities. Classification still gates winding.
+    if d.decode_by_id(id).ok()?.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {return None}
     let items=final_items(d,id)?;
     let mut result=Vec::new();
     for (id,world,mapping_matrix,affine_final) in items {

@@ -265,3 +265,17 @@ fn m10_oracle_preregistered_mirror_roundoff_factor() {
     e.sigma_max=1.+2e-12;
     assert!(!e.chord_admitted());
 }
+
+#[test]
+fn m10_signed_volume_classification_includes_mirrored_orphan_type_maps() {
+    // #7955: the signed-volume gate cannot depend on IfcProduct's Representation slot.
+    #[allow(dead_code)]
+    #[path = "../../geometry/tests/support/m9_type_fixtures.rs"]
+    mod fixtures;
+    let source=ifc_lite_core::SourceBundle::new(fixtures::mirrored().into_bytes());
+    let mut oracle=affine::AffineOracle::new(&source);
+    assert!(oracle.is_affine_final(20));
+    assert!(oracle.expected(20).is_none(),"M9 owns the independent type-map volume oracle");
+    let source=ifc_lite_core::SourceBundle::new(fixtures::SOURCE.as_bytes().to_vec());
+    assert!(!affine::AffineOracle::new(&source).is_affine_final(20));
+}

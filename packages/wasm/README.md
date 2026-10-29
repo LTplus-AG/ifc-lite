@@ -465,7 +465,7 @@ handle and collection in `finally` blocks. Positions, smoothed corner normals an
 origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
 Z-up metres. Each mesh takes its part's resolved appearance colour (`IfcAppearance`) and the authored
 metallic/roughness finish, falling back to the type default only for a part that carries no
-appearance; the shape-only marker still applies.
+appearance. The event carries `final` when its obligations are empty, otherwise the shape-only marker.
 The returned summary counts candidates, publications, refusals, restarts and
 worker acquisitions, plus controller product/acquisition milliseconds. A warm
 run acquires no new worker and reuses its completed qualification. `session.free()`

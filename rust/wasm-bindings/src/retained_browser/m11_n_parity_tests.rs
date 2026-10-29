@@ -77,7 +77,13 @@ export function m11VerifyNormals(actual,expected,model,kinds,tolerances) {
     if(!part.worldFromObject.every((v,j)=>Math.abs(v-reference.frame[j])<=1e-12*Math.max(1,Math.abs(reference.frame[j]))))fail('frame parity');
     if(same(part.positions,reference.positions)&&same(part.indices,reference.indices)&&same(part.worldFromObject,reference.frame)){
       counts.identicalMeshes++;
-      if(digest(part.normals)!==digest(reference.normals))fail('normal digest on byte-identical mesh');
+      if(digest(part.normals)!==digest(reference.normals)){
+        const differences=[];
+        for(let j=0;j<part.normals.length&&differences.length<8;j++)
+          if(!Object.is(part.normals[j],reference.normals[j]))differences.push({index:j,browser:part.normals[j],native:reference.normals[j]});
+        console.log('M11_N_DIGEST_DIFFERENCE '+JSON.stringify({model,id:expected.id,part:i,differences}));
+        fail('normal digest on byte-identical mesh');
+      }
     }else counts.differentMeshes++;
     const browser=field(part,kinds[i]),native=field(reference,reference.surfaceIndices);
     covers(browser,native,expected.sourceSurfaces,'browser',counts,tolerances,fail);

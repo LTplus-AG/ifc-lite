@@ -63,7 +63,8 @@ pub(super) fn corner_normals(part: &ShapePart, resources: &OwnedResourceContext,
         for (i, &vertex) in triangle.iter().enumerate() {
             let a = unit(edges[i])?;
             let b = unit(edges[(i + 2) % 3].map(|v| -v))?;
-            let angle = length(cross(a, b)).atan2(dot(a, b));
+            // Host libc and wasm atan2 differ by ulps on identical meshes.
+            let angle = libm::atan2(length(cross(a, b)), dot(a, b));
             if !angle.is_finite() || angle <= 0. { return Err(invalid()); }
             let head = &mut heads[vertex as usize];
             corners.push(Corner { normal, angle, face: part.revision_local_faces[t], next: *head });
@@ -75,7 +76,7 @@ pub(super) fn corner_normals(part: &ShapePart, resources: &OwnedResourceContext,
         .ok_or_else(|| RetainedExecutionError::Stopped(resource::overflow()))?;
     let mut normals = Vec::new();
     storage.reserve(resources, &mut normals, count)?;
-    let threshold = CREASE_RADIANS.cos();
+    let threshold = libm::cos(CREASE_RADIANS);
     for (index, own) in corners.iter().enumerate() {
         if let Some(normal) = planes[index/3] {
             normals.extend_from_slice(&normal);

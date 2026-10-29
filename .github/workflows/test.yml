@@ -955,6 +955,10 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #8112: full inversion deletes the new helper and prevents test loading.
+          # Keep the API; weaken fingerprint identity to key equality instead.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
           # #7714: whole-file inversion removes the new module/test wiring,
           # collecting no certificate tests. Keep every API and test; disable
           # only cross-decoder cache reuse. Real concurrent success/decline
@@ -969,9 +973,13 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
+          # #7782 C4-10a: retain cache/report APIs and test wiring; suppress
+          # input-refusal counting so the per-attempt witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-10a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs)
           # #7782 C4-7a-R: keep the shared plan and mutate its browser class
           # decision; the mode witness must observe the wrong class.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-r/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-r/behaviour.oracle.patch'; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-r/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-r/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-7a-r/behaviour.oracle.patch --test rust/processing/tests/type_geometry_plan_7782.rs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-x/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-7a-x/behaviour.oracle.patch)
@@ -2377,6 +2385,7 @@ jobs:
             scripts/generate-coverage-ledger.test.mjs \
             scripts/lib/coderabbit-review-state.test.mjs \
             scripts/lib/count-ratchet.test.mjs \
+            scripts/lib/diff-derived-geometry.test.mjs \
             scripts/lib/crates-io.test.mjs \
             scripts/lib/module-size-ratchet.test.mjs \
             scripts/lib/npm-pack-output.test.mjs \
@@ -2661,6 +2670,7 @@ jobs:
         run: pnpm test:wasm-contract
       - name: Rust diff real IFC parity (#8042)
         if: matrix.shard == 4
+        timeout-minutes: 5
         run: node scripts/diff-real-fixture-parity.mjs
       # The snap cache reconstructs model edges from the mesher's per-triangle
       # segments, so its correctness depends on geometry the unit fixtures can

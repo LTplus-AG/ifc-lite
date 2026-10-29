@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { DiffOptions, EntityFingerprint, ModelDiff } from './types.js';
-import { packDocument, unpackDocument } from './wasm-binary.js';
+import { packStrings, unpackDocument } from './wasm-binary.js';
 import { fingerprintColumns } from './wasm-columns.js';
 import { diffModelConstructor } from './wasm-runtime.js';
 import { restoreDiffReferences, type IndexedDiff } from './wasm-result.js';
@@ -14,15 +14,15 @@ export function compareWithWasm<TRef = unknown>(base: Iterable<EntityFingerprint
   const headRows = Array.from(head);
   const create = (entities: readonly EntityFingerprint<TRef>[]) => {
     const c = fingerprintColumns(entities);
-    return Model.fromPacked(packDocument(c.strings), c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
+    return { model: Model.fromPacked(packStrings(c.strings), c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs), keys: c.keys };
   };
   const baseModel = create(baseRows);
   try {
     const headModel = create(headRows);
     try {
-      return compareWasmModels(baseModel, headModel, baseRows, headRows, options);
-    } finally { headModel.free(); }
-  } finally { baseModel.free(); }
+      return compareWasmModels(baseModel.model, headModel.model, baseRows, headRows, options, [baseModel.keys, headModel.keys]);
+    } finally { headModel.model.free(); }
+  } finally { baseModel.model.free(); }
 }
 
 /** Shared comparison path for transient public calls and explicit internal owners. */
@@ -31,6 +31,7 @@ export function compareWasmModels<TRef>(
   headModel: InstanceType<ReturnType<typeof diffModelConstructor>>,
   baseRows: readonly EntityFingerprint<TRef>[], headRows: readonly EntityFingerprint<TRef>[],
   options: DiffOptions,
+  keys: readonly [readonly string[], readonly string[]],
 ): ModelDiff<TRef> {
   const raw = unpackDocument(baseModel.comparePacked(headModel, {
     scope: options.scope,
@@ -50,5 +51,5 @@ export function compareWasmModels<TRef>(
     ...(options.excludeTypes === undefined ? {} : { excludeTypes: [...options.excludeTypes] }),
     ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
   })) as IndexedDiff;
-  return restoreDiffReferences(raw, baseRows, headRows);
+  return restoreDiffReferences(raw, baseRows, headRows, keys);
 }

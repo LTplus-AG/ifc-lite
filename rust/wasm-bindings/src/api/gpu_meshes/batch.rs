@@ -183,37 +183,7 @@ impl IfcAPI {
         // keeps every cut regardless of a concurrent display build.
         router.set_skip_small_cuts(self.skip_small_cuts());
 
-        // Arm content-dedup against the per-worker shared cache so byte-identical
-        // geometry (e.g. Tekla parts the exporter failed to share via
-        // IfcMappedItem) is meshed ONCE across batches, not once per batch.
-        {
-            let mut slot = self
-                .cached_item_dedup
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let cache = slot
-                .get_or_insert_with(GeometryRouter::new_dedup_cache)
-                .clone();
-            router.enable_content_dedup_shared(cache);
-        }
-
-        // Arm the shared IfcMappedItem source cache (#1623) against the per-worker
-        // cache so a RepresentationMap source shared across owning elements is
-        // meshed ONCE across batches, not once per batch. Held on the IfcApi like
-        // the item-dedup cache above (one per worker session). Keep a clone for the
-        // Phase 3 don't-bake finalize below (sub-threshold occurrences recover flat
-        // from this registry).
-        let mapped_item_cache = {
-            let mut slot = self
-                .cached_mapped_item
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let cache = slot
-                .get_or_insert_with(GeometryRouter::new_mapped_item_cache)
-                .clone();
-            router.enable_shared_mapped_item_cache(cache.clone());
-            cache
-        };
+        let mapped_item_cache = self.arm_batch_caches(&mut router);
 
         // #1623 Phase 3 "don't-bake": arm the batch router in BATCH-LOCAL mode when
         // the partitioned path asked for it AND a plan is installed. Gated on
@@ -397,6 +367,7 @@ impl IfcAPI {
         // Process only the entities specified in jobs_flat — every job runs
         // THE canonical per-element producer (`ifc_lite_processing::element`),
         // the same code the native pipeline runs.
+        self.collect_pipeline_refusals(&decoder);
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
                 break;
@@ -414,6 +385,7 @@ impl IfcAPI {
             // marshalling cost across ~60-110 K jobs. produce_element_meshes
             // takes `&DecodedEntity`, so we deref the Arc at the call site.
             let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
+                self.record_input_refusals(&decoder, false);
                 continue;
             };
             // Schema-resolved, like the native pre-pass at
@@ -470,11 +442,13 @@ impl IfcAPI {
                     ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
                 );
                 if rep_map_ids.is_empty() {
+                    self.record_input_refusals(&decoder, router.length_unit_refused());
                     continue;
                 }
                 let type_plan = self.get_or_build_type_geometry_plan(content, &mut decoder);
                 let rep_maps = type_plan.maps_for(id, &rep_map_ids);
                 if rep_maps.is_empty() {
+                    self.record_input_refusals(&decoder, router.length_unit_refused());
                     continue;
                 }
                 ElementJobKind::TypeProduct { rep_maps }
@@ -499,7 +473,11 @@ impl IfcAPI {
                 &mut decoder,
                 &router,
             );
-            let Ok(produced) = produced else { batch_refused += 1; continue };
+            let Ok(produced) = produced else {
+                self.record_input_refusals(&decoder, router.length_unit_refused());
+                batch_refused += 1;
+                continue;
+            };
 
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);
@@ -520,6 +498,9 @@ impl IfcAPI {
                     .geometry_closure
                     .map_or(0, |c| c.bits()),
             });
+            // Finish resolution can re-decode refused items too. Drain the whole
+            // element scope only after the join, before the next job starts.
+            self.record_input_refusals(&decoder, router.length_unit_refused());
         }
 
         // Surface refused products and the opening / CSG diagnostics. The
@@ -609,6 +590,7 @@ impl IfcAPI {
         // already hoisted here), so its cumulative point-cache stats ARE this
         // batch's faceted-brep memoization tally.
         let (point_cache_hits, point_cache_misses) = decoder.point_cache_stats();
+        self.collect_pipeline_refusals(&decoder);
         self.record_pipeline_batch(
             batch_elements,
             batch_meshes,
@@ -947,3 +929,7 @@ mod tests;
 #[cfg(test)]
 #[path = "batch_parity_tests.rs"]
 mod parity;
+
+#[cfg(test)]
+#[path = "c4_10a_tests.rs"]
+mod c4_10a_tests;

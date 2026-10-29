@@ -9,6 +9,7 @@
 
 mod affinity_chunks;
 mod batch;
+mod batch_caches;
 mod partitioned_batch;
 mod batch_from_source;
 pub(in crate::api) mod batch_host;
@@ -38,3 +39,4 @@ fn scan_columnar_index(content: &[u8]) -> ifc_lite_core::ColumnarEntityIndex {
 
 #[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
 pub(crate) use batch_partition::{is_instancing_candidate, INSTANCE_MIN_OCCURRENCES};
+

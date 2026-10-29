@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Typed origins retained until the diagnostic boundary; no prose classification.
 use super::super::session_protocol::WorkError;
-use super::runtime::RuntimeFault;
+use super::runtime::{RuntimeFault, RuntimeFaultKind};
 use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReceiptFailure {
@@ -145,6 +145,13 @@ impl RetainedExecutionError {
         if let Self::Opening { inner, .. } = self { return inner.controller_cancelled(); }
         use ifc_lite_geometry::program::transactions::TransactionFailureKind as Kind;
         use ifc_lite_geometry::document::RetainedRefusal;
+        // A worker resource limit is raised before a request is sent or between
+        // complete pull-based mesh reads, after the worker released its mesh;
+        // it is a settled refusal. A worker that died doing so is still charged
+        // by retirement provenance (model.rs), never by this classification.
+        if matches!(self, Self::Runtime(fault) if fault.kind == RuntimeFaultKind::ResourceLimit) {
+            return true;
+        }
         matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_)
             | Self::DeadlineExceeded
             | Self::Unsupported(_) | Self::InvalidTypeSource

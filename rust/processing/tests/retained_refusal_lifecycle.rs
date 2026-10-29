@@ -52,7 +52,7 @@ impl NumericalReceipt for Receipt {
     }
 }
 #[derive(Clone, Copy)]
-enum LateReply { Transport, Kernel, DeadReceipt, HealthyReceipt }
+enum LateReply { Transport, Kernel, DeadReceipt, HealthyReceipt, ResourceSettled, ResourceDead }
 #[derive(Clone, Copy)]
 enum ReplyFault { None, InputPreparation, ForeignAdmission }
 struct Peer(Domain, usize, Option<LateReply>, ReplyFault);
@@ -69,6 +69,12 @@ impl AsyncRetainedExecutor for Peer {
         let Invocation::Construction(request) = call else { panic!("only host construction is admitted") };
         assert_eq!(request.recipe().solid_id(), 19);
         self.0.0.calls.set(self.0.0.calls.get() + 1);
+        if let Some(reply @ (LateReply::ResourceSettled | LateReply::ResourceDead)) = self.2 {
+            // A worker-side mesh budget refusal (e.g. "mesh exceeds max_bytes"):
+            // the worker released its mesh and stays healthy unless it died.
+            if matches!(reply, LateReply::ResourceDead) { self.0.retire(); }
+            return Err(RuntimeFault::resource_limit("mesh exceeds max_bytes"));
+        }
         if let Some(reply) = self.2 {
             // #7955: invoke has actually started before the product deadline.
             // A blocking native transport can return long after that deadline.
@@ -77,7 +83,8 @@ impl AsyncRetainedExecutor for Peer {
             match reply {
                 LateReply::Transport => return Err(RuntimeFault::transport("crash after deadline")),
                 LateReply::Kernel => return Err(RuntimeFault::kernel(8, "trap after deadline")),
-                LateReply::DeadReceipt | LateReply::HealthyReceipt => {}
+                LateReply::DeadReceipt | LateReply::HealthyReceipt
+                    | LateReply::ResourceSettled | LateReply::ResourceDead => {}
             }
         }
         let frame = request.payload();
@@ -294,5 +301,24 @@ fn issue_7955_abandoned_foreign_receipt_is_a_fault_not_a_free_controller_cancel(
     assert_eq!((summary.published, summary.restarts, domains.len()), (0,3,4));
     assert_eq!(summary.by_code.get("contract_breach"), Some(&4));
     assert!(domains.iter().all(|d| d.incarnation().is_none() && d.0.live.get() == 0));
+    assert_exhausted(&outcomes[4..]);
+}
+
+#[test]
+fn issue_7955_settled_worker_resource_limits_keep_the_healthy_worker() {
+    let (summary, outcomes, domains) = late_reply_run(LateReply::ResourceSettled);
+    assert_eq!((summary.restarts, domains.len()), (0, 1), "a settled resource refusal is not a fault");
+    assert_eq!(domains[0].0.retired.get(), 0);
+    assert!(domains[0].incarnation().is_some());
+    for outcome in &outcomes {
+        let ProductOutcome::Refused { message, .. } = outcome else { panic!("over-budget mesh must refuse") };
+        assert!(!message.contains("worker restart budget exhausted"));
+    }
+}
+
+#[test]
+fn issue_7955_worker_that_dies_on_a_resource_limit_is_still_charged() {
+    let (summary, outcomes, domains) = late_reply_run(LateReply::ResourceDead);
+    assert_eq!((summary.restarts, domains.len()), (3, 4), "an independently dead domain stays charged");
     assert_exhausted(&outcomes[4..]);
 }

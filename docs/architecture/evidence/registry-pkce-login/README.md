@@ -43,8 +43,8 @@ part of this evidence directory.
 
 The companion implementation is published on
 [`codex/registry-browser-pkce` at `8f25007`](https://github.com/zahmadsaleem/ifcx-oci/tree/8f250077797b06c0902248a837e6fd7095b815bf).
-Its [OAuth contract](https://github.com/zahmadsaleem/ifcx-oci/blob/8f250077797b06c0902248a837e6fd7095b815bf/OAUTH.md)
-defines an eight-hour default session and an optional 30-day remembered session.
+That version supports an eight-hour default session and an optional 30-day
+remembered session.
 
 The following screenshot was captured in the companion registry chat's real
 browser verification, with isolated demo accounts and **Remember me for 30 days**

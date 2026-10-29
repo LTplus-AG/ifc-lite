@@ -1,13 +1,11 @@
-diff --git a/rust/processing/src/style/element_color.rs b/rust/processing/src/style/element_color.rs
-index e3ca6a23ad..c74f6856fc 100644
 --- a/rust/processing/src/style/element_color.rs
 +++ b/rust/processing/src/style/element_color.rs
 @@ -27,7 +27,7 @@ pub fn resolve_element_color(
                  shape, &|id| geometry_styles.contains_key(&id), decoder,
              )
          })
--        .and_then(|source| geometry_styles.get(&source).copied())
-+        .and_then(|_source| None::<[f32; 4]>)
+-        .and_then(|_source| None::<[f32; 4]>)
++        .and_then(|source| geometry_styles.get(&source).copied())
          .or_else(|| geometry_styles.get(&entity.id).copied())
  }
  

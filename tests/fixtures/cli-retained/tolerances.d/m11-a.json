@@ -1,0 +1,6 @@
+{
+  "appearanceRgbaVsExactUlps": 0,
+  "appearanceMaterialNameVsExact": "equal",
+  "appearanceSyntheticRgbaAbsolute": 1e-6,
+  "appearanceExactComparison": "gated where exact emits the same (product, geometry_item_id); unmatched keys are reported"
+}

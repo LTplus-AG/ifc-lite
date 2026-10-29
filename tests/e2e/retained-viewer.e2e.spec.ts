@@ -10,6 +10,7 @@ import type { LoadTraceSnapshot } from '../../packages/load-trace/src';
 
 const WALL = 'rust/geometry/tests/fixtures/issue_098_wall_W.ifc';
 const MAPPED = 'rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc';
+const PIXEL = 'tests/fixtures/synthetic-retained/f-m11a-pixel.ifc';
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
 // Trace DOM snapshots add work to the Cancel latency sample; keep real UI/Worker
 // assertions and failure screenshots, without tracing this timing-sensitive file.
@@ -102,6 +103,54 @@ test.describe('retained viewer acceptance', () => {
     if (process.env.IFCLITE_VIEWER_OUT) {
       await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'positive.png') });
     }
+  });
+
+  test('M11-A: retained meshes carry their authored colour and the canvas shows it', async ({ page }) => {
+    // Hand-authored in generate-appearance.py: an opaque red box and an opaque yellow material wall.
+    const oracle = JSON.parse(readFileSync('tests/fixtures/synthetic-retained/f-m11a-pixel.oracle.json', 'utf8')) as
+      { products: { role: string; id: number; rgba: number[] }[] };
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(resolve(PIXEL));
+    await complete(page, true);
+    const colours = await page.evaluate(() => {
+      const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+      const model = [...state.models.values()][0];
+      return (model?.geometryResult?.meshes ?? []).map(m => ({ id: state.resolveGlobalIdFromModels(m.expressId)?.expressId, color: [...m.color] }));
+    });
+    for (const product of oracle.products) {
+      const mesh = colours.find(m => m.id === product.id);
+      expect(mesh, product.role).toBeDefined();
+      product.rgba.forEach((v, i) => expect(mesh!.color[i]).toBeCloseTo(v, 5));
+    }
+    // Pixel probe: shaded opaque faces keep the authored hue, so red and yellow pixels must reach the canvas;
+    // a default-grey retained view (the shape-only output before M11-A) has neither. The renderer draws on its
+    // own frames, so poll the canvas instead of trusting the first screenshot after the load completes.
+    const hues = async () => {
+      await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+      const png = (await page.locator('canvas').first().screenshot()).toString('base64');
+      return page.evaluate(async data => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${data}`;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width; canvas.height = image.height;
+        const context = canvas.getContext('2d')!;
+        context.drawImage(image, 0, 0);
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let red = 0, yellow = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          const [r, g, b] = [pixels[i], pixels[i + 1], pixels[i + 2]];
+          if (r > 60 && r > 2.2 * g && r > 2.2 * b) red++;
+          else if (r > 60 && g > 60 && r > 2.5 * b && g > 2.5 * b) yellow++;
+        }
+        return { red, yellow };
+      }, png);
+    };
+    await expect.poll(async () => (await hues()).red, { timeout: 45_000, intervals: [1000] }).toBeGreaterThan(100);
+    const counts = await hues();
+    await record('appearance', counts);
+    if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'appearance.png') });
+    expect(counts.yellow).toBeGreaterThan(100);
   });
 
   test('a retained federated add is refused before any SDK request', async ({ page }) => {

@@ -26,7 +26,7 @@ fn m6_consumed_host_never_decodes_a_later_operand() {
         "#9356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);\n#356=IFCBOOLEANRESULT(.DIFFERENCE.,#9356,#999999);");
     for (label,text) in [("plain",SOURCE),("chained",chained.as_str())] {
         let (trace,result)=walk_with(text,1011,true);
-        let error=result.expect_err(label).error;
+        let error=result.expect_err(label);
         assert_eq!(error.kind(),ifc_lite_geometry::program::transactions::TransactionFailureKind::EmptyResult,"{label}: {error:?}");
         assert_eq!(error.origin_view().map(|(site,entity,cause)|(site,entity,cause)),Some(("halfspace_clip",Some(314),"consumed")),"{label}");
         assert!(!trace.decoded.contains(&999999),"{label}: later operand decoded");

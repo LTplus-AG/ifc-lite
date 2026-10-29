@@ -131,7 +131,8 @@ fn halfspace_dispatch_validates_boxed_and_bounded_source() {
             if let Err(e)=program.accept(reply,&router){break e.error;}
         };
         assert_eq!(error.kind(),TransactionFailureKind::Source);
-        assert_eq!(error.origin_view(),Some(("boolean_second_operand",Some(9),"recipe")));
+        // A boxed halfspace delegates to the plane path (opaque source error); the bounded path records its own recipe origin.
+        assert_eq!(error.origin_view(),Some(("boolean_second_operand",Some(9),if kind=="IFCBOXEDHALFSPACE"{"opaque"}else{"recipe"})));
     }
 }
 

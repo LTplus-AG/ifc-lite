@@ -55,7 +55,7 @@ fn product_completion_keeps_presentation_obligations() {
             Requirement::OpeningClosure,
             Requirement::MaterialLayers,
             Requirement::IfcAppearance,
-            Requirement::PersistentFaces,
+            Requirement::PersistentFaces, Requirement::SurfaceNormals,
         ]
     );
 }

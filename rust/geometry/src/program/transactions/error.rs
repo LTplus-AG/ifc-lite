@@ -20,6 +20,7 @@ pub enum TransactionFailureKind {
     Empty,
     OperationUnsupported,
     DeadlineExceeded,
+    EmptyResult,
 }
 #[derive(Debug)]
 pub struct TransactionError(RetainedFailure);
@@ -64,6 +65,7 @@ impl TransactionError {
             FailureSite::BooleanOperator => "boolean_operator",
             FailureSite::BooleanFirstOperand => "boolean_first_operand",
             FailureSite::BooleanSecondOperand => "boolean_second_operand",
+            FailureSite::BooleanStep => "boolean_step",
             FailureSite::ProductPlacement => "product_placement",
             FailureSite::MappingPlacement => "mapping_placement",
             FailureSite::TypeMapPlacement => "type_map_placement",
@@ -100,6 +102,7 @@ impl TransactionError {
                         | OriginCause::Structure(StructuralReason::UnsupportedProduct)
                         | OriginCause::Processor(_),
                     ) => Kind::OperationUnsupported,
+                    Some(OriginCause::Boolean(super::logical::failure::BooleanReason::EmptyHost)) => Kind::EmptyResult,
                     _ => Kind::Source,
                 }
             }

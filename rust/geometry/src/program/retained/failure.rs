@@ -32,6 +32,8 @@ pub(in crate::program) enum FailureSite {
     BooleanOperator,
     BooleanFirstOperand,
     BooleanSecondOperand,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    BooleanStep,
     ProductPlacement,
     MappingPlacement,
     TypeMapPlacement,
@@ -73,6 +75,8 @@ pub(in crate::program) enum BooleanReason {
     UnknownOperator,
     OperandAttributeMissing,
     OperandReferenceRequired,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    EmptyHost,
 }
 #[derive(Debug)]
 pub(in crate::program) enum OriginCause {

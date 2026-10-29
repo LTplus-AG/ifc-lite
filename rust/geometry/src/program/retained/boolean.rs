@@ -42,6 +42,8 @@ pub(in crate::program) fn boolean_operation(inputs: [LogicalRetainedValue; 2], o
     let slot = next_slot(inputs[0].slot.program)?;
     let identity = crate::math::mat4::col_major_array(&nalgebra::Matrix4::identity());
     let value = LogicalRetainedValue {
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        bounds: bounds::boolean_bounds(&inputs, operation),
         definition: LogicalRetainedDefinition::Operation(slot), slot,
         length_unit_scale: inputs[0].length_unit_scale, contract: inputs[0].contract,
         object_frame: inputs[0].object_frame,

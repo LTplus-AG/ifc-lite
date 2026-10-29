@@ -137,7 +137,7 @@ fn recompute_reason(mesh: &Mesh, flipped: bool) -> NormalProvenance {
 /// inherits its underlying style (#913 §2.7); else the material cursor; else
 /// the element colour.
 #[allow(clippy::too_many_arguments)] // canonical precedence and one collection cursor
-fn color(
+pub(super) fn color(
     job: &AssemblyJob<'_>,
     id: u32,
     fallback: [f32; 4],

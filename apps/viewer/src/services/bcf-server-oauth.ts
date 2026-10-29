@@ -15,6 +15,7 @@
 import { requireSecureOAuthUrl, requireSecureTokenUrl } from './bcf-server-config.js';
 import type { BcfServerConfig } from './bcf-server-config.js';
 import { completeSignIn, loadApi } from './bcf-server-session.js';
+import { resolveTokenRelayUrl, withTokenRelay } from './bcf-token-relay.js';
 
 /** Path the popup returns to; must match what OAuth apps register. */
 export const BCF_OAUTH_REDIRECT_PATH = '/oauth/bcf/callback';
@@ -36,6 +37,8 @@ export interface BcfOAuthPreparation {
   clientSecret: string;
   /** Redirect URI the authorization request named; the exchange must repeat it. */
   redirectUri: string;
+  /** Same-origin token relay the code exchange goes through; '' = direct. */
+  tokenRelay: string;
 }
 
 export interface PrepareBcfOAuthOptions {
@@ -56,6 +59,13 @@ export interface PrepareBcfOAuthOptions {
    * ids to application developers.
    */
   missingClientIdMessage?: string;
+  /**
+   * Same-origin path of the server-held token relay (`/api/bcf/oauth/token`)
+   * for a vendor app that is a CONFIDENTIAL client. The code exchange and
+   * every later refresh of the session go through it, and the browser holds
+   * no client secret (`bcf-token-relay.ts`).
+   */
+  tokenRelay?: string;
 }
 
 /**
@@ -78,6 +88,19 @@ export async function prepareBcfOAuth(
     throw new Error(
       `This sign-in returns to ${redirectOrigin}, not to ${window.location.origin}. Open the viewer at ${redirectOrigin} to sign in.`,
     );
+  }
+  const tokenRelay = options.tokenRelay?.trim() ?? '';
+  if (tokenRelay) {
+    resolveTokenRelayUrl(tokenRelay);
+    // The relay injects the client it holds. A secret here would be one
+    // the browser should never have had, and a missing id would send the
+    // flow to dynamic registration, minting a client the relay does not hold.
+    if (options.clientSecret?.trim()) {
+      throw new Error('A sign-in through the token relay must not carry a client secret.');
+    }
+    if (!options.clientId?.trim()) {
+      throw new Error('A sign-in through the token relay needs the client id the relay holds.');
+    }
   }
 
   const api = await loadApi();
@@ -123,6 +146,7 @@ export async function prepareBcfOAuth(
     clientId,
     clientSecret,
     redirectUri,
+    tokenRelay,
   };
 }
 
@@ -130,7 +154,8 @@ export async function prepareBcfOAuth(
  * Second half of the browser OAuth sign-in: validate the popup's callback
  * URL (origin, provider error, state, code), exchange the code, resolve
  * the identity, and persist the session. The client id/secret are stored
- * so token refreshes can authenticate.
+ * so token refreshes can authenticate; a relayed sign-in stores the relay
+ * instead of a secret, so refreshes take the same route.
  */
 export async function completeBcfOAuth(
   preparation: BcfOAuthPreparation,
@@ -143,16 +168,26 @@ export async function completeBcfOAuth(
     expectedRedirectOrigin: new URL(redirectUri).origin,
     expectedState: preparation.state,
   });
-  const token = await api.exchangeAuthorizationCode({
+  const grant = {
     tokenUrl: preparation.tokenUrl,
     code,
     redirectUri,
     codeVerifier: preparation.codeVerifier,
-    clientId: preparation.clientId,
-    clientSecret: preparation.clientSecret || undefined,
-  });
+  };
+  const { result: token, tokenRelay } = await withTokenRelay(
+    preparation.tokenRelay,
+    // The relay adds the client id and secret it holds.
+    (fetchFn) => api.exchangeAuthorizationCode({ ...grant, fetchFn }),
+    () =>
+      api.exchangeAuthorizationCode({
+        ...grant,
+        clientId: preparation.clientId,
+        clientSecret: preparation.clientSecret || undefined,
+      }),
+  );
   return completeSignIn(preparation.serverUrl, token, {
     clientId: preparation.clientId,
     clientSecret: preparation.clientSecret,
+    tokenRelay,
   });
 }

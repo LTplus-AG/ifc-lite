@@ -32,6 +32,38 @@ export function automaticBatchOrigin(meshes: readonly MeshData[]): [number, numb
     : [0, 0, 0];
 }
 
+/**
+ * Per-call memo of topology verdicts, keyed by mesh then by origin. The scan is
+ * O(triangles) and one append asks the same (mesh, origin) question from the
+ * input validation and again from bucket routing, so the caller creates one
+ * memo per append and threads it through; nothing outlives that call.
+ * `scans` counts real scans (cache misses), `hits` the verdicts served from it.
+ */
+export class TopologyMemo {
+  scans = 0;
+  hits = 0;
+  private readonly verdicts = new Map<MeshData, Map<string, boolean>>();
+
+  preserves(mesh: MeshData, origin: readonly [number, number, number]): boolean {
+    const key = `${origin[0]},${origin[1]},${origin[2]}`;
+    let perMesh = this.verdicts.get(mesh);
+    if (!perMesh) { perMesh = new Map(); this.verdicts.set(mesh, perMesh); }
+    let verdict = perMesh.get(key);
+    if (verdict !== undefined) this.hits++;
+    else {
+      this.scans++;
+      verdict = originPreservesTriangleTopology([mesh], origin);
+      perMesh.set(key, verdict);
+    }
+    return verdict;
+  }
+
+  /** Same contract as `originPreservesTriangleTopology`, memoized per mesh. */
+  all(meshes: readonly MeshData[], origin: readonly [number, number, number]): boolean {
+    return meshes.every((mesh) => this.preserves(mesh, origin));
+  }
+}
+
 /** Whether an f64 rebase followed by the real f32 upload retains every valid triangle. */
 export function originPreservesTriangleTopology(
   meshes: readonly MeshData[],
@@ -77,12 +109,15 @@ export function topologySafeBatchOrigin(
   inherited: [number, number, number] | undefined,
   shared: [number, number, number] | undefined,
   routing: [number, number, number] | undefined = undefined,
+  memo?: TopologyMemo,
 ): [number, number, number] | undefined {
+  const preserves = (origin: readonly [number, number, number]): boolean =>
+    memo ? memo.all(meshes, origin) : originPreservesTriangleTopology(meshes, origin);
   for (const requested of [inherited, shared, routing]) {
-    if (requested && originPreservesTriangleTopology(meshes, requested)) return requested;
+    if (requested && preserves(requested)) return requested;
   }
   const automatic = automaticBatchOrigin(meshes);
-  if (originPreservesTriangleTopology(meshes, automatic)) return automatic;
+  if (preserves(automatic)) return automatic;
   // #6515: a wide mesh can contain valid tiny triangles near its local origin.
   // Recentering it rounds those vertices together even though its original
   // f32 frame still preserves them. Try one authored frame, validated against
@@ -90,5 +125,5 @@ export function topologySafeBatchOrigin(
   // of all frames. GPU high/low origin lanes must remain finite too (#5010).
   const authored: [number, number, number] = meshes[0]?.origin ?? [0, 0, 0];
   return authored.every((axis) => Number.isFinite(Math.fround(axis)))
-    && originPreservesTriangleTopology(meshes, authored) ? authored : undefined;
+    && preserves(authored) ? authored : undefined;
 }

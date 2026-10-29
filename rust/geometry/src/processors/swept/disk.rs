@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    profiles::ProfileProcessor, scale_segments, Error, Mesh, Point3, Result, TessellationQuality,
+    profiles::ProfileProcessor, Error, Mesh, Point3, Result, TessellationQuality,
     Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -303,7 +303,7 @@ impl SweptDiskSolidProcessor {
             return Ok(None);
         }
 
-        let segments = scale_segments(24, 8, 96, quality);
+        let segments = quality.swept_disk_segments(radius * decoder.length_unit_scale());
         Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments }))
     }
 }

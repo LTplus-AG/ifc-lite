@@ -51,7 +51,7 @@ export async function parseGraph(input: unknown, options: GraphImportOptions): P
   if (quads.length > maxQuads) throw new Error('Graph exceeds the quad limit');
   // N-Quads retains graph names, blank nodes, repeated predicates and literal metadata.
   const writer = new Writer({ format: 'N-Quads' }); writer.addQuads(quads);
-  const graph = await new Promise<string>((resolve, reject) => writer.end((error, value) => error ? reject(error) : resolve(value)));
+  const graph = await new Promise<string>((resolve, reject) => writer.end((error, value) => error ? reject(error) : resolve(value ?? '')));
   if (new TextEncoder().encode(graph).byteLength > maxBytes) throw new Error('Serialized graph exceeds the byte limit');
   return { graph, format: 'application/n-quads', quadCount: quads.length };
 }

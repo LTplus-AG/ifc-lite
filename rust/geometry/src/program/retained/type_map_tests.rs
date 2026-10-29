@@ -21,7 +21,7 @@ fn h2a2_owned_type_map_keeps_late_mapping_origin_class_and_fallback_colour() {
     assert_eq!(binding.fallback_color,Some([0.2,0.3,0.4,1.]));
     assert_eq!(plan.remaining, vec![RetainedRequirement::ProductPlacement,
         RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
-        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces]);
+        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals]);
 }
 #[test]
 fn h2a2_type_map_source_runs_before_late_origin_refusal_even_when_empty() {

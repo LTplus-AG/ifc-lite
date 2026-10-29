@@ -12,13 +12,13 @@ const LINE: u32 = 1;
 const CIRCLE: u32 = 2;
 const ARC: u32 = 3;
 
-pub(super) struct Curve {
+pub(crate) struct Curve {
     pub kind: u32,
     pub values: [f64; 12],
 }
 
 impl Curve {
-    fn reversed(mut self) -> Self {
+    pub(in crate::document) fn reversed(mut self) -> Self {
         if self.kind == LINE {
             for axis in 0..3 {
                 self.values.swap(axis, axis + 3);
@@ -30,7 +30,7 @@ impl Curve {
         self
     }
 
-    fn endpoints(&self) -> ([f64; 2], [f64; 2]) {
+    pub(in crate::document) fn endpoints(&self) -> ([f64; 2], [f64; 2]) {
         let v = &self.values;
         if self.kind == LINE {
             return ([v[0], v[1]], [v[3], v[4]]);
@@ -45,7 +45,7 @@ impl Curve {
         (at(v[10]), at(v[10] + v[11]))
     }
 
-    fn twice_area(&self) -> f64 {
+    pub(in crate::document) fn twice_area(&self) -> f64 {
         let (a, b) = self.endpoints();
         if self.kind == LINE {
             a[0] * b[1] - b[0] * a[1]
@@ -136,7 +136,7 @@ fn is_rectangle(curves: &[Curve]) -> bool {
     })
 }
 
-fn curve(
+pub(in crate::document) fn curve(
     segment: &AnalyticCurveSegment,
     anchor: [f64; 3],
     units: f64,

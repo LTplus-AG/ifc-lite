@@ -260,7 +260,8 @@ describe('IDS report output is unchanged by the information-validation kind (#63
       'IDS report: Design IDS',
       'Checked 5 · Passed 3 · Failed 2 · 60% passed',
       'Validation run: 2026-01-15T10:00:00.000Z',
-      'Walls', 'Every wall', 'Checked 2 · Passed 1 · Failed 1 · 50%',
+      // #8204: a fully counted specification adds its requirement checks; Slabs is partial and keeps the entity rate.
+      'Walls', 'Every wall', 'Checked 2 · Passed 1 · Failed 1 · 1/2 checks passed (50%)',
       'Fire rating', 'Check Fire rating', 'Checked 2 · Passed 1 · Failed 1 · 50%',
       'Slabs', 'Checked 3 · Passed 2 · Failed 1 · 66%',
       'Load bearing', 'Check Load bearing', 'Checked 3 · Passed/failed unavailable (partial report)',

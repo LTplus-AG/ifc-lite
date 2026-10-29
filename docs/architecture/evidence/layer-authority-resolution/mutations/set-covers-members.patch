@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/attribute-path.ts a/packages/extensions/src/authority/attribute-path.ts
+index 13ff2dc350..3e9e90f7f1 100644
+--- b/packages/extensions/src/authority/attribute-path.ts
++++ a/packages/extensions/src/authority/attribute-path.ts
+@@ -70,7 +70,7 @@ function segmentMatches(pattern: CapabilityTargetSegment, segment: string): bool
+ export function targetMatchesAttribute(target: CapabilityTarget, attributeKey: string): boolean {
+   if (target.isUniversalWildcard) return true;
+   const path = attributeSelectorPath(attributeKey);
+-  if (!path || target.segments.length !== path.length) return false;
++  if (!path || target.segments.length > path.length) return false;
+   return target.segments.every((pattern, i) => segmentMatches(pattern, path[i]));
+ }
+ 

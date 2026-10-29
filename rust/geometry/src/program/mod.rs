@@ -10,6 +10,8 @@ mod inner;
 // Keep the construction-only surface private until that consumer is reviewed.
 #[cfg_attr(any(not(test), not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))), allow(dead_code))]
 mod retained;
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub(crate) use retained::bounds;
 mod inner_cache;
 mod item;
 mod layers;

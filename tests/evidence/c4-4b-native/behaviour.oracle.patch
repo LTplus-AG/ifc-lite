@@ -1,0 +1,11 @@
+--- a/rust/processing/src/processor/pass.rs
++++ b/rust/processing/src/processor/pass.rs
+@@ -295,7 +295,7 @@
+     let geometry_guard = geometry_span.clone().entered();
+ 
+     while chunk_start < total_jobs {
+-        if cancelled(req) && false {
++        if cancelled(req) {
+             break;
+         }
+         let chunk_end = (chunk_start + current_chunk_size).min(total_jobs);

@@ -38,27 +38,42 @@ export interface BcfServerPreset {
 }
 
 /**
- * OAuth public client this deployment holds with a named vendor, so its users
+ * OAuth client this deployment holds with a named vendor, so its users
  * sign in without ever seeing a client id. Read from the allowlisted build env:
  *
  *   VITE_BCF_APP_<PRESET>_CLIENT_ID      required; absent = no app
  *   VITE_BCF_APP_<PRESET>_REDIRECT_URI   only when the vendor registered a
  *                                        different callback than this
  *                                        origin's `/oauth/bcf/callback`
+ *   VITE_BCF_APP_BIMCOLLAB_TOKEN_RELAY   BIMcollab only: same-origin path of
+ *                                        the server token relay, e.g.
+ *                                        `/api/bcf/oauth/token`
  *
  * `<PRESET>` is the preset id upper-cased with `-` as `_`, e.g.
- * `VITE_BCF_APP_BIMCOLLAB_CLIENT_ID`. Vendor apps are OAuth public clients:
- * no client secret is read from `VITE_*` or sent from the browser. PKCE and
- * the registered redirect URI protect the authorization code. Confidential
- * clients require a server-side token exchange and are not supported here.
+ * `VITE_BCF_APP_BIMCOLLAB_CLIENT_ID`. No client secret is ever read from
+ * `VITE_*` or sent from the browser; PKCE and the registered redirect URI
+ * protect the authorization code. A public client exchanges the code in the
+ * browser. A CONFIDENTIAL client (BIMcollab's production app) sets the token
+ * relay: the code exchange and every refresh go to
+ * `server/bcf/oauth-token-relay.ts`, which adds the secret from the
+ * server-only `BCF_BIMCOLLAB_CLIENT_SECRET` (#4919). The relay only accepts
+ * BIMcollab token endpoints, which is why only that preset reads the key.
  */
 export interface BcfVendorApp {
   clientId: string;
   /** Absolute redirect URI registered with the vendor; empty = the default. */
   redirectUri: string;
+  /** Same-origin token relay path for a confidential client; empty = none. */
+  tokenRelay: string;
 }
 
-function publicVendorEnv(presetId: string): readonly [string | undefined, string | undefined] | null {
+type VendorEnv = readonly [
+  clientId: string | undefined,
+  redirectUri: string | undefined,
+  tokenRelay?: string | undefined,
+];
+
+function publicVendorEnv(presetId: string): VendorEnv | null {
   switch (presetId) {
     case 'aconex-americas':
       return [
@@ -104,6 +119,7 @@ function publicVendorEnv(presetId: string): readonly [string | undefined, string
       return [
         import.meta.env.VITE_BCF_APP_BIMCOLLAB_CLIENT_ID,
         import.meta.env.VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI,
+        import.meta.env.VITE_BCF_APP_BIMCOLLAB_TOKEN_RELAY,
       ];
     case 'bimdata':
       return [
@@ -155,6 +171,7 @@ export function vendorAppForPreset(presetId: string): BcfVendorApp | null {
   return {
     clientId,
     redirectUri: (values[1] ?? '').trim(),
+    tokenRelay: (values[2] ?? '').trim(),
   };
 }
 
@@ -243,9 +260,11 @@ export const BCF_SERVER_PRESETS: readonly BcfServerPreset[] = [
     // IdentityServer also refuses the password and client-credentials grants
     // for such a client (`unauthorized_client`, measured on
     // playground.bimcollab.com against the published playground client), so
-    // the browser's PKCE public-client flow through a deployment-held app is
-    // the only sign-in that can work — and the reason for
-    // `vendorAppForPreset`.
+    // the browser's PKCE authorization-code flow through a deployment-held
+    // app is the only sign-in that can work — and the reason for
+    // `vendorAppForPreset`. IFClite's production app is a confidential
+    // client, so its code exchange and refreshes run through the server
+    // token relay (`VITE_BCF_APP_BIMCOLLAB_TOKEN_RELAY`, #4919).
     vendorIssuedClientsOnly: true,
     note: 'Your space URL, e.g. https://myspace.bimcollab.com. The same address you give Solibri or a BCF manager.',
   },

@@ -123,6 +123,10 @@ impl RetainedExecutionError {
             Self::Stopped(ProgramStop::Cancelled) | Self::Transition(CANCELLED) => {
                 Refusal::Cancelled
             }
+            Self::Presentation { refusal, origin: declined } => {
+                origin = Some(*declined);
+                *refusal
+            }
             Self::Owner(_) | Self::Transition(_) => Refusal::ContractBreach,
         };
         (refusal, origin)

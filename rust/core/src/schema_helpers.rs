@@ -124,9 +124,21 @@ pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
 /// retain the same classification as the name-only schema helpers.
 #[inline]
 pub fn is_geometry_job(type_name: &str, entity_bytes: &[u8]) -> bool {
+    geometry_job_reason(type_name, entity_bytes).is_some()
+}
+
+/// Geometry admission reason: `Some(true)` for name-based geometry,
+/// `Some(false)` for a spatial container with a Representation, or `None`.
+#[inline]
+pub fn geometry_job_reason(type_name: &str, entity_bytes: &[u8]) -> Option<bool> {
     let (geometry, spatial) = geometry_flags_by_name(type_name);
-    geometry
-        || (spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::REPRESENTATION.index()))
+    if geometry {
+        Some(true)
+    } else if spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::REPRESENTATION.index()) {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 fn compute_has_geometry(upper: &str) -> bool {

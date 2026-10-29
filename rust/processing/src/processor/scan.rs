@@ -163,10 +163,10 @@ impl Scan<'_, '_> {
         if self.stash_span(class, start, end) {
             return;
         }
-        if let Some(ifc_type) = self.discovery.observe(self.content, class, id, type_name, start, end) {
+        if let Some((ifc_type, by_name)) = self.discovery.observe(self.content, class, id, type_name, start, end) {
             // Spatial exception jobs already have a hierarchy row (#1910).
             if let Some(quick) = self.out.quick.as_mut() {
-                if ifc_lite_core::has_geometry_by_name(type_name) {
+                if by_name {
                     quick.note_element(id, type_name);
                 }
             }

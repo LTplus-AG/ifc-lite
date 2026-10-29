@@ -319,6 +319,11 @@ fn c4_5_geometry_job_spatial_and_raw_schema_contract() {
                 expected,
                 "{name}/{representation}"
             );
+            assert_eq!(
+                geometry_job_reason(name, bytes.as_bytes()),
+                expected.then(|| has_geometry_by_name(name)),
+                "{name}/{representation}: reason"
+            );
             assert_eq!(is_geometry_job(&name.to_ascii_lowercase(), bytes.as_bytes()), expected);
         }
     }

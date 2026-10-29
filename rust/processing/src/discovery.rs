@@ -74,8 +74,8 @@ impl Discovery {
         }
     }
 
-    /// Observe one record in file order. Returns the type of a geometry job;
-    /// callers retain the raw keyword when decorating metadata (#1910).
+    /// Observe one record in file order. Returns the geometry job type and
+    /// whether name-based geometry admits it (spatial exceptions are false).
     #[inline(always)]
     pub fn observe(
         &mut self,
@@ -85,7 +85,7 @@ impl Discovery {
         type_name: &str,
         start: usize,
         end: usize,
-    ) -> Option<IfcType> {
+    ) -> Option<(IfcType, bool)> {
         self.prepass_spans.stash_class(class, id, start, end);
         if matches!(
             class,
@@ -108,8 +108,8 @@ impl Discovery {
             }
             _ => {}
         }
-        if ifc_lite_core::is_geometry_job(type_name, &content[start..end]) {
-            Some(ifc_lite_core::ifc_type_from_keyword(type_name))
+        if let Some(by_name) = ifc_lite_core::geometry_job_reason(type_name, &content[start..end]) {
+            Some((ifc_lite_core::ifc_type_from_keyword(type_name), by_name))
         } else {
             self.note_type_geometry(content, class, id, type_name, start, end);
             None

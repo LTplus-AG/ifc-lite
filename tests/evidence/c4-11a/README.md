@@ -93,15 +93,25 @@ checks pass locally. The mutation reverse-applies and rejects forward
 application. Both committed WASM declarations match main; the contract entry
 point stays at its unchanged 2,095-line budget.
 
-The parent directed this refresh to be pushed and marked ready after these
-local gates: GitHub CI is the merge gate and must be fully green. Both fleet
-hosts initially refused admission for storage headroom. Pop later admitted the
-one pending native request at source `50f8b0cb44`: workspace all-target clippy
-passed, and workspace tests are running. Oracle execution and fresh retained/
-default WASM runtime contracts remain pending. No full-test, mutation-execution
-or WASM pass is claimed. Original request/job IDs, receipt paths, and remaining
-commands are recorded in validation.json; inspect that request rather than
-resubmitting it. No foreign output or job was reclaimed,
+The parent directed this refresh to be pushed and marked ready after the
+local gates: GitHub CI is the merge gate and must be fully green. Post-push
+native confirmation at `50f8b0cb44` passed workspace all-target clippy and
+`cargo test --workspace`. All C4-11a/C4-10a witnesses, C4-0's 15 committed
+fixtures, and the native ratchets passed. Successful harness result lines
+report 7,515 passes and 48 ignored cases, including doctests and child-test
+output; optional-fixture early returns remain coverage gaps. Exact fixture
+gaps and immutable receipt/log hashes are in validation.json. The native log
+and receipt were recovered to a verified evidence manifest without replaying
+the project command.
+
+The parent's later oracle-selector and style-finish resend fixes are preserved
+at `15c10854f4`; Rust and Cargo/toolchain inputs still match the native source.
+Pop's oracle/WASM follow-up preflight was refused as capacity changed. One
+bounded admission waiter remains for combined oracle execution and fresh
+retained/default WASM confirmation. Those checks are not reported as passes.
+Original request/job IDs, receipt paths and remaining commands are recorded in
+validation.json; inspect submitted requests rather than resubmitting them.
+No foreign output or job was reclaimed,
 interrupted or signalled, and no guard was relaxed.
 
 Historical qualification remains available at the previousEvidence source pin

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Experimental read-only InfluxDB 2 query contract for #8090. */
+/** Bounded read-only InfluxDB 2 query contract for #8090. */
 export interface InfluxSelection {
   url: string;
   org: string;
@@ -26,9 +26,11 @@ function literal(value: string): string {
 }
 
 export function queryRequest(selection: InfluxSelection) {
-  const url = new URL(selection.url);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
-    throw new Error('Use an HTTPS InfluxDB base URL without credentials, query, or fragment');
+  let url: URL;
+  try { url = new URL(selection.url); }
+  catch { throw new Error('Invalid InfluxDB base URL'); }
+  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && url.hostname === 'localhost')) || url.username || url.password || url.search || url.hash) {
+    throw new Error('Use an HTTPS (or http://localhost) InfluxDB base URL without credentials, query, or fragment');
   }
   literal(selection.org);
   literal(selection.unit);

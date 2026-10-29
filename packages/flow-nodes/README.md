@@ -185,3 +185,25 @@ or confirmed absence releases the retained local completion. No completion
 identity is evicted to make room. Reads synchronize the visible receipt or proof's
 directory before acknowledging it; an unresolved directory-sync fault refuses
 recovery and subsequent creates without discarding the existing record.
+
+## Experimental InfluxDB 2 adapters
+
+The pure TypeScript `@ifc-lite/flow-nodes/influx` entry point shares query
+construction, CSV validation and latest-per-series reduction between the
+headless recipe and viewer. `queryRequest(selection)` generates Flux for one
+numeric field, at most 24 hours and 10,000 samples; it requests one extra sample
+so overflow fails explicitly. HTTPS is required except `http://localhost` for
+development. `parseInfluxCsv(csv, selection)` returns separate history and latest
+tables. Malformed CSV, error tables, nonnumeric readings, conflicting timestamps
+and overflow throw. This is the generated plain-CSV contract, not an arbitrary
+annotated Flux parser or an InfluxDB 3 adapter.
+
+`fetchInfluxReadings(selection, token, transport?, signal?)` uses a direct POST
+with a 15-second timeout and 2 MiB response limit. It never stores credentials,
+follows redirects or exposes upstream error bodies. `redactInfluxError` removes
+literal and URL-encoded token occurrences from diagnostics. Callers own secret
+entry and lifetime. `matchInfluxSeries(latest, targets)` matches exact `GlobalId`
+strings and preserves both multiple-series and multiple-entity ambiguity.
+
+The viewer's Experimental panel calls these adapters directly. It does not run
+a secret-bearing Flow graph: `BROWSER_FEATURES.secrets` remains empty.

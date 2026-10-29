@@ -1,0 +1,70 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import '@/test/setup-dom.js';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { afterEach, test } from 'node:test';
+import { act } from 'react';
+import { IfcParser } from '@ifc-lite/parser';
+import { cleanup, click, render, type, waitFor } from '@/test/render';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { useViewerStore } from '@/store';
+import { INFLUX_CONFIG_KEY } from '@/lib/influx/config';
+import { InfluxPanel } from './InfluxPanel';
+
+const originalFetch = globalThis.fetch;
+afterEach(() => { cleanup(); globalThis.fetch = originalFetch; localStorage.clear(); });
+
+test('#8090 selected real IFC space shows latest/history, ambiguity stays explicit and save excludes token', async () => {
+  const source = await readFile(new URL('../../../../public/samples/building-architecture.ifc', import.meta.url));
+  const parsed = await new IfcParser().parseColumnar(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength));
+  const roomId = parsed.entities.getExpressIdByGlobalId('0xY$LvXaDEswJDk_VU74C_');
+  const model = { ...fixtureModel('building'), ifcDataStore: parsed };
+  useViewerStore.setState({ ...fixtureModels(model), selectedEntityId: roomId, mutationViews: new Map() });
+  const token = 'panel-token-must-not-persist';
+  const csv = await readFile(new URL('../../../../../../examples/headless-workflows/influx-demo.csv', import.meta.url), 'utf8');
+  let requests = 0;
+  globalThis.fetch = async (url, init) => {
+    requests++;
+    assert.equal(String(url), 'http://localhost:8086/api/v2/query?org=spike');
+    assert.equal(new Headers(init?.headers).get('Authorization'), `Token ${token}`);
+    return new Response(csv);
+  };
+  const ui = render(<InfluxPanel />);
+  const values = ['http://localhost:8086', 'spike', 'monitoring', 'environment', 'temperature', 'ifc_guid', '°C', token];
+  const inputs = ui.querySelectorAll('input');
+  assert.equal(inputs.length, values.length);
+  values.forEach((value, index) => type(inputs[index], value));
+  assert.equal(inputs[7].type, 'password');
+  click(ui.querySelector('button')!);
+  await waitFor(() => Boolean(ui.querySelector('svg[role="img"]')), 'real selected space history');
+  assert.equal(requests, 1);
+  assert.match(ui.textContent ?? '', /Latest: 22.5 °C/);
+  assert.match(ui.textContent ?? '', /living room/);
+  assert.match(ui.querySelector('svg')?.getAttribute('aria-label') ?? '', /3 samples/);
+  assert.equal(ui.querySelector('polyline')?.getAttribute('points')?.split(' ').length, 3);
+  assert.match(ui.textContent ?? '', /Ambiguous series \(2\)/);
+  assert.match(ui.textContent ?? '', /hall-a/);
+  assert.match(ui.textContent ?? '', /hall-b/);
+  assert.match(ui.textContent ?? '', /Unmatched series \(1\)/);
+  const saved = localStorage.getItem(INFLUX_CONFIG_KEY)!;
+  assert.equal(JSON.parse(saved).bucket, 'monitoring');
+  assert.equal(saved.includes(token), false);
+  assert.equal(saved.includes('token'), false);
+
+  // A competing entity in a second model must invalidate a previously unique
+  // match; selection resolution also survives a nonzero federation offset.
+  const second = { ...model, id: 'second', idOffset: 1_000_000 };
+  act(() => useViewerStore.setState({ models: new Map([['building', model], ['second', second]]), selectedEntityId: roomId }));
+  assert.doesNotMatch(ui.textContent ?? '', /Latest: 22.5/);
+  assert.match(ui.textContent ?? '', /Ambiguous series \(3\)/);
+  act(() => useViewerStore.setState({ ...fixtureModels(second), selectedEntityId: roomId + second.idOffset }));
+  assert.match(ui.textContent ?? '', /Latest: 22.5/);
+  globalThis.fetch = async () => { throw new TypeError(`network failure ${token}`); };
+  click(ui.querySelector('button')!);
+  await waitFor(() => Boolean(ui.querySelector('[role="alert"]')), 'CORS guidance');
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /allow this viewer origin/);
+  assert.equal(ui.textContent?.includes(token), false);
+  assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY)?.includes(token), false);
+});

@@ -106,3 +106,7 @@ is sufficient for a headless proof; only response-envelope validation and
 latest-per-series reduction are specific adapters here. A viewer integration
 still needs session-only credential input, selection/lifecycle wiring and
 deployment-specific CORS or gateway handling.
+
+The query generator and CSV/latest-per-series adapters now live in the pure
+`@ifc-lite/flow-nodes/influx` entry point, shared with the Experimental viewer
+panel. The recorded spike evidence retains its original source hashes.

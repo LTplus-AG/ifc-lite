@@ -7,7 +7,7 @@ import { basename } from 'node:path';
 import { withModelFile } from './common.mjs';
 import { runInfluxSpike } from './influx-flow.mjs';
 import { influxReport, type InfluxReport } from './influx-report.mjs';
-import type { InfluxSelection } from './influx-query.mjs';
+import type { InfluxSelection } from '@ifc-lite/flow-nodes/influx';
 
 const [modelPath, configPath, outputPath] = process.argv.slice(2);
 if (!modelPath || !configPath || !outputPath) {

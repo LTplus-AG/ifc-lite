@@ -1,0 +1,133 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/** Pure InfluxDB 2 adapters shared by the headless recipe and viewer (#8090).
+ * No Flow execution, DOM, storage or environment access. */
+import type { Row, Table } from '@ifc-lite/flow';
+import { parseCsvText } from './csv-parse.js';
+import { queryRequest, type InfluxSelection } from './influx-query.js';
+import { dataTable, latestPerSeries } from './influx-table.js';
+export { queryRequest, dataTable, latestPerSeries };
+export type { InfluxSelection };
+
+export function redactInfluxError(error: unknown, token: string): string {
+  let message = error instanceof Error ? error.message : 'InfluxDB request failed';
+  if (token) {
+    for (const secret of new Set([token, encodeURIComponent(token)])) {
+      message = message.split(secret).join('[REDACTED]');
+    }
+  }
+  return message;
+}
+
+export function parseInfluxCsv(csv: string, selection: InfluxSelection): { history: Table; latest: Table } {
+  if (new TextEncoder().encode(csv).length > 2 * 1024 * 1024) throw new Error('InfluxDB response exceeds 2 MiB');
+  const parsed = parseCsvText(csv, ',', true);
+  if (parsed.rows.some(row => row.fieldCountMismatch)) throw new Error('Malformed or multi-table CSV response');
+  const table: Table = {
+    key: selection.guidTag,
+    columns: parsed.header.map(name => ({ name, type: 'string' })),
+    rows: parsed.rows.map(row => Object.fromEntries(parsed.header.map((name, i) => [name, row.fields[i]]))),
+  };
+  const history = dataTable(table);
+  return { history, latest: latestPerSeries(history, selection) };
+}
+
+export class InfluxRequestError extends Error {
+  constructor(readonly kind: 'config' | 'network' | 'http' | 'data', message: string) {
+    super(message);
+    this.name = 'InfluxRequestError';
+  }
+}
+
+/** Request/response byte and time bounds supplement the server-side sample cap.
+ * Never surface response bodies or transport exception messages (may echo auth). */
+export async function fetchInfluxReadings(selection: InfluxSelection, token: string, transport: typeof fetch = fetch, signal?: AbortSignal) {
+  let request: ReturnType<typeof queryRequest>;
+  try {
+    request = queryRequest(selection);
+    if (!token || /[\r\n]/.test(token)) throw new Error('Enter a valid token');
+  } catch (error) {
+    throw new InfluxRequestError('config', redactInfluxError(error, token));
+  }
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) abort();
+  const timer = setTimeout(abort, 15000);
+  try {
+    let response: Response;
+    try {
+      response = await transport(request.url, {
+        method: 'POST', headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json', Accept: 'application/csv' },
+        body: request.body, signal: controller.signal, credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
+      });
+    } catch {
+      throw new InfluxRequestError('network', 'CORS or network error: the server must allow the viewer origin, or use a fixed-upstream gateway.');
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new InfluxRequestError('http', `InfluxDB query failed (HTTP ${response.status})`);
+    }
+    let csv = '';
+    try {
+      const reader = response.body?.getReader();
+      if (reader) {
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        let bytes = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            bytes += value.byteLength;
+            if (bytes > 2 * 1024 * 1024) throw new Error('InfluxDB response exceeds 2 MiB');
+            csv += decoder.decode(value, { stream: true });
+          }
+          csv += decoder.decode();
+        } finally {
+          await reader.cancel();
+          reader.releaseLock();
+        }
+      }
+      // A hostile upstream could echo credentials into a tag. Redact before
+      // parsing so neither data displays nor downstream diagnostics leak it.
+      csv = csv.split(token).join('[REDACTED]');
+      return parseInfluxCsv(csv, selection);
+    } catch (error) {
+      // Parser errors contain only fixed validation messages; transport stream
+      // exceptions may contain anything, so do not publish their text.
+      if (error instanceof InfluxRequestError) throw error;
+      throw new InfluxRequestError('data', 'Invalid, truncated, oversized or nonnumeric InfluxDB response');
+    }
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
+/** Matching keeps model-space identity; duplicate GUIDs across models and
+ * competing series are both ambiguous, never resolved to a first match. */
+export function matchInfluxSeries<T extends { GlobalId: string }>(latest: Table, targets: readonly T[]) {
+  const byGuid = new Map<string, T[]>();
+  for (const target of targets) {
+    const list = byGuid.get(target.GlobalId) ?? [];
+    list.push(target);
+    byGuid.set(target.GlobalId, list);
+  }
+  const counts = new Map<string, number>();
+  for (const row of latest.rows) {
+    const guid = String(row[latest.key]);
+    counts.set(guid, (counts.get(guid) ?? 0) + 1);
+  }
+  const matched: Array<{ row: Row; target: T }> = [];
+  const unmatched: Row[] = [], ambiguous: Row[] = [];
+  for (const row of latest.rows) {
+    const guid = String(row[latest.key]);
+    const candidates = byGuid.get(guid) ?? [];
+    if (!candidates.length) unmatched.push(row);
+    else if (candidates.length !== 1 || counts.get(guid) !== 1) ambiguous.push(row);
+    else matched.push({ row, target: candidates[0] });
+  }
+  return { matched, unmatched, ambiguous };
+}

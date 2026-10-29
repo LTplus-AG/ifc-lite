@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import type { Table } from '@ifc-lite/flow';
 import { withModelFile } from '../src/common.mjs';
 import { influxGraph, latestPerSeries, runInfluxSpike } from '../src/influx-flow.mjs';
-import { queryRequest, type InfluxSelection } from '../src/influx-query.mjs';
+import { queryRequest, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
 import { influxReport } from '../src/influx-report.mjs';
 
 const selection: InfluxSelection = {

@@ -11,10 +11,11 @@ import { join, resolve } from 'node:path';
 
 const root = process.cwd();
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
-const base = git('rev-parse', `${process.argv[2] ?? '853d7c9781'}^{commit}`);
+// Default base: where this branch left main, so only the branch's own changes are compared.
+const base = git('rev-parse', `${process.argv[2] ?? git('merge-base', 'origin/main', 'HEAD')}^{commit}`);
 const head = git('rev-parse', 'HEAD');
-if (!process.env.IFC_WORKER_JOB_ID || !process.env.CARGO_TARGET_DIR) {
-  throw new Error('Run through the fleet: an admitted job and managed Cargo target are required');
+if (!process.env.CARGO_TARGET_DIR) {
+  throw new Error('Set CARGO_TARGET_DIR to a dedicated Cargo target directory; both builds reuse it');
 }
 const directory = mkdtempSync(join(tmpdir(), 'ifc-retained-default-identity-'));
 const source = join(directory, 'source');

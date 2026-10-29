@@ -3,5 +3,7 @@
 "@ifc-lite/cli": patch
 ---
 
-Include generated third-party notices for explicitly staged retained engines.
-Runtime assets remain opt-in and separately deployed. Refs #7955.
+Ship a generated THIRD_PARTY_NOTICES.txt in the @ifc-lite/wasm and @ifc-lite/cli
+packages. It is a conservative superset that also covers the opt-in retained
+engine (NVIDIA SMLib, Emscripten runtime); the retained runtime assets themselves
+are still not included in these packages and remain separately deployed. Refs #7955.

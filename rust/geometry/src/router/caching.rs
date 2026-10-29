@@ -68,33 +68,73 @@ impl GeometryRouter {
         hasher.finish()
     }
 
-    /// FULL (non-sampling) **128-bit** content hash of a mesh's local geometry.
-    /// Used for the instancing `rep_identity`, which — unlike `get_or_cache_by_hash`
-    /// — has no downstream `meshes_equal` guard at the source AND must be consistent
-    /// across rayon workers (so a per-worker equality registry can't cover it). The
-    /// 64-bit SAMPLED `compute_mesh_hash` shipped a real wrong-geometry collision
-    /// (#833, mirrored slabs). This hashes EVERY position + index into two
-    /// independent FxHasher streams (different seeds) → a 128-bit key whose
-    /// collision probability (~2^-127, content-addressing grade) makes a
-    /// different-content collision effectively impossible. O(verts) once per item,
-    /// only on the opt-in instancing path.
+    /// FULL (non-sampling) **128-bit** content hash of a mesh's local geometry,
+    /// used for the instancing `rep_identity` of a direct solid. See
+    /// [`super::super::instancing`]'s correctness contract for what the key has
+    /// to cover and why: it has no equality guard behind it, so a buffer the
+    /// shard ships but the key omits is a guaranteed swap, not a rare collision.
+    /// That is how `normals` came to be served from the wrong template (#8287).
+    ///
+    /// Hashes EVERY position, normal and index into two independent FxHasher
+    /// streams (different seeds), giving a 128-bit key. BIT patterns, for the
+    /// reason [`meshes_equal`] gives for comparing them: a `-0.0` normal is not
+    /// the `+0.0` one, and these buffers ship to the consumer as bytes.
+    ///
+    /// All three lengths go in BEFORE the values, which is what keeps the buffer
+    /// boundaries in the key: positions and normals stream as one concatenated
+    /// run, so without the lengths a value moving from one into the other would
+    /// leave the digest unchanged.
+    ///
+    /// `ifc_lite_core::hash::ContentHash` (xxh3-128, length-framed per run) is
+    /// the better shape for this and is measurably faster even hashing the extra
+    /// buffer, but its streaming state heap-allocates once per construction,
+    /// which `router_construction_allocations` pins at zero for this path
+    /// (#3987). Switching is a change to that contract, so it is not made here.
+    ///
+    /// Mesh is DESTRUCTURED, as in [`meshes_equal`] and for the same reason: a
+    /// field added to `Mesh` fails to compile here until someone decides whether
+    /// the instancing key depends on it. A silently omitted field is the defect
+    /// (#8287 was exactly that). The excluded fields are excluded on purpose, and
+    /// differently from `meshes_equal`: this key is computed PRE-placement, on
+    /// the local item mesh, and every frame field is either still at its default
+    /// there or is the per-occurrence pose that occurrences of one template are
+    /// expected to differ in. Putting any of them in would split groups that must
+    /// share a template, which is a silent loss of instancing rather than a wrong
+    /// mesh, so they are verified behind the key instead: `group` reconstructs
+    /// each occurrence from (template, `rel`) and checks it against its own baked
+    /// vertices (#3666).
     #[inline]
     pub(super) fn compute_mesh_hash_full(mesh: &Mesh) -> u128 {
+        let Mesh {
+            positions,
+            normals,
+            indices,
+            // Per-occurrence pose and frame metadata, not local shape: see the doc.
+            rtc_applied: _,
+            origin: _,
+            instance_meta: _,
+            local_bounds: _,
+            local_to_world: _,
+            welded_in_object_frame: _,
+            // Per-TRIANGLE f64 planes, never shipped in a shard; they steer
+            // `consolidate_coplanar` upstream of this key, not the buffers it guards.
+            plane_tags: _,
+        } = mesh;
         use rustc_hash::FxHasher;
         let mut a = FxHasher::default();
         let mut b = FxHasher::default();
         // Decorrelate stream b with a salt prefix (portable; no with_seed dep).
         0x9e37_79b9_7f4a_7c15u64.hash(&mut b);
-        mesh.positions.len().hash(&mut a);
-        mesh.indices.len().hash(&mut a);
-        mesh.positions.len().hash(&mut b);
-        mesh.indices.len().hash(&mut b);
-        for pos in &mesh.positions {
-            let bits = pos.to_bits();
+        for len in [positions.len(), normals.len(), indices.len()] {
+            len.hash(&mut a);
+            len.hash(&mut b);
+        }
+        for value in positions.iter().chain(normals) {
+            let bits = value.to_bits();
             bits.hash(&mut a);
             bits.hash(&mut b);
         }
-        for idx in &mesh.indices {
+        for idx in indices {
             idx.hash(&mut a);
             idx.hash(&mut b);
         }

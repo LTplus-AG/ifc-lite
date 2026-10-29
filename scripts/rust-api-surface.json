@@ -614,9 +614,9 @@
     "ModelOptions": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "MutationKind": "enum (non_exhaustive)",
     "MutationLog": "struct (non_exhaustive)",
-    "ObjOptions": "struct { hidden: Vec<u32>; include_normals: bool; isolated: Option<Vec<u32>> }",
+    "ObjOptions": "struct { hidden: Vec<u32>; include_normals: bool; isolated: Option<Vec<u32>>; layer_slicing: bool }",
     "ObjStats": "struct { meshes: usize; triangles: usize; vertices: usize }",
-    "ParquetBosOptions": "struct { include_geometry: bool }",
+    "ParquetBosOptions": "struct { include_geometry: bool; layer_slicing: bool }",
     "Placement": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "ProductQuantities": "struct (non_exhaustive)",
     "ProductQuantityAnalysis": "struct (non_exhaustive)",
@@ -656,7 +656,7 @@
     "TessellationQuality": "external re-export",
     "UnitReconciliation": "enum { AssumeShared; Auto; Normalize }",
     "UnitScales": "external re-export",
-    "UsdOptions": "struct { author: String; instancing: bool }",
+    "UsdOptions": "struct { author: String; instancing: bool; layer_slicing: bool }",
     "ValueKind": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "analyze_authored_quantities": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "analyze_quantities": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
@@ -718,7 +718,8 @@
   "ifc-lite-ffi": {
     "ifc_lite_free": "fn",
     "ifc_lite_parse": "fn",
-    "ifc_lite_parse_ex": "fn"
+    "ifc_lite_parse_ex": "fn",
+    "ifc_lite_parse_with_flags": "fn"
   },
   "ifc-lite-wasm": {
     "AlignmentAxisJs": "struct {  }",

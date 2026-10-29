@@ -11,7 +11,6 @@ use crate::processor::{
     diagnostics, native_to_baked, FrameEvent, ProcessingRequest, ProcessingSink,
 };
 use ifc_lite_geometry::GeometryRouter;
-use std::sync::Arc;
 
 /// The auxiliary router, the IfcSite and IfcBuilding placements and the mesh
 /// frame. Raises `on_frame` before any batch.
@@ -30,15 +29,6 @@ pub(super) fn placement_phase(
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let mut router = diagnostics::unit_router(unit_scales); // refused with the unit (#7678)
     router.set_tessellation_quality(req.quality);
-    // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans
-    // the main scan already stashed (like the wasm pre-pass), not a redundant
-    // `from_content` re-walk of the whole file. Byte-identical; saves 6-15% load.
-    let material_spans = &s.spans.rel_associates_material;
-    router.set_material_layer_index(Arc::new(ifc_lite_geometry::MaterialLayerIndex::from_spans(
-        material_spans,
-        &mut s.decoder,
-    )));
-
     let mut placement = |pos: Option<(usize, usize)>| -> Option<Vec<f64>> {
         pos.and_then(|(start, end)| {
             let entity = s.decoder.decode_at(start, end).ok()?;

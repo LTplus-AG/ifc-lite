@@ -58,6 +58,7 @@ pub(super) struct Facts {
     pub(super) _prepass_rest: ResolvedPrepass,
     pub(super) _rel_defines_spans: Vec<(usize, usize)>,
     pub(super) router: GeometryRouter,
+    pub(super) material_layers: Option<std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex>>,
 }
 
 /// The inputs of the geometry pass.
@@ -144,6 +145,13 @@ pub(super) fn resolve<'c>(
     let preprocess_start = mark(Mark::PreprocessStart, Clock::now());
     let preprocess_span =
         tracing::debug_span!(target: "ifc_lite_processing::processor", "preprocess", phase_ms = tracing::field::Empty).entered();
+    // #7782 D66: no index work for the default unsliced native pass.
+    let material_layers = req.layer_slicing.then(|| {
+        std::sync::Arc::new(ifc_lite_geometry::MaterialLayerIndex::from_spans(
+            &scanned.spans.rel_associates_material,
+            &mut scanned.decoder,
+        ))
+    });
     let refused_unit_jobs = diagnostics::refuse_jobs_for_unit(&unit_scales, &mut scanned.jobs);
     let (router, site_transform, building_transform, frame) =
         placement_phase(content, req, sink, &mut scanned, &unit_scales);
@@ -200,6 +208,7 @@ pub(super) fn resolve<'c>(
             _prepass_rest: prepass,
             _rel_defines_spans: rel_defines_spans,
             router,
+            material_layers,
         },
         decoder,
         entity_index,

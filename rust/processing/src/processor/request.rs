@@ -98,6 +98,8 @@ pub struct ProcessingRequest {
     pub opening_filter: OpeningFilterMode,
     /// Tessellation detail (#976). `Medium` is the historical output.
     pub quality: TessellationQuality,
+    /// Slice material-layer walls into per-layer submeshes. Default false.
+    pub layer_slicing: bool,
     pub batching: Batching,
     pub features: Features,
     /// Keep the emitted meshes in the returned [`ProcessingResult`](super::ProcessingResult).
@@ -135,6 +137,12 @@ impl ProcessingRequest {
 
     pub fn quality(mut self, quality: TessellationQuality) -> Self {
         self.quality = quality;
+        self
+    }
+
+    /// Opt into the shared browser material-layer slicing path.
+    pub fn layer_slicing(mut self, on: bool) -> Self {
+        self.layer_slicing = on;
         self
     }
 
@@ -181,6 +189,7 @@ impl ProcessingRequest {
         Self {
             opening_filter,
             quality: options.tessellation_quality,
+            layer_slicing: false,
             batching: Batching {
                 initial: options.initial_batch_size,
                 throughput: options.throughput_batch_size,

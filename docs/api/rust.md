@@ -1460,6 +1460,14 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
     out_ptr: *mut *mut u8, out_len: *mut usize,
 ) -> i32;
 
+/// Same, with additive flags (bit 0 enables material-layer wall slicing).
+/// Unknown flag bits return 1; the existing parse functions stay unsliced.
+pub unsafe extern "C" fn ifc_lite_parse_with_flags(
+    path_ptr: *const u8, path_len: usize,
+    opening_filter_mode: u8, flags: u32,
+    out_ptr: *mut *mut u8, out_len: *mut usize,
+) -> i32;
+
 /// Free a buffer returned by the parse calls
 pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize);
 ```
@@ -1472,9 +1480,9 @@ caller owns the following guarantees:
   writes. A null pointer or non-UTF-8 path returns `1` and writes nothing.
 - **Success (`0`).** `*out_ptr` receives a heap buffer of `*out_len` serialized
   JSON bytes. The buffer is owned by the caller from that point on.
-- **Failure.** Non-zero return codes leave the out-parameters untouched (no
-  buffer is allocated, so there is nothing to free): `1` null pointer or invalid
-  path, `2` file could not be read, `3` geometry processing panicked, `4` JSON
+- **Failure.** Non-zero return codes zero the out-parameters (no
+  buffer is allocated, so there is nothing to free): `1` null pointer, invalid
+  path, or unsupported flag bits; `2` file could not be read, `3` geometry processing panicked, `4` JSON
   serialization failed.
 - **Freeing.** Pass the exact `ptr` and `len` you received from a successful
   parse to `ifc_lite_free` **exactly once**. Do not free on a non-zero return,

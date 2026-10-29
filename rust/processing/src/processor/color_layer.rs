@@ -5,6 +5,7 @@
 use super::normalize_optional_string;
 use crate::style::GeometryStyleInfo;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_geometry::representation::{mapped_item_representation_id, pds_representation_ids};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) fn collect_presentation_layer_assignments(
@@ -45,7 +46,7 @@ pub(super) fn resolve_presentation_layer_for_product_definition_shape(
     }
 
     let product_definition_shape = decoder.decode_by_id(product_definition_shape_id).ok()?;
-    let representation_ids = product_definition_shape.get_refs(2)?;
+    let representation_ids = pds_representation_ids(&product_definition_shape);
 
     for representation_id in representation_ids {
         if let Some(layer_name) = resolve_presentation_layer_name(
@@ -201,13 +202,7 @@ fn resolve_presentation_layer_name(
                 if item.ifc_type != IfcType::IfcMappedItem {
                     continue;
                 }
-                let Some(mapping_source_id) = item.get_ref(0) else {
-                    continue;
-                };
-                let Ok(mapping_source) = decoder.decode_by_id(mapping_source_id) else {
-                    continue;
-                };
-                let Some(mapped_representation_id) = mapping_source.get_ref(1) else {
+                let Some(mapped_representation_id) = mapped_item_representation_id(&item, decoder) else {
                     continue;
                 };
                 stack.push(Step::Representation { id: mapped_representation_id, parent: Some(owner) });
@@ -247,6 +242,37 @@ fn find_color_in_representation(
         decoder,
     )?;
     geometry_styles.get(&source).map(|style| style.color)
+}
+
+/// The element-colour precedence: a style found under the product's representation wins, otherwise the material
+/// chain's fallback. `None` leaves the caller's own default in force, so each caller keeps its default and its
+/// optional-colour contract. Used through [`resolve_product_element_color`] by the authoring pipeline
+/// (`appearance::canonical`) and the retained appearance. `AppearanceResolver::resolve` (`job.rs`) applies the same
+/// rule in place on its per-shape cache and keeps its own `if`/`else`: routing it through this helper changes the
+/// default wasm by 29 bytes (measured against the merge base), which the default-wasm identity gate forbids for a
+/// behaviour-neutral edit. The two are pinned together by the retained-vs-exact per-key appearance gate.
+#[inline(always)]
+pub(crate) fn element_color_precedence(
+    direct: Option<[f32; 4]>,
+    material: impl FnOnce() -> Option<[f32; 4]>,
+) -> Option<[f32; 4]> {
+    direct.or_else(material)
+}
+
+/// [`element_color_precedence`] for a product whose representation is `shape` and whose materials come from the
+/// model's per-element material colours.
+#[inline(always)]
+pub(crate) fn resolve_product_element_color(
+    shape: Option<u32>,
+    product_id: u32,
+    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
+    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
+    decoder: &mut EntityDecoder,
+) -> Option<[f32; 4]> {
+    element_color_precedence(
+        shape.and_then(|shape| resolve_element_color_for_product_definition_shape(shape, geometry_styles, decoder)),
+        || element_material_colors.get(&product_id).and_then(|colors| crate::style::element_material_fallback_color(colors)),
+    )
 }
 
 #[cfg(test)]

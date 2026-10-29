@@ -1,0 +1,10 @@
+{
+  "faceIncidencePlanarMetres": 1e-6,
+  "faceIncidenceCurvedExtraMetres": 1e-6,
+  "faceNormalRadians": 0.0873,
+  "faceDegenerateAreaRatio": 1e-6,
+  "faceAreaRelative": { "linear": 1e-9, "curved": 2e-3 },
+  "faceAttributionFraction": 1,
+  "faceNativeWasmKeys": "identical",
+  "faceExactItemProjection": "report only"
+}

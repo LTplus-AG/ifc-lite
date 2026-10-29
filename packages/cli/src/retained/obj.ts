@@ -47,7 +47,7 @@ export function retainedObj(products: RetainedShapeProduct[]): string {
   const lines = ['# ifc-lite OBJ export', '# units: metres (renderer Y-up frame, origin-folded world coords)',
     '# kernel: retained', `# retained shape-only: presentation obligations unmet: ${obligations.join(', ')}`,
     '# PresentationObligationsUnmet'];
-  let base = 1;
+  let base = 1, normalBase = 1;
   for (const product of products) {
     if (product.marker !== 'PresentationObligationsUnmet' || !product.obligationsUnmet.length || !product.parts.length ||
         !/^Ifc[A-Za-z0-9]+$/.test(product.ifcType) || !Number.isSafeInteger(product.expressId)) {
@@ -57,9 +57,19 @@ export function retainedObj(products: RetainedShapeProduct[]): string {
     for (const part of product.parts) {
       const points = worldPoints(part);
       for (const [x, y, z] of points) lines.push(`v ${fixed(x)} ${fixed(z)} ${fixed(-y)}`);
-      for (let i = 0; i < part.indices.length; i += 3) {
-        lines.push(`f ${part.indices[i] + base} ${part.indices[i + 1] + base} ${part.indices[i + 2] + base}`);
+      if (part.normals) {
+        if (part.normals.length !== part.indices.length * 3 || !part.normals.every(Number.isFinite)) {
+          throw new Error('Invalid retained corner normals; refusing partial product');
+        }
+        for (let i = 0; i < part.normals.length; i += 3) {
+          lines.push(`vn ${fixed(part.normals[i])} ${fixed(part.normals[i + 2])} ${fixed(-part.normals[i + 1])}`);
+        }
       }
+      for (let i = 0; i < part.indices.length; i += 3) {
+        const corners = [0, 1, 2].map(j => `${part.indices[i + j] + base}${part.normals ? `//${normalBase + i + j}` : ''}`);
+        lines.push(`f ${corners.join(' ')}`);
+      }
+      if (part.normals) normalBase += part.indices.length;
       base += points.length;
     }
   }

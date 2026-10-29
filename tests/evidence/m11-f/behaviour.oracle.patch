@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/presentation/face_attribution.rs
++++ b/rust/processing/src/element/session_retained/presentation/face_attribution.rs
+@@ -279,7 +279,7 @@
+     }).collect();
+     let bounded = common.iter().any(|&(_, held)| held);
+     let survivors: Vec<Choice> = common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).collect();
+-    let choice = survivors.iter().copied().max()
++    let choice = survivors.iter().copied().min()
+         .ok_or(Unproven::Ambiguous { entity: first.matches.first().and_then(|&(c, _)| item(c)) })?;
+     if survivors.iter().any(|&other| !coincident(operands, choice, other, chord))
+         || face.iter().any(|c| !c.oriented && !c.matches.iter().any(|(m, _)| *m == choice)) {

@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Geometry Router - Dynamic dispatch to geometry processors
+//! Geometry routing: [`RouterConfig`], caches and processor selection.
 //!
-//! Routes IFC representation entities to appropriate processors based on type.
+//! Walks, controllers and frames: `docs/architecture/geometry-pipeline.md`.
 
 pub(crate) mod annotation;
 mod annotation_polygon;
@@ -25,6 +25,7 @@ mod mapped_cache_ownership;
 pub(crate) mod mapped_item;
 pub(crate) mod processing;
 mod processor;
+mod product_admission;
 mod rtc_offset;
 pub(crate) mod structural;
 pub(crate) mod textured;
@@ -32,23 +33,22 @@ mod unit_admission;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
-pub use config::RouterConfig;
-pub use processor::GeometryProcessor;
+pub use crate::representation::meshed_representations;
+pub(super) use crate::representation::{effective_element_rep_type, effective_rep_type, is_body_representation};
 pub use brep_signatures::SharedBrepSignatureCache;
-pub use mapped_cache_ownership::AccountedMappedItemCache;
+pub use config::RouterConfig;
+pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
+pub(crate) use diagnostics::ClassificationKind;
+pub use diagnostics::{
+    aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown, ClassificationStats,
+    ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
+};
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
+pub use mapped_cache_ownership::AccountedMappedItemCache;
+pub use processor::GeometryProcessor;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
-pub use diagnostics::{
-    aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
-    ClassificationStats, ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic,
-    OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary, WorstHost,
-    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
-};
-pub(crate) use diagnostics::ClassificationKind;
-pub(super) use crate::representation::{effective_element_rep_type, effective_rep_type, is_body_representation, is_direct_body_representation};
-pub use crate::representation::meshed_representations;
-pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 
 #[cfg(test)]
 mod tests;
@@ -494,12 +494,8 @@ impl GeometryRouter {
     /// per-ITEM dedup unit, but a true 4-router simulation showed that costs
     /// essentially no extra meshing — 1.01× — because the shared items still land
     /// on one worker, so the simpler whole-representation hash is used.)
-    pub fn geometry_routing_key(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Option<u128> {
-        let rep = element.get(6)?.as_entity_ref()?;
+    pub fn geometry_routing_key(&self, element: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
+        let rep = crate::representation::structural::product_shape_id(element)?;
         let mut memo = self.content_sig_memo.borrow_mut();
         let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
         Some(content_hash::item_signature(decoder, rep, &mut memo, &mut refused))
@@ -652,7 +648,6 @@ impl GeometryRouter {
     }
 
     /// Scale mesh positions from file units to meters
-    /// Only applies scaling if unit_scale != 1.0
     #[inline]
     fn scale_mesh(&self, mesh: &mut Mesh) {
         processing::scale_positions(mesh, self.unit_scale());
@@ -681,8 +676,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         self.admit_placement_scale()?;
-        let mut transform = self.get_placement_transform_from_element(entity, decoder)?;
-        self.scale_transform(&mut transform);
+        let transform = self.element_world_placement(entity, decoder)?;
         Ok(crate::math::mat4::col_major_array(&transform))
     }
 

@@ -22,7 +22,7 @@ fn h2c_boolean_dag_repeats_both_ordered_occurrences_and_preserves_obligations() 
     assert_eq!(plan.values[0].definition(), operations[6].value().definition(),
         "the final occurrence retains the ordered intersection, with no removal authority");
     assert_eq!(plan.remaining, vec![RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
-        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces]);
+        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals]);
 }
 
 #[test]
@@ -39,8 +39,8 @@ fn h2_operations_preserve_tickets_across_exact_foreign_and_cancelled_calls() {
         let mut program = RetainedProgram::product_parts(&entity, contract());
         let mut observed = 0;
         while let Some(ticket) = program.request().unwrap() {
-            if matches!(&program.inner.control, Control::Product(c) if c.retained_ready()) {
-                assert_eq!(program.inner.execute(ticket.0, &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
+            if matches!(&program.geometry_ref().control, Control::Product(c) if c.retained_ready()) {
+                assert_eq!(program.geometry_mut().execute(ticket.geometry_request(), &router, &mut decoder).err(), Some(ProgramError::UnsupportedRetained));
                 assert_eq!(program.admit(ticket, &router, &mut foreign_decoder).err(), Some(RetainedProgramError::WrongOwner));
             }
             let (reply, operations) = program.admit(ticket, &router, &mut decoder).unwrap();

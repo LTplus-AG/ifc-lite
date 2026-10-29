@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
+index 66353e928d..27aa883ab0 100644
+--- b/packages/extensions/src/authority/resolve.ts
++++ a/packages/extensions/src/authority/resolve.ts
+@@ -102,7 +102,7 @@ export function resolveAttribute<O extends Opinion>(
+   const authoritative = opinions.filter(isAuthoritative);
+   const base = { ruleId: rule.id, role: rule.role, authoritative };
+ 
+-  if (authoritative.length < 0) {
++  if (authoritative.length === 0) {
+     return { ...base, state: 'unconfirmed', shown: strongest, dissent: [] };
+   }
+ 

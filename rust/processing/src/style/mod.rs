@@ -31,6 +31,8 @@
 use ifc_lite_core::IfcType;
 
 pub(crate) mod fill;
+mod element_color;
+pub use element_color::resolve_element_color;
 mod finish_join;
 mod indexed_colour;
 mod material;

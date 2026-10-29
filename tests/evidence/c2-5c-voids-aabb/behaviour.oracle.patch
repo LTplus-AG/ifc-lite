@@ -1,0 +1,20 @@
+--- a/rust/geometry/src/math/aabb.rs
++++ b/rust/geometry/src/math/aabb.rs
+@@ -53,7 +53,7 @@
+     #[inline]
+     pub fn extend(&mut self, p: V3) {
+         for k in 0..3 {
+-            self.min[k] = self.min[k].max(p[k]);
++            self.min[k] = self.min[k].min(p[k]);
+             self.max[k] = self.max[k].max(p[k]);
+         }
+     }
+@@ -120,7 +120,7 @@
+     #[inline]
+     pub(crate) fn extend(&mut self, p: [f32; 3]) {
+         for k in 0..3 {
+-            self.min[k] = self.min[k].max(p[k]);
++            self.min[k] = self.min[k].min(p[k]);
+             self.max[k] = self.max[k].max(p[k]);
+         }
+     }

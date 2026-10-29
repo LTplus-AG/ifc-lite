@@ -31,6 +31,7 @@ import { useBCF } from '@/hooks/useBCF';
 import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { useViewerStore } from '@/store';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
@@ -307,6 +308,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     invalidateSolidCompute,
   } = useClash();
   const rawResult = useViewerStore((s) => s.clashRawResult);
+  // Clash runs on meshes; a retained model's are shape-only (#7955 M2), so no run control starts one.
+  const shapeOnly = useViewerStore((s) => hasRetainedShapeOnlyModel(s.models));
+  const shapeOnlyReason = shapeOnly ? t(RETAINED_SHAPE_ONLY_REASON) : undefined;
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
@@ -800,6 +804,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <AnalysisRunButton
               className="h-8"
               running={running}
+              canRun={!shapeOnly}
+              title={shapeOnlyReason}
               onRun={() => { void runAll(); }}
               onCancel={cancelRun}
               runLabel={t('clashPanel.detectAll')}
@@ -811,9 +817,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <Button
                 variant="outline"
                 className="flex-1 h-7 text-xs"
-                disabled={running}
+                disabled={running || shapeOnly}
                 onClick={() => void runDuplicates()}
-                title={t('clashPanel.findDuplicatesTooltip')}
+                title={shapeOnlyReason ?? t('clashPanel.findDuplicatesTooltip')}
               >
                 <Copy className="h-3.5 w-3.5 mr-1.5" />
                 {t('clashPanel.findDuplicates')}
@@ -821,9 +827,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <Button
                 variant="outline"
                 className="flex-1 h-7 text-xs"
-                disabled={running}
+                disabled={running || shapeOnly}
                 onClick={() => void runMatrix()}
-                title={t('clashPanel.disciplineMatrixTooltip')}
+                title={shapeOnlyReason ?? t('clashPanel.disciplineMatrixTooltip')}
               >
                 <Play className="h-3.5 w-3.5 mr-1.5" />
                 {t('clashPanel.disciplineMatrix')}
@@ -835,9 +841,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 {presets.map((p) => (
                   <button
                     key={p.id}
-                    disabled={running}
+                    disabled={running || shapeOnly}
                     onClick={() => void runPreset(p.id)}
-                    title={p.description}
+                    title={shapeOnlyReason ?? p.description}
                     className={cn(
                       'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors',
                       'border-border hover:bg-muted disabled:opacity-50',

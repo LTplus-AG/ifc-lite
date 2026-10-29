@@ -217,4 +217,6 @@ where
 #[path = "retained_jobs.rs"]
 mod retained_jobs;
 #[cfg(feature = "retained-runtime")]
-pub use retained_jobs::canonical_element_jobs;
+pub use retained_jobs::{canonical_element_jobs, canonical_type_maps};
+#[cfg(feature = "retained-runtime")]
+pub(crate) use retained_jobs::canonical_jobs_and_type_maps;

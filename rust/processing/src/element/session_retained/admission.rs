@@ -59,10 +59,12 @@ fn admit(
         element_color: None,
         metadata: None,
     };
+    let openings = openings::decoded_openings(&context, product_id, decoder, &router)?;
     let mut execution = RuntimeProductExecution::<AdmissionOnly>::begin(
         &job,
         &context,
         &MeshProductionOptions::default(),
+        &openings,
         decoder,
         &router,
     )?;

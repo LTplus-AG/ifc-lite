@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { isPreviewTier } from '@/store/geometryFidelity';
 import { SettingsGroup } from './SettingsGroup';
 import { activeStickyOverrides } from './sticky-overrides';
@@ -19,34 +20,38 @@ export function PerformanceSection() {
   const overrides = activeStickyOverrides(tier);
 
   return (
-    <SettingsGroup title={t('settings.performance.overridesTitle')}>
-      <p className="text-xs text-muted-foreground">{t('settings.performance.overridesHint')}</p>
-      {overrides.length === 0 && <p className="text-sm text-muted-foreground">{t('settings.performance.noOverrides')}</p>}
-      {overrides.map(({ definition, value, source }) => (
-        <div key={definition.id} className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{t(definition.labelKey)}: {value}</p>
-            <p className="text-xs text-muted-foreground">
-              {t(source === 'url' ? 'settings.performance.sourceUrl' : 'settings.performance.sourceSaved')}
-            </p>
-            {definition.id === 'geomTier' && geometryMode === 'exact' && isPreviewTier(tier) && (
-              <p className="text-xs text-muted-foreground">{t('settings.performance.tierIgnoredInExact')}</p>
-            )}
-            {definition.id === 'geomWorkers' && (
-              <p className="text-xs text-muted-foreground">{t('settings.performance.workersMayClamp')}</p>
-            )}
+    <>
+      {/* #7955 M2: the geometry kernel choice exists only in a retained-enabled build. */}
+      {retainedKernel && <retainedKernel.KernelSetting />}
+      <SettingsGroup title={t('settings.performance.overridesTitle')}>
+        <p className="text-xs text-muted-foreground">{t('settings.performance.overridesHint')}</p>
+        {overrides.length === 0 && <p className="text-sm text-muted-foreground">{t('settings.performance.noOverrides')}</p>}
+        {overrides.map(({ definition, value, source }) => (
+          <div key={definition.id} className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{t(definition.labelKey)}: {value}</p>
+              <p className="text-xs text-muted-foreground">
+                {t(source === 'url' ? 'settings.performance.sourceUrl' : 'settings.performance.sourceSaved')}
+              </p>
+              {definition.id === 'geomTier' && geometryMode === 'exact' && isPreviewTier(tier) && (
+                <p className="text-xs text-muted-foreground">{t('settings.performance.tierIgnoredInExact')}</p>
+              )}
+              {definition.id === 'geomWorkers' && (
+                <p className="text-xs text-muted-foreground">{t('settings.performance.workersMayClamp')}</p>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label={t('settings.performance.resetNamed', { name: t(definition.labelKey) })}
+              onClick={() => { definition.reset(); refresh((value) => value + 1); }}
+            >
+              {t('settings.performance.reset')}
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label={t('settings.performance.resetNamed', { name: t(definition.labelKey) })}
-            onClick={() => { definition.reset(); refresh((value) => value + 1); }}
-          >
-            {t('settings.performance.reset')}
-          </Button>
-        </div>
-      ))}
-    </SettingsGroup>
+        ))}
+      </SettingsGroup>
+    </>
   );
 }

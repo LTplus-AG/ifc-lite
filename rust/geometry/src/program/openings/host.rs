@@ -8,7 +8,7 @@ use super::requests::{OpeningReady, OpeningReply, OpeningSource};
 use super::{planar, protocol, rectangular, OpeningOutput, OpeningPoll};
 use crate::program::opening::OpeningChild;
 use crate::router::voids::bool2d_path::{self, Bool2dCut};
-use crate::router::voids::{OpeningType, ParamRectCut, VoidContext};
+use crate::router::voids::{CutterKind, ParamRectCut, VoidContext};
 use crate::{GeometryRouter, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
@@ -16,8 +16,8 @@ pub(crate) struct HostOpenings<'a> {
     host: &'a DecodedEntity,
     ids: &'a [u32],
     stage: Stage<'a>,
-    openings: Vec<OpeningType>,
-    merged_openings: Vec<OpeningType>,
+    openings: Vec<CutterKind>,
+    merged_openings: Vec<CutterKind>,
     param: Option<ParamRectCut>,
     next: Option<OpeningPoll>,
 }

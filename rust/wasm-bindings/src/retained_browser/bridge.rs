@@ -12,14 +12,21 @@ use wasm_bindgen_futures::JsFuture;
 extern "C" {
     #[wasm_bindgen(js_name = RetainedDriver)]
     pub(super) type Driver;
+    #[cfg(not(test))]
     #[wasm_bindgen(constructor, catch, js_class = RetainedDriver)]
     fn new() -> Result<Driver, JsValue>;
+    #[cfg(test)]
+    #[wasm_bindgen(constructor, catch, js_class = RetainedDriver)]
+    fn new(observe_for_tests: bool) -> Result<Driver, JsValue>;
     #[wasm_bindgen(method)]
     pub(super) fn live(this: &Driver) -> bool;
     #[wasm_bindgen(method)]
     pub(super) fn retire(this: &Driver);
     #[wasm_bindgen(method, js_name = objectLive)]
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
+    #[cfg(test)]
+    #[wasm_bindgen(method, js_name = liveObjectCount)]
+    pub(super) fn live_object_count(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = releaseObject)]
     pub(super) fn release_object(this: &Driver, object: &JsValue);
     #[wasm_bindgen(method)]
@@ -101,11 +108,15 @@ impl BrowserWorker {
     /// loaded by this call, never by importing or initializing the package.
     pub fn new() -> Result<Self, BrowserError> {
         let identity = next_identity()?;
+        #[cfg(not(test))]
+        let driver = Driver::new();
+        #[cfg(test)]
+        let driver = Driver::new(true);
         Ok(Self {
             owner: Arc::new(Owner {
                 identity,
                 live: AtomicBool::new(true),
-                driver: Driver::new().map_err(driver_error)?,
+                driver: driver.map_err(driver_error)?,
             }),
             regions_qualified: false,
             disks_qualified: false,

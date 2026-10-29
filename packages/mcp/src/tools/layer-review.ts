@@ -3,13 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Layer review tools (spec 06-agents.md §6.3): structured diff, dry-run
- * merge previews, and the review loop (`request_review` →
- * `add_review_feedback` → `get_review_feedback` → `respond_to_review`)
- * that lets a reviewer reject per-entity decisions and the agent open a
- * follow-up draft on the same base to address them.
+ * Layer review tools (spec 06-agents.md §6.3): diffs, merge previews, and
+ * review feedback followed by a corrective draft on the same base.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { randomUUID } from 'node:crypto';
 import { computeStackHash, getProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile } from '@ifc-lite/ifcx';
@@ -138,14 +136,14 @@ const diffLayer: Tool = {
     required: ['layer_or_draft'],
     additionalProperties: false,
   },
-  handler(input, ctx) {
+  async handler(input, ctx) {
+    await initDiff();
     const ws = getLayerWorkspace(ctx.session?.id);
     const candidate = resolveCandidate(ws, input.layer_or_draft as string, ctx);
     const leftFiles = input.against !== undefined
       ? resolveStateFiles(ws, input.against as string, ctx)
       : candidate.baseFiles;
-    // The shared contract from `@ifc-lite/merge` — CLI and review UI emit
-    // the identical JSON (deterministically ordered).
+    // Shared with CLI and review UI: deterministically ordered JSON.
     const diff = diffStackStates(extractStackState(leftFiles), extractStackState(candidate.stateFiles));
     return okResult(
       `Diff: +${diff.added.length} / -${diff.deleted.length} / ~${diff.modified.length} entities.`,
@@ -173,7 +171,8 @@ const dryRunMerge: Tool = {
     required: ['layer_or_draft', 'into'],
     additionalProperties: false,
   },
-  handler(input, ctx) {
+  async handler(input, ctx) {
+    await initDiff();
     const { plan, baseResolved } = planMerge(getLayerWorkspace(ctx.session?.id), input, ctx);
     return okResult(
       `Merge preview into '${input.into as string}': ${fmtCount(plan.conflicts.length, 'conflict')}, ${plan.autoOps.length} auto op(s).`,
@@ -195,7 +194,8 @@ const listConflicts: Tool = {
     required: ['layer_or_draft', 'into'],
     additionalProperties: false,
   },
-  handler(input, ctx) {
+  async handler(input, ctx) {
+    await initDiff();
     const { plan, baseResolved } = planMerge(getLayerWorkspace(ctx.session?.id), input, ctx);
     return okResult(`${fmtCount(plan.conflicts.length, 'conflict')}.`, {
       conflicts: conflictsJson(plan),

@@ -10,6 +10,7 @@ import { computeBounds, userMovedCamera, type Bounds } from './streamingBounds.j
 import type { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
 
 interface Params {
+  geometryKernel?: 'exact' | 'retained';
   renderer: Renderer;
   capturedGeometry: MeshData[] | null;
   cameraFittedRef: MutableRefObject<boolean>;
@@ -24,7 +25,7 @@ interface Params {
 
 /** Existing post-stream camera refit, kept separate from drain ownership. */
 export function refitCompletedStreamBounds(params: Params): void {
-  const { renderer, capturedGeometry, cameraFittedRef, finalBoundsRefittedRef,
+  const { renderer, geometryKernel, capturedGeometry, cameraFittedRef, finalBoundsRefittedRef,
     robustFitAccRef, cameraSnapshotRef, lastFitPolicyKindRef, geometryBoundsRef,
     trace, notifyLinearFit } = params;
   // Compute exact bounds and refit camera (fast ~15ms scan). Use
@@ -42,12 +43,23 @@ export function refitCompletedStreamBounds(params: Params): void {
     // `fullBounds` is the complete AABB for clipping / section ranges.
     const rb = robustFitAccRef.current.update(capturedGeometry);
     const robust = rb?.robust ?? null;
-    const fullBounds = rb?.full ?? computeBounds(capturedGeometry);
-    const exactBounds = robust ?? fullBounds;
+    let fullBounds = rb?.full ?? computeBounds(capturedGeometry);
+    let exactBounds = robust ?? fullBounds;
+    // #7955: retained flat walls and grouped columns share one final framing
+    // extent. Keep exact's existing robust fit and telemetry unchanged.
+    if (geometryKernel === 'retained') {
+      const scene = renderer.getScene();
+      for (const id of scene.getInstancedEntityIds()) {
+        const instance = scene.getInstancedEntityBounds(id);
+        if (!instance) continue;
+        fullBounds = unionBounds(fullBounds, instance);
+        exactBounds = unionBounds(exactBounds, instance);
+      }
+    }
     // Pin (or clear) the robust orbit-pivot anchor. setSceneBounds gets
     // overwritten by the renderer's per-upload full-AABB sync, so the
     // pivot reads this dedicated anchor instead (issue #1394).
-    renderer.getCamera().setOrbitAnchorBounds(robust);
+    renderer.getCamera().setOrbitAnchorBounds(robust ? exactBounds : null);
     console.log(`[GeomStream] computeBounds: ${(performance.now() - t0).toFixed(0)}ms`);
     if (exactBounds) {
       if (!userMovedCamera(renderer, cameraSnapshotRef.current)) {
@@ -76,4 +88,10 @@ export function refitCompletedStreamBounds(params: Params): void {
     }
   }
 
+}
+
+function unionBounds(a: Bounds | null, b: Bounds): Bounds {
+  if (!a) return b;
+  return { min: { x: Math.min(a.min.x, b.min.x), y: Math.min(a.min.y, b.min.y), z: Math.min(a.min.z, b.min.z) },
+    max: { x: Math.max(a.max.x, b.max.x), y: Math.max(a.max.y, b.max.y), z: Math.max(a.max.z, b.max.z) } };
 }

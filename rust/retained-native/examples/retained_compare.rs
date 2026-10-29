@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Native M1 coverage and independent numerical comparison. Never repairs meshes.
+#[path = "compare/affine.rs"]
+mod affine;
 #[path = "compare/metrics.rs"]
 mod metrics;
 #[path = "compare/openings.rs"]
@@ -14,8 +16,12 @@ mod report;
 mod source;
 #[path = "compare/tolerances.rs"]
 mod tolerances;
+#[path = "compare/registry.rs"]
+mod registry;
+#[path = "compare/checks/mod.rs"]
+mod checks;
 use ifc_lite_core::SourceBundle;
-use ifc_lite_processing::element::retained_runtime::canonical_element_jobs;
+use ifc_lite_processing::element::retained_runtime::{canonical_element_jobs, canonical_type_maps};
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;
 use ifc_lite_retained_native::{ModelOptions, NativeModelDriver, ProductOutcome};
 use metrics::{transform, Metrics};
@@ -51,28 +57,10 @@ fn main() -> Result<(), Error> {
     }
     report.rows.sort();
     report.coverage.sort();
-    let coverage = format!(
-        "# SPDX-License-Identifier: MPL-2.0\nmodel\tid\tstatus\tcode\n{}\n",
-        report.coverage.join("\n")
-    );
-    let pin = "tests/manifests/cli-retained-coverage.tsv";
-    if options.bless {
-        if !report.violations.is_empty()
-            || !report.universe_mismatch.is_empty()
-            || !report.skipped.is_empty()
-        {
-            return Err(
-                "refusing to bless a run with violations, universe mismatch or missing fixtures"
-                    .into(),
-            );
-        }
-        std::fs::write(pin, &coverage)?;
+    if options.bless && (!report.violations.is_empty() || !report.universe_mismatch.is_empty() || !report.skipped.is_empty()) {
+        return Err("refusing to bless a run with violations, universe mismatch or missing fixtures".into());
     }
-    if options.gate && std::fs::read_to_string(pin)? != coverage {
-        report
-            .violations
-            .push("coverage or refusal histogram differs from committed manifest".into());
-    }
+    registry::coverage(&report.coverage, options.bless, options.gate, &mut report.violations)?;
     write_report(&options, &mut report, true)?;
     if options.gate
         && (!report.violations.is_empty()
@@ -91,7 +79,7 @@ fn write_report(
 ) -> Result<(), Error> {
     report.rows.sort();
     std::fs::create_dir_all(&options.out)?;
-    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\texact_bbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\tscope\tsrc_bbox_dev_m\tkernel_status\torigin_site\torigin_entity\tmessage\tcuts\tcutMs\tconsumedParts\tsrc_cut_vol_rel\n{}\n",report.rows.join("\n")))?;
+    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\texact_bbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\tscope\tsrc_bbox_dev_m\tkernel_status\torigin_site\torigin_entity\tmessage\tcuts\tcutMs\tconsumedParts\tsrc_cut_vol_rel\tsrc_oracle\n{}\n",report.rows.join("\n")))?;
     let mut summary = report.summary();
     summary["complete"] = json!(complete);
     summary["modelsRequested"] = json!(options.models.len());
@@ -116,7 +104,10 @@ fn compare(
     let exact_rss = report::rss(false)?;
     let mut exact_metrics: BTreeMap<u32, Metrics> = BTreeMap::new();
     let mut exact_origins: BTreeMap<u32, Vec<[f64; 3]>> = BTreeMap::new();
+    let mut exact_items: BTreeMap<u32, (BTreeSet<u32>, bool)> = BTreeMap::new();
     for mesh in &exact.meshes {
+        let items = exact_items.entry(mesh.express_id).or_default();
+        match mesh.geometry_item_id { Some(item) => { items.0.insert(item); } None => items.1 = true }
         exact_origins
             .entry(mesh.express_id)
             .or_default()
@@ -143,15 +134,16 @@ fn compare(
     let mut decoder = source.decoder();
     for (&id, metrics) in &exact_metrics {
         let entity = decoder.decode_by_id(id)?;
-        if entity
+        if !candidates.contains(&id) && entity
             .ifc_type
             .is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct)
         {
             report
                 .exact_only_type_products
-                .push(json!({"model":model,"id":id,"scope":"out of M1 scope"}));
-            report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tout of M1 scope\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
-            report.rows.last_mut().unwrap().push_str("\t\t\t\t");
+                .push(json!({"model":model,"id":id,"scope":"unexpected exact-only type product"}));
+            report.universe_mismatch.push(format!("{model}:{id}: exact type mesh omitted from canonical candidates"));
+            report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tunexpected exact-only type product\t\t\t\t\t", entity.ifc_type.name(), metrics.volume));
+            report.rows.last_mut().unwrap().push_str("\t\t\t\t\t");
         } else if !candidates.contains(&id) {
             report.universe_mismatch.push(format!(
                 "{model}:{id}: exact mesh omitted from canonical candidates"
@@ -160,9 +152,23 @@ fn compare(
     }
     drop(decoder);
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes, None);
-    let opening_expectations = openings::expectations(&bytes, &sources)?;
+    let type_maps = canonical_type_maps(&source);
+    report.type_candidates += type_maps.len();
+    let type_expectations: BTreeMap<_, _> = type_maps.iter().map(|(&id, maps)| {
+        ifc_lite_retained_native::oracle::type_maps::expected(&bytes, &sources, maps).map(|value| (id, value))
+    }).collect::<Result<_, _>>()?;
+    let retraced = source::retraced(path, &sources, &mut source.decoder(), tolerances)?;
+    let mut opening_expectations = openings::expectations(&bytes, &sources)?;
+    let retraced_opening = source::retraced_opening(path, &sources, &mut source.decoder(), tolerances)?;
+    let has_retraced_opening = retraced_opening.is_some();
+    if let Some(expected) = retraced_opening {
+        opening_expectations.insert(72209, Some(expected));
+    }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
+    let oracle_source = source.clone();
+    let mut affine_oracle = ifc_lite_retained_native::oracle::affine::AffineOracle::new(&oracle_source);
+    let clip_oracle = ifc_lite_retained_native::oracle::clips::ClipOracle::new(&oracle_source, &sources);
     let (summary, timings) = driver.run_model(
         source,
         &ModelOptions::default(),
@@ -196,26 +202,42 @@ fn compare(
                             Err(error) => { report.violations.push(format!("{model}:{id}: {error}")); None }
                         }
                     });
+                    let retraced = (shape.product_id == 72245).then_some(retraced).flatten();
+                    let expectation = if let Some(value) = type_expectations.get(&id) {
+                        if value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
+                            report.violations.push(format!("{model}:{id}: missing or incomplete type source oracle"));
+                        }
+                        value.as_ref().map(|v| (v.volume, v.bbox))
+                    } else { retraced.or_else(|| source::expected(&sources, id, shape.parts.len())) };
                     report.published(
                         &model,
                         &shape,
                         &actual,
                         rounded.as_ref(),
                         exact_metrics.get(&id),
-                        source::expected(&sources, id, shape.parts.len()),
+                        expectation,
                         tolerances,
                         ms,
                         opening_expectations.get(&id),
+                        &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
+                        retraced.is_some() || (id == 72209 && has_retraced_opening),
                     );
+                    affine::record(report, &mut affine_oracle, &shape, tolerances);
+                    report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }
                 ProductOutcome::Refused {
                     ifc_type,
                     refusal,
                     origin,
                     message,
+                    cut_times_ms,
                     ..
                 } => {
                     let code = refusal.code();
+                    let cuts = cut_times_ms.len();
+                    let cut_ms = cut_times_ms.iter().sum::<f64>();
+                    report.cuts += cuts as u64;
+                    report.cut_times_ms.extend_from_slice(&cut_times_ms);
                     *report.histogram.entry(code.into()).or_default() += 1;
                     if code == "contract_breach" {
                         report
@@ -226,13 +248,16 @@ fn compare(
                         RetainedProductRefusal::KernelFailure { status } => status.to_string(),
                         _ => String::new(),
                     };
+                    // A refused product carries no consumed-part count: leave the
+                    // column empty rather than report 0 for a consumed host.
                     let message = message.replace(['\t', '\n', '\r'], " ");
                     report.rows.push(format!(
-                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t0\t0\t0\t",
+                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1\t\t{status}\t{}\t{}\t{message}\t{cuts}\t{cut_ms}\t\t\t",
                         ifc_type.name(), origin.map_or("", |o| o.cause),
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),
                     ));
+                    affine::refusal(report, &mut affine_oracle, id, code);
                     report
                         .coverage
                         .push(format!("{model}\t{id}\trefused\t{code}"));
@@ -252,7 +277,7 @@ fn compare(
     report.models.push(json!({"model":model,"exact":{"milliseconds":exact_ms,"processMaxRssKiB":exact_rss,"phases":exact.stats},
         "retained":{"milliseconds":retained_ms,"productMilliseconds":timings.product_ms,"acquireMilliseconds":summary.acquire_ms,"phasesMs":{"startupAndQualification":timings.startup_and_qualification_ms,"construction":timings.construction_ms,"affine":timings.affine_ms,"boolean":timings.boolean_ms,"controllerAndPublication":timings.controller_and_publication_ms},"processMaxRssKiB":report::rss(false)?,"childrenMaxRssKiB":report::rss(true)?,"restarts":summary.restarts},
         "openingSources":{"supportedExtrusions":opening_inventory.supported_extrusions,"noAnalyticQuantities":opening_inventory.no_analytic_quantities},
-        "openingCounters":"M3-0: cuts/cutMs/consumedParts are zero because opened products refuse before cutting",
+        "openingCounters":"M3-A: cuts/cutMs include attempted cuts of refused products; any consumed part refuses the whole product",
         "memorySemantics":"getrusage process lifetime high-water marks; children includes reaped workers"}));
     Ok(())
 }

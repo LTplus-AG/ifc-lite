@@ -28,7 +28,7 @@ def generate():
         transform = m.add('IFCCARTESIANTRANSFORMATIONOPERATOR3D', '$', '$', m.origin, scale, '$')
         return m.add('IFCMAPPEDITEM', mapping, transform)
 
-    for index, case in enumerate('abcdefghij'):
+    for index, case in enumerate('abcdefghijk'):
         placement = m.place((20 * index, 0, 0))
         if case == 'a':
             placement = m.place((2.6e6, 1e5, 0), x=(math.sqrt(3)/2, 0.5, 0))
@@ -60,12 +60,14 @@ def generate():
                           'Reference' if case == 'g' else ('Axis' if case == 'h' else 'Body'),
                           kind='MappedRepresentation' if case in 'ci' else 'SweptSolid')
         m.add('IFCRELVOIDSELEMENT', m.gid(case + '-void'), '$', '$', '$', host, opening)
-        if case == 'j':
+        if case in 'jk':
             material = m.add('IFCMATERIAL', "'synthetic'", '$', '$')
-            layer = m.add('IFCMATERIALLAYER', material, '0.2', '$', '$', '$', '$', '$')
-            layers = m.add('IFCMATERIALLAYERSET', seq([layer]), "'synthetic'", '$')
+            layers_list = [m.add('IFCMATERIALLAYER', material, '0.2' if case == 'j' else '0.1', '$', '$', '$', '$', '$')]
+            if case == 'k':
+                layers_list.append(m.add('IFCMATERIALLAYER', material, '0.1', '$', '$', '$', '$', '$'))
+            layers = m.add('IFCMATERIALLAYERSET', seq(layers_list), "'synthetic'", '$')
             usage = m.add('IFCMATERIALLAYERSETUSAGE', layers, '.AXIS2.', '.POSITIVE.', '0.', '$')
-            m.add('IFCRELASSOCIATESMATERIAL', m.gid('layers'), '$', '$', '$', seq([host]), usage)
+            m.add('IFCRELASSOCIATESMATERIAL', m.gid('layers' if case == 'j' else 'two-layers'), '$', '$', '$', seq([host]), usage)
         cases.append(f'/* UNREVIEWED M3 case ({case}): host {host}, opening {opening}. */')
     text = m.finish().replace('DATA;\n', 'DATA;\n' + '\n'.join(cases) + '\n', 1)
     return text.replace('SYNTHETIC; issue 7955; not authoring-tool evidence',

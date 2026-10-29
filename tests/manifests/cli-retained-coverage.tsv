@@ -10,7 +10,7 @@ rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953140	refused	operation_unsu
 rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953326	refused	operation_unsupported
 rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953512	refused	operation_unsupported
 rust/geometry/tests/fixtures/issue_098_wall_W.ifc	1953698	refused	operation_unsupported
-rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928204	refused	opening_strategy
+rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928204	refused	opening_unsupported
 rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928638	published	
 rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928672	published	
 rust/geometry/tests/fixtures/issue_098_wall_W.ifc	928894	published	
@@ -95,29 +95,29 @@ rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	87	published
 rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc	94	published	
 rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc	50	published	
 rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	100	published	
-rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	30	refused	opening_strategy
+rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	30	published	
 rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	50	published	
 rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc	70	published	
-rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72209	refused	opening_strategy
+rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72209	published	
 rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72216	published	
 rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72230	published	
-rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72245	refused	operation_unsupported
+rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc	72245	published	
 tests/fixtures/cli-retained/layered-wall.ifc	27	refused	material_layer_strategy
-tests/fixtures/synthetic-retained/f-a-curved.ifc	122	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	122	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	129	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	159	published	
-tests/fixtures/synthetic-retained/f-a-curved.ifc	188	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	188	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	195	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	225	published	
-tests/fixtures/synthetic-retained/f-a-curved.ifc	254	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	254	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	261	published	
-tests/fixtures/synthetic-retained/f-a-curved.ifc	55	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-a-curved.ifc	55	refused	material_layer_strategy
 tests/fixtures/synthetic-retained/f-a-curved.ifc	63	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	93	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	113	refused	operation_unsupported
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	128	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	128	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	135	published	
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	153	refused	opening_strategy
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	153	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	160	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	172	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	183	refused	operation_unsupported
@@ -127,3 +127,19 @@ tests/fixtures/synthetic-retained/f-b-mapped.ifc	83	refused	operation_unsupporte
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	98	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-c-brep.ifc	1051	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-c-extrusion.ifc	27	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	107	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	133	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	141	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	156	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	173	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	181	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	190	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	202	refused	empty_result
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	219	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	231	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	38	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	46	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	54	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	65	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	78	published	
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	96	published	

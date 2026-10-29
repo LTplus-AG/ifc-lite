@@ -34,7 +34,7 @@ fn issue_7024_rectangular_analytic_prism_shares_profile_hole_corners() {
             for (dx0, dx1) in [(g, g), (-g, 0.), (0., 0.)] {
                 let lo = rotate([1. + dx0, 1., 0.]);
                 let hi = rotate([2. + dx1, 2., 0.25]);
-                let opening = OpeningType::Rectangular(
+                let opening = CutterKind::Rectangular(
                     Point3::from(std::array::from_fn(|k| origin[k] + lo[k])),
                     Point3::from(std::array::from_fn(|k| origin[k] + hi[k])),
                     Some(Vector3::from(rotate([0., 0., 1.]))),

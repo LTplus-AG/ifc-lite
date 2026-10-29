@@ -27,10 +27,9 @@
  * the same walk, so both modes of the command answer about the same entities.
  */
 
+import { buildFingerprintBatch } from '@ifc-lite/diff/internal';
 import { createHash } from 'node:crypto';
 import {
-  buildComponentFingerprints,
-  buildDataFingerprint,
   type DataFingerprintInput,
   type EntityFingerprint,
   type ModelIdentity,
@@ -152,13 +151,15 @@ export function buildFileFingerprints(
   const entities = [...comparableEntities(store)];
   const keys = resolveAuthoredKeys(store, entities, options);
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
+  const inputs: DataFingerprintInput[] = [];
   for (const { expressId, globalId, ifcType, source, isTypeObject } of entities) {
     const input = buildDataInput(store, expressId, ifcType, source, isTypeObject, units);
+    inputs.push(input);
     const fingerprint: EntityFingerprint<DiffRef> = {
       key: keys.get(expressId) ?? globalId,
       ifcType,
-      dataHash: buildDataFingerprint(input),
-      components: buildComponentFingerprints(input),
+      dataHash: '',
+      components: {},
       ref: expressId,
     };
     // Where the element sits, as a name path (issue #4955). Read for every
@@ -168,6 +169,8 @@ export function buildFileFingerprints(
     if (container !== undefined) fingerprint.container = container;
     fingerprints.push(fingerprint);
   }
+  const hashes = buildFingerprintBatch(inputs);
+  for (let i = 0; i < fingerprints.length; i++) Object.assign(fingerprints[i], hashes[i]);
   return fingerprints;
 }
 

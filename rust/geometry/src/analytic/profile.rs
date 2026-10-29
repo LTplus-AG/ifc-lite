@@ -116,9 +116,9 @@ fn extract_profile(
             let clearance = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(_, max)| {
                 max.max(DEFAULT_TOPOLOGY_CLEARANCE)
             });
-            let join_precision = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(min, _)| {
-                min.min(DEFAULT_TOPOLOGY_CLEARANCE)
-            });
+            let join_precision = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(min, _)| min.min(DEFAULT_TOPOLOGY_CLEARANCE));
+            #[cfg(feature = "retained-runtime")]
+            if super::profile_retrace::validate(profile, decoder, &mut result, clearance, join_precision, |s| loop_from_segments(ProfileLoopKind::Outer, s))? { return Ok(()); }
             super::profile_topology::validate(&result.loops, clearance, join_precision)
         } else {
             Ok(())

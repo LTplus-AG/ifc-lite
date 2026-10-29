@@ -99,7 +99,9 @@ async function printed(input: DocumentPdfInput, duringImage?: () => void): Promi
 
 it('captures large table/IDS counts with the label locale through actual PNG preparation and catalogue replacement (#6610)', async () => {
   registerLocale('de', { 'document.table.moreRows': 'Rest {countDisplay}', 'document.table.total': 'Summe {count}',
-    'document.preview.idsReportChecksCount': { one: '{countDisplay} Prüfung', other: '{countDisplay} Prüfungen' } });
+    'document.preview.idsReportChecksCount': { one: '{countDisplay} Prüfung', other: '{countDisplay} Prüfungen' },
+    // An IDS block counts specifications; only the rule-set block counts checks (#8204).
+    'idsPanel.specifications': { one: '{countDisplay} Spezifikation', other: '{countDisplay} Spezifikationen' } });
   registerLocale('fr', { 'document.table.moreRows': 'WRONG {countDisplay}', 'document.table.total': 'WRONG {count}' });
   setLocale('de'); const input = declaredInput(); input.labels = captureTranslation();
   const ui = render(<DocumentPreview {...input} onSelectBlock={() => {}} />);
@@ -108,10 +110,11 @@ it('captures large table/IDS counts with the label locale through actual PNG pre
   const table = ui.querySelector('[data-preview-block="table"]'); assert.ok(table);
   assert.match(table.textContent ?? '', /Rest 1\.003/); assert.match(table.textContent ?? '', /Summe 1\.004/);
   const classic = ui.querySelector('[data-preview-block="classic"]'); assert.ok(classic);
-  for (const value of ['22.344', '19.999', '1.111', '1.234', '12.345', '11.111', '5.678', '20.000', '2 Prüfungen']) {
+  for (const value of ['22.344', '19.999', '1.111', '1.234', '12.345', '11.111', '5.678', '20.000', '2 Spezifikationen']) {
     assert.ok(classic.textContent?.includes(value), `mounted report retains ${value}`);
   }
   const compact = ui.querySelector('[data-preview-block="compact"]'); assert.ok(compact);
+  assert.ok(compact.textContent?.includes('2 Prüfungen'), 'the rule-set block keeps counting checks');
   assert.ok(compact.textContent?.includes('1.234/1.234'), 'actual compact rule glyphs use the selected grouping');
   const manual = ui.querySelector('[data-preview-block="manual"]'); assert.ok(manual);
   for (const value of ['Pass 1.001', 'Fail 1.001', '(1.001 of 2.004 checks)']) assert.ok(manual.textContent?.includes(value), `mounted captured German manual count: ${value}`);
@@ -119,7 +122,7 @@ it('captures large table/IDS counts with the label locale through actual PNG pre
     registerLocale('de', { 'document.table.moreRows': 'WRONG {countDisplay}', 'document.table.total': 'WRONG {count}' }); setLocale('fr');
   }));
   for (const expected of ['Rest 1.003', 'Summe 1.004', 'Checked 22.344', 'Passed 19.999', 'Failed 1.111', 'Warnings 1.234',
-    'Checked 12.345', 'Passed 11.111', 'Checked 5.678', 'Found 12.345', '1.234 to 20.000', '1.234/1.234', '2 Prüfungen']) {
+    'Checked 12.345', 'Passed 11.111', 'Checked 5.678', 'Found 12.345', '1.234 to 20.000', '1.234/1.234', '2 Spezifikationen', '2 Prüfungen']) {
     assert.ok(text.includes(expected), `actual PDF retains captured ${expected}`);
   }
   for (const literal of ['1,234.50 m²', '2,000.00 m²', '90%', '100%']) assert.ok(text.includes(literal), `authored/rate value remains literal: ${literal}`);

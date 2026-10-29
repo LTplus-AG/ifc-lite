@@ -5,7 +5,7 @@
 // the built packages/wasm/pkg-retained and runs rust/wasm-bindings/tests/retained-
 // browser/contract.mjs in Chromium. Packaging and contract only; source-only
 // displays are never final product geometry.
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { serveRoots, stageTemporary } from './smlib-browser-worker-probe.mjs';
@@ -27,10 +27,13 @@ try {
 } catch (error) { window.contractResult = { passed: false, error: String(error), stack: error?.stack }; }
 </script>`;
 
-export async function runRetainedBrowserContract({ build, sdk, timeout = 300_000 }) {
+export async function runRetainedBrowserContract({ build, sdk, timeout = 300_000,
+  nativeReference = join(ROOT, 'rust/wasm-bindings/smlib/m11-i-native-instances.json') }) {
   const { temporary, root } = await stageTemporary({ build, sdk });
   let server, browser;
   try {
+    // This lane serves its own temporary bundle, not wasm-bindgen-test's root.
+    await copyFile(nativeReference, join(root, 'm11-i-native-instances.json'));
     const bindings = await readFile(join(ROOT, 'packages/wasm/pkg-retained/ifc-lite.js'), 'utf8');
     const driver = bindings.match(/from ['"](\.\/snippets\/[^'"]+\/retained-driver\.mjs)['"]/);
     if (!driver) throw new Error('Built retained package has no driver import to observe');
@@ -38,6 +41,7 @@ export async function runRetainedBrowserContract({ build, sdk, timeout = 300_000
     server = serveRoots({
       '/smlib/': root,
       '/pkg/': join(ROOT, 'packages/wasm/pkg-retained'),
+      '/driver/': join(ROOT, 'rust/wasm-bindings/js'),
       '/contract/': join(ROOT, 'rust/wasm-bindings/tests/retained-browser'),
       '/fixtures/': join(ROOT, 'rust/geometry/tests/fixtures'),
       '/manifests/': join(ROOT, 'tests/manifests'),

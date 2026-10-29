@@ -10,8 +10,9 @@ mod exit_cap_far_field;
 pub(super) mod host_vertices;
 mod membrane;
 
-use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
+use super::{CutterKind, GeometryRouter, NORMALIZE_EPSILON};
 use crate::csg::plane_eps::PlaneEps;
+use crate::math::aabb::Aabb3;
 use crate::{Mesh, Point3, Vector3};
 
 impl GeometryRouter {
@@ -19,16 +20,16 @@ impl GeometryRouter {
     /// This prevents exponential triangle growth when many small openings
     /// tile a wall surface — each clip creates boundary triangles that get
     /// re-split by the next clip, causing O(2^N) growth.
-    pub(crate) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
+    pub(crate) fn merge_rectangular_openings(openings: &[CutterKind]) -> Vec<CutterKind> {
         const MERGE_TOLERANCE: f64 = 0.01; // Broad phase only; never credit filled volume
 
         // Separate rectangular and non-rectangular openings
         let mut rects: Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> = Vec::new();
-        let mut others: Vec<OpeningType> = Vec::new();
+        let mut others: Vec<CutterKind> = Vec::new();
 
         for opening in openings {
             match opening {
-                OpeningType::Rectangular(min, max, dir) => {
+                CutterKind::Rectangular(min, max, dir) => {
                     rects.push((*min, *max, *dir));
                 }
                 other => others.push(other.clone()),
@@ -87,19 +88,15 @@ impl GeometryRouter {
                     if overlaps_x && overlaps_y && overlaps_z && dirs_compatible && phantom_free {
                         // Merge into box i
                         let dir = rects[i].2;
-                        rects[i] = (
-                            Point3::new(
-                                a_min.x.min(b_min.x),
-                                a_min.y.min(b_min.y),
-                                a_min.z.min(b_min.z),
-                            ),
-                            Point3::new(
-                                a_max.x.max(b_max.x),
-                                a_max.y.max(b_max.y),
-                                a_max.z.max(b_max.z),
-                            ),
-                            dir,
-                        );
+                        let bounds = Aabb3 {
+                            min: (*a_min).into(),
+                            max: (*a_max).into(),
+                        }
+                        .union(&Aabb3 {
+                            min: (*b_min).into(),
+                            max: (*b_max).into(),
+                        });
+                        rects[i] = (bounds.min.into(), bounds.max.into(), dir);
                         rects.remove(j);
                         merged = true;
                     } else {
@@ -111,9 +108,9 @@ impl GeometryRouter {
         }
 
         // Reconstruct the opening list
-        let mut result: Vec<OpeningType> = rects
+        let mut result: Vec<CutterKind> = rects
             .into_iter()
-            .map(|(min, max, dir)| OpeningType::Rectangular(min, max, dir))
+            .map(|(min, max, dir)| CutterKind::Rectangular(min, max, dir))
             .collect();
         result.extend(others);
         result
@@ -319,25 +316,8 @@ impl crate::program::openings::execute::Execution {
             open_max + forward,
         ];
 
-        let new_min = Point3::new(
-            all_points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min),
-            all_points.iter().map(|p| p.y).fold(f64::INFINITY, f64::min),
-            all_points.iter().map(|p| p.z).fold(f64::INFINITY, f64::min),
-        );
-        let new_max = Point3::new(
-            all_points
-                .iter()
-                .map(|p| p.x)
-                .fold(f64::NEG_INFINITY, f64::max),
-            all_points
-                .iter()
-                .map(|p| p.y)
-                .fold(f64::NEG_INFINITY, f64::max),
-            all_points
-                .iter()
-                .map(|p| p.z)
-                .fold(f64::NEG_INFINITY, f64::max),
-        );
+        let bounds = Aabb3::from_points(all_points.iter().map(|p| (*p).into()));
+        let (new_min, new_max) = (bounds.min.into(), bounds.max.into());
 
         (new_min, new_max)
     }

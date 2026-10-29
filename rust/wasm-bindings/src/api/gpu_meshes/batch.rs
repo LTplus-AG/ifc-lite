@@ -107,15 +107,15 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
-            plan_type_geometry, produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
-            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData, TypeGeometryMode,
+            produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
+            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData,
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
 
         // Batch wall-clock for the PipelineDiagnostics channel. std::time::Instant
-        // traps on wasm32, so use the JS clock (two Date.now() reads per batch —
-        // negligible, always on).
-        let batch_started_ms = js_sys::Date::now();
+        // traps on wasm32, so the host clock is the JS one there (two Date.now()
+        // reads per batch — negligible, always on); see `batch_host`.
+        let batch_clock = super::batch_host::BatchClock::start();
 
         let content = data;
 
@@ -465,22 +465,15 @@ impl IfcAPI {
             // time; the native pipeline plans the same jobs with
             // `SuppressInstanced` (an export must not duplicate geometry).
             let kind = if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
-                let rep_map_ids: Vec<u32> = entity
-                    .get(6)
-                    .and_then(|a| a.as_list())
-                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-                    .unwrap_or_default();
+                let rep_map_ids = ifc_lite_processing::discovery::record_refs_at(
+                    content.get(start..end).unwrap_or_default(),
+                    ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
+                );
                 if rep_map_ids.is_empty() {
                     continue;
                 }
-                let referenced = self.get_or_build_referenced_repmaps(content, &mut decoder);
-                let instantiated = self.get_or_build_instantiated_type_ids(content, &mut decoder);
-                let rep_maps = plan_type_geometry(
-                    &rep_map_ids,
-                    &referenced,
-                    instantiated.contains(&id),
-                    TypeGeometryMode::EmitTagged,
-                );
+                let type_plan = self.get_or_build_type_geometry_plan(content, &mut decoder);
+                let rep_maps = type_plan.maps_for(id, &rep_map_ids);
                 if rep_maps.is_empty() {
                     continue;
                 }
@@ -489,6 +482,8 @@ impl IfcAPI {
                 ElementJobKind::Product
             };
 
+            #[cfg(test)]
+            parity::record_job(id, &kind);
             let produced = produce_element_meshes_owned(
                 &ElementMeshJob {
                     id,
@@ -533,37 +528,9 @@ impl IfcAPI {
         crate::api::warn_refused_products(batch_refused);
         let csg_diag = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
-        // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
-        // per-element warning (id + reason) when a sliceable wall fails to slice
-        // — so future regressions surface without spamming healthy loads. Reasons:
-        // not-single-unrotated-item / thin-layers-collapsed-to-1 /
-        // placement-unresolved / cut-produced-<2 / base-mesh-error.
-        let layer_diag = router.take_layer_slice_diag();
-        if !layer_diag.is_empty() {
-            let sliced = layer_diag.iter().filter(|(_, r)| r.starts_with("ok:")).count();
-            let not_sliced = layer_diag.len() - sliced;
-            if not_sliced == 0 {
-                web_sys::console::info_1(
-                    &format!("[ifc-lite layers] batch: sliced {} wall(s) into layers", sliced)
-                        .into(),
-                );
-            } else {
-                let detail: Vec<String> = layer_diag
-                    .iter()
-                    .filter(|(_, r)| !r.starts_with("ok:"))
-                    .map(|(id, r)| format!("#{}={}", id, r))
-                    .collect();
-                web_sys::console::warn_1(
-                    &format!(
-                        "[ifc-lite layers] batch: sliced {}, {} NOT sliced — {}",
-                        sliced,
-                        not_sliced,
-                        detail.join(", ")
-                    )
-                    .into(),
-                );
-            }
-        }
+        // Layered-wall slicing diagnostics (#563), from this batch's one drain.
+        super::batch_host::log_layers(&router.take_layer_slice_diag());
+
 
         // #1623 Phase 3: resolve the batch's don't-bake occurrences into shard
         // instances (kept) + recovered flat meshes (sub-threshold / ineligible
@@ -637,7 +604,7 @@ impl IfcAPI {
             .flat_map(|o| o.meshes.iter())
             .map(|m| (m.indices.len() / 3) as u64)
             .sum();
-        let batch_ms = (js_sys::Date::now() - batch_started_ms).max(0.0) as u64;
+        let batch_ms = batch_clock.elapsed_ms();
         // The batch reuses ONE decoder across every element (the point cache is
         // already hoisted here), so its cumulative point-cache stats ARE this
         // batch's faceted-brep memoization tally.
@@ -976,3 +943,7 @@ impl IfcAPI {
 #[cfg(test)]
 #[path = "batch_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "batch_parity_tests.rs"]
+mod parity;

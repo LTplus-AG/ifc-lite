@@ -35,6 +35,7 @@ import {
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-select.js';
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
+import { TopologyMemo } from './scene-precision.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
@@ -1199,13 +1200,16 @@ export class Scene {
    */
   appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false): void {
     meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
+    // One verdict per (mesh, frame) for the whole append: the validation below
+    // and bucket routing ask the same question about the same placed mesh.
+    const topology = new TopologyMemo();
     // Validate every input before cancelling appearance work, publishing a
     // bucket, or touching GPU state. A single impossible f32 frame must leave
     // an already-valid scene usable and allow the next safe append.
     for (const meshData of meshDataArray) {
       const modelIndex = meshData.modelIndex ?? 0;
       const shared = this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex);
-      if (!topologySafeBatchOrigin([meshData], undefined, shared)) {
+      if (!topologySafeBatchOrigin([meshData], undefined, shared, undefined, topology)) {
         throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
       }
     }
@@ -1239,7 +1243,7 @@ export class Scene {
     // spatial chunking on, its grid cell)
     for (const meshData of renderable) {
       const baseKey = this.bucketBaseKey(meshData);
-      const bucketKey = this.resolveActiveBucket(baseKey, meshData);
+      const bucketKey = this.resolveActiveBucket(baseKey, meshData, topology);
       const resolvedBucket = this.buckets.get(bucketKey);
       if (resolvedBucket) this.meshDataBucket.set(meshData, resolvedBucket);
 
@@ -2478,7 +2482,7 @@ export class Scene {
    * a new sub-bucket is created with a suffixed key (e.g. "500|500|500|1000#1").
    * Returns the bucket key to use (may be the base key or a suffixed key).
    */
-  private resolveActiveBucket(baseColorKey: string, meshData: MeshData): string {
+  private resolveActiveBucket(baseColorKey: string, meshData: MeshData, topology?: TopologyMemo): string {
     const modelIndex = meshData.modelIndex ?? 0;
     return resolvePrecisionBucket({
       buckets: this.buckets,
@@ -2489,7 +2493,7 @@ export class Scene {
         this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex,
       ),
       nextSplitKey: () => `${baseColorKey}#${this.nextSplitId++}`,
-    }, baseColorKey, meshData);
+    }, baseColorKey, meshData, topology);
   }
 
   /**

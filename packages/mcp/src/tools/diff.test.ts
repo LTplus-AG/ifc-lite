@@ -16,6 +16,7 @@
  * a drift in either copy fails a build.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +28,9 @@ import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { diffTools } from './diff.js';
 import { buildModelFingerprints } from './diff-fingerprints.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 /** A 22-character IFC GlobalId from a short mnemonic. */
 function guid(mnemonic: string): string {

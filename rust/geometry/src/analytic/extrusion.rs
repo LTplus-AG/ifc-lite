@@ -59,7 +59,7 @@ pub(crate) fn try_extract_analytic_extrusion(
     solid: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> crate::Result<AnalyticExtrusion> {
-    let (mut result, parsed) = extract_extrusion(solid, decoder);
+    let (mut result, parsed) = super::profile_retrace::admitting(|| extract_extrusion(solid, decoder));
     match parsed {
         Ok(()) => {}
         Err(WalkError::Unsupported(reason)) => {

@@ -13,7 +13,7 @@ fn opening_and_layer_refusals_do_not_acquire_the_worker() {
         (
             include_str!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"),
             55,
-            "opening_strategy",
+            "material_layer_strategy",
         ),
     ] {
         let acquired = std::cell::Cell::new(0);

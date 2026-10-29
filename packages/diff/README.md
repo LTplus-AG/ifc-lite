@@ -5,11 +5,32 @@ revisions as **added / modified / deleted / unchanged**, with separable
 **data vs geometry** scope — the engine behind the viewer's "compare two
 versions" mode.
 
-The public comparison API is **pure and store-agnostic**: it consumes adapter
-fingerprints without invoking a parser or renderer. The package also depends on
-`@ifc-lite/wasm` for the staged Rust backend being qualified under #8042;
-public entry points retain their current synchronous initialization contract. Adapters (the CLI, the viewer) extract a fingerprint per
+The public comparison API consumes adapter fingerprints without invoking a
+parser or renderer. All 23 existing operations run in the independent
+`@ifc-lite/wasm/diff` Rust module. Initialize once with `await initDiff()` or
+`initDiffSync(...)` before calling synchronous comparison, fingerprint, lineage,
+or sidecar operations. Adapters (the CLI and viewer) extract a fingerprint per
 entity and hand them over; the engine matches by key and classifies.
+
+## Initialization
+
+`initDiff` and `initDiffSync` are the two new initialization exports. Existing
+operation names and signatures remain intact and synchronous after initialization.
+Calling an operation before initialization throws an error naming `initDiff`.
+Repeated initialization is safe, and failed asynchronous initialization can be
+retried. While asynchronous initialization is in progress, `initDiffSync` throws;
+await `initDiff()` instead. Once initialized, either initializer is a no-op.
+Initialize at your application’s async startup boundary.
+
+`initDiff()` loads the independent diff WASM asset in a browser. Explicit bytes
+can be supplied as `await initDiff({ module_or_path: bytes })`; Node callers can
+read the WASM asset into a `Uint8Array` or `Buffer`. For synchronous startup use
+`initDiffSync({ module: bytes })`. No geometry engine initialization is required.
+The module is built with `pnpm build:wasm`; committed generated declarations
+support typechecking without a Rust toolchain.
+
+The historical TypeScript engine is a private test oracle outside `src` and is
+excluded from published `dist`. It is never selected as a runtime fallback.
 
 ## Installation
 
@@ -20,7 +41,9 @@ npm install @ifc-lite/diff
 ## Usage
 
 ```ts
-import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
+import { initDiff, diffModels, type EntityFingerprint } from '@ifc-lite/diff';
+
+await initDiff();
 
 // Your adapter walks a store and emits one fingerprint per entity, per model.
 declare function extractFingerprints(model: unknown): EntityFingerprint<number>[];
@@ -221,8 +244,20 @@ never registers as a change) and tolerance-quantized. This package only
 See the [ifc-lite docs](https://ifclite.dev/docs/) and the
 [API Reference](https://ifclite.dev/docs/api/typescript/).
 
+`@ifc-lite/diff/internal` is for in-repository consumers only and has no semver
+stability guarantee. `buildFingerprintBatch` snapshots fresh adapter DTOs once
+and computes data and component fingerprints together. It never caches inputs;
+call it again after changes. Public unary fingerprint APIs remain supported.
+
+In-repository consumers making repeated comparisons may use
+`prepareDiffModel` from `@ifc-lite/diff/internal` after `initDiff()`. It owns an
+immutable snapshot of fingerprint fields and keeps opaque `ref` identities.
+Call `base.compare(head, options)` repeatedly and `dispose()` on both owners in
+`finally` blocks. Disposal is idempotent; comparing a disposed owner throws.
+Prepare new owners after edits. Returned entries refer to the snapshots, while
+the public `diffModels` API continues to return the original input objects.
+There is no implicit cache or automatic mutation tracking.
+
 ## License
 
 MPL-2.0
-
-The staged runtime initializes the independent `@ifc-lite/wasm/diff` module. It does not initialize the geometry engine. The diff module is built with `pnpm build:wasm`; its generated declarations are committed for wasm-free typechecking.

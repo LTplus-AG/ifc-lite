@@ -31,6 +31,8 @@
  * not un-merge it.
  */
 
+import { initDiff } from '@ifc-lite/diff';
+import { extractToken, json, readBody, parseJson } from './layer-registry-http.js';
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import { getProvenance } from '@ifc-lite/ifcx';
@@ -65,49 +67,6 @@ export interface LayerRegistryRouteOptions {
 
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
 const BASE = '/api/v1/';
-
-/**
- * Registry credentials are `Authorization: Bearer` ONLY — no `?token=`
- * fallback. A query-string secret leaks via access logs, reverse proxies,
- * traces, and copied URLs (same reasoning as the /metrics endpoint; the
- * websocket path keeps `?token=` only because browsers cannot set
- * handshake headers, which does not apply to registry API clients).
- */
-function extractToken(req: http.IncomingMessage): string | undefined {
-  const header = req.headers['authorization'];
-  if (typeof header === 'string') {
-    const m = /^Bearer\s+(.+)$/i.exec(header.trim());
-    if (m) return m[1];
-  }
-  return undefined;
-}
-
-function json(res: http.ServerResponse, status: number, body: unknown): true {
-  res.writeHead(status, { 'content-type': 'application/json' });
-  res.end(JSON.stringify(body));
-  return true;
-}
-
-async function readBody(req: http.IncomingMessage, maxBytes: number): Promise<string | null> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buf = chunk as Buffer;
-    total += buf.byteLength;
-    if (total > maxBytes) return null;
-    chunks.push(buf);
-  }
-  return Buffer.concat(chunks).toString('utf-8');
-}
-
-/** Parse JSON, surfacing the failure reason instead of swallowing it. */
-function parseJson(text: string): { value?: unknown; error?: string } {
-  try {
-    return { value: JSON.parse(text) };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
-  }
-}
 
 /**
  * Map a store-thrown `LayerPushError` onto the HTTP surface: capacity
@@ -274,6 +233,8 @@ export async function handleLayerRegistryRequest(
     principal = await opts.authorize(extractToken(req), method);
     if (!principal) return json(res, 401, { error: 'unauthorized' });
   }
+  // Both explicit merges and push-triggered auto-merges use synchronous hashes.
+  if (method === 'POST' && (head === 'layers' || (head === 'refs' && segments[2] === 'merge'))) await initDiff();
   const registry = opts.registry;
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
   const webhooks = opts.webhooks ?? [];

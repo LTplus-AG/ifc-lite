@@ -438,13 +438,13 @@ impl IfcAPI {
                     ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
                 );
                 if rep_map_ids.is_empty() {
-                    self.record_input_refusals(&decoder);
+                    self.record_input_refusals(&decoder, router.length_unit_refused());
                     continue;
                 }
                 let type_plan = self.get_or_build_type_geometry_plan(content, &mut decoder);
                 let rep_maps = type_plan.maps_for(id, &rep_map_ids);
                 if rep_maps.is_empty() {
-                    self.record_input_refusals(&decoder);
+                    self.record_input_refusals(&decoder, router.length_unit_refused());
                     continue;
                 }
                 ElementJobKind::TypeProduct { rep_maps }
@@ -469,7 +469,7 @@ impl IfcAPI {
                 &mut decoder,
                 &router,
             );
-            self.record_input_refusals(&decoder);
+            self.record_input_refusals(&decoder, router.length_unit_refused());
             let Ok(produced) = produced else { batch_refused += 1; continue };
 
             for (product_id, fails) in produced.csg_failures {

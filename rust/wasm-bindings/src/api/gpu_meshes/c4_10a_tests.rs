@@ -102,12 +102,17 @@ fn c4_10a_warm_router_reuses_brep_walk_across_batches_7782() {
     }
 }
 
-fn run(api: &IfcAPI, content: &[u8], pre: &super::super::prepass_once::PrepassOnceData, jobs: &[u32]) {
+fn run(
+    api: &IfcAPI,
+    content: &[u8],
+    pre: &super::super::prepass_once::PrepassOnceData,
+    jobs: &[u32],
+) {
     let (x, y, z) = pre.meta.frame.rtc_offset();
     api.produce_batch(
         content,
         jobs,
-        1.0,
+        super::super::prepass_sharded::stream_meta_unit_scale(&pre.meta),
         x,
         y,
         z,
@@ -162,4 +167,20 @@ fn c4_10a_refusals_are_per_attempt_and_distinct_per_load_7782() {
     let new = api.pipeline_diagnostics.lock().unwrap();
     assert_eq!(new.refused_input_elements, 0);
     assert_eq!(new.refused_prepass_records, 0);
+}
+
+#[test]
+fn c4_10a_refused_unit_counts_each_attempt_without_geometry_7782() {
+    let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc")
+        .replace("#8=IFCUNITASSIGNMENT((#7));", "#8=IFCUNITASSIGNMENT((#800));\n#800=IFCCONVERSIONBASEDUNIT(#803,.LENGTHUNIT.,'CUSTOM',#801);\n#801=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.E400),#7);\n#803=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);");
+    let api = IfcAPI::new();
+    let pre = api.build_prepass_once_data(source.as_bytes());
+    assert_eq!(pre.meta.length_unit_refused, Some(801));
+    let mut jobs = vec![0; pre.total_jobs() * 3];
+    pre.write_jobs(|i, v| jobs[i as usize] = v);
+    run(&api, source.as_bytes(), &pre, &jobs);
+    let diag = api.pipeline_diagnostics.lock().unwrap();
+    assert_eq!(diag.refused_input_elements, pre.total_jobs() as u64);
+    assert!(diag.refused_prepass_records >= 1);
+    assert_eq!(diag.mesh_count, 0);
 }

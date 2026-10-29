@@ -87,8 +87,8 @@ impl IfcAPI {
         true
     }
 
-    pub(crate) fn record_input_refusals(&self, decoder: &ifc_lite_core::EntityDecoder) {
-        if self.collect_pipeline_refusals(decoder) {
+    pub(crate) fn record_input_refusals(&self, decoder: &ifc_lite_core::EntityDecoder, refused_unit: bool) {
+        if self.collect_pipeline_refusals(decoder) || refused_unit {
             self.note_refused_input();
         }
     }

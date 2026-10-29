@@ -286,6 +286,7 @@ impl IfcAPI {
                 };
                 let meta_res =
                     resolve_stream_meta(mode, content, project_id, site_position, &mut decoder);
+                self.collect_pipeline_refusals(&decoder);
                 plane_angle_to_radians = meta_res.plane_angle_to_radians;
                 emit_meta(on_event, &meta_res)?;
                 meta_emitted = true;
@@ -322,6 +323,7 @@ impl IfcAPI {
                 site_position,
                 &mut decoder,
             );
+            self.collect_pipeline_refusals(&decoder);
             plane_angle_to_radians = meta_res.plane_angle_to_radians;
             emit_meta(on_event, &meta_res)?;
         }
@@ -351,7 +353,6 @@ impl IfcAPI {
         }
         // Hold a second clone for the post-scan entity-index export below;
         // `with_arc_columnar_index` consumes the Arc so we'd lose the
-        // reference after the decoder is created.
         let index_for_export = entity_index_arc.clone();
 
         // ── FAST FIRST GEOMETRY ──
@@ -534,7 +535,6 @@ impl IfcAPI {
         buffered_jobs.clear();
 
         // (Style + void resolution and the entity-index export now run ABOVE,
-        // before the affinity bulk, so workers receive them as early as possible —
         // see the FAST FIRST GEOMETRY block. `decoder` from there stays in scope
         // for the orphan type-geometry pass below.)
 

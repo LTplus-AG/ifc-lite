@@ -53,6 +53,7 @@ export async function selectViewportTarget(options: {
     }
   }
   const pick = await renderer.pick(x, y, pickOptions);
+  console.info('[tapdiag] pick', JSON.stringify({ pick: pick ? { id: pick.expressId } : null, current: current() }));
   if (!current()) return;
   useViewerStore.getState().selectAppearanceReference(null);
   if (!pick) {

@@ -139,7 +139,9 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, rect.width, rect.height));
     };
 
+    let diagStartTs = 0;
     const handleTouchStart = async (e: TouchEvent) => {
+      diagStartTs = e.timeStamp;
       invalidateSelectionPick(canvas);
       e.preventDefault();
       touchState.touches = Array.from(e.touches);
@@ -296,6 +298,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         // Tap-to-select: detect quick tap without significant movement
         const tapDuration = Date.now() - touchState.tapStartTime;
         const tool = activeToolRef.current;
+        console.info('[tapdiag] touchend', JSON.stringify({ previousTouchCount, wasMultiTouch, wasLongPress, tapDuration, eventGap: e.timeStamp - diagStartTs, didMove: touchState.didMove, tool }));
 
         // Only select if:
         // - Was a single-finger touch (not after multi-touch gesture)

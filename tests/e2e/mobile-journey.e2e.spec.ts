@@ -131,6 +131,7 @@ test('the Panels sheet opens every available registry panel on a phone (#5865)',
 });
 
 test('one finger orbits, two fingers pinch, taps select and measure, and hold opens the entity menu (#5865)', async ({ page }, info) => {
+  page.on('console', (m) => { if (m.text().startsWith('[tapdiag]')) console.log(m.text()); });
   const gpu = await watchGpuDeviceLoss(page);
   const requireRenderer = gpu.requireLiveGpu;
   await loadAuthoredModel(page);

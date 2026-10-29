@@ -124,15 +124,19 @@ fn m11_a_textures_and_indexed_palettes_refuse_as_explicit_absence() {
     assert_unsupported(resolve(&[bound(fact(7)), bound(palette)]).unwrap_err(), 8, "indexed_palette_pending");
 }
 #[test]
-fn m11_a_band_parts_keyed_by_material_refuse_until_layers_land() {
+fn m4_band_without_a_material_style_uses_exact_fallback_and_material_identity() {
     let band = Bound { source: PartSource::Material(31), ..bound(fact(31)) };
-    assert_unsupported(resolve(&[band]).unwrap_err(), 31, "material_band");
+    let parts = resolve(&[band]).unwrap();
+    near(parts[0].rgba, [0.85, 0.85, 0.85, 1.]);
+    assert_eq!(parts[0].geometry_item_id, None);
+    assert_eq!(parts[0].material_id, Some(31));
+    assert_eq!(parts[0].material_name, None);
 }
 #[test]
 fn m11_a_a_part_count_that_differs_from_the_plan_refuses() {
     let source = source("#10", WALL);
     let plan = product_plan(&source, 14);
-    let mut product = ShapeOnlyProduct { cuts: 0, consumed_parts: 0, cut_times_ms: Vec::new(), normal_planar_fallbacks: 0, product_id: 14,
+    let mut product = ShapeOnlyProduct { band_ms: 0., cap_ms: 0., max_snap_metres: 0., cuts: 0, consumed_parts: 0, cut_times_ms: Vec::new(), normal_planar_fallbacks: 0, product_id: 14,
         ifc_type: IfcType::IfcWall, parts: vec![hand_part(), hand_part()],
         obligations: PresentationObligationsUnmet(vec![Requirement::IfcAppearance]), _storage: Storage::default() };
     let model = snapshot(&source);

@@ -12,10 +12,9 @@ use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::program::transactions::PresentationFacts;
 
 /// What keys a part's colour. Band parts of a material-layer product (M4) are
-/// keyed by material; no retained part is today, so that arm refuses. A part
+/// keyed by material. A part
 /// without a binding is an unstyled frame part (`PlainParts`): exact colours it
 /// with the element colour alone, and so does `Unbound`.
-#[allow(dead_code)] // M4 band parts construct `Material`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum PartSource {
     Item(u32),
@@ -107,7 +106,14 @@ pub(super) fn resolve_parts(
                 PartAppearance { rgba, geometry_class: class, style_id: None, material_name: None,
                     geometry_item_id: None, material_id: None }
             }
-            (None, PartSource::Material(id)) => return Err(unsupported(*id, "material_band")),
+            (None, PartSource::Material(id)) => {
+                // The model prepass joins material styles under their own ids, as
+                // exact's flat style wire does. Never rotate the host's material cursor.
+                let (rgba, material_name) = color(job, *id, element_color, None, &mut 0, ctx, decoder, true);
+                PartAppearance { rgba, geometry_class: crate::element::GEOM_CLASS_LAYER_SLICE,
+                    style_id: ctx.geometry_style_index.contains_key(id).then_some(*id),
+                    material_name, geometry_item_id: None, material_id: Some(*id) }
+            },
             // `presentation_source::fallback`: the element colour, no item, no name.
             (None, PartSource::Unbound) => PartAppearance { rgba: element_color, geometry_class: 0, style_id: None,
                 material_name: None, geometry_item_id: None, material_id: None },

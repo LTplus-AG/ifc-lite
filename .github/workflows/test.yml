@@ -2196,6 +2196,11 @@ jobs:
       # gate's own source and fails when one of them cannot trigger the job
       # that reads it -- an unreachable gate reports success, because a skipped
       # job counts as success in the aggregate `test` gate below (#3312).
+      # retained-notice-inputs.py needs tomllib (Python 3.11+); node-guards may run on
+      # the self-hosted runner, whose image is not guaranteed to provide it.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
       - name: Check retained notice inventory and generated bundles
         run: node scripts/retained-notices.mjs --check
       - name: Check CI path coverage

@@ -160,6 +160,13 @@ describe('BIMcollab source provider (fake transport only)', () => {
     const foreign = setup({ records: [{ ...phaseRecord, projectPhaseName: 'Unknown phase' }] });
     await expect(foreign.provider.download(foreign.ctx, phasedRef)).rejects.toThrow();
   });
+  it('refuses (never guesses) when two projects have a same-named phase holding the same document number', async () => {
+    const phaseRecord = { ...record, projectId: null, projectName: null, projectPhaseName: 'Design' };
+    const { provider, ctx, fetchFn } = setup({ records: [phaseRecord, { ...phaseRecord, versionId: 66 }] });
+    const phasedRef = { projectId: 'phased', containerId: 'phase', fileId: 'd' };
+    await expect(provider.download(ctx, phasedRef)).rejects.toThrow('cannot tell these documents apart');
+    expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
+  });
   it('skips a same-named location that does not hold the project (two "Default" locations)', async () => {
     const first = { ...record, versionId: 55, projectName: 'Another project' };
     const { provider, ctx, fetchFn } = setup({ byLocation: { 2: [first], 3: [{ ...record, locationId: 3 }] } });

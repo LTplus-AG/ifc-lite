@@ -35,7 +35,11 @@ export class LegacyDownload {
     // already pinned the location, so project + number + version identifies it.
     const matches = records.filter(row => inProject(row, names)
       && row.documentNumber === documentNumber && row.versionNumber === versionNumber);
-    if (matches.length !== 1) throw new Error(`BIMcollab legacy download requires one unique documentNumber + versionNumber match; found ${matches.length}.`);
+    // Fail closed: a phase-attached record names only its phase, so the same
+    // phase name + document number in two projects is indistinguishable here.
+    // Refusing beats serving another project's model.
+    if (matches.length !== 1) throw new Error(`BIMcollab legacy download requires one unique documentNumber + versionNumber match; found ${matches.length}.`
+      + (matches.length > 1 ? ' The fallback cannot tell these documents apart; download it in BIMcollab.' : ''));
     const match = matches[0]!;
     if (!match.allowDownload) throw new Error('BIMcollab does not allow downloading this document.');
     if (!Number.isSafeInteger(match.versionId) || match.versionId < 1) throw new Error('BIMcollab returned an invalid numeric version id.');

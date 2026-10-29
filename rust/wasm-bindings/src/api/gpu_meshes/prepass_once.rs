@@ -50,8 +50,7 @@ impl IfcAPI {
         // pick up clones below without re-locking. Panic on poison —
         // an earlier panic with the lock held would mean the cached
         // index is in an inconsistent state.
-        let mut slot = self
-            .cached_entity_index
+        let mut slot = self.content.cached_entity_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());
@@ -163,7 +162,7 @@ impl PrepassOnceData {
         crate::api::set_js_prop(
             &result,
             "styleFinishes",
-            &js_sys::Float32Array::from(self.style_finishes.as_slice()),
+            &js_sys::Float32Array::from(self.content.style_finishes.as_slice()),
         );
         // #407/#913 §2.3: per-element material colour lists so the batch path
         // can run the transparent/opaque sub-mesh alternation.

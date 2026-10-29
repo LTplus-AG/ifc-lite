@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::*;
 use super::prepass_affinity::fold_u128_to_u32;
 use super::prepass_discovery::ColumnsDiscovery;
 use super::prepass_memory::snapshot_entity_index;
+use super::prepass_mode::{PrepassMode, PrepassOptions};
 
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
@@ -68,9 +69,7 @@ impl IfcAPI {
             chunk_size,
             disabled_type_names,
             skip_type_geometry,
-            None,
-            false,
-            false,
+            PrepassOptions::serial(false),
         )
     }
 
@@ -82,11 +81,13 @@ impl IfcAPI {
         chunk_size: u32,
         disabled_type_names: Option<Vec<String>>,
         skip_type_geometry: bool,
-        columns: Option<super::prepass_owned_columns::ShardedColumns<'_>>,
-        external_styles: bool,
-        compute_source_fingerprint: bool,
+        options: PrepassOptions<'_>,
     ) -> Result<JsValue, JsValue> {
-        let have_columns = columns.is_some();
+        let (columns, external_styles) = match options.mode {
+            PrepassMode::Serial => (None, false),
+            PrepassMode::Sharded(columns) => (Some(columns), true),
+        };
+        let have_columns = external_styles;
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
         self.begin_content_install();
         use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
@@ -342,8 +343,7 @@ impl IfcAPI {
 
         // Mutex held only briefly to install the Arc.
         {
-            let mut slot = self
-                .cached_entity_index
+            let mut slot = self.content.cached_entity_index
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             *slot = Some(entity_index_arc.clone());
@@ -567,7 +567,7 @@ impl IfcAPI {
         let done = js_sys::Object::new();
         crate::api::set_js_prop(&done, "type", &"complete".into());
         crate::api::set_js_prop(&done, "totalJobs", &(total_jobs as f64).into());
-        if compute_source_fingerprint {
+        if options.source_fingerprint {
             // Whole original source, including malformed/unparsed trailing bytes.
             let key = super::source_fingerprint::source_fingerprint(data);
             crate::api::set_js_prop(&done, "sourceContentKey", &key.into());

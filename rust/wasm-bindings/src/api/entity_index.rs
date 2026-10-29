@@ -69,8 +69,7 @@ impl IfcAPI {
             Ok(index) => ((!index.is_empty()).then(|| std::sync::Arc::new(index)), Ok(())),
             Err(mismatch) => (None, Err(mismatch)),
         };
-        let mut slot = self
-            .cached_entity_index
+        let mut slot = self.content.cached_entity_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = installed;

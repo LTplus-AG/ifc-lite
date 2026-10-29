@@ -18,6 +18,7 @@ pub(in crate::api) mod batch_host;
 mod batch_partition;
 mod instancing;
 pub(crate) mod prepass;
+mod prepass_mode;
 mod prepass_discovery;
 mod prepass_memory;
 mod prepass_once;

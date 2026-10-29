@@ -143,6 +143,15 @@ pub(super) fn discover_from_columns(
         } else {
             ""
         };
+        // Named match arms return before the serial scan's flag predicates.
+        // Site is the one named arm that schedules its own geometry job.
+        if class & PREPASS_CLASS_CODE_MASK != 0 {
+            if site && !is_disabled(disabled_types, kw) {
+                d.buffered_jobs.push((id, start, end, ifc_lite_core::ifc_type_from_keyword(kw)));
+                d.total_jobs += 1;
+            }
+            continue;
+        }
         if class & PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0 {
             if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
                 d.type_candidate_spans.push((id, start, end, ty));

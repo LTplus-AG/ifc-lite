@@ -100,5 +100,6 @@ fn m6_7955_linear_pbhs_solid_difference_requires_volume_authority() {
     let t=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
     let rows=check(&shape,Some(&e),&t);
     assert!(rows.iter().filter(|r|!r.family.ends_with("volume_unavailable")).all(|r|r.pass));
-    assert!(rows.iter().any(|r|r.gated&&!r.pass),"uncut box passed without volume authority");
+    let unavailable=rows.iter().find(|r|r.gated&&!r.pass).expect("uncut box passed without volume authority");
+    assert_eq!(unavailable.reason.as_deref(),Some("solid Boolean operand outside section family"));
 }

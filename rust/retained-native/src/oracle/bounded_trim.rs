@@ -32,7 +32,7 @@ pub(super) fn circle(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Opti
         _=>return None,
     }.matrix();
     // A boundary circle must lie in the Position XY plane. Store its arc in
-    // world-XY angles, keeping the winding/nearest-point oracle canonical.
+    // boundary-local XY angles, keeping the winding/nearest-point oracle canonical.
     if placement[(2,0)].abs()>1e-12 || placement[(2,1)].abs()>1e-12 {return None;}
     let radius=curve.get(slot::IfcCircle::RADIUS.index())?.as_float()?;
     if !radius.is_finite()||radius<=0.{return None;}

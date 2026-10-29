@@ -5,7 +5,7 @@ use crate::metrics::{Metrics, relative, transform};
 use ifc_lite_retained_native::oracle::openings::volume_bounds_relative;
 use serde_json::Value;
 fn result(family: &'static str, value: f64, limit: f64) -> OracleResult {
-    OracleResult {family,value,limit,pass:value.is_finite()&&limit.is_finite()&&value<=limit,gated:true,authority:None,clip_part:None}
+    OracleResult {family,value,limit,pass:value.is_finite()&&limit.is_finite()&&value<=limit,gated:true,authority:None,clip_part:None,reason:None}
 }
 fn tolerance(t: &Value, family: &str, key: &str) -> f64 {
     t[family][key].as_f64().unwrap_or_else(||panic!("missing preregistered {family}.{key}"))

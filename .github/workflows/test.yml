@@ -2635,7 +2635,7 @@ jobs:
       # four shards exhausted the 13-minute cap with 30 tests passing.
       # Split the same suite further without relaxing test or job bounds.
       matrix:
-        shard: [1, 2, 3]
+        shard: [3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2700,7 +2700,7 @@ jobs:
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci tests/e2e/mobile-journey.e2e.spec.ts -g "one finger" --repeat-each=25 --workers=1 --reporter=list
+        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=3/8 --reporter=list
       - name: Upload assistant browser evidence
         if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

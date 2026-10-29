@@ -18,6 +18,7 @@ if [[ "$phase" == native ]]; then
     cat .c4-oracle.log
     git apply "$patch"
     trap - EXIT
+    grep -q "^test result: FAILED" .c4-oracle.log
     rm .c4-oracle.log
     [[ $status == 101 ]] || { echo "oracle did not fail with Rust test failure: $status"; exit 1; }
     echo "C4_ORACLE_CAUGHT $lane"

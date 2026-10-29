@@ -192,11 +192,15 @@ fn c4_10a_finish_join_refusals_stay_with_their_element_8316() {
     let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc")
         // A has both a refused item and a good unstyled item, so production
         // succeeds and the installed finish join walks A's shape again.
-        // The first Body is valid; the later refused Body is still read by
+        // A refused Axis is skipped by mesh selection but still read by
         // the style-source walks, before and after mesh production.
         .replace(
             "#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));",
             "#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#302,#102));",
+        )
+        .replace(
+            "#102=IFCSHAPEREPRESENTATION(#6,'Body','SweptSolid'",
+            "#102=IFCSHAPEREPRESENTATION(#6,'Axis','Curve3D'",
         );
     let api = IfcAPI::new();
     let mut pre = api.build_prepass_once_data(source.as_bytes());

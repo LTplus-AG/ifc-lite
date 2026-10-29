@@ -89,16 +89,23 @@ fn m6_native_mixed_chain_and_boxed_publication() {
 #[test]
 fn m6_native_consumed_provenance() {
     if worker().is_none(){return;}
-    // An invalid second operand after the consumed first clip must never be
-    // reached; the consumed origin survives instead of a missing-entity error.
+    // A valid later operand after the consumed first clip is never executed; the
+    // consumed origin survives. (An undecodable later operand is rejected earlier,
+    // by the source-only preflight traversal, as `source_invalid`; the live
+    // consumed-host short-circuit is covered SDK-free in m6_mixed_and_boxed.)
     let chained=SOURCE.replace("#356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);",
-        "#9356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);\n#356=IFCBOOLEANRESULT(.DIFFERENCE.,#9356,#999999);");
+        "#9356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);\n#356=IFCBOOLEANRESULT(.DIFFERENCE.,#9356,#315);");
     for (label,source) in [("plain",SOURCE),("chained",chained.as_str())] {
         let outcomes=run(source,&[1011]);
         let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("{label}: consumed host must refuse atomically");};
         // Attribution comes from M5's shared HalfSpaceClip hook.
         assert_eq!(refusal.code(),"empty_result","{label}: {refusal:?} {origin:?}");let origin=origin.unwrap();assert_eq!(origin.site,"halfspace_clip");assert_eq!(origin.cause,"consumed");
     }
+    let invalid=SOURCE.replace("#356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);",
+        "#9356=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#314);\n#356=IFCBOOLEANRESULT(.DIFFERENCE.,#9356,#999999);");
+    let outcomes=run(&invalid,&[1011]);
+    let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("invalid later operand must refuse");};
+    assert_eq!(refusal.code(),"source_invalid");assert_eq!(origin.unwrap().entity,Some(999999));
 }
 #[test]
 fn m6_native_fzk_bounded_only_chains_publish() {

@@ -173,7 +173,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
     // Hierarchy's home is the left slot (#1267); it is never routed to the right
     // pane / float / pop-out, but the case keeps the id to body map exhaustive.
-    case 'influx': return <ChunkErrorBoundary label="InfluxDB 2"><Suspense fallback={null}><InfluxPanel /></Suspense></ChunkErrorBoundary>;
+    case 'influx': return <ChunkErrorBoundary key="influx" label="InfluxDB 2"><Suspense fallback={null}><InfluxPanel /></Suspense></ChunkErrorBoundary>;
     case 'assistant': return <ChunkErrorBoundary label="Assistant panel"><Suspense fallback={null}><AssistantPanel /></Suspense></ChunkErrorBoundary>;
     case 'appearance': return <AppearancePanelBody />;
     case 'hierarchy': return <HierarchyPanel />;

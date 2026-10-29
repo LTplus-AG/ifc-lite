@@ -71,6 +71,11 @@
       "host": "pc-wsl",
       "receipt": "/home/louistrue/build-workers/worker-state/jobs/cdcd6486-83bf-41ea-85bb-2fec627e4665/receipt.json",
       "reason": "Live desktop witness: storage guard; command did not execute"
+    },
+    {
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/a96abab6-c933-4a83-9f53-d5e903b31b4b/receipt.json",
+      "reason": "Deferred full root typecheck: host capacity guard refused admission; command did not execute"
     }
   ],
   "setupFailures": [
@@ -85,13 +90,6 @@
       "reason": "Initial typecheck invocation omitted dependency installation; Turbo missing"
     }
   ],
-  "pending": {
-    "requestId": "auto-5641957b5b6f47d298e32073b395674a",
-    "host": "pc-wsl",
-    "receipt": "/home/louistrue/build-workers/worker-state/jobs/a96abab6-c933-4a83-9f53-d5e903b31b4b/receipt.json",
-    "command": "pnpm exec env NODE_OPTIONS=--max-old-space-size=8192 TURBO_CONCURRENCY=1 pnpm typecheck",
-    "state": "queued at handoff; inspect original request, do not resubmit uncertain work"
-  },
   "outstanding": [
     "pnpm api-surface:update after root build",
     "final pnpm lint",
@@ -111,5 +109,18 @@
     "configurable lookback",
     "mobile witness",
     "UI polish"
-  ]
+  ],
+  "deferredTypecheck": {
+    "requestId": "auto-5641957b5b6f47d298e32073b395674a",
+    "host": "pc-wsl",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/a96abab6-c933-4a83-9f53-d5e903b31b4b/receipt.json",
+    "command": "pnpm exec env NODE_OPTIONS=--max-old-space-size=8192 TURBO_CONCURRENCY=1 pnpm typecheck",
+    "state": "refused_before_execution",
+    "launcherExitCode": 1,
+    "processExitCode": null,
+    "reason": "host capacity guard refused admission",
+    "sourceCommit": "6ca75d3e1f1f66ae5c838e314f12415fd6df299c",
+    "evidencePublication": "pending: storage job-finish requires owner reconciliation; original receipt preserved",
+    "resubmitted": false
+  }
 }

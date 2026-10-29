@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { protocol, validateProtocol, digest, nonempty, resultProof, handleResultProof,
-  assertPair, distribution, fixtureInvariant, endpointVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
+  assertPair, distribution, fixtureInvariant, endpointVerdict, warmBudgetVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
 import { fileReceipt, readJson, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt } from './diff-e2e-receipts.mjs';
 import { measure } from './diff-e2e-sample.mjs';
 import { main, run, summary, audit, cpuUtilization } from './diff-e2e.mjs';
@@ -20,6 +20,7 @@ test('#8042 protocol requires six pairs, reproducible balanced interleaving and 
   const p = protocol();
   assert.equal(p.version, 'ifc-diff-e2e/4');
   assert.throws(() => validateProtocol({ ...p, version: 'ifc-diff-e2e/3' }));
+  assert.deepEqual(p.acceptance.warmBudgetMs, { demo: 1, haus: 1, large: 50 });
   assert.equal(p.pairs, 6);
   assert.deepEqual(p.cases.map(c => c.id), ['demo', 'haus', 'large']);
   assert.equal(p.options.length, 3);
@@ -380,7 +381,7 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
         callPath: payload.mode !== 'cold' && payload.implementation === 'rust-wasm' ? 'prepared-handles' : 'stateless-diffModels',
         statelessTimes: payload.mode === 'warm' && payload.implementation === 'rust-wasm'
           ? [1000, 1000, 9000].map(totalMs => ({ totalMs })) : [],
-        retainedTimes: payload.mode === 'warm' ? [1, 1, 9].map(totalMs => ({ totalMs })) : [] };
+        retainedTimes: payload.mode === 'warm' ? [1, 1, 9].map(totalMs => ({ totalMs: totalMs * (payload.implementation === 'typescript' ? 0.1 : 1) })) : [] };
     });
     assert.deepEqual(calls.slice(0, 2), ['proof', 'proof']);
     assert.ok(calls.slice(2).every(mode => mode !== 'proof'));
@@ -389,6 +390,8 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     assert.equal(measured.cases[0].workloads.length, 2);
     assert.equal(measured.cases[0].workloads[1].summary.base.warmProcessMediansMs.n, 6);
     assert.equal(measured.cases[0].workloads[1].summary.branch.statelessWarmProcessMediansMs.median, 1000);
+    assert.equal(measured.cases[0].workloads[1].summary.pairedWarmCallRatio.median, 10);
+    assert.equal(measured.cases[0].workloads[1].timing.budgetMs, 1);
     assert.equal(measured.cases[0].workloads[1].timing.verdict, 'pass', 'secondary latency must never gate');
     assert.equal(measured.performanceVerdict, 'not-assessed');
     let count = 0;
@@ -484,4 +487,27 @@ test('#8042 planning extrapolates complete pairs and proofs without claiming sca
   assert.equal(estimate.fullMs, 1554);
   assert.equal(estimate.timeoutSeconds, 60);
   assert.equal(estimate.withinTwoHourTarget, true);
+});
+
+// #8042: budgets were chosen before the official v4 cohort.
+test('#8042 absolute warm budgets enforce CI bounds, noise and process-level resampling', () => {
+  for (const [id, budget] of [['demo', 1], ['haus', 1], ['large', 50]]) {
+    const result = warmBudgetVerdict(Array(6).fill(budget), id);
+    assert.equal(result.verdict, 'pass');
+    assert.equal(result.budgetMs, budget);
+    assert.deepEqual(result.ci95, [budget, budget]);
+    assert.equal(warmBudgetVerdict(Array(6).fill(budget * 1.01), id).verdict, 'regression');
+    assert.equal(warmBudgetVerdict([budget], id).verdict, 'dry-run-only');
+    const uncertain = [0.95, 0.95, 0.95, 1.05, 1.05, 1.05].map(v => v * budget);
+    assert.equal(warmBudgetVerdict(uncertain, id).verdict, 'inconclusive');
+    assert.deepEqual(warmBudgetVerdict(uncertain, id), warmBudgetVerdict(uncertain, id));
+    assert.equal(warmBudgetVerdict([0.6, 0.8, 0.8, 0.8, 0.8, 0.9].map(v => v * budget), id).verdict, 'noisy');
+  }
+  const cold = endpointVerdict(Array(6).fill(100), Array(6).fill(105));
+  const warm = warmBudgetVerdict(Array(6).fill(0.8), 'demo');
+  assert.equal(endpointVerdict(Array(6).fill(0.1), Array(6).fill(0.8)).verdict, 'regression');
+  assert.equal(cohortVerdict([cold, warm]), 'pass', 'a reported warm ratio cannot gate');
+  assert.equal(cohortVerdict([cold, warmBudgetVerdict(Array(6).fill(1.01), 'demo')]), 'regression');
+  assert.throws(() => warmBudgetVerdict([1], 'unknown'));
+  assert.throws(() => warmBudgetVerdict([NaN], 'demo'));
 });

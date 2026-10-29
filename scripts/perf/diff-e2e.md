@@ -63,15 +63,24 @@ as the measured branch.
 
 ## Timing verdict fixed before measurement
 
-Report each endpoint's median paired branch/base ratio and a pointwise 95%
-paired percentile bootstrap CI (10,000 resamples, seed 8042). The gates are cold
-lifecycle and candidate handle warm versus TS warm, each at most 1.10×. Resample complete
-process pairs, not repeats. No Holm24 procedure or familywise speedup claim.
+The cold gate keeps the paired median branch/base ratio and pointwise 95%
+percentile bootstrap CI. The warm gate instead uses the candidate's absolute
+per-process median handle latency, with budgets fixed before measurement:
+**demo 1 ms, Haus 1 ms, large 50 ms**. These constants are recorded in the result
+JSON at `protocol.acceptance.warmBudgetMs`, and each warm gate records `budgetMs`.
+Protocol remains `ifc-diff-e2e/4`; no official v4 cohort preceded this decision.
 
-- A lower CI bound above 1.10 means a supported regression.
-- A clean pass requires every upper CI bound at most 1.10.
-- An interval crossing 1.10 is inconclusive, not a pass.
-- Per-arm `(max-min)/median` spread above 20% flags noisy and blocks a clean pass.
+Both gates use 10,000 bootstrap resamples, seed 8042, and whole process summaries,
+never individual warm repeats. Cold resamples paired ratios; warm resamples only
+candidate medians. Warm branch/base ratios (`pairedWarmCallRatio`) and candidate
+stateless medians remain report-only. No familywise speedup claim.
+
+- Regression: any cold lower CI exceeds 1.10 or warm lower CI exceeds its budget.
+- Pass: every cold upper CI is at most 1.10, every warm upper CI is at most its
+  budget, and no noise.
+- Otherwise inconclusive; spread above 20% is flagged `noisy`, blocking a pass.
+  Cold checks both arms; the absolute warm gate checks only candidate spread,
+  using the same `(max-min)/median` rule.
 - Identity failure, failed admission, skipped coverage or child failure blocks
   acceptance. Preserve all samples; do not replace inconvenient observations.
 

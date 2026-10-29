@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { hostname, cpus, loadavg, freemem, totalmem, platform, release } from 'node:os';
 import { parseArgs } from 'node:util';
 import { performance } from 'node:perf_hooks';
-import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest, endpointVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
+import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest, endpointVerdict, warmBudgetVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
 import { readJson, fileReceipt, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt, sourceReceipt } from './diff-e2e-receipts.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -211,8 +211,9 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
         workload.summary = summary(workload.pairs);
         const endpoint = s => mode === 'cold' ? s.phases.lifecycleTotalMs
           : distribution(s.retainedTimes.map(t => t.totalMs)).median;
-        workload.timing = endpointVerdict(workload.pairs.map(p => endpoint(p.base)),
-          workload.pairs.map(p => endpoint(p.branch)));
+        workload.timing = mode === 'cold'
+          ? endpointVerdict(workload.pairs.map(p => endpoint(p.base)), workload.pairs.map(p => endpoint(p.branch)))
+          : warmBudgetVerdict(workload.pairs.map(p => endpoint(p.branch)), fixture.id);
       }
       assert.deepEqual(await Promise.all(fixture.paths.map(path => fileReceipt(path))), entry.fixtures, 'fixture mutated');
       entry.state = 'measured-separate-proof-identical';

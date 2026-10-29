@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { roundOrder, seededRand } from './ab-order.mjs';
 
 export const VERSION = 'ifc-diff-e2e/4';
+export const WARM_BUDGET_MS = Object.freeze({ demo: 1, haus: 1, large: 50 });
 export const OPTIONS = [
   { scope: 'data' },
   { scope: 'data', matchUnpairedByContent: true },
@@ -18,15 +19,15 @@ export const LIMITS = Object.freeze({ pairs: 6, rows: 1_000_000,
 // Frozen before timing; identity remains independent of statistical inference.
 export const ACCEPTANCE = Object.freeze({
   status: 'premeasurement-rule',
-  primaryEndpoints: ['cold lifecycleTotalMs', 'warm per-process median handle compare totalMs vs TS diffModels'],
+  primaryEndpoints: ['cold lifecycleTotalMs', 'warm candidate per-process median handle compare totalMs (absolute budget)'],
   primaryCases: ['demo', 'haus', 'large'], options: [2],
-  noninferiorityRatio: 1.10,
-  statisticalMethod: 'paired percentile bootstrap median branch/base ratio; 95% pointwise CI; 10000 resamples; fixed seed 8042; no familywise speedup claim',
+  noninferiorityRatio: 1.10, warmBudgetMs: WARM_BUDGET_MS,
+  statisticalMethod: 'cold paired percentile bootstrap median branch/base ratio; warm percentile bootstrap candidate process medians in ms; 95% pointwise CI; 10000 resamples; fixed seed 8042; no familywise speedup claim',
   inferenceUnit: 'fresh process pair; repeats summarized by process median',
   noise: { maximumArmRelativeRange: 0.20, definition: '(max-min)/median across process summaries' },
   contamination: 'failed admission, timeout, failure or changed identity blocks verdict; spread over 20% flags noisy and blocks a clean pass; preserve every observation',
   idle: 'standard exclusive physical-host admission and idle check at start; per-round load average and CPU deltas are descriptive, with no process classification',
-  decision: 'regression if any lower CI exceeds 1.10; pass if every upper CI is at most 1.10 and no noise; otherwise inconclusive',
+  decision: 'regression if any cold lower CI exceeds 1.10 or any warm lower CI exceeds its case budget; pass if all cold upper CI are at most 1.10 and all warm upper CI are at most their case budgets and no noise; otherwise inconclusive',
   timingScope: 'CLI fingerprints are data-only; geometry-enriched proof is separate required coverage',
   largeRevision: {
     permitted: 'real large IFC with an authored revision or a reproducible controlled derived IFC revision; independently authored revisions are not required by #8042',
@@ -59,7 +60,7 @@ export function protocol({ pairs = 6, seed = 8042, dryRun = false,
       primary: 'cold public diffModels; warm public DiffModelHandle.compare vs TS diffModels',
       cold: 'fresh process, one option, continuous imports/init/read/parse/fingerprints/call/release+GC',
       warm: 'separate fresh process; candidate prepares two public handles once, one untimed conditioning compare, repeated timed base.compare(head, options), disposal in lifecycle only; TS retains JS rows and repeats diffModels',
-      secondary: 'candidate stateless diffModels warm process median after primary calls and handle disposal; one conditioning call, same repeats; reported only, never gated',
+      secondary: 'warm branch/base ratio is report-only; candidate stateless diffModels warm process median after primary calls and handle disposal; one conditioning call, same repeats; reported only, never gated',
       proof: 'separate audited processes before timing each fixture; no hashes in timing processes',
       optionOrder: [2], modeOrder: ['cold', 'warm'],
       caches: 'cold JS/WASM process; uncontrolled warm OS filesystem cache; no cache eviction',
@@ -223,6 +224,25 @@ export function endpointVerdict(base, branch) {
   return { medianRatio: distribution(ratios).median, ci95, armSpread, noisy,
     verdict: ratios.length < 5 ? 'dry-run-only' : ci95[0] > 1.10 ? 'regression'
       : noisy ? 'noisy' : ci95[1] <= 1.10 ? 'pass' : 'inconclusive' };
+}
+
+// Same percentile resampling and seed as the cold ratio gate, using only
+// candidate per-process medians. TS latency and noise cannot gate this budget.
+export function warmBudgetVerdict(candidate, caseId) {
+  const budgetMs = WARM_BUDGET_MS[caseId];
+  assert.ok(budgetMs > 0, 'unknown warm budget case');
+  assert.ok(candidate.length > 0 && candidate.every(v => Number.isFinite(v) && v > 0));
+  const rand = seededRand(8042), medians = [];
+  for (let repeat = 0; repeat < 10000; repeat++) {
+    medians.push(distribution(candidate.map(() => candidate[Math.floor(rand() * candidate.length)])).median);
+  }
+  medians.sort((a, b) => a - b);
+  const ci95 = [medians[249], medians[9749]], d = distribution(candidate);
+  const candidateSpread = (d.max - d.min) / d.median;
+  const noisy = candidateSpread > 0.20;
+  return { budgetMs, medianMs: d.median, ci95, candidateSpread, noisy,
+    verdict: candidate.length < 5 ? 'dry-run-only' : ci95[0] > budgetMs ? 'regression'
+      : noisy ? 'noisy' : ci95[1] <= budgetMs ? 'pass' : 'inconclusive' };
 }
 
 export function cohortVerdict(endpoints) {

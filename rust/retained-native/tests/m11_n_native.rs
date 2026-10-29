@@ -74,8 +74,9 @@ fn m11_n_7955_committed_corpus_source_normals() {
                                 violations.push(format!("{model}:{} {error}",product.product_id));
                             }
                         }
-                        rows.push(json!({"id":product.product_id,"status":"published","parts":product.parts.iter().map(|p|
-                            json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object}))
+                        rows.push(json!({"id":product.product_id,"status":"published","sourceSurfaces":source,"parts":product.parts.iter().map(|p|
+                            json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object,
+                                "revisionLocalFaces":p.revision_local_faces}))
                             .collect::<Vec<_>>() }));
                         println!("normal source witness {model}:{} {check:?}; exact/source angle histogram (report-only): {histogram:?}",product.product_id);
                     }

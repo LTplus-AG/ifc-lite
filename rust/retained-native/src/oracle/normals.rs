@@ -12,7 +12,7 @@ mod types;
 mod retrace;
 pub use sources::surfaces;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Surface {
     Plane { origin: [f64; 3], normal: [f64; 3] },
     /// Unit circle in the u/v basis, swept along d; supports oblique prisms.

@@ -296,9 +296,9 @@ pub struct NewObject {
     /// it through `IfcRelNests`. IFC2X3 connects a port to an element
     /// through `IfcRelConnectsPortToElement` instead, and nests anything
     /// else only under a product of its own class, as `IfcRelNests`
-    /// requires there. A nested object takes no container, and a port is
-    /// nested only in an element. With no `placement.relative_to`, the
-    /// object is placed relative to this product.
+    /// requires there. A port is nested only in an element and takes no
+    /// container. With no `placement.relative_to`, the object is placed
+    /// relative to this product.
     pub nest_in: Option<ObjectRef>,
     pub type_link: Option<TypeLink>,
     pub representation: Representation,

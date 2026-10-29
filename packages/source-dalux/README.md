@@ -42,7 +42,8 @@ Documents API reads (`docs/<spaceGuid>/…`), streaming web-app downloads
 (`space/<label>/download/<id>`), and a fixed, paged index request
 (`space/<label>/index?locationId=<id>&projectId=<id>`; project is optional).
 Index results contain only document/version identifiers, names and attachment
-metadata, capped at 5,000 records. Cookies are never forwarded and responses
+metadata; an index over 5,000 records is an error (never truncated), and an
+unreadable record marks the result `incomplete`. Cookies are never forwarded and responses
 are not cached. `BIMCOLLAB_RELAY_ALLOWED_ORIGINS` overrides the comma-separated
 origin allowlist; defaults include `APP_URL` and registered BIMcollab callback
 origins. Configure a Vercel WAF rate-limit rule on `/api/bimcollab`: holders of

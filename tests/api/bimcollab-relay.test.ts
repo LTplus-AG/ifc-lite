@@ -183,19 +183,33 @@ test('BIMcollab relay: index fixed POST pages merge and project only approved fi
   assert.equal(calls.length, 2);
 });
 
-test('BIMcollab relay: index caps at 5000, omits absent project, refuses caller-supplied pagination', async () => {
+test('BIMcollab relay: an index over 5000 records is an error (never truncated), omits absent project, refuses caller-supplied pagination', async () => {
   const { handler, calls } = fixture((_url, init) => {
     assert.equal('projectId' in JSON.parse(String(init.body)), false);
     return Response.json({ recordsTotal: 99999, data: Array.from({ length: 500 }, (_, i) => document(i)) });
   });
   const response = await handler(request('space/test/index?locationId=2'));
-  assert.equal((await response.json()).records.length, 5000);
-  assert.equal(calls.length, 10);
+  assert.equal(response.status, 502);
+  const body = await response.json();
+  assert.equal(body.records, undefined);
+  assert.match(body.detail, /index_too_large/);
+  assert.equal(calls.length, 1);
+  calls.length = 0;
+  // Exactly at the bound is complete and succeeds.
+  const atLimit = fixture((_url, init) => {
+    const start = JSON.parse(String(init.body)).start as number;
+    return Response.json({ recordsTotal: 5000, data: Array.from({ length: 500 }, (_, i) => document(start + i)) });
+  });
+  const full = await atLimit.handler(request('space/test/index?locationId=2'));
+  const fullBody = await full.json();
+  assert.equal(fullBody.records.length, 5000);
+  assert.equal(fullBody.incomplete, false);
+  assert.equal(atLimit.calls.length, 10);
   for (const query of ['', '?locationId=0', '?locationId=2&start=0', '?locationId=2&projectId=-1', '?locationId=2&locationId=3']) {
     assert.equal((await handler(request(`space/test/index${query}`))).status, 400);
   }
   assert.equal((await handler(request('space/test/index?locationId=2', { method: 'HEAD' }))).status, 405);
-  assert.equal(calls.length, 10);
+  assert.equal(calls.length, 0);
 });
 
 test('BIMcollab relay: upstream 404 detail unchanged, bounded errors and malformed pages fail safely', async () => {
@@ -228,4 +242,12 @@ test('BIMcollab relay: a version-less index record is skipped, the rest still li
   assert.equal(response.status, 200);
   const { records } = await response.json();
   assert.deepEqual(records.map((r: { documentId: number }) => r.documentId), [0]);
+});
+
+test('BIMcollab relay: an unreadable index record marks the index incomplete (a hidden duplicate must not look unique)', async () => {
+  const malformed = { ...document(1), documentNumber: 42 };
+  const { handler } = fixture(() => Response.json({ recordsTotal: 2, data: [document(0), malformed] }));
+  const body = await (await handler(request('space/test/index?locationId=2'))).json();
+  assert.equal(body.incomplete, true);
+  assert.deepEqual(body.records.map((r: { documentId: number }) => r.documentId), [0]);
 });

@@ -64,13 +64,11 @@ export class LegacyDownload {
   }
 
   /**
-   * Every index record that could belong to this project. All candidate
-   * locations are read (in parallel) and EVERY qualifying one is kept, so equal
-   * names can never make the probe pick one silently: the caller's uniqueness
-   * check then refuses anything still ambiguous. A location qualifies when it
-   * carries the location name and holds the project; only if none does, rows
-   * of any location holding the project count (the case of a web-app location
-   * name differing from the public one).
+   * Every index row that belongs to this project, from every readable location.
+   * Names are never used to prefer one location over another (a location's
+   * web-app name can differ from its public one, so a preference can pick a
+   * lookalike); the caller's uniqueness check over this union decides, and
+   * refuses anything ambiguous. All ten indexes must be read completely.
    */
   private async probe(ctx: PluginContext, session: BimcollabSession, names: LegacyNames,
     signal?: AbortSignal): Promise<IndexRecord[]> {
@@ -78,7 +76,10 @@ export class LegacyDownload {
     const indexes = await Promise.all(Array.from({ length: 10 }, async (_, i) => {
       try {
         const result = await checked(await this.transport.index(ctx, session, i + 1, signal));
-        return (await result.json() as { records: IndexRecord[] }).records;
+        const index = await result.json() as { records: IndexRecord[]; incomplete?: boolean };
+        // A partial index could hide a duplicate: never decide on one.
+        if (index.incomplete) throw new Error('BIMcollab legacy download: a location index could not be read completely.');
+        return index.records;
       } catch (error) {
         // No access to a location means it cannot hold the user's document. Any
         // other failure aborts: skipping it could hide a duplicate and make an
@@ -87,11 +88,8 @@ export class LegacyDownload {
         throw error;
       }
     }));
-    const named = indexes.map(records => records.filter(row => row.locationName === names.location))
-      .filter(rows => rows.some(row => inProject(row, names)));
-    if (named.length) return named.flat();
-    const byProject = indexes.filter(records => records.some(row => inProject(row, names)));
-    if (byProject.length) return byProject.flat();
-    throw new Error('BIMcollab legacy download: location not found in indexes 1–10.');
+    const rows = indexes.flat().filter(row => inProject(row, names));
+    if (rows.length) return rows;
+    throw new Error('BIMcollab legacy download: project not found in indexes 1–10.');
   }
 }

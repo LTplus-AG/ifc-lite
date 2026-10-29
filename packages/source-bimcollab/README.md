@@ -55,10 +55,12 @@ Listings page incrementally (maximum 100 raw documents); filtered pages may be
 empty with a continuation cursor. Search uses project-level `searchText`.
 Archived and confidential records are excluded. Revisions use public GUIDs.
 
-On the specific public download-unavailable 404, the default fallback probes
-numeric locations 1–10 sequentially by location/project name, caches the matching
-index for 60 seconds, and requires exactly one document-number/version-number
-match. It honors `allowDownload: false`. An inaccessible or ambiguous match fails
+On the specific public download-unavailable 404, the default fallback reads the
+web-app indexes of numeric locations 1–10 in parallel, keeps every row belonging
+to the project (by project name, or by phase name for phase-attached documents)
+from every readable location, caches them for 60 seconds, and requires exactly
+one document-number/version-number match across all of them. Location names are
+never used to pick between candidates; an incomplete or over-limit index aborts. It honors `allowDownload: false`. An inaccessible or ambiguous match fails
 explicitly. The index exposes current versions only, so the fallback serves only a
 document's current version; an older revision downloads only if the public
 endpoint serves it, and is otherwise refused (never substituted). An index the

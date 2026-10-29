@@ -43,6 +43,8 @@ function attachment(value: unknown): { id: number; name: string } | null {
 }
 function projectDocument(value: unknown) {
   const doc = object(value);
+  // A document without a version can never match a requested version: skip it.
+  if (doc.latestVersion === null) return null;
   const version = object(doc.latestVersion);
   const location = attachment(doc.attachedToLocation);
   const project = attachment(doc.attachedToProject);
@@ -58,7 +60,13 @@ function projectDocument(value: unknown) {
   };
 }
 
-/** Fixed POST payload, bounded to ten pages/5000 records regardless of totals. */
+/**
+ * Fixed POST payload, read to completion or not at all: an index over the
+ * 5000-record bound is an error, never a truncated success, and a record that
+ * cannot be read marks the result `incomplete`. A partial index could hide a
+ * duplicate and make an ambiguous download match look unique.
+ */
+export const INDEX_RECORD_LIMIT = 5000;
 export async function readIndex(
   send: (init: RequestInit) => Promise<Response>,
   authorizationHeaders: Headers,
@@ -67,8 +75,9 @@ export async function readIndex(
 ): Promise<{ status: number; body: unknown }> {
   const headers = new Headers(authorizationHeaders);
   headers.set('content-type', 'application/json');
-  const records: ReturnType<typeof projectDocument>[] = [];
-  for (let start = 0; start < 5000; start += 500) {
+  const records: NonNullable<ReturnType<typeof projectDocument>>[] = [];
+  let incomplete = false;
+  for (let start = 0; start < INDEX_RECORD_LIMIT; start += 500) {
     const response = await send({ method: 'POST', headers, body: JSON.stringify({
       columns: [], search: { regex: false, value: '' }, order: [], draw: 0,
       start, length: 500, locationId, ...(projectId === undefined ? {} : { projectId }),
@@ -83,15 +92,22 @@ export async function readIndex(
     if (new TextEncoder().encode(pageText).length > 2 * 1024 * 1024) throw new Error('Index page too large');
     const page = object(JSON.parse(pageText));
     const total = integer(page.recordsTotal);
+    if (total > INDEX_RECORD_LIMIT) {
+      return { status: 502, body: { error: 'upstream_error', detail: `index_too_large: ${total} records exceed ${INDEX_RECORD_LIMIT}` } };
+    }
     if (!Array.isArray(page.data) || page.data.length > 500) throw new Error('Invalid index page');
     // One malformed or version-less document must not hide the rest of the index.
     for (const item of page.data) {
-      try { records.push(projectDocument(item)); } catch (error) {
-        console.warn('[bimcollab-relay] skipped index record:', error instanceof Error ? error.message : String(error));
+      try {
+        const row = projectDocument(item);
+        if (row) records.push(row);
+      } catch (error) {
+        incomplete = true;
+        console.warn('[bimcollab-relay] unreadable index record:', error instanceof Error ? error.message : String(error));
       }
     }
-    if (start + page.data.length >= Math.min(total, 5000)) break;
+    if (start + page.data.length >= total) break;
     if (page.data.length !== 500) throw new Error('Incomplete index page');
   }
-  return { status: 200, body: { records } };
+  return { status: 200, body: { records, incomplete } };
 }

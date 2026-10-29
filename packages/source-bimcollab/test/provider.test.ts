@@ -144,17 +144,32 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/42'))).toBe(true);
     expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/99'))).toBe(false);
   });
-  it('never lets a same-named project in another location satisfy the probe or the match', async () => {
+  it('never prefers a location by name: a same-named project elsewhere makes the match ambiguous and refused', async () => {
+    // The public location name is not trusted to pick between candidates: the
+    // web-app name of the right location can differ, so a preference could pick
+    // a lookalike. Two candidates mean refusal, with no download.
     const shadow = { ...record, versionId: 77, locationId: 2, locationName: 'Elsewhere' };
     const real = { ...record, locationId: 3 };
     const { provider, ctx, fetchFn } = setup({ byLocation: { 2: [shadow], 3: [real] } });
-    expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
-    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/77'))).toBe(false);
-    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/42'))).toBe(true);
-    // No index carries the location name and two locations hold the project: refuse to guess.
-    const twice = setup({ byLocation: { 2: [shadow], 4: [{ ...shadow, versionId: 88, locationName: 'Third' }] } });
-    await expect(twice.provider.download(twice.ctx, ref)).rejects.toThrow('cannot tell these documents apart');
-    expect(twice.fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
+    await expect(provider.download(ctx, ref)).rejects.toThrow('cannot tell these documents apart');
+    expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
+    // The reviewer's case: the right location carries a different web-app name,
+    // another carries the public name; still refused, never the other's model.
+    const renamed = setup({ byLocation: { 2: [{ ...record, versionId: 77 }], 3: [{ ...record, locationId: 3, locationName: 'Renamed' }] } });
+    await expect(renamed.provider.download(renamed.ctx, ref)).rejects.toThrow('cannot tell these documents apart');
+  });
+  it('refuses when a location index is incomplete (an unreadable record could hide a duplicate)', async () => {
+    const { provider, ctx, fetchFn } = setup();
+    fetchFn.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('project-structure')) return json(structure);
+      if (url.includes('/documents?')) return json([document]);
+      if (url.endsWith('/download')) return json('No download URL available for this document', 404);
+      if (url.includes('/index?')) return json({ records: url.endsWith('=2') ? [record] : [], incomplete: url.endsWith('=5') });
+      throw new Error(`Unexpected fake route: ${url}`);
+    });
+    await expect(provider.download(ctx, ref)).rejects.toThrow('could not be read completely');
+    expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
   });
   it('refuses when two same-named locations each hold a same-named project with the same document', async () => {
     const first = { ...record, versionId: 55, locationId: 2 };

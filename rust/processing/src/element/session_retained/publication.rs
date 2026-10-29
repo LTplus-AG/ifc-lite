@@ -130,7 +130,6 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         let mut max_snap_metres = 0.;
         let mut cap_ms = 0.;
         if let Some(layers) = self.plan.layers() {
-            let start = super::phase_timer::PhaseTimer::now();
             // Conservative storage reservation for coordinate-key maps, triangle
             // copies and seam indices. Split growth is charged at each append.
             let units: usize = parts.iter().map(|p| p.positions.len()+p.indices.len()).sum();
@@ -140,6 +139,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                 let origin = super::layer_mesh::point(part,part.indices[0]);
                 part.capped_volume_m3 = Some(super::layer_mesh::volume(std::slice::from_ref(part),origin).abs());
             }
+            let start = super::phase_timer::PhaseTimer::now();
             max_snap_metres = super::layer_caps::remove(&mut parts,layers)?;
             cap_ms = start.elapsed().as_secs_f64()*1000.;
         }

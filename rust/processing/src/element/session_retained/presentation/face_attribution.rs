@@ -35,9 +35,9 @@ pub(crate) enum Segment {
 }
 /// Bounded extent of a face, used only to choose between coincident supports.
 #[derive(Debug, Clone)]
-pub(crate) enum Extent { Side { segment: Segment }, Cap, Disk { center: [f64; 3], radius: f64 }, Wall }
+pub(crate) enum Extent { Plane, Side { segment: Segment }, Cap, Disk { center: [f64; 3], radius: f64 }, Wall }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Role { Cap { end: bool }, Side { boundary: u32, segment: u32 }, DiskWall, DiskCap { end: bool } }
+pub(crate) enum Role { Cap { end: bool }, Side { boundary: u32, segment: u32 }, DiskWall, DiskCap { end: bool }, HalfSpace }
 impl std::fmt::Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let end = |end: bool| if end { "end" } else { "start" };
@@ -45,6 +45,7 @@ impl std::fmt::Display for Role {
             Self::Cap { end: e } => write!(f, "cap({})", end(e)),
             Self::Side { boundary, segment } => write!(f, "side({boundary},{segment})"),
             Self::DiskWall => f.write_str("disk(wall)"),
+            Self::HalfSpace => f.write_str("halfspace"),
             Self::DiskCap { end: e } => write!(f, "disk({})", end(e)),
         }
     }
@@ -154,7 +155,7 @@ impl Segment {
 impl Operand {
     fn contains(&self, face: &SourceFace, p: V, tol: f64) -> bool {
         match (&face.extent, &self.region) {
-            (Extent::Wall, _) => true,
+            (Extent::Wall | Extent::Plane, _) => true,
             (Extent::Disk { center, radius }, _) => dot(sub(p, *center), sub(p, *center)).sqrt() <= radius + tol,
             (Extent::Cap, Some(region)) => region.contains(region.project(p).0, tol),
             (Extent::Side { segment }, Some(region)) => {

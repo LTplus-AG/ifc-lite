@@ -169,14 +169,21 @@ fn issue_7955_m11_f_presentation_fixture_faces() {
         assert!((measured - area).abs() / area <= limit(curved), "(d) {key}: {measured} vs {area}");
     }
     assert_eq!(actual.len(), 10, "(d) no other keys: {actual:?}");
-    // Not reachable on main: (e) the bent swept disk, (f) the halfspace clip (its tie-break needs M5/M6).
-    for (id, entity) in [(507, 504), (610, 607)] {
-        let refused = outcomes.iter().find_map(|o| match o {
-            ProductOutcome::Refused { product_id, refusal, origin, .. } if *product_id == id => Some((refusal.code(), origin.and_then(|o| o.entity))),
-            _ => None,
-        });
-        assert_eq!(refused, Some(("operation_unsupported", Some(entity))), "f-i #{id} became reachable: add its face case");
-    }
+    // M5 makes (f) reachable: the cut top and the disjoint flush step have
+    // distinct keys. Hand areas: two 1.4 m² caps, seven surviving profile sides,
+    // and the 0.4 m² halfspace face. The flush 0.4 m² step keeps the host key.
+    let clipped=shape(&outcomes,610);
+    let expected:FaceAreas=[("#603:cap(start)",1.4),("#603:cap(end)",1.4),
+        ("#603:side(0,0)",2.),("#603:side(0,1)",1.),("#603:side(0,2)",0.4),
+        ("#603:side(0,3)",0.5),("#603:side(0,4)",1.2),("#603:side(0,5)",0.5),
+        ("#603:side(0,7)",1.),("#607:halfspace",0.4)]
+        .into_iter().map(|(key,area_m2)|(key.into(),faces::FaceArea {area_m2,curved:false})).collect();
+    assert_matches("f-i(f) cut and flush halfspace",clipped,&expected);
+    let refused=outcomes.iter().find_map(|o|match o {
+        ProductOutcome::Refused {product_id:507,refusal,origin,..}=>Some((refusal.code(),origin.and_then(|o|o.entity))),
+        _=>None,
+    });
+    assert_eq!(refused,Some(("operation_unsupported",Some(504))),"bent swept disk remains upstream");
     println!("sdk witness executed: m11_f_presentation_fixture");
 }
 

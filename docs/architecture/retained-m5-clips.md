@@ -152,3 +152,17 @@ uses 1e-9. No tolerance value changed in this round.
 Exact defaults a missing or unreadable `AgreementFlag` to true. Retained keeps
 that behavior for exact parity; the independent oracle reports invalid mandatory
 source instead of adopting the default.
+
+## M11-F face-source composition
+
+A sealed `PrismRole::HalfSpace` contributes exactly the authored plane at cutter
+z=0, with role `halfspace` and item equal to the `IfcHalfSpaceSolid` id. Its
+outward normal is -Z before Difference reverses the cutter orientation. The
+lineage's existing sealed transforms place that source face in each result.
+Finite cutter sides and its far cap are construction aids, never source faces.
+
+Plane support coincidence uses non-collinear plane probes with the existing
+incidence threshold. The existing bounded-extent and left-operand tie-breaks
+remain in force. The stepped M11-F fixture checks separate hand-derived areas
+for the cut face and the disjoint flush host step; native/browser parity also
+checks their keys and per-key areas. No M11-F refusal or tolerance is waived.

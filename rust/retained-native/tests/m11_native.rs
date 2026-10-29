@@ -11,7 +11,7 @@ fn m11_0_7955_real_sdk_keeps_face_partition_and_discharged_normals() {
     for outcome in &outcomes {
         if let ProductOutcome::Published(product) = outcome {
             count += 1;
-            assert!(!product.obligations.0.contains(&Requirement::SurfaceNormals));
+            assert_eq!(product.obligations.0, vec![Requirement::MaterialLayers], "M11-A, M11-F and M11-N leave only the layers");
             for part in &product.parts {
                 assert_eq!(part.revision_local_faces.len(), part.indices.len() / 3);
                 assert!(!part.revision_local_faces.is_empty());
@@ -36,8 +36,11 @@ const FZK: &str = "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc";
 const F_B_MAPPED: &str = "tests/fixtures/synthetic-retained/f-b-mapped.ifc";
 const APPEARANCE: &str = "tests/fixtures/synthetic-retained/f-m11a-appearance.ifc";
 const F_I: &str = "tests/fixtures/synthetic-retained/f-i-presentation.ifc";
-type Key = (u32, Option<u32>);
-type Look = ([u32; 4], Option<String>);
+#[path = "support/appearance_looks.rs"]
+mod looks;
+use looks::{Key, Look, Looks, Split};
+/// Keys where exact's meshes and retained's parts carry the same looks in different numbers; each needs a reason.
+const SPLITS: &[Split] = &[];
 
 fn repo(path: &str) -> Vec<u8> {
     std::fs::read(format!("{ROOT}/{path}")).unwrap_or_else(|e| panic!("{path}: {e}"))
@@ -51,10 +54,10 @@ fn retained(path: &str, ids: Option<&[u32]>) -> Option<Vec<ProductOutcome>> {
     Some(all)
 }
 fn bits(rgba: [f32; 4]) -> [u32; 4] { rgba.map(f32::to_bits) }
-fn exact_looks(path: &str) -> BTreeMap<Key, BTreeSet<Look>> {
-    let mut looks: BTreeMap<Key, BTreeSet<Look>> = BTreeMap::new();
+fn exact_looks(path: &str) -> BTreeMap<Key, Looks> {
+    let mut looks: BTreeMap<Key, Looks> = BTreeMap::new();
     for mesh in ifc_lite_processing::process_geometry(&repo(path)).meshes {
-        looks.entry((mesh.express_id, mesh.geometry_item_id)).or_default().insert((bits(mesh.color), mesh.material_name));
+        looks::add(looks.entry((mesh.express_id, mesh.geometry_item_id)).or_default(), (bits(mesh.color), mesh.material_name));
     }
     looks
 }
@@ -81,26 +84,17 @@ fn universe() -> BTreeMap<String, Vec<(u32, bool, String)>> {
 fn published(outcomes: &[ProductOutcome]) -> impl Iterator<Item = &ShapeOnlyProduct> {
     outcomes.iter().filter_map(|o| match o { ProductOutcome::Published(p) => Some(p), _ => None })
 }
-/// The M11-A gate (spec §3.1/§6), with no fallback, in both directions. Every part of a published product must find
-/// exact's mesh under the same `(product, geometry_item_id)` key and equal it bit for bit in RGBA and material name;
-/// a key exact does not emit is a violation, not something to match against "any colour of the product". And every
-/// key exact emits for the product must be carried by a retained part.
-fn exact_violations(model: &str, product: &ShapeOnlyProduct, exact: &BTreeMap<Key, BTreeSet<Look>>) -> Vec<String> {
-    let id = product.product_id;
-    let mut violations: Vec<String> = product.parts.iter().filter_map(|part| {
-        let item = part.appearance.as_ref().unwrap().geometry_item_id;
-        let ours = look(part);
-        match exact.get(&(id, item)) {
-            Some(theirs) if theirs.contains(&ours) => None,
-            Some(theirs) => Some(format!("{model} #{id} item {item:?}: retained {ours:?} is not among exact's {theirs:?}")),
-            None => Some(format!("{model} #{id} item {item:?}: exact emits no mesh under this key; its keys {:?}",
-                exact.keys().filter(|(p, _)| *p == id).map(|(_, k)| *k).collect::<Vec<_>>())),
-        }
-    }).collect();
-    let ours: BTreeSet<_> = product.parts.iter().map(|part| part.appearance.as_ref().unwrap().geometry_item_id).collect();
-    violations.extend(exact.keys().filter(|(p, item)| *p == id && !ours.contains(item))
-        .map(|(_, item)| format!("{model} #{id} item {item:?}: exact emits this key but no retained part carries it")));
-    violations
+/// The M11-A gate (spec §3.1/§6), with no fallback, in both directions and over complete multisets. For every
+/// `(product, geometry_item_id)` key, the looks (bitwise RGBA and material name) of the retained parts carrying it
+/// are exactly the looks of the meshes exact emits under it, each counted: a key or look on one side only is a
+/// violation, and so is the same look standing in for a missing one. Only a listed [`SPLITS`] key may differ in
+/// how many pieces carry the same looks.
+fn exact_violations(model: &str, product: &ShapeOnlyProduct, exact: &BTreeMap<Key, Looks>) -> Vec<String> {
+    let mut ours: BTreeMap<Option<u32>, Looks> = BTreeMap::new();
+    for part in &product.parts {
+        looks::add(ours.entry(part.appearance.as_ref().unwrap().geometry_item_id).or_default(), look(part));
+    }
+    looks::violations(model, product.product_id, &ours, exact, SPLITS)
 }
 #[test]
 fn m11_a_every_committed_published_row_resolves_and_matches_exact_per_product_and_item() {
@@ -119,7 +113,7 @@ fn m11_a_every_committed_published_row_resolves_and_matches_exact_per_product_an
                 ProductOutcome::Published(product) => {
                     assert!(is_published, "{model} #{id} published but the coverage row says {code}");
                     rows += 1;
-                    assert!(!product.obligations.0.contains(&Requirement::IfcAppearance), "{model} #{id}");
+                    assert_eq!(product.obligations.0, vec![Requirement::MaterialLayers], "{model} #{id}");
                     if product.parts.iter().any(|part| part.appearance.as_ref().unwrap().style_id.is_some()) {
                         styled_products.insert((model.clone(), *id));
                     }

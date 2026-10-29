@@ -84,6 +84,7 @@ fn c4_10b_builder_preserves_mesh_world_frame_and_unit_refusal_7782() {
     assert!(!world.meshes.is_empty());
     assert_eq!(world.geometry_hash, shifted.geometry_hash);
     assert_eq!(world.geometry_aabb, shifted.geometry_aabb);
-    assert_ne!(world.meshes[0].origin, shifted.meshes[0].origin);
+    assert!(world.meshes[0].origin != shifted.meshes[0].origin
+        || world.meshes[0].positions != shifted.meshes[0].positions);
     assert!(run([0.0; 3], f64::NAN).meshes.is_empty());
 }

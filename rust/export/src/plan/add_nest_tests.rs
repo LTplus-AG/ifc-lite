@@ -99,7 +99,8 @@ fn a_port_under_a_host_with_no_nesting_gets_one() {
 
 #[test]
 fn a_host_that_cannot_hold_the_object_is_refused_and_nothing_is_written() {
-    let cases: [(&str, NewObject, bool, &str); 5] = [
+    let storey = object(IfcClass::BuildingStorey, gid(1), Some(ObjectRef::Id(60)), Representation::None).with_nest_in(ObjectRef::Id(70));
+    let cases: [(&str, NewObject, bool, &str); 6] = [
         ("IFC4", port(1, ObjectRef::Guid(gid(99).encode())), false, "not found"),
         ("IFC4", port(1, ObjectRef::Id(40)), false, "IFCWALLTYPE, not a product"),
         ("IFC2X3", port(1, ObjectRef::Id(70)), false, "IFC2X3 connects a port only to an element"),
@@ -110,6 +111,7 @@ fn a_host_that_cannot_hold_the_object_is_refused_and_nothing_is_written() {
             "IFC2X3 nests a IFCWINDOW only under another IFCWINDOW",
         ),
         ("IFC4", port(1, ObjectRef::Id(10)), true, "deleted by this plan"),
+        ("IFC2X3", storey, false, "aggregated into its container and cannot also be nested"),
     ];
     for (n, (schema, obj, delete_host, reason)) in cases.into_iter().enumerate() {
         let source = storey_with_typed_wall(schema);
@@ -120,7 +122,7 @@ fn a_host_that_cannot_hold_the_object_is_refused_and_nothing_is_written() {
         assert_eq!(report.refusals.len(), 1, "case {n}: {:?}", report.refusals);
         assert_eq!(report.refusals[0].object, ObjectRef::Guid(gid(1).encode()), "case {n}");
         assert!(report.refusals[0].reason.contains(reason), "case {n}: {}", report.refusals[0].reason);
-        assert_eq!(count(&out, "IFCDISTRIBUTIONPORT") + count(&out, "IFCWINDOW"), 0, "case {n}");
+        assert_eq!(count(&out, "IFCRELNESTS") + count(&out, "IFCRELCONNECTSPORTTOELEMENT"), 0, "case {n}");
     }
 }
 
@@ -134,4 +136,22 @@ fn ifc2x3_nests_an_object_under_one_of_its_own_class() {
     let nests = decoder.decode_by_id(ids_of_type(&out, "IFCRELNESTS")[0]).unwrap();
     assert_eq!(nests.get_ref(4), Some(10));
     assert_eq!(nests.get_refs(5).unwrap(), [id_in(&out, gid(1))]);
+}
+
+/// A host with no placement of its own leaves the object placed by its
+/// container, as it would be without a host.
+#[test]
+fn an_object_nested_under_a_host_without_a_placement_is_placed_by_its_container() {
+    let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap();
+    let wall = "'Wall 1',$,$,#20,";
+    assert!(source.contains(wall), "the fixture's wall line changed");
+    let source = source.replacen(wall, "'Wall 1',$,$,$,", 1);
+    let mut proxy = object(IfcClass::BuildingElementProxy, gid(1), Some(ObjectRef::Id(70)), Representation::None);
+    proxy.nest_in = Some(ObjectRef::Id(10));
+    let (out, report) = run(source.as_bytes(), vec![add(proxy)]);
+    assert_clean(&report, "IFC4");
+    let mut decoder = EntityDecoder::new(&out);
+    let placement = decoder.decode_by_id(id_in(&out, gid(1))).unwrap().get_ref(5).unwrap();
+    assert_eq!(decoder.decode_by_id(placement).unwrap().get_ref(0), Some(73), "the storey's placement");
+    assert_eq!(nested_in(&out, 10), [id_in(&out, gid(1))]);
 }

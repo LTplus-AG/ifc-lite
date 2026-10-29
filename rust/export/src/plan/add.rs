@@ -36,7 +36,8 @@ use assoc::{associate, Shared, SharedKey};
 use mapped::{build_map, mapped_shape, MapPlan, MapRef, TypeMaps};
 use same_as::reused_shape;
 use units::build_units;
-use check::{Checked, Nest};
+use check::Checked;
+use nest::nest_object;
 
 /// An object this plan added, as later Adds see it.
 struct Added {
@@ -304,20 +305,8 @@ impl<'a, 'h> AddState<'a, 'h> {
         if let Some((container, kind)) = c.container {
             requests.push(RelRequest { kind, relating: container, related: object, seed: gid });
         }
-        match c.nest {
-            Some((host, Nest::Nested)) => requests.push(RelRequest { kind: RelKind::Nests, relating: host, related: object, seed: gid }),
-            Some((host, Nest::PortOf)) => {
-                emit.record(
-                    "IFCRELCONNECTSPORTTOELEMENT",
-                    &[
-                        ("GlobalId", format!("'{}'", gid.derive("rel/port").encode())),
-                        ("OwnerHistory", owh.clone()),
-                        ("RelatingPort", format!("#{object}")),
-                        ("RelatedElement", format!("#{host}")),
-                    ],
-                )?;
-            }
-            None => {}
+        if let Some(nest) = c.nest {
+            nest_object(emit, nest, object, gid, &owh, requests)?;
         }
         associate(emit, &mut shared, c, object, gid, requests)?;
 
@@ -367,6 +356,9 @@ mod commit;
 
 #[path = "add_opening.rs"]
 mod opening;
+
+#[path = "add_nest.rs"]
+mod nest;
 
 #[path = "add_mapped.rs"]
 mod mapped;

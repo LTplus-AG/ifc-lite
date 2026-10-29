@@ -222,6 +222,8 @@ fn m11_n_7955_zero_area_cap_corner_uses_the_verified_plane() {
     let frame = p.world_from_object;
     assert!(!plane::apply(&mut p,&frame,[0.;3],[0.,0.,1.],&[0,1],
         &OwnedResourceContext::capture_current()).unwrap());
+    // Assert plane::apply's own output: normals(&p) recomputes zero corners and would mask a missing write.
+    for n in p.normals.as_ref().unwrap().chunks_exact(3) {near(n,[0.,0.,1.]);}
     for n in normals(&p).chunks_exact(3) {near(n,[0.,0.,1.]);}
 }
 
@@ -274,6 +276,9 @@ fn m11_n_7955_planar_cap_with_thousands_of_vertices_needs_no_adjacency_scan() {
             let triangles: Vec<_> = p.revision_local_faces.iter().enumerate()
                 .filter_map(|(i,&id)| (id == face).then_some(i)).collect();
             assert!(!plane::apply(&mut p,&frame,[0.,0.,z],normal,&triangles,&resources).unwrap());
+        }
+        for (t,values) in p.normals.as_ref().unwrap().chunks_exact(9).enumerate() {
+            for n in values.chunks_exact(3) {near(n,[0.,0.,if p.revision_local_faces[t]==1 {-1.} else {1.}]);}
         }
         let result = normals(&p);
         for (t,values) in result.chunks_exact(9).enumerate() {

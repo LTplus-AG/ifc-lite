@@ -46,8 +46,12 @@ export class InfluxRequestError extends Error {
 export async function fetchInfluxReadings(selection: InfluxSelection, token: string, transport: typeof fetch = fetch, signal?: AbortSignal) {
   let request: ReturnType<typeof queryRequest>;
   try {
+    if (token.length < 6 || /[\r\n]/.test(token)) throw new Error('Enter a valid token');
+    const publicValues = [...Object.values(selection), ...Object.entries(selection.tags ?? {}).flat()];
+    if (publicValues.some(value => typeof value === 'string' && (value.includes(token) || value.includes(encodeURIComponent(token))))) {
+      throw new Error('Keep the token only in the password input');
+    }
     request = queryRequest(selection);
-    if (!token || /[\r\n]/.test(token)) throw new Error('Enter a valid token');
   } catch (error) {
     throw new InfluxRequestError('config', redactInfluxError(error, token));
   }

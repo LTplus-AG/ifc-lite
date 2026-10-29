@@ -76,6 +76,7 @@ describe('InfluxDB shared adapters (#8090)', () => {
     };
     expect((await fetchInfluxReadings(selection, token, transport)).history.rows).toHaveLength(5);
     await expect(fetchInfluxReadings(selection, '', transport)).rejects.toMatchObject({ kind: 'config' });
+    await expect(fetchInfluxReadings({ ...selection, org: token }, token, transport)).rejects.toMatchObject({ kind: 'config' });
     expect(count).toBe(1);
     await expect(fetchInfluxReadings(selection, token, async () => new Response('x'.repeat(2 * 1024 * 1024 + 1)))).rejects.toMatchObject({ kind: 'data' });
   });

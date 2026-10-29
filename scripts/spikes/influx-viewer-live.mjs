@@ -23,7 +23,7 @@ const image = 'influxdb:2.7.12';
 const modelPath = 'apps/viewer/public/samples/building-architecture.ifc';
 const model = await readFile(modelPath);
 assert.ok(model.includes(Buffer.from('0xY$LvXaDEswJDk_VU74C_')));
-const imageInfo = JSON.parse((await execFile('docker', ['image', 'inspect', image])).stdout)[0];
+
 let owned = false, gateway, vite, browser;
 async function json(url, body, token) {
   const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Token ${token}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
@@ -40,6 +40,7 @@ async function freePort() {
 try {
   await execFile('docker', ['run', '-d', '--rm', '--name', name, '--label', 'ifclite.witness=8090-viewer', '--cpus=1', '--memory=512m', '-p', '127.0.0.1::8086', image]);
   owned = true;
+  const imageInfo = JSON.parse((await execFile('docker', ['image', 'inspect', image])).stdout)[0];
   const upstream = `http://${(await execFile('docker', ['port', name, '8086/tcp'])).stdout.trim()}`;
   let ready = false;
   for (let i = 0; i < 60; i++) {

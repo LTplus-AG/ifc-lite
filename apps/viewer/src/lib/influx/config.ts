@@ -24,7 +24,8 @@ export function readInfluxConfig(): InfluxConfig {
 }
 
 export function saveInfluxConfig(config: InfluxConfig, token: string): void {
-  const safe = Object.fromEntries(configFields.map(key => [key, token ? config[key].split(token).join('[REDACTED]') : config[key]]));
+  const secrets = token ? [...new Set([token, encodeURIComponent(token)])] : [];
+  const safe = Object.fromEntries(configFields.map(key => [key, secrets.reduce((value, secret) => value.split(secret).join('[REDACTED]'), config[key])]));
   localStorage.setItem(INFLUX_CONFIG_KEY, JSON.stringify(safe));
 }
 

@@ -86,7 +86,6 @@ impl Discovery {
         start: usize,
         end: usize,
     ) -> Option<IfcType> {
-        self.prepass_spans.stash_class(class, id, start, end);
         if matches!(
             class,
             ScanClass::IndexedColourMap
@@ -94,9 +93,14 @@ impl Discovery {
                 | ScanClass::MaterialDefinitionRepresentation
                 | ScanClass::RelAssociatesMaterial
         ) {
+            self.prepass_spans.stash_class(class, id, start, end);
             return None;
         }
         match class {
+            ScanClass::RelVoidsElement | ScanClass::RelFillsElement
+            | ScanClass::RelAggregates | ScanClass::RelDefinesByType => {
+                self.prepass_spans.stash_class(class, id, start, end);
+            }
             ScanClass::Project => {
                 self.project_id.get_or_insert(id);
             }

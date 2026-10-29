@@ -225,10 +225,9 @@ facade startup, marshaling, and end-to-end timing qualification remain open.
 
 ## Shared record discovery (C4-5, #7782)
 
-Structural refactor; no wall-clock speedup claimed. Exact-base instruction
-qualification passed for every pipeline phase on Haus, duplex and ISSUE_129.
-Entity-scan instruction counts were unchanged. Counts, serialized capture,
-geometry payload and diagnostics were identical on all three fixtures.
+Structural refactor; no wall-clock speedup claimed. The original instruction qualification was invalid: Cargo reused the base
+probe for the branch after archive extraction preserved old mtimes. Fresh
+branch builds exposed instruction regressions despite identical geometry.
 Keeping the record predicate inline and classification lazy for index-only
 shards lets the shared discovery owner preserve the existing hot-path work.
 The qualification uses the C4-4b identity runner; it is not a browser timing result.
@@ -238,7 +237,7 @@ Round-two lesson: carrying the geometry-admission reason through the hot
 instruction gate. Replacing the quick-only name lookup with a resolved-type
 predicate also regressed that gate. Retain `Option<IfcType>` and the original
 quick-only name lookup: quick metadata pays one additional classification per
-admitted job, while the default path retains the qualified production code.
+admitted job, while the default path avoids carrying a reason tuple.
 This is a deliberate scope tradeoff, not a quick-metadata optimization.
 
 

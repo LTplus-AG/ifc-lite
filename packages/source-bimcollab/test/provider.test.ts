@@ -19,7 +19,7 @@ const record = { documentId: 1, documentNumber: 'D1', versionNumber: '1', versio
   allowDownload: true, locationId: 2, locationName: 'Location', projectId: 1, projectName: 'Project', projectPhaseName: null };
 const ref = { projectId: 'p', containerId: 'root', fileId: 'd' };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-function setup(options: { fallback?: boolean; records?: unknown[]; legacy?: boolean } = {}) {
+function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; legacy?: boolean } = {}) {
   const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer secret-token');
@@ -27,7 +27,12 @@ function setup(options: { fallback?: boolean; records?: unknown[]; legacy?: bool
     expect(init?.redirect).toBe('error');
     if (url.endsWith('project-structure')) return json(structure);
     if (url.includes('/document-versions') && !url.endsWith('/download')) return json([version]);
-    if (url.includes('/index?')) return json({ records: url.endsWith('=1') ? [] : options.records ?? [record] });
+    if (url.includes('/index?')) {
+      const locationId = Number(new URL(url, 'https://x').searchParams.get('locationId'));
+      // Default: the space's only populated location is 2.
+      const records = options.byLocation ? options.byLocation[locationId] ?? [] : locationId === 2 ? options.records ?? [record] : [];
+      return json({ records });
+    }
     if (url.includes('/space/') && url.endsWith('/download/42')) return new Response('IFC');
     if (url.endsWith('/download')) return options.legacy === false ? json({ downloadUrl: 'https://storage.blob.core.windows.net/model?sas=private' })
       : json('No download URL available for this document', 404);
@@ -134,6 +139,17 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
     expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/42'))).toBe(true);
     expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/99'))).toBe(false);
+  });
+  it('never lets a same-named project in another location satisfy the probe or the match', async () => {
+    const shadow = { ...record, versionId: 77, locationId: 2, locationName: 'Elsewhere' };
+    const real = { ...record, locationId: 3 };
+    const { provider, ctx, fetchFn } = setup({ byLocation: { 2: [shadow], 3: [real] } });
+    expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/77'))).toBe(false);
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/42'))).toBe(true);
+    // No index carries the location name and two locations hold the project: refuse to guess.
+    const twice = setup({ byLocation: { 2: [shadow], 4: [{ ...shadow, versionId: 88, locationName: 'Third' }] } });
+    await expect(twice.provider.download(twice.ctx, ref)).rejects.toThrow('cannot tell which');
   });
   it('bounds location probing and refuses historical-version substitution', async () => {
     const empty = setup({ records: [] });

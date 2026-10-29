@@ -32,8 +32,17 @@ function config(overrides: Partial<BcfServerConfig> = {}): BcfServerConfig {
   };
 }
 
-// The wrapper never touches ctx (its transport carries its own fetch).
-const ctx = {} as PluginContext;
+function memoryCtx(): PluginContext {
+  const values = new Map<string, string>();
+  // The wrapper only uses ctx.storage; its transport carries its own fetch.
+  return { storage: {
+    get: async (key: string) => values.get(key),
+    set: async (key: string, value: string) => { values.set(key, value); },
+    delete: async (key: string) => { values.delete(key); },
+    keys: async () => [...values.keys()],
+  } } as unknown as PluginContext;
+}
+const ctx = memoryCtx();
 
 describe('relayOnlyFetch', () => {
   it('refuses anything but the same-origin relay path', async () => {
@@ -88,6 +97,29 @@ describe('ViewerBimcollabProvider', () => {
     await provider.listProjects(ctx);
     assert.equal(calls[1].url, `/api/bimcollab/docs/${other}/project-structure`);
     assert.equal(calls[1].auth, `Bearer ${current.accessToken}`);
+  });
+});
+
+describe('ViewerBimcollabProvider sign-out', () => {
+  it('stays signed out for that account across restore until signed in again; another account is unaffected', async () => {
+    let current = config();
+    const fetchFn = (async () => Response.json({ locationGroups: [], locations: [] })) as typeof fetch;
+    const provider = new ViewerBimcollabProvider(() => current, fetchFn);
+    const sourceCtx = memoryCtx();
+    assert.ok(await provider.auth.restore(sourceCtx));
+    await provider.auth.signOut(sourceCtx);
+    assert.equal(await provider.auth.restore(sourceCtx), null);
+    assert.equal(await provider.auth.getIdentity(sourceCtx), null);
+    await assert.rejects(provider.listProjects(sourceCtx), BimcollabNotConnectedError);
+    // A different account in the BCF connection is not covered by that sign-out.
+    const signedOutAccount = current;
+    current = config({ userId: 'other@example.com' });
+    assert.ok(await provider.auth.restore(sourceCtx));
+    current = signedOutAccount;
+    assert.equal(await provider.auth.restore(sourceCtx), null);
+    assert.ok(await provider.auth.signIn(sourceCtx));
+    assert.ok(await provider.auth.restore(sourceCtx));
+    assert.deepEqual((await provider.listProjects(sourceCtx)).items, []);
   });
 });
 

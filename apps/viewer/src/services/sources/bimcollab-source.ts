@@ -27,6 +27,7 @@ import { connectedTokenSource, loadBcfServerConfig } from '../bcf-server.js';
 import type { BcfServerConfig } from '../bcf-server-config.js';
 
 export const BIMCOLLAB_RELAY_PATH = '/api/bimcollab';
+const SIGNED_OUT_KEY = 'signedOutSession';
 
 /** Same-origin fetch that only ever reaches the BIMcollab relay. */
 export function relayOnlyFetch(origin: string, relayPath = BIMCOLLAB_RELAY_PATH): typeof fetch {
@@ -87,16 +88,38 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
     private readonly fetchFn: typeof fetch = relayOnlyFetch(window.location.origin),
   ) {
     this.auth = {
-      restore: async () => this.identity(),
-      getIdentity: async () => this.identity(),
-      signIn: async () => {
+      restore: async (ctx) => (await this.signedOut(ctx) ? null : this.identity()),
+      getIdentity: async (ctx) => (await this.signedOut(ctx) ? null : this.identity()),
+      signIn: async (ctx) => {
         const identity = this.identity();
         if (!identity) throw new BimcollabNotConnectedError();
+        await ctx.storage.delete(SIGNED_OUT_KEY);
         return identity;
       },
-      // The session belongs to the BCF connection; disconnect it there, not here.
-      signOut: async () => { this.bound = null; },
+      // The tokens belong to the BCF connection, which stays connected; this
+      // source just stops using them for that account until signed in again.
+      signOut: async (ctx) => {
+        this.bound = null;
+        const key = this.sessionKey();
+        if (key) await ctx.storage.set(SIGNED_OUT_KEY, key);
+      },
     };
+  }
+
+  private sessionKey(): string | null {
+    const session = bimcollabSessionFromConfig(this.loadConfig());
+    return session ? [session.config.serverUrl, session.config.userId, session.spaceGuid].join('\u0000') : null;
+  }
+
+  /** Signed out applies to the account it was given for; a different account is not signed out. */
+  private async signedOut(ctx: PluginContext): Promise<boolean> {
+    const marker = await ctx.storage.get(SIGNED_OUT_KEY);
+    return marker !== undefined && marker === this.sessionKey();
+  }
+
+  private async active(ctx: PluginContext): Promise<BimcollabProvider> {
+    if (await this.signedOut(ctx)) throw new BimcollabNotConnectedError();
+    return this.provider();
   }
 
   private identity(): SourceIdentity | null {
@@ -110,7 +133,7 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
   private provider(): BimcollabProvider {
     const session = bimcollabSessionFromConfig(this.loadConfig());
     if (!session) throw new BimcollabNotConnectedError();
-    const key = [session.config.serverUrl, session.config.userId, session.spaceGuid].join('\u0000');
+    const key = this.sessionKey() ?? '';
     if (this.bound?.key !== key) {
       const tokens = connectedTokenSource(session.config);
       this.bound = {
@@ -125,16 +148,16 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
   }
 
   // async: a missing session must reject, never throw synchronously into the host.
-  async listProjects(ctx: PluginContext, options?: ListProjectsOptions) { return this.provider().listProjects(ctx, options); }
+  async listProjects(ctx: PluginContext, options?: ListProjectsOptions) { return (await this.active(ctx)).listProjects(ctx, options); }
   async listContainers(ctx: PluginContext, projectId: string, parentId?: string, options?: ListOptions) {
-    return this.provider().listContainers(ctx, projectId, parentId, options);
+    return (await this.active(ctx)).listContainers(ctx, projectId, parentId, options);
   }
   async listFiles(ctx: PluginContext, projectId: string, containerId: string, filter?: FileFilter, options?: ListOptions) {
-    return this.provider().listFiles(ctx, projectId, containerId, filter, options);
+    return (await this.active(ctx)).listFiles(ctx, projectId, containerId, filter, options);
   }
   async searchFiles(ctx: PluginContext, projectId: string, query: string, filter?: FileFilter, options?: ListOptions) {
-    return this.provider().searchFiles(ctx, projectId, query, filter, options);
+    return (await this.active(ctx)).searchFiles(ctx, projectId, query, filter, options);
   }
-  async listRevisions(ctx: PluginContext, ref: SourceFileRef, options?: ListOptions) { return this.provider().listRevisions(ctx, ref, options); }
-  async download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions) { return this.provider().download(ctx, ref, options); }
+  async listRevisions(ctx: PluginContext, ref: SourceFileRef, options?: ListOptions) { return (await this.active(ctx)).listRevisions(ctx, ref, options); }
+  async download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions) { return (await this.active(ctx)).download(ctx, ref, options); }
 }

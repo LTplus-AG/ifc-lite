@@ -17,20 +17,11 @@ export class LegacyDownload {
     for (const [id, entry] of this.cache) if (entry.expires <= Date.now()) this.cache.delete(id);
     let records = this.cache.get(key)?.records;
     if (!records) {
-      for (let locationId = 1; locationId <= 10; locationId++) {
-        signal?.throwIfAborted();
-        const result = await checked(await this.transport.index(ctx, session, locationId, signal));
-        const index = await result.json() as { records: IndexRecord[] };
-        if (index.records.some(row => row.locationName === names.location || row.projectName === names.project)) {
-          records = index.records;
-          this.cache.set(key, { records, expires: Date.now() + this.ttl });
-          break;
-        }
-      }
+      records = await this.probe(ctx, session, names, signal);
+      this.cache.set(key, { records, expires: Date.now() + this.ttl });
     }
-    if (!records) throw new Error('BIMcollab legacy download: location not found in indexes 1–10.');
-    // Document numbers are unique per project, not per location: scope to the
-    // requested project first so two projects' `D1 v1` are never conflated.
+    // Document numbers are unique per project, not per location; the probe
+    // already pinned the location, so project + number + version identifies it.
     const matches = records.filter(row => row.projectName === names.project
       && row.documentNumber === documentNumber && row.versionNumber === versionNumber);
     if (matches.length !== 1) throw new Error(`BIMcollab legacy download requires one unique documentNumber + versionNumber match; found ${matches.length}.`);
@@ -38,5 +29,28 @@ export class LegacyDownload {
     if (!match.allowDownload) throw new Error('BIMcollab does not allow downloading this document.');
     if (!Number.isSafeInteger(match.versionId) || match.versionId < 1) throw new Error('BIMcollab returned an invalid numeric version id.');
     return this.transport.download(ctx, session, match.versionId, signal);
+  }
+
+  /**
+   * The numeric location whose index holds this project. The location name is
+   * authoritative: a same-named project in another location never satisfies
+   * it. Only when no index carries the location name does a project-name
+   * match count, and then only if exactly one location has that project.
+   * Returned records are scoped to the chosen location.
+   */
+  private async probe(ctx: PluginContext, session: BimcollabSession, names: { location: string; project: string },
+    signal?: AbortSignal): Promise<IndexRecord[]> {
+    const byProject: IndexRecord[][] = [];
+    for (let locationId = 1; locationId <= 10; locationId++) {
+      signal?.throwIfAborted();
+      const result = await checked(await this.transport.index(ctx, session, locationId, signal));
+      const { records } = await result.json() as { records: IndexRecord[] };
+      const inLocation = records.filter(row => row.locationName === names.location);
+      if (inLocation.length) return inLocation;
+      if (records.some(row => row.projectName === names.project)) byProject.push(records);
+    }
+    if (byProject.length === 1) return byProject[0]!;
+    if (byProject.length > 1) throw new Error(`BIMcollab legacy download: project found in ${byProject.length} locations; cannot tell which.`);
+    throw new Error('BIMcollab legacy download: location not found in indexes 1–10.');
   }
 }

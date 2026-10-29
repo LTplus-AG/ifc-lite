@@ -353,6 +353,7 @@ impl IfcAPI {
         }
         // Hold a second clone for the post-scan entity-index export below;
         // `with_arc_columnar_index` consumes the Arc so we'd lose the
+        // handle needed to export the index after constructing the decoder.
         let index_for_export = entity_index_arc.clone();
 
         // ── FAST FIRST GEOMETRY ──

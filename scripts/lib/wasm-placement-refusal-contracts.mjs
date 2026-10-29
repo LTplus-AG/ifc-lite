@@ -77,10 +77,11 @@ function load(IfcAPI, body, elementCount, meshCount, schema = 'IFC4') {
     collection = parseMeshesViaPrePass(api, `${header}${body}ENDSEC;\nEND-ISO-10303-21;`);
     const diagnostics = api.getPipelineDiagnostics();
     assert.ok(diagnostics, 'normal batch must publish diagnostics');
-    assert.equal(diagnostics.schemaVersion, 2);
+    assert.equal(diagnostics.schemaVersion, 1);
     assert.equal(diagnostics.batches, 1);
     assert.equal(diagnostics.elementCount, elementCount, 'every product reached the producer');
     assert.equal(diagnostics.meshCount, meshCount);
+    assert.equal(diagnostics.refusedInputElements, elementCount - meshCount);
     assert.equal(diagnostics.triangleCount, meshCount * 12, 'complete six-face solids');
     assert.equal(diagnostics.backstopCount, 0, 'no degenerate-triangle drops');
     assert.equal(diagnostics.totalCsgFailures, 0, 'no unrelated CSG failure');
@@ -231,9 +232,6 @@ export function runPlacementRefusalContracts(IfcAPI, test) {
       assert.deepEqual([...meshes.keys()], [200], '#100 must not fabricate identity geometry');
       assertBounds(meshes.get(200), [9.5, 0, -0.5, 10.5, 1, 0.5]);
       assert.deepEqual(meshes.get(200), control.get(200), 'neighbor payload stays unchanged');
-      // PipelineDiagnostics has no refusedInputElements field on this head.
-      // elementCount=2, meshCount=1 proves submission vs output, not a typed
-      // placement-refusal diagnostic; the native test separately checks that.
     });
   }
 }

@@ -37,6 +37,29 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Official resident-handle diff cohort v4 (#8042)
+
+**Unmeasured: the sole official submission failed in admission.** Pop job
+`bbba5197-1036-496f-8e95-344c9a95066f`, storage task
+`issue8042-v4-cohort-3ac58cbc`, exhausted the worker's one-hour admission wait
+while existing ordinary work drained. The project command never started;
+there is no `result.json`, no timing samples, and no cold or warm performance
+verdict. The requested execution timeout was 10,800 seconds; that does not
+extend the admission deadline. No rerun or second submission was made.
+
+The frozen cohort used TS base `a3641a732a63beac0f90718d86d33585409faa33`,
+Rust candidate `37d9ff187a38c69d9bafe15f072a76b13f655b13`, and harness
+`d6568fa392d463f1f168c296a78b38bcc0aa858a`. Both preparations passed and their
+publications verified. Untimed preparation identity passed for demo, Haus and
+the frozen large revision across all three option shapes. Those proofs do not
+establish measured-cohort identity or performance acceptance.
+
+Lesson: distinguish the execution timeout from the worker admission deadline.
+An exact-once cohort can consume its only submission while waiting for active
+foreign work; preserve that original failure and report it without fabricating
+a verdict or quietly rerunning. See the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042)
+and the original job receipt in the storage task's verified evidence.
+
 ## HiDPI navigation and synchronous capture (#6709, #8089)
 
 **Functional qualification passes; performance is mixed.** The physical NVIDIA

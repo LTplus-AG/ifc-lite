@@ -122,7 +122,7 @@ fn run(
     jobs: &[u32],
 ) -> Vec<super::ElementMeshOutput> {
     let (x, y, z) = pre.meta.frame.rtc_offset();
-    let wire = super::batch_wire::BatchWire {
+    let wire = super::super::batch_wire::BatchWire {
         jobs_flat: jobs,
         unit_scale: super::super::prepass_sharded::stream_meta_unit_scale(&pre.meta),
         rtc_x: x,

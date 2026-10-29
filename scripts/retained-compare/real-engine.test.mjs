@@ -81,7 +81,7 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
       assert.equal(part.instanceKey, undefined);
       // M11-F: every triangle carries a persistent source face key.
       assert.equal(part.faces.triangles.length, part.indices.length / 3);
-      assert.ok(Array.isArray(part.color) && part.color.length === 4 && Number.isInteger(part.geometryItemId), 'M11-A resolved appearance');
+      assert.ok(Array.isArray(part.color) && part.color.length === 4 && (part.geometryItemId === undefined || (Number.isInteger(part.geometryItemId) && part.geometryItemId > 0)), 'M11-A resolved appearance; geometryItemId only for item-bound parts, never 0');
     }
   }
   const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');

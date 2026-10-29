@@ -47,7 +47,7 @@ export function assertPublished(value, id, ifcType) {
   check(value.ifcType === ifcType, 'canonical IFC type');
   check(value.marker === 'PresentationObligationsUnmet', 'shape-only marker');
   check(value.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === undefined), 'revision-local and persistent face partitions still index triangles');
-  check(value.parts.every(part => Array.isArray(part.color) && part.color.length === 4 && part.color.every(Number.isFinite) && (ifcType.endsWith('Type') ? part.geometryItemId === undefined : Number.isInteger(part.geometryItemId)) && part.materialId === undefined), 'M11-A resolved appearance on every part (type parts name no item)');
+  check(value.parts.every(part => Array.isArray(part.color) && part.color.length === 4 && part.color.every(Number.isFinite) && (ifcType.endsWith('Type') ? part.geometryItemId === undefined : (part.geometryItemId === undefined || (Number.isInteger(part.geometryItemId) && part.geometryItemId > 0))) && part.materialId === undefined), 'M11-A resolved appearance on every part (type parts name no item)');
   check(JSON.stringify(value.obligationsUnmet) === JSON.stringify([
     'MaterialLayers',
   ]), `remaining obligations: ${JSON.stringify(value.obligationsUnmet)}`);

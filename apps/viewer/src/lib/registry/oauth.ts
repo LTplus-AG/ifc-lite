@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createAuthorizationRequest, parseAuthorizationCallback, waitForOAuthCallback } from '@ifc-lite/oauth-pkce';
-import { RegistryError, responseBytes, registryTokenSession } from './protocol';
+import { RegistryError } from './protocol';
+import { exchangeRegistrySession, registryJsonReply, validateRegistrySessionConfig } from './session-exchange';
 
 export const REGISTRY_CALLBACK_PATH = '/oauth/registry/callback';
 const TIMEOUT_MS = 5 * 60 * 1000;
@@ -16,6 +17,7 @@ export function validateRegistryOAuthConfig(value: unknown, registryOrigin: stri
     !('redirect_uris' in value) || !Array.isArray(value.redirect_uris) || !value.redirect_uris.includes(redirectUri)) {
     throw new RegistryError('Registry browser sign-in is not configured for this viewer. Register its callback address with ifcx-oci.');
   }
+  validateRegistrySessionConfig(value);
   const endpoint = new URL(value.authorization_endpoint);
   if (endpoint.origin !== new URL(registryOrigin).origin || endpoint.pathname !== '/oauth/authorize' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw new RegistryError('The registry returned an unexpected sign-in address.');
@@ -34,11 +36,9 @@ export function validateRegistryCallback(callback: string, redirectUri: string, 
   return parseAuthorizationCallback(callback, { expectedRedirectOrigin: expected.origin, expectedState: state }).code;
 }
 
-async function jsonReply(response: Response): Promise<unknown> {
-  if (!response.ok) throw new RegistryError(`Registry sign-in failed (${response.status}).`, response.status);
-  const body = new TextDecoder().decode(await responseBytes(response, 64 * 1024));
-  try { return JSON.parse(body); }
-  catch { throw new RegistryError('The registry returned an invalid sign-in response.'); }
+export async function discoverRegistryOAuth(origin: string, registryOrigin: string, signal: AbortSignal) {
+  const config = await registryJsonReply(await fetch(new URL('/oauth/config', origin), { credentials: 'omit', redirect: 'error', cache: 'no-store', signal }));
+  return validateRegistryOAuthConfig(config, registryOrigin, `${window.location.origin}${REGISTRY_CALLBACK_PATH}`);
 }
 
 /** Passwords are entered only on the registry origin; the viewer redeems a bound code. */
@@ -54,8 +54,7 @@ export async function registryOAuthLogin(origin: string, registryOrigin: string,
   const timeout = setTimeout(() => attempt.abort(new RegistryError('Registry sign-in timed out. Please try again.')), TIMEOUT_MS);
   try {
     const redirectUri = `${window.location.origin}${REGISTRY_CALLBACK_PATH}`;
-    const config = await jsonReply(await fetch(new URL('/oauth/config', origin), { credentials: 'omit', redirect: 'error', cache: 'no-store', signal: attempt.signal }));
-    const { authorizationEndpoint, clientId } = validateRegistryOAuthConfig(config, registryOrigin, redirectUri);
+    const { authorizationEndpoint, clientId } = await discoverRegistryOAuth(origin, registryOrigin, attempt.signal);
     const request = await createAuthorizationRequest({ authorizationEndpoint, clientId, redirectUri,
       scope: repository ? `repository:${repository}:pull,push` : 'registry:catalog:read' });
     attempt.signal.throwIfAborted();
@@ -66,13 +65,8 @@ export async function registryOAuthLogin(origin: string, registryOrigin: string,
     const code = validateRegistryCallback(await waiting, redirectUri, request.state);
     attempt.signal.throwIfAborted();
     // Retain the registry's subject/access extensions, which the generic OAuth token helper omits.
-    const reply = await jsonReply(await fetch(new URL('/oauth/token', origin), {
-      method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store', signal: attempt.signal,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: new URLSearchParams({ grant_type: 'authorization_code', client_id: clientId, redirect_uri: redirectUri, code, code_verifier: request.codeVerifier }),
-    }));
-    attempt.signal.throwIfAborted();
-    return registryTokenSession(reply, repository);
+    return await exchangeRegistrySession(origin, registryOrigin, clientId,
+      new URLSearchParams({ grant_type: 'authorization_code', client_id: clientId, redirect_uri: redirectUri, code, code_verifier: request.codeVerifier }), repository, attempt.signal);
   } finally {
     clearTimeout(timeout); attempt.abort();
     signal.removeEventListener('abort', abort);

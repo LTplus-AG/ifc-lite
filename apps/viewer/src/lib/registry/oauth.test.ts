@@ -24,7 +24,7 @@ function fixture(authorize: (request: URL) => string | Promise<string> = registr
     assert(popup.opens() > 0, 'popup opens before asynchronous network discovery');
     const url = new URL(String(input));
     assert.equal(url.origin, window.location.origin);
-    assert.equal(init?.credentials, 'omit'); assert.equal(init?.redirect, 'error');
+    assert.equal(init?.credentials, url.pathname === '/oauth/config' ? 'omit' : 'include'); assert.equal(init?.redirect, 'error');
     assert.equal(new Headers(init?.headers).has('Authorization'), false);
     if (url.pathname === '/oauth/config') return Response.json(registryOAuthConfig(registryOrigin));
     assert.equal(url.pathname, '/oauth/token', 'browser never uses Basic /token');

@@ -51,8 +51,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
 
   const logout = () => {
-    pending.current?.abort(); clearRegistrySession();
-    setMessage(''); setError(''); setBusy(false);
+    void run(async () => { await transport.signOut(); clearRegistrySession(); });
   };
   const run = async (operation: (signal: AbortSignal) => Promise<void>) => {
     const controller = new AbortController();
@@ -88,6 +87,29 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
     setMessage(t('registry.opened', { name: selected?.title ?? displayModel(repository), version: selected ? releaseLabel(selected) : t('registry.savedRelease') }));
   };
 
+  useEffect(() => {
+    const current = useRegistryWorkspace.getState();
+    if (current.session && current.models.length) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const session = await transport.restore(controller.signal);
+        if (!session) return;
+        const catalog = await artifacts.modelCatalog(controller.signal);
+        const repository = catalog.repositories[0] ?? '';
+        const releases = repository ? await artifacts.releases(repository, controller.signal) : [];
+        controller.signal.throwIfAborted();
+        update({ session, models: catalog.repositories, modelTitles: catalog.titles, catalogNext: catalog.next, repository, releases,
+          release: releases[0]?.tag ?? '', version: nextVersion(releases), tags: releases.map(item => item.tag) });
+      } catch (error) {
+        if (!controller.signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')) {
+          console.warn('[registry] Could not restore the browser session', error instanceof Error ? error.message : 'unknown error');
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [transport, artifacts]);
+
   return <li className={`rounded-lg border bg-background ${expanded ? 'border-primary/40' : ''}`}>
     <div className="flex items-center gap-1 p-2">
       <button type="button" disabled={navigationDisabled || busy} onClick={onToggle} aria-expanded={expanded} aria-controls={`${id}-content`}
@@ -121,7 +143,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
       </form> : <div className="grid min-w-0 grid-cols-1 gap-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">{session.subject}</span>
-          <Button size="sm" variant="ghost" onClick={logout}>{t('registry.signOut')}</Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={logout}>{t('registry.signOut')}</Button>
         </div>
         {models.length ? <>
           <Label htmlFor={`${id}-model`}>{t('registry.model')}</Label>

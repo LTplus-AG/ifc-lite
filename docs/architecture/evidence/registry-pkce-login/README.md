@@ -38,3 +38,25 @@ After publishing and reopening:
 Reproduce the flow using [the local registry guide](../../../guide/local-registry.md).
 Artifacts and ORAS credentials stay in temporary/ignored storage; they are not
 part of this evidence directory.
+
+## Session renewal follow-up
+
+The companion implementation is published on
+[`codex/registry-browser-pkce` at `8f25007`](https://github.com/zahmadsaleem/ifcx-oci/tree/8f250077797b06c0902248a837e6fd7095b815bf).
+Its [OAuth contract](https://github.com/zahmadsaleem/ifcx-oci/blob/8f250077797b06c0902248a837e6fd7095b815bf/OAUTH.md)
+defines an eight-hour default session and an optional 30-day remembered session.
+
+The following screenshot was captured in the companion registry chat's real
+browser verification, with isolated demo accounts and **Remember me for 30 days**
+selected. That page is served by the registry. The viewer continues to show its
+address/sign-in action and never receives the registry password.
+
+![Registry-owned sign-in with the 30-day remember choice](registry-login-remember.png)
+
+Viewer tests exercise renewal against the real Rust registry, exact absolute
+deadline preservation, HttpOnly-cookie responses without a JSON refresh secret,
+restoring a fresh transport/tab, and immediate server revocation of old access
+tokens. Separate UI tests mount a fresh Sources panel and verify restoration
+without a popup. Concurrency tests cover single-flight renewal, cross-tab Web
+Locks and logout notification, and late responses during sign-out. The Vite proxy
+test checks that only the named refresh cookie crosses exact token/revoke routes.

@@ -14,8 +14,9 @@ Install the workspace dependencies using the repository's
 WASM runtime. `pnpm build:wasm:fetch` obtains an official prebuilt when it matches
 the checkout; otherwise build with `pnpm build:wasm` and the pinned Rust toolchain.
 
-Make an [ifcx-oci](https://github.com/zahmadsaleem/ifcx-oci) binary with browser
-OAuth support and `oras` available in your terminal. These commands
+Make an [ifcx-oci browser-login build](https://github.com/zahmadsaleem/ifcx-oci/tree/codex/registry-browser-pkce)
+with PKCE and session renewal, plus `oras`, available in your terminal. The
+recorded checks use backend revision `8f25007`. These commands
 use only the public `hello-wall.ifc` fixture already in the repository. Run them
 from the IFClite repository root. Choose passwords when prompted:
 
@@ -91,8 +92,11 @@ loopback aliases at its port resolve to the same pinned target. Changing input
 cannot route the proxy to another host or port. URLs containing credentials,
 queries or ambiguous references are rejected before sign-in begins.
 
-The proxy forwards `/v2/`, `/oauth/config` and `/oauth/token`, removes request
-cookies and response cookies, and rewrites upload locations to the viewer
+The proxy forwards `/v2/`, `/oauth/config`, `/oauth/token` and `/oauth/revoke`.
+Only the exact token/revoke routes may pass the named `ifcx_oci_refresh` cookie;
+other request cookies are stripped. Response cookies must have that exact name,
+`Path=/oauth/`, HttpOnly and SameSite=Strict, with no Domain attribute. Discovery
+and distribution never pass cookies. Upload locations are rewritten to the viewer
 origin. The credential/approval page at `/oauth/authorize` opens directly on the
 configured registry origin and is never proxied under the viewer's origin.
 Discovery must identify that exact registry authorization endpoint, the public
@@ -109,15 +113,29 @@ validates its exact origin/path, state and unambiguous parameters. A static
 callback page returns the result through the existing origin-scoped
 BroadcastChannel, which works with the viewer's cross-origin isolation.
 Sign-in times out after five minutes; closing Cloud Sources cancels an active
-attempt, and sign-out prevents late token responses from restoring the session.
+attempt. Sign-out revokes the server session and prevents late token responses
+from restoring access. Remembered sign-out also clears the connected state in
+the viewer's other tabs; independent tab-only sessions stay separate.
 
-The verifier, state, tokens and selected-model state live only in tab memory
-across closing/reopening Cloud
-Sources. Sign-out or connection changes clear authentication and model metadata;
-the scoped token expires after 15 minutes and requires reconnecting. No refresh
-token is issued. Registry-owned local accounts remain available on the registry
-website; CLI and ORAS retain their separate OCI login. No external identity
-provider is required. The viewer has no Basic-auth or password fallback.
+Access tokens last at most 15 minutes and are renewed automatically when used.
+The default session keeps its rotating refresh token in tab memory and lasts
+up to eight hours. Closing/reopening Cloud Sources preserves that session;
+reloading the viewer requires sign-in again unless you chose **Remember me for
+30 days** on the registry page.
+
+Remembered sessions keep their refresh token only in an HttpOnly browser cookie,
+survive reloads and browser restarts, and are shared across tabs on the same
+viewer origin for an absolute 30 days. Access tokens stay in memory; refresh
+tokens never enter localStorage. Renewal cannot extend the original deadline or
+increase the originally approved grants. Web Locks serialize cookie exchanges
+across tabs, and concurrent model requests share one renewal within a tab.
+The viewer retries an authorization failure once after renewal and never
+retries a write after an ambiguous network error. If server sign-out fails,
+retry **Sign out** before reconnecting.
+
+Registry-owned local accounts remain available on the registry website; CLI and
+ORAS retain their separate OCI login. No external identity provider is required.
+The viewer has no Basic-auth or password fallback.
 
 The UI uses the [Distribution catalog
 API](https://distribution.github.io/distribution/spec/api/#listing-repositories)
@@ -174,7 +192,8 @@ pnpm lint
 
 Without the executable variables, integration/ORAS coverage reports its skipped
 portion. The tests cover address parsing, S256 challenge/verifier binding,
-callback validation, sign-out races, credential boundaries, authenticated
+callback validation, session renewal, remembered restoration, multi-tab cookie
+serialization, sign-out races, credential boundaries, authenticated
 model discovery, publisher/time metadata, actual edited IFC export, integrity,
 reader denials, existing-version refusal, panel-close session survival and
 independent ORAS retrieval. Generic file-source providers retain their existing

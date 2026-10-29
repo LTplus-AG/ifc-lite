@@ -37,7 +37,11 @@ export function registryTransport(origin: string): RegistryTransport {
   const current = useRegistryWorkspace.getState().transport;
   if (current?.origin === origin) return current;
   current?.logout();
-  const transport = new RegistryTransport(origin);
+  const transport = new RegistryTransport(origin, localRegistryAddress, session => {
+    const current = useRegistryWorkspace.getState();
+    if (current.transport !== transport) return;
+    updateRegistryWorkspace(session ? { session } : { ...initial, transport, address: current.address });
+  });
   updateRegistryWorkspace({ ...initial, transport });
   return transport;
 }

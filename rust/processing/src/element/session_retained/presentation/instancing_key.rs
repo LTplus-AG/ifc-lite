@@ -10,7 +10,8 @@ pub(super) fn instance_key(representation_map: u32, part: &ShapePart) -> [u8; 32
     // #7955 M4: include semantic band identity and the pre-cap volume even
     // though open band products are currently ineligible for sharing.
     match part.layer {
-        None => hash.update([0]),
+        // Preserve main's key bytes for ordinary products.
+        None => {},
         Some(layer) => {
             hash.update([1]);
             hash.update(layer.index.to_le_bytes());
@@ -18,7 +19,7 @@ pub(super) fn instance_key(representation_map: u32, part: &ShapePart) -> [u8; 32
         }
     }
     match part.capped_volume_m3 {
-        None => hash.update([0]),
+        None => {},
         Some(volume) => { hash.update([1]); hash.update(volume.to_le_bytes()); }
     }
     hash.update((part.positions.len() as u64).to_le_bytes());

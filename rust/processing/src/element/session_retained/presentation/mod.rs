@@ -9,6 +9,8 @@ mod face_attribution;
 mod face_coincidence;
 mod face_curve;
 mod face_surfaces;
+#[cfg(test)]
+mod face_surfaces_tests;
 mod instancing;
 pub(super) use faces::{sources as face_sources, FaceSources};
 

@@ -153,6 +153,7 @@ fn issue_7955_m11_f_presentation_fixture_faces() {
     let mut mapped = BTreeSet::new();
     for outcome in &outcomes {
         let ProductOutcome::Published(product) = outcome else { continue };
+        if product.product_id == 610 { continue; } // Clipped: hand-derived cut/flush authority below.
         let expected = if product.product_id == 425 { face_bands::cut(&sources, 425, &[433]) } else { faces::uncut(&sources, product.product_id) };
         let actual = assert_matches(&format!("f-i #{}", product.product_id), product, &expected.expect("predicted"));
         if (311..=391).contains(&product.product_id) { mapped.insert(actual.into_keys().collect::<Vec<_>>()); }

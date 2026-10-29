@@ -26,8 +26,14 @@ export function readInfluxConfig(): InfluxConfig {
 export function saveInfluxConfig(config: InfluxConfig, token: string): void {
   // Refused connection fields must not overwrite the last usable configuration.
   if (configFields.some(key => containsInfluxToken(config[key], token))) return;
+  // URL userinfo is a credential too; the query rejects it, so never persist it.
+  if (hasUrlCredentials(config.url)) return;
   const safe = Object.fromEntries(configFields.map(key => [key, config[key]]));
   localStorage.setItem(INFLUX_CONFIG_KEY, JSON.stringify(safe));
+}
+
+function hasUrlCredentials(value: string): boolean {
+  try { const url = new URL(value); return Boolean(url.username || url.password); } catch { return false; }
 }
 
 export function influxSelection(config: InfluxConfig): InfluxSelection {

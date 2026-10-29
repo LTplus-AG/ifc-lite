@@ -89,6 +89,12 @@ test('#8297 short and URI-encoded tokens skip persistence without rewriting fiel
   }
 });
 
+test('#8297 a URL with embedded credentials is never persisted', () => {
+  localStorage.removeItem(INFLUX_CONFIG_KEY);
+  saveInfluxConfig({ ...DEFAULT_INFLUX_CONFIG, url: 'https://alice:password@influx.example.com' }, 'safe-token');
+  assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY), null);
+});
+
 // #8297: first-open Load must work when the optional display unit stays blank.
 test('#8297 Load accepts the default blank display unit', async () => {
   useViewerStore.setState({ ...fixtureModels(), ifcDataStore: null, selectedEntityId: null, mutationViews: new Map() });

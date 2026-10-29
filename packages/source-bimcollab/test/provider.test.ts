@@ -197,6 +197,26 @@ describe('BIMcollab source provider (fake transport only)', () => {
     expect(fetchFn.mock.calls.some(call => String(call[0]).includes('/index?'))).toBe(false);
     expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
   });
+  it('surfaces a 401 from an index as re-authentication, never as an empty location', async () => {
+    const { provider, ctx, fetchFn } = setup({ indexStatus: { 4: 401 } });
+    const failure = await provider.download(ctx, ref).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(BimcollabHttpError);
+    expect((failure as BimcollabHttpError).reauthenticationRequired).toBe(true);
+    expect(fetchFn.mock.calls.some(call => /\/space\/demo\/download\//.test(String(call[0])))).toBe(false);
+  });
+  it('searches the project level, then every phase, with each hit carrying its real container', async () => {
+    const { provider, ctx, fetchFn } = setup();
+    const first = await provider.searchFiles(ctx, 'phased', 'model');
+    expect(String(fetchFn.mock.calls.at(-1)?.[0])).toContain('/projects/phased/documents?');
+    expect(first.items[0]?.containerId).toBe('root');
+    expect(first.cursor).toBe('1:0');
+    const second = await provider.searchFiles(ctx, 'phased', 'model', undefined, { cursor: first.cursor });
+    expect(String(fetchFn.mock.calls.at(-1)?.[0])).toContain('/project-phases/phase/documents?');
+    expect(String(fetchFn.mock.calls.at(-1)?.[0])).toContain('searchText=model');
+    expect(second.items[0]?.containerId).toBe('phase');
+    expect(second.cursor).toBeUndefined();
+    await expect(provider.searchFiles(ctx, 'phased', 'model', undefined, { cursor: '9:0' })).rejects.toThrow('cursor');
+  });
   it('treats an inaccessible location index as empty, but aborts on any other index failure', async () => {
     const forbidden = setup({ indexStatus: { 7: 403, 9: 404 } });
     expect(new TextDecoder().decode(await forbidden.provider.download(forbidden.ctx, ref))).toBe('IFC');

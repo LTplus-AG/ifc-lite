@@ -26,8 +26,13 @@ export function inProject(row: IndexRecord, names: Pick<LegacyNames, 'project' |
   return row.projectPhaseName !== null && (names.phases ?? []).includes(row.projectPhaseName);
 }
 
-/** An index the user cannot read is a location they cannot hold the document in. */
-const NO_ACCESS = new Set([401, 403, 404]);
+/**
+ * An index the user is refused (403) or that does not exist (404) is a location
+ * they cannot hold the document in. 401 is NOT here: it means the session
+ * itself was rejected, which must surface as re-authentication rather than
+ * read as "not found".
+ */
+const NO_ACCESS = new Set([403, 404]);
 
 export class LegacyDownload {
   private readonly cache = new Map<string, CachedIndex>();

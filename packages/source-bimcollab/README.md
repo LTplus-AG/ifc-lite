@@ -52,7 +52,7 @@ allowlist. Progress reports actual bytes through `DownloadOptions.onProgress`.
 Locations × projects map to projects with `locationId` and `locationName` metadata.
 Every project offers a `root` container (documents attached to the project itself), then one leaf container per phase.
 Listings page incrementally (maximum 100 raw documents); filtered pages may be
-empty with a continuation cursor. Search uses project-level `searchText`.
+empty with a continuation cursor. Search runs `searchText` over the project level, then each phase, paging one container after another; every hit carries its real container.
 Archived and confidential records are excluded. Revisions use public GUIDs.
 
 On the specific public download-unavailable 404, the default fallback reads the

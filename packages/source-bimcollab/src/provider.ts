@@ -64,10 +64,24 @@ export class BimcollabProvider implements FileSourceProvider {
     const page = await this.documents(ctx, projectId, containerId, options);
     return { items: page.documents.flatMap(doc => { const file = modelFile(doc, containerId, filter); return file ? [file] : []; }), cursor: page.cursor };
   }
+  /**
+   * Searches every container of the project: the project level, then each phase
+   * (phase-attached documents are only listed under their phase). The cursor is
+   * `<containerIndex>:<offset>`, so paging walks one container after another and
+   * every hit carries its real container id for download.
+   */
   async searchFiles(ctx: PluginContext, projectId: string, query: string, filter?: FileFilter, options?: ListOptions) {
-    const page = await this.documents(ctx, projectId, ROOT, options, query);
-    // Project search does not carry phase ids; root references use project-scoped metadata lookup.
-    return { items: page.documents.flatMap(doc => { const file = modelFile(doc, ROOT, filter); return file ? [file] : []; }), cursor: page.cursor };
+    const containers = (await this.listContainers(ctx, projectId, undefined, options)).items.map(item => item.id);
+    const [indexText, offsetText] = (options?.cursor ?? '0:0').split(':');
+    const index = Number(indexText);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= containers.length || offsetText === undefined) {
+      throw new Error('Invalid BIMcollab search cursor.');
+    }
+    const containerId = containers[index]!;
+    const page = await this.documents(ctx, projectId, containerId, { ...options, cursor: offsetText }, query);
+    const cursor = page.cursor !== undefined ? `${index}:${page.cursor}`
+      : index + 1 < containers.length ? `${index + 1}:0` : undefined;
+    return { items: page.documents.flatMap(doc => { const file = modelFile(doc, containerId, filter); return file ? [file] : []; }), cursor };
   }
   async listRevisions(ctx: PluginContext, ref: SourceFileRef, options?: ListOptions) {
     const versions = await this.json<Version[]>(ctx, `documents/${enc(ref.fileId)}/document-versions`, options?.signal);

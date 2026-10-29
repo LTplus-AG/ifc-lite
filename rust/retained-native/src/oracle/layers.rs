@@ -81,5 +81,5 @@ fn radial_band(host: &Prism,inner:f64,outer:f64) -> Option<Prism> {
     if result.len()!=2 {return None;}
     let first=result.remove(0); let second=result.remove(0);
     let e1=Edge::Line(first.point(1.),second.point(0.)); let e2=Edge::Line(second.point(1.),first.point(0.));
-    Some(Prism{loops:vec![(true,vec![first,e1,second,e2])],low:host.low,high:host.high})
+    Some(Prism{loops:vec![(true,vec![first,e1,second,e2])],low:host.low,high:host.high,start:host.start})
 }

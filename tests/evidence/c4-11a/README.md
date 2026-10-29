@@ -87,25 +87,21 @@ established by these focused tests. Native Rust processing is untouched.
 
 ## Recorded qualification
 
-Exact fleet argv, source pins, receipt paths, corrected failures and named skips
-are in [validation.json](validation.json). At `cbf7087691`, full wasm-bindings and
-processing tests reported 1,532 passes, zero failures and five ignored tests;
-optional-fixture early returns are listed separately as coverage gaps. All three
-C4-11a witnesses, six C4-10a witnesses, C4-0 over all 15 committed fixtures, the
-three ratchets and workspace all-target clippy passed.
+The main refresh is pinned in [validation.json](validation.json). The Rust API
+surface, module-size, reference-walk, source-text assertion and test-wiring
+checks pass locally. The mutation reverse-applies and rejects forward
+application. Both committed WASM declarations match main; the contract entry
+point stays at its unchanged 2,095-line budget.
 
-The original broad mutation could fail at the epoch assertion before checking
-stale caches. The narrowed review mutation retains epoch and BRep invalidation,
-fails on stale `cached_parts_to_skip` and installed finishes, then passes all
-three witnesses after restoration. The CI oracle reports `OBSERVED` with
-restoration verified. Reverse application succeeds; forward application fails.
+The parent directed this refresh to be pushed and marked ready after these
+local gates: GitHub CI is the merge gate and must be fully green. Both fleet
+hosts currently refuse admission for storage headroom. One admission waiter
+remains for post-push confirmation; no fresh native, mutation-execution or WASM
+runtime result is claimed. Exact pending commands and the refused preflight
+request are recorded in validation.json. No foreign output or job was reclaimed,
+interrupted or signalled, and no guard was relaxed.
 
-Fresh real-WASM focused contracts passed 23/23 with no skips. After managed
-fixture seeding and 16 root Turbo dependency builds, the full boundary suite
-passed 246 tests with zero failures and one skip (an unconfigured matched
-historical JS/WASM pair). Committed bindings did not change.
-
-The runtime accepts SAB views here: the tests cover real SAB marshalling,
-finish consumption/restashing, owned-buffer replay and a streaming callback
-abort after entering Rust, rather than forcing an engine-specific ABI rejection.
-No timing or performance-neutrality claim is made.
+Historical qualification remains available at the previousEvidence source pin
+in validation.json. Its runtime, toolchain, coverage gaps and skips describe
+that older source, rather than this merged head. End-to-end worker-pool timing
+and whole-host memory remain unmeasured.

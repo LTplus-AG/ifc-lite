@@ -1,298 +1,86 @@
 {
   "issue": 7782,
   "lane": "C4-11a",
-  "reviewRound": 1,
   "pr": "https://github.com/LTplus-AG/ifc-lite/pull/8320",
-  "previousEvidence": "66e7ed2030ca2547ad3fbea6c93d43cd47d086f2:tests/evidence/c4-11a/validation.json",
-  "stackBase": "6b977a14eee2a276e71ea46f8b5184f8fd6395a8",
-  "mergedParent": "02efa507f9c981eaa049df0b43d4fed5c278e624",
-  "mergeCommit": "a58572ab4e06525ec3c313c912204d6d9a90fe90",
-  "validatedSource": "cbf7087691e725f58dd4a5eac5cd930a6bccf31c",
-  "conflicts": {
-    "workflow": "C4-11a first, C4-10a second, C4-7a-R third; lane-specific comments preserved.",
-    "functionLengthAllowlist": "Merged measured budgets: produce_batch 536; pre_pass_streaming_impl 501.",
-    "moduleSizeAllowlist": "Merged measured budgets: prepass.rs 583; api/mod.rs 949.",
-    "moduleSizeDigest": "Recomputed wasm-bindings digest 1392626513646517728.",
-    "runtime": "Automatic merges retain the reset contract and C4-10a refusal scopes. batch.rs is identical to parent 02efa507f9; C4-0 expected-difference file is unchanged."
+  "previousEvidence": "aaae4e06dc1ba8a71469933eecaa728efe1a1853:tests/evidence/c4-11a/validation.json",
+  "source": "d235fc1be5f387d36a94cb0aa4d141d4dc13158f",
+  "base": "298693424041c38f0a44433e770e0b3e75b101ec",
+  "status": "Ready for GitHub CI; post-push fleet confirmation pending admission",
+  "parentDirection": "Push and mark ready after cheap local gates. GitHub CI is the merge gate; full green required. Do not reclaim other sessions outputs or relax guards.",
+  "conflictResolutions": {
+    "workflow": "C4-11a oracle first; C4-10a and C4-7a-R branches remain inert because their patches are already on main.",
+    "reset": "Retain begin_content_install/clear_content_derived; use shared discard for setSourceBytes mapped-item invalidation. Source setter retains entity index and injected columns.",
+    "parentTests": "Keep all seven C4-10a tests from main, including mapped-item clearing; batch.rs is identical to main.",
+    "contracts": "Keep extracted wasm-pipeline-diagnostics-contracts from main. Register C4-11a through wasm-early-contracts; test-wasm-contract.mjs remains exactly 2095 lines, budget unchanged.",
+    "ratchets": "Retain measured C4-11a reductions: prepass.rs 583, api/mod.rs 949, pre_pass_streaming_impl 501. Existing digest 1392626513646517728 matches the unchanged lane allowlist; native ratchet confirmation awaits admission.",
+    "perf": "Keep all sections from both sides; no end-to-end performance claim.",
+    "latestMain": "Additional clean merge of main 2986934240 after the C4-10a squash merge 0ace993cc3."
   },
-  "findings": {
-    "P3-1": "Fixed: reverse patch removes only discard calls, preserving source epoch + BRep invalidation. Forward application rejected; actual stale-cache assertion and installed-finish failure observed, then restored green; CI oracle OBSERVED. README distinguishes the old epoch failure from the new stale-cache observation.",
-    "P3-2": "Fixed: real builders, column installs and public batch setup warm every derived slot; each install requires slots cleared, including item dedup, mapped items, indexed colours, angle scale, parts, mapped plan, styles, finishes, textures, layers and type caches. Index is replaced or absent as appropriate; rebuild assertions remain.",
-    "P3-3": "Fixed: native PLAIN is described as a strict subset of authored(); JS/WASM pair is the different pair.",
-    "styleFinishesComment": "Added the one-line reminder at same-array dedupe: re-send finishes after setEntityIndex/prepass on the same API because Rust clears installed finishes."
-  },
-  "tools": {
-    "git": {
-      "path": "/usr/local/bin/git",
-      "exitCode": 0,
-      "version": "git version 2.53.0"
-    },
-    "rustc": {
-      "path": "/home/louistrue/.cargo/bin/rustc",
-      "exitCode": 0,
-      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
-    },
-    "cargo": {
-      "path": "/home/louistrue/.cargo/bin/cargo",
-      "exitCode": 0,
-      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
-    },
-    "node": {
-      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
-      "exitCode": 0,
-      "version": "v24.21.0"
-    },
-    "pnpm": {
-      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
-      "exitCode": 0,
-      "version": "10.8.1"
-    }
-  },
-  "toolchainInputs": {
-    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
-    "Cargo.lock": "df0a82c67c1a4e2d3e2c8a3fc177bd703b0fa1ab880d854a9f6dc7eadfd1a400",
-    "pnpm-lock.yaml": "b91f7d6b5be692b3a0721b838ae228cc50f4020bc763f7e8c68186f9da5fe701",
-    "package.json": "fbc8411659f71e14211e1498a0447475bea2542b2696e3b11d1d35e0ddd7f424"
-  },
-  "runtime": {
-    "sha256": "3a2cbc8d93038b4b95cc33d8b6e7e6ec437d8c2feda7ff689a385ab9c081d0c6",
-    "bytes": 10329379,
-    "bindingsChanged": false
-  },
-  "runs": [
+  "localChecks": [
     {
-      "requestId": "auto-af60246ab645498da02f2a4188d50acf",
-      "jobId": "4260ae30-30bf-487a-8b40-2ffe249857aa",
-      "host": "pc-wsl",
-      "source": "fc272f2bd0ef7446fd8b9a53378b206e56801d51",
-      "sourceUnchanged": true,
-      "command": [
-        "bash",
-        "tests/evidence/c4-11a/validate.sh",
-        "native"
-      ],
-      "fleetPrefix": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--route",
-        "fleet",
-        "--storage-task",
-        "c4-11a-review-3f49607b",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-3f49607b",
-        "--cpu",
-        "4",
-        "--memory",
-        "16",
-        "--"
-      ],
-      "state": "failed",
-      "processExitCode": 101,
-      "exitCode": 101,
-      "outputSha256": "5b68a73f2dae920d0d0f2f36f9a82de5a4e5a4ba932dedd74d4f9cbfb8dd18c9",
-      "receipt": "/home/louistrue/build-workers/worker-state/jobs/4260ae30-30bf-487a-8b40-2ffe249857aa/receipt.json",
-      "result": "Compile failure in the new helper: produce_batch is private to its module. Corrected to the public process_geometry_batch entry before the successful run.",
-      "evidence": {
-        "id": "pc-wsl-4260ae30-30bf-487a-8b40-2ffe249857aa-1f4e92468d5c",
-        "manifestSha256": "418f892e2df9f0d8bb51a69bd7b3f0c0ca96f9eab819aedc9b2d9abb1a5d2bd6",
-        "verified": true,
-        "state": "published"
-      }
+      "command": "node scripts/check-rust-api-surface.mjs",
+      "exitCode": 0,
+      "result": "8 crates, 726 tracked items match snapshot; four existing ambiguous names reported."
     },
     {
-      "requestId": "auto-f88530b27bcc4283a36a041315efb5c5",
-      "jobId": "6a145244-4104-458d-ace0-472fdcc7ebf1",
-      "host": "pc-wsl",
-      "source": "cbf7087691e725f58dd4a5eac5cd930a6bccf31c",
-      "sourceUnchanged": true,
-      "command": [
-        "bash",
-        "tests/evidence/c4-11a/validate.sh",
-        "native"
-      ],
-      "fleetPrefix": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--route",
-        "fleet",
-        "--storage-task",
-        "c4-11a-review-3f49607b",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-3f49607b",
-        "--cpu",
-        "4",
-        "--memory",
-        "16",
-        "--"
-      ],
-      "state": "completed",
-      "processExitCode": 0,
+      "command": "node scripts/check-module-size.mjs",
       "exitCode": 0,
-      "outputSha256": "dac37e40ee5030b2249e989b540e8cc1630e696ee4291366e06de8027310b3ec",
-      "receipt": "/home/louistrue/build-workers/worker-state/jobs/6a145244-4104-458d-ace0-472fdcc7ebf1/receipt.json",
-      "result": "PASS: full wasm-bindings + processing tests: harness 1532 passed, 0 failed, 5 ignored (optional fixture early returns listed separately); all 3 C4-11a witnesses, 6 C4-10a witnesses, C4-0 15-fixture payload gate and all 3 ratchets passed. Workspace all-target clippy -D warnings passed.",
-      "evidence": {
-        "id": "pc-wsl-6a145244-4104-458d-ace0-472fdcc7ebf1-1f4e92468d5c",
-        "manifestSha256": "dd30d059082bf53aa59c1568eb37aedf3adadab3d86bcaf81b6f3f86d571758e",
-        "verified": true,
-        "state": "published"
-      }
+      "result": "6532 files; no added or raised budgets; two Rust module budgets lowered."
     },
     {
-      "requestId": "auto-95db112c00f3487f8ac5564890cabcbc",
-      "jobId": "3f21375d-d8ee-4154-bec2-6a29f1269488",
-      "host": "pc-wsl",
-      "source": "cbf7087691e725f58dd4a5eac5cd930a6bccf31c",
-      "sourceUnchanged": true,
-      "command": [
-        "bash",
-        "-lc",
-        "bash tests/evidence/c4-11a/validate.sh mutation && node scripts/check-test-revert-oracle.mjs --base 6b977a14eee2a276e71ea46f8b5184f8fd6395a8 --ci --json --mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs --verify-restored"
-      ],
-      "fleetPrefix": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--route",
-        "fleet",
-        "--storage-task",
-        "c4-11a-review-3f49607b",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-3f49607b",
-        "--cpu",
-        "4",
-        "--memory",
-        "16",
-        "--"
-      ],
-      "state": "completed",
-      "processExitCode": 0,
-      "exitCode": 0,
-      "outputSha256": "5e9dd2545f4f8abed76dd668d91502c7d91dbc68f0751f14e478ed9e6295c835",
-      "receipt": "/home/louistrue/build-workers/worker-state/jobs/3f21375d-d8ee-4154-bec2-6a29f1269488/receipt.json",
-      "result": "OBSERVED: reverse check passed, forward check rejected. Narrow mutation: 1 pass / 2 assertion failures, including once: stale content cache cached_parts_to_skip after source-epoch assertion passed, and stale installed finishes. Restored: 3/3 pass. CI oracle: baseline 3/3, mutation 1/3, restored 3/3, restoration verified.",
-      "evidence": {
-        "id": "pc-wsl-3f21375d-d8ee-4154-bec2-6a29f1269488-1f4e92468d5c",
-        "manifestSha256": "05f325760f9ff2367e39871579dc58eb6ba24e21bf755ecc6fba33b527b77dd5",
-        "verified": true,
-        "state": "published"
-      }
+      "command": "git apply --reverse --check tests/evidence/c4-11a/behaviour.oracle.patch",
+      "exitCode": 0
     },
     {
-      "requestId": "auto-2bca7b81e1c049d295c9921f314767d4",
-      "jobId": "407bf9b2-70fd-41ce-8bca-6938cfcb922a",
-      "host": "pc-wsl",
-      "source": "cbf7087691e725f58dd4a5eac5cd930a6bccf31c",
-      "sourceUnchanged": true,
-      "command": [
-        "bash",
-        "-lc",
-        "~/build-workers/storage seed-fixtures --cwd \"$PWD\" && pnpm install --frozen-lockfile --prefer-offline && bash tests/evidence/c4-11a/validate.sh wasm && pnpm build --filter=@ifc-lite/renderer --filter=@ifc-lite/export --filter=@ifc-lite/geometry --concurrency=2 --env-mode=loose && pnpm test:wasm-contract && sha256sum packages/wasm/pkg/ifc-lite_bg.wasm"
-      ],
-      "fleetPrefix": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--route",
-        "fleet",
-        "--storage-task",
-        "c4-11a-review-3f49607b",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-3f49607b",
-        "--cpu",
-        "4",
-        "--memory",
-        "16",
-        "--"
-      ],
-      "state": "completed",
-      "processExitCode": 0,
+      "command": "git apply --check tests/evidence/c4-11a/behaviour.oracle.patch",
+      "exitCode": 1,
+      "result": "Expected rejection: forward mutation must not apply."
+    },
+    {
+      "command": "git diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts",
       "exitCode": 0,
-      "outputSha256": "f6239cd7653cef3e39e306fa235a3b74046961e22bdf6b8d6dbbdc0109544d30",
-      "receipt": "/home/louistrue/build-workers/worker-state/jobs/407bf9b2-70fd-41ce-8bca-6938cfcb922a/receipt.json",
-      "result": "PASS: managed fixtures seeded, fresh WASM build, unchanged committed declarations, 23 focused contracts / 0 skips; 16 root Turbo dependency builds; full real-WASM suite 246 passed, 0 failed, 1 historical-pair skip.",
-      "evidence": {
-        "id": "pc-wsl-407bf9b2-70fd-41ce-8bca-6938cfcb922a-1f4e92468d5c",
-        "manifestSha256": "bb8938a3134e9297afb3e4f47c006874dc41bc74ab5926807686f3356e4bc9b6",
-        "verified": true,
-        "state": "published"
-      }
+      "result": "Committed declarations unchanged; fresh-build confirmation pending."
+    },
+    {
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exitCode": 0,
+      "result": "All 21 candidate walks guarded; eight pre-existing fan-out budget reviews."
+    },
+    {
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/check-test-wiring.mjs",
+      "exitCode": 0
     }
   ],
-  "nativeCoverage": {
-    "ignored": [
-      "test analytic_export::walk::tests::issue_6442_analytic_cache_process_measurement ... ignored, opt-in #6442 measurement; use scripts/perf/analytic-cache-ab.py",
-      "test print_current_offenders ... ignored",
-      "test print_current_counts ... ignored, re-seed helper: run with --ignored --nocapture",
-      "test full_matrix ... ignored",
-      "test issue_6870_throughput_at_two_million_points ... ignored"
+  "fleet": {
+    "storageTask": "c4-11a-main-367c9abd",
+    "host": "pop-os",
+    "prefix": "~/build-workers/ifc-fleet run --host pop-os --storage-task c4-11a-main-367c9abd --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-367c9abd --cpu 4 --memory 16 --",
+    "refusedAttempt": {
+      "requestId": "auto-d2ab466cecf84e8997fc01edcb3f31ed",
+      "source": "a64ab48391d30896b8310545ff97ee8fd881fc5a",
+      "command": "cargo test -p ifc-lite-processing --test module_size_ratchet -- --nocapture",
+      "state": "blocked at preflight; no job dispatched",
+      "exitCode": 69
+    },
+    "pending": "One admission waiter; no duplicate validation job. It submits native qualification once Pop admission opens.",
+    "commands": [
+      "cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace -- --nocapture",
+      "node scripts/check-test-revert-oracle.mjs --base origin/main --mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs --verify-restored --ci --json",
+      "pnpm install --frozen-lockfile && pnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export... && pnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc && CI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh && pnpm test:wasm-contract && git diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts"
     ],
-    "missingOptionalFixtures": [
-      "ara3d/AC20-FZK-Haus.ifc",
-      "ara3d/ISSUE_021_Mini Project.ifc",
-      "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-      "ara3d/advanced_model.ifc",
-      "ara3d/duplex.ifc",
-      "ara3d/schependomlaan.ifc",
-      "buildingsmart/Viadotto_Acerno.ifc",
-      "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
-      "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
-      "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
-      "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
-      "ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
-      "ifcopenshell/1032-curve.ifc",
-      "ifcopenshell/generated_structural_edge_curve.ifc",
-      "ifcopenshell/generated_structural_surface_member.ifc",
-      "ifcopenshell/structural_analysis_curve.ifc",
-      "issues/845_wall_elemented_case.ifc",
-      "issues/858_indexed_colour_map.ifc",
-      "issues/860_solid_stratum.ifc",
-      "various/01_BIMcollab_Example_ARC.ifc",
-      "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
-    ],
-    "otherOptionalGaps": [
-      "Convento appearance corpus not configured",
-      "Poly Haven external captured mesh not configured",
-      "No palette fixture present"
-    ],
-    "harnessCountNote": "1532 passes include tests returning early for missing optional fixtures; these branches are coverage gaps, not fixture passes."
+    "coverage": "No fresh clippy, cargo test, cargo check, oracle execution, WASM build or runtime contract result is claimed. All are heavy and require fleet admission.",
+    "blocker": "Both hosts storage-guard blocked. Pop initially required 588 GiB with two active jobs; after one finished it required 492 GiB with about 489 GiB free. Foreign jobs, outputs, locks and guard settings untouched."
   },
-  "wasmSkips": [
-    "matched historical fingerprint fallback: IFC_WASM_BASE_JS and IFC_WASM_BASE_BINARY not configured as a matched baseline pair"
-  ],
-  "performanceVerdict": "Unmeasured end-to-end worker-pool timing and whole-host memory. No speedup or performance-neutrality claim. C4-0 establishes normal single-file payload parity.",
-  "limitations": [
-    "This runtime accepts SAB views. Tests exercise real SAB marshalling, stash consumption/restashing, owned-buffer replay and an already-entered streaming attempt aborted by its callback; they do not force an engine-specific SAB ABI rejection.",
-    "setSourceBytes intentionally retains previously installed index/columns. Caller must pair inputs from the same file.",
-    "CLI final empty setSourceBytes retains its existing diagnostic-reset semantics; clearPrePassCache itself preserves diagnostics."
-  ],
+  "performanceVerdict": "End-to-end worker-pool timing and whole-host memory remain unmeasured. No speedup or performance-neutrality claim.",
   "cleanup": {
-    "task": "c4-11a-review-3f49607b",
-    "state": "closure requested; active T3 reference guard deferred release",
-    "publicationRecovery": "Oracle job-finish publication initially hit BlockingIOError. Republished original completed receipt only; verified manifest pc-wsl-3f21375d-d8ee-4154-bec2-6a29f1269488-1f4e92468d5c (05f325760f9ff2367e39871579dc58eb6ba24e21bf755ecc6fba33b527b77dd5). No project command replayed.",
-    "closeCommand": [
-      "~/build-workers/storage",
-      "close",
-      "--task",
-      "c4-11a-review-3f49607b"
-    ],
-    "closeError": "live process or T3 task still references output",
-    "ownershipInspection": {
-      "liveProcessUsers": 0,
-      "activeT3References": true,
-      "managedCheckouts": 2
-    },
-    "managedBytesReclaimed": 0,
-    "duplicateTemporaryLogBytesRemoved": 384652,
-    "deferredCompletion": [
-      "~/build-workers/storage close --task c4-11a-review-3f49607b",
-      "~/build-workers/storage reclaim --task c4-11a-review-3f49607b"
-    ],
-    "preserved": "Both committed source pins, all original receipts, fixtures, active/foreign work and original locks. Shared Cargo compatibility cache remains worker-managed and bounded.",
-    "verifiedManifests": [
-      "pc-wsl-6a145244-4104-458d-ace0-472fdcc7ebf1-1f4e92468d5c",
-      "pc-wsl-3f21375d-d8ee-4154-bec2-6a29f1269488-1f4e92468d5c",
-      "pc-wsl-407bf9b2-70fd-41ce-8bca-6938cfcb922a-1f4e92468d5c",
-      "pc-wsl-4260ae30-30bf-487a-8b40-2ffe249857aa-1f4e92468d5c"
-    ],
-    "closeRequestedAt": 1793294863.9108524
+    "newGeneratedWorkspaces": 0,
+    "newBuildArtifacts": 0,
+    "bytesReclaimed": 0,
+    "priorOwnTask": "c4-11a-review-3f49607b",
+    "priorOwnTaskReclaim": "Attempt refused by live process/T3 reference guard; no bypass. Other sessions outputs preserved. Close new owning task after post-push fleet results and evidence publication."
   }
 }

@@ -592,7 +592,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             `finalize start geometryLength=${capturedGeometry?.length ?? 0} releaseAfterFinalize=${releaseGeometryAfterFinalize}`
           );
 
-          if (capturedGeometry?.length === 0 && !appearanceSourceGeometry?.length) fitInstanceOnlyBounds({ renderer: r,
+          if (capturedGeometry?.length === 0 && lastGeometryRef.current?.length === 0
+            && !appearanceSourceGeometry?.length) fitInstanceOnlyBounds({ renderer: r,
             cameraFittedRef, cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef,
             lastFitPolicyKindRef, complete: true });
           refitCompletedStreamBounds({ renderer: r, capturedGeometry, cameraFittedRef,

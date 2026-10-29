@@ -42,7 +42,7 @@ export function influxGraph(selection: InfluxSelection): FlowDocument {
   };
 }
 
-function spikeNodes(selection: InfluxSelection): FlowNodeDef[] {
+function spikeNodes(selection: InfluxSelection, token: string): FlowNodeDef[] {
   return [
     {
       type: 'spike.influxResponse', title: 'Validate Influx response', category: 'spike', params: [], capabilities: [],
@@ -59,7 +59,7 @@ function spikeNodes(selection: InfluxSelection): FlowNodeDef[] {
       outputs: [{ name: 'table', type: tablePort }, { name: 'history', type: tablePort }],
       run: (_ctx, inputs) => {
         if (typeof inputs.text !== 'string') throw new Error('Expected InfluxDB CSV text');
-        const { history, latest } = parseInfluxCsv(inputs.text, selection);
+        const { history, latest } = parseInfluxCsv(inputs.text, selection, token);
         return { table: latest, history };
       },
     },
@@ -78,9 +78,10 @@ export async function runInfluxSpike(selection: InfluxSelection, host: FlowHost,
   if (errors.length) throw new Error(errors.map(error => error.message).join('; '));
   const values = resolveSecretValues(graph, env);
   if ([...values.values()].some(value => value.length < 6)) throw new Error('Token is too short for reliable output redaction');
+  const [token = ''] = values.values();
   const parsed = parseCapabilities(graph.capabilities);
   if (!parsed.ok) throw new Error('Invalid graph capabilities');
-  const registry = createStandardRegistry().registerAll(spikeNodes(selection));
+  const registry = createStandardRegistry().registerAll(spikeNodes(selection, token));
   const result = await runFlow(interpolateSecrets(graph, values), {
     host: { ...host, networkGrants: parsed.value }, registry, features: headlessFeatures(values.keys()),
   });

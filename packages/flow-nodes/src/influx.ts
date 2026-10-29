@@ -27,15 +27,19 @@ export function redactInfluxError(error: unknown, token: string): string {
   return redactInfluxText(error instanceof Error ? error.message : 'InfluxDB request failed', token);
 }
 
-export function parseInfluxCsv(csv: string, selection: InfluxSelection): { history: Table; latest: Table } {
-  return parseInfluxResponse(csv, selection, '');
+/** `token` is required so every caller states which credential must not be echoed back. */
+export function parseInfluxCsv(csv: string, selection: InfluxSelection, token: string): { history: Table; latest: Table } {
+  return parseInfluxResponse(csv, selection, token);
 }
 
 function parseInfluxResponse(csv: string, selection: InfluxSelection, token: string): { history: Table; latest: Table } {
   if (new TextEncoder().encode(csv).length > 2 * 1024 * 1024) throw new Error('InfluxDB response exceeds 2 MiB');
   const parsed = parseCsvText(csv, ',', true);
   const secrets = influxTokenForms(token);
-  const containsToken = (cell: string) => secrets.some(secret => cell.includes(secret));
+  // Percent-escape hex digits are case-insensitive, so also match `%2f` for `%2F`.
+  const lowered = secrets.filter(secret => secret.includes('%')).map(secret => secret.toLowerCase());
+  const containsToken = (cell: string) => secrets.some(secret => cell.includes(secret))
+    || (lowered.length > 0 && lowered.some(secret => cell.toLowerCase().includes(secret)));
   // Decode CSV escaping first, then reject before grouping can change identity.
   if (secrets.length && (parsed.header.some(containsToken) || parsed.rows.some(row => row.fields.some(containsToken)))) {
     throw new InfluxRequestError('data', redactInfluxText('InfluxDB response contains credentials', token));

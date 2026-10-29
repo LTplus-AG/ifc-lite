@@ -41,14 +41,14 @@ describe('InfluxDB shared adapters (#8090)', () => {
     }
   });
   it('retains nanosecond ordering, history and separate tag sets', () => {
-    const parsed = parseInfluxCsv(csv, selection);
+    const parsed = parseInfluxCsv(csv, selection, 'unrelated-token');
     expect(parsed.history.rows).toHaveLength(5);
     expect(parsed.latest.rows).toHaveLength(4);
     expect(parsed.latest.rows[0]._value).toBe(22.5);
     expect(latestPerSeries(parsed.history, selection).rows[0]._time).toBe('2026-10-24T10:00:00.000000002Z');
   });
   it('reports unmatched, competing series and duplicate model GUIDs without choosing', () => {
-    const latest = parseInfluxCsv(csv, selection).latest;
+    const latest = parseInfluxCsv(csv, selection, 'unrelated-token').latest;
     const targets = [{ GlobalId: 'space', modelId: 'one' }, { GlobalId: 'hall', modelId: 'one' }];
     const result = matchInfluxSeries(latest, targets);
     expect(result.matched.map(item => item.row._value)).toEqual([22.5]);
@@ -59,13 +59,13 @@ describe('InfluxDB shared adapters (#8090)', () => {
     expect(duplicate.ambiguous).toHaveLength(3);
   });
   it('fails on overflow, malformed data, error tables, invalid numbers/timestamps and conflicts', () => {
-    expect(() => parseInfluxCsv(csv, { ...selection, maxSamples: 1 })).toThrow(/cap exceeded/);
+    expect(() => parseInfluxCsv(csv, { ...selection, maxSamples: 1 }, 'unrelated-token')).toThrow(/cap exceeded/);
     for (const bad of [header + row('false'), header + row('NaN'), header + row('Infinity'), header + row('1', 'space', 'a', '2026-02-30T00:00:00Z'),
       header + row('20') + row('21'), header + 'wrong,width\n', ',error,reference\n,failed,123\n', csv + '\n,error,reference\n,failed,123\n',
       header + row('"20'), header + row('20"'), header.replace('device', '_value') + row(), header + row('20', '')]) {
-      expect(() => parseInfluxCsv(bad, selection)).toThrow();
+      expect(() => parseInfluxCsv(bad, selection, 'unrelated-token')).toThrow();
     }
-    expect(parseInfluxCsv('', selection).latest.rows).toEqual([]);
+    expect(parseInfluxCsv('', selection, 'unrelated-token').latest.rows).toEqual([]);
   });
   it('redacts literal and encoded credentials and suppresses upstream error content', async () => {
     expect(redactInfluxError(new Error(`failure ${token} ${token}`), token)).not.toContain(token);
@@ -87,12 +87,13 @@ describe('InfluxDB shared adapters (#8090)', () => {
   it('#8297 rejects raw/encoded token echoes instead of collapsing distinct series', async () => {
     const credential = 'secret/a+b';
     const echoed = header + row('20', 'space', credential) + row('21', 'space', encodeURIComponent(credential), '2026-10-24T10:00:00.000000002Z');
-    const unchanged = parseInfluxCsv(echoed, selection).latest;
+    const unchanged = parseInfluxCsv(echoed, selection, '').latest;
     expect(unchanged.rows).toHaveLength(2);
     expect(matchInfluxSeries(unchanged, [{ GlobalId: 'space' }]).ambiguous).toHaveLength(2);
     await expect(fetchInfluxReadings(selection, credential, async () => new Response(echoed))).rejects.toMatchObject({
       kind: 'data', message: 'InfluxDB response contains credentials',
     });
+    expect(() => parseInfluxCsv(header + row('22', 'space', 'secret%2fa%2bb'), selection, credential)).toThrow(/contains credentials/);
   });
   it('uses direct authenticated POST, fails oversized responses and sends no request with invalid config', async () => {
     let count = 0;

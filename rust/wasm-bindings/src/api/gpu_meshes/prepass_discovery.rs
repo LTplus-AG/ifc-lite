@@ -64,7 +64,7 @@ impl ColumnsDiscovery {
         if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
             self.type_candidate_spans.push((id, start, end, ty));
         }
-        if let Some(ty) = job {
+        if let Some((ty, _by_name)) = job {
             if !is_disabled(disabled, kw) {
                 self.buffered_jobs.push((id, start, end, ty));
                 self.total_jobs += 1;
@@ -75,8 +75,8 @@ impl ColumnsDiscovery {
 
 /// The raw STEP keyword at a record start (`#id=KEYWORD(...`), read through
 /// core's [`StepRecord`] so trivia between the `=` and the keyword (`#1= /*c*/
-/// IFCWALL(`) is skipped. Only called for the few records that need it
-/// (geometry jobs + type candidates), never for the 19M-entity bulk. A span
+/// IFCWALL(`) is skipped. Only classified rows need a keyword; the bulk of
+/// unclassified records are skipped without inspecting their bytes. A span
 /// outside `content` (columns stitched against a different buffer) yields
 /// `""`, like a record with no keyword.
 fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
@@ -103,8 +103,8 @@ pub(super) fn is_disabled(disabled_types: &rustc_hash::FxHashSet<String>, kw: &s
 }
 
 /// Walk the stitched (file-ordered) class columns and reproduce the serial
-/// pre-pass scan's discovery. `disabled_types` (rare) forces a keyword parse
-/// per flagged geometry record; the empty default never touches the bytes.
+/// pre-pass scan's discovery through the shared collector. Class bytes select
+/// the relevant rows; keyword parsing preserves schema labels and filtering.
 pub(super) fn discover_from_columns(
     content: &[u8],
     ids: &[u32],
@@ -139,6 +139,11 @@ pub(super) fn discover_from_columns(
                 ScanClass::MappedItem => d.mapped_item_spans.push((id, start, end)),
                 ScanClass::MaterialLayerSet => d.has_layer_set = true,
                 _ => {}
+            }
+            if class & ifc_lite_processing::PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0 {
+                if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
+                    d.type_candidate_spans.push((id, start, end, ty));
+                }
             }
             let site = kind == ScanClass::Site;
             let keyword = if site { "IFCSITE" } else { kw };

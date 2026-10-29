@@ -50,8 +50,8 @@ pub(crate) fn combined_pre_pass(content: &[u8], decoder: &mut ifc_lite_core::Ent
         if class == ifc_lite_processing::scan::ScanClass::Site {
             site_position.get_or_insert((id, start, end));
         }
-        if let Some(ty) = job {
-            let jobs = if ifc_lite_core::is_simple_geometry_type(type_name) {
+        if let Some((ty, by_name)) = job {
+            let jobs = if by_name && ifc_lite_core::is_simple_geometry_type(type_name) {
                 &mut simple_jobs
             } else {
                 &mut complex_jobs

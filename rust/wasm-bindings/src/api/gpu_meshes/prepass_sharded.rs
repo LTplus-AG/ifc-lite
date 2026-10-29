@@ -74,8 +74,13 @@ impl IfcAPI {
     /// full entity index (byte-identical to the single-threaded
     /// `build_entity_index`) by binary-searching each shard for the previous
     /// shard's `handoff`. Delegates to
-    /// `ifc_lite_processing::scan_shard_result` with classification enabled.
-    /// Named fields preserve the existing shard wire and refusal attribution.
+    /// `ifc_lite_processing::scan_shard_classified_with_refusals` — a
+    /// separately-maintained loop over the same `EntityScanner` primitive as
+    /// `scan_shard` (the one the native `build_entity_index_parallel` fans across
+    /// cores), plus a per-record class column this sharded path also needs. The
+    /// two loops' records/handoff are kept in parity by a dedicated test
+    /// (`rust/processing/tests/issue_2053_shard_scan_parity.rs`), not by
+    /// delegation — edit one without the other and that test catches the drift.
     ///
     /// Byte offsets returned are GLOBAL (relative to file start), so shards
     /// concatenate without rewriting. Returns a plain object:
@@ -103,6 +108,7 @@ impl IfcAPI {
         let total = data.len();
         let start = (range_start as usize).min(total);
         let end = (range_end as usize).min(total);
+        // Shared named-result scanner; preserve the established JS wire.
         let scan = ifc_lite_processing::scan_shard_result(data, start, end, true);
         let records = scan.records;
         let classes = scan.classes.expect("classified scan");

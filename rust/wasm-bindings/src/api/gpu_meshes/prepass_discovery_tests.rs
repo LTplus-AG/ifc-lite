@@ -478,3 +478,25 @@ fn c4_6b_early_meta_precedes_late_project_after_fifty_accepted_jobs() {
     assert_eq!(events, ["meta"]);
     assert_eq!(d.early_meta_end(true), None);
 }
+
+/// #7782/#4614: malformed columns still reach the decoder's refusal boundary,
+/// including type candidates when the keyword is readable but the end is not.
+#[test]
+fn c4_6b_overlong_type_span_keeps_its_candidate() {
+    let bytes = LEGACY_TYPE_FIXTURE.as_bytes();
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let &(id, start, _) = scan.records.iter().find(|r| r.0 == 20).unwrap();
+    let end = bytes.len() + 1;
+    let d = discover_from_columns(
+        bytes,
+        &[id],
+        &[start as u32],
+        &[(end - start) as u32],
+        &[ifc_lite_processing::PREPASS_CLASS_FLAG_TYPE_CANDIDATE],
+        &Default::default(),
+    );
+    assert_eq!(
+        d.type_candidate_spans,
+        [(id, start, end, ifc_lite_core::IfcType::IfcDoorStyle)]
+    );
+}

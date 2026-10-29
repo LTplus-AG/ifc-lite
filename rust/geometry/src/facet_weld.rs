@@ -707,7 +707,7 @@ fn refine_high_aspect_slivers_impl(
         let mut edge_tris: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
         for (ti, t) in tris.iter().enumerate() {
             for (u, v) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-                edge_tris.entry(edge_key(u, v)).or_default().push(ti);
+                edge_tris.entry(edge_key(u, v)).or_insert_with(|| Vec::with_capacity(2)).push(ti);
             }
         }
 

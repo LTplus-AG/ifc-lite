@@ -219,7 +219,6 @@ fn compare(
 
                     let m6 = ifc_lite_retained_native::oracle::bounded::applies(&bytes, id);
                     let bounded = m6.then(|| ifc_lite_retained_native::oracle::bounded::expected(&bytes, &sources, id)).flatten();
-                    if m6 && bounded.is_none() { report.violations.push(format!("{model}:{id}: M6 source oracle unavailable")); }
                     report.published(
                         &model,
                         &shape,

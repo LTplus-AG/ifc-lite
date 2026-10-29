@@ -54,6 +54,13 @@ pub(super) struct Chain {
     pub solid_cuts: bool,
 }
 pub(super) fn chain(product:u32,decoder:&mut EntityDecoder)->Option<Chain> {
+    chain_with_reason(product,decoder,&mut String::new())
+}
+pub(super) fn unmodelled_reason(product:u32,decoder:&mut EntityDecoder)->Option<String> {
+    let mut reason="unsupported node, malformed source, cycle or chain work cap".to_string();
+    chain_with_reason(product,decoder,&mut reason).is_none().then_some(reason)
+}
+fn body_items(product:u32,decoder:&mut EntityDecoder)->Option<Vec<u32>> {
     let product=decoder.decode_by_id(product).ok()?;
     let shape=decoder.decode_by_id(product.get_ref(slot::IfcProduct::REPRESENTATION.index())?).ok()?;
     let mut items=Vec::new();
@@ -63,7 +70,11 @@ pub(super) fn chain(product:u32,decoder:&mut EntityDecoder)->Option<Chain> {
             for item in representation.get(slot::IfcRepresentation::ITEMS.index())?.as_list()? {items.push(item.as_entity_ref()?);}
         }
     }
-    if items.len()!=1{return None;}
+    Some(items)
+}
+fn chain_with_reason(product:u32,decoder:&mut EntityDecoder,reason:&mut String)->Option<Chain> {
+    let items=body_items(product,decoder)?;
+    if items.len()!=1{*reason=format!("multi-item body: {} items",items.len());return None;}
     let mut frame=IDENTITY;
     let mut cursor=items[0];let mut visited=HashSet::new();let mut clips=Vec::new();let mut solids=false;
     while visited.insert(cursor) && visited.len()<=128 {
@@ -72,7 +83,7 @@ pub(super) fn chain(product:u32,decoder:&mut EntityDecoder)->Option<Chain> {
             let map=decoder.decode_by_id(node.get_ref(slot::IfcMappedItem::MAPPING_SOURCE.index())?).ok()?;
             let mapped_rep=decoder.decode_by_id(map.get_ref(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())?).ok()?;
             let children=mapped_rep.get(slot::IfcRepresentation::ITEMS.index())?.as_list()?;
-            if children.len()!=1{return None;}
+            if children.len()!=1{*reason=format!("multi-child map: {} items",children.len());return None;}
             cursor=children[0].as_entity_ref()?;
             let level=ifc_lite_geometry::representation::MappedLevel{item:node,map,mapped_rep};
             let local=level.local_transform(decoder).ok()?
@@ -86,7 +97,7 @@ pub(super) fn chain(product:u32,decoder:&mut EntityDecoder)->Option<Chain> {
         if !node.ifc_type.is_subtype_of(IfcType::IfcBooleanResult) {
             return Some(Chain{host:cursor,host_frame:frame,clips,solid_cuts:solids});
         }
-        if node.get(slot::IfcBooleanResult::OPERATOR.index())?.as_enum()?.trim_matches('.')!="DIFFERENCE" {return None;}
+        if node.get(slot::IfcBooleanResult::OPERATOR.index())?.as_enum()?.trim_matches('.')!="DIFFERENCE" {*reason=format!("unsupported node #{}: non-Difference Boolean",node.id);return None;}
         let right=decoder.decode_by_id(node.get_ref(slot::IfcBooleanResult::SECOND_OPERAND.index())?).ok()?;
         if right.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {clips.push((right.id,frame));}else{solids=true;}
         cursor=node.get_ref(slot::IfcBooleanResult::FIRST_OPERAND.index())?;
@@ -202,5 +213,52 @@ fn m6_7955_reflected_boundary_pullback_and_partition_sides() {
                 }
             }
         }
+    }
+}
+
+/// Detection is independent of the single-host Difference-chain oracle.
+/// Unknown/malformed paths and exhausted map depth fail closed as well.
+pub(super) fn contains_bounded(product:u32,decoder:&mut EntityDecoder)->Result<bool,String> {
+    let items=body_items(product,decoder).unwrap_or_default();
+    let mut pending=items.into_iter().map(|id|(id,0u32)).collect::<Vec<_>>();
+    let mut visited=HashSet::new();
+    while let Some((id,depth))=pending.pop() {
+        if !visited.insert(id){continue;}
+        let node=decoder.decode_by_id(id).map_err(|_|format!("source node #{id} unavailable"))?;
+        match node.ifc_type {
+            IfcType::IfcPolygonalBoundedHalfSpace|IfcType::IfcBoxedHalfSpace=>return Ok(true),
+            IfcType::IfcBooleanResult|IfcType::IfcBooleanClippingResult=> {
+                for slot in [slot::IfcBooleanResult::FIRST_OPERAND.index(),slot::IfcBooleanResult::SECOND_OPERAND.index()] {
+                    pending.push((node.get_ref(slot).ok_or("Boolean operand unavailable")?,depth));
+                }
+            }
+            IfcType::IfcCsgSolid=>pending.push((node.get_ref(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION.index()).ok_or("CSG root unavailable")?,depth)),
+            IfcType::IfcMappedItem=> {
+                if depth>=ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH{return Err("source map depth cap exceeded".into());}
+                let map=decoder.decode_by_id(node.get_ref(slot::IfcMappedItem::MAPPING_SOURCE.index()).ok_or("map source unavailable")?).map_err(|_|"map unavailable")?;
+                let rep=decoder.decode_by_id(map.get_ref(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index()).ok_or("mapped representation unavailable")?).map_err(|_|"mapped representation unavailable")?;
+                for child in rep.get(slot::IfcRepresentation::ITEMS.index()).and_then(|v|v.as_list()).ok_or("mapped items unavailable")? {
+                    pending.push((child.as_entity_ref().ok_or("mapped item unavailable")?,depth+1));
+                }
+            }
+            _=>{},
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(test)]
+#[test]
+fn m6_7955_detection_walks_both_operands_and_every_mapped_child() {
+    let base=include_str!("../../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
+    for (label,text,reason) in [
+        ("multi map",base.replace("'Clipping',(#163)","'Clipping',(#21,#163)"),"multi-child map: 2"),
+        ("unsupported Boolean",base.replace("#163=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#21,#162)","#163=IFCBOOLEANRESULT(.UNION.,#21,#162)"),"non-Difference Boolean"),
+        ("nested right",base.replace("#163=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#21,#162)","#9163=IFCBOOLEANRESULT(.DIFFERENCE.,#21,#162);\n#163=IFCBOOLEANRESULT(.UNION.,#21,#9163)"),"non-Difference Boolean"),
+    ] {
+        assert_ne!(text,base,"{label}");
+        let bundle=ifc_lite_core::SourceBundle::new(text.into_bytes());let mut decoder=bundle.decoder();
+        assert_eq!(contains_bounded(173,&mut decoder),Ok(true),"{label}");
+        assert!(unmodelled_reason(173,&mut decoder).unwrap().contains(reason),"{label}");
     }
 }

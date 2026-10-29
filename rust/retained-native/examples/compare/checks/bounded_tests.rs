@@ -27,11 +27,11 @@ fn m6_7955_uncut_box_fails_internal_circle_volume_gate() {
     let e=bounded::expected(text.as_bytes(),&sources,1062).unwrap();
     let t:serde_json::Value=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
     let correct=publish(&text,&worker);
-    let correct_rows=check(&correct,Some(&e),&t,None);
+    let correct_rows=check(&correct,Some(&e),&t,None,text.as_bytes());
     assert!(correct_rows.iter().all(|r|r.pass),"correct cut must pass");
     let uncut=publish(&text.replace("#1060=IFCSHAPEREPRESENTATION(#4,'Body','Clipping',(#125));",
         "#1060=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19));"),&worker);
-    let uncut_rows=check(&uncut,Some(&e),&t,None);
+    let uncut_rows=check(&uncut,Some(&e),&t,None,text.as_bytes());
     assert!(uncut_rows.iter().filter(|r|r.family!="bounded_section_volume").all(|r|r.pass),
         "the historical bounds/clearance/closure checks alone accept the uncut box");
     assert!(uncut_rows.iter().any(|r|r.family=="bounded_section_volume"&&r.gated&&!r.pass),"uncut box falsely passed every bounded check");
@@ -98,7 +98,7 @@ fn m6_7955_linear_pbhs_solid_difference_requires_volume_authority() {
         &ModelOptions{ids:Some([1000].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
     let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("uncut box must publish")};
     let t=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
-    let rows=check(&shape,Some(&e),&t,None);
+    let rows=check(&shape,Some(&e),&t,None,text.as_bytes());
     assert!(rows.iter().filter(|r|!r.family.ends_with("volume_unavailable")).all(|r|r.pass));
     let unavailable=rows.iter().find(|r|r.gated&&!r.pass).expect("uncut box passed without volume authority");
     assert_eq!(unavailable.reason.as_deref(),Some("solid Boolean operand outside section family"));
@@ -214,7 +214,7 @@ fn m6_7955_mapped_pbhs_keeps_full_checks_and_plain_extrusion_is_not_m6() {
         run_model_native(SourceBundle::new(text.as_bytes().to_vec()),&worker,
             &ModelOptions{ids:Some([id].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
         let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("mapped PBHS must publish")};
-        let rows=check(&shape,Some(&e),&crate::tolerances::registered().unwrap(),None);
+        let rows=check(&shape,Some(&e),&crate::tolerances::registered().unwrap(),None,text.as_bytes());
         for family in ["bounded_outside_material","bounded_volume_bounds","bounded_closure","bounded_section_volume"] {
             assert!(rows.iter().any(|r|r.family==family&&r.gated&&r.pass),"#{id}: {family}");
         }

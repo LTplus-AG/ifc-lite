@@ -164,9 +164,7 @@ fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->R
 /// quietly turn into an unverified published product.
 pub fn applies(bytes:&[u8],product:u32)->bool {
     let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
-    let Some(chain)=chain(product,&mut decoder) else{return false;};
-    chain.clips.into_iter().any(|(id,_)|decoder.decode_by_id(id).ok().is_some_and(|e|matches!(e.ifc_type,
-        ifc_lite_core::IfcType::IfcPolygonalBoundedHalfSpace|ifc_lite_core::IfcType::IfcBoxedHalfSpace)))
+    super::bounded_source::contains_bounded(product,&mut decoder).unwrap_or(true)
 }
 
 fn disjoint_common_planes(partitions:&[&Vec<Vec<Plane>>])->bool {
@@ -195,4 +193,11 @@ fn disjoint_pairs(host:&ExtrudedHost,partitions:&[Vec<Vec<Plane>>],work:&mut usi
         if !overlap {pairs.push((1<<i)|(1<<j));}
     }}
     Ok(pairs)
+}
+
+/// Explain why a required source oracle cannot model the authored body.
+pub fn unmodelled_reason(bytes:&[u8],product:u32)->Option<String> {
+    let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    if let Err(reason)=super::bounded_source::contains_bounded(product,&mut decoder){return Some(reason);}
+    super::bounded_source::unmodelled_reason(product,&mut decoder)
 }

@@ -2,8 +2,15 @@
 //! Source gates never consume the retained cutter recipe.
 use ifc_lite_retained_native::oracle::bounded::Expectation;
 use super::OracleResult;
-pub(crate) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&serde_json::Value,hand:Option<f64>)->Vec<OracleResult> {
-    let Some(e)=e else{return Vec::new();};
+pub(crate) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&serde_json::Value,hand:Option<f64>,bytes:&[u8])->Vec<OracleResult> {
+    let Some(e)=e else {
+        use ifc_lite_retained_native::oracle::bounded;
+        if !bounded::applies(bytes,product.product_id){return Vec::new();}
+        let mut unavailable=row("bounded_chain_unmodelled",f64::INFINITY,0.);
+        unavailable.reason=Some(bounded::unmodelled_reason(bytes,product.product_id)
+            .unwrap_or_else(||"unsupported source node or unavailable host/clip expectation".into()));
+        return vec![unavailable];
+    };
     let mut m=crate::metrics::Metrics::default();let mut outside=0f64;
     for part in &product.parts {
         let points=part.positions.chunks_exact(3).map(|p|crate::metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();

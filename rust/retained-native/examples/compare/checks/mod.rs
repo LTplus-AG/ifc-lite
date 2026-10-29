@@ -36,7 +36,7 @@ pub struct OracleResult {
 pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, bytes: &[u8], tolerances: &serde_json::Value, bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>) -> Vec<OracleResult> {
     let mut results = layers::check(product, sources, bytes, tolerances);
     results.extend(clips::check(product, sources, tolerances));
-    results.extend(bounded::check(product, bounded, tolerances, sources.hand_volume));
+    results.extend(bounded::check(product, bounded, tolerances, sources.hand_volume, bytes));
     results.extend(faces::check(product, sources, tolerances));
     results
 }

@@ -2,13 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Tests for the parts of `batch.rs` decidable without a file or a JS runtime.
-//!
-//! `produce_batch` itself needs a decoder, a geometry router and `Date::now`,
-//! so the coverage here is the element record it emits: the diff-engine
-//! fingerprint, whose whole point is that the two push sites (flat and
-//! partitioned) build it in ONE place and so cannot fill different subsets of
-//! the index-parallel arrays.
+//! Output-record and routing invariants. Production/source adapters are exercised
+//! by batch_adapter_tests.rs and the native/browser parity corpus; batch_host
+//! supplies the native clock for those tests.
 
 use super::ElementMeshOutput;
 

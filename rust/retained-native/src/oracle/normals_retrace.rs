@@ -9,6 +9,8 @@ use ifc_lite_geometry::{analytic::{AnalyticExtrusion, AnalyticProfileLoop,
 
 pub(super) fn extrusion(source: &AnalyticExtrusion, decoder: &mut EntityDecoder<'_>, world: &[f64;16])
     -> Option<Vec<Surface>> {
+    // Fixture-specific issue_3641 oracle, including retrace::authored_region
+    // below: these authenticated IDs deliberately do not claim general repair.
     if source.solid_id != 61271 || source.swept_area_id != Some(61272) {return None;}
     let profile = decoder.decode_by_id(61272).ok()?;
     if profile.ref_at(slot::IfcArbitraryClosedProfileDef::OUTER_CURVE) != Some(61273) {return None;}

@@ -9,7 +9,7 @@ fn part(positions: Vec<f64>, indices: Vec<u32>, faces: Vec<u32>) -> ShapePart {
         curved: true, normals: None, appearance: None, faces: None, instance_key: None }
 }
 fn normals(p: &ShapePart) -> Vec<f64> {
-    corner_normals(p, &OwnedResourceContext::capture_current(), &mut Storage::default()).unwrap()
+    corner_normals(p, 5., &OwnedResourceContext::capture_current(), &mut Storage::default()).unwrap()
 }
 fn near(actual: &[f64], expected: [f64; 3]) {
     for (a, b) in actual.iter().zip(expected) { assert!((a - b).abs() < 1e-12, "{actual:?} != {expected:?}"); }
@@ -104,10 +104,19 @@ fn m11_n_7955_sixteen_gon_exceeds_ten_degree_crease_guard() {
 fn m11_n_7955_frame_scale_mirror_and_large_translation_precede_normals() {
     let mut p = fan(&[30.], &[90.]);
     p.world_from_object = [-2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 2.6e6,-1e20,7e15,1.];
+    // Low-level normals follow the transformed triangle winding. This is NOT
+    // an outward-normal claim: mirrored publication refuses until M10 flips
+    // winding and normals together. Translation cancels before this transform.
+    assert!(!positive_frame(&p).unwrap());
     // Transformed cross product: (0, 4*sin(30), -3*cos(30)).
     let expected = [0.,2.,-3.*30_f64.to_radians().cos()];
     let l = expected.iter().map(|v| v*v).sum::<f64>().sqrt();
-    for normal in normals(&p).chunks_exact(3) { near(normal, expected.map(|v| v/l)); }
+    let winding = cross(world_vector(&p.world_from_object,[1.,0.,0.]),
+        world_vector(&p.world_from_object,[0.,30_f64.to_radians().cos(),0.5]));
+    for normal in normals(&p).chunks_exact(3) {
+        near(normal, expected.map(|v| v/l));
+        assert!(dot([normal[0],normal[1],normal[2]],winding) > 0.);
+    }
 }
 
 #[test]
@@ -116,7 +125,7 @@ fn m11_n_7955_invalid_and_degenerate_meshes_refuse_without_nan_normals() {
     for fault in 0..4 {
         match fault { 0 => p.revision_local_faces.clear(), 1 => {p.revision_local_faces.push(77); p.indices[0]=99;},
             2 => p.indices[0]=1, _ => {p.indices[0]=0; p.positions[0]=f64::NAN;} }
-        assert_eq!(corner_normals(&p, &OwnedResourceContext::capture_current(), &mut Storage::default())
+        assert_eq!(corner_normals(&p, 5., &OwnedResourceContext::capture_current(), &mut Storage::default())
             .unwrap_err().refusal().0.code(), "contract_breach");
     }
 }
@@ -128,7 +137,7 @@ fn m11_n_7955_budget_bounds_backing_and_high_valence_work() {
     // vertices instead creates quadratic adjacency scans that must refuse.
     let separate = part([0.,0.,0., 1.,0.,0., 0.,1.,0.].repeat(1_000),
         (0..3_000).collect(), (0..1_000).collect());
-    ProductBudget::new(BudgetStart::now(), 45_000, 10_000_000, 10000).scope(|| {
+    ProductBudget::new(BudgetStart::now(), 100_000, 10_000_000, 10000).scope(|| {
         for n in normals(&separate).chunks_exact(3) { near(n, [0.,0.,1.]); }
     });
     // Two nonplanar faces retain quadratic scans, including rejected neighbours.
@@ -139,7 +148,7 @@ fn m11_n_7955_budget_bounds_backing_and_high_valence_work() {
             let tilts: Vec<_> = (0..1_000).map(|i| (i%4) as f64*8.).collect();
             let mut p = fan(&tilts, &[90.; 1_000]);
             p.revision_local_faces = (0..1_000).map(|i| i%2).collect();
-            assert_eq!(corner_normals(&p, &OwnedResourceContext::capture_current(), &mut Storage::default())
+            assert_eq!(corner_normals(&p, 5., &OwnedResourceContext::capture_current(), &mut Storage::default())
                 .unwrap_err().refusal().0.code(), "resource_exhausted");
         });
         assert!(!budget.deadline_fired(), "work/backing must refuse before the deadline");
@@ -187,7 +196,8 @@ fn m11_n_7955_source_plane_verifies_every_vertex_before_replacing_normals() {
     let before = normals(&p);
     p.normals = Some(before.clone());
     let frame = p.world_from_object;
-    plane::apply(&mut p,&frame,[0.;3],[0.,0.,1.],&[0,1,2,3],&OwnedResourceContext::capture_current()).unwrap();
+    assert!(plane::apply(&mut p,&frame,[0.;3],[0.,0.,1.],&[0,1,2,3],&OwnedResourceContext::capture_current()).unwrap(),
+        "off-plane fallback reports the M8 geometry defect");
     assert_eq!(p.normals.unwrap(),before,"a late off-plane vertex leaves every corner unchanged");
 }
 
@@ -201,4 +211,66 @@ fn m11_n_7955_source_plane_uses_composed_frame_under_scale_mirror_and_survey_tra
     plane::apply(&mut p,&from_part,[0.;3],n,&[0],&OwnedResourceContext::capture_current()).unwrap();
     let expected = unit([0.,2.,-3.*30_f64.to_radians().cos()]).unwrap();
     for normal in p.normals.unwrap().chunks_exact(3) {near(normal,expected);}
+}
+
+#[test]
+fn m11_n_7955_zero_area_cap_corner_uses_the_verified_plane() {
+    // A mid-edge profile vertex leaves an exactly collinear cap triangle.
+    let mut p = part(vec![0.,0.,0., 1.,0.,0., 2.,0.,0., 0.,1.,0.],
+        vec![0,1,2, 0,2,3],vec![7,7]);
+    p.normals = Some(vec![0.;18]);
+    let frame = p.world_from_object;
+    assert!(!plane::apply(&mut p,&frame,[0.;3],[0.,0.,1.],&[0,1],
+        &OwnedResourceContext::capture_current()).unwrap());
+    for n in normals(&p).chunks_exact(3) {near(n,[0.,0.,1.]);}
+}
+
+#[test]
+fn m11_n_7955_curved_slivers_have_neither_weight_nor_crease_authority() {
+    // Local cylinder-wall tangent patch, with three good supporting triangles.
+    // The thin triangle has a 0.1 micrometre altitude and 8/16 degree noise.
+    // All its vertices have good same-face neighbours (the third is duplicated
+    // in a good triangle's plane); it must use their mean even beyond the guard.
+    for degrees in [0_f64,8.,16.] {
+        let h = 1e-7;
+        let z = h * degrees.to_radians().tan();
+        let p = part(vec![0.,0.,0., 1.,0.,0., 0.5,h,z, 0.,1.,0., 1.,1.,0., 0.5,1.,z],
+            vec![0,1,3, 1,4,3, 2,4,5, 0,1,2],vec![4;4]);
+        let output = normals(&p);
+        for n in output.chunks_exact(3) {
+            assert!(length(cross([n[0],n[1],n[2]],[0.,0.,1.])) < 1e-6,
+                "{degrees} degree sliver must not drag neighbours or retain its own normal: {n:?}");
+        }
+    }
+}
+
+#[test]
+fn m11_n_7955_planar_cap_with_thousands_of_vertices_needs_no_adjacency_scan() {
+    let count = 4_000;
+    let mut p = prism(count);
+    p.indices.drain(..count as usize*6);
+    p.revision_local_faces.drain(..count as usize*2);
+    p.normals = Some(vec![0.;p.indices.len()*3]);
+    ProductBudget::new(BudgetStart::now(), 500_000, 20_000_000, 10_000).scope(|| {
+        let resources = OwnedResourceContext::capture_current();
+        let frame = p.world_from_object;
+        for (face,z,normal) in [(1,0.,[0.,0.,-1.]),(2,2.,[0.,0.,1.])] {
+            let triangles: Vec<_> = p.revision_local_faces.iter().enumerate()
+                .filter_map(|(i,&id)| (id == face).then_some(i)).collect();
+            assert!(!plane::apply(&mut p,&frame,[0.,0.,z],normal,&triangles,&resources).unwrap());
+        }
+        let result = normals(&p);
+        for (t,values) in result.chunks_exact(9).enumerate() {
+            for n in values.chunks_exact(3) {near(n,[0.,0.,if p.revision_local_faces[t]==1 {-1.} else {1.}]);}
+        }
+    });
+}
+
+#[test]
+fn m11_n_7955_crease_uses_the_runs_tessellation_angle() {
+    let p = fan(&[0.,8.],&[90.;2]);
+    let n = corner_normals(&p,3.,&OwnedResourceContext::capture_current(),&mut Storage::default()).unwrap();
+    near(&n[..3],[0.,0.,1.]); // 2 * 3 degrees excludes the eight-degree neighbour.
+    let n = corner_normals(&p,5.,&OwnedResourceContext::capture_current(),&mut Storage::default()).unwrap();
+    near(&n[..3],[0.,-4_f64.to_radians().sin(),4_f64.to_radians().cos()]);
 }

@@ -222,7 +222,7 @@ impl Support {
 }
 /// Facet-normal evidence: false for a triangle whose area is below the
 /// preregistered ratio of its longest edge squared (a rounding-skewed sliver).
-fn oriented(t: &[V; 3]) -> bool {
+pub(super) fn oriented(t: &[V; 3]) -> bool {
     let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
     let longest = [sub(t[1], t[0]), sub(t[2], t[1]), sub(t[0], t[2])].iter().map(|e| dot(*e, *e)).fold(0., f64::max);
     let area = dot(n, n).sqrt() / 2.;

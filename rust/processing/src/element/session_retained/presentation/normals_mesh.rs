@@ -3,19 +3,17 @@
 use super::super::super::{error::budget_checkpoint, publication::ShapePart, OwnedResourceContext,
     RetainedExecutionError, runtime::RuntimeFault, Storage};
 use ifc_lite_geometry::resource;
+use super::super::face_attribution::oriented;
 
 #[path = "normals_plane.rs"]
 pub(super) mod plane;
-
-// Twice the retained model driver's fixed 5 degree tessellation tolerance.
-const CREASE_RADIANS: f64 = std::f64::consts::PI / 18.;
 
 #[derive(Clone, Copy)]
 struct Corner {
     normal: [f64; 3],
     angle: f64,
     face: u32,
-    next: usize,
+
 }
 
 fn invalid() -> RetainedExecutionError {
@@ -31,69 +29,113 @@ fn work(resources: &OwnedResourceContext, count: usize) -> Result<(), RetainedEx
     })
 }
 
-pub(super) fn corner_normals(part: &ShapePart, resources: &OwnedResourceContext, storage: &mut Storage)
-    -> Result<Vec<f64>, RetainedExecutionError> {
+pub(super) fn validate(part: &ShapePart) -> Result<(), RetainedExecutionError> {
     if !part.positions.len().is_multiple_of(3) || part.indices.is_empty() || !part.indices.len().is_multiple_of(3)
         || part.revision_local_faces.len() != part.indices.len() / 3
-        || part.world_from_object.iter().any(|v| !v.is_finite()) {
+        || part.world_from_object.iter().chain(&part.positions).any(|v| !v.is_finite())
+        || part.indices.iter().any(|&i| i as usize >= part.positions.len() / 3) {
         return Err(invalid());
     }
+    Ok(())
+}
+
+pub(super) fn positive_frame(part: &ShapePart) -> Result<bool, RetainedExecutionError> {
+    let m = &part.world_from_object;
+    let determinant = dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]));
+    if !determinant.is_finite() || determinant == 0. { return Err(invalid()); }
+    Ok(determinant > 0.)
+}
+
+pub(super) fn corner_normals(part: &ShapePart, angle_degrees: f64,
+    resources: &OwnedResourceContext, storage: &mut Storage) -> Result<Vec<f64>, RetainedExecutionError> {
+    validate(part)?;
+    if !angle_degrees.is_finite() || angle_degrees <= 0. || angle_degrees > 180. { return Err(invalid()); }
     let mut scratch = Storage::default();
-    let mut heads = Vec::new();
-    let mut corners = Vec::new();
-    scratch.reserve(resources, &mut heads, part.positions.len() / 3)?;
-    scratch.reserve(resources, &mut corners, part.indices.len())?;
-    heads.resize(part.positions.len() / 3, usize::MAX);
-    for (t, triangle) in part.indices.chunks_exact(3).enumerate() {
-        work(resources, 1)?;
-        let mut points = [[0.; 3]; 3];
-        for (corner, &index) in triangle.iter().enumerate() {
-            let i = (index as usize).checked_mul(3).ok_or_else(invalid)?;
-            let end = i.checked_add(3).ok_or_else(invalid)?;
-            let xyz = part.positions.get(i..end).ok_or_else(invalid)?;
-            if xyz.iter().any(|v| !v.is_finite()) { return Err(invalid()); }
-            points[corner].copy_from_slice(xyz);
-        }
-        // Apply the controller's frame to differences. Translation cancels
-        // algebraically, preserving f64 directions even at large world offsets.
-        let edges: [[f64; 3]; 3] = std::array::from_fn(|i| {
-            world_vector(&part.world_from_object, sub(points[(i + 1) % 3], points[i]))
-        });
-        let normal = unit(cross(edges[0], edges[1]))?;
-        for (i, &vertex) in triangle.iter().enumerate() {
-            let a = unit(edges[i])?;
-            let b = unit(edges[(i + 2) % 3].map(|v| -v))?;
-            // Host libc and wasm atan2 differ by ulps on identical meshes.
-            let angle = libm::atan2(length(cross(a, b)), dot(a, b));
-            if !angle.is_finite() || angle <= 0. { return Err(invalid()); }
-            let head = &mut heads[vertex as usize];
-            corners.push(Corner { normal, angle, face: part.revision_local_faces[t], next: *head });
-            *head = corners.len() - 1;
-        }
-    }
     let count = part.indices.len().checked_mul(3)
         .ok_or_else(|| RetainedExecutionError::Stopped(resource::overflow()))?;
     let mut normals = Vec::new();
     storage.reserve(resources, &mut normals, count)?;
-    let threshold = libm::cos(CREASE_RADIANS);
-    for (index, own) in corners.iter().enumerate() {
-        let mut sum = [0.; 3];
-        let mut adjacent = heads[part.indices[index] as usize];
-        // Internally built acyclic adjacency. Charge every comparison so
-        // adversarial high-valence meshes cannot evade the work budget.
-        while adjacent != usize::MAX {
-            work(resources, 1)?;
-            let candidate = &corners[adjacent];
-            if candidate.face == own.face && dot(own.normal, candidate.normal) >= threshold {
-                for (s, n) in sum.iter_mut().zip(candidate.normal) { *s += candidate.angle * n; }
-            }
-            adjacent = candidate.next;
-        }
-        normals.extend_from_slice(&unit(sum)?);
+    normals.resize(count, 0.);
+    if let Some(planes) = &part.normals {
+        if planes.len() != count { return Err(invalid()); }
+        normals.copy_from_slice(planes);
     }
-    // The corner stream is the split-vertex representation consumed by both
-    // exporters. Source positions, topology and revision-local faces stay intact.
+    let mut corners = Vec::new();
+    let mut order = Vec::new();
+    scratch.reserve(resources, &mut corners, part.indices.len())?;
+    scratch.reserve(resources, &mut order, part.indices.len())?;
+    for (t, triangle) in part.indices.chunks_exact(3).enumerate() {
+        work(resources, 1)?;
+        let face = part.revision_local_faces[t];
+        // M11-F already verified every vertex of this source plane. No
+        // adjacency or angle evaluation is needed, even for a huge cap fan.
+        if normals[t*9..t*9+3].iter().any(|&n| n != 0.) {
+            corners.extend([Corner { normal: [0.;3], angle: 0., face }; 3]);
+            continue;
+        }
+        let points: [[f64;3];3] = std::array::from_fn(|c| {
+            let i = triangle[c] as usize * 3;
+            [part.positions[i],part.positions[i+1],part.positions[i+2]]
+        });
+        // Translation cancels before the f64 world transform, including survey offsets.
+        let edges: [[f64;3];3] = std::array::from_fn(|i|
+            world_vector(&part.world_from_object,sub(points[(i+1)%3],points[i])));
+        // Same M11-F rule/registry key: non-oriented facets have no weight and
+        // no crease-reference authority. Keep the test in the mesh's own frame.
+        let normal = if oriented(&points) { Some(unit(cross(edges[0],edges[1]))?) } else { None };
+        for i in 0..3 {
+            let angle = if normal.is_some() {
+                let a = unit(edges[i])?;
+                let b = unit(edges[(i+2)%3].map(|v| -v))?;
+                let angle = libm::atan2(length(cross(a,b)),dot(a,b));
+                if !angle.is_finite() || angle <= 0. { return Err(invalid()); }
+                angle
+            } else { 0. };
+            order.push(corners.len());
+            corners.push(Corner { normal: normal.unwrap_or([0.;3]), angle, face });
+        }
+    }
+    // Bucket by vertex AND face before comparing; unrelated faces never cost
+    // quadratic work. Charge a comparison-sort upper bound as well as scans.
+    work(resources, order.len().saturating_mul(order.len().max(1).ilog2() as usize + 1))?;
+    order.sort_unstable_by_key(|&i| (part.indices[i],corners[i].face,i));
+    let threshold = libm::cos((2. * angle_degrees).min(180.).to_radians());
+    let mut start = 0;
+    while start < order.len() {
+        let first = order[start];
+        let mut end = start+1;
+        while end < order.len() && part.indices[order[end]] == part.indices[first]
+            && corners[order[end]].face == corners[first].face { end += 1; }
+        smooth_group(&corners,&order[start..end],threshold,&mut normals,resources)?;
+        start = end;
+    }
     Ok(normals)
+}
+
+fn smooth_group(corners: &[Corner], group: &[usize], threshold: f64, normals: &mut [f64],
+    resources: &OwnedResourceContext) -> Result<(),RetainedExecutionError> {
+    let mut mean = [0.;3];
+    for &index in group {
+        work(resources,1)?;
+        let c = corners[index];
+        for (s,n) in mean.iter_mut().zip(c.normal) { *s += c.angle * n; }
+    }
+    for &index in group {
+        let own = corners[index];
+        let mut sum = mean;
+        if own.angle > 0. {
+            sum = [0.;3];
+            for &adjacent in group {
+                work(resources,1)?;
+                let candidate = corners[adjacent];
+                if candidate.angle > 0. && dot(own.normal,candidate.normal) >= threshold {
+                    for (s,n) in sum.iter_mut().zip(candidate.normal) { *s += candidate.angle * n; }
+                }
+            }
+        }
+        normals[index*3..index*3+3].copy_from_slice(&unit(sum)?);
+    }
+    Ok(())
 }
 
 fn world_vector(m: &[f64; 16], p: [f64; 3]) -> [f64; 3] {

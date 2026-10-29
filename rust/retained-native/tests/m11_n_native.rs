@@ -6,6 +6,8 @@ mod support;
 mod exact_report;
 #[path = "support/m11_n_fi.rs"]
 mod fi;
+#[path = "support/m11_n_sides.rs"]
+mod sides;
 use ifc_lite_retained_native::{oracle::normals, ProductOutcome};
 use ifc_lite_processing::element::retained_runtime::ModelOptions;
 use ifc_lite_geometry::program::transactions::Requirement;
@@ -39,6 +41,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
     let mut published = 0;
     let mut refused = 0;
     let mut arc_corners = 0;
+    let mut planar_fallbacks = 0;
     let mut violations = Vec::new();
     let mut coverage_errors = Vec::new();
     for (model, expected) in universe(&root) {
@@ -55,6 +58,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                     ProductOutcome::Published(product) => {
                         actual.insert(product.product_id,"published".to_string());
                         published += 1;
+                        planar_fallbacks += product.normal_planar_fallbacks;
                         assert!(!product.obligations.0.contains(&Requirement::SurfaceNormals));
                         let source = normals::surfaces(&bytes,&sources,product.product_id).unwrap_or_else(|e| panic!("{model}:{}: {e}",product.product_id));
                         let check = normals::check(&product,&source).unwrap();
@@ -66,7 +70,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                             println!("normal gate source surfaces {model}:{} {source:?}",product.product_id);
                         }
                         if model.ends_with("f-a-curved.ifc") && check.curved > 0 {
-                            assert!(check.smoothed_curved > 0,"arc sides must actually smooth, #{}",product.product_id);
+                            sides::check(&product,&source,tolerances["normalCurvedRadians"].as_f64().unwrap());
                             arc_corners += check.curved;
                         }
                         if model == fi::MODEL {
@@ -106,7 +110,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
     if let Ok(path) = std::env::var("IFCLITE_M11_N_REFERENCE") {
         std::fs::write(path,serde_json::to_vec(&references).unwrap()).unwrap();
     }
-    println!("M11-N outcomes: {published} published, {refused} refused, {} models",references.len());
+    println!("M11-N outcomes: {published} published, {refused} refused, {} models; normalPlanarFallbacks={planar_fallbacks}",references.len());
     assert!(violations.is_empty() && coverage_errors.is_empty(),
         "{} normal gate violations:\n{}\n{} coverage violations:\n{}",
         violations.len(),violations.join("\n"),coverage_errors.len(),coverage_errors.join("\n"));

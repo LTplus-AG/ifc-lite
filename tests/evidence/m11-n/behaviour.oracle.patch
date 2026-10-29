@@ -1,11 +1,11 @@
 --- a/rust/processing/src/element/session_retained/presentation/normals_mesh.rs
 +++ b/rust/processing/src/element/session_retained/presentation/normals_mesh.rs
-@@ -8,7 +8,7 @@
- pub(super) mod plane;
-
- // Twice the retained model driver's fixed 5 degree tessellation tolerance.
--const CREASE_RADIANS: f64 = std::f64::consts::PI;
-+const CREASE_RADIANS: f64 = std::f64::consts::PI / 18.;
-
- #[derive(Clone, Copy)]
- struct Corner {
+@@ -132,7 +132,7 @@
+             for &adjacent in group {
+                 work(resources,1)?;
+                 let candidate = corners[adjacent];
+-                if candidate.angle > 0. && dot(own.normal,candidate.normal) >= -1. {
++                if candidate.angle > 0. && dot(own.normal,candidate.normal) >= threshold {
+                     for (s,n) in sum.iter_mut().zip(candidate.normal) { *s += candidate.angle * n; }
+                 }
+             }

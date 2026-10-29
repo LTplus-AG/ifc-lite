@@ -62,7 +62,7 @@ fn arc(product: &ShapeOnlyProduct, planar: f64, curved: f64) -> Result<(),String
         ("end -45", [0.,30.,0.], [-q,-q,0.]),
     ];
     let mut planar_corners = [0; 8];
-    let mut radial_corners = [0; 2];
+    let mut radial_corners = [0_usize; 2];
     let mut smoothed = [0; 2];
     for part in &product.parts {
         for (t,triangle) in part.indices.chunks_exact(3).enumerate() {
@@ -85,7 +85,11 @@ fn arc(product: &ShapeOnlyProduct, planar: f64, curved: f64) -> Result<(),String
             }
         }
     }
-    if planar_corners.contains(&0) || radial_corners.contains(&0) || smoothed.contains(&0) {
+    // Each radial source side ends at two vertical radial edges. At each end,
+    // the terminal strip contributes three corners with only one secant normal;
+    // all other corners must smooth. The internal window adds no terminal strip.
+    let expected_smoothed = radial_corners.map(|n| n.saturating_sub(2 * 3));
+    if planar_corners.contains(&0) || radial_corners.contains(&0) || smoothed != expected_smoothed {
         return Err(format!("f-i arc coverage: planes {planar_corners:?}, radial {radial_corners:?}, smoothed {smoothed:?}"));
     }
     println!("f-i (d) planes {planar_corners:?}; radial {radial_corners:?}; smoothed {smoothed:?}");

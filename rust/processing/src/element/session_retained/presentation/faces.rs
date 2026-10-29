@@ -118,7 +118,7 @@ fn halt(halt: Halt) -> RetainedExecutionError {
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Result<Vec<Requirement>, RetainedExecutionError> {
     // Curved incidence is bounded by the chord the kernel tessellated with.
     let chord = context.chord_metres;
-    let ShapeOnlyProduct { parts, _storage: storage, .. } = product;
+    let ShapeOnlyProduct { parts, _storage: storage, normal_planar_fallbacks, .. } = product;
     if parts.len() != context.faces.len() { return Err(refuse(Unproven::Unattributed { entity: None })); }
     for (part, sources) in parts.iter_mut().zip(context.faces) {
         let operands = sources.as_ref().map_err(|unproven| refuse(*unproven))?;
@@ -154,7 +154,8 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
             }
             let key = resolve(operands, &lists, chord).map_err(refuse)?;
             if let Support::Plane { origin, normal } = operands[key.0].faces[key.1].support {
-                super::normals::apply_plane(part,&operands[key.0].from_part,origin,normal,face,context.resources)?;
+                *normal_planar_fallbacks += usize::from(super::normals::apply_plane(
+                    part,&operands[key.0].from_part,origin,normal,face,context.resources)?);
             }
             for &t in face { choices[t] = key; }
         }

@@ -49,13 +49,14 @@ const field=(part,kinds)=>{
 const covers=(a,b,source,label,counts,tolerances,fail)=>{
   const bins=new Map(),key=p=>p.map(v=>Math.round(v/1e-9));
   for(const v of b){const k=key(v.p).join(',');if(!bins.has(k))bins.set(k,[]);bins.get(k).push(v);}
+  let matched=0;
   for(const v of a){
     const k=key(v.p),peers=[];
     for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++)
       for(const q of bins.get([k[0]+x,k[1]+y,k[2]+z].join(','))??[])
         if(Math.hypot(...q.p.map((p,i)=>p-v.p[i]))<=1e-9)peers.push(q);
     if(!peers.length){counts[label+'UnmatchedVertices']++;counts[label+'UnmatchedCorners']+=v.corners.length;continue;}
-    counts[label+'MatchedVertices']++;counts[label+'MatchedCorners']+=v.corners.length;
+    matched++;counts[label+'MatchedVertices']++;counts[label+'MatchedCorners']+=v.corners.length;
     const candidates=peers.flatMap(q=>q.corners);
     for(const corner of v.corners){
       const curved=corner.surface!==null && !Object.hasOwn(source[corner.surface],'Plane');
@@ -64,6 +65,8 @@ const covers=(a,b,source,label,counts,tolerances,fail)=>{
         fail(label+' matched-corner normal at '+JSON.stringify(v.p)+'; source surface '+corner.surface);
     }
   }
+  if(!a.length || matched/a.length < 0.9)fail(label+' matched-vertex fraction '+matched+'/'+a.length+' < 0.9');
+  return {matched,total:a.length,fraction:matched/a.length};
 };
 export function m11VerifyNormals(actual,expected,model,kinds,tolerances) {
   const fail=message=>{throw new Error(model+':'+expected.id+': '+message);};
@@ -86,14 +89,20 @@ export function m11VerifyNormals(actual,expected,model,kinds,tolerances) {
       }
     }else counts.differentMeshes++;
     const browser=field(part,kinds[i]),native=field(reference,reference.surfaceIndices);
-    covers(browser,native,expected.sourceSurfaces,'browser',counts,tolerances,fail);
-    covers(native,browser,expected.sourceSurfaces,'native',counts,tolerances,fail);
+    const browserMatch=covers(browser,native,expected.sourceSurfaces,'browser',counts,tolerances,fail);
+    const nativeMatch=covers(native,browser,expected.sourceSurfaces,'native',counts,tolerances,fail);
+    console.log('M11_N_MESH_MATCH '+JSON.stringify({model,id:expected.id,part:i,browser:browserMatch,native:nativeMatch}));
   });
   for(const k of Object.keys(totals))totals[k]+=counts[k];
   console.log('M11_N_PARITY '+JSON.stringify({model,id:expected.id,...counts}));
   return 1;
 }
-export function m11ParityTotals(){console.log('M11_N_PARITY_TOTALS '+JSON.stringify(totals));}
+export function m11ParityTotals(){
+  if(!totals.identicalMeshes || !totals.browserMatchedVertices || !totals.nativeMatchedVertices
+    || !totals.browserMatchedCorners || !totals.nativeMatchedCorners)
+    throw new Error('M11-N parity vacuous: digest path and nonzero vertex/corner totals required');
+  console.log('M11_N_PARITY_TOTALS '+JSON.stringify(totals));
+}
 ")]
 extern "C" {
     #[wasm_bindgen(catch, js_name = m11NormalsReference)]
@@ -102,8 +111,8 @@ extern "C" {
     fn verify(actual: &JsValue, expected: &JsValue, model: &str, kinds: &JsValue, tolerances: &JsValue) -> Result<u32,JsValue>;
     #[wasm_bindgen(js_name = m11OracleParts)]
     fn oracle_parts(actual: &JsValue) -> JsValue;
-    #[wasm_bindgen(js_name = m11ParityTotals)]
-    fn totals();
+    #[wasm_bindgen(catch, js_name = m11ParityTotals)]
+    fn totals() -> Result<(),JsValue>;
 }
 
 fn source_gate(actual: &JsValue, row: &JsValue, name: &str, tolerances: &serde_json::Value)
@@ -163,7 +172,7 @@ async fn retained_browser_m11_n_normals_corpus_parity() {
         }
         assert!(run.next_outcome().is_undefined(),"unexpected product in {name}");
     }
-    totals();
+    totals().unwrap();
     println!("M11-N browser compared {compared} outcomes; {published} published comparisons passed");
     assert!(errors.is_empty(), "{} browser parity violations:\n{}", errors.len(), errors.join("\n"));
     assert!(published >= 131,"all committed published rows must execute");

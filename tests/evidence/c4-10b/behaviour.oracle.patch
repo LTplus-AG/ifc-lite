@@ -1,0 +1,5 @@
+--- a/rust/processing/src/execution.rs
++++ b/rust/processing/src/execution.rs
+@@ -37,1 +37,1 @@
+-    config.rtc_offset = (0.0, 0.0, 0.0);
++    // Preserve the caller's world-frame rebase.

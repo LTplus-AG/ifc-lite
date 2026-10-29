@@ -1876,3 +1876,16 @@ report map without invoking hooks, changing attribution, or adopting ambient
 reports. Explicit `take_csg_failures` returns it once; subsequent products cannot
 publish it. Callers of `finish_product_csg_failures` must likewise retain their
 returned reports until publication succeeds and quarantine them on rejection.
+
+### Scheduler execution boundaries
+
+`ifc_lite_processing::execution::build_router` applies `RouterConfig` and arms
+model caches (including brep signatures), optional material layers, instancing,
+and the indexed-colour exclusion together before production starts.
+`ExecutionPolicy::PerJob` keeps native model-wide template selection and uncached
+job decoding; `PerBatch` keeps the browser's warm decoder and batch-local
+instancing. `decode_job` and `job_type` preserve scanned native types and checked
+browser source-keyword recovery. `RouterDrain::take` drains router-wide counters
+at the corresponding job or batch boundary. Both schedulers still plan and
+produce through `produce_element_meshes_owned` and its immutable context/session.
+Native worker caches and browser wire/source ownership stay scheduler-owned.

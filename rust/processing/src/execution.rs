@@ -37,6 +37,7 @@ pub fn build_router(
 ) -> GeometryRouter {
     config.instancing_batch_local =
         instances.is_some() && matches!(policy, ExecutionPolicy::PerBatch);
+    // Preserve the caller's world-frame rebase.
     let mut router = GeometryRouter::from_config(config);
     router.enable_content_dedup_shared(caches.items.clone());
     router.enable_shared_brep_signature_cache(caches.brep_signatures.clone());

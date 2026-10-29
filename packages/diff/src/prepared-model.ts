@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { DiffOptions, EntityFingerprint, ModelDiff } from './types.js';
 import { fingerprintColumns } from './wasm-columns.js';
-import { packDocument } from './wasm-binary.js';
+import { packStrings } from './wasm-binary.js';
 import { diffModelConstructor } from './wasm-runtime.js';
 import { compareWasmModels } from './wasm-diff.js';
 
@@ -14,6 +14,7 @@ import { compareWasmModels } from './wasm-diff.js';
 export class PreparedDiffModel<TRef = unknown> {
   private model: InstanceType<ReturnType<typeof diffModelConstructor>> | undefined;
   private rows: EntityFingerprint<TRef>[];
+  private keys: string[];
 
   constructor(entities: Iterable<EntityFingerprint<TRef>>) {
     const Model = diffModelConstructor();
@@ -27,13 +28,14 @@ export class PreparedDiffModel<TRef = unknown> {
       return Object.freeze(row);
     });
     const c = fingerprintColumns(this.rows);
-    this.model = Model.fromPacked(packDocument(c.strings), c.fields, c.flags,
+    this.keys = c.keys;
+    this.model = Model.fromPacked(packStrings(c.strings), c.fields, c.flags,
       c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
   }
 
   compare(head: PreparedDiffModel<TRef>, options: DiffOptions = {}): ModelDiff<TRef> {
     if (!this.model || !head.model) throw new Error('Prepared diff model has been disposed.');
-    return compareWasmModels(this.model, head.model, this.rows, head.rows, options);
+    return compareWasmModels(this.model, head.model, this.rows, head.rows, options, [this.keys, head.keys]);
   }
 
   /** Idempotent; results already returned remain valid after release. */
@@ -41,6 +43,7 @@ export class PreparedDiffModel<TRef = unknown> {
     const model = this.model;
     this.model = undefined;
     this.rows = [];
+    this.keys = [];
     model?.free();
   }
 }

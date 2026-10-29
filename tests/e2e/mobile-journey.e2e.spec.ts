@@ -135,6 +135,14 @@ test('one finger orbits, two fingers pinch, taps select and measure, and hold op
   const gpu = await watchGpuDeviceLoss(page);
   const requireRenderer = gpu.requireLiveGpu;
   await loadAuthoredModel(page);
+  await page.evaluate(() => {
+    const store = globalThis.__ifc_lite_viewer_store__ as unknown as { subscribe(l: (s: ViewerState, p: ViewerState) => void): void };
+    store.subscribe((s, p) => {
+      if (s.selectedEntityId !== p.selectedEntityId) {
+        console.info('[tapdiag] sel ' + p.selectedEntityId + '->' + s.selectedEntityId + ' ' + new Error().stack?.split('\n').slice(2, 9).join(' | '));
+      }
+    });
+  });
   const canvas = page.locator('canvas[data-viewport="main"]');
   const box = await canvas.boundingBox();
   if (!box) throw new Error('mobile canvas is not laid out');

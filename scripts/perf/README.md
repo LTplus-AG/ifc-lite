@@ -4,6 +4,20 @@
 
 # Performance diagnosis kit
 
+## C4-7a-R shared type geometry plan (#7782)
+
+The shared discovery-span plan passed the native instruction gate against
+`241e855cd9` on Haus, duplex, and ISSUE_129 at `e5ab066bbe`. Every phase stayed
+within 1.00005, and ordered mesh payload, serialized capture, aggregate
+diagnostics, and per-Express-ID identity matched. The source-pinned comparison
+is in `c4-7ar-build-r1.json` with the Rust sweep evidence. This is a native
+reconciliation verdict; it makes no browser worker-pool timing claim.
+
+Build referenced maps, instantiated types, mapped-item counts, and ordered type
+jobs together from discovery spans. Keep the explicit type mode: native exports
+suppress instantiated type geometry; the browser emits tagged classes for viewer
+filtering and chooses mapped templates within each batch.
+
 ## Diff binary boundary transport (#8042)
 
 An ordinary Haus diagnostic of the explicit batch and compact result transport

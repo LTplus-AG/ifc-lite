@@ -116,13 +116,12 @@ pub(super) fn scan_entities(
     ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
 
     let discovery = scan.discovery;
-    for (id, start, end, ty, maps) in discovery.types.products {
-        for (map, _) in crate::element::plan_type_geometry(
-            &maps,
-            &discovery.types.referenced_representation_maps,
-            discovery.types.instantiated_type_ids.contains(&id),
-            crate::element::TypeGeometryMode::SuppressInstanced,
-        ) {
+    let type_plan = crate::discovery::TypeGeometryPlan::from_scan(
+        discovery.types, discovery.mapped_item_plan,
+        crate::element::TypeGeometryMode::SuppressInstanced,
+    );
+    for (id, start, end, ty, maps) in type_plan.products {
+        for (map, _) in maps {
             scan.out
                 .entity_jobs
                 .push(EntityJob::new(id, ty.clone(), start, end).for_type_map(map));
@@ -132,7 +131,7 @@ pub(super) fn scan_entities(
     scan.out.project_id = discovery.project_id;
     scan.out.site_entity_pos = discovery.site_entity_pos;
     scan.out.building_entity_pos = discovery.building_entity_pos;
-    scan.out.mapped_item_plan = discovery.mapped_item_plan;
+    scan.out.mapped_item_plan = type_plan.mapped_item_plan;
     #[cfg(feature = "parity-test-support")]
     crate::parity_test_support::record(scan.out.entity_jobs.iter().map(|j| {
         (

@@ -18,7 +18,7 @@ diff --git a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs b/rust/wasm-bindings
 index 9a0d89656e..837fb6d1c2 100644
 --- a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 +++ b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
-@@ -465,11 +465,10 @@ impl IfcAPI {
+@@ -465,11 +465,9 @@ impl IfcAPI {
              // time; the native pipeline plans the same jobs with
              // `SuppressInstanced` (an export must not duplicate geometry).
              let kind = if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
@@ -28,8 +28,7 @@ index 9a0d89656e..837fb6d1c2 100644
 -                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
 -                    .unwrap_or_default();
 +                let rep_map_ids = ifc_lite_processing::discovery::record_refs_at(
-+                    content.get(start..end).unwrap_or_default(),
-+                    ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
++                    &content[start..end], 6,
 +                );
                  if rep_map_ids.is_empty() {
                      continue;
@@ -51,7 +50,7 @@ index 0333970606..941e1b38e0 100644
 -                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
 -                    .unwrap_or_default();
 +                let rep_maps = ifc_lite_processing::discovery::record_refs_at(
-+                    &content[start..end], ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
++                    &content[start..end], 6,
 +                );
                  if !rep_maps.is_empty() {
                      candidates.push((id, start, end, ifc_type, rep_maps));

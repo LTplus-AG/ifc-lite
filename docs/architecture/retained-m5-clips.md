@@ -37,9 +37,9 @@ fixture qualification.
 
 In the Round 2 follow-up answer, the user authorized a **generic, shared**
 source-context extension in `retained_compare.rs`, `compare/report.rs`, and
-`checks/mod.rs`. Each check now receives `SourceContext { model, product_id,
-analytic }`; `model` borrows the shared `Arc<SourceBundle>` so each slice can
-read its bytes or create an indexed decoder without another model buffer. A `Deref` compatibility
+`checks/mod.rs`. Each check receives `SourceContext { product_id, analytic,
+clips }`. The model-scoped `ClipOracle` borrows the shared `Arc<SourceBundle>`
+and analytic sources; it resolves opening relationships once per model. A `Deref` compatibility
 bridge lets the untouched M4/M6 stubs accept their existing analytic-only
 argument until each slice adopts `&SourceContext`. Their dispatcher call need
 not change again.
@@ -48,7 +48,8 @@ not change again.
 volume, bounds, and curved/linear classification. The report feeds that into
 its existing source comparison and `exact_defect` decision; multiple
 inconsistent authorities fail. No output column or existing tolerance changes.
-The existing six-field `src_oracle` serialization remains unchanged. Empty
+The `src_oracle` column also records per-part source curvature and executed
+clip status; these diagnostic fields do not alter the geometry API. Empty
 per-slice results leave all existing check behavior unchanged.
 
 ## Non-schema case (e) amendment, 2026-10-28
@@ -132,3 +133,22 @@ The native lane writes the M5 browser parity references to
 `IFCLITE_M5_LINEAGE_REFERENCE`). The workflow copies every `*.json` found there
 beside `/smlib`, the same copy-if-exists rule as the M3 reference, so later
 slices add a reference by naming a file, not by editing the staging step.
+
+## Oracle scope and parity qualification, 2026-10-29
+
+The outside-in source walk preserves planes collected before reaching an inner
+Union or Intersection: those outer clips execute last. For an unknown subtree,
+kept-side and closure remain gated; unavailable volume/section predictions are
+explicit report-only records, never a silent omission of the product.
+
+Clip section and bounds thresholds are chosen per part. The curved threshold
+requires both independently decoded curved source and a plain-plane Difference
+in that part's sealed host receipt lineage. Skips and clipped opening cutters do
+not qualify a host. A skipped clip retains kept-side, closure and volume bounds;
+its nominal tessellation uses the ordinary source oracle. Product-level parity
+uses 1e-7 only when every part qualifies and the source gates pass; otherwise it
+uses 1e-9. No tolerance value changed in this round.
+
+Exact defaults a missing or unreadable `AgreementFlag` to true. Retained keeps
+that behavior for exact parity; the independent oracle reports invalid mandatory
+source instead of adopting the default.

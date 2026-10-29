@@ -25,6 +25,7 @@ impl std::ops::Deref for SourceContext<'_> {
 #[derive(Clone, Copy)]
 pub struct SourceAuthority { pub volume: f64, pub bbox: Option<[f64; 6]>, pub curved: bool }
 pub struct ClipPartEvidence { pub index: usize, pub curved: bool, pub executed: bool }
+#[derive(Default)]
 pub struct OracleResult {
     pub family: &'static str, pub value: f64, pub limit: f64, pub pass: bool, pub gated: bool,
     pub authority: Option<SourceAuthority>,

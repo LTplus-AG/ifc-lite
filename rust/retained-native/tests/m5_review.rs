@@ -22,14 +22,17 @@ fn shape(text: &str) -> Option<ShapeOnlyProduct> {
     ifc_lite_retained_native::run_model_native(SourceBundle::new(text.as_bytes().to_vec()),worker,
         &ModelOptions {ids:Some([13].into_iter().collect()),..Default::default()},|o|outcomes.push(o)).unwrap();
     assert_eq!(outcomes.len(),1);
-    let ProductOutcome::Published(shape)=outcomes.remove(0) else {panic!("required published fixture")};
+    let outcome=outcomes.remove(0);
+    let ProductOutcome::Published(shape)=outcome else {panic!("required published fixture: {outcome:?}")};
     Some(shape)
 }
 fn check(text: &str,shape: &ShapeOnlyProduct) -> Vec<checks::OracleResult> {
     let model=SourceBundle::new(text.as_bytes().to_vec());
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     let oracle=ClipOracle::new(&model,&sources);
-    let t=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m5.json")).unwrap();
+    let mut t:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m5.json")).unwrap();
+    let faces:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m11-f.json")).unwrap();
+    t.as_object_mut().unwrap().extend(faces.as_object().unwrap().clone());
     checks::check(shape,&checks::SourceContext {product_id:13,analytic:&sources,clips:&oracle},&t)
 }
 #[test]

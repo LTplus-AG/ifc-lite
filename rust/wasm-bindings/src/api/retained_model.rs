@@ -47,7 +47,6 @@ export interface RetainedShapeProduct {
     marker: 'PresentationObligationsUnmet';
     obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
     instanceKey?: string;
-    instanceGroup?: { templateProductId: number; key: string };
 }
 export interface RetainedProductRefusal {
     status: 'refused';

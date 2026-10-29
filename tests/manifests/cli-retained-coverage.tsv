@@ -130,7 +130,7 @@ tests/fixtures/synthetic-retained/f-c-extrusion.ifc	27	published
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	107	published	
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	133	refused	incomplete
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	141	refused	incomplete
-tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	156	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	156	published	
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	173	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	181	published	
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	190	published	

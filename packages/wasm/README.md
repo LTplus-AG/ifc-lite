@@ -374,10 +374,14 @@ and shares need not sum to one. The live path follows the TypeScript length
 checks and `shares.every(share => Number.isFinite(share) && share >= 0)` before
 ranking, including custom methods, sparse arrays and repeated getters.
 
-The public `@ifc-lite/diff` entry points still use the TypeScript engine in
-this stage of #8042. Raw module initialization above applies to direct
-`@ifc-lite/wasm/diff` callers; existing public comparison callers retain their
-current initialization contract until the facade cutover.
+The public `@ifc-lite/diff` entry points use this Rust module. Call
+`await initDiff()` or `initDiffSync(...)` once at application startup, then use
+the existing comparison, fingerprint, lineage and sidecar operations
+synchronously. The shared runtime centralizes Node asset loading and browser
+initialization, with no top-level await or silent TypeScript engine fallback.
+Operations called before initialization throw; initialization failures propagate.
+The public fingerprint facade normalizes live property and quantity values
+before passing their typed projections to the raw fingerprint bindings.
 
 The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports executed/total pairs. Missing fixtures are skipped with a `pnpm fixtures` hint; zero executed pairs exits with status 2 (incomplete), rather than claiming parity.
 
@@ -408,7 +412,9 @@ Planar faces use the attributed source-plane normal after every vertex passes
 planarity verification. Other faces use angle-weighted smoothing within each
 revision-local face and a 10° crease guard, after applying the composed world frame. Positions
 and indices stay unchanged, and `SurfaceNormals` is discharged. Optional `color`, `materialName`,
-`geometryItemId`, `materialId` and `instanceKey` remain reserved for independently qualified slices.
+`geometryItemId` and `materialId` remain reserved for independently qualified slices.
+`instanceKey` identifies eligible byte-equal mapped geometry, including its persistent
+face keys, for optional view instancing.
 Every published part carries `faces`: a string table of persistent source keys
 `#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
 `disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
@@ -452,3 +458,16 @@ releases the worker; terminate the host Worker for immediate cancellation.
 Callback exceptions reject after controller cleanup, rather than cancel work.
 The source buffer moves into the Rust source bundle without a second Rust copy.
 `IfcAPI.retainedModel` and the default WASM engine remain unchanged.
+
+Eligible single-part view events also carry `instanceKey` and optional
+`instanceWorldFromObject`, the controller's composed IFC frame. The retained-only
+`encodeInstancedShard(meshes, keys, rtc)` accepts up to 256 extracted Y-up meshes,
+their full keys, and the session RTC offset. Supply each event's frame as the
+mesh's `worldFromObject`. It returns IFNS `shard` bytes, `flatIndices` into the
+input, and instance, group and pairing-rejection counts. The retained-only
+`instanceMinOccurrences()` returns the engine’s minimum eligible occurrence count,
+shared by the encoder and CLI reports. Groups must meet that threshold and pass
+the existing geometric pairing check;
+rejected groups remain flat. Render each input exactly once, through its shard
+or its flat mesh. The viewer flushes every 256 completed products and at session
+completion. CLI OBJ export continues to bake every occurrence.

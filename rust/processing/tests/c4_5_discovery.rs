@@ -41,3 +41,34 @@ fn c4_5_shard_named_result_retains_diagnostics_and_optional_classes() {
     assert_eq!(classified.classes.unwrap(), [0x80, 3]);
     assert_eq!(plain.records.iter().map(|r| r.0).collect::<Vec<_>>(), [1, 2]);
 }
+
+/// #7782 C4-6b: browser discovery keeps jobs/spans but never retains native maps.
+#[test]
+fn c4_6b_browser_scope_preserves_discovery_without_native_type_state() {
+    let content = b"#1=IFCPROJECT();#2=IFCSITE();#3=IFCWALL();#4=IFCWALLTYPE('g',$,$,$,$,$,(#10,#11));#5=IFCMAPPEDITEM(#10,#9);#6=IFCRELDEFINESBYTYPE('g',$,$,$,(#3),#4);";
+    let mut browser = Discovery::default();
+    let mut native = Discovery::new(true);
+    let mut scanner = EntityScanner::new(content);
+    let mut jobs = Vec::new();
+    while let Some((id, name, start, end)) = scanner.next_entity() {
+        let class = ScanClass::classify(name);
+        let job = browser.observe_browser(content, class, id, name, start, end);
+        assert_eq!(job, native.observe(content, class, id, name, start, end));
+        if job.is_some() {
+            jobs.push(id);
+        }
+    }
+    assert_eq!(jobs, [2, 3]);
+    assert_eq!(browser.project_id, Some(1));
+    assert_eq!(browser.site_entity_pos, native.site_entity_pos);
+    assert_eq!(browser.prepass_spans.defines_by_type, native.prepass_spans.defines_by_type);
+    assert_eq!(browser.prepass_spans.defines_by_type.len(), 1);
+    assert!(browser.types.products.is_empty());
+    assert!(browser.types.referenced_representation_maps.is_empty());
+    assert!(browser.types.instantiated_type_ids.is_empty());
+    assert!(browser.mapped_item_plan.is_empty());
+    assert_eq!(native.types.products.len(), 1);
+    assert_eq!(native.types.referenced_representation_maps.len(), 1);
+    assert_eq!(native.types.instantiated_type_ids.len(), 1);
+    assert_eq!(native.mapped_item_plan.len(), 1);
+}

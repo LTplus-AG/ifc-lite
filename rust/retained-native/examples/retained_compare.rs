@@ -170,6 +170,8 @@ fn compare(
     }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
+    let oracle_source = source.clone();
+    let clip_oracle = ifc_lite_retained_native::oracle::clips::ClipOracle::new(&oracle_source, &sources);
     let (summary, timings) = driver.run_model(
         source,
         &ModelOptions::default(),
@@ -228,7 +230,7 @@ fn compare(
                         tolerances,
                         ms,
                         opening_expectations.get(&id),
-                        &sources,
+                        &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
                         &bytes,
                     );

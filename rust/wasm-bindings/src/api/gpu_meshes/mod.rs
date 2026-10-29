@@ -15,13 +15,10 @@ pub(in crate::api) mod batch_host;
 mod batch_partition;
 mod instancing;
 pub(crate) mod prepass;
-#[allow(deprecated)] // C4-6b keeps tuple adapters until its browser discovery migration.
 mod prepass_discovery;
 mod prepass_memory;
 mod prepass_once;
-#[allow(deprecated)] // C4-6b keeps tuple adapters until its browser discovery migration.
 mod prepass_owned_columns;
-#[allow(deprecated)] // C4-6b keeps tuple adapters until its browser discovery migration.
 mod prepass_sharded;
 mod source_fingerprint;
 mod style_finishes;
@@ -38,3 +35,6 @@ fn scan_columnar_index(content: &[u8]) -> ifc_lite_core::ColumnarEntityIndex {
     ifc_lite_core::ColumnarEntityIndex::from_scan(content)
         .expect("a wasm32 source is below 4 GiB, so every span fits u32")
 }
+
+#[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
+pub(crate) use batch_partition::{is_instancing_candidate, INSTANCE_MIN_OCCURRENCES};

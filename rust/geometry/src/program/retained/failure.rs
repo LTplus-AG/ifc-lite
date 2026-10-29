@@ -41,6 +41,8 @@ pub(in crate::program) enum FailureSite {
     TypeMapAffine,
     #[cfg(feature = "retained-runtime")]
     LayerBand,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    HalfSpaceClip,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum StructuralReason {

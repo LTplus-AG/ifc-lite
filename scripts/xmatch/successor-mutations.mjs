@@ -26,7 +26,9 @@ import {
   respecifyProperty,
   swapMappedItem,
 } from './successor-edits.mjs';
-import { classFamilyResolver } from '../../packages/diff/dist/class-families.js';
+import { loadDiffOracle } from '../lib/diff-oracle.mjs';
+// Fixture authoring uses the frozen TS class table, independently of Rust.
+const { classFamilyResolver } = await loadDiffOracle('class-families');
 
 /** Mirrors the engine's unexported `POSITION_EXTENT_RATIO`. */
 const POSITION_EXTENT_RATIO = 2;

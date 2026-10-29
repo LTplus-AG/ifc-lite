@@ -21,7 +21,7 @@ fn cube(x: f64, split_edge: bool) -> ShapePart {
         for i in 0..face.len() { indices.extend([id,face[i],face[(i+1)%face.len()]]); revision_local_faces.push(face_id as u32); }
     }
     ShapePart { positions,indices, world_from_object:[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.],
-        layer:None,capped_volume_m3:None,curved:false, revision_local_faces,
+        halfspace_clipped:false,layer:None,capped_volume_m3:None,curved:false, revision_local_faces,
         normals:None,appearance:None,faces:None,instance_key:None }
 }
 fn layers() -> LayerCompletion { LayerCompletion {

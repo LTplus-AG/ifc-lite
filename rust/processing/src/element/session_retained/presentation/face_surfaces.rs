@@ -5,7 +5,7 @@
 //! canonical profile lowering, even where the request reversed a loop.
 use super::face_attribution::{unit, Extent, Region, Role, Segment, SourceFace, Support};
 use super::face_curve::{Curve, MAX_DEGREE};
-use ifc_lite_geometry::document::{RetainedRecipe, SweepPayload};
+use ifc_lite_geometry::document::{PrismRole, RetainedRecipe, SweepPayload};
 
 /// Why a construction has no source faces here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +44,14 @@ pub(crate) fn faces(recipe: &RetainedRecipe, payload: &SweepPayload) -> Result<(
             prism(&mut reader, &reversed)
         }
         RetainedRecipe::SweptDisk(_) => disk(&mut reader).map(|faces| (faces, None)),
-        // Derived cutters (halfspace and layer-band prisms) and future recipes.
+        RetainedRecipe::Prism(prism) if prism.role == PrismRole::HalfSpace => {
+            // CUT-0's cutter frame places z=0 on the authored plane, +Z on
+            // its material side. Only that base is an IFC source face: the
+            // finite box's other five faces must NEVER acquire provenance.
+            return Ok((vec![SourceFace { role: Role::HalfSpace, extent: Extent::Plane,
+                support: Support::Plane { origin: [0.; 3], normal: [0., 0., -1.] } }], None));
+        }
+        // Bounded halfspaces and layer-band prisms retain their own slice hooks.
         other => return Err(NoFaces::Hook(other.solid_id())),
     };
     parsed.filter(|_| reader.at == payload.bytes.len()).ok_or(NoFaces::Malformed)

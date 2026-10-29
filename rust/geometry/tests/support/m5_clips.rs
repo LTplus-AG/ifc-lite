@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MPL-2.0
+//! SYNTHETIC #7955 source invariants; no real-authoring-tool provenance claimed.
+pub const SOURCE: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);#3=IFCDIRECTION((0.,0.,1.));
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,6.);#5=IFCEXTRUDEDAREASOLID(#4,#2,#3,2.);
+#6=IFCCARTESIANPOINT((0.,0.,0.5));#7=IFCAXIS2PLACEMENT3D(#6,$,$);#8=IFCPLANE(#7);
+#9=IFCHALFSPACESOLID(#8,.T.);#10=IFCBOOLEANRESULT(.DIFFERENCE.,#5,#9);
+#11=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#11));
+#13=IFCWALL('0000000000000000000001',$,'SYNTHETIC M5',$,$,$,#12,$,$);
+ENDSEC;END-ISO-10303-21;";
+
+pub fn chain() -> String {
+    let extra = "
+#20=IFCCARTESIANPOINT((2.,0.,0.));#21=IFCDIRECTION((1.,0.,1.));
+#22=IFCAXIS2PLACEMENT3D(#20,#21,$);#23=IFCPLANE(#22);#24=IFCHALFSPACESOLID(#23,.F.);
+#25=IFCCARTESIANPOINT((0.,3.,0.));#26=IFCDIRECTION((0.,1.,1.));
+#27=IFCAXIS2PLACEMENT3D(#25,#26,$);#28=IFCPLANE(#27);#29=IFCHALFSPACESOLID(#28,.F.);
+#30=IFCCARTESIANPOINT((-2.5,0.,0.));#31=IFCDIRECTION((-1.,0.,1.));
+#32=IFCAXIS2PLACEMENT3D(#30,#31,$);#33=IFCPLANE(#32);#34=IFCHALFSPACESOLID(#33,.F.);
+#35=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#5,#24);
+#36=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#35,#29);
+#37=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#36,#34);
+";
+    SOURCE.replace("'CSG',(#10)", "'CSG',(#37)").replace("ENDSEC;END-ISO", &format!("{extra}ENDSEC;END-ISO"))
+}
+
+/// Two overlapping boxes: union x=[-2,4], intersection x=[0,2], y=[-3,3],
+/// z=[0,2]. The outer clip keeps z>=.5: volumes 54 and 18 respectively.
+#[allow(dead_code)] // Shared fixture: only oracle/SDK review harnesses use this variant.
+pub fn clipped_solid(operator: &str) -> String {
+    SOURCE.replace(".DIFFERENCE.,#5,#9", ".DIFFERENCE.,#23,#9")
+        .replace("ENDSEC;END-ISO", &format!("#20=IFCCARTESIANPOINT((2.,0.,0.));#21=IFCAXIS2PLACEMENT3D(#20,$,$);#22=IFCEXTRUDEDAREASOLID(#4,#21,#3,2.);#23=IFCBOOLEANRESULT(.{operator}.,#5,#22);ENDSEC;END-ISO"))
+}

@@ -160,7 +160,7 @@ impl Scan<'_, '_> {
             quick.observe(self.content, id, type_name, start, end);
         }
         let class = ScanClass::classify(type_name);
-        if self.stash_span(class, id, start, end) {
+        if self.stash_span(class, start, end) {
             return;
         }
         if let Some(ifc_type) = self.discovery.observe(self.content, class, id, type_name, start, end) {
@@ -177,7 +177,7 @@ impl Scan<'_, '_> {
     /// Span-stashing records. `true` when the record is fully handled and must
     /// not reach the job scheduling below.
     #[inline(always)]
-    fn stash_span(&mut self, class: ScanClass, id: u32, start: usize, end: usize) -> bool {
+    fn stash_span(&mut self, class: ScanClass, start: usize, end: usize) -> bool {
         match class {
             ScanClass::PresentationLayerAssignment => {
                 if self.req.features.presentation_layers {

@@ -16,11 +16,12 @@ use support::{native, shape, worker_path};
 #[path = "../examples/compare/tolerances.rs"]
 mod tolerances;
 #[allow(dead_code)]
-#[path = "../examples/compare/checks/faces.rs"]
-mod face_check;
+#[path = "../examples/compare/metrics.rs"]
+mod metrics;
 #[allow(dead_code)]
-#[derive(Default)]
-pub struct OracleResult { pub family: &'static str, pub value: f64, pub limit: f64, pub pass: bool, pub gated: bool }
+#[path = "../examples/compare/checks/mod.rs"]
+mod checks;
+use checks::faces as face_check;
 
 fn fixture(path: &str) -> String { std::fs::read_to_string(format!("{}/../../{path}", env!("CARGO_MANIFEST_DIR"))).unwrap() }
 fn limit(curved: bool) -> f64 {

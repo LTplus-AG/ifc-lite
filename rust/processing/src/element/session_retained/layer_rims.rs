@@ -4,6 +4,8 @@ use super::{layer_caps::{curved,on}, layer_mesh::*, publication::ShapePart, erro
 use ifc_lite_geometry::program::transactions::LayerInterface;
 use std::collections::{BTreeMap,BTreeSet};
 
+pub(super) fn weld_tolerance(is_curved: bool) -> f64 { if is_curved { 1e-3 } else { 1e-6 } }
+
 type Rim = (BTreeSet<(Key,Key)>,Vec<Point>);
 fn rim(mesh: &ShapePart, surface: LayerInterface) -> Result<Rim,RetainedExecutionError> {
     let mut edges = BTreeSet::new(); let mut points = BTreeMap::new();
@@ -73,7 +75,7 @@ fn append(mesh: &mut ShapePart, p: Point) -> Result<u32,RetainedExecutionError> 
     mesh.positions.extend(p); Ok(index)
 }
 pub(super) fn conform(left: &mut ShapePart, right: &mut ShapePart, surface: LayerInterface) -> Result<f64,RetainedExecutionError> {
-    let tau = if curved(surface) { 1e-3 } else { 1e-6 };
+    let tau = weld_tolerance(curved(surface));
     let (_,a) = rim(left,surface)?; let (_,b) = rim(right,surface)?;
     let mut maximum = split(left,surface,&b,tau)?.max(split(right,surface,&a,tau)?);
     let (_,canonical) = rim(left,surface)?;

@@ -126,21 +126,18 @@ fn issue_7955_m4_opening_precedes_bands_and_failed_intersection_is_atomic() {
             |o|results.push(o))).unwrap();
         assert_eq!(results.len(),2);
         assert!(matches!(results[0],ProductOutcome::Refused{product_id:55,refusal:RetainedProductRefusal::KernelFailure{status:s},..} if s==status));
-        assert_eq!((acquisitions.get(),summary.restarts),(1,0));
-        if status<=7 {
-            // A settled band refusal must not poison the following non-layer
-            // product even when no replacement worker is allowed (Holter R5).
-            let reused=shape(&results,122); let fresh=shape(&control,122);
-            assert_eq!(reused.parts.len(),fresh.parts.len());
-            for (a,b) in reused.parts.iter().zip(&fresh.parts) {
-                assert_eq!(a.positions,b.positions); assert_eq!(a.indices,b.indices);
-                assert_eq!(a.world_from_object,b.world_from_object);
-            }
-            assert_eq!(*calls.borrow(),[BoolOp::Difference,BoolOp::Intersection,BoolOp::Intersection,BoolOp::Difference]);
-        } else {
-            assert!(matches!(results[1],ProductOutcome::Refused{product_id:122,refusal:RetainedProductRefusal::WorkerFault,..}));
-            assert_eq!(*calls.borrow(),[BoolOp::Difference,BoolOp::Intersection,BoolOp::Intersection]);
+        // A settled band refusal keeps the live worker (Holter R5). An unknown
+        // status retires it, but the replacement comes from the band-phase
+        // allowance, so even with zero restarts the following non-layer
+        // product publishes (review r1).
+        assert_eq!((acquisitions.get(),summary.restarts),(if status<=7 {1} else {2},0));
+        let reused=shape(&results,122); let fresh=shape(&control,122);
+        assert_eq!(reused.parts.len(),fresh.parts.len());
+        for (a,b) in reused.parts.iter().zip(&fresh.parts) {
+            assert_eq!(a.positions,b.positions); assert_eq!(a.indices,b.indices);
+            assert_eq!(a.world_from_object,b.world_from_object);
         }
+        assert_eq!(*calls.borrow(),[BoolOp::Difference,BoolOp::Intersection,BoolOp::Intersection,BoolOp::Difference]);
     }
     println!("sdk witness executed: m4_order_atomicity");
 }

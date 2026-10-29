@@ -10,7 +10,7 @@ mod cache;
 #[cfg(feature = "retained-runtime")]
 pub(in crate::program) mod layer_family;
 #[cfg(feature = "retained-runtime")]
-mod layer_source;
+pub(in crate::program) mod layer_source;
 #[cfg(feature = "retained-runtime")]
 mod layer_cutters;
 #[cfg(feature = "retained-runtime")]

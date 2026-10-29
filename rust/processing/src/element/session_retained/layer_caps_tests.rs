@@ -147,3 +147,18 @@ fn m4_curved_chord_conformity_obeys_one_millimetre_limit() {
         }
     }
 }
+
+// #7955 review: runtime policy and preregistration must move together.
+#[test]
+fn m4_runtime_tolerances_match_preregistered_json() {
+    let limits: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../tests/fixtures/cli-retained/tolerances.d/m4.json")).unwrap();
+    assert_eq!(ON_SURFACE_METRES, limits["layerCapOnSurfaceMetres"].as_f64().unwrap());
+    for (name, curved) in [("linear", false), ("curved", true)] {
+        for key in ["layerCapAreaRelative", "layerBandSumRelative"] {
+            assert_eq!(relative_tolerance(curved), limits[key][name].as_f64().unwrap());
+        }
+        assert_eq!(super::super::layer_rims::weld_tolerance(curved),
+            limits["layerCapWeldMetres"][name].as_f64().unwrap());
+    }
+}

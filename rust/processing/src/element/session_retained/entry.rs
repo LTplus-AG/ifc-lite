@@ -6,9 +6,11 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         context: &'a OwnedMeshProductionContext,
         options: &MeshProductionOptions,
         openings: &'a [DecodedEntity],
+        layers: super::layers::ProductLayers,
         decoder: &mut EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<Self, RetainedExecutionError> {
+        let mut layers = layers;
         if context.source().is_none() {
             return Err(RetainedExecutionError::Source(
                 RetainedContextError::Missing,
@@ -49,8 +51,9 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                         .with_scope(|| plan_in_scope(job, &context.borrowed(), options, d, r));
                     // Exact admission/merge precedes any opening source validation.
                     let layers = if matches!(planned.as_ref(), Some(((super::super::plan::PlanKind::Product { layer_class, .. }, _), _, _, _)) if *layer_class != 0) {
-                        let admitted = RetainedTraversal::layer_admission(job.entity, r, d);
                         check_resources(&resources)?;
+                        // The caller admitted under the plan's own predicate.
+                        let admitted = layers.take().ok_or(RetainedExecutionError::Source(RetainedContextError::Mismatched))?;
                         match admitted.map_err(RetainedExecutionError::LayerStrategy)? {
                             ifc_lite_geometry::program::transactions::LayerAdmission::Bands(spec) => Some(spec),
                             _ => None,

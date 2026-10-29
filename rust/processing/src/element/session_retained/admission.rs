@@ -59,12 +59,15 @@ fn admit(
         element_color: None,
         metadata: None,
     };
-    let openings = openings::decoded_openings(&context, product_id, decoder, &router)?;
+    let usages = ifc_lite_geometry::program::transactions::LayerUsages::from_content(source.bytes(), decoder);
+    let layers = layers::admit(&entity, &router, &usages, decoder)?;
+    let openings = openings::decoded_openings(&context, product_id, &layers, decoder, &router)?;
     let mut execution = RuntimeProductExecution::<AdmissionOnly>::begin(
         &job,
         &context,
         &MeshProductionOptions::default(),
         &openings,
+        layers,
         decoder,
         &router,
     )?;

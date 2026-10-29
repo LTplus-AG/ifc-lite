@@ -3,7 +3,7 @@
 //! #7955 M4: source admission and logical operations, never fake kernel receipts.
 use ifc_lite_core::{EntityDecoder, SourceBundle};
 use ifc_lite_geometry::{GeometryRouter, MaterialLayerIndex, BoolOp,
-    program::transactions::{LayerAdmission, LayerSpec, Traversal, Program, Plan, OperationKind, Requirement}};
+    program::transactions::{LayerAdmission, LayerSpec, LayerUsages, Traversal, Program, Plan, OperationKind, Requirement}};
 use std::sync::Arc;
 const CURVED: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc");
 const STRAIGHT: &str = include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc");
@@ -12,8 +12,9 @@ fn with(text: &str, id: u32, run: impl FnOnce(LayerSpec, &Traversal, &GeometryRo
     let mut decoder = source.decoder();
     let mut router = GeometryRouter::with_units(text, &mut decoder);
     router.set_material_layer_index(Arc::new(MaterialLayerIndex::from_content(text, &mut decoder)));
+    let usages = LayerUsages::from_content(text.as_bytes(), &mut decoder);
     let entity = decoder.decode_by_id(id).unwrap();
-    let LayerAdmission::Bands(spec) = Traversal::layer_admission(&entity,&router,&mut decoder).unwrap() else { panic!("bands required"); };
+    let LayerAdmission::Bands(spec) = Traversal::layer_admission(&entity,&router,&usages,&mut decoder).unwrap() else { panic!("bands required"); };
     run(spec,&Traversal::new(1,1),&router,&mut decoder);
 }
 fn body(mut program: Program<'_>, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Plan {
@@ -171,7 +172,8 @@ fn m4_source_only_eligibility_and_family_refusals() {
         let bundle=SourceBundle::new(text.as_bytes().to_vec()); let mut d=bundle.decoder();
         let mut r=GeometryRouter::with_units(text,&mut d);
         r.set_material_layer_index(Arc::new(MaterialLayerIndex::from_content(text,&mut d)));
-        let e=d.decode_by_id(id).unwrap(); Traversal::layer_admission(&e,&r,&mut d)
+        let usages=LayerUsages::from_content(text.as_bytes(),&mut d);
+        let e=d.decode_by_id(id).unwrap(); Traversal::layer_admission(&e,&r,&usages,&mut d)
     };
     let single=STRAIGHT.replace("((#80,#81),'layers')","((#80),'layers')");
     assert!(matches!(admit(&single,27).unwrap(),LayerAdmission::None|LayerAdmission::Skip(_)));
@@ -181,4 +183,13 @@ fn m4_source_only_eligibility_and_family_refusals() {
     assert_eq!(admit(&unsupported,55).unwrap_err(),"layer_axis_family");
     let radius=CURVED.replace(".AXIS2.,.NEGATIVE.,0.,$)",".AXIS2.,.POSITIVE.,10.,$)");
     assert_eq!(admit(&radius,55).unwrap_err(),"layer_radius");
+    // #7955 review: the per-model usage table keeps the per-product scan's
+    // choice, the first sliceable usage in file order; other materials are skipped.
+    let associations=STRAIGHT.replace("#84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#27),#83);",
+        "#78=IFCMATERIAL('plain',$,$);#79=IFCRELASSOCIATESMATERIAL('p',$,$,$,(#27),#78);\n\
+         #84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#27),#83);\n\
+         #85=IFCMATERIALLAYERSETUSAGE(#82,.AXIS2.,.NEGATIVE.,0.);#86=IFCRELASSOCIATESMATERIAL('n',$,$,$,(#27),#85);");
+    assert_ne!(associations,STRAIGHT);
+    let LayerAdmission::Bands(spec)=admit(&associations,27).unwrap() else { panic!("bands required") };
+    assert_eq!(spec.source_id,83);
 }

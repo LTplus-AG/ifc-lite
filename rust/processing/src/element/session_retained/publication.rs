@@ -123,7 +123,11 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                 *value.object_frame(), curved, &self.resources, &mut storage,
             )?;
             part.layer = self.plan.layers().map(|l| l.tags[part_index]);
-            part.curved = self.plan.layers().map_or(curved, |l| l.interfaces.iter().any(|s| matches!(s, ifc_lite_geometry::program::transactions::LayerInterface::Cylinder { .. })));
+            // A band is curved through its interface family or its host's own
+            // source (an arc-profile wall with planar layers, #7955).
+            part.curved = self.plan.layers().map_or(curved, |l| {
+                l.interfaces.iter().any(|&s| super::layer_caps::curved(s)) || host_curved(realization)
+            });
             parts.push(part);
         }
         if parts.is_empty() {
@@ -183,6 +187,18 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         if product.obligations.0.is_empty() { return Err(incomplete()); }
         Ok(product)
     }
+}
+/// The left-most construction under a band's Intersection: the host's source,
+/// through any opening cuts or affine copies.
+fn host_curved<R: NumericalReceipt>(band: &RuntimeRealization<R>) -> bool {
+    let mut node = band._inputs[0].as_deref();
+    while let Some(host) = node {
+        if let ReceiptEvidence::Construction(completion) = host.kind.evidence() {
+            return curved_recipe(completion.request().recipe());
+        }
+        node = host._inputs[0].as_deref();
+    }
+    true
 }
 fn curved_recipe(recipe: &RetainedRecipe) -> bool {
     match recipe {

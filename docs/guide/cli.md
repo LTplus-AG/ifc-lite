@@ -1841,4 +1841,4 @@ with `layer_caps_unresolved`.
 
 Each surviving material-band triangle keeps the host or opening source face key,
 qualified with `;band(<index>)`. Internal interface caps have no published key.
-The band and cap timings measure their own phases without restarting the product deadline.
+The comparison `summary.json` contains band/cap timings and maximum seam displacement; the reproducible CLI product report omits these diagnostics. Timings measure their own phases without restarting the product deadline.

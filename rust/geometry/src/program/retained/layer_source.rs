@@ -4,25 +4,36 @@ use super::layer_family::LayerFamily;
 use crate::representation::{product_shape, Select};
 use crate::trimmed_curve::{decode_trimmed_primitive, TrimRecovery, TrimmedPrimitive};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+use rustc_hash::FxHashMap;
 const FAMILY: &str = "layer_axis_family";
 
-pub(super) fn usage_id(id: u32, decoder: &mut EntityDecoder) -> Result<u32, &'static str> {
-    let source = decoder.trusted_inputs().ok_or("layer_source")?.source().clone();
-    let mut scanner = EntityScanner::new(source.bytes());
-    while let Some((entity_id, kind, _, _)) = scanner.next_entity() {
-        crate::resource::budget_checkpoint().map_err(|_| "layer_budget")?;
-        if !ifc_lite_core::keyword_eq(kind, "IFCRELASSOCIATESMATERIAL") { continue; }
-        let association = decoder.decode_by_id(entity_id).map_err(|_| "layer_usage")?;
-        if !association.get_list(slot::IfcRelAssociatesMaterial::RELATED_OBJECTS.index()).is_some_and(|ids| ids.iter().any(|v| v.as_entity_ref() == Some(id))) { continue; }
-        let material = decoder.decode_by_id(association.ref_at(slot::IfcRelAssociatesMaterial::RELATING_MATERIAL).ok_or("layer_usage")?).map_err(|_| "layer_usage")?;
-        // insert_association keeps the FIRST Sliceable entry, including when
-        // an earlier single-layer usage was NotSliceable. Reuse its resolver.
-        if material.ifc_type == IfcType::IfcMaterialLayerSetUsage
-            && crate::material_layer_index::resolve_retained_buildup(material.id,decoder).is_sliceable() {
-            return Ok(material.id);
+/// #7955: element -> layer-set usage, built once per model beside
+/// `MaterialLayerIndex`. An element keeps the FIRST sliceable
+/// `IfcMaterialLayerSetUsage` association in file order, as exact's
+/// `insert_association` keeps the first Sliceable buildup.
+#[derive(Debug, Default)]
+pub struct LayerUsages(FxHashMap<u32, u32>);
+impl LayerUsages {
+    pub fn from_content(content: &[u8], decoder: &mut EntityDecoder) -> Self {
+        let mut usages = FxHashMap::default();
+        let mut scanner = EntityScanner::new(content);
+        while let Some((id, kind, _, _)) = scanner.next_entity() {
+            if !ifc_lite_core::keyword_eq(kind, "IFCRELASSOCIATESMATERIAL") { continue; }
+            let Ok(association) = decoder.decode_by_id(id) else { continue };
+            let Some(material) = association.ref_at(slot::IfcRelAssociatesMaterial::RELATING_MATERIAL)
+                .and_then(|id| decoder.decode_by_id(id).ok()) else { continue };
+            if material.ifc_type != IfcType::IfcMaterialLayerSetUsage
+                || !crate::material_layer_index::resolve_retained_buildup(material.id, decoder).is_sliceable() { continue; }
+            let Some(related) = association.get_list(slot::IfcRelAssociatesMaterial::RELATED_OBJECTS.index()) else { continue };
+            for element in related.iter().filter_map(|v| v.as_entity_ref()) {
+                usages.entry(element).or_insert(material.id);
+            }
         }
+        Self(usages)
     }
-    Err("layer_usage")
+    pub(super) fn get(&self, element: u32) -> Result<u32, &'static str> {
+        self.0.get(&element).copied().ok_or("layer_usage")
+    }
 }
 pub(super) fn axis_family(element: &DecodedEntity, decoder: &mut EntityDecoder, scale: f64)
     -> Result<LayerFamily, &'static str> {

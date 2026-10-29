@@ -4,7 +4,9 @@ use super::{layer_mesh::*, publication::ShapePart, error::RetainedExecutionError
 use ifc_lite_geometry::program::transactions::{LayerCompletion, LayerInterface};
 
 pub(super) fn curved(s: LayerInterface) -> bool { matches!(s, LayerInterface::Cylinder { .. }) }
-pub(super) fn on(s: LayerInterface, p: Point) -> bool { distance_normal(s,p).0.abs() <= 1e-6 }
+pub(super) const ON_SURFACE_METRES: f64 = 1e-6;
+pub(super) fn relative_tolerance(is_curved: bool) -> f64 { if is_curved { 2e-3 } else { 1e-6 } }
+pub(super) fn on(s: LayerInterface, p: Point) -> bool { distance_normal(s,p).0.abs() <= ON_SURFACE_METRES }
 fn distance_normal(s: LayerInterface, p: Point) -> (f64, Point) {
     match s {
         LayerInterface::Plane { normal, distance } => (dot(normal,p)-distance, normal),
@@ -53,7 +55,7 @@ pub(super) fn remove(parts: &mut [ShapePart], layers: &LayerCompletion) -> Resul
         let surface = *layers.interfaces.get(left).ok_or_else(|| fail("layer_interface"))?;
         let a = strip(&mut parts[k],surface,1.)?;
         let b = strip(&mut parts[k+1],surface,-1.)?;
-        let tolerance = if curved(surface) { 2e-3 } else { 1e-6 };
+        let tolerance = relative_tolerance(curved(surface));
         if (a-b).abs() > tolerance*a.max(b) { return Err(fail("cap_area")); }
         seams.push((k,surface));
     }
@@ -73,7 +75,7 @@ pub(super) fn remove(parts: &mut [ShapePart], layers: &LayerCompletion) -> Resul
     if parts.iter().any(|p| p.indices.is_empty()) { return Err(fail("empty_band")); }
     closed(parts)?;
     let after = volume(parts,origin);
-    let tolerance = if layers.interfaces.iter().any(|&s| curved(s)) { 2e-3 } else { 1e-6 };
+    let tolerance = relative_tolerance(layers.interfaces.iter().any(|&s| curved(s)));
     if !after.is_finite() || (after-before).abs() > tolerance*before.abs() { return Err(fail("assembly_volume")); }
     Ok(displacement)
 }

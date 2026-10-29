@@ -76,9 +76,12 @@ impl RetainedExecutionError {
                 origin = Some(RefusalOrigin { site: "layer_caps", entity: None, cause });
                 Refusal::LayerCapsUnresolved
             }
+            Self::LayerRetirementsExhausted => {
+                origin = Some(RefusalOrigin { site: "layer_band", entity: None, cause: "layer_retirement_allowance" });
+                Refusal::WorkerFault
+            }
             Self::Unsupported(reason) => match reason {
                 Unsupported::RetainedOpeningStrategy => Refusal::OpeningStrategy,
-                Unsupported::RetainedMaterialLayerStrategy => Refusal::MaterialLayerStrategy,
                 Unsupported::ConstructionRecipe | Unsupported::RetainedStrategy => {
                     Refusal::OperationUnsupported
                 }

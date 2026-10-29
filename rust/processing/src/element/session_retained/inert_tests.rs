@@ -121,7 +121,7 @@ fn with_execution<T>(
     let metadata = metadata(10);
     let job = job(&entity, &metadata);
     let mut execution =
-        RuntimeProductExecution::begin(&job, &context, &options(), &[], &mut decoder, &router).unwrap();
+        RuntimeProductExecution::begin(&job, &context, &options(), &[], None, &mut decoder, &router).unwrap();
     run(&mut execution, &mut decoder, &router)
 }
 
@@ -238,11 +238,14 @@ fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
     let entity = decoder.decode_by_id(10).unwrap();
     let metadata = metadata(10);
     let job = job(&entity, &metadata);
+    let usages = ifc_lite_geometry::program::transactions::LayerUsages::from_content(text.as_bytes(), &mut decoder);
+    let layers = layers::admit(&entity, &router, &usages, &mut decoder).unwrap();
     let error = RuntimeProductExecution::<InertReceipt>::begin(
         &job,
         &context,
         &options(),
         &[],
+        layers,
         &mut decoder,
         &router,
     )
@@ -273,6 +276,7 @@ fn issue_7955_real_opening_job_admits_host_before_opening_body() {
         &context,
         &options(),
         &openings,
+        None,
         &mut decoder,
         &router,
     )
@@ -340,6 +344,7 @@ fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
         &context,
         &options(),
         &[],
+        None,
         &mut decoder,
         &router,
     );
@@ -391,6 +396,7 @@ fn instanced_type_map_refuses_before_invocation_without_restarting_worker() {
             &context,
             &options(),
             &[],
+            None,
             &mut decoder,
             &router,
         )?;
@@ -430,7 +436,7 @@ fn orphan_type_map_reaches_its_first_invocation() {
     let job = super::super::session_tests::type_job(&mut decoder, &[61, 71]);
     let mut peer = InertPeer::new(true);
     let mut execution = RuntimeProductExecution::<InertReceipt>::begin(
-        job, &context, &options(), &[], &mut decoder, &router).unwrap();
+        job, &context, &options(), &[], None, &mut decoder, &router).unwrap();
     let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
     let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
     assert!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
@@ -461,6 +467,7 @@ fn issue_7955_mismatched_opening_attributes_refuse_source_changed() {
         &context,
         &options(),
         &openings,
+        None,
         &mut decoder,
         &router,
     )

@@ -46,13 +46,14 @@ pub enum Unsupported {
     ConstructionRecipe,
     RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs,
     RetainedOpeningStrategy,
-    RetainedMaterialLayerStrategy,
     RetainedStrategy,
 }
 #[derive(Debug)]
 pub enum RetainedExecutionError {
     LayerStrategy(&'static str),
     LayerCaps(&'static str),
+    /// The model's band-phase worker allowance is spent; refused before any kernel call.
+    LayerRetirementsExhausted,
     Source(RetainedContextError),
     Core(ifc_lite_core::Error),
     Owner(WorkError),

@@ -70,8 +70,8 @@ impl LayerSpec {
     }
 }
 
-pub(crate) fn admit(element: &DecodedEntity, router: &GeometryRouter, decoder: &mut EntityDecoder)
-    -> Result<LayerAdmission, &'static str> {
+pub(crate) fn admit(element: &DecodedEntity, router: &GeometryRouter,
+    usages: &super::layer_source::LayerUsages, decoder: &mut EntityDecoder) -> Result<LayerAdmission, &'static str> {
     let Some(buildup) = router.material_layer_index().and_then(|i| i.get(element.id)) else {
         return Ok(LayerAdmission::None);
     };
@@ -97,7 +97,7 @@ pub(crate) fn admit(element: &DecodedEntity, router: &GeometryRouter, decoder: &
     let family = if axis == LayerAxis::Axis2 {
         super::layer_source::axis_family(element, decoder, router.unit_scale())?
     } else { LayerFamily::Planar { axis: axis.unit_vector() } };
-    let source_id = super::layer_source::usage_id(element.id, decoder)?;
+    let source_id = usages.get(element.id)?;
     let placement = router.resolve_scaled_placement_strict(element, decoder).map_err(|_| "layer_frame")?;
     let spec = LayerSpec { source_id, family, layers, sense, offset_m: offset * router.unit_scale(),
         world_from_object: placement };

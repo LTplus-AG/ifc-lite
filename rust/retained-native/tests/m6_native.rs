@@ -80,14 +80,14 @@ fn m6_native_refusals_are_atomic() {
     println!("sdk witness executed: m6_typed_refusals");
 }
 #[test]
-fn qualifies_after_m5_m6_native_mixed_chain_and_boxed_publication() {
+fn m6_native_mixed_chain_and_boxed_publication() {
     if worker().is_none(){return;}
     let outcomes=run(SOURCE,&[1004,1007,1008,1009]);
     for id in [1007,1008,1009] {verify(SOURCE,shape(&outcomes,id),Some(32.));}
     let mixed=measure(shape(&outcomes,1004));assert!((mixed.volume-41.).abs()<=41e-6);assert_eq!(mixed.defects,0);
 }
 #[test]
-fn qualifies_after_m5_m6_native_consumed_provenance() {
+fn m6_native_consumed_provenance() {
     if worker().is_none(){return;}
     // An invalid second operand after the consumed first clip must never be
     // reached; the consumed origin survives instead of a missing-entity error.
@@ -96,7 +96,7 @@ fn qualifies_after_m5_m6_native_consumed_provenance() {
     for source in [SOURCE,chained.as_str()] {
         let outcomes=run(source,&[1011]);
         let ProductOutcome::Refused{refusal,origin,..}=&outcomes[0] else{panic!("consumed host must refuse atomically");};
-        // Round 2 assigns attribution to M5's shared HalfSpaceClip hook.
+        // Attribution comes from M5's shared HalfSpaceClip hook.
         assert_eq!(refusal.code(),"empty_result");let origin=origin.unwrap();assert_eq!(origin.site,"halfspace_clip");assert_eq!(origin.cause,"consumed");
     }
 }

@@ -15,23 +15,19 @@ bounds proof. No exact heuristic, unbounded fallback, or exact retry participate
 
 `IfcBoxedHalfSpace.Enclosure` is only a computation hint and is never read.
 Boxed halfspaces delegate to the plain-plane implementation, including its
-refusals and eventual M5 qualification. A successful boxed twin must have an
+refusals. A successful boxed twin must have an
 identical cutter payload and bit-identical measured volume.
 
 ## Qualification sequence
 
-The **2026-10-28 Round 2 implementation/orchestrator message** explicitly revises
-M6 §1/§8: M5 is a qualification dependency, not an implementation dependency.
-On CUT-0, bounded-only clips qualify independently. Boxed/plain-plane twins
-prove identical outcomes, currently both `operation_unsupported`.
-
-The unconditional tests named `qualifies_after_m5` assert the final publication
-contract for boxed twins, PBHS → plane → solid Difference, and consumed-result
-provenance. They are explicitly excluded from Round 2 passing counts and are
-run after the M5 rebase. They are not `#[ignore]` tests. M5 owns the shared
-Boolean completion/provenance hook; M6 adds no competing hook.
-The consumed expectation uses M5's `halfspace_clip` site, following that shared
-hook ruling in place of M6's earlier `bounded_halfspace` spelling.
+M5 (plane halfspaces and chained clips) is on main, so M6 is qualified against
+it: boxed halfspaces and their plain-plane twin publish with bit-identical
+cutters and volumes, and PBHS → plane → solid Difference chains compose in node
+order. A consumed (fully removed) host reports `empty_result` at M5's shared
+`halfspace_clip` site with cause `consumed`; M6 adds no competing hook. The
+2026-10-27 user decision applies: the synthetic `f-f-halfspaces` fixture plus
+its bit-identical plain-plane twin is sufficient release qualification for
+boxed halfspaces (no committed or heavy-corpus model has one).
 
 The source oracle independently decodes planes and boundary placements. Linear
 non-convex loops are ear-partitioned; inclusion–exclusion integrates triangle
@@ -41,7 +37,7 @@ not zero. Original boundaries, including analytic arcs, define the gated
 strict-interior removed-material check; triangulation seams do not.
 Synthetic hand integrals additionally qualify the quarter-circle case. Their
 fixture passed independent adversarial Opus review and IFC4 schema/round-trip
-validation on 2026-10-28; its M5 cases still await qualification. Measured evidence is stored outside the
+validation on 2026-10-28. Measured evidence is stored outside the
 repository under the implementation's M6 evidence directory.
 
 FZK walls #60012 and #67828 each have two PBHS clips, no plain-plane clip, and

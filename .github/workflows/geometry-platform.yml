@@ -161,6 +161,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/native-references"
           export IFCLITE_M5_REFERENCE="$RUNNER_TEMP/native-references/m5-native-clips.json"
           export IFCLITE_M5_LINEAGE_REFERENCE="$RUNNER_TEMP/native-references/m5-native-lineage.json"
+          export IFCLITE_M6_REFERENCE="$RUNNER_TEMP/native-references/m6-native.json"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
           for file in tests/evidence/*/witnesses.txt; do
             [[ -f "$file" ]] || continue

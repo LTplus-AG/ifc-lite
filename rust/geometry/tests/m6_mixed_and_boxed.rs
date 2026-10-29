@@ -3,15 +3,15 @@
 #[path="support/m6_halfspaces.rs"]
 mod fixture;
 use fixture::{walk,SOURCE};
-// These unconditional expectations are selected after the M5 qualification
-// rebase. Round 2 explicitly excludes their names from its pass count, not ignore.
+// Mixed PBHS -> plane -> solid chains and the boxed-equals-plane twin use M5's
+// shared plane halfspace implementation; both run unconditionally.
 #[test]
-fn qualifies_after_m5_m6_mixed_chain() {
+fn m6_mixed_chain() {
     let (trace,result)=walk(SOURCE,1004);result.unwrap();
     assert_eq!(trace.order,["host","prism","difference","prism","difference","host","difference"]);
 }
 #[test]
-fn qualifies_after_m5_m6_boxed_plane_prisms() {
+fn m6_boxed_plane_prisms() {
     let (plain,result)=walk(SOURCE,1008);result.unwrap();assert_eq!(plain.prisms.len(),1);
     for id in [1007,1009] {
         let (boxed,result)=walk(SOURCE,id);result.unwrap();

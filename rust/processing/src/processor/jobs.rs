@@ -106,7 +106,7 @@ impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
 /// the whole model, not per chunk/part. `.map`/`.flatten_iter()` at the call
 /// site keeps the former `flat_map_iter` order; the caches are pure
 /// memoization, so meshes are byte-identical.
-pub(super) fn run_job(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<MeshData> {
+pub(super) fn run_job<const LAYER_SLICING: bool>(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<MeshData> {
     let widx = rayon::current_thread_index().unwrap_or(0) % ctx.worker_point_caches.len();
     // `try_lock`, not `lock`: faceted-brep triangulation nests a rayon
     // `par_iter`, so a worker blocked at that nested join can work-steal
@@ -134,21 +134,23 @@ pub(super) fn run_job(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<MeshData> {
             Some(cache) => cache,
             None => &mut fallback_placement_cache,
         };
-    mesh_job(job, ctx, worker_point_cache, worker_placement_cache)
+    mesh_job::<LAYER_SLICING>(job, ctx, worker_point_cache, worker_placement_cache)
 }
 
 /// The per-job router: a fresh one at the pass scale, armed with the model-wide
 /// caches (content dedup #1109, brep signatures, IfcMappedItem sources #1623)
 /// and, when enabled, the #1623 Phase 2 don't-bake plan.
-fn job_router(ctx: &PassContext<'_>) -> GeometryRouter {
+fn job_router<const LAYER_SLICING: bool>(ctx: &PassContext<'_>) -> GeometryRouter {
     let mut local_router = GeometryRouter::from_config(RouterConfig {
         unit_scale: ctx.unit_scale,
         tessellation_quality: ctx.quality,
         rtc_offset: ctx.rtc_offset,
         ..RouterConfig::default()
     });
-    if let Some(layers) = &ctx.material_layers {
-        local_router.set_material_layer_index(std::sync::Arc::clone(layers));
+    if LAYER_SLICING {
+        if let Some(layers) = &ctx.material_layers {
+            local_router.set_material_layer_index(std::sync::Arc::clone(layers));
+        }
     }
     local_router.enable_content_dedup_shared(ctx.item_dedup_cache.clone());
     local_router.enable_shared_brep_signature_cache(ctx.brep_signature_cache.clone());
@@ -166,7 +168,7 @@ fn job_router(ctx: &PassContext<'_>) -> GeometryRouter {
     local_router
 }
 
-fn mesh_job(
+fn mesh_job<const LAYER_SLICING: bool>(
     job: &EntityJob,
     ctx: &PassContext<'_>,
     worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)>,
@@ -204,7 +206,7 @@ fn mesh_job(
         }
     };
 
-    let local_router = job_router(ctx);
+    let local_router = job_router::<LAYER_SLICING>(ctx);
     let metadata = crate::element::ElementMeshMetadata {
         global_id: job.global_id.clone(),
         name: job.name.clone(),

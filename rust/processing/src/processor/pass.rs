@@ -303,10 +303,13 @@ pub(super) fn run<'c>(
         let chunk_end = (chunk_start + current_chunk_size).min(total_jobs);
         let jobs_chunk = &mut entity_jobs[chunk_start..chunk_end];
         populate_metadata(jobs_chunk, &ctx, &mut appearance, &mut decoder);
-        let chunk_meshes: Vec<MeshData> = super::scheduling::element_tasks(jobs_chunk)
-            .map(|job| run_job(job, &ctx))
-            .flatten_iter()
-            .collect();
+        // Select once per batch; the default job specialization contains no
+        // material-layer setup or option check (#7782).
+        let chunk_meshes = if req.layer_slicing {
+            mesh_chunk::<true>(jobs_chunk, &ctx)
+        } else {
+            mesh_chunk::<false>(jobs_chunk, &ctx)
+        };
 
         processed_jobs += jobs_chunk.len();
         total_vertices += chunk_meshes.iter().map(|m| m.vertex_count()).sum::<usize>();
@@ -361,4 +364,14 @@ pub(super) fn run<'c>(
             _appearance: appearance,
         },
     }
+}
+
+fn mesh_chunk<const LAYER_SLICING: bool>(
+    jobs: &[EntityJob],
+    ctx: &PassContext<'_>,
+) -> Vec<MeshData> {
+    super::scheduling::element_tasks(jobs)
+        .map(|job| run_job::<LAYER_SLICING>(job, ctx))
+        .flatten_iter()
+        .collect()
 }

@@ -63,13 +63,18 @@ fn m6_sdk_mirrored_scaled_boxed_final_keeps_shape_and_clip_lineage() {
     let text = affine_boxed();
     let Some(outcomes) = support::native(&text) else {return};
     let p = support::shape(&outcomes,1007);
+    let check = normals::check(p,&source(&text,1007)).unwrap();
+    assert_eq!(check.unattributed,0,"{check:?}");
+    assert!(check.planar_radians<1e-6&&check.unit_error<1e-12,"{check:?}");
     let mut volume = 0.;
     for part in &p.parts {
         let (v,c) = affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap();
+        assert!(v>0.,"mirrored final must retain outward winding");
         volume += v;
         for (a,b) in c.into_iter().zip([-4.,6.,1.]) {assert!((a-b).abs()<1e-9);}
         assert!(part.halfspace_clipped&&part.instance_key.is_none());
         assert!(part.faces.is_some()&&part.normals.is_some()&&part.appearance.is_some());
+        assert_eq!(part.faces.as_ref().unwrap().triangles.len(),part.indices.len()/3);
     }
     assert!((volume-192.).abs()<192e-6);
     println!("sdk witness executed: m6_affine_boxed_interaction");

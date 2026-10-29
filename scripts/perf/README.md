@@ -78,8 +78,9 @@ must measure the consumer path rather than only a retained comparison kernel.
 
 ## Streaming pre-pass trap reporting and metadata snapshots (#8259)
 
-Metadata snapshots now copy populated hash entries instead of the streaming
-scan's unused reservation. The source-backed worker APIs still own a full WASM
+At #8259, metadata snapshots were reduced to populated hash entries instead
+of the streaming scan's unused reservation; C4-11b above removes those copies.
+The source-backed worker APIs still own a full WASM
 source copy; a SharedArrayBuffer view does not avoid wasm-bindgen marshalling.
 Model-dependent index fallback and discovery allocations prevent qualifying the
 observed large-file crash band. Existing successful large-file loads remain

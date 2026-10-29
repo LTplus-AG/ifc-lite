@@ -20,6 +20,7 @@ pub(super) struct RuntimeRealization<R: NumericalReceipt> {
 impl<R: NumericalReceipt> RuntimeRealization<R> {
     /// Follow only the host spine. A clipped opening/cutter does not qualify
     /// its host, and an unknown Union/Intersection does not qualify its branches.
+    /// An M4 LayerRegion intersection preserves only its left host's lineage.
     pub(super) fn halfspace_clipped(&self) -> bool {
         use super::runtime::ReceiptEvidence;
         use ifc_lite_geometry::{BoolOp, document::PrismRole};
@@ -34,6 +35,15 @@ impl<R: NumericalReceipt> RuntimeRealization<R> {
                                 return true;
                             }
                         }
+                    }
+                }
+                ReceiptEvidence::Boolean { operation: BoolOp::Intersection, .. } => {
+                    // #7955 M4/M5: this derived cutter is sealed by the band
+                    // plan; arbitrary authored intersections still stop here.
+                    let Some(right) = current._inputs[1].as_deref() else { return false; };
+                    if !matches!(right.kind.evidence(), ReceiptEvidence::Construction(c)
+                        if matches!(c.request().recipe(), RetainedRecipe::Prism(p) if p.role == PrismRole::LayerRegion)) {
+                        return false;
                     }
                 }
                 ReceiptEvidence::Affine { .. } => {}

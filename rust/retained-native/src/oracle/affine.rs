@@ -301,21 +301,24 @@ fn nonrigid(m:&Frame) -> bool {
 }
 fn final_items(d:&mut EntityDecoder<'_>,id:u32) -> Option<Vec<(u32,Frame,Frame,bool)>> {
     let p=d.decode_by_id(id).ok()?;
-    let mut reps=Vec::new();
-    if p.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
+    let (reps,world)=if p.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
+        let mut reps=Vec::new();
         for id in p.ref_list_at(slot::IfcTypeProduct::REPRESENTATION_MAPS)? {
             let map=d.decode_by_id(id).ok()?;
-            reps.push((map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?,IDENTITY));
+            reps.push(d.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?);
         }
+        (reps,IDENTITY)
     } else {
         let world=placement(d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
-        let ids=d.decode_by_id(p.ref_at(slot::IfcProduct::REPRESENTATION)?).ok()?.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS)?;
-        reps.extend(ids.into_iter().map(|id|(id,world)));
-    }
+        let shape=ifc_lite_geometry::representation::product_shape(&p,d).ok()??;
+        (shape.representations().to_vec(),world)
+    };
     let mut stack=Vec::new();
-    for (id,world) in reps {let rep=d.decode_by_id(id).ok()?;if rep.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER)==Some("Body") {
+    // Use the retained selector's predicate: RepresentationType selects body
+    // geometry even without an identifier, and direct geometry suppresses maps.
+    for rep in ifc_lite_geometry::representation::meshed_representations(&p,&reps) {
         for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS)?.into_iter().rev() {stack.push((id,world,IDENTITY,0,false));}
-    }}
+    }
     let mut result=Vec::new();let mut work=0;
     while let Some((id,world,mapping_matrix,depth,affine))=stack.pop() {
         work+=1;if work>8192||depth>128 {return None}

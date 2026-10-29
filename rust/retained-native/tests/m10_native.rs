@@ -278,3 +278,19 @@ fn m10_signed_volume_classification_includes_mirrored_orphan_type_maps() {
     let source=ifc_lite_core::SourceBundle::new(fixtures::SOURCE.as_bytes().to_vec());
     assert!(!affine::AffineOracle::new(&source).is_affine_final(20));
 }
+
+#[test]
+fn m10_affine_classification_uses_retained_selection_without_identifier() {
+    // #7955 / PR #8319: optional labels must not disable the mandatory gate.
+    for identifier in ["$", "''", "'Model'"] {
+        let text=SOURCE.replace("#40=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation'",
+            &format!("#40=IFCSHAPEREPRESENTATION(#4,{identifier},'MappedRepresentation'"));
+        assert_ne!(text,SOURCE);
+        let source=ifc_lite_core::SourceBundle::new(text.into_bytes());
+        let mut oracle=affine::AffineOracle::new(&source);
+        assert!(oracle.is_affine_final(42),"identifier {identifier}");
+        let e=oracle.expected(42).unwrap();
+        assert_eq!(e.len(),1);
+        assert!((e[0].volume-0.56).abs()<1e-12);
+    }
+}

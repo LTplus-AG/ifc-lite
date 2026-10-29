@@ -98,9 +98,18 @@ mod tests {
             "../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc").to_vec());
         assert_winding_gate(&source,242,true);
     }
+    // #7955 / PR #8319: selected mapped geometry need not have a Body identifier.
+    #[test]
+    fn omitted_identifier_affine_product_still_gates_signed_volume() {
+        let original=include_str!("../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
+        let text=original.replace("#40=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation'",
+            "#40=IFCSHAPEREPRESENTATION(#4,$,'MappedRepresentation'");
+        assert_ne!(text,original,"h2 representation must be changed");
+        let source=ifc_lite_core::SourceBundle::new(text.into_bytes());
+        assert_winding_gate(&source,42,false);
+    }
     fn assert_winding_gate(source:&std::sync::Arc<ifc_lite_core::SourceBundle>,id:u32,with_cuts:bool) {
         let mut oracle=affine::AffineOracle::new(source);
-        assert!(oracle.is_affine_final(id));
         let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
             assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
             eprintln!("SKIP M10 affine winding reporter: real SDK missing");return;
@@ -111,13 +120,16 @@ mod tests {
         let ProductOutcome::Published(mut shape)=shapes.remove(0) else {panic!("expected mirrored Boolean publication")};
         assert_eq!(shape.cuts>0,with_cuts);
         let mut report=Report {rows:vec!["test\t[]".into()],..Default::default()};
-        record(&mut report,&mut oracle,&shape,&Value::Null);
+        let tolerances:Value=serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/cli-retained/tolerances.d/m10.json")).unwrap();
+        record(&mut report,&mut oracle,&shape,&tolerances);
         assert!(report.violations.is_empty());
         let results:Vec<Value>=serde_json::from_str(report.rows[0].split('\t').next_back().unwrap()).unwrap();
+        let results:Vec<_>=results.iter().filter(|r|r["family"]=="affineSignedVolume").collect();
         assert_eq!(results.len(),shape.parts.len());
         assert!(results.iter().all(|r|r["family"]=="affineSignedVolume"&&r["gated"]==true&&r["pass"]==true));
         for t in shape.parts[0].indices.chunks_exact_mut(3) {t.swap(1,2);}
-        record(&mut report,&mut oracle,&shape,&Value::Null);
+        record(&mut report,&mut oracle,&shape,&tolerances);
         assert!(report.violations.iter().any(|v|v.contains("signed-volume invariant")));
     }
 }

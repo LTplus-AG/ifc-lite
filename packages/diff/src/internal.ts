@@ -32,7 +32,24 @@ export function buildFingerprintBatch(inputs: readonly DataFingerprintInput[]): 
       typeAssignments: slots(dto.typeAssignments ?? [], value => value),
     };
   });
-  return unpackDocument(Model.buildFingerprintBatch(packDocument(projected))) as {
+  const decode = (rows: typeof projected) => unpackDocument(Model.buildFingerprintBatch(packDocument(rows))) as {
     dataHash: string; components: Record<ComponentKey, string>;
   }[];
+  // Snapshot every adapter before entering native computation. Bounded dense
+  // chunks keep the transport dictionary and native input graph out of the
+  // full-model allocation/GC regime (#8042), without retaining a hidden cache.
+  // Sparse inputs keep whole-document validation and host length-check order.
+  const sparse = projected.findIndex(row => row === undefined
+    || row.propertySets.holes > 0 || row.quantitySets.holes > 0 || row.typeAssignments.holes > 0
+    || row.propertySets.present.some(set => set.members.holes > 0)
+    || row.quantitySets.present.some(set => set.members.holes > 0)) !== -1;
+  if (projected.length <= 512 || sparse) return decode(projected);
+  const results: ReturnType<typeof decode> = [];
+  for (let start = 0; start < projected.length; start += 512) {
+    results.push(...decode(projected.slice(start, start + 512)));
+  }
+  return results;
 }
+
+export { prepareDiffModel } from './prepared-model.js';
+export type { PreparedDiffModel } from './prepared-model.js';

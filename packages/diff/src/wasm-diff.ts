@@ -20,25 +20,35 @@ export function compareWithWasm<TRef = unknown>(base: Iterable<EntityFingerprint
   try {
     const headModel = create(headRows);
     try {
-      const raw = unpackDocument(baseModel.comparePacked(headModel, {
-        scope: options.scope,
-        moveTolerance: options.moveTolerance,
-        reshapeTolerance: options.reshapeTolerance,
-        maxMoveDistance: options.maxMoveDistance,
-        matchUnpairedByContent: options.matchUnpairedByContent,
-        detectSplitMerge: options.detectSplitMerge,
-        detectSuccessors: options.detectSuccessors,
-        splitVolumeTolerance: options.splitVolumeTolerance,
-        splitPaddingMin: options.splitPaddingMin,
-        splitPaddingRatio: options.splitPaddingRatio,
-        maxSplitPieces: options.maxSplitPieces,
-        successorOverlap: options.successorOverlap,
-        successorDistance: options.successorDistance,
-        classFamilies: options.classFamilies,
-        ...(options.excludeTypes === undefined ? {} : { excludeTypes: [...options.excludeTypes] }),
-        ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
-      })) as IndexedDiff;
-      return restoreDiffReferences(raw, baseRows, headRows);
+      return compareWasmModels(baseModel, headModel, baseRows, headRows, options);
     } finally { headModel.free(); }
   } finally { baseModel.free(); }
+}
+
+/** Shared comparison path for transient public calls and explicit internal owners. */
+export function compareWasmModels<TRef>(
+  baseModel: InstanceType<ReturnType<typeof diffModelConstructor>>,
+  headModel: InstanceType<ReturnType<typeof diffModelConstructor>>,
+  baseRows: readonly EntityFingerprint<TRef>[], headRows: readonly EntityFingerprint<TRef>[],
+  options: DiffOptions,
+): ModelDiff<TRef> {
+  const raw = unpackDocument(baseModel.comparePacked(headModel, {
+    scope: options.scope,
+    moveTolerance: options.moveTolerance,
+    reshapeTolerance: options.reshapeTolerance,
+    maxMoveDistance: options.maxMoveDistance,
+    matchUnpairedByContent: options.matchUnpairedByContent,
+    detectSplitMerge: options.detectSplitMerge,
+    detectSuccessors: options.detectSuccessors,
+    splitVolumeTolerance: options.splitVolumeTolerance,
+    splitPaddingMin: options.splitPaddingMin,
+    splitPaddingRatio: options.splitPaddingRatio,
+    maxSplitPieces: options.maxSplitPieces,
+    successorOverlap: options.successorOverlap,
+    successorDistance: options.successorDistance,
+    classFamilies: options.classFamilies,
+    ...(options.excludeTypes === undefined ? {} : { excludeTypes: [...options.excludeTypes] }),
+    ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
+  })) as IndexedDiff;
+  return restoreDiffReferences(raw, baseRows, headRows);
 }

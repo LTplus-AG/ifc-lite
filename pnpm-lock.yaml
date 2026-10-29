@@ -808,6 +808,15 @@ importers:
 
   examples/headless-workflows:
     dependencies:
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../../packages/flow
+      '@ifc-lite/flow-nodes':
+        specifier: workspace:^
+        version: link:../../packages/flow-nodes
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry

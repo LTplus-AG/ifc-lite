@@ -82,6 +82,7 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint', MessageSquare, true),
   rightCommand('panel:ids', 'validation', 'ids validation information delivery specification check', ClipboardCheck, true),
   rightCommand('panel:idsStudio', 'idsStudio', 'ids studio author edit write information delivery specification requirements facets', ClipboardPen),
+  rightCommand('panel:influx', 'influx', 'influxdb time series iot sensor telemetry monitoring digital twin experimental', BarChart3),
   rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep', Crosshair, true),
   rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows, true),
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),

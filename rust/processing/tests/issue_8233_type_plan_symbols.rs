@@ -96,6 +96,7 @@ fn own_plan_representation_wins_over_the_type() {
 ///   is drawn through the #8233 fallback;
 /// - `wrapped`: the occurrence's own Plan representation, in the same context,
 ///   holds an `IfcMappedItem` of that map with an identity target.
+///
 /// Both must give the same points.
 #[test]
 fn type_symbol_matches_the_same_map_wrapped_in_the_occurrence() {

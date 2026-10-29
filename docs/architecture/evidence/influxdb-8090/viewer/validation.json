@@ -1,6 +1,6 @@
 {
-  "status": "INCOMPLETE: clean-checkpoint control-byte regression and typecheck qualification pending",
-  "implementationCommit": "cbe33a7db52e9b35b8122978db263307b5bdb5a5",
+  "status": "INCOMPLETE: final clean-checkpoint Pop typecheck was refused before execution by disk admission",
+  "implementationCommit": "62298066a310bfdb8f8f733debe072e27b9bea35",
   "checks": {
     "panel": {
       "command": "TEST_PATTERN=components/viewer/influx/InfluxPanel.test.tsx pnpm test --filter=@ifc-lite/viewer --filter=@ifc-lite/flow-nodes --filter=ifc-lite-headless-workflows --concurrency=1",
@@ -18,7 +18,7 @@
       "passed": 273,
       "influxPassed": 9,
       "receipt": "/home/louistrue/build-workers/worker-state/jobs/516461d7-881f-4155-8708-c49d6c9cfd45/receipt.json",
-      "note": "Before the final equivalent control-byte refactor; its new tenth Influx regression was refused before execution."
+      "note": "Full suite passed before the equivalent control-byte refactor; the clean-checkpoint focused Influx run below covers its new regression."
     },
     "headless": {
       "passed": 8,
@@ -51,7 +51,34 @@
       "nodeHeapMiB": 8192,
       "turboConcurrency": 1,
       "qualificationPassed": false,
-      "note": "Compiler and tail passed; full-tree profile qualifier observed review commits and witness outputs arriving while queued. Clean-checkpoint qualification remains pending."
+      "note": "Earlier compiler, tail, and 4335-file audit passed with the Pop heap profile; its source qualifier observed review commits arriving while queued. Final clean-checkpoint qualification was refused before execution. No diagnostics were produced by the refused run.",
+      "finalCleanAttempt": {
+        "sourceCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/b6baf68d-4c98-4186-b975-e268918ba5cf/receipt.json",
+        "launcherExitCode": 1,
+        "processExitCode": null,
+        "state": "refused_before_execution",
+        "reason": "Disk admission: 564.6 GiB free; 588.0 GiB required (reserve plus scratch).",
+        "resubmitted": false
+      },
+      "observedNodeHeapsMiB": [
+        8192
+      ],
+      "measurementErrors": []
+    },
+    "focusedInflux": {
+      "command": "pnpm test --filter=@ifc-lite/flow-nodes --concurrency=1 -- src/influx.test.ts",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/0337bfe7-52dc-4928-9e8e-a6786ed3f861/receipt.json",
+      "sourceCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "sourceUnchanged": true,
+      "selectedFiles": 1,
+      "passed": 10,
+      "skipped": 0,
+      "fixtureSpellingNote": "62298066a3 changes only the spelling of the same U+0001 fixture to String.fromCharCode(1). Production sources are unchanged from the tested checkpoint.",
+      "dependencyBuildSkips": [
+        "IFCX hello-wall verification: four optional fixture files absent; pnpm fixtures required. This does not skip any selected Influx test."
+      ]
     }
   },
   "witness": {
@@ -102,7 +129,8 @@
     "36f1f7a9639c526fec1c49d5b85261bf0464f16b fix(viewer): use native accessible Influx chart and status semantics",
     "d401163ff5828ab32e8f99350c68b164b98e189f fix(influx): allow Load with an empty display unit",
     "e10bf6b5cb3a5265ebb009fc8bdaf13df386a0d1 fix(influx): reject decoded token echoes without altering series identity",
-    "cbe33a7db52e9b35b8122978db263307b5bdb5a5 fix(influx): validate control bytes with explicit character codes"
+    "cbe33a7db52e9b35b8122978db263307b5bdb5a5 fix(influx): validate control bytes with explicit character codes",
+    "62298066a3 test(influx): spell control-byte fixture with a character code"
   ],
   "attempts": [
     {
@@ -360,12 +388,34 @@
       "originalRecords": "/home/louistrue/build-workers/worker-state/owned-receives/auto-56fd5ac7d2ec45ab842150cb4334ffaf",
       "records": "{\n  \"exitCode\": 1,\n  \"finishedAt\": 1793265366.8573968,\n  \"projectCommandRetried\": false\n}\n{\n  \"errorType\": \"ValueError\",\n  \"error\": \"Owner failed; inspect original request.\",\n  \"at\": 1793265366.8528829\n}\n",
       "resubmitted": false
+    },
+    {
+      "id": "b6baf68d-4c98-4186-b975-e268918ba5cf",
+      "host": "pop-os",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/b6baf68d-4c98-4186-b975-e268918ba5cf/receipt.json",
+      "state": "failed",
+      "exitCode": 1,
+      "processExitCode": null,
+      "error": "host capacity guard refused admission",
+      "queuedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "finishedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "sourceUnchanged": true
+    },
+    {
+      "id": "0337bfe7-52dc-4928-9e8e-a6786ed3f861",
+      "host": "pc-wsl",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/0337bfe7-52dc-4928-9e8e-a6786ed3f861/receipt.json",
+      "state": "completed",
+      "exitCode": 0,
+      "processExitCode": 0,
+      "error": null,
+      "queuedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "finishedCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+      "sourceUnchanged": true
     }
   ],
   "outstanding": [
-    "Control-byte regression on the clean checkpoint",
-    "Stable-source Pop root typecheck qualification",
-    "Final post-commit pre-handoff"
+    "Final clean-source pnpm typecheck via the qualified Pop heap profile; original attempt was refused before execution."
   ],
   "historicalValidation": {
     "status": "INCOMPLETE: fleet capacity blocks acceptance; no viewer screenshot is claimed",
@@ -492,5 +542,25 @@
       "evidencePublication": "pending: storage job-finish requires owner reconciliation; original receipt preserved",
       "resubmitted": false
     }
+  },
+  "evidenceCheckpointCommit": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+  "preHandoff": {
+    "command": "node scripts/pre-handoff.mjs",
+    "validatedCheckpoint": "9ff353f41afd7a66773dadc404fbd59a971a4dce",
+    "exitCode": 0,
+    "passed": [
+      "source-text-assertions",
+      "test-wiring",
+      "module-size",
+      "ci-path-coverage",
+      "ci-aggregate-coverage",
+      "workflow-report-paths",
+      "agents-md-size",
+      "license-headers",
+      "pr-review-signal lanes",
+      "retained-free viewer",
+      "oracle discovery"
+    ],
+    "skipped": []
   }
 }

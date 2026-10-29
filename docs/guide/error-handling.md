@@ -50,10 +50,18 @@ can only mean the guarded value was left untouched, never half-written. One
 malformed file therefore does not brick a long-lived or multi-tenant `IfcAPI`
 instance.
 
+Prepass and entity-index installation drop the previous file's derived caches
+and style finishes before processing the next file. A streaming callback failure
+cannot leave the previous file's index active. Sharded column-length validation
+still precedes installation; a length refusal leaves the current load intact.
+Source bytes and the pending sharded finish input survive installation because
+callers can supply them beforehand. Cleanup abandons that pending input.
+
 Two practices still apply when reusing an instance across loads:
 
 - Call `clearPrePassCache()` between files. It drops every per-load cache slot
   (including the retained source bytes), and it also recovers poisoned locks.
+  Diagnostics remain readable after cleanup, and user settings persist.
 - Treat a thrown error as failing that call, not the instance. If you want
   belt-and-braces isolation anyway (e.g. per-tenant workers), recreating the
   instance is cheap:

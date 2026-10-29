@@ -103,6 +103,16 @@ api.clearPrePassCache();
 api.free();                           // release the API instance when done
 ```
 
+When reusing an API, every prepass or entity-index installation clears the
+previous content's derived caches and style finishes. Install finishes and
+prepass columns after the index. Source bytes survive index/prepass installation,
+so either source/index order is supported. `setSourceBytes` preserves previously
+installed columns; bytes and index must describe the same file. A staged sharded
+finish stash survives installation until finalize consumes it. Cleanup releases
+source and unfinished stash, preserving diagnostics and user settings. See the
+[content lifetime contract](../../docs/api/wasm.md#content-installation-and-cleanup).
+
+
 ### Auxiliary geometry in the mesh frame
 
 Grid, alignment, and symbolic parsers accept the mesh pre-pass decision through

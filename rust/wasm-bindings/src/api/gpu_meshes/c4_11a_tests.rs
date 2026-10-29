@@ -82,7 +82,7 @@ fn c4_11a_source_after_columns_preserves_inputs_and_settings_7782() {
     api.set_instantiated_type_ids(&[43]);
     api.set_merge_layers(true);
     api.set_skip_small_cuts(true);
-    api.set_tessellation_quality(4);
+    api.set_tessellation_quality(Some("highest".into())).unwrap();
     let snapshot = api.production_model.snapshot(OwnedMeshProductionData::default());
     api.set_source_bytes(PLAIN.as_bytes().to_vec());
     assert!(snapshot.validate_source().is_err());

@@ -16,6 +16,9 @@
  */
 
 import { planThreeWayMerge } from '../dist/index.js';
+import { initDiff } from '@ifc-lite/diff';
+
+await initDiff();
 
 const CLASS = 'bsi::ifc::class';
 const MARKER = 'bsi::ifc::v5a::Pset_Bench::Marker';

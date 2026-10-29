@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import {readFileSync,writeFileSync} from 'node:fs';
-import {createIdentityMapSidecar,serializeIdentityMapSidecar,createLineageSidecar,serializeLineageSidecar,parseIdentityMapSidecar,parseLineageSidecar,validateIdentityMapSidecar,validateLineageSidecar} from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+const {createIdentityMapSidecar,serializeIdentityMapSidecar,createLineageSidecar,serializeLineageSidecar,parseIdentityMapSidecar,parseLineageSidecar,validateIdentityMapSidecar,validateLineageSidecar} = await loadDiffOracle();
 const vectors=[];
 for(const keyProperty of [undefined,'Tag','Pset_Asset.AssetId']) for(const created of [undefined,'2026-10-23T06:00:00.000Z']) {
  const common={base:{hash:'sha256:old',path:'old/𐀀.ifc'},head:{hash:'sha256:new',path:'new/.ifc'},

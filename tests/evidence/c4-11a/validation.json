@@ -12,7 +12,7 @@
     "reset": "Retain begin_content_install/clear_content_derived; use shared discard for setSourceBytes mapped-item invalidation. Source setter retains entity index and injected columns.",
     "parentTests": "Keep all seven C4-10a tests from main, including mapped-item clearing; batch.rs is identical to main.",
     "contracts": "Keep extracted wasm-pipeline-diagnostics-contracts from main. Register C4-11a through wasm-early-contracts; test-wasm-contract.mjs remains exactly 2095 lines, budget unchanged.",
-    "ratchets": "Measured reductions retained: prepass.rs 583, api/mod.rs 949, pre_pass_streaming_impl 501. Digest 1392626513646517728 confirmed by the passing full workspace native ratchets.",
+    "ratchets": "Measured reductions retained: prepass.rs 583, api/mod.rs 949, pre_pass_streaming_impl 501. Digest 1392626513646517728 (rust/wasm-bindings, pre-#8317 head c8256598) was confirmed by the passing full workspace native ratchets; after merging main with the C4-10b router (#8317) the pinned digest is 5835089484191047630, recomputed from the merged allowlist with the ratchet's FNV-1a rule (verified to reproduce main's pin).",
     "perf": "Keep all sections from both sides; no end-to-end performance claim.",
     "latestMain": "Additional clean merge of main 2986934240 after the C4-10a squash merge 0ace993cc3."
   },

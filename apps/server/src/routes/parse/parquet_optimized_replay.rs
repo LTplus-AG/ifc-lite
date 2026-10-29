@@ -221,7 +221,7 @@ pub(super) async fn replay_optimized_by_client_hash(
     if !is_file_digest(sha256) {
         return Err(not_a_file_digest(sha256));
     }
-    let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
+    let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality, query.layer_slicing);
 
     let stored = if has_optimized_metadata(&state.cache, &cache_key).await?
         && has_cached_symbolic(&state.cache, &cache_key).await?

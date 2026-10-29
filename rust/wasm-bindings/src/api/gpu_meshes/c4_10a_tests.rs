@@ -192,7 +192,8 @@ fn c4_10a_finish_join_refusals_stay_with_their_element_8316() {
     let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc")
         // A has both a refused item and a good unstyled item, so production
         // succeeds and the installed finish join walks A's shape again.
-        .replace("(#101));", "(#101,#301));");
+        .replace("#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));",
+            "#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102,#302));");
     let api = IfcAPI::new();
     let mut pre = api.build_prepass_once_data(source.as_bytes());
     // An unrelated finish enables the join without styling either good item.
@@ -208,7 +209,7 @@ fn c4_10a_finish_join_refusals_stay_with_their_element_8316() {
     let outputs = run(&api, source.as_bytes(), &pre, &jobs);
     assert_eq!(outputs.iter().map(|o| o.id).collect::<Vec<_>>(), [100, 300]);
     for output in outputs {
-        assert!(!output.meshes.is_empty(), "both producers must succeed");
+        assert!(!output.meshes.is_empty(), "element {} must retain its good representation", output.id);
         assert_eq!(output.finishes.len(), output.meshes.len(), "finish join ran");
         assert!(output.finishes.iter().all(Option::is_none));
     }

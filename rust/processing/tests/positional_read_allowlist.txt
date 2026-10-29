@@ -118,7 +118,6 @@
 10 rust/processing/src/symbolic/fill.rs
 5 rust/processing/src/symbolic/grid.rs
 12 rust/processing/src/symbolic/items.rs
-4 rust/processing/src/symbolic/mod.rs
 5 rust/processing/src/symbolic/text.rs
 1 rust/processing/src/symbolic/transform.rs
 4 rust/processing/src/symbolic/trimmed_curve.rs

@@ -69,7 +69,7 @@ measuring. Source volume and bbox checks still measure full-f64 retained geometr
 at the unchanged preregistered tolerances. Refusal rows retain kernel status,
 origin site/entity/cause, and the original error message.
 
-Committed expectations: `issue_1985_scaled_kinds` #74 is `incomplete`; #81, #88,
+Committed expectations: `issue_1985_scaled_kinds` #74 publishes through M10 affine-final baking; #81, #88,
 #109 are `operation_unsupported`; #99 publishes. For `issue_098_wall_W`, only wall
 #928204 is `opening_unsupported`; its seven windows publish and its seven opening
 elements are `operation_unsupported`.
@@ -101,3 +101,11 @@ deviations, and retained-vs-exact volume/area/bbox deviations. Without a source
 oracle, or when retained fails it, the exact gate applies unchanged. Source
 volume, source bbox, closure and nonfinite checks still fail independently.
 This documented deviation changes no tolerance and adds no per-product allowlist.
+
+M10 publishes affine finals by transforming the existing input mesh's linear
+coordinates and preserving translation in its rigid frame. Reflections reverse
+triangle winding. Curved lineages must meet the preregistered chord bound or
+refuse `incomplete`; the comparison reports `affine_kappa` without claiming that
+nonuniform scale preserves the facet-angle bound. Source centroids and signed
+volumes supplement the existing absolute-volume checks. The mapped oblique-clip
+fixture remains a qualification dependency on M5.

@@ -69,5 +69,5 @@
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
    165 rust/processing/src/simplify_session.rs simplify_element
    296 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
-   272 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
-   503 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl
+   274 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
+   504 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl

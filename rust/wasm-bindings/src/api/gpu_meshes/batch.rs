@@ -39,7 +39,7 @@ impl IfcAPI {
             jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba,
         };
         self.batch_flat(super::batch_wire::BatchSource::Borrowed(data), wire)
-}
+    }
 
     /// Like [`IfcAPI::process_geometry_batch`] but collates the batch's meshes
     /// into a GPU-instancing shard (IFNS wire format) instead of a flat
@@ -76,7 +76,7 @@ impl IfcAPI {
             jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba,
         };
         self.batch_instanced(super::batch_wire::BatchSource::Borrowed(data), wire)
-}
+    }
 
     /// Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
     /// ordinary occurrences (colour alpha >= 0.99 AND geometry_class == 0) are
@@ -117,7 +117,7 @@ impl IfcAPI {
             jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba,
         };
         self.batch_partitioned(super::batch_wire::BatchSource::Borrowed(data), wire)
-}
+    }
 }
 
 #[cfg(test)]

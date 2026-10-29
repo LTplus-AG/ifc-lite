@@ -148,8 +148,8 @@ fn job_router(ctx: &PassContext<'_>) -> GeometryRouter {
             rtc_offset: ctx.rtc_offset,
             ..RouterConfig::default()
         },
-        crate::execution::ExecutionPolicy::PerJob,
-        &crate::execution::RouterCaches {
+        crate::execution::SchedulerPolicy::PerJob,
+        crate::execution::RouterCaches {
             items: ctx.item_dedup_cache.clone(),
             brep_signatures: ctx.brep_signature_cache.clone(),
             mapped_items: ctx.mapped_item_cache.clone(),
@@ -191,7 +191,7 @@ fn mesh_job(
     };
 
     let span = crate::execution::JobSpan { id: job.id, start: job.start, end: job.end };
-    let entity = match crate::execution::decode_job(&mut decoder, span, crate::execution::ExecutionPolicy::PerJob) {
+    let entity = match crate::execution::decode_job(&mut decoder, span, crate::execution::SchedulerPolicy::PerJob) {
         Ok(entity) => entity,
         Err(_) => {
             ctx.diag.note_refused_input(&decoder);

@@ -39,13 +39,15 @@ impl IfcAPI {
         let Ok(entity) = ifc_lite_processing::execution::decode_job(
             &mut setup.decoder,
             span,
-            ifc_lite_processing::execution::ExecutionPolicy::PerBatch,
+            ifc_lite_processing::execution::SchedulerPolicy::PerBatch,
         ) else {
-            let _ = setup.decoder.refuse_record(id);
-            self.collect_pipeline_refusals(&setup.decoder);
-            self.note_refused_input();
+            self.record_input_refusals(&setup.decoder, false);
             return;
         };
+        // Not every dropped keyword reaches production: the four arms with
+        // `has_geometry: false` are refused by `has_geometry_by_name` in all
+        // three element producers. #3187 traces the type-geometry gate that
+        // would make THREE of the four eligible -- eligible, not certain.
         let ifc_type = ifc_lite_processing::execution::job_type(&entity, content, span, None);
 
         // The wire's slot 6 is RepresentationMaps on type products and
@@ -104,8 +106,8 @@ impl IfcAPI {
             &mut setup.decoder,
             &setup.router,
         );
-        self.record_input_refusals(&setup.decoder, setup.router.length_unit_refused());
         let Ok(produced) = produced else {
+            self.record_input_refusals(&setup.decoder, setup.router.length_unit_refused());
             state.refused += 1;
             return;
         };
@@ -131,5 +133,8 @@ impl IfcAPI {
             geometry_volume: produced.geometry_volume,
             geometry_closure_bits: produced.geometry_closure.map_or(0, |c| c.bits()),
         });
+        // Finish resolution can re-decode refused items too. Drain the whole
+        // element scope only after the join, before the next job starts.
+        self.record_input_refusals(&setup.decoder, setup.router.length_unit_refused());
     }
 }

@@ -108,7 +108,13 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                     // follow the report-only curved policy, even with flat inputs.
                     (mesh.positions, mesh.indices, mesh.faces, true)
                 }
-                ReceiptEvidence::Affine { .. } => return Err(incomplete()),
+                ReceiptEvidence::Affine { .. } => {
+                    let (part, sources) = super::affine_final::bake(&self.ledger, realization,
+                        value.object_frame(), &self.resources, &mut storage)?;
+                    parts.push(part);
+                    face_sources.push(sources);
+                    continue;
+                }
             };
             if indices.is_empty() {
                 return Err(incomplete());
@@ -162,7 +168,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         Ok(product)
     }
 }
-fn curved_recipe(recipe: &RetainedRecipe) -> bool {
+pub(super) fn curved_recipe(recipe: &RetainedRecipe) -> bool {
     match recipe {
         RetainedRecipe::Extrusion(value) => value.source.profile.as_ref().is_none_or(|profile| {
             profile

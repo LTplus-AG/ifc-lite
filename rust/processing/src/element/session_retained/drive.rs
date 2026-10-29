@@ -17,9 +17,17 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
             Some(worker) => worker,
             slot @ None => slot.insert(acquire()?),
         };
-        let issued = execution
-            .issue_next(decoder, router, worker)?
-            .ok_or_else(|| protocol(ReceiptFailure::MissingAdmission))?;
+        let issued = match execution.issue_next(decoder, router, worker) {
+            Ok(Some(issued)) => issued,
+            Ok(None) => return Err(protocol(ReceiptFailure::MissingAdmission)),
+            Err(error) => {
+                // A post-issuance refusal cancels an installed packet through the
+                // controller; record its provenance so the replacement is uncharged.
+                observation.cancellation =
+                    execution.pending.as_ref().map(|pending| pending.cancellation.clone());
+                return Err(error);
+            }
+        };
         observation.cancellation = Some(issued.cancellation.clone());
         let is_cut = execution.prepared.is_none() && matches!(execution.openings, Some(OpeningPhase::Cuts));
         if is_cut {

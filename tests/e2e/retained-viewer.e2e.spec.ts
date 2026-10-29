@@ -106,6 +106,8 @@ function readFrame(page: Page, palette: Record<string, number[]>): Promise<Frame
       if (Math.max(Math.abs(data[i] - data[0]), Math.abs(data[i + 1] - data[1]), Math.abs(data[i + 2] - data[2])) <= 8) continue;
       object++;
       for (let c = 0; c < 3; c++) mean[c] += data[i + c] / 255;
+      // Near-black pixels have no reliable hue; retain them in the object denominator.
+      if (Math.max(data[i], data[i + 1], data[i + 2]) < 16) continue;
       // Shading scales a colour, it does not turn it: the nearest palette direction is the product's hue.
       const p = unit([data[i], data[i + 1], data[i + 2]]);
       let best = candidates[0], bestDot = -1;

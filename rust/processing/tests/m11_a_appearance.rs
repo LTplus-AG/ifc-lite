@@ -1,41 +1,22 @@
 // SPDX-License-Identifier: MPL-2.0
 #![cfg(feature = "retained-runtime")]
 //! #7955 M11-A, SMLib-free: the plan and its bindings come from real source walks and the maps from the real
-//! prepass; no kernel, no mesh. Every expected colour is authored in the source text below, never read back
-//! from the resolver under test.
+//! prepass; retained resolution needs no kernel or mesh. The exact comparisons mesh with pure Rust.
+//! Every expected colour is authored in the source below, never read back from the resolver under test.
 use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType, SourceBundle};
 use ifc_lite_geometry::program::transactions::{Plan, Program, Traversal};
 use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::element::retained_runtime::{resolve_appearances, PartAppearance};
 use ifc_lite_processing::element::OwnedMeshProductionData;
 use ifc_lite_processing::prepass::{resolve_prepass, PrepassSpans};
+use ifc_lite_processing::{process, ProcessingRequest};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-const HEAD: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
-#1=IFCPROJECT('p',$,$,$,$,$,$,(#2),#3);
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#5,$);
-#3=IFCUNITASSIGNMENT((#6));#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#7=IFCLOCALPLACEMENT($,#5);#8=IFCDIRECTION((0.,0.,1.));
-#9=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,4.);
-#10=IFCEXTRUDEDAREASOLID(#9,#5,#8,3.);#11=IFCEXTRUDEDAREASOLID(#9,#5,#8,1.);
-";
-const WALL: &str = "#14=IFCWALL('w',$,'Wall',$,$,#7,#13,$,$);";
-const MATERIAL: &str = "#15=IFCMATERIAL('Mat');#16=IFCRELASSOCIATESMATERIAL('r',$,$,$,(#14),#15);\
-    #30=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#31),#15);#31=IFCSTYLEDREPRESENTATION(#2,'S','Material',(#32));\
-    #32=IFCSTYLEDITEM($,(#33),$);";
-const WALL_GREY: [f32; 4] = [0.85, 0.85, 0.85, 1.];
+#[path = "common/m11_a_source.rs"]
+mod fixture;
+use fixture::{precedence_source, source, style, WALL, WALL_GREY};
 
-/// One RGB surface style `#id` (its colour is `#id+1`, its rendering `#id+2`) with the given transparency.
-fn style(id: u32, rgb: [f64; 3], transparency: f64) -> String {
-    format!("#{c}=IFCCOLOURRGB($,{:?},{:?},{:?});#{r}=IFCSURFACESTYLERENDERING(#{c},{transparency:?},$,$,$,$,$,$,.NOTDEFINED.);\
-        #{id}=IFCSURFACESTYLE($,.BOTH.,(#{r}));", rgb[0], rgb[1], rgb[2], c = id + 1, r = id + 2)
-}
-/// A source whose body representation #12 holds `items`; `rest` adds the product and its styling.
-fn source(items: &str, rest: &str) -> Arc<SourceBundle> {
-    SourceBundle::new(format!("{HEAD}#12=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',({items}));\
-        #13=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));{rest}ENDSEC;END-ISO-10303-21;").into_bytes())
-}
 /// The maps the retained model run builds from the same source (`session_retained::model::run_model`).
 fn maps(source: &Arc<SourceBundle>) -> OwnedMeshProductionData {
     let mut decoder = source.decoder();
@@ -79,6 +60,22 @@ fn type_plan(source: &Arc<SourceBundle>, map: u32, type_id: u32, class: u8, colo
 fn appearances(source: &Arc<SourceBundle>, plan: &Plan, id: u32, ifc_type: IfcType, fallback: [f32; 4]) -> Vec<PartAppearance> {
     resolve_appearances(source, maps(source), id, &ifc_type, plan, fallback).unwrap()
 }
+// #7955 / #8285: run the public exact pipeline beside retained resolution.
+// Compare identities too, so an absent mesh or a colour on the wrong item cannot pass.
+fn exact_matches(source: &Arc<SourceBundle>, id: u32, parts: &[PartAppearance]) {
+    let exact = process(source.bytes(), &ProcessingRequest::full_pass(), &mut ());
+    let retained: BTreeMap<_, Vec<_>> = parts.iter().fold(BTreeMap::new(), |mut by_key, part| {
+        by_key.entry((id, part.geometry_item_id)).or_default().push(part.rgba.map(f32::to_bits));
+        by_key
+    });
+    let meshed: BTreeMap<_, Vec<_>> = exact.meshes.iter().fold(BTreeMap::new(), |mut by_key, mesh| {
+        assert!(!mesh.indices.is_empty(), "exact must produce real triangles");
+        by_key.entry((mesh.express_id, mesh.geometry_item_id)).or_default().push(mesh.color.map(f32::to_bits));
+        by_key
+    });
+    assert!(!meshed.is_empty(), "the exact witness must not pass vacuously");
+    assert_eq!(meshed, retained, "exact and retained RGBA bits per (product, geometry item)");
+}
 fn near(actual: [f32; 4], expected: [f32; 4]) {
     assert!(actual.iter().zip(expected).all(|(a, e)| (a - e).abs() < 1e-6), "{actual:?} != {expected:?}");
 }
@@ -87,20 +84,20 @@ fn near(actual: [f32; 4], expected: [f32; 4]) {
 fn m11_a_direct_item_style_wins_over_a_material_colour() {
     // A direct style on the item: RGB (.2,.4,.6), transparency .3 => alpha .7. A material also colours the
     // wall, and the direct style must win (#913 precedence).
-    let rest = format!("{WALL}{MATERIAL}{}#25=IFCSTYLEDITEM(#10,(#20),$);{}",
-        style(33, [0.9, 0.8, 0.1], 0.), style(20, [0.2, 0.4, 0.6], 0.3));
-    let source = source("#10", &rest);
+    let source = precedence_source(true);
     let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWall, WALL_GREY);
     assert_eq!(parts.len(), 1);
     near(parts[0].rgba, [0.2, 0.4, 0.6, 0.7]);
+    exact_matches(&source, 14, &parts);
     assert_eq!((parts[0].geometry_item_id, parts[0].style_id, parts[0].geometry_class), (Some(10), Some(10), 0));
 }
 
 #[test]
 fn m11_a_material_colour_then_the_element_colour_when_nothing_styles_the_item() {
-    let source = source("#10", &format!("{WALL}{MATERIAL}{}", style(33, [0.9, 0.8, 0.1], 0.)));
+    let source = precedence_source(false);
     let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWall, WALL_GREY);
     near(parts[0].rgba, [0.9, 0.8, 0.1, 1.]);
+    exact_matches(&source, 14, &parts);
     assert_eq!(parts[0].style_id, None, "the colour did not come from a styled item");
     let bare = self::source("#10", WALL);
     let parts = appearances(&bare, &product_plan(&bare, 14, false), 14, IfcType::IfcWall, WALL_GREY);
@@ -277,4 +274,20 @@ fn m11_a_a_nested_map_keeps_the_leaf_of_every_level() {
     near(parts[0].rgba, [0.25, 0.75, 0.25, 1.]);
     near(parts[1].rgba, [0.75, 0.75, 0.25, 1.]);
     assert_eq!((parts[0].geometry_item_id, parts[1].geometry_item_id), (Some(10), Some(11)));
+}
+
+#[test]
+fn m11_a_7955_unbound_parts_keep_style_before_material_before_default() {
+    // Bound submeshes re-resolve their item colour and can mask a changed element-colour helper.
+    // Plain frame parts must use the same precedence as exact's cached job resolver (#8285).
+    for direct in [true, false] {
+        let source = precedence_source(direct);
+        let parts = appearances(&source, &product_plan(&source, 14, true), 14, IfcType::IfcWall, WALL_GREY);
+        assert!(!parts.is_empty());
+        let expected: [f32; 4] = if direct { [0.2, 0.4, 0.6, 0.7] } else { [0.9, 0.8, 0.1, 1.] };
+        for part in parts {
+            assert_eq!(part.geometry_item_id, None, "this witness must reach the unbound colour arm");
+            assert_eq!(part.rgba.map(f32::to_bits), expected.map(f32::to_bits), "direct={direct}");
+        }
+    }
 }

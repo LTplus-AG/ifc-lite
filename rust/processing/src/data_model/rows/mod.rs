@@ -216,7 +216,7 @@ fn stream_rows(
                 };
                 let rep_map_ids = crate::discovery::record_refs_at(
                     &content[start..end],
-                    slot::IfcTypeProduct::REPRESENTATION_MAPS,
+                    slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
                 );
                 if rep_map_ids.is_empty() {
                     continue;

@@ -17,6 +17,7 @@ if cache.is_dir():
             dest.symlink_to(source.resolve())
 PYFIX
 node scripts/fixtures/fetch-fixtures.mjs
+export IFC_LITE_REQUIRE_FIXTURES=1
 if [[ "$phase" == native || "$phase" == proof ]]; then
   if [[ "$phase" == native ]]; then
   cargo clippy --workspace --all-targets -- -D warnings

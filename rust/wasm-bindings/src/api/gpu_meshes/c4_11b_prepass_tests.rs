@@ -151,13 +151,9 @@ mod allocations {
             "list-type-map",
             include_bytes!("../../../../processing/tests/fixtures/c4_type_geometry_modes_7782.ifc"),
         );
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for name in ["AC20-FZK-Haus.ifc", "duplex.ifc"] {
-            let path = root.join("tests/models/ara3d").join(name);
-            if path.exists() {
-                compare(name, &std::fs::read(path).unwrap());
-            } else {
-                eprintln!("SKIP {name}: run pnpm fixtures");
+            if let Some(bytes) = ifc_lite_testkit::fixture_bytes(&format!("ara3d/{name}")) {
+                compare(name, &bytes);
             }
         }
     }

@@ -12,7 +12,9 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
     const json = new TextDecoder().decode(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
     const payload: unknown = JSON.parse(json);
     return payload && typeof payload === 'object' ? payload as Record<string, unknown> : null;
-  } catch {
+  } catch (error) {
+    // Opaque (non-JWT) tokens are valid input; report why no claims were read.
+    console.debug('[source-bimcollab] access token is not a decodable JWT', error instanceof Error ? error.name : error);
     return null;
   }
 }
@@ -41,7 +43,8 @@ export function isBimcollabServerUrl(serverUrl: string): boolean {
   try {
     const host = new URL(serverUrl).hostname.toLowerCase();
     return host === 'bimcollab.com' || host.endsWith('.bimcollab.com');
-  } catch {
+  } catch (error) {
+    console.debug('[source-bimcollab] not a URL', error instanceof Error ? error.name : error);
     return false;
   }
 }
@@ -53,7 +56,8 @@ export function spaceLabelFromServerUrl(serverUrl: string): string {
     const url = new URL(serverUrl);
     if (url.protocol !== 'https:' || url.username || url.password) return '';
     return /^([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\.bimcollab\.com$/i.exec(url.hostname)?.[1]?.toLowerCase() ?? '';
-  } catch {
+  } catch (error) {
+    console.debug('[source-bimcollab] not a URL', error instanceof Error ? error.name : error);
     return '';
   }
 }

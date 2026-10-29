@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
   /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */
   readonly VITE_CLOUD_HOSTED?: string;
+  /** 'true' registers the BIMcollab Documents source (needs the /api/bimcollab relay). */
+  readonly VITE_SOURCE_BIMCOLLAB?: string;
   readonly VITE_AUTODESK_CLIENT_ID?: string;
   readonly VITE_AUTODESK_HOSTED?: string;
   /** Server URL for IFC processing (also used by superset integration) */

@@ -10,7 +10,9 @@ export const BIMCOLLAB_MANIFEST: PluginManifest = {
   permissions: {
     network: ['api.eu.bimcollab.com', '*.bimcollab.com'],
     publicNetwork: ['*.blob.core.windows.net'],
-    relay: { upstream: 'https://api.eu.bimcollab.com', path: '/api/bimcollab' },
+    // No `relay` declaration: the host's relay rewrite maps one upstream prefix to
+    // one path, but /api/bimcollab has two route families. The host injects a
+    // same-origin fetch bound to /api/bimcollab instead (see README).
   },
   capabilities: {
     sourceNamePatterns: ['*.ifc', '*.ifczip', '*.ifcxml', '*.ifcx'],

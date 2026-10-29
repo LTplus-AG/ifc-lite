@@ -46,6 +46,7 @@ fn issue_7955_m4_curved_ifc_normal_matches_independently_authored_bands() {
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(CURVED.as_bytes(),None);
     let independent=ifc_lite_retained_native::oracle::layers::expected(CURVED.as_bytes(),&sources,55).expect("IFC source oracle");
     let wall = shape(&results,55);
+    assert!(wall.parts.iter().all(|p| p.curved && p.instance_key.is_none()));
     assert_band_faces(wall);
     assert_eq!(wall.parts.len(),3); assert_eq!(wall.cuts,1);
     let limits: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m4.json")).unwrap();
@@ -170,8 +171,11 @@ fn issue_7955_m4_synthetic_bands_and_refusals() {
         }
         let measured=measure(product); assert_eq!(measured.defects,0); close(measured.volume,oracle.opened_volume,tolerance);
     }
+    let clipped=shape(&results,11027);
+    assert_band_faces(clipped);
+    assert!(clipped.parts.iter().all(|p| p.halfspace_clipped && p.instance_key.is_none()));
     let single=shape(&results,10027); assert_eq!(single.parts.len(),1); assert!(single.parts[0].layer.is_none()); close(measure(single).volume,3.6,1e-6);
-    for (id,code) in [(8027,"material_layer_strategy"),(9027,"layer_caps_unresolved"),(11027,"operation_unsupported")] {
+    for (id,code) in [(8027,"material_layer_strategy"),(9027,"layer_caps_unresolved")] {
         assert!(results.iter().any(|o|matches!(o,ProductOutcome::Refused{product_id,refusal,..} if *product_id==id && refusal.code()==code)),"#{id} expected {code}: {results:?}");
     }
     println!("sdk witness executed: m4_synthetic");
@@ -196,4 +200,15 @@ fn assert_band_faces(product: &ShapeOnlyProduct) {
         }
         for key in &faces.table { assert!(qualified.insert(key.to_string())); }
     }
+}
+
+// #7955 review r1: interface family alone cannot classify the host geometry.
+#[test]
+fn issue_7955_m4_planar_bands_preserve_curved_host_classification() {
+    let text = CURVED.replace(".AXIS2.,.NEGATIVE.,0.,$)", ".AXIS3.,.POSITIVE.,0.,$)");
+    assert_ne!(text, CURVED);
+    let Some(results) = run(&text, &[55]) else { return };
+    let wall = shape(&results, 55);
+    assert!(wall.parts.len() >= 2);
+    assert!(wall.parts.iter().all(|p| p.curved && p.layer.is_some() && p.instance_key.is_none()));
 }

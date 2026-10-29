@@ -8,7 +8,7 @@ use super::super::publication::ShapePart;
 mod key;
 
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Vec<Requirement> {
-    if product.parts.len() != 1 || product.cuts != 0 || context.plan.values().len() != 1 {
+    if product.parts.len() != 1 || product.cuts != 0 || product.parts.iter().any(|p| p.layer.is_some()) || context.plan.values().len() != 1 {
         return Vec::new();
     }
     let value = context.plan.values().next().expect("one value");

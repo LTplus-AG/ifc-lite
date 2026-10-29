@@ -13,3 +13,10 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>)
     }
     Ok([Requirement::SurfaceNormals])
 }
+
+
+pub(super) fn apply_plane(part: &mut super::super::publication::ShapePart, from_part: &[f64;16],
+    origin: [f64;3], normal: [f64;3], triangles: &[usize], resources: &super::OwnedResourceContext)
+    -> Result<(),RetainedExecutionError> {
+    mesh::plane::apply(part,from_part,origin,normal,triangles,resources)
+}

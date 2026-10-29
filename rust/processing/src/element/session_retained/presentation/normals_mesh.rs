@@ -5,7 +5,7 @@ use super::super::super::{error::budget_checkpoint, publication::ShapePart, Owne
 use ifc_lite_geometry::resource;
 
 #[path = "normals_plane.rs"]
-mod plane;
+pub(super) mod plane;
 
 // Twice the retained model driver's fixed 5 degree tessellation tolerance.
 const CREASE_RADIANS: f64 = std::f64::consts::PI / 18.;
@@ -71,17 +71,12 @@ pub(super) fn corner_normals(part: &ShapePart, resources: &OwnedResourceContext,
             *head = corners.len() - 1;
         }
     }
-    let planes = plane::normals(part,&corners,resources,&mut scratch)?;
     let count = part.indices.len().checked_mul(3)
         .ok_or_else(|| RetainedExecutionError::Stopped(resource::overflow()))?;
     let mut normals = Vec::new();
     storage.reserve(resources, &mut normals, count)?;
     let threshold = libm::cos(CREASE_RADIANS);
     for (index, own) in corners.iter().enumerate() {
-        if let Some(normal) = planes[index/3] {
-            normals.extend_from_slice(&normal);
-            continue;
-        }
         let mut sum = [0.; 3];
         let mut adjacent = heads[part.indices[index] as usize];
         // Internally built acyclic adjacency. Charge every comparison so

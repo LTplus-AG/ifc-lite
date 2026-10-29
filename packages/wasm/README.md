@@ -404,8 +404,9 @@ a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
 and `curved`. The optional `revisionLocalFaces` array preserves one kernel diagnostic
 index per triangle; these indices are not persistent IFC face identities. Optional
 `normals` are populated on every published part (per corner, absolute IFC Z-up axes).
-They use angle-weighted smoothing within each revision-local face and a 10° crease
-guard relative to each facet, after applying the composed world frame. Positions
+Planar faces use the attributed source-plane normal after every vertex passes
+planarity verification. Other faces use angle-weighted smoothing within each
+revision-local face and a 10° crease guard, after applying the composed world frame. Positions
 and indices stay unchanged, and `SurfaceNormals` is discharged. Optional `color`, `materialName`,
 `geometryItemId`, `materialId` and `instanceKey` remain reserved for independently qualified slices.
 Every published part carries `faces`: a string table of persistent source keys

@@ -153,11 +153,14 @@ fn m11_n_7955_planar_face_slivers_use_one_verified_plane_normal() {
     // The source plane is z=0. One interior tessellation vertex is 70 nm off
     // that plane; a 10 micrometre altitude amplifies its facet-normal error.
     // The entire face boundary still defines the exact plane normal.
-    let p = part(vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.5,1e-5,7e-8],
+    let mut p = part(vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.5,1e-5,7e-8],
         vec![0,1,4, 1,2,4, 2,3,4, 3,0,4],vec![7;4]);
     let facet = unit(cross([1.,0.,0.],[0.5,1e-5,7e-8])).unwrap();
     assert!(length(cross(facet,[0.,0.,1.])) > 1e-3);
-    for normal in normals(&p).chunks_exact(3) {near(normal,[0.,0.,1.]);}
+    p.normals = Some(normals(&p));
+    let frame = p.world_from_object;
+    plane::apply(&mut p,&frame,[0.;3],[0.,0.,-1.],&[0,1,2,3],&OwnedResourceContext::capture_current()).unwrap();
+    for normal in p.normals.as_ref().unwrap().chunks_exact(3) {near(normal,[0.,0.,1.]);}
 }
 
 #[test]
@@ -169,4 +172,28 @@ fn m11_n_7955_nonplanar_face_retains_per_corner_crease_rule() {
     near(&result[..3],[0.,-4_f64.to_radians().sin(),4_f64.to_radians().cos()]);
     near(&result[6..9],[0.,0.,1.]);
     near(&result[15..18],[0.,-8_f64.to_radians().sin(),8_f64.to_radians().cos()]);
+}
+
+
+#[test]
+fn m11_n_7955_source_plane_verifies_every_vertex_before_replacing_normals() {
+    let mut p = part(vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.5,0.5,2e-6],
+        vec![0,1,2, 0,2,4, 2,3,4, 3,0,4],vec![7;4]);
+    let before = normals(&p);
+    p.normals = Some(before.clone());
+    let frame = p.world_from_object;
+    plane::apply(&mut p,&frame,[0.;3],[0.,0.,1.],&[0,1,2,3],&OwnedResourceContext::capture_current()).unwrap();
+    assert_eq!(p.normals.unwrap(),before,"a late off-plane vertex leaves every corner unchanged");
+}
+
+#[test]
+fn m11_n_7955_source_plane_uses_composed_frame_under_scale_mirror_and_survey_translation() {
+    let mut p = fan(&[30.],&[90.]);
+    p.world_from_object = [-2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 2.6e6,-1e20,7e15,1.];
+    let from_part = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+    p.normals = Some(normals(&p));
+    let n = [0.,-30_f64.to_radians().sin(),30_f64.to_radians().cos()];
+    plane::apply(&mut p,&from_part,[0.;3],n,&[0],&OwnedResourceContext::capture_current()).unwrap();
+    let expected = unit([0.,2.,-3.*30_f64.to_radians().cos()]).unwrap();
+    for normal in p.normals.unwrap().chunks_exact(3) {near(normal,expected);}
 }

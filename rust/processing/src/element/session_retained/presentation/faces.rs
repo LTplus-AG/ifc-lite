@@ -148,6 +148,9 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
                 lists.push(candidates(operands, &[a, b, c], chord).map_err(halt)?);
             }
             let key = resolve(operands, &lists, chord).map_err(refuse)?;
+            if let Support::Plane { origin, normal } = operands[key.0].faces[key.1].support {
+                super::normals::apply_plane(part,&operands[key.0].from_part,origin,normal,face,context.resources)?;
+            }
             for &t in face { choices[t] = key; }
         }
         let mut used: Vec<Choice> = Vec::new();

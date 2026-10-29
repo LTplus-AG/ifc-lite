@@ -62,6 +62,10 @@
       "destination": "https://api.bsdd.buildingsmart.org/:path*"
     },
     {
+      "source": "/api/bimcollab/:path*",
+      "destination": "/api/bimcollab?path=:path*"
+    },
+    {
       "source": "/api/dalux/:path*",
       "destination": "/api/dalux?path=:path*"
     },

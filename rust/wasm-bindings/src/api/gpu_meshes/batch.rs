@@ -1,7 +1,6 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
 use super::batch_partition::{
     encode_shard_routing_refusals_back, is_instancing_candidate, meets_instance_threshold,
     take_back_rejected, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
@@ -12,7 +11,6 @@ use ifc_lite_processing::prepass::finish_to_wire;
 use crate::api::IfcAPI;
 use crate::zero_copy::{GeometryFingerprint, MeshCollection};
 use wasm_bindgen::prelude::*;
-
 /// Per-element output of [`IfcAPI::produce_batch`] — the canonical producer's
 /// meshes (with `instance` metadata intact, BEFORE the MeshDataJs Z-up→Y-up
 /// swap) plus everything the element's geometry-hash pass measured. The flat
@@ -33,7 +31,6 @@ struct ElementMeshOutput {
     /// Packed closure verdict; `0` when nothing was hashed.
     geometry_closure_bits: u8,
 }
-
 impl ElementMeshOutput {
     /// The element's diff-engine record, or `None` when hashing was off / it
     /// produced nothing. Built in ONE place so the two push sites (flat and
@@ -49,7 +46,6 @@ impl ElementMeshOutput {
         })
     }
 }
-
 impl IfcAPI {
     /// Shared core for both batch outputs: run the canonical per-element
     /// producer over `jobs_flat` (setup + loop + CSG/layer diagnostics),
@@ -99,14 +95,11 @@ impl IfcAPI {
         use ifc_lite_processing::element::{
             produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
         };
-
         // Batch wall-clock for the PipelineDiagnostics channel. std::time::Instant
         // traps on wasm32, so the host clock is the JS one there (two Date.now()
         // reads per batch — negligible, always on); see `batch_host`.
         let batch_clock = super::batch_host::BatchClock::start();
-
         let content = data;
-
         let wire = super::batch_wire::BatchWire {
             jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba,
         };
@@ -117,7 +110,6 @@ impl IfcAPI {
         let installed_finishes = self.style_finishes_for(style_ids);
         let mut batch_finishes = BatchFinishes::new(installed_finishes.as_deref(), geometry_styles);
         let mut outputs = Vec::with_capacity(jobs_flat.len() / 3);
-
         // CSG diagnostics, aggregated across the batch: the canonical producer
         // drains the (warm, batch-shared) router per element so one element's
         // failures never bleed into the next; we collect them here and hand

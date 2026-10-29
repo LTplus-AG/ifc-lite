@@ -54,7 +54,8 @@ fn issue_7955_clipped_union_and_intersection_keep_real_mesh_gates() {
         shape.parts[0].world_from_object[14]-=1.;
         assert!(check(&text,&shape).iter().any(|c|c.family=="clipKeptSideMetres"&&c.gated&&!c.pass));
         shape.parts[0].world_from_object[14]+=1.;
-        let count=shape.parts[0].indices.len();shape.parts[0].indices.truncate(count-3);
+        let part=&mut shape.parts[0];let count=part.indices.len();part.indices.truncate(count-3);
+        part.revision_local_faces.pop();part.faces.as_mut().unwrap().triangles.pop();
         assert!(check(&text,&shape).iter().any(|c|c.family=="clipClosure"&&c.gated&&!c.pass));
     }
     println!("sdk witness executed: m5_outer_solid_clip");

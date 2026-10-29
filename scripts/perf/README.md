@@ -223,6 +223,32 @@ exports. Actual-WASM tests verify independent memories and that retained diff
 models survive geometry initialization. This is a packaging result; full
 facade startup, marshaling, and end-to-end timing qualification remain open.
 
+## Shared record discovery (C4-5, #7782)
+
+Structural refactor; no wall-clock speedup claimed. The original instruction qualification was invalid: Cargo reused the base
+probe for the branch after archive extraction preserved old mtimes. Fresh
+branch builds exposed instruction regressions despite identical geometry.
+Keeping the record predicate inline and classification lazy for index-only
+shards lets the shared discovery owner preserve the existing hot-path work.
+The qualification uses the C4-4b identity runner; it is not a browser timing result.
+
+Round-two lesson: carrying the geometry-admission reason through the hot
+`Discovery::observe` return changed code generation and regressed the default
+instruction gate. Replacing the quick-only name lookup with a resolved-type
+predicate also regressed that gate. Retain `Option<IfcType>` and the original
+quick-only name lookup: quick metadata pays one additional classification per
+admitted job, while the default path avoids carrying a reason tuple.
+This is a deliberate scope tradeoff, not a quick-metadata optimization.
+
+Fresh-build verdict: every default pipeline phase meets the exact-base gate
+on Haus, duplex and ISSUE_129, with counts, serialized captures, payloads,
+diagnostics and per-element data identical. Dispatch span collection only for
+classes that can contribute spans, and inline the shared admission/classification
+helpers so extraction does not add call overhead. Force source freshness when
+switching archived revisions in a shared Cargo target; a fast Cargo success
+alone does not prove the branch binary was rebuilt.
+
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**

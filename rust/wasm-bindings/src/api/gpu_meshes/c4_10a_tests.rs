@@ -122,26 +122,24 @@ fn run(
     jobs: &[u32],
 ) -> Vec<super::ElementMeshOutput> {
     let (x, y, z) = pre.meta.frame.rtc_offset();
-    api.produce_batch(
-        content,
-        jobs,
-        super::super::prepass_sharded::stream_meta_unit_scale(&pre.meta),
-        x,
-        y,
-        z,
-        pre.meta.frame.needs_shift(),
-        &pre.void_keys,
-        &pre.void_counts,
-        &pre.void_values,
-        &pre.style_ids,
-        &pre.style_colors,
-        Some(pre.meta.plane_angle_to_radians),
-        Some(pre.material_element_ids.clone()),
-        Some(pre.material_color_counts.clone()),
-        Some(pre.material_colors.clone()),
-        false,
-    )
-    .0
+    let wire = super::batch_wire::BatchWire {
+        jobs_flat: jobs,
+        unit_scale: super::super::prepass_sharded::stream_meta_unit_scale(&pre.meta),
+        rtc_x: x,
+        rtc_y: y,
+        rtc_z: z,
+        needs_shift: pre.meta.frame.needs_shift(),
+        void_keys: &pre.void_keys,
+        void_counts: &pre.void_counts,
+        void_values: &pre.void_values,
+        style_ids: &pre.style_ids,
+        style_colors: &pre.style_colors,
+        plane_angle_to_radians: Some(pre.meta.plane_angle_to_radians),
+        material_element_ids: Some(pre.material_element_ids.clone()),
+        material_color_counts: Some(pre.material_color_counts.clone()),
+        material_colors_rgba: Some(pre.material_colors.clone()),
+    };
+    api.produce_batch(content, &wire, false).0
 }
 
 #[test]

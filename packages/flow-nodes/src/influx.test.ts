@@ -60,6 +60,7 @@ describe('InfluxDB shared adapters (#8090)', () => {
   });
   it('fails on overflow, malformed data, error tables, invalid numbers/timestamps and conflicts', () => {
     expect(() => parseInfluxCsv(csv, { ...selection, maxSamples: 1 }, 'unrelated-token')).toThrow(/cap exceeded/);
+    expect(() => parseInfluxCsv(csv, { ...selection, maxSamples: Number.NaN }, 'unrelated-token')).toThrow(/maxSamples/);
     for (const bad of [header + row('false'), header + row('NaN'), header + row('Infinity'), header + row('1', 'space', 'a', '2026-02-30T00:00:00Z'),
       header + row('20') + row('21'), header + 'wrong,width\n', ',error,reference\n,failed,123\n', csv + '\n,error,reference\n,failed,123\n',
       header + row('"20'), header + row('20"'), header.replace('device', '_value') + row(), header + row('20', '')]) {

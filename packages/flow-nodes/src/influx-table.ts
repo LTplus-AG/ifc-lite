@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Row, Table } from '@ifc-lite/flow';
-import type { InfluxSelection } from './influx-query.js';
+import { influxSampleCap, type InfluxSelection } from './influx-query.js';
 
 const reserved = new Set(['', 'result', 'table', '_start', '_stop', '_time', '_value']);
 
@@ -34,7 +34,7 @@ function timestamp(value: unknown): bigint {
 /** Several samples are history; several tag sets for one GUID are ambiguity. */
 export function latestPerSeries(table: Table, selection: InfluxSelection): Table {
   table = dataTable(table);
-  const maxSamples = selection.maxSamples ?? 1000;
+  const maxSamples = influxSampleCap(selection);
   if (table.rows.length > maxSamples) throw new Error('Sample cap exceeded; narrow the time range or tag filters');
   if (table.rows.length === 0 && table.columns.length === 0) {
     return { columns: [{ name: selection.guidTag, type: 'identifier' }], rows: [], key: selection.guidTag };

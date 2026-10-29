@@ -25,6 +25,13 @@ function literal(value: string): string {
   return JSON.stringify(value);
 }
 
+/** Validated sample cap shared by the query limit and the response check. */
+export function influxSampleCap(selection: InfluxSelection): number {
+  const maxSamples = selection.maxSamples ?? 1000;
+  if (!Number.isInteger(maxSamples) || maxSamples < 1 || maxSamples > 10000) throw new Error('maxSamples must be 1..10000');
+  return maxSamples;
+}
+
 export function queryRequest(selection: InfluxSelection) {
   let url: URL;
   try { url = new URL(selection.url); }
@@ -35,9 +42,8 @@ export function queryRequest(selection: InfluxSelection) {
   literal(selection.org);
   // unit is a display label, never interpolated into the Flux query.
   const minutes = selection.minutes ?? 60;
-  const maxSamples = selection.maxSamples ?? 1000;
+  const maxSamples = influxSampleCap(selection);
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new Error('minutes must be 1..1440');
-  if (!Number.isInteger(maxSamples) || maxSamples < 1 || maxSamples > 10000) throw new Error('maxSamples must be 1..10000');
   const tags = Object.entries(selection.tags ?? {});
   if (tags.length > 16) throw new Error('At most 16 tag predicates are supported');
   const guidTag = literal(selection.guidTag);

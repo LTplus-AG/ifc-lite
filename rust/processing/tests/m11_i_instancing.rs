@@ -76,3 +76,20 @@ fn issue_7955_m11_i_controller_rejects_affine_and_derived_mapped_values() {
         assert_eq!(plan.values().next().unwrap().instance_representation_map(), expected, "product #{id}");
     }
 }
+
+#[test]
+fn issue_7955_m11_i_world_normals_hash_in_object_axes_after_m11_n() {
+    let mut a = part();
+    a.normals = Some(vec![1., 0., 0., 0., 1., 0., 0., 0., 1.]);
+    for (cos, sin) in [(0., 1.), (0.8, 0.6)] {
+        let mut b = part();
+        b.world_from_object = [cos, sin, 0., 0., -sin, cos, 0., 0.,
+            0., 0., 1., 0., 2_600_000., 1_200_000., 10., 1.];
+        b.normals = Some(vec![cos, sin, 0., -sin, cos, 0., 0., 0., 1.]);
+        assert_eq!(key::instance_key(16, &a), key::instance_key(16, &b),
+            "proper rigid occurrence normals must not partition identical local payloads");
+        b.normals.as_mut().unwrap()[2] = f64::from_bits(1);
+        assert_ne!(key::instance_key(16, &a), key::instance_key(16, &b),
+            "no tolerance may hide a changed normal payload");
+    }
+}

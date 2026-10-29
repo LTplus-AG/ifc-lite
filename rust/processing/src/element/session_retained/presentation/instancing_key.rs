@@ -16,7 +16,15 @@ pub(super) fn instance_key(representation_map: u32, part: &ShapePart) -> [u8; 32
         Some(values) => {
             hash.update([1]);
             hash.update((values.len() as u64).to_le_bytes());
-            for value in values { hash.update(value.to_le_bytes()); }
+            // M11-N publishes world-axis normals. Candidates are proper rigid
+            // frames, so their transpose maps these back to object axes. Reading
+            // the column-major frame with the canonical row-major vector helper
+            // performs that transpose without recomposing placement (#7955).
+            for normal in values.chunks_exact(3) {
+                let local = ifc_lite_geometry::math::mat4::transform_vector(
+                    &part.world_from_object, [normal[0], normal[1], normal[2]]);
+                for value in local { hash.update(value.to_le_bytes()); }
+            }
         }
     }
     match &part.faces {

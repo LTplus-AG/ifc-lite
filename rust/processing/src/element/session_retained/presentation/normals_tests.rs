@@ -306,3 +306,15 @@ fn m11_n_7955_shared_vertices_on_thousands_of_distinct_faces_are_bucketed() {
         for n in normals(&p).chunks_exact(3) {near(n,[0.,0.,1.]);}
     });
 }
+
+#[test]
+fn m11_n_7955_cancelling_orientation_votes_report_a_planar_fallback() {
+    // One facet wound +Z, one -Z on the same attributed plane: no polarity can be chosen.
+    let mut p = part(vec![0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0.], vec![0,1,2, 0,3,2], vec![7,7]);
+    let before = normals(&p);
+    p.normals = Some(before.clone());
+    let frame = p.world_from_object;
+    assert!(plane::apply(&mut p,&frame,[0.;3],[0.,0.,1.],&[0,1],&OwnedResourceContext::capture_current()).unwrap(),
+        "an orientation tie is a counted fallback, never a silent success");
+    assert_eq!(p.normals.unwrap(), before, "no corner changes when the plane is not applied");
+}

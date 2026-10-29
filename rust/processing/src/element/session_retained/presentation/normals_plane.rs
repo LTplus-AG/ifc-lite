@@ -18,7 +18,9 @@ pub(in super::super) fn apply(part: &mut ShapePart, from_part: &[f64;16], origin
     -> Result<bool,RetainedExecutionError> {
     // These are the controller's composed frames, including Boolean lineage.
     // Use the canonical matrix home; no placement walk or new frame derivation.
-    let Some(into_part) = mat4::affine_inverse(&mat4::transpose(from_part)) else {return Ok(false);};
+    // `Ok(true)` means "fell back to the per-corner rule" and is counted in
+    // normalPlanarFallbacks; every non-application below reports it.
+    let Some(into_part) = mat4::affine_inverse(&mat4::transpose(from_part)) else {return Ok(true);};
     let into_world = mat4::mul(&mat4::transpose(&part.world_from_object),&into_part);
     let helper = if source_normal[0].abs() < 0.9 {[1.,0.,0.]} else {[0.,1.,0.]};
     let u = unit(cross(source_normal,helper))?;
@@ -41,7 +43,9 @@ pub(in super::super) fn apply(part: &mut ShapePart, from_part: &[f64;16], origin
             world_vector(&part.world_from_object,sub(p[2],p[0])));
         if oriented(&p) {majority += if dot(facet,normal) >= 0. {1} else {-1};}
     }
-    if majority == 0 {return Ok(false);}
+    // Cancelling orientation votes (inconsistent winding, or no oriented facet)
+    // cannot choose a polarity: keep the per-corner rule and report the fallback.
+    if majority == 0 {return Ok(true);}
     if majority < 0 {normal = normal.map(|v| -v);}
     // No corner is changed until every face vertex has passed. On failure the
     // original per-corner rule remains, and the independent source gate judges it.

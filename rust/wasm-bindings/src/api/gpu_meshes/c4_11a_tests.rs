@@ -47,9 +47,9 @@ fn warm_derived_slots(api: &IfcAPI, source: &[u8]) {
     api.set_style_finishes(&[48], &[1.0, 0.1]);
     // A batch populates the mesh registries, wire styles, units and index through
     // the production path; no source-text or mock assertions stand in for it.
-    api.produce_batch(source, &[], 1.0, 0.0, 0.0, 0.0, false,
+    api.process_geometry_batch(source, &[], 1.0, 0.0, 0.0, 0.0, false,
         &[], &[], &[], &[48], &[255, 255, 255, 255], None,
-        None, None, None, false);
+        None, None, None);
     // The column setters intentionally expire the type plan; warm it again.
     check_rebuilt(api, source, true);
     check_derived_slots(api, true, "warm");

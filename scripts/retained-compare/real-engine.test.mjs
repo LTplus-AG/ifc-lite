@@ -129,7 +129,10 @@ test('#7955 M4 and M11 committed extrusion OBJ differs from its base golden only
     }
   }
   const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');
-  const written = retainedObj(outcomes).split('\n');
+  const obj = retainedObj(outcomes);
+  assert.equal(obj, await readFile('tests/fixtures/cli-retained/m11-z-final.obj', 'utf8'),
+    'M11-Z OBJ golden from a green real native/Node/CLI run');
+  const written = obj.split('\n');
   // M11-N: the writer emits one `vn` per triangle corner and faces reference them as `v//n`.
   // Everything else (vertices, groups, materials, face vertex order) must stay byte-identical.
   const corners = outcomes.flatMap(p => p.parts).reduce((n, part) => n + part.indices.length, 0);

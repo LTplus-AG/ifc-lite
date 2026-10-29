@@ -5,7 +5,8 @@
 # C4-11a content-install lifetime (#7782)
 
 Stack base: C4-10a `6b977a14eee2a276e71ea46f8b5184f8fd6395a8`, draft #8316,
-stacked on #8309. This lane does not modify `batch.rs` or adopt C4-11b's slot/mode
+stacked on #8309. Review update merges C4-10a `02efa507f9` in `a58572ab4e`,
+preserving its refusal scopes and the C4-11a reset contract. This lane does not modify `batch.rs` or adopt C4-11b's slot/mode
 model. The executable call-order fixture was committed in `d1be601af1` before
 reset code changed.
 
@@ -86,13 +87,22 @@ established by these focused tests. Native Rust processing is untouched.
 ## Recorded qualification
 
 Exact fleet argv, source pins, receipt paths, corrected failures and named skips
-are in [validation.json](validation.json). Native C4-0 passed over all 15 fixtures;
-all three new native tests, C4-10a witnesses, the three ratchets and workspace
-clippy passed. The original broad mutation produced two assertion failures (including the
-epoch check); it did not establish stale-cache observation. The review update
-uses the narrowed mutation and records its stale-cache observation separately. Fresh real-WASM focused contracts passed 23/23 with no
-skips; the root suite passed 239 with zero failures and seven named skips after
-16 root Turbo dependency builds. Committed bindings did not change.
+are in [validation.json](validation.json). At `cbf7087691`, full wasm-bindings and
+processing tests reported 1,532 passes, zero failures and five ignored tests;
+optional-fixture early returns are listed separately as coverage gaps. All three
+C4-11a witnesses, six C4-10a witnesses, C4-0 over all 15 committed fixtures, the
+three ratchets and workspace all-target clippy passed.
+
+The original broad mutation could fail at the epoch assertion before checking
+stale caches. The narrowed review mutation retains epoch and BRep invalidation,
+fails on stale `cached_parts_to_skip` and installed finishes, then passes all
+three witnesses after restoration. The CI oracle reports `OBSERVED` with
+restoration verified. Reverse application succeeds; forward application fails.
+
+Fresh real-WASM focused contracts passed 23/23 with no skips. After managed
+fixture seeding and 16 root Turbo dependency builds, the full boundary suite
+passed 246 tests with zero failures and one skip (an unconfigured matched
+historical JS/WASM pair). Committed bindings did not change.
 
 The runtime accepts SAB views here: the tests cover real SAB marshalling,
 finish consumption/restashing, owned-buffer replay and a streaming callback

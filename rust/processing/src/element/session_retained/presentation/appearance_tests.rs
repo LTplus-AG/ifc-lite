@@ -140,7 +140,7 @@ fn m11_a_a_part_count_that_differs_from_the_plan_refuses() {
         ifc_type: IfcType::IfcWall, parts: vec![hand_part(), hand_part()],
         obligations: PresentationObligationsUnmet(vec![Requirement::IfcAppearance]), _storage: Storage::default() };
     let model = snapshot(&source);
-    let error = apply(&mut product, &Context { plan: &plan, model: &model, resources: &OwnedResourceContext::capture_current(),
+    let error = apply(&mut product, &Context { layer_class: 0, plan: &plan, model: &model, resources: &OwnedResourceContext::capture_current(),
         element_color: [0.; 4], faces: &[], chord_metres: 0.001, angle_degrees: 5. }).unwrap_err();
     assert_unsupported(error, 14, "binding");
 }

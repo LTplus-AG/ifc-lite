@@ -180,7 +180,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             _storage: storage,
         };
         let discharged = presentation::apply(&mut product, &presentation::Context {
-            plan: &self.plan, model: &self.presentation_context,
+            layer_class: self.layer_class, plan: &self.plan, model: &self.presentation_context,
             resources: &self.resources, element_color: self.element_color, faces: &face_sources,
             chord_metres: self.limits.chord_metres,
             angle_degrees: self.limits.angle_degrees,

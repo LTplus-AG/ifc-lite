@@ -97,6 +97,7 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     outer: Option<WorkRequest>,
     traversal: RetainedTraversal,
     openings: Option<OpeningPhase>,
+    layer_class: u8,
     layer_spec: Option<ifc_lite_geometry::program::transactions::LayerSpec>,
     layer_active: bool,
     layer_start: Option<phase_timer::PhaseTimer>,

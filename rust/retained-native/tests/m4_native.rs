@@ -260,7 +260,7 @@ fn issue_7955_m4_material_appearance_uses_each_bands_exact_resolver_key() {
 }
 
 #[test]
-fn issue_7955_m4_mapped_layers_never_become_instance_candidates() {
+fn issue_7955_m4_mapped_layer_skips_preserve_class_and_exclude_instancing() {
     let mapped = STRAIGHT.replace("IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19))",
         "IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#86))")
         .replace("ENDSEC;\nEND-ISO-10303-21;", "#85=IFCREPRESENTATIONMAP(#2,#87);#86=IFCMAPPEDITEM(#85,#88);
@@ -268,12 +268,15 @@ fn issue_7955_m4_mapped_layers_never_become_instance_candidates() {
 #88=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,$);ENDSEC;\nEND-ISO-10303-21;");
     let Some(outcomes) = run(&mapped, &[27]) else { return; };
     let product = shape(&outcomes, 27);
-    assert!(product.parts.iter().all(|part| part.layer.is_some() && part.instance_key.is_none()),
-        "published material bands must not instance");
+    assert_eq!(product.parts.len(), 1, "mapped source is an exact-defined unsliced skip");
+    assert!(product.parts[0].layer.is_none());
+    assert!(product.parts[0].instance_key.is_none(), "layer-class products must not instance");
+    assert_eq!(product.parts[0].appearance.as_ref().unwrap().geometry_class,
+        ifc_lite_processing::element::GEOM_CLASS_LAYER_SLICE);
     // The same source without material layers really is eligible; this makes
     // the negative layered assertion sensitive to M11-I eligibility.
     let ordinary = mapped.replace("#84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#27),#83);", "");
     let outcomes = run(&ordinary, &[27]).unwrap();
     assert!(shape(&outcomes, 27).parts[0].instance_key.is_some());
-    println!("sdk witness executed: m4_mapped_layers_no_instances");
+    println!("sdk witness executed: m4_mapped_layer_skips_no_instances");
 }

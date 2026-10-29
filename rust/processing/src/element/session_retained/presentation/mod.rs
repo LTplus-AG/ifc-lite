@@ -18,6 +18,8 @@ pub(super) use faces::{sources as face_sources, FaceSources};
 // M11-A/N/F/I consume these immutable inputs in their own modules.
 #[allow(dead_code)] // Scaffold inputs become live when the independently gated slices land.
 pub(super) struct Context<'a> {
+    /// Canonical layer class, including exact-defined unsliced skips.
+    pub layer_class: u8,
     pub plan: &'a RetainedProductPlan,
     pub model: &'a OwnedMeshProductionContext,
     pub resources: &'a OwnedResourceContext,

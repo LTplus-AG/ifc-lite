@@ -23,7 +23,8 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
         let live_bytes = (std::mem::size_of::<PartAppearance>() + name) as u64;
         product._storage.charge(context.resources, Cost { work: 1, live_bytes, ..Default::default() })?;
     }
-    for (part, appearance) in product.parts.iter_mut().zip(appearances) {
+    for (part, mut appearance) in product.parts.iter_mut().zip(appearances) {
+        if context.layer_class != 0 { appearance.geometry_class = context.layer_class; }
         part.appearance = Some(appearance);
     }
     Ok(vec![Requirement::IfcAppearance])

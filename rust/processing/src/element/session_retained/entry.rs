@@ -71,6 +71,10 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             }
             let ((resources, planned, terminal, layers), _) = prepared?;
             check_resources(&resources)?;
+            let layer_class = match planned.as_ref() {
+                Some(((super::super::plan::PlanKind::Product { layer_class, .. }, _), _, _, _)) => *layer_class,
+                _ => 0,
+            };
             let state = ProductState::planned(job, planned, terminal, Some(context.id()), None);
             if let Some(stop) = state.terminal() {
                 return Err(RetainedExecutionError::Stopped(stop));
@@ -88,6 +92,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 outer: None,
                 traversal,
                 openings: None,
+                layer_class,
                 layer_spec: layers,
                 layer_active: false,
                 layer_start: None,

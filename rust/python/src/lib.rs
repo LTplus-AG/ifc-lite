@@ -101,11 +101,12 @@ fn run_export(
     quality: TessellationQuality,
     ids: Option<HashSet<u32>>,
     include_directrices: bool,
+    layer_slicing: bool,
 ) -> PyResult<GeometryExportResult> {
     // Wrapped once, O(n) in the id count: the request owns its allow-list.
     let ids = ids.map(std::sync::Arc::new);
     run_geometry(py, "geometry", move || {
-        let request = ProcessingRequest::full_pass().quality(quality).ids(ids.clone());
+        let request = ProcessingRequest::full_pass().quality(quality).ids(ids.clone()).layer_slicing(layer_slicing);
         let result = process(&ifc_bytes, &request, &mut ());
         let (rx, ry, rz) = result.frame.rtc_offset();
         let rtc = [rx, ry, rz];
@@ -135,16 +136,17 @@ fn run_export(
 /// `ids` optionally restricts tessellation to those IFC STEP ids. `None` keeps
 /// every occurrence, while an empty set produces an empty geometry export.
 #[pyfunction]
-#[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false))]
+#[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false, layer_slicing = false))]
 fn geometry_data_buffers(
     py: Python<'_>,
     ifc_bytes: Vec<u8>,
     quality: Option<&str>,
     ids: Option<HashSet<u32>>,
     include_directrices: bool,
+    layer_slicing: bool,
 ) -> PyResult<Py<PyAny>> {
     let quality = parse_quality(quality)?;
-    let export = run_export(py, ifc_bytes, quality, ids, include_directrices)?;
+    let export = run_export(py, ifc_bytes, quality, ids, include_directrices, layer_slicing)?;
 
     let out = PyDict::new(py);
     out.set_item("up_axis", export.meshes.up_axis)?;
@@ -200,16 +202,17 @@ fn geometry_data_buffers(
 /// `ifc_bytes` is the raw IFC file content (e.g. `open(path, "rb").read()`).
 /// `quality` and `ids` are as documented on [`geometry_data_buffers`].
 #[pyfunction]
-#[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false))]
+#[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false, layer_slicing = false))]
 fn geometry_data_json(
     py: Python<'_>,
     ifc_bytes: Vec<u8>,
     quality: Option<&str>,
     ids: Option<HashSet<u32>>,
     include_directrices: bool,
+    layer_slicing: bool,
 ) -> PyResult<String> {
     let quality = parse_quality(quality)?;
-    let export = run_export(py, ifc_bytes, quality, ids, include_directrices)?;
+    let export = run_export(py, ifc_bytes, quality, ids, include_directrices, layer_slicing)?;
     let json = finite_json::to_json_string(&export.meshes)?;
     match &export.swept_disks {
         Some(descriptions) => swept_disks::add_to_json(json, descriptions)

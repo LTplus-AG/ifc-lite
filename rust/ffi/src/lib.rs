@@ -84,11 +84,11 @@ fn run_in_pool<T: Send>(
 /// Returns the JSON buffer on success, or one of the FFI error codes on failure
 /// (`2` read, `3` panic or no pool, `4` serialization) — `0`/`1` are decided by
 /// the wrappers, which own pointer validation.
-fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
+fn parse_impl(path_str: &str, mode: OpeningFilterMode, layer_slicing: bool) -> Result<Vec<u8>, i32> {
     let content = std::fs::read(path_str).map_err(|_| 2)?;
 
     run_in_pool(path_str, move || {
-        let result = process(&content, &ProcessingRequest::full_pass().opening_filter(mode), &mut ());
+        let result = process(&content, &ProcessingRequest::full_pass().opening_filter(mode).layer_slicing(layer_slicing), &mut ());
         // The source text is not needed past geometry; free it before the
         // JSON buffer is built next to the meshes.
         drop(content);
@@ -121,6 +121,7 @@ unsafe fn run_parse(
     path_ptr: *const u8,
     path_len: usize,
     mode: OpeningFilterMode,
+    layer_slicing: bool,
     out_ptr: *mut *mut u8,
     out_len: *mut usize,
 ) -> i32 {
@@ -147,7 +148,7 @@ unsafe fn run_parse(
         Err(_) => return 1,
     };
 
-    let json_bytes = match parse_impl(path_str, mode) {
+    let json_bytes = match parse_impl(path_str, mode, layer_slicing) {
         Ok(b) => b,
         Err(code) => return code,
     };
@@ -200,7 +201,7 @@ pub unsafe extern "C" fn ifc_lite_parse(
     out_ptr: *mut *mut u8,
     out_len: *mut usize,
 ) -> i32 {
-    run_parse(path_ptr, path_len, OpeningFilterMode::Default, out_ptr, out_len)
+    run_parse(path_ptr, path_len, OpeningFilterMode::Default, false, out_ptr, out_len)
 }
 
 /// Parse an IFC file with a configurable opening filter and return JSON bytes.
@@ -231,7 +232,34 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
         _ => OpeningFilterMode::Default,
     };
 
-    run_parse(path_ptr, path_len, mode, out_ptr, out_len)
+    run_parse(path_ptr, path_len, mode, false, out_ptr, out_len)
+}
+
+/// Parse with additive flags: bit 0 enables material-layer wall slicing.
+/// Unknown flags return error 1. Existing parse functions remain unsliced.
+///
+/// # Safety
+/// The pointer and buffer requirements are identical to [`ifc_lite_parse_ex`].
+#[no_mangle]
+pub unsafe extern "C" fn ifc_lite_parse_with_flags(
+    path_ptr: *const u8,
+    path_len: usize,
+    opening_filter_mode: u8,
+    flags: u32,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+) -> i32 {
+    if flags & !1 != 0 {
+        if !out_ptr.is_null() { *out_ptr = std::ptr::null_mut(); }
+        if !out_len.is_null() { *out_len = 0; }
+        return 1;
+    }
+    let mode = match opening_filter_mode {
+        1 => OpeningFilterMode::IgnoreAll,
+        2 => OpeningFilterMode::IgnoreOpaque,
+        _ => OpeningFilterMode::Default,
+    };
+    run_parse(path_ptr, path_len, mode, flags & 1 != 0, out_ptr, out_len)
 }
 
 /// Free a buffer previously returned by `ifc_lite_parse` or `ifc_lite_parse_ex`.

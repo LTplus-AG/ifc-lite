@@ -955,6 +955,10 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #8112: full inversion deletes the new helper and prevents test loading.
+          # Keep the API; weaken fingerprint identity to key equality instead.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
           # #7714: whole-file inversion removes the new module/test wiring,
           # collecting no certificate tests. Keep every API and test; disable
           # only cross-decoder cache reuse. Real concurrent success/decline
@@ -969,7 +973,7 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
           # #7781 C2-3: preserve report-module test wiring; suppress drop counts
           # and change the strict precheck message so the policy witnesses fail.
@@ -2361,6 +2365,7 @@ jobs:
             scripts/generate-coverage-ledger.test.mjs \
             scripts/lib/coderabbit-review-state.test.mjs \
             scripts/lib/count-ratchet.test.mjs \
+            scripts/lib/diff-derived-geometry.test.mjs \
             scripts/lib/crates-io.test.mjs \
             scripts/lib/module-size-ratchet.test.mjs \
             scripts/lib/npm-pack-output.test.mjs \

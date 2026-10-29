@@ -160,6 +160,7 @@ impl NewObject {
             object_type: None,
             placement,
             container: None,
+            nest_in: None,
             type_link: None,
             representation: Representation::None,
             style: None,
@@ -193,6 +194,11 @@ impl NewObject {
 
     pub fn with_container(mut self, container: ObjectRef) -> Self {
         self.container = Some(container);
+        self
+    }
+
+    pub fn with_nest_in(mut self, host: ObjectRef) -> Self {
+        self.nest_in = Some(host);
         self
     }
 

@@ -25,6 +25,7 @@ pub(super) struct Checked {
     pub(super) predefined: Option<String>,
     pub(super) parent_placement: Option<u32>,
     pub(super) container: Option<(u32, RelKind)>,
+    pub(super) nest: Option<(u32, Nest)>,
     pub(super) existing_type: Option<u32>,
     /// Class, `PredefinedType` and value units of a new type.
     pub(super) new_type: Option<(String, Option<String>, CheckedUnits)>,
@@ -37,6 +38,15 @@ pub(super) struct Checked {
     pub(super) mapped: Option<MapPlan>,
     /// The source representations reused geometry repeats.
     pub(super) same_as: Option<Vec<ReusedRepresentation>>,
+}
+
+/// How a new object is tied to the product it is nested in.
+#[derive(Clone, Copy)]
+pub(super) enum Nest {
+    /// `IfcRelNests`, with the host as `RelatingObject`.
+    Nested,
+    /// `IfcRelConnectsPortToElement`, IFC2X3's tie from a port to its element.
+    PortOf,
 }
 
 impl AddState<'_, '_> {
@@ -121,6 +131,30 @@ impl AddState<'_, '_> {
             ObjectRef::Id(_) => None,
         };
         added.ok_or_else(|| if deleted { format!("{r} is deleted by this plan") } else { format!("{r} not found") })
+    }
+
+    /// `r`'s id, how a new `class` is tied to it, and `r`'s class.
+    fn check_nest(&self, r: &ObjectRef, class: &str) -> Result<(u32, Nest, String), String> {
+        let (id, host) = self.lookup(r)?;
+        if !self.is_a(&host, "IFCPRODUCT") {
+            return Err(format!("nesting host {r} is {host}, not a product"));
+        }
+        if !crate::schema_convert::targets_ifc2x3(self.schema) {
+            return Ok((id, Nest::Nested, host));
+        }
+        // IFC2X3's IfcRelNests WR1: every related object is of the relating
+        // object's own class.
+        let nest = if self.is_a(class, "IFCPORT") {
+            if !self.is_a(&host, "IFCELEMENT") {
+                return Err(format!("nesting host {r} is {host}: IFC2X3 connects a port only to an element"));
+            }
+            Nest::PortOf
+        } else if host == class {
+            Nest::Nested
+        } else {
+            return Err(format!("nesting host {r} is {host}: IFC2X3 nests a {class} only under another {class}"));
+        };
+        Ok((id, nest, host))
     }
 
     fn placement_of(&self, id: u32, class: &str) -> Option<u32> {
@@ -277,6 +311,8 @@ impl AddState<'_, '_> {
             }
         };
 
+        let nest = obj.nest_in.as_ref().map(|r| self.check_nest(r, &class)).transpose()?;
+
         let parent_placement = match &obj.placement.relative_to {
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
@@ -286,7 +322,10 @@ impl AddState<'_, '_> {
                     Some(self.placement_of(id, &c).ok_or_else(|| format!("placement parent {r} ({c}) has no ObjectPlacement"))?)
                 }
             }
-            None => container.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c)),
+            None => {
+                let host = nest.as_ref().map(|(id, _, c)| (*id, c)).or(container.as_ref().map(|(id, _, c)| (*id, c)));
+                host.and_then(|(id, c)| self.placement_of(id, c))
+            }
         };
         // The placement patch's rule, checked before any id is allocated.
         crate::plan::placement::check_matrix(&obj.placement.matrix)?;
@@ -352,6 +391,7 @@ impl AddState<'_, '_> {
             predefined,
             parent_placement,
             container: container.map(|(id, kind, _)| (id, kind)),
+            nest: nest.map(|(id, n, _)| (id, n)),
             existing_type,
             new_type,
             host,

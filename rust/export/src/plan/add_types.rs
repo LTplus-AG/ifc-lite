@@ -90,8 +90,9 @@ pub struct NewPlacement {
     pub matrix: [[f64; 4]; 4],
     /// An `IfcObjectPlacement` record, or a product whose `ObjectPlacement`
     /// is used (placements carry no GlobalId, so a product is the only way
-    /// to name one by GlobalId). `None` places the object relative to its
-    /// container's placement, or absolutely when it has no container.
+    /// to name one by GlobalId). `None` places the object relative to the
+    /// product it is nested in, else its container's placement, or
+    /// absolutely when it has neither.
     pub relative_to: Option<ObjectRef>,
 }
 
@@ -290,6 +291,14 @@ pub struct NewObject {
     /// through `IfcRelContainedInSpatialStructure`; a spatial element (a new
     /// storey or space) is aggregated into it through `IfcRelAggregates`.
     pub container: Option<ObjectRef>,
+    /// The product this object is nested in, such as a pipe for its port:
+    /// one in the source or added earlier in the plan. IFC4 and IFC4X3 nest
+    /// it through `IfcRelNests`. IFC2X3 connects a port to an element
+    /// through `IfcRelConnectsPortToElement` instead, and nests anything
+    /// else only under a product of its own class, as `IfcRelNests`
+    /// requires there. With no `placement.relative_to`, the object is
+    /// placed relative to this product.
+    pub nest_in: Option<ObjectRef>,
     pub type_link: Option<TypeLink>,
     pub representation: Representation,
     pub style: Option<SurfaceColour>,
@@ -310,8 +319,9 @@ impl NewObject {
         [("LongName", &self.long_name), ("Tag", &self.tag), ("ObjectType", &self.object_type)].into_iter().filter_map(|(a, v)| Some((a, v.as_deref()?)))
     }
 
-    /// Every existing object this Add names: its container, placement parent,
-    /// type, opening host, material, classifications and units.
+    /// Every existing object this Add names: its container, nesting host,
+    /// placement parent, type, opening host, material, classifications and
+    /// units.
     pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
         let type_ref = match &self.type_link {
             Some(TypeLink::Existing(r)) => Some(r),
@@ -341,7 +351,7 @@ impl NewObject {
                 ClassificationSystem::New(_) => None,
             },
         });
-        [self.container.as_ref(), self.placement.relative_to.as_ref(), type_ref, self.opening.as_ref().map(|o| &o.host), material]
+        [self.container.as_ref(), self.nest_in.as_ref(), self.placement.relative_to.as_ref(), type_ref, self.opening.as_ref().map(|o| &o.host), material]
             .into_iter()
             .flatten()
             .chain(layer_materials)

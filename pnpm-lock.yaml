@@ -1183,6 +1183,9 @@ importers:
       '@ifc-lite/collab':
         specifier: workspace:^
         version: link:../collab
+      '@ifc-lite/diff':
+        specifier: workspace:^
+        version: link:../diff
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx

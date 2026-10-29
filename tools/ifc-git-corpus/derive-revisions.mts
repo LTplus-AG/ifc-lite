@@ -39,9 +39,9 @@
  * still holds. `--check` closes that gap: same derivation, compared
  * byte-for-byte against the committed file, nothing written.
  *
- * Verification scope is `data`, deliberately: it needs no geometry pipeline and
- * therefore executes no WASM. It still needs an installed and CURRENT workspace
- * build — `@ifc-lite/wasm` has to resolve for `packages/diff` to load at all.
+ * Verification scope is `data`, deliberately: only the independent diff WASM
+ * engine is initialized; the geometry pipeline is not run. It needs an installed
+ * and CURRENT workspace build, including `@ifc-lite/wasm/diff`.
  * Revisions whose change is geometric are marked `geometryScopeRequired` in the
  * manifest — their bytes are correct, but proving the change needs the geometry
  * lane.
@@ -114,6 +114,8 @@ const PREREQUISITES_ABSENT = 3;
 const REQUIRED_PATHS = [
   'packages/parser/dist/index.js',
   'packages/diff/dist/index.js',
+  'packages/wasm/pkg-diff/ifc-lite-diff.js',
+  'packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm',
   'packages/encoding/dist/index.js',
   'packages/cli/dist/commands/diff-engine.js',
   // The base model every revision is derived from. Committed, not a fetched
@@ -133,7 +135,9 @@ if (missing.length > 0) {
 }
 
 const { IfcParser } = await import('../../packages/parser/dist/index.js');
-const { diffModels } = await import('../../packages/diff/dist/index.js');
+const { diffModels, initDiff } = await import('../../packages/diff/dist/index.js');
+// #8042/#8111: data-only consumers also initialize the independent diff engine.
+await initDiff();
 const { uuidFromSeed, uuidToIfcGuid, isValidIfcGuid } = await import(
   '../../packages/encoding/dist/index.js'
 );
@@ -1028,6 +1032,8 @@ const manifest = {
   base: 'apps/viewer/public/samples/building-architecture.ifc',
   baseSha256: sha256(baseText),
   verificationScope: 'data',
+  // Preserve the version-1 TS-reference provenance note and manifest bytes.
+  // Current-engine execution is described above and checked independently.
   verificationNote:
     'Measured with @ifc-lite/diff at scope "data", which needs no geometry pipeline and so no WASM. Revisions flagged geometryScopeRequired carry a real change that data scope cannot see.',
   revisions: entries,

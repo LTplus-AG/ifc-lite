@@ -12,12 +12,16 @@
  * same-path nodes, component emptied to a shell).
  */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
 import { planFromStates, planThreeWayMerge } from './three-way.js';
 import { extractStackState } from './component-state.js';
 import type { MergePlan } from './types.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 const CLASS = 'bsi::ifc::class';
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';

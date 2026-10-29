@@ -1156,10 +1156,14 @@ Host Date/JSON observations are preserved. See the
 [`@ifc-lite/wasm` low-level guide](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#rust-diff-bindings)
 for helper groups, transport and lifetime requirements.
 
-The public `@ifc-lite/diff` entry points still use the TypeScript engine in
-this stage of #8042. Raw module initialization above applies to direct
-`@ifc-lite/wasm/diff` callers; existing public comparison callers retain their
-current initialization contract until the facade cutover.
+The public `@ifc-lite/diff` entry points use this Rust module. Call
+`await initDiff()` or `initDiffSync(...)` once at application startup, then use
+the existing comparison, fingerprint, lineage and sidecar operations
+synchronously. The shared runtime centralizes Node asset loading and browser
+initialization, with no top-level await or silent TypeScript engine fallback.
+Operations called before initialization throw; initialization failures propagate.
+The public fingerprint facade normalizes live property and quantity values
+before passing their typed projections to the raw fingerprint bindings.
 
 ## @ifc-lite/codegen
 

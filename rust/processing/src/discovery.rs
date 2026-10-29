@@ -49,7 +49,7 @@ pub(crate) fn record_ref_at(bytes: &[u8], index: usize) -> Option<u32> {
 
 /// The references in attribute `index` of a scanned record ([`ref_items`]).
 #[inline(never)]
-pub(crate) fn record_refs_at(bytes: &[u8], index: usize) -> Vec<u32> {
+pub fn record_refs_at(bytes: &[u8], index: usize) -> Vec<u32> {
     ref_items(StepRecord::parse(bytes).as_ref(), index)
 }
 

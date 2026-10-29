@@ -137,13 +137,11 @@ pub(crate) fn collect_type_geometry_jobs(
                 }
             }
         } else if let Some(ifc_type) = ifc_lite_core::type_product_ifc_type(type_name) {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+            if decoder.decode_at_with_id(id, start, end).is_ok() {
                 // IfcTypeProduct.RepresentationMaps = attr 6.
-                let rep_maps: Vec<u32> = entity
-                    .get(6)
-                    .and_then(|a| a.as_list())
-                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-                    .unwrap_or_default();
+                let rep_maps = ifc_lite_processing::discovery::record_refs_at(
+                    &content[start..end], ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
+                );
                 if !rep_maps.is_empty() {
                     candidates.push((id, start, end, ifc_type, rep_maps));
                 }
@@ -167,6 +165,7 @@ pub(crate) fn collect_type_geometry_jobs(
 /// type spans in file order, same attr-6 RepresentationMaps decode), same
 /// unreferenced-map filter, same output order.
 pub(crate) fn collect_type_geometry_jobs_from_spans(
+    content: &[u8],
     mapped_item_spans: &[(u32, usize, usize)],
     type_candidate_spans: &[(u32, usize, usize, ifc_lite_core::IfcType)],
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -182,12 +181,10 @@ pub(crate) fn collect_type_geometry_jobs_from_spans(
 
     let mut candidates: Vec<(u32, usize, usize, ifc_lite_core::IfcType, Vec<u32>)> = Vec::new();
     for (id, start, end, ifc_type) in type_candidate_spans {
-        if let Ok(entity) = decoder.decode_at_with_id(*id, *start, *end) {
-            let rep_maps: Vec<u32> = entity
-                .get(6)
-                .and_then(|a| a.as_list())
-                .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-                .unwrap_or_default();
+        if decoder.decode_at_with_id(*id, *start, *end).is_ok() {
+            let rep_maps = ifc_lite_processing::discovery::record_refs_at(
+                &content[*start..*end], ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
+            );
             if !rep_maps.is_empty() {
                 candidates.push((*id, *start, *end, ifc_type.clone(), rep_maps));
             }

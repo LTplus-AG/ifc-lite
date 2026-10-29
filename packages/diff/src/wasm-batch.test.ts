@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import * as oracle from '../test/oracle/fingerprint.js';
 import type { DataFingerprintInput, PropertyEntryInput } from './fingerprint.js';
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
@@ -51,4 +51,41 @@ test.skipIf(!existsSync(binary))('#8042 batch preserves component projection get
   expect(run(input => buildFingerprintBatch([input]))).toEqual(run(oracle.buildComponentFingerprints));
   const invalid = { ifcType: 'IfcWall', propertySets: new Array(2) };
   expect(() => buildFingerprintBatch([invalid])).toThrow(TypeError);
+});
+
+
+test.skipIf(!existsSync(binary))('#8042 bounded dense batches snapshot all adapters before native calls and keep oracle order', async () => {
+  const { initDiffSync, diffModelConstructor } = await import('./wasm-runtime.js');
+  initDiffSync({ module: readFileSync(binary) });
+  const { buildFingerprintBatch } = await import('./internal.js');
+  const { unpackDocument } = await import('./wasm-binary.js');
+  const plain: DataFingerprintInput[] = Array.from({ length: 1025 }, (_, i) => ({
+    ifcType: 'IfcWall', name: `row-${i}\ud800`,
+    propertySets: [{ name: 'P', properties: [{ name: 'value', value: i }] }],
+  }));
+  const expected = plain.map(input => ({ dataHash: oracle.buildDataFingerprint(input),
+    components: oracle.buildComponentFingerprints(input) }));
+  let observed = 0;
+  const inputs = plain.map(input => ({ ...input, get name() { observed++; return input.name; } }));
+  const Model = diffModelConstructor();
+  const native = Model.buildFingerprintBatch.bind(Model);
+  let calls = 0;
+  const instrument = vi.spyOn(Model, 'buildFingerprintBatch').mockImplementation(bytes => {
+    expect(observed).toBe(inputs.length);
+    const rows = unpackDocument(bytes);
+    expect(Array.isArray(rows)).toBe(true);
+    if (!Array.isArray(rows)) throw new Error('expected native row array');
+    expect(rows.length).toBeLessThanOrEqual(512);
+    calls++;
+    return native(bytes);
+  });
+  try {
+    expect(buildFingerprintBatch(inputs)).toEqual(expected);
+    expect(calls).toBeGreaterThan(1);
+  } finally { instrument.mockRestore(); }
+  // Sparse collections retain their original whole-document checks.
+  plain[513].typeAssignments = new Array(2);
+  expect(buildFingerprintBatch(plain)).toEqual(plain.map(input => ({
+    dataHash: oracle.buildDataFingerprint(input), components: oracle.buildComponentFingerprints(input),
+  })));
 });

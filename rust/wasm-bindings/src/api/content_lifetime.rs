@@ -10,7 +10,7 @@
 use super::IfcAPI;
 use std::sync::{Mutex, PoisonError};
 
-fn discard<T>(slot: &Mutex<Option<T>>) {
+pub(super) fn discard<T>(slot: &Mutex<Option<T>>) {
     slot.lock().unwrap_or_else(PoisonError::into_inner).take();
 }
 

@@ -11,7 +11,7 @@ test('published diff contains only Rust adapters and public declarations (#8042)
   const modules = files.filter((file): file is string => typeof file === 'string' && file.endsWith('.js'));
   expect(modules.sort()).toEqual([
     'content-match-types.js', 'diff-options.js', 'fingerprint.js', 'identity-map.js',
-    'identity-sidecar.js', 'index.js', 'internal.js', 'lineage-sidecar.js', 'lineage.js',
+    'identity-sidecar.js', 'index.js', 'internal.js', 'lineage-sidecar.js', 'lineage.js', 'prepared-model.js',
     'sidecar-common.js', 'split-merge-types.js', 'successor-types.js', 'types.js',
     'wasm-binary.js', 'wasm-columns.js', 'wasm-diff.js', 'wasm-fingerprint.js', 'wasm-identity-sidecar.js',
     'wasm-lineage-sidecar.js', 'wasm-lineage.js', 'wasm-projections.js',

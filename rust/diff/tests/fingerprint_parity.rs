@@ -227,6 +227,11 @@ fn fingerprints_match_the_typescript_engine() {
             expected_components,
             "component fingerprints disagreed for case {id:?}",
         );
+        // #8042: the batch pair shares projections, not an oracle implementation.
+        let (data, components) = ifc_lite_diff::fingerprint::build_fingerprint_pair_checked(
+            &input, |_| Ok::<(), ()>(())).unwrap();
+        assert_eq!(data, expected_data, "paired data {id}");
+        assert_eq!(components.into_iter().collect::<BTreeMap<_, _>>(), expected_components, "paired components {id}");
     }
 }
 

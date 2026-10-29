@@ -235,3 +235,20 @@ oracle parity, built viewer browser asset initialization/retry and consumer
 commands. Node runtime coverage does not qualify browser loading. This layer
 has approximately 1,500 changed production/tool lines after Git rename
 recognition; the larger total diff is predominantly relocated oracle/tests.
+
+## Layer 8: real-model and packed-package acceptance harness
+
+`stack/8042-v3-acceptance-harness` depends on the public cutover.
+The exact integrated real-geometry parity harness, bounded derived-revision
+claims, geometry extraction helpers and packed Node 22 acceptance runner arrive
+with their documentation. The existing CI real-IFC parity step now has a
+five-minute timeout. Historical real-geometry preparation evidence is copied
+unchanged as source provenance, not a result for these layer commits.
+
+These tools require prepared package dist plus fresh geometry AND independent
+diff runtimes, real fixtures, and the documented Node/pnpm environment. They
+were not executed. Derived revisions are explicit synthetic mutations of real
+geometry and are not authored split/merge ground truth. Preserve zero-execution
+incomplete status and never treat missing-fixture coverage as acceptance.
+Run packed acceptance inside parent admission, retain original receipts and
+publish compact evidence outside generated workspaces before releasing them.

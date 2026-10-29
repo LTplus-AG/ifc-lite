@@ -62,6 +62,8 @@ impl IfcAPI {
         self.reset_pipeline_diagnostics();
         self.production_model.invalidate_source();
         self.invalidate_brep_signatures();
+        // Source-keyed like the brep signatures: a new file must not reuse old mapped meshes.
+        super::super::content_lifetime::discard(&self.cached_mapped_item);
         let mut slot = self
             .cached_source_bytes
             .lock()

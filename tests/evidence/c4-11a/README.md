@@ -4,11 +4,11 @@
 
 # C4-11a content-install lifetime (#7782)
 
-Stack base: C4-10a `6b977a14eee2a276e71ea46f8b5184f8fd6395a8`, draft #8316,
-stacked on #8309. Review update merges C4-10a `02efa507f9` in `a58572ab4e`,
-preserving its refusal scopes and the C4-11a reset contract. This lane does not modify `batch.rs` or adopt C4-11b's slot/mode
-model. The executable call-order fixture was committed in `d1be601af1` before
-reset code changed.
+Targets main after C4-10a #8316 was squash-merged as `0ace993cc3`.
+The refresh preserves its refusal scopes, mapped-item invalidation on source
+replacement, extracted pipeline contracts and the C4-11a reset contract. This
+lane does not modify `batch.rs` or adopt C4-11b's slot/mode model. The executable
+call-order fixture was committed in `d1be601af1` before reset code changed.
 
 ## Traced input orders
 
@@ -54,7 +54,8 @@ references describe the frame, not another default prepass installation.
   index, allowing a lazy scan. Sharded column-length validation is an existing
   pre-install refusal and retains the current load. The changed callback test
   explicitly expects a lazy scan after an early accepted-attempt failure.
-- `setSourceBytes` keeps the existing source-epoch/BRep/diagnostic invalidation,
+- `setSourceBytes` keeps the existing source-epoch/BRep/diagnostic invalidation
+  and drops source-keyed mapped-item meshes,
   retaining the index and columns already installed by workers. It must be
   paired with index/prepass installation for a new file.
 - `clearPrePassCache` expires snapshots and drops derived state, source and both

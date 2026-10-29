@@ -1,0 +1,11 @@
+--- a/scripts/lib/diff-derived-geometry.mjs
++++ b/scripts/lib/diff-derived-geometry.mjs
+@@ -90,7 +90,7 @@
+ export function assertOriginalReferences(actual, base, head) {
+   const inSide = (row, side) => {
+     // Reference membership implies the original `ref` is carried with it.
+-    assert.ok(side.some(candidate => candidate.key === row.key), `${row.key}: result must reuse the original fingerprint`);
++    assert.ok(side.includes(row), `${row.key}: result must reuse the original fingerprint`);
+   };
+   for (const entry of actual.entries) {
+     assert.strictEqual(actual.byKey.get(entry.key), entry);

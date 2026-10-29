@@ -81,6 +81,14 @@ fn c4_10a_brep_cache_invalidates_colliding_ids_at_every_source_install_7782() {
 }
 
 #[test]
+fn c4_10a_set_source_bytes_drops_source_keyed_mapped_items_8316() {
+    let api = IfcAPI::new();
+    *api.cached_mapped_item.lock().unwrap() = Some(Default::default());
+    api.set_source_bytes(brep(0, 1.0).into_bytes());
+    assert!(api.cached_mapped_item.lock().unwrap().is_none());
+}
+
+#[test]
 fn c4_10a_warm_router_reuses_brep_walk_across_batches_7782() {
     let api = IfcAPI::new();
     let content = brep(0, 1.0);

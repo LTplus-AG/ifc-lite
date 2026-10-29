@@ -22,7 +22,7 @@ use std::sync::{
 pub(super) mod witness;
 pub(super) mod publication;
 mod publication_mesh;
-mod presentation;
+pub(super) mod presentation;
 pub(super) mod model;
 mod restart_budget;
 mod cancellation;
@@ -41,6 +41,7 @@ mod value;
 use issuance::{PendingRetainedOperation, IssuedRetainedOperation};
 use value::RuntimeRealization;
 mod predispatch;
+pub(super) mod affine_final;
 use predispatch::RuntimeRejectedExecution;
 mod entry;
 pub(super) mod admission;

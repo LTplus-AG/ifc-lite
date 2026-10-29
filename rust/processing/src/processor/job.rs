@@ -143,3 +143,7 @@ impl AppearanceResolver {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "job_appearance_tests.rs"]
+mod tests;

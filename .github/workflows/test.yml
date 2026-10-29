@@ -955,6 +955,10 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #8112: full inversion deletes the new helper and prevents test loading.
+          # Keep the API; weaken fingerprint identity to key equality instead.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
           # #7714: whole-file inversion removes the new module/test wiring,
           # collecting no certificate tests. Keep every API and test; disable
           # only cross-decoder cache reuse. Real concurrent success/decline
@@ -1032,6 +1036,10 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8303: preserve native diff modules/exports; substitute base rows for
+          # head result rows so distinct per-side refs fail real assertions.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/native-diff-8303/behaviour.oracle.patch | grep -Fxq 'tests/evidence/native-diff-8303/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/native-diff-8303/behaviour.oracle.patch)
           # #8302: keep the binary transport and batch modules/exports loadable.
           # Break ONLY signed-zero preservation in packed numeric values; the
           # changed round-trip witness must fail an assertion, not its imports.
@@ -2380,6 +2388,7 @@ jobs:
             scripts/generate-coverage-ledger.test.mjs \
             scripts/lib/coderabbit-review-state.test.mjs \
             scripts/lib/count-ratchet.test.mjs \
+            scripts/lib/diff-derived-geometry.test.mjs \
             scripts/lib/crates-io.test.mjs \
             scripts/lib/module-size-ratchet.test.mjs \
             scripts/lib/npm-pack-output.test.mjs \
@@ -2664,6 +2673,7 @@ jobs:
         run: pnpm test:wasm-contract
       - name: Rust diff real IFC parity (#8042)
         if: matrix.shard == 4
+        timeout-minutes: 5
         run: node scripts/diff-real-fixture-parity.mjs
       # The snap cache reconstructs model edges from the mesher's per-triangle
       # segments, so its correctness depends on geometry the unit fixtures can

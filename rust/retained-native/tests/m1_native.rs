@@ -136,8 +136,9 @@ fn contract_fault_keeps_one_worker_for_the_next_product() {
     );
 }
 
-// #7955: model boundaries do not reacquire a healthy preflight peer. A final
-// affine refuses before the first invocation and spends no replacement budget.
+// #7955: model boundaries do not reacquire a healthy preflight peer. #74's
+// scaled-up curved affine final fails M10's source-determined contraction-only
+// fallback, so it still refuses before the first invocation.
 #[test]
 fn affine_predispatch_and_model_boundaries_keep_the_preflight_worker() {
     let mut transport = peer();

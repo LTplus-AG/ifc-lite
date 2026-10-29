@@ -22,7 +22,7 @@ mod prepass_once;
 mod prepass_owned_columns;
 mod prepass_sharded;
 mod source_fingerprint;
-mod style_finishes;
+pub(super) mod style_finishes;
 mod prepass_from_source;
 mod void_index;
 mod prepass_affinity;

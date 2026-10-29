@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+m7_sdk_oracle_closed_shapes
+m7_sdk_placement_and_inline_equivalence
+m7_sdk_e5_one_boolean_two_parts
+m7_sdk_affine_boundary_and_authenticated_empty

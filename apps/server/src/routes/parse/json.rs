@@ -115,7 +115,7 @@ pub async fn parse_full(
     let (body, symbolic_data, admission) = tokio::task::spawn_blocking(move || {
         let result = process(
             &content,
-            &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality),
+            &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing),
             &mut (),
         );
         // In the frame the meshes above were baked in, not one this re-derives
@@ -221,6 +221,7 @@ pub async fn parse_stream(
         query.opening_filter,
         tessellation_quality,
         Some(std::sync::Arc::new(admission_guard)),
+        query.layer_slicing,
     )
     .map(|mut event: StreamEvent| {
             // Same Y-up wire frame as every other transport (issue #1841) —

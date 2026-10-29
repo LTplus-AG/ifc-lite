@@ -30,6 +30,11 @@ impl OwnedMeshProductionContext {
         Ok(())
     }
 
+    /// Retain the same immutable source and map owners for presentation after execution.
+    #[cfg(feature = "retained-runtime")]
+    pub(in crate::element) fn presentation_snapshot(&self) -> Self {
+        Self { id: self.id, data: self.data.clone(), state: self.state.clone(), source: self.source.clone() }
+    }
     pub(in crate::element) fn lifecycle(&self) -> ProductionLifecycle {
         ProductionLifecycle { id: self.id, state: self.state.clone() }
     }

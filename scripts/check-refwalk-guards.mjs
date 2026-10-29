@@ -209,7 +209,10 @@ const SCAN_ROOTS = [
 // controller. Set to 29, a margin of one.
 // C2 walk lane: measured 26 candidates after replacing the decoder recursion
 // and the extractor recursion with the shared iterative walk.
-const CANDIDATE_FLOOR = 26;
+// C2-6 (#7781): four caller loops now share the guarded callback driver in
+// representation/unwrap.rs (outside this lexical decoder-call detector).
+// Real STEP cycle/depth regressions cover that shared driver.
+const CANDIDATE_FLOOR = 21;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

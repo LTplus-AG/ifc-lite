@@ -140,6 +140,8 @@ pub(super) fn lower(recipe: &RetainedSweptDisk) -> Result<SweepPayload, Retained
         return invalid("disk evaluation frame overflows");
     }
     Ok(SweepPayload {
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        evaluation_bounds: super::EvaluationBounds::points(path.control_points.iter().map(|p| std::array::from_fn(|i| (p[i] - anchor[i]) * units))).and_then(|b| b.expanded(radius)),
         format: 2,
         bytes,
         segments: 1,

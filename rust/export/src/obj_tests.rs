@@ -7,6 +7,7 @@
 //! `gltf_tests.rs` for the sibling GLB exporter).
 
 use super::*;
+use ifc_lite_processing::process_geometry;
 
 #[test]
 fn duplex_exports_well_formed_obj() {

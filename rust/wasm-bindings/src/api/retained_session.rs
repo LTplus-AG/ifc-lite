@@ -10,6 +10,8 @@ use ifc_lite_processing::element::retained_runtime::{
 use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 use js_sys::{Array, Float64Array, Object, Reflect, Uint32Array};
 use wasm_bindgen::prelude::*;
+#[path = "retained_instancing.rs"]
+mod instancing;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES: &str = r#"
@@ -22,7 +24,8 @@ export type RetainedSessionEvent =
     | { kind: 'published'; expressId: number; ifcType: string;
         marker: 'PresentationObligationsUnmet';
         obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
-        meshes: MeshCollection };
+        meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string;
+        instanceWorldFromObject?: Float64Array };
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
@@ -170,16 +173,14 @@ fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, 
             set(&result, "consumedParts", &(product.consumed_parts as f64).into())?;
             let mut meshes = MeshCollection::with_capacity(product.parts.len());
             meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
-            let color =
-                ifc_lite_processing::style::default_color_for_type(product.ifc_type.clone())
-                    .to_array();
             for mesh in view_meshes(&product, rtc) {
-                meshes.add(MeshDataJs::new(
-                    product.product_id,
-                    product.ifc_type.name().into(),
-                    mesh,
-                    color,
-                ));
+                meshes.add(MeshDataJs::from_mesh_data(mesh));
+            }
+            super::retained_presentation::product_fields(&result, &product, true)?;
+            if let [part] = product.parts.as_slice() {
+                if part.instance_key.is_some() {
+                    set(&result, "instanceWorldFromObject", &Float64Array::from(part.world_from_object.as_slice()))?;
+                }
             }
             set(&result, "meshes", &meshes.into())?;
             return Ok(result.into());
@@ -190,3 +191,7 @@ fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, 
     Reflect::set(&value, &"kind".into(), &kind)?;
     Ok(value)
 }
+
+#[cfg(test)]
+#[path = "../retained_browser/m9_session_tests.rs"]
+mod m9_session_tests;

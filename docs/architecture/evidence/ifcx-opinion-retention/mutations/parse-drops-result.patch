@@ -1,0 +1,12 @@
+diff --git a/packages/ifcx/src/index.ts b/packages/ifcx/src/index.ts
+index b020cf997b..c18e0e8b7f 100644
+--- a/packages/ifcx/src/index.ts
++++ b/packages/ifcx/src/index.ts
+@@ -618,6 +618,7 @@ function finalizeFederatedResult(
+       crossLayerReferences: compositionResult.stats.crossLayerReferences,
+     },
+     pathToLayers,
++    ...(attributeOpinions ? { attributeOpinions } : {}),
+   };
+ }
+ 

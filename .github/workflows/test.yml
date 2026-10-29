@@ -455,6 +455,9 @@ jobs:
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              - 'licenses/retained/**'
+              - 'LICENSE'
+              - '.github/actions/**'
               # `check-ci-path-coverage` reads .gitignore to decide which paths
               # are committed source and which are build output it must not
               # walk. That makes .gitignore an INPUT to the gate: an edit to it
@@ -966,8 +969,39 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-x/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-7a-x/behaviour.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
+          # #7781 C2-3: preserve report-module test wiring; suppress drop counts
+          # and change the strict precheck message so the policy witnesses fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-3-reconcile/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-3-reconcile/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-3-reconcile/behaviour.oracle.patch)
+          # #7781 C2-2: retain the new structural entries and regression wiring;
+          # reverse only the opening predecode bound. The 65-entry witness must
+          # fail an assertion, not lose its imported helper during collection.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/representation/structural.rs | grep -Fxq 'rust/geometry/src/representation/structural.rs'; then
+            oracle_args+=(--mutation tests/evidence/c2-2-finish/behaviour.oracle.patch)
+          # #7782 C4-6b: preserve first-site selection in all browser adapters.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-6b-browser/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-6b-browser/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-6b-browser/behaviour.oracle.patch)
+          # #7782 C4-5: keep additive APIs and mutate only spatial admission.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-5-scan/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-5-scan/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-5-scan/behaviour.oracle.patch)
+          # #7782 C4-8a: retain additive APIs; reject wrongly typed map sources.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-8a-shallow/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-8a-shallow/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-8a-shallow/behaviour.oracle.patch)
+          # #7782 D66: drop the job-router index hand-off; sliced witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-d66-slicing/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-d66-slicing/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-d66-slicing/behaviour.oracle.patch)
+          # #7782 C4-9: keep the shared adapter; drop its geometry-style hit so
+          # only the element fallback answers. Item-style witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-9-colour/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-9-colour/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-9-colour/behaviour.oracle.patch)
+          # #7781 C2-6: retain the shared wrapper helper and its test wiring;
+          # reverse only first-vs-single mapped-item admission.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-6-probe-walk/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-6-probe-walk/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-6-probe-walk/behaviour.oracle.patch)
           # #7781 C2-5a: keep cutter types and test wiring; disturb engulf
           # admission and restoration of a diagonal cutter's f64 origin.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/voids-vocabulary-c2-5a/behaviour.oracle.patch'; then
@@ -987,6 +1021,16 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8303: preserve native diff modules/exports; substitute base rows for
+          # head result rows so distinct per-side refs fail real assertions.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/native-diff-8303/behaviour.oracle.patch | grep -Fxq 'tests/evidence/native-diff-8303/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/native-diff-8303/behaviour.oracle.patch)
+          # #8302: keep the binary transport and batch modules/exports loadable.
+          # Break ONLY signed-zero preservation in packed numeric values; the
+          # changed round-trip witness must fail an assertion, not its imports.
+          # Once this patch is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/boundary-transport-8302/behaviour.oracle.patch | grep -Fxq 'tests/evidence/boundary-transport-8302/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/boundary-transport-8302/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/test/oracle/index.ts | grep -Fxq 'packages/diff/test/oracle/index.ts'; then
             # #8042/#8111: pin the relocated TS oracle while observing the
             # changed public dispatch. A full-source scope includes production
@@ -1499,6 +1543,11 @@ jobs:
           # `from_streaming`, and the id allow-list ignored by the
           # `_and_ids` delegate. Once request.rs is on main, ordinary
           # whole-change revert resumes.
+          # C4-4b moves the orchestration and lowers structural ratchets. Keep
+          # those modules wired and disable cancellation: the real sink witness
+          # must observe an extra batch. Remove this selector once on main.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-4b-native/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-4b-native/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-4b-native/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/request.rs | grep -Fxq 'rust/processing/src/processor/request.rs'; then
             oracle_args+=(--mutation tests/evidence/processing-7782/behaviour.oracle.patch)
           # #7783: C6-7 adds data_model/property.rs, which the changed export and
@@ -1643,6 +1692,21 @@ jobs:
           # Once router/config.rs is on main, ordinary whole-change inversion resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/config.rs | grep -Fxq 'rust/geometry/src/router/config.rs'; then
             oracle_args+=(--mutation tests/evidence/router-config-7781/behaviour.oracle.patch)
+          # #7781 C2-5c: preserve the internal f32 helper and legacy fold witnesses.
+          # Reverse the lower-bound update; the per-site bit comparisons must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-5c-voids-aabb/behaviour.oracle.patch)
+          # #7781 C2-5b: keep the extracted helper and its legacy test wiring.
+          # Shift the signed ray parameter; bit-equality witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/parity.rs | grep -Fxq 'rust/geometry/src/router/voids/parity.rs'; then
+            oracle_args+=(--mutation tests/evidence/c2-5b-voids-frames/behaviour.oracle.patch)
+          # #7781 R3: retain the new adapter/test wiring; change only its cosine
+          # policy to the box tolerance. Prism threshold witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5-finish/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5-finish/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-5-finish/behaviour.oracle.patch)
+          # #7782 C4-0: preserve harness wiring and perturb a production colour payload.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
@@ -2183,6 +2247,13 @@ jobs:
       # gate's own source and fails when one of them cannot trigger the job
       # that reads it -- an unreachable gate reports success, because a skipped
       # job counts as success in the aggregate `test` gate below (#3312).
+      # retained-notice-inputs.py needs tomllib (Python 3.11+); node-guards may run on
+      # the self-hosted runner, whose image is not guaranteed to provide it.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check retained notice inventory and generated bundles
+        run: node scripts/retained-notices.mjs --check
       - name: Check CI path coverage
         run: node scripts/check-ci-path-coverage.mjs
       # The neighbouring class, and the one the comment above names in passing:
@@ -2874,6 +2945,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@f360235162158ca4526b07999d99c38ade05a414 # cargo-nextest (snapshot pinned 2026-10)
       - name: Rust tests
+        id: rust_tests
         # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
         # so a missing one here is fixture drift, not a legitimate local skip
         # (rust/export/src/test_support.rs) — make that a hard failure.
@@ -2884,6 +2956,32 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo nextest run --workspace --profile ci
+      # C4-0 (#7782): the native/browser parity gate already ran above, inside
+      # nextest, and fails the job on any difference its EXPECTED_DIFF table
+      # does not enumerate (or on a row nothing produces any more). This runs
+      # it once more on its own so the difference table -- every observed
+      # native/browser difference, the row that accounts for it and the
+      # charter item that removes it -- lands in the job summary, pass or
+      # fail. Same profile env, so the test binary built above is reused.
+      - name: C4-0 native/browser parity report
+        if: ${{ !cancelled() && steps.rust_tests.outcome != 'skipped' }}
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+          CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+          CARGO_PROFILE_TEST_OPT_LEVEL: "1"
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
+          IFC_LITE_C4_0_PARITY_REPORT: ${{ runner.temp }}/c4-0-parity.md
+        run: |
+          status=0
+          cargo nextest run -p ifc-lite-wasm --profile ci --no-capture \
+            -E 'test(=api::gpu_meshes::batch::parity::c4_0_native_browser_parity)' || status=$?
+          if [ -f "$IFC_LITE_C4_0_PARITY_REPORT" ]; then
+            cat "$IFC_LITE_C4_0_PARITY_REPORT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "C4-0 parity report was not written (the gate did not reach its verdict)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
       # nextest does not run doctests; `cargo test --workspace` did. Run them
       # here so the lane's coverage is exactly what it was. Same profile env,
       # so the libraries built above are reused rather than rebuilt.
@@ -2979,7 +3077,7 @@ jobs:
         run: |
           BUILD_RETAINED=1 bash scripts/build-wasm.sh
           pnpm build --filter=@ifc-lite/cli
-          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs
+          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs
 
       - name: Rust tests and Clippy (retained controller and executor)
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
@@ -2989,8 +3087,9 @@ jobs:
           cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
           cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
-          cargo test -p ifc-lite-processing --features retained-runtime --test m1_executor
-          cargo test -p ifc-lite-processing --features retained-runtime --test m3_executor
+          cargo test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle
+          # Includes M11-0 m11_presentation (SDK-free face-copy mutation witness).
+          # Includes M11-F m11_faces (SDK-free face attribution and tie-break mutation witness).
           cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
           cargo test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
           cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser

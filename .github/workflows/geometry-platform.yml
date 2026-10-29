@@ -8,6 +8,12 @@ on:
   pull_request:
     paths:
       - 'native/**'
+      # M2-D builds and drives the real opt-in viewer.
+      - 'apps/viewer/**'
+      - 'tests/e2e/retained-viewer.e2e.spec.ts'
+      - 'tests/benchmark/frames/**'
+      - 'playwright.config.ts'
+      - 'tests/evidence/m2-d/**'
       - 'rust/geometry-runtime/**'
       - 'rust/retained-native/**'
       - 'rust/processing/tests/fixtures/issue_2019_*'
@@ -21,6 +27,7 @@ on:
       - 'rust/processing/src/element.rs'
       - 'rust/processing/Cargo.toml'
       - 'tests/fixtures/cli-retained/**'
+      - 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc'
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
       - 'tests/models/manifest.json'
@@ -28,6 +35,13 @@ on:
       - 'Cargo.lock'
       # Retained requests the worker executes are lowered here.
       - 'rust/geometry/src/document/**'
+      - 'rust/geometry/src/program/**'
+      - 'rust/geometry/tests/m*'
+      # Shared test fixtures (CUT-0 prisms) used by the native and Worker witnesses.
+      - 'rust/geometry/tests/support/**'
+      - 'rust/processing/tests/m*'
+      - 'tests/manifests/cli-retained-coverage.d/**'
+      - 'tests/evidence/*/witnesses.txt'
       - 'rust/geometry/src/analytic/**'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
@@ -50,6 +64,7 @@ on:
       - 'scripts/lib/__fixtures__/smlib-node/**'
       - 'tests/evidence/m1-f1/**'
       - 'LICENSE'
+      - 'licenses/retained/**'
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
@@ -105,6 +120,13 @@ jobs:
           cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
           cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
+      - name: Collect native runtime licence review inputs and verify installation
+        run: |
+          node scripts/retained-native-link-inventory.mjs "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" \
+            "$RUNNER_TEMP/smlib-native" "$RUNNER_TEMP/retained-native-link-inventory.json"
+          cmake --install "$RUNNER_TEMP/smlib-native" --prefix "$RUNNER_TEMP/retained-native-install"
+          cmp "$RUNNER_TEMP/retained-native-install/share/licenses/ifclite-smlib/THIRD_PARTY_NOTICES.txt" \
+            licenses/retained/THIRD_PARTY_NOTICES.txt
       - name: Execute every native owned boundary
         id: native-ctest
         continue-on-error: true
@@ -125,9 +147,29 @@ jobs:
         id: native-compare
         continue-on-error: true
         run: |
+          # The default step shell has no pipefail: without it `| tee` would hide
+          # a failing cargo test whose witness markers were already printed.
+          set -o pipefail
           export IFCLITE_REQUIRE_SMLIB=1
+          export IFCLITE_M9_REFERENCE="$RUNNER_TEMP/m9-native-types.json"
+          export IFCLITE_M8_NATIVE_REFERENCE="$RUNNER_TEMP/m8-native.json"
+          export IFCLITE_M11F_REFERENCE="$RUNNER_TEMP/m11-f-native-faces.json"
+          export IFCLITE_M11_N_REFERENCE="$RUNNER_TEMP/m11-n-native.json"
+          export IFCLITE_M11_I_REFERENCE="$RUNNER_TEMP/m11-i-native-instances.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
-          cargo test --locked -p ifc-lite-retained-native --features retained-runtime
+          # Native parity references the browser lanes read (one file per
+          # slice, named after the /smlib path the browser test fetches).
+          mkdir -p "$RUNNER_TEMP/native-references"
+          export IFCLITE_M5_REFERENCE="$RUNNER_TEMP/native-references/m5-native-clips.json"
+          export IFCLITE_M5_LINEAGE_REFERENCE="$RUNNER_TEMP/native-references/m5-native-lineage.json"
+          cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
+          for file in tests/evidence/*/witnesses.txt; do
+            [[ -f "$file" ]] || continue
+            while IFS= read -r witness; do
+              [[ -z "$witness" || "$witness" == \#* ]] && continue
+              grep -Fqx "sdk witness executed: $witness" "$RUNNER_TEMP/native-witnesses.log"
+            done < "$file"
+          done
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$IFCLITE_SMLIB_WORKER" --out "$RUNNER_TEMP/native-compare" --committed --gate
       - name: M3 native opening witnesses
@@ -213,7 +255,29 @@ jobs:
           if [ -f "$RUNNER_TEMP/m3-native-openings.json" ]; then
             cp "$RUNNER_TEMP/m3-native-openings.json" rust/wasm-bindings/smlib/m3-native-openings.json
           fi
+          if [ -f "$RUNNER_TEMP/m9-native-types.json" ]; then
+            cp "$RUNNER_TEMP/m9-native-types.json" rust/wasm-bindings/smlib/m9-native-types.json
+          fi
+          if [ -f "$RUNNER_TEMP/m11-f-native-faces.json" ]; then
+            cp "$RUNNER_TEMP/m11-f-native-faces.json" rust/wasm-bindings/smlib/m11-f-native-faces.json
+          fi
+          if [ -f "$RUNNER_TEMP/m11-n-native.json" ]; then
+            cp "$RUNNER_TEMP/m11-n-native.json" rust/wasm-bindings/smlib/m11-n-native.json
+            fi
+          if [ -f "$RUNNER_TEMP/m11-i-native-instances.json" ]; then
+            cp "$RUNNER_TEMP/m11-i-native-instances.json" rust/wasm-bindings/smlib/m11-i-native-instances.json
+          fi
+          # Generic: every reference a native lane wrote is served beside /smlib.
+          # Same rule as above: an absent file is reported by the browser test.
+          set -o pipefail
+          shopt -s nullglob
+          for reference in "$RUNNER_TEMP"/native-references/*.json; do
+            cp "$reference" "rust/wasm-bindings/smlib/$(basename "$reference")"
+          done
           node scripts/stage-retained-runtime-peer.mjs
+          if [ -f "$RUNNER_TEMP/m8-native.json" ]; then
+            cp "$RUNNER_TEMP/m8-native.json" rust/wasm-bindings/smlib/m8-native.json
+          fi
           echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"
       - name: Actual module-Worker retained browser executor (ifc-lite-wasm)
         id: browser-runtime
@@ -221,9 +285,18 @@ jobs:
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 300
         run: |
+          # The default step shell has no pipefail: without it `| tee` would hide
+          # any failing retained_browser test behind the witness grep below.
+          set -o pipefail
           wasm-pack test --headless --chrome \
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
-            --features retained-browser -- retained_browser
+            --features retained-browser -- retained_browser --nocapture | tee "$RUNNER_TEMP/retained-browser.log"
+          grep -F "sdk witness executed: m8 real browser Worker parity" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "sdk witness executed: retained refusal browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "sdk witness executed: retained consumed-host browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
+          for witness in m5_browser_parity m5_browser_lineage m5_browser_clipped_opening; do
+            grep -F "sdk witness executed: $witness" "$RUNNER_TEMP/retained-browser.log"
+          done
       - name: M3 native and browser opening parity
         id: m3-browser
         continue-on-error: true
@@ -265,6 +338,46 @@ jobs:
             IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
             IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
+      - name: Browser parity and real retained viewer
+        id: viewer-retained
+        continue-on-error: true
+        env:
+          IFCLITE_RETAINED_ENGINE: ${{ runner.temp }}/cli-retained-engine
+          IFCLITE_NATIVE_PRODUCTS: ${{ runner.temp }}/native-compare/products.tsv
+          IFCLITE_BROWSER_OUT: ${{ runner.temp }}/viewer-retained
+          IFCLITE_VIEWER_OUT: ${{ runner.temp }}/viewer-retained/e2e
+          VITE_RETAINED_GEOMETRY: 'on'
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: |
+          # A skip is not parity evidence: missing upstream products fail this lane.
+          test -s "$IFCLITE_RETAINED_ENGINE/engine-manifest.json"
+          test -s "$IFCLITE_NATIVE_PRODUCTS"
+          node --test scripts/retained-compare/browser.test.mjs
+          # Turbo cache restoration does not remove outputs from another build mode.
+          rm -rf apps/viewer/dist
+          pnpm build:e2e --concurrency=1
+          pnpm exec playwright test --project=viewer-retained
+          rm -rf apps/viewer/dist
+          VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
+          node scripts/check-viewer-retained-free.mjs
+          VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default
+      - name: Optional retained browser corpus (report only)
+        if: inputs.corpus == true
+        continue-on-error: true
+        run: |
+          node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
+            --native "$RUNNER_TEMP/native-corpus/products.tsv" --out "$RUNNER_TEMP/viewer-retained-corpus" --corpus
+      - name: Upload retained viewer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: retained-viewer-comparison
+          path: |
+            ${{ runner.temp }}/retained-native-link-inventory.json
+            ${{ runner.temp }}/viewer-retained/
+            ${{ runner.temp }}/viewer-retained-corpus/
+            test-results/
+          if-no-files-found: error
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()
@@ -282,9 +395,10 @@ jobs:
           PACKAGE_BOUNDARY: ${{ steps.package-boundary.outcome }}
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
           CLI_RETAINED: ${{ steps.cli-retained.outcome }}
+          VIEWER_RETAINED: ${{ steps.viewer-retained.outcome }}
         run: |
           failed=0
-          for lane in M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED; do
+          for lane in M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

@@ -15,8 +15,10 @@ categories = ["parsing", "algorithms"]
 readme = "../../README.md"
 
 [features]
+# Test-only native planner observation for the cross-crate parity gate.
+parity-test-support = []
 # Off-by-default retained product controller (#7955).
-retained-runtime = ["ifc-lite-geometry/retained-runtime"]
+retained-runtime = ["ifc-lite-geometry/retained-runtime", "dep:libm"]
 # Opt-in alternate triangulator oracle for canonical producer regression tests.
 triangulation-alt = ["ifc-lite-geometry/triangulation-alt"]
 # Fixed-size work counters for the diagnostic example, never enabled by default.
@@ -41,6 +43,8 @@ name = "csg_scaling_bench"
 required-features = ["csg-capture"]
 
 [dependencies]
+# Identical retained normal angle weights on native and wasm32.
+libm = { version = "0.2.16", optional = true }
 ifc-lite-core.workspace = true
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every
 # target (the Manifold C++ kernel was removed in the kernel consolidation —

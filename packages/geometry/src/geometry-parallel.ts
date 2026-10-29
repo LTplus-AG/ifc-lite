@@ -867,8 +867,10 @@ export async function* processParallel(
     trace.end(shardScanSpan);
     const shards = shardResults as ShardColumns[];
     const stitched = trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
-    if (!stitched) {
-      console.warn('[stream][shard] stitch fallback triggered (handoff not found) — serial pre-pass');
+    // An EMPTY stitch falls back too: workers store an empty index as none, so
+    // the sharded-only finalize-styles always threw "no entity index".
+    if (!stitched || stitched.ids.length === 0) {
+      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : 'handoff not found'}) — serial pre-pass`);
       startPrepass(false);
       return;
     }
@@ -1320,7 +1322,11 @@ export async function* processParallel(
       // fields on its `{type:'error'}` message — this handler previously
       // dropped them on the floor.
       restashWasmPanicLocation(globalThis, data.wasmPanicLocation, data.wasmPanicAt, data.message);
-      prepassError = new Error(data.message);
+      // Wrapped like the process-worker pool's `Geometry worker error: …`
+      // (#8246): a bare "unreachable" carries no geometry marker, so the
+      // viewer's classifier filed pre-pass traps on 1.6+ GB files as
+      // `unknown` and showed the raw trap text instead of memory guidance.
+      prepassError = new Error(`Pre-pass worker error: ${data.message}`);
       prepassDone = true;
       prepassWorker.terminate();
       wake();

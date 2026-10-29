@@ -65,6 +65,19 @@ pub(crate) fn changed_components(base: &HashMap<JsString, JsString>, head: &Hash
 pub fn diff_by_key<'a, R>(
     base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
 ) -> KeyDiff<'a, R> {
+    diff_by_key_impl(base, head, options, true)
+}
+
+pub(crate) fn diff_by_key_for_transport<'a, R>(
+    base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
+) -> KeyDiff<'a, R> {
+    diff_by_key_impl(base, head, options, false)
+}
+
+fn diff_by_key_impl<'a, R>(
+    base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
+    build_index: bool,
+) -> KeyDiff<'a, R> {
     let excluded: HashSet<JsString> = options.exclude_types.iter().map(normalize_type)
         .filter(|name| !name.is_empty()).collect();
     let is_excluded = |entity: &EntityFingerprint<R>| !excluded.is_empty() && excluded.contains(&normalize_type(&entity.ifc_type));
@@ -125,9 +138,9 @@ pub fn diff_by_key<'a, R>(
         });
     }
     let mut counts = DiffCounts::default();
-    let mut by_key = HashMap::with_capacity(entries.len());
+    let mut by_key = if build_index { HashMap::with_capacity(entries.len()) } else { HashMap::new() };
     for (i, entry) in entries.iter().enumerate() {
-        by_key.insert(entry.key.clone(), i);
+        if build_index { by_key.insert(entry.key.clone(), i); }
         match entry.state {
             DiffState::Added => counts.added += 1,
             DiffState::Modified => counts.modified += 1,

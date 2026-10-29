@@ -180,3 +180,76 @@ fn full_hash_sees_what_the_sampled_hash_misses() {
         "FULL hash must distinguish meshes differing outside the sample stride",
     );
 }
+
+/// Issue #8287 regression. The instancing `rep_identity` has no equality guard
+/// behind it, so the hash is the ONLY place a normals-only difference can be
+/// seen — see `compute_mesh_hash_full`'s doc for what the group did with the
+/// pair that shared a key. Same genuinely-colliding pair as
+/// `normals_only_difference_is_not_deduped`, one layer down.
+#[test]
+fn the_full_hash_separates_a_normals_only_difference() {
+    let (exact, tilted) = normals_only_pair();
+    assert_ne!(
+        GeometryRouter::compute_mesh_hash_full(&exact),
+        GeometryRouter::compute_mesh_hash_full(&tilted),
+        "two meshes differing only in their normals share a rep_identity (#8287)",
+    );
+}
+
+/// Issue #8287, signed-zero half: the hash has to read bit patterns for the
+/// same reason `meshes_equal` does. A pair `f32::eq` calls equal still ships
+/// different bytes to the consumer, and `-0.0` is what a normalized direction's
+/// underflowing component becomes when the numerator is negative.
+#[test]
+fn the_full_hash_separates_a_signed_zero_normal() {
+    let (plus, minus) = pair_differing_only_in_normals(
+        vec![0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0],
+        vec![-0.0, -1.0, 0.0, -0.0, -1.0, 0.0, -0.0, -1.0, 0.0],
+    );
+    assert!(
+        plus.normals == minus.normals,
+        "fixture rot: the pair no longer needs a BITWISE compare to tell apart",
+    );
+    assert_ne!(
+        GeometryRouter::compute_mesh_hash_full(&plus),
+        GeometryRouter::compute_mesh_hash_full(&minus),
+        "a -0.0 normal hashes the same as +0.0, so the pair shares a rep_identity (#8287)",
+    );
+}
+
+/// Positions and normals stream as one concatenated run, so the only thing
+/// keeping the buffer boundary in the key is the lengths hashed up front. Two
+/// meshes holding the SAME values split differently between the two buffers
+/// are different geometry and must hash differently; without the lengths they
+/// would feed the hasher identical bytes.
+#[test]
+fn the_full_hash_sees_the_boundary_between_positions_and_normals() {
+    let mut six = Mesh::new();
+    six.positions = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    six.normals = vec![];
+    six.indices = vec![0, 1];
+    let mut three_three = Mesh::new();
+    three_three.positions = vec![1.0, 2.0, 3.0];
+    three_three.normals = vec![4.0, 5.0, 6.0];
+    three_three.indices = vec![0, 1];
+
+    assert_ne!(
+        GeometryRouter::compute_mesh_hash_full(&six),
+        GeometryRouter::compute_mesh_hash_full(&three_three),
+        "the same values split differently between positions and normals hash alike",
+    );
+}
+
+/// The fix must not stop identical geometry from sharing a template — that is
+/// the whole value of instancing, and a key that separated equal meshes would
+/// turn every repeat into its own upload.
+#[test]
+fn the_full_hash_still_matches_for_identical_meshes() {
+    let (one, _) = normals_only_pair();
+    let copy = one.clone();
+    assert_eq!(
+        GeometryRouter::compute_mesh_hash_full(&one),
+        GeometryRouter::compute_mesh_hash_full(&copy),
+        "two identical meshes no longer share a rep_identity",
+    );
+}

@@ -59,7 +59,9 @@ export function writerEntities(data: IfcxExportData, applyMutations: boolean): W
   // @raw-entity-enumeration-ok map columnar source rows for the canonical effective iterator below; only that iterator selects emitted ids
   for (let i = 0; i < entities.count; i++) {
     const id = entities.expressId[i];
-    const fromTable = entities.getTypeName?.(id);
+    // A row the reader derived (a material from a class-less node) is not in the file: it is not written.
+    if (data.derivedEntities?.added.has(id)) continue;
+    const fromTable = data.derivedEntities?.retyped.get(id) ?? entities.getTypeName?.(id);
     const resolved = fromTable && fromTable !== 'Unknown'
       ? fromTable : IfcTypeEnumToString(entities.typeEnum[i] as IfcTypeEnum);
     const type = resolved === 'Unknown' ? undefined : resolved;

@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
+index 8299100f1e..d74fbc690e 100644
+--- b/packages/extensions/src/authority/resolve.ts
++++ a/packages/extensions/src/authority/resolve.ts
+@@ -121,7 +121,7 @@ function structuralKey(value: unknown, depth: number): string | undefined {
+       const members = Object.keys(record)
+         .filter((key) => record[key] !== undefined)
+         .map((key) => [key.normalize('NFC'), key] as const)
+-        ;
++        .sort(([a, rawA], [b, rawB]) => (a !== b ? (a < b ? -1 : 1) : rawA < rawB ? -1 : rawA > rawB ? 1 : 0));
+       for (const [nfc, key] of members) {
+         const part = structuralKey(record[key], depth + 1);
+         if (part === undefined) return undefined;

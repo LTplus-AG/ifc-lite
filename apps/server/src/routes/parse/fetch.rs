@@ -106,7 +106,8 @@ pub async fn get_symbolic(
 /// Allows client to skip upload if file is already processed.
 ///
 /// The optional `opening_filter` query parameter must match the value used when
-/// the file was uploaded — different filter modes produce distinct cache entries.
+/// the file was uploaded. Tessellation quality and `layer_slicing` must also
+/// match: each combination produces a distinct cache entry.
 ///
 /// An existence check: every entry is looked up and none is read (#7676,
 /// SERVER-6), so it needs no admission slot. It used to read and
@@ -130,15 +131,20 @@ pub async fn check_cache(
     // does not send `parquet_layout` is asking about v5, and a v6 entry sitting
     // beside it must NOT report a hit: the client would skip the upload and
     // then fetch a blob it draws wrong.
-    let parquet_cache_key =
-        parquet_cache_key(&hash, query.opening_filter, quality, query.parquet_layout);
+    let parquet_cache_key = parquet_cache_key(
+        &hash,
+        query.opening_filter,
+        quality,
+        query.parquet_layout,
+        query.layer_slicing,
+    );
     // A geometry entry alone is not enough: the client skips the upload on a
     // hit, so a data model at the current payload version has to exist too, or
     // nothing will ever write one (issue #3869). The same holds for the
     // metadata header: a hit sends the client to `get_cached_geometry`, which
     // needs it at the current version, and a header version bump leaves the
     // geometry entry behind (#4675).
-    let seed_cache_key = cache_key_from_parts(&hash, query.opening_filter, quality);
+    let seed_cache_key = cache_key_from_parts(&hash, query.opening_filter, quality, query.layer_slicing);
     let sidecars_are_current =
         has_current_data_model(&state.cache, &seed_cache_key, query.data_model_entities).await?
         && has_cached_symbolic(&state.cache, &seed_cache_key).await?
@@ -193,11 +199,13 @@ pub async fn get_cached_geometry(
         query.opening_filter,
         query.resolved_tessellation_quality()?,
         query.parquet_layout,
+        query.layer_slicing,
     );
     let metadata_cache_key = parquet_metadata_cache_key(
         &hash,
         query.opening_filter,
         query.resolved_tessellation_quality()?,
+        query.layer_slicing,
     );
 
     // Admitted for the two entries' stored size before either is read

@@ -27,6 +27,17 @@ prepass resolution exist exactly once, in `ifc-lite-processing`:
   incremental job emission), but they only span-stash — all semantics resolve
   in the shared module.
 
+The native `process(content, request, sink)` entry sequences private phases:
+`scan` discovers jobs and plans mapped sources; `resolve` installs the index,
+resolves prepass data and filters, then publishes the bootstrap and frame;
+`pass` resolves job metadata and meshes chunks; `finalize` collates diagnostics,
+instances and result metadata. The bodies live under `processing/src/processor/`.
+Native metadata identity runs in parallel and appearance resolution runs serially;
+wasm32 uses those same identity and appearance bodies serially. The pass checks
+cancellation before each chunk, emits its batches, retains meshes if requested,
+and then replays deferred styles. Each job borrows a `PassContext`, with a fresh
+`GeometryRouter::from_config` and the existing shared caches and model snapshot.
+
 The native scanner uses `ifc_lite_core::geometry_flags_by_name` to obtain
 `(has_geometry, representationless_spatial)` with one lookup of the existing
 immutable schema table. These are the same predicates exposed separately by
@@ -499,8 +510,47 @@ Tessellation detail is controlled by a single `TessellationQuality` enum (`rust/
 
 ## Mapped Representations
 
-IFC reuses geometry via `IfcMappedItem` (a source `IfcRepresentationMap` plus a
-per-instance placement transform). For the primary model the engine collates
+IFC reuses geometry via `IfcMappedItem`: `MappingSource` references an
+`IfcRepresentationMap`, and `MappingTarget` composes with its `MappingOrigin`.
+The structural home is `rust/geometry/src/representation/`: `product_shape`
+reads a `ProductShape`, `Select::Meshed` selects what renders, and the
+decoder-only `RepresentationWalk` visits items in list order with an explicit
+DFS stack. Mapped paths use cycle checks, `MAX_MAPPED_ITEM_DEPTH`, and separate
+work allowances for mapped attempts and `Items` members. `MappedLevel` returns
+transforms in file units; the router scales their translations to metres.
+
+Before rendering, `representation/product_budget.rs` admits roots across the
+selected product representations without consulting mesh caches. Repeated
+mapped occurrences pay again. On budget exhaustion it retains completed roots
+and withholds the current root and all later roots. The profile extractor uses
+the same admission for drawings. The private `structural.rs` helpers serve
+shallow routing identity, RTC item-id sampling and Reference-only opening
+checks; `unwrap.rs` owns the policy-specific first-item/boolean probe chains.
+
+Rendering remains in the controllers under `rust/geometry/src/program/`:
+
+- `ProductControl` consumes admitted roots, merges frame parts or collects
+  styled sub-meshes, and applies product placement.
+- `ItemControl` selects a processor through the router's `ProcessorRegistry`,
+  drives owned construction or extension callbacks, and publishes reports.
+  `CacheControl` wraps it with item-cache admission and publication.
+- `MappingControl` owns the active source stack. Its `Sink` variants are
+  `Occurrence` (cached source then placement), `Shared` (shared source and an
+  instance placeholder), `Styled` (per-item sub-meshes), and `TypeMap` (type
+  representation parts followed by `MappingOrigin`). Merged/type source items
+  use `ItemControl`; styled plain items use `CacheControl`.
+
+The frame boundary is explicit. `router/processing.rs::finish_item_mesh`
+validates indices, scales positions and publishes object-frame bounds for
+rebased items. Direct items retain `rtc_applied`. Before a mapped-source mesh
+is merged or transformed, `MappingControl` calls `keep_rebase_in_origin`
+(`router/mapped_item.rs`): it clears that flag and adds the model RTC offset to
+the mesh's f64 origin. This preserves precision through mapping and lets final
+placement subtract RTC once; `M(p - rtc)` is not `M(p) - rtc` under rotation.
+Raw product items instead choose an element-frame offset through the inverse
+placement linear transform. See [Coordinate Handling](coordinate-handling.md#geometryrouter).
+
+For the primary model the engine collates
 congruent occurrences into **GPU instances**: the wasm
 `processGeometryBatchInstanced` entry point (backed by
 `rust/geometry/src/instancing` and `processors/mapped.rs`) partitions opaque

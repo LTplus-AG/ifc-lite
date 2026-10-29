@@ -7,6 +7,7 @@
 use super::processing::SourceHygiene;
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, GroupCut};
+use crate::math::aabb::Aabb3;
 use crate::mesh::SubMeshCollection;
 use crate::program::openings::execute::Execution;
 use crate::{Mesh, Point3, Result, Vector3};
@@ -61,8 +62,6 @@ const WALL_NORMAL_DEPTH_COS: f64 = 0.98;
 /// the re-extruded host. Below this floor the relative comparison still rules.
 const MIXED_ROUTE_DEFECT_FLOOR: usize = 64;
 const MIXED_ROUTE_DEFECT_GROWTH: usize = 4;
-/// Maximum wrapper depth when drilling through mapped/boolean items to find an extrusion.
-const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
 
 /// Pre-computed per-element void subtraction data.
 ///
@@ -292,14 +291,8 @@ impl Execution {
         if host_f.positions.is_empty() {
             return None;
         }
-        let mut hmn = [f64::INFINITY; 3];
-        let mut hmx = [f64::NEG_INFINITY; 3];
-        for c in host_f.positions.chunks_exact(3) {
-            for k in 0..3 {
-                hmn[k] = hmn[k].min(c[k] as f64);
-                hmx[k] = hmx[k].max(c[k] as f64);
-            }
-        }
+        let bounds = Aabb3::from_f32_positions(&host_f.positions);
+        let (hmn, hmx) = (bounds.min, bounds.max);
         for k in 0..3 {
             let ext = hmx[k] - hmn[k];
             let lo = ext.min(2.0 * host.half[k]);

@@ -91,13 +91,11 @@ describe('ADVERSARIAL: false-positive classification of empty-message spawn erro
   });
 });
 
-describe('ADVERSARIAL: 2.5GB boundary consistency parser<->geometry', () => {
-  it('geometry huge-file heuristic fires at EXACTLY 2.5e9 bytes (decimal GB, not GiB)', () => {
-    // largeFilePrepassError uses byteLength / 1e9 >= 2.5  => >= 2_500_000_000.
-    expect(largeFilePrepassError(new Error('unreachable executed'), 2_500_000_000)).not.toBeNull();
+describe('ADVERSARIAL: 1.0GB geometry huge-file heuristic boundary', () => {
+  it('fires at EXACTLY 1.0e9 bytes (decimal GB, not GiB)', () => {
+    // largeFilePrepassError uses byteLength / 1e9 >= 1.0  => >= 1_000_000_000 (#8259).
+    expect(largeFilePrepassError(new Error('unreachable executed'), 1_000_000_000, {})).not.toBeNull();
     // Just under the boundary: rethrow (null).
-    expect(largeFilePrepassError(new Error('unreachable executed'), 2_499_999_999)).toBeNull();
-    // The parser gate refuses at exactly 2.5e9 (strict <) so the two ceilings
-    // agree at the boundary.
+    expect(largeFilePrepassError(new Error('unreachable executed'), 999_999_999, {})).toBeNull();
   });
 });

@@ -5,11 +5,12 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadTolerances } from './tolerances.mjs';
 import { compare, tsv } from './metrics.mjs';
+import { coverageRows } from './coverage.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 export async function runComparison({ engine, native, out }) {
   const nativeRows = tsv(await readFile(native, 'utf8'));
-  const blessed = tsv(await readFile('tests/manifests/cli-retained-coverage.tsv', 'utf8'));
+  const blessed = await coverageRows();
   const tolerance = loadTolerances().nativeWasmVolumeRelative;
   if (tolerance !== 1e-9) throw new Error('Preregistered native/wasm tolerance changed');
   const scratch = await mkdtemp(join(tmpdir(), 'cli-retained-parity-'));

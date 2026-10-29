@@ -824,12 +824,13 @@ impl IfcAPI {
         // The per-batch "sliced N wall(s)" line already reports success.
         let sliceable = index.sliceable_count();
         if sliceable > 0 {
-            web_sys::console::info_1(
-                &format!("[ifc-lite layers] {sliceable} sliceable buildup(s) of {} association(s)", index.len()).into(),
-            );
+            gpu_meshes::batch_host::info(&format!(
+                "[ifc-lite layers] {sliceable} sliceable buildup(s) of {} association(s)",
+                index.len()
+            ));
         } else if has_layer_set {
-            web_sys::console::warn_1(
-                &"[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)".into(),
+            gpu_meshes::batch_host::warn(
+                "[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)",
             );
         }
         let arc = std::sync::Arc::new(index);
@@ -1050,6 +1051,8 @@ fn set_js_prop(obj: &JsValue, key: &str, value: &JsValue) -> bool {
 
 #[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
 mod retained_model;
+#[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
+mod retained_presentation;
 
 #[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
 mod retained_session;

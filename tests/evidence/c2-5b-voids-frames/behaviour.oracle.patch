@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/router/voids/parity.rs
++++ b/rust/geometry/src/router/voids/parity.rs
+@@ -48,7 +48,7 @@
+     if v < -bary_eps || u + v > 1.0 + bary_eps {
+         return None;
+     }
+-    Some(v3::dot(e2, qvec) * inv_det + 1.0)
++    Some(v3::dot(e2, qvec) * inv_det)
+ }
+ 
+ /// Whether the infinite line through `point` along `axis` crosses any

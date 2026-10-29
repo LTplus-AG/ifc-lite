@@ -57,7 +57,7 @@ export function profileContext(profile = DEFAULT_PROFILE): ContextDefinition {
         : field.kind === 'language' ? { '@id': field.iri, '@container': '@language' }
           : field.kind === 'string' ? field.iri : { '@id': field.iri, '@type': datatype(field) }])) };
 }
-const finish = (writer: Writer): Promise<string> => new Promise((resolve, reject) => writer.end((error, value) => error ? reject(error) : resolve(value)));
+const finish = (writer: Writer): Promise<string> => new Promise((resolve, reject) => writer.end((error, value) => error ? reject(error) : resolve(value ?? '')));
 export async function shapesTurtle(profile = DEFAULT_PROFILE): Promise<string> {
   assertProfile(profile);
   const writer = new Writer({ prefixes: { sh: SH, rdf: RDF, xsd: XSD } });

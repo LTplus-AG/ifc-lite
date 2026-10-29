@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { parseIfcx as ParseIfcx } from '@ifc-lite/ifcx';
-import { CompactEntityIndex, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
+import { CompactEntityIndex, IFCX_LENGTH_UNIT_SCALE, declareLengthUnitScale, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -122,7 +122,7 @@ type IfcxParse = Awaited<ReturnType<typeof ParseIfcx>>;
 type IfcxStoreInput = Pick<
   IfcxParse,
   'fileSize' | 'entityCount' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships' | 'georeferencing'
-> & { spatialHierarchy?: IfcxParse['spatialHierarchy'] };
+> & { spatialHierarchy?: IfcxParse['spatialHierarchy']; derivedEntities?: IfcxParse['derivedEntities'] };
 
 /**
  * Build the `IfcDataStore` for an IFCX import. Exported for regression coverage of
@@ -152,12 +152,16 @@ export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuff
   const dataStore = attachDataStoreAccessors({
     fileSize: ifcxResult.fileSize,
     schemaVersion: 'IFC5' as const,
+    // IFCX has no IfcUnitAssignment to read: the format's unit, assumed (nothing in the file declares it).
+    lengthUnitScale: IFCX_LENGTH_UNIT_SCALE,
+    lengthUnitSource: 'default' as const,
     entityCount: ifcxResult.entityCount,
     parseTime: ifcxResult.parseTime,
     source,
     entityIndex: { byId: new Map(), byType: new Map() },
     strings: ifcxResult.strings,
     entities: ifcxResult.entities,
+    derivedEntities: ifcxResult.derivedEntities,
     properties: ifcxResult.properties,
     quantities: ifcxResult.quantities,
     relationships: ifcxResult.relationships,
@@ -175,6 +179,10 @@ export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuff
       },
     } : undefined,
   } as unknown as IfcStoreData);
+
+  // Consumers that derive the unit from `source` + `entityIndex` (extractLengthUnitScale) find no IFCPROJECT in an
+  // IFCX store and would warn on every call; hand them the same assumed scale.
+  declareLengthUnitScale(dataStore.entityIndex, IFCX_LENGTH_UNIT_SCALE);
 
   const entityTable = ifcxResult.entities;
   const idsByType = new Map<string, number[]>();

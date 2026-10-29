@@ -21,6 +21,7 @@ import { toGlobalIdFromModels, useViewerStore } from '@/store';
 import { chooseGeometryKernel } from '@/store/geometryKernel';
 import type { RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
 import { RetainedEngineDetails } from './RetainedEngineDetails';
+import { RetainedFaceTable } from './RetainedFaceTable';
 
 registerEnglish(retainedGeometryEn);
 
@@ -29,6 +30,7 @@ const KNOWN_CODES = new Set([
   'opening_strategy', 'material_layer_strategy', 'operation_unsupported', 'source_invalid', 'source_changed',
   'incomplete', 'empty_result', 'family_unqualified', 'kernel_failure', 'worker_fault', 'worker_retired',
   'resource_exhausted', 'deadline_exceeded', 'cancelled', 'contract_breach',
+  'opening_unsupported', 'appearance_unsupported', 'face_provenance_unproven',
 ]);
 
 export interface RetainedGeometryPanelProps {
@@ -119,6 +121,7 @@ export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOp
           })}</p>
           {notApplied && <p className="text-muted-foreground">{t('retainedGeometry.panel.notApplied', { obligations: notApplied })}</p>}
         </div>
+        <RetainedFaceTable modelId={modelId} faces={summary.faces} />
         {summary.refused.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('retainedGeometry.panel.none')}</p>
         ) : (

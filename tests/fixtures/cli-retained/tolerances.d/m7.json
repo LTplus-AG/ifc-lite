@@ -1,0 +1,7 @@
+{
+  "mappedBooleanVolumeRelative": { "linear": 0.000001, "curved": 0.002 },
+  "mappedBooleanBboxWithinLeftOperand": { "absolute": 0.00001, "extentFactor": 0.00000024 },
+  "mappedPlacementEquivalenceRelative": 0.000000001,
+  "mappedBooleanInvocationsPerProduct": "exact count",
+  "mappedBooleanExactComparison": "report only"
+}

@@ -78,4 +78,12 @@ fn bootstrap_path_still_schedules_and_meshes_the_container_geometry() {
         boot.entity_count > 0,
         "the bootstrap should have scanned the fixture's entities"
     );
+    let project = common::quick_metadata::tree(&boot);
+    let site = common::quick_metadata::child(project, 11);
+    let building = common::quick_metadata::child(site, 15);
+    let storey = common::quick_metadata::child(building, 40);
+    assert!(
+        storey.elements.iter().all(|element| element.express_id != 40),
+        "the spatial exception must remain a spatial node, not an element row"
+    );
 }

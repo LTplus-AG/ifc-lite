@@ -6,6 +6,7 @@ use super::{normalize_optional_string, EntityJob, OpeningFilterMode};
 use crate::style::GeometryStyleInfo;
 use ifc_lite_core::{EntityDecoder, IfcType, MAX_MAPPED_ITEM_DEPTH};
 use ifc_lite_geometry::meshed_representations;
+use ifc_lite_geometry::representation::{mapped_item_representation_id, pds_representation_ids, product_shape_id};
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 
@@ -129,10 +130,9 @@ fn is_opaque_opening(
     //    render with, in `resolve_submesh_color`'s order: the item's own style,
     //    else the #407 material colours, else the element colour. Only the
     //    representations the router meshes count (#4699).
-    let reprs: Vec<_> = entity
-        .get_ref(6)
+    let reprs: Vec<_> = product_shape_id(&entity)
         .and_then(|shape_id| decoder.decode_by_id(shape_id).ok())
-        .and_then(|shape| shape.get_refs(2))
+        .map(|shape| pds_representation_ids(&shape).collect::<Vec<_>>())
         .unwrap_or_default()
         .into_iter()
         .filter_map(|repr_id| decoder.decode_by_id(repr_id).ok())
@@ -209,10 +209,7 @@ fn scan_item_styles(
             scan.unstyled_leaf |= own_style.is_none();
             continue;
         }
-        let Some(mapped_repr) = item
-            .get_ref(0)
-            .and_then(|source_id| decoder.decode_by_id(source_id).ok())
-            .and_then(|source| source.get_ref(1))
+        let Some(mapped_repr) = mapped_item_representation_id(&item, decoder)
             .and_then(|repr_id| decoder.decode_by_id(repr_id).ok())
         else {
             continue;

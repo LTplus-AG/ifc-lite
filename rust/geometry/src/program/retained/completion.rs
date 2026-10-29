@@ -20,7 +20,7 @@ impl RetainedProgram<'_> {
                     // Construction/placement discharge none of these obligations.
                     remaining: vec![RetainedRequirement::OpeningClosure,
                         RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
-                        RetainedRequirement::PersistentFaces],
+                        RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals],
                 })
             }
             _ => Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),
@@ -54,7 +54,7 @@ impl RetainedProgram<'_> {
                     values,
                     remaining: vec![RetainedRequirement::ProductPlacement,
                         RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
-                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces],
+                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals],
                 })
             }
             _ => Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),

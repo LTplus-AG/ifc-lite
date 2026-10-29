@@ -32,6 +32,8 @@ pub(super) struct Prism {
     pub loops: Vec<(bool, Vec<Edge>)>,
     pub low: f64,
     pub high: f64,
+    /// Height of the profile plane (`cap(start)`); `cap(end)` is the other bound.
+    pub start: f64,
 }
 pub(super) fn profile_frame(
     sources: &AnalyticQuantitySources,
@@ -145,5 +147,6 @@ fn prism(sources: &AnalyticQuantitySources, i: &ExtrusionInstance, basis: &Basis
         loops,
         low: z.min(z + d[2]),
         high: z.max(z + d[2]),
+        start: z,
     })
 }

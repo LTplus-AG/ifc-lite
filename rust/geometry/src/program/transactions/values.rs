@@ -21,6 +21,8 @@ impl<'a> ValueRef<'a> {
     }
     pub fn definition(self) -> Definition { Definition(self.0.definition().clone()) }
     pub fn slot(self) -> Slot { Slot(self.0.slot()) }
+    /// Conservative bounds in the runtime object evaluation frame.
+    pub fn evaluation_bounds(self) -> Option<crate::document::EvaluationBounds> { self.0.bounds }
     pub fn evaluated_empty(self) -> Option<bool> { self.0.evaluated_empty() }
     pub fn object_frame(self) -> &'a [f64; 16] { self.0.object_frame() }
     pub fn world_from_source(self) -> Option<&'a [f64; 16]> { self.0.world_from_source() }
@@ -53,7 +55,7 @@ impl Operation {
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppearance, PersistentFaces }
+pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppearance, PersistentFaces, SurfaceNormals }
 pub struct Plan {
     pub(super) inner: logical::RetainedProductPlan,
     _storage: Option<crate::resource::Reservation>,
@@ -70,11 +72,11 @@ impl Plan {
         let mut values = Vec::new();
         let storage = resources.reserve_headers(&mut values, count).map_err(super::TransactionError::stopped)?;
         let mut remaining = Vec::new();
-        let requirements_storage = resources.reserve_headers(&mut remaining, 5).map_err(super::TransactionError::stopped)?;
+        let requirements_storage = resources.reserve_headers(&mut remaining, 6).map_err(super::TransactionError::stopped)?;
         remaining.extend([
             logical::RetainedRequirement::ProductPlacement, logical::RetainedRequirement::OpeningClosure,
             logical::RetainedRequirement::MaterialLayers, logical::RetainedRequirement::IfcAppearance,
-            logical::RetainedRequirement::PersistentFaces,
+            logical::RetainedRequirement::PersistentFaces, logical::RetainedRequirement::SurfaceNormals,
         ]);
         for plan in plans { values.extend(plan.inner.values); }
         resources.check().map_err(super::TransactionError::stopped)?;
@@ -100,6 +102,7 @@ impl Plan {
             logical::RetainedRequirement::MaterialLayers => Requirement::MaterialLayers,
             logical::RetainedRequirement::IfcAppearance => Requirement::IfcAppearance,
             logical::RetainedRequirement::PersistentFaces => Requirement::PersistentFaces,
+            logical::RetainedRequirement::SurfaceNormals => Requirement::SurfaceNormals,
         })
     }
 }

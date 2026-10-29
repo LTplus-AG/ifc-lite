@@ -8,6 +8,8 @@ pub(super) struct RuntimeRealization<R: NumericalReceipt> {
     // input handles/matrices. Callers cannot rebind a numerical result.
     pub(super) definition: LogicalRetainedDefinition,
     pub(super) empty: bool,
+    /// The opening element an M3 cut subtracted; persistent faces key its reveals `via` it.
+    pub(super) opening: Option<u32>,
     pub(super) _permit: Reservation,
     pub(super) _buffers: Reservation,
     // Runtime lineage retains authored requests. Keep their charges alive even

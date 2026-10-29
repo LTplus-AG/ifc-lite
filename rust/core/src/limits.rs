@@ -17,9 +17,12 @@
 /// Maximum `IfcMappedItem` → `IfcRepresentationMap` → `MappedRepresentation.Items`
 /// nesting any walk in this workspace will follow.
 ///
-/// Shared because three crates walk the SAME chain and their bounds must agree:
-/// `ifc_lite_processing::element`, `ifc_lite_geometry::router::processing` and
-/// `ifc-lite-wasm`'s styling colour resolver.
+/// Shared by geometry's `representation::RepresentationWalk` callers (product
+/// admission, profile extraction and mapped RTC voting), the `program` mapping
+/// controller and `representation::unwrap` probes, processing's element-colour
+/// and opening-style walks, and the WASM styling colour resolver. The generic
+/// representation walk accepts a caller-selected depth; these geometry callers
+/// pass this bound and also bound branching expansion work where applicable.
 ///
 /// Disagreement fails SILENTLY, which is why it is worth making structural. A
 /// mid-review revision of #2864 held 16 against the router's 32: an element

@@ -336,6 +336,7 @@ describe('signInWithClientCredentials', () => {
       tokenExpiresAt: Date.now() - 1000,
       clientId: 'app-id',
       clientSecret: 'app-secret',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -360,6 +361,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() - 1000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -382,6 +384,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() + 3_600_000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -402,6 +405,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() + 3_600_000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -425,6 +429,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() - 1000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -440,6 +445,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() + 3_600_000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -465,6 +471,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() - 1000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -487,6 +494,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() + 3_600_000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -499,6 +507,7 @@ describe('createConnectedClient token refresh', () => {
       tokenExpiresAt: Date.now() + 3_600_000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -650,6 +659,7 @@ describe('subscribeBcfServer', () => {
       tokenExpiresAt: 0,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -673,6 +683,7 @@ describe('pullBcfServerProject session isolation', () => {
       tokenExpiresAt: Date.now() + 3_600_000,
       clientId: '',
       clientSecret: '',
+      tokenRelay: '',
       projectId: '',
       projectName: '',
     });
@@ -693,6 +704,7 @@ describe('pullBcfServerProject session isolation', () => {
           tokenExpiresAt: Date.now() + 3_600_000,
           clientId: '',
           clientSecret: '',
+          tokenRelay: '',
           projectId: '',
           projectName: '',
         });

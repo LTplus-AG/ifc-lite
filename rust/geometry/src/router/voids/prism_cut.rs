@@ -59,14 +59,21 @@
 //! kernel (A/B measurement). Default ON; wasm has no env, so the default holds
 //! on both targets.
 
+#[cfg(test)]
+#[path = "aabb_fold_tests.rs"]
+mod aabb_fold_tests;
+
+use crate::math::aabb::Aabb3;
 use std::sync::OnceLock;
 
 use super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
+use super::geom::opening_frame::cluster_prism_directions;
 use super::geom::opening_mesh_thinnest_axis_dir;
+use super::geom::parity::PARITY_RAY_DIR as RAY_DIR;
 use super::{cutter_is_closed_manifold, CutterKind, VoidContext};
-use crate::program::openings::execute::Execution;
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;
+use crate::program::openings::execute::Execution;
 use nalgebra::Point2;
 use rustc_hash::FxHashMap;
 
@@ -333,14 +340,14 @@ struct PTri {
 impl PTri {
     #[inline]
     fn aabb(&self) -> (V3, V3) {
-        let mut lo = self.p[0];
-        let mut hi = self.p[0];
-        for v in &self.p[1..] {
-            for k in 0..3 {
-                lo[k] = lo[k].min(v[k]);
-                hi[k] = hi[k].max(v[k]);
-            }
+        let mut bounds = Aabb3 {
+            min: self.p[0],
+            max: self.p[0],
+        };
+        for &v in &self.p[1..] {
+            bounds.extend(v);
         }
+        let (lo, hi) = (bounds.min, bounds.max);
         (lo, hi)
     }
 }
@@ -356,14 +363,11 @@ impl PTri {
 /// absolute floor uses the full host extent; a remote or long cutter cannot
 /// enlarge it. Caps are excluded because their opposite contributions cancel.
 fn partition_consistent(host: &[PTri], out: &[PTri], inside: &[PTri], bounds: &[(V3, V3)]) -> bool {
-    let mut lo = [f64::INFINITY; 3];
-    let mut hi = [f64::NEG_INFINITY; 3];
-    for (a, b) in bounds {
-        for k in 0..3 {
-            lo[k] = lo[k].min(a[k]);
-            hi[k] = hi[k].max(b[k]);
-        }
+    let mut envelope = Aabb3::EMPTY;
+    for &(min, max) in bounds {
+        envelope = envelope.union(&Aabb3 { min, max });
     }
+    let (lo, hi) = (envelope.min, envelope.max);
     let origin: V3 = std::array::from_fn(|k| (lo[k] + hi[k]) * 0.5);
     let extent = (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);
     let sum = |ts: &[PTri], reference: &V3| {
@@ -416,17 +420,16 @@ fn has_measurable_region(inside: &[PTri], caps: &[PTri]) -> bool {
         return false;
     };
     let axes = [u, cross(n, u), n];
-    let mut lo = [0.0f64; 3];
-    let mut hi = [0.0f64; 3];
+    let mut bounds = Aabb3 {
+        min: [0.0; 3],
+        max: [0.0; 3],
+    };
     for t in &faces {
         for p in t.p {
-            for k in 0..3 {
-                let coordinate = dot(sub(p, origin), axes[k]);
-                lo[k] = lo[k].min(coordinate);
-                hi[k] = hi[k].max(coordinate);
-            }
+            bounds.extend(std::array::from_fn(|k| dot(sub(p, origin), axes[k])));
         }
     }
+    let (lo, hi) = (bounds.min, bounds.max);
     let envelope = (0..3).map(|k| hi[k] - lo[k]).product::<f64>();
     envelope.is_finite() && envelope >= 1.0e-9
 }
@@ -953,15 +956,7 @@ fn detect_prism(verts: &[V3], tris: &[[usize; 3]], mesh_vol: f64) -> Option<Pris
         let (a, b, c) = (verts[t[0]], verts[t[1]], verts[t[2]]);
         normals.push(normalize(cross(sub(b, a), sub(c, a))));
     }
-    let mut clusters: Vec<V3> = Vec::new();
-    for n in normals.iter().flatten() {
-        if !clusters.iter().any(|c| dot(*n, *c).abs() > 0.999) {
-            if clusters.len() > 64 {
-                return None; // way past any stepped extrusion — bail early
-            }
-            clusters.push(*n);
-        }
-    }
+    let clusters = cluster_prism_directions(&normals)?;
     let mut mag = 0.0f64;
     for v in verts {
         for c in v {
@@ -1247,10 +1242,6 @@ fn opening_aabb_obb(op: &CutterKind, origin: [f64; 3]) -> Option<([V3; 3], V3, V
 
 // ─────────────────────────── ray parity (point in solid) ─────────────────────
 
-/// Fixed skewed ray direction (same constants as `geom::point_inside_mesh`) —
-/// avoids exact grazes on the axis-dominated faces of IFC geometry.
-const RAY_DIR: V3 = [0.573_257_1, 0.665_412_3, 0.477_889_5];
-
 /// Möller–Trumbore crossing parity of `point` against the triangle list (with
 /// precomputed AABBs). Odd ⇒ inside the solid.
 fn point_inside(tris: &[PTri], aabbs: &[(V3, V3)], point: V3) -> bool {
@@ -1262,25 +1253,11 @@ fn point_inside(tris: &[PTri], aabbs: &[(V3, V3)], point: V3) -> bool {
         if hi[0] < point[0] || hi[1] < point[1] || hi[2] < point[2] {
             continue;
         }
-        let e1 = sub(t.p[1], t.p[0]);
-        let e2 = sub(t.p[2], t.p[0]);
-        let pvec = cross(RAY_DIR, e2);
-        let det = dot(e1, pvec);
-        if det.abs() < 1.0e-12 {
+        let Some(dist) = super::geom::parity::ray_triangle_param(
+            point, RAY_DIR, t.p[0], t.p[1], t.p[2], 1.0e-12, 1.0e-9,
+        ) else {
             continue;
-        }
-        let inv = 1.0 / det;
-        let tvec = sub(point, t.p[0]);
-        let u = dot(tvec, pvec) * inv;
-        if !(-1.0e-9..=1.0 + 1.0e-9).contains(&u) {
-            continue;
-        }
-        let qvec = cross(tvec, e1);
-        let v = dot(RAY_DIR, qvec) * inv;
-        if v < -1.0e-9 || u + v > 1.0 + 1.0e-9 {
-            continue;
-        }
-        let dist = dot(e2, qvec) * inv;
+        };
         if dist > 1.0e-9 {
             crossings += 1;
         }
@@ -2762,17 +2739,12 @@ impl Execution {
                 // the exact path owns the redundant-void machinery (#964,
                 // #635).
                 let axes = [pf.u, pf.v, pf.d];
-                let mut hlo = [f64::INFINITY; 3];
-                let mut hhi = [f64::NEG_INFINITY; 3];
-                for t in &tris {
-                    for p in &t.p {
-                        for k in 0..3 {
-                            let s = dot(*p, axes[k]);
-                            hlo[k] = hlo[k].min(s);
-                            hhi[k] = hhi[k].max(s);
-                        }
-                    }
-                }
+                let bounds = Aabb3::from_points(
+                    tris.iter()
+                        .flat_map(|t| t.p.iter())
+                        .map(|p| std::array::from_fn(|k| dot(*p, axes[k]))),
+                );
+                let (hlo, hhi) = (bounds.min, bounds.max);
                 let plo = [pf.bb.0[0], pf.bb.0[1], pf.d0()];
                 let phi = [pf.bb.1[0], pf.bb.1[1], pf.d1()];
                 let overlap = (0..3).all(|k| phi[k] > hlo[k] && plo[k] < hhi[k]);
@@ -2796,19 +2768,15 @@ impl Execution {
                                 ok = true;
                                 // Committed-cutter AABB (extended pf): lift the
                                 // 4 profile-bb corners at both depth planes.
-                                let mut lo = [f64::INFINITY; 3];
-                                let mut hi = [f64::NEG_INFINITY; 3];
+                                let mut bounds = Aabb3::EMPTY;
                                 for &uu in &[pf.bb.0[0], pf.bb.1[0]] {
                                     for &vv in &[pf.bb.0[1], pf.bb.1[1]] {
                                         for &w in &[pf.d0(), pf.d1()] {
-                                            let p = pf.lift(uu, vv, w);
-                                            for k in 0..3 {
-                                                lo[k] = lo[k].min(p[k]);
-                                                hi[k] = hi[k].max(p[k]);
-                                            }
+                                            bounds.extend(pf.lift(uu, vv, w));
                                         }
                                     }
                                 }
+                                let (lo, hi) = (bounds.min, bounds.max);
                                 refine_boxes.push((
                                     [
                                         lo[0] - REFINE_REGION_PAD,

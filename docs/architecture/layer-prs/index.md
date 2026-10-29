@@ -37,6 +37,7 @@ The repo already converged on the primitives without naming the product:
 | [08-review](08-review.md) | Review workflow, viewer UI, BCF, required checks, Time Machine DAG |
 | [09-cli](09-cli.md) | `ifc layer` command reference, GitHub Action |
 | [10-registry](10-registry.md) | Hosted layer registry, federation, policies, product tiers |
+| [12-authority](12-authority.md) | Who decides when parties disagree: responsibility map, opinion retention, contested values |
 
 ## Working agreements (inherited from AGENTS.md)
 

@@ -143,7 +143,7 @@ try {
   }
   await panel.getByRole('button', { name: 'Load', exact: true }).click();
   await panel.getByText('Latest: 22.5 °C', { exact: true }).waitFor({ timeout: 30000 });
-  assert.equal(await panel.getByRole('img').getAttribute('aria-label'), 'History for living room: 3 samples');
+  assert.equal(await panel.locator('svg').getAttribute('aria-label'), 'History for living room: 3 samples');
   assert.match(await panel.innerText(), /Ambiguous series \(2\)/);
   assert.match(await panel.innerText(), /Unmatched series \(1\)/);
   const persisted = await page.evaluate(() => JSON.stringify(Object.entries(localStorage)));

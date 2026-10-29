@@ -83,7 +83,7 @@ export function InfluxPanel() {
     <Button onClick={() => void load()} disabled={busy}>{t(busy ? 'influx.loading' : 'influx.load')}</Button>
     {error && <p role="alert" className="text-destructive">{t(error)}</p>}
     {data && <>
-      <p role="status">{t('influx.loaded', { samples: data.history.rows.length })}</p>
+      <output className="block">{t('influx.loaded', { samples: data.history.rows.length })}</output>
       {match ? <div className="rounded border p-3 space-y-2">
         <h3 className="font-semibold break-words">{match.target.Name}</h3>
         <p className="text-lg font-semibold">{t('influx.latest', { value: Number(match.row._value).toLocaleString(locale), unit: config.unit })}</p>

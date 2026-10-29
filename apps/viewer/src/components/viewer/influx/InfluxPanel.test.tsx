@@ -38,11 +38,13 @@ test('#8090 selected real IFC space shows latest/history, ambiguity stays explic
   values.forEach((value, index) => type(inputs[index], value));
   assert.equal(inputs[7].type, 'password');
   click(ui.querySelector('button')!);
-  await waitFor(() => Boolean(ui.querySelector('svg[role="img"]')), 'real selected space history');
+  await waitFor(() => Boolean(ui.querySelector('svg[aria-label]')), 'real selected space history');
   assert.equal(requests, 1);
   assert.match(ui.textContent ?? '', /Latest: 22.5 °C/);
   assert.match(ui.textContent ?? '', /living room/);
-  assert.match(ui.querySelector('svg')?.getAttribute('aria-label') ?? '', /3 samples/);
+  assert.equal(ui.querySelector('svg')?.getAttribute('aria-label'), 'History for living room: 3 samples');
+  assert.equal(ui.querySelector('svg title')?.textContent, 'History for living room: 3 samples');
+  assert.match(ui.querySelector('output')?.textContent ?? '', /6 samples/);
   assert.equal(ui.querySelector('polyline')?.getAttribute('points')?.split(' ').length, 3);
   assert.match(ui.textContent ?? '', /Ambiguous series \(2\)/);
   assert.match(ui.textContent ?? '', /hall-a/);

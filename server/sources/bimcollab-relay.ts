@@ -108,9 +108,11 @@ export function createBimcollabRelayHandler(config: BimcollabRelayConfig, deps: 
     }
     const url = new URL(request.url);
     const path = url.searchParams.get('path') ?? url.pathname.replace(/^\/api\/bimcollab\/?/, '');
-    // Also check the raw rewritten value, before URLSearchParams decodes it.
-    const rawPath = url.search.slice(1).split('&').find(entry => entry.startsWith('path='));
-    const route = rawPath && /%2f|%5c/i.test(rawPath) ? null : resolveBimcollabRoute(path);
+    // Vercel's rewrite (`/api/bimcollab?path=:path*`) percent-encodes the
+    // slashes it carries, so the DECODED value is what gets validated: the
+    // resolver refuses any remaining `%`, `..`, `//` and non-allowlisted
+    // segments, which also covers double-encoded separators.
+    const route = resolveBimcollabRoute(path);
     if (!route) return json(400, { error: 'Path is not a relayable BIMcollab endpoint' }, cors);
     const headers = new Headers({ authorization, accept: request.headers.get('accept') ?? 'application/json' });
     if (route.spaceGuid) headers.set('bimcollab-space-guid', route.spaceGuid);

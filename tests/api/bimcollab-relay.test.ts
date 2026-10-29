@@ -83,9 +83,28 @@ test('BIMcollab relay: explicit header allowlists, original query and rewritten 
   const head = await handler(request('space/test/download/42', { method: 'HEAD' }));
   assert.equal(head.body, null);
   assert.equal(calls[1].init.method, 'HEAD');
-  for (const path of [`?path=docs%2f${GUID}%2fprojects`, `${DOCS}/projects%2fextra`]) {
-    assert.equal((await handler(request(path))).status, 400);
+  for (const path of [`${DOCS}/projects%2fextra`, `?path=docs%2f${GUID}%2fprojects%252fextra`,
+    `?path=docs%2f${GUID}%2fprojects%2f..%2fdocuments`, `?path=docs%2f${GUID}%2fprojects%5cx`]) {
+    assert.equal((await handler(request(path))).status, 400, path);
   }
+});
+
+test('BIMcollab relay: accepts the path exactly as the Vercel rewrite encodes it', async () => {
+  // vercel.json rewrites /api/bimcollab/:path* to /api/bimcollab?path=:path*,
+  // which percent-encodes every slash of the captured path (measured on Vercel's
+  // routing-utils); rejecting %2F here would refuse every production request.
+  const { handler, calls } = fixture();
+  const response = await handler(new Request(`${ORIGIN}/api/bimcollab?path=docs%2F${GUID}%2Fprojects%2Fp1%2Fdocuments&limit=100&offset=0`, {
+    headers: { authorization: 'Bearer fake-token' },
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].url, `https://api.eu.bimcollab.com/spaces/${GUID}/documents/v1/projects/p1/documents?limit=100&offset=0`);
+  const download = fixture(() => new Response('PK'));
+  const file = await download.handler(new Request(`${ORIGIN}/api/bimcollab?path=space%2Fbusa%2Fdownload%2F109`, {
+    headers: { authorization: 'Bearer fake-token' },
+  }));
+  assert.equal(file.status, 200);
+  assert.equal(download.calls[0].url, 'https://busa.bimcollab.com/documents/da/location/0/project/0/documentinstance/download/109');
 });
 
 test('BIMcollab relay: origins, explicit override, preflight', async () => {

@@ -41,8 +41,8 @@ part of this evidence directory.
 
 ## Session renewal follow-up
 
-The companion implementation is published on
-[`codex/registry-browser-pkce` at `8f25007`](https://github.com/zahmadsaleem/ifcx-oci/tree/8f250077797b06c0902248a837e6fd7095b815bf).
+The session renewal follow-up used
+[ifcx-oci revision `8f25007`](https://github.com/zahmadsaleem/ifcx-oci/tree/8f250077797b06c0902248a837e6fd7095b815bf).
 That version supports an eight-hour default session and an optional 30-day
 remembered session.
 

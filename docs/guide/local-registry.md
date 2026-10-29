@@ -14,9 +14,9 @@ Install the workspace dependencies using the repository's
 WASM runtime. `pnpm build:wasm:fetch` obtains an official prebuilt when it matches
 the checkout; otherwise build with `pnpm build:wasm` and the pinned Rust toolchain.
 
-Make an [ifcx-oci browser-login build](https://github.com/zahmadsaleem/ifcx-oci/tree/codex/registry-browser-pkce)
-with PKCE and session renewal, plus `oras`, available in your terminal. Follow its
-[development setup](https://github.com/zahmadsaleem/ifcx-oci/blob/codex/registry-browser-pkce/DEVELOPMENT.md)
+Make an [ifcx-oci build from main](https://github.com/zahmadsaleem/ifcx-oci/tree/main)
+and `oras` available in your terminal. Follow its
+[browser application setup](https://github.com/zahmadsaleem/ifcx-oci/blob/main/DEVELOPMENT.md#connect-a-browser-application)
 for client and callback registration. The recorded checks use backend revision
 `8f25007`. These commands
 use only the public `hello-wall.ifc` fixture already in the repository. Run them

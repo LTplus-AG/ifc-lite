@@ -133,7 +133,13 @@ export function assertDerivedClaims(actual, scenario) {
     assert.equal(claim.kind, scenario.kind);
     assert.equal(claim.confidence, 'verified');
     assert.equal(claim.pieces.length, 2);
-    assert.equal(claim.wholeVolume, claim.piecesVolume);
+    // Check both reported volumes against the derived rows' known volumes, not
+    // only against each other: a shared error in both engines must still fail.
+    const [whole] = scenario.kind === 'split' ? scenario.base : scenario.head;
+    const pieces = scenario.kind === 'split' ? scenario.head : scenario.base;
+    assert.equal(claim.wholeVolume, whole.volume, 'whole volume must match the derived whole');
+    assert.equal(claim.piecesVolume, pieces.reduce((sum, piece) => sum + piece.volume, 0),
+      'pieces volume must match the derived pieces');
     assert.equal(claim.volumeResidual, 0);
   }
 }

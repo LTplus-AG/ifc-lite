@@ -50,8 +50,10 @@ test('#8112 byKey must refer to the entry itself', () => {
 });
 
 function claims(kind) {
-  const base = kind === 'merge' ? [row('p0'), row('p1')] : [row('whole')];
-  const head = kind === 'split' ? [row('p0'), row('p1')] : [row('new')];
+  const piece = key => ({ ...row(key), volume: 6 });
+  const whole = { ...row('whole'), volume: 12 };
+  const base = kind === 'merge' ? [piece('p0'), piece('p1')] : [kind === 'split' ? whole : row('whole')];
+  const head = kind === 'split' ? [piece('p0'), piece('p1')] : [kind === 'merge' ? whole : row('new')];
   return { scenario: { kind, base, head }, actual: {
     contentMatches: [], counts: { added: head.length, deleted: base.length, modified: 0, unchanged: 0 },
     successors: kind === 'successor'
@@ -89,6 +91,7 @@ for (const [name, corrupt] of [
 for (const [name, corrupt] of [
   ['volume residual', a => { a.splitMerges[0].volumeResidual = 1; }],
   ['unequal volumes', a => { a.splitMerges[0].piecesVolume = 11; }],
+  ['volumes agreeing but not measured', a => { a.splitMerges[0].wholeVolume = 0; a.splitMerges[0].piecesVolume = 0; }],
   ['missing piece', a => { a.splitMerges[0].pieces.pop(); }],
   ['competing successor', a => { a.successors = [{}]; }],
 ]) {

@@ -4,6 +4,20 @@
 
 # Performance diagnosis kit
 
+## C4-7a-R shared type geometry plan (#7782)
+
+The shared discovery-span plan passed the native instruction gate against
+`241e855cd9` on Haus, duplex, and ISSUE_129 at `e5ab066bbe`. Every phase stayed
+within 1.00005, and ordered mesh payload, serialized capture, aggregate
+diagnostics, and per-Express-ID identity matched. The source-pinned comparison
+is in `c4-7ar-build-r1.json` with the Rust sweep evidence. This is a native
+reconciliation verdict; it makes no browser worker-pool timing claim.
+
+Build referenced maps, instantiated types, mapped-item counts, and ordered type
+jobs together from discovery spans. Keep the explicit type mode: native exports
+suppress instantiated type geometry; the browser emits tagged classes for viewer
+filtering and chooses mapped templates within each batch.
+
 ## Diff binary boundary transport (#8042)
 
 An ordinary Haus diagnostic of the explicit batch and compact result transport
@@ -32,6 +46,112 @@ getters remain observable; array-identity caching would serve stale data.
 Any next retention experiment needs explicit ownership and invalidation, and
 must measure the consumer path rather than only a retained comparison kernel.
 
+## Streaming pre-pass trap reporting and metadata snapshots (#8259)
+
+Metadata snapshots now copy populated hash entries instead of the streaming
+scan's unused reservation. The source-backed worker APIs still own a full WASM
+source copy; a SharedArrayBuffer view does not avoid wasm-bindgen marshalling.
+Model-dependent index fallback and discovery allocations prevent qualifying the
+observed large-file crash band. Existing successful large-file loads remain
+eligible; OOM-shaped traps after a failed attempt receive actionable context.
+The [allocation accounting](../../docs/architecture/prepass-memory.md) explains
+the remaining overlap and the trap-reporting heuristic.
+
+Verdict: estimated memory reduction, with no measured end-to-end worker-pool
+timing or performance-neutrality claim. Benchmarks were explicitly excluded
+from this task. Keep that coverage gap visible; a compact snapshot fixes wasted
+capacity but does not establish that a large model fits the browser.
+
+## Retained viewer instancing (#7955 M11-I)
+
+Sharing is confined to byte-equal mapped geometry in the retained viewer.
+The existing IFNS pairing verifier checks reconstruction, and small or rejected
+groups stay flat. Native and browser witnesses agree on the synthetic mapped
+group; the default WASM remains byte-identical to the base. Heavy-model fractions
+are report-only comparisons against exact, with rendered occurrences as the
+denominator and bounded product windows.
+
+This reduces repeated GPU geometry storage without sharing kernel construction:
+every occurrence is still evaluated. No load-time or end-to-end worker-pool
+speedup is claimed. Keep the native IFNS axis contract when starting from
+Y-up view meshes, and publish each shard with all its product records so Cancel
+cannot separate rendered geometry from coverage.
+
+The retained-only viewer timing comparison on `advanced_model` is incomplete.
+The base load reached first-visible scheduling but stalled before completion;
+the approved bounded replacement timed out in fleet admission before execution.
+There is no qualified timing or performance-neutrality verdict. Bound whole
+browser operations, including trace reads, rather than relying on a timeout
+checked only between awaits. First-visible scheduling is not GPU completion.
+
+## C2-3 mapped admission and drop reporting (#7781)
+
+The ROUTER-13, ROUTER-15 and ROUTER-19 consolidations passed the local native
+instruction gate against main at `863501ff76` on Haus, duplex and ISSUE_129.
+Geometry counts, ordered mesh bits, serialized output and aggregate diagnostics
+matched exactly. The measured implementation is `a95d4f4da3`; source pins,
+per-phase comparisons and qualification receipts are in `c2-r2-final-r1.json`
+with the coordinator's Rust sweep evidence. This is a native reconciliation
+verdict, with no elapsed-time or browser worker-pool claim.
+
+Share mapped-transform resolution and scaling at admission, keeping matrix
+capture at its existing consumer boundaries. Both public placement APIs can
+reuse the scaled resolver after their existing unit admission and strict
+precheck. A shared mapped-drop report boundary must preserve counting policy,
+parent truncation, scope restoration and event ordering. Moving a diagnostic
+also changes its default tracing target: keep the original targets explicitly.
+The full mutation oracle exercises default and observability witnesses and
+verifies they pass again after source restoration.
+
+## C2-5 prism directions and shared parity ray (#7781)
+
+The remaining prism clustering caller and shared ray direction passed the local
+native instruction gate against main at `169c75f39e` on Haus, duplex and ISSUE_129.
+Geometry counts, ordered mesh bits, serialized output and aggregate diagnostics
+matched exactly. Source-pinned comparisons and proof receipts are recorded in
+`c2-r3-build-r1.json` with the coordinator's Rust sweep evidence. This is a native
+reconciliation verdict, with no elapsed-time or browser worker-pool claim.
+
+The prism detector keeps its own strict cosine threshold and already-normalized
+vectors. Sharing first-fit clustering must retain unweighted first representatives,
+iteration order and the pre-push limit that permits 65 clusters. The box/wall
+cosine policy is different: substituting it is caught by the compiled mutation
+oracle. Array-to-vector conversion preserves the normal bits and the three-product
+dot order; the independent legacy-loop sweep covers threshold neighbors, the cap,
+zero and nonfinite normals. Neither normalization nor existing callers changed.
+
+## C2-6 probe wrapper traversal (#7781)
+
+The shared single-chain wrapper driver passed the local native instruction gate
+against `93cc587c79` on Haus, duplex and ISSUE_129. Geometry counts, ordered mesh
+bits, serialized output and aggregate diagnostics matched exactly. Qualification
+receipts and per-phase comparisons are in the coordinator's `c2-6-build-r1.json`.
+This is a native reconciliation verdict, with no elapsed-time or browser claim.
+
+A first-item probe is not `NestedMaps::FirstChain`, which follows the first mapped
+item after visiting ordinary siblings. Keep probe cardinality, boolean admission,
+absent versus identity transforms and the leaf-inclusive depth bound explicit.
+Layers retain their uncapped boolean chain and unrotated leaf admission. Sharing
+ProductShape selection must also preserve the opening probe's unchecked shape
+type and the rectangular probe's narrower body-only filter.
+
+## C2-5b void rays and frames (#7781)
+
+The shared array ray/triangle helper and first-fit face-normal clustering passed
+the local native instruction gate against main at `f6961be929` on Haus, duplex
+and ISSUE_129. Ordered mesh bits, serialized output, geometry counts and aggregate
+diagnostics matched exactly. This qualifies the reconciliation on those fixtures;
+it makes no elapsed-time or browser worker-pool claim. Source-pinned counts,
+identity witnesses and commands are recorded in `c2-5b-build-r1.json` with the
+coordinator's Rust sweep evidence.
+
+Keep each ray caller's determinant floor and barycentric slack, including the
+inclusive range check's NaN rejection. Normal clustering must preserve first-fit
+order, antiparallel flips, weighted arithmetic and the box classifier's early cap.
+Independent legacy-body comparisons cover these distinctions; a compiled mutation
+of the ray parameter makes the new parity assertions fail. Cohesive frame and
+parity modules fit below the module-size limit without growing the void driver.
+
 ## C2-5a void cutter vocabulary (#7781)
 
 The borrowed `Cutter` projections and shared admission helpers passed the local
@@ -50,6 +170,12 @@ distinctions, rather than a change of strategy or precision, let the vocabulary
 move without changing output. Frame-changing mesh rebuilds use a crate-private
 helper because `rebuilt_like` retains bounds under an unchanged-extent contract.
 
+## Retained cutter foundation (#7955 CUT-0)
+
+This slice adds conservative bounds and derived cutter construction behind the
+retained feature, with no retained product admission or optimization claim.
+Default exact output and wasm byte identity are separate acceptance checks;
+source-oracle timings are diagnostics, not an end-to-end performance result.
 
 ## Symbolic extraction label allocation (#7914, #7779)
 
@@ -160,6 +286,32 @@ only the comparison engine. Default and retained geometry modules exclude diff
 exports. Actual-WASM tests verify independent memories and that retained diff
 models survive geometry initialization. This is a packaging result; full
 facade startup, marshaling, and end-to-end timing qualification remain open.
+
+## Shared record discovery (C4-5, #7782)
+
+Structural refactor; no wall-clock speedup claimed. The original instruction qualification was invalid: Cargo reused the base
+probe for the branch after archive extraction preserved old mtimes. Fresh
+branch builds exposed instruction regressions despite identical geometry.
+Keeping the record predicate inline and classification lazy for index-only
+shards lets the shared discovery owner preserve the existing hot-path work.
+The qualification uses the C4-4b identity runner; it is not a browser timing result.
+
+Round-two lesson: carrying the geometry-admission reason through the hot
+`Discovery::observe` return changed code generation and regressed the default
+instruction gate. Replacing the quick-only name lookup with a resolved-type
+predicate also regressed that gate. Retain `Option<IfcType>` and the original
+quick-only name lookup: quick metadata pays one additional classification per
+admitted job, while the default path avoids carrying a reason tuple.
+This is a deliberate scope tradeoff, not a quick-metadata optimization.
+
+Fresh-build verdict: every default pipeline phase meets the exact-base gate
+on Haus, duplex and ISSUE_129, with counts, serialized captures, payloads,
+diagnostics and per-element data identical. Dispatch span collection only for
+classes that can contribute spans, and inline the shared admission/classification
+helpers so extraction does not add call overhead. Force source freshness when
+switching archived revisions in a shared Cargo target; a fast Cargo success
+alone does not prove the branch binary was rebuilt.
+
 
 ## Remote near-plane recovery (#7633)
 
@@ -5179,6 +5331,21 @@ above the timer resolution before a wall-time cohort can say anything; on small
 models the instruction comparison is the meaningful measurement. Numbers and
 the cohort report live in the PR and its evidence, not here.
 
+### C2 remaining structural consumers (#7781)
+
+The Reference-only opening guard, routing-key identity read and RTC Items
+enumeration now share crate-private structural entries in `representation`.
+The native Callgrind comparison on Haus, duplex and ISSUE_129 meets the unchanged
+per-phase instruction ceiling, with identical mesh counts, serialized output,
+diagnostics and ordered mesh fingerprints. This establishes instruction and
+output preservation; wall-clock and browser performance were not measured.
+The source pins and comparisons are recorded in `c2-r1-build-r1.json`.
+
+Lesson: shared structural access must retain the caller's decoding boundary.
+Opening admission checks the list bound before decoding members, routing can
+use its signature memo from an ID alone, and RTC probes raw points before
+decoding an item and stops at the first hit.
+
 ### C2 bounded representation admission instruction repair (#7781)
 
 Local Callgrind profiles attributed the admission lane's overhead to repeated
@@ -5314,3 +5481,19 @@ explicit-handle protocol. There is no v3 acceptance verdict or cohort job.
 Lesson: removing result graphs helps, but retained JavaScript inputs still pay
 packing, construction and release on every public call. Explicit internal model
 retention is a different lifetime contract and cannot qualify that endpoint.
+
+## C4-9 browser colour resolver consolidation (#7782)
+
+The browser's flat colour-map adapter now delegates to processing's canonical
+style-source walk. This is a code-ownership change, not a native optimisation:
+the native caller already used that walk. Base/branch Callgrind qualification
+on Haus, duplex and ISSUE_129 found unchanged ordered mesh fingerprints and
+instruction counts within the existing run-to-run variation. Browser old/new
+resolver comparisons cover the moved wrapper regressions, mapped cycles and
+five styling-prepass fixtures. No wall-time speedup is claimed.
+
+Qualification lesson: switching a shared profiling target from an archived base
+to a branch can reuse a dependency set that predates a newly added module.
+Check the rebuilt executable's dependency file for the new module, not just
+Cargo's success status. The initial cached branch run was rejected; processing
+was rebuilt and the branch measurements repeated before accepting the result.

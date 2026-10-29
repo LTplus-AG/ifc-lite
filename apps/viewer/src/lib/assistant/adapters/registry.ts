@@ -72,4 +72,5 @@ export const UNSUPPORTED_PANELS: Partial<Record<WorkspacePanelId, TranslationKey
   assistant: 'assistantSources.boundaryAssistant',
   environment: 'assistantSources.boundaryEnvironment',
   idsStudio: 'assistantSources.boundaryIdsStudio',
+  influx: 'assistantSources.boundaryInflux',
 };

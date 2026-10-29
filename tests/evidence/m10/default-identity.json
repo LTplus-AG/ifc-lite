@@ -1,0 +1,460 @@
+{
+  "head": "288779a8f833d7eaad2bb1641dfc7b946ff88e0c",
+  "base": "853d7c9781b34fb41c83425d38de58c39141fc69",
+  "job": "0802d31b-a90a-4118-a192-724ceb007751",
+  "runnerSha256": "2ab70d885a6c4ec10309b12971128314f2bbc35697d15732236d8a99e66902ec",
+  "defaultWasmByteIdentical": true,
+  "wasmMeshFingerprintsEqual": true,
+  "defaultDependencyTreeEqual": true,
+  "nativeMeshFingerprintsEqual": true,
+  "callgrindGeometryDelta": 2.732073456357398e-09,
+  "engineWasmBrotliPass": true,
+  "pass": true,
+  "finalStatus": "",
+  "host": "pc-wsl",
+  "wasmSha256": "e9c7b698fcfe8c2936f94dddb19713b14389aebf3540688f31e25da2ad4c10ff",
+  "engineWasmBrotliBytes": 2418111,
+  "baseGeometryInstructions": 366022382,
+  "branchGeometryInstructions": 366022383,
+  "wasmFixtures": [
+    {
+      "file": "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc",
+      "sourceSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "meshes": 317,
+      "vertices": 57706,
+      "triangles": 33356,
+      "meshSha256": "0483f6163ba6929769ca4dfa2f7ef8bf858fd58ee59b158dbbcba3bd84965819",
+      "objSha256": "04aaa66aaa0d73966e7e0451fbed8ad900200848b8f7912313ba13cbfb377366"
+    },
+    {
+      "file": "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+      "sourceSha256": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+      "meshes": 1,
+      "vertices": 336,
+      "triangles": 224,
+      "meshSha256": "3aba9668bb908513bb189c63ec2975d638045f9c6f50473403c9819e881b821b",
+      "objSha256": "c9f320d1e67570b29c17270b8e06f70ab011058421119c3c6c102b6259a1e491"
+    },
+    {
+      "file": "rust/geometry/tests/fixtures/issue_5314_halfspace_edge.ifc",
+      "sourceSha256": "ecad7114a0df3fcbbb1d7097a422530184c048bc4e28a56cc819017f83ea8304",
+      "meshes": 1,
+      "vertices": 35,
+      "triangles": 16,
+      "meshSha256": "815f791aa3945047b1314f197d73dc5e0ddd7b0b1fde4137e48e96bf7746885a",
+      "objSha256": "c50d4f29a9a540edea7a71be61a18bb121c414f8f710c37cf46a895f03e1968b"
+    },
+    {
+      "file": "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+      "sourceSha256": "21625ddf0c241cd7562cc2b2fa0ab49a0d2218ba32da37b2ef4d34f1143c146f",
+      "meshes": 4,
+      "vertices": 232,
+      "triangles": 232,
+      "meshSha256": "b628dd79c098ca8108ad08791048e519b33706ae0861dd645b1e1b96fd8f210b",
+      "objSha256": "2c7958347c1d9f3bb3d91e8de00fd1d8a12e58a426e88d3ff1005410ceb637bb"
+    },
+    {
+      "file": "rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc",
+      "sourceSha256": "10f2cde04d670ba0ee6ebfb3c9adcce9c0204f4c85690f5244e05c2cd1105a97",
+      "meshes": 5,
+      "vertices": 504,
+      "triangles": 676,
+      "meshSha256": "6e436af606cc4cfa084b95d3fae41470dc04b6ad80490e80422c5e1864de460f",
+      "objSha256": "f95c971181880785ee31c6f5bdf8328cc547d0b3e1177a7eb6df0ec1a2b013f8"
+    },
+    {
+      "file": "tests/fixtures/synthetic-retained/f-c-extrusion.ifc",
+      "sourceSha256": "188d3821fa7a8372773dd46f55e985bd2c23efb09bef2ca38b14f91c6768e55b",
+      "meshes": 1,
+      "vertices": 24,
+      "triangles": 12,
+      "meshSha256": "6c69ad69281233bb7d9b68bdf5aa8a0d410e9de1270838b053a2013fefb4635f",
+      "objSha256": "559e9a991642c362bed615f114285540af9a080d623988bc3863f2deccc32116"
+    },
+    {
+      "file": "rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc",
+      "sourceSha256": "0e532d642b8e158b8990c9c3ae9407e31ea2574345902ab9cfbe23b01fe70a0d",
+      "meshes": 4,
+      "vertices": 96,
+      "triangles": 48,
+      "meshSha256": "5f7d0dbf2053f140fad4ba0bb622abd04e5f658f3e0f827adf33d796272c2e77",
+      "objSha256": "8dece06ed7b8a845774ee0f6aaf5e29af4864a1dc77dc1364c075f72796bb32c"
+    }
+  ],
+  "nativeFixtures": [
+    {
+      "path": "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc",
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc",
+      "meshes": 5,
+      "vertices": 504,
+      "triangles": 676,
+      "meshFingerprintsFnv1a64": [
+        "523989d94567d82a"
+      ]
+    },
+    {
+      "path": "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+      "meshes": 4,
+      "vertices": 235,
+      "triangles": 232,
+      "meshFingerprintsFnv1a64": [
+        "7acfbd11ed3d01a3"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "name": "install",
+      "command": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 6603
+    },
+    {
+      "name": "base-wasm",
+      "command": [
+        "pnpm",
+        "build:wasm"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 129233
+    },
+    {
+      "name": "base-fingerprint",
+      "command": [
+        "node",
+        "/home/louistrue/build-workers/landing-perf/m10/exact-fingerprint.mjs",
+        "/home/louistrue/build-workers/worker-state/checkouts/288779a8f833d7eaad2bb1641dfc7b946ff88e0c",
+        "/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/base-meshes.json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 461
+    },
+    {
+      "name": "base-tree",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "--target",
+        "wasm32-unknown-unknown",
+        "-p",
+        "ifc-lite-wasm",
+        "--edges",
+        "normal",
+        "--prefix",
+        "none"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 98
+    },
+    {
+      "name": "base-package-boundary",
+      "command": [
+        "cargo",
+        "package",
+        "-p",
+        "ifc-lite-processing",
+        "--list"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 111
+    },
+    {
+      "name": "base-native-fingerprint",
+      "command": [
+        "cargo",
+        "run",
+        "--release",
+        "--locked",
+        "-p",
+        "ifc-lite-processing",
+        "--example",
+        "perf_probe",
+        "--",
+        "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc",
+        "rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc",
+        "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+        "--iters",
+        "1",
+        "--fingerprint",
+        "--json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 107705
+    },
+    {
+      "name": "base-footprint",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "ifc-lite-geometry",
+        "program_and_reply_have_a_bounded_inline_footprint"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 291602
+    },
+    {
+      "name": "base-phase-build",
+      "command": [
+        "cargo",
+        "build",
+        "--profile",
+        "profiling",
+        "-p",
+        "ifc-lite-processing",
+        "--example",
+        "perf_probe",
+        "--features",
+        "phase-markers"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 101423
+    },
+    {
+      "name": "base-instructions",
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--callgrind-out-file=/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/base-callgrind.out",
+        "--dump-before=ifc_lite_processing::processor::phase_marks::*",
+        "--dump-instr=no",
+        "--dump-line=no",
+        "/home/louistrue/build-workers/worker-state/caches/540dab8bc251e73748945f27/profiling/examples/perf_probe",
+        "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "1",
+        "--single-thread",
+        "--json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 4169
+    },
+    {
+      "name": "base-instructions-report",
+      "command": [
+        "node",
+        "scripts/perf/instructions-report.mjs",
+        "--dumps",
+        "/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/base-callgrind.out",
+        "--probe",
+        "/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/base-probe.json",
+        "--fixture",
+        "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--commit",
+        "853d7c9781b34fb41c83425d38de58c39141fc69",
+        "--json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 31
+    },
+    {
+      "name": "branch-wasm",
+      "command": [
+        "pnpm",
+        "build:wasm"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 76431
+    },
+    {
+      "name": "branch-fingerprint",
+      "command": [
+        "node",
+        "/home/louistrue/build-workers/landing-perf/m10/exact-fingerprint.mjs",
+        "/home/louistrue/build-workers/worker-state/checkouts/288779a8f833d7eaad2bb1641dfc7b946ff88e0c",
+        "/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/branch-meshes.json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 444
+    },
+    {
+      "name": "branch-tree",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "--target",
+        "wasm32-unknown-unknown",
+        "-p",
+        "ifc-lite-wasm",
+        "--edges",
+        "normal",
+        "--prefix",
+        "none"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 165
+    },
+    {
+      "name": "branch-package-boundary",
+      "command": [
+        "cargo",
+        "package",
+        "-p",
+        "ifc-lite-processing",
+        "--list"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 188
+    },
+    {
+      "name": "branch-native-fingerprint",
+      "command": [
+        "cargo",
+        "run",
+        "--release",
+        "--locked",
+        "-p",
+        "ifc-lite-processing",
+        "--example",
+        "perf_probe",
+        "--",
+        "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc",
+        "rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc",
+        "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+        "--iters",
+        "1",
+        "--fingerprint",
+        "--json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 73940
+    },
+    {
+      "name": "branch-footprint",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "ifc-lite-geometry",
+        "program_and_reply_have_a_bounded_inline_footprint"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 812
+    },
+    {
+      "name": "branch-phase-build",
+      "command": [
+        "cargo",
+        "build",
+        "--profile",
+        "profiling",
+        "-p",
+        "ifc-lite-processing",
+        "--example",
+        "perf_probe",
+        "--features",
+        "phase-markers"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 88131
+    },
+    {
+      "name": "branch-instructions",
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--callgrind-out-file=/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/branch-callgrind.out",
+        "--dump-before=ifc_lite_processing::processor::phase_marks::*",
+        "--dump-instr=no",
+        "--dump-line=no",
+        "/home/louistrue/build-workers/worker-state/caches/540dab8bc251e73748945f27/profiling/examples/perf_probe",
+        "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "1",
+        "--single-thread",
+        "--json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 3950
+    },
+    {
+      "name": "branch-instructions-report",
+      "command": [
+        "node",
+        "scripts/perf/instructions-report.mjs",
+        "--dumps",
+        "/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/branch-callgrind.out",
+        "--probe",
+        "/home/louistrue/build-workers/landing-perf/m10/identity-288779a8f833d7eaad2bb1641dfc7b946ff88e0c-0802d31b-a90a-4118-a192-724ceb007751/branch-probe.json",
+        "--fixture",
+        "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--commit",
+        "288779a8f833d7eaad2bb1641dfc7b946ff88e0c",
+        "--json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 28
+    },
+    {
+      "name": "renderer",
+      "command": [
+        "pnpm",
+        "build",
+        "--filter=@ifc-lite/renderer"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 18897
+    },
+    {
+      "name": "wasm-contract",
+      "command": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 4280
+    },
+    {
+      "name": "default-types",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "--",
+        "packages/wasm/pkg/ifc-lite.d.ts"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ms": 20
+    }
+  ],
+  "freshness": "Both WASM logs rebuild processing/export/wasm; both profiling logs rebuild processing. Same absolute checkout, base then branch; no timestamp-preserved archive switch.",
+  "performanceVerdict": "Default instruction count is within the existing ratchet; no wall-time speedup claimed. Retained curved qualification is blocked upstream."
+}

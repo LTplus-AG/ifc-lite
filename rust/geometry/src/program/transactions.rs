@@ -9,8 +9,9 @@ use crate::resource::{OwnedResourceContext, ProgramStop, Reservation};
 
 mod error;
 mod values;
+mod type_origin;
 pub use error::{TransactionError, TransactionFailureKind};
-pub use values::{Definition, Operation, OperationKind, Plan, Requirement, Slot, Value, ValueRef};
+pub use values::{Definition, Operation, OperationKind, Plan, PresentationFacts, Requirement, Slot, Value, ValueRef};
 
 /// The original stop/account domain; contains no execution or TLS guard.
 #[derive(Clone)]
@@ -109,4 +110,9 @@ impl Program<'_> {
 pub fn same_admission(request: &crate::document::RetainedRequest,
     completed: &crate::document::RetainedRequest) -> bool {
     request.same_admission(completed)
+}
+/// `inverse(a) * b` for two controller-composed proper rigid metre frames,
+/// translations cancelled before rotating (survey-scale safe). No new frame math.
+pub fn relative_frame(a: [f64; 16], b: [f64; 16]) -> Result<[f64; 16], &'static str> {
+    crate::document::retained_frames::relative(a, b)
 }

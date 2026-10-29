@@ -1,5 +1,13 @@
 # @ifc-lite/codegen
 
+## 1.19.1
+
+### Patch Changes
+
+- [#8119](https://github.com/LTplus-AG/ifc-lite/pull/8119) [`1764bb8`](https://github.com/LTplus-AG/ifc-lite/commit/1764bb8a4658d3f7f00db1f651f6fb248aa53135) Thanks [@louistrue](https://github.com/louistrue)! - The Rust emitter now writes `IfcType::from_canonical_name` as a minimal perfect hash: a 64-bit word hash of the keyword (emitted as `canonical_name_hash`, one multiply per 8-byte word) and a small displacement table pick the one candidate type, and that type's own spelling confirms the hit. The old `match` on `&str` tested every name in turn. Generation fails if two schema names share a hash. Name resolution, the `Unknown` fallback and its CRC32 id are unchanged. Test builds also get `SUPPLEMENTAL` (the types only a supplemental schema declares) and `IfcType::CANONICAL_NAME_ARMS`, so a registry test can resolve every slot.
+- Updated dependencies [[`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0)]:
+  - @ifc-lite/data@6.4.0
+
 ## 1.19.0
 
 ### Minor Changes

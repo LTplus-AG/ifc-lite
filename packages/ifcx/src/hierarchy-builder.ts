@@ -9,6 +9,9 @@
 
 import type { ComposedNode, IfcClass } from './types.js';
 import { ATTR, SPATIAL_TYPES } from './types.js';
+import { nodeName } from './names.js';
+import { collectIncomingEdgeNames, collectSiblingEdgeNames } from './traversal.js';
+import { localZ } from './placement.js';
 import { IfcTypeEnum, IfcTypeEnumFromString, findStoreyByElevation } from '@ifc-lite/data';
 import type { SpatialHierarchy, SpatialNode } from '@ifc-lite/data';
 
@@ -31,7 +34,9 @@ export function buildHierarchy(
   }
 
   // Build spatial tree
-  const projectSpatial = buildSpatialNode(projectNode, pathToId);
+  const incomingEdgeNames = collectIncomingEdgeNames(composed);
+  const siblingEdgeNames = collectSiblingEdgeNames(composed);
+  const projectSpatial = buildSpatialNode(projectNode, pathToId, incomingEdgeNames, siblingEdgeNames);
 
   // Build lookup maps
   const byStorey = new Map<number, number[]>();
@@ -135,7 +140,9 @@ function findProjectRoot(composed: Map<string, ComposedNode>): ComposedNode | nu
  */
 function buildSpatialNode(
   node: ComposedNode,
-  pathToId: Map<string, number>
+  pathToId: Map<string, number>,
+  incomingEdgeNames: ReadonlyMap<string, string[]>,
+  siblingEdgeNames: ReadonlyMap<string, ReadonlySet<string>>,
 ): SpatialNode {
   const ifcClass = node.attributes.get(ATTR.CLASS) as IfcClass | undefined;
   const expressId = pathToId.get(node.path) ?? 0;
@@ -147,7 +154,7 @@ function buildSpatialNode(
   // path (a plausible-looking short name no source data backs, which also
   // pre-empts treeDataBuilder.ts's own "Name absent" fallback to the type,
   // e.g. "IfcBuildingStorey", since that only fires on a falsy name).
-  const name = extractName(node) ?? '';
+  const name = nodeName(node, incomingEdgeNames.get(node.path) ?? [], siblingEdgeNames.get(node.path)) ?? '';
   // Keep LongName as a distinct descriptor (Name "01" / LongName "Main
   // Residence") so the hierarchy panel can show both (issue #1634); drop it when
   // it just duplicates the primary label.
@@ -169,9 +176,10 @@ function buildSpatialNode(
   // Extract elevation for storeys
   if (ifcClass?.code === 'IfcBuildingStorey') {
     const elevation = node.attributes.get('bsi::ifc::prop::Elevation');
-    if (typeof elevation === 'number') {
-      spatialNode.elevation = elevation;
-    }
+    // Elevation is optional; without it the Z of the storey's own placement stands in, as the STEP builder's
+    // `extractPlacementElevation` does, so the storey orders and levels the same whether the file says an
+    // Elevation or not, and the same as the STEP export of the same model.
+    spatialNode.elevation = typeof elevation === 'number' ? elevation : localZ(node);
   }
 
   // Process children
@@ -180,7 +188,7 @@ function buildSpatialNode(
 
     if (childClass && SPATIAL_TYPES.has(childClass.code)) {
       // Spatial child - recurse
-      spatialNode.children.push(buildSpatialNode(child, pathToId));
+      spatialNode.children.push(buildSpatialNode(child, pathToId, incomingEdgeNames, siblingEdgeNames));
     } else {
       if (ifcClass?.code === 'IfcSpace' && isSpaceBoundaryRelationshipClass(childClass?.code)) {
         collectSpaceBoundaryElementIds(child, pathToId, elementIds);
@@ -222,6 +230,12 @@ function populateMaps(
       storeyElevations.set(node.expressId, node.elevation);
     }
     byStorey.set(node.expressId, []);
+    // The storey's spaces are child nodes, not elements it contains, so they would sit on no storey. The STEP
+    // builder maps them to it all the same (a selected space must resolve its storey, and a room list
+    // reads a room's level through it); IFCX does too.
+    for (const child of node.children) {
+      if (child.type === IfcTypeEnum.IfcSpace || child.type === IfcTypeEnum.IfcSpatialZone) elementToStorey.set(child.expressId, node.expressId);
+    }
   } else if (node.type === IfcTypeEnum.IfcBuilding) {
     currentBuilding = node.expressId;
     byBuilding.set(node.expressId, []);
@@ -348,24 +362,4 @@ function pushUnique(map: Map<number, number[]>, key: number, value: number): voi
   if (!list.includes(value)) {
     list.push(value);
   }
-}
-
-/**
- * Extract name from node attributes.
- */
-function extractName(node: ComposedNode): string | null {
-  // Try direct IFC name attribute (written by IFCX exporter/writer)
-  const ifcName = node.attributes.get('bsi::ifc::name');
-  if (typeof ifcName === 'string') return ifcName;
-
-  const name = node.attributes.get('bsi::ifc::prop::Name');
-  if (typeof name === 'string') return name;
-
-  const typeName = node.attributes.get('bsi::ifc::prop::TypeName');
-  if (typeof typeName === 'string') return typeName;
-
-  const longName = node.attributes.get('bsi::ifc::prop::LongName');
-  if (typeof longName === 'string') return longName;
-
-  return null;
 }

@@ -17,6 +17,15 @@ export interface RetainedShapePart {
     /** Column-major object metres to absolute IFC Z-up world metres. */
     worldFromObject: Float64Array;
     curved: boolean;
+    revisionLocalFaces?: Uint32Array;
+    /** Per-corner unit normals in absolute IFC Z-up axes, placement already applied. */
+    normals?: Float64Array;
+    color?: [number, number, number, number];
+    materialName?: string;
+    geometryItemId?: number;
+    materialId?: number;
+    faces?: { table: string[]; triangles: Uint32Array };
+    instanceKey?: string;
 }
 export interface RetainedShapeProduct {
     status: 'published';
@@ -29,7 +38,8 @@ export interface RetainedShapeProduct {
     ifcType: string;
     parts: RetainedShapePart[];
     marker: 'PresentationObligationsUnmet';
-    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces'>;
+    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
+    instanceKey?: string;
 }
 export interface RetainedProductRefusal {
     status: 'refused';
@@ -38,7 +48,8 @@ export interface RetainedProductRefusal {
     code: 'opening_strategy' | 'opening_unsupported' | 'material_layer_strategy' | 'operation_unsupported'
         | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
         | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
-        | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';
+        | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach'
+        | 'appearance_unsupported' | 'face_provenance_unproven';
     origin?: { site: string; entity?: number; cause: string };
     kernelStatus?: number;
 }
@@ -64,7 +75,8 @@ impl RetainedModelRun {
 impl IfcAPI {
     /// Run the opt-in retained engine, with no exact fallback. Buffers outcomes
     /// until completion; next() then consumes them in canonical file order.
-    /// Type products and representationless jobs are skipped. Some(empty ids)
+    /// Orphan type products are included; instanced types and representationless
+    /// jobs are skipped. Some(empty ids)
     /// selects no products. One qualified worker is reused, with at most three
     /// replacements, and a failed product is never retried.
     #[wasm_bindgen(js_name = retainedModel)]
@@ -153,9 +165,11 @@ pub(super) fn to_js(outcome: ProductOutcome) -> Result<JsValue, JsValue> {
                     &Float64Array::from(part.world_from_object.as_slice()),
                 )?;
                 set(&view, "curved", &part.curved.into())?;
+                super::retained_presentation::part_fields(&view, part)?;
                 parts.push(&view);
             }
             set(&result, "parts", &parts)?;
+            super::retained_presentation::product_fields(&result, &product, false)?;
             Ok(result.into())
         }
     }
@@ -174,5 +188,6 @@ pub(super) fn obligation_name(requirement: Requirement) -> &'static str {
         Requirement::MaterialLayers => "MaterialLayers",
         Requirement::IfcAppearance => "IfcAppearance",
         Requirement::PersistentFaces => "PersistentFaces",
+        Requirement::SurfaceNormals => "SurfaceNormals",
     }
 }

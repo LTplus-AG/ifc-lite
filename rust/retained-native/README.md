@@ -7,15 +7,27 @@ pipeline and introduce no SMLib dependency into published processing.
 
 `run_model_native(source, worker_path, options, sink)` emits one atomic outcome
 per canonical product job. It never retries a failed product or falls back to
-exact geometry. A replacement worker qualifies its own numerical families;
-there are at most three replacements, even if a larger limit is requested.
+exact geometry. A replacement worker qualifies its own numerical families.
+`max_restarts` caps fault recovery at three replacements per model, including
+failed qualification attempts. Settled source/product refusals retain the
+healthy worker and release their receipts, including buffer-budget refusals
+after a complete reply. Cancellation with work still in flight retires its
+captured worker. The first sixteen controller-owned replacements per model are
+uncharged; further replacements spend the fault recovery budget. No cancellation
+refunds earlier faults. `ModelSummary.restarts` reports charged recovery attempts.
+An invocation fault takes precedence over an elapsed product deadline, and a
+domain retired by the executor always requires charged recovery.
 
 Published parts contain f64 object-local metres and column-major placement
 matrices into absolute IFC Z-up world metres. Every product carries
 `PresentationObligationsUnmet`. Completed opening cuts and plan-proven unvoided
-products discharge `OpeningClosure`; material, appearance, and persistent-face
-obligations remain. Final affine-only values remain
-`incomplete` in M1. `require_final_product` still refuses.
+products discharge `OpeningClosure`, and every published part carries its resolved
+appearance (`IfcAppearance` is discharged through exact's own colour resolver), and
+persistent source face keys (`PersistentFaces`) and corner normals (`SurfaceNormals`);
+only `MaterialLayers` remains, so `obligations` is `[MaterialLayers]`. M10 publishes linear
+affine finals and contracting curved finals when the existing SDK operations succeed;
+source-predicted uncertifiable affine finals refuse `incomplete` before invocation.
+`require_final_product` still refuses.
 
 Build the real worker using `native/smlib-adapter/README.md`, then run from the
 repository root:
@@ -36,8 +48,9 @@ own first commit; never edit existing keys, widen values, or move keys out of
 the base. Each fragment is a JSON object of new preregistrations;
 there is no command-line tolerance override. `--manifest tests/models/manifest.json`
 selects downloaded fixtures. Engine startup/qualification must succeed before any
-coverage is reported. Exact-only orphan type products are listed separately as
-“out of M1 scope”; they never enter the coverage numerator or denominator.
+coverage is reported. Orphan type products are retained candidates since M9; an
+exact type mesh missing from the candidates is listed separately as an
+“unexpected exact-only type product” and is a universe mismatch.
 Missing files are reported explicitly and fail a
 gated run. `--bless` updates the committed coverage manifest only after a clean
 committed-fixture comparison and is forbidden whenever `CI` is set.
@@ -60,7 +73,10 @@ measuring. Source volume and bbox checks still measure full-f64 retained geometr
 at the unchanged preregistered tolerances. Refusal rows retain kernel status,
 origin site/entity/cause, and the original error message.
 
-Committed expectations: `issue_1985_scaled_kinds` #74 is `incomplete`; #81, #88,
+Committed expectations: `issue_1985_scaled_kinds` #74 is `incomplete` (a
+curved Scale-1000 affine final outside M10's contraction-only fallback, refused
+from source before any invocation; the original committed+1 publication target
+is not met); #81, #88,
 #109 are `operation_unsupported`; #99 publishes. For `issue_098_wall_W`, only wall
 #928204 is `opening_unsupported`; its seven windows publish and its seven opening
 elements are `operation_unsupported`.
@@ -81,3 +97,35 @@ volume field is empty when no published cut can be compared. `summary.json`
 lists supported extrusion openings and every opening without analytic
 quantities. The committed universe adds issue_2019 and issue_3641; the latter
 observes current codes only. `f-d-openings.ifc` is unreviewed and does not count.
+
+The **2026-10-27 CUT-0 Round 3 orchestrator message** revises the M1 exact-linear
+comparison rule: the independent source-derived volume oracle is authoritative.
+When retained passes its preregistered source-volume limit and exact exceeds
+the exact-volume limit against that same source value, the product's exact
+comparison is `exact_defect`, report-only. `summary.json` lists these products,
+the source/retained/exact volumes, retained-vs-source and exact-vs-source relative
+deviations, and retained-vs-exact volume/area/bbox deviations. Without a source
+oracle, or when retained fails it, the exact gate applies unchanged. Source
+volume, source bbox, closure and nonfinite checks still fail independently.
+This documented deviation changes no tolerance and adds no per-product allowlist.
+
+M10 publishes affine finals by transforming the existing input mesh's linear
+coordinates and preserving translation in its rigid frame. Reflections reverse
+triangle winding. The tiny-radius sagitta witness failed upstream, so the preregistered rule
+is narrowed to contraction/isometry (σmax ≤ 1) for curved lineages; other scales
+refuse `incomplete` before any invocation, since the rule is source-determined.
+Opcode 18 certifies only BSpline, plane, cylinder, cone, sphere and torus
+surfaces; the SDK sweeps every partial profile arc or oblique extrusion into
+SmSurfOfExtrusion, so an affine copy of such a lineage (for example a mirrored
+arched door) also refuses `incomplete` before dispatch rather than reporting a
+`kernel_failure`. The comparison reports `affine_kappa` without claiming that
+nonuniform scale preserves the facet-angle bound. Source centroids and signed
+volumes supplement the existing absolute-volume checks. The mapped oblique-clip
+fixture qualifies M5 clip execution and section volume through the M10 bake.
+
+The decoder-only M10 oracle uses IFC's +Y default for omitted Axis2. The default
+router currently derives that axis by a cross product; an omitted Axis2 with
+Axis1 = −X therefore differs. M10 fixtures use explicit axes, and a source-only
+witness pins the omitted-axis semantics against IfcOpenShell. Fixing the default
+router is outside this retained-only slice and would require new default identity
+qualification.

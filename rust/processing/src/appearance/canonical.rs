@@ -1,6 +1,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+use ifc_lite_geometry::representation::product_shape_id;
+
 use super::{source::Source, AppearanceItem, AppearanceRequest};
 use crate::element::{
     produce_element_meshes_owned, ElementJobKind, ElementMeshJob, MeshProductionOptions,
@@ -187,9 +189,10 @@ fn produce_with_context(
     }
     let styles = production.borrowed();
     let element_color = resolve_color.then(|| {
-        product.get_ref(6).and_then(|pds| crate::processor::resolve_element_color_for_product_definition_shape(
-            pds, styles.geometry_style_index, &mut source.decoder))
-            .or_else(|| styles.element_material_colors.get(&product_id).and_then(|colors| crate::style::element_material_fallback_color(colors)))
+        crate::processor::resolve_product_element_color(
+            product_shape_id(&product), product_id,
+            styles.geometry_style_index, styles.element_material_colors,
+            &mut source.decoder)
     }).flatten();
     let context = source.context.as_ref().ok_or("Missing canonical load context")?;
     if context.layers.is_sliceable(product_id) {

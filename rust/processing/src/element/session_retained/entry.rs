@@ -83,6 +83,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 opening_entities: openings,
                 type_values: Vec::new(),
                 type_map_members: Default::default(),
+                type_map_members_planned: Default::default(),
                 pending: None,
                 prepared: None,
                 ledger: Vec::new(),

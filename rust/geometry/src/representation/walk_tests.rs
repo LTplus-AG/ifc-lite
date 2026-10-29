@@ -105,6 +105,28 @@ fn select_names_its_list() {
 }
 
 #[test]
+fn drawing_camera_is_selected_by_no_body_policy() {
+    // A Bonsai drawing camera (#8211): an IfcAnnotation with ObjectType
+    // DRAWING whose Body box is the camera extent. It must not mesh, vote the
+    // RTC origin, or feed layer slicing; any other annotation still does.
+    let src = "#1=IFCCARTESIANPOINT((0.,0.,0.));\
+        #2=IFCPRODUCTDEFINITIONSHAPE($,$,(#3));\
+        #3=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#1));\
+        #10=IFCANNOTATION('g',$,$,$,'DRAWING',$,#2);\
+        #11=IFCANNOTATION('g',$,$,$,'TEXT',$,#2);";
+    let mut d = EntityDecoder::new(src);
+    let cases: [(u32, &[u32]); 2] = [(10, &[]), (11, &[3])];
+    for (id, expected) in cases {
+        let annotation = d.decode_by_id(id).unwrap();
+        let shape = product_shape(&annotation, &mut d).unwrap().unwrap();
+        for policy in [Select::Meshed, Select::Body, Select::RtcVotable] {
+            assert_eq!(ids(shape.select(&annotation, policy)), expected, "#{id}");
+        }
+        assert_eq!(ids(shape.select(&annotation, Select::Any)), [3], "#{id}");
+    }
+}
+
+#[test]
 fn expand_visits_in_preorder_with_a_path_scoped_set() {
     let mut d = EntityDecoder::new(MODEL);
     let wall = d.decode_by_id(10).unwrap();

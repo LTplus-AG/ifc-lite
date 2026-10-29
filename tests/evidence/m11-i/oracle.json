@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/presentation/instancing_key.rs",
+  "mutation": "tests/evidence/m11-i/behaviour.oracle.patch",
+  "test": "rust/processing/tests/m11_i_instancing.rs",
+  "why": "Same vertices and triangle count with different connectivity must never share an instance key; omitting index bytes violates byte identity without requiring SMLib."
+}

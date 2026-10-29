@@ -6,9 +6,9 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
-use crate::representation::{product_shape, Select};
 use crate::coord_is_large;
-use ifc_lite_core::{geometry_flags_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
+use crate::representation::{is_drawing_camera_annotation, product_shape, Select};
+use ifc_lite_core::{is_geometry_job, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 mod mapped_vote;
 mod raw_coordinate;
@@ -55,7 +55,9 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
         let has_rep = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-        if !has_rep {
+        // A drawing camera is never meshed, so its placement is no evidence of
+        // where the model's geometry sits (#8211).
+        if !has_rep || is_drawing_camera_annotation(entity) {
             return None;
         }
         let mut transform = self
@@ -164,18 +166,7 @@ impl GeometryRouter {
         let shape = product_shape(entity, decoder).ok()??;
 
         for shape_rep in shape.select(entity, Select::Meshed) {
-            // attr 3 = Items (list of geometry items)
-            let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
-                Some(list) => list,
-                None => continue,
-            };
-
-            for item_ref in items {
-                let item_id = match item_ref.as_entity_ref() {
-                    Some(id) => id,
-                    None => continue,
-                };
-
+            for item_id in crate::representation::structural::rep_item_ids(shape_rep) {
                 // Try fast CartesianPoint extraction (if item itself is a point)
                 if let Some(coords) = decoder.get_cartesian_point_fast(item_id) {
                     return Some(coords);
@@ -388,8 +379,10 @@ impl GeometryRouter {
 fn file_geometry_spans(content: &[u8]) -> impl Iterator<Item = (u32, usize, usize)> + '_ {
     let mut scanner = ifc_lite_core::EntityScanner::new(content);
     std::iter::from_fn(move || scanner.next_entity()).filter_map(move |(id, type_name, start, end)| {
-        let (geometry, spatial) = geometry_flags_by_name(type_name);
-        let has_representation = || ifc_lite_core::nth_attribute_is_present(&content[start..end], 6);
-        (geometry || (spatial && has_representation())).then_some((id, start, end))
+        is_geometry_job(type_name, &content[start..end]).then_some((id, start, end))
     })
 }
+
+#[cfg(test)]
+#[path = "rtc_offset/structural_tests.rs"]
+mod structural_tests;

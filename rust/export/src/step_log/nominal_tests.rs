@@ -101,3 +101,12 @@ fn an_integer_measure_takes_a_whole_number_8142() {
     let reason = check_real_measure(fam("IFC4"), "IfcBoolean", 1.0, true).unwrap_err();
     assert_eq!(reason, "IfcBoolean holds a BOOLEAN value, not a number");
 }
+
+#[test]
+fn typed_marker_refuses_a_type_name_that_breaks_out_of_the_attribute_list() {
+    use super::super::values::typed_marker;
+    for bad in ["IfcLabel('x'));\n#999=IFCWALL(", "IfcLabel(", "Ifc Label", "Ifc;", "", "1abc"] {
+        assert!(typed_marker(bad, &json!("x")).is_err(), "{bad:?} must be refused");
+    }
+    assert_eq!(typed_marker("IfcLabel", &json!("x")).unwrap(), "IFCLABEL('x')");
+}

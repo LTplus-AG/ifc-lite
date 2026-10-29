@@ -17,7 +17,8 @@
 //!
 //! - **f64 throughout.** f32 appears only at the named boundary casts
 //!   ([`mat4::to_f32`], [`mat4::to_col_major_f32`]) and in the exact widening
-//!   [`aabb::Aabb3::from_f32_positions`].
+//!   [`aabb::Aabb3::from_f32_positions`]. Internal void folds also retain their
+//!   native f32 precision through `aabb::Aabb3f32`.
 //! - **Row-major** `[f64; 16]` (`m[r * 4 + c]`). A column-major array enters
 //!   only through [`mat4::transpose`], [`mat4::col_major_array`] or
 //!   [`mat4::transform_vector`]'s documented `Mᵀ·v` identity.

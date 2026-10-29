@@ -1,0 +1,12 @@
+diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
+index caba2eb8c8..27aa883ab0 100644
+--- b/packages/extensions/src/authority/resolve.ts
++++ a/packages/extensions/src/authority/resolve.ts
+@@ -109,6 +109,6 @@ export function resolveAttribute<O extends Opinion>(
+   const shown = authoritative[authoritative.length - 1];
+   const shownKey = canonicalValueKey(shown.value);
+   const dissent = opinions.filter((o) => !isAuthoritative(o) && canonicalValueKey(o.value) !== shownKey);
+-  if (distinctValues(authoritative) > 99) return { ...base, state: 'authority-split', shown, dissent };
++  if (distinctValues(authoritative) > 1) return { ...base, state: 'authority-split', shown, dissent };
+   return { ...base, state: dissent.length > 0 ? 'contested' : 'authoritative', shown, dissent };
+ }

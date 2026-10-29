@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc
+rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc
+rust/geometry/tests/fixtures/nested_mapped_item.ifc
+rust/geometry/tests/fixtures/issue_1985_mapping_origin.ifc

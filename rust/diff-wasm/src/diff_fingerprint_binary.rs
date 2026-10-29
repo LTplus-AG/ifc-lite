@@ -43,6 +43,11 @@ fn slots<T>(value: Value, parse: impl Fn(Value) -> Result<T, String>) -> Result<
     result.push_holes(holes);
     Ok(result)
 }
+fn present_only<T>(value: Value, key: &str, parse: impl Fn(Value) -> Result<T, String>) -> Result<SparseCollection<T>, String> {
+    let result = slots(value, parse)?;
+    if result.holes() > 0 { return Err(format!("expected present records in `{key}`")); }
+    Ok(result)
+}
 fn property(value: Value) -> PropertyValue {
     // decode() already bounded document depth before reaching this walk.
     match value {
@@ -71,10 +76,10 @@ fn input(value: Value) -> Result<DataFingerprintInput, String> {
         ifc_type: string(fields.required("ifcType")?)?, name: fields.optional_string("name")?,
         description: fields.optional_string("description")?, object_type: fields.optional_string("objectType")?,
         predefined_type: fields.optional_string("predefinedType")?, tag: fields.optional_string("tag")?,
-        property_sets: slots(fields.required("propertySets")?, |value| {
+        property_sets: present_only(fields.required("propertySets")?, "propertySets", |value| {
             let (name, properties) = set(value)?; Ok(PropertySetInput { name, properties })
         })?,
-        quantity_sets: slots(fields.required("quantitySets")?, |value| {
+        quantity_sets: present_only(fields.required("quantitySets")?, "quantitySets", |value| {
             let (name, quantities) = set(value)?; Ok(QuantitySetInput { name, quantities })
         })?,
         type_assignments: slots(fields.required("typeAssignments")?, assignment)?,

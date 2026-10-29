@@ -87,6 +87,13 @@ pub(super) fn reserve(resources: &OwnedResourceContext, recipe: &RetainedRecipe)
                         }
                     }
                 }
+                RetainedRecipe::Prism(recipe) => {
+                    estimate.vector(&recipe.loops)?;
+                    for boundary in &recipe.loops {
+                        estimate.vector(&boundary.segments)?;
+                        estimate.add(boundary.segments.len(), 4096)?;
+                    }
+                }
                 RetainedRecipe::SweptDisk(recipe) => {
                     let source = &recipe.source;
                     estimate.status(&source.status)?;

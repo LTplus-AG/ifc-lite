@@ -9,13 +9,15 @@
 
 import type { ComposedNode, IfcClass } from './types.js';
 import { ATTR } from './types.js';
-import { buildReachableAttributeIndex, collectIncomingEdgeNames } from './traversal.js';
+import { buildReachableAttributeIndex, collectIncomingEdgeNames, collectSiblingEdgeNames } from './traversal.js';
+import { nodeName } from './names.js';
+import { materialDefinitions, typeDefinitions } from './definitions.js';
 import { POINTCLOUD_ATTR_KEYS } from '@ifc-lite/pointcloud';
 import {
   StringTable,
   EntityTableBuilder,
 } from '@ifc-lite/data';
-import type { EntityTable } from '@ifc-lite/data';
+import type { DerivedEntities, EntityTable } from '@ifc-lite/data';
 
 /**
  * Promote a node to a first-class entity when it carries any of the
@@ -32,6 +34,8 @@ function nodeIsPointCloud(node: ComposedNode): boolean {
 
 export interface EntityExtractionResult {
   entities: EntityTable;
+  /** What the table says that the file does not (see `DerivedEntities`): the exporter writes the file's classes. */
+  derived: DerivedEntities;
   pathToId: Map<string, number>;
   idToPath: Map<number, string>;
 }
@@ -51,10 +55,16 @@ export function extractEntities(
   const pathToId = new Map<string, number>();
   const idToPath = new Map<number, string>();
   const incomingEdgeNames = collectIncomingEdgeNames(composed);
+  const siblingEdgeNames = collectSiblingEdgeNames(composed);
   const geometryIndex = buildReachableAttributeIndex(composed, ATTR.MESH);
 
+  // A type definition is an IfcXType, a material definition an IfcMaterial:
+  // IFCX states both as nodes others inherit (see definitions.ts).
+  const typeDefs = typeDefinitions(composed);
+  const materialDefs = materialDefinitions(composed);
+
   // First pass: count entities to allocate builder
-  let entityCount = 0;
+  let entityCount = materialDefs.size;
   for (const node of composed.values()) {
     const ifcClass = node.attributes.get(ATTR.CLASS) as IfcClass | undefined;
     if (ifcClass || nodeIsPointCloud(node)) {
@@ -62,6 +72,8 @@ export function extractEntities(
     }
   }
 
+  const retyped = new Map<number, string>();
+  const added = new Set<number>();
   const builder = new EntityTableBuilder(Math.max(entityCount, 100), strings);
   let nextExpressId = 1;
 
@@ -73,9 +85,10 @@ export function extractEntities(
     // Pointcloud nodes that omit bsi::ifc::class get a synthetic class
     // — IfcGeographicElement is the closest IFC4.3 fit for "georeferenced
     // scan attached to a project". Real IFC class wins when present.
-    const typeCode = ifcClass?.code ?? (isPointCloud ? 'IfcGeographicElement' : '');
+    const typeCode = typeDefs.get(node.path) ?? ifcClass?.code ?? (isPointCloud ? 'IfcGeographicElement' : '');
 
     const expressId = nextExpressId++;
+    if (typeDefs.has(node.path) && ifcClass?.code) retyped.set(expressId, ifcClass.code);
     pathToId.set(node.path, expressId);
     idToPath.set(expressId, node.path);
 
@@ -87,7 +100,7 @@ export function extractEntities(
     // short name/code no source data backs and pre-empts the viewer's own
     // "Name absent" display convention (`getName(id) || '${type} #${id}'`
     // in treeDataBuilder.ts).
-    const name = extractName(node, incomingEdgeNames.get(node.path) ?? []) ?? '';
+    const name = nodeName(node, incomingEdgeNames.get(node.path) ?? [], siblingEdgeNames.get(node.path)) ?? '';
 
     // Extract description from attributes (writer.ts writes it to the same
     // `bsi::ifc::prop::Description` attribute it writes name to under
@@ -126,39 +139,23 @@ export function extractEntities(
     );
   }
 
+  // The materials, after the classed nodes so their ids follow them. Named by
+  // the material class code, as hello-wall.ifc names its IfcMaterial CONCRETE.
+  for (const [path, code] of materialDefs) {
+    if (pathToId.has(path)) continue;
+    const expressId = nextExpressId++;
+    pathToId.set(path, expressId);
+    idToPath.set(expressId, path);
+    added.add(expressId);
+    builder.add(expressId, 'IfcMaterial', path, code, '', '', false, false);
+  }
+
   return {
     entities: builder.build(),
+    derived: { retyped, added },
     pathToId,
     idToPath,
   };
-}
-
-/**
- * Extract entity name from node attributes.
- */
-function extractName(node: ComposedNode, incomingEdgeNames: string[]): string | null {
-  // Try direct IFC name attribute (written by IFCX exporter/writer)
-  const ifcName = node.attributes.get('bsi::ifc::name');
-  if (typeof ifcName === 'string') return ifcName;
-
-  // Try common property patterns
-  const name = node.attributes.get('bsi::ifc::prop::Name');
-  if (typeof name === 'string') return name;
-
-  const typeName = node.attributes.get('bsi::ifc::prop::TypeName');
-  if (typeof typeName === 'string') return typeName;
-
-  const objectName = node.attributes.get('bsi::ifc::prop::ObjectName');
-  if (typeof objectName === 'string') return objectName;
-
-  // Fall back to readable incoming edge names when the entity itself has no name.
-  for (const edgeName of incomingEdgeNames) {
-    if (edgeName !== node.path && !edgeName.match(/^[0-9a-f-]{36}$/i)) {
-      return edgeName;
-    }
-  }
-
-  return null;
 }
 
 /**

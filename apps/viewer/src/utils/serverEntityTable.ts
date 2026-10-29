@@ -107,6 +107,7 @@ export function buildEntityTable(
 
   // Additive display-class overrides (UI retype). See entity-table.ts.
   const typeOverrides = new Map<number, string>();
+  let typeRevision = 0;
 
   /** One interned-string column accessor, shared by every string getter. */
   const strCol = (col: Uint32Array) => (id: number) => {
@@ -125,6 +126,7 @@ export function buildEntityTable(
 
   const entities: EntityTable = {
     count: entityCount,
+    get typeRevision() { return typeRevision; },
     expressId,
     typeEnum: typeEnumArr,
     globalId: globalIdArr,
@@ -178,6 +180,7 @@ export function buildEntityTable(
       return i >= 0 ? typeEnumArr[i] as IfcTypeEnum : IfcTypeEnum.Unknown;
     },
     setTypeOverride: (id, typeName) => {
+      typeRevision++;
       if (typeName === null) typeOverrides.delete(id);
       // Canonicalise on the way in, matching `entityTableFromColumns`
       // (packages/data/src/entity-table.ts) and the cache-restored table.

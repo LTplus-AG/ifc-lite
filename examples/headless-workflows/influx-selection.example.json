@@ -1,0 +1,12 @@
+{
+  "url": "https://influx.example.com",
+  "org": "building-operations",
+  "bucket": "monitoring",
+  "measurement": "environment",
+  "field": "temperature",
+  "guidTag": "ifc_guid",
+  "tags": {},
+  "minutes": 60,
+  "maxSamples": 1000,
+  "unit": "°C"
+}

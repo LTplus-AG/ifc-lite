@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The native run's one immutable model snapshot (#7955 E2): captured once,
 //! shared by every rayon job, re-taken only on the deferred style replay.
-use super::*;
+use crate::mesh_frame::MeshFrame;
+use crate::style::GeometryStyleInfo;
+use crate::types::mesh::MeshData;
+use rustc_hash::FxHashMap;
 
 /// The run's one immutable model snapshot, shared by every job and re-taken
 /// only when the deferred styled-item replay replaces the styles.
@@ -38,13 +41,9 @@ impl RunSnapshot {
 
 /// The site-local rotation, moved into the run snapshot once (native
 /// `site_local` coordinate space only).
-pub(super) fn site_rotation(
-    site_transform: Option<&[f64]>,
-    coord_space: MeshCoordinateSpace,
-) -> Option<std::sync::Arc<Vec<f64>>> {
-    let site_local = coord_space == MeshCoordinateSpace::SiteLocal;
-    site_transform
-        .filter(|_| site_local)
+pub(super) fn site_rotation(frame: MeshFrame) -> Option<std::sync::Arc<Vec<f64>>> {
+    frame
+        .site_placement()
         .map(|rotation| std::sync::Arc::new(rotation.to_vec()))
 }
 

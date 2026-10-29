@@ -1,0 +1,12 @@
+diff --git b/packages/extensions/src/authority/attribute-path.ts a/packages/extensions/src/authority/attribute-path.ts
+index e1393f0483..3e9e90f7f1 100644
+--- b/packages/extensions/src/authority/attribute-path.ts
++++ a/packages/extensions/src/authority/attribute-path.ts
+@@ -49,6 +49,7 @@ export function attributeSelectorPath(attributeKey: string): string[] | undefine
+     return validSegments(['prop', attributeKey.slice(PROP_PREFIX.length)]);
+   }
+   if (attributeKey === 'bsi::ifc::material') return ['material'];
++  if (attributeKey === 'usd::xformop') return ['placement'];
+   if (attributeKey.startsWith('usd::')) {
+     return validSegments(['geometry', attributeKey.split('::').pop() ?? '']);
+   }

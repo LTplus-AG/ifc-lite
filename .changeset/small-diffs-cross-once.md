@@ -1,6 +1,6 @@
 ---
 "@ifc-lite/diff": minor
-"@ifc-lite/wasm": patch
+"@ifc-lite/wasm": minor
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
 ---

@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
+index c4bfc873ed..27aa883ab0 100644
+--- b/packages/extensions/src/authority/resolve.ts
++++ a/packages/extensions/src/authority/resolve.ts
+@@ -92,7 +92,7 @@ export function resolveAttribute<O extends Opinion>(
+   const rule = charter ? findGoverningRule(charter, subject) : undefined;
+ 
+   if (!rule || !charter) {
+-    const state = 'agreed';
++    const state = distinctValues(opinions) > 1 ? 'divergent' : 'agreed';
+     return { state, shown: strongest, authoritative: [], dissent: [] };
+   }
+ 

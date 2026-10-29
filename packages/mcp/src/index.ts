@@ -33,6 +33,7 @@ export { PromptRegistry, buildDefaultPromptRegistry } from './prompts/index.js';
 export type { Prompt } from './prompts/index.js';
 
 export { StdioTransport } from './transport/stdio.js';
+export { routeConsoleToStderr } from './transport/stdio-console.js';
 export { InProcessTransport } from './transport/in-process.js';
 export { HttpTransport, BearerTokenAuth, AllowAllAuth } from './transport/http.js';
 export type { HttpTransportOptions, HttpAuthenticator, SessionFactory } from './transport/http.js';

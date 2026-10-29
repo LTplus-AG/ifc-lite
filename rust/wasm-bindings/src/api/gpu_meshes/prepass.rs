@@ -88,10 +88,7 @@ impl IfcAPI {
     ) -> Result<JsValue, JsValue> {
         let have_columns = columns.is_some();
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
-        // Load START on the streaming pre-pass path (see build_pre_pass_once).
-        self.reset_pipeline_diagnostics();
-        self.production_model.invalidate_source();
-        self.invalidate_brep_signatures();
+        self.begin_content_install();
         use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};

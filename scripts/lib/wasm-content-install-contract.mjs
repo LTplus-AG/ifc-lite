@@ -47,7 +47,7 @@ DATA;
 #14=IFCSHAPEREPRESENTATION(#6,'Body','Tessellation',(#13));
 #15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
 #100=IFCWALL('0000000000000000000100',$,'Wall',$,$,#5,#15,$,.NOTDEFINED.);
-${styled ? `#20=IFCCOLOURRGB($,0.8,0.1,0.2);
+${styled ? `#20=IFCCOLOURRGB($,${width === 1 ? "0.8,0.1,0.2" : "0.1,0.2,0.8"});
 #21=IFCSURFACESTYLERENDERING(#20,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.9),$,.METAL.);
 #22=IFCSURFACESTYLE('Steel',.BOTH.,(#21));
 #23=IFCSTYLEDITEM(#13,(#22),$);` : ''}
@@ -59,8 +59,8 @@ function installColumns(api) {
   api.setReferencedRepmaps(new Uint32Array());
   api.setInstantiatedTypeIds(new Uint32Array());
   api.setMappedInstancePlan(new Uint32Array());
-  api.setMaterialLayerIndex(new Uint32Array(), new Uint8Array(), new Uint32Array(),
-    new Uint8Array(), new Float64Array(), new Uint32Array(), new Float64Array());
+  api.setMaterialLayerIndex(new Uint32Array(), new Uint32Array(), new Uint32Array(),
+    new Float64Array(), new Float64Array(), new Uint32Array(), new Float64Array());
 }
 
 export function executeInstallOrder(api, steps, bytes) {
@@ -126,4 +126,39 @@ export function runContentInstallContracts(IfcAPI, test) {
       } finally { api.free(); }
     });
   }
+}
+
+export function runContentReplacementContracts(IfcAPI, test) {
+  for (const boundary of [['once'], ['stream'], ['sharded'], ['source', 'index', 'columns']]) {
+    test(`C4-11a same API replaces colliding styles and finishes: ${boundary} (#7782)`, () => {
+      const api = new IfcAPI(), fresh = new IfcAPI();
+      try {
+        const first = executeInstallOrder(api, ['once', 'finishes', 'batch'], installFixture());
+        assert.equal(first[0].metallic, 1, 'seed must actually carry an authored finish');
+        // Different shape/colour, same entity ids AND style-wire signature.
+        const second = installFixture(2);
+        const steps = [...boundary, boundary[0] === 'source' ? 'batchSource' : 'batch'];
+        const actual = executeInstallOrder(api, steps, second);
+        const expected = executeInstallOrder(fresh, steps, second);
+        assert.deepEqual(actual, expected, 'a reused API must behave exactly like a fresh API');
+        assert.equal(actual[0].metallic, undefined, 'new content did not install a finish');
+        assert.notDeepEqual(actual[0].color, first[0].color, 'style cache must rebuild despite signature collision');
+      } finally { api.clearPrePassCache(); fresh.clearPrePassCache(); api.free(); fresh.free(); }
+    });
+  }
+  test('C4-11a streaming failure and SAB/materialized retry (#7782)', () => {
+    const api = new IfcAPI();
+    const bytes = installFixture(2);
+    const shared = new Uint8Array(new SharedArrayBuffer(bytes.length));
+    shared.set(bytes);
+    try {
+      executeInstallOrder(api, ['once', 'finishes', 'batch'], installFixture());
+      assert.throws(() => api.buildPrePassStreaming(shared, () => { throw new Error('callback abort'); }, 1024, null, false), /callback abort/);
+      // The real ABI accepted the SAB on this runtime; the callback abort
+      // exercises an already-entered attempt before the owned-buffer retry.
+      const retried = executeInstallOrder(api, ['stream', 'batch'], shared.slice());
+      assert.equal(retried[0].metallic, undefined);
+      assert.ok(api.getPipelineDiagnostics().batches > 0);
+    } finally { api.clearPrePassCache(); api.free(); }
+  });
 }

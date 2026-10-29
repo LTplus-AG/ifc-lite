@@ -1,6 +1,6 @@
 ---
 "@ifc-lite/wasm": patch
-"@ifc-lite/cli": patch
+"@ifc-lite/cli": minor
 ---
 
 Ship a generated THIRD_PARTY_NOTICES.txt in the @ifc-lite/wasm and @ifc-lite/cli

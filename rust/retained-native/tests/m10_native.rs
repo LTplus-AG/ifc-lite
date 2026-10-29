@@ -161,3 +161,37 @@ fn m10_sdk_bake_matches_independent_kernel_copy_tessellation() {
     }
     eprintln!("sdk witness executed: m10_sdk_bake_matches_independent_kernel_copy_tessellation");
 }
+
+/// Opcode-18 phase observations (report-only, never a wall-time benchmark).
+#[test]
+fn m10_sdk_affine_phase_observations() {
+    use ifc_lite_core::SourceBundle;
+    use ifc_lite_retained_native::{ModelOptions,NativeModelDriver};
+    let Some(worker)=support::worker_path() else {return};
+    let mut driver=NativeModelDriver::new(worker);
+    let mut cases=vec![("f-h".to_owned(),SOURCE.as_bytes().to_vec(),vec![42,50,58,66,74,82,95,119,133,147,161,175,190,203,224,234,242,288,296,313])];
+    if let Some(path)=std::env::var_os("IFCLITE_M10_AFFINE_SCAN") {
+        let scan:serde_json::Value=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        for model in scan.as_array().unwrap() {
+            let path=model["model"].as_str().unwrap();
+            if !path.ends_with("ISSUE_034_HouseZ.ifc") {continue}
+            let Ok(bytes)=std::fs::read(path) else {eprintln!("SKIP M10 HouseZ phase observations: run pnpm fixtures");continue};
+            let ids=model["rows"].as_array().unwrap().iter().map(|r|r["id"].as_u64().unwrap() as u32).collect();
+            cases.push(("HouseZ".to_owned(),bytes,ids));
+        }
+    } else {eprintln!("SKIP M10 HouseZ phase observations: IFCLITE_M10_AFFINE_SCAN is absent");}
+    let mut rows=Vec::new();
+    for (model,bytes,ids) in cases {
+        let source=SourceBundle::new(bytes);
+        for id in ids {
+            let mut code=String::new();
+            let (_,timing)=driver.run_model(source.clone(),&ModelOptions{ids:Some([id].into_iter().collect()),..Default::default()},|outcome,_|{
+                code=match outcome {ProductOutcome::Published(_)=>"published".into(),ProductOutcome::Refused{refusal,..}=>refusal.code().into()};
+            }).unwrap();
+            assert!(!code.is_empty());
+            rows.push(serde_json::json!({"model":model,"id":id,"code":code,"affine_ms":timing.affine_ms}));
+        }
+    }
+    if let Some(path)=std::env::var_os("IFCLITE_M10_AFFINE_TIMINGS") {std::fs::write(path,serde_json::to_vec_pretty(&rows).unwrap()).unwrap();}
+    eprintln!("sdk witness executed: m10_sdk_affine_phase_observations");
+}

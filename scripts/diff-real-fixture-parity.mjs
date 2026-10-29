@@ -67,9 +67,13 @@ for (const [basePath, headPath] of pairs) {
   }
   derivedSource ??= { fixture: basePath, rows: rows[0] };
   for (const options of [{ scope: 'data' }, { scope: 'data', matchUnpairedByContent: true },
-    { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true }]) {
+    { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true },
+    { scope: 'both', excludeTypes: ['IfcSpace'] },
+    { scope: 'data', keyAliases: new Map(), detectSuccessors: true }]) {
     const actual = compare(rows[0], rows[1], options, `${basePath}: ${JSON.stringify(options)}`);
-    if (basePath === headPath) assert.equal(actual.counts.unchanged, rows[0].length);
+    if (basePath === headPath) {
+      assert.equal(actual.counts.unchanged, rows[0].filter(row => !options.excludeTypes?.includes(row.ifcType)).length);
+    }
     comparisons++;
     console.log(JSON.stringify({ base: basePath, head: headPath, options, entities: rows.map(row => row.length), counts: actual.counts, parity: 'exact' }));
   }

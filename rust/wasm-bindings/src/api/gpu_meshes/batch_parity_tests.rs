@@ -441,13 +441,13 @@ fn c4_d66_opt_in_layer_payloads_match_browser_7782() {
     let mut expected: Vec<_> = browser
         .meshes()
         .filter(|m| m.express_id == 100)
-        .map(compare::exact_digest)
+        .map(|mesh| serde_json::to_string(&evidence::record(mesh)).unwrap())
         .collect();
     let mut actual: Vec<_> = native
         .meshes
         .iter()
         .filter(|m| m.express_id == 100)
-        .map(compare::exact_digest)
+        .map(|mesh| serde_json::to_string(&evidence::record(mesh)).unwrap())
         .collect();
     expected.sort_unstable();
     actual.sort_unstable();

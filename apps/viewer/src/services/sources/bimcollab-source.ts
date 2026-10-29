@@ -30,7 +30,16 @@ import { loadBcfServerConfig } from '../bcf-server-config.js';
 import type { BcfServerConfig } from '../bcf-server-config.js';
 
 export const BIMCOLLAB_RELAY_PATH = '/api/bimcollab';
-const SIGNED_OUT_KEY = 'signedOutSessions';
+const AUTH_EVENTS_KEY = 'authEvents';
+
+interface AuthEvents { in?: number; out?: number }
+
+/** Merges `value` into `events[key]`, keeping the newest time of each field. */
+function mergeEvents(events: Map<string, AuthEvents>, key: string, value: AuthEvents): void {
+  const current = events.get(key) ?? {};
+  const newest = (a?: number, b?: number) => (a === undefined ? b : b === undefined ? a : Math.max(a, b));
+  events.set(key, { in: newest(current.in, value.in), out: newest(current.out, value.out) });
+}
 
 /** Same-origin fetch that only ever reaches the BIMcollab relay. */
 export function relayOnlyFetch(origin: string, relayPath = BIMCOLLAB_RELAY_PATH): typeof fetch {
@@ -86,15 +95,15 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
   readonly auth: SourceAuth;
   private bound: BoundSession | null = null;
   /**
-   * Sign-out markers are `account -> time signed out`, persisted in the source's
-   * storage and mirrored here (with localStorage blocked, the host's fallback
-   * storage is per context, so the mirror keeps a sign-out for the provider's
-   * lifetime). `signedInAt` records explicit sign-ins in this session. An account
-   * is signed out when its newest marker is at or after its last sign-in: a
-   * later sign-out from another tab wins, a stale marker from before does not.
+   * Per-account auth events `{ in, out }` (last sign-in / sign-out time),
+   * persisted in the source's storage and mirrored here (with localStorage
+   * blocked, the host's fallback storage is per context; the mirror keeps state
+   * for the provider's lifetime). Events are never deleted, and copies merge by
+   * keeping the newest time of each field, so merging is order-independent and
+   * a stale copy (another tab's, or this mirror) can never undo a newer event.
+   * The latest event decides: signed out when `out >= in` (a tie is signed out).
    */
-  private readonly signedOutInSession = new Map<string, number>();
-  private readonly signedInAt = new Map<string, number>();
+  private readonly eventsInSession = new Map<string, AuthEvents>();
 
   constructor(
     private readonly loadConfig: () => BcfServerConfig | null = loadBcfServerConfig,
@@ -107,12 +116,7 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
         const identity = this.identity();
         if (!identity) throw new BimcollabNotConnectedError();
         const key = this.sessionKey();
-        if (key) {
-          this.signedInAt.set(key, Date.now());
-          const markers = await this.readSignedOut(ctx);
-          markers.delete(key);
-          await this.writeSignedOut(ctx, markers);
-        }
+        if (key) await this.record(ctx, key, 'in');
         return identity;
       },
       // The tokens belong to the BCF connection, which stays connected; this
@@ -120,11 +124,7 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
       signOut: async (ctx) => {
         this.bound = null;
         const key = this.sessionKey();
-        if (!key) return;
-        this.signedInAt.delete(key);
-        const markers = await this.readSignedOut(ctx);
-        markers.set(key, Date.now());
-        await this.writeSignedOut(ctx, markers);
+        if (key) await this.record(ctx, key, 'out');
       },
     };
   }
@@ -134,39 +134,48 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
     return session ? [session.config.serverUrl, session.config.userId, session.spaceGuid].join('\u0000') : null;
   }
 
-  /** Persisted and in-session markers merged, keeping each account's newest sign-out. */
-  private async readSignedOut(ctx: PluginContext): Promise<Map<string, number>> {
-    const markers = new Map(this.signedOutInSession);
-    const raw = await ctx.storage.get(SIGNED_OUT_KEY);
-    if (raw === undefined) return markers;
+  /** Storage and the in-session mirror merged field by field, newest time wins. */
+  private async readEvents(ctx: PluginContext): Promise<Map<string, AuthEvents>> {
+    const events = new Map<string, AuthEvents>();
+    for (const [key, value] of this.eventsInSession) mergeEvents(events, key, value);
+    const raw = await ctx.storage.get(AUTH_EVENTS_KEY);
+    if (raw === undefined) return events;
     try {
       const parsed: unknown = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        for (const [key, at] of Object.entries(parsed)) {
-          if (typeof at === 'number' && at > (markers.get(key) ?? -1)) markers.set(key, at);
+        for (const [key, value] of Object.entries(parsed)) {
+          if (!value || typeof value !== 'object') continue;
+          const { in: signedIn, out } = value as Record<string, unknown>;
+          mergeEvents(events, key, {
+            in: typeof signedIn === 'number' ? signedIn : undefined,
+            out: typeof out === 'number' ? out : undefined,
+          });
         }
       }
     } catch (error) {
-      console.warn('[bimcollab-source] ignoring unreadable sign-out state', error instanceof Error ? error.name : error);
+      console.warn('[bimcollab-source] ignoring unreadable sign-in state', error instanceof Error ? error.name : error);
     }
-    return markers;
+    return events;
   }
 
-  private async writeSignedOut(ctx: PluginContext, markers: ReadonlyMap<string, number>): Promise<void> {
-    this.signedOutInSession.clear();
-    for (const [key, at] of markers) this.signedOutInSession.set(key, at);
-    if (markers.size === 0) await ctx.storage.delete(SIGNED_OUT_KEY);
-    else await ctx.storage.set(SIGNED_OUT_KEY, JSON.stringify(Object.fromEntries(markers)));
+  private async record(ctx: PluginContext, key: string, event: 'in' | 'out'): Promise<void> {
+    const events = await this.readEvents(ctx);
+    // Strictly after this account's previous events: the action taken last
+    // always wins, even within the same millisecond.
+    const prior = events.get(key);
+    const at = Math.max(Date.now(), Math.max(prior?.in ?? -Infinity, prior?.out ?? -Infinity) + 1);
+    mergeEvents(events, key, { [event]: at });
+    this.eventsInSession.clear();
+    for (const [k, v] of events) this.eventsInSession.set(k, v);
+    await ctx.storage.set(AUTH_EVENTS_KEY, JSON.stringify(Object.fromEntries(events)));
   }
 
   private async signedOut(ctx: PluginContext): Promise<boolean> {
     const key = this.sessionKey();
     if (key === null) return false;
-    const signedOutAt = (await this.readSignedOut(ctx)).get(key);
-    if (signedOutAt === undefined) return false;
-    const signedInAt = this.signedInAt.get(key);
-    // A tie counts as signed out: the safe side.
-    return signedInAt === undefined || signedOutAt >= signedInAt;
+    const events = (await this.readEvents(ctx)).get(key);
+    if (events?.out === undefined) return false;
+    return events.in === undefined || events.out >= events.in;
   }
 
   private async active(ctx: PluginContext): Promise<BimcollabProvider> {

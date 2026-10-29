@@ -124,12 +124,17 @@ describe('ViewerBimcollabProvider sign-out', () => {
 
   it('keeps a sign-out across fresh contexts when storage does not persist (blocked localStorage)', async () => {
     const provider = new ViewerBimcollabProvider(() => config(), (async () => Response.json({ locations: [] })) as typeof fetch);
-    await provider.auth.signOut(memoryCtx());
-    // Every operation gets a new context whose fallback storage is empty.
-    assert.equal(await provider.auth.restore(memoryCtx()), null);
-    await assert.rejects(provider.listProjects(memoryCtx()), BimcollabNotConnectedError);
-    await provider.auth.signIn(memoryCtx());
-    assert.ok(await provider.auth.restore(memoryCtx()));
+    const now = Date.now;
+    try {
+      Date.now = () => 1_000;
+      await provider.auth.signOut(memoryCtx());
+      // Every operation gets a new context whose fallback storage is empty.
+      assert.equal(await provider.auth.restore(memoryCtx()), null);
+      await assert.rejects(provider.listProjects(memoryCtx()), BimcollabNotConnectedError);
+      Date.now = () => 2_000;
+      await provider.auth.signIn(memoryCtx());
+      assert.ok(await provider.auth.restore(memoryCtx()));
+    } finally { Date.now = now; }
   });
 
   it('an explicit sign-in outranks a stale sign-out marker left in another context', async () => {
@@ -165,6 +170,44 @@ describe('ViewerBimcollabProvider sign-out', () => {
       await otherTab.auth.signOut(shared);
       assert.equal(await provider.auth.restore(shared), null);
       await assert.rejects(provider.listProjects(shared), BimcollabNotConnectedError);
+    } finally { Date.now = now; }
+  });
+
+  it('the action taken last wins even within the same millisecond', async () => {
+    const provider = new ViewerBimcollabProvider(() => config(), (async () => Response.json({ locations: [] })) as typeof fetch);
+    const shared = memoryCtx();
+    const now = Date.now;
+    try {
+      Date.now = () => 5_000;
+      await provider.auth.signOut(shared);
+      await provider.auth.signIn(shared);
+      assert.ok(await provider.auth.restore(shared));
+      await provider.auth.signOut(shared);
+      assert.equal(await provider.auth.restore(shared), null);
+    } finally { Date.now = now; }
+  });
+
+  it('a stale in-memory copy in one tab never undoes a newer sign-in made in another tab', async () => {
+    const shared = memoryCtx();
+    const accountA = config();
+    const accountB = config({ userId: 'b@example.com' });
+    let tabAConnection = accountA;
+    const tabA = new ViewerBimcollabProvider(() => tabAConnection, (async () => Response.json({ locations: [] })) as typeof fetch);
+    const tabB = new ViewerBimcollabProvider(() => accountA, (async () => Response.json({ locations: [] })) as typeof fetch);
+    const now = Date.now;
+    try {
+      Date.now = () => 1_000;
+      await tabA.auth.signOut(shared);              // A signed out (tab A keeps a copy)
+      Date.now = () => 2_000;
+      await tabB.auth.signIn(shared);               // tab B signs A back in
+      tabAConnection = accountB;
+      Date.now = () => 3_000;
+      await tabA.auth.signOut(shared);              // tab A signs out B, merging its stale copy
+      assert.ok(await tabB.auth.restore(shared));   // A is still signed in
+      tabAConnection = accountA;
+      assert.ok(await tabA.auth.restore(shared));
+      tabAConnection = accountB;
+      assert.equal(await tabA.auth.restore(shared), null);
     } finally { Date.now = now; }
   });
 

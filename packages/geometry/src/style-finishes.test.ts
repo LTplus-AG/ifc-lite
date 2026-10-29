@@ -4,6 +4,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { applyStyleFinishes, buildPrePassWithFinishes, forgetAppliedFinishes } from './style-finishes.js';
+import { runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 
 describe('applyStyleFinishes after a content install (#7782 C4-11a)', () => {
   const ids = new Uint32Array([1]);
@@ -24,6 +25,14 @@ describe('applyStyleFinishes after a content install (#7782 C4-11a)', () => {
     const api = { setStyleFinishes: vi.fn(), buildPrePassOnce: vi.fn(() => prePass) };
     buildPrePassWithFinishes(api, new Uint8Array());
     buildPrePassWithFinishes(api, new Uint8Array());
+    expect(api.setStyleFinishes).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-sends the same finishes after a streaming prepass on the instance', () => {
+    const api = { setStyleFinishes: vi.fn(), buildPrePassStreaming: vi.fn(), buildPrePassStreamingSharded: vi.fn() };
+    applyStyleFinishes(api, ids, finishes);
+    runPrepassWithFingerprint(api, [new Uint8Array(), () => {}, 0, undefined, false]);
+    applyStyleFinishes(api, ids, finishes);
     expect(api.setStyleFinishes).toHaveBeenCalledTimes(2);
   });
 });

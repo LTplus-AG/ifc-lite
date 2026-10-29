@@ -48,9 +48,18 @@ impl IfcAPI {
         };
         let ifc_type = ifc_lite_processing::execution::job_type(&entity, content, span, None);
 
+        // The wire's slot 6 is RepresentationMaps on type products and
+        // Representation on occurrences. Use the named index without a typed
+        // entity assertion: source-keyword recovery also supports legacy types.
+        let is_type_product = ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
+        let representation_slot = if is_type_product {
+            ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index()
+        } else {
+            ifc_lite_core::slot::IfcProduct::REPRESENTATION.index()
+        };
         let element_color = if !geometry_styles.is_empty()
             && entity
-                .attr(ifc_lite_core::slot::IfcProduct::REPRESENTATION)
+                .get(representation_slot)
                 .map(|a| !a.is_null())
                 .unwrap_or(false)
         {
@@ -59,7 +68,7 @@ impl IfcAPI {
             None
         };
 
-        let kind = if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
+        let kind = if is_type_product {
             let rep_map_ids = ifc_lite_processing::discovery::record_refs_at(
                 content.get(start..end).unwrap_or_default(),
                 ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),

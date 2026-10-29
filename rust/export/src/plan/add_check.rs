@@ -237,6 +237,7 @@ impl AddState<'_, '_> {
             }
         }
         let spatial = self.is_structure_element(&class);
+        let nest = obj.nest_in.as_ref().map(|r| self.check_nest(r, &class, spatial, obj.container.is_some())).transpose()?;
 
         let container = match &obj.container {
             None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
@@ -278,8 +279,6 @@ impl AddState<'_, '_> {
                 }
             }
         };
-
-        let nest = obj.nest_in.as_ref().map(|r| self.check_nest(r, &class, spatial)).transpose()?;
 
         let parent_placement = match &obj.placement.relative_to {
             Some(r) => {

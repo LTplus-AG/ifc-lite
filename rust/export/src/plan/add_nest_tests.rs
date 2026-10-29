@@ -100,10 +100,15 @@ fn a_port_under_a_host_with_no_nesting_gets_one() {
 #[test]
 fn a_host_that_cannot_hold_the_object_is_refused_and_nothing_is_written() {
     let storey = object(IfcClass::BuildingStorey, gid(1), Some(ObjectRef::Id(60)), Representation::None).with_nest_in(ObjectRef::Id(70));
-    let cases: [(&str, NewObject, bool, &str); 6] = [
+    let contained = port(1, ObjectRef::Id(10)).with_container(ObjectRef::Id(70));
+    let cases: [(&str, NewObject, bool, &str); 10] = [
         ("IFC4", port(1, ObjectRef::Guid(gid(99).encode())), false, "not found"),
         ("IFC4", port(1, ObjectRef::Id(40)), false, "IFCWALLTYPE, not a product"),
-        ("IFC2X3", port(1, ObjectRef::Id(70)), false, "IFC2X3 connects a port only to an element"),
+        ("IFC2X3", port(1, ObjectRef::Id(70)), false, "a port is nested only in an element"),
+        ("IFC4", port(1, ObjectRef::Id(70)), false, "a port is nested only in an element"),
+        ("IFC4X3", contained, false, "cannot also have a container"),
+        ("IFC2X3", port(1, ObjectRef::Id(10)).with_container(ObjectRef::Id(70)), false, "cannot also have a container"),
+        ("IFC4", port(1, ObjectRef::Id(70)).with_container(ObjectRef::Id(40)), false, "a port is nested only in an element"),
         (
             "IFC2X3",
             object(IfcClass::Window, gid(1), None, Representation::None).with_nest_in(ObjectRef::Id(10)),
@@ -154,4 +159,17 @@ fn an_object_nested_under_a_host_without_a_placement_is_placed_by_its_container(
     let placement = decoder.decode_by_id(id_in(&out, gid(1))).unwrap().get_ref(5).unwrap();
     assert_eq!(decoder.decode_by_id(placement).unwrap().get_ref(0), Some(73), "the storey's placement");
     assert_eq!(nested_in(&out, 10), [id_in(&out, gid(1))]);
+}
+
+/// A product that is not an element, here an annotation added by the same
+/// plan, holds no port.
+#[test]
+fn a_port_is_refused_under_a_product_that_is_not_an_element() {
+    for schema in SCHEMAS {
+        let note = object(IfcClass::Named("IfcAnnotation".into()), gid(2), Some(ObjectRef::Id(70)), Representation::None);
+        let (_, report) = run(&storey_with_typed_wall(schema), vec![add(note), add(port(1, ObjectRef::Guid(gid(2).encode())))]);
+        assert_eq!(report.added, 1, "{schema}");
+        assert_eq!(report.refusals.len(), 1, "{schema}: {:?}", report.refusals);
+        assert!(report.refusals[0].reason.contains("IFCANNOTATION: a port is nested only in an element"), "{schema}: {}", report.refusals[0].reason);
+    }
 }

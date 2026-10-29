@@ -18,8 +18,9 @@ pub struct AffineExpectation {
     pub affine_final: bool,
 }
 impl AffineExpectation {
-    pub fn chord_admitted(&self, chord:f64, angle_degrees:f64) -> bool {
-        self.radius == 0. || self.sigma_max * chord.min(self.radius * (1.-angle_degrees.to_radians().cos())) <= chord*(1.+1e-12)
+    /// The preregistered fallback after the real SDK sagitta witness failed.
+    pub fn chord_admitted(&self) -> bool {
+        self.radius == 0. || self.sigma_max <= 1.
     }
 }
 fn direction(d:&mut EntityDecoder<'_>, id:Option<u32>, default:[f64;3]) -> Option<[f64;3]> {
@@ -67,7 +68,7 @@ fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option<(Frame,Vec
     let default=if z[0].abs()>0.999999 {[0.,1.,0.]} else {[1.,0.,0.]};
     let x=direction(d,op.ref_at(O::AXIS1),default)?;
     let x=unit(sub(x,z.map(|v|v*dot(x,z))))?;
-    let y=direction(d,op.ref_at(O::AXIS2),cross(z,x))?;
+    let y=direction(d,op.ref_at(O::AXIS2),[0.,1.,0.])?;
     let y=unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x))))?;
     let s=op.real_at(O::SCALE).unwrap_or(1.);
     let (s2,s3)=if op.ifc_type==IfcType::IfcCartesianTransformationOperator3DnonUniform {
@@ -225,13 +226,16 @@ fn clipped_box(d:&mut EntityDecoder<'_>,a:Solid,half:&ifc_lite_core::DecodedEnti
     let mut points=Vec::new();
     for x in [bounds[0],bounds[3]] {for y in [bounds[1],bounds[4]] {
         let h=height(x,y);if h<=0.||h>=bounds[5]-bounds[2]{return None}
-        points.push([x,y,bounds[2]]);points.push([x,y,bounds[2]+h]);
+        points.push([x,y,bounds[5]]);points.push([x,y,bounds[2]+h]);
     }}
     let (x,y)=((bounds[0]+bounds[3])/2.,(bounds[1]+bounds[4])/2.);let h=height(x,y);
     let (vx,vy)=((bounds[3]-bounds[0]).powi(2)/12.,(bounds[4]-bounds[1]).powi(2)/12.);
     let (dx,dy)=(-n[0]/n[2],-n[1]/n[2]);
-    let centroid=[x+dx*vx/h,y+dy*vy/h,bounds[2]+(h*h+dx*dx*vx+dy*dy*vy)/(2.*h)];
-    Some(Solid{volume:(bounds[3]-bounds[0])*(bounds[4]-bounds[1])*h,centroid,points,radius:0.})
+    let removed_center=[x+dx*vx/h,y+dy*vy/h,bounds[2]+(h*h+dx*dx*vx+dy*dy*vy)/(2.*h)];
+    let removed=(bounds[3]-bounds[0])*(bounds[4]-bounds[1])*h;
+    let volume=a.volume-removed;
+    let centroid=std::array::from_fn(|i|(a.volume*a.centroid[i]-removed*removed_center[i])/volume);
+    Some(Solid{volume,centroid,points,radius:0.})
 }
 fn length_unit(bytes:&[u8],d:&mut EntityDecoder<'_>) -> Option<f64> {
     let mut scanner=ifc_lite_core::EntityScanner::new(bytes);

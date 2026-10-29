@@ -85,11 +85,12 @@ def generate(adversarial=False):
     brep=m.add('IFCFACETEDBREP',m.add('IFCCLOSEDSHELL',seq(faces)))
     product('h20',[occurrence(mapping([brep],'Brep'),x=(-1,0,0))],6)
     product('h21',[occurrence(src,scales=(1e-7,1e-7,1e-7))],.56e-21)
-    # z <= 1+x/4 over B=[0,2]x[0,1]x[0,3]: integral = 2.5; det=6 -> 15.
+    # .T. material is below z=1+x/4; DIFFERENCE keeps above it.
+    # B volume 6 minus integral 2.5 = 3.5; det=6 -> 21.
     plane=m.add('IFCPLANE',m.add('IFCAXIS2PLACEMENT3D',m.point((0,0,1)),m.direction((-.25,0,1)),m.direction((1,0,.25))))
     half=m.add('IFCHALFSPACESOLID',plane,'.T.')
     clip=m.add('IFCBOOLEANCLIPPINGRESULT','.DIFFERENCE.',b,half)
-    product('h22',[occurrence(mapping([clip],'Clipping'),scales=(2,3,1))],15)
+    product('h22',[occurrence(mapping([clip],'Clipping'),scales=(2,3,1))],21)
     return finish()
 
 

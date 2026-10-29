@@ -1,0 +1,17 @@
+{
+  "head": "7ba3c87306ec0ef1bd5cf4141c0d35a25db0433c",
+  "host": "pc-wsl",
+  "receiptId": "1dcd78bd-a737-461e-a164-c10362359ab6",
+  "result": "failed",
+  "observations": {
+    "smlibFreeAffineLogic": "4 passed",
+    "sourceOracle": "passed",
+    "linearFhVolumeCentroidClosure": "13 cases passed before curved assertion",
+    "mirroredDoor119": "kernel_failure status7: affine surface class has no exact rational conversion certificate",
+    "tinyCylinder161": "kernel_failure status4: authored sweep failed manifold/volume invariant",
+    "scaledKinds74": "kernel_failure status4: upstream triangulator left non-triangle polygon",
+    "sagittaWitness": "R=5e-5 failed construction before any midpoint measurement",
+    "largeCurve147": "incomplete"
+  },
+  "policyResponse": "Use preregistered contraction/isometry-only fallback for curved affine finals. No tolerance widened. SDK qualification tests remain red; do not claim full M10 qualification."
+}

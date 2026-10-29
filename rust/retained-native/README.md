@@ -22,8 +22,8 @@ Published parts contain f64 object-local metres and column-major placement
 matrices into absolute IFC Z-up world metres. Every product carries
 `PresentationObligationsUnmet`. Completed opening cuts and plan-proven unvoided
 products discharge `OpeningClosure`; material, appearance, and persistent-face
-obligations remain. Final affine-only values remain
-`incomplete` in M1. `require_final_product` still refuses.
+obligations remain. M10 publishes linear affine finals and contracting curved finals when the
+existing SDK operations succeed. `require_final_product` still refuses.
 
 Build the real worker using `native/smlib-adapter/README.md`, then run from the
 repository root:
@@ -69,7 +69,8 @@ measuring. Source volume and bbox checks still measure full-f64 retained geometr
 at the unchanged preregistered tolerances. Refusal rows retain kernel status,
 origin site/entity/cause, and the original error message.
 
-Committed expectations: `issue_1985_scaled_kinds` #74 publishes through M10 affine-final baking; #81, #88,
+Current qualification gap: `issue_1985_scaled_kinds` #74 fails the upstream
+triangulator before affine publication (`kernel_failure`, status 4); #81, #88,
 #109 are `operation_unsupported`; #99 publishes. For `issue_098_wall_W`, only wall
 #928204 is `opening_unsupported`; its seven windows publish and its seven opening
 elements are `operation_unsupported`.
@@ -104,8 +105,16 @@ This documented deviation changes no tolerance and adds no per-product allowlist
 
 M10 publishes affine finals by transforming the existing input mesh's linear
 coordinates and preserving translation in its rigid frame. Reflections reverse
-triangle winding. Curved lineages must meet the preregistered chord bound or
+triangle winding. The tiny-radius sagitta witness failed upstream, so the preregistered rule
+is narrowed to contraction/isometry (σmax ≤ 1) for curved lineages; other scales
 refuse `incomplete`; the comparison reports `affine_kappa` without claiming that
 nonuniform scale preserves the facet-angle bound. Source centroids and signed
 volumes supplement the existing absolute-volume checks. The mapped oblique-clip
 fixture remains a qualification dependency on M5.
+
+The decoder-only M10 oracle uses IFC's +Y default for omitted Axis2. The default
+router currently derives that axis by a cross product; an omitted Axis2 with
+Axis1 = −X therefore differs. M10 fixtures use explicit axes, and a source-only
+witness pins the omitted-axis semantics against IfcOpenShell. Fixing the default
+router is outside this retained-only slice and would require new default identity
+qualification.

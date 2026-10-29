@@ -22,12 +22,12 @@ pub fn effective_radius_through_affine(r: f64, l: [f64; 9]) -> f64 {
     let (min, max) = singular(l);
     if min > 0. { r * max * max / min } else { f64::INFINITY }
 }
-/// Preregistered sagitta bound. Unknown radii permit only contraction/isometry.
+/// Narrowed preregistered rule: the R=5e-5 SDK sagitta witness cannot mesh.
+/// Without that certificate, curved finals permit only contraction/isometry.
 pub fn affine_chord_admissible(sigma_max: f64, radius_m: f64, limits: NumericalLimits) -> bool {
     if !sigma_max.is_finite() || sigma_max <= 0. || radius_m.is_nan() || radius_m < 0.
         || limits.validate().is_err() { return false; }
-    radius_m == 0. || sigma_max * limits.chord_metres.min(
-        radius_m * (1. - limits.angle_degrees.to_radians().cos())) <= limits.chord_metres * (1. + 1e-12)
+    radius_m == 0. || sigma_max <= 1.
 }
 fn transform(m: [f64; 16], positions: &mut [f64], indices: &mut [u32]) {
     for p in positions.chunks_exact_mut(3) {

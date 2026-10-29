@@ -22,7 +22,7 @@ pub fn record(report:&mut Report, bytes:&[u8], product:&ShapeOnlyProduct, tolera
         let kind=if e.radius==0. {"linear"} else {"curved"};
         let volume_error=(volume-e.volume).abs()/e.volume;
         let volume_limit=tolerances["affineFinalVolumeRelative"][kind].as_f64().unwrap_or(f64::NAN);
-        let mut pass=volume_error<=volume_limit && e.chord_admitted(0.001,5.);
+        let mut pass=volume_error<=volume_limit && e.chord_admitted();
         let centroid_error=centroid.iter().zip(e.centroid).map(|(a,b)|(a-b).abs()).fold(0.,f64::max);
         let t=&tolerances["affineFinalCentroidMetres"][kind];
         let centroid_limit=t["absolute"].as_f64().unwrap_or(0.)+e.extent*t["extentFactor"].as_f64().unwrap_or(f64::NAN);
@@ -58,7 +58,7 @@ fn append(report:&mut Report,results:Vec<Value>) {
 /// refusals (layers, unsupported items, opcode policy) keep their precedence.
 pub fn refusal(report:&mut Report,bytes:&[u8],id:u32,code:&str) {
     let Some(expected)=affine::expected(bytes,id).filter(|e|e.iter().any(|p|p.affine_final)) else {return};
-    let admitted=expected.iter().all(|e|e.chord_admitted(0.001,5.));
+    let admitted=expected.iter().all(|e|e.chord_admitted());
     let pass=code!="incomplete"||!admitted;
     if !pass {report.violations.push(format!("{id}: incomplete affine final contradicts source chord prediction"));}
     let results=expected.iter().enumerate().map(|(part,e)|json!({"family":"affineChord","part":part,

@@ -10,6 +10,9 @@ mod metrics;
 mod geometry_assertions;
 use ifc_lite_retained_native::oracle::affine;
 use ifc_lite_processing::element::retained_runtime::ProductOutcome;
+fn kernel_status(refusal:ifc_lite_processing::element::retained_runtime::RetainedProductRefusal)->Option<i32> {
+    match refusal {ifc_lite_processing::element::retained_runtime::RetainedProductRefusal::KernelFailure{status}=>Some(status),_=>None}
+}
 const SOURCE:&str=include_str!("../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
 const ADVERSARIAL:&str=include_str!("../../../tests/fixtures/synthetic-retained/f-h-affine-finals-adversarial.ifc");
 fn tolerances()->serde_json::Value {serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m10.json")).unwrap()}
@@ -21,20 +24,31 @@ fn m10_source_oracle_matches_hand_arithmetic_and_mirror_centroids() {
         assert!((expected.iter().map(|e|e.volume).sum::<f64>()-v).abs()<1e-12,"#{id}");
     }
     let oblique=affine::expected(SOURCE.as_bytes(),313).unwrap();
-    assert!((oblique[0].volume-15.).abs()<1e-12);
+    assert!((oblique[0].volume-21.).abs()<1e-12);
     let door=affine::expected(SOURCE.as_bytes(),119).unwrap();
     assert!((door[0].volume-2.*(1.35+std::f64::consts::PI*0.45f64.powi(2)/2.)).abs()<1e-12);
     let a=affine::expected(SOURCE.as_bytes(),42).unwrap();let b=affine::expected(SOURCE.as_bytes(),50).unwrap();
     for (actual,expected) in a[0].centroid.into_iter().zip([-27./70.,13./70.,1.]) {assert!((actual-expected).abs()<1e-12);}
     for (actual,expected) in b[0].centroid.into_iter().zip([27./70.,-13./70.,1.]) {assert!((actual-expected).abs()<1e-12);}
-    for (id,admitted) in [(133,true),(147,false),(161,true),(175,true)] {
-        let a=affine::expected(SOURCE.as_bytes(),id).unwrap();assert_eq!(a[0].chord_admitted(0.001,5.),admitted);
+    for (id,admitted) in [(133,true),(147,false),(161,false),(175,false)] {
+        let a=affine::expected(SOURCE.as_bytes(),id).unwrap();assert_eq!(a[0].chord_admitted(),admitted);
     }
+}
+#[test]
+fn m10_omitted_axis2_source_mirror_matches_ifcopenshell() {
+    // IFC IfcSecondProjAxis defaults Axis2 to +Y. Independent IfcOpenShell
+    // matrix is recorded in schema.json; do not copy the default router's
+    // cross(z,x) convention into the source oracle (Refs #7955).
+    let text=SOURCE.replace("#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,#37,1.,#3);",
+        "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,$,#37,1.,#3);");
+    let e=affine::expected(text.as_bytes(),42).unwrap();
+    assert!(e[0].affine_final);
+    for (a,b) in e[0].centroid.into_iter().zip([-27./70.,13./70.,1.]) {assert!((a-b).abs()<1e-12);}
 }
 #[test]
 fn m10_sdk_source_oracles_and_native_reference() {
     let Some(outcomes)=support::native(SOURCE) else {return};
-    let tolerance=tolerances();let mut reference=Vec::new();
+    let tolerance=tolerances();
     for (id,volume) in LINEAR {
         let p=support::shape(&outcomes,id);let actual=geometry_assertions::measured(p);
         assert_eq!(actual.defects,0,"#{id}: {actual:?}");
@@ -52,7 +66,7 @@ fn m10_sdk_source_oracles_and_native_reference() {
         }
     }
     for (id,volume) in [(119,2.*(1.35+std::f64::consts::PI*0.45f64.powi(2)/2.)),(133,0.0225*std::f64::consts::PI),
-        (161,5.*std::f64::consts::PI),(175,0.015*std::f64::consts::PI)] {
+        (161,5.*std::f64::consts::PI)] {
         let p=support::shape(&outcomes,id);
         let actual=geometry_assertions::measured(p);
         for (part,e) in p.parts.iter().zip(affine::expected(SOURCE.as_bytes(),id).unwrap()) {
@@ -64,20 +78,26 @@ fn m10_sdk_source_oracles_and_native_reference() {
         assert_eq!(actual.defects,0,"#{id}");
         assert!((actual.volume-volume).abs()/volume<=tolerance["affineFinalVolumeRelative"]["curved"].as_f64().unwrap(),"#{id}: {actual:?}");
     }
-    for (id,code) in [(147,"incomplete"),(288,"operation_unsupported"),(296,"kernel_failure")] {
+    for (id,code) in [(147,"incomplete"),(175,"incomplete"),(288,"operation_unsupported"),(296,"kernel_failure")] {
         assert_eq!(support::refusal(&outcomes,id).code(),code,"#{id}");
     }
     // M5 is a qualification dependency: this schema-valid post-clip mapping
-    // must become volume 15 after M5 lands; preserve the current typed refusal.
+    // must become volume 21 after M5 lands; preserve the current typed refusal.
     assert_eq!(support::refusal(&outcomes,313).code(),"operation_unsupported");
     assert_eq!(outcomes.len(),22);
+    eprintln!("sdk witness executed: m10_sdk_source_oracles_and_native_reference");
+}
+#[test]
+fn m10_sdk_native_parity_reference() {
+    let Some(outcomes)=support::native(SOURCE) else {return};
+    let mut reference=Vec::new();
     for outcome in &outcomes {
         match outcome {
             ProductOutcome::Published(p)=>{
                 let volume:f64=p.parts.iter().map(|part|{let (v,_)=affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap();assert!(v>0.);v}).sum();
                 reference.push(serde_json::json!({"expressId":p.product_id,"code":"published","volume":volume}));
             }
-            ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"expressId":product_id,"code":refusal.code()})),
+            ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"expressId":product_id,"code":refusal.code(),"kernelStatus":kernel_status(*refusal)})),
         }
     }
     let adversarial=support::native(ADVERSARIAL).unwrap();
@@ -87,18 +107,18 @@ fn m10_sdk_source_oracles_and_native_reference() {
     // Invalid IFC Scale remains a controller-only test; never corpus qualification.
     for outcome in &adversarial {match outcome {
         ProductOutcome::Published(p)=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":p.product_id,"code":"published","volume":geometry_assertions::measured(p).volume})),
-        ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":product_id,"code":refusal.code()})),
+        ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":"adversarial","expressId":product_id,"code":refusal.code(),"kernelStatus":kernel_status(refusal)})),
     }}
     for (fixture,text) in [("scaled",include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc")),
         ("submm",include_str!("../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc"))] {
         for outcome in support::native(text).unwrap() {match outcome {
             ProductOutcome::Published(p)=>reference.push(serde_json::json!({"fixture":fixture,"expressId":p.product_id,"code":"published","volume":geometry_assertions::measured(&p).volume})),
-            ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":fixture,"expressId":product_id,"code":refusal.code()})),
+            ProductOutcome::Refused{product_id,refusal,..}=>reference.push(serde_json::json!({"fixture":fixture,"expressId":product_id,"code":refusal.code(),"kernelStatus":kernel_status(refusal)})),
         }}
     }
     let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../wasm-bindings/m10-native-reference.output.json");
     std::fs::write(path,serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
-    eprintln!("sdk witness executed: m10_sdk_source_oracles_and_native_reference");
+    eprintln!("sdk witness executed: m10_sdk_native_parity_reference");
 }
 #[test]
 fn m10_sdk_issue_1985_scales_publish() {
@@ -139,7 +159,7 @@ fn m10_sdk_bake_matches_independent_kernel_copy_tessellation() {
     let Some(worker)=support::worker_path() else{return};
     let Some(original)=support::native(SOURCE) else{return};
     let source=SourceBundle::new(SOURCE.as_bytes().to_vec());let mut d=source.decoder();
-    for id in [34,42,50,58,66,74,82,95,119,133,161,175,190,203,224,234] {
+    for id in [34,42,50,58,66,74,82,95,119,133,161,190,203,224,234] {
         let product=d.decode_by_id(id).unwrap();
         let reps=d.decode_by_id(product.ref_at(slot::IfcProduct::REPRESENTATION).unwrap()).unwrap();
         let rep_id=reps.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS).unwrap()[0];

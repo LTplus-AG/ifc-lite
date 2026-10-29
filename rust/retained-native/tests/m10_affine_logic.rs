@@ -38,7 +38,7 @@ fn m10_chain_composition_includes_translation_once() {
 #[test]
 fn m10_preregistered_chord_table() {
     let limits=NumericalLimits{chord_metres:0.001, angle_degrees:5.,max_bytes:16*1024*1024};
-    for (s,r,expected) in [(2.,1.,false),(1000.,0.00005,true),(3.,0.05,true),(1.,10.,true),(5150.,0.,true),(0.5,50.,true)] {
+    for (s,r,expected) in [(2.,1.,false),(1000.,0.00005,false),(3.,0.05,false),(1.,10.,true),(5150.,0.,true),(0.5,50.,true)] {
         assert_eq!(affine_chord_admissible(s,r,limits),expected,"sigma={s}, R={r}");
     }
     assert!(!affine_chord_admissible(f64::NAN,0.,limits));

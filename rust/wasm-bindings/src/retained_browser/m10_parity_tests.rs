@@ -22,7 +22,11 @@ export function m10AssertOutcome(value, rows, tolerance, fixture) {
   row.seen = true;
   const code = value.status === 'published' ? 'published' : value.code;
   if (row.code !== code) throw new Error(`${value.expressId}: native ${row.code}, browser ${code}`);
-  if (code !== 'published') return;
+  if (code !== 'published') {
+    if (code === 'kernel_failure' && row.kernelStatus !== value.kernelStatus)
+      throw new Error(`${value.expressId}: kernel status ${row.kernelStatus} != ${value.kernelStatus}`);
+    return;
+  }
   let volume = 0;
   for (const part of value.parts) {
     const p = part.positions, m = part.worldFromObject, ids = part.indices;

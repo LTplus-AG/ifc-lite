@@ -1,0 +1,35 @@
+{
+  "review": "Claude Opus 5.5 adversarial fixture and implementation review",
+  "reviewedHead": "f365bc116e11fee48139aad6119890d385f7a2ae",
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "finding": "h22 halfspace DIFFERENCE complement",
+      "resolution": "Corrected volume to21 and independent complement centroid; schema and roundtrip rerun."
+    },
+    {
+      "finding": "coverage not blessed",
+      "resolution": "Pending real SDK comparison; no blessing of failing qualification."
+    },
+    {
+      "finding": "omitted Axis2 oracle default",
+      "resolution": "Oracle now uses IFC +Y. IfcOpenShell matrix and source witness added. Existing router convention mismatch remains outside this retained-only slice."
+    },
+    {
+      "finding": "hardcoded chord limits in check",
+      "resolution": "Narrowed rule depends only on singular value after witness failure; removed hardcoded run limits."
+    },
+    {
+      "finding": "coincident opening caps",
+      "resolution": "Intentional through-cut with coincident caps; real native h19 volume passed."
+    },
+    {
+      "finding": "kernel status parity missing",
+      "resolution": "Native reference includes kernelStatus and browser compares it."
+    },
+    {
+      "finding": "schema command missing",
+      "resolution": "Recorded exact validation command in schema.json."
+    }
+  ]
+}

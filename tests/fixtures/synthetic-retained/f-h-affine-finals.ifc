@@ -26,7 +26,7 @@ DATA;
 /* h19: product #242; hand volume 0.54 */
 /* h20: product #288; hand volume 6 */
 /* h21: product #296; hand volume 5.6e-22 */
-/* h22: product #313; hand volume 15 */
+/* h22: product #313; hand volume 21 */
 #1=IFCCARTESIANPOINT((0.,0.,0.));
 #2=IFCAXIS2PLACEMENT3D(#1,$,$);
 #3=IFCDIRECTION((0.,0.,1.));

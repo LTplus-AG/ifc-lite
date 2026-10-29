@@ -954,6 +954,10 @@ jobs:
           # #7782 C4-8a: retain additive APIs; reject wrongly typed map sources.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-8a-shallow/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-8a-shallow/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-8a-shallow/behaviour.oracle.patch)
+          # #7782 C4-9: keep the shared adapter; drop its geometry-style hit so
+          # only the element fallback answers. Item-style witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-9-colour/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-9-colour/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-9-colour/behaviour.oracle.patch)
           # #7781 C2-6: retain the shared wrapper helper and its test wiring;
           # reverse only first-vs-single mapped-item admission.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-6-probe-walk/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-6-probe-walk/behaviour.oracle.patch'; then

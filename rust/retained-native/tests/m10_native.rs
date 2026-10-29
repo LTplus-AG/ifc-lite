@@ -269,7 +269,6 @@ fn m10_oracle_preregistered_mirror_roundoff_factor() {
 #[test]
 fn m10_signed_volume_classification_includes_mirrored_orphan_type_maps() {
     // #7955: the signed-volume gate cannot depend on IfcProduct's Representation slot.
-    #[allow(dead_code)]
     #[path = "../../geometry/tests/support/m9_type_fixtures.rs"]
     mod fixtures;
     let source=ifc_lite_core::SourceBundle::new(fixtures::mirrored().into_bytes());

@@ -126,7 +126,6 @@
 1 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
 3 rust/wasm-bindings/src/api/grid_lines.rs
 2 rust/wasm-bindings/src/api/scan_outline.rs
-6 rust/wasm-bindings/src/api/styling/color.rs
 8 rust/wasm-bindings/src/api/styling/prepass.rs
 1 rust/wasm-bindings/src/utils.rs
 17 rust/geometry/src/router/voids/probe/rectangular.rs

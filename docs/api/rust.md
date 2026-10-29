@@ -1849,3 +1849,7 @@ report map without invoking hooks, changing attribution, or adopting ambient
 reports. Explicit `take_csg_failures` returns it once; subsequent products cannot
 publish it. Callers of `finish_product_csg_failures` must likewise retain their
 returned reports until publication succeeds and quarantine them on rejection.
+
+The processing `style::resolve_element_color` adapter accepts a product, a flat
+`FxHashMap<u32, [f32; 4]>` prepass colour index, and a decoder. It uses the
+canonical style-source walk before the element-keyed material fallback.

@@ -126,8 +126,13 @@ Use the repository's pnpm release path to transform workspace dependencies;
 `npm pack --dry-run` proves file selection, not that `workspace:^` dependencies
 are suitable for direct npm publication.
 
-Before any SDK/native/retained-WASM distribution, resolve every open item in
-[retained licensing](../architecture/retained-licensing.md), bind final artifact
-hashes and source links, and obtain the human licence decision. Then install the
+For this release, native retained worker binary distribution is out of scope;
+users build from the pinned SDK. Before hosted retained-WASM distribution,
+complete the scope-specific owner actions in the
+[licensing review record](../architecture/retained-licensing.md#review-record),
+fill the notice source URL with the matching root `v<version>` tag for the release
+commit, and obtain the maintainer signature. Staging hashes identify supplied
+bytes; `buildAttestation: false` remains explicit. Binding hashes to source is
+recommended evidence, not a licence obligation. Then install the
 actual release archives into a clean consumer and run browser/CLI/Python smoke
 checks. Staged fixtures and dry-runs cannot substitute for that final step.

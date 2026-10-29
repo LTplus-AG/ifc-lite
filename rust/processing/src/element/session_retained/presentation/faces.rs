@@ -56,7 +56,7 @@ const IDENTITY: [f64; 16] = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0.,
 /// own sealed frames (operand evaluation frames at its issuance; later
 /// placements move the whole result rigidly). Subtracted leaves are reversed;
 /// an M3 cut's sealed opening is the `via` of its cutter subtree.
-pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealization<R>>)
+pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealization<R>>, layered: bool)
     -> Result<FaceSources, RetainedExecutionError> {
     let unattributed = |entity| Ok(Err(Unproven::Unattributed { entity }));
     let mut operands = Vec::new();
@@ -71,6 +71,11 @@ pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealizati
         match node.kind.evidence() {
             ReceiptEvidence::Construction(completion) => {
                 let request = completion.request();
+                // M4 removes every interface cap before attribution. Derived
+                // band cutters supply NO final source surface: every survivor
+                // must still match the host/opening lineage below.
+                if layered && matches!(request.recipe(), ifc_lite_geometry::document::RetainedRecipe::Prism(p)
+                    if p.role == ifc_lite_geometry::document::PrismRole::LayerRegion) { continue; }
                 let item = request.recipe().solid_id();
                 let (faces, region) = match face_surfaces::faces(request.recipe(), request.payload()) {
                     Ok(faces) => faces,
@@ -158,7 +163,8 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
         let mut table = Vec::new();
         storage.reserve(context.resources, &mut table, used.len())?;
         for &(o, f) in &used {
-            let role = operands[o].faces[f].role.to_string();
+            let mut role = operands[o].faces[f].role.to_string();
+            if let Some(layer) = part.layer { role = format!("{role};band({})", layer.index); }
             charge(1, role.len())?;
             table.push(FaceKey { item: operands[o].item, via: operands[o].via, role });
         }

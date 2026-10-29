@@ -17,9 +17,11 @@ fn distance_normal(s: LayerInterface, p: Point) -> (f64, Point) {
     }
 }
 fn strip(mesh: &mut ShapePart, surface: LayerInterface, sign: f64) -> Result<f64, RetainedExecutionError> {
+    if mesh.revision_local_faces.len() != mesh.indices.len()/3 { return Err(fail("face_partition")); }
+    let mut faces = Vec::with_capacity(mesh.revision_local_faces.len());
     let mut indices = Vec::with_capacity(mesh.indices.len());
     let mut area = 0.;
-    for t in mesh.indices.chunks_exact(3) {
+    for (triangle, t) in mesh.indices.chunks_exact(3).enumerate() {
         work()?;
         let p = t.iter().map(|&i| point(mesh,i)).collect::<Vec<_>>();
         let n = cross(sub(p[1],p[0]),sub(p[2],p[0]));
@@ -33,8 +35,10 @@ fn strip(mesh: &mut ShapePart, surface: LayerInterface, sign: f64) -> Result<f64
             if direction >= 0.9945218953682733 { area += length/2.; continue; }
         }
         indices.extend_from_slice(t);
+        faces.push(mesh.revision_local_faces[triangle]);
     }
     mesh.indices = indices;
+    mesh.revision_local_faces = faces;
     Ok(area)
 }
 

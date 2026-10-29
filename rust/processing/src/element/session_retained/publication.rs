@@ -115,7 +115,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             if indices.is_empty() {
                 return Err(incomplete());
             }
-            face_sources.push(presentation::face_sources(realization)?);
+            face_sources.push(presentation::face_sources(realization, self.plan.layers().is_some())?);
             let mut part = super::publication_mesh::copy_part(
                 runtime::ReceiptMesh { positions, indices, faces },
                 *value.object_frame(), curved, &self.resources, &mut storage,
@@ -130,7 +130,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         let mut max_snap_metres = 0.;
         let mut cap_ms = 0.;
         if let Some(layers) = self.plan.layers() {
-            let start = resource::BudgetStart::now();
+            let start = super::phase_timer::PhaseTimer::now();
             // Conservative storage reservation for coordinate-key maps, triangle
             // copies and seam indices. Split growth is charged at each append.
             let units: usize = parts.iter().map(|p| p.positions.len()+p.indices.len()).sum();

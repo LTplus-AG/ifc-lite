@@ -13,14 +13,16 @@ fn cube(x: f64, split_edge: bool) -> ShapePart {
         faces[2]=vec![0,1,5,4,8]; faces[4]=vec![0,8,4,7,3];
     }
     let mut indices = Vec::new();
-    for face in faces {
+    let mut revision_local_faces = Vec::new();
+    for (face_id, face) in faces.into_iter().enumerate() {
         let n = face.len() as f64;
         let center: [f64;3] = std::array::from_fn(|i| face.iter().map(|&j|positions[j as usize*3+i]).sum::<f64>()/n);
         let id = positions.len() as u32/3; positions.extend(center);
-        for i in 0..face.len() { indices.extend([id,face[i],face[(i+1)%face.len()]]); }
+        for i in 0..face.len() { indices.extend([id,face[i],face[(i+1)%face.len()]]); revision_local_faces.push(face_id as u32); }
     }
     ShapePart { positions,indices, world_from_object:[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.],
-        layer:None,capped_volume_m3:None,curved:false }
+        layer:None,capped_volume_m3:None,curved:false, revision_local_faces,
+        normals:None,appearance:None,faces:None,instance_key:None }
 }
 fn layers() -> LayerCompletion { LayerCompletion {
     tags: vec![ShapeLayer{index:0,material_id:1},ShapeLayer{index:1,material_id:2}],
@@ -64,7 +66,7 @@ fn m4_cap_area_and_wrong_sign_refuse() {
             for t in parts[1].indices.chunks_exact_mut(3) {
                 if cap.iter().any(|c|c==t) { t.swap(1,2); }
             }
-        } else { parts[1].indices.extend(cap[0]); }
+        } else { parts[1].indices.extend(cap[0]); parts[1].revision_local_faces.push(4); }
         let error = remove(&mut parts,&layers()).unwrap_err();
         assert_eq!(error.refusal().0.code(),"layer_caps_unresolved");
         assert!(matches!(error,RetainedExecutionError::LayerCaps(reason) if reason==if wrong_sign {"opposite_cap"} else {"cap_area"}));
@@ -73,7 +75,7 @@ fn m4_cap_area_and_wrong_sign_refuse() {
 #[test]
 fn m4_off_surface_rim_refuses() {
     let mut parts = [cube(0.,false),cube(1.,false)];
-    parts[0].indices.drain(..3); // a bottom face; neither exposed edge is on x=1.
+    parts[0].indices.drain(..3); parts[0].revision_local_faces.remove(0); // a bottom face; neither exposed edge is on x=1.
     assert!(matches!(remove(&mut parts,&layers()),Err(RetainedExecutionError::LayerCaps("rim_off_surface"))));
 }
 #[test]
@@ -106,6 +108,7 @@ fn sector(inner: f64, outer: f64, angles: &[f64]) -> ShapePart {
     quad([0,1,3,2]);
     let end=4*(angles.len()-1) as u32;
     quad([end,end+2,end+3,end+1]);
+    mesh.revision_local_faces = (0..mesh.indices.len()/3).map(|t| (t/2) as u32).collect();
     mesh
 }
 

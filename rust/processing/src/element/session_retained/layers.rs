@@ -4,7 +4,7 @@ use super::*;
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     pub(super) fn complete_layers(&mut self, plan: RetainedProductPlan) -> Result<(), RetainedExecutionError> {
         if let Some(spec) = self.layer_spec.take() {
-            self.layer_start = Some(resource::BudgetStart::now());
+            self.layer_start = Some(super::phase_timer::PhaseTimer::now());
             self.program = Some(self.resources.with_scope(|| self.traversal.layer_bands(plan, spec)).map_err(common)?);
             self.outer = Some(self.state.protocol.issue(WorkKind::PlainParts));
             self.layer_active = true;

@@ -22,9 +22,10 @@ fn split(mesh: &mut ShapePart, surface: LayerInterface, others: &[Point], tau: f
     let sorted: [Vec<Point>;3] = std::array::from_fn(|axis| {
         let mut points = others.to_vec(); points.sort_by(|a,b| a[axis].total_cmp(&b[axis])); points
     });
-    let mut output = Vec::new(); let mut maximum: f64 = 0.;
+    let mut output = Vec::new(); let mut faces = Vec::new(); let mut maximum: f64 = 0.;
     let triangles = mesh.indices.clone();
-    for t in triangles.chunks_exact(3) {
+    for (triangle, t) in triangles.chunks_exact(3).enumerate() {
+        let face = *mesh.revision_local_faces.get(triangle).ok_or_else(|| fail("face_partition"))?;
         work()?;
         let mut ring = Vec::new();
         for (a,b) in [(t[0],t[1]),(t[1],t[2]),(t[2],t[0])] {
@@ -52,14 +53,15 @@ fn split(mesh: &mut ShapePart, surface: LayerInterface, others: &[Point], tau: f
                 ring.push(append(mesh,p)?);
             }
         }
-        if ring.len() == 3 { output.extend_from_slice(t); continue; }
+        if ring.len() == 3 { output.extend_from_slice(t); faces.push(face); continue; }
         // Interior fan preserves every subdivided edge, including splits on
         // two edges of one triangle. An endpoint fan would lose collinear cuts.
         let center = std::array::from_fn(|i| t.iter().map(|&j| point(mesh,j)[i]).sum::<f64>()/3.);
         let center = append(mesh,center)?;
-        for i in 0..ring.len() { output.extend([center,ring[i],ring[(i+1)%ring.len()]]); }
+        for i in 0..ring.len() { output.extend([center,ring[i],ring[(i+1)%ring.len()]]); faces.push(face); }
     }
     mesh.indices = output;
+    mesh.revision_local_faces = faces;
     Ok(maximum)
 }
 fn append(mesh: &mut ShapePart, p: Point) -> Result<u32,RetainedExecutionError> {

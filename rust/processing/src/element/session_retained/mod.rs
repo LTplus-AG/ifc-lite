@@ -21,6 +21,7 @@ use std::sync::{
 };
 pub(super) mod witness;
 pub(super) mod publication;
+mod phase_timer;
 mod publication_mesh;
 mod presentation;
 pub(super) mod model;
@@ -98,7 +99,7 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     openings: Option<OpeningPhase>,
     layer_spec: Option<ifc_lite_geometry::program::transactions::LayerSpec>,
     layer_active: bool,
-    layer_start: Option<resource::BudgetStart>,
+    layer_start: Option<phase_timer::PhaseTimer>,
     band_ms: f64,
     opening_entities: &'a [DecodedEntity],
     type_values: Vec<RetainedProductPlan>,

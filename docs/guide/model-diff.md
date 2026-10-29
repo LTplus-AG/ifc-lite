@@ -73,8 +73,10 @@ every call; handles avoid that repeated cost.
 `stripPlacementGeometry: true` ignores `p:` placement hashes on both sides and
 returns those fingerprints with `geometryHash: undefined`, exactly like JS
 stripping before comparison. It keeps mesh hashes, boxes, volumes and refs.
-Set it when exactly one full input has mesh hashes, before exclusions or key
-deduplication, so placements cannot defeat geometry capability abstention.
+Set it when exactly one full input has mesh hashes (judged before your
+exclusions or key deduplication), so placements cannot defeat geometry
+capability abstention. The comparison's own capability check still ignores
+excluded types.
 Keep its default `false` for symmetric pairs (including two placement-only
 models) so placement moves remain detectable. Changing the option leaves the
 resident snapshots intact. Each handle lazily owns a frozen stripped view;

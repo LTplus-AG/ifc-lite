@@ -221,7 +221,9 @@ export function checkPropertyFacet(
       expectedValue: formatConstraint(facet.propertySet),
       failure: {
         type: 'PSET_MISSING',
-        field: 'propertySet',
+        // `field` carries the required set name, as in the no-psets branch
+        // above; the formatters render it verbatim (#8306).
+        field: formatConstraint(facet.propertySet),
         actual: availablePsets,
         expected: formatConstraint(facet.propertySet),
         context: { availablePsets },

@@ -13,14 +13,15 @@ export const INSTALL_ORDERS = [
   // index.ts parseBytesSync/streaming; style-finishes.ts buildPrePassWithFinishes.
   ['one-shot', ['once', 'finishes', 'batch']],
   // cli/commands/diff-geometry.ts 195: bytes precede prepass, cleanup in finally.
-  ['CLI diff', ['source', 'once', 'finishes', 'batchSource']],
+  ['CLI diff', ['source', 'once', 'batchSource']],
   // remesh/remesh-core.ts remeshOnApi; create/export/viewer test-side oracles.
   ['remesh/create/oracle', ['once', 'batch']],
   // geometry.worker.ts prepass-streaming[-sharded], including SAB retry.
   ['streaming', ['stream', 'finishes', 'batch']],
   ['sharded prepass', ['sharded', 'finishes', 'batch']],
   // finalize-styles (1462): index already installed; stash before EACH attempt.
-  ['sharded finalize/retry', ['source', 'index', 'stash', 'finalizeSource', 'stash', 'finalize']],
+  ['sharded finalize/retry', ['source', 'index', 'stash', 'finalizeSource', 'stash', 'finalizeShared', 'stash', 'finalize']],
+  ['finish stash before install', ['source', 'stash', 'index', 'finalizeSource']],
   // Legacy batch-only clients install finishes before the lazy index is built.
   ['lazy batch', ['finishes', 'batch']],
 ];
@@ -85,9 +86,13 @@ export function executeInstallOrder(api, steps, bytes) {
       case 'finishes': api.setStyleFinishes(pre.styleIds, pre.styleFinishes); break;
       case 'stash': api.setPrepassGeometryFinishes(pre.styleIds, pre.styleFinishes); break;
       case 'finalizeSource':
+      case 'finalizeShared':
       case 'finalize': {
+        const shared = new Uint8Array(new SharedArrayBuffer(bytes.length));
+        shared.set(bytes);
+        const input = step === 'finalizeShared' ? shared : bytes;
         const payload = step === 'finalizeSource' ? api.finalizePrepassStylesFromSource(...finalizeArgs)
-          : api.finalizePrepassStyles(bytes, ...finalizeArgs);
+          : api.finalizePrepassStyles(input, ...finalizeArgs);
         assert.deepEqual(payload.styleFinishes, pre.styleFinishes, 'stash consumed by each finalize attempt');
         break;
       }

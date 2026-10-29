@@ -407,7 +407,8 @@ Each part has object-local metre `Float64Array` positions, `Uint32Array` indices
 a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
 and `curved`. The optional `revisionLocalFaces` array preserves one kernel diagnostic
 index per triangle; these indices are not persistent IFC face identities. Every part
-carries `color` (RGBA), `geometryItemId` and, when the source names one, `materialName`:
+carries `color` (RGBA); `geometryItemId` when the part comes from an authored geometry item (type-map and
+unbound parts carry none, as in exact); and, when the source names one, `materialName`:
 the IFC source decides, through the colour resolver the exact engine uses, so a part's
 colour is bitwise the exact engine's for the same product and item. `IfcAppearance` is
 discharged. Optional `normals` are populated on every published part (per corner,

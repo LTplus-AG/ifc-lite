@@ -22,7 +22,7 @@ const paths = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'rus
   'apps/server', 'scripts/build-wasm.sh', 'packages/wasm', 'LICENSE', 'README.md'];
 const env = { ...process.env, CI: '1', BUILD_RETAINED: '', BUILD_THREADED: '',
   DEBUG_GEOMETRY: '', RUSTUP_TOOLCHAIN: 'nightly-2025-11-15' };
-const report = { base, head, scope: 'default pkg JS/WASM/types/snippets; npm notices intentionally differ', builds: [] };
+const report = { base, head, scope: 'default pkg and pkg-diff JS/WASM/types/snippets; npm notices intentionally differ', builds: [] };
 function inventory(path, prefix = '') {
   return readdirSync(join(path, prefix), { withFileTypes: true }).flatMap(entry => {
     const name = join(prefix, entry.name);
@@ -45,10 +45,12 @@ try {
     console.log(`DEFAULT_IDENTITY_BUILD ${JSON.stringify({ commit, rustc })}`);
     const result = spawnSync('bash', ['scripts/build-wasm.sh'], { cwd: source, env, stdio: 'inherit' });
     if (result.status !== 0) throw new Error(`Default build ${commit} failed: ${result.status} ${result.signal ?? ''}`);
-    const artifacts = inventory(join(source, 'packages/wasm/pkg'));
-    if (!artifacts.some(file => file.path === 'ifc-lite_bg.wasm') || !artifacts.some(file => file.path === 'ifc-lite.js')) {
+    const artifacts = ['pkg', 'pkg-diff'].flatMap(pkg => inventory(join(source, 'packages/wasm', pkg))
+      .map(file => ({ ...file, path: `${pkg}/${file.path}` })));
+    if (!artifacts.some(file => file.path === 'pkg/ifc-lite_bg.wasm') || !artifacts.some(file => file.path === 'pkg/ifc-lite.js')) {
       throw new Error('Default build skipped the actual runtime');
     }
+    if (!artifacts.some(file => file.path === 'pkg-diff/ifc-lite-diff_bg.wasm')) throw new Error('Diff runtime build skipped');
     report.builds.push({ commit, rustc, artifacts });
     console.log(`DEFAULT_IDENTITY_ARTIFACTS ${JSON.stringify(report.builds.at(-1))}`);
     rmSync(source, { recursive: true });

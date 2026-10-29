@@ -10,8 +10,7 @@ loader/types, **not** the separately deployed retained engine binaries.
 Use the repository-pinned Rust/wasm-pack setup and Emscripten 4.0.15 from emsdk
 `3b3963d86a5c97adaf6eaa845cdfe0b811c2f960`. Check out usd-brep at
 `c9c5979f04cea8c38213004d4f04df0dcfb40d05`; keep kernel/API and licence files clean.
-Run heavy commands through the fleet launcher on committed source. The following
-are the inner commands (do not nest admission):
+Build from clean committed source in the release qualification environment:
 
 ```sh
 env BUILD_RETAINED=1 bash scripts/build-wasm.sh
@@ -25,7 +24,7 @@ node scripts/stage-cli-retained-engine.mjs \
   --out /absolute/new-engine-directory
 ```
 
-Activate emsdk in the admitted environment before `emcmake`; merely having
+Activate emsdk in the build environment before `emcmake`; merely having
 `emcc` on another machine does not qualify the command. Additional platform
 runtime notices can be supplied with repeatable `--toolchain-notice NAME=ABS`.
 The stager refuses an existing destination, malformed WASM, stale configured

@@ -17,7 +17,7 @@ const required = ['pkg-retained/ifc-lite.js', 'pkg-retained/ifc-lite_bg.wasm',
   'smlib/node/hooks.mjs', 'smlib/worker.mjs', 'smlib/module.mjs',
   'smlib/sweep.mjs', 'smlib/sweep-contract.mjs', 'smlib/contract.mjs', 'smlib/ifclite_smlib_browser.mjs',
   'smlib/ifclite_smlib_browser.wasm', 'LICENSES/SMLib/LICENSE',
-  'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE'];
+  'LICENSES/SMLib/THIRD_PARTY_NOTICES.md', 'LICENSES/ifc-lite/LICENSE', 'THIRD_PARTY_NOTICES.txt'];
 
 export function requireRetainedNode(version = process.versions.node): void {
   const [major, minor] = version.split('.').map(Number);

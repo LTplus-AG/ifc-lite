@@ -6,9 +6,8 @@ work. Source-package bootstrap and SDK distribution are separate approvals.
 ## Preflight and evidence
 
 Start from a clean reviewed commit. Record `git rev-parse HEAD`, Rust/Node/npm
-versions and the fleet receipt for each command. Keep the existing root Turbo
-graph and pinned toolchain. On the provisioned fleet run the following with
-`ifc-fleet run --host pc-wsl --cwd /absolute/checkout --` prepended:
+versions and the validation results for each command. Keep the existing root Turbo
+graph and pinned toolchain. Run the following in the release qualification environment:
 
 ```sh
 node scripts/retained-package-proof.mjs cargo
@@ -33,7 +32,7 @@ That graph check does not replace the single-crate registry-readiness result.
 strict all-target Clippy. `npm` builds through root `pnpm build` then invokes
 `npm pack --dry-run --json` for WASM and CLI. A failed command does not suppress
 later evidence, and any failure makes the qualification command fail. JSON
-summaries are local scratch; the fleet's immutable log/receipt owns the result.
+summaries are local scratch; retain immutable logs and source identities with the release evidence.
 
 A dry-run is **not** a publication, Trusted Publisher test, wheel installation,
 or final linked-SDK audit. A missing registry dependency is a real blocker;
@@ -51,31 +50,17 @@ must include `THIRD_PARTY_NOTICES.txt`. The current npm WASM archive deliberatel
 excludes `pkg-retained/*.js`, `pkg-retained/*.wasm` and SDK assets; installing it
 alone does not install a retained engine.
 
-## Observed Cargo package results
+## Qualification record
 
-At `5d159aeca6a1f143c027153c8952def85e45e790`, all nine `cargo package --list`
-commands passed. Runtime lists 32 source/package-metadata files and no SDK,
-worker executable or WASM. Core and clash verified their archives and passed
-`cargo publish --dry-run --locked` (upload explicitly aborted). Geometry,
-runtime, processing, landxml, export, ffi and wasm failed with exit 101 on
-unpublished 26.0.0 prerequisites. Runtime's retained-feature dry-run failed at
-the same geometry-version resolution. Source remained clean and unchanged.
-At `e5760aa0958df8d2dd2037085ac17ddfdd9e9e34`, both combined graph dry-runs
-passed: all nine selected archives built in default mode and with the retained
-runtime/processing/browser features. Cargo explicitly aborted upload. The
-source stayed clean and unchanged. This verifies the packaged graph without
-registry publication; it does not remove the standalone registry prerequisite
-or authorize enrolling the runtime in automatic publishing.
+Keep command logs, receipt identifiers, source commits, archive hashes and
+observed registry versions in the release handoff. Record single-crate registry
+readiness separately from combined-graph dry-runs: a combined graph can verify
+normalized archives before their prerequisites have been published.
 
-After removing runtime from the automatic release list at
-`09ee32ce3c669eef81dd87ff9fe330812ae3fd65`, PC qualification passed the real
-`node scripts/check-rust-semver.mjs` gate (all eight published crates compared
-against crates.io) and `node scripts/check-rust-api-surface.mjs` (eight crates,
-720 items). Receipts are `c581a7d7-5508-4a00-941f-3ccf6443f722` and
-`e1441266-edea-41aa-b1e7-916368be7751`; both confirm unchanged source. The
-release-order/version-sync fixture checks and major-offset gate also passed.
-`publish = false` remains removed for explicit bootstrap qualification; the
-automatic list and both floors remain at their original eight crates.
+Before release, run `node scripts/check-rust-semver.mjs` and
+`node scripts/check-rust-api-surface.mjs`, plus release-order/version-sync checks.
+`publish = false` is removed for explicit runtime bootstrap qualification; the
+automatic list and both crate floors remain at their original eight crates.
 
 ## First crates.io publication (human operation)
 
@@ -85,12 +70,11 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
 
 1. Obtain explicit authorization for the exact **source-only archive hash,
    source commit, name and version**, and complete review of the release list.
-2. Publish prerequisite versions in the release script's actual dependency
-   order: core, clash, geometry, processing, landxml, export, ffi, wasm. Runtime
-   is deliberately absent from this automatic list; bootstrap it separately
-   after its prerequisites are available. Runtime's first 26.0.0 upload cannot resolve
-   geometry 26.0.0 until that prerequisite is visible in the registry index.
-   Some versioned dev-dependencies also constrain this order.
+2. Let `release.yml` publish the eight existing crates, confirm their approved
+   versions appear in the sparse index, and bootstrap **only the runtime by
+   hand**. Do not hand-publish those eight crates with a personal token. Runtime
+   stays outside the automatic list until bootstrap. Its first upload cannot
+   resolve the required geometry version until that version is indexed.
 3. Before uploading runtime, repeat `cargo package -p ifc-lite-geometry-runtime`
    and both dry-runs (default and `--features retained-runtime`). Retain the
    resulting `.crate` SHA-256, file list and `.cargo_vcs_info.json`. All must

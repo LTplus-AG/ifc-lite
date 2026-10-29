@@ -47,8 +47,17 @@ test('stages exact bytes, licenses and checkable hashes without executing genera
   const manifest = await stageRetainedBrowserAssets(options);
   assert.equal(manifest.qualified, false);
   assert.equal(manifest.buildAttestation, false);
-  assert.equal(manifest.assets.length, 12);
-  assert.equal((await readdir(options.out)).length, 13);
+  const expected = ['client.mjs', 'worker.mjs', 'module.mjs', 'contract.mjs',
+    'sweep.mjs', 'sweep-contract.mjs', 'ifclite_smlib_browser.mjs', 'ifclite_smlib_browser.wasm',
+    'LICENSE', 'THIRD_PARTY_NOTICES.md', 'IFC_LITE_THIRD_PARTY_NOTICES.txt', 'IFC_LITE_LICENSE.txt'];
+  assert.deepEqual(manifest.assets.map(asset => asset.path).sort(), expected.sort());
+  assert.deepEqual((await readdir(options.out)).sort(), [...expected, 'asset-manifest.json'].sort());
+  for (const [destination, source] of [
+    ['LICENSE', join(options.sdk, 'LICENSE')],
+    ['THIRD_PARTY_NOTICES.md', join(options.sdk, 'THIRD_PARTY_NOTICES.md')],
+    ['IFC_LITE_THIRD_PARTY_NOTICES.txt', join(options.repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt')],
+    ['IFC_LITE_LICENSE.txt', join(options.repoRoot, 'LICENSE')],
+  ]) assert.deepEqual(await readFile(join(options.out, destination)), await readFile(source), destination);
   for (const asset of manifest.assets) {
     const bytes = await readFile(join(options.out, asset.path));
     assert.equal(bytes.length, asset.bytes);

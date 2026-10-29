@@ -3,7 +3,9 @@
 // Explicit fleet/CI entry point. Never publishes; preserve all failures and skips.
 // @unwired-by-design release qualification invoked under fleet admission by the release owner
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { CRATES } from './lib/crates-io.mjs';
 // Qualification includes the bootstrap candidate without enrolling it in the
 // always-on semver/publish gates before a registry baseline exists.
@@ -39,6 +41,24 @@ if (mode === 'cargo') {
 } else if (mode === 'npm') {
   run('pnpm', ['build', '--filter=@ifc-lite/cli...', '--filter=@ifc-lite/wasm']);
   for (const pkg of ['wasm', 'cli']) run('npm', ['pack', '--dry-run', '--json', `./packages/${pkg}`]);
-} else throw new Error('Expected cargo, cargo-graph, build or npm');
+} else if (mode === 'review') {
+  run('node', ['scripts/retained-notices.mjs', '--check']);
+  run('node', ['--test', 'scripts/retained-notices.test.mjs',
+    'scripts/stage-cli-retained-engine.test.mjs', 'scripts/stage-retained-browser-assets.test.mjs']);
+  for (const script of ['docs/check-mkdocs-nav', 'check-ci-path-coverage', 'check-rust-semver', 'check-rust-api-surface']) {
+    run('node', [`scripts/${script}.mjs`]);
+  }
+} else if (mode === 'docs') {
+  // Match docs.yml: pinned repository requirements and generated API pages.
+  // Isolate Python dependencies without modifying the worker's system Python.
+  const venv = mkdtempSync(join(tmpdir(), 'retained-docs-'));
+  try {
+    run('python3', ['-m', 'venv', venv]);
+    const python = join(venv, 'bin/python');
+    run(python, ['-m', 'pip', 'install', '-r', 'requirements-docs.txt']);
+    run('pnpm', ['docs:api']);
+    run(python, ['-m', 'mkdocs', 'build', '--strict']);
+  } finally { rmSync(venv, { recursive: true, force: true }); }
+} else throw new Error('Expected cargo, cargo-graph, build, npm, review or docs');
 writeFileSync(`retained-package-proof-${mode}.json`, `${JSON.stringify(results, null, 2)}\n`);
 process.exitCode = results.every(result => result.exitCode === 0) ? 0 : 1;

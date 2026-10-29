@@ -1,25 +1,30 @@
 # Retained artifact licensing review inputs
 
-Refs #7955. Prepared against main `853d7c9781`, 2026-10-29. **Review inputs,
+Refs #7955. Release review draft. **Review inputs,
 not a licence-compatibility decision or distribution approval.** Exact remains
 the default; this change changes packaging, not geometry execution.
 
 ## Evidence and scope
 
-The [component table](../../licenses/retained/README.md) lists every collected
-component and links its preserved texts. The machine-readable [inventory](../../licenses/retained/manifest.json) records
+The [component table](https://github.com/LTplus-AG/ifc-lite/blob/main/licenses/retained/README.md) lists every collected
+component and links its preserved texts. The machine-readable [inventory](https://github.com/LTplus-AG/ifc-lite/blob/main/licenses/retained/manifest.json) records
 component name, version, licence declaration, source, artifact scope and the
-SHA-256 of every preserved notice. The [generated notice bundle](../../licenses/retained/THIRD_PARTY_NOTICES.txt)
+SHA-256 of every preserved notice. The [generated notice bundle](https://github.com/LTplus-AG/ifc-lite/blob/main/licenses/retained/THIRD_PARTY_NOTICES.txt)
 contains the actual text, deduplicated by content hash. Immutable upstream texts
 are under `licenses/retained/texts/`; they are not paraphrased licence templates.
-`Cargo.lock`, manifests, toolchain and adapter inputs are hash-bound. CI fails on
-input changes, missing texts, text corruption or generated-output drift.
+CI compares semantic inputs: external locked package identities/checksums in each
+production dependency closure, the SMLib and emsdk pins, Emscripten version, Rust
+toolchain channel and supplemental notice records. Workspace versions and unrelated
+workflow text are excluded. Preserved notice hashes and generated outputs are checked.
+The explicitly recorded missing upstream text below remains a release blocker.
 
 This is a **conservative source/build inventory**, not proof of the exact code
-remaining after link-time dead stripping. Cargo metadata was resolved with
-`--locked --filter-platform wasm32-unknown-unknown --features ifc-lite-wasm/retained-browser`;
-only non-dev edges reachable from `ifc-lite-wasm` were followed. Workspace feature
-unification can add components; proc macros/build tools are retained conservatively.
+remaining after link-time dead stripping. The roots are `ifc-lite-wasm` (default
+and retained WASM) and `ifc-lite-diff-wasm` (`pkg-diff`, also shipped by npm).
+The lockfile walk excludes workspace dev-only edges using the parsed manifests;
+optional and target-specific production dependencies and build tools are included
+conservatively. Each component records its root scope. Cargo metadata supplies
+the actual archive paths during refresh, not during the SDK-free CI check.
 The Rust standard-library copyright inventory includes its own nested components.
 The exact final native linker dependencies are platform-specific and remain a
 release input to collect. No claim of a complete final-linked-artifact audit is made.
@@ -33,10 +38,10 @@ release input to collect. No claim of a complete final-linked-artifact audit is 
 | dlmalloc | 2.8.6 bundled with Emscripten 4.0.15 | Actual source licence/version header: public-domain/CC0 dedication, with full source-file hash | Default SMLib WASM allocator; generated bundle |
 | musl libc | bundled with Emscripten 4.0.15 | `system/lib/libc/musl/COPYRIGHT`: MIT and individual BSD-style portions | SMLib WASM; complete copyright text retained |
 | libc++, libc++abi, libunwind, compiler-rt, llvm-libc | bundled with Emscripten 4.0.15 | Each `system/lib/*/LICENSE.TXT`: Apache-2.0 with LLVM exceptions and legacy portions as printed | Conservative SMLib WASM runtime inventory; final link map determines used portions |
-| wasm-bindgen runtime/glue + macro/shared crates | 0.2.126 | Actual Cargo archives' `LICENSE-MIT` and `LICENSE-APACHE` | `pkg-retained` JS/WASM; generated bundle |
-| js-sys / web-sys / wasm-bindgen-futures | 0.3.103 / 0.3.103 / 0.4.76 | Actual archives' MIT/Apache texts | `pkg-retained`; generated bundle |
-| Rust standard library | nightly-2025-11-15, exact rustc identity in inventory | Installed `COPYRIGHT-library.html` and complete `licenses/` directory | `pkg-retained`; complete upstream library inventory retained |
-| Rust transitive packages | Exact name/version rows in inventory | Cargo archive texts, including embedded subordinate notices | `pkg-retained`, conservative workspace-unified closure; no SDK inside source crates |
+| wasm-bindgen runtime/glue + macro/shared crates | 0.2.126 | Actual Cargo archives' `LICENSE-MIT` and `LICENSE-APACHE` | `pkg`/`pkg-retained`/`pkg-diff` JS/WASM; generated bundle |
+| js-sys / web-sys / wasm-bindgen-futures | 0.3.103 / 0.3.103 / 0.4.76 | Actual archives' MIT/Apache texts | `pkg`/`pkg-retained`/`pkg-diff`; generated bundle |
+| Rust standard library | nightly-2025-11-15, exact rustc identity in inventory | Installed `COPYRIGHT-library.html` and complete `licenses/` directory | All WASM packages; complete upstream library inventory retained |
+| Rust transitive packages | Exact name/version rows in inventory | Cargo archive texts, including embedded subordinate notices | All WASM packages, per-root conservative production closures; no SDK inside source crates |
 | Native C/C++ runtime | Final compiler/OS pin **unresolved** | Must inspect final `DT_NEEDED`/link map and compiler runtime licences | Native worker; collect before distributing per-platform binaries |
 | IFC-Lite | Release source commit | Repository MPL-2.0 LICENSE and source file headers | Source crates ship source; linked distributions need matching source availability and MPL notice |
 
@@ -99,10 +104,12 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 ## Why the default npm package includes the notice file
 
 `@ifc-lite/wasm` ships the default Rust WASM/wasm-bindgen runtime as well as
-`retained.js`, `retained.d.ts` and `pkg-retained/ifc-lite.d.ts`. Its explicit
+`retained.js`, `retained.d.ts`, `pkg-retained/ifc-lite.d.ts` and the separate
+`pkg-diff` runtime. The diff closure includes `ryu-js` 1.0.3, whose actual
+Apache-2.0 and Boost Software License 1.0 texts are preserved. Its explicit
 `files` list excludes retained JS/WASM implementation files and the SMLib SDK.
-The loader and declarations alone do **not** establish a requirement to ship
-NVIDIA/Emscripten notices. Many Rust and wasm-bindgen notices in the generated
+Whether the loader and declarations require any NVIDIA/Emscripten notices is
+an open point for the human reviewer. Many Rust and wasm-bindgen notices in the generated
 inventory do apply to the default compiled runtime. We retain one conservative
 notice superset for this package and the separately staged retained engine,
 avoiding a second, independently maintained attribution list. Human review
@@ -110,28 +117,17 @@ still determines which notices are legally required for the final artifact.
 
 The file is standalone npm archive content, not imported JavaScript, a runtime
 fetch, or input to WASM compilation. It increases npm archive contents (the
-notice is 955,003 bytes uncompressed); it does not enter the default viewer or
+notice size is reported by the package inventory); it does not enter the default viewer or
 WASM code bundle. Default Rust source, dependency lock and compiler flags are
 unchanged by this branch. The only `build-wasm.sh` changes copy licence texts
 inside `BUILD_RETAINED=1`.
 
-A paired canonical default build on PC compared base
-`853d7c9781b34fb41c83425d38de58c39141fc69` with
-`4ffc2fb9cfdcb722a0ca66fd65c8a14010154669`, using
-`node scripts/retained-default-identity.mjs <base>` and the pinned toolchain.
-Receipt `c6305193-2d01-4cb4-b00c-37ae9500eb59` reports exit 0, unchanged source,
-and identical bytes for default JS, WASM and both declaration files:
-
-| Default artifact | Bytes | SHA-256 (both builds) |
-|---|---:|---|
-| `ifc-lite_bg.wasm` | 10,318,360 | `ef5bbf31d0a12687bd4847416df8b6d0c3eee583402e09f33126ac8416c2522d` |
-| `ifc-lite.js` | 310,855 | `7a04008b187d832495575448d00a449a71725d87820474df806bc4e6ca4666c1` |
-
-This measures the default WASM package runtime, not a rebuilt viewer application
-or end-to-end model benchmark. The complete npm tarball is intentionally not
-byte-identical because it now includes this notice file. The original receipt
-and hash-verified output log are retained in the release handoff; the fleet's
-separate storage-finalization status remains `evidence_pending`.
+Use `node scripts/retained-default-identity.mjs <base-commit>` in the admitted
+release qualification environment to compare canonical builds of default `pkg`
+and `pkg-diff` JS, WASM and declaration bytes. Preserve source identities and
+per-file SHA-256 results in release evidence. This does not measure the rebuilt
+viewer application or model output. The npm tarball intentionally changes when
+notice content changes; a runtime byte comparison does not imply tarball identity.
 
 ## Open release decisions and evidence gaps
 
@@ -142,7 +138,10 @@ separate storage-finalization status remains `evidence_pending`.
    tree `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5` contain no LICENSE/NOTICE files.
    Obtain authoritative permission/attribution text; do not invent it. `i_key_sort`
    0.11.0 and `i_overlay` 8.1.2 also omit texts from their archives; exact VCS-pinned
-   upstream texts were recovered and recorded in `supplemental.json`.
+   upstream texts were recovered and recorded in `supplemental.json`, as were
+   missing archive texts for `flatbuffers` 25.12.19 and `valuable` 0.1.1.
+   `r-efi` stores its permission text and copyright holders in `AUTHORS`, which
+   is preserved as an upstream notice.
 3. Collect the **actual release** native link map, `readelf -d` (Linux), `otool -L`
    (macOS) or import table (Windows), compiler version and any bundled runtime
    notices. `retained-native-link-inventory.mjs` is wired into the Linux native
@@ -162,7 +161,9 @@ separate storage-finalization status remains `evidence_pending`.
 
 ## Regeneration
 
-The refresh resolves the current locked Cargo graph itself (metadata is not a build):
+The refresh resolves the current locked source closures and reads Cargo archive paths
+(metadata is not a build). The check needs Node and Python 3.11+, with no SDK,
+Emscripten, Cargo installation or network access:
 
 ```sh
 node scripts/retained-notices.mjs --refresh --sdk /absolute/pinned-usd-brep \
@@ -173,9 +174,9 @@ node scripts/retained-notices.mjs --check
 Refresh reads actual installed licence files and preserves byte hashes, including
 line endings. Review changed pins, missing texts and supplemental sources before
 committing. `--write` regenerates outputs from committed inputs; it cannot waive
-an input hash mismatch. CI's drift check requires no SDK or network.
+a semantic input mismatch. CI's drift check requires no SDK or network.
 
 Performance verdict: packaging-only; no execution or compiler flags changed.
 The build-script additions copy licence texts only inside `BUILD_RETAINED=1`.
-Default JS/WASM artifact byte identity was measured as recorded above. Model
-output was not benchmarked by this slice; no end-to-end speed claim is made.
+Artifact comparisons belong in release evidence. Model output was not benchmarked
+by this packaging work; no end-to-end speed claim is made.

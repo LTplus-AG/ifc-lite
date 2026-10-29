@@ -58,7 +58,11 @@ export async function validateEngine(directory?: string): Promise<RetainedEngine
   await walk();
   actual.delete('engine-manifest.json');
   if (actual.size !== paths.size || [...actual].some(p => !paths.has(p)) || required.some(p => !paths.has(p))) {
-    throw new Error('Retained engine inventory is incomplete');
+    const missing = required.filter(p => !paths.has(p));
+    // Engines staged before THIRD_PARTY_NOTICES.txt became required lack only that file:
+    // say so, because the remedy is re-staging, not repairing the SDK.
+    throw new Error(`Retained engine inventory is incomplete${missing.length ? ` (missing: ${missing.join(', ')})` : ''}; ` +
+      're-stage the engine with the current scripts/stage-cli-retained-engine.mjs');
   }
   for (const asset of manifest.assets) {
     const content = await readFile(join(root, asset.path));

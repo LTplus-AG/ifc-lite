@@ -77,7 +77,7 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   withoutNotice.assets = assets.filter(asset => asset.path !== 'THIRD_PARTY_NOTICES.txt');
   await rm(join(dir, 'THIRD_PARTY_NOTICES.txt'));
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify(withoutNotice));
-  await expect(validateEngine(dir)).rejects.toThrow(/inventory is incomplete/);
+  await expect(validateEngine(dir)).rejects.toThrow(/inventory is incomplete \(missing: THIRD_PARTY_NOTICES\.txt\); re-stage the engine/);
   await writeFile(join(dir, 'THIRD_PARTY_NOTICES.txt'), content);
   await writeFile(join(dir, 'engine-manifest.json'), manifestBytes);
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', dir);

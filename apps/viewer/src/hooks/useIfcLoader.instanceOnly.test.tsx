@@ -60,7 +60,7 @@ for (const flat of [false, true]) {
         assert.equal(result?.meshes.length, 1);
       } else {
         await advance(120); // pass the existing flat render throttle and any queued paint
-        assert.deepEqual(milestones, [], 'main records no first geometry milestone for a shard-only batch');
+        assert.equal(milestones.length, 0, 'main records no first geometry milestone for a shard-only batch');
         release();
         await waitFor(() => flatDelivered, 'subsequent flat batch consumed');
         await waitFor(() => milestones.includes('geometry.firstVisible'), 'first flat geometry paint');

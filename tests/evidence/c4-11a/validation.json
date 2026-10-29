@@ -1,0 +1,258 @@
+{
+  "issue": 7782,
+  "lane": "C4-11a",
+  "stackBase": "6b977a14eee2a276e71ea46f8b5184f8fd6395a8",
+  "parentPR": 8316,
+  "productionAndWasmTestCommit": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+  "nativeSourceNote": "Native validation began at 68ca6f8b71 and ended at 9f208db337. git diff 68ca6f8b71 9f208db337 -- rust is empty; intervening commits change JS test fixtures, docs and perf verdict only. Mutation and both successful WASM validations have unchanged before/after source identities. Later commits contain evidence only.",
+  "runtime": {
+    "sha256": "7ef7cec109d61e0ba3ac26847b11483dd5784e77ba9ac1c403785cf413fa104c",
+    "bytes": 10328449,
+    "bindingsChanged": false
+  },
+  "runs": [
+    {
+      "id": "d20835cf-52dc-4940-a558-56a2c4ea7062",
+      "state": "failed",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-wasm",
+        "c4_11a",
+        "--",
+        "--nocapture"
+      ],
+      "processExitCode": 101,
+      "exitCode": 101,
+      "error": null,
+      "sourceUnchanged": true,
+      "outputSha256": "213c9e900f7f1648616f5b6afe8b191a1c08ebb42600dc2ece0ded61d73bb37d",
+      "host": "pc-wsl",
+      "sourceBefore": "92b914df01f3ac800ca5100bd8f18b407f364193",
+      "sourceAfter": "92b914df01f3ac800ca5100bd8f18b407f364193",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/d20835cf-52dc-4940-a558-56a2c4ea7062/receipt.json",
+      "result": "Compile failure: test passed an integer to the existing optional-string tessellation setter; corrected before later runs.",
+      "fleetCommand": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--storage-task",
+        "c4-11a-2ebab416",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-2ebab416",
+        "--",
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-wasm",
+        "c4_11a",
+        "--",
+        "--nocapture"
+      ],
+      "requestId": "auto-1685ba8406bf4a28923e079b11bc0b6b"
+    },
+    {
+      "id": "3a797100-9a43-45e6-9620-4654a2a3a235",
+      "state": "completed",
+      "command": [
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "native"
+      ],
+      "processExitCode": 0,
+      "exitCode": 0,
+      "error": null,
+      "sourceUnchanged": false,
+      "outputSha256": "1517062bcd51567cf471db1cb91886f30ad682f8972c33795f797988d487022a",
+      "host": "pc-wsl",
+      "sourceBefore": "68ca6f8b71e02e22955ede577212a931ac7b78e6",
+      "sourceAfter": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/3a797100-9a43-45e6-9620-4654a2a3a235/receipt.json",
+      "result": "PASS: 3 new native tests, C4-0 over 15 committed fixtures, 4 C4-10a witnesses, ratchets (17+8+20 passed; 2 ignored re-seed helpers), workspace all-target clippy.",
+      "fleetCommand": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--storage-task",
+        "c4-11a-2ebab416",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-2ebab416",
+        "--",
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "native"
+      ]
+    },
+    {
+      "id": "6232d7c2-6165-4df9-9113-36ec7b690b6e",
+      "state": "completed",
+      "command": [
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "mutation"
+      ],
+      "processExitCode": 0,
+      "exitCode": 0,
+      "error": null,
+      "sourceUnchanged": true,
+      "outputSha256": "86568cc4010c24269d28014056496770252caf26e6154c9f24bf4b9470c79b6f",
+      "host": "pc-wsl",
+      "sourceBefore": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "sourceAfter": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/6232d7c2-6165-4df9-9113-36ec7b690b6e/receipt.json",
+      "result": "OBSERVED: reverse-apply checked; mutation yielded 2 assertion failures / 1 pass; restored code 3 passed.",
+      "fleetCommand": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--storage-task",
+        "c4-11a-2ebab416",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-2ebab416",
+        "--",
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "mutation"
+      ]
+    },
+    {
+      "id": "2d75b56c-8b1f-4271-adb0-7811603f5d5b",
+      "state": "failed",
+      "command": [
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "wasm"
+      ],
+      "processExitCode": null,
+      "exitCode": 1,
+      "error": "storage job-open failed; inspect lifecycle task and original receipt",
+      "sourceUnchanged": null,
+      "outputSha256": null,
+      "host": "pc-wsl",
+      "sourceBefore": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "sourceAfter": null,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/2d75b56c-8b1f-4271-adb0-7811603f5d5b/receipt.json",
+      "result": "Not started: storage job-open failed; original processExitCode null and projectStarted false verified before new submission.",
+      "fleetCommand": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--storage-task",
+        "c4-11a-2ebab416",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-2ebab416",
+        "--",
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "wasm"
+      ]
+    },
+    {
+      "id": "55f7840f-5bb8-4fa0-a01d-f5d1fa2c3292",
+      "state": "completed",
+      "command": [
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "wasm"
+      ],
+      "processExitCode": 0,
+      "exitCode": 0,
+      "error": null,
+      "sourceUnchanged": true,
+      "outputSha256": "472ed58faa1739c2ee4a297964d9308bea04bd517a5dd473da34dcb6b6a72f67",
+      "host": "pc-wsl",
+      "sourceBefore": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "sourceAfter": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/55f7840f-5bb8-4fa0-a01d-f5d1fa2c3292/receipt.json",
+      "result": "PASS: fresh WASM build, unchanged committed d.ts, 23 real boundary contracts, zero skips.",
+      "fleetCommand": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--storage-task",
+        "c4-11a-2ebab416",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-2ebab416",
+        "--",
+        "bash",
+        "tests/evidence/c4-11a/validate.sh",
+        "wasm"
+      ]
+    },
+    {
+      "id": "9fc859da-a6a2-4b21-b3d5-00e46d2e9d2a",
+      "state": "failed",
+      "command": [
+        "bash",
+        "-lc",
+        "pnpm build --filter=@ifc-lite/renderer --filter=@ifc-lite/export --filter=@ifc-lite/geometry --concurrency=2 --env-mode=loose && pnpm test:wasm-contract"
+      ],
+      "processExitCode": null,
+      "exitCode": 1,
+      "error": "storage job-open failed; inspect lifecycle task and original receipt",
+      "sourceUnchanged": null,
+      "outputSha256": null,
+      "host": "pc-wsl",
+      "sourceBefore": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "sourceAfter": null,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/9fc859da-a6a2-4b21-b3d5-00e46d2e9d2a/receipt.json",
+      "result": "Not started: storage job-open failed while same task publication was active. Waited for original publishers before next submission.",
+      "fleetCommand": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--storage-task",
+        "c4-11a-2ebab416",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-2ebab416",
+        "--",
+        "bash",
+        "-lc",
+        "pnpm build --filter=@ifc-lite/renderer --filter=@ifc-lite/export --filter=@ifc-lite/geometry --concurrency=2 --env-mode=loose && pnpm test:wasm-contract"
+      ]
+    },
+    {
+      "id": "9f5771ad-2c52-4b72-a7b9-d04b16f91531",
+      "state": "completed",
+      "command": [
+        "bash",
+        "-lc",
+        "pnpm build --filter=@ifc-lite/renderer --filter=@ifc-lite/export --filter=@ifc-lite/geometry --concurrency=2 --env-mode=loose && pnpm test:wasm-contract"
+      ],
+      "processExitCode": 0,
+      "exitCode": 0,
+      "error": null,
+      "sourceUnchanged": true,
+      "outputSha256": "2fdd58e897c3df90fe7570cf5e898b843434970c3501f718959650a9c9ae2a08",
+      "host": "pc-wsl",
+      "sourceBefore": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "sourceAfter": "9f208db337fa32b168b5349eb6c16846bf6430ed",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/9f5771ad-2c52-4b72-a7b9-d04b16f91531/receipt.json",
+      "result": "PASS: 16 root Turbo dependency builds; 239 WASM contracts passed, 0 failed, 7 named skips.",
+      "fleetCommand": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--storage-task",
+        "c4-11a-2ebab416",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-2ebab416",
+        "--",
+        "bash",
+        "-lc",
+        "pnpm build --filter=@ifc-lite/renderer --filter=@ifc-lite/export --filter=@ifc-lite/geometry --concurrency=2 --env-mode=loose && pnpm test:wasm-contract"
+      ]
+    }
+  ],
+  "wasmSkips": [
+    "#6516 real Revit disjoint opening/layer-parts witness (various/rvt01.ifc absent)",
+    "geometry progress callback (AC20-FZK-Haus absent)",
+    "#7677 self-clearing progress callback (AC20-FZK-Haus absent)",
+    "matched historical fingerprint fallback (no matched historical JS/WASM pair configured)",
+    "remesh parity: buildingsmart/wall-with-opening-and-window.ifc absent",
+    "remesh parity: various/rvt01.ifc absent",
+    "remesh with no target job (fixture absent)"
+  ],
+  "buildSkip": "The unrelated ifcx dependency verify-dist-hello-wall skipped its four missing Hello_Wall/Point_Cloud fixtures. No IFCX behavior qualification is claimed.",
+  "performanceVerdict": "Unmeasured end-to-end worker-pool timing and whole-host memory. No speedup or performance-neutrality claim. C4-0 establishes normal single-file payload parity.",
+  "limitations": [
+    "This runtime accepts SAB views. Tests exercise real SAB marshalling, stash consumption/restashing, owned-buffer replay and an already-entered streaming attempt aborted by its callback; they do not force an engine-specific SAB ABI rejection.",
+    "setSourceBytes intentionally retains previously installed index/columns. Caller must pair inputs from the same file.",
+    "CLI final empty setSourceBytes retains its existing diagnostic-reset semantics; clearPrePassCache itself preserves diagnostics."
+  ],
+  "cleanupTask": "c4-11a-2ebab416"
+}

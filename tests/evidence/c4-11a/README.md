@@ -78,3 +78,19 @@ Performance verdict: correctness change at explicit load boundaries. No
 end-to-end worker-pool timing or speedup claim. Successful single-file output is
 qualified by C4-0; browser timing and whole-host memory qualification are not
 established by these focused tests. Native Rust processing is untouched.
+
+
+## Recorded qualification
+
+Exact fleet argv, source pins, receipt paths, corrected failures and named skips
+are in [validation.json](validation.json). Native C4-0 passed over all 15 fixtures;
+all three new native tests, C4-10a witnesses, the three ratchets and workspace
+clippy passed. The surgical mutation produced two assertion failures and passed
+again after restoration. Fresh real-WASM focused contracts passed 23/23 with no
+skips; the root suite passed 239 with zero failures and seven named skips after
+16 root Turbo dependency builds. Committed bindings did not change.
+
+The runtime accepts SAB views here: the tests cover real SAB marshalling,
+finish consumption/restashing, owned-buffer replay and a streaming callback
+abort after entering Rust, rather than forcing an engine-specific ABI rejection.
+No timing or performance-neutrality claim is made.

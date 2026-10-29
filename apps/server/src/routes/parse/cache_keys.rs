@@ -21,10 +21,8 @@ pub(super) fn quality_cache_suffix(quality: TessellationQuality) -> String {
     }
 }
 
-/// The seed every derived key is built on: file hash + opening-filter suffix +
-/// quality suffix. Endpoints that receive a bare hash (the cache-check and
-/// cached-geometry routes) rebuild it from the query rather than from bytes
-/// they do not have.
+/// Shared request identity: file hash, opening filter, quality and slicing.
+/// Bare-hash endpoints reconstruct the same seed without needing file bytes.
 pub(crate) fn cache_key_from_parts(
     hash: &str,
     opening_filter: OpeningFilterMode,

@@ -988,8 +988,10 @@ export class IfcAPI {
     /**
      * Structured pipeline diagnostics accumulated across every
      * `processGeometryBatch*` call since the last load reset
-     * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
-     * `schemaVersion` field — or `undefined` when no batch has run yet.
+     * (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
+     * `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
+     * Returns `undefined` until a batch runs or a prepass refusal is recorded;
+     * `clearPrePassCache` preserves the report for post-load inspection.
      * Includes per-batch summed geometry wall time, mesh/triangle counts,
      * the degenerate-backstop drop count, and the CSG failure aggregates.
      */

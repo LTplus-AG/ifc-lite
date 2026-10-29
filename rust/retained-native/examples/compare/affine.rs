@@ -5,7 +5,6 @@ use serde_json::{json,Value};
 use super::report::Report;
 
 pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:&ShapeOnlyProduct, tolerances:&Value) {
-    if product.cuts!=0 {return}
     if !oracle.is_affine_final(product.product_id) {return}
     let mut results=Vec::new();
     for (index,part) in product.parts.iter().enumerate() {
@@ -14,6 +13,8 @@ pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:
         if !pass {report.violations.push(format!("{} part {index}: affine signed-volume invariant",product.product_id));}
         results.push(json!({"family":"affineSignedVolume","part":index,"pass":pass,"gated":true}));
     }
+    // Opening Booleans still require outward winding for every resulting part.
+    if product.cuts!=0 {append(report,results);return}
     // Winding is mandatory even when the analytic source family is unsupported.
     let Some(expected)=oracle.expected(product.product_id) else {append(report,results);return};
     if expected.len()!=product.parts.len() {
@@ -76,10 +77,10 @@ pub fn refusal(report:&mut Report,oracle:&mut affine::AffineOracle<'_>,id:u32,co
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ifc_lite_retained_native::{ModelOptions,ProductOutcome};
     // #7955: an unsupported analytic family must still gate EVERY part's winding.
     #[test]
     fn affine_boolean_without_source_volume_still_gates_signed_volume() {
-        use ifc_lite_retained_native::{ModelOptions,ProductOutcome};
         let text=include_str!("../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc")
             .replace("#24=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);",
                 "#900001=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);\n#24=IFCBOOLEANRESULT(.UNION.,#900001,#900001);")
@@ -88,14 +89,28 @@ mod tests {
         let mut oracle=affine::AffineOracle::new(&source);
         assert!(oracle.is_affine_final(42));
         assert!(oracle.expected(42).is_none());
+        assert_winding_gate(&source,42,false);
+        eprintln!("sdk witness executed: m10_affine_winding_without_analytic_source");
+    }
+    // #7955: opening cuts must not bypass the per-part winding gate (#130/#133/#145/#146).
+    #[test]
+    fn voided_affine_product_still_gates_every_part_signed_volume() {
+        let source=ifc_lite_core::SourceBundle::new(include_bytes!(
+            "../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc").to_vec());
+        assert_winding_gate(&source,242,true);
+    }
+    fn assert_winding_gate(source:&std::sync::Arc<ifc_lite_core::SourceBundle>,id:u32,with_cuts:bool) {
+        let mut oracle=affine::AffineOracle::new(source);
+        assert!(oracle.is_affine_final(id));
         let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
             assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
             eprintln!("SKIP M10 affine winding reporter: real SDK missing");return;
         };
         let mut shapes=Vec::new();
         ifc_lite_retained_native::run_model_native(source.clone(),worker,
-            &ModelOptions {ids:Some([42].into_iter().collect()),..Default::default()},|o|shapes.push(o)).unwrap();
+            &ModelOptions {ids:Some([id].into_iter().collect()),..Default::default()},|o|shapes.push(o)).unwrap();
         let ProductOutcome::Published(mut shape)=shapes.remove(0) else {panic!("expected mirrored Boolean publication")};
+        assert_eq!(shape.cuts>0,with_cuts);
         let mut report=Report {rows:vec!["test\t[]".into()],..Default::default()};
         record(&mut report,&mut oracle,&shape,&Value::Null);
         assert!(report.violations.is_empty());
@@ -105,6 +120,5 @@ mod tests {
         for t in shape.parts[0].indices.chunks_exact_mut(3) {t.swap(1,2);}
         record(&mut report,&mut oracle,&shape,&Value::Null);
         assert!(report.violations.iter().any(|v|v.contains("signed-volume invariant")));
-        eprintln!("sdk witness executed: m10_affine_winding_without_analytic_source");
     }
 }

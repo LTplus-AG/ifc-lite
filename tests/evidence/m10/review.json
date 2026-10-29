@@ -9,7 +9,7 @@
     },
     {
       "finding": "coverage not blessed",
-      "resolution": "Blessed from a real-SDK committed comparison (Pop job 18b3d8ae, head bdd8f58fd6: 24 models, 307 candidates, 172 published, 0 violations). Base TSV flips only M7 e9/e10 to published; #74 stays incomplete; new coverage.d/m10.tsv. h22 #313 is marked PENDING M5 (expected published, volume 21)."
+      "resolution": "Rebased onto M5 main 2b629592f6. Committed comparison --bless at 069722ff46 (Pop receipt 87467643-1d00-4641-818c-f1277c97ed54) passed: 25 models, 321 candidates, 187 published, 0 violations/skips/mismatches. Applied only h22 #313 operation_unsupported -> published, volume 21; retained manifest comments. Native pre-bless M11-N coverage assertion saw this same newly published row with 0 normal violations; final-head gates rerun after committing the expectation. Base TSV keeps M7 e9/e10 publication; #74 stays incomplete."
     },
     {
       "finding": "omitted Axis2 oracle default",

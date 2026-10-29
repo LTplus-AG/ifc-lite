@@ -23,7 +23,7 @@ tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	242	published
 tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	249	published	
 tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	288	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	296	refused	kernel_failure
-tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	313	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	313	published	
 tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	34	published	
 tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	42	published	
 tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	50	published	

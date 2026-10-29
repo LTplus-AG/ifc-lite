@@ -9,8 +9,7 @@
     "rustChecksCommit": "968497f873437941c3bc1457155232e81a4bb129",
     "boundaryCommit": "503c97ac0f861adf19e9a7ac40c19d5fc59df0ba",
     "validatedRustTree": "d68191ffdee8440849e86ab396c02361c53d0154",
-    "finalRustTree": "7a948c0e6bba9e093d9edb237e8a151b6216fc86",
-    "postValidationParentSync": "a346ea5f7f only changes two Rust doc-comment lines and the matching default/retained declaration comments; no executable code, signatures, tests or line counts changed.",
+    "finalRustTree": "08635a7cadf6a6722476b6e774a26c001d223f14",
     "boundarySourceUnchanged": true,
     "toolchainInputs": {
       "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
@@ -24,7 +23,8 @@
       "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
       "node": "v24.21.0",
       "pnpm": "10.8.1"
-    }
+    },
+    "postValidationDocumentationSync": "Parent a346ea5f7f changes two Rust doc-comment lines and matching default/retained declaration comments. The final prepass Arc comment clarifies ownership without implying export happens after decoder construction. Only comments differ from the validated Rust tree; no executable code, signatures, tests or line counts changed."
   },
   "publishedProcessing": {
     "version": "27.0.0",

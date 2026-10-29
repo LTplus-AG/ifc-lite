@@ -4,7 +4,7 @@
 //! Like m11_presentation, this includes the actual algorithm and storage. The
 //! small containers below supply only its private module context; they grant no
 //! numerical receipt or publication authority. Native tests prove publication.
-use ifc_lite_geometry::{program::transactions::{Requirement, Resources as OwnedResourceContext}, resource::{self, Reservation}};
+use ifc_lite_geometry::{program::transactions::Resources as OwnedResourceContext, resource::{self, Reservation}};
 use ifc_lite_processing::element::retained_runtime::{RetainedExecutionError, ShapePart};
 mod runtime { pub use ifc_lite_processing::element::retained_runtime::RuntimeFault; }
 mod publication { pub(super) use super::ShapePart; }

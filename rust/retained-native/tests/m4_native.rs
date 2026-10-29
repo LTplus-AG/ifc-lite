@@ -258,3 +258,24 @@ fn issue_7955_m4_material_appearance_uses_each_bands_exact_resolver_key() {
     assert_eq!(host.parts.len(), 2);
     println!("sdk witness executed: m4_material_appearance");
 }
+
+#[test]
+fn issue_7955_m4_mapped_layers_never_become_instance_candidates() {
+    let mapped = STRAIGHT.replace("IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19))",
+        "IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#86))")
+        .replace("ENDSEC;\nEND-ISO-10303-21;", "#85=IFCREPRESENTATIONMAP(#2,#87);#86=IFCMAPPEDITEM(#85,#88);
+#87=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19));
+#88=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,$);ENDSEC;\nEND-ISO-10303-21;");
+    for text in [mapped.clone(), mapped.replace("($,0.1,$)", "($,0.001,$)")] {
+        let Some(outcomes) = run(&text, &[27]) else { return; };
+        let product = shape(&outcomes, 27);
+        assert!(product.parts.iter().all(|part| part.instance_key.is_none()),
+            "material-layer source, including a thin-collapsed stack, must not instance");
+    }
+    // The same source without material layers really is eligible; this makes
+    // the negative layered assertion sensitive to M11-I eligibility.
+    let ordinary = mapped.replace("#84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#27),#83);", "");
+    let outcomes = run(&ordinary, &[27]).unwrap();
+    assert!(shape(&outcomes, 27).parts[0].instance_key.is_some());
+    println!("sdk witness executed: m4_mapped_layers_no_instances");
+}

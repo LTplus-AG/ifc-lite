@@ -500,3 +500,34 @@ fn c4_6b_overlong_type_span_keeps_its_candidate() {
         [(id, start, end, ifc_lite_core::IfcType::IfcDoorStyle)]
     );
 }
+
+/// #7782 C4-6b review P1: class-byte scheduling must preserve malformed
+/// in-bounds spans so the batch decoder can refuse every submitted job.
+#[test]
+fn c4_6b_malformed_in_bounds_columns_reach_decoder_refusal() {
+    use ifc_lite_processing::{PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_SITE};
+    let bytes = b"DATA;     #8=(IFCA() IFCB()); ENDSEC;";
+    let d = discover_from_columns(
+        bytes, &[7, 8, 9], &[10, 10, 10], &[0, 17, 0],
+        &[PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_SITE],
+        &Default::default(),
+    );
+    let mut decoder = ifc_lite_core::EntityDecoder::new(bytes);
+    let refused = d.buffered_jobs.iter().filter(|(id, start, end, _)| {
+        decoder.decode_and_cache(*id, *start, *end).is_err()
+    }).count();
+    assert_eq!(refused, 3, "all malformed jobs must reach the real batch decoder");
+    assert_eq!(d.total_jobs, 3);
+    assert_eq!(d.site_position, Some((9, 10, 10)));
+    assert_eq!(d.buffered_jobs[0].3, ifc_lite_core::ifc_type_from_keyword(""));
+}
+
+/// #7782: a readable keyword cannot override the authoritative named class.
+#[test]
+fn c4_6b_column_class_wins_over_mismatched_keyword() {
+    let bytes = b"#7=IFCWALL($);";
+    let d = discover_from_columns(bytes, &[7], &[0], &[bytes.len() as u32],
+        &[ifc_lite_processing::PREPASS_CLASS_SITE], &Default::default());
+    assert_eq!(d.site_position, Some((7, 0, bytes.len())));
+    assert_eq!(d.buffered_jobs, [(7, 0, bytes.len(), ifc_lite_core::IfcType::IfcSite)]);
+}

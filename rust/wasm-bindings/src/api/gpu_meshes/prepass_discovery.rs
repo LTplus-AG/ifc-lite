@@ -75,8 +75,8 @@ impl ColumnsDiscovery {
 
 /// The raw STEP keyword at a record start (`#id=KEYWORD(...`), read through
 /// core's [`StepRecord`] so trivia between the `=` and the keyword (`#1= /*c*/
-/// IFCWALL(`) is skipped. Only classified rows need a keyword; the bulk of
-/// unclassified records are skipped without inspecting their bytes. A span
+/// IFCWALL(`) is skipped. Only geometry/type flag rows need a keyword; named class rows
+/// and unclassified records are skipped without inspecting their bytes. A span
 /// outside `content` (columns stitched against a different buffer) yields
 /// `""`, like a record with no keyword.
 fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
@@ -114,7 +114,6 @@ pub(super) fn discover_from_columns(
     disabled_types: &rustc_hash::FxHashSet<String>,
 ) -> ColumnsDiscovery {
     let mut d = ColumnsDiscovery::default();
-    let mut shared = ifc_lite_processing::discovery::Discovery::new(false);
     // Preserve shard/file order, including duplicate ids, before index sorting.
     for (((&id, &start), &length), &class) in ids.iter().zip(starts).zip(lengths).zip(classes) {
         if class == ifc_lite_processing::PREPASS_CLASS_NONE {
@@ -122,40 +121,38 @@ pub(super) fn discover_from_columns(
         }
         let start = start as usize;
         let end = start.saturating_add(length as usize);
-        let kw = keyword_at(content, start, end);
-        // #4614: retain invalid-span jobs for the decoder to refuse/count.
-        // The shared observer requires an in-bounds record; malformed wire
-        // columns still carry their original class and positions.
-        if content.get(start..end).is_none() {
-            use ifc_lite_processing::{scan::ScanClass, PREPASS_CLASS_CODE_MASK, PREPASS_CLASS_FLAG_GEOMETRY_JOB};
-            let kind = ScanClass::try_from(class & PREPASS_CLASS_CODE_MASK).unwrap_or(ScanClass::Other);
-            shared.prepass_spans.stash_class(kind, id, start, end);
-            match kind {
-                ScanClass::Project => {
-                    shared.project_id.get_or_insert(id);
-                    d.project_id = shared.project_id;
-                }
-                ScanClass::Site => { d.site_position.get_or_insert((id, start, end)); }
-                ScanClass::MappedItem => d.mapped_item_spans.push((id, start, end)),
-                ScanClass::MaterialLayerSet => d.has_layer_set = true,
-                _ => {}
-            }
-            if class & ifc_lite_processing::PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0 {
-                if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
-                    d.type_candidate_spans.push((id, start, end, ty));
-                }
-            }
-            let site = kind == ScanClass::Site;
-            let keyword = if site { "IFCSITE" } else { kw };
-            if (site || class & PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0) && !is_disabled(disabled_types, keyword) {
-                d.buffered_jobs.push((id, start, end, ifc_lite_core::ifc_type_from_keyword(keyword)));
-                d.total_jobs += 1;
-            }
-            continue;
+        use ifc_lite_processing::{scan::ScanClass, PREPASS_CLASS_CODE_MASK,
+            PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_TYPE_CANDIDATE};
+        let kind = ScanClass::try_from(class & PREPASS_CLASS_CODE_MASK).unwrap_or(ScanClass::Other);
+        // The shard already classified these rows. Reuse its authority even
+        // for malformed spans: the decoder must receive and count refusals.
+        // Named rows need no keyword or native-only TypeScan allocations.
+        d.prepass_spans.stash_class(kind, id, start, end);
+        match kind {
+            ScanClass::Project => { d.project_id.get_or_insert(id); }
+            ScanClass::Site => { d.site_position.get_or_insert((id, start, end)); }
+            ScanClass::MappedItem => d.mapped_item_spans.push((id, start, end)),
+            ScanClass::MaterialLayerSet => d.has_layer_set = true,
+            _ => {}
         }
-        d.observe(&mut shared, content, id, kw, start, end, disabled_types);
+        let site = kind == ScanClass::Site;
+        let kw = if site {
+            "IFCSITE"
+        } else if class & (PREPASS_CLASS_FLAG_TYPE_CANDIDATE | PREPASS_CLASS_FLAG_GEOMETRY_JOB) != 0 {
+            keyword_at(content, start, end)
+        } else {
+            ""
+        };
+        if class & PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0 {
+            if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
+                d.type_candidate_spans.push((id, start, end, ty));
+            }
+        }
+        if (site || class & PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0) && !is_disabled(disabled_types, kw) {
+            d.buffered_jobs.push((id, start, end, ifc_lite_core::ifc_type_from_keyword(kw)));
+            d.total_jobs += 1;
+        }
     }
-    d.prepass_spans = shared.prepass_spans;
 
     d
 }

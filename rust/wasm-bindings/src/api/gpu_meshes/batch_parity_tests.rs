@@ -438,19 +438,16 @@ fn c4_d66_opt_in_layer_payloads_match_browser_7782() {
         &ifc_lite_processing::ProcessingRequest::full_pass().layer_slicing(true),
         &mut (),
     );
-    let mut expected: Vec<_> = browser
-        .meshes()
-        .filter(|m| m.express_id == 100)
-        .map(|mesh| serde_json::to_string(&evidence::record(mesh)).unwrap())
-        .collect();
-    let mut actual: Vec<_> = native
-        .meshes
-        .iter()
-        .filter(|m| m.express_id == 100)
-        .map(|mesh| serde_json::to_string(&evidence::record(mesh)).unwrap())
-        .collect();
-    expected.sort_unstable();
-    actual.sort_unstable();
-    assert_eq!(expected.len(), 3);
-    assert_eq!(actual, expected);
+    let expected: Vec<_> = browser.meshes().collect();
+    let actual: Vec<_> = native.meshes.iter().collect();
+    assert_eq!(expected.iter().filter(|m| m.express_id == 100).count(), 3);
+    // Use the C4-0 geometry/appearance contract: the browser obtains element
+    // names, GlobalIds and properties from its parser worker, not this batch.
+    // Keep per-element submesh order and every geometry/appearance axis intact.
+    let mut drifts = Vec::new();
+    let normalized = compare::frame_rule(
+        short(LAYERS), native.frame, browser.prepass.meta.frame, &mut drifts,
+    ).then_some((native.frame, browser.prepass.meta.frame));
+    compare::compare_meshes(short(LAYERS), &actual, &expected, normalized, &mut drifts);
+    assert!(drifts.is_empty(), "D66 opt-in geometry/appearance drift: {drifts:#?}");
 }

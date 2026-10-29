@@ -426,9 +426,9 @@ and a nonempty `obligationsUnmet` list; consumers must display that marker. This
 is shape-only output. Supported openings are cut individually; completed cuts and
 plan-proven unvoided products discharge `OpeningClosure`. `cuts` reports completed
 cuts and `consumedParts` is zero: a consumed part refuses the entire product with
-`empty_result`. `MaterialLayers` and `SurfaceNormals` remain unmet, so a published
-product's `obligationsUnmet` is exactly `['MaterialLayers', 'SurfaceNormals']`:
-`OpeningClosure`, `PersistentFaces` and `IfcAppearance` are discharged.
+`empty_result`. `MaterialLayers` remains unmet, so a published
+product's `obligationsUnmet` is exactly `['MaterialLayers']`:
+`OpeningClosure`, `PersistentFaces`, `SurfaceNormals` and `IfcAppearance` are discharged.
 Unsupported opening bodies report `opening_unsupported`; hosts with internal
 material-layer boundaries refuse `material_layer_strategy` before opening work.
 
@@ -451,7 +451,9 @@ The synchronous callback receives `start` (canonical `candidateIds` and a
 View events own a `MeshCollection`: extract its meshes and free every mesh
 handle and collection in `finally` blocks. Positions, smoothed corner normals and f64
 origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
-Z-up metres. Colours are type defaults, and the shape-only marker still applies.
+Z-up metres. Each mesh takes its part's resolved appearance colour (`IfcAppearance`) and the authored
+metallic/roughness finish, falling back to the type default only for a part that carries no
+appearance; the shape-only marker still applies.
 The returned summary counts candidates, publications, refusals, restarts and
 worker acquisitions, plus controller product/acquisition milliseconds. A warm
 run acquires no new worker and reuses its completed qualification. `session.free()`

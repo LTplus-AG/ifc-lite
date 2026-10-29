@@ -132,12 +132,12 @@ fn m11_a_band_parts_keyed_by_material_refuse_until_layers_land() {
 fn m11_a_a_part_count_that_differs_from_the_plan_refuses() {
     let source = source("#10", WALL);
     let plan = product_plan(&source, 14);
-    let mut product = ShapeOnlyProduct { cuts: 0, consumed_parts: 0, cut_times_ms: Vec::new(), product_id: 14,
+    let mut product = ShapeOnlyProduct { cuts: 0, consumed_parts: 0, cut_times_ms: Vec::new(), normal_planar_fallbacks: 0, product_id: 14,
         ifc_type: IfcType::IfcWall, parts: vec![hand_part(), hand_part()],
         obligations: PresentationObligationsUnmet(vec![Requirement::IfcAppearance]), _storage: Storage::default() };
     let model = snapshot(&source);
     let error = apply(&mut product, &Context { plan: &plan, model: &model, resources: &OwnedResourceContext::capture_current(),
-        element_color: [0.; 4], faces: &[], chord_metres: 0.001 }).unwrap_err();
+        element_color: [0.; 4], faces: &[], chord_metres: 0.001, angle_degrees: 5. }).unwrap_err();
     assert_unsupported(error, 14, "binding");
 }
 #[test]

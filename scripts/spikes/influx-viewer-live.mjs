@@ -5,15 +5,17 @@
 /** #8090 disposable Experimental MVP viewer witness. Run under ifc-fleet.
  * Uses the repository's Playwright witness workflow so browser and database
  * run on the same admitted host. Owns only uniquely named containers/services.
- * Prerequisites: built viewer dependencies + WASM runtime, Docker, Chromium.
+ * Prerequisites: built viewer dependencies + WASM runtime, Chromium, and
+ * Docker or INFLUXD_BIN pointing to a verified InfluxDB OSS 2 binary.
  * No credentials are printed or written, and no browser trace is retained.
  */
 import assert from 'node:assert/strict';
 import { execFile as callback, spawn } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { chromium } from '@playwright/test';
 const execFile = promisify(callback);
@@ -24,7 +26,8 @@ const modelPath = 'apps/viewer/public/samples/building-architecture.ifc';
 const model = await readFile(modelPath);
 assert.ok(model.includes(Buffer.from('0xY$LvXaDEswJDk_VU74C_')));
 
-let owned = false, gateway, vite, browser;
+let owned = false, gateway, vite, browser, database, databaseDirectory;
+let databaseIdentity;
 async function json(url, body, token) {
   const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Token ${token}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
   assert.ok(response.ok, `Provisioning failed: HTTP ${response.status}`);
@@ -38,10 +41,26 @@ async function freePort() {
   return port;
 }
 try {
-  await execFile('docker', ['run', '-d', '--rm', '--name', name, '--label', 'ifclite.witness=8090-viewer', '--cpus=1', '--memory=512m', '-p', '127.0.0.1::8086', image]);
-  owned = true;
-  const imageInfo = JSON.parse((await execFile('docker', ['image', 'inspect', image])).stdout)[0];
-  const upstream = `http://${(await execFile('docker', ['port', name, '8086/tcp'])).stdout.trim()}`;
+  let upstream;
+  if (process.env.INFLUXD_BIN) {
+    const binary = resolve(process.env.INFLUXD_BIN);
+    const version = (await execFile(binary, ['version'])).stdout.trim();
+    const sha256 = createHash('sha256').update(await readFile(binary)).digest('hex');
+    databaseIdentity = { mode: 'binary', version, sha256 };
+    databaseDirectory = await mkdtemp(join(tmpdir(), 'ifclite-influx-witness-'));
+    const bind = `127.0.0.1:${await freePort()}`;
+    upstream = `http://${bind}`;
+    database = spawn(binary, ['--http-bind-address', bind, '--bolt-path', join(databaseDirectory, 'influxd.bolt'),
+      '--engine-path', join(databaseDirectory, 'engine'), '--sqlite-path', join(databaseDirectory, 'influxd.sqlite'),
+      '--reporting-disabled'], { cwd: databaseDirectory, stdio: 'ignore' });
+    await new Promise((done, reject) => { database.once('spawn', done); database.once('error', reject); });
+  } else {
+    await execFile('docker', ['run', '-d', '--rm', '--name', name, '--label', 'ifclite.witness=8090-viewer', '--cpus=1', '--memory=512m', '-p', '127.0.0.1::8086', image]);
+    owned = true;
+    const imageInfo = JSON.parse((await execFile('docker', ['image', 'inspect', image])).stdout)[0];
+    databaseIdentity = { mode: 'docker', image, imageDigest: imageInfo.RepoDigests?.[0] };
+    upstream = `http://${(await execFile('docker', ['port', name, '8086/tcp'])).stdout.trim()}`;
+  }
   let ready = false;
   for (let i = 0; i < 60; i++) {
     try { ready = (await fetch(`${upstream}/health`, { signal: AbortSignal.timeout(1000) })).ok; }
@@ -134,7 +153,7 @@ try {
   await panel.getByLabel('Token (memory only)').evaluate(input => { input.value = ''; });
   await mkdir(directory, { recursive: true });
   await page.screenshot({ path: resolve(directory, 'desktop.png') });
-  const evidence = { source: 'synthetic-live-influxdb-2-viewer', commit: (await execFile('git', ['rev-parse', 'HEAD'])).stdout.trim(), image, imageDigest: imageInfo.RepoDigests?.[0], model: modelPath, modelSha256: createHash('sha256').update(model).digest('hex'), latest: 22.5, unit: '°C', historySamples: 3, unmatched: 1, ambiguous: 2, queryCount, preflightCount, tokenPersisted: false, readTokenWriteStatus: denied.status, pageErrors, viewport: { width: 1440, height: 1000 } };
+  const evidence = { source: 'synthetic-live-influxdb-2-viewer', commit: (await execFile('git', ['rev-parse', 'HEAD'])).stdout.trim(), database: databaseIdentity, model: modelPath, modelSha256: createHash('sha256').update(model).digest('hex'), latest: 22.5, unit: '°C', historySamples: 3, unmatched: 1, ambiguous: 2, queryCount, preflightCount, tokenPersisted: false, readTokenWriteStatus: denied.status, pageErrors, viewport: { width: 1440, height: 1000 } };
   await writeFile(resolve(directory, 'evidence.json'), JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' });
   console.log(JSON.stringify(evidence));
 } catch (error) {
@@ -155,4 +174,11 @@ try {
   });
   if (gateway) await cleanup('gateway', () => new Promise((done, reject) => gateway.close(error => error ? reject(error) : done())));
   if (owned) await cleanup('docker', () => execFile('docker', ['rm', '-f', name]));
+  if (database && database.exitCode === null && database.signalCode === null) await cleanup('influxd', async () => {
+    const exited = new Promise(done => database.once('exit', done));
+    database.kill('SIGTERM');
+    const timer = setTimeout(() => database.kill('SIGKILL'), 10000);
+    try { await exited; } finally { clearTimeout(timer); }
+  });
+  if (databaseDirectory) await cleanup('database storage', () => rm(databaseDirectory, { recursive: true, force: true }));
 }

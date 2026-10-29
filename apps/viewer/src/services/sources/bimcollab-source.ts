@@ -27,7 +27,7 @@ import { connectedTokenSource, loadBcfServerConfig } from '../bcf-server.js';
 import type { BcfServerConfig } from '../bcf-server-config.js';
 
 export const BIMCOLLAB_RELAY_PATH = '/api/bimcollab';
-const SIGNED_OUT_KEY = 'signedOutSession';
+const SIGNED_OUT_KEY = 'signedOutSessions';
 
 /** Same-origin fetch that only ever reaches the BIMcollab relay. */
 export function relayOnlyFetch(origin: string, relayPath = BIMCOLLAB_RELAY_PATH): typeof fetch {
@@ -93,7 +93,8 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
       signIn: async (ctx) => {
         const identity = this.identity();
         if (!identity) throw new BimcollabNotConnectedError();
-        await ctx.storage.delete(SIGNED_OUT_KEY);
+        const key = this.sessionKey();
+        if (key) await this.writeSignedOut(ctx, (await this.readSignedOut(ctx)).filter(k => k !== key));
         return identity;
       },
       // The tokens belong to the BCF connection, which stays connected; this
@@ -101,7 +102,9 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
       signOut: async (ctx) => {
         this.bound = null;
         const key = this.sessionKey();
-        if (key) await ctx.storage.set(SIGNED_OUT_KEY, key);
+        if (!key) return;
+        const signedOut = await this.readSignedOut(ctx);
+        if (!signedOut.includes(key)) await this.writeSignedOut(ctx, [...signedOut, key]);
       },
     };
   }
@@ -111,10 +114,30 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
     return session ? [session.config.serverUrl, session.config.userId, session.spaceGuid].join('\u0000') : null;
   }
 
-  /** Signed out applies to the account it was given for; a different account is not signed out. */
+  /**
+   * Every account signed out of this source, so signing out of B never
+   * forgets that A was signed out. A different account is not signed out.
+   */
+  private async readSignedOut(ctx: PluginContext): Promise<string[]> {
+    const raw = await ctx.storage.get(SIGNED_OUT_KEY);
+    if (raw === undefined) return [];
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : [];
+    } catch (error) {
+      console.warn('[bimcollab-source] ignoring unreadable sign-out state', error instanceof Error ? error.name : error);
+      return [];
+    }
+  }
+
+  private async writeSignedOut(ctx: PluginContext, keys: readonly string[]): Promise<void> {
+    if (keys.length === 0) await ctx.storage.delete(SIGNED_OUT_KEY);
+    else await ctx.storage.set(SIGNED_OUT_KEY, JSON.stringify(keys));
+  }
+
   private async signedOut(ctx: PluginContext): Promise<boolean> {
-    const marker = await ctx.storage.get(SIGNED_OUT_KEY);
-    return marker !== undefined && marker === this.sessionKey();
+    const key = this.sessionKey();
+    return key !== null && (await this.readSignedOut(ctx)).includes(key);
   }
 
   private async active(ctx: PluginContext): Promise<BimcollabProvider> {

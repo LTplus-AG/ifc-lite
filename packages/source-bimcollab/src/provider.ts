@@ -108,6 +108,7 @@ export class BimcollabProvider implements FileSourceProvider {
       : document.latestVersion;
     if (!document.documentNumber || !version?.versionNumber) throw new Error('BIMcollab legacy download needs a document number and version number.');
     return this.legacy.download(ctx, this.options.session, { location: row.location.name, project: row.project.name,
+      phases: (row.project.projectPhases ?? []).map(phase => phase.name),
       locationGuid: row.location.locationId }, document.documentNumber, version.versionNumber, signal);
   }
 }

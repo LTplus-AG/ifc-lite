@@ -151,6 +151,22 @@ describe('BIMcollab source provider (fake transport only)', () => {
     const twice = setup({ byLocation: { 2: [shadow], 4: [{ ...shadow, versionId: 88, locationName: 'Third' }] } });
     await expect(twice.provider.download(twice.ctx, ref)).rejects.toThrow('cannot tell which');
   });
+  it('matches a phase-attached document (no project on the web-app record) through the project phase names', async () => {
+    const phaseRecord = { ...record, projectId: null, projectName: null, projectPhaseName: 'Design' };
+    const { provider, ctx } = setup({ records: [phaseRecord] });
+    const phasedRef = { projectId: 'phased', containerId: 'phase', fileId: 'd' };
+    expect(new TextDecoder().decode(await provider.download(ctx, phasedRef))).toBe('IFC');
+    // The same phase name under another project's record must not match.
+    const foreign = setup({ records: [{ ...phaseRecord, projectPhaseName: 'Unknown phase' }] });
+    await expect(foreign.provider.download(foreign.ctx, phasedRef)).rejects.toThrow();
+  });
+  it('skips a same-named location that does not hold the project (two "Default" locations)', async () => {
+    const first = { ...record, versionId: 55, projectName: 'Another project' };
+    const { provider, ctx, fetchFn } = setup({ byLocation: { 2: [first], 3: [{ ...record, locationId: 3 }] } });
+    expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('IFC');
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/space/demo/download/42'))).toBe(true);
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/55'))).toBe(false);
+  });
   it('bounds location probing and refuses historical-version substitution', async () => {
     const empty = setup({ records: [] });
     await expect(empty.provider.download(empty.ctx, ref)).rejects.toThrow('1–10');

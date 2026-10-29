@@ -121,6 +121,24 @@ describe('ViewerBimcollabProvider sign-out', () => {
     assert.ok(await provider.auth.restore(sourceCtx));
     assert.deepEqual((await provider.listProjects(sourceCtx)).items, []);
   });
+
+  it('remembers every signed-out account: signing out of B does not sign A back in', async () => {
+    const a = config();
+    const b = config({ userId: 'b@example.com' });
+    let current = a;
+    const provider = new ViewerBimcollabProvider(() => current, (async () => Response.json({ locations: [] })) as typeof fetch);
+    const sourceCtx = memoryCtx();
+    await provider.auth.signOut(sourceCtx);
+    current = b;
+    await provider.auth.signOut(sourceCtx);
+    current = a;
+    assert.equal(await provider.auth.restore(sourceCtx), null);
+    current = b;
+    assert.equal(await provider.auth.restore(sourceCtx), null);
+    await provider.auth.signIn(sourceCtx);
+    current = a;
+    assert.equal(await provider.auth.restore(sourceCtx), null);
+  });
 });
 
 describe('retryUnauthorized', () => {

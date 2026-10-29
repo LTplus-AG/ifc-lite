@@ -4,24 +4,20 @@
 
 import type { ProxyOptions } from 'vite';
 
-/** Only the local development server forwards these paths. Browser credentials stay same-origin. */
+/** Only distribution and OAuth discovery/exchange cross this fixed-target development proxy. */
 export function registryProxy(target: string): Record<string, ProxyOptions> {
   const upstream = new URL(target);
-  if (upstream.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(upstream.hostname) || upstream.username || upstream.password || upstream.pathname !== '/') {
+  if (upstream.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(upstream.hostname) || upstream.username || upstream.password || upstream.pathname !== '/' || upstream.search || upstream.hash) {
     throw new Error('IFC_REGISTRY_TARGET must be a loopback HTTP origin.');
   }
   const options: ProxyOptions = {
     target: upstream.origin,
-    changeOrigin: false,
+    changeOrigin: true,
     configure(proxy) {
       proxy.on('proxyReq', request => { request.removeHeader('cookie'); });
-      proxy.on('proxyRes', (response, request) => {
+      proxy.on('proxyRes', response => {
+        delete response.headers['set-cookie'];
         // Relative URLs resolve to the browser-facing origin, including alternate dev ports.
-        const challenge = response.headers['www-authenticate'];
-        const publicOrigin = `http://${request.headers.host}`;
-        if (typeof challenge === 'string' && /^Bearer /i.test(challenge)) {
-          response.headers['www-authenticate'] = challenge.replace(/realm="[^"]*"/, `realm="${publicOrigin}/token"`);
-        }
         const location = response.headers.location;
         if (location) {
           const resolved = new URL(location, upstream);
@@ -30,5 +26,5 @@ export function registryProxy(target: string): Record<string, ProxyOptions> {
       });
     },
   };
-  return { '/v2': options, '/token': options };
+  return { '^/v2(?:/|$)': options, '^/oauth/(?:config|token)(?:\\?|$)': options };
 }

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { RegistryError, RegistryTransport, releaseName, repositoryName, responseBytes } from './transport';
+import { RegistryTransport } from './transport';
+import { RegistryError, releaseName, repositoryName, responseBytes } from './protocol';
 
 export const IFC_ARTIFACT_TYPE = 'application/vnd.ifcx-oci.ifc.v1';
 export const OCI_MANIFEST_TYPE = 'application/vnd.oci.image.manifest.v1+json';
@@ -163,7 +164,7 @@ export class RegistryArtifacts {
     const value: Manifest = { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, artifactType: IFC_ARTIFACT_TYPE, config, layers: [layer], annotations: {
       'org.opencontainers.image.title': filename.replace(/\.ifc$/i, ''),
       'org.opencontainers.image.created': new Date().toISOString(),
-      'org.opencontainers.image.authors': this.transport.session?.username ?? '',
+      'org.opencontainers.image.authors': this.transport.session?.subject ?? '',
     } };
     const raw = new TextEncoder().encode(JSON.stringify(value));
     const digest = await sha256(raw);

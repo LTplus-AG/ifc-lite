@@ -5,7 +5,8 @@
 import { create } from 'zustand';
 import { localRegistryAddress } from './connection';
 import type { RegistryRelease } from './artifacts';
-import { RegistryTransport, type RegistrySession } from './transport';
+import { RegistryTransport } from './transport';
+import type { RegistrySession } from './protocol';
 
 interface RegistryWorkspace {
   address: string;

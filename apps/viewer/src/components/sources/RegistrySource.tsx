@@ -11,7 +11,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { sanitizeFilename } from '@/lib/export/download';
-import { RegistryError } from '@/lib/registry/transport';
+import { RegistryError } from '@/lib/registry/protocol';
 import { parseRegistryAddress } from '@/lib/registry/connection';
 import { clearRegistrySession, registryTransport, updateRegistryWorkspace as update, useRegistryWorkspace } from '@/lib/registry/workspace';
 import { RegistryArtifacts, type RegistryRelease } from '@/lib/registry/artifacts';
@@ -38,8 +38,6 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
   const [artifacts] = useState(() => new RegistryArtifacts(transport));
   const { address, session, models, modelTitles, catalogNext, releases, repository, release, version, fingerprint, published } = useRegistryWorkspace();
   const selected = releases.find(item => item.tag === release);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -51,10 +49,9 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
   });
   useEffect(() => () => { pending.current?.abort(); }, []);
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
-  useEffect(() => { if (!expanded) setPassword(''); }, [expanded]);
 
   const logout = () => {
-    pending.current?.abort(); clearRegistrySession(); setPassword(''); setUsername('');
+    pending.current?.abort(); clearRegistrySession();
     setMessage(''); setError(''); setBusy(false);
   };
   const run = async (operation: (signal: AbortSignal) => Promise<void>) => {
@@ -103,10 +100,10 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
     </div>
     <fieldset id={`${id}-content`} hidden={!expanded} disabled={navigationDisabled} aria-label={t('registry.title')} className="min-w-0 space-y-3 border-t p-3">
       {!session ? <form className="grid gap-2" onSubmit={event => {
-        event.preventDefault(); const secret = password; setPassword('');
+        event.preventDefault();
         void run(async signal => {
           const connection = parseRegistryAddress(address);
-          const connected = await transport.login(null, username, secret, signal);
+          const connected = await transport.login(null, signal);
           const catalog = await artifacts.modelCatalog(signal);
           const names = [...catalog.repositories];
           if (connection.repository && connected.repositories.some(access => access.repository === connection.repository && access.actions.includes('pull')) && !names.includes(connection.repository)) names.unshift(connection.repository);
@@ -119,15 +116,11 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
         <Label htmlFor={`${id}-address`}>{t('registry.address')}</Label>
         <Input id={`${id}-address`} value={address} onChange={event => update({ address: event.target.value })} required disabled={busy} autoComplete="off" />
         <p className="text-xs text-muted-foreground">{t('registry.local')}</p>
-        <Label htmlFor={`${id}-username`}>{t('registry.username')}</Label>
-        <Input id={`${id}-username`} value={username} onChange={event => setUsername(event.target.value)} required disabled={busy} autoComplete="username" />
-        <Label htmlFor={`${id}-password`}>{t('registry.password')}</Label>
-        <Input id={`${id}-password`} type="password" value={password} onChange={event => setPassword(event.target.value)} required disabled={busy} autoComplete="off" />
         <p className="text-xs text-muted-foreground">{t('registry.sessionOnly')}</p>
         <Button type="submit" disabled={busy}>{t('registry.signIn')}</Button>
       </form> : <div className="grid min-w-0 grid-cols-1 gap-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{session.username}</span>
+          <span className="text-xs text-muted-foreground">{session.subject}</span>
           <Button size="sm" variant="ghost" onClick={logout}>{t('registry.signOut')}</Button>
         </div>
         {models.length ? <>

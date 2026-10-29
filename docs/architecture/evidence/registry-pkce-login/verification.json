@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-29",
+  "fixture": "apps/viewer/public/samples/hello-wall.ifc",
+  "backendCheckoutAtVerification": "e81f86a6336c1e01fbdf641acc98bdf465f6e04a",
+  "registryProcess": "Started from the debug binary rebuilt during coordination; later backend login styling updates did not change the OAuth contract.",
+  "viewer": "http://127.0.0.1:3017",
+  "registry": "http://127.0.0.1:5107",
+  "repository": "project/model",
+  "release": "revision-2",
+  "login": "Registry-owned browser sign-in; human completed popup, viewer observed connected writer",
+  "loadedGeometryElements": 3,
+  "publishedAndReopened": true,
+  "manifestDigest": "sha256:e8e708da6ce90bdcef4a978324266dc47190bb2501d419cacf994bf4999f94ed",
+  "sourceLayerDigest": "sha256:115379c6b6b564e94e718dabaf878d178b0c464812e8b0330973361627b0744f",
+  "sourceLayerMatchesManifest": true,
+  "sourceBytes": 79580
+}

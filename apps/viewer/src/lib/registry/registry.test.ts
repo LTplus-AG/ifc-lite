@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { Window } from 'happy-dom';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
@@ -9,27 +10,22 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RegistryTransport, RegistryError, repositoryName, releaseName } from './transport';
+import { RegistryTransport } from './transport';
+import { RegistryError, repositoryName, releaseName } from './protocol';
 import { RegistryArtifacts, OCI_MANIFEST_TYPE, sha256 } from './artifacts';
+import { approveRegistryLogin, installRegistryPopup, registryCallback, registryOAuthConfig, registryTokenReply } from '@/test/registry-oauth-fixture';
+import { REGISTRY_CALLBACK_PATH } from './oauth';
+
+// Keep Node's real HTTP fetch for the server integration; only popup/HTML parsing need a DOM.
+const browserWindow = new Window({ url: 'http://localhost/' });
+Object.defineProperty(globalThis, 'window', { configurable: true, value: browserWindow });
+Object.defineProperty(globalThis, 'DOMParser', { configurable: true, value: browserWindow.DOMParser });
 
 test('registry references cannot escape their repository and SHA-256 uses actual bytes', async () => {
   for (const value of ['../private', 'Project/model', 'project//model', 'project/model?token=x']) assert.throws(() => repositoryName(value));
   for (const value of ['../issued', 'tag?x', '-bad']) assert.throws(() => releaseName(value));
   assert.equal(await sha256(new TextEncoder().encode('abc')), 'sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
   assert.throws(() => new RegistryTransport('http://remote.example.com'));
-});
-
-test('a challenge cannot send sign-in credentials to another origin', async () => {
-  const server = createServer((_request, response) => {
-    response.writeHead(401, { 'WWW-Authenticate': 'Bearer realm="https://elsewhere.example/token",service="test"' }); response.end();
-  });
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-  try {
-    const address = server.address(); assert(address && typeof address !== 'string');
-    const transport = new RegistryTransport(`http://127.0.0.1:${address.port}`);
-    await assert.rejects(transport.login('project/model', 'writer', 'unused-test-password'), /another address/);
-    assert.equal(transport.session, null);
-  } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 
 test('an IFC blob with the expected size but different bytes is refused', async () => {
@@ -40,24 +36,26 @@ test('an IFC blob with the expected size but different bytes is refused', async 
   const raw = JSON.stringify({ schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config: layer, layers: [layer] });
   const digest = await sha256(new TextEncoder().encode(raw));
   const server = createServer((request, response) => {
-    if (request.url === '/v2/') {
-      response.writeHead(401, { 'WWW-Authenticate': `Bearer realm="http://${request.headers.host}/token",service="test"` }); response.end();
-    } else if (request.url?.startsWith('/token')) {
-      response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ token: 'test-only', expires_in: 900, access: [{ type: 'repository', name: 'project/model', actions: ['pull'] }] }));
+    if (request.url === '/oauth/config') {
+      response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(registryOAuthConfig(`http://${request.headers.host}`)));
+    } else if (request.url === '/oauth/token') {
+      response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(registryTokenReply('reader', ['pull'])));
     } else if (request.url?.includes('/manifests/')) {
       response.setHeader('Docker-Content-Digest', digest); response.end(raw);
     } else { response.end(changed); }
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const popup = installRegistryPopup(registryCallback);
   try {
     const address = server.address(); assert(address && typeof address !== 'string');
-    const transport = new RegistryTransport(`http://127.0.0.1:${address.port}`);
-    await transport.login('project/model', 'reader', 'unused-test-password');
+    const origin = `http://127.0.0.1:${address.port}`;
+    const transport = new RegistryTransport(origin, origin);
+    await transport.login('project/model');
     await assert.rejects(new RegistryArtifacts(transport).pull('project/model', 'issued'), /integrity check/);
-  } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+  } finally { popup.restore(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 
-test('real Rust registry accepts browser artifacts, preserves IFC bytes, and enforces scopes; ORAS reads the result', { timeout: 30000 }, async context => {
+test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the published artifact (#8310)', { timeout: 30000 }, async context => {
   const binary = process.env.IFCX_OCI_BINARY;
   if (!binary) { context.skip('Set IFCX_OCI_BINARY to run against the Rust registry.'); return; }
   const root = await mkdtemp(join(tmpdir(), 'ifclite-registry-'));
@@ -66,7 +64,9 @@ test('real Rust registry accepts browser artifacts, preserves IFC bytes, and enf
   for (const [name, grant] of [['writer', 'project/model:pull,push'], ['reader', 'project/model:pull']]) {
     execFileSync(binary, ['user', 'add', '--data', data, name, '--grant', grant, '--password-stdin'], { input: password, stdio: ['pipe', 'pipe', 'pipe'] });
   }
-  const server = spawn(binary, ['serve', '--data', data, '--listen', '127.0.0.1:0'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const server = spawn(binary, ['serve', '--data', data, '--listen', '127.0.0.1:0', '--oauth-client-id', 'ifc-lite', '--oauth-redirect-uri', `${window.location.origin}${REGISTRY_CALLBACK_PATH}`], { stdio: ['ignore', 'ignore', 'pipe'] });
+  let signingIn = 'writer';
+  const popup = installRegistryPopup(request => approveRegistryLogin(request, signingIn, password));
   try {
     const origin = await new Promise<string>((resolve, reject) => {
       let output = '';
@@ -77,14 +77,14 @@ test('real Rust registry accepts browser artifacts, preserves IFC bytes, and enf
       });
       server.on('error', error => { clearTimeout(timeout); reject(error); });
     });
-    const writer = new RegistryTransport(origin);
-    const session = await writer.login('project/model', 'writer', password);
+    const writer = new RegistryTransport(origin, origin);
+    const session = await writer.login('project/model');
     assert.deepEqual(session.actions.sort(), ['pull', 'push']);
     const artifacts = new RegistryArtifacts(writer);
     const source = new Uint8Array(await readFile(new URL('../../../public/samples/hello-wall.ifc', import.meta.url)));
     const digest = await artifacts.publish('project/model', 'first', source, 'model.ifc');
-    const discovery = new RegistryTransport(origin);
-    await discovery.login(null, 'writer', password);
+    const discovery = new RegistryTransport(origin, origin);
+    await discovery.login(null);
     const browser = new RegistryArtifacts(discovery);
     const catalog = await browser.modelCatalog();
     assert.deepEqual(catalog.repositories, ['project/model']);
@@ -98,8 +98,9 @@ test('real Rust registry accepts browser artifacts, preserves IFC bytes, and enf
     assert.equal(pulled.digest, digest); assert.deepEqual(pulled.bytes, source);
     assert.deepEqual(await artifacts.tags('project/model'), ['first']);
     await assert.rejects(artifacts.publish('project/model', 'first', source, 'model.ifc'), /already exists/);
-    const reader = new RegistryTransport(origin);
-    assert.deepEqual((await reader.login('project/model', 'reader', password)).actions, ['pull']);
+    const reader = new RegistryTransport(origin, origin);
+    signingIn = 'reader';
+    assert.deepEqual((await reader.login('project/model')).actions, ['pull']);
     assert.equal((await new RegistryArtifacts(reader).pull('project/model', 'first')).digest, digest);
     await assert.rejects(new RegistryArtifacts(reader).publish('project/model', 'denied', source, 'model.ifc'), (error: unknown) => error instanceof RegistryError && error.status === 403);
     await assert.rejects(reader.request('/v2/project/model/manifests/denied', { method: 'PUT', body: '{}' }), (error: unknown) => error instanceof RegistryError && error.status === 403);
@@ -116,20 +117,10 @@ test('real Rust registry accepts browser artifacts, preserves IFC bytes, and enf
     } else { context.diagnostic('ORAS check skipped: set IFCX_ORAS_BINARY.'); }
     writer.logout(); assert.equal(writer.session, null);
     await assert.rejects(artifacts.tags('project/model'), (error: unknown) => error instanceof RegistryError && error.status === 401);
+    assert.deepEqual(popup.errors, []);
   } finally {
+    popup.restore();
     server.kill('SIGTERM'); await new Promise<void>(resolve => server.once('exit', () => resolve()));
     await rm(root, { recursive: true, force: true });
   }
-});
-
-
-test('a same-origin challenge cannot route credentials into another application endpoint', async () => {
-  const server = createServer((request, response) => {
-    response.writeHead(401, { 'WWW-Authenticate': `Bearer realm="http://${request.headers.host}/api/other",service="test"` }); response.end();
-  });
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-  try {
-    const address = server.address(); assert(address && typeof address !== 'string');
-    await assert.rejects(new RegistryTransport(`http://127.0.0.1:${address.port}`).login(null, 'writer', 'unused-test-password'), /sign-in address/);
-  } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

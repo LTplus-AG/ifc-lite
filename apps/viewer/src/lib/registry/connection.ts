@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { RegistryError, releaseName, repositoryName } from './transport';
+import { RegistryError, releaseName, repositoryName } from './protocol';
 export interface RegistryAddress { origin: string; repository?: string; reference?: string }
 export const localRegistryAddress = import.meta.env?.VITE_REGISTRY_ADDRESS ?? 'http://127.0.0.1:5000';
 const loopback = new Set(['localhost', '127.0.0.1', '[::1]']);

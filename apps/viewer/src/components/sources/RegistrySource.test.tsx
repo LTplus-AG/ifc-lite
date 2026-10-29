@@ -11,6 +11,7 @@ import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { clearRegistrySession, useRegistryWorkspace } from '@/lib/registry/workspace';
 import { OCI_MANIFEST_TYPE, sha256 } from '@/lib/registry/artifacts';
 import { SourcesPanel } from './SourcesPanel';
+import { installRegistryPopup, registryCallback, registryOAuthConfig, registryTokenReply } from '@/test/registry-oauth-fixture';
 
 async function mount(enabled = true): Promise<HTMLElement> {
   let ui!: HTMLElement;
@@ -22,15 +23,9 @@ function button(ui: HTMLElement, name: string): HTMLButtonElement {
   assert(found, `Missing ${name} button`);
   return found;
 }
-function field(ui: HTMLElement, selector: string): HTMLInputElement {
-  const found = ui.querySelector<HTMLInputElement>(selector);
-  assert(found, `Missing ${selector} input`);
-  return found;
-}
-
 afterEach(async () => { await act(async () => { cleanup(); clearRegistrySession(); }); });
 
-test('Model registry is opt-in and uses the Cloud Sources connection list', async () => {
+test('Model registry uses a registry sign-in action without viewer credentials (#8310)', async () => {
   const disabled = await mount(false);
   assert(!disabled.textContent?.includes('Model registry'));
   cleanup();
@@ -42,27 +37,29 @@ test('Model registry is opt-in and uses the Cloud Sources connection list', asyn
   assert.equal(entry.getAttribute('aria-expanded'), 'false');
   click(entry);
   assert.equal(entry.getAttribute('aria-expanded'), 'true');
-  const password = field(ui, 'input[type="password"]');
-  type(password, 'temporary-test-secret');
+  assert.equal(ui.querySelector('input[type="password"]'), null);
+  assert.equal(ui.querySelector('input[autocomplete="username"]'), null);
+  assert(button(ui, 'Sign in to ifcx-oci'));
   click(entry);
-  assert.equal(password.value, '', 'collapsing the source clears an unsubmitted password');
-  assert.equal(password.closest('fieldset')?.hidden, true);
+  assert.equal(ui.querySelector('fieldset')?.hidden, true);
 });
 
 test('closing and reopening Cloud Sources preserves the connection; explicit sign-out clears it', async () => {
   const originalFetch = globalThis.fetch;
+  const popup = installRegistryPopup(registryCallback);
   let signIns = 0;
   const raw = JSON.stringify({ schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config: { mediaType: 'application/vnd.oci.empty.v1+json', digest: `sha256:${'a'.repeat(64)}`, size: 2 }, layers: [], annotations: { 'org.opencontainers.image.title': 'Sample building', 'org.opencontainers.image.authors': 'Declared designer' } });
   const digest = await sha256(new TextEncoder().encode(raw));
-  globalThis.fetch = async input => {
+  globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
-    if (url.pathname === '/v2/') return new Response(null, { status: 401, headers: {
-      'WWW-Authenticate': `Bearer realm="${window.location.origin}/token",service="registry-test"`,
-    } });
-    if (url.pathname === '/token') {
+    assert(!new Headers(init?.headers).has('Authorization') || url.pathname.startsWith('/v2/'));
+    if (url.pathname === '/oauth/config') return Response.json(registryOAuthConfig('http://127.0.0.1:5000'));
+    if (url.pathname === '/oauth/token') {
       signIns += 1;
-      return Response.json({ token: 'test-session-only', expires_in: 900,
-        subject: 'writer', access: [{ type: 'registry', name: 'catalog', actions: ['read'] }, { type: 'repository', name: 'project/model', actions: ['pull', 'push'] }] });
+      assert.equal(init?.method, 'POST');
+      const body = new URLSearchParams(String(init?.body));
+      assert(body.get('code_verifier')); assert.equal(body.has('password'), false);
+      return Response.json(registryTokenReply());
     }
     if (url.pathname === '/v2/_catalog') return Response.json({ repositories: ['project/model'] });
     if (url.pathname === '/v2/project/model/manifests/issued') return new Response(raw, { headers: { 'Docker-Content-Digest': digest, 'ifcx-registry-publisher': 'writer', 'ifcx-registry-pushed-at': '1793136000' } });
@@ -71,9 +68,7 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
   };
   try {
     let ui = await mount(); click(button(ui, 'Model registry'));
-    type(field(ui, 'input[autocomplete="username"]'), 'writer');
     const address = ui.querySelector<HTMLInputElement>('input[autocomplete="off"]'); assert(address); type(address, 'http://localhost:5000/project/model:issued');
-    type(field(ui, 'input[type="password"]'), 'test-password');
     const form = ui.querySelector('form'); assert(form);
     act(() => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
     await waitFor(() => Boolean(ui.textContent?.includes('Can publish')), 'registry login should finish');
@@ -89,6 +84,8 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
     click(button(ui, 'Sign out'));
     assert.equal(useRegistryWorkspace.getState().session, null);
     assert.equal(transport.can('pull'), false);
-    assert.equal(field(ui, 'input[type="password"]').value, '');
-  } finally { globalThis.fetch = originalFetch; }
+    assert.equal(ui.querySelector('input[type="password"]'), null);
+    assert(button(ui, 'Sign in to ifcx-oci'));
+    assert.equal(popup.opens(), 1); assert.deepEqual(popup.errors, []);
+  } finally { globalThis.fetch = originalFetch; popup.restore(); }
 });

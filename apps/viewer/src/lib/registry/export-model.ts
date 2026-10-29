@@ -8,7 +8,7 @@ import { exportChangedModelToStep } from '@/lib/export/changed-model-export';
 import { collectChangedModels } from '@/lib/export/model-changes';
 import { mapStepSchema } from '@/lib/export/artifact-naming';
 import { sanitizeFilename } from '@/lib/export/download';
-import { RegistryError } from './transport';
+import { RegistryError } from './protocol';
 
 /** Export the active model through the same complete, mutation-aware path as Export modified IFC. */
 export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBuffer>; filename: string }> {

@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Model registry sign-in</title>
+  </head>
+  <body>
+    <p id="status">Completing model registry sign-in. You can close this window.</p>
+    <script>
+      (function () {
+        'use strict';
+        // Same-origin BroadcastChannel works when COOP severs the popup's opener.
+        // Keep this name in sync with @ifc-lite/oauth-pkce's callback channel.
+        var name = 'ifc-lite:oauth-callback';
+        var url = window.location.href;
+        var state = new URL(url).searchParams.get('state');
+        window.history.replaceState(null, '', window.location.pathname);
+        if (!state) {
+          document.getElementById('status').textContent = 'Sign-in response is missing its state. Try signing in again.';
+          return;
+        }
+        try {
+          var channel = new BroadcastChannel(name);
+          channel.postMessage({ type: name, state: state, url: url });
+          channel.close();
+        } catch (error) {
+          document.getElementById('status').textContent = 'Could not return sign-in to the viewer. Try signing in again.';
+          return;
+        }
+        window.close();
+      })();
+    </script>
+  </body>
+</html>

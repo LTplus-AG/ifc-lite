@@ -14,14 +14,18 @@ Install the workspace dependencies using the repository's
 WASM runtime. `pnpm build:wasm:fetch` obtains an official prebuilt when it matches
 the checkout; otherwise build with `pnpm build:wasm` and the pinned Rust toolchain.
 
-Make the `ifcx-oci` binary and `oras` available in your terminal. These commands
+Make an [ifcx-oci](https://github.com/zahmadsaleem/ifcx-oci) binary with browser
+OAuth support and `oras` available in your terminal. These commands
 use only the public `hello-wall.ifc` fixture already in the repository. Run them
 from the IFClite repository root. Choose passwords when prompted:
 
 ```sh
 ifcx-oci user add --data build/registry-demo/store writer --grant project/model:pull,push
 ifcx-oci user add --data build/registry-demo/store reader --grant project/model:pull
-ifcx-oci serve --data build/registry-demo/store --listen 127.0.0.1:5000
+ifcx-oci serve --data build/registry-demo/store --listen 127.0.0.1:5000 \
+  --oauth-client-id ifc-lite \
+  --oauth-redirect-uri http://localhost:3000/oauth/registry/callback \
+  --oauth-redirect-uri http://127.0.0.1:3000/oauth/registry/callback
 ```
 
 Keep that server running. In another terminal, publish the sample through the
@@ -47,9 +51,14 @@ VITE_REGISTRY_ENABLED=true IFC_REGISTRY_TARGET=http://127.0.0.1:5000 pnpm dev
 ```
 
 Open the local URL printed by Vite, normally `http://localhost:3000`.
+Register that exact viewer origin and callback path with the registry. If Vite
+uses another port, restart the registry with its matching `--oauth-redirect-uri`.
 
 1. Open **File → Cloud Sources**, expand **Model registry**, and paste
-   `http://localhost:5000` into **Registry address**. Connect as the writer.
+   `http://localhost:5000` into **Registry address**. Click **Sign in to ifcx-oci**.
+   A popup opens on the registry's own address. Sign in there as the writer and
+   approve access; the viewer never asks for or receives the password. Allow
+   popups for the viewer if your browser blocks this window.
 2. Choose the model and version from the lists. Publication details identify
    the authenticated publisher and time when the registry recorded them.
    Click **Open model** and close Cloud Sources.
@@ -60,7 +69,7 @@ Open the local URL printed by Vite, normally `http://localhost:3000`.
 5. Click **Open saved version**. Inspect the edited property and geometry to
    confirm the saved IFC was received again. The fetch uses the exact manifest
    digest internally.
-6. Sign out and connect as the reader. Models and versions remain browsable;
+6. Sign out and use the registry popup to connect as the reader. Models and versions remain browsable;
    publishing is disabled and the server also enforces the restriction.
 
 A complete model address such as
@@ -80,20 +89,35 @@ The local demo's same-origin development proxy is pinned to
 UI. Pasted addresses are normalized and must identify that configured registry;
 loopback aliases at its port resolve to the same pinned target. Changing input
 cannot route the proxy to another host or port. URLs containing credentials,
-queries or ambiguous references are rejected before credentials are sent.
+queries or ambiguous references are rejected before sign-in begins.
 
-The proxy forwards `/v2/` and `/token`, removes browser cookies, and rewrites
-Bearer realms and upload locations to the viewer origin. The adapter accepts
-only that token path and registry distribution paths, and rejects redirects,
-foreign realms and upload locations. No browser security setting needs changing.
+The proxy forwards `/v2/`, `/oauth/config` and `/oauth/token`, removes request
+cookies and response cookies, and rewrites upload locations to the viewer
+origin. The credential/approval page at `/oauth/authorize` opens directly on the
+configured registry origin and is never proxied under the viewer's origin.
+Discovery must identify that exact registry authorization endpoint, the public
+client ID configured by the registry, the registered viewer callback, and PKCE S256. Unexpected
+authorization addresses, token endpoints, redirects and upload locations are
+rejected. No browser security setting needs changing.
 Remote registries, arbitrary destinations, static hosting and Vite preview are
 outside this demo's connection scope.
 
-Passwords are cleared after sign-in attempts and source-card collapse. Tokens
-and selected-model state live only in tab memory across closing/reopening Cloud
+Sign-in uses OAuth 2.0 Authorization Code with PKCE S256: each attempt creates a
+fresh random verifier and state, sends only the challenge to the registry, and
+redeems the returned one-time code with the matching verifier. The callback
+validates its exact origin/path, state and unambiguous parameters. A static
+callback page returns the result through the existing origin-scoped
+BroadcastChannel, which works with the viewer's cross-origin isolation.
+Sign-in times out after five minutes; closing Cloud Sources cancels an active
+attempt, and sign-out prevents late token responses from restoring the session.
+
+The verifier, state, tokens and selected-model state live only in tab memory
+across closing/reopening Cloud
 Sources. Sign-out or connection changes clear authentication and model metadata;
-expiry requires reconnecting. Closing Cloud Sources cancels in-flight requests.
-This uses local accounts and scoped Bearer tokens, rather than OAuth/OIDC.
+the scoped token expires after 15 minutes and requires reconnecting. No refresh
+token is issued. Registry-owned local accounts remain available on the registry
+website; CLI and ORAS retain their separate OCI login. No external identity
+provider is required. The viewer has no Basic-auth or password fallback.
 
 The UI uses the [Distribution catalog
 API](https://distribution.github.io/distribution/spec/api/#listing-repositories)
@@ -149,8 +173,13 @@ pnpm lint
 ```
 
 Without the executable variables, integration/ORAS coverage reports its skipped
-portion. The tests cover address parsing, credential boundaries, authenticated
+portion. The tests cover address parsing, S256 challenge/verifier binding,
+callback validation, sign-out races, credential boundaries, authenticated
 model discovery, publisher/time metadata, actual edited IFC export, integrity,
 reader denials, existing-version refusal, panel-close session survival and
 independent ORAS retrieval. Generic file-source providers retain their existing
 download API; publishing is a registry-specific action within Cloud Sources.
+
+The [recorded browser walkthrough](../architecture/evidence/registry-pkce-login/README.md)
+shows the password-free viewer, successful registry login, publication and reopen,
+with independent ORAS integrity verification.

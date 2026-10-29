@@ -102,7 +102,7 @@ test('#7955 M3 unreviewed synthetic cases, including the baked scaled cutter, ma
 });
 
 
-test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in the unmet-normals header', {
+test('#7955 M4 and M11 committed extrusion OBJ changes only its obligation header', {
   timeout: 120000,
   skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT header identity evidence',
 }, async () => {
@@ -126,5 +126,5 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
   assert.equal(current.length, previous.length, 'no added geometry, normals, groups or materials');
   const changed = current.flatMap((line, index) => line === previous[index] ? [] : [index]);
   assert.deepEqual(changed, [3], 'the ONLY changed line must be the presentation obligations header');
-  assert.equal(current[3], previous[3].replace(', PersistentFaces', '') + ', SurfaceNormals', 'M11-F discharges PersistentFaces');
+  assert.equal(current[3], previous[3].replace(', MaterialLayers', '').replace(', PersistentFaces', '') + ', SurfaceNormals', 'M4 discharges inapplicable layers and M11-F discharges persistent faces');
 });

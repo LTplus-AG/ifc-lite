@@ -371,3 +371,53 @@ root 'Model' context, as the other fixtures here do.
 Independent checks (IfcOpenShell schema/EXPRESS validation, parse/write/parse, an
 IfcOpenShell tessellation of the volumes, styles and (d) face areas) and the exact
 CLI export receipts belong in the private handoff, as for the other fixtures here.
+
+## M11-A appearance fixture (f-m11a-appearance) — generated, hand-derived oracle
+
+`f-m11a-appearance.ifc` and `f-m11a-appearance.oracle.json` come from
+`generate-appearance.py` (`--check` verifies byte reproducibility; Python standard
+library only, no IFC engine participates). Every expected RGBA, material name and item id
+is authored in the generator from the constants that write the styles into the file; none
+is read back from either engine. The tolerance is `appearanceSyntheticRgbaAbsolute` in
+`tests/fixtures/cli-retained/tolerances.d/m11-a.json`; the exact comparison is separate,
+bitwise, per `(product, geometry_item_id)`.
+
+Exact decides a styled sub-mesh's colour with `presentation_source::color`, keyed by the
+**leaf item the walk reached** (`mapping_accept.rs`: `Merging::Styled(item.item().id, mesh)`),
+never by the enclosing `IfcMappedItem`. Per leaf: a direct `IfcStyledItem`; else the
+`IfcMappedItem` chase (only when the leaf itself is a mapped item); else the element's
+material list through ONE cursor per product (even steps prefer the transparent entry,
+odd steps the opaque one); else the element colour (the first style the product's
+representation items reach, a mapped item's own style first; else the first opaque material
+colour; else the class default). A window or door part is named `Window_Glass`/`Door_Glass`
+when alpha <= 0.65, else `Window_Frame_<leaf id>`.
+
+| role | product | what it separates | expected parts (item: RGBA, name) |
+|---|---|---|---|
+| a-styled | #29 | direct style, transparency 0.3 | #19: (0.2,0.4,0.6,0.7) |
+| b-material | #39 | material-only wall; **not** an arm isolator (cursor and fallback agree) | #33: (0.9,0.8,0.1,1) |
+| c1..c9 | #68..#156 | nine occurrences of one styled map; key is the map's solid, not the mapped item | #51: (0.7,0.2,0.2,1) each |
+| d-default / e-* | #166, #180, #194 | class default; reveal host colour; fixed opening colour | see oracle |
+| f-window | #209 | material cursor over two flat leaves; glass listed first, fallback is the frame | #199: glass 0.35 `Window_Glass`; #203: frame `Window_Frame_203` |
+| g-type | #236 | type map takes the map style and class 1 | (0.3,0.6,0.9,0.5) |
+| h-window-map | #265 | ONE `IfcMappedItem` -> map of two styled leaves: two colours, names and ids | #240: (0.5,0.75,1,0.25) `Window_Glass`; #244: (0.25,0.125,0.0625,1) `Window_Frame_244` |
+| i-window-map-materials | #286 | the same map with **unstyled** leaves and materials [glass T 0.5, frame]: the cursor runs across the map's leaves (glass is the only arm that can give 0.5; the fallback is the frame) | #269: (0.5,0.75,1,0.5) `Window_Glass`; #273: (0.25,0.125,0.0625,1) `Window_Frame_273` |
+| j-mapped-item-style | #331 | the `IfcMappedItem` is styled blue, one leaf red, one bare: the red leaf keeps its own style; the bare leaf takes the **element colour**, which is the map's style | #306: (0.75,0.25,0.25,1); #310: (0.25,0.25,0.75,1) |
+| k-nested-map | #374 | a map of two map items, each over one styled leaf: each leaf sits inside two occurrences and keeps its own colour and id | #335: (0.25,0.75,0.25,1); #339: (0.75,0.75,0.25,1) |
+| l-window-twice | #396 | one single-leaf map used by TWO occurrences of one window: two sub-meshes of the same leaf, so two cursor steps | #378: glass 0.5 `Window_Glass`; #378: frame `Window_Frame_378` |
+
+Colour components are dyadic (exact in f32). Cases h to l were added after review showed
+that c1..c9 (a single-solid map styled on its solid) cannot tell the leaf from the
+enclosing occurrence. `f-m11a-pixel` (an opaque red box and a
+material-only yellow wall) is the viewer fixture: `tests/e2e/retained-viewer.e2e.spec.ts`
+asserts, against its oracle and never against the path under test, the colours handed to the
+renderer (the viewer store), the colours its scene holds (`__ifc_lite_scene_owner__`) and the
+pixels it draws: each product is isolated and framed, the renderer's own colour attachment is read
+back (`__ifc_lite_capture_color_frame__`, not the compositor), and at least 90% of the product's
+pixels must sit nearest its authored hue (shading scales a colour, it does not turn it). The
+scene hooks and the readback are required, so a renderer that cannot produce them fails the test.
+`f-m11a-pixel-grey` is the same scene with both colours lost to grey: the witness must read
+grey and none of the authored hue, which proves it fails when the colour is not the authored one.
+The default exact path is read with the same witness as a control. The pixel witness needs the
+lane's software WebGPU (`--use-angle=swiftshader`); a hardware NVIDIA device under default headless
+flags is destroyed by the browser before any frame, so it is not a supported configuration.

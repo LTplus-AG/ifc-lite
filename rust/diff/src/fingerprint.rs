@@ -42,6 +42,10 @@ pub use checked::{
     check_property_sets, check_quantity_sets, check_type_assignments,
 };
 
+#[path = "fingerprint_pair.rs"]
+mod pair;
+pub use pair::build_fingerprint_pair_checked;
+
 /// A normalized scalar: what a property value collapses to before hashing.
 #[derive(Debug, Clone, PartialEq)]
 enum NormalizedValue {
@@ -118,9 +122,13 @@ struct NamedEntry {
 
 impl NamedEntry {
     fn to_json(&self) -> JsonValue {
+        // Fixed member field names account for two allocations per property.
+        // The shared code units are immutable and keep the same JSON order.
+        static KEYS: std::sync::OnceLock<[JsString; 2]> = std::sync::OnceLock::new();
+        let [name, value] = KEYS.get_or_init(|| ["name".into(), "value".into()]);
         JsonValue::Object(vec![
-            ("name".into(), JsonValue::String(self.name.clone())),
-            ("value".into(), self.value.to_json()),
+            (name.clone(), JsonValue::String(self.name.clone())),
+            (value.clone(), self.value.to_json()),
         ])
     }
 }
@@ -148,7 +156,8 @@ fn sorted_entries(entries: &SparseCollection<PropertyEntryInput>) -> Vec<JsonVal
         })
         .collect();
     normalized.sort_by(|a, b| {
-        cmp_name_then_content((&a.name, &a.to_json()), (&b.name, &b.to_json()))
+        // #8042: most names differ; do not allocate JSON for an unused tiebreak.
+        a.name.cmp(&b.name).then_with(|| cmp_sorted(&a.to_json(), &b.to_json()))
     });
     with_holes(normalized.into_iter().map(|entry| entry.to_json()).collect(), entries.holes())
 }

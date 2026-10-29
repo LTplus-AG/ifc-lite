@@ -12,11 +12,16 @@ fn normalize_type(value: &JsString) -> JsString {
     value.normalized_class()
 }
 
-fn index<R>(entities: &[EntityFingerprint<R>]) -> Vec<(JsString, usize)> {
-    let mut seen = HashSet::new();
-    entities.iter().enumerate()
-        .filter(|(_, entity)| seen.insert(&entity.key))
-        .map(|(i, entity)| (entity.key.clone(), i)).collect()
+fn index<R>(entities: &[EntityFingerprint<R>]) -> (Vec<(JsString, usize)>, HashMap<&JsString, usize>) {
+    let mut lookup = HashMap::with_capacity(entities.len());
+    let mut order = Vec::with_capacity(entities.len());
+    for (i, entity) in entities.iter().enumerate() {
+        if let std::collections::hash_map::Entry::Vacant(slot) = lookup.entry(&entity.key) {
+            slot.insert(i);
+            order.push((entity.key.clone(), i));
+        }
+    }
+    (order, lookup)
 }
 
 fn resolve_aliases(
@@ -44,8 +49,13 @@ fn resolve_aliases(
 }
 
 pub(crate) fn changed_components(base: &HashMap<JsString, JsString>, head: &HashMap<JsString, JsString>) -> Vec<JsString> {
-    let mut keys: Vec<_> = base.keys().chain(head.keys()).collect::<HashSet<_>>()
-        .into_iter().filter(|key| base.get(*key) != head.get(*key)).cloned().collect();
+    // #8042: visit each map directly, without allocating and hashing a union.
+    // Equal cardinality plus no changed base members proves equality; the
+    // overwhelmingly common unchanged case needs only one lookup per member.
+    let mut keys: Vec<_> = base.iter().filter(|(key, value)| head.get(*key) != Some(*value))
+        .map(|(key, _)| key.clone()).collect();
+    if keys.is_empty() && base.len() == head.len() { return keys; }
+    keys.extend(head.keys().filter(|key| !base.contains_key(*key)).cloned());
     keys.sort_by(cmp_code_units);
     keys
 }
@@ -55,15 +65,31 @@ pub(crate) fn changed_components(base: &HashMap<JsString, JsString>, head: &Hash
 pub fn diff_by_key<'a, R>(
     base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
 ) -> KeyDiff<'a, R> {
+    diff_by_key_impl(base, head, options, true)
+}
+
+pub(crate) fn diff_by_key_for_transport<'a, R>(
+    base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
+) -> KeyDiff<'a, R> {
+    diff_by_key_impl(base, head, options, false)
+}
+
+fn diff_by_key_impl<'a, R>(
+    base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
+    build_index: bool,
+) -> KeyDiff<'a, R> {
     let excluded: HashSet<JsString> = options.exclude_types.iter().map(normalize_type)
         .filter(|name| !name.is_empty()).collect();
     let is_excluded = |entity: &EntityFingerprint<R>| !excluded.is_empty() && excluded.contains(&normalize_type(&entity.ifc_type));
-    let base_order = index(base);
-    let mut head_order = index(head);
+    let (base_order, base_index) = index(base);
+    let (mut head_order, mut head_index) = index(head);
     let applied_key_aliases = options.key_aliases.as_ref()
         .map(|aliases| resolve_aliases(&base_order, &mut head_order, aliases));
-    let base_index: HashMap<_, _> = base_order.iter().map(|(key, i)| (key, *i)).collect();
-    let head_index: HashMap<_, _> = head_order.iter().map(|(key, i)| (key, *i)).collect();
+    // The deduplication maps are already the first-occurrence indices. Only
+    // alias replacement changes keys and requires rebuilding the head index.
+    if applied_key_aliases.as_ref().is_some_and(|aliases| !aliases.is_empty()) {
+        head_index = head_order.iter().map(|(key, i)| (key, *i)).collect();
+    }
     let base_has_geometry = base_order.iter().any(|(key, i)| {
         base[*i].geometry_hash.is_some() && !is_excluded(&base[*i])
             && head_index.get(key).is_none_or(|j| !is_excluded(&head[*j]))
@@ -74,7 +100,7 @@ pub fn diff_by_key<'a, R>(
     });
     let consider_data = options.scope != DiffScope::Geometry;
     let use_geometry = options.scope != DiffScope::Data && base_has_geometry == head_has_geometry;
-    let mut entries = Vec::new();
+    let mut entries = Vec::with_capacity(base_order.len().max(head_order.len()));
     for (key, i) in &base_order {
         let base_entity = &base[*i];
         let head_entity = head_index.get(key).map(|j| &head[*j]);
@@ -112,9 +138,9 @@ pub fn diff_by_key<'a, R>(
         });
     }
     let mut counts = DiffCounts::default();
-    let mut by_key = HashMap::new();
+    let mut by_key = if build_index { HashMap::with_capacity(entries.len()) } else { HashMap::new() };
     for (i, entry) in entries.iter().enumerate() {
-        by_key.insert(entry.key.clone(), i);
+        if build_index { by_key.insert(entry.key.clone(), i); }
         match entry.state {
             DiffState::Added => counts.added += 1,
             DiffState::Modified => counts.modified += 1,

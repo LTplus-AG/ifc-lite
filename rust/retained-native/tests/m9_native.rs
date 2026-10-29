@@ -57,8 +57,7 @@ fn check(shape: &ShapeOnlyProduct, parts: usize, volume: f64, bbox: [f64; 6]) {
     assert_eq!(actual.defects, 0);
     assert!(metrics::relative(actual.volume, volume) <= 1e-6, "{} vs {volume}", actual.volume);
     assert!(metrics::bbox_deviation(&actual.bbox, &bbox) <= 1e-5);
-    assert_eq!(shape.obligations.0, [ifc_lite_geometry::program::transactions::Requirement::MaterialLayers,
-        ifc_lite_geometry::program::transactions::Requirement::IfcAppearance]);
+    assert_eq!(shape.obligations.0, [ifc_lite_geometry::program::transactions::Requirement::MaterialLayers]);
 }
 #[test]
 fn issue_7955_m9_native_mixed_frames_and_survey_origin() {
@@ -79,14 +78,30 @@ fn issue_7955_m9_native_boolean_map_composes() {
 }
 #[test]
 fn issue_7955_m9_native_refusals_are_atomic() {
-    for (text, expected, zero_calls) in [(fixtures::mirrored(), "incomplete", true),
-        (fixtures::unsupported_second(), "operation_unsupported", false)] {
-        let Some((outcomes, calls)) = run(&text, &[20]) else { return; };
-        assert_eq!(outcomes.len(), 1);
-        assert!(matches!(&outcomes[0], ProductOutcome::Refused { product_id: 20, refusal, .. } if refusal.code() == expected), "{outcomes:?}");
-        if zero_calls { assert_eq!(calls, 0); }
-    }
+    let Some((outcomes, _)) = run(&fixtures::unsupported_second(), &[20]) else { return; };
+    assert_eq!(outcomes.len(), 1);
+    assert!(matches!(&outcomes[0], ProductOutcome::Refused { product_id: 20, refusal, .. }
+        if refusal.code() == "operation_unsupported"), "{outcomes:?}");
     println!("sdk witness executed: m9_atomic_refusals");
+}
+// #7955 M10: the mirrored nested map (Axis1 = -X, explicit Axis2 = +Y) is an
+// affine final and publishes. Hand source: the centred 1 m box maps onto
+// itself, so volume 1, bbox unchanged, and outward winding (signed > 0).
+#[test]
+fn issue_7955_m10_native_mirrored_type_map_publishes_outward() {
+    let Some((outcomes, calls)) = run(&fixtures::mirrored(), &[20]) else { return; };
+    assert!(calls > 0);
+    let shape = shape(&outcomes, 20);
+    check(shape, 1, 1., [-0.5,-0.5,0.,0.5,0.5,1.]);
+    for part in &shape.parts {
+        let signed: f64 = part.indices.chunks_exact(3).map(|t| {
+            let p = |i: u32| { let i = i as usize * 3; [part.positions[i], part.positions[i+1], part.positions[i+2]] };
+            let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
+            (a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6.
+        }).sum();
+        assert!((signed - 1.).abs() < 1e-9, "signed {signed}");
+    }
+    println!("sdk witness executed: m10_mirrored_type_map");
 }
 #[test]
 fn issue_7955_m9_native_curve_only_and_instanced_types_are_absent() {

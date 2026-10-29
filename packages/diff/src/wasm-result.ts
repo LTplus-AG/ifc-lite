@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ContentMatch, DiffEntry, EntityFingerprint, ModelDiff, SplitMergeClaim, SuccessorClaim } from './types.js';
 
-type IndexedEntry = Omit<DiffEntry, 'base' | 'head'> & { base?: number; head?: number };
+type IndexedEntry = Omit<DiffEntry, 'key' | 'base' | 'head'> & { key?: string; base?: number; head?: number };
 type IndexedContent = Omit<ContentMatch, 'base' | 'head'> & { base: number[]; head: number[] };
 type IndexedSplit = Omit<SplitMergeClaim, 'whole' | 'pieces' | 'excluded'> & { whole: number; pieces: number[]; excluded?: number };
 type IndexedSuccessor = Omit<SuccessorClaim, 'base' | 'head'> & { base: number; head: number };
@@ -16,18 +16,26 @@ export type IndexedDiff = Omit<ModelDiff, 'entries' | 'byKey' | 'appliedKeyAlias
 };
 
 /** Reuse the original entity objects, including opaque refs, in every result. */
-export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly EntityFingerprint<TRef>[], head: readonly EntityFingerprint<TRef>[]): ModelDiff<TRef> {
-  const entries: DiffEntry<TRef>[] = raw.entries.map(entry => ({
-    key: entry.key, state: entry.state, changeKinds: entry.changeKinds,
-    ...(entry.base === undefined ? {} : { base: base[entry.base] }),
-    ...(entry.head === undefined ? {} : { head: head[entry.head] }),
-    ...(entry.changedComponents === undefined ? {} : { changedComponents: entry.changedComponents }),
-  }));
+export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly EntityFingerprint<TRef>[], head: readonly EntityFingerprint<TRef>[], keys?: readonly [readonly string[], readonly string[]]): ModelDiff<TRef> {
+  // The decoded records are owned by this call. Restore in place so a second
+  // object graph and an intermediate Map tuple array never become live (#8042).
+  const entries = raw.entries as unknown as DiffEntry<TRef>[];
+  const byKey = new Map<string, DiffEntry<TRef>>();
+  for (const indexed of raw.entries) {
+    const baseIndex = indexed.base, headIndex = indexed.head;
+    const entry = indexed as unknown as DiffEntry<TRef>;
+    entry.key = indexed.key ?? (baseIndex === undefined
+      ? (keys ? keys[1][headIndex!] : head[headIndex!].key)
+      : (keys ? keys[0][baseIndex] : base[baseIndex].key));
+    if (baseIndex !== undefined) entry.base = base[baseIndex];
+    if (headIndex !== undefined) entry.head = head[headIndex];
+    byKey.set(entry.key, entry);
+  }
   return {
     scope: raw.scope,
     excludedTypes: raw.excludedTypes,
     entries,
-    byKey: new Map(entries.map(entry => [entry.key, entry])),
+    byKey,
     counts: raw.counts,
     ...(raw.contentMatches === undefined ? {} : {
       contentMatches: raw.contentMatches.map(match => ({

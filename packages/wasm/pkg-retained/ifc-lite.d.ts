@@ -204,7 +204,7 @@ export type RetainedSessionEvent =
 | (RetainedShapeProduct & { kind: 'published' })
 | (RetainedProductRefusal & { kind: 'refused' })
 | { kind: 'published'; expressId: number; ifcType: string;
-marker: 'PresentationObligationsUnmet';
+marker: 'final' | 'PresentationObligationsUnmet';
 obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
 meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string;
 instanceWorldFromObject?: Float64Array };
@@ -250,7 +250,7 @@ export interface RetainedShapeProduct {
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
-    marker: 'PresentationObligationsUnmet';
+    marker: 'final' | 'PresentationObligationsUnmet';
     obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
     instanceKey?: string;
 }
@@ -2089,7 +2089,7 @@ export class RetainedModelRun {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Returns one atomic shape-only product or typed refusal, undefined at end.
+     * Returns one atomic final or shape-only product or typed refusal, undefined at end.
      */
     next(): RetainedProductOutcome | undefined;
 }

@@ -28,7 +28,7 @@ const DOC_PATHS = [
 ];
 const RESPONSE_HEADERS = ['content-type', 'content-length', 'content-disposition', 'etag', 'last-modified'];
 
-export type BimcollabRoute = { target: URL; spaceGuid?: string; index: boolean };
+export type BimcollabRoute = { target: URL; spaceGuid?: string; index: boolean; download?: boolean };
 
 /** No decoding: tokens need no escapes, so encoded separators cannot sneak in. */
 export function resolveBimcollabRoute(path: string): BimcollabRoute | null {
@@ -49,7 +49,7 @@ export function resolveBimcollabRoute(path: string): BimcollabRoute | null {
     return { target: new URL(`${origin}/documents/api/documentapi/getdocuments`), index: true };
   }
   if (parts.length === 4 && parts[2] === 'download' && positiveInteger(parts[3])) {
-    return { target: new URL(`${origin}/documents/da/location/0/project/0/documentinstance/download/${parts[3]}`), index: false };
+    return { target: new URL(`${origin}/documents/da/location/0/project/0/documentinstance/download/${parts[3]}`), index: false, download: true };
   }
   return null;
 }
@@ -77,7 +77,9 @@ async function fetchRestricted(fetchImpl: typeof fetch, target: URL, init: Reque
     const next = new URL(location, current);
     // An off-origin login URL is still rejected, never followed with credentials.
     if (next.origin !== target.origin || next.username || next.password) throw new Error('Off-host redirect');
-    if (/^\/(?:Identity\/Account\/Login|identity\/login)(?:\/|$)/i.test(next.pathname)) {
+    // BIMcollab's login lives at /identity/login, and under /documents for the
+    // document-management app (`/documents/Identity/Account/Login`, measured).
+    if (/^(?:\/documents)?\/(?:Identity\/Account\/Login|identity\/login)(?:\/|$)/i.test(next.pathname)) {
       return new Response(null, { status: 401 });
     }
     // Index POST is a fixed operation, not a redirectable write primitive.
@@ -135,6 +137,11 @@ export function createBimcollabRelayHandler(config: BimcollabRelayConfig, deps: 
         return json(result.status, result.body, cors);
       }
       const response = await send({ method: request.method, headers });
+      // A model download never answers HTML; an HTML 200 is a login or error page.
+      if (route.download && response.ok && /^text\/html\b/i.test(response.headers.get('content-type') ?? '')) {
+        await response.body?.cancel();
+        return json(401, { error: 'unauthorized' }, cors);
+      }
       if (!response.ok) {
         const detail = await readLimitedText(response, 4096);
         return json(response.status, { error: response.status === 401 ? 'unauthorized' : 'upstream_error', detail }, cors);
@@ -145,8 +152,10 @@ export function createBimcollabRelayHandler(config: BimcollabRelayConfig, deps: 
         if (value !== null) responseHeaders.set(name, value);
       }
       return new Response(request.method === 'HEAD' ? null : response.body, { status: response.status, headers: responseHeaders });
-    } catch {
-      // Deliberately generic: upstream exceptions can contain URLs and tokens.
+    } catch (error) {
+      // Deliberately generic: upstream exceptions can contain URLs and tokens,
+      // so only the error class is logged.
+      console.warn('[bimcollab-relay] upstream request failed:', error instanceof Error ? error.name : typeof error);
       return json(502, { error: 'Upstream request failed' }, cors);
     }
   };

@@ -111,7 +111,7 @@ test('BIMcollab relay: off-host redirects rejected, login mapped to 401, same-or
     assert.equal((await handler(request('space/test/download/42'))).status, 502);
     assert.equal(calls.length, 1);
   }
-  for (const location of ['/Identity/Account/Login?returnUrl=foo', '/identity/login']) {
+  for (const location of ['/Identity/Account/Login?returnUrl=foo', '/identity/login', '/documents/Identity/Account/Login?ReturnUrl=%2Fdocuments%2Fda']) {
     const { handler } = fixture(() => new Response(null, { status: 302, headers: { location } }));
     const response = await handler(request('space/test/download/42'));
     assert.equal(response.status, 401);
@@ -190,4 +190,23 @@ test('BIMcollab relay: upstream 404 detail unchanged, bounded errors and malform
   assert.equal((await malformed.handler(request('space/test/index?locationId=2'))).status, 502);
   const huge = fixture(() => new Response('x'.repeat(10000), { status: 503 }));
   assert.equal((await (await huge.handler(request())).json()).detail.length, 4096);
+});
+
+test('BIMcollab relay: an HTML 200 on a download is a login page, never a model', async () => {
+  const { handler } = fixture(() => new Response('<!DOCTYPE html><title>Login</title>', { headers: { 'content-type': 'text/html; charset=utf-8' } }));
+  const response = await handler(request('space/test/download/42'));
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, 'unauthorized');
+  // Documents API JSON is unaffected by the download-only guard.
+  const docs = fixture(() => new Response('<p>odd</p>', { headers: { 'content-type': 'text/html' } }));
+  assert.equal((await docs.handler(request())).status, 200);
+});
+
+test('BIMcollab relay: a version-less index record is skipped, the rest still listed', async () => {
+  const broken = { ...document(1), latestVersion: null };
+  const { handler } = fixture(() => Response.json({ recordsTotal: 2, data: [document(0), broken] }));
+  const response = await handler(request('space/test/index?locationId=2'));
+  assert.equal(response.status, 200);
+  const { records } = await response.json();
+  assert.deepEqual(records.map((r: { documentId: number }) => r.documentId), [0]);
 });

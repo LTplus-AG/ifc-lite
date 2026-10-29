@@ -84,7 +84,12 @@ export async function readIndex(
     const page = object(JSON.parse(pageText));
     const total = integer(page.recordsTotal);
     if (!Array.isArray(page.data) || page.data.length > 500) throw new Error('Invalid index page');
-    records.push(...page.data.map(projectDocument));
+    // One malformed or version-less document must not hide the rest of the index.
+    for (const item of page.data) {
+      try { records.push(projectDocument(item)); } catch (error) {
+        console.warn('[bimcollab-relay] skipped index record:', error instanceof Error ? error.message : String(error));
+      }
+    }
     if (start + page.data.length >= Math.min(total, 5000)) break;
     if (page.data.length !== 500) throw new Error('Incomplete index page');
   }

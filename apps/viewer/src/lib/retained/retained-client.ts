@@ -129,6 +129,9 @@ export class RetainedClient {
     }
     if (message.kind === 'start') run.candidates = message.candidateIds;
     if (message.kind === 'published' || message.kind === 'refused') run.received.add(message.expressId);
+    if (message.kind === 'published') {
+      for (const product of message.instanceProducts ?? []) run.received.add(product.expressId);
+    }
     if (message.kind === 'complete') run.done = true;
     run.queue.push(message);
     run.wake?.();

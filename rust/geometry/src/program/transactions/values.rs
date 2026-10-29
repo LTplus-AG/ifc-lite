@@ -15,6 +15,27 @@ impl Value {
     pub fn as_ref(&self) -> ValueRef<'_> { ValueRef(&self.0) }
 }
 impl<'a> ValueRef<'a> {
+    /// M11-I: source-only, single mapped occurrence with existing proper-rigid
+    /// placement authority. Derived Boolean/clip/layer/affine values have no
+    /// source definition and cannot acquire instancing authority here.
+    pub fn instance_representation_map(self) -> Option<u32> {
+        if self.world_from_source().is_none() || !self.0.is_product_placed() {
+            return None;
+        }
+        let placements = self.0.placements();
+        if placements.iter().filter(|p| matches!(p.stage, logical::RetainedPlacementStage::Mapping { .. })).count() != 1
+            || placements.iter().any(|p| logical::proper_rigid(&nalgebra::Matrix4::from_column_slice(&p.matrix)).is_err())
+            || logical::proper_rigid(&self.0.world_from_evaluation()).is_err() {
+            return None;
+        }
+        let bindings = self.0.presentation();
+        if bindings.iter().any(|p| p.texture_pending.is_some() || p.indexed_palette_pending || p.type_product.is_some()) {
+            return None;
+        }
+        let mut maps = bindings.iter().filter_map(|p| p.representation_map);
+        let map = maps.next()?;
+        maps.next().is_none().then_some(map)
+    }
     /// Source binding facts for diagnostics, not complete appearance authority.
     pub fn bindings(self) -> impl Iterator<Item = (u32, u32, Option<(u32, u8)>)> + 'a {
         self.0.presentation().iter().map(|p| (p.geometry_id, p.style_source_id, p.type_product))

@@ -240,15 +240,16 @@ mod tests {
     fn issue_7955_rotated_mirror_uses_preregistered_roundoff_factor() {
         let limits=NumericalLimits {chord_metres:0.001,angle_degrees:5.,max_bytes:16*1024*1024};
         let mut strict_would_refuse=false;
-        for angle in [0.1_f64,0.2,0.3,0.7,1.1] {
-            let (s,c)=(2.*angle).sin_cos();
-            let mirror=[c,s,0., s,-c,0., 0.,0.,1.];
-            assert!(Matrix3::from_column_slice(&mirror).determinant()<0.);
-            let sigma=singular(mirror).1;
+        for x in [0.1,0.3,0.7,1.1] {for y in [0.2,0.5,0.9] {
+            let rotation=nalgebra::Rotation3::from_euler_angles(x,y,0.4);
+            let mut mirror=*rotation.matrix();
+            mirror.set_column(0,&(-mirror.column(0)));
+            assert!(mirror.determinant()<0.);
+            let sigma=mirror.singular_values().max();
             strict_would_refuse |= sigma>1.;
             assert!(contracting_or_linear(sigma,true));
             assert!(affine_chord_admissible(sigma,1.,limits));
-        }
+        }}
         assert!(strict_would_refuse,"witness must distinguish the old strict comparison");
         assert!(!affine_chord_admissible(1.+2e-12,1.,limits));
     }

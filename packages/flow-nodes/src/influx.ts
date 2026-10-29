@@ -24,7 +24,11 @@ export function containsInfluxToken(value: string, token: string): boolean {
   if (encoded !== token && value.toLowerCase().includes(encoded.toLowerCase())) return true;
   // Partially or noncanonically encoded forms (e.g. `secret%2Fa+b`) decode to the token.
   if (!value.includes('%')) return false;
-  try { return decodeURIComponent(value).includes(token); } catch { return false; }
+  // Decode each run of valid escapes on its own so an unrelated stray `%` cannot hide one.
+  const decoded = value.replace(/(?:%[0-9a-fA-F]{2})+/g, run => {
+    try { return decodeURIComponent(run); } catch { return run; }
+  });
+  return decoded.includes(token);
 }
 
 /** Share raw/URI-encoded redaction for every surfaced error. */

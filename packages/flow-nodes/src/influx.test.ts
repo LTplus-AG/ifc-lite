@@ -121,6 +121,7 @@ describe('InfluxDB shared adapters (#8090)', () => {
     expect(selectionContainsToken({ ...selection, unit: 'secret%2fa%2bb' }, 'secret/a+b')).toBe(true);
     expect(selectionContainsToken({ ...selection, unit: 'secret%2Fa+b' }, 'secret/a+b')).toBe(true);
     expect(selectionContainsToken({ ...selection, unit: '100%' }, 'secret/a+b')).toBe(false);
+    expect(selectionContainsToken({ ...selection, unit: '100% secret%2Fa+b' }, 'secret/a+b')).toBe(true);
     expect(selectionContainsToken(selection, 'secret/a+b')).toBe(false);
   });
   it('#8297 redacts case-variant and partially encoded tokens in errors', () => {

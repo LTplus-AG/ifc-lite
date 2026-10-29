@@ -5360,3 +5360,21 @@ to a branch can reuse a dependency set that predates a newly added module.
 Check the rebuilt executable's dependency file for the new module, not just
 Cargo's success status. The initial cached branch run was rejected; processing
 was rebuilt and the branch measurements repeated before accepting the result.
+
+### D66 default-off allocation code generation (#7782)
+
+The native default-off instruction regression was dominated by vector-growth
+helpers, not the new optional layer-index check. A control retaining base Rust
+source and substituting only the required major-bump Cargo manifests reproduced
+those helpers' self-instruction changes. Batch-level const specialization did
+not meet the gate and was reverted.
+
+Preallocating the usual two incident triangles per facet edge avoids the hot
+empty-vector growth path while preserving growable storage for non-manifold
+edges. The fresh base/branch comparison passes every instruction phase on Haus,
+duplex and ISSUE_129, with identical ordered mesh payloads and diagnostics; the
+default-off preprocessing savings remain. Compact source-bound results are in
+`tests/evidence/c4-d66-slicing/default-off-ir.json`. This is an instruction-count
+verdict, not an elapsed-time or browser worker-pool speed claim. Lesson: a crate
+version change can alter generic allocation code generation even when the
+geometry source is identical; inspect callees before specializing dispatch.

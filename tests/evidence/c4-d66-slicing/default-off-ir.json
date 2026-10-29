@@ -1,0 +1,122 @@
+{
+  "base": "853d7c9781b34fb41c83425d38de58c39141fc69",
+  "head": "c6dc36ed52ed8123ada7eaaf025311df90afa2ad",
+  "rows": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "ratios": {
+        "parseIr": 0.9995848362949361,
+        "entityScanIr": 1.0000000179877473,
+        "lookupIr": 0.9999941654417723,
+        "preprocessIr": 0.9983733316477539,
+        "geometryIr": 0.9997160819839452,
+        "totalIr": 0.9996900217325044
+      },
+      "identity": {
+        "meshes": true,
+        "vertices": true,
+        "triangles": true,
+        "inputSha256": true,
+        "captureSha256": true,
+        "geometryPayloadFnv1a64": true,
+        "diagnosticsSha256": true,
+        "perExpressId": true
+      },
+      "pass": true
+    },
+    {
+      "fixture": "duplex.ifc",
+      "ratios": {
+        "parseIr": 0.9977132695570226,
+        "entityScanIr": 1.0000000189706841,
+        "lookupIr": 0.9999929227089039,
+        "preprocessIr": 0.9812280780998894,
+        "geometryIr": 0.9839749711871364,
+        "totalIr": 0.985134426870326
+      },
+      "identity": {
+        "meshes": true,
+        "vertices": true,
+        "triangles": true,
+        "inputSha256": true,
+        "captureSha256": true,
+        "geometryPayloadFnv1a64": true,
+        "diagnosticsSha256": true,
+        "perExpressId": true
+      },
+      "pass": true
+    },
+    {
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "ratios": {
+        "parseIr": 0.9971805582975691,
+        "entityScanIr": 1.0000000039614774,
+        "lookupIr": 1.0,
+        "preprocessIr": 0.8829574690593662,
+        "geometryIr": 0.9946002409325079,
+        "totalIr": 0.9946237793168953
+      },
+      "identity": {
+        "meshes": true,
+        "vertices": true,
+        "triangles": true,
+        "inputSha256": true,
+        "captureSha256": true,
+        "geometryPayloadFnv1a64": true,
+        "diagnosticsSha256": true,
+        "perExpressId": true
+      },
+      "pass": true
+    }
+  ],
+  "rootCause": "The required Rust crate major bump changes allocation-helper code generation. A base-source control with only head Cargo manifests and lockfile reproduces the exact RawVec self-Ir shifts. The per-router layer option check is not the dominant regression.",
+  "versionOnlyControl": {
+    "baseGeometryIr": 913792401,
+    "headGeometryIr": 915747380,
+    "versionOnlyGeometryIr": 915542764
+  },
+  "selfIr": [
+    {
+      "function": "alloc::raw_vec::RawVecInner<A>::finish_grow",
+      "base": 9871910,
+      "head": 13802508,
+      "versionOnly": 13802508,
+      "headDelta": 3930598,
+      "versionOnlyDelta": 3930598
+    },
+    {
+      "function": "alloc::raw_vec::RawVec<T,A>::grow_one",
+      "base": 3179752,
+      "head": 6332280,
+      "versionOnly": 6332280,
+      "headDelta": 3152528,
+      "versionOnlyDelta": 3152528
+    },
+    {
+      "function": "alloc::raw_vec::RawVecInner<A>::reserve::do_reserve_and_handle",
+      "base": 591870,
+      "head": 591870,
+      "versionOnly": 591870,
+      "headDelta": 0,
+      "versionOnlyDelta": 0
+    },
+    {
+      "function": "alloc::raw_vec::RawVecInner<A>::with_capacity_in",
+      "base": 160596,
+      "head": 160596,
+      "versionOnly": 160596,
+      "headDelta": 0,
+      "versionOnlyDelta": 0
+    },
+    {
+      "function": "alloc::raw_vec::RawVecInner<A>::grow_amortized",
+      "base": 5342328,
+      "head": 22437,
+      "versionOnly": 22437,
+      "headDelta": -5319891,
+      "versionOnlyDelta": -5319891
+    }
+  ],
+  "fix": "Preallocate two triangle-incidence entries per facet edge; retain growable vectors for non-manifold edges. No geometry algorithm or slicing default change.",
+  "limit": "Instruction counts and native byte identity only; no elapsed-time or browser worker-pool speed claim."
+}

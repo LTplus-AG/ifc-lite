@@ -82,6 +82,12 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
   readonly manifest: PluginManifest = { ...BIMCOLLAB_MANIFEST, auth: 'interactive' };
   readonly auth: SourceAuth;
   private bound: BoundSession | null = null;
+  /**
+   * Mirror of the persisted sign-out set. With localStorage blocked the host
+   * falls back to per-context memory, which the next context cannot read; this
+   * keeps a sign-out effective for the provider's lifetime regardless.
+   */
+  private readonly signedOutInSession = new Set<string>();
 
   constructor(
     private readonly loadConfig: () => BcfServerConfig | null = loadBcfServerConfig,
@@ -120,17 +126,20 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
    */
   private async readSignedOut(ctx: PluginContext): Promise<string[]> {
     const raw = await ctx.storage.get(SIGNED_OUT_KEY);
-    if (raw === undefined) return [];
+    if (raw === undefined) return [...this.signedOutInSession];
     try {
       const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : [];
+      const stored = Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : [];
+      return [...new Set([...stored, ...this.signedOutInSession])];
     } catch (error) {
       console.warn('[bimcollab-source] ignoring unreadable sign-out state', error instanceof Error ? error.name : error);
-      return [];
+      return [...this.signedOutInSession];
     }
   }
 
   private async writeSignedOut(ctx: PluginContext, keys: readonly string[]): Promise<void> {
+    this.signedOutInSession.clear();
+    for (const key of keys) this.signedOutInSession.add(key);
     if (keys.length === 0) await ctx.storage.delete(SIGNED_OUT_KEY);
     else await ctx.storage.set(SIGNED_OUT_KEY, JSON.stringify(keys));
   }

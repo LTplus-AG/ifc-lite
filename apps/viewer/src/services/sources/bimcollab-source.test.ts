@@ -122,6 +122,16 @@ describe('ViewerBimcollabProvider sign-out', () => {
     assert.deepEqual((await provider.listProjects(sourceCtx)).items, []);
   });
 
+  it('keeps a sign-out across fresh contexts when storage does not persist (blocked localStorage)', async () => {
+    const provider = new ViewerBimcollabProvider(() => config(), (async () => Response.json({ locations: [] })) as typeof fetch);
+    await provider.auth.signOut(memoryCtx());
+    // Every operation gets a new context whose fallback storage is empty.
+    assert.equal(await provider.auth.restore(memoryCtx()), null);
+    await assert.rejects(provider.listProjects(memoryCtx()), BimcollabNotConnectedError);
+    await provider.auth.signIn(memoryCtx());
+    assert.ok(await provider.auth.restore(memoryCtx()));
+  });
+
   it('remembers every signed-out account: signing out of B does not sign A back in', async () => {
     const a = config();
     const b = config({ userId: 'b@example.com' });

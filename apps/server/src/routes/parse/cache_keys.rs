@@ -76,7 +76,6 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
         query.layer_slicing,
     )
 }
-
 /// Typed `ParseResponse` cache key for the JSON transport.
 ///
 /// Versioned SEPARATELY from [`request_cache_key`], which is the client-facing

@@ -170,7 +170,6 @@ pub async fn parse_parquet_stream(
     // the data-model fill below share it, and it is released when the last of
     // them ends.
     let admission = Arc::new(admission_guard);
-
     // Create streaming response that yields Parquet batches
     let stream = process_streaming(
         content.clone(),

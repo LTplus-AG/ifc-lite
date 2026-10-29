@@ -25,7 +25,7 @@ import {
 import { en, de, fr, it, ru } from './locales/index.js';
 import { describeWithNestedFacets } from '../preview/partof-nested.js';
 import { failedName } from '../validation/format-failure-reason.js';
-import { legacyParams } from './legacy-slots.js';
+import { selfQuotedCatalogue } from './self-quoted.js';
 
 type Translations = typeof en;
 
@@ -42,11 +42,15 @@ export function createTranslationService(
 
 class IDSTranslationServiceImpl implements TranslationService {
   readonly locale: SupportedLocale;
+  /** The exported catalogue, which `t()` reads. */
+  private catalogue: Translations;
+  /** The catalogue the service's own descriptions render from (#8306). */
   private translations: Translations;
 
   constructor(locale: SupportedLocale) {
     this.locale = locale;
-    this.translations = LOCALES[locale] || LOCALES.en;
+    this.catalogue = LOCALES[locale] || LOCALES.en;
+    this.translations = selfQuotedCatalogue(this.catalogue);
   }
 
   /**
@@ -55,7 +59,7 @@ class IDSTranslationServiceImpl implements TranslationService {
   t(key: string, params?: Record<string, string | number>): string {
     // Navigate to the translation value
     const parts = key.split('.');
-    let value: unknown = this.translations;
+    let value: unknown = this.catalogue;
 
     for (const part of parts) {
       if (value && typeof value === 'object' && part in value) {
@@ -72,8 +76,7 @@ class IDSTranslationServiceImpl implements TranslationService {
 
     // Interpolate parameters
     if (params) {
-      // Callers pass raw names; keep the quoting they got before #8306.
-      return this.interpolate(value, legacyParams(key, params));
+      return this.interpolate(value, params);
     }
 
     return value;

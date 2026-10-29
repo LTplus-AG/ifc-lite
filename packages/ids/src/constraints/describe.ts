@@ -219,7 +219,7 @@ const FORMAT_CACHE = new WeakMap<IDSConstraint, string>();
  */
 export function exactConstraintValue(constraint: IDSConstraint): string | undefined {
   if (constraint.type === 'simpleValue') return constraint.value;
-  if (constraint.type === 'enumeration' && constraint.values.length === 1 && conjunctiveFacetsOf(constraint) === undefined) {
+  if (constraint.type === 'enumeration' && constraint.values.length === 1 && (conjunctiveFacetsOf(constraint)?.length ?? 0) === 0) {
     return constraint.values[0];
   }
   return undefined;

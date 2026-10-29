@@ -55,6 +55,12 @@ export interface RetainedGeometrySummary {
   faces?: Record<number, RetainedFaceRow[]>;
 }
 
+/** Kernel scope and worker lifetime depend on the open model, independently of presentation. */
+export function hasRetainedGeometryModel(models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>): boolean {
+  for (const model of models.values()) if (model.retainedGeometry) return true;
+  return false;
+}
+
 /** Tooltip/reason for every mesh-derived export and tool refused on a retained model. */
 export const RETAINED_SHAPE_ONLY_REASON: TranslationKey = 'retainedGeometry.shapeOnlyReason';
 

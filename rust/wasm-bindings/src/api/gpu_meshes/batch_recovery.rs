@@ -13,6 +13,9 @@ pub(super) fn recover(
     batch_finishes: &mut BatchFinishes<'_>,
     decoder: &mut EntityDecoder,
 ) -> Vec<super::instancing::ShardOccurrence> {
+    // Retained instanceable meshes provide batch-local template facts. Resolve
+    // kept shard instances and recover sub-threshold/ineligible templates flat.
+    // Empty (unarmed / no occurrences) keeps the output byte-identical.
     if all_occurrences.is_empty() {
         Vec::new()
     } else {
@@ -25,6 +28,8 @@ pub(super) fn recover(
                 }
                 if let Some(im) = m.instance.as_ref() {
                     if im.instanceable {
+                        // Use the partition's same opaque, untextured class-0
+                        // candidate gate so recovery and output cannot drift.
                         let eligible = is_instancing_candidate(m);
                         template_by_rep
                             .entry(im.rep_identity)
@@ -42,6 +47,8 @@ pub(super) fn recover(
             INSTANCE_MIN_OCCURRENCES as usize,
             &mut recovered_flats,
         );
+        // Recovered occurrences are single-mesh outputs with no instance meta:
+        // the partition sends them flat, byte-identical to the flat baseline.
         for m in recovered_flats {
             let id = m.express_id;
             outputs.push(ElementMeshOutput {

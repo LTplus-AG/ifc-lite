@@ -94,6 +94,17 @@ pub(super) fn instanced((outputs, _, _): BatchOutput, wire: &BatchWire<'_>) -> V
         })
         .filter(|(m, _)| m.geometry_class == 0)
         .unzip();
+    // `refs` borrows the geometry in `meshes`; both live to the end of this
+    // method and collate_and_encode consumes them synchronously below.
+    //
+    // ONLY ordinary occurrences (geometry_class == 0) are instanced. Type-
+    // product geometry — orphan type maps (class 1) and instanced type maps
+    // (class 2) — is left to the flat path, which the viewer's Model/Types
+    // view-mode filter gates (ViewportContainer drops class 2 in Model mode,
+    // class 0 in Types mode). The instanced path has no view-mode filter, so
+    // including class 1/2 here would render type geometry unconditionally
+    // (the opaque type-template shapes drawing over the real occurrences —
+    // the "blue windows/roof" + type geometry showing in Model mode).
     let refs: Vec<ifc_lite_geometry::InstanceMeshRef> = meshes
         .iter()
         .map(|m| ifc_lite_geometry::InstanceMeshRef {
@@ -107,6 +118,10 @@ pub(super) fn instanced((outputs, _, _): BatchOutput, wire: &BatchWire<'_>) -> V
             item_id: m.geometry_item_id,
         })
         .collect();
+    // min_group = 2: instance any repeat; singletons + non-instanceable flat.
+    // Pass the applied RTC so per-occurrence transforms are reduced to the
+    // post-RTC frame (matches the small baked origins; without it a rotated
+    // occurrence lands at 2× the georef offset and collapses GLB exports).
     let rtc = rtc(wire);
     let collated = ifc_lite_geometry::collate_refs(&refs, 2, rtc);
     ifc_lite_geometry::encode_refs_with_finishes(&refs, &collated, &wires)
@@ -119,6 +134,22 @@ pub(super) fn partitioned(
     if wire.needs_shift {
         mesh_collection.set_rtc_offset(wire.rtc_x, wire.rtc_y, wire.rtc_z);
     }
+    // Route opaque + untextured + class-0 occurrences by per-batch REPETITION.
+    // Instancing trades 1 consolidated, frustum-culled flat draw for 1 drawIndexed
+    // per template. That only pays off when geometry repeats enough that the saved
+    // upload/memory is real and the per-template draw is amortized over many
+    // instances. Singleton / low-count geometry encoded as 1-instance templates was
+    // the orbit-FPS regression: it replaced the flat path's ~3-15 consolidated draws
+    // with O(unique-geometry) per-frame draws (e.g. an 8 MB-geom architectural model
+    // where memory was never the constraint). So: only rep_identity groups occurring
+    // >= INSTANCE_MIN_OCCURRENCES times in this batch go to the instanced shard;
+    // everything else (singletons, low-count, non-instanceable, no-meta) joins the
+    // flat MeshCollection and is consolidated + culled exactly as before the flip.
+    //
+    // Transparent (alpha < cutoff), textured (no UV slot in the instanced pipeline),
+    // type-product (class 1/2) and class-toggled (IfcSpace, IfcOpeningElement, …,
+    // #5409) geometry are never instancing candidates — they must stay on the flat
+    // pipelines for correct blending / texturing / view-mode / class-toggle gating.
     let mut candidates: Vec<(ifc_lite_processing::MeshData, Finish)> = Vec::new();
     let mut counts: rustc_hash::FxHashMap<u128, u32> = rustc_hash::FxHashMap::default();
     for out in outputs {
@@ -126,6 +157,8 @@ pub(super) fn partitioned(
         for (i, mesh_data) in out.meshes.into_iter().enumerate() {
             let finish = finish_at(&out.finishes, i);
             if is_instancing_candidate(&mesh_data) {
+                // Count only instanceable metas, as collate_refs does: absent
+                // or non-instanceable metas cannot instance or inflate a tally.
                 if let Some(rep) = tallyable_rep(&mesh_data) {
                     *counts.entry(rep).or_insert(0) += 1;
                 }
@@ -138,6 +171,12 @@ pub(super) fn partitioned(
             mesh_collection.push_geometry_hash(fp);
         }
     }
+    // #1623 Phase 3: fold the kept don't-bake occurrence counts into the per-rep
+    // tally so a batch-local template (materialized ONCE, so count 1 among the
+    // candidates) plus its N shard occurrences clears INSTANCE_MIN_OCCURRENCES
+    // and routes to the instanced shard (the finalize already applied that gate,
+    // so this only confirms it). The template's geometry rides the shard once;
+    // the occurrences ride as pose-only instances against it.
     for occ in &shard_occurrences {
         *counts.entry(occ.rep_identity).or_insert(0) += 1;
     }
@@ -164,6 +203,8 @@ fn encode_partition(
     csg_diag: GeometryDiagnostics,
     rtc: [f64; 3],
 ) -> PartitionedBatch {
+    // Each materialized template and each pose-only occurrence contributes
+    // one shard instance to the viewer's mesh total.
     let instanced_occurrences = instanced.len() + shard_occurrences.len();
     let occ_metas: Vec<ifc_lite_geometry::InstanceMeta> = shard_occurrences
         .iter()

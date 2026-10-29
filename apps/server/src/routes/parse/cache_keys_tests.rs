@@ -442,3 +442,18 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
         assert_ne!(optimized, json_response_cache_key(&seed));
     }
 }
+
+#[test]
+fn issue_7782_d66_slicing_cache_identity_roundtrips() {
+    let content = include_bytes!("../../../../../rust/processing/tests/fixtures/c4_native_unsliced_layers_7782.ifc");
+    let off = ParseQuery::default();
+    let on = ParseQuery { layer_slicing: true, ..ParseQuery::default() };
+    let quality = TessellationQuality::default();
+    let default_key = request_cache_key(content, &off, quality);
+    let sliced_key = request_cache_key(content, &on, quality);
+    assert_ne!(default_key, sliced_key);
+    let hash = crate::services::cache::DiskCache::generate_key(content);
+    assert_eq!(cache_key_from_parts(&hash, off.opening_filter, quality, false), default_key);
+    assert_eq!(cache_key_from_parts(&hash, on.opening_filter, quality, true), sliced_key);
+    assert!(crate::routes::cache::resolve_request_cache_key(&sliced_key).is_ok());
+}

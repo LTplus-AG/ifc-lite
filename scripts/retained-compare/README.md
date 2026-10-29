@@ -6,9 +6,10 @@ coverage manifests (including per-slice fragments), running shape and view detai
 `products.tsv` is read unmodified; its SHA256 is recorded in `summary.json`.
 `retainedReport` supplies the f64 volumes and `metrics.compare` enforces the
 preregistered 1e-9 native/browser tolerance. M5 registers a 1e-7 exception only
-for rows with a passing `clipSectionVolumeRelative` source oracle whose
-`sourceCurved` metadata is true. A runtime `curved` flag alone never qualifies;
-planar clips and unclipped curves retain 1e-9. The source-oracle limits remain
+for rows where EVERY `clipPart` is source-curved with an executed clip and every
+gated M5 source-oracle row (including `clipSectionVolumeRelative`) passes. A
+runtime `curved` flag alone never qualifies; a planar clip, an unclipped curve or
+a mix of clipped and unclipped parts keeps 1e-9. The source-oracle limits remain
 unchanged, and `scopedVolumeRows` records every selected exception. The M5
 registration records the measured gap, evidence path, and approved margin.
 View checks independently authenticate

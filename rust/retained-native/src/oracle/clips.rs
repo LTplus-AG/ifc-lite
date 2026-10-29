@@ -146,8 +146,10 @@ fn source_parts(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, pr
     Ok(parts)
 }
 /// Authored plane clips of one product's own Body parts, in world metres with
-/// outward normals (the removed side is positive). No volume or opening work:
-/// the normal oracle needs these as independent source surfaces of the cut face.
+/// outward normals (the removed side is positive). The normal oracle needs these
+/// as independent source surfaces of the cut face. This walks `source_parts`, so
+/// it also computes the per-leaf section volumes, which this caller discards; no
+/// opening work is done.
 pub fn source_planes(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
     -> Result<Vec<Plane>, String> {
     Ok(source_parts(model, sources, product)?.into_iter().flat_map(|p| p.planes).collect())

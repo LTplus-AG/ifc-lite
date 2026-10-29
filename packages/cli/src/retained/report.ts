@@ -3,7 +3,7 @@ import type { RetainedProductOutcome } from '../../../wasm/pkg-retained/ifc-lite
 import type { RetainedEngine } from './engine.js';
 import { partVolume, worldPoints } from './obj.js';
 
-export function retainedReport(engine: RetainedEngine, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
+export function retainedReport(engine: RetainedEngine, instanceMinOccurrences: number, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
   const byCode: Record<string, number> = {};
   // Report byte-identical candidates; OBJ keeps every occurrence baked. The
   // viewer additionally verifies f32 pairings within each bounded host window.
@@ -32,7 +32,7 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       ...(part.faces ? { faces: faceReport(part) } : {}) }));
     return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
-      ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= engine.instanceMinOccurrences
+      ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= instanceMinOccurrences
         ? { instanceGroup: { templateProductId: groups.get(p.instanceKey)!.templateProductId, key: p.instanceKey } }
         : {}) };
   });

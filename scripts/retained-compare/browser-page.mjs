@@ -57,6 +57,6 @@ export async function runModel(model) {
     runs[detail] = { start, outcomes, summary, qualificationMs: qualificationMs - qualificationBefore,
       productWallMs: elapsed, wasmHeapBytes: wasm.get_memory().buffer.byteLength };
   }
-  return { ...runs, prepass, importMs };
+  return { ...runs, prepass, importMs, instanceMinOccurrences: wasm.instanceMinOccurrences() };
 }
 export function dispose() { session?.free(); api?.free(); }

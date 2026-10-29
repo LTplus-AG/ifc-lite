@@ -71,7 +71,7 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
   const { runRetained } = await import('../../packages/cli/dist/retained/run.js');
   const { retainedObj } = await import('../../packages/cli/dist/retained/obj.js');
   const source = await readFile('tests/fixtures/synthetic-retained/f-c-extrusion.ifc');
-  const outcomes = await runRetained(await validateEngine(engine), source);
+  const { outcomes } = await runRetained(await validateEngine(engine), source);
   assert.ok(outcomes.length > 0 && outcomes.every(p => p.status === 'published'));
   for (const product of outcomes) {
     assert.deepEqual(product.obligationsUnmet, ['MaterialLayers'], 'M11-A, M11-F and M11-N discharge everything but the layers');

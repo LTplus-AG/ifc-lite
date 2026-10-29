@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 // #7955 M2-A: real controller + actual qualified SMLib Worker, never a kernel fake.
+import { instancingContract } from './m11-instancing-contract.mjs';
 export async function runSessionContract(wasm, fixture, manifest, RetainedDriver) {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const sameIds = (actual, expected) => [...actual].sort((a, b) => a - b).join(',') === [...expected].sort((a, b) => a - b).join(',');
@@ -12,6 +13,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
   const session = new wasm.RetainedModelSession();
   const prepass = api.buildPrePassOnce(bytes);
   const summaries = [];
+  const instances = instancingContract();
   let qualifications = 0;
   const qualify = RetainedDriver.prototype.qualify;
   // Pass through to the real SDK witnesses; observe calls without substituting results.
@@ -37,7 +39,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
           assert(event.expressId === start.candidateIds[published.length], 'sink follows canonical job order');
           assert(event.marker === 'PresentationObligationsUnmet' && event.obligationsUnmet.length > 0, 'shape-only marker retained');
           assert(!event.obligationsUnmet.includes('SurfaceNormals'), 'M11-N discharges surface normals');
-          assert(event.instanceKey === undefined, 'M11-0 optional instancing stays absent');
+          instances.collect(event);
           published.push(event.expressId);
           if (detail === 'view') {
             assert(event.cuts === 0 && event.consumedParts === 0, 'view event carries the M3 cut diagnostics (no openings here)');
@@ -54,7 +56,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
             }
           } else {
             assert(event.parts.length > 0 && event.parts.every(part => part.positions instanceof Float64Array), 'shape detail preserves M1 f64 parts');
-            assert(event.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3 && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === undefined), 'M11-0 copies every revision-local face; M11-F keys every triangle; M11-N supplies every corner normal');
+            assert(event.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3 && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === event.instanceKey), 'M11-0 copies every revision-local face; M11-F keys every triangle; M11-N supplies every corner normal; M11-I preserves the instance key');
             assert(event.parts.every(part => Array.isArray(part.color) && part.color.length === 4 && Number.isInteger(part.geometryItemId)), 'M11-A resolves an appearance for every part');
             assert(!event.obligationsUnmet.includes('IfcAppearance'), 'M11-A discharges IfcAppearance');
           }
@@ -69,7 +71,7 @@ export async function runSessionContract(wasm, fixture, manifest, RetainedDriver
     const events = [];
     const empty = await session.run(bytes, { detail: 'shape', ids: new Uint32Array() }, event => events.push(event));
     assert(empty.candidates === 0 && events.length === 1 && events[0].candidateIds.length === 0, 'empty ids selects nothing');
-    return { passed: true, summaries };
+    return { passed: true, summaries, instancing: await instances.finish(wasm, prepass.rtcOffset) };
   } finally {
     RetainedDriver.prototype.qualify = qualify;
     api.clearPrePassCache();

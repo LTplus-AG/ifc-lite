@@ -5,8 +5,8 @@
 /**
  * Canonical, order-independent data fingerprinting for the compare demo.
  *
- * **The real implementation lives in `@ifc-lite/diff`** — see
- * `packages/diff/src/fingerprint.ts` in this repo, which exports
+ * **The production implementation lives in `@ifc-lite/diff`** (Rust/WASM).
+ * The historical TS reference is `packages/diff/test/oracle/fingerprint.ts`, with
  * `buildDataFingerprint`, `buildComponentFingerprints`, `normalizeValue` and
  * `stableHash` with the same semantics and far more prose about why each rule
  * exists. In a real application, import them from the package instead of

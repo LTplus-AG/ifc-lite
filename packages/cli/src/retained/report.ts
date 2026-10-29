@@ -3,8 +3,18 @@ import type { RetainedProductOutcome } from '../../../wasm/pkg-retained/ifc-lite
 import type { RetainedEngine } from './engine.js';
 import { partVolume, worldPoints } from './obj.js';
 
-export function retainedReport(engine: RetainedEngine, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
+export function retainedReport(engine: RetainedEngine, instanceMinOccurrences: number, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
   const byCode: Record<string, number> = {};
+  // Report byte-identical candidates; OBJ keeps every occurrence baked. The
+  // viewer additionally verifies f32 pairings within each bounded host window.
+  const groups = new Map<string, { templateProductId: number; count: number }>();
+  for (const p of outcomes) {
+    if (p.status !== 'published' || !p.instanceKey) continue;
+    const group = groups.get(p.instanceKey) ?? { templateProductId: p.expressId, count: 0 };
+    group.count++;
+    group.templateProductId = Math.min(group.templateProductId, p.expressId);
+    groups.set(p.instanceKey, group);
+  }
   const products = [...outcomes].sort((a, b) => a.expressId - b.expressId).map(p => {
     const common = { id: p.expressId, globalId: globalId(p.expressId), ifcType: p.ifcType, status: p.status };
     if (p.status === 'refused') {
@@ -22,7 +32,9 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       ...(part.faces ? { faces: faceReport(part) } : {}) }));
     return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
-      ...(p.instanceGroup ? { instanceGroup: p.instanceGroup } : {}) };
+      ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= instanceMinOccurrences
+        ? { instanceGroup: { templateProductId: groups.get(p.instanceKey)!.templateProductId, key: p.instanceKey } }
+        : {}) };
   });
   const published = outcomes.filter(p => p.status === 'published').length;
   return { format: 'ifc-lite.retained-report/1',

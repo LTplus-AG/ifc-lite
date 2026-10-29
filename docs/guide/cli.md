@@ -1811,6 +1811,11 @@ The optional `ifc-lite.retained-report/1` JSON contains engine identity, setting
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
 refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.
+Byte-identical eligible mapped products meeting the loaded engine’s minimum
+occurrence count carry
+`instanceGroup: { templateProductId, key }`. This describes sharing candidates;
+the viewer separately verifies each pairing in bounded batches. OBJ always
+bakes every occurrence, regardless of its instance group.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
 
@@ -1827,8 +1832,8 @@ resolved appearance (`color`, `materialName`, `geometryItemId`): the IFC source 
 colour resolver the exact engine uses, so the retained and exact colours of a part are bitwise equal.
 A product whose binding carries a texture or an indexed colour palette refuses with
 `appearance_unsupported` instead of publishing a plain colour; none exists in the committed
-corpus, and tessellated bodies, the only carriers, refuse upstream. Material-ID and instance
-channels remain reserved for their independently qualified presentation slices.
+corpus, and tessellated bodies, the only carriers, refuse upstream. The material-ID
+channel remains reserved for its independently qualified presentation slice.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°
 guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored frames refuse `incomplete` until winding and normals can be flipped together. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible

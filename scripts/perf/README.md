@@ -240,6 +240,14 @@ quick-only name lookup: quick metadata pays one additional classification per
 admitted job, while the default path avoids carrying a reason tuple.
 This is a deliberate scope tradeoff, not a quick-metadata optimization.
 
+Fresh-build verdict: every default pipeline phase meets the exact-base gate
+on Haus, duplex and ISSUE_129, with counts, serialized captures, payloads,
+diagnostics and per-element data identical. Dispatch span collection only for
+classes that can contribute spans, and inline the shared admission/classification
+helpers so extraction does not add call overhead. Force source freshness when
+switching archived revisions in a shared Cargo target; a fast Cargo success
+alone does not prove the branch binary was rebuilt.
+
 
 ## Remote near-plane recovery (#7633)
 

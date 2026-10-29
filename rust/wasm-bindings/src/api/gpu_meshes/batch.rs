@@ -466,7 +466,8 @@ impl IfcAPI {
             // `SuppressInstanced` (an export must not duplicate geometry).
             let kind = if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
                 let rep_map_ids = ifc_lite_processing::discovery::record_refs_at(
-                    &content[start..end], 6,
+                    content.get(start..end).unwrap_or_default(),
+                    ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
                 );
                 if rep_map_ids.is_empty() {
                     continue;

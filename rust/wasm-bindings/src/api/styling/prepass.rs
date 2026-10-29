@@ -140,7 +140,7 @@ pub(crate) fn collect_type_geometry_jobs(
             if decoder.decode_at_with_id(id, start, end).is_ok() {
                 // IfcTypeProduct.RepresentationMaps = attr 6.
                 let rep_maps = ifc_lite_processing::discovery::record_refs_at(
-                    &content[start..end], 6,
+                    &content[start..end], ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
                 );
                 if !rep_maps.is_empty() {
                     candidates.push((id, start, end, ifc_type, rep_maps));
@@ -183,7 +183,7 @@ pub(crate) fn collect_type_geometry_jobs_from_spans(
     for (id, start, end, ifc_type) in type_candidate_spans {
         if decoder.decode_at_with_id(*id, *start, *end).is_ok() {
             let rep_maps = ifc_lite_processing::discovery::record_refs_at(
-                &content[*start..*end], 6,
+                &content[*start..*end], ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
             );
             if !rep_maps.is_empty() {
                 candidates.push((*id, *start, *end, ifc_type.clone(), rep_maps));

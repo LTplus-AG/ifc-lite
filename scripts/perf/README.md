@@ -8,7 +8,7 @@
 
 The shared discovery-span plan passed the native instruction gate against
 `241e855cd9` on Haus, duplex, and ISSUE_129 at `e5ab066bbe`. Every phase stayed
-within 1.0005, and ordered mesh payload, serialized capture, aggregate
+within 1.00005, and ordered mesh payload, serialized capture, aggregate
 diagnostics, and per-Express-ID identity matched. The source-pinned comparison
 is in `c4-7ar-build-r1.json` with the Rust sweep evidence. This is a native
 reconciliation verdict; it makes no browser worker-pool timing claim.

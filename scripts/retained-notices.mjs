@@ -72,6 +72,12 @@ export function checkNotices(root = ROOT, check = true) {
       }
     }
   }
+  // Absence is not compliance: every inventoried component must preserve at least one
+  // licence/notice text (directly or through a supplemental election).
+  const textless = manifest.components.filter(c => !Array.isArray(c.notices) || c.notices.length === 0);
+  if (textless.length) {
+    throw new Error(`Component without preserved licence text: ${textless.map(c => `${c.name} ${c.version}`).join(', ')}`);
+  }
   for (const supplement of manifest.inputs.supplemental) {
     const component = manifest.components.find(c => c.name === supplement.name && c.version === supplement.version);
     if (!component || (supplement.election && (component.election !== supplement.election ||

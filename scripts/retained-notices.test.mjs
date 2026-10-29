@@ -44,9 +44,14 @@ checksum="${'a'.repeat(64)}"
   put('.github/workflows/geometry-platform.yml', `repository: emscripten-core/emsdk\nref: ${'c'.repeat(40)}\nrun: emsdk/emsdk install 4.0.15\n`);
   put('licenses/retained/supplemental.json', '[]');
   for (const dir of ['packages/cli', 'packages/wasm']) mkdirSync(join(root, dir), { recursive: true });
+  // Every component must preserve a licence text (absence is not compliance).
+  const licenceText = 'Fixture MIT licence text\n';
+  const licenceSha = createHash('sha256').update(licenceText).digest('hex');
+  put(`licenses/retained/texts/${licenceSha}.txt`, licenceText);
   put('licenses/retained/manifest.json', JSON.stringify({ inputs: inventoryInputs(root), components: [{
     name: 'external', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index',
-    license: 'MIT', scope: 'inert fixture', notices: [],
+    license: 'MIT', scope: 'inert fixture',
+    notices: [{ file: `texts/${licenceSha}.txt`, origin: 'LICENSE', sha256: licenceSha }],
   }] }));
   checkNotices(root, false);
   return { root, change(path, replace) { put(path, replace(readFileSync(join(root, path), 'utf8'))); } };
@@ -136,4 +141,14 @@ test('Refs #7955 notice check refuses omitted election evidence even after outpu
     return JSON.stringify(manifest);
   });
   assert.throws(() => checkNotices(f.root, false), /Missing supplemental evidence/);
+});
+
+test('Refs #7955 a component without any preserved licence text fails the check', t => {
+  const f = fixture(t);
+  f.change('licenses/retained/manifest.json', text => {
+    const manifest = JSON.parse(text);
+    manifest.components[0] = { ...manifest.components[0], notices: [] };
+    return JSON.stringify(manifest);
+  });
+  assert.throws(() => checkNotices(f.root, false), /without preserved licence text/);
 });

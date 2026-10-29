@@ -98,7 +98,8 @@ fn polygon(points:&[[f64;3]]) -> Option<(f64,[f64;3])> {
     }
     if area.abs()<1e-30 {return None} c=c.map(|v|v/(3.*area));Some((area.abs()/2.,c))
 }
-fn solid(d:&mut EntityDecoder<'_>,mut id:u32) -> Option<Solid> {
+fn solid(d:&mut EntityDecoder<'_>,mut id:u32, depth:usize, work:&mut usize) -> Option<Solid> {
+    *work=work.checked_sub(1)?;if depth>32 {return None}
     let mut seen=std::collections::BTreeSet::new();
     loop {
         if !seen.insert(id)||seen.len()>128 {return None}
@@ -107,6 +108,15 @@ fn solid(d:&mut EntityDecoder<'_>,mut id:u32) -> Option<Solid> {
         id=e.ref_at(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION)?;
     }
     let e=d.decode_by_id(id).ok()?;
+    if matches!(e.ifc_type,IfcType::IfcBooleanResult|IfcType::IfcBooleanClippingResult) {
+        if e.enum_at(slot::IfcBooleanResult::OPERATOR)!=Some("DIFFERENCE") {return None}
+        let a=solid(d,e.ref_at(slot::IfcBooleanResult::FIRST_OPERAND)?,depth+1,work)?;
+        let right=e.ref_at(slot::IfcBooleanResult::SECOND_OPERAND)?;
+        let r=d.decode_by_id(right).ok()?;
+        if r.ifc_type==IfcType::IfcHalfSpaceSolid {return clipped_box(d,a,&r)}
+        let b=solid(d,right,depth+1,work)?;
+        return difference_boxes(a,b);
+    }
     if e.ifc_type!=IfcType::IfcExtrudedAreaSolid {return None}
     use slot::IfcExtrudedAreaSolid as E;
     let depth=e.real_at(E::DEPTH)?;let axis=unit(d.direction3(e.ref_at(E::EXTRUDED_DIRECTION)?).ok()?)?;
@@ -135,10 +145,68 @@ fn solid(d:&mut EntityDecoder<'_>,mut id:u32) -> Option<Solid> {
     let points=points.into_iter().flat_map(|p|{let p=transform(&profile_frame,p);[0.,depth].map(|h|transform(&frame,std::array::from_fn(|i|p[i]+axis[i]*h)))}).collect();
     Some(Solid{volume:area*depth*axis[2].abs(),centroid,points,radius})
 }
+fn box_bounds(s:&Solid) -> Option<[f64;6]> {
+    if s.radius!=0.||s.points.is_empty(){return None}
+    let mut b=[f64::INFINITY,f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
+    for &p in &s.points{extend_bbox(&mut b,p)}
+    let v=(0..3).map(|i|b[i+3]-b[i]).product::<f64>();
+    ((v-s.volume).abs()<=s.volume*1e-12).then_some(b)
+}
+fn difference_boxes(a:Solid,b:Solid) -> Option<Solid> {
+    let (aa,bb)=(box_bounds(&a)?,box_bounds(&b)?);
+    let low:[f64;3]=std::array::from_fn(|i|aa[i].max(bb[i]));
+    let high:[f64;3]=std::array::from_fn(|i|aa[i+3].min(bb[i+3]));
+    if (0..3).any(|i|high[i]<=low[i]) {return Some(a)}
+    // Qualify an internal through-hole only; no fabricated bbox when an entire
+    // exterior face can disappear. M7's B-H falls inside X and Y, through Z.
+    if !(low[0]>aa[0]&&high[0]<aa[3]&&low[1]>aa[1]&&high[1]<aa[4]) {return None}
+    let removed=(0..3).map(|i|high[i]-low[i]).product::<f64>();let volume=a.volume-removed;
+    if volume<=0. {return None}
+    let centroid=std::array::from_fn(|i|(a.volume*a.centroid[i]-removed*(low[i]+high[i])/2.)/volume);
+    Some(Solid{volume,centroid,points:a.points,radius:0.})
+}
+fn clipped_box(d:&mut EntityDecoder<'_>,a:Solid,half:&ifc_lite_core::DecodedEntity) -> Option<Solid> {
+    let bounds=box_bounds(&a)?;
+    if half.logical_at(slot::IfcHalfSpaceSolid::AGREEMENT_FLAG)!=Some(true) {return None}
+    let plane=d.decode_by_id(half.ref_at(slot::IfcHalfSpaceSolid::BASE_SURFACE)?).ok()?;
+    if plane.ifc_type!=IfcType::IfcPlane{return None}
+    let frame=axes(d,plane.ref_at(slot::IfcElementarySurface::POSITION))?;
+    let n=[frame[8],frame[9],frame[10]];if n[2]<=0.{return None}
+    let c=dot(n,[frame[12],frame[13],frame[14]]);
+    let height=|x:f64,y:f64|(c-n[0]*x-n[1]*y)/n[2]-bounds[2];
+    let mut points=Vec::new();
+    for x in [bounds[0],bounds[3]] {for y in [bounds[1],bounds[4]] {
+        let h=height(x,y);if h<=0.||h>=bounds[5]-bounds[2]{return None}
+        points.push([x,y,bounds[2]]);points.push([x,y,bounds[2]+h]);
+    }}
+    let (x,y)=((bounds[0]+bounds[3])/2.,(bounds[1]+bounds[4])/2.);let h=height(x,y);
+    let (vx,vy)=((bounds[3]-bounds[0]).powi(2)/12.,(bounds[4]-bounds[1]).powi(2)/12.);
+    let (dx,dy)=(-n[0]/n[2],-n[1]/n[2]);
+    let centroid=[x+dx*vx/h,y+dy*vy/h,bounds[2]+(h*h+dx*dx*vx+dy*dy*vy)/(2.*h)];
+    Some(Solid{volume:(bounds[3]-bounds[0])*(bounds[4]-bounds[1])*h,centroid,points,radius:0.})
+}
+fn length_unit(bytes:&[u8],d:&mut EntityDecoder<'_>) -> Option<f64> {
+    let mut scanner=ifc_lite_core::EntityScanner::new(bytes);
+    while let Some((id,name,_,_))=scanner.next_entity() {
+        if !name.eq_ignore_ascii_case("IFCPROJECT") {continue}
+        let project=d.decode_by_id(id).ok()?;
+        let units=d.decode_by_id(project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT)?).ok()?;
+        for id in units.ref_list_at(slot::IfcUnitAssignment::UNITS)? {
+            let u=d.decode_by_id(id).ok()?;
+            if u.enum_at(slot::IfcNamedUnit::UNIT_TYPE)!=Some("LENGTHUNIT") {continue}
+            if u.ifc_type!=IfcType::IfcSIUnit||u.enum_at(slot::IfcSIUnit::NAME)!=Some("METRE") {return None}
+            return match u.enum_at(slot::IfcSIUnit::PREFIX) {
+                None=>Some(1.),Some("MILLI")=>Some(0.001),Some("CENTI")=>Some(0.01),Some("DECI")=>Some(0.1),
+                Some("MICRO")=>Some(1e-6),Some("KILO")=>Some(1000.),_=>None,
+            };
+        }
+    }
+    None
+}
 /// One result per authored final part. Unsupported oracle families return None,
 /// never an invented geometric expectation or a measured-runtime baseline.
 pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
-    let source=SourceBundle::new(bytes.to_vec());let mut d=source.decoder();let p=d.decode_by_id(id).ok()?;
+    let source=SourceBundle::new(bytes.to_vec());let mut d=source.decoder();let units=length_unit(bytes,&mut d)?;let p=d.decode_by_id(id).ok()?;
     let world=placement(&mut d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
     let reps=d.decode_by_id(p.ref_at(slot::IfcProduct::REPRESENTATION)?).ok()?.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS)?;
     let mut stack=Vec::new();
@@ -154,12 +222,13 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
             for item in items.into_iter().rev() {stack.push((item,world,multiply(&mapping_matrix,&map),depth+1));}
             continue;
         }
-        let s=solid(&mut d,id)?;let matrix=multiply(&world,&mapping_matrix);
+        let s=solid(&mut d,id,0,&mut 8192)?;let mut matrix=multiply(&world,&mapping_matrix);
+        for col in 0..4 {for row in 0..3 {matrix[col*4+row]*=units;}}
         let det=dot([matrix[0],matrix[1],matrix[2]],cross([matrix[4],matrix[5],matrix[6]],[matrix[8],matrix[9],matrix[10]]));
         let bbox=if s.points.is_empty(){None}else{let mut b=[f64::INFINITY,f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
             for p in s.points {extend_bbox(&mut b,transform(&matrix,p));}Some(b)};
         let (min,max)=stretches(&mapping_matrix)?;
-        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,radius:s.radius,matrix,sigma_max:max,kappa:max/min});
+        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min});
     }
     (!result.is_empty()).then_some(result)
 }

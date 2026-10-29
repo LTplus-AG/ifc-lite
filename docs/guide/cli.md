@@ -1814,6 +1814,8 @@ world coordinates, before OBJ's six decimal places. No timings are emitted.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
 
+Retained mapped finals support mirrors and nonuniform scales. Their linear transform is baked into object-local vertices, with outward triangle winding preserved; translation stays in the rigid world frame. Scaled curved results that cannot meet the chord bound refuse with `incomplete`. The retained comparison harness reports the transform condition number (`affine_kappa`); it does not certify an unchanged facet-angle bound after nonuniform scale.
+
 Retained opening subtraction runs each opening body value separately in relationship order.
 A consumed host part refuses the complete product with `empty_result`; partial or whole-product
 removal is not published. Unsupported opening geometry reports `opening_unsupported`, while

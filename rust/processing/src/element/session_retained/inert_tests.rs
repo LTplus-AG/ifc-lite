@@ -332,6 +332,7 @@ fn final_affine_reaches_construction_dispatch() {
     let metadata = metadata(74);
     let job = job(&entity, &metadata);
     let mut peer = InertPeer::new(false);
+    peer.fault = RuntimeFaultKind::Contract;
     let domain = peer.domain();
     let result = RuntimeProductExecution::<InertReceipt>::begin(
         &job,

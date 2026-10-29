@@ -110,3 +110,33 @@ fn m10_sdk_sagitta_bound_at_authored_radii() {
     }
     eprintln!("sdk witness executed: m10_sdk_sagitta_bound_at_authored_radii");
 }
+
+#[test]
+fn m10_sdk_bake_matches_independent_kernel_copy_tessellation() {
+    use ifc_lite_core::{SourceBundle,slot};
+    use ifc_lite_retained_native::{run_model_native,ModelOptions};
+    let Some(worker)=support::worker_path() else{return};
+    let Some(original)=support::native(SOURCE) else{return};
+    let source=SourceBundle::new(SOURCE.as_bytes().to_vec());let mut d=source.decoder();
+    for id in [34,42,50,58,66,74,82,95,119,133,161,175,190,203,224,234] {
+        let product=d.decode_by_id(id).unwrap();
+        let reps=d.decode_by_id(product.ref_at(slot::IfcProduct::REPRESENTATION).unwrap()).unwrap();
+        let rep_id=reps.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS).unwrap()[0];
+        let rep=d.decode_by_id(rep_id).unwrap();let items=rep.ref_list_at(slot::IfcRepresentation::ITEMS).unwrap();
+        let mut unions=String::new();let mut refs=Vec::new();
+        for (i,item) in items.iter().enumerate() {let new=900001+i;refs.push(format!("#{new}"));unions.push_str(&format!("#{new}=IFCBOOLEANRESULT(.UNION.,#{item},#{item});\n"));}
+        // This is explicitly a controller cross-check, not schema qualification:
+        // IFC4 excludes mapped operands. The qualifying product remains SOURCE.
+        let replaced=format!("#{rep_id}=IFCSHAPEREPRESENTATION(#4,'Body','CSG',({}));",refs.join(","));
+        let mut text=SOURCE.lines().map(|line|if line.starts_with(&format!("#{rep_id}=")){replaced.as_str()}else{line}).collect::<Vec<_>>().join("\n");
+        text=text.replace("ENDSEC;\nEND-ISO",&format!("{unions}ENDSEC;\nEND-ISO"));
+        let mut outcomes=Vec::new();run_model_native(SourceBundle::new(text.into_bytes()),std::path::Path::new(&worker),
+            &ModelOptions{ids:Some([id].into_iter().collect()),..Default::default()},|o|outcomes.push(o)).unwrap();
+        let a=geometry_assertions::measured(support::shape(&original,id));let b=geometry_assertions::measured(support::shape(&outcomes,id));
+        let curved=[119,133,161,175].contains(&id);
+        let limit=tolerances()["affineFinalKernelEquivalenceRelative"][if curved{"curved"}else{"linear"}].as_f64().unwrap();
+        assert!((a.volume-b.volume).abs()/a.volume<=limit,"#{id}: bake {} kernel {}",a.volume,b.volume);
+        assert_eq!(b.defects,0,"#{id}");
+    }
+    eprintln!("sdk witness executed: m10_sdk_bake_matches_independent_kernel_copy_tessellation");
+}

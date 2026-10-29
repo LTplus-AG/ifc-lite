@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Per-slice source checks: shared reporting needs no feature-specific columns.
+pub mod affine;
 mod layers;
 mod clips;
 mod bounded;

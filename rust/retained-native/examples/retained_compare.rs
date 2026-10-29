@@ -219,6 +219,7 @@ fn compare(
                         &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
                     );
+                    checks::affine::record(report, &bytes, &shape, tolerances);
                     report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }
                 ProductOutcome::Refused {

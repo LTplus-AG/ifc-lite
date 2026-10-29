@@ -32,7 +32,10 @@ fn m10_source_oracle_matches_hand_arithmetic_and_mirror_centroids() {
     for (actual,expected) in b[0].centroid.into_iter().zip([27./70.,-13./70.,1.]) {assert!((actual-expected).abs()<1e-12);}
     for (id,admitted) in [(133,true),(147,false),(161,false),(175,false)] {
         let a=affine::expected(SOURCE.as_bytes(),id).unwrap();assert_eq!(a[0].chord_admitted(),admitted);
+        assert!(a[0].surface_certified,"#{id}: full circles sweep to cylinders");
     }
+    // The door's semicircular head is a partial arc: no opcode-18 surface certificate.
+    assert!(door[0].chord_admitted()&&!door[0].surface_certified&&!door[0].admitted());
 }
 #[test]
 fn m10_omitted_axis2_source_mirror_matches_ifcopenshell() {
@@ -65,7 +68,7 @@ fn m10_sdk_source_oracles_and_native_reference() {
             }
         }
     }
-    for (id,volume) in [(119,2.*(1.35+std::f64::consts::PI*0.45f64.powi(2)/2.)),(133,0.0225*std::f64::consts::PI)] {
+    for (id,volume) in [(133,0.0225*std::f64::consts::PI)] {
         let p=support::shape(&outcomes,id);
         let actual=geometry_assertions::measured(p);
         for (part,e) in p.parts.iter().zip(affine::expected(SOURCE.as_bytes(),id).unwrap()) {
@@ -77,8 +80,13 @@ fn m10_sdk_source_oracles_and_native_reference() {
         assert_eq!(actual.defects,0,"#{id}");
         assert!((actual.volume-volume).abs()/volume<=tolerance["affineFinalVolumeRelative"]["curved"].as_f64().unwrap(),"#{id}: {actual:?}");
     }
-    for (id,code) in [(147,"incomplete"),(161,"kernel_failure"),(175,"incomplete"),(288,"operation_unsupported"),(296,"kernel_failure")] {
+    // M10 ruling 2026-10-29: #119 (SmSurfOfExtrusion, no opcode-18 certificate)
+    // and the curved scale-ups #147/#161/#175 refuse typed `incomplete` from
+    // source before any invocation; only h21's SVD policy is a kernel failure.
+    for (id,code) in [(119,"incomplete"),(147,"incomplete"),(161,"incomplete"),(175,"incomplete"),(288,"operation_unsupported"),(296,"kernel_failure")] {
         assert_eq!(support::refusal(&outcomes,id).code(),code,"#{id}");
+        let predicted=affine::expected(SOURCE.as_bytes(),id).map(|e|e.iter().all(|p|p.admitted()));
+        if code=="incomplete" {assert_eq!(predicted,Some(false),"#{id}");}
     }
     // M5 is a qualification dependency: this schema-valid post-clip mapping
     // must become volume 21 after M5 lands; preserve the current typed refusal.
@@ -122,10 +130,9 @@ fn m10_sdk_native_parity_reference() {
 #[test]
 fn m10_sdk_issue_1985_scales_follow_narrowed_rule() {
     let Some(outcomes)=support::native(include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc")) else {return};
-    // The preregistered fallback no longer promises scaled-up curved finals.
-    // Here the construction fails even earlier than the narrowed chord gate.
-    assert_eq!(support::refusal(&outcomes,74).code(),"kernel_failure");
-    assert_eq!(kernel_status(support::refusal(&outcomes,74)),Some(4));
+    // The preregistered fallback no longer promises scaled-up curved finals; it
+    // is source-determined, so #74 refuses before its tiny-radius construction.
+    assert_eq!(support::refusal(&outcomes,74).code(),"incomplete");
     let outcomes=support::native(include_str!("../../geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc")).unwrap();
     for id in [74,81,88,99] {let p=support::shape(&outcomes,id);for part in &p.parts {
         assert!(affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).unwrap().0>0.);
@@ -179,7 +186,7 @@ fn m10_sdk_bake_matches_independent_kernel_copy_tessellation() {
     let Some(worker)=support::worker_path() else{return};
     let Some(original)=support::native(SOURCE) else{return};
     let source=SourceBundle::new(SOURCE.as_bytes().to_vec());let mut d=source.decoder();
-    for id in [34,42,50,58,66,74,82,95,190,203,224,234,133,119] {
+    for id in [34,42,50,58,66,74,82,95,190,203,224,234,133] {
         let product=d.decode_by_id(id).unwrap();
         let reps=d.decode_by_id(product.ref_at(slot::IfcProduct::REPRESENTATION).unwrap()).unwrap();
         let rep_id=reps.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS).unwrap()[0];
@@ -194,7 +201,7 @@ fn m10_sdk_bake_matches_independent_kernel_copy_tessellation() {
         let mut outcomes=Vec::new();run_model_native(SourceBundle::new(text.into_bytes()),std::path::Path::new(&worker),
             &ModelOptions{ids:Some([id].into_iter().collect()),..Default::default()},|o|outcomes.push(o)).unwrap();
         let a=geometry_assertions::measured(support::shape(&original,id));let b=geometry_assertions::measured(support::shape(&outcomes,id));
-        let curved=[119,133,161,175].contains(&id);
+        let curved=id==133;
         let limit=tolerances()["affineFinalKernelEquivalenceRelative"][if curved{"curved"}else{"linear"}].as_f64().unwrap();
         assert!((a.volume-b.volume).abs()/a.volume<=limit,"#{id}: bake {} kernel {}",a.volume,b.volume);
         assert_eq!(b.defects,0,"#{id}");

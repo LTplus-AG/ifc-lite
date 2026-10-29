@@ -320,39 +320,59 @@ fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
     }
 }
 
-// #7955 M10: an affine final must reach its construction invocation.
-#[test]
-fn final_affine_reaches_construction_dispatch() {
-    let text = include_str!("../../../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc");
+/// Begin one product of `text` against an inert peer; dispatch once if admitted.
+fn affine_product(text: &str, id: u32) -> (Result<(), &'static str>, usize, bool) {
     let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(text, &mut decoder);
     let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
-    let entity = decoder.decode_by_id(74).unwrap();
-    let metadata = metadata(74);
+    let entity = decoder.decode_by_id(id).unwrap();
+    let metadata = metadata(id);
     let job = job(&entity, &metadata);
     let mut peer = InertPeer::new(false);
     peer.fault = RuntimeFaultKind::Contract;
     let domain = peer.domain();
-    let result = RuntimeProductExecution::<InertReceipt>::begin(
-        &job,
-        &context,
-        &options(),
-        &[],
-        &mut decoder,
-        &router,
-    );
-    let mut execution = result.unwrap();
-    let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
-    let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
-    let _ = future.as_mut().poll(&mut Context::from_waker(Waker::noop()));
-    drop(future);
-    assert_eq!(peer.invocations, 1);
+    let result = match RuntimeProductExecution::<InertReceipt>::begin(
+        &job, &context, &options(), &[], &mut decoder, &router) {
+        Err(error) => Err(error.refusal().0.code()),
+        Ok(mut execution) => {
+            let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
+            let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+            let _ = future.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+            Ok(())
+        }
+    };
     assert!(peer.domain().same_domain(&domain));
-    assert!(
-        domain.incarnation().is_some(),
-        "no retirement or restart needed"
-    );
+    (result, peer.invocations, domain.incarnation().is_some())
+}
+const AFFINE_FINALS: &str =
+    include_str!("../../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
+
+// #7955 M10: a linear affine final (h2 mirror) reaches its construction invocation.
+#[test]
+fn final_affine_reaches_construction_dispatch() {
+    assert_eq!(affine_product(AFFINE_FINALS, 42), (Ok(()), 1, true));
+}
+
+// #7955 M10 ruling 2026-10-29: the preregistered contraction-only fallback is
+// source-determined, so #74 (curved, Scale 1000) and h13 #161 refuse before any
+// invocation instead of reaching the SDK's tiny-radius construction failure.
+#[test]
+fn curved_scale_up_affine_final_refuses_before_invocation() {
+    let scaled = include_str!("../../../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc");
+    assert_eq!(affine_product(scaled, 74), (Err("incomplete"), 0, true));
+    assert_eq!(affine_product(AFFINE_FINALS, 161), (Err("incomplete"), 0, true));
+    // Contraction (h11 #133, circle at Scale 0.5) still dispatches.
+    assert_eq!(affine_product(AFFINE_FINALS, 133), (Ok(()), 1, true));
+}
+
+// #7955 M10 ruling 2026-10-29: the mirrored door h10 #119 has a partial-arc
+// head, which the SDK sweeps into SmSurfOfExtrusion; opcode 18 has no affine
+// certificate for that class (status 7). Refuse typed `incomplete` before any
+// invocation, never kernel_failure and never a partial product.
+#[test]
+fn uncertifiable_affine_surface_class_refuses_before_invocation() {
+    assert_eq!(affine_product(AFFINE_FINALS, 119), (Err("incomplete"), 0, true));
 }
 
 // #7955 / #8183: instanced type maps cannot borrow orphan placement authority.

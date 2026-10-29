@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #![cfg(feature = "retained-runtime")]
 //! #7955 M10: invariants independent of SDK triangulation and source text.
-use ifc_lite_processing::element::retained_runtime::{bake_mesh, affine_chord_admissible, effective_radius_through_affine, NumericalLimits};
+use ifc_lite_processing::element::retained_runtime::{bake_mesh, affine_chord_admissible, affine_sweep_surfaces_certifiable, effective_radius_through_affine, NumericalLimits};
 const CUBE: [f64;24] = [0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.,0.,1., 1.,0.,1., 1.,1.,1., 0.,1.,1.];
 const IDS: [u32;36] = [0,2,1,0,3,2, 4,5,6,4,6,7, 0,1,5,0,5,4, 1,2,6,1,6,5, 2,3,7,2,7,6, 3,0,4,3,4,7];
 fn matrix(x:f64,y:f64,z:f64) -> [f64;16] { [x,0.,0.,0., 0.,y,0.,0., 0.,0.,z,0., 2.,3.,4.,1.] }
@@ -43,4 +43,13 @@ fn m10_preregistered_chord_table() {
     }
     assert!(!affine_chord_admissible(f64::NAN,0.,limits));
     assert!((effective_radius_through_affine(0.05,[1.,0.,0.,0.,1.,0.,0.,0.,3.])-0.45).abs()<1e-15);
+}
+#[test]
+fn m10_sdk_sweep_surface_class_table() {
+    // Pinned SDK c9c5979 CreateLinearSweep: plane iff |dot(line, sweep)| < 1e-12,
+    // cylinder iff full circle; otherwise SmSurfOfExtrusion (no opcode-18 certificate).
+    for (partial_arc,sweep,expected) in [(false,[0.,0.,1.],true),(false,[0.,0.,-2.],true),(true,[0.,0.,1.],false),
+        (false,[0.1,0.,1.],false),(false,[0.,1e-13,1.],true),(false,[0.,2e-12,1.],false),(false,[0.,0.,0.],false),(false,[f64::NAN,0.,1.],false)] {
+        assert_eq!(affine_sweep_surfaces_certifiable(partial_arc,sweep),expected,"arc={partial_arc} sweep={sweep:?}");
+    }
 }

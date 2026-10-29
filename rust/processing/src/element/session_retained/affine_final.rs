@@ -27,7 +27,78 @@ pub fn effective_radius_through_affine(r: f64, l: [f64; 9]) -> f64 {
 pub fn affine_chord_admissible(sigma_max: f64, radius_m: f64, limits: NumericalLimits) -> bool {
     if !sigma_max.is_finite() || sigma_max <= 0. || radius_m.is_nan() || radius_m < 0.
         || limits.validate().is_err() { return false; }
-    radius_m == 0. || sigma_max <= 1.
+    contracting_or_linear(sigma_max, radius_m != 0.)
+}
+fn contracting_or_linear(sigma_max: f64, curved: bool) -> bool { !curved || sigma_max <= 1. }
+/// Opcode 18 certifies only BSpline/plane/cylinder/cone/sphere/torus surfaces
+/// (`affine.cpp` `surface_class`, status 7 otherwise). Pinned SDK c9c5979
+/// `SmPrimitiveCreation.cpp:1258-1340` (`CreateLinearSweep`) makes an SmPlane
+/// only from a line with |dot(line, sweep)| < SM_EFF_ZERO (1e-12) and an
+/// SmCylinder only from a full circle; every partial arc and every other line
+/// or circle becomes SmSurfOfExtrusion. `sweep` is in the profile frame.
+pub fn affine_sweep_surfaces_certifiable(partial_arc: bool, sweep: [f64; 3]) -> bool {
+    let norm = sweep[0].hypot(sweep[1]).hypot(sweep[2]);
+    norm.is_finite() && norm > 0. && !partial_arc && sweep[0].hypot(sweep[1]) / norm < 1e-12
+}
+fn partial(sweep_angle: f64) -> bool {
+    (sweep_angle.abs() - std::f64::consts::TAU).abs() >= ifc_lite_geometry::math::tol::RETAINED_ARC_INTERVAL_EPS_RAD
+}
+/// Format-1 recipes lowered exactly as `retained_sweep`/`retained_prism` do.
+/// Swept disks use another SDK constructor and stay with the kernel's verdict.
+fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
+    match recipe {
+        RetainedRecipe::Extrusion(e) => {
+            let (Some(profile), Some(axis)) = (&e.source.profile, e.source.axis_unit_vector) else { return true };
+            let arc = profile.loops.iter().flat_map(|l| &l.segments)
+                .any(|s| matches!(s, AnalyticCurveSegment::Arc { sweep_angle, .. } if partial(*sweep_angle)));
+            // Rigid profile Position: its inverse rotation is the transpose.
+            let m = profile.profile_position.unwrap_or(IDENTITY);
+            affine_sweep_surfaces_certifiable(arc, std::array::from_fn(|i| (0..3).map(|j| m[4*i+j]*axis[j]).sum()))
+        }
+        RetainedRecipe::Prism(p) => affine_sweep_surfaces_certifiable(
+            p.loops.iter().flat_map(|l| &l.segments).any(|s| matches!(s, PrismSegment::Arc { .. })), p.direction),
+        _ => true,
+    }
+}
+/// Source facts of one logical operation; `chain` is `M_k...M_1` for Affine values.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Lineage { curved: bool, uncertified: bool, chain: Option<[f64; 16]> }
+/// Record an admitted operation. A missing input fact predicts nothing; the
+/// kernel and `admit` remain authoritative for it.
+pub(super) fn record(resources: &OwnedResourceContext, storage: &mut Storage,
+    facts: &mut Vec<(LogicalRetainedDefinition, Lineage)>, operation: &RetainedPlanOperation)
+    -> Result<(), RetainedExecutionError> {
+    let find = |v: ValueRef<'_>| { let d = v.definition(); facts.iter().find(|(k, _)| *k == d).map(|(_, f)| *f).unwrap_or_default() };
+    let fact = match operation.kind() {
+        RetainedOperationKind::Construction(recipe) =>
+            Lineage { curved: recipe_radius(recipe) != 0., uncertified: !recipe_certifiable(recipe), chain: None },
+        RetainedOperationKind::Boolean { inputs: [a, b], .. } => {
+            let (a, b) = (find(a), find(b));
+            Lineage { curved: a.curved || b.curved, uncertified: a.uncertified || b.uncertified, chain: None }
+        }
+        RetainedOperationKind::Affine { input, matrix } => {
+            let i = find(input);
+            Lineage { chain: Some(retained_wire::multiply(*matrix, i.chain.unwrap_or(IDENTITY))), ..i }
+        }
+    };
+    storage.reserve(resources, facts, 1)?;
+    facts.push((operation.value().definition(), fact));
+    Ok(())
+}
+/// Source-determined refusals before any invocation (M10 ruling 2026-10-29):
+/// opcode 18 over an uncertifiable SDK surface class, and curved finals the
+/// preregistered contraction-only fallback refuses. `admit` repeats the latter.
+pub(super) fn refuse_predicted<'a>(facts: &[(LogicalRetainedDefinition, Lineage)],
+    finals: impl Iterator<Item = ValueRef<'a>>) -> Result<(), RetainedExecutionError> {
+    if facts.iter().any(|(_, f)| f.chain.is_some() && f.uncertified) { return Err(incomplete()); }
+    for value in finals {
+        let d = value.definition();
+        let Some((_, f)) = facts.iter().find(|(k, _)| *k == d) else { continue };
+        if let Some(m) = f.chain {
+            if !contracting_or_linear(singular(linear(m)).1, f.curved) { return Err(incomplete()); }
+        }
+    }
+    Ok(())
 }
 fn transform(m: [f64; 16], positions: &mut [f64], indices: &mut [u32]) {
     for p in positions.chunks_exact_mut(3) {

@@ -3,4 +3,4 @@
 "@ifc-lite/cli": patch
 ---
 
-Publish mirrored and scaled retained mapped results atomically, preserving outward winding. Refuse enlarged curved results when the registered chord bound cannot be certified. Exact remains the default.
+Publish mirrored and scaled retained mapped results atomically, preserving outward winding. Refuse enlarged curved results, and results with partial-arc or oblique swept surfaces, with `incomplete` before any kernel work. Exact remains the default.

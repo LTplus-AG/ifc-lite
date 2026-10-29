@@ -16,11 +16,18 @@ pub struct AffineExpectation {
     pub sigma_max: f64,
     pub kappa: f64,
     pub affine_final: bool,
+    /// The swept profile has no partial circular arc and the extrusion is
+    /// normal to it: the only sweeps whose surfaces opcode 18 can certify.
+    pub surface_certified: bool,
 }
 impl AffineExpectation {
     /// The preregistered fallback after the real SDK sagitta witness failed.
     pub fn chord_admitted(&self) -> bool {
         self.radius == 0. || self.sigma_max <= 1.
+    }
+    /// Source prediction of the code: affine finals publish only if both hold.
+    pub fn admitted(&self) -> bool {
+        self.chord_admitted() && (!self.affine_final || self.surface_certified)
     }
 }
 fn direction(d:&mut EntityDecoder<'_>, id:Option<u32>, default:[f64;3]) -> Option<[f64;3]> {
@@ -95,10 +102,10 @@ fn stretches(m:&Frame) -> Option<(f64,f64)> {
     let max=(0..3).map(|i|a[i][i]).fold(0.,f64::max).sqrt();
     (min>0.&&max.is_finite()).then_some((min,max))
 }
-struct Solid { volume:f64, centroid:[f64;3], points:Vec<[f64;3]>, radius:f64 }
-type ProfileMoments = (f64, [f64;3], Vec<[f64;3]>, f64);
+struct Solid { volume:f64, centroid:[f64;3], points:Vec<[f64;3]>, radius:f64, certified:bool }
+type ProfileMoments = (f64, [f64;3], Vec<[f64;3]>, f64, bool);
 fn curve_profile(d:&mut EntityDecoder<'_>,root:u32) -> Option<ProfileMoments> {
-    let mut stack=vec![(root,true,0)];let (mut area,mut mx,mut my,mut radius)=(0.,0.,0.,0f64);
+    let mut stack=vec![(root,true,0)];let (mut area,mut mx,mut my,mut radius,mut full)=(0.,0.,0.,0f64,true);
     let mut points=Vec::new();let mut work=0;
     while let Some((id,sense,depth))=stack.pop() {
         work+=1;if work>4096||depth>128{return None}
@@ -135,6 +142,7 @@ fn curve_profile(d:&mut EntityDecoder<'_>,root:u32) -> Option<ProfileMoments> {
                 if !a.is_finite()||!b.is_finite(){return None}
                 let sweep=(b-a).rem_euclid(std::f64::consts::TAU);if sweep==0.{return None} b=a+sweep;
                 if b-a>std::f64::consts::TAU+1e-12{return None}
+                full&=(b-a-std::f64::consts::TAU).abs()<1e-12;
                 if !sense {std::mem::swap(&mut a,&mut b);}
                 let (x,y)=(frame[12],frame[13]);
                 let integrals=|t:f64|{let (sn,cs)=t.sin_cos();[
@@ -148,7 +156,7 @@ fn curve_profile(d:&mut EntityDecoder<'_>,root:u32) -> Option<ProfileMoments> {
         }
     }
     if !area.is_finite()||area.abs()<1e-30{return None}
-    Some((area.abs(),[mx/area,my/area,0.],points,radius))
+    Some((area.abs(),[mx/area,my/area,0.],points,radius,full))
 }
 fn solid(d:&mut EntityDecoder<'_>,mut id:u32, depth:usize, work:&mut usize) -> Option<Solid> {
     *work=work.checked_sub(1)?;if depth>32 {return None}
@@ -175,24 +183,25 @@ fn solid(d:&mut EntityDecoder<'_>,mut id:u32, depth:usize, work:&mut usize) -> O
     let frame=axes(d,e.ref_at(E::POSITION))?;
     let p=d.decode_by_id(e.ref_at(E::SWEPT_AREA)?).ok()?;
     let mut profile_frame=IDENTITY;
-    let (area,center,points,radius)=match p.ifc_type {
+    let (area,center,points,radius,full)=match p.ifc_type {
         IfcType::IfcArbitraryClosedProfileDef => {
             curve_profile(d,p.ref_at(slot::IfcArbitraryClosedProfileDef::OUTER_CURVE)?)?
         }
         IfcType::IfcRectangleProfileDef => {
             profile_frame=axes(d,p.ref_at(slot::IfcParameterizedProfileDef::POSITION))?;
             let x=p.real_at(slot::IfcRectangleProfileDef::X_DIM)?/2.;let y=p.real_at(slot::IfcRectangleProfileDef::Y_DIM)?/2.;
-            (4.*x*y,[0.;3],vec![[-x,-y,0.],[x,-y,0.],[x,y,0.],[-x,y,0.]],0.)
+            (4.*x*y,[0.;3],vec![[-x,-y,0.],[x,-y,0.],[x,y,0.],[-x,y,0.]],0.,true)
         }
         IfcType::IfcCircleProfileDef => {
             profile_frame=axes(d,p.ref_at(slot::IfcParameterizedProfileDef::POSITION))?;
-            let r=p.real_at(slot::IfcCircleProfileDef::RADIUS)?;(std::f64::consts::PI*r*r,[0.;3],vec![[r,0.,0.],[-r,0.,0.],[0.,r,0.],[0.,-r,0.]],r)
+            let r=p.real_at(slot::IfcCircleProfileDef::RADIUS)?;(std::f64::consts::PI*r*r,[0.;3],vec![[r,0.,0.],[-r,0.,0.],[0.,r,0.],[0.,-r,0.]],r,true)
         }
         _=>return None,
     };
     let c=transform(&profile_frame,center);let centroid=transform(&frame,std::array::from_fn(|i|c[i]+axis[i]*depth/2.));
     let points=points.into_iter().flat_map(|p|{let p=transform(&profile_frame,p);[0.,depth].map(|h|transform(&frame,std::array::from_fn(|i|p[i]+axis[i]*h)))}).collect();
-    Some(Solid{volume:area*depth*axis[2].abs(),centroid,points,radius})
+    // Profiles lie in XY of the solid frame; ExtrudedDirection is in that frame.
+    Some(Solid{volume:area*depth*axis[2].abs(),centroid,points,radius,certified:full&&axis[0].hypot(axis[1])<1e-12})
 }
 fn box_bounds(s:&Solid) -> Option<[f64;6]> {
     if s.radius!=0.||s.points.is_empty(){return None}
@@ -212,7 +221,7 @@ fn difference_boxes(a:Solid,b:Solid) -> Option<Solid> {
     let removed=(0..3).map(|i|high[i]-low[i]).product::<f64>();let volume=a.volume-removed;
     if volume<=0. {return None}
     let centroid=std::array::from_fn(|i|(a.volume*a.centroid[i]-removed*(low[i]+high[i])/2.)/volume);
-    Some(Solid{volume,centroid,points:a.points,radius:0.})
+    Some(Solid{volume,centroid,points:a.points,radius:0.,certified:a.certified&&b.certified})
 }
 fn clipped_box(d:&mut EntityDecoder<'_>,a:Solid,half:&ifc_lite_core::DecodedEntity) -> Option<Solid> {
     let bounds=box_bounds(&a)?;
@@ -235,7 +244,7 @@ fn clipped_box(d:&mut EntityDecoder<'_>,a:Solid,half:&ifc_lite_core::DecodedEnti
     let removed=(bounds[3]-bounds[0])*(bounds[4]-bounds[1])*h;
     let volume=a.volume-removed;
     let centroid=std::array::from_fn(|i|(a.volume*a.centroid[i]-removed*removed_center[i])/volume);
-    Some(Solid{volume,centroid,points,radius:0.})
+    Some(Solid{volume,centroid,points,radius:0.,certified:a.certified})
 }
 fn length_unit(bytes:&[u8],d:&mut EntityDecoder<'_>) -> Option<f64> {
     let mut scanner=ifc_lite_core::EntityScanner::new(bytes);
@@ -285,7 +294,8 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
         let m=&mapping_matrix;
         let reflected=dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.;
         let affine_final=reflected||(min-1.).abs()>1e-12||(max-1.).abs()>1e-12;
-        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,extent,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min,affine_final});
+        result.push(AffineExpectation{volume:s.volume*det.abs(),centroid:transform(&matrix,s.centroid),bbox,extent,radius:s.radius*units,matrix,sigma_max:max,kappa:max/min,affine_final,
+            surface_certified:s.certified});
     }
     (!result.is_empty()).then_some(result)
 }

@@ -69,8 +69,10 @@ measuring. Source volume and bbox checks still measure full-f64 retained geometr
 at the unchanged preregistered tolerances. Refusal rows retain kernel status,
 origin site/entity/cause, and the original error message.
 
-Current qualification gap: `issue_1985_scaled_kinds` #74 fails the upstream
-triangulator before affine publication (`kernel_failure`, status 4); #81, #88,
+Committed expectations: `issue_1985_scaled_kinds` #74 is `incomplete` (a
+curved Scale-1000 affine final outside M10's contraction-only fallback, refused
+from source before any invocation; the original committed+1 publication target
+is not met); #81, #88,
 #109 are `operation_unsupported`; #99 publishes. For `issue_098_wall_W`, only wall
 #928204 is `opening_unsupported`; its seven windows publish and its seven opening
 elements are `operation_unsupported`.
@@ -107,7 +109,12 @@ M10 publishes affine finals by transforming the existing input mesh's linear
 coordinates and preserving translation in its rigid frame. Reflections reverse
 triangle winding. The tiny-radius sagitta witness failed upstream, so the preregistered rule
 is narrowed to contraction/isometry (σmax ≤ 1) for curved lineages; other scales
-refuse `incomplete`; the comparison reports `affine_kappa` without claiming that
+refuse `incomplete` before any invocation, since the rule is source-determined.
+Opcode 18 certifies only BSpline, plane, cylinder, cone, sphere and torus
+surfaces; the SDK sweeps every partial profile arc or oblique extrusion into
+SmSurfOfExtrusion, so an affine copy of such a lineage (for example a mirrored
+arched door) also refuses `incomplete` before dispatch rather than reporting a
+`kernel_failure`. The comparison reports `affine_kappa` without claiming that
 nonuniform scale preserves the facet-angle bound. Source centroids and signed
 volumes supplement the existing absolute-volume checks. The mapped oblique-clip
 fixture remains a qualification dependency on M5.

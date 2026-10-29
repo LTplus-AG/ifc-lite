@@ -352,7 +352,8 @@ impl IfcAPI {
             *slot = Some(entity_index_arc.clone());
         }
         // Hold a second clone for the post-scan entity-index export below;
-        // `with_arc_columnar_index` consumes the Arc so we'd lose the
+        // `with_arc_columnar_index` takes ownership of its Arc, while this
+        // handle keeps the sorted columns accessible to the export.
         let index_for_export = entity_index_arc.clone();
 
         // ── FAST FIRST GEOMETRY ──

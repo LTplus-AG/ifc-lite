@@ -1,38 +1,159 @@
 {
   "issue": 7782,
   "lane": "C4-10a",
+  "reviewRound": 1,
   "pr": "https://github.com/LTplus-AG/ifc-lite/pull/8316",
-  "base": "19269dfeea59722e7ee90dd22520c857594cd137",
-  "productionValidationCommit": "0ca73860bbd82d572711aea20bc799af8bca6fd6",
-  "testCorrectionCommit": "438798fbd2a8ca359019613f20e87462a2fe6121",
+  "previousEvidence": "6b977a14eee2a276e71ea46f8b5184f8fd6395a8:tests/evidence/c4-10a/validation.json",
+  "mergedParent": "a346ea5f7f911e0dcd744e0ca2d9b2e89e84badb",
+  "validation": {
+    "rustChecksCommit": "968497f873437941c3bc1457155232e81a4bb129",
+    "boundaryCommit": "503c97ac0f861adf19e9a7ac40c19d5fc59df0ba",
+    "validatedRustTree": "d68191ffdee8440849e86ab396c02361c53d0154",
+    "finalRustTree": "08635a7cadf6a6722476b6e774a26c001d223f14",
+    "boundarySourceUnchanged": true,
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "df0a82c67c1a4e2d3e2c8a3fc177bd703b0fa1ab880d854a9f6dc7eadfd1a400",
+      "pnpm-lock.yaml": "b91f7d6b5be692b3a0721b838ae228cc50f4020bc763f7e8c68186f9da5fe701",
+      "package.json": "fbc8411659f71e14211e1498a0447475bea2542b2696e3b11d1d35e0ddd7f424"
+    },
+    "tools": {
+      "git": "git version 2.53.0",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+      "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+      "node": "v24.21.0",
+      "pnpm": "10.8.1"
+    },
+    "postValidationDocumentationSync": "Parent a346ea5f7f changes two Rust doc-comment lines and matching default/retained declaration comments. The final prepass Arc comment clarifies ownership without implying export happens after decoder construction. Only comments differ from the validated Rust tree; no executable code, signatures, tests or line counts changed."
+  },
   "publishedProcessing": {
     "version": "27.0.0",
     "crateArchiveSha256": "ab3dc70c525c6321207c3230fd47f8ca8643a8f914178085b6cf1addbbc8abd9",
-    "verdict": "Preserved constructible PipelineDiagnostics v1; additive non-exhaustive PipelineDiagnosticsReport v2, plain-object WASM serialization."
+    "verdict": "Published constructible PipelineDiagnostics v1 remains unchanged. Non-exhaustive PipelineDiagnosticsReport adds refusal fields to schemaVersion 1; serializer emits a plain JS object; wasm changeset remains patch."
   },
-  "parity": {
-    "fixtures": 15,
-    "retainedDifferences": 22,
-    "resolvedRefusalCounterDifferences": 15,
-    "otherExpectedRowsUnchanged": true
+  "findings": {
+    "P2-1": "Fixed: drain each successful element after for_meshes; retain error-path drains. Installed-finishes witness has a valid Body plus a refused Axis read by both style walks; following valid B is not charged.",
+    "P2-2": "Fixed: remove both synthetic syntax-failure refuse_record calls. Failed element decoding drains only genuine admission refusals; undecodable type candidates stay omitted. Native-equivalent counts are pinned.",
+    "P2-3": "Fixed: schemaVersion stays 1; both report constructors use PIPELINE_DIAGNOSTICS_SCHEMA_VERSION; Rust and real-WASM pins, docs and patch changeset updated.",
+    "P3-4": "Fixed: nonzero refusal counters expose the report before any batch. Real-WASM unit-refusal prepass witness passes.",
+    "P3-5": "Fixed: cache and diagnostics comments attach to their fields; setSourceBytes reset documented.",
+    "P3-6": "Fixed: complete prepass Arc-export explanation, #3187 caveat and mapped-item cache rationale restored. Exact module budgets: batch 935, prepass 586, IfcAPI 1039; function budgets: produce_batch 536, pre_pass_streaming_impl 504. Ratchets pass.",
+    "P3-7": "Fixed: both pipeline diagnostics module docs name the plain-object serializer.",
+    "P3-8": "Fixed: placement contracts pin actual admission counts, including zero for missing references/plain syntax and one for numeric overflow, cycles and malformed authored directions.",
+    "P3-9": "Fixed: first-batch refusal assertions sit beside the first batch snapshot.",
+    "P3-10": "Fixed: C4-10a oracle branch has its own comment; C4-7a-R comment sits beside its branch.",
+    "P3-11": "Fixed: same BREP jobs split across two warm-cache batches equal a fresh API batch bit-for-bit for position, normal and index bytes; serialized mesh metadata also matches.",
+    "P3-12": "Deferred as directed: mapped-item reset contracts belong to C4-11a.",
+    "F2": "Out of scope: visibility of dropped syntax-invalid type records needs follow-up under #7782; do not classify syntax failures as admission refusals."
   },
-  "geometryVerdict": "C4-0 full payload gate passed; no geometry-policy changes. No headed browser/worker-pool performance qualification.",
-  "performanceVerdict": "Unmeasured: no speedup or neutrality claim; draft requires end-to-end A/B qualification before acceptance.",
-  "layerIndex": "Already gated by ProcessingRequest.layer_slicing in parent resolve.rs; default-off D66 behavior and opt-in test retained.",
-  "stages": [
-    {
-      "request": "auto-d58e5d799a3e430f8605cbdc0cfa62dd",
-      "job": "f9849258-9144-4450-ab36-53982e92ae25",
-      "host": "pc-wsl",
-      "source": "934cf129266f1b54c6084f84d349232f232b006e",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
+  "refusalExpectations": {
+    "mixedFixture": {
+      "afterFirstBatch": {
+        "refusedInputElements": 2,
+        "refusedPrepassRecords": 1
+      },
+      "afterRepeatedBatch": {
+        "refusedInputElements": 4,
+        "refusedPrepassRecords": 1
+      },
+      "refusedRecord": 101,
+      "excludedSyntaxRecords": [
+        400,
+        500
+      ]
+    },
+    "installedFinishes": {
+      "attemptedElements": [
+        100,
+        300
+      ],
+      "meshProducingElements": [
+        100,
+        300
+      ],
+      "refusedInputElements": 1,
+      "refusedPrepassRecords": 1
+    },
+    "prepassOnlyUnit": {
+      "batches": 0,
+      "refusedInputElements": 0,
+      "refusedPrepassRecords": 1,
+      "schemaVersion": 1
+    }
+  },
+  "results": {
+    "clippy": "PASS: cargo clippy --workspace --all-targets -- -D warnings",
+    "processingWithFixtures": {
+      "regularPassed": 1301,
+      "doctestsPassed": 1,
+      "ignored": 5,
+      "optionalSkips": [
+        "Skipping external captured surface: fetch the public Poly Haven boulder fixture and set IFCLITE_CAPTURED_MESH_FIXTURE",
+        "Skipping Convento appearance corpus: run pnpm fixtures, unwrap textures/ifc-hbim-convento-textures.ifczip and set IFCLITE_APPEARANCE_CORPUS_IFC"
+      ]
+    },
+    "ignoredTests": [
+      "test analytic_export::walk::tests::issue_6442_analytic_cache_process_measurement ... ignored, opt-in #6442 measurement; use scripts/perf/analytic-cache-ab.py",
+      "test print_current_offenders ... ignored",
+      "test print_current_counts ... ignored, re-seed helper: run with --ignored --nocapture",
+      "test full_matrix ... ignored",
+      "test issue_6870_throughput_at_two_million_points ... ignored"
+    ],
+    "wasmNative": {
+      "passed": 227,
+      "failed": 0,
+      "includes": "C4-0 full-payload parity gate over 15 committed fixtures; 22 retained exceptions unchanged; default-off and opt-in layer slicing witnesses"
+    },
+    "ratchets": "PASS: module-size, function-length, positional-read; node module-size ratchet tests 18 passed",
+    "oracle": {
+      "reverseApplies": true,
+      "patchUnchanged": true,
+      "verdict": "OBSERVED",
+      "normal": {
+        "passed": 6,
+        "failed": 0
+      },
+      "mutated": {
+        "passed": 3,
+        "assertionFailures": 3
+      },
+      "restored": {
+        "passed": 6,
+        "failed": 0
+      }
+    },
+    "fixtureSeed": {
+      "restored": 182,
+      "existingOrModified": 0,
+      "notCached": 0
+    },
+    "rootTurboBuild": {
+      "passed": 16,
+      "total": 16
+    },
+    "realWasm": {
+      "passed": 231,
+      "failed": 0,
+      "skipped": 1,
+      "skip": "matched historical fingerprint fallback"
+    },
+    "wasmSha256": "2de612ee025cafc94e5f17f4c34f344070632d7c82fea8ff4bdb7809132f9361",
+    "declarationSync": "Both default and retained declarations regenerated in the first full run; generated docs committed at 503c97ac0f. Final clean boundary run passes git diff --exit-code for both declarations. Subsequent parent documentation-only sync includes matching generated comment changes.",
+    "productionValidationLog": {
+      "sha256": "746b4ff84b96873e47e888802c03cceeda07fd78fa4456600d3cc3809e0aa7a2",
+      "manifest": "pc-wsl-3473dc5e-1988-48c8-ba6c-61d6248417f0-3598f1f26fc3"
+    }
+  },
+  "commands": {
+    "focused": {
+      "fleetArgs": [
         "run",
         "--storage-task",
-        "c4-10a-edeb05ca",
+        "c4-10a-r1-d330f34c",
         "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-d330f34c"
+      ],
+      "argv": [
         "cargo",
         "test",
         "-p",
@@ -41,238 +162,123 @@
         "c4_10a",
         "--",
         "--nocapture"
-      ],
-      "exitCode": 101,
-      "result": "Compile failure: new tests were outside the batch privacy boundary; fixed.",
-      "receipt": "worker-state/jobs/f9849258-9144-4450-ab36-53982e92ae25/receipt.json"
+      ]
     },
-    {
-      "request": "auto-0c6349039f3c4b8fb46f13cba382821c",
-      "job": "07ce200e-124d-4916-8f95-77b5a97576dd",
-      "host": "pc-wsl",
-      "source": "c70197f1a256fab7803e181508d134df91a80966",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--storage-task",
-        "c4-10a-edeb05ca",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
-        "cargo",
-        "test",
-        "-p",
-        "ifc-lite-wasm",
-        "-p",
-        "ifc-lite-processing"
-      ],
-      "exitCode": 1,
-      "result": "Storage job-open refusal during previous evidence publication; no project command executed.",
-      "receipt": "worker-state/jobs/07ce200e-124d-4916-8f95-77b5a97576dd/receipt.json"
-    },
-    {
-      "request": "auto-4d321819621e4650bbcc507555d9ab71",
-      "job": "c514eade-fb24-4ac8-9831-e25dceca50eb",
-      "host": "pc-wsl",
-      "source": "183371c604b7665ad1679eef3b477d92a2d1114d",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--storage-task",
-        "c4-10a-edeb05ca",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
-        "cargo",
-        "test",
-        "-p",
-        "ifc-lite-wasm",
-        "-p",
-        "ifc-lite-processing"
-      ],
-      "exitCode": 1,
-      "result": "Storage job-open refusal during previous evidence publication; no project command executed.",
-      "receipt": "worker-state/jobs/c514eade-fb24-4ac8-9831-e25dceca50eb/receipt.json"
-    },
-    {
-      "request": "auto-60cad801662d41a7be40565460aa0de9",
-      "job": "54d31b60-9a4a-4e62-ba20-a8904e2cb13f",
-      "host": "pc-wsl",
-      "source": "183371c604b7665ad1679eef3b477d92a2d1114d",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--storage-task",
-        "c4-10a-edeb05ca",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
-        "cargo",
-        "test",
-        "-p",
-        "ifc-lite-wasm",
-        "-p",
-        "ifc-lite-processing"
-      ],
-      "exitCode": 101,
-      "result": "Processing: 1301 passed, 5 ignored across 138 test binaries. WASM: 222 passed, 2 JSON-ledger parse failures; trailing comma fixed.",
-      "receipt": "worker-state/jobs/54d31b60-9a4a-4e62-ba20-a8904e2cb13f/receipt.json"
-    },
-    {
-      "request": "auto-0a6ad8ede3274115a988e51c3ae4b63f",
-      "job": "f7b0a9c7-5a45-4b94-b520-c50b0ce1c5cb",
-      "host": "pc-wsl",
-      "source": "b64114d131d7d0758206499dae10b43eaf9059af",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
+    "fullValidation": {
+      "fleetArgs": [
         "run",
         "--route",
         "fleet",
         "--storage-task",
-        "c4-10a-edeb05ca",
+        "c4-10a-r1-final-d330f34c",
         "--memory",
         "16",
         "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-d330f34c"
+      ],
+      "argv": [
         "bash",
         "-c",
-        "set -eu\ncargo clippy --workspace --all-targets -- -D warnings\ncargo test -p ifc-lite-wasm --lib\ncargo test -p ifc-lite-processing --lib\ncargo test -p ifc-lite-processing --test module_size_ratchet --test function_length_ratchet --test positional_read_ratchet --test layer_slicing\nnode scripts/check-test-revert-oracle.mjs --base 19269dfeea --mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs --verify-restored --ci --json\npnpm install --frozen-lockfile --prefer-offline\nbash scripts/build-wasm.sh\npnpm test:wasm-contract\nnode --test scripts/lib/module-size-ratchet.test.mjs"
-      ],
-      "exitCode": 1,
-      "result": "Explicitly retired while queued: source superseded by the parity JSON fix. No project command executed.",
-      "receipt": "worker-state/jobs/f7b0a9c7-5a45-4b94-b520-c50b0ce1c5cb/receipt.json"
+        "set -eu\nexport CARGO_BUILD_JOBS=4\ncargo test -p ifc-lite-wasm --lib c4_10a -- --nocapture\ncargo clippy --workspace --all-targets -- -D warnings\ncargo test -p ifc-lite-processing -p ifc-lite-wasm\nnode --test scripts/lib/module-size-ratchet.test.mjs\ngit apply --reverse --check tests/evidence/c4-10a/behaviour.oracle.patch\nnode scripts/check-test-revert-oracle.mjs --base fdb9d14b02 --mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs --verify-restored --ci --json\npnpm install --frozen-lockfile --prefer-offline\n~/build-workers/storage seed-fixtures --cwd \"$PWD\"\npnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc\npnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export...\nCI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh\npnpm test:wasm-contract\nsha256sum packages/wasm/pkg/ifc-lite_bg.wasm\ngit diff -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts\n"
+      ]
     },
-    {
-      "request": "auto-5588168335a4499aa8d734ff472e0cb1",
-      "job": "566a4032-e7a9-47f8-b28c-b36e13c3d98c",
-      "host": "pc-wsl",
-      "source": "0ca73860bbd82d572711aea20bc799af8bca6fd6",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
+    "fixtureBoundary": {
+      "fleetArgs": [
         "run",
         "--route",
         "fleet",
         "--storage-task",
-        "c4-10a-final-edeb05ca",
+        "c4-10a-r1-boundary-d330f34c",
+        "--memory",
+        "16",
         "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-d330f34c"
+      ],
+      "argv": [
         "bash",
         "-c",
-        "set -eu\ncargo clippy --workspace --all-targets -- -D warnings\ncargo test -p ifc-lite-wasm --lib\ncargo test -p ifc-lite-processing --lib\ncargo test -p ifc-lite-processing --test module_size_ratchet --test function_length_ratchet --test positional_read_ratchet --test layer_slicing\nnode scripts/check-test-revert-oracle.mjs --base 19269dfeea --mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs --verify-restored --ci --json\npnpm install --frozen-lockfile --prefer-offline\nbash scripts/build-wasm.sh\npnpm test:wasm-contract\nnode --test scripts/lib/module-size-ratchet.test.mjs"
-      ],
-      "exitCode": 1,
-      "result": "Workspace clippy passed; WASM lib 225 passed; processing lib 778 passed/1 ignored; ratchets and opt-in slicing passed; oracle OBSERVED; fresh WASM built. Contract runner failed at import because renderer dist was absent.",
-      "receipt": "worker-state/jobs/566a4032-e7a9-47f8-b28c-b36e13c3d98c/receipt.json"
+        "set -eu\nexport CARGO_BUILD_JOBS=4\npnpm install --frozen-lockfile --prefer-offline\n~/build-workers/storage seed-fixtures --cwd \"$PWD\"\npnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc\ncargo test -p ifc-lite-processing -- --nocapture\npnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export...\nCI=1 bash scripts/build-wasm.sh\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts\npnpm test:wasm-contract\nsha256sum packages/wasm/pkg/ifc-lite_bg.wasm\ngit rev-parse HEAD:rust\n"
+      ]
     },
+    "launcher": "~/build-workers/ifc-fleet"
+  },
+  "stages": [
     {
-      "request": "auto-6ed5541662114713a6f08892db3a0b0e",
-      "job": "d3401a04-d2ba-4b4f-95cd-2fa9361a60da",
+      "request": "auto-5b5a05278dae48348987526ff6b332ac",
+      "job": "8b75273f-0c2b-412f-91b2-2f91f23d400d",
       "host": "pop-os",
-      "source": "0ca73860bbd82d572711aea20bc799af8bca6fd6",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--route",
-        "fleet",
-        "--storage-task",
-        "c4-10a-final-edeb05ca",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
-        "bash",
-        "-c",
-        "set -eu\npnpm build --filter=@ifc-lite/renderer...\npnpm test:wasm-contract\nnode --test scripts/lib/module-size-ratchet.test.mjs"
-      ],
-      "exitCode": 1,
-      "result": "Explicitly retired while queued after discovering the preparation needed the export/parser dependency graph too. No project command executed.",
-      "receipt": "worker-state/jobs/d3401a04-d2ba-4b4f-95cd-2fa9361a60da/receipt.json"
+      "source": "ffa04c6a1337f7712deaac9f16a0916b5b8f4f38",
+      "exitCode": 101,
+      "result": "5/6 focused witnesses passed; invalid mixed-Body fixture prevented the finish join. Corrected test input.",
+      "commandRef": "focused",
+      "receipt": "worker-state/jobs/8b75273f-0c2b-412f-91b2-2f91f23d400d/receipt.json"
     },
     {
-      "request": "auto-caf9f5b9335c4824ac3b57e8027435ec",
-      "job": "9c6576fe-e24d-47f8-83c0-5a8b12718125",
+      "request": "auto-13147d5398ca43bcad97a0c327efad66",
+      "job": "143d947b-1b1d-4c5e-9f0b-1c70aac9c05d",
       "host": "pc-wsl",
-      "source": "0ca73860bbd82d572711aea20bc799af8bca6fd6",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--host",
-        "pc-wsl",
-        "--storage-task",
-        "c4-10a-final-edeb05ca",
-        "--cwd",
-        "/home/louistrue/.t3/worktrees/ifc-lite/t3-edeb05ca",
-        "--",
-        "bash",
-        "-c",
-        "set -eu\npnpm install --frozen-lockfile --prefer-offline\npnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export...\nbash scripts/build-wasm.sh\ntest -f tests/models/buildingsmart/column-straight-rectangle-tessellation.ifc\npnpm test:wasm-contract\nnode --test scripts/lib/module-size-ratchet.test.mjs"
-      ],
-      "exitCode": 1,
-      "result": "Root Turbo dependency build: 16 tasks passed. Fresh WASM built. Contracts: 212 passed, 10 failed solely at shared schemaVersion=1 pin, 9 skipped; pin updated to 2.",
-      "receipt": "worker-state/jobs/9c6576fe-e24d-47f8-83c0-5a8b12718125/receipt.json"
+      "source": "6f61c24adb49d634879e5ed671bd3ec9c4db33e1",
+      "exitCode": 101,
+      "result": "5/6 focused witnesses passed; strict admission rejected a later refused Body too. Corrected test input.",
+      "commandRef": "focused",
+      "receipt": "worker-state/jobs/143d947b-1b1d-4c5e-9f0b-1c70aac9c05d/receipt.json"
     },
     {
-      "request": null,
-      "job": "7a277f0d-bc1f-4c57-a43f-d7692f61a0c7",
+      "request": "auto-690b9db3309344139dd6495d1ca1e332",
+      "job": "3ef3f55d-0344-4e0e-9f40-ab72dbd1d294",
       "host": "pc-wsl",
-      "source": "0ca73860bbd82d572711aea20bc799af8bca6fd6",
-      "fleetArgv": [
-        "~/build-workers/ifc-fleet",
-        "run",
-        "--storage-task",
-        "c4-10a-final-edeb05ca",
-        "--cwd",
-        "/home/louistrue/build-workers/worker-state/checkouts/0ca73860bbd82d572711aea20bc799af8bca6fd6",
-        "--",
-        "bash",
-        "-c",
-        "set -eu\npnpm test:wasm-contract\nnode --test scripts/lib/module-size-ratchet.test.mjs"
-      ],
+      "source": "738ad4aa315b665a9c4e18fc17c3bbe7126f4fab",
+      "exitCode": 101,
+      "result": "5/6 focused witnesses passed; ordering Body representations does not bypass strict admission. Final fixture uses a skipped Axis read by the style walks plus a valid Body.",
+      "commandRef": "focused",
+      "receipt": "worker-state/jobs/3ef3f55d-0344-4e0e-9f40-ab72dbd1d294/receipt.json"
+    },
+    {
+      "request": "auto-d2514529ce9142e39ca1dbf32dfea681",
+      "job": "3473dc5e-1988-48c8-ba6c-61d6248417f0",
+      "host": "pc-wsl",
+      "source": "968497f873437941c3bc1457155232e81a4bb129",
+      "exitCode": 1,
+      "result": "Workspace clippy passed; processing 1301 passed/5 ignored; wasm native 227 passed including C4-0; ratchets and oracle OBSERVED passed; 16 root Turbo builds passed; fresh default+retained WASM built; boundary 228 passed, 3 assertions expected a refusal for plain syntax/missing refs, 1 historical skip. Test-only counts corrected.",
+      "commandRef": "fullValidation",
+      "receipt": "worker-state/jobs/3473dc5e-1988-48c8-ba6c-61d6248417f0/receipt.json"
+    },
+    {
+      "request": "auto-6e43b9701ba84fee96adda14b7cf3a86",
+      "job": "243b604c-e056-4cd2-a3e1-a61db08266f2",
+      "host": "pc-wsl",
+      "source": "503c97ac0f861adf19e9a7ac40c19d5fc59df0ba",
+      "exitCode": 1,
+      "result": "Host capacity guard refused before any project command executed (processExitCode=null). Inspected original receipt, attempted lifecycle cleanup, and verified guard returned 0 before submitting eligible work again.",
+      "commandRef": "fixtureBoundary",
+      "receipt": "worker-state/jobs/243b604c-e056-4cd2-a3e1-a61db08266f2/receipt.json"
+    },
+    {
+      "request": "auto-5b1d5b020bbf4e9b8c93ca99a8314022",
+      "job": "67474431-519f-41f9-ba6b-27bc2ef03091",
+      "host": "pc-wsl",
+      "source": "503c97ac0f861adf19e9a7ac40c19d5fc59df0ba",
+      "commandRef": "fixtureBoundary",
       "exitCode": 0,
-      "result": "Real WASM contracts: 222 passed, 0 failed, 9 skipped. Node module-size ratchet tests: 18 passed, 0 failed.",
-      "receipt": "worker-state/jobs/7a277f0d-bc1f-4c57-a43f-d7692f61a0c7/receipt.json"
+      "result": "Processing with fixtures: 1301 regular tests + 1 doctest passed, 5 ignored; 2 optional external-corpus checks skipped. Root Turbo 16 tasks passed; fresh default WASM and committed declaration drift check passed; real WASM 231 passed, 0 failed, 1 named skip.",
+      "receipt": "worker-state/jobs/67474431-519f-41f9-ba6b-27bc2ef03091/receipt.json",
+      "sourceUnchanged": true,
+      "outputSha256": "0b4dffeb8767664183aa492bfd8866d3b2fa009f2b969ac8fb39f08c110add4c"
     }
   ],
-  "finalBoundary": {
-    "sourceDigestBefore": "70cb42856ee345ba8b647572ad9b59b695b3d24d28605a9c350bb74837470602",
-    "sourceDigestAfter": "70cb42856ee345ba8b647572ad9b59b695b3d24d28605a9c350bb74837470602",
-    "sourceUnchangedReceiptFlag": false,
-    "flagExplanation": "Launcher sets this flag false for all dirty starts. Before/after identities are equal; only the schema-version test pin differs from the clean production commit, and matches testCorrectionCommit. Rust tree is identical.",
-    "wasmSha256": "f6eca7b9f24d24442627ed815fd922e250edc14242233d17146e1bdee6d58a82",
-    "wasmContracts": {
-      "passed": 222,
-      "failed": 0,
-      "skipped": 9
-    },
-    "nodeTests": {
-      "passed": 18,
-      "failed": 0
-    },
-    "skips": [
-      "#6516: disjoint opening misses preserve closed Revit material-layer parts",
-      "geometry progress callback fires inside a batch call and leaves output unchanged",
-      "#7677 a progress callback that clears itself does not abort the instance",
-      "matched historical fingerprint fallback",
-      "embedded texture getter ownership (#3989)",
-      "external texture getter ownership (#3989)",
-      "re-mesh parity: buildingsmart/wall-with-opening-and-window.ifc",
-      "re-mesh parity: various/rvt01.ifc",
-      "re-mesh with no target job"
-    ],
-    "tools": {
-      "git": "git version 2.53.0",
-      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
-      "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
-      "node": "v24.21.0",
-      "pnpm": "10.8.1"
-    }
-  },
+  "performanceVerdict": "Unmeasured; no speedup or neutrality claim. No headed browser/worker-pool A/B qualification. Draft retains that acceptance limitation.",
   "cleanup": {
     "reclaimedBytes": 0,
-    "pc": "Close requested; active T3 turn references exported checkouts. No live Linux processes use completed iteration exports. Guard preserved.",
-    "pop": "Close requested for canceled stage; refused because its original resource exclusion lock is absent. Did not recreate or bypass the lock.",
-    "failedPreparation": "The c70197f1a256fab7803e181508d134df91a80966 export was prepared before storage job-open refusal; its source is preserved in branch ancestry. Cleanup requires owner reconciliation after this turn."
-  },
-  "processingTreeMatchesFinalHead": true
+    "completedOutcomesReconciled": true,
+    "noLiveLinuxProcessesUsingCompletedExports": true,
+    "pc": "Close requested for iteration, full-validation and boundary tasks. Completed exported checkouts are referenced in this active T3 turn; t3_references=true and process_users=[] for all four exports. Original guards preserved.",
+    "pop": "Iteration evidence published and verified. Close requested; canonical manifest-release returned exit 1. Original receipts, locks and active foreign publication processes preserved.",
+    "boundaryPublication": "Final green run has immutable receipt and captured log. Lifecycle publication recovery also encountered the active vault lock. Inspect original job 67474431-519f-41f9-ba6b-27bc2ef03091; never rerun project commands to recover publication.",
+    "storageTasks": [
+      "c4-10a-r1-d330f34c (PC and Pop)",
+      "c4-10a-r1-final-d330f34c (PC)",
+      "c4-10a-r1-boundary-d330f34c (PC)"
+    ],
+    "retention": "No build target/workspace designated for permanent retention; close requests remain for the owning coordinator/maintenance after active T3 references clear."
+  }
 }

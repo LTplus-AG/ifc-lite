@@ -1498,8 +1498,10 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
     const one = diagApi.getPipelineDiagnostics();
     assert.ok(one && typeof one === 'object', 'diagnostics must be an object after a batch');
     // Versioned wire shape: the schema-stability contract on the real boundary.
-    assert.equal(one.schemaVersion, 2, 'schemaVersion must match the pinned contract (bump = breaking)');
+    assert.equal(one.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
     assert.equal(one.batches, 1, 'exactly one batch recorded');
+    assert.equal(one.refusedInputElements, 0);
+    assert.equal(one.refusedPrepassRecords, 0);
     // Real VALUES, not just key presence: the column fixture has geometry, so a
     // serde bug emitting zero/wrong counts would be caught.
     assert.ok(one.meshCount > 0, 'meshCount > 0');
@@ -1516,8 +1518,6 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
     // A second processGeometryBatch of the SAME load ACCUMULATES: record_batch
     // sums per batch, so batches increments and the counts never decrease.
     runBatch();
-    assert.equal(one.refusedInputElements, 0);
-    assert.equal(one.refusedPrepassRecords, 0);
     const two = diagApi.getPipelineDiagnostics();
     assert.equal(two.batches, 2, 'batches accumulate across processGeometryBatch calls');
     assert.ok(two.meshCount >= one.meshCount, 'meshCount accumulates (monotonic)');
@@ -1541,7 +1541,7 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
   }
 });
 
-test('C4-10a #7782: refused input attempts and distinct type/leaf records cross real WASM', () => {
+test('C4-10a #7782: refused input attempts and distinct refused leaf records exclude syntax failures in real WASM', () => {
   const diagApi = new IfcAPI();
   const source = readFileSync(join(ROOT_DIR, 'rust/processing/tests/fixtures/c4_0_refusal_parity_7782.ifc'), 'utf8')
     .replace('ENDSEC;\nEND-ISO', "#400=IFCWALL('bad',$,$,$,INVALID,#5,#303,$,.NOTDEFINED.);\n#500=IFCBOILERTYPE('bad',$,$,$,INVALID,$,(#501),$,$,.NOTDEFINED.);\n#501=IFCREPRESENTATIONMAP(#4,#302);\nENDSEC;\nEND-ISO");
@@ -1549,16 +1549,34 @@ test('C4-10a #7782: refused input attempts and distinct type/leaf records cross 
   try {
     const pre = diagApi.buildPrePassOnce(bytes);
     assert.ok(!Array.from(pre.jobs).filter((_, i) => i % 3 === 0).includes(500));
-    for (const attempts of [3, 6]) {
+    for (const attempts of [2, 4]) {
       const meshes = diagApi.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
         ...pre.rtcOffset, pre.needsShift, pre.voidKeys, pre.voidCounts, pre.voidValues,
         pre.styleIds, pre.styleColors, pre.planeAngleToRadians);
       meshes.free();
       const diag = diagApi.getPipelineDiagnostics();
-      assert.equal(diag.schemaVersion, 2);
+      assert.equal(diag.schemaVersion, 1);
       assert.equal(diag.refusedInputElements, attempts);
-      assert.equal(diag.refusedPrepassRecords, 3);
+      assert.equal(diag.refusedPrepassRecords, 1);
     }
+  } finally { diagApi.clearPrePassCache(); diagApi.free(); }
+});
+
+test('C4-10a #8316: prepass-only refusal diagnostics are visible before any batch', () => {
+  const diagApi = new IfcAPI();
+  const source = readFileSync(join(ROOT_DIR, 'rust/processing/tests/fixtures/c4_0_refusal_parity_7782.ifc'), 'utf8')
+    .replace('#8=IFCUNITASSIGNMENT((#7));', `#8=IFCUNITASSIGNMENT((#800));
+#800=IFCCONVERSIONBASEDUNIT(#803,.LENGTHUNIT.,'CUSTOM',#801);
+#801=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.E400),#7);
+#803=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);`);
+  try {
+    diagApi.buildPrePassOnce(new TextEncoder().encode(source));
+    const diag = diagApi.getPipelineDiagnostics();
+    assert.ok(diag && typeof diag === 'object', 'prepass API must expose its own refusals');
+    assert.equal(diag.schemaVersion, 1);
+    assert.equal(diag.batches, 0);
+    assert.equal(diag.refusedInputElements, 0);
+    assert.equal(diag.refusedPrepassRecords, 1, 'only the refused unit record #801');
   } finally { diagApi.clearPrePassCache(); diagApi.free(); }
 });
 

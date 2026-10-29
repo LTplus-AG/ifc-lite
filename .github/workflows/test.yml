@@ -969,12 +969,16 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
-          # #7782 C4-7a-R: keep the shared plan and mutate its browser class
-          # decision; the mode witness must observe the wrong class.
+          # #7782 C4-10b: preserve world-frame RTC and the scheduler policy split.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-10b/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.oracle.patch --test rust/processing/src/execution_tests.rs)
+            oracle_args+=(--mutation tests/evidence/c4-10b/policy.oracle.patch --test rust/processing/src/execution_tests.rs)
+          # #7782 C4-10a: retain cache/report APIs and test wiring; suppress
+          # input-refusal counting so the per-attempt witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-10a/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs)
+          # #7782 C4-7a-R: keep the shared plan and mutate its browser class
+          # decision; the mode witness must observe the wrong class.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-r/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-r/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-7a-r/behaviour.oracle.patch --test rust/processing/tests/type_geometry_plan_7782.rs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-x/behaviour.oracle.patch'; then
@@ -1029,6 +1033,12 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8302: keep the binary transport and batch modules/exports loadable.
+          # Break ONLY signed-zero preservation in packed numeric values; the
+          # changed round-trip witness must fail an assertion, not its imports.
+          # Once this patch is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/boundary-transport-8302/behaviour.oracle.patch | grep -Fxq 'tests/evidence/boundary-transport-8302/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/boundary-transport-8302/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/test/oracle/index.ts | grep -Fxq 'packages/diff/test/oracle/index.ts'; then
             # #8042/#8111: pin the relocated TS oracle while observing the
             # changed public dispatch. A full-source scope includes production

@@ -151,11 +151,9 @@ impl IfcAPI {
             // takes `&DecodedEntity`, so we deref the Arc at the call site.
             let span = ifc_lite_processing::execution::JobSpan { id, start, end };
             let Ok(entity) = ifc_lite_processing::execution::decode_job(
-                &mut decoder, span, ifc_lite_processing::execution::ExecutionPolicy::PerBatch,
+                &mut decoder, span, ifc_lite_processing::execution::SchedulerPolicy::PerBatch,
             ) else {
-                let _ = decoder.refuse_record(id);
-                self.collect_pipeline_refusals(&decoder);
-                self.note_refused_input();
+                self.record_input_refusals(&decoder, false);
                 continue;
             };
             // Schema-resolved, like the native pre-pass at
@@ -163,6 +161,12 @@ impl IfcAPI {
             // their exact generated variants; raw-record fallback preserves an
             // owned unknown keyword where decoding could not retain it (#3179,
             // #4203).
+            //
+            // Not every dropped keyword reaches this line: the four arms with
+            // `has_geometry: false` are refused by `has_geometry_by_name` in
+            // all three element producers, so this fix misses them. #3187 has
+            // the trace, including the type-geometry gate that would make
+            // THREE of the four eligible -- eligible, not certain.
             //
             // Recomputed from the SOURCE KEYWORD rather than recovered from
             // `entity.ifc_type` -- why it cannot be recovered is on
@@ -234,8 +238,11 @@ impl IfcAPI {
                 &mut decoder,
                 &router,
             );
-            self.record_input_refusals(&decoder, router.length_unit_refused());
-            let Ok(produced) = produced else { batch_refused += 1; continue };
+            let Ok(produced) = produced else {
+                self.record_input_refusals(&decoder, router.length_unit_refused());
+                batch_refused += 1;
+                continue;
+            };
 
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);
@@ -256,6 +263,9 @@ impl IfcAPI {
                     .geometry_closure
                     .map_or(0, |c| c.bits()),
             });
+            // Finish resolution can re-decode refused items too. Drain the whole
+            // element scope only after the join, before the next job starts.
+            self.record_input_refusals(&decoder, router.length_unit_refused());
         }
 
         // Surface refused products and the opening / CSG diagnostics. The

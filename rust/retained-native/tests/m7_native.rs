@@ -153,12 +153,8 @@ fn m7_sdk_oracle_closed_shapes() {
         assert_eq!(actual.defects, 0, "#{id}");
         reference.push(serde_json::json!({"expressId":id,"code":"published","volume":actual.volume}));
     }
-    for (id, code) in [
-        (202, "empty_result"),
-    ] {
-        assert_eq!(refusal(&outcomes, id).code(), code, "#{id}");
-        reference.push(serde_json::json!({"expressId":id,"code":code}));
-    }
+    assert_eq!(refusal(&outcomes, 202).code(), "empty_result", "#202");
+    reference.push(serde_json::json!({"expressId":202,"code":"empty_result"}));
     assert_eq!(outcomes.len(), 16);
     // Non-schema inputs are explicitly outside coverage qualification. Pin only
     // controller outcomes and parity, never include them in published deltas.

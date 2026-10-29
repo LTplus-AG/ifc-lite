@@ -64,7 +64,7 @@ impl ColumnsDiscovery {
         if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
             self.type_candidate_spans.push((id, start, end, ty));
         }
-        if let Some((ty, _by_name)) = job {
+        if let Some(ty) = job {
             if !is_disabled(disabled, kw) {
                 self.buffered_jobs.push((id, start, end, ty));
                 self.total_jobs += 1;

@@ -37,7 +37,7 @@ pub(crate) fn combined_pre_pass(content: &[u8], decoder: &mut ifc_lite_core::Ent
 
     let estimated_elements = content.len() / 2000;
 
-    let mut discovery = ifc_lite_processing::discovery::Discovery::new(false);
+    let mut discovery = ifc_lite_processing::discovery::Discovery::browser();
     let mut site_position: Option<(u32, usize, usize)> = None;
     let mut simple_jobs = Vec::with_capacity(estimated_elements / 2);
     let mut complex_jobs = Vec::with_capacity(estimated_elements / 2);
@@ -50,8 +50,8 @@ pub(crate) fn combined_pre_pass(content: &[u8], decoder: &mut ifc_lite_core::Ent
         if class == ifc_lite_processing::scan::ScanClass::Site {
             site_position.get_or_insert((id, start, end));
         }
-        if let Some((ty, by_name)) = job {
-            let jobs = if by_name && ifc_lite_core::is_simple_geometry_type(type_name) {
+        if let Some(ty) = job {
+            let jobs = if ifc_lite_core::has_geometry_by_name(type_name) && ifc_lite_core::is_simple_geometry_type(type_name) {
                 &mut simple_jobs
             } else {
                 &mut complex_jobs

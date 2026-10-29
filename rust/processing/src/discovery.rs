@@ -64,12 +64,21 @@ pub struct Discovery {
     pub mapped_item_plan: FxHashMap<u32, (u32, u32)>,
     pub types: TypeScan,
     instancing: bool,
+    browser_only: bool,
 }
 
 impl Discovery {
     pub fn new(instancing: bool) -> Self {
         Self {
             instancing,
+            ..Self::default()
+        }
+    }
+
+    /// Browser callers: native-only type/mapping state is not collected.
+    pub fn browser() -> Self {
+        Self {
+            browser_only: true,
             ..Self::default()
         }
     }
@@ -115,7 +124,9 @@ impl Discovery {
         if ifc_lite_core::is_geometry_job(type_name, &content[start..end]) {
             Some(ifc_lite_core::ifc_type_from_keyword(type_name))
         } else {
-            self.note_type_geometry(content, class, id, type_name, start, end);
+            if !self.browser_only {
+                self.note_type_geometry(content, class, id, type_name, start, end);
+            }
             None
         }
     }

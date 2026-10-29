@@ -35,10 +35,14 @@ test('#7955 M4 CLI band tags and capped volumes match native at 1e-9', {
         const actual = matches[0];
         assert.equal(actual.code ?? actual.status, expected.code, `#${expected.id}`);
         if (expected.code !== 'published') { assert.equal(actual.parts, undefined); continue; }
+        assert.equal(actual.marker, 'final', 'M11-Z CLI report exposes final layered products');
+        assert.deepEqual(actual.obligationsUnmet, []);
         assert.equal(actual.parts.length, expected.bands.length);
         for (const [index, band] of expected.bands.entries()) {
           const part = actual.parts[index];
           assert.deepEqual(part.layer, { index: band.index, materialId: band.materialId });
+          assert.equal(part.materialId, band.materialId, 'appearance belongs to the layer material');
+          assert.ok(Array.isArray(part.color) && part.color.length === 4 && part.color.every(Number.isFinite));
           const relative = Math.abs(part.volumeM3 - band.volume) / Math.abs(band.volume);
           assert.ok(Number.isFinite(relative) && relative <= 1e-9,
             `#${expected.id} band ${band.index}: native ${band.volume}, Node/wasm ${part.volumeM3}`);

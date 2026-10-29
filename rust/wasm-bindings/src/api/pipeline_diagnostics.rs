@@ -35,7 +35,10 @@ impl IfcAPI {
         if diag.is_empty() {
             return JsValue::UNDEFINED;
         }
-        serde_wasm_bindgen::to_value(&*diag).unwrap_or(JsValue::UNDEFINED)
+        // Serde flatten uses serialize_map; keep the v1 plain-object JS boundary
+        // instead of serde-wasm-bindgen's default Map for that map serializer.
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        serde::Serialize::serialize(&*diag, &serializer).unwrap_or(JsValue::UNDEFINED)
     }
 }
 

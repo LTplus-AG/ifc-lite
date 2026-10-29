@@ -1,5 +1,11 @@
 --- a/rust/processing/src/execution.rs
 +++ b/rust/processing/src/execution.rs
-@@ -37,1 +37,1 @@
+@@ -37,7 +37,7 @@
+ ) -> GeometryRouter {
+     config.instancing_batch_local =
+         instances.is_some() && matches!(policy, ExecutionPolicy::PerBatch);
 -    config.rtc_offset = (0.0, 0.0, 0.0);
 +    // Preserve the caller's world-frame rebase.
+     let mut router = GeometryRouter::from_config(config);
+     router.enable_content_dedup_shared(caches.items.clone());
+     router.enable_shared_brep_signature_cache(caches.brep_signatures.clone());

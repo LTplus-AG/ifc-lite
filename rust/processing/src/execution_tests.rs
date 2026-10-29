@@ -25,7 +25,7 @@ fn c4_10b_decode_policy_preserves_warm_span_and_scanned_keyword_7782() {
         ..span
     };
     let warm = decode_job(&mut decoder, invalid_span, ExecutionPolicy::PerBatch).unwrap();
-    assert_eq!(entity.attributes, warm.attributes);
+    assert!(Arc::ptr_eq(&entity.attributes, &warm.attributes));
     assert!(decode_job(&mut decoder, invalid_span, ExecutionPolicy::PerJob).is_err());
     assert_eq!(job_type(&entity, source, span, None), IfcType::IfcWall);
     assert_eq!(

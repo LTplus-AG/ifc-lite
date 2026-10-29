@@ -19,11 +19,14 @@ import type {
   DownloadOptions, FileFilter, FileSourceProvider, ListOptions, ListProjectsOptions,
   PluginContext, PluginManifest, SourceAuth, SourceFileRef, SourceIdentity,
 } from '@ifc-lite/plugin-api';
+// Eager: only the manifest and pure session helpers (this module is imported by
+// the provider registry at startup). The provider itself and the BCF client
+// with its token refresh load on first use, keeping them out of the eager bundle.
 import {
-  BIMCOLLAB_MANIFEST, BimcollabProvider, RelayBimcollabTransport,
-  isBimcollabServerUrl, spaceIdFromAccessToken, spaceLabelFromServerUrl,
-} from '@ifc-lite/source-bimcollab';
-import { connectedTokenSource, loadBcfServerConfig } from '../bcf-server.js';
+  BIMCOLLAB_MANIFEST, isBimcollabServerUrl, spaceIdFromAccessToken, spaceLabelFromServerUrl,
+} from '@ifc-lite/source-bimcollab/lite';
+import type { BimcollabProvider } from '@ifc-lite/source-bimcollab';
+import { loadBcfServerConfig } from '../bcf-server-config.js';
 import type { BcfServerConfig } from '../bcf-server-config.js';
 
 export const BIMCOLLAB_RELAY_PATH = '/api/bimcollab';
@@ -162,11 +165,14 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
   }
 
   /** The package provider for the CURRENT connection; rebuilt when the account or space changes. */
-  private provider(): BimcollabProvider {
+  private async provider(): Promise<BimcollabProvider> {
     const session = bimcollabSessionFromConfig(this.loadConfig());
     if (!session) throw new BimcollabNotConnectedError();
     const key = this.sessionKey() ?? '';
     if (this.bound?.key !== key) {
+      const [{ BimcollabProvider, RelayBimcollabTransport }, { connectedTokenSource }] = await Promise.all([
+        import('@ifc-lite/source-bimcollab'), import('../bcf-server.js'),
+      ]);
       const tokens = connectedTokenSource(session.config);
       this.bound = {
         key, config: session.config,

@@ -10314,6 +10314,12 @@
     "spaceIdFromAccessToken: function",
     "spaceLabelFromServerUrl: function"
   ],
+  "@ifc-lite/source-bimcollab/lite": [
+    "BIMCOLLAB_MANIFEST: const",
+    "isBimcollabServerUrl: function",
+    "spaceIdFromAccessToken: function",
+    "spaceLabelFromServerUrl: function"
+  ],
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"

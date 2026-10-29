@@ -1882,7 +1882,7 @@ returned reports until publication succeeds and quarantine them on rejection.
 `ifc_lite_processing::execution::build_router` applies `RouterConfig` and arms
 model caches (including brep signatures), optional material layers, instancing,
 and the indexed-colour exclusion together before production starts.
-`ExecutionPolicy::PerJob` keeps native model-wide template selection and uncached
+`SchedulerPolicy::PerJob` keeps native model-wide template selection and uncached
 job decoding; `PerBatch` keeps the browser's warm decoder and batch-local
 instancing. `decode_job` and `job_type` preserve scanned native types and checked
 browser source-keyword recovery. `RouterDrain::take` drains router-wide counters

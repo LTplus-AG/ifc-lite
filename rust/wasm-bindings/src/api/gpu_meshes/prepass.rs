@@ -90,6 +90,8 @@ impl IfcAPI {
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
         // Load START on the streaming pre-pass path (see build_pre_pass_once).
         self.reset_pipeline_diagnostics();
+        self.production_model.invalidate_source();
+        self.invalidate_brep_signatures();
         use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
@@ -134,12 +136,7 @@ impl IfcAPI {
         let mut site_position: Option<(u32, usize, usize)> = None;
         let mut meta_emitted = false;
 
-        // #957 / #563 single-scan hoist: the workers each re-walk the whole file
-        // on their first batch to rebuild these three per-content structures
-        // (referenced RepresentationMaps, instantiated type ids, the material-
-        // layer index). Collect the spans they need HERE, during the one scan the
-        // pre-pass already runs, then build + ship each ONCE below (`rel_associates_material`
-        // and `defines_by_type` spans are already stashed in `prepass_spans`).
+        // #957/#563: collect type/material spans in this scan, build and ship once.
         let mapped_item_spans;
         // #957/#962: IfcTypeProduct candidates (id, span, resolved type), stashed
         // here so the orphan-type-geometry pass reuses THIS scan instead of a
@@ -289,6 +286,7 @@ impl IfcAPI {
                 };
                 let meta_res =
                     resolve_stream_meta(mode, content, project_id, site_position, &mut decoder);
+                self.collect_pipeline_refusals(&decoder);
                 plane_angle_to_radians = meta_res.plane_angle_to_radians;
                 emit_meta(on_event, &meta_res)?;
                 meta_emitted = true;
@@ -325,6 +323,7 @@ impl IfcAPI {
                 site_position,
                 &mut decoder,
             );
+            self.collect_pipeline_refusals(&decoder);
             plane_angle_to_radians = meta_res.plane_angle_to_radians;
             emit_meta(on_event, &meta_res)?;
         }
@@ -353,8 +352,8 @@ impl IfcAPI {
             *slot = Some(entity_index_arc.clone());
         }
         // Hold a second clone for the post-scan entity-index export below;
-        // `with_arc_columnar_index` consumes the Arc so we'd lose the
-        // reference after the decoder is created.
+        // `with_arc_columnar_index` takes ownership of its Arc, while this
+        // handle keeps the sorted columns accessible to the export.
         let index_for_export = entity_index_arc.clone();
 
         // ── FAST FIRST GEOMETRY ──
@@ -435,6 +434,7 @@ impl IfcAPI {
         // `get_or_build_material_layer_index`, which ships an EMPTY index when the
         // file authors no layer set (its substring bail-out). from_spans reuses
         // the already-stashed IfcRelAssociatesMaterial spans — no extra walk.
+        self.collect_pipeline_refusals(&decoder);
         let material_layer_flat = if has_layer_set {
             ifc_lite_geometry::MaterialLayerIndex::from_spans(
                 &prepass_spans.rel_associates_material,
@@ -536,7 +536,6 @@ impl IfcAPI {
         buffered_jobs.clear();
 
         // (Style + void resolution and the entity-index export now run ABOVE,
-        // before the affinity bulk, so workers receive them as early as possible —
         // see the FAST FIRST GEOMETRY block. `decoder` from there stays in scope
         // for the orphan type-geometry pass below.)
 
@@ -566,6 +565,7 @@ impl IfcAPI {
             }
         }
 
+        self.collect_pipeline_refusals(&decoder);
         // Complete event.
         let done = js_sys::Object::new();
         crate::api::set_js_prop(&done, "type", &"complete".into());

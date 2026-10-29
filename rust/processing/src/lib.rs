@@ -102,7 +102,7 @@ pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };
 pub use pipeline_diagnostics::{
-    PipelineDiagnostics, PipelinePhaseTimings, PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
+    PipelineDiagnostics, PipelineDiagnosticsReport, PipelinePhaseTimings, PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
 };
 /// Re-exported so the server can name the quality level without a direct
 /// `ifc-lite-geometry` dependency edge for one enum.

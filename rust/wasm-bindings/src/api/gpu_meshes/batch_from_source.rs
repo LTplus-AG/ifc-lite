@@ -59,6 +59,11 @@ impl IfcAPI {
     /// single JS→wasm copy directly; we wrap it in `Arc` with no second copy.
     #[wasm_bindgen(js_name = setSourceBytes)]
     pub fn set_source_bytes(&self, data: Vec<u8>) {
+        self.reset_pipeline_diagnostics();
+        self.production_model.invalidate_source();
+        self.invalidate_brep_signatures();
+        // Source-keyed like the brep signatures: a new file must not reuse old mapped meshes.
+        self.cached_mapped_item.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         let mut slot = self
             .cached_source_bytes
             .lock()

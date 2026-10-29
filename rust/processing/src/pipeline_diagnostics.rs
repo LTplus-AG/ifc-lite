@@ -18,7 +18,7 @@
 //! same pattern as `GeometryDiagnostics` (see its
 //! `serializes_camelcase_keys_matching_the_ts_contract` guard, mirrored
 //! below). The wasm getter (`IfcAPI::getPipelineDiagnostics`) crosses it to
-//! JS via `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
+//! JS via a serde-wasm-bindgen serializer configured for plain objects.
 //!
 //! Population:
 //! - wasm: the LIVE channel. Accumulated on the NORMAL load path — every
@@ -34,6 +34,10 @@
 //!   `ProcessingStats` + [`GeometryDiagnostics`]. So the wasm getter is the only
 //!   shipping producer; the native constructor is available API, not a second
 //!   projection kept in lockstep.
+
+#[path = "pipeline_diagnostics_report.rs"]
+mod report;
+pub use report::PipelineDiagnosticsReport;
 
 use crate::types::response::ProcessingStats;
 use ifc_lite_geometry::{GeometryDiagnostics, RectFastSummary};

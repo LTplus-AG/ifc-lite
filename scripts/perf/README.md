@@ -18,6 +18,34 @@ jobs together from discovery spans. Keep the explicit type mode: native exports
 suppress instantiated type geometry; the browser emits tagged classes for viewer
 filtering and chooses mapped templates within each batch.
 
+## Diff binary boundary transport (#8042)
+
+An ordinary Haus diagnostic of the explicit batch and compact result transport
+eliminated fingerprint and model-construction host callbacks, and removed the
+per-result-property descriptor calls. Real IFC comparisons and the existing
+observable-host and decode-leak suites retained parity. This is a boundary-cost
+reduction, not a protocol-v3 acceptance verdict: fingerprint and public warm-call
+latency still exceeded the TypeScript arm, including with retained native models
+in the diagnostic. Removing callbacks alone does not remove native hashing,
+document allocation, result decoding or per-call model construction costs.
+The preserved large pair also retained the fingerprint regression and showed
+that the warm-call cost scales with model size rather than staying a small
+fixed overhead. Release optimization was enabled. Native strings still cache
+UTF-8 alongside UTF-16, and dense canonical JSON is materialized as UTF-8 before
+the hash consumes UTF-16 again; batching does not eliminate those costs.
+Marked batch calls placed most remaining time inside WASM, not JS packing.
+A decoded native slice retained byte identity, but spent most computation time
+outside final serialization and hashing, in the rest of canonical processing.
+Native timer shares are diagnostic proxies, not a WASM phase decomposition.
+
+Bulk CLI, MCP and viewer adapters use the explicit internal snapshot batch;
+the end-to-end harness reaches it through the CLI adapter without a protocol
+change. Unary functions keep the live host decoder for observable inputs.
+Public comparisons reconstruct models because fingerprints can mutate and
+getters remain observable; array-identity caching would serve stale data.
+Any next retention experiment needs explicit ownership and invalidation, and
+must measure the consumer path rather than only a retained comparison kernel.
+
 ## Streaming pre-pass trap reporting and metadata snapshots (#8259)
 
 Metadata snapshots now copy populated hash entries instead of the streaming

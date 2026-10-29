@@ -20,6 +20,9 @@ mod tolerances;
 mod registry;
 #[path = "compare/checks/mod.rs"]
 mod checks;
+#[cfg(test)]
+#[path="compare/checks/bounded_tests.rs"]
+mod bounded_tests;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{canonical_element_jobs, canonical_type_maps};
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;

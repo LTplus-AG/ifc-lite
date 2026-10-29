@@ -2,7 +2,7 @@
 //! Per-slice source checks: shared reporting needs no feature-specific columns.
 mod layers;
 mod clips;
-mod bounded;
+pub(crate) mod bounded;
 pub mod faces;
 use ifc_lite_retained_native::ShapeOnlyProduct;
 use ifc_lite_processing::AnalyticQuantitySources;

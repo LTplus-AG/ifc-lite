@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: MPL-2.0
+use crate::checks::bounded::check;
+use ifc_lite_core::SourceBundle;
+use ifc_lite_retained_native::{run_model_native, ModelOptions, ProductOutcome};
+use ifc_lite_retained_native::oracle::bounded;
+
+fn publish(text:&str, worker:&std::ffi::OsStr)->ifc_lite_retained_native::ShapeOnlyProduct {
+    let mut products=Vec::new();
+    run_model_native(SourceBundle::new(text.as_bytes().to_vec()),worker,
+        &ModelOptions{ids:Some([1005].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
+    match products.pop().unwrap() {
+        ProductOutcome::Published(p)=>p,
+        o=>panic!("expected published shape: {o:?}"),
+    }
+}
+
+#[test]
+fn m6_7955_uncut_box_fails_internal_circle_volume_gate() {
+    let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
+        eprintln!("SKIP M6 circle false-pass witness: SDK absent");return;
+    };
+    let text=include_str!("../../../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc")
+        .replace("#36=IFCINDEXEDPOLYCURVE(#35,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,4,1))),.F.);",
+            "#36=IFCCIRCLE(#9036,0.5);\n#9036=IFCAXIS2PLACEMENT2D(#9037,$);\n#9037=IFCCARTESIANPOINT((1.,1.));");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,1005).unwrap();
+    let t:serde_json::Value=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
+    let correct=publish(&text,&worker);
+    let correct_rows=check(&correct,Some(&e),&t);
+    assert!(correct_rows.iter().all(|r|r.pass),"correct cut must pass");
+    let uncut=publish(&text.replace("#379=IFCSHAPEREPRESENTATION(#4,'Body','CSG',(#341));",
+        "#379=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#12));"),&worker);
+    let uncut_rows=check(&uncut,Some(&e),&t);
+    assert!(uncut_rows.iter().any(|r|r.family=="bounded_section_volume"&&r.gated&&!r.pass),"uncut box falsely passed every bounded check");
+    println!("sdk witness executed: m6_circle_volume_false_pass");
+}
+
+#[test]
+fn m6_7955_opened_bounded_result_never_uses_opening_only_volume() {
+    let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");return;
+    };
+    let text=include_str!("../../../../../tests/fixtures/synthetic-retained/m6-equivalent-boundaries.ifc");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let bounded=bounded::expected(text.as_bytes(),&sources,1062).unwrap();
+    assert!(bounded.section_volume.is_none(),"combined curved/opening family is explicitly unavailable");
+    // Independently derive the opening-only expectation from the uncut source
+    // host. It deliberately excludes the circle cut, as the review describes.
+    let uncut=text.replace("#1060=IFCSHAPEREPRESENTATION(#4,'Body','Clipping',", "#1060=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',");
+    let mut uncut=uncut.lines().map(str::to_owned).collect::<Vec<_>>();
+    let line=uncut.iter_mut().find(|s|s.starts_with("#1060=")).unwrap();
+    *line="#1060=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19));".into();
+    let uncut=uncut.join("\n");
+    let opening_sources=ifc_lite_processing::extract_analytic_quantity_sources(uncut.as_bytes(),None);
+    let openings=crate::openings::expectations(uncut.as_bytes(),&opening_sources).unwrap();
+    let opening=openings.get(&1062).expect("authored opening");
+    assert!((opening.as_ref().unwrap().result_volume.unwrap()-63.75).abs()<1e-10);
+    let mut products=Vec::new();
+    run_model_native(SourceBundle::new(text.as_bytes().to_vec()),&worker,
+        &ModelOptions{ids:Some([1062].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
+    let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("correct combined shape must publish")};
+    let mut actual=crate::metrics::Metrics::default();
+    for part in &shape.parts {
+        let points=part.positions.chunks_exact(3).map(|p|crate::metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();
+        actual.add_mesh(&points,&part.indices).unwrap();
+    }
+    assert!((actual.volume-(63.75-std::f64::consts::FRAC_PI_2)).abs()<0.002);
+    let bundle=SourceBundle::new(text.as_bytes().to_vec());
+    let clips=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&bundle,&sources);
+    let context=crate::checks::SourceContext{product_id:1062,analytic:&sources,clips:&clips};
+    let mut report=crate::report::Report::default();
+    report.published("combined",&shape,&actual,None,None,None,&crate::tolerances::registered().unwrap(),0.,
+        Some(opening),&context,true,Some(&bounded));
+    assert!(!report.violations.iter().any(|v|v.contains("opening prism volume deviation")||v.contains("opening volume outside nominal bounds")),
+        "wrong opening-only authority: {:?}",report.violations);
+    assert!(report.violations.iter().any(|v|v.contains("bounded_curved_volume_unavailable")),"combined source must fail closed");
+}

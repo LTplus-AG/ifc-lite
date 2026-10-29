@@ -22,6 +22,7 @@ pub(super) fn pieces(clip:&Clip)->Option<Vec<Vec<Plane>>> {
 }
 fn cross2(a:[f64;2],b:[f64;2],c:[f64;2])->f64 {(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])}
 pub(super) fn triangles(mut p:Vec<[f64;2]>)->Option<Vec<[[f64;2];3]>> {
+    if p.len()<3 || p.len()>256{return None;}
     let mut out=Vec::new();let mut budget=256*256*256;
     while p.len()>3 {
         let mut ear=None;
@@ -59,11 +60,23 @@ pub(super) fn inside_distance(edges:&[Edge],p:[f64;2])->f64 {
                 for endpoint in [edge.point(0.),edge.point(1.)]{distance=distance.min((p[0]-endpoint[0]).hypot(p[1]-endpoint[1]));}
                 // Ray roots y=p.y for the independent circle parameterization.
                 let y=(p[1]-c[1])/radius;
-                if y.abs()<1. {
-                    for theta in [y.asin(),std::f64::consts::PI-y.asin()] {
+                if y.abs()<=1. {
+                    for (root,theta) in [y.asin(),std::f64::consts::PI-y.asin()].into_iter().enumerate() {
+                        // A horizontal tangent has one root. In the interior it
+                        // only touches the ray; at a loop joint it still needs
+                        // the same lower-endpoint ownership as the adjacent line.
+                        if y.abs()==1. && root==1 {continue;}
                         let t=(if sweep>0.{(theta-a).rem_euclid(std::f64::consts::TAU)}else{(a-theta).rem_euclid(std::f64::consts::TAU)})/sweep.abs();
-                        if t<1. && c[0]+u[0]*theta.cos()+v[0]*theta.sin()>p[0] {
-                            winding+=if sweep*theta.cos()>0.{1}else{-1};
+                        // Match the line rule: include the lower-y endpoint and
+                        // exclude the upper-y endpoint, regardless of traversal.
+                        let up=if y.abs()==1. {
+                            if t!=0. && t!=1. {continue;}
+                            -y*(if t==0. {1.}else{-1.})>0.
+                        }else{sweep*theta.cos()>0.};
+                        let t=if !up && t==0. && sweep.abs()==std::f64::consts::TAU {1.}else{t};
+                        let crosses=if up {t<1.}else{t>0.&&t<=1.};
+                        if crosses && c[0]+u[0]*theta.cos()+v[0]*theta.sin()>p[0] {
+                            winding+=if up {1}else{-1};
                         }
                     }
                 }
@@ -96,3 +109,7 @@ pub(super) fn extrusion_pieces(host:&super::sections::ExtrudedHost)->Option<Vec<
         Some(planes)
     }).collect()
 }
+
+#[cfg(test)]
+#[path = "bounded_partition_tests.rs"]
+mod tests;

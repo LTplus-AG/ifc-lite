@@ -4,6 +4,18 @@
 use ifc_lite_retained_native::oracle::bounded;
 const SOURCE:&[u8]=include_bytes!("../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
 #[test]
+fn m6_7955_mapped_pbhs_products_are_checked() {
+    let bytes=include_bytes!("../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(bytes,None);
+    for id in [173,231] {
+        assert!(bounded::applies(bytes,id),"#{id}: mapped PBHS must be detected");
+        let e=bounded::expected(bytes,&sources,id).expect("mapped source expectation");
+        assert!((e.section_volume.unwrap()-3.).abs()<1e-12,"#{id}");
+        assert!(e.removed_clearance([1.,0.5,1.])>0.4,"#{id}: removed side");
+        assert_eq!(e.removed_clearance([1.,0.5,2.]),0.,"#{id}: kept side");
+    }
+}
+#[test]
 fn m6_section_partition_matches_hand_integrals_and_overlap() {
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(SOURCE,None);
     let pins:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/expected.d/m6-halfspaces.json")).unwrap();
@@ -36,7 +48,7 @@ fn m6_circle_boundary_clearance_remains_analytic() {
     let text=std::str::from_utf8(SOURCE).unwrap().replace("#36=IFCINDEXEDPOLYCURVE(#35,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,4,1))),.F.);","#36=IFCCIRCLE(#9036,0.5);\n#9036=IFCAXIS2PLACEMENT2D(#9037,$);\n#9037=IFCCARTESIANPOINT((1.,1.));");
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     let e=bounded::expected(text.as_bytes(),&sources,1005).unwrap();
-    assert!(e.curved);assert!(e.section_volume.is_none(),"curved boundaries use hand integrals and analytic clearance");
+    assert!(e.curved);assert!((e.section_volume.unwrap()-(64.-std::f64::consts::FRAC_PI_2)).abs()<1e-10,"independent circular removed-volume integral");
     assert!((e.removed_clearance([1.,1.,3.])-0.5).abs()<1e-12);
     assert_eq!(e.removed_clearance([1.6,1.,3.]),0.);
 }
@@ -49,5 +61,25 @@ fn m6_fzk_sections_are_available_for_both_bounded_chains() {
         let e=bounded::expected(&bytes,&sources,id).expect("FZK source oracle");
         assert!(e.section_volume.is_some(),"#{id}: {:?}",e.section_unavailable);
         println!("M6 FZK #{id} source section: {:?}",e.section_volume);
+    }
+}
+
+#[test]
+fn m6_7955_mapped_pbhs_applies_rotation_translation_and_scale() {
+    let mut text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc").to_owned();
+    for (x,y,p,op) in [(166,167,168,169),(224,225,226,227)] {
+        text=text.replace(&format!("#{x}=IFCDIRECTION((1.,0.,0.));"),&format!("#{x}=IFCDIRECTION((0.,1.,0.));"))
+            .replace(&format!("#{y}=IFCDIRECTION((-0.,1.,0.));"),&format!("#{y}=IFCDIRECTION((-1.,0.,0.));"))
+            .replace(&format!("#{p}=IFCCARTESIANPOINT((0.,0.,0.));"),&format!("#{p}=IFCCARTESIANPOINT((10.,20.,30.));"))
+            .replace(&format!("#{op}=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#{x},#{y},#{p},1.,#3);"),
+                &format!("#{op}=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#{x},#{y},#{p},2.,#3);"));
+    }
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    for id in [173,231] {
+        assert!(bounded::applies(text.as_bytes(),id));
+        let e=bounded::expected(text.as_bytes(),&sources,id).unwrap();
+        assert!((e.section_volume.unwrap()-24.).abs()<1e-10,"#{id}");
+        assert!(e.removed_clearance([9.,22.,32.])>0.8,"#{id}: transformed cut");
+        assert_eq!(e.removed_clearance([9.,22.,34.]),0.,"#{id}: transformed kept side");
     }
 }

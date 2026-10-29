@@ -75,7 +75,7 @@ impl Report {
             tolerances,
             exact_report_only,
         );
-        let cut_rel = opening.filter(|_| bounded.is_none_or(|e| e.section_volume.is_none())).and_then(|e| {
+        let cut_rel = opening.filter(|_| bounded.is_none()).and_then(|e| {
             if let Some(authority) = authority { return Some(relative(actual.volume, authority.volume)); }
             super::openings::check_opened(
                 &format!("{model}:{}", shape.product_id),

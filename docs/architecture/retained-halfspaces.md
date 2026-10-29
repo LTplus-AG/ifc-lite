@@ -9,8 +9,8 @@ and lateral faces remain on the authored surfaces.
 
 Line boundaries, including simple non-convex loops, retain their ordered edges.
 Circular arcs use wire-format-1 kind 3 and are admitted only when the cut plane
-is perpendicular to the prism axis. Parallel axes and boundaries with more than
-256 vertices refuse the product. Source validation precedes the kept-side
+is perpendicular to the prism axis. A cut plane parallel to the prism axis
+and boundaries with more than 256 vertices refuse the product. Source validation precedes the kept-side
 bounds proof. No exact heuristic, unbounded fallback, or exact retry participates.
 
 `IfcBoxedHalfSpace.Enclosure` is only a computation hint and is never read.
@@ -32,9 +32,16 @@ boxed halfspaces (no committed or heavy-corpus model has one).
 The source oracle independently decodes planes and boundary placements. Linear
 non-convex loops are ear-partitioned; inclusion–exclusion integrates triangle
 prism intersections through CUT-0's section oracle, bounded to 4,096 evaluations.
-A work-cap or unsupported oracle family is an explicit missing section result,
-not zero. Original boundaries, including analytic arcs, define the gated
+Distant source partitions are discarded only after a zero-volume intersection
+proof against the host, spending the same budget; this also qualifies the
+longer #960 chains. A work-cap or unsupported oracle family is an explicit
+missing section result, not zero. Original boundaries, including analytic arcs, define the gated
 strict-interior removed-material check; triangulation seams do not.
+For a single curved boundary, the oracle reverses the section operands and
+integrates its analytic prism against the linear host partition. Circular cuts
+therefore have a removed-volume authority even when wholly inside the host.
+Unavailable curved or combined curved/opening volumes fail the comparison gate;
+an opening-only volume is never substituted for a combined result.
 Synthetic hand integrals additionally qualify the quarter-circle case. Their
 fixture passed independent adversarial Opus review and IFC4 schema/round-trip
 validation on 2026-10-28. Measured evidence is stored outside the
@@ -70,3 +77,11 @@ cutter or output normals as its expected direction. Clipped products retain
 appearance and face provenance and remain excluded from instancing. The affine
 interaction witness mirrors and nonuniformly scales a boxed result, checking
 positive signed volume, its authored centroid and executed-clip lineage.
+
+The equivalent-boundary regression fixture is generated with `step.Model` by
+`generate-halfspace-boundaries.py`: explicit and omitted indexed segments,
+trimmed lines, and parameter/Cartesian circle trims agree in publication,
+clearance and source normals. Required native CI downloads FZK and #960 before
+running witnesses and makes missing fixtures fatal. Every published #960
+product must have a source volume authority. Mapped PBHS products enter the
+same checks with their mapping frames applied.

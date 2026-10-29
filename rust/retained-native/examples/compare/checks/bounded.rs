@@ -2,7 +2,7 @@
 //! Source gates never consume the retained cutter recipe.
 use ifc_lite_retained_native::oracle::bounded::Expectation;
 use super::OracleResult;
-pub(super) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&serde_json::Value)->Vec<OracleResult> {
+pub(crate) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&serde_json::Value)->Vec<OracleResult> {
     let Some(e)=e else{return Vec::new();};
     let mut m=crate::metrics::Metrics::default();let mut outside=0f64;
     for part in &product.parts {
@@ -18,6 +18,7 @@ pub(super) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&s
         row("bounded_closure",m.defects as f64,0.),
     ];
     if let Some(volume)=e.section_volume {rows.push(row("bounded_section_volume",crate::metrics::relative(m.volume,volume),t["boundedSectionVolumeRelative"][key].as_f64().unwrap()));}
+    else if e.curved {rows.push(row("bounded_curved_volume_unavailable",f64::INFINITY,0.));}
     rows
 }
 fn row(family:&'static str,value:f64,limit:f64)->OracleResult {OracleResult{family,value,limit,pass:value.is_finite()&&value<=limit,gated:true,..Default::default()}}

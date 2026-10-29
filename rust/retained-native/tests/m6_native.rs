@@ -8,6 +8,8 @@ use ifc_lite_retained_native::oracle::bounded;
 #[path="../examples/compare/metrics.rs"]
 mod metrics;
 const SOURCE:&str=include_str!("../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
+#[path="support/m6_boundary_equivalence.rs"]
+mod boundary_equivalence;
 fn worker()->Option<std::ffi::OsString> {
     let path=std::env::var_os("IFCLITE_SMLIB_WORKER");
     if path.is_none() {
@@ -34,7 +36,12 @@ fn measure(shape:&ShapeOnlyProduct)->metrics::Metrics {
 }
 fn verify(text:&str,shape:&ShapeOnlyProduct,hand:Option<f64>) {
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
-    let e=bounded::expected(text.as_bytes(),&sources,shape.product_id).expect("independent source oracle required");
+    verify_sources(text,shape,hand,&sources,false);
+}
+fn verify_sources(text:&str,shape:&ShapeOnlyProduct,hand:Option<f64>,sources:&ifc_lite_processing::AnalyticQuantitySources,require_volume:bool) {
+    let e=bounded::expected(text.as_bytes(),sources,shape.product_id).expect("independent source oracle required");
+    assert!(!require_volume || hand.is_some() || e.section_volume.is_some(),
+        "#{} has no volume authority: {:?}",shape.product_id,e.section_unavailable);
     let actual=measure(shape);let tol:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
     let key=if e.curved{"curved"}else{"linear"};
     for volume in [hand,e.section_volume].into_iter().flatten() {
@@ -194,10 +201,12 @@ fn m6_native_960_report_has_no_untyped_or_unverified_outcome() {
     assert!(!ids.is_empty(),"960 must exercise actual PBHS products");
     let (outcomes,_,mut clip_ms)=observed_source(&text,&ids,None);let mut counts=std::collections::BTreeMap::new();
     let mut rows=Vec::new();
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     for outcome in &outcomes {
         *counts.entry(code(outcome)).or_insert(0usize)+=1;
         match outcome {
-            ProductOutcome::Published(s)=>{verify(&text,s,None);rows.push(serde_json::json!({"id":s.product_id,"code":"published","volume":measure(s).volume}));},
+            ProductOutcome::Published(s)=>{
+                verify_sources(&text,s,None,&sources,true);rows.push(serde_json::json!({"id":s.product_id,"code":"published","volume":measure(s).volume}));},
             ProductOutcome::Refused{product_id,refusal,origin,..}=>{
                 assert_ne!(refusal.code(),"contract_breach","960 #{product_id}: {refusal:?}");
                 rows.push(serde_json::json!({"id":product_id,"code":refusal.code(),"origin":format!("{origin:?}")}));
@@ -220,4 +229,16 @@ fn m6_native_full_circle_boundary_hand_integral() {
     let text=SOURCE.replace("#36=IFCINDEXEDPOLYCURVE(#35,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,4,1))),.F.);","#36=IFCCIRCLE(#9036,0.5);\n#9036=IFCAXIS2PLACEMENT2D(#9037,$);\n#9037=IFCCARTESIANPOINT((1.,1.));");
     let outcomes=run(&text,&[1005]);verify(&text,shape(&outcomes,1005),Some(64.-std::f64::consts::FRAC_PI_2));
     println!("sdk witness executed: m6_circle_boundary");
+}
+
+#[test]
+fn m6_native_mapped_pbhs_products_receive_bounded_source_checks() {
+    if worker().is_none(){return;}
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
+    let outcomes=run(text,&[173,231]);
+    for id in [173,231] {
+        assert!(bounded::applies(text.as_bytes(),id));
+        verify(text,shape(&outcomes,id),Some(3.));
+    }
+    println!("sdk witness executed: m6_mapped_boundaries");
 }

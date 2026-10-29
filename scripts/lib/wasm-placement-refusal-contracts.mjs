@@ -77,7 +77,7 @@ function load(IfcAPI, body, elementCount, meshCount, schema = 'IFC4') {
     collection = parseMeshesViaPrePass(api, `${header}${body}ENDSEC;\nEND-ISO-10303-21;`);
     const diagnostics = api.getPipelineDiagnostics();
     assert.ok(diagnostics, 'normal batch must publish diagnostics');
-    assert.equal(diagnostics.schemaVersion, 1);
+    assert.equal(diagnostics.schemaVersion, 2);
     assert.equal(diagnostics.batches, 1);
     assert.equal(diagnostics.elementCount, elementCount, 'every product reached the producer');
     assert.equal(diagnostics.meshCount, meshCount);

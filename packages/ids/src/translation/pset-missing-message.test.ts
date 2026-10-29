@@ -62,6 +62,7 @@ describe('PSET_MISSING names the required property set (#8306)', () => {
     it(`entity with non-matching sets: ${label}`, () => {
       const result = checkPropertyFacet(psetFacet(constraint), 1, accessor);
       expect(result.failure?.type).toBe('PSET_MISSING');
+      expect(result.failure?.field).toBe(constraint.type === 'simpleValue' ? 'Pset_RequiredExample' : shown);
       expect(describeFailure(result)).toBe(`Property set ${shown} not found. ${available}`);
       expect(formatFailureReason(result)).toBe(`Property set ${shown} not found`);
     });
@@ -90,6 +91,8 @@ describe('constraint names are quoted once in every message (#8306)', () => {
   for (const [label, result, en] of failures) {
     it(`${label}: describeFailure`, () => {
       expect(describeFailure(result)).toBe(en);
+      // `field` stays the bare name the evidence and corrections read.
+      expect(result.failure?.field).not.toMatch(/^"/);
       for (const locale of LOCALES) expect(describeFailure(result, locale)).not.toMatch(DOUBLED);
       expect(formatFailureReason(result)).not.toMatch(DOUBLED);
     });

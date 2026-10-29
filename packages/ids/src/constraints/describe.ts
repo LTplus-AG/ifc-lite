@@ -226,6 +226,14 @@ export function exactConstraintValue(constraint: IDSConstraint): string | undefi
 }
 
 /**
+ * A name constraint as `IDSFailureDetail.field` carries it: the bare
+ * name when the facet names one, else the constraint's description.
+ */
+export function constraintName(constraint: IDSConstraint): string {
+  return exactConstraintValue(constraint) ?? formatConstraint(constraint);
+}
+
+/**
  * A property path for display. Constraint renderings carry their own
  * quotes, so two exact names join inside one pair (`"Pset.Prop"`) and
  * anything else joins its renderings as they are (#8306).

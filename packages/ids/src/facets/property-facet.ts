@@ -12,7 +12,7 @@ import type {
   PropertySetInfo,
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
-import { matchConstraint, formatConstraint, formatPropertyPath } from '../constraints/index.js';
+import { matchConstraint, formatConstraint, constraintName, formatPropertyPath } from '../constraints/index.js';
 import { ifcMeasureToXsdTypes, literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
 import { isExpressStringOnlyMeasure } from '../constraints/express-base.js';
 import { dataTypeFailure, dataTypePasses } from './property-datatype.js';
@@ -202,7 +202,7 @@ export function checkPropertyFacet(
       expectedValue: `property ${formatConstraint(facet.baseName)} in ${formatConstraint(facet.propertySet)}`,
       failure: {
         type: 'PSET_MISSING',
-        field: formatConstraint(facet.propertySet),
+        field: constraintName(facet.propertySet),
         expected: formatConstraint(facet.propertySet),
       },
     };
@@ -221,9 +221,8 @@ export function checkPropertyFacet(
       expectedValue: formatConstraint(facet.propertySet),
       failure: {
         type: 'PSET_MISSING',
-        // `field` carries the required set name, as in the no-psets branch
-        // above; the formatters render it verbatim (#8306).
-        field: formatConstraint(facet.propertySet),
+        // The required set, not the facet key (#8306).
+        field: constraintName(facet.propertySet),
         actual: availablePsets,
         expected: formatConstraint(facet.propertySet),
         context: { availablePsets },
@@ -285,7 +284,7 @@ export function checkPropertyFacet(
     expectedValue: formatPropertyPath(facet.propertySet, facet.baseName),
     failure: {
       type: 'PROPERTY_MISSING',
-      field: formatConstraint(facet.baseName),
+      field: constraintName(facet.baseName),
       expected: formatConstraint(facet.baseName),
       context: {
         propertySet: psetNames,
@@ -315,7 +314,7 @@ function checkPropertyInPset(
       passed: false,
       failure: {
         type: 'PROPERTY_MISSING',
-        field: formatConstraint(facet.baseName),
+        field: constraintName(facet.baseName),
         expected: formatConstraint(facet.baseName),
         context: {
           propertySet: pset.name,

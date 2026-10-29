@@ -24,6 +24,7 @@ import {
 } from './describe-constraint.js';
 import { en, de, fr, it, ru } from './locales/index.js';
 import { describeWithNestedFacets } from '../preview/partof-nested.js';
+import { failedName } from '../validation/format-failure-reason.js';
 
 type Translations = typeof en;
 
@@ -387,9 +388,7 @@ class IDSTranslationServiceImpl implements TranslationService {
 
       // Attribute failures
       case 'ATTRIBUTE_MISSING':
-        return this.interpolate(t.attributeMissing, {
-          name: field || '?',
-        });
+        return this.interpolate(t.attributeMissing, { name: failedName(result.failure) });
 
       case 'ATTRIBUTE_VALUE_MISMATCH':
         return this.interpolate(t.attributeValueMismatch, {
@@ -409,22 +408,22 @@ class IDSTranslationServiceImpl implements TranslationService {
       case 'PSET_MISSING':
         if (context?.availablePsets) {
           return this.interpolate(t.psetMissingAvailable, {
-            pset: field || expected || '?',
+            pset: failedName(result.failure),
             available: context.availablePsets,
           });
         }
-        return this.interpolate(t.psetMissing, { pset: field || expected || '?' });
+        return this.interpolate(t.psetMissing, { pset: failedName(result.failure) });
 
       case 'PROPERTY_MISSING':
         if (context?.availableProperties) {
           return this.interpolate(t.propertyMissingAvailable, {
-            property: field || '?',
+            property: failedName(result.failure),
             pset: context.propertySet || '?',
             available: context.availableProperties,
           });
         }
         return this.interpolate(t.propertyMissing, {
-          property: field || '?',
+          property: failedName(result.failure),
           pset: context?.propertySet || '?',
         });
 

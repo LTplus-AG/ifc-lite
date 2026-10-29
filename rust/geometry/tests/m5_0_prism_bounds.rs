@@ -119,7 +119,7 @@ fn prism_normalizes_arc_sense_and_encodes_circle_holes() {
     assert_eq!(f64::from_le_bytes(payload.bytes[264..272].try_into().unwrap()),-std::f64::consts::TAU);
 }
 #[test]
-fn halfspace_dispatch_validates_bounded_source_and_keeps_boxed_refusal() {
+fn halfspace_dispatch_validates_boxed_and_bounded_source() {
     for (kind,args) in [("IFCBOXEDHALFSPACE","#2,.T.,$"),("IFCPOLYGONALBOUNDEDHALFSPACE","#2,.T.,$,$")] {
         let text=SOURCE.replace("#9=IFCEXTRUDEDAREASOLID(#6,#8,#3,1.)",&format!("#9={kind}({args})"));
         let source=SourceBundle::new(text.as_bytes().to_vec());let mut decoder=source.decoder();
@@ -130,7 +130,7 @@ fn halfspace_dispatch_validates_bounded_source_and_keeps_boxed_refusal() {
             let (reply,_,_)=match program.admit(ticket,&router,&mut decoder){Ok(r)=>r,Err(e)=>break e};
             if let Err(e)=program.accept(reply,&router){break e.error;}
         };
-        assert_eq!(error.kind(),if kind == "IFCPOLYGONALBOUNDEDHALFSPACE" { TransactionFailureKind::Source } else { TransactionFailureKind::OperationUnsupported });
+        assert_eq!(error.kind(),TransactionFailureKind::Source);
         assert_eq!(error.origin_view(),Some(("boolean_second_operand",Some(9),"recipe")));
     }
 }

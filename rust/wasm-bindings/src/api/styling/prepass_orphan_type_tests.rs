@@ -31,7 +31,7 @@ fn assert_match(content: &[u8]) -> usize {
     }
     let mut d2 = EntityDecoder::with_arc_index(content, index);
     let new = collect_type_geometry_jobs_from_spans(content, &mapped, &cands, &mut d2);
-    assert_eq!(old, new, "orphan type jobs diverged");
+    assert_eq!(old, new, "orphan type jobs diverged for {} input bytes", content.len());
     old.len()
 }
 

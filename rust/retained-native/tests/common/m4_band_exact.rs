@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955: drive exact's canonical producer with the rich material-key map used
 //! by retained and the browser layer path, without an SMLib or retained call.
+//!
+//! `process_geometry` defaults to unsliced output. Public `process` with
+//! `layer_slicing(true)` emits three bands, but its geometry-only style map
+//! assigns the red band the blue fallback and drops the material style names.
+//! Use the existing public per-element producer with source-derived material
+//! styles, as processing/tests/geometry_data_export_test.rs does for layers.
+//! No retained source authentication is needed for this borrowed exact call.
 use ifc_lite_core::{EntityScanner, IfcType, SourceBundle};
 use ifc_lite_geometry::{GeometryRouter, MaterialLayerIndex};
 use ifc_lite_processing::{element::*, prepass::*, style::*};
@@ -30,7 +37,7 @@ pub fn produce(text: &str) -> Vec<ifc_lite_processing::MeshData> {
         resolved.geometry_style_index.insert(material, GeometryStyleInfo { color, shading_color: None, material_name });
     }
     let fallback = element_material_fallback_color(&resolved.element_material_colors[&22]).unwrap();
-    let model = ProductionModel::from_source(source.clone()).snapshot(OwnedMeshProductionData {
+    let model = ProductionModel::new().snapshot(OwnedMeshProductionData {
         geometry_style_index: Arc::new(resolved.geometry_style_index),
         element_material_colors: Arc::new(resolved.element_material_colors),
         ..Default::default()
@@ -42,4 +49,22 @@ pub fn produce(text: &str) -> Vec<ifc_lite_processing::MeshData> {
     let job = ElementMeshJob { id: 22, ifc_type: IfcType::IfcWall, entity: &entity,
         kind: ElementJobKind::Product, element_color: Some(fallback), metadata: None };
     produce_element_meshes(&job, &model.borrowed(), &Default::default(), &mut decoder, &router).meshes
+}
+
+#[test]
+fn issue_7955_m4_public_producer_emits_three_band_looks() {
+    let text = include_str!("../../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
+    let meshes = produce(text);
+    let bands: Vec<_> = meshes.iter().filter(|mesh| mesh.express_id == 22).collect();
+    assert_eq!(bands.len(), 3, "exact must publish three slices");
+    for (id, rgba, name) in [
+        (23, [0.8_f32, 0.2, 0.1, 1.], Some("Red band")),
+        (31, [0.1_f32, 0.2, 0.8, 0.75], None),
+        (33, [0.1_f32, 0.2, 0.8, 0.75], Some("Blue band")),
+    ] {
+        let band: Vec<_> = bands.iter().filter(|mesh| mesh.material_id == Some(id)).collect();
+        assert_eq!(band.len(), 1, "one exact slice per material #{id}");
+        assert_eq!(band[0].color.map(f32::to_bits), rgba.map(f32::to_bits));
+        assert_eq!(band[0].material_name.as_deref(), name);
+    }
 }

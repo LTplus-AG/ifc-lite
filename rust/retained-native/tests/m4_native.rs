@@ -251,7 +251,11 @@ fn issue_7955_m4_material_appearance_uses_each_bands_exact_resolver_key() {
         assert!(seen.insert(id), "one native band per material key");
         let appearance = part.appearance.as_ref().unwrap();
         assert_eq!(appearance.material_id, Some(id));
-        let mesh = meshes.iter().find(|mesh| mesh.material_id == Some(id)).expect("exact band key");
+        let key = (host.product_id, appearance.geometry_item_id, appearance.material_id);
+        let matching: Vec<_> = meshes.iter().filter(|mesh|
+            (mesh.express_id, mesh.geometry_item_id, mesh.material_id) == key).collect();
+        assert_eq!(matching.len(), 1, "one exact band per product/item/material key {key:?}");
+        let mesh = matching[0];
         assert_eq!(appearance.rgba.map(f32::to_bits), mesh.color.map(f32::to_bits), "material #{id}");
         assert_eq!(appearance.material_name, mesh.material_name, "material #{id}");
         let (rgba, name) = match id {

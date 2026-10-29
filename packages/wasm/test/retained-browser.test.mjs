@@ -42,18 +42,23 @@ it('#7955 M11-I actual IFNS encoder verifies rotated RTC pairs and returns rejec
   const header = new DataView(result.shard.buffer);
   assert.equal(header.getUint32(24, true) * header.getUint32(12, true), 3 * 64, 'flat and rendered triangle counts match');
   assertRenderedCoordinates(result.shard, input);
-  const small = encode(input.slice(0, 7));
+  const threshold = wasm.instanceMinOccurrences();
+  assert.ok(threshold >= 2 && threshold <= input.length);
+  const small = encode(input.slice(0, threshold - 1));
   assert.equal(small.shard.length, 0);
-  assert.equal(small.flatIndices.length, 7);
-  const corrupt = input.slice(0, 8).map(m => ({ ...m, positions: m.positions.slice() }));
-  corrupt[3].positions[3] += 0.1;
+  assert.equal(small.flatIndices.length, threshold - 1);
+  const atThreshold = encode(input.slice(0, threshold));
+  assert.equal(atThreshold.groupCount, 1);
+  assert.equal(atThreshold.instanceCount, threshold);
+  const corrupt = input.slice(0, threshold).map(m => ({ ...m, positions: m.positions.slice() }));
+  corrupt[1].positions[3] += 0.1;
   const rejected = encode(corrupt);
   assert.equal(rejected.verificationRejections, 1, '#3666 sees mismatched actual geometry');
   assert.equal(rejected.shard.length, 0);
-  assert.equal(rejected.flatIndices.length, 8, 'all failed group members render flat');
+  assert.equal(rejected.flatIndices.length, threshold, 'all failed group members render flat');
   for (const changes of [{ color: [1,0,0,0.5] }, { geometryClass: 1 }, { texture: {} }, { ifcType: 'IfcSpace' }]) {
-    const values = input.slice(0, 8).map(m => ({ ...m, ...changes }));
-    assert.equal(encode(values).flatIndices.length, 8, 'exact eligibility gates apply');
+    const values = input.slice(0, threshold).map(m => ({ ...m, ...changes }));
+    assert.equal(encode(values).flatIndices.length, threshold, 'exact eligibility gates apply');
   }
 });
 
@@ -107,6 +112,7 @@ it('the default engine carries no retained executor or retained API', async (t) 
     engine.initSync(readFileSync(defaultWasm));
     assert.equal('RetainedBrowserExecutor' in engine, false, 'no retained executor export');
     assert.equal('encodeInstancedShard' in engine, false, 'no retained instancing export');
+    assert.equal('instanceMinOccurrences' in engine, false, 'no retained threshold export');
     const api = new engine.IfcAPI();
     assert.equal(typeof api.retainedSources, 'undefined', 'no retainedSources on the default IfcAPI');
     api.free();

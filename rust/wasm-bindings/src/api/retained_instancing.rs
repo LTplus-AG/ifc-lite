@@ -8,6 +8,12 @@ use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use super::super::{gpu_meshes::{is_instancing_candidate, INSTANCE_MIN_OCCURRENCES}, retained_model::set};
 
+/// Minimum occurrence count shared by retained encoding and diagnostic reports.
+#[wasm_bindgen(js_name = instanceMinOccurrences)]
+pub fn instance_min_occurrences() -> u32 {
+    INSTANCE_MIN_OCCURRENCES
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Input {

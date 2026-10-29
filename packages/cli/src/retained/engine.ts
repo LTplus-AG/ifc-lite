@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { registerSmlibHooks } from './smlib-hooks.js';
 
 export interface RetainedEngine {
   directory: string;
@@ -10,6 +11,7 @@ export interface RetainedEngine {
   sdk: unknown;
   capabilities: unknown;
   manifestSha256: string;
+  instanceMinOccurrences: number;
 }
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const required = ['pkg-retained/ifc-lite.js', 'pkg-retained/ifc-lite_bg.wasm',
@@ -66,6 +68,12 @@ export async function validateEngine(directory?: string): Promise<RetainedEngine
       throw new Error(`Retained engine manifest hash mismatch: ${asset.path}`);
     }
   }
-  return { directory: root, url: pathToFileURL(`${root}/`), sdk: manifest.sdk,
-    capabilities: manifest.capabilities, manifestSha256: digest(bytes) };
+  const url = pathToFileURL(`${root}/`);
+  await registerSmlibHooks({ url });
+  const module: typeof import('../../../wasm/pkg-retained/ifc-lite.js') =
+    await import(new URL('pkg-retained/ifc-lite.js', url).href);
+  await module.default({ module_or_path: await readFile(new URL('pkg-retained/ifc-lite_bg.wasm', url)) });
+  return { directory: root, url, sdk: manifest.sdk,
+    capabilities: manifest.capabilities, manifestSha256: digest(bytes),
+    instanceMinOccurrences: module.instanceMinOccurrences() };
 }

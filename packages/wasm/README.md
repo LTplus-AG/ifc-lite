@@ -460,8 +460,10 @@ Eligible single-part view events also carry `instanceKey` and optional
 `encodeInstancedShard(meshes, keys, rtc)` accepts up to 256 extracted Y-up meshes,
 their full keys, and the session RTC offset. Supply each event's frame as the
 mesh's `worldFromObject`. It returns IFNS `shard` bytes, `flatIndices` into the
-input, and instance, group and pairing-rejection counts. Groups need at least
-eight eligible occurrences and must pass the existing geometric pairing check;
+input, and instance, group and pairing-rejection counts. The retained-only
+`instanceMinOccurrences()` returns the engine’s minimum eligible occurrence count,
+shared by the encoder and CLI reports. Groups must meet that threshold and pass
+the existing geometric pairing check;
 rejected groups remain flat. Render each input exactly once, through its shard
 or its flat mesh. The viewer flushes every 256 completed products and at session
 completion. CLI OBJ export continues to bake every occurrence.

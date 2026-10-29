@@ -32,7 +32,7 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       ...(part.faces ? { faces: faceReport(part) } : {}) }));
     return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
-      ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= 8
+      ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= engine.instanceMinOccurrences
         ? { instanceGroup: { templateProductId: groups.get(p.instanceKey)!.templateProductId, key: p.instanceKey } }
         : {}) };
   });

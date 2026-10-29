@@ -2652,6 +2652,11 @@ export function get_memory(): any;
 export function init(): void;
 
 /**
+ * Minimum occurrence count shared by retained encoding and diagnostic reports.
+ */
+export function instanceMinOccurrences(): number;
+
+/**
  * `a ∩ b`.
  */
 export function intersection2d(a: Contours2D, b: Contours2D): Contours2D;
@@ -2953,6 +2958,7 @@ export interface InitOutput {
     readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
+    readonly instanceMinOccurrences: () => number;
     readonly intersection2d: (a: number, b: number) => number;
     readonly landxmltinstreamsession_abort: (a: number) => void;
     readonly landxmltinstreamsession_advanceChunk: (a: number, b: number, c: number, d: number) => void;

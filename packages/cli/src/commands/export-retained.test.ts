@@ -13,7 +13,7 @@ import type { RetainedShapeProduct } from '../../../wasm/pkg-retained/ifc-lite.j
 
 const dirs: string[] = [];
 afterEach(async () => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true }); });
-const engine: RetainedEngine = { directory: '/unused', url: new URL('file:///unused/'), sdk: 'protocol-test', capabilities: null, manifestSha256: '0'.repeat(64) };
+const engine: RetainedEngine = { directory: '/unused', url: new URL('file:///unused/'), sdk: 'protocol-test', capabilities: null, manifestSha256: '0'.repeat(64), instanceMinOccurrences: 8 };
 const shape: RetainedShapeProduct = { status: 'published', cuts: 0, consumedParts: 0, expressId: 27, ifcType: 'IfcBuildingElementProxy', marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'],
   parts: [{ positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0), indices: Uint32Array.of(0, 1, 2),
     worldFromObject: Float64Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1), curved: false }] };
@@ -28,6 +28,19 @@ it('#7955 M11-I reports instance candidates while every OBJ occurrence stays bak
   for (const product of grouped.report.products) expect(product).toHaveProperty('instanceGroup', { templateProductId: 0, key });
   const below = retainedReport(engine, products.slice(0, 7), () => null);
   for (const product of below.products) expect(product).not.toHaveProperty('instanceGroup');
+});
+
+it.each([3, 11])('#7955 PR #8299 groups at the engine-provided threshold %i', threshold => {
+  const configured = { ...engine, instanceMinOccurrences: threshold };
+  const key = '2'.repeat(64);
+  const products = Array.from({ length: threshold + 1 }, (_, expressId) => ({ ...shape, expressId, instanceKey: key }));
+  for (const count of [threshold - 1, threshold, threshold + 1]) {
+    const report = retainedReport(configured, products.slice(0, count), () => null);
+    for (const product of report.products) {
+      if (count < threshold) expect(product).not.toHaveProperty('instanceGroup');
+      else expect(product).toHaveProperty('instanceGroup', { templateProductId: 0, key });
+    }
+  }
 });
 
 it('#7955 validates kernel arguments before touching input or output', async () => {
@@ -78,11 +91,15 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   const content = 'must never execute';
   const assets = [];
   for (const path of paths) {
-    await mkdir(join(dir, path, '..'), { recursive: true }); await writeFile(join(dir, path), content);
-    assets.push({ path, bytes: content.length, sha256: createHash('sha256').update(content).digest('hex') });
+    const value = path === 'pkg-retained/ifc-lite.js'
+      ? 'export default async function init() {} export function instanceMinOccurrences() { return 11; }'
+      : path === 'pkg-retained/package.json' ? '{"type":"module"}'
+      : path === 'smlib/node/hooks.mjs' ? 'export {};' : content;
+    await mkdir(join(dir, path, '..'), { recursive: true }); await writeFile(join(dir, path), value);
+    assets.push({ path, bytes: value.length, sha256: createHash('sha256').update(value).digest('hex') });
   }
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets }));
-  await validateEngine(dir);
+  expect((await validateEngine(dir)).instanceMinOccurrences).toBe(11);
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', dir);
   expect((await exportKernel(['--kernel', 'retained'], 'obj'))?.directory).toBe(dir);
   await writeFile(join(dir, paths[0]), 'tampered');

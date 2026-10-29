@@ -16,7 +16,7 @@ register(new URL('hooks.mjs', fixtures), { data: { peer: new URL('peer.mjs', fix
 const { peers, nextPeer } = await import(new URL('peer.mjs', fixtures));
 const module = await import('../../packages/wasm/pkg-retained/ifc-lite.js');
 await module.default({ module_or_path: await readFile(new URL('../../packages/wasm/pkg-retained/ifc-lite_bg.wasm', import.meta.url)) });
-const engine = { sdk: 'inert peer; not SMLib', capabilities: null, manifestSha256: '0'.repeat(64) };
+const engine = { sdk: 'inert peer; not SMLib', capabilities: null, manifestSha256: '0'.repeat(64), instanceMinOccurrences: module.instanceMinOccurrences() };
 const source = await readFile(new URL('../../tests/fixtures/synthetic-retained/f-c-extrusion.ifc', import.meta.url), 'utf8');
 const append = extra => new TextEncoder().encode(source.replace('ENDSEC;\nEND-ISO', `${extra}\nENDSEC;\nEND-ISO`));
 

@@ -108,7 +108,7 @@ try {
   await page.goto(`${origin}/?model=/samples/building-architecture.ifc`, { timeout: 120000 });
   await page.waitForFunction(() => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
-    return state?.models.size === 1 && !state.isLoading && !state.isStreaming;
+    return state?.models.size === 1 && !state.loading && !state.geometryStreamingActive && [...state.models.values()].every(model => model.ifcDataStore);
   }, undefined, { timeout: 120000 });
   // Select a real parsed model entity through the canonical store action.
   await page.evaluate(() => {

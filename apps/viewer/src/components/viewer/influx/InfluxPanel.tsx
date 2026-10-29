@@ -13,6 +13,8 @@ import { configFields, readInfluxConfig, saveInfluxConfig, influxSelection, type
 import { influxTargets } from '@/lib/influx/targets';
 import { InfluxHistory } from './InfluxHistory';
 
+const responseColumns = new Set(['result', 'table', '_start', '_stop', '_time', '_value', '_measurement', '_field']);
+
 type Readings = Awaited<ReturnType<typeof fetchInfluxReadings>>;
 const errorKeys = { config: 'influx.error.config', network: 'influx.error.network', http: 'influx.error.http', data: 'influx.error.data' } as const;
 
@@ -91,7 +93,7 @@ export function InfluxPanel() {
       </div> : <p>{t('influx.select')}</p>}
       {(['unmatched', 'ambiguous'] as const).map(kind => <div key={kind}>
         <h3 className="font-semibold">{t(`influx.${kind}`, { count: joined?.[kind].length ?? 0 })}</h3>
-        <ul className="space-y-1 text-xs break-all">{joined?.[kind].length ? joined[kind].map((row, index) => <li key={index}>{JSON.stringify(row)}</li>) : <li>{t('influx.none')}</li>}</ul>
+        <ul className="space-y-1 text-xs break-all">{joined?.[kind].length ? joined[kind].map((row, index) => <li key={index}>{JSON.stringify(Object.fromEntries(Object.entries(row).filter(([key]) => !responseColumns.has(key))))}</li>) : <li>{t('influx.none')}</li>}</ul>
       </div>)}
     </>}
   </section>;

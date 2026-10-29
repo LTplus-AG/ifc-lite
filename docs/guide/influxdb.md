@@ -33,3 +33,12 @@ adds no scene coloring, manual mappings or property/BMS-ID matching. Follow-ups
 include connection testing, polling, stale-data indication, configurable
 lookback and mobile witness coverage. The screenshot witness uses explicitly
 synthetic data seeded to GlobalIds from the committed SketchUp IFC sample.
+
+To reproduce the desktop witness on an admitted development worker with Docker
+and Chromium, first build the viewer's dependencies and WASM through the root
+build graph, then run `node scripts/spikes/influx-viewer-live.mjs NEW_OUTPUT_DIR`.
+The script uses the repository's Playwright workflow so the browser and the
+loopback database gateway run on the same host. It records the database image
+digest, source commit, model hash and data checks alongside `desktop.png`.
+No token or browser trace is retained. `CHROME_EXECUTABLE` can name an installed
+Chromium; otherwise Playwright's installed browser is used.

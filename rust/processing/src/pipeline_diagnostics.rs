@@ -18,7 +18,7 @@
 //! same pattern as `GeometryDiagnostics` (see its
 //! `serializes_camelcase_keys_matching_the_ts_contract` guard, mirrored
 //! below). The wasm getter (`IfcAPI::getPipelineDiagnostics`) crosses it to
-//! JS via `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
+//! JS via a serde-wasm-bindgen serializer configured for plain objects.
 //!
 //! Population:
 //! - wasm: the LIVE channel. Accumulated on the NORMAL load path — every

@@ -13,7 +13,7 @@
 //! scan/prepass phases run in JS workers outside this module and report 0
 //! here (the native server/CLI surface those numbers through ProcessingStats +
 //! GeometryDiagnostics, not through this channel). Crossed to JS via
-//! `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
+//! a serde-wasm-bindgen serializer configured to emit plain JS objects.
 
 use super::IfcAPI;
 use wasm_bindgen::prelude::*;
@@ -22,8 +22,10 @@ use wasm_bindgen::prelude::*;
 impl IfcAPI {
     /// Structured pipeline diagnostics accumulated across every
     /// `processGeometryBatch*` call since the last load reset
-    /// (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
-    /// `schemaVersion` field — or `undefined` when no batch has run yet.
+    /// (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
+    /// `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
+    /// Returns `undefined` until a batch runs or a prepass refusal is recorded;
+    /// `clearPrePassCache` preserves the report for post-load inspection.
     /// Includes per-batch summed geometry wall time, mesh/triangle counts,
     /// the degenerate-backstop drop count, and the CSG failure aggregates.
     #[wasm_bindgen(js_name = getPipelineDiagnostics)]
@@ -32,7 +34,7 @@ impl IfcAPI {
             .pipeline_diagnostics
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if diag.is_empty() {
+        if diag.is_empty() && diag.refused_input_elements == 0 && diag.refused_prepass_records == 0 {
             return JsValue::UNDEFINED;
         }
         // Serde flatten uses serialize_map; keep the v1 plain-object JS boundary

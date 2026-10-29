@@ -943,19 +943,20 @@ to cancel immediately. Consumers must continue to show the shape-only marker.
 ## Pipeline refusal diagnostics
 
 `IfcAPI.getPipelineDiagnostics()` returns a versioned object after a browser
-geometry batch has run. In schema version 2, `refusedInputElements` counts
+geometry batch has run or a prepass has recorded a refusal. The additive
+schema version 1 field `refusedInputElements` counts
 attempted jobs whose own input decode or geometry reads refused a record.
 A second attempt counts again; a valid neighbour after a refusal does not.
 `refusedPrepassRecords` counts distinct refused record IDs observed in prepass
-or batch resolution on that worker, including type records omitted because the
-full decoder cannot parse them. Repeated reads and batches do not add the same
+or batch resolution on that worker. Plain syntax/decode failures are excluded,
+matching native admission-refusal semantics. Repeated reads and batches do not add the same
 record twice. These counters are separate from owned-producer refusal warnings
 and CSG failure diagnostics. They do not change which geometry is emitted.
 
 The counts are per `IfcAPI`, not a deduplicated model-wide sum over workers.
 They survive `clearPrePassCache()` for inspection after a load, and reset on
 load start (`buildPrePassOnce`, streaming prepass, `setEntityIndex`, or
-`setSourceBytes`). Before the first batch, the getter returns `undefined`.
+`setSourceBytes`). Before any batch or refusal, the getter returns `undefined`.
 
 Rust callers can use
 `ifc_lite_processing::pipeline_diagnostics::PipelineDiagnosticsReport` via

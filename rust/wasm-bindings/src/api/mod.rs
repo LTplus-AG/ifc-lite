@@ -112,6 +112,10 @@ pub struct IfcAPI {
     /// before any `*FromSource` batch, so the held bytes always match the index.
     cached_source_bytes: std::sync::Mutex<Option<std::sync::Arc<Vec<u8>>>>,
 
+    /// Completed BREP signatures shared by batch routers within one source
+    /// epoch; invalidated by source/index installation and prepass/cache resets.
+    cached_brep_signatures: std::sync::Mutex<Option<ifc_lite_geometry::SharedBrepSignatureCache>>,
+
     /// Per-worker shared content-dedup cache (#1109 follow-up). The
     /// `GeometryRouter` is rebuilt every `processGeometryBatch`, so its item-mesh
     /// dedup cache would reset each batch. Holding ONE cache here and injecting it
@@ -120,10 +124,16 @@ pub struct IfcAPI {
     /// emitted as thousands of separate items instead of one `IfcMappedItem`.
     /// Built lazily on first batch; one model per `IfcApi` instance, exactly like
     /// `cached_entity_index`.
-    cached_brep_signatures: std::sync::Mutex<Option<ifc_lite_geometry::SharedBrepSignatureCache>>,
     cached_item_dedup: std::sync::Mutex<Option<ifc_lite_geometry::ItemDedupCache>>,
 
-    /// Model-scoped mapped sources; reset on content/quality changes (#1623).
+    /// Per-worker shared `IfcMappedItem` source cache (#1623). The `GeometryRouter`
+    /// is rebuilt every `processGeometryBatch`, so its per-router `mapped_item_cache`
+    /// would reset each batch and only dedup within a batch. Holding ONE cache here
+    /// and injecting it into every batch router meshes each RepresentationMap source
+    /// once across the whole worker's workload. Built lazily on first batch; one
+    /// model per `IfcApi` instance, exactly like `cached_item_dedup`. Dropped on a
+    /// content swap AND on `setTessellationQuality` (a quality change invalidates
+    /// the source-coord tessellation — the key is the source id, not the quality).
     cached_mapped_item: std::sync::Mutex<Option<ifc_lite_geometry::SharedMappedItemCache>>,
 
     /// When `true`, `processGeometryBatch` suppresses geometry emission for
@@ -287,16 +297,19 @@ pub struct IfcAPI {
     pending_geometry_finishes:
         std::sync::Mutex<Option<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::SpecularMaterial>>>,
 
+    /// Distinct refused record identities for the current load; repeated reads
+    /// and batches are unioned before publishing the diagnostics counter.
+    pipeline_refusals: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
+
     /// Per-load structured pipeline diagnostics (`PipelineDiagnostics`
     /// contract, see `api::pipeline_diagnostics`): every
     /// `processGeometryBatch*` call folds one batch record in — cheap
     /// counters plus per-batch JS wall time, so it is always on. Read by JS
     /// via `getPipelineDiagnostics`; reset at load START by every entry point
     /// that begins a new file on a reused IfcAPI (`buildPrePassOnce`,
-    /// `buildPrePassStreaming`, `setEntityIndex`) - deliberately NOT by
+    /// `buildPrePassStreaming`, `setEntityIndex`, `setSourceBytes`) - deliberately NOT by
     /// `clearPrePassCache`, which runs at end-of-load before a host reads the
     /// diagnostics.
-    pipeline_refusals: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
     pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnosticsReport>,
     /// The loaded content's model lifecycle: each geometry batch snapshots its
     /// maps under it, and a content swap invalidates every earlier snapshot.
@@ -367,7 +380,7 @@ impl IfcAPI {
 
     /// Install the pre-computed set of `IfcRepresentationMap` ids referenced by
     /// an `IfcMappedItem` (issue #957), so the worker's first type-product batch
-    /// skips the per-worker full-file walk. The streaming pre-pass built
+    /// skips the full-file walk once [`Self::set_instantiated_type_ids`] is also installed. The streaming pre-pass built
     /// the same set once from its `IfcMappedItem` spans and ships the
     /// id list here — bit-identical to what each worker would compute, since a
     /// set's membership is order-invariant and consumers only call `.contains`.
@@ -388,7 +401,7 @@ impl IfcAPI {
 
     /// Install the pre-computed set of type ids that an `IfcRelDefinesByType`
     /// instantiates (#957 follow-up), so the worker's first type-product batch
-    /// skips the per-worker full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
+    /// skips the full-file walk once both precomputed sets are installed. Same injection contract as [`Self::set_referenced_repmaps`].
     #[wasm_bindgen(js_name = setInstantiatedTypeIds)]
     pub fn set_instantiated_type_ids(&self, ids: &[u32]) {
         self.cached_type_geometry_plan.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();

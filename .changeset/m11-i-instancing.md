@@ -1,6 +1,6 @@
 ---
 "@ifc-lite/wasm": minor
-"@ifc-lite/cli": patch
+"@ifc-lite/cli": minor
 ---
 
 Add optional retained-only GPU instancing for byte-identical rigid mapped products.

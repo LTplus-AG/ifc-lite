@@ -82,7 +82,8 @@ fn stretches(m:&Frame) -> Option<(f64,f64)> {
         if a[p][q].abs()<=1e-15*a[p][p].abs().max(a[q][q].abs()) {break}
         let theta=0.5*(2.*a[p][q]).atan2(a[q][q]-a[p][p]);let (s,c)=theta.sin_cos();
         let (app,aqq,apq)=(a[p][p],a[q][q],a[p][q]);
-        for k in 0..3 {if k!=p&&k!=q {let (kp,kq)=(a[k][p],a[k][q]);a[k][p]=c*kp-s*kq;a[p][k]=a[k][p];a[k][q]=s*kp+c*kq;a[q][k]=a[k][q];}}
+        let k=3-p-q; // the third axis of this 3x3 Jacobi rotation
+        let (kp,kq)=(a[k][p],a[k][q]);a[k][p]=c*kp-s*kq;a[p][k]=a[k][p];a[k][q]=s*kp+c*kq;a[q][k]=a[k][q];
         a[p][p]=c*c*app-2.*s*c*apq+s*s*aqq;a[q][q]=s*s*app+2.*s*c*apq+c*c*aqq;a[p][q]=0.;a[q][p]=0.;
     }
     let min=(0..3).map(|i|a[i][i]).fold(f64::INFINITY,f64::min).sqrt();
@@ -90,7 +91,8 @@ fn stretches(m:&Frame) -> Option<(f64,f64)> {
     (min>0.&&max.is_finite()).then_some((min,max))
 }
 struct Solid { volume:f64, centroid:[f64;3], points:Vec<[f64;3]>, radius:f64 }
-fn curve_profile(d:&mut EntityDecoder<'_>,root:u32) -> Option<(f64,[f64;3],Vec<[f64;3]>,f64)> {
+type ProfileMoments = (f64, [f64;3], Vec<[f64;3]>, f64);
+fn curve_profile(d:&mut EntityDecoder<'_>,root:u32) -> Option<ProfileMoments> {
     let mut stack=vec![(root,true,0)];let (mut area,mut mx,mut my,mut radius)=(0.,0.,0.,0f64);
     let mut points=Vec::new();let mut work=0;
     while let Some((id,sense,depth))=stack.pop() {

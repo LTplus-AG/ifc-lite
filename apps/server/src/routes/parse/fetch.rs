@@ -130,8 +130,13 @@ pub async fn check_cache(
     // does not send `parquet_layout` is asking about v5, and a v6 entry sitting
     // beside it must NOT report a hit: the client would skip the upload and
     // then fetch a blob it draws wrong.
-    let parquet_cache_key =
-        parquet_cache_key(&hash, query.opening_filter, quality, query.parquet_layout, query.layer_slicing);
+    let parquet_cache_key = parquet_cache_key(
+        &hash,
+        query.opening_filter,
+        quality,
+        query.parquet_layout,
+        query.layer_slicing,
+    );
     // A geometry entry alone is not enough: the client skips the upload on a
     // hit, so a data model at the current payload version has to exist too, or
     // nothing will ever write one (issue #3869). The same holds for the

@@ -1749,10 +1749,7 @@ pub fn try_export_glb(content: &[u8], opts: &GltfOptions) -> Result<Vec<u8>, Exp
 /// expansion, not observed in practice); a caller that must be panic-proof even
 /// then can force the checked bounded path with
 /// `IFC_LITE_GLB_STREAM_THRESHOLD_MB=1`.
-pub fn try_export_glb_with_stats(
-    content: &[u8],
-    opts: &GltfOptions,
-) -> Result<(Vec<u8>, GltfStats), ExportError> {
+pub fn try_export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> Result<(Vec<u8>, GltfStats), ExportError> {
     if content.len() >= glb_stream_threshold_bytes() {
         return try_export_glb_streaming_bounded(content, opts);
     }
@@ -2437,7 +2434,10 @@ impl Retention {
 /// consumed as they arrive and never retained, over the caller's shared entity
 /// index when there is one (#1516).
 fn streamed_request(opts: &GltfOptions, index: &Option<Arc<EntityIndex>>) -> ProcessingRequest {
-    let request = ProcessingRequest::default().quality(opts.tessellation_quality).layer_slicing(opts.layer_slicing).retain_meshes(false);
+    let request = ProcessingRequest::default()
+        .quality(opts.tessellation_quality)
+        .layer_slicing(opts.layer_slicing)
+        .retain_meshes(false);
     match index {
         Some(index) => request.index(index.clone()),
         None => request,

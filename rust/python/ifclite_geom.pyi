@@ -420,6 +420,7 @@ def geometry_data_buffers(
     ids: Optional[Set[int]] = None,
     *,
     include_directrices: Literal[True],
+    layer_slicing: bool = False,
 ) -> GeometryBuffersWithDirectrices: ...
 
 @overload
@@ -429,6 +430,7 @@ def geometry_data_buffers(
     ids: Optional[Set[int]] = None,
     *,
     include_directrices: bool = False,
+    layer_slicing: bool = False,
 ) -> GeometryBuffers:
     """Tessellate IFC bytes; return per-entity geometry with vertices/faces as
     raw little-endian byte buffers (f64 xyz triplets, u32 triangle indices) for
@@ -470,6 +472,7 @@ def geometry_data_json(
     ids: Optional[Set[int]] = None,
     *,
     include_directrices: bool = False,
+    layer_slicing: bool = False,
 ) -> str:
     """Tessellate IFC bytes; return the ``ifc-lite-geometry-data`` JSON document
     as a string (call ``json.loads`` on it).

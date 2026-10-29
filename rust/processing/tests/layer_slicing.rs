@@ -6,7 +6,10 @@ fn issue_7782_d66_layer_slicing_is_opt_in() {
     let content = include_bytes!("fixtures/c4_native_unsliced_layers_7782.ifc");
     let default = process(content, &ProcessingRequest::full_pass(), &mut ());
     let off = process(content, &ProcessingRequest::full_pass().layer_slicing(false), &mut ());
-    assert_eq!(serde_json::to_value(&default.meshes).unwrap(), serde_json::to_value(&off.meshes).unwrap());
+    assert_eq!(
+        serde_json::to_value(&default.meshes).unwrap(),
+        serde_json::to_value(&off.meshes).unwrap()
+    );
     let wall: Vec<_> = default.meshes.iter().filter(|m| m.express_id == 100).collect();
     assert_eq!(wall.len(), 1);
     assert_eq!(wall[0].indices.len() / 3, 12);

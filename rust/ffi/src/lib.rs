@@ -7,6 +7,7 @@
 //! Exports functions for use via P/Invoke from C#:
 //! - `ifc_lite_parse`: parse an IFC file and return JSON bytes
 //! - `ifc_lite_parse_ex`: parse with configurable opening filter
+//! - `ifc_lite_parse_with_flags`: bit 0 opts into material-layer wall slicing; zero stays unsliced
 //! - `ifc_lite_free`: free a buffer previously returned by parse functions
 //!
 //! Build: `cargo build --profile server-release -p ifc-lite-ffi`
@@ -250,8 +251,12 @@ pub unsafe extern "C" fn ifc_lite_parse_with_flags(
     out_len: *mut usize,
 ) -> i32 {
     if flags & !1 != 0 {
-        if !out_ptr.is_null() { *out_ptr = std::ptr::null_mut(); }
-        if !out_len.is_null() { *out_len = 0; }
+        if !out_ptr.is_null() {
+            *out_ptr = std::ptr::null_mut();
+        }
+        if !out_len.is_null() {
+            *out_len = 0;
+        }
         return 1;
     }
     let mode = match opening_filter_mode {

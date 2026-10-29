@@ -166,7 +166,10 @@ pub(crate) fn parquet_cache_key(
     layout: ParquetLayout,
     layer_slicing: bool,
 ) -> String {
-    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality, layer_slicing), layout)
+    parquet_geometry_key(
+        &cache_key_from_parts(hash, opening_filter, quality, layer_slicing),
+        layout,
+    )
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.

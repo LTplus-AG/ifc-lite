@@ -132,3 +132,30 @@ async fn a_consumer_that_stops_reading_parks_the_producer_instead_of_buffering_t
         stats.total_time_ms
     );
 }
+
+#[tokio::test]
+async fn issue_7782_d66_stream_option_reaches_router() {
+    use futures::StreamExt;
+    let content = include_bytes!("../../../../rust/processing/tests/fixtures/c4_native_unsliced_layers_7782.ifc");
+    for (slicing, expected) in [(false, 1), (true, 3)] {
+        let events: Vec<_> = process_streaming(
+            bytes::Bytes::from_static(content),
+            50,
+            50,
+            OpeningFilterMode::Default,
+            TessellationQuality::default(),
+            None,
+            slicing,
+        )
+        .collect()
+        .await;
+        let count: usize = events
+            .iter()
+            .map(|event| match event {
+                StreamEvent::Batch { meshes, .. } => meshes.len(),
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(count, expected);
+    }
+}

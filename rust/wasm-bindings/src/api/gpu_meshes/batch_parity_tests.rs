@@ -438,10 +438,17 @@ fn c4_d66_opt_in_layer_payloads_match_browser_7782() {
         &ifc_lite_processing::ProcessingRequest::full_pass().layer_slicing(true),
         &mut (),
     );
-    let mut expected: Vec<_> = browser.meshes().filter(|m| m.express_id == 100)
-        .map(compare::exact_digest).collect();
-    let mut actual: Vec<_> = native.meshes.iter().filter(|m| m.express_id == 100)
-        .map(compare::exact_digest).collect();
+    let mut expected: Vec<_> = browser
+        .meshes()
+        .filter(|m| m.express_id == 100)
+        .map(compare::exact_digest)
+        .collect();
+    let mut actual: Vec<_> = native
+        .meshes
+        .iter()
+        .filter(|m| m.express_id == 100)
+        .map(compare::exact_digest)
+        .collect();
     expected.sort_unstable();
     actual.sort_unstable();
     assert_eq!(expected.len(), 3);

@@ -63,7 +63,7 @@ test('#7955 M3 unreviewed synthetic cases, including the baked scaled cutter, ma
 });
 
 
-test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in the unmet-normals header', {
+test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in the obligations header and the M11-N corner normals', {
   timeout: 120000,
   skip: !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT header identity evidence',
 }, async () => {
@@ -74,18 +74,37 @@ test('#7955 M11-0 committed extrusion OBJ differs from its base golden only in t
   const outcomes = await runRetained(await validateEngine(engine), source);
   assert.ok(outcomes.length > 0 && outcomes.every(p => p.status === 'published'));
   for (const product of outcomes) {
-    assert.equal(product.obligationsUnmet.at(-1), 'SurfaceNormals');
+    assert.ok(!product.obligationsUnmet.includes('SurfaceNormals'), 'M11-N discharges surface normals');
     for (const part of product.parts) {
       assert.equal(part.revisionLocalFaces.length, part.indices.length / 3);
-      for (const key of ['normals', 'color', 'instanceKey']) assert.equal(part[key], undefined);
+      assert.ok(part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3, 'M11-N: one f64 normal per corner');
+      for (const key of ['color', 'instanceKey']) assert.equal(part[key], undefined);
       // M11-F: every triangle carries a persistent source face key.
       assert.equal(part.faces.triangles.length, part.indices.length / 3);
     }
   }
   const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');
-  const current = retainedObj(outcomes).split('\n');
-  assert.equal(current.length, previous.length, 'no added geometry, normals, groups or materials');
+  const written = retainedObj(outcomes).split('\n');
+  // M11-N: the writer emits one `vn` per triangle corner and faces reference them as `v//n`.
+  // Everything else (vertices, groups, materials, face vertex order) must stay byte-identical.
+  const corners = outcomes.flatMap(p => p.parts).reduce((n, part) => n + part.indices.length, 0);
+  // OBJ record kind = the first token of the line (parsed output, not a text predicate).
+  const kind = line => line.split(' ', 1)[0];
+  assert.equal(written.filter(line => kind(line) === 'vn').length, corners, 'exactly one normal per triangle corner');
+  let normal = 0;
+  const current = written.filter(line => kind(line) !== 'vn').map(line => {
+    if (kind(line) !== 'f') return line;
+    const refs = line.slice(2).split(' ').map(corner => {
+      const [vertex, empty, n] = corner.split('/');
+      assert.equal(empty, '', 'face corners are v//n');
+      assert.equal(Number(n), ++normal, 'face corners reference their own normal in order');
+      return vertex;
+    });
+    return `f ${refs.join(' ')}`;
+  });
+  assert.equal(current.length, previous.length, 'no added geometry, groups or materials beyond the corner normals');
   const changed = current.flatMap((line, index) => line === previous[index] ? [] : [index]);
-  assert.deepEqual(changed, [3], 'the ONLY changed line must be the presentation obligations header');
-  assert.equal(current[3], previous[3].replace(', PersistentFaces', '') + ', SurfaceNormals', 'M11-F discharges PersistentFaces');
+  assert.deepEqual(changed, [3], 'the ONLY other changed line must be the presentation obligations header');
+  assert.equal(current[3], previous[3].replace(', PersistentFaces', ''),
+    'M11-F discharges PersistentFaces and M11-N SurfaceNormals: neither is listed as unmet');
 });

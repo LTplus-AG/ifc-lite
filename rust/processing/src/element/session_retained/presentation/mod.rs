@@ -23,13 +23,16 @@ pub(super) struct Context<'a> {
     pub faces: &'a [FaceSources],
     /// M11-F: the run's evaluation chord, bounding curved incidence.
     pub chord_metres: f64,
+    /// The same run limit passed to numerical tessellation.
+    pub angle_degrees: f64,
 }
 
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Result<Vec<Requirement>, RetainedExecutionError> {
     let mut discharged = Vec::new();
     discharged.extend(appearance::apply(product, context));
-    discharged.extend(normals::apply(product, context));
+    normals::prepare(product, context)?;
     discharged.extend(faces::apply(product, context)?);
+    discharged.extend(normals::apply(product, context)?);
     discharged.extend(instancing::apply(product, context));
     Ok(discharged)
 }

@@ -19,14 +19,14 @@ const record = { documentId: 1, documentNumber: 'D1', versionNumber: '1', versio
   allowDownload: true, locationId: 2, locationName: 'Location', projectId: 1, projectName: 'Project', projectPhaseName: null };
 const ref = { projectId: 'p', containerId: 'root', fileId: 'd' };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; legacy?: boolean } = {}) {
+function setup(options: { fallback?: boolean; records?: unknown[]; byLocation?: Record<number, unknown[]>; versions?: unknown[]; legacy?: boolean } = {}) {
   const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer secret-token');
     expect(init?.credentials).toBe('omit');
     expect(init?.redirect).toBe('error');
     if (url.endsWith('project-structure')) return json(structure);
-    if (url.includes('/document-versions') && !url.endsWith('/download')) return json([version]);
+    if (url.includes('/document-versions') && !url.endsWith('/download')) return json(options.versions ?? [version]);
     if (url.includes('/index?')) {
       const locationId = Number(new URL(url, 'https://x').searchParams.get('locationId'));
       // Default: the space's only populated location is 2.
@@ -169,6 +169,15 @@ describe('BIMcollab source provider (fake transport only)', () => {
     // The same phase name under another project's record must not match.
     const foreign = setup({ records: [{ ...phaseRecord, projectPhaseName: 'Unknown phase' }] });
     await expect(foreign.provider.download(foreign.ctx, phasedRef)).rejects.toThrow();
+  });
+  it('never matches a phase-only row for a historical revision (the right row is not in the index)', async () => {
+    // Another project's same-named phase whose CURRENT version equals the requested historical one.
+    const lookalike = { ...record, versionId: 91, projectId: null, projectName: null, projectPhaseName: 'Design' };
+    const { provider, ctx, fetchFn } = setup({ records: [lookalike],
+      versions: [version, { ...version, documentVersionId: 'old', versionNumber: '1' }] });
+    const historical = { projectId: 'phased', containerId: 'phase', fileId: 'd', revisionId: 'old' };
+    await expect(provider.download(ctx, historical)).rejects.toThrow(/BIMcollab legacy download/);
+    expect(fetchFn.mock.calls.some(call => String(call[0]).endsWith('/download/91'))).toBe(false);
   });
   it('refuses (never guesses) when two projects have a same-named phase holding the same document number', async () => {
     const phaseRecord = { ...record, projectId: null, projectName: null, projectPhaseName: 'Design' };

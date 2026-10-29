@@ -7,15 +7,24 @@ import { checked, type BimcollabTransport } from './http-client.js';
 import type { BimcollabSession, IndexRecord } from './types.js';
 
 interface CachedIndex { expires: number; records: IndexRecord[] }
-export interface LegacyNames { location: string; project: string; phases?: readonly string[]; locationGuid: string }
+export interface LegacyNames {
+  location: string; project: string; phases?: readonly string[]; locationGuid: string;
+  /** Whether the requested version is the document's current one (default true). */
+  latest?: boolean;
+}
 
 /**
  * Whether an index record belongs to the requested project. A document
  * attached to a project PHASE carries no project on the web-app record, only
  * the phase, so phase names from the public structure stand in for it.
  */
-export function inProject(row: IndexRecord, names: Pick<LegacyNames, 'project' | 'phases'>): boolean {
+export function inProject(row: IndexRecord, names: Pick<LegacyNames, 'project' | 'phases' | 'latest'>): boolean {
   if (row.projectName !== null) return row.projectName === names.project;
+  // A phase name is not a project identity. It is accepted only for the current
+  // version: then the requested document's own row is in the (current-versions)
+  // index, so a same-named phase elsewhere makes the match ambiguous and refused
+  // instead of silently unique. For a historical version it could be the only match.
+  if (names.latest === false) return false;
   return row.projectPhaseName !== null && (names.phases ?? []).includes(row.projectPhaseName);
 }
 export class LegacyDownload {

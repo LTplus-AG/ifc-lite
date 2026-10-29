@@ -90,13 +90,58 @@ fn stretches(m:&Frame) -> Option<(f64,f64)> {
     (min>0.&&max.is_finite()).then_some((min,max))
 }
 struct Solid { volume:f64, centroid:[f64;3], points:Vec<[f64;3]>, radius:f64 }
-fn polygon(points:&[[f64;3]]) -> Option<(f64,[f64;3])> {
-    let mut area=0.;let mut c=[0.;3];
-    for (a,b) in points.iter().zip(points.iter().cycle().skip(1)).take(points.len()) {
-        let cross=a[0]*b[1]-b[0]*a[1];area+=cross;
-        for k in 0..2 {c[k]+=(a[k]+b[k])*cross;}
+fn curve_profile(d:&mut EntityDecoder<'_>,root:u32) -> Option<(f64,[f64;3],Vec<[f64;3]>,f64)> {
+    let mut stack=vec![(root,true,0)];let (mut area,mut mx,mut my,mut radius)=(0.,0.,0.,0f64);
+    let mut points=Vec::new();let mut work=0;
+    while let Some((id,sense,depth))=stack.pop() {
+        work+=1;if work>4096||depth>128{return None}
+        let e=d.decode_by_id(id).ok()?;
+        match e.ifc_type {
+            IfcType::IfcCompositeCurve=>{
+                for id in e.ref_list_at(slot::IfcCompositeCurve::SEGMENTS)? {
+                    let segment=d.decode_by_id(id).ok()?;
+                    let same=segment.logical_at(slot::IfcCompositeCurveSegment::SAME_SENSE)?;
+                    stack.push((segment.ref_at(slot::IfcCompositeCurveSegment::PARENT_CURVE)?,sense==same,depth+1));
+                }
+            }
+            IfcType::IfcPolyline=>{
+                let mut p:Vec<_>=e.ref_list_at(slot::IfcPolyline::POINTS)?.into_iter().map(|id|d.point3(id).ok()).collect::<Option<_>>()?;
+                if !sense {p.reverse();}
+                for pair in p.windows(2) {
+                    let (a,b)=(pair[0],pair[1]);let (dx,dy)=(b[0]-a[0],b[1]-a[1]);
+                    area+=(a[0]*b[1]-a[1]*b[0])/2.;
+                    mx+=dy*(a[0]*a[0]+a[0]*b[0]+b[0]*b[0])/6.;
+                    my-=dx*(a[1]*a[1]+a[1]*b[1]+b[1]*b[1])/6.;
+                }
+                points.extend(p);
+            }
+            IfcType::IfcTrimmedCurve=>{
+                let circle=d.decode_by_id(e.ref_at(slot::IfcTrimmedCurve::BASIS_CURVE)?).ok()?;
+                if circle.ifc_type!=IfcType::IfcCircle{return None}
+                let frame=axes(d,circle.ref_at(slot::IfcConic::POSITION))?;
+                if frame[2]!=0.||frame[6]!=0.||frame[10]!=1.{return None}
+                let r=circle.real_at(slot::IfcCircle::RADIUS)?;radius=radius.max(r);
+                let offset=frame[1].atan2(frame[0]);
+                let mut a=e.list_at(slot::IfcTrimmedCurve::TRIM1)?.first()?.as_float()?+offset;
+                let mut b=e.list_at(slot::IfcTrimmedCurve::TRIM2)?.first()?.as_float()?+offset;
+                if !e.logical_at(slot::IfcTrimmedCurve::SENSE_AGREEMENT)? {std::mem::swap(&mut a,&mut b);}
+                if !a.is_finite()||!b.is_finite(){return None}
+                let sweep=(b-a).rem_euclid(std::f64::consts::TAU);if sweep==0.{return None} b=a+sweep;
+                if b-a>std::f64::consts::TAU+1e-12{return None}
+                if !sense {std::mem::swap(&mut a,&mut b);}
+                let (x,y)=(frame[12],frame[13]);
+                let integrals=|t:f64|{let (sn,cs)=t.sin_cos();[
+                    (r*x*sn-r*y*cs+r*r*t)/2.,
+                    r*(x*x*sn+2.*x*r*(t/2.+(2.*t).sin()/4.)+r*r*(sn-sn.powi(3)/3.))/2.,
+                    r*(-y*y*cs+2.*y*r*(t/2.-(2.*t).sin()/4.)+r*r*(-cs+cs.powi(3)/3.))/2.]};
+                let (lo,hi)=(integrals(a),integrals(b));area+=hi[0]-lo[0];mx+=hi[1]-lo[1];my+=hi[2]-lo[2];
+            }
+            _=>return None,
+        }
     }
-    if area.abs()<1e-30 {return None} c=c.map(|v|v/(3.*area));Some((area.abs()/2.,c))
+    if !area.is_finite()||area.abs()<1e-30{return None}
+    if radius>0.{points.clear();}
+    Some((area.abs(),[mx/area,my/area,0.],points,radius))
 }
 fn solid(d:&mut EntityDecoder<'_>,mut id:u32, depth:usize, work:&mut usize) -> Option<Solid> {
     *work=work.checked_sub(1)?;if depth>32 {return None}
@@ -125,10 +170,7 @@ fn solid(d:&mut EntityDecoder<'_>,mut id:u32, depth:usize, work:&mut usize) -> O
     let mut profile_frame=IDENTITY;
     let (area,center,points,radius)=match p.ifc_type {
         IfcType::IfcArbitraryClosedProfileDef => {
-            let curve=d.decode_by_id(p.ref_at(slot::IfcArbitraryClosedProfileDef::OUTER_CURVE)?).ok()?;
-            if curve.ifc_type!=IfcType::IfcPolyline {return None}
-            let points:Vec<_>=curve.ref_list_at(slot::IfcPolyline::POINTS)?.into_iter().map(|id|d.point3(id).ok()).collect::<Option<_>>()?;
-            let (area,center)=polygon(&points)?;(area,center,points,0.)
+            curve_profile(d,p.ref_at(slot::IfcArbitraryClosedProfileDef::OUTER_CURVE)?)?
         }
         IfcType::IfcRectangleProfileDef => {
             profile_frame=axes(d,p.ref_at(slot::IfcParameterizedProfileDef::POSITION))?;

@@ -16,10 +16,14 @@ fn tolerances()->serde_json::Value {serde_json::from_str(include_str!("../../../
 const LINEAR:[(u32,f64);13]=[(34,0.56),(42,0.56),(50,0.56),(58,4.48),(66,0.07),(74,13.44),(82,1.68),(95,0.56),(190,4.48),(203,1.12),(224,5.25),(234,42.),(242,0.54)];
 #[test]
 fn m10_source_oracle_matches_hand_arithmetic_and_mirror_centroids() {
-    for (id,v) in LINEAR.into_iter().filter(|(id,_)|![224,234,242].contains(id)) {
+    for (id,v) in LINEAR.into_iter().filter(|(id,_)|![242].contains(id)) {
         let expected=affine::expected(SOURCE.as_bytes(),id).unwrap();
         assert!((expected.iter().map(|e|e.volume).sum::<f64>()-v).abs()<1e-12,"#{id}");
     }
+    let oblique=affine::expected(SOURCE.as_bytes(),313).unwrap();
+    assert!((oblique[0].volume-15.).abs()<1e-12);
+    let door=affine::expected(SOURCE.as_bytes(),119).unwrap();
+    assert!((door[0].volume-2.*(1.35+std::f64::consts::PI*0.45f64.powi(2)/2.)).abs()<1e-12);
     let a=affine::expected(SOURCE.as_bytes(),42).unwrap();let b=affine::expected(SOURCE.as_bytes(),50).unwrap();
     for (actual,expected) in a[0].centroid.into_iter().zip([-27./70.,13./70.,1.]) {assert!((actual-expected).abs()<1e-12);}
     for (actual,expected) in b[0].centroid.into_iter().zip([27./70.,-13./70.,1.]) {assert!((actual-expected).abs()<1e-12);}

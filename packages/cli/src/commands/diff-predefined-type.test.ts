@@ -30,11 +30,14 @@
  *   everything as modified.
  */
 
-import { describe, expect, it } from 'vitest';
-import { diffModels, type DiffState } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { initDiff, diffModels, type DiffState } from '@ifc-lite/diff';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { buildFileFingerprints } from './diff-engine.js';
 import { guid, infraRevisionModel } from './diff-test-helpers.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 async function parse(text: string): Promise<IfcDataStore> {
   const bytes = new TextEncoder().encode(text);

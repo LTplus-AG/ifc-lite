@@ -50,10 +50,11 @@
  * length unit with no physical quantity change does not read as modified.
  */
 
+import { buildFingerprintBatch } from '@ifc-lite/diff/internal';
 import {
-  buildComponentFingerprints,
-  buildDataFingerprint,
+  initDiff,
   type EntityFingerprint,
+  type DataFingerprintInput,
 } from '@ifc-lite/diff';
 import { extractProjectUnits, spatialContainerPath, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
@@ -177,6 +178,7 @@ export interface BuildFingerprintsModel {
 export async function buildEntityFingerprints(
   model: BuildFingerprintsModel,
 ): Promise<EntityFingerprint<CompareRef>[]> {
+  await initDiff();
   const {
     store,
     meshes,
@@ -312,6 +314,7 @@ export async function buildEntityFingerprints(
   );
 
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
+  const inputs: DataFingerprintInput[] = [];
   let processed = 0;
   for (const [localId, geometryHash] of geometryByLocalId) {
     const ifcType = store.entities.getTypeName(localId) || 'IfcProduct';
@@ -341,11 +344,12 @@ export async function buildEntityFingerprints(
     // not contain it, which the engine reads as "no evidence", never as "moved".
     const container = spatialContainerPath(store, localId);
 
+    inputs.push(dataInput);
     fingerprints.push({
       key,
       ifcType,
-      dataHash: buildDataFingerprint(dataInput),
-      components: buildComponentFingerprints(dataInput),
+      dataHash: '',
+      components: {},
       geometryHash,
       ...(aabb ? { aabb } : {}),
       ...(volume !== undefined ? { volume } : {}),
@@ -362,5 +366,13 @@ export async function buildEntityFingerprints(
     }
   }
 
+  // Hash in the same bounded slices and yield between them, so one large model
+  // doesn't freeze the main thread in a single WASM call (#924). Inputs hash
+  // independently, so slicing doesn't change any result.
+  for (let start = 0; start < inputs.length; start += 1500) {
+    const hashes = buildFingerprintBatch(inputs.slice(start, start + 1500));
+    for (let i = 0; i < hashes.length; i++) Object.assign(fingerprints[start + i], hashes[i]);
+    if (start + 1500 < inputs.length) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
   return fingerprints;
 }

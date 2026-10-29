@@ -21,7 +21,7 @@ mod prepass_once;
 mod prepass_owned_columns;
 mod prepass_sharded;
 mod source_fingerprint;
-mod style_finishes;
+pub(super) mod style_finishes;
 mod prepass_from_source;
 mod void_index;
 mod prepass_affinity;
@@ -35,3 +35,6 @@ fn scan_columnar_index(content: &[u8]) -> ifc_lite_core::ColumnarEntityIndex {
     ifc_lite_core::ColumnarEntityIndex::from_scan(content)
         .expect("a wasm32 source is below 4 GiB, so every span fits u32")
 }
+
+#[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
+pub(crate) use batch_partition::{is_instancing_candidate, INSTANCE_MIN_OCCURRENCES};

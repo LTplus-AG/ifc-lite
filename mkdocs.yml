@@ -170,6 +170,7 @@ nav:
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
+    - InfluxDB Time Series (Experimental): guide/influxdb.md
     - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
     - MCP for AI Agents: guide/mcp.md
@@ -289,6 +290,7 @@ nav:
     - Federation: architecture/federation.md
     - Collaboration: architecture/collaboration.md
     - Clash Detection: architecture/clash-detection.md
+    - Diff Consumer Initialization: architecture/diff-consumer-initialization.md
     - Element Splitting: architecture/element-splitting.md
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md

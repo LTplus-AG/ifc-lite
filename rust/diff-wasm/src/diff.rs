@@ -29,6 +29,39 @@ impl DiffModel {
         Ok(Self { entities, non_ascii_classes })
     }
 
+    /// Explicit internal batch; no retained input or implicit cache.
+    #[wasm_bindgen(js_name = buildFingerprintBatch)]
+    pub fn build_fingerprint_batch(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
+        crate::diff_fingerprint_binary::build(bytes)
+    }
+
+    /// Private facade constructor: one UTF-16 dictionary buffer, no per-string host reads.
+    #[wasm_bindgen(js_name = fromPacked)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_packed(strings: &[u8], fields: Vec<u32>, flags: Vec<u8>, boxes: Vec<f64>,
+        volumes: Vec<f64>, component_offsets: Vec<u32>, component_pairs: Vec<u32>) -> Result<DiffModel, JsValue> {
+        let value = crate::diff_binary::decode(strings).map_err(|e| JsValue::from_str(&e))?;
+        let strings = ifc_lite_diff::document_serde::from_document(value)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
+            volumes, component_offsets, component_pairs }).map_err(|e| JsValue::from_str(&e))?;
+        let non_ascii_classes = crate::diff_class_normalization::model_classes(&entities);
+        Ok(Self { entities, non_ascii_classes })
+    }
+
+    /// One result buffer preserves absent fields and every UTF-16 code unit.
+    #[wasm_bindgen(js_name = comparePacked)]
+    pub fn compare_packed(&self, head: &DiffModel, options: JsValue) -> Result<Vec<u8>, JsValue> {
+        let value = crate::diff_transport::document(options)?;
+        let options = options_from_document(&value);
+        let mappings = crate::diff_class_normalization::mappings(
+            &self.non_ascii_classes, &head.non_ascii_classes, &options)?;
+        let result = ifc_lite_diff::class_normalization::with_overrides(mappings, || {
+            diff_models(&self.entities, &head.entities, &options)
+        });
+        Ok(crate::diff_binary::encode(&result_to_document(&result)))
+    }
+
     /// Compare this base model with a head model, returning row-index records.
     /// No JS reference is serialized, cloned, or retained inside WASM.
     pub fn compare(&self, head: &DiffModel, options: JsValue) -> Result<JsValue, JsValue> {

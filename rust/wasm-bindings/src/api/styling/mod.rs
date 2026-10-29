@@ -7,8 +7,4 @@
 mod prepass;
 
 pub(crate) use ifc_lite_processing::style::resolve_element_color;
-pub(crate) use prepass::{
-    build_instantiated_type_ids, build_instantiated_type_ids_from_spans,
-    build_mapped_instance_plan_from_spans, build_referenced_representation_maps,
-    build_referenced_representation_maps_from_spans, collect_type_geometry_jobs_from_spans, combined_pre_pass,
-};
+pub(crate) use prepass::combined_pre_pass;

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IFCLITE_ATTR, blake3Digest, computeStackHash, getProvenance } from '@ifc-lite/ifcx';
@@ -18,6 +19,9 @@ import {
 import { mergeIntoRef } from './layer-merge.js';
 import { createRef, moveRef, protectRef } from './ref.js';
 import { CLASS, FIRE, makeDelta, setupMain, tmpStore } from './layer-test-helpers.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 describe('publish → ref create → merge fast path', () => {
   it('fast-forwards a candidate authored against the ref head', () => {

@@ -38,7 +38,7 @@ pub(super) const INSTANCED_ALPHA_CUTOFF: f32 = 0.99;
 /// missed optimization, never a correctness/FPS regression (flat IS the fast path for
 /// low counts). Lower to 4 if a large model's memory regresses; raise to 16 if orbit
 /// still drags.
-pub(super) const INSTANCE_MIN_OCCURRENCES: u32 = 8;
+pub(crate) const INSTANCE_MIN_OCCURRENCES: u32 = 8;
 
 /// The VALUE above is tunable -- its own doc invites 4 or 16. The FLOOR is not:
 /// `INSTANCE_MIN_OCCURRENCES` is also handed to `collate_and_encode` as
@@ -163,7 +163,7 @@ pub(super) fn is_class_toggled(ifc_type: &str) -> bool {
 /// Model/Types view-mode gating and class-visibility gating. This is a gate on
 /// the mesh's own properties only — repetition is counted separately, by
 /// [`meets_instance_threshold`].
-pub(super) fn is_instancing_candidate(mesh: &MeshData) -> bool {
+pub(crate) fn is_instancing_candidate(mesh: &MeshData) -> bool {
     mesh.color[3] >= INSTANCED_ALPHA_CUTOFF
         && mesh.texture.is_none()
         && mesh.geometry_class == 0

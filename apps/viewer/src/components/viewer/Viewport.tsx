@@ -1416,8 +1416,9 @@ export function Viewport({
     hasPendingMeasurements,
   });
 
+  const geometryKernel = useViewerStore(s => s.models.get(s.activeModelId ?? '')?.retainedGeometry?.kernel ?? 'exact');
   useGeometryStreaming({
-    rendererRef,
+    rendererRef, geometryKernel,
     isInitialized,
     geometry,
     geometryVersion, geometryReplacementVersion, geometryContentVersion, gpuRecoveryEpoch,

@@ -5334,6 +5334,8 @@
     "identityMapFromContentMatches: function",
     "identityMapFromSuccessors: function",
     "identityMapSidecarMismatches: function",
+    "initDiff: function",
+    "initDiffSync: function",
     "keyAliasesFromLineage: function",
     "keyAliasesFromSidecar: function",
     "lineageConflicts: function",
@@ -5349,6 +5351,9 @@
     "stableHash: function",
     "validateIdentityMapSidecar: function",
     "validateLineageSidecar: function"
+  ],
+  "@ifc-lite/diff/internal": [
+    "buildFingerprintBatch: function"
   ],
   "@ifc-lite/documents-api": [
     "CallbackLink: interface",
@@ -6424,6 +6429,19 @@
   ],
   "@ifc-lite/flow-nodes/bcf-publication-node": [
     "createNativeBcfWriteGateway: function"
+  ],
+  "@ifc-lite/flow-nodes/influx": [
+    "InfluxRequestError: class",
+    "InfluxSelection: interface",
+    "containsInfluxToken: function",
+    "dataTable: function",
+    "fetchInfluxReadings: function",
+    "latestPerSeries: function",
+    "matchInfluxSeries: function",
+    "parseInfluxCsv: function",
+    "queryRequest: function",
+    "redactInfluxError: function",
+    "selectionContainsToken: function"
   ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",

@@ -20,7 +20,7 @@ test('#8090 selected real IFC space shows latest/history, ambiguity stays explic
   const source = await readFile(new URL('../../../../public/samples/building-architecture.ifc', import.meta.url));
   const parsed = await new IfcParser().parseColumnar(new Uint8Array(source).buffer);
   const roomId = parsed.entities.getExpressIdByGlobalId('0xY$LvXaDEswJDk_VU74C_');
-  const model = { ...fixtureModel('building'), ifcDataStore: parsed };
+  const model = { ...fixtureModel('building'), ifcDataStore: parsed, maxExpressId: parsed.entities.expressId.reduce((max, id) => Math.max(max, id), 0) };
   useViewerStore.setState({ ...fixtureModels(model), selectedEntityId: roomId, mutationViews: new Map() });
   const token = 'panel-token-must-not-persist';
   const csv = await readFile(new URL('../../../../../../examples/headless-workflows/influx-demo.csv', import.meta.url), 'utf8');

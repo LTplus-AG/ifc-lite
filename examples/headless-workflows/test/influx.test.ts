@@ -57,7 +57,7 @@ test('#8090 query is bounded and rejects interpolation, credentials and unsuppor
   assert.equal(JSON.stringify(influxGraph(selection)).includes(env.INFLUX_TOKEN), false);
 });
 
-test('#8090 existing Flow HTTP, CSV and join nodes map a parsed IFC and separate competing series', async () => {
+test('#8090 Flow HTTP and join nodes with shared strict CSV adapters map a parsed IFC and separate competing series', async () => {
   const csv = await demoCsv();
   await withModelFile(modelPath, async model => {
     let requests = 0;
@@ -110,5 +110,23 @@ test('#8090 empty query result is empty, and unset secrets are refused before tr
     const result = await runInfluxSpike(selection, host, env);
     assert.equal(result.matched.rows.length, 0);
     assert.equal(result.history.rows.length, 0);
+  });
+});
+
+// #8297: malformed tag quoting used to pass the permissive table.readCsv node.
+test('#8297 headless Influx path rejects malformed quoting through the shared parser', async () => {
+  const csv = await demoCsv();
+  await withModelFile(modelPath, async model => {
+    for (const device of ['hall"a', '"hall-a"junk', '"hall-a']) {
+      await assert.rejects(runInfluxSpike(selection, {
+        bim: model.bim,
+        networkTransport: async () => new Response(csv.replace('hall-a', device)),
+      }, env), /CSV quot/);
+    }
+    const valid = await runInfluxSpike(selection, {
+      bim: model.bim,
+      networkTransport: async () => new Response(csv.replace('hall-a', '"hall,""a"""')),
+    }, env);
+    assert.ok(valid.history.rows.some(row => row.device === 'hall,"a"'));
   });
 });

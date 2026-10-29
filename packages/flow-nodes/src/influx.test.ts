@@ -64,6 +64,15 @@ describe('InfluxDB shared adapters (#8090)', () => {
     const echoed = await fetchInfluxReadings(selection, token, async () => new Response(header + row('20', token)));
     expect(JSON.stringify(echoed)).not.toContain(token);
   });
+  it('#8297 removes raw and URI-encoded token echoes from history and latest tags', async () => {
+    const credential = 'secret/a+b';
+    const encoded = encodeURIComponent(credential);
+    const echoed = await fetchInfluxReadings(selection, credential, async () => new Response(header + row('20', 'space', `${credential}:${encoded}`)));
+    expect(echoed.history.rows[0].device).toBe('[REDACTED]:[REDACTED]');
+    expect(echoed.latest.rows[0].device).toBe('[REDACTED]:[REDACTED]');
+    expect(JSON.stringify(echoed)).not.toContain(credential);
+    expect(JSON.stringify(echoed)).not.toContain(encoded);
+  });
   it('uses direct authenticated POST, fails oversized responses and sends no request with invalid config', async () => {
     let count = 0;
     const transport: typeof fetch = async (url, init) => {

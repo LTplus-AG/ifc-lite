@@ -11,14 +11,18 @@ import { dataTable, latestPerSeries } from './influx-table.js';
 export { queryRequest, dataTable, latestPerSeries };
 export type { InfluxSelection };
 
-export function redactInfluxError(error: unknown, token: string): string {
-  let message = error instanceof Error ? error.message : 'InfluxDB request failed';
+/** Redact both representations before strings reach diagnostics or data tables. */
+function redactInfluxText(message: string, token: string): string {
   if (token) {
     for (const secret of new Set([token, encodeURIComponent(token)])) {
       message = message.split(secret).join('[REDACTED]');
     }
   }
   return message;
+}
+
+export function redactInfluxError(error: unknown, token: string): string {
+  return redactInfluxText(error instanceof Error ? error.message : 'InfluxDB request failed', token);
 }
 
 export function parseInfluxCsv(csv: string, selection: InfluxSelection): { history: Table; latest: Table } {
@@ -96,7 +100,7 @@ export async function fetchInfluxReadings(selection: InfluxSelection, token: str
       }
       // A hostile upstream could echo credentials into a tag. Redact before
       // parsing so neither data displays nor downstream diagnostics leak it.
-      csv = csv.split(token).join('[REDACTED]');
+      csv = redactInfluxText(csv, token);
       return parseInfluxCsv(csv, selection);
     } catch (error) {
       // Parser errors contain only fixed validation messages; transport stream

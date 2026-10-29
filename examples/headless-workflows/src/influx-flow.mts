@@ -8,7 +8,7 @@ import {
   buildRedactionMap, createStandardRegistry, headlessFeatures, interpolateSecrets,
   redactDeep, resolveSecretValues, validateSecretReferences, type FlowHost, type FlowNodeDef,
 } from '@ifc-lite/flow-nodes';
-import { queryRequest, dataTable, latestPerSeries, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
+import { queryRequest, parseInfluxCsv, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
 export { latestPerSeries } from '@ifc-lite/flow-nodes/influx';
 
 const tablePort = { kind: 'table', access: 'item' } as const;
@@ -25,7 +25,6 @@ export function influxGraph(selection: InfluxSelection): FlowDocument {
         headers: { Authorization: 'Token {{secret:INFLUX_TOKEN}}', 'Content-Type': 'application/json', Accept: 'application/csv' },
       } },
       { id: 'response', type: 'spike.influxResponse' },
-      { id: 'csv', type: 'table.readCsv', params: { key: selection.guidTag } },
       { id: 'latest', type: 'spike.latestSeries' },
       { id: 'spaces', type: 'model.byType', params: { type: 'IfcSpace' } },
       { id: 'sensors', type: 'model.byType', params: { type: 'IfcSensor' } },
@@ -34,9 +33,7 @@ export function influxGraph(selection: InfluxSelection): FlowDocument {
     ],
     edges: [
       ...['body', 'ok', 'truncated'].map(port => ({ from: ['request', port] as const, to: ['response', port] as const })),
-      { from: ['response', 'text'], to: ['csv', 'text'] },
-      { from: ['csv', 'table'], to: ['latest', 'table'] },
-      { from: ['csv', 'problems'], to: ['latest', 'problems'] },
+      { from: ['response', 'text'], to: ['latest', 'text'] },
       { from: ['spaces', 'entities'], to: ['targets', 'spaces'] },
       { from: ['sensors', 'entities'], to: ['targets', 'sensors'] },
       { from: ['targets', 'entities'], to: ['join', 'entities'] },
@@ -58,12 +55,12 @@ function spikeNodes(selection: InfluxSelection): FlowNodeDef[] {
     },
     {
       type: 'spike.latestSeries', title: 'Latest per series', category: 'spike', params: [], capabilities: [],
-      inputs: [{ name: 'table', type: tablePort }, { name: 'problems', type: { kind: 'scalar', access: 'list' } }],
+      inputs: [{ name: 'text', type: scalarPort }],
       outputs: [{ name: 'table', type: tablePort }, { name: 'history', type: tablePort }],
       run: (_ctx, inputs) => {
-        if (!Array.isArray(inputs.problems) || inputs.problems.length) throw new Error('Malformed or multi-table CSV response');
-        const history = dataTable(inputs.table as Table);
-        return { table: latestPerSeries(history, selection), history };
+        if (typeof inputs.text !== 'string') throw new Error('Expected InfluxDB CSV text');
+        const { history, latest } = parseInfluxCsv(inputs.text, selection);
+        return { table: latest, history };
       },
     },
     {

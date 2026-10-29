@@ -73,8 +73,8 @@ to refuse graphs requiring secrets. The exported report does contain building
 identities and telemetry, so share it deliberately.
 
 The generated Flux groups to one table and requests CSV **without annotations**.
-That lets `table.readCsv` handle quoting without pretending it parses arbitrary
-annotated/multi-table Flux output. A sentinel sample detects overflow; oversized,
+Both the headless recipe and viewer use `parseInfluxCsv` for strict quoting
+and response-envelope validation, rejecting annotated/multi-table Flux output. A sentinel sample detects overflow; oversized,
 malformed, nonnumeric, HTTP-error and error-table responses fail explicitly.
 Latest values are computed per complete tag set, preserving nanosecond ordering.
 Only that latest table goes into `table.joinByKey`; raw history would falsely

@@ -124,21 +124,9 @@ pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
 /// retain the same classification as the name-only schema helpers.
 #[inline]
 pub fn is_geometry_job(type_name: &str, entity_bytes: &[u8]) -> bool {
-    geometry_job_reason(type_name, entity_bytes).is_some()
-}
-
-/// Geometry admission reason: `Some(true)` for name-based geometry,
-/// `Some(false)` for a spatial container with a Representation, or `None`.
-#[inline]
-pub fn geometry_job_reason(type_name: &str, entity_bytes: &[u8]) -> Option<bool> {
     let (geometry, spatial) = geometry_flags_by_name(type_name);
-    if geometry {
-        Some(true)
-    } else if spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::REPRESENTATION.index()) {
-        Some(false)
-    } else {
-        None
-    }
+    geometry
+        || (spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::REPRESENTATION.index()))
 }
 
 fn compute_has_geometry(upper: &str) -> bool {
@@ -183,6 +171,12 @@ fn compute_has_geometry(upper: &str) -> bool {
 /// (under `IfcFacility`), their `*Part` variants (under `IfcFacilityPart`),
 /// and any future concrete spatial container all collapse to the same answer
 /// without the whitelist needing to enumerate them.
+/// Classify an already resolved type without repeating a keyword lookup.
+/// Used by quick metadata after geometry admission has succeeded (#7782).
+pub fn is_representationless_spatial_container_type(t: IfcType) -> bool {
+    is_non_geometric_spatial(t)
+}
+
 fn is_non_geometric_spatial(t: IfcType) -> bool {
     if t.is_subtype_of(IfcType::IfcSpace)
         || t.is_subtype_of(IfcType::IfcSite)

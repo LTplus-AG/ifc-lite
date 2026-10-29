@@ -20,6 +20,21 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
+## Record discovery
+
+`ifc_lite_core::is_geometry_job` admits a scanned record using its raw STEP
+keyword and bytes. It preserves schema/legacy classification and the #1910
+spatial-container exception for a present `Representation`.
+`ifc_lite_processing::discovery::Discovery` collects shared prepass spans,
+first spatial records, and type-map inputs. Native `scan_entities` decorates
+jobs and retains native metadata, property and georeferencing handling.
+
+`scan_shard_result(content, start, end, classified)` returns a non-exhaustive
+`ShardScan`: records, optional class column, handoff, refusal offsets and
+malformed-record offsets. Diagnostics remain speculative until stitching.
+The five tuple APIs remain deprecated compatibility adapters until C10;
+browser discovery migration is C4-6b.
+
 ## Placement readers
 
 Use `ifc_lite_geometry::placement::Axis2Placement::{read_3d, read_2d, read_id}`

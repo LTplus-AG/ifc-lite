@@ -223,6 +223,16 @@ exports. Actual-WASM tests verify independent memories and that retained diff
 models survive geometry initialization. This is a packaging result; full
 facade startup, marshaling, and end-to-end timing qualification remain open.
 
+## Shared record discovery (C4-5, #7782)
+
+Structural refactor; no wall-clock speedup claimed. Exact-base instruction
+qualification passed for every pipeline phase on Haus, duplex and ISSUE_129.
+Entity-scan instruction counts were unchanged. Counts, serialized capture,
+geometry payload and diagnostics were identical on all three fixtures.
+Keeping the record predicate inline and classification lazy for index-only
+shards lets the shared discovery owner preserve the existing hot-path work.
+The qualification uses the C4-4b identity runner; it is not a browser timing result.
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**

@@ -127,7 +127,8 @@ fn run(
         Some(pre.material_color_counts.clone()),
         Some(pre.material_colors.clone()),
         false,
-    ).0
+    )
+    .0
 }
 
 #[test]
@@ -186,14 +187,17 @@ fn c4_10a_refused_unit_counts_each_attempt_without_geometry_7782() {
     assert_eq!(diag.mesh_count, 0);
 }
 
-
 #[test]
 fn c4_10a_finish_join_refusals_stay_with_their_element_8316() {
     let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc")
         // A has both a refused item and a good unstyled item, so production
         // succeeds and the installed finish join walks A's shape again.
-        .replace("#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));",
-            "#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102,#302));");
+        // The first Body is valid; the later refused Body is still read by
+        // the style-source walks, before and after mesh production.
+        .replace(
+            "#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));",
+            "#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#302,#102));",
+        );
     let api = IfcAPI::new();
     let mut pre = api.build_prepass_once_data(source.as_bytes());
     // An unrelated finish enables the join without styling either good item.
@@ -201,27 +205,50 @@ fn c4_10a_finish_join_refusals_stay_with_their_element_8316() {
     pre.style_colors = vec![128, 128, 128, 255];
     api.set_style_finishes(&pre.style_ids, &[1.0, 0.25]);
     assert!(api.style_finishes_for(&pre.style_ids).is_some());
-    let jobs = [100, 300].map(|id| {
-        let (_, start, end, _) = pre.simple_jobs.iter().chain(&pre.complex_jobs)
-            .find(|j| j.0 == id).unwrap();
-        [id, *start as u32, *end as u32]
-    }).concat();
+    let jobs = [100, 300]
+        .map(|id| {
+            let (_, start, end, _) = pre
+                .simple_jobs
+                .iter()
+                .chain(&pre.complex_jobs)
+                .find(|j| j.0 == id)
+                .unwrap();
+            [id, *start as u32, *end as u32]
+        })
+        .concat();
     let outputs = run(&api, source.as_bytes(), &pre, &jobs);
     assert_eq!(outputs.iter().map(|o| o.id).collect::<Vec<_>>(), [100, 300]);
     for output in outputs {
-        assert!(!output.meshes.is_empty(), "element {} must retain its good representation", output.id);
-        assert_eq!(output.finishes.len(), output.meshes.len(), "finish join ran");
+        assert!(
+            !output.meshes.is_empty(),
+            "element {} must retain its good representation",
+            output.id
+        );
+        assert_eq!(
+            output.finishes.len(),
+            output.meshes.len(),
+            "finish join ran"
+        );
         assert!(output.finishes.iter().all(Option::is_none));
     }
     let diag = api.pipeline_diagnostics.lock().unwrap();
-    assert_eq!(diag.refused_input_elements, 1, "valid B must not inherit A's re-read");
-    assert_eq!(diag.refused_prepass_records, 1, "#101 is unioned across reads");
+    assert_eq!(
+        diag.refused_input_elements, 1,
+        "valid B must not inherit A's re-read"
+    );
+    assert_eq!(
+        diag.refused_prepass_records, 1,
+        "#101 is unioned across reads"
+    );
 }
 
 #[test]
 fn c4_10a_split_batches_with_warm_brep_signatures_match_fresh_mesh_bytes_8316() {
     let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc")
-        .replace("#101=IFCEXTRUDEDAREASOLID(#12,#4,#2,1.E400);", &brep(1000, 1.0))
+        .replace(
+            "#101=IFCEXTRUDEDAREASOLID(#12,#4,#2,1.E400);",
+            &brep(1000, 1.0),
+        )
         .replace("(#101));", "(#1008));")
         .replace("#301=IFCEXTRUDEDAREASOLID(#12,#4,#2,1.);", &brep(1100, 2.0))
         .replace("(#301));", "(#1108));");
@@ -229,7 +256,11 @@ fn c4_10a_split_batches_with_warm_brep_signatures_match_fresh_mesh_bytes_8316() 
     let pre = api.build_prepass_once_data(source.as_bytes());
     let mut jobs = vec![0; pre.total_jobs() * 3];
     pre.write_jobs(|i, v| jobs[i as usize] = v);
-    assert_eq!(jobs.len(), 9, "three BREP jobs, including two sharing one item");
+    assert_eq!(
+        jobs.len(),
+        9,
+        "three BREP jobs, including two sharing one item"
+    );
     let mut split = run(&api, source.as_bytes(), &pre, &jobs[..3]);
     split.extend(run(&api, source.as_bytes(), &pre, &jobs[3..]));
     let fresh = IfcAPI::new();
@@ -243,10 +274,40 @@ fn c4_10a_split_batches_with_warm_brep_signatures_match_fresh_mesh_bytes_8316() 
         assert_eq!(warm.meshes.len(), cold.meshes.len());
         for (warm, cold) in warm.meshes.iter().zip(&cold.meshes) {
             // Float equality would miss signed-zero changes; compare raw bytes.
-            assert_eq!(warm.positions.iter().map(|v| v.to_ne_bytes()).collect::<Vec<_>>(), cold.positions.iter().map(|v| v.to_ne_bytes()).collect::<Vec<_>>());
-            assert_eq!(warm.normals.iter().map(|v| v.to_ne_bytes()).collect::<Vec<_>>(), cold.normals.iter().map(|v| v.to_ne_bytes()).collect::<Vec<_>>());
-            assert_eq!(warm.indices.iter().map(|v| v.to_ne_bytes()).collect::<Vec<_>>(), cold.indices.iter().map(|v| v.to_ne_bytes()).collect::<Vec<_>>());
-            assert_eq!(serde_json::to_value(warm).unwrap(), serde_json::to_value(cold).unwrap());
+            assert_eq!(
+                warm.positions
+                    .iter()
+                    .map(|v| v.to_ne_bytes())
+                    .collect::<Vec<_>>(),
+                cold.positions
+                    .iter()
+                    .map(|v| v.to_ne_bytes())
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                warm.normals
+                    .iter()
+                    .map(|v| v.to_ne_bytes())
+                    .collect::<Vec<_>>(),
+                cold.normals
+                    .iter()
+                    .map(|v| v.to_ne_bytes())
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                warm.indices
+                    .iter()
+                    .map(|v| v.to_ne_bytes())
+                    .collect::<Vec<_>>(),
+                cold.indices
+                    .iter()
+                    .map(|v| v.to_ne_bytes())
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                serde_json::to_value(warm).unwrap(),
+                serde_json::to_value(cold).unwrap()
+            );
         }
     }
 }

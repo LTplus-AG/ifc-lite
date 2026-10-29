@@ -4,6 +4,23 @@
 
 # Performance diagnosis kit
 
+## C4-11b content slots and serial metadata index (#7782)
+
+Verdict: native metadata-handoff allocation reduction on the committed bare-map
+and type-mode fixtures; no end-to-end worker-pool timing or browser peak-memory
+claim. Source-pinned counts and coverage limits are recorded in
+`tests/evidence/c4-11b-prepass/README.md`.
+
+Temporary Arc leases eliminate the populated-row metadata copies while keeping
+exclusive insertion between callbacks and consuming the same table into final
+columns. The lease must drop before scanning resumes; clone-on-write would put
+the full-table copy back. Existing sharded Arc columns already avoided this copy
+and are credited separately. Unit/RTC fallback can still build its own index.
+Content slots share one lazy initialization/publish lock and generate their reset
+walk from their declarations; settings and post-load diagnostics keep their own
+lifetimes. This result does not qualify the large-file crash band or the viewer's
+full worker-pool memory budget.
+
 ## C4-11a content-install reset contract (#7782)
 
 This is a correctness change at explicit browser load boundaries. Prepass and

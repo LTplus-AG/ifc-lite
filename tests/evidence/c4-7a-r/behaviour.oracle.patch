@@ -1,0 +1,10 @@
+--- a/rust/processing/src/discovery.rs
++++ b/rust/processing/src/discovery.rs
+@@ -65,6 +65,6 @@
+         plan_type_geometry(
+             maps,
+             &self.referenced_representation_maps,
+-            false,
++            self.instantiated_type_ids.contains(&id),
+             self.mode,
+         )

@@ -969,7 +969,11 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-x/behaviour.oracle.patch'; then
+          # #7782 C4-7a-R: keep the shared plan and mutate its browser class
+          # decision; the mode witness must observe the wrong class.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-r/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-r/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-7a-r/behaviour.oracle.patch --test rust/processing/tests/type_geometry_plan_7782.rs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-x/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-7a-x/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
@@ -1021,6 +1025,10 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8303: preserve native diff modules/exports; substitute base rows for
+          # head result rows so distinct per-side refs fail real assertions.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/native-diff-8303/behaviour.oracle.patch | grep -Fxq 'tests/evidence/native-diff-8303/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/native-diff-8303/behaviour.oracle.patch)
           # #8302: keep the binary transport and batch modules/exports loadable.
           # Break ONLY signed-zero preservation in packed numeric values; the
           # changed round-trip witness must fail an assertion, not its imports.

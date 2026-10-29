@@ -111,7 +111,7 @@ pub(crate) fn collect_type_geometry_jobs(
     content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
-    use ifc_lite_core::{keyword_eq, EntityScanner, IfcType};
+    use ifc_lite_core::{keyword_eq, EntityScanner};
 
     // Fast bail-out: type geometry can only exist when the file authors at least
     // one IfcRepresentationMap. The overwhelming majority of files pay only a
@@ -120,40 +120,17 @@ pub(crate) fn collect_type_geometry_jobs(
         return Vec::new();
     }
 
-    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps and the
-    // type-product candidates, then drop types whose maps are all referenced
-    // (those are drawn through their occurrence's mapped representation). The
-    // orphan-vs-instanced class is assigned later, in the render loop.
-    let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    let mut candidates: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
-
+    let mut mapped = Vec::new();
+    let mut candidates = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         if keyword_eq(type_name, "IFCMAPPEDITEM") {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                // IfcMappedItem.MappingSource = attr 0.
-                if let Some(source_id) = entity.get_ref(0) {
-                    referenced.insert(source_id);
-                }
-            }
-        } else if let Some(ifc_type) = ifc_lite_core::type_product_ifc_type(type_name) {
-            if decoder.decode_at_with_id(id, start, end).is_ok() {
-                // IfcTypeProduct.RepresentationMaps = attr 6.
-                let rep_maps = ifc_lite_processing::discovery::record_refs_at(
-                    &content[start..end], ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
-                );
-                if !rep_maps.is_empty() {
-                    candidates.push((id, start, end, ifc_type, rep_maps));
-                }
-            }
+            mapped.push((id, start, end));
+        } else if let Some(ty) = ifc_lite_core::type_product_ifc_type(type_name) {
+            candidates.push((id, start, end, ty));
         }
     }
-
-    candidates
-        .into_iter()
-        .filter(|(_, _, _, _, maps)| maps.iter().any(|rm| !referenced.contains(rm)))
-        .map(|(id, start, end, ifc_type, _)| (id, start, end, ifc_type))
-        .collect()
+    collect_type_geometry_jobs_from_spans(content, &mapped, &candidates, decoder)
 }
 
 /// Span-based twin of [`collect_type_geometry_jobs`]. The streaming pre-pass
@@ -170,143 +147,10 @@ pub(crate) fn collect_type_geometry_jobs_from_spans(
     type_candidate_spans: &[(u32, usize, usize, ifc_lite_core::IfcType)],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
-    let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    for &(id, start, end) in mapped_item_spans {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            if let Some(source_id) = entity.get_ref(0) {
-                referenced.insert(source_id);
-            }
-        }
-    }
-
-    let mut candidates: Vec<(u32, usize, usize, ifc_lite_core::IfcType, Vec<u32>)> = Vec::new();
-    for (id, start, end, ifc_type) in type_candidate_spans {
-        if decoder.decode_at_with_id(*id, *start, *end).is_ok() {
-            let rep_maps = ifc_lite_processing::discovery::record_refs_at(
-                &content[*start..*end], ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
-            );
-            if !rep_maps.is_empty() {
-                candidates.push((*id, *start, *end, ifc_type.clone(), rep_maps));
-            }
-        }
-    }
-
-    candidates
-        .into_iter()
-        .filter(|(_, _, _, _, maps)| maps.iter().any(|rm| !referenced.contains(rm)))
-        .map(|(id, start, end, ifc_type, _)| (id, start, end, ifc_type))
-        .collect()
-}
-
-/// #957: the set of `RepresentationMap`s instantiated by an `IfcMappedItem`, so
-/// `processGeometryBatch` can tell which of a type's RepresentationMaps are
-/// orphan (rendered directly) vs already drawn through an occurrence.
-pub(crate) fn build_referenced_representation_maps(
-    content: &[u8],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    use ifc_lite_core::{keyword_eq, EntityScanner};
-    let mut spans: Vec<(u32, usize, usize)> = Vec::new();
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if keyword_eq(type_name, "IFCMAPPEDITEM") {
-            spans.push((id, start, end));
-        }
-    }
-    build_referenced_representation_maps_from_spans(&spans, decoder)
-}
-
-/// Span-based twin of [`build_referenced_representation_maps`]. The streaming
-/// pre-pass already visits every `IfcMappedItem` during its single scan, so it
-/// stashes their spans and builds this set ONCE here (then ships it to the
-/// workers) instead of every worker re-walking the file on its first
-/// type-product job. Byte-identical to the scanner-based builder: it decodes
-/// the same spans (file order) and inserts the same `MappingSource` refs into a
-/// set, whose membership — the only thing consumers query — is order-invariant.
-pub(crate) fn build_referenced_representation_maps_from_spans(
-    spans: &[(u32, usize, usize)],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    for &(id, start, end) in spans {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            // IfcMappedItem.MappingSource = attr 0 (the IfcRepresentationMap).
-            if let Some(source_id) = entity.get_ref(0) {
-                referenced.insert(source_id);
-            }
-        }
-    }
-    referenced
-}
-
-/// #1623 Phase 3 don't-bake plan: the `IfcRepresentationMap` ids that an
-/// `IfcMappedItem` instantiates >= 2 times, tallied from the SAME `IfcMappedItem`
-/// spans the streaming pre-pass already stashes for
-/// [`build_referenced_representation_maps_from_spans`]. The batch path arms its
-/// router with these (batch-local template mode) so a repeated single-solid mapped
-/// source materializes ONCE per batch and the rest ride as IFNS-shard instances.
-/// Returns the eligible source ids sorted (a deterministic wire list); a source
-/// referenced by only ONE mapped item is omitted (nothing to instance).
-pub(crate) fn build_mapped_instance_plan_from_spans(
-    spans: &[(u32, usize, usize)],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Vec<u32> {
-    let mut counts: rustc_hash::FxHashMap<u32, u32> = rustc_hash::FxHashMap::default();
-    for &(id, start, end) in spans {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            // IfcMappedItem.MappingSource = attr 0 (the IfcRepresentationMap).
-            if let Some(source_id) = entity.get_ref(0) {
-                *counts.entry(source_id).or_insert(0) += 1;
-            }
-        }
-    }
-    let mut eligible: Vec<u32> = counts
-        .into_iter()
-        .filter(|&(_, count)| count >= 2)
-        .map(|(source_id, _)| source_id)
-        .collect();
-    eligible.sort_unstable();
-    eligible
-}
-
-/// #957 follow-up: the set of type ids that an `IfcRelDefinesByType` instantiates
-/// (i.e. the type has at least one occurrence). `processGeometryBatch` uses it to
-/// suppress type-only geometry for such types — their geometry is already drawn
-/// through their occurrences, so rendering the type's RepresentationMap as well
-/// would double-render it at the MappingOrigin (duplicate at the wrong position).
-pub(crate) fn build_instantiated_type_ids(
-    content: &[u8],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    use ifc_lite_core::{keyword_eq, EntityScanner};
-    let mut spans: Vec<(u32, usize, usize)> = Vec::new();
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
-            spans.push((id, start, end));
-        }
-    }
-    build_instantiated_type_ids_from_spans(&spans, decoder)
-}
-
-/// Span-based twin of [`build_instantiated_type_ids`]. Same hoisting rationale
-/// as [`build_referenced_representation_maps_from_spans`]: the streaming
-/// pre-pass stashes every `IfcRelDefinesByType` span during its single scan and
-/// builds this set once, byte-identically to the per-worker full-file walk.
-pub(crate) fn build_instantiated_type_ids_from_spans(
-    spans: &[(u32, usize, usize)],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    let mut instantiated: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    for &(id, start, end) in spans {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            // IfcRelDefinesByType.RelatingType = attr 5 (the typed product).
-            if let Some(type_id) = entity.get_ref(5) {
-                instantiated.insert(type_id);
-            }
-        }
-    }
-    instantiated
+    ifc_lite_processing::discovery::TypeGeometryPlan::from_spans(
+        content, mapped_item_spans, &[], type_candidate_spans, decoder,
+        ifc_lite_processing::element::TypeGeometryMode::EmitTagged,
+    ).jobs()
 }
 
 // Site/building rotation now lives in the shared streaming-prepass meta

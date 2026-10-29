@@ -1,0 +1,28 @@
+{
+  "history": {
+    "head": "7ba3c87306ec0ef1bd5cf4141c0d35a25db0433c",
+    "host": "pc-wsl",
+    "receiptId": "1dcd78bd-a737-461e-a164-c10362359ab6",
+    "observations": {
+      "mirroredDoor119": "kernel_failure status7: affine surface class has no exact rational conversion certificate",
+      "tinyCylinder161": "kernel_failure status4: authored sweep failed manifold/volume invariant",
+      "scaledKinds74": "kernel_failure status4: upstream triangulator left non-triangle polygon",
+      "sagittaWitness": "R=5e-5 failed construction before any midpoint measurement"
+    }
+  },
+  "rootCause": {
+    "mirroredDoor119": "Pinned SDK c9c5979 SmPrimitiveCreation::CreateLinearSweep (SmPrimitiveCreation.cpp:1258-1340) makes SmPlane only for a line orthogonal to the sweep and SmCylinder only for a full circle; the door's semicircular head (a partial arc) becomes SmSurfOfExtrusion. native/smlib-adapter/src/affine.cpp surface_class whitelists BSpline/plane/cylinder/cone/sphere/torus only, so opcode 18 throws IFCLITE_SMLIB_UNSUPPORTED (7).",
+    "adapterFixRejected": "SmSurfOfExtrusion derives from SmBSplineSurface and MakeNurb builds its NURBS exactly, so a whitelist entry would be mathematically sound. But the certificate is a fixed ABI (uint32 source_classes[12]) carried through ifclite_smlib.h, the worker/browser protocol, geometry-runtime and rust/geometry decoders. That is not a small M10-scoped adapter change."
+  },
+  "resolution": {
+    "ruling": "USER-DECISIONS-2026-10-27-speed.md, 2026-10-29 M10 orchestrator ruling",
+    "mirroredDoor119": "Refused typed `incomplete` in predispatch, before any invocation: any Affine operation whose source lineage contains a format-1 sweep with a partial arc or an oblique direction. Never kernel_failure, never a partial product.",
+    "curvedScaleUps": "The preregistered contraction-only chord fallback (sigma_max <= 1 for curved lineages) is source-determined, so #74, h12 #147, h13 #161 and h14 #175 refuse `incomplete` before any invocation; admit() still re-checks after drive. The original committed+1 publication target for #74 is NOT met.",
+    "witnesses": [
+      "rust/processing/src/element/session_retained/inert_tests.rs: uncertifiable_affine_surface_class_refuses_before_invocation, curved_scale_up_affine_final_refuses_before_invocation, final_affine_reaches_construction_dispatch (SMLib-free)",
+      "rust/retained-native/tests/m10_affine_logic.rs: m10_sdk_sweep_surface_class_table (SMLib-free)",
+      "rust/retained-native/tests/m10_native.rs: m10_sdk_source_oracles_and_native_reference (real SDK) asserts #119/#147/#161/#175 `incomplete` and the source oracle's prediction",
+      "examples/compare/affine.rs: a source-predicted refusal surfacing as kernel_failure is a gated violation"
+    ]
+  }
+}

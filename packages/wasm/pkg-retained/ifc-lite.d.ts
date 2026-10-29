@@ -1397,15 +1397,14 @@ export class IfcAPI {
     /**
      * Install the pre-computed set of type ids that an `IfcRelDefinesByType`
      * instantiates (#957 follow-up), so the worker's first type-product batch
-     * skips the per-worker [`Self::get_or_build_instantiated_type_ids`]
-     * full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
+     * skips the full-file walk once both precomputed sets are installed. Same injection contract as [`Self::set_referenced_repmaps`].
      */
     setInstantiatedTypeIds(ids: Uint32Array): void;
     /**
      * Install the pre-computed #1623 Phase 3 don't-bake plan: the flat list of
      * `IfcRepresentationMap` ids that an `IfcMappedItem` instantiates >= 2 times.
      * The streaming pre-pass tallies it in the SAME scan that builds the referenced-
-     * repmap set (`styling::build_mapped_instance_plan_from_spans`) and ships the id
+     * repmap set and ships the id
      * list here. The batch path arms its router with it (batch-local template mode),
      * so a repeated single-solid mapped source materializes ONCE per batch and the
      * rest ride as instances in the IFNS shard.
@@ -1471,10 +1470,8 @@ export class IfcAPI {
     /**
      * Install the pre-computed set of `IfcRepresentationMap` ids referenced by
      * an `IfcMappedItem` (issue #957), so the worker's first type-product batch
-     * SKIPS the per-worker [`Self::get_or_build_referenced_repmaps`] full-file
-     * walk. The streaming pre-pass built the same set once from the
-     * `IfcMappedItem` spans it already scanned (see
-     * `styling::build_referenced_representation_maps_from_spans`) and ships the
+     * skips the full-file walk once [`Self::set_instantiated_type_ids`] is also installed. The streaming pre-pass built
+     * the same set once from its `IfcMappedItem` spans and ships the
      * id list here — bit-identical to what each worker would compute, since a
      * set's membership is order-invariant and consumers only call `.contains`.
      *

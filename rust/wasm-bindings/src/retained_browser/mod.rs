@@ -311,3 +311,6 @@ mod refusal_lifecycle_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod m11_n_parity_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod m10_parity_tests;

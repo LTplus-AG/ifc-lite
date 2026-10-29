@@ -298,6 +298,7 @@ jobs:
           grep -F "sdk witness executed: m8 real browser Worker parity" "$RUNNER_TEMP/retained-browser.log"
           grep -F "sdk witness executed: retained refusal browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
           grep -F "sdk witness executed: retained consumed-host browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "sdk witness executed: m10_browser_parity" "$RUNNER_TEMP/retained-browser.log"
           for witness in m5_browser_parity m5_browser_lineage m5_browser_clipped_opening; do
             grep -F "sdk witness executed: $witness" "$RUNNER_TEMP/retained-browser.log"
           done

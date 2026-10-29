@@ -73,5 +73,7 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
             return Err(rejected.reason);
         }
     }
-    execution.into_witness(limits)
+    let witness = execution.into_witness(limits)?;
+    affine_final::admit(&witness, limits)?;
+    Ok(witness)
 }

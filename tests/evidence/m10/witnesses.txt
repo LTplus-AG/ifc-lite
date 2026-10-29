@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MPL-2.0
+m10_sdk_source_oracles_and_native_reference
+m10_sdk_issue_1985_scales_follow_narrowed_rule
+m10_sdk_sagitta_bound_at_authored_radii
+m10_sdk_bake_matches_independent_kernel_copy_tessellation
+m10_sdk_native_parity_reference
+m10_mirrored_type_map

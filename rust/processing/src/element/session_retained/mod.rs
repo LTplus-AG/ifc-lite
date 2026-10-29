@@ -42,6 +42,7 @@ mod value;
 use issuance::{PendingRetainedOperation, IssuedRetainedOperation};
 use value::RuntimeRealization;
 mod predispatch;
+pub(super) mod affine_final;
 use predispatch::RuntimeRejectedExecution;
 mod entry;
 pub(super) mod admission;

@@ -117,6 +117,8 @@ if(NOT EMSCRIPTEN)
   install(TARGETS ifclite_smlib_worker RUNTIME DESTINATION bin)
   install(FILES "${SMLIB_SOURCE}/LICENSE" "${SMLIB_SOURCE}/THIRD_PARTY_NOTICES.md"
     DESTINATION share/licenses/ifclite-smlib)
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE"
+    DESTINATION share/licenses/ifclite-smlib RENAME IFC_LITE_LICENSE.txt)
   install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../licenses/retained/THIRD_PARTY_NOTICES.txt"
     DESTINATION share/licenses/ifclite-smlib)
 endif()

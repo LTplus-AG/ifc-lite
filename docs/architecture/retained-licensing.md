@@ -29,6 +29,7 @@ release input to collect. No claim of a complete final-linked-artifact audit is 
 |---|---|---|---|
 | NVIDIA usd-brep SMLib + SM_API | `c9c5979f04cea8c38213004d4f04df0dcfb40d05` | Root `LICENSE`, `THIRD_PARTY_NOTICES.md`; source SPDX Apache-2.0 | Native worker, SMLib Emscripten module; original SDK notices plus generated bundle |
 | Emscripten runtime and Node-derived path code | 4.0.15; emsdk `3b3963d86a5c97adaf6eaa845cdfe0b811c2f960` | Actual installed Emscripten `LICENSE`: MIT/NCSA; embedded Node MIT attribution | SMLib wasm/JS and staged CLI engine; generated bundle |
+| dlmalloc | 2.8.6 bundled with Emscripten 4.0.15 | Actual source licence/version header: public-domain/CC0 dedication, with full source-file hash | Default SMLib WASM allocator; generated bundle |
 | musl libc | bundled with Emscripten 4.0.15 | `system/lib/libc/musl/COPYRIGHT`: MIT and individual BSD-style portions | SMLib WASM; complete copyright text retained |
 | libc++, libc++abi, libunwind, compiler-rt, llvm-libc | bundled with Emscripten 4.0.15 | Each `system/lib/*/LICENSE.TXT`: Apache-2.0 with LLVM exceptions and legacy portions as printed | Conservative SMLib WASM runtime inventory; final link map determines used portions |
 | wasm-bindgen runtime/glue + macro/shared crates | 0.2.126 | Actual Cargo archives' `LICENSE-MIT` and `LICENSE-APACHE` | `pkg-retained` JS/WASM; generated bundle |
@@ -43,7 +44,7 @@ The adapter CMake target compiles only `source/SMLib/src/*.cpp` and
 link OpenUSD or build the Python/GUI plugins. The supplied SDK checkout contains
 root notices, not the separately downloaded `PACKAGE-LICENSES/OpenUSD` bundle.
 The upstream notice lists OpenUSD 25.11, oneTBB, hwloc 2.9.3, MaterialX 1.39.3,
-Python, pybind11, pytest, NVIDIA packages, proposal materials and GUI dependencies.
+Python, pybind11, NVIDIA packages, proposal materials and GUI dependencies.
 Those entries describe upstream's wider product, not this adapter's link graph.
 They are preserved verbatim for traceability; an upstream summary with abbreviated
 OpenUSD licence text must never substitute for its complete licence if OpenUSD
@@ -78,8 +79,10 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 ## What the packaging paths deliver
 
 * Browser `/smlib/`: original SDK `LICENSE` and `THIRD_PARTY_NOTICES.md`, plus
-  `IFC_LITE_THIRD_PARTY_NOTICES.txt`, all included in the asset hash manifest.
-* `pkg-retained`: opt-in build copies `THIRD_PARTY_NOTICES.txt` beside JS/WASM.
+  `IFC_LITE_THIRD_PARTY_NOTICES.txt` and `IFC_LITE_LICENSE.txt`, all included in
+  the asset hash manifest.
+* `pkg-retained`: opt-in build copies `THIRD_PARTY_NOTICES.txt` and the MPL
+  `IFC_LITE_LICENSE.txt` beside JS/WASM.
 * Staged CLI engine: complete bundle at root and in `/smlib/`, original SDK
   notices under `LICENSES/SMLib`, IFC-Lite MPL under `LICENSES/ifc-lite`, and
   supplied additional runtime notices under `LICENSES/toolchain`.
@@ -102,7 +105,11 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
    upstream texts were recovered and recorded in `supplemental.json`.
 3. Collect the **actual release** native link map, `readelf -d` (Linux), `otool -L`
    (macOS) or import table (Windows), compiler version and any bundled runtime
-   notices. The current CMake target alone cannot establish this closure.
+   notices. `retained-native-link-inventory.mjs` is wired into the Linux native
+   CI lane to collect exact binary/library hashes, compiler and dpkg versions,
+   installed copyright files and referenced common licences; its report is
+   uploaded with the existing evidence. CI also verifies CMake-installed notices.
+   This newly wired collector is not a completed release-artifact audit.
 4. Bind final JS/WASM/native hashes to their clean source, build toolchain,
    linker inputs and this notice inventory. Existing staging manifests explicitly
    say `buildAttestation: false`; that remains honest and unchanged.
@@ -131,6 +138,6 @@ committing. `--write` regenerates outputs from committed inputs; it cannot waive
 an input hash mismatch. CI's drift check requires no SDK or network.
 
 Performance verdict: packaging-only; no execution or compiler flags changed.
-The single build-script addition copies a text file only inside `BUILD_RETAINED=1`.
+The build-script additions copy licence texts only inside `BUILD_RETAINED=1`.
 Default model-output identity is expected from unchanged code, not measured by
 this slice; no end-to-end speed or byte-identity benchmark claim is made.

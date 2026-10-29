@@ -89,6 +89,18 @@ function refresh({ sdk, emscripten, metadata }, root = ROOT) {
   ]) add(name, 'bundled with Emscripten 4.0.15', license,
     `https://github.com/emscripten-core/emscripten/tree/4.0.15/system/lib/${path}`,
     'conservative runtime inventory; final linker map must identify used portions', join(emscripten, 'system/lib'), [path]);
+  const allocatorPath = join(emscripten, 'system/lib/dlmalloc.c');
+  const allocatorBytes = readFileSync(allocatorPath);
+  const allocatorNotice = allocatorBytes.toString().match(/ This is a version \(aka dlmalloc\)[\s\S]*?(?= \* Quickstart)/)?.[0];
+  if (!allocatorNotice) throw new Error('dlmalloc licence/version header changed');
+  const allocatorHash = hash(allocatorNotice), allocatorFile = `texts/${allocatorHash}.txt`;
+  writeFileSync(join(root, DIR, allocatorFile), allocatorNotice);
+  components.push({ name: 'dlmalloc', version: '2.8.6 (Emscripten 4.0.15)',
+    license: 'Public domain / CC0-1.0 dedication in source',
+    source: 'https://github.com/emscripten-core/emscripten/blob/4.0.15/system/lib/dlmalloc.c',
+    scope: 'Default SMLib WASM allocator; Emscripten modifications covered by Emscripten licence',
+    sourceFileSha256: hash(allocatorBytes),
+    notices: [{ origin: 'system/lib/dlmalloc.c licence/version header', file: allocatorFile, sha256: allocatorHash }] });
   const data = JSON.parse(readFileSync(metadata));
   const packages = new Map(data.packages.map(p => [p.id, p]));
   const nodes = new Map(data.resolve.nodes.map(n => [n.id, n]));

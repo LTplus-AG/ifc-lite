@@ -299,6 +299,7 @@ if [ "${BUILD_RETAINED:-}" = "1" ]; then
     --features "$RETAINED_FEATURES"
   RETAINED_REL="$(echo "$RETAINED_OUT" | sed 's|^../../||')"
   printf '\n' > "$RETAINED_REL/.npmignore"
+  cp LICENSE "$RETAINED_REL/IFC_LITE_LICENSE.txt"
   cp licenses/retained/THIRD_PARTY_NOTICES.txt "$RETAINED_REL/THIRD_PARTY_NOTICES.txt"
   RETAINED_DTS="$RETAINED_REL/ifc-lite.d.ts"
   if [ -f "$RETAINED_DTS" ]; then

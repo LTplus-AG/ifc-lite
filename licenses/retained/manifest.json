@@ -2,11 +2,11 @@
   "format": 1,
   "inputs": {
     ".github/actions/setup-wasm-build/action.yml": "6ab6f6d96cacd67dbe60878406df56b79abaf048e5f0671a282fba88c71feafd",
-    ".github/workflows/geometry-platform.yml": "9f12f977d565eff72cb4cc32502149552ac866f9114ac76d37eeb8cce3e3ad84",
+    ".github/workflows/geometry-platform.yml": "0c5d7e57b7c11f42e2dc4cc1dc366e0a3b0a59943b2ebc47138753e5fff23b3d",
     "Cargo.lock": "dde757434e2d3754458c1c817a8807838daf0679473509abd876da5a7b279032",
     "Cargo.toml": "8cfd8245282a1cc6b77068762a0932dcdbcabd9b01a308830a1bcc0556bf8267",
     "licenses/retained/supplemental.json": "8856c775d1fe7149dc449a935c447d838e0ca8220c98349cb4eb4b1149786be6",
-    "native/smlib-adapter/CMakeLists.txt": "eb6fd87f9ff497098667296d1e3bd9d3d677e25d47809eef091e914c9b0d87c6",
+    "native/smlib-adapter/CMakeLists.txt": "9b6957024249eae51ca797d7ea39dbfabcf08d1fd317b3c80eb68da491667a93",
     "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
     "rust/clash/Cargo.toml": "e8e2bc0e5fd61c5024798e23459c8d8e6ddaa255462d6a11e0d1a258751effa6",
     "rust/cloud-import/Cargo.toml": "55896fc2755f8b8f63b71a23a44597bc5339ca85f842061f99358aae9c0051be",
@@ -28,7 +28,7 @@
     "rust/retained-native/Cargo.toml": "102aedf59f2afc220ad042289a0a5d57f3b1fc7d1b99c285ec89c64caeb23787",
     "rust/testkit/Cargo.toml": "2e710a50c932fd4b57b80ea38c24c95b724cddb347fd608c4342bb032a9d051f",
     "rust/wasm-bindings/Cargo.toml": "623d260e8fc1417a798301a1cb246c33319d4f130862e449d7a27a8098391890",
-    "scripts/build-wasm.sh": "faedbf9f91372d81edbf6bb193e6e2b0089618d02ad024f1914d744d96d23b1a"
+    "scripts/build-wasm.sh": "ab1bba1b7a9e3c7b075439cbc5463f897291371ec7dd0933211907f608e6bc2b"
   },
   "components": [
     {
@@ -145,6 +145,21 @@
           "origin": "llvm-libc/LICENSE.TXT",
           "file": "texts/ebcd9bbf783a73d05c53ba4d586b8d5813dcdf3bbec50265860ccc885e606f47.txt",
           "sha256": "ebcd9bbf783a73d05c53ba4d586b8d5813dcdf3bbec50265860ccc885e606f47"
+        }
+      ]
+    },
+    {
+      "name": "dlmalloc",
+      "version": "2.8.6 (Emscripten 4.0.15)",
+      "license": "Public domain / CC0-1.0 dedication in source",
+      "source": "https://github.com/emscripten-core/emscripten/blob/4.0.15/system/lib/dlmalloc.c",
+      "scope": "Default SMLib WASM allocator; Emscripten modifications covered by Emscripten licence",
+      "sourceFileSha256": "c008dc3c2b005ba822efb1bf6187a9d7a6aecd096826c6f28c6f5ee62885053d",
+      "notices": [
+        {
+          "origin": "system/lib/dlmalloc.c licence/version header",
+          "file": "texts/8defa334f869217fe9d8eaa3fd91621d076ca66ca7fc7453419e286e3dabab72.txt",
+          "sha256": "8defa334f869217fe9d8eaa3fd91621d076ca66ca7fc7453419e286e3dabab72"
         }
       ]
     },

@@ -2635,6 +2635,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE
 SOFTWARE.
 
 
+=== dlmalloc 2.8.6 (Emscripten 4.0.15) ===
+Licence declaration: Public domain / CC0-1.0 dedication in source
+Source: https://github.com/emscripten-core/emscripten/blob/4.0.15/system/lib/dlmalloc.c
+Scope: Default SMLib WASM allocator; Emscripten modifications covered by Emscripten licence
+
+--- system/lib/dlmalloc.c licence/version header (sha256 8defa334f869217fe9d8eaa3fd91621d076ca66ca7fc7453419e286e3dabab72) ---
+ This is a version (aka dlmalloc) of malloc/free/realloc written by
+ Doug Lea and released to the public domain, as explained at
+ http://creativecommons.org/publicdomain/zero/1.0/ Send questions,
+ comments, complaints, performance data, etc to dl@cs.oswego.edu
+ 
+ * Version 2.8.6 Wed Aug 29 06:57:58 2012  Doug Lea
+ Note: There may be an updated version of this malloc obtainable at
+ ftp://gee.cs.oswego.edu/pub/misc/malloc.c
+ Check before installing!
+ 
+
+
 === adler2 2.0.1 ===
 Licence declaration: 0BSD OR MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index

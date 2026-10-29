@@ -14,6 +14,7 @@ async function fixture(t) {
   const sdk = join(root, 'sdk'), build = join(root, 'build'), repoRoot = join(root, 'repo');
   const adapter = join(repoRoot, 'native/smlib-adapter');
   await mkdir(join(repoRoot, 'licenses/retained'), { recursive: true });
+  await writeFile(join(repoRoot, 'LICENSE'), 'MPL packaging fixture\n');
   await writeFile(join(repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'Retained notice fixture\n');
   await mkdir(join(adapter, 'browser'), { recursive: true });
   await mkdir(build);
@@ -46,8 +47,8 @@ test('stages exact bytes, licenses and checkable hashes without executing genera
   const manifest = await stageRetainedBrowserAssets(options);
   assert.equal(manifest.qualified, false);
   assert.equal(manifest.buildAttestation, false);
-  assert.equal(manifest.assets.length, 11);
-  assert.equal((await readdir(options.out)).length, 12);
+  assert.equal(manifest.assets.length, 12);
+  assert.equal((await readdir(options.out)).length, 13);
   for (const asset of manifest.assets) {
     const bytes = await readFile(join(options.out, asset.path));
     assert.equal(bytes.length, asset.bytes);

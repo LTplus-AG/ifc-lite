@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MPL-2.0
+# PENDING M5 (#7955): f-h h22 #313 maps an oblique plane clip (nonuniform 2,3,1). Expected after M5
+# merges: published, volume 21 (6 x 3.5). Until then it stays operation_unsupported; re-bless after rebasing onto M5.
+# M10 fallback (not the spec's committed+1): #119 (partial-arc SmSurfOfExtrusion) and curved scale-ups
+# #147/#161/#175 refuse incomplete before dispatch; issue_1985_scaled_kinds #74 stays incomplete.
+model	id	status	code
+rust/geometry/tests/fixtures/issue_1985_mapping_origin.ifc	40	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_1985_mapping_origin.ifc	47	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc	74	published	
+rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc	81	published	
+rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc	88	published	
+rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc	99	published	
+rust/geometry/tests/fixtures/nested_mapped_item.ifc	35	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	119	refused	incomplete
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	133	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	147	refused	incomplete
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	161	refused	incomplete
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	175	refused	incomplete
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	190	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	203	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	224	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	234	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	242	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	249	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	288	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	296	refused	kernel_failure
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	313	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	34	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	42	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	50	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	58	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	66	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	74	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	82	published	
+tests/fixtures/synthetic-retained/f-h-affine-finals.ifc	95	published	

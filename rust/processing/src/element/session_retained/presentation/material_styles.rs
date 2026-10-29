@@ -9,13 +9,15 @@ pub(crate) fn join(resolved: &mut ResolvedPrepass, decoder: &mut EntityDecoder) 
     for (material, color) in crate::style::flatten_material_color_index(&styles) {
         // Keep the selected style's name as well as its colour. Selection and
         // metadata extraction both belong to exact; no second colour policy.
-        let info = resolved.material_def_reprs.get(&material).into_iter().flatten()
-            .filter_map(|id| decoder.decode_by_id(*id).ok())
-            .flat_map(|repr| repr.get_refs(3).unwrap_or_default())
-            .find_map(|id| {
-                let item = decoder.decode_by_id(id).ok()?;
-                extract_style_info_from_styled_item(&item, decoder).filter(|info| info.color == color)
-            });
+        let mut info = None;
+        'selected: for repr_id in resolved.material_def_reprs.get(&material).into_iter().flatten() {
+            let Ok(repr) = decoder.decode_by_id(*repr_id) else { continue };
+            for id in repr.get_refs(3).unwrap_or_default() {
+                let Ok(item) = decoder.decode_by_id(id) else { continue };
+                info = extract_style_info_from_styled_item(&item, decoder).filter(|info| info.color == color);
+                if info.is_some() { break 'selected; }
+            }
+        }
         resolved.geometry_style_index.entry(material).or_insert_with(|| info.unwrap_or(
             crate::style::GeometryStyleInfo { color, ..Default::default() }));
     }

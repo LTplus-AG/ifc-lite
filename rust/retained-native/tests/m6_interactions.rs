@@ -42,7 +42,8 @@ fn m6_source_boxed_plane_survives_mirrored_nonuniform_final() {
 #[test]
 fn m6_sdk_clipped_faces_normals_appearance_and_instance_exclusion() {
     let Some(outcomes) = support::native(SOURCE) else {return};
-    for id in [1000,1001,1002,1003,1004,1005,1007,1008,1009,1014,1015] {
+    for (id,cutter) in [(1000,307),(1001,308),(1002,335),(1003,307),(1004,307),
+        (1005,340),(1007,344),(1008,315),(1009,347),(1014,308),(1015,367)] {
         let p = support::shape(&outcomes,id);
         let check = normals::check(p,&source(SOURCE,id)).unwrap();
         assert_eq!(check.unattributed,0,"#{id}: {check:?}");
@@ -52,7 +53,10 @@ fn m6_sdk_clipped_faces_normals_appearance_and_instance_exclusion() {
             assert!(part.appearance.is_some(),"#{id}: appearance must be discharged");
             let faces = part.faces.as_ref().expect("source faces must publish");
             assert_eq!(faces.triangles.len(),part.indices.len()/3);
-            assert!(faces.table.iter().any(|key|key.via!=0),"#{id}: clip face provenance");
+            // A Boolean clip names its halfspace item directly; `via` is the
+            // opening-element id only for an M3 opening subtraction.
+            assert!(faces.table.iter().any(|key|key.item==cutter&&key.via==0&&key.role=="halfspace"),
+                "#{id}: missing authored cut-plane face #{cutter}: {:?}",faces.table);
         }
     }
     println!("sdk witness executed: m6_presentation_interactions");

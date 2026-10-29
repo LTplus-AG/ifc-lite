@@ -25,6 +25,8 @@ pub struct ShapePart {
     /// Column-major object metres -> absolute IFC Z-up world metres.
     pub world_from_object: [f64; 16],
     pub curved: bool,
+    /// An executed plain-plane clip on this part's host lineage; bounds skips are false.
+    pub halfspace_clipped: bool,
     /// Kernel revision-local diagnostics, never persistent IFC face identity.
     pub revision_local_faces: Vec<u32>,
     /// Per-corner unit normals in absolute IFC Z-up axes (placement already applied).
@@ -112,10 +114,12 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                 return Err(incomplete());
             }
             face_sources.push(presentation::face_sources(realization)?);
-            parts.push(super::publication_mesh::copy_part(
+            let mut part = super::publication_mesh::copy_part(
                 runtime::ReceiptMesh { positions, indices, faces },
                 *value.object_frame(), curved, &self.resources, &mut storage,
-            )?);
+            )?;
+            part.halfspace_clipped = realization.halfspace_clipped();
+            parts.push(part);
         }
         if parts.is_empty() {
             return Err(incomplete());

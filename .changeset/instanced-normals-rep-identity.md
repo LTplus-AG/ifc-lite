@@ -1,5 +1,0 @@
----
-'@ifc-lite/wasm': patch
----
-
-GPU instancing grouped two items whose normals differ into one template, so every occurrence of the group was drawn with the template's normals. The representation identity hashed positions and indices only, and nothing after it looks at normals: the grouping pass compares the vertex count and the index buffer, the pairing check reconstructs positions, and an instanced shard carries one normals pool per template. Normals do not follow from positions — they are derived in f64 from the source coordinates and narrowed independently, so a source difference below the f32 position ULP leaves the positions byte-identical and survives in a normal's near-zero components. Two rectangular openings authored at the same size are that pair. The identity now hashes normals too, bit for bit, so the two items stay separate and each keeps its own shading. Every representation identity value changes with it; the values are in-memory only and never reach a cache key or an exported file.

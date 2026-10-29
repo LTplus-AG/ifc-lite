@@ -80,7 +80,8 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
       catch (error) { return { bytes: null, reason: String(error) }; }
     });
     await page.evaluate(() => window.harness.dispose());
-    const parity = compare(nativeRows, products, blessed, tolerances.nativeWasmVolumeRelative);
+    const parity = compare(nativeRows, products, blessed, tolerances.nativeWasmVolumeRelative,
+      tolerances.nativeWasmClippedCurvedVolumeRelative?.value);
     const byCode = {};
     for (const p of products) if (p.code) byCode[p.code] = (byCode[p.code] ?? 0) + 1;
     const published = products.filter(p => p.status === 'published').length;

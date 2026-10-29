@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MPL-2.0
+model	id	status	code
+tests/fixtures/synthetic-retained/f-e-clips.ifc	111	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	134	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	145	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	156	refused	empty_result
+tests/fixtures/synthetic-retained/f-e-clips.ifc	167	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-e-clips.ifc	178	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-e-clips.ifc	189	refused	source_invalid
+tests/fixtures/synthetic-retained/f-e-clips.ifc	200	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	204	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	216	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	22	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	33	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	58	published	
+tests/fixtures/synthetic-retained/f-e-clips.ifc	89	published	

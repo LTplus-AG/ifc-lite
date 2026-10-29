@@ -119,8 +119,8 @@ fn prism_normalizes_arc_sense_and_encodes_circle_holes() {
     assert_eq!(f64::from_le_bytes(payload.bytes[264..272].try_into().unwrap()),-std::f64::consts::TAU);
 }
 #[test]
-fn halfspace_dispatch_keeps_all_three_current_refusals() {
-    for (kind,args) in [("IFCHALFSPACESOLID","#2,.T."),("IFCBOXEDHALFSPACE","#2,.T.,$"),("IFCPOLYGONALBOUNDEDHALFSPACE","#2,.T.,$,$")] {
+fn halfspace_dispatch_keeps_unimplemented_bounded_and_boxed_refusals() {
+    for (kind,args) in [("IFCBOXEDHALFSPACE","#2,.T.,$"),("IFCPOLYGONALBOUNDEDHALFSPACE","#2,.T.,$,$")] {
         let text=SOURCE.replace("#9=IFCEXTRUDEDAREASOLID(#6,#8,#3,1.)",&format!("#9={kind}({args})"));
         let source=SourceBundle::new(text.as_bytes().to_vec());let mut decoder=source.decoder();
         let router=GeometryRouter::new();let wall=decoder.decode_by_id(14).unwrap();let traversal=Traversal::new(1,1);

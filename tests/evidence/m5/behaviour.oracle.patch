@@ -1,0 +1,11 @@
+diff --git a/rust/geometry/src/program/retained/halfspace/plane.rs b/rust/geometry/src/program/retained/halfspace/plane.rs
+--- a/rust/geometry/src/program/retained/halfspace/plane.rs
++++ b/rust/geometry/src/program/retained/halfspace/plane.rs
+@@ -23,7 +23,6 @@
+             return Err(crate::Error::geometry("invalid halfspace plane source"));
+         }
+     };
+-    let r = if ctx.second.get_bool(1) == Some(false) { r.map(|x| -x) } else { r };
+     cutter::halfspace_box(ctx.host, ctx.second.id, p, r).map_err(|error| match error {
+         CutterError::Recipe(error) => refuse(&ctx, error),
+         CutterError::Control(error) => error,

@@ -8,6 +8,10 @@ mod events;
 const RELATIVE: f64 = 1e-13;
 const WORK: usize = 2_000_000;
 
+#[cfg(test)]
+#[path = "sections_tests.rs"]
+mod tests;
+
 /// World halfspaces n·x <= c. `None` means unsupported or work exhausted,
 /// never a truncated integral. Direction can be oblique or reversed.
 pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Option<f64> {
@@ -59,7 +63,7 @@ fn integrate(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, wor
     loop {
         pieces = pieces.checked_mul(2)?;
         let width = (b - a) / pieces as f64;
-        if width <= 0. || a + width == a { return None; }
+        if width <= 0. { return None; }
         // Compare whole levels, not each leaf's relative error. At a circular
         // tangency, area grows like t^(3/2): a leaf touching zero has the same
         // relative quadrature error however small it gets, while its absolute
@@ -77,6 +81,10 @@ fn integrate(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, wor
         if (fine - coarse).abs() <= RELATIVE * fine.abs().max(coarse.abs()) {
             return Some(fine);
         }
+        // Near-coincident events can leave an adjacent-f64 band. Its final
+        // representable refinement may already converge; only refuse precision
+        // exhaustion after applying the same error test as every other band.
+        if a + width == a { return None; }
         coarse = fine;
     }
 }

@@ -157,7 +157,9 @@ fn m11_n_7955_planar_face_slivers_use_one_verified_plane_normal() {
         vec![0,1,4, 1,2,4, 2,3,4, 3,0,4],vec![7;4]);
     let facet = unit(cross([1.,0.,0.],[0.5,1e-5,7e-8])).unwrap();
     assert!(length(cross(facet,[0.,0.,1.])) > 1e-3);
-    p.normals = Some(normals(&p));
+    let scattered = normals(&p);
+    assert!(scattered.chunks_exact(3).any(|n| length(cross([n[0],n[1],n[2]],[0.,0.,1.])) > 1e-9));
+    p.normals = Some(scattered);
     let frame = p.world_from_object;
     plane::apply(&mut p,&frame,[0.;3],[0.,0.,-1.],&[0,1,2,3],&OwnedResourceContext::capture_current()).unwrap();
     for normal in p.normals.as_ref().unwrap().chunks_exact(3) {near(normal,[0.,0.,1.]);}
@@ -165,10 +167,13 @@ fn m11_n_7955_planar_face_slivers_use_one_verified_plane_normal() {
 
 #[test]
 fn m11_n_7955_nonplanar_face_retains_per_corner_crease_rule() {
-    let p = fan(&[0.,8.],&[90.;2]);
+    let mut p = fan(&[0.,8.],&[90.;2]);
     // The whole face is far outside faceIncidence, so four-degree smoothing
     // at the shared edge remains; it must not collapse to one plane normal.
-    let result = normals(&p);
+    p.normals = Some(normals(&p));
+    let frame = p.world_from_object;
+    plane::apply(&mut p,&frame,[0.;3],[0.,0.,1.],&[0,1],&OwnedResourceContext::capture_current()).unwrap();
+    let result = p.normals.unwrap();
     near(&result[..3],[0.,-4_f64.to_radians().sin(),4_f64.to_radians().cos()]);
     near(&result[6..9],[0.,0.,1.]);
     near(&result[15..18],[0.,-8_f64.to_radians().sin(),8_f64.to_radians().cos()]);

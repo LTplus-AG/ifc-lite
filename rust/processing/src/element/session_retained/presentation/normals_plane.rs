@@ -26,8 +26,8 @@ pub(in super::super) fn apply(part: &mut ShapePart, from_part: &[f64;16], origin
     let u = unit(cross(source_normal,helper))?;
     let v = cross(source_normal,u);
     // Transform tangent directions before taking their cross product: scale
-    // requires no separate normal matrix. Mirrored publication is refused;
-    // M10 must flip winding and normals together before that guard can be removed.
+    // requires no separate normal matrix. M10 bakes reflections and flips winding;
+    // the face orientation vote below aligns this normal with that baked mesh.
     let mut normal = unit(cross(mat4::transform_vector(&into_world,u),mat4::transform_vector(&into_world,v)))?;
     let plane_origin = mat4::transform_point(&into_part,origin);
     let mut majority = 0_i64;

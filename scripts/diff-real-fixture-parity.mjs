@@ -9,6 +9,7 @@ import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
 import { loadDiffOracle } from './lib/diff-oracle.mjs';
 import * as publicDiff from '../packages/diff/dist/index.js';
+import { prepareDiffModel } from '../packages/diff/dist/internal.js';
 import { initSync } from '../packages/wasm/pkg/ifc-lite.js';
 import { enrichGeometry } from './lib/diff-real-geometry.mjs';
 import { assertDerivedClaims, assertOriginalReferences, derivedGeometryCases } from './lib/diff-derived-geometry.mjs';
@@ -34,6 +35,14 @@ function compare(base, head, options, label) {
   const actual = publicDiff.diffModels(base, head, options);
   assert.deepEqual(actual, expected, label);
   assertOriginalReferences(actual, base, head);
+  // Retained snapshots must agree with the stateless facade (#8303).
+  const baseModel = prepareDiffModel(base);
+  try {
+    const headModel = prepareDiffModel(head);
+    try {
+      assert.deepEqual(baseModel.compare(headModel, options), expected, `${label}: retained snapshot facade`);
+    } finally { headModel.dispose(); }
+  } finally { baseModel.dispose(); }
   return actual;
 }
 const loaded = new Map();

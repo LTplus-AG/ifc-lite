@@ -16,7 +16,7 @@ fn kernel_status(refusal:ifc_lite_processing::element::retained_runtime::Retaine
 const SOURCE:&str=include_str!("../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
 const ADVERSARIAL:&str=include_str!("../../../tests/fixtures/synthetic-retained/f-h-affine-finals-adversarial.ifc");
 fn tolerances()->serde_json::Value {serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m10.json")).unwrap()}
-const LINEAR:[(u32,f64);13]=[(34,0.56),(42,0.56),(50,0.56),(58,4.48),(66,0.07),(74,13.44),(82,1.68),(95,0.56),(190,4.48),(203,1.12),(224,5.25),(234,42.),(242,0.54)];
+const LINEAR:[(u32,f64);14]=[(34,0.56),(42,0.56),(50,0.56),(58,4.48),(66,0.07),(74,13.44),(82,1.68),(95,0.56),(190,4.48),(203,1.12),(224,5.25),(234,42.),(242,0.54),(313,21.)];
 #[test]
 fn m10_source_oracle_matches_hand_arithmetic_and_mirror_centroids() {
     for (id,v) in LINEAR.into_iter().filter(|(id,_)|![242].contains(id)) {
@@ -88,9 +88,8 @@ fn m10_sdk_source_oracles_and_native_reference() {
         let predicted=affine::expected(SOURCE.as_bytes(),id).map(|e|e.iter().all(|p|p.admitted()));
         if code=="incomplete" {assert_eq!(predicted,Some(false),"#{id}");}
     }
-    // M5 is a qualification dependency: this schema-valid post-clip mapping
-    // must become volume 21 after M5 lands; preserve the current typed refusal.
-    assert_eq!(support::refusal(&outcomes,313).code(),"operation_unsupported");
+    // #7955 M5 × M10: h22 maps the clipped 3.5 m³ source by (2,3,1).
+    // LINEAR above requires publication, source-oracle centroid and volume 21.
     assert_eq!(outcomes.len(),22);
     eprintln!("sdk witness executed: m10_sdk_source_oracles_and_native_reference");
 }

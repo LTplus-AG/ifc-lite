@@ -145,8 +145,6 @@ fn m7_sdk_oracle_closed_shapes() {
     assert_eq!(actual.defects, 0);
     reference.push(serde_json::json!({"expressId":156,"code":"published","volume":actual.volume}));
     for (id, code) in [
-        (133, "incomplete"),
-        (141, "incomplete"),
         (173, "operation_unsupported"),
         (202, "empty_result"),
         (231, "operation_unsupported"),

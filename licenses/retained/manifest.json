@@ -5,6 +5,7 @@
     ".github/workflows/geometry-platform.yml": "9f12f977d565eff72cb4cc32502149552ac866f9114ac76d37eeb8cce3e3ad84",
     "Cargo.lock": "dde757434e2d3754458c1c817a8807838daf0679473509abd876da5a7b279032",
     "Cargo.toml": "8cfd8245282a1cc6b77068762a0932dcdbcabd9b01a308830a1bcc0556bf8267",
+    "licenses/retained/supplemental.json": "8856c775d1fe7149dc449a935c447d838e0ca8220c98349cb4eb4b1149786be6",
     "native/smlib-adapter/CMakeLists.txt": "eb6fd87f9ff497098667296d1e3bd9d3d677e25d47809eef091e914c9b0d87c6",
     "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
     "rust/clash/Cargo.toml": "e8e2bc0e5fd61c5024798e23459c8d8e6ddaa255462d6a11e0d1a258751effa6",
@@ -813,7 +814,13 @@
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
-      "notices": []
+      "notices": [
+        {
+          "origin": "https://raw.githubusercontent.com/iShape-Rust/iKeySort/d8c914dc29afd4d4824dacd2c134dbc16168e78c/LICENSE",
+          "file": "texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt",
+          "sha256": "47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc"
+        }
+      ]
     },
     {
       "name": "i_overlay",
@@ -821,7 +828,18 @@
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "pkg-retained Rust/wasm-bindgen closure (workspace-unified superset, includes build tools)",
-      "notices": []
+      "notices": [
+        {
+          "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-APACHE",
+          "file": "texts/59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b.txt",
+          "sha256": "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b"
+        },
+        {
+          "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-MIT",
+          "file": "texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt",
+          "sha256": "260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e"
+        }
+      ]
     },
     {
       "name": "i_shape",

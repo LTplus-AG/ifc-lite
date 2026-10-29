@@ -457,7 +457,7 @@ jobs:
               - 'scripts/**'
               - 'licenses/retained/**'
               - 'LICENSE'
-              - '.github/actions/setup-wasm-build/action.yml'
+              - '.github/actions/**'
               # `check-ci-path-coverage` reads .gitignore to decide which paths
               # are committed source and which are build output it must not
               # walk. That makes .gitignore an INPUT to the gate: an edit to it

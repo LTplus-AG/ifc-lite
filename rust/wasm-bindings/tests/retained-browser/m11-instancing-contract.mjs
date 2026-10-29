@@ -5,6 +5,10 @@ export function instancingContract() {
   return {
     collect(event) {
       if (!event.instanceKey) throw Error('mapped product has no instance key');
+      const faces = event.faces ?? event.parts?.map(part => part.faces);
+      if (faces?.length !== 1 || faces[0]?.table.length !== 6 || faces[0]?.triangles.length !== 12) {
+        throw Error('M11-F must supply all six face keys before the M11-I key witness');
+      }
       if (!event.meshes) { shapeKeys.push(event.instanceKey); return; }
       if (event.meshes.length !== 1 || !event.instanceWorldFromObject) throw Error('mapped view has no composed frame');
       const mesh = event.meshes.get(0);

@@ -5,6 +5,7 @@
 import type { RetainedEngine } from '../../../../../packages/wasm/retained.js';
 import { convertMeshCollectionToBatch } from '../../../../../packages/geometry/src/geometry-coordinate';
 import { calculateMeshBounds } from '../../utils/localParsingUtils';
+import { faceRows } from './retainedFaces';
 import type { RetainedHostEvent, RetainedHostResponse, RetainedSessionEvent } from './retained-protocol';
 
 type Published = Extract<RetainedHostEvent, { kind: 'published' }>;
@@ -62,7 +63,8 @@ export class RetainedInstancing {
       // cannot receive geometry while dropping the remaining publication rows.
       this.emit({ ...grouped[0], meshes: [], meshCount: grouped.length,
         bounds: calculateMeshBounds(grouped.flatMap(event => event.meshes)).bounds,
-        instanceProducts: grouped.map(({ meshes: _meshes, ...product }) => product),
+        instanceProducts: grouped.map(({ meshes, ...product }) => ({ ...product,
+          ...(product.faces ? { faceRows: faceRows(product.faces, meshes) } : {}) })),
         instancedShards: [Uint8Array.from(encoded.shard).buffer] });
     }
   }

@@ -26,7 +26,13 @@ fn issue_7955_m11_i_native_64_byte_identical_mapped_occurrences() {
         other => panic!("missing mapped occurrence: {other:?}"),
     }).collect();
     let key = parts[0].0.instance_key.expect("mapped occurrence is eligible");
+    let faces = parts[0].0.faces.as_ref().expect("M11-F face keys are populated before instancing");
+    assert_eq!(faces.table.len(), 6, "six authored box faces");
     for (part, _) in &parts {
+        let part_faces = part.faces.as_ref().expect("every mapped occurrence has persistent faces");
+        assert_eq!(part_faces.table, faces.table, "identical source has identical face-key order");
+        assert_eq!(part_faces.triangles, faces.triangles, "face assignment bytes are identical");
+        assert_eq!(part_faces.triangles.len(), part.indices.len() / 3);
         assert_eq!(part.instance_key, Some(key), "one byte-equal key, never tolerance matching");
         assert_eq!(part.indices, parts[0].0.indices);
         assert!(part.positions.iter().zip(&parts[0].0.positions).all(|(a,b)| a.to_bits() == b.to_bits()));
@@ -39,6 +45,7 @@ fn issue_7955_m11_i_native_64_byte_identical_mapped_occurrences() {
     }
     let key_hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
     let reference = serde_json::json!({ "key":key_hex, "groups":1, "occurrences":64,
+        "faceKeysPerPart":faces.table.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "triangles":parts.iter().map(|(p,_)| p.indices.len()/3).sum::<usize>(),
         "ids":parts.iter().map(|(_,id)| id).collect::<Vec<_>>() });
     println!("M11-I native: {reference}");

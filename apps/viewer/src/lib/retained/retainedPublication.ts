@@ -3,12 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { calculateMeshBounds } from '@/utils/localParsingUtils';
 import type { RetainedHostEvent } from './retained-protocol';
+import type { RetainedFaceRow } from '@/store/retainedGeometry';
+import { faceRows } from './retainedFaces';
 
 interface PublicationState {
   received: Set<number>;
   summary: { published: number };
   obligations: Set<string>;
   meshes: number;
+  faces: Map<number, RetainedFaceRow[]>;
   bounds: ReturnType<typeof calculateMeshBounds>['bounds'] | null;
 }
 
@@ -16,6 +19,8 @@ interface PublicationState {
 export function recordRetainedPublication(acc: PublicationState,
   event: Extract<RetainedHostEvent, { kind: 'published' }>): void {
   for (const product of event.instanceProducts ?? [event]) {
+    if (product.faceRows) acc.faces.set(product.expressId, product.faceRows);
+    else if (product.faces) acc.faces.set(product.expressId, faceRows(product.faces, event.meshes));
     acc.received.add(product.expressId);
     acc.summary.published++;
     for (const obligation of product.obligationsUnmet) acc.obligations.add(obligation);

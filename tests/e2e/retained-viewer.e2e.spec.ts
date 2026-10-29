@@ -116,6 +116,11 @@ test.describe('retained viewer acceptance', () => {
     expect(result.error).toBeNull();
     expect(result.summary?.published).toBe(64);
     expect(result.summary?.refused).toEqual([]);
+    const faces = result.summary?.faces ?? {};
+    expect(Object.keys(faces)).toHaveLength(64);
+    expect(faces[31]).toHaveLength(6);
+    for (const face of faces[31]) expect(face.areaM2).toBe(1);
+    for (const rows of Object.values(faces)) expect(rows).toEqual(faces[31]);
     const observed = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11I!);
     expect(observed.shards).toHaveLength(1);
     expect(observed.shards[0]).toMatchObject({ templates: 1, instances: 64 });

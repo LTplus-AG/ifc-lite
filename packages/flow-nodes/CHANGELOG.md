@@ -1,5 +1,17 @@
 # @ifc-lite/flow-nodes
 
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [[`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`af23dac`](https://github.com/LTplus-AG/ifc-lite/commit/af23dac7f84b3bdcc2a179359521600406e07c4e), [`e07f142`](https://github.com/LTplus-AG/ifc-lite/commit/e07f142fb7bd9c0f389048d40ffde3eaa140f429)]:
+  - @ifc-lite/data@6.4.0
+  - @ifc-lite/export@4.13.1
+  - @ifc-lite/extensions@0.12.0
+  - @ifc-lite/ids@3.4.2
+  - @ifc-lite/ids-authoring@0.3.2
+  - @ifc-lite/sandbox@2.12.1
+
 ## 0.11.0
 
 ### Minor Changes

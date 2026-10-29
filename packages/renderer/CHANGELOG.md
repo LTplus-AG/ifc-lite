@@ -1,5 +1,13 @@
 # @ifc-lite/renderer
 
+## 6.5.2
+
+### Patch Changes
+
+- [#8241](https://github.com/LTplus-AG/ifc-lite/pull/8241) [`2602e1d`](https://github.com/LTplus-AG/ifc-lite/commit/2602e1dff65c66299ce275ebd458ec8ccae17122) Thanks [@petruconduraru](https://github.com/petruconduraru)! - `Scene.appendToBatches` now computes the f32 triangle-topology verdict once per mesh and frame and reuses it during bucket routing, instead of scanning every triangle again for each new bucket. Batches, vertex data and bounds are unchanged.
+- Updated dependencies [[`87f917e`](https://github.com/LTplus-AG/ifc-lite/commit/87f917e646ee7b9769dfab8b236cfe27432a6196)]:
+  - @ifc-lite/geometry@8.0.1
+
 ## 6.5.1
 
 ### Patch Changes

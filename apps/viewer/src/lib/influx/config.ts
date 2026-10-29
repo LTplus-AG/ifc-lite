@@ -25,7 +25,9 @@ export function readInfluxConfig(): InfluxConfig {
 
 export function saveInfluxConfig(config: InfluxConfig, token: string): void {
   const secrets = token ? [...new Set([token, encodeURIComponent(token)])] : [];
-  const safe = Object.fromEntries(configFields.map(key => [key, secrets.reduce((value, secret) => value.split(secret).join('[REDACTED]'), config[key])]));
+  // Refused connection fields must not overwrite the last usable configuration.
+  if (secrets.some(secret => configFields.some(key => config[key].includes(secret)))) return;
+  const safe = Object.fromEntries(configFields.map(key => [key, config[key]]));
   localStorage.setItem(INFLUX_CONFIG_KEY, JSON.stringify(safe));
 }
 

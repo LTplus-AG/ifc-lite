@@ -10,7 +10,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { cleanup, click, render, type, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
-import { INFLUX_CONFIG_KEY } from '@/lib/influx/config';
+import { DEFAULT_INFLUX_CONFIG, INFLUX_CONFIG_KEY, saveInfluxConfig } from '@/lib/influx/config';
 import { InfluxPanel } from './InfluxPanel';
 
 const originalFetch = globalThis.fetch;
@@ -67,4 +67,22 @@ test('#8090 selected real IFC space shows latest/history, ambiguity stays explic
   assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /allow this viewer origin/);
   assert.equal(ui.textContent?.includes(token), false);
   assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY)?.includes(token), false);
+});
+
+// #8297: token overlap must never corrupt a previously saved connection.
+test('#8297 short and URI-encoded tokens skip persistence without rewriting fields', () => {
+  const previous = { ...DEFAULT_INFLUX_CONFIG, url: 'https://monitor.example.org', bucket: 'monitoring' };
+  saveInfluxConfig(previous, 'safe-token');
+  const saved = localStorage.getItem(INFLUX_CONFIG_KEY);
+  assert.deepEqual(JSON.parse(saved!), previous);
+  for (const [token, url] of [['x', 'https://influx.example.com'], ['a/b', 'https://example.org/a%2Fb']]) {
+    const config = { ...previous, url };
+    saveInfluxConfig(config, token);
+    assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY), saved);
+    assert.equal(config.url, url);
+    localStorage.removeItem(INFLUX_CONFIG_KEY);
+    saveInfluxConfig(config, token);
+    assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY), null);
+    localStorage.setItem(INFLUX_CONFIG_KEY, saved!);
+  }
 });

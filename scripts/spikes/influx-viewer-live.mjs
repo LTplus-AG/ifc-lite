@@ -137,9 +137,22 @@ try {
   const evidence = { source: 'synthetic-live-influxdb-2-viewer', commit: (await execFile('git', ['rev-parse', 'HEAD'])).stdout.trim(), image, imageDigest: imageInfo.RepoDigests?.[0], model: modelPath, modelSha256: createHash('sha256').update(model).digest('hex'), latest: 22.5, unit: '°C', historySamples: 3, unmatched: 1, ambiguous: 2, queryCount, preflightCount, tokenPersisted: false, readTokenWriteStatus: denied.status, pageErrors, viewport: { width: 1440, height: 1000 } };
   await writeFile(resolve(directory, 'evidence.json'), JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' });
   console.log(JSON.stringify(evidence));
+} catch (error) {
+  console.error(error);
+  process.exitCode ||= 1;
 } finally {
-  if (browser) await browser.close();
-  if (vite?.pid) { try { process.kill(-vite.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
-  if (gateway) await new Promise(done => gateway.close(done));
-  if (owned) await execFile('docker', ['rm', '-f', name]);
+  const cleanup = async (label, step) => {
+    try { await step(); }
+    catch (error) {
+      console.error(`Cleanup failed: ${label}: ${error?.code ?? error?.name ?? 'error'}`);
+      process.exitCode ||= 1;
+    }
+  };
+  if (browser) await cleanup('browser', () => browser.close());
+  if (vite?.pid) await cleanup('vite', () => {
+    try { process.kill(-vite.pid, 'SIGTERM'); }
+    catch (error) { if (error.code !== 'ESRCH') throw error; }
+  });
+  if (gateway) await cleanup('gateway', () => new Promise((done, reject) => gateway.close(error => error ? reject(error) : done())));
+  if (owned) await cleanup('docker', () => execFile('docker', ['rm', '-f', name]));
 }

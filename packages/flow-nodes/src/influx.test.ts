@@ -66,6 +66,9 @@ describe('InfluxDB shared adapters (#8090)', () => {
       expect(() => parseInfluxCsv(bad, selection, 'unrelated-token')).toThrow();
     }
     expect(parseInfluxCsv('', selection, 'unrelated-token').latest.rows).toEqual([]);
+    // An `error` tag on ordinary data is not a Flux error table.
+    const tagged = header.replace('device', 'error') + row('20');
+    expect(parseInfluxCsv(tagged, { ...selection, tags: { error: 'a' } }, 'unrelated-token').latest.rows).toHaveLength(1);
   });
   it('redacts literal and encoded credentials and suppresses upstream error content', async () => {
     expect(redactInfluxError(new Error(`failure ${token} ${token}`), token)).not.toContain(token);
@@ -118,5 +121,10 @@ describe('InfluxDB shared adapters (#8090)', () => {
     expect(selectionContainsToken({ ...selection, unit: 'secret%2Fa+b' }, 'secret/a+b')).toBe(true);
     expect(selectionContainsToken({ ...selection, unit: '100%' }, 'secret/a+b')).toBe(false);
     expect(selectionContainsToken(selection, 'secret/a+b')).toBe(false);
+  });
+  it('#8297 redacts case-variant and partially encoded tokens in errors', () => {
+    for (const echoed of ['secret%2fa%2bb', 'secret%2Fa+b']) {
+      expect(redactInfluxError(new Error(`bad ${echoed}`), 'secret/a+b')).not.toContain('secret');
+    }
   });
 });

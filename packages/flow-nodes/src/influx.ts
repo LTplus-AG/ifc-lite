@@ -32,7 +32,8 @@ function redactInfluxText(message: string, token: string): string {
   for (const secret of influxTokenForms(token)) {
     message = message.split(secret).join('[REDACTED]');
   }
-  return message;
+  // Same detection as containsInfluxToken: drop the whole message if any other encoding survives.
+  return containsInfluxToken(message, token) ? 'InfluxDB request failed ([REDACTED])' : message;
 }
 
 export function redactInfluxError(error: unknown, token: string): string {

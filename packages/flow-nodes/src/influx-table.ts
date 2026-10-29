@@ -40,7 +40,8 @@ export function latestPerSeries(table: Table, selection: InfluxSelection): Table
     return { columns: [{ name: selection.guidTag, type: 'identifier' }], rows: [], key: selection.guidTag };
   }
   const columns = table.columns.map(column => column.name);
-  if (columns.includes('error') || columns.includes('reference')) throw new Error('InfluxDB returned an error table');
+  // Flux error tables carry error/reference and no _value; a data table may have an `error` tag column.
+  if (!columns.includes('_value') && (columns.includes('error') || columns.includes('reference'))) throw new Error('InfluxDB returned an error table');
   if (new Set(columns).size !== columns.length) throw new Error('Duplicate CSV columns');
   for (const required of ['_time', '_value', '_measurement', '_field', selection.guidTag]) {
     if (!columns.includes(required)) throw new Error(`InfluxDB response lacks ${required}`);

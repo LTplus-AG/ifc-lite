@@ -470,7 +470,7 @@ impl IfcAPI {
 
     /// Install the pre-computed set of `IfcRepresentationMap` ids referenced by
     /// an `IfcMappedItem` (issue #957), so the worker's first type-product batch
-    /// skips the per-worker full-file walk. The streaming pre-pass built
+    /// skips the full-file walk once [`Self::set_instantiated_type_ids`] is also installed. The streaming pre-pass built
     /// the same set once from its `IfcMappedItem` spans and ships the
     /// id list here — bit-identical to what each worker would compute, since a
     /// set's membership is order-invariant and consumers only call `.contains`.
@@ -491,7 +491,7 @@ impl IfcAPI {
 
     /// Install the pre-computed set of type ids that an `IfcRelDefinesByType`
     /// instantiates (#957 follow-up), so the worker's first type-product batch
-    /// skips the per-worker full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
+    /// skips the full-file walk once both precomputed sets are installed. Same injection contract as [`Self::set_referenced_repmaps`].
     #[wasm_bindgen(js_name = setInstantiatedTypeIds)]
     pub fn set_instantiated_type_ids(&self, ids: &[u32]) {
         self.cached_type_geometry_plan.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();

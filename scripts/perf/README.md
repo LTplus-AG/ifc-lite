@@ -35,6 +35,13 @@ speedup is claimed. Keep the native IFNS axis contract when starting from
 Y-up view meshes, and publish each shard with all its product records so Cancel
 cannot separate rendered geometry from coverage.
 
+The retained-only viewer timing comparison on `advanced_model` is incomplete.
+The base load reached first-visible scheduling but stalled before completion;
+the approved bounded replacement timed out in fleet admission before execution.
+There is no qualified timing or performance-neutrality verdict. Bound whole
+browser operations, including trace reads, rather than relying on a timeout
+checked only between awaits. First-visible scheduling is not GPU completion.
+
 ## C2-3 mapped admission and drop reporting (#7781)
 
 The ROUTER-13, ROUTER-15 and ROUTER-19 consolidations passed the local native

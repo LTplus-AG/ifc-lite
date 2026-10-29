@@ -371,6 +371,10 @@ jobs:
             IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
             IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
+          # Real authoring-tool exports through the built CLI: exact vs retained per product (#7955 item 4).
+          IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
+            IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
+            node --test scripts/retained-compare/real-authoring.test.mjs
       - name: Browser parity and real retained viewer
         id: viewer-retained
         continue-on-error: true

@@ -1,5 +1,12 @@
 # @ifc-lite/diff
 
+## 0.11.2
+
+### Patch Changes
+
+- Updated dependencies [`f713740`]:
+  - @ifc-lite/wasm@11.0.1
+
 ## 0.11.1
 
 ### Patch Changes

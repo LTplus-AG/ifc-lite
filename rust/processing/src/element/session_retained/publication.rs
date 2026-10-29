@@ -122,7 +122,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                 }
                 ReceiptEvidence::Affine { .. } => {
                     let (part, sources) = super::affine_final::bake(&self.ledger, realization,
-                        value.object_frame(), &self.resources, &mut storage)?;
+                        value.object_frame(), &self.resources, &mut storage, self.plan.layers().is_some())?;
                     parts.push(part);
                     face_sources.push(sources);
                     continue;

@@ -22,7 +22,7 @@ use std::sync::{
 pub(super) mod witness;
 pub(super) mod publication;
 mod publication_mesh;
-mod presentation;
+pub(super) mod presentation;
 pub(super) mod model;
 mod restart_budget;
 mod cancellation;

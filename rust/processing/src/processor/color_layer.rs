@@ -244,6 +244,37 @@ fn find_color_in_representation(
     geometry_styles.get(&source).map(|style| style.color)
 }
 
+/// The element-colour precedence: a style found under the product's representation wins, otherwise the material
+/// chain's fallback. `None` leaves the caller's own default in force, so each caller keeps its default and its
+/// optional-colour contract. Used through [`resolve_product_element_color`] by the authoring pipeline
+/// (`appearance::canonical`) and the retained appearance. `AppearanceResolver::resolve` (`job.rs`) applies the same
+/// rule in place on its per-shape cache and keeps its own `if`/`else`: routing it through this helper changes the
+/// default wasm by 29 bytes (measured against the merge base), which the default-wasm identity gate forbids for a
+/// behaviour-neutral edit. The two are pinned together by the retained-vs-exact per-key appearance gate.
+#[inline(always)]
+pub(crate) fn element_color_precedence(
+    direct: Option<[f32; 4]>,
+    material: impl FnOnce() -> Option<[f32; 4]>,
+) -> Option<[f32; 4]> {
+    direct.or_else(material)
+}
+
+/// [`element_color_precedence`] for a product whose representation is `shape` and whose materials come from the
+/// model's per-element material colours.
+#[inline(always)]
+pub(crate) fn resolve_product_element_color(
+    shape: Option<u32>,
+    product_id: u32,
+    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
+    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
+    decoder: &mut EntityDecoder,
+) -> Option<[f32; 4]> {
+    element_color_precedence(
+        shape.and_then(|shape| resolve_element_color_for_product_definition_shape(shape, geometry_styles, decoder)),
+        || element_material_colors.get(&product_id).and_then(|colors| crate::style::element_material_fallback_color(colors)),
+    )
+}
+
 #[cfg(test)]
 #[path = "color_layer_tests.rs"]
 mod tests;

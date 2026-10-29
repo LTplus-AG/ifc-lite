@@ -21,9 +21,13 @@ domain retired by the executor always requires charged recovery.
 Published parts contain f64 object-local metres and column-major placement
 matrices into absolute IFC Z-up world metres. Every product carries
 `PresentationObligationsUnmet`. Completed opening cuts and plan-proven unvoided
-products discharge `OpeningClosure`; material, appearance, and persistent-face
-obligations remain. M10 publishes linear affine finals and contracting curved finals when the
-existing SDK operations succeed. `require_final_product` still refuses.
+products discharge `OpeningClosure`, and every published part carries its resolved
+appearance (`IfcAppearance` is discharged through exact's own colour resolver), and
+persistent source face keys (`PersistentFaces`) and corner normals (`SurfaceNormals`);
+only `MaterialLayers` remains, so `obligations` is `[MaterialLayers]`. M10 publishes linear
+affine finals and contracting curved finals when the existing SDK operations succeed;
+source-predicted uncertifiable affine finals refuse `incomplete` before invocation.
+`require_final_product` still refuses.
 
 Build the real worker using `native/smlib-adapter/README.md`, then run from the
 repository root:

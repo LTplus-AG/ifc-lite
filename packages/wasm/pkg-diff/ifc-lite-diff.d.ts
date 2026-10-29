@@ -5,10 +5,22 @@ export class DiffModel {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Explicit internal batch; no retained input or implicit cache.
+     */
+    static buildFingerprintBatch(bytes: Uint8Array): Uint8Array;
+    /**
      * Compare this base model with a head model, returning row-index records.
      * No JS reference is serialized, cloned, or retained inside WASM.
      */
     compare(head: DiffModel, options: any): any;
+    /**
+     * One result buffer preserves absent fields and every UTF-16 code unit.
+     */
+    comparePacked(head: DiffModel, options: any): Uint8Array;
+    /**
+     * Private facade constructor: one UTF-16 dictionary buffer, no per-string host reads.
+     */
+    static fromPacked(strings: Uint8Array, fields: Uint32Array, flags: Uint8Array, boxes: Float64Array, volumes: Float64Array, component_offsets: Uint32Array, component_pairs: Uint32Array): DiffModel;
     /**
      * Create an owned model from columnar buffers. Call free() when finished;
      * a model may participate in any number of comparisons before that.
@@ -127,8 +139,11 @@ export interface InitOutput {
     readonly diffStableHash: (a: number, b: number, c: number) => void;
     readonly diffValidateSidecar: (a: number, b: number, c: number) => void;
     readonly diffValidateSidecarValue: (a: number, b: number, c: number) => void;
+    readonly diffmodel_buildFingerprintBatch: (a: number, b: number, c: number) => void;
     readonly diffmodel_compare: (a: number, b: number, c: number, d: number) => void;
+    readonly diffmodel_comparePacked: (a: number, b: number, c: number, d: number) => void;
     readonly diffmodel_entityCount: (a: number) => number;
+    readonly diffmodel_fromPacked: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
     readonly diffmodel_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

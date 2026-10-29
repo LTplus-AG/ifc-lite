@@ -3,6 +3,8 @@
 use super::{publication::ShapeOnlyProduct, RetainedProductPlan, OwnedMeshProductionContext, OwnedResourceContext, RetainedExecutionError};
 use ifc_lite_geometry::program::transactions::Requirement;
 mod appearance;
+mod appearance_resolve;
+pub use appearance::resolve_appearances;
 mod normals;
 mod faces;
 mod face_attribution;
@@ -29,7 +31,7 @@ pub(super) struct Context<'a> {
 
 pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Result<Vec<Requirement>, RetainedExecutionError> {
     let mut discharged = Vec::new();
-    discharged.extend(appearance::apply(product, context));
+    discharged.extend(appearance::apply(product, context)?);
     normals::prepare(product, context)?;
     discharged.extend(faces::apply(product, context)?);
     discharged.extend(normals::apply(product, context)?);

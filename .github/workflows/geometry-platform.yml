@@ -155,6 +155,7 @@ jobs:
           export IFCLITE_M8_NATIVE_REFERENCE="$RUNNER_TEMP/m8-native.json"
           export IFCLITE_M11F_REFERENCE="$RUNNER_TEMP/m11-f-native-faces.json"
           export IFCLITE_M11_N_REFERENCE="$RUNNER_TEMP/m11-n-native.json"
+          export IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json"
           export IFCLITE_M11_I_REFERENCE="$RUNNER_TEMP/m11-i-native-instances.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           # Native parity references the browser lanes read (one file per
@@ -263,9 +264,12 @@ jobs:
           fi
           if [ -f "$RUNNER_TEMP/m11-n-native.json" ]; then
             cp "$RUNNER_TEMP/m11-n-native.json" rust/wasm-bindings/smlib/m11-n-native.json
-            fi
+          fi
           if [ -f "$RUNNER_TEMP/m11-i-native-instances.json" ]; then
             cp "$RUNNER_TEMP/m11-i-native-instances.json" rust/wasm-bindings/smlib/m11-i-native-instances.json
+          fi
+          if [ -f "$RUNNER_TEMP/m11-a-native-appearance.json" ]; then
+            cp "$RUNNER_TEMP/m11-a-native-appearance.json" rust/wasm-bindings/smlib/m11-a-native-appearance.json
           fi
           # Generic: every reference a native lane wrote is served beside /smlib.
           # Same rule as above: an absent file is reported by the browser test.
@@ -338,6 +342,7 @@ jobs:
           IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
             IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
             IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
+            IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
       - name: Browser parity and real retained viewer
         id: viewer-retained

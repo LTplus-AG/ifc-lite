@@ -37,7 +37,7 @@ tests/ai-eval/live-runs/*/recordings/** linguist-generated=true -diff
 packages/ifcx/src/generated/** -text linguist-generated=true
 
 # Verbatim third-party notices: hashes bind upstream bytes, including CRLF.
-licenses/retained/texts/** -text linguist-vendored=true
-licenses/retained/THIRD_PARTY_NOTICES.txt -text linguist-generated=true
-packages/*/THIRD_PARTY_NOTICES.txt -text linguist-generated=true
+licenses/retained/texts/** -text -whitespace linguist-vendored=true
+licenses/retained/THIRD_PARTY_NOTICES.txt -text -whitespace linguist-generated=true
+packages/*/THIRD_PARTY_NOTICES.txt -text -whitespace linguist-generated=true
 licenses/retained/manifest.json linguist-generated=true

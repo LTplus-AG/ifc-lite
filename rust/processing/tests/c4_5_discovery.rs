@@ -52,7 +52,7 @@ fn c4_6b_browser_scope_preserves_discovery_without_native_type_state() {
     let mut jobs = Vec::new();
     while let Some((id, name, start, end)) = scanner.next_entity() {
         let class = ScanClass::classify(name);
-        let job = browser.observe(content, class, id, name, start, end);
+        let job = browser.observe_browser(content, class, id, name, start, end);
         assert_eq!(job, native.observe(content, class, id, name, start, end));
         if job.is_some() {
             jobs.push(id);

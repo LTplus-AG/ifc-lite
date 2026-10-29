@@ -50,7 +50,7 @@ impl ColumnsDiscovery {
     ) {
         use ifc_lite_processing::scan::ScanClass;
         let class = ScanClass::classify(kw);
-        let job = shared.observe(content, class, id, kw, start, end);
+        let job = shared.observe_browser(content, class, id, kw, start, end);
         self.project_id = shared.project_id;
         if class == ScanClass::Site {
             self.site_position.get_or_insert((id, start, end));

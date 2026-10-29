@@ -64,7 +64,6 @@ pub struct Discovery {
     pub mapped_item_plan: FxHashMap<u32, (u32, u32)>,
     pub types: TypeScan,
     instancing: bool,
-    browser_only: bool,
 }
 
 impl Discovery {
@@ -75,18 +74,42 @@ impl Discovery {
         }
     }
 
-    /// Browser callers: native-only type/mapping state is not collected.
+    /// Browser callers use `observe_browser` to omit native-only type/mapping state.
     pub fn browser() -> Self {
-        Self {
-            browser_only: true,
-            ..Self::default()
-        }
+        Self::default()
     }
 
     /// Observe one record in file order. Returns the type of a geometry job;
     /// callers retain the raw keyword when decorating metadata (#1910).
     #[inline(always)]
     pub fn observe(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<IfcType> {
+        self.observe_inner::<false>(content, class, id, type_name, start, end)
+    }
+
+    /// Observe a browser record without collecting native type/mapping state.
+    #[inline(always)]
+    pub fn observe_browser(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<IfcType> {
+        self.observe_inner::<true>(content, class, id, type_name, start, end)
+    }
+
+    #[inline(always)]
+    fn observe_inner<const BROWSER: bool>(
         &mut self,
         content: &[u8],
         class: ScanClass,
@@ -124,7 +147,7 @@ impl Discovery {
         if ifc_lite_core::is_geometry_job(type_name, &content[start..end]) {
             Some(ifc_lite_core::ifc_type_from_keyword(type_name))
         } else {
-            if !self.browser_only {
+            if !BROWSER {
                 self.note_type_geometry(content, class, id, type_name, start, end);
             }
             None

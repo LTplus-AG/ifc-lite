@@ -46,7 +46,7 @@ pub(crate) fn combined_pre_pass(content: &[u8], decoder: &mut ifc_lite_core::Ent
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         let class = ifc_lite_processing::scan::ScanClass::classify(type_name);
-        let job = discovery.observe(content, class, id, type_name, start, end);
+        let job = discovery.observe_browser(content, class, id, type_name, start, end);
         if class == ifc_lite_processing::scan::ScanClass::Site {
             site_position.get_or_insert((id, start, end));
         }

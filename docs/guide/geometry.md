@@ -939,5 +939,5 @@ frame, then atomic `published` mesh collections or typed `refused` events.
 Extract and free each collection and its mesh handles in `finally` blocks.
 Use `detail: 'shape'` for the M1 f64 shape parts. A session reuses its qualified
 worker across runs; free the session when finished, or terminate the host Worker
-to cancel immediately. Consumers must continue to show the shape-only marker.
+to cancel immediately. Consumers show each product’s final or shape-only presentation state.
 

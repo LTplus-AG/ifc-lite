@@ -90,3 +90,13 @@ describe('#7955 M2 shape-only guard', () => {
     });
   }
 });
+
+// #7955 M11-Z: a complete, fully presented retained model has the required authority.
+it('M11-Z enables mesh exports on a complete final retained model', async () => {
+  await seed(true);
+  const models = new Map(useViewerStore.getState().models);
+  for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: { ...SUMMARY, obligationsUnmet: [] } });
+  act(() => useViewerStore.setState({ models }));
+  render(<ExportProbe />);
+  assert.equal(exportState('glb').disabled, false);
+});

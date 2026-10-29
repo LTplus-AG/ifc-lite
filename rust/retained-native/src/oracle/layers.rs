@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Source-derived band integrals, independent of retained regions and meshes.
-use super::{clipping::{Edge,convex_planes},math::*,prism::{self,Basis,Prism},sections::{ExtrudedHost,section_volume}};
+use super::{clipping::{Edge,HalfPlane,convex_planes},math::*,prism::{self,Basis,Prism},sections::{ExtrudedHost,section_volume}};
 use ifc_lite_processing::AnalyticQuantitySources;
 #[path="layer_source.rs"]
 mod source;
@@ -25,11 +25,7 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
         let mut hosts=prism::prisms(sources,id,&basis)?; if hosts.len()!=1 {return None;}
         let host=hosts.pop()?;
         let (inner,outer)=sector(&host,center)?;
-        let mut cuts=Vec::new();
-        for &id in &usage.openings { for p in prism::prisms(sources,id,&basis)? {
-            if cuts.len()>=8 || p.loops.len()!=1 || !p.loops[0].0 {return None;}
-            let planes=convex_planes(&p.loops[0].1)?; cuts.push((p,planes));
-        } }
+        let cuts=opening_cuts(sources,&usage.openings,&basis)?;
         let mut result=Vec::new();
         for k in 0..usage.thickness.len() {
             let previous=if k==0 {None} else {Some(radius-sigma*(usage.offset+usage.sense*boundaries[k-1]))};
@@ -42,20 +38,29 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
         }
         (result,true)
     } else {
-        if !usage.openings.is_empty() {return None;}
         let host=ExtrudedHost::from_sources(sources,&instances[0])?;
         let curved=host.loops.iter().flat_map(|(_,edges)|edges)
             .any(|edge|matches!(edge,Edge::Arc{..}));
         let a=std::array::from_fn(|i|if i==usage.axis {1.} else {0.});
         let n=vector(&usage.frame,a).map(|v|v*usage.sense);
         let base=dot(n,transform(&usage.frame,a.map(|v|v*usage.offset)));
+        // Preserve M5's clip-only path and its refusal of clip+opening layers.
+        let cuts=if usage.openings.is_empty() {Vec::new()} else {
+            if clip.is_some() {return None;}
+            let basis=Basis::new(&prism::profile_frame(sources,&instances[0])?)?;
+            opening_cuts(sources,&usage.openings,&basis)?.into_iter().map(|(p,ps)| {
+                let mut planes:Vec<_>=ps.into_iter().map(|h|basis.world_plane([-h.n[0],-h.n[1],0.],h.d)).collect();
+                planes.extend([basis.world_plane([0.,0.,-1.],-p.low),basis.world_plane([0.,0.,1.],p.high)]);
+                planes
+            }).collect()
+        };
         let mut result=Vec::new();
         for k in 0..usage.thickness.len() {
             let mut planes=Vec::new();
             if k>0 {planes.push((n.map(|v|-v),-base-boundaries[k-1]));}
             if let Some(c)=boundaries.get(k) {planes.push((n,base+c));}
             result.push(if let Some(clip) = clip { clip.volume_with_planes(&planes)? }
-                else { section_volume(&host,&planes)? });
+                else { opened_section_volume(&host,&planes,&cuts)? });
         }
         (result,curved)
     };
@@ -64,6 +69,28 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
         clips.section_volume()?
     } else { super::openings::prism_result_volume(sources,id,&usage.openings)? };
     Some(LayerExpectation{volumes,opened_volume,curved})
+}
+type OpeningCut = (Prism,Vec<HalfPlane>);
+fn opening_cuts(sources:&AnalyticQuantitySources, ids:&[u32], basis:&Basis) -> Option<Vec<OpeningCut>> {
+    let mut cuts=Vec::new();
+    for &id in ids { for p in prism::prisms(sources,id,basis)? {
+        if cuts.len()>=8 || p.loops.len()!=1 || !p.loops[0].0 {return None;}
+        let planes=convex_planes(&p.loops[0].1)?; cuts.push((p,planes));
+    } }
+    Some(cuts)
+}
+/// Intersect every cutter subset with the same band before subtracting it.
+/// Inclusion-exclusion counts overlapping openings once, including partial-height cuts.
+fn opened_section_volume(host:&ExtrudedHost, band:&[([f64;3],f64)], cuts:&[Vec<([f64;3],f64)>]) -> Option<f64> {
+    if cuts.len()>8 {return None;}
+    let mut volume=section_volume(host,band)?;
+    for mask in 1usize..(1<<cuts.len()) {
+        let mut planes=band.to_vec();
+        for (i,cut) in cuts.iter().enumerate() {if mask&(1<<i)!=0 {planes.extend_from_slice(cut);}}
+        let overlap=section_volume(host,&planes)?;
+        volume+=if mask.count_ones().is_multiple_of(2) {overlap} else {-overlap};
+    }
+    (volume.is_finite() && volume>=0.).then_some(volume)
 }
 fn sector(host: &Prism,center:[f64;3]) -> Option<(f64,f64)> {
     if host.loops.len()!=1 || host.loops[0].1.len()!=4 {return None;}

@@ -97,3 +97,37 @@ fn m4_planar_layer_source_keeps_host_curvature_and_hand_volumes() {
     }
     assert!((oracle.opened_volume-area*3.).abs()<1e-10);
 }
+
+// #7955 / review 4417727604: opened straight bands must have source authority.
+#[test]
+fn issue_7955_opened_straight_bands_have_source_expectations() {
+    let bytes=include_bytes!("../../../tests/fixtures/synthetic-retained/f-d-openings.ifc");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(bytes,None);
+    let oracle=expected(bytes,&sources,248).expect("opened straight wall must be band-checked");
+    assert!(!oracle.curved);
+    assert_eq!(oracle.volumes.len(),2);
+    // Each .1 m band: 4*.1*3 minus the 1*.1*2 opening = 1 m³.
+    for volume in &oracle.volumes { assert!((volume-1.).abs()<1e-11); }
+    assert!((oracle.opened_volume-2.).abs()<1e-11);
+    assert!((oracle.volumes.iter().sum::<f64>()-oracle.opened_volume).abs()<1e-11);
+}
+
+// #7955: partial-width/height openings and coincident cutters must partition
+// without assigning a whole opening to every band or subtracting overlap twice.
+#[test]
+fn issue_7955_opened_straight_band_intersections_partition_volume() {
+    let original=include_str!("../../../tests/fixtures/synthetic-retained/f-d-openings.ifc");
+    let narrow=original.replace("#249=IFCCARTESIANPOINT((2.,0.1))","#249=IFCCARTESIANPOINT((2.,0.05))")
+        .replace("#251=IFCRECTANGLEPROFILEDEF(.AREA.,$,#250,1.,0.4)","#251=IFCRECTANGLEPROFILEDEF(.AREA.,$,#250,1.,0.05)");
+    let duplicate=original.replace("ENDSEC;\nEND-ISO",concat!(
+        "#9000=IFCOPENINGELEMENT('copy',$,$,$,$,#241,#254,$,.OPENING.);\n",
+        "#9001=IFCRELVOIDSELEMENT('void-copy',$,$,$,#248,#9000);\nENDSEC;\nEND-ISO"));
+    let axial=original.replace("#261=IFCMATERIALLAYERSETUSAGE(#260,.AXIS2.","#261=IFCMATERIALLAYERSETUSAGE(#260,.AXIS3.");
+    for (text,hand) in [(narrow,[1.1,1.2]),(duplicate,[1.,1.]),(axial,[0.06,1.94])] {
+        let bytes=text.as_bytes();
+        let sources=ifc_lite_processing::extract_analytic_quantity_sources(bytes,None);
+        let oracle=expected(bytes,&sources,248).unwrap();
+        for (value,expected) in oracle.volumes.iter().zip(hand) {assert!((value-expected).abs()<1e-11,"{value} vs {expected}");}
+        assert!((oracle.volumes.iter().sum::<f64>()-oracle.opened_volume).abs()<1e-11);
+    }
+}

@@ -9,6 +9,11 @@ use ifc_lite_retained_native::run_model_native;
 mod metrics;
 #[path = "common/m4_band_exact.rs"]
 mod band_exact;
+#[allow(dead_code)]
+#[path = "../examples/compare/checks/mod.rs"]
+mod checks;
+#[path = "../examples/compare/tolerances.rs"]
+mod tolerances;
 const CURVED: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc");
 const STRAIGHT: &str = include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc");
 fn run(text: &str, ids: &[u32]) -> Option<Vec<ProductOutcome>> {
@@ -290,4 +295,24 @@ fn issue_7955_m4_mapped_layer_skips_preserve_class_and_exclude_instancing() {
     let outcomes = run(&ordinary, &[27]).unwrap();
     assert!(shape(&outcomes, 27).parts[0].instance_key.is_some());
     println!("sdk witness executed: m4_mapped_layer_skips_no_instances");
+}
+
+// #7955 / review 4417727604: run the actual comparison checks on retained output.
+#[test]
+fn issue_7955_m4_opened_straight_wall_is_band_checked() {
+    let text=include_str!("../../../tests/fixtures/synthetic-retained/f-d-openings.ifc");
+    let Some(results)=run(text,&[248]) else {return;};
+    let product=shape(&results,248);
+    assert_eq!(product.parts.len(),2);
+    assert!(product.parts.iter().all(|p|p.layer.is_some()));
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let bundle=SourceBundle::new(text.as_bytes().to_vec());
+    let clips=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&bundle,&sources);
+    let context=checks::SourceContext{product_id:248,clips:&clips,analytic:&sources};
+    let limits=tolerances::registered().unwrap();
+    let checked=checks::check(product,&context,text.as_bytes(),&limits);
+    assert_eq!(checked.iter().filter(|r|r.family=="layerBandVolumeRelative").count(),2);
+    assert!(checked.iter().any(|r|r.family=="layerBandSumRelative"));
+    assert!(checked.iter().all(|r|r.pass),"{:?}",checked.iter().map(|r|(r.family,r.value,r.limit)).collect::<Vec<_>>());
+    println!("sdk witness executed: #248 band-checked with 0 violations");
 }

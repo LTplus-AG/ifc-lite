@@ -266,7 +266,7 @@ async fn product<W: AsyncRetainedExecutor>(
         element_color: None,
         metadata: None,
     };
-    let layers = budget.scope(|| super::layers::admit(&entity, router, usages, decoder))?;
+    let layers = budget.scope(|| super::layers::admit_layers(&entity, router, usages, decoder))?;
     let openings = budget.scope(|| openings::decoded_openings(snapshot, id, &layers, decoder, router))?;
     let execution = budget.scope(|| {
         RuntimeProductExecution::begin(

@@ -239,7 +239,7 @@ fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
     let metadata = metadata(10);
     let job = job(&entity, &metadata);
     let usages = ifc_lite_geometry::program::transactions::LayerUsages::from_content(text.as_bytes(), &mut decoder);
-    let layers = layers::admit(&entity, &router, &usages, &mut decoder).unwrap();
+    let layers = layers::admit_layers(&entity, &router, &usages, &mut decoder).unwrap();
     let error = RuntimeProductExecution::<InertReceipt>::begin(
         &job,
         &context,

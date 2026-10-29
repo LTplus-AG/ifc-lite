@@ -6,7 +6,7 @@ use ifc_lite_geometry::program::transactions::{LayerAdmission, LayerUsages};
 /// One source admission per product, under the canonical plan's layer predicate.
 /// Openings and `begin` consume this result; neither admits again (#7955).
 pub(super) type ProductLayers = Option<Result<LayerAdmission, &'static str>>;
-pub(super) fn admit(entity: &DecodedEntity, router: &GeometryRouter, usages: &LayerUsages,
+pub(super) fn admit_layers(entity: &DecodedEntity, router: &GeometryRouter, usages: &LayerUsages,
     decoder: &mut EntityDecoder) -> Result<ProductLayers, RetainedExecutionError> {
     if !router.is_material_layer_sliceable(entity.id) { return Ok(None); }
     let admitted = RetainedTraversal::layer_admission(entity, router, usages, decoder);

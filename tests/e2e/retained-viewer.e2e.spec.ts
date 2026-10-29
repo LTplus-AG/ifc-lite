@@ -7,8 +7,10 @@ import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { LoadTraceSnapshot } from '../../packages/load-trace/src';
+import { mappedInstancePixels } from './m11-instancing-pixels';
 
 const WALL = 'rust/geometry/tests/fixtures/issue_098_wall_W.ifc';
+const PRESENTATION = 'tests/fixtures/synthetic-retained/f-i-presentation.ifc';
 const MAPPED = 'rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc';
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
 // Trace DOM snapshots add work to the Cancel latency sample; keep real UI/Worker
@@ -20,6 +22,8 @@ interface ViewerGlobals {
   __retainedCancel?: { clickMs: number; before: { meshIds: number[]; published: number }; error?: string };
   __IFC_LITE_LOAD_TRACE__: { latest(): LoadTraceSnapshot | null };
   __retainedLongTasks: number[];
+  __m11Fi?: { shards: number; occurrenceIds: number[] };
+  __m11I?: { draws: number; shards: { templates: number; instances: number; triangles: number }[] };
 }
 const expected = (model: string) => readFileSync('tests/manifests/cli-retained-coverage.tsv', 'utf8')
   .split(/\r?\n/).map(line => line.split('\t')).filter(row => row[0] === model)
@@ -69,6 +73,93 @@ async function record(name: string, result: unknown) {
 
 test.describe('retained viewer acceptance', () => {
   test.skip(!(engine && existsSync(join(engine, 'engine-manifest.json'))), SKIP);
+
+  test('M11-I: one verified shard renders all 64 mapped occurrences', async ({ page }) => {
+    await page.addInitScript(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals;
+      globals.__m11I = { draws: 0, shards: [] };
+      const proto = (globalThis as unknown as { GPURenderPassEncoder?: { prototype: {
+        drawIndexed(...args: number[]): void;
+      } } }).GPURenderPassEncoder?.prototype;
+      if (!proto) return;
+      const draw = proto.drawIndexed;
+      proto.drawIndexed = function (...args: number[]) {
+        if (args[1] === 64) globals.__m11I!.draws++;
+        return draw.apply(this, args);
+      };
+    });
+    await setup(page, 'retained');
+    await page.evaluate(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals;
+      const seen = new Set<ArrayBuffer>();
+      globals.__ifc_lite_viewer_store__.subscribe(state => {
+        for (const { bytes } of state.pendingInstancedShards ?? []) {
+          if (seen.has(bytes)) continue;
+          seen.add(bytes);
+          const header = new DataView(bytes);
+          globals.__m11I!.shards.push({ templates: header.getUint32(8, true),
+            instances: header.getUint32(12, true), triangles: header.getUint32(24, true) / 3 * header.getUint32(12, true) });
+        }
+      });
+    });
+    // #7955: move the storey outside the initial camera's frustum. A near-origin
+    // fixture can show a few occurrences even when automatic fitting is absent.
+    const source = readFileSync(MAPPED, 'utf8');
+    const shifted = source.replace('#22=IFCLOCALPLACEMENT(#20,#2);',
+      '#10001=IFCCARTESIANPOINT((500.,0.,0.));\n#10002=IFCAXIS2PLACEMENT3D(#10001,$,$);\n#22=IFCLOCALPLACEMENT(#20,#10002);');
+    expect(shifted).not.toBe(source);
+    await page.locator('#file-input-open').setInputFiles({ name: 'mapped-offset500.ifc',
+      mimeType: 'application/ifc', buffer: Buffer.from(shifted) });
+    await complete(page, true);
+    await expect.poll(() => page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11I!.draws)).toBeGreaterThan(0);
+    const result = await snapshot(page);
+    expect(result.error).toBeNull();
+    expect(result.summary?.published).toBe(64);
+    expect(result.summary?.refused).toEqual([]);
+    const faces = result.summary?.faces ?? {};
+    expect(Object.keys(faces)).toHaveLength(64);
+    expect(faces[31]).toHaveLength(6);
+    for (const face of faces[31]) expect(face.areaM2).toBe(1);
+    for (const rows of Object.values(faces)) expect(rows).toEqual(faces[31]);
+    const observed = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11I!);
+    expect(observed.shards).toHaveLength(1);
+    expect(observed.shards[0]).toMatchObject({ templates: 1, instances: 64 });
+    expect(observed.shards[0].triangles).toBeGreaterThan(0);
+    const pixels = await mappedInstancePixels(page);
+    await record('m11-i-instancing', { ...observed, summary: result.summary, flatProducts: result.meshIds.length, spans: result.spans, pixels: pixels.evidence });
+    if (process.env.IFCLITE_VIEWER_OUT) await writeFile(join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing-gpu.png'), pixels.png);
+    if (process.env.IFCLITE_VIEWER_OUT) await page.screenshot({ path: join(process.env.IFCLITE_VIEWER_OUT, 'm11-i-instancing.png') });
+  });
+
+  test('M11-I: f-i case (c) emits an instanced shard', async ({ page }) => {
+    await setup(page, 'retained');
+    await page.evaluate(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals;
+      const seen = new Set<ArrayBuffer>(), caseIds = new Set([311,321,331,341,351,361,371,381,391]);
+      globals.__m11Fi = { shards: 0, occurrenceIds: [] };
+      globals.__ifc_lite_viewer_store__.subscribe(state => {
+        for (const { bytes } of state.pendingInstancedShards ?? []) {
+          if (seen.has(bytes)) continue;
+          seen.add(bytes);
+          const wire = new DataView(bytes), templates = wire.getUint32(8, true);
+          const stride = wire.getUint32(4, true) >= 2 ? wire.getUint32(28, true) || 88 : 88;
+          const ids = Array.from({ length: wire.getUint32(12, true) }, (_, i) =>
+            wire.getUint32(32 + templates * 48 + i * stride + 4, true)).filter(id => caseIds.has(id));
+          if (ids.length > 0) { globals.__m11Fi!.shards++;globals.__m11Fi!.occurrenceIds.push(...ids); }
+        }
+      });
+    });
+    await page.locator('#file-input-open').setInputFiles(resolve(PRESENTATION));
+    await complete(page, true);
+    const result = await snapshot(page);
+    expect(result.error).toBeNull();
+    const observed = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__m11Fi!);
+    expect(observed.shards, '§7.4: a real IFNS shard contains f-i case (c) occurrences').toBeGreaterThan(0);
+    // c9 is a raw-coordinate outlier: its pairing verifier may correctly keep
+    // it flat. Require the group, never force that occurrence past verification.
+    await record('m11-i-f-i-c', { ...observed, farOccurrenceInstanced: observed.occurrenceIds.includes(391),
+      farOccurrenceFlat: result.meshIds.includes(391), summary: result.summary });
+  });
 
   test('positive: current corpus outcomes are absent/listed, with no exact cache lookup', async ({ page }) => {
     const requests: string[] = [];
@@ -150,7 +241,7 @@ test.describe('retained viewer acceptance', () => {
         });
       });
     });
-    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+    await page.locator('#file-input-open').setInputFiles(resolve(WALL));
     await page.waitForFunction(() => Boolean((globalThis as typeof globalThis & ViewerGlobals).__retainedCancel));
     const click = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!);
     expect(click.error).toBeUndefined();
@@ -170,8 +261,15 @@ test.describe('retained viewer acceptance', () => {
     const cancelMs = Math.max(closedAt, cancelledAt) - click.clickMs;
     expect(cancelMs).toBeLessThanOrEqual(1000);
     expect(after.summary!.cancelled).toBeGreaterThan(0);
-    expect(after.summary!.refused.every(p => p.code === 'cancelled')).toBe(true);
-    expect(after.summary!.published + after.summary!.cancelled).toBe(expected(MAPPED).length);
+    // #7955: this fixture streams flat walls so Cancel can run before a
+    // 256-product instance flush. Refusals already reported before cancellation
+    // retain their real codes; only products not yet published are cancelled.
+    const wallOutcomes = expected(WALL);
+    for (const row of after.summary!.refused.filter(row => row.code !== 'cancelled')) {
+      expect(wallOutcomes).toContainEqual({ id: row.expressId, status: 'refused', code: row.code });
+    }
+    expect(after.summary!.cancelled).toBe(after.summary!.refused.filter(row => row.code === 'cancelled').length);
+    expect(after.summary!.published + after.summary!.refused.length).toBe(wallOutcomes.length);
     for (const id of before.meshIds) expect(after.meshIds).toContain(id);
     for (const row of after.summary!.refused) expect(after.meshIds).not.toContain(row.expressId);
     expect(after.meshIds).toHaveLength(after.summary!.published);

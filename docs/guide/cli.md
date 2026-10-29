@@ -1811,6 +1811,11 @@ The optional `ifc-lite.retained-report/1` JSON contains engine identity, setting
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
 refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.
+Byte-identical eligible mapped products meeting the loaded engine’s minimum
+occurrence count carry
+`instanceGroup: { templateProductId, key }`. This describes sharing candidates;
+the viewer separately verifies each pairing in bounded batches. OBJ always
+bakes every occurrence, regardless of its instance group.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
 
@@ -1822,7 +1827,7 @@ opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their
 lists `IfcAppearance, MaterialLayers`. Every published product discharges
 `SurfaceNormals` and `PersistentFaces`; layer and appearance obligations still prevent final publication.
 Every part reports persistent source face keys (`#item[>#opening]:role`) with triangle counts
-and areas; unproven faces refuse `face_provenance_unproven`. Color, material and instance
+and areas; unproven faces refuse `face_provenance_unproven`. Color and material
 channels remain reserved for their independently qualified presentation slices.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°

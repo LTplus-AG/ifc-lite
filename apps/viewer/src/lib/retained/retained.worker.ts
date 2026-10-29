@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { loadRetainedEngine, type RetainedEngine } from '../../../../../packages/wasm/retained.js';
-import { convertMeshCollectionToBatch } from '../../../../../packages/geometry/src/geometry-coordinate';
+import { RetainedInstancing } from './retainedInstancing';
 import type { RetainedModelSession } from '../../../../../packages/wasm/pkg-retained/ifc-lite.js';
 import type { RetainedHostRequest, RetainedHostResponse } from './retained-protocol';
 
@@ -24,27 +24,16 @@ self.onmessage = async ({ data }: MessageEvent<RetainedHostRequest>) => {
     engine ??= await loadRetainedEngine({ moduleUrl: '/retained-engine/pkg-retained/ifc-lite.js' });
     phase = 'startup';
     session ??= new engine.RetainedModelSession();
+    const instancing = new RetainedInstancing(engine.encodeInstancedShard, runId, send);
     const pending = session.run(data.bytes, options, (event) => {
       phase = 'worker_crash';
-      if (event.kind === 'published') {
-        if (!('meshes' in event)) throw new Error('Retained session published shape parts on a view run');
-        // Frees every MeshDataJs and the collection, including on throw.
-        const meshes = convertMeshCollectionToBatch(event.meshes);
-        const buffers = new Set<ArrayBuffer>();
-        for (const mesh of meshes) {
-          for (const array of [mesh.positions, mesh.normals, mesh.indices, mesh.uvs, mesh.texture?.rgba]) {
-            if (array?.buffer instanceof ArrayBuffer) buffers.add(array.buffer);
-          }
-        }
-        send({ ...event, runId, meshes }, [...buffers]);
-      } else {
-        send({ ...event, runId });
-      }
+      instancing.event(event);
     });
     // wasm-bindgen copied the input synchronously; retain no JS source during
     // the awaited product stream. The caller keeps its own original buffer.
     data.bytes = new Uint8Array();
     await pending;
+    instancing.flush();
     send({ runId, kind: 'workerMemory', wasmHeapBytes: engine.get_memory().buffer.byteLength });
     send({ runId, kind: 'complete', cancelled: false });
   } catch (error) {

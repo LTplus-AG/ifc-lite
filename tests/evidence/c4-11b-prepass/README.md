@@ -3,7 +3,7 @@
 Stack: #8329 on structural #8328, itself on C4-11a #8320. No merge authorization.
 Baseline: `06cf74244610e5272ffbff53b54db88e1eac0675`.
 
-`api/mod.rs`: 949 → 492 lines in the structural layer; prepass.rs: 583 → 98.
+`api/mod.rs`: 949 → 492 lines in the structural layer; prepass.rs: 583 → 92.
 The 501-line pre_pass_streaming_impl row and prepass module row are deleted;
 module digest is re-pinned downward. Scan/meta, event payloads, worker columns
 and post-scan emission have separate homes, each under 150 lines. JS APIs,

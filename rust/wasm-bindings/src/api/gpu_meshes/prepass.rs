@@ -28,17 +28,11 @@ impl IfcAPI {
     ///   1. Builds the entity index incrementally from the same scan that
     ///      collects geometry jobs (a separate index scan would double
     ///      wall-clock).
-    ///   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
-    ///      first ~50 geometry jobs have been collected, resolves
-    ///      `unitScale` + `rtcOffset` and emits a `meta` callback so the
-    ///      JS host can spin up geometry process workers.
-    ///   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
-    ///      the meta phase already buffered some).
-    ///   4. Emits `complete` with the total job count at end of scan.
-    ///
-    /// On a 986 MB / 14 M-entity file this drops time-to-first-geometry
-    /// from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
-    /// (first 100 K bytes scanned + meta + first chunk).
+    ///   2. At the 50th accepted geometry job, resolves unit scale + RTC
+    ///      (including a project not yet scanned) and emits `meta`.
+    ///   3. After scan completion, emits the complete entity index, styles,
+    ///      worker columns and chunked jobs with affinity keys.
+    ///   4. Emits `complete` with the total job count.
     ///
     /// The callback receives a single `JsValue` argument shaped as one of:
     ///   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`

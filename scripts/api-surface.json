@@ -6428,6 +6428,7 @@
   "@ifc-lite/flow-nodes/influx": [
     "InfluxRequestError: class",
     "InfluxSelection: interface",
+    "containsInfluxToken: function",
     "dataTable: function",
     "fetchInfluxReadings: function",
     "latestPerSeries: function",

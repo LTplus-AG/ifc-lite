@@ -77,7 +77,7 @@ test('#8297 short and URI-encoded tokens skip persistence without rewriting fiel
   saveInfluxConfig(previous, 'safe-token');
   const saved = localStorage.getItem(INFLUX_CONFIG_KEY);
   assert.deepEqual(JSON.parse(saved!), previous);
-  for (const [token, url] of [['x', 'https://influx.example.com'], ['a/b', 'https://example.org/a%2Fb']]) {
+  for (const [token, url] of [['x', 'https://influx.example.com'], ['a/b', 'https://example.org/a%2Fb'], ['a/b', 'https://example.org/a%2fb']]) {
     const config = { ...previous, url };
     saveInfluxConfig(config, token);
     assert.equal(localStorage.getItem(INFLUX_CONFIG_KEY), saved);

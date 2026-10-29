@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { InfluxSelection } from '@ifc-lite/flow-nodes/influx';
+import { containsInfluxToken, type InfluxSelection } from '@ifc-lite/flow-nodes/influx';
 
 export const INFLUX_CONFIG_KEY = 'ifc-lite.influx.experimental.v1';
 export const DEFAULT_INFLUX_CONFIG = {
@@ -24,9 +24,8 @@ export function readInfluxConfig(): InfluxConfig {
 }
 
 export function saveInfluxConfig(config: InfluxConfig, token: string): void {
-  const secrets = token ? [...new Set([token, encodeURIComponent(token)])] : [];
   // Refused connection fields must not overwrite the last usable configuration.
-  if (secrets.some(secret => configFields.some(key => config[key].includes(secret)))) return;
+  if (configFields.some(key => containsInfluxToken(config[key], token))) return;
   const safe = Object.fromEntries(configFields.map(key => [key, config[key]]));
   localStorage.setItem(INFLUX_CONFIG_KEY, JSON.stringify(safe));
 }

@@ -15,6 +15,15 @@ function influxTokenForms(token: string): string[] {
   return token ? [...new Set([token, encodeURIComponent(token)])] : [];
 }
 
+/** True when `value` carries the raw or URI-encoded token. Percent-escape hex
+ * digits are case-insensitive, so `%2f` matches `%2F` as well. */
+export function containsInfluxToken(value: string, token: string): boolean {
+  if (!token) return false;
+  if (value.includes(token)) return true;
+  const encoded = encodeURIComponent(token);
+  return encoded !== token && value.toLowerCase().includes(encoded.toLowerCase());
+}
+
 /** Share raw/URI-encoded redaction for every surfaced error. */
 function redactInfluxText(message: string, token: string): string {
   for (const secret of influxTokenForms(token)) {
@@ -35,13 +44,9 @@ export function parseInfluxCsv(csv: string, selection: InfluxSelection, token: s
 function parseInfluxResponse(csv: string, selection: InfluxSelection, token: string): { history: Table; latest: Table } {
   if (new TextEncoder().encode(csv).length > 2 * 1024 * 1024) throw new Error('InfluxDB response exceeds 2 MiB');
   const parsed = parseCsvText(csv, ',', true);
-  const secrets = influxTokenForms(token);
-  // Percent-escape hex digits are case-insensitive, so also match `%2f` for `%2F`.
-  const lowered = secrets.filter(secret => secret.includes('%')).map(secret => secret.toLowerCase());
-  const containsToken = (cell: string) => secrets.some(secret => cell.includes(secret))
-    || (lowered.length > 0 && lowered.some(secret => cell.toLowerCase().includes(secret)));
+  const containsToken = (cell: string) => containsInfluxToken(cell, token);
   // Decode CSV escaping first, then reject before grouping can change identity.
-  if (secrets.length && (parsed.header.some(containsToken) || parsed.rows.some(row => row.fields.some(containsToken)))) {
+  if (token && (parsed.header.some(containsToken) || parsed.rows.some(row => row.fields.some(containsToken)))) {
     throw new InfluxRequestError('data', redactInfluxText('InfluxDB response contains credentials', token));
   }
   if (parsed.rows.some(row => row.fieldCountMismatch)) throw new Error('Malformed or multi-table CSV response');
@@ -64,7 +69,7 @@ export class InfluxRequestError extends Error {
 /** True when any selection value or tag (sent in the URL or Flux body) carries the token. */
 export function selectionContainsToken(selection: InfluxSelection, token: string): boolean {
   const publicValues = [...Object.values(selection), ...Object.entries(selection.tags ?? {}).flat()];
-  return influxTokenForms(token).some(secret => publicValues.some(value => typeof value === 'string' && value.includes(secret)));
+  return publicValues.some(value => typeof value === 'string' && containsInfluxToken(value, token));
 }
 
 /** Request/response byte and time bounds supplement the server-side sample cap.

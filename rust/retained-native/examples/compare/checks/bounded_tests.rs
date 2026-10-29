@@ -152,6 +152,19 @@ fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_missing_and_stale() 
 }
 
 #[test]
+fn m6_7955_hand_rows_outside_the_compared_universe_are_not_stale() {
+    use crate::hand_volumes::{HandVolumes, REGISTERED};
+    // A `--manifest` corpus run never compares the synthetic fixture.
+    let mut corpus=HandVolumes::parse(REGISTERED).unwrap();
+    corpus.visit("tests/models/ara3d/AC20-FZK-Haus.ifc");
+    corpus.finish().unwrap();
+    // Visiting the registered fixture without consuming its row is stale.
+    let mut unconsumed=HandVolumes::parse(REGISTERED).unwrap();
+    unconsumed.visit("tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
+    assert!(unconsumed.finish().unwrap_err().contains("1004"));
+}
+
+#[test]
 fn m6_7955_hand_authority_rejects_malformed_tables() {
     use crate::hand_volumes::{HandVolumes, REGISTERED};
     for text in ["null".to_owned(),"{".to_owned(),

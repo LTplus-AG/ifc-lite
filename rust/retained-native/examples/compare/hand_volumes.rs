@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Preregistered closed-form authorities; unused rows are errors.
+//! Preregistered closed-form authorities; unused rows of a compared fixture are errors.
 use serde::{Deserialize, Deserializer, de::{self, MapAccess, Visitor}};
-use std::{collections::BTreeMap, fmt};
+use std::{collections::{BTreeMap, BTreeSet}, fmt};
 pub const REGISTERED: &str = include_str!("../../../../tests/fixtures/cli-retained/m6-hand-volumes.json");
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,7 +27,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Unique<T> {
         d.deserialize_map(MapVisitor(std::marker::PhantomData))
     }
 }
-pub struct HandVolumes { remaining: BTreeMap<(String, u32), f64> }
+pub struct HandVolumes { remaining: BTreeMap<(String, u32), f64>, visited: BTreeSet<String> }
 impl HandVolumes {
     pub fn parse(text: &str) -> Result<Self, String> {
         let rows: Unique<Unique<Entry>> = serde_json::from_str(text).map_err(|e| format!("malformed hand volumes: {e}"))?;
@@ -46,13 +46,19 @@ impl HandVolumes {
                 remaining.insert((path.clone(), id), entry.volume);
             }
         }
-        Ok(Self { remaining })
+        Ok(Self { remaining, visited: BTreeSet::new() })
     }
+    /// Marks a fixture as compared, so its unused rows are stale at `finish`.
+    pub fn visit(&mut self, path: &str) { self.visited.insert(path.to_owned()); }
     pub fn take(&mut self, path: &str, id: u32) -> Option<f64> {
+        self.visit(path);
         self.remaining.remove(&(path.to_owned(), id))
     }
+    /// Rows of fixtures outside this run's universe (a `--manifest` corpus run)
+    /// are not stale; rows of a compared fixture that no product consumed are.
     pub fn finish(&self) -> Result<(), String> {
-        if self.remaining.is_empty() { Ok(()) }
-        else { Err(format!("stale/unseen hand-volume rows: {:?}", self.remaining.keys().collect::<Vec<_>>())) }
+        let stale = self.remaining.keys().filter(|(path, _)| self.visited.contains(path)).collect::<Vec<_>>();
+        if stale.is_empty() { Ok(()) }
+        else { Err(format!("stale/unseen hand-volume rows: {stale:?}")) }
     }
 }

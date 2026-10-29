@@ -107,6 +107,7 @@ fn compare(
 ) -> Result<(), Error> {
     let bytes = std::fs::read(path)?;
     let model = path.to_string_lossy();
+    hand.visit(&model);
     let start = Instant::now();
     let exact = ifc_lite_processing::process_geometry(&bytes);
     let exact_ms = start.elapsed().as_secs_f64() * 1000.;

@@ -233,6 +233,15 @@ Keeping the record predicate inline and classification lazy for index-only
 shards lets the shared discovery owner preserve the existing hot-path work.
 The qualification uses the C4-4b identity runner; it is not a browser timing result.
 
+Round-two lesson: carrying the geometry-admission reason through the hot
+`Discovery::observe` return changed code generation and regressed the default
+instruction gate. Replacing the quick-only name lookup with a resolved-type
+predicate also regressed that gate. Retain `Option<IfcType>` and the original
+quick-only name lookup: quick metadata pays one additional classification per
+admitted job, while the default path retains the qualified production code.
+This is a deliberate scope tradeoff, not a quick-metadata optimization.
+
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**

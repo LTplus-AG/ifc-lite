@@ -1034,6 +1034,11 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8266: preserve resident handle modules and option fields; ignore
+          # placement stripping so the explicit-projection witness fails assertions.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/handle-api-8266/behaviour.oracle.patch | grep -Fxq 'tests/evidence/handle-api-8266/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/handle-api-8266/behaviour.oracle.patch
+              --test rust/diff/tests/placement_geometry.rs)
           # #8303: preserve native diff modules/exports; substitute base rows for
           # head result rows so distinct per-side refs fail real assertions.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/native-diff-8303/behaviour.oracle.patch | grep -Fxq 'tests/evidence/native-diff-8303/behaviour.oracle.patch'; then

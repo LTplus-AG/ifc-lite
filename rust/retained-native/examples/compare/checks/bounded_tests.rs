@@ -78,3 +78,26 @@ fn m6_7955_opened_bounded_result_never_uses_opening_only_volume() {
         "wrong opening-only authority: {:?}",report.violations);
     assert!(report.violations.iter().any(|v|v.contains("bounded_curved_volume_unavailable")),"combined source must fail closed");
 }
+
+#[test]
+fn m6_7955_linear_pbhs_solid_difference_requires_volume_authority() {
+    let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");return;
+    };
+    let base=include_str!("../../../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
+    // #307 is an interior linear PBHS; #320 is a distant, disjoint solid.
+    let text=base.replace("#333=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#307);",
+        "#9333=IFCBOOLEANRESULT(.DIFFERENCE.,#12,#307);\n#333=IFCBOOLEANRESULT(.DIFFERENCE.,#9333,#320);");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,1000).unwrap();
+    assert!(!e.curved);assert!(e.section_volume.is_none());
+    let uncut=text.replace("'CSG',(#333)","'SweptSolid',(#12)");
+    let mut products=Vec::new();
+    run_model_native(SourceBundle::new(uncut.as_bytes().to_vec()),&worker,
+        &ModelOptions{ids:Some([1000].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
+    let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("uncut box must publish")};
+    let t=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
+    let rows=check(&shape,Some(&e),&t);
+    assert!(rows.iter().filter(|r|!r.family.ends_with("volume_unavailable")).all(|r|r.pass));
+    assert!(rows.iter().any(|r|r.gated&&!r.pass),"uncut box passed without volume authority");
+}

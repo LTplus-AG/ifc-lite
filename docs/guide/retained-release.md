@@ -60,7 +60,22 @@ worker executable or WASM. Core and clash verified their archives and passed
 runtime, processing, landxml, export, ffi and wasm failed with exit 101 on
 unpublished 26.0.0 prerequisites. Runtime's retained-feature dry-run failed at
 the same geometry-version resolution. Source remained clean and unchanged.
-The combined graph dry-run is a separate pending qualification, not a claimed pass.
+At `e5760aa0958df8d2dd2037085ac17ddfdd9e9e34`, both combined graph dry-runs
+passed: all nine selected archives built in default mode and with the retained
+runtime/processing/browser features. Cargo explicitly aborted upload. The
+source stayed clean and unchanged. This verifies the packaged graph without
+registry publication; it does not remove the standalone registry prerequisite
+or authorize enrolling the runtime in automatic publishing.
+
+After removing runtime from the automatic release list at
+`09ee32ce3c669eef81dd87ff9fe330812ae3fd65`, PC qualification passed the real
+`node scripts/check-rust-semver.mjs` gate (all eight published crates compared
+against crates.io) and `node scripts/check-rust-api-surface.mjs` (eight crates,
+720 items). Receipts are `c581a7d7-5508-4a00-941f-3ccf6443f722` and
+`e1441266-edea-41aa-b1e7-916368be7751`; both confirm unchanged source. The
+release-order/version-sync fixture checks and major-offset gate also passed.
+`publish = false` remains removed for explicit bootstrap qualification; the
+automatic list and both floors remain at their original eight crates.
 
 ## First crates.io publication (human operation)
 

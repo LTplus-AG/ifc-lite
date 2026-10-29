@@ -110,13 +110,28 @@ still determines which notices are legally required for the final artifact.
 
 The file is standalone npm archive content, not imported JavaScript, a runtime
 fetch, or input to WASM compilation. It increases npm archive contents (the
-notice is about 955 KB uncompressed); it does not enter the default viewer or
+notice is 955,003 bytes uncompressed); it does not enter the default viewer or
 WASM code bundle. Default Rust source, dependency lock and compiler flags are
 unchanged by this branch. The only `build-wasm.sh` changes copy licence texts
-inside `BUILD_RETAINED=1`. This establishes unchanged compilation inputs, **not
-an observed base-versus-branch WASM SHA match**; no paired default build has yet
-been recorded. The complete npm tarball is intentionally not byte-identical,
-because it now includes this notice file.
+inside `BUILD_RETAINED=1`.
+
+A paired canonical default build on PC compared base
+`853d7c9781b34fb41c83425d38de58c39141fc69` with
+`4ffc2fb9cfdcb722a0ca66fd65c8a14010154669`, using
+`node scripts/retained-default-identity.mjs <base>` and the pinned toolchain.
+Receipt `c6305193-2d01-4cb4-b00c-37ae9500eb59` reports exit 0, unchanged source,
+and identical bytes for default JS, WASM and both declaration files:
+
+| Default artifact | Bytes | SHA-256 (both builds) |
+|---|---:|---|
+| `ifc-lite_bg.wasm` | 10,318,360 | `ef5bbf31d0a12687bd4847416df8b6d0c3eee583402e09f33126ac8416c2522d` |
+| `ifc-lite.js` | 310,855 | `7a04008b187d832495575448d00a449a71725d87820474df806bc4e6ca4666c1` |
+
+This measures the default WASM package runtime, not a rebuilt viewer application
+or end-to-end model benchmark. The complete npm tarball is intentionally not
+byte-identical because it now includes this notice file. The original receipt
+and hash-verified output log are retained in the release handoff; the fleet's
+separate storage-finalization status remains `evidence_pending`.
 
 ## Open release decisions and evidence gaps
 
@@ -162,5 +177,5 @@ an input hash mismatch. CI's drift check requires no SDK or network.
 
 Performance verdict: packaging-only; no execution or compiler flags changed.
 The build-script additions copy licence texts only inside `BUILD_RETAINED=1`.
-Default model-output identity is expected from unchanged code, not measured by
-this slice; no end-to-end speed or byte-identity benchmark claim is made.
+Default JS/WASM artifact byte identity was measured as recorded above. Model
+output was not benchmarked by this slice; no end-to-end speed claim is made.

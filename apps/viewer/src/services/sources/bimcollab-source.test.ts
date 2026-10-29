@@ -135,14 +135,37 @@ describe('ViewerBimcollabProvider sign-out', () => {
   it('an explicit sign-in outranks a stale sign-out marker left in another context', async () => {
     const provider = new ViewerBimcollabProvider(() => config(), (async () => Response.json({ locations: [] })) as typeof fetch);
     const ctxA = memoryCtx();
-    await provider.auth.signOut(ctxA);
-    await provider.auth.signIn(memoryCtx());
-    // ctxA still holds the old marker; the later explicit sign-in wins.
-    assert.ok(await provider.auth.restore(ctxA));
-    assert.deepEqual((await provider.listProjects(ctxA)).items, []);
-    // Signing out again applies everywhere.
-    await provider.auth.signOut(memoryCtx());
-    assert.equal(await provider.auth.restore(ctxA), null);
+    const now = Date.now;
+    try {
+      Date.now = () => 1_000;
+      await provider.auth.signOut(ctxA);
+      Date.now = () => 2_000;
+      await provider.auth.signIn(memoryCtx());
+      // ctxA still holds the older marker; the later explicit sign-in wins.
+      assert.ok(await provider.auth.restore(ctxA));
+      assert.deepEqual((await provider.listProjects(ctxA)).items, []);
+      // Signing out again applies everywhere.
+      Date.now = () => 3_000;
+      await provider.auth.signOut(memoryCtx());
+      assert.equal(await provider.auth.restore(ctxA), null);
+    } finally { Date.now = now; }
+  });
+
+  it('honours a sign-out written in another tab AFTER this session signed in', async () => {
+    const provider = new ViewerBimcollabProvider(() => config(), (async () => Response.json({ locations: [] })) as typeof fetch);
+    const shared = memoryCtx();
+    const now = Date.now;
+    try {
+      Date.now = () => 1_000;
+      await provider.auth.signIn(shared);
+      assert.ok(await provider.auth.restore(shared));
+      // Tab B (its own provider instance, same shared storage) signs out later.
+      const otherTab = new ViewerBimcollabProvider(() => config(), (async () => Response.json({ locations: [] })) as typeof fetch);
+      Date.now = () => 2_000;
+      await otherTab.auth.signOut(shared);
+      assert.equal(await provider.auth.restore(shared), null);
+      await assert.rejects(provider.listProjects(shared), BimcollabNotConnectedError);
+    } finally { Date.now = now; }
   });
 
   it('remembers every signed-out account: signing out of B does not sign A back in', async () => {

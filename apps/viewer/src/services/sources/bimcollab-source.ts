@@ -86,17 +86,15 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
   readonly auth: SourceAuth;
   private bound: BoundSession | null = null;
   /**
-   * Mirror of the persisted sign-out set. With localStorage blocked the host
-   * falls back to per-context memory, which the next context cannot read; this
-   * keeps a sign-out effective for the provider's lifetime regardless.
+   * Sign-out markers are `account -> time signed out`, persisted in the source's
+   * storage and mirrored here (with localStorage blocked, the host's fallback
+   * storage is per context, so the mirror keeps a sign-out for the provider's
+   * lifetime). `signedInAt` records explicit sign-ins in this session. An account
+   * is signed out when its newest marker is at or after its last sign-in: a
+   * later sign-out from another tab wins, a stale marker from before does not.
    */
-  private readonly signedOutInSession = new Set<string>();
-  /**
-   * Accounts explicitly signed in during this session. With per-context
-   * fallback storage, another context may still hold an older sign-out marker
-   * for the account; an explicit sign-in outranks it until signed out again.
-   */
-  private readonly signedInInSession = new Set<string>();
+  private readonly signedOutInSession = new Map<string, number>();
+  private readonly signedInAt = new Map<string, number>();
 
   constructor(
     private readonly loadConfig: () => BcfServerConfig | null = loadBcfServerConfig,
@@ -110,8 +108,10 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
         if (!identity) throw new BimcollabNotConnectedError();
         const key = this.sessionKey();
         if (key) {
-          this.signedInInSession.add(key);
-          await this.writeSignedOut(ctx, (await this.readSignedOut(ctx)).filter(k => k !== key));
+          this.signedInAt.set(key, Date.now());
+          const markers = await this.readSignedOut(ctx);
+          markers.delete(key);
+          await this.writeSignedOut(ctx, markers);
         }
         return identity;
       },
@@ -121,9 +121,10 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
         this.bound = null;
         const key = this.sessionKey();
         if (!key) return;
-        this.signedInInSession.delete(key);
-        const signedOut = await this.readSignedOut(ctx);
-        if (!signedOut.includes(key)) await this.writeSignedOut(ctx, [...signedOut, key]);
+        this.signedInAt.delete(key);
+        const markers = await this.readSignedOut(ctx);
+        markers.set(key, Date.now());
+        await this.writeSignedOut(ctx, markers);
       },
     };
   }
@@ -133,34 +134,39 @@ export class ViewerBimcollabProvider implements FileSourceProvider {
     return session ? [session.config.serverUrl, session.config.userId, session.spaceGuid].join('\u0000') : null;
   }
 
-  /**
-   * Every account signed out of this source, so signing out of B never
-   * forgets that A was signed out. A different account is not signed out.
-   */
-  private async readSignedOut(ctx: PluginContext): Promise<string[]> {
+  /** Persisted and in-session markers merged, keeping each account's newest sign-out. */
+  private async readSignedOut(ctx: PluginContext): Promise<Map<string, number>> {
+    const markers = new Map(this.signedOutInSession);
     const raw = await ctx.storage.get(SIGNED_OUT_KEY);
-    if (raw === undefined) return [...this.signedOutInSession];
+    if (raw === undefined) return markers;
     try {
       const parsed: unknown = JSON.parse(raw);
-      const stored = Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : [];
-      return [...new Set([...stored, ...this.signedOutInSession])];
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [key, at] of Object.entries(parsed)) {
+          if (typeof at === 'number' && at > (markers.get(key) ?? -1)) markers.set(key, at);
+        }
+      }
     } catch (error) {
       console.warn('[bimcollab-source] ignoring unreadable sign-out state', error instanceof Error ? error.name : error);
-      return [...this.signedOutInSession];
     }
+    return markers;
   }
 
-  private async writeSignedOut(ctx: PluginContext, keys: readonly string[]): Promise<void> {
+  private async writeSignedOut(ctx: PluginContext, markers: ReadonlyMap<string, number>): Promise<void> {
     this.signedOutInSession.clear();
-    for (const key of keys) this.signedOutInSession.add(key);
-    if (keys.length === 0) await ctx.storage.delete(SIGNED_OUT_KEY);
-    else await ctx.storage.set(SIGNED_OUT_KEY, JSON.stringify(keys));
+    for (const [key, at] of markers) this.signedOutInSession.set(key, at);
+    if (markers.size === 0) await ctx.storage.delete(SIGNED_OUT_KEY);
+    else await ctx.storage.set(SIGNED_OUT_KEY, JSON.stringify(Object.fromEntries(markers)));
   }
 
   private async signedOut(ctx: PluginContext): Promise<boolean> {
     const key = this.sessionKey();
-    if (key === null || this.signedInInSession.has(key)) return false;
-    return (await this.readSignedOut(ctx)).includes(key);
+    if (key === null) return false;
+    const signedOutAt = (await this.readSignedOut(ctx)).get(key);
+    if (signedOutAt === undefined) return false;
+    const signedInAt = this.signedInAt.get(key);
+    // A tie counts as signed out: the safe side.
+    return signedInAt === undefined || signedOutAt >= signedInAt;
   }
 
   private async active(ctx: PluginContext): Promise<BimcollabProvider> {

@@ -19,6 +19,6 @@ pub(crate) fn join(resolved: &mut ResolvedPrepass, decoder: &mut EntityDecoder) 
             }
         }
         resolved.geometry_style_index.entry(material).or_insert_with(|| info.unwrap_or(
-            crate::style::GeometryStyleInfo { color, ..Default::default() }));
+            crate::style::GeometryStyleInfo { color, shading_color: None, material_name: None }));
     }
 }

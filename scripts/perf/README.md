@@ -4,6 +4,19 @@
 
 # Performance diagnosis kit
 
+## C4-11a content-install reset contract (#7782)
+
+This is a correctness change at explicit browser load boundaries. Prepass and
+external-index installation now discard all derived state together, while source
+bytes and pending finalize finishes keep their separate input lifetime. Worker
+columns installed before source bytes remain valid; clearing them from the byte
+setter would force rebuilds and lose the prepass's injected plan. Lazy batch
+index construction also preserves inputs supplied for that batch.
+
+Verdict: no measured end-to-end worker-pool timing or speedup claim. C4-0
+qualifies single-file output, not browser wall time or whole-host memory.
+Cache/slot restructuring and any measured optimization remain C4-11b work.
+
 ## C4-7a-R shared type geometry plan (#7782)
 
 The shared discovery-span plan passed the native instruction gate against

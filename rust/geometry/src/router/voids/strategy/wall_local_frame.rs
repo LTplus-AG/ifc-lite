@@ -182,11 +182,9 @@ fn openings_in_frame(ctx: &VoidContext, axes: &[Vector3<f64>; 3], center: Vector
     let z = Vector3::new(0.0, 0.0, 1.0);
     let mut local_openings: Vec<CutterKind> = Vec::with_capacity(ctx.merged_openings.len());
     for op in &ctx.merged_openings {
-        let cutter = match op {
-            CutterKind::DiagonalRectangular(m, _) => m,
-            CutterKind::NonRectangular(m, _, _, _) => m,
-            CutterKind::Rectangular(..) => return None,
-        };
+        let opening = op.cutter();
+        // An AABB-only `Rectangular` opening has no mesh to carry into the frame.
+        let cutter = opening.mesh()?;
         let (lmn, lmx) = project_aabb_in_frame(cutter, axes, center)?;
         let in_frame =
             |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
@@ -196,11 +194,7 @@ fn openings_in_frame(ctx: &VoidContext, axes: &[Vector3<f64>; 3], center: Vector
         // cutter: hardcoding the wall normal would push a misaligned
         // opening's flush/short cap along the wrong axis and carve the wrong
         // prism (#1270 review).
-        let frame_depth = match op {
-            CutterKind::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
-            CutterKind::NonRectangular(_, _, _, d) => d.map(in_frame),
-            CutterKind::Rectangular(..) => None,
-        };
+        let frame_depth = opening.depth().map(in_frame);
         // Whether THIS opening's own oriented box is axis-aligned in the
         // wall frame. The frame is seeded from the FIRST rotated opening
         // (#1167); a second opening tilted differently *in plane* is NOT
@@ -209,14 +203,7 @@ fn openings_in_frame(ctx: &VoidContext, axes: &[Vector3<f64>; 3], center: Vector
         // wall frame may take the fast rectangular cut; everything else —
         // brep/curved voids and frame-misaligned boxes alike — keeps its
         // exact (un-rotated, centred) mesh for the subtract.
-        let frame_aligned = match op {
-            CutterKind::DiagonalRectangular(_, f) => {
-                is_axis_aligned_direction(&in_frame(f.depth))
-                    && is_axis_aligned_direction(&in_frame(f.cross_a))
-                    && is_axis_aligned_direction(&in_frame(f.cross_b))
-            }
-            _ => false,
-        };
+        let frame_aligned = opening.frame().is_some_and(|frame| frame.is_axis_aligned_in(axes));
         if frame_aligned {
             // Preserve THIS cutter's authored penetration axis. The new
             // #3977 selector also admits vertically extruded strips, whose
@@ -227,13 +214,8 @@ fn openings_in_frame(ctx: &VoidContext, axes: &[Vector3<f64>; 3], center: Vector
             // A cutter authored along the wall normal itself keeps +Z too:
             // handing the rectangular cut an antiparallel (-Z) depth flips
             // its cap extension and tears the host (rvt01 #10191 census).
-            let rect_depth = match op {
-                CutterKind::DiagonalRectangular(_, frame)
-                    if frame.depth_is_authored
-                        && frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) =>
-                {
-                    frame_depth
-                }
+            let rect_depth = match opening.authored_depth() {
+                Some(_) if frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) => frame_depth,
                 _ => Some(z),
             };
             local_openings.push(CutterKind::Rectangular(lmn, lmx, rect_depth));

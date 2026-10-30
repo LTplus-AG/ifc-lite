@@ -12,9 +12,12 @@
 //! number of `on_batch` interleaved with `on_color_update`. `on_frame` fires
 //! before the first `on_batch`, also for a file with no jobs. A
 //! `on_color_update` replays deferred styles after the first batch, never
-//! before it. Events fire once per chunk, never per element.
+//! before it. Events fire once per chunk, never per element. With
+//! `Features::finishes` on, `on_finishes` fires immediately before every
+//! `on_batch`, also for a batch whose meshes author no finish.
 
 use crate::mesh_frame::MeshFrame;
+use crate::style::SpecularMaterial;
 use crate::types::mesh::MeshData;
 use crate::types::response::QuickMetadataBootstrap;
 use std::sync::OnceLock;
@@ -49,6 +52,12 @@ pub trait ProcessingSink {
     fn on_batch(&mut self, _meshes: &[MeshData], _processed: usize, _total: usize) {}
     /// Colours resolved after the first batch, when styles were deferred.
     fn on_color_update(&mut self, _updates: &[(u32, [f32; 4])]) {}
+    /// The IFC-authored finish of each mesh of the `on_batch` that follows,
+    /// when `Features::finishes` is on: `finishes[i]` belongs to its
+    /// `meshes[i]`, `None` where nothing authored one. The join is
+    /// [`ModelFinishes`](crate::style::ModelFinishes)'s, over the pass's own
+    /// scan and index.
+    fn on_finishes(&mut self, _finishes: &[Option<SpecularMaterial>]) {}
 }
 
 impl ProcessingSink for () {}

@@ -53,8 +53,9 @@ pub(super) struct Facts {
     pub(super) georeferencing_candidates: Vec<(u32, IfcType)>,
     pub(super) times: Times,
     /// Kept alive to the end of the pass, like the router: freeing them is not
-    /// part of any timed phase.
-    pub(super) _prepass_spans: crate::prepass::PrepassSpans,
+    /// part of any timed phase. The pass reads the styled-item spans for
+    /// `Features::finishes`.
+    pub(super) prepass_spans: crate::prepass::PrepassSpans,
     pub(super) _prepass_rest: ResolvedPrepass,
     pub(super) _rel_defines_spans: Vec<(usize, usize)>,
     pub(super) router: GeometryRouter,
@@ -204,7 +205,7 @@ pub(super) fn resolve<'c>(
                 preprocess: preprocess_time,
                 parse: parse_time,
             },
-            _prepass_spans: spans,
+            prepass_spans: spans,
             _prepass_rest: prepass,
             _rel_defines_spans: rel_defines_spans,
             router,

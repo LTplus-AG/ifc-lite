@@ -60,6 +60,7 @@ pub mod prepass;
 mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod prepass_type_material;
+mod prepass_wire;
 mod processor;
 mod product_geometry_audit;
 pub use product_geometry_audit::ProductGeometryAudit;

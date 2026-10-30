@@ -9,12 +9,13 @@
 #   bash tests/evidence/c2-8a/qualify.sh instructions  # per-phase Ir
 #   bash tests/evidence/c2-8a/qualify.sh features      # gated failing set
 #   bash tests/evidence/c2-8a/qualify.sh gates         # clippy/tests/ratchets/wasm32
+#   bash tests/evidence/c2-8a/qualify.sh all           # identity + features + instructions
 #
 # C28_BASE overrides the base commit (default: main 70c91e8e61, the base of
 # PR-1; each later PR passes its own stacked base). The base is exported with
 # `git archive` next to the head checkout and both sides run the same harness.
 set -euo pipefail
-mode=${1:?usage: qualify.sh identity|instructions|features|gates}
+mode=${1:?usage: qualify.sh identity|instructions|features|gates|all}
 base=$(git rev-parse --verify "${C28_BASE:-70c91e8e617402ea2ca8949117fa2acbe61d97b7}^{commit}")
 head_dir=$PWD
 fixtures=(
@@ -25,6 +26,15 @@ fixtures=(
 echo "C28 mode=$mode head=$(git rev-parse HEAD) base=$base host=$(hostname)"
 git diff --quiet && git diff --cached --quiet || { echo 'head checkout is dirty'; exit 2; }
 rustc --version
+
+if [[ $mode == all ]]; then
+  # identity, features and instructions in sequence (one scratch at a time).
+  status=0
+  for sub in identity features instructions; do
+    bash "$0" "$sub" || { echo "C28_ALL $sub FAILED"; status=1; }
+  done
+  exit $status
+fi
 
 if [[ $mode == gates ]]; then
   # Head-only gates; every step runs, the verdict lists each exit status.

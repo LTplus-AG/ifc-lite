@@ -74,7 +74,12 @@ fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option<(Frame,Vec
     let items=rep.ref_list_at(slot::IfcRepresentation::ITEMS)?;
     let op=d.decode_by_id(target).ok()?;
     use slot::IfcCartesianTransformationOperator as O;
-    let two_d=matches!(op.ifc_type,IfcType::IfcCartesianTransformationOperator2D|IfcType::IfcCartesianTransformationOperator2DnonUniform);
+    // Reject unsupported records before any typed-slot access (Axis3 is a 3D slot).
+    let two_d=match op.ifc_type {
+        IfcType::IfcCartesianTransformationOperator2D|IfcType::IfcCartesianTransformationOperator2DnonUniform=>true,
+        IfcType::IfcCartesianTransformationOperator3D|IfcType::IfcCartesianTransformationOperator3DnonUniform=>false,
+        _=>return None,
+    };
     let z=if two_d {[0.,0.,1.]} else {
         direction(d,op.ref_at(slot::IfcCartesianTransformationOperator3D::AXIS3),[0.,0.,1.])?
     };
@@ -95,8 +100,7 @@ fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option<(Frame,Vec
              op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3).unwrap_or(s)),
         IfcType::IfcCartesianTransformationOperator2DnonUniform=>
             (op.real_at(slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2).unwrap_or(s),s),
-        IfcType::IfcCartesianTransformationOperator3D|IfcType::IfcCartesianTransformationOperator2D=>(s,s),
-        _=>return None,
+        _=>(s,s),
     };
     let matrix=columns(x.map(|v|v*s),y.map(|v|v*s2),z.map(|v|v*s3),d.point3(op.ref_at(O::LOCAL_ORIGIN)?).ok()?);
     Some((multiply(&matrix,&inverse_rigid(&origin)),items))

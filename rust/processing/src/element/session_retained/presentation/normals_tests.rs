@@ -105,10 +105,8 @@ fn m11_n_7955_frame_scale_mirror_and_large_translation_precede_normals() {
     let mut p = fan(&[30.], &[90.]);
     p.world_from_object = [-2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 2.6e6,-1e20,7e15,1.];
     // Low-level normals follow the transformed triangle winding. This is NOT
-    // an outward-normal claim for an unbaked frame: M10 bakes the reflection into
-    // positions and winding before normals are generated, and `require_frame`
-    // refuses any part still carrying a negative frame. Translation cancels
-    // before this transform.
+    // an outward-normal claim: mirrored publication refuses until M10 flips
+    // winding and normals together. Translation cancels before this transform.
     assert!(!positive_frame(&p).unwrap());
     // Transformed cross product: (0, 4*sin(30), -3*cos(30)).
     let expected = [0.,2.,-3.*30_f64.to_radians().cos()];

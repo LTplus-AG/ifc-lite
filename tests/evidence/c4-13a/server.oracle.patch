@@ -1,0 +1,11 @@
+--- a/apps/server/src/types/mesh.rs
++++ b/apps/server/src/types/mesh.rs
+@@ -77,7 +77,7 @@ impl std::ops::DerefMut for MeshData {
+ /// rule (the finish of the style the mesh's colour came from) over the pass's
+ /// own scan, so no route reads the file a second time for it.
+ pub fn with_finishes(request: ProcessingRequest) -> ProcessingRequest {
+-    let features = request.features.finishes(false);
++    let features = request.features.finishes(true);
+     request.features(features)
+ }
+ 

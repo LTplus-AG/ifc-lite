@@ -962,7 +962,7 @@ named shapes are `ProcessingRequest::default()` (the streaming shape, 50-job
 chunks) and `ProcessingRequest::full_pass()` (one chunk, for the server routes,
 exporters and bindings). It carries the opening filter, tessellation quality,
 `Batching` (initial and throughput chunk sizes, `fast_first`), `Features`
-(properties, presentation layers, quick-metadata bootstrap), whether to retain
+(properties, presentation layers, quick-metadata bootstrap, finishes), whether to retain
 the emitted meshes, instancing, an id allow-list (`None` is the unfiltered pass,
 `Some(empty)` meshes nothing), an injected entity index and a cancel flag.
 
@@ -971,6 +971,11 @@ and `()` listens to nothing. Order: `on_bootstrap` at most once, then `on_frame`
 exactly once (the frame and the baked basis, before the first batch and also for
 a file with no geometry), then `on_batch` interleaved with `on_color_update`
 (deferred styles, replayed after the first batch). Events fire once per chunk.
+With `Features::finishes` on (off by default), `on_finishes` fires immediately
+before every `on_batch` with each mesh's IFC-authored finish (`finishes[i]` is
+`meshes[i]`'s, `None` where none is authored). It is the `style::ModelFinishes`
+join, computed from the pass's own scan, so a consumer does not read the file a
+second time for it.
 `OnBatch::new(|meshes, processed, total| ..)` is the sink for a caller that only
 streams meshes out.
 

@@ -1,8 +1,6 @@
 --- a/rust/wasm-bindings/src/api/content_caches.rs
 +++ b/rust/wasm-bindings/src/api/content_caches.rs
-@@ -21,7 +21,11 @@
-     /// Holds the slot lock across `build`: worker batch-entry callers are fine;
-     /// a threaded bundle serializes concurrent builders of the same slot.
+@@ -23,3 +23,7 @@
      pub(super) fn get_or_init(&self, build: impl FnOnce() -> T) -> T {
 -        build()
 +        self.0
@@ -11,5 +9,3 @@
 +            .get_or_insert_with(build)
 +            .clone()
      }
- }
- 

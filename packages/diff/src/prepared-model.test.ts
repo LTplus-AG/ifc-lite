@@ -51,3 +51,57 @@ test.skipIf(!existsSync(binary))('retained snapshots preserve parity, ref identi
     expect(() => left.compare(left)).toThrow(/disposed/);
   } finally { left.dispose(); }
 });
+
+test.skipIf(!existsSync(binary))('decoded handle entries are eager, independently mutable records with stable rows (#8042 A3)', async () => {
+  const { initDiff } = await import('./wasm-runtime.js');
+  const { prepareDiffModel } = await import('./index.js');
+  await initDiff();
+  type Ref = { opaque: symbol };
+  // A distinct ref per row, so a wrong row-to-ref association cannot pass.
+  const row = (key: string, dataHash = 'before'): EntityFingerprint<Ref> => ({
+    key, ifcType: 'IfcWall', dataHash, components: { '\ud800': dataHash }, ref: { opaque: Symbol(`ref:${key}:${dataHash}`) },
+  });
+  const base = [row('changed'), row('unchanged'), row('deleted'), row('__proto__')];
+  const head = [row('added'), row('unchanged'), row('changed', 'after'), row('alias')];
+  const options = { keyAliases: new Map([['alias', '__proto__']]) };
+  const left = prepareDiffModel(base), right = prepareDiffModel(head);
+  try {
+    const expected = diffModels(base, head, options);
+    const first = left.compare(right, options), second = left.compare(right, options);
+    expect(first).toEqual(expected);
+    expect([...first.byKey.keys()]).toEqual([...expected.byKey.keys()]);
+    for (let i = 0; i < first.entries.length; i++) {
+      const entry = first.entries[i], next = second.entries[i];
+      expect(first.byKey.get(entry.key)).toBe(entry);
+      expect(entry).not.toBe(next);
+      expect(entry.changeKinds).not.toBe(next.changeKinds);
+      expect(entry.base).toBe(next.base);
+      expect(entry.head).toBe(next.head);
+      expect(Object.keys(entry)).toEqual(Object.keys(expected.entries[i]));
+      for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(entry))) {
+        expect(descriptor).toMatchObject({ enumerable: true, configurable: true, writable: true });
+        expect(descriptor.get).toBeUndefined();
+      }
+      expect(entry.base?.ref).toBe(expected.entries[i].base?.ref);
+      expect(entry.head?.ref).toBe(expected.entries[i].head?.ref);
+      if (entry.changedComponents) {
+        expect(entry.changedComponents).not.toBe(next.changedComponents);
+        entry.changedComponents.push('caller edit');
+      }
+      entry.changeKinds.push('container');
+      entry.key = 'caller edit';
+      delete entry.base;
+    }
+    first.entries.reverse();
+    first.byKey.clear();
+    const third = left.compare(right, options);
+    expect(second).toEqual(expected);
+    expect(third).toEqual(expected);
+    for (let i = 0; i < second.entries.length; i++) {
+      expect(third.entries[i].base).toBe(second.entries[i].base);
+      expect(third.entries[i].head).toBe(second.entries[i].head);
+    }
+    left.dispose(); right.dispose();
+    expect(third).toEqual(expected);
+  } finally { left.dispose(); right.dispose(); }
+});

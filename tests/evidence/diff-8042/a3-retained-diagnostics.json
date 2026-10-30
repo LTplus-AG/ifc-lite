@@ -1,0 +1,346 @@
+{
+  "issue": 8042,
+  "scope": "A3 only",
+  "verdict": "target not reached; both production candidates removed",
+  "base": "111a17daaeb7d604300f555c234badff3915c7b9",
+  "host": "pop-os",
+  "timingClass": "ordinary diagnostics, not an official cohort or acceptance pass",
+  "options": {
+    "matchUnpairedByContent": true,
+    "detectSplitMerge": true,
+    "detectSuccessors": true
+  },
+  "oracle": "/home/louistrue/build-workers/worker-state/storage-tasks/issue8042-boundary-465f-pop-r5/oracle/packages/diff/dist/index.js",
+  "method": {
+    "processesPerCandidate": 5,
+    "alternatingArms": [
+      "base",
+      "candidate",
+      "ts"
+    ],
+    "large": {
+      "warmup": 80,
+      "samplesPerProcessPerArm": 30
+    },
+    "haus": {
+      "warmup": 500,
+      "samplesPerProcessPerArm": 100
+    },
+    "inputs": "V8-serialized snapshots from real CLI fingerprints; LARGE controlled-revision pair and AC20-FZK-Haus self pair",
+    "limits": "Interleaved ordinary runs share host capacity; no exclusive idle qualification. Fresh processes and serialized fingerprints differ from earlier warm diagnostics; do not compare absolute numbers across protocols."
+  },
+  "trials": [
+    {
+      "candidate": "decode",
+      "source": "4555cd823648a29376c7b728a5d7d6c65da61417",
+      "request": "auto-6b3f52219cf34c42b1c44e862ef9966e",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/01a0d510-393e-40c1-a7c6-7972ee23cf41/receipt.json",
+      "verdict": "rejected; no consistent improvement; target missed",
+      "results": [
+        {
+          "fixture": "LARGE",
+          "rows": [
+            17010,
+            17010
+          ],
+          "counts": {
+            "added": 0,
+            "modified": 7426,
+            "deleted": 0,
+            "unchanged": 9584
+          },
+          "medianOfProcessMediansMs": {
+            "base": 36.884031999999934,
+            "candidate": 37.17354999999952,
+            "ts": 27.628200999999535
+          },
+          "candidateToTs": 1.345492962064383,
+          "runs": [
+            {
+              "run": "1",
+              "mediansMs": {
+                "base": 39.68170199999986,
+                "candidate": 40.21711399999913,
+                "ts": 28.486661000000822
+              }
+            },
+            {
+              "run": "2",
+              "mediansMs": {
+                "base": 36.68441100000018,
+                "candidate": 36.96570400000019,
+                "ts": 27.628200999999535
+              }
+            },
+            {
+              "run": "3",
+              "mediansMs": {
+                "base": 36.884031999999934,
+                "candidate": 36.72489099999984,
+                "ts": 27.933898999999656
+              }
+            },
+            {
+              "run": "4",
+              "mediansMs": {
+                "base": 36.986730999999054,
+                "candidate": 37.18091899999854,
+                "ts": 27.384099999999307
+              }
+            },
+            {
+              "run": "5",
+              "mediansMs": {
+                "base": 36.714538000000175,
+                "candidate": 37.17354999999952,
+                "ts": 25.207358999999997
+              }
+            }
+          ]
+        },
+        {
+          "fixture": "Haus",
+          "rows": [
+            146,
+            146
+          ],
+          "counts": {
+            "added": 0,
+            "modified": 0,
+            "deleted": 0,
+            "unchanged": 146
+          },
+          "medianOfProcessMediansMs": {
+            "base": 0.24745699999948556,
+            "candidate": 0.24510899999950198,
+            "ts": 0.1297919999997248
+          },
+          "candidateToTs": 1.8884754068049008,
+          "runs": [
+            {
+              "run": "1",
+              "mediansMs": {
+                "base": 0.25507199999992736,
+                "candidate": 0.2528840000013588,
+                "ts": 0.13112700000056066
+              }
+            },
+            {
+              "run": "2",
+              "mediansMs": {
+                "base": 0.24745699999948556,
+                "candidate": 0.24510899999950198,
+                "ts": 0.12706900000011956
+              }
+            },
+            {
+              "run": "3",
+              "mediansMs": {
+                "base": 0.24797699999908218,
+                "candidate": 0.25058500000159256,
+                "ts": 0.13115599999946426
+              }
+            },
+            {
+              "run": "4",
+              "mediansMs": {
+                "base": 0.2376139999996667,
+                "candidate": 0.23799800000051619,
+                "ts": 0.12073899999995774
+              }
+            },
+            {
+              "run": "5",
+              "mediansMs": {
+                "base": 0.23518499999954656,
+                "candidate": 0.23664300000018557,
+                "ts": 0.1297919999997248
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "candidate": "dictionary",
+      "source": "3d5be83e4eecf240cd220baa2071d2138a99ad01",
+      "request": "auto-2674ab45e84440ae8eaaa2bbf778ee78",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/65c0e77d-3c5e-47c6-9c2a-b3f1ffdb1651/receipt.json",
+      "verdict": "rejected; no consistent improvement; target missed",
+      "results": [
+        {
+          "fixture": "LARGE",
+          "rows": [
+            17010,
+            17010
+          ],
+          "counts": {
+            "added": 0,
+            "modified": 7426,
+            "deleted": 0,
+            "unchanged": 9584
+          },
+          "medianOfProcessMediansMs": {
+            "base": 36.35167799999908,
+            "candidate": 36.40025400000013,
+            "ts": 25.549215999999433
+          },
+          "candidateToTs": 1.4247111927035625,
+          "runs": [
+            {
+              "run": "1",
+              "mediansMs": {
+                "base": 39.35447599999861,
+                "candidate": 37.353892999999516,
+                "ts": 23.933312999999544
+              }
+            },
+            {
+              "run": "2",
+              "mediansMs": {
+                "base": 36.35167799999908,
+                "candidate": 36.40025400000013,
+                "ts": 25.856289999999717
+              }
+            },
+            {
+              "run": "3",
+              "mediansMs": {
+                "base": 40.10309000000052,
+                "candidate": 39.08617799999956,
+                "ts": 25.549215999999433
+              }
+            },
+            {
+              "run": "4",
+              "mediansMs": {
+                "base": 36.1352650000008,
+                "candidate": 36.15373699999873,
+                "ts": 26.329114000000118
+              }
+            },
+            {
+              "run": "5",
+              "mediansMs": {
+                "base": 36.02771799999937,
+                "candidate": 35.956326999999874,
+                "ts": 24.696780000000217
+              }
+            }
+          ]
+        },
+        {
+          "fixture": "Haus",
+          "rows": [
+            146,
+            146
+          ],
+          "counts": {
+            "added": 0,
+            "modified": 0,
+            "deleted": 0,
+            "unchanged": 146
+          },
+          "medianOfProcessMediansMs": {
+            "base": 0.24589099999866448,
+            "candidate": 0.24569499999961408,
+            "ts": 0.125
+          },
+          "candidateToTs": 1.9655599999969127,
+          "runs": [
+            {
+              "run": "1",
+              "mediansMs": {
+                "base": 0.242459000000963,
+                "candidate": 0.24088699999992969,
+                "ts": 0.125
+              }
+            },
+            {
+              "run": "2",
+              "mediansMs": {
+                "base": 0.2438929999989341,
+                "candidate": 0.24569499999961408,
+                "ts": 0.12472400000115158
+              }
+            },
+            {
+              "run": "3",
+              "mediansMs": {
+                "base": 0.25251700000080746,
+                "candidate": 0.2488069999999425,
+                "ts": 0.1309529999998631
+              }
+            },
+            {
+              "run": "4",
+              "mediansMs": {
+                "base": 0.2554889999992156,
+                "candidate": 0.2521280000000843,
+                "ts": 0.12997100000029604
+              }
+            },
+            {
+              "run": "5",
+              "mediansMs": {
+                "base": 0.24589099999866448,
+                "candidate": 0.2429840000004333,
+                "ts": 0.12162899999930232
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "stages": {
+    "source": "3d4ed464eb",
+    "request": "auto-0ad78f7cd04d431197d4e1b477009646",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/9869bd02-1d47-4334-9bdd-74ab48cb0cf4/receipt.json",
+    "method": "Temporary performance.now imports split native compare/result construction from encode_result; clocks appended only for private profiling calls. Footer removed before raw-wire parity. Instrumentation removed from final source. Source 3d4ed464eb is that temporary instrumented build, a descendant of the dictionary trial 3d5be83e4eecf240cd220baa2071d2138a99ad01 recorded above, whose improvement was rejected; it was not retained. These medians are not additive paired totals.",
+    "results": [
+      {
+        "fixture": "LARGE",
+        "mediansMs": {
+          "compute": 31.303353999999672,
+          "encode": 0.41155300000082207,
+          "boundaryTotal": 32.289466000000175,
+          "decode": 1.1954359999999724,
+          "restore": 2.5921640000005937
+        },
+        "samples": {
+          "compute": 50,
+          "encode": 50,
+          "boundaryTotal": 50,
+          "decode": 50,
+          "restore": 50
+        }
+      },
+      {
+        "fixture": "Haus",
+        "mediansMs": {
+          "compute": 0.1805050000002666,
+          "encode": 0.007907000000159314,
+          "boundaryTotal": 0.19834399999945163,
+          "decode": 0.011010999999598425,
+          "restore": 0.013234000000011292
+        },
+        "samples": {
+          "compute": 300,
+          "encode": 300,
+          "boundaryTotal": 300,
+          "decode": 300,
+          "restore": 300
+        }
+      }
+    ]
+  },
+  "identity": [
+    "deep ModelDiff equality against independent compiled TS",
+    "byte-exact JSON with Map iteration order",
+    "packed dictionary trial wire matches base exactly",
+    "stable snapshot row and opaque ref identity; byKey values are entries",
+    "result mutation isolation regression added"
+  ],
+  "conclusion": "Diagnostic only, from the unretained instrumented build above: native compare/result construction alone exceeds the requested LARGE margin in these diagnostics. Transport-only tuning cannot establish the target. No public API, model ownership, protocol, or production-code change retained."
+}

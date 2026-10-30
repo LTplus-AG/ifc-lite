@@ -12,7 +12,7 @@ import { useViewerStore } from '@/store';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import { Switch } from '@/components/ui/switch';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
-import { IfcFederationSettings } from './IfcFederationSettings';
+import { IfcFederationSettingsSlot } from '../IfcFederationAssumptionsLazy';
 import { LandXmlGeorefSettingsSlot } from '../LandXmlGeorefAssumptionsLazy';
 
 export function GeneralSection() {
@@ -51,7 +51,7 @@ export function GeneralSection() {
           />
         </SettingsRow>
       </SettingsGroup>
-      <IfcFederationSettings />
+      <IfcFederationSettingsSlot />
       <LandXmlGeorefSettingsSlot />
     </div>
   );

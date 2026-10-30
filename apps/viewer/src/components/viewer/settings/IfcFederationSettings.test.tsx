@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { parseSpatialIfc } from '@/test/ifc-spatial-fixture.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { openSettings } from '@/lib/settings/open-settings';
@@ -30,7 +30,10 @@ it('offers an off-by-default explicit IFC choice and uses a click to place geome
   act(() => useViewerStore.setState({ ifcSharedVerticalDatum: loadIfcSharedVerticalDatum() }));
   render(<SettingsDialogHost />);
   act(() => openSettings('general'));
-  const label = [...document.querySelectorAll('label')].find((el) => el.textContent === 'Assume IFC models share a height system');
+  // The group and its strings load lazily, so wait for the real chunk rather than a fallback.
+  const findLabel = () => [...document.querySelectorAll('label')].find((el) => el.textContent === 'Assume IFC models share a height system');
+  await waitFor(() => findLabel() !== undefined, 'the lazy IFC federation group to render', 5000);
+  const label = findLabel();
   assert.ok(label);
   const control = document.getElementById(label.htmlFor);
   assert.ok(control);
@@ -68,7 +71,7 @@ it('offers an off-by-default explicit IFC choice and uses a click to place geome
   assert.equal(loadIfcSharedVerticalDatum(), false, 'the UI can revoke the standing choice');
 });
 
-it('distinguishes missing and unresolved assumption notices and omits them for failures (#8042/R58-F2)', () => {
+it('distinguishes missing and unresolved assumption notices and omits them for failures (#8042/R58-F2)', async () => {
   for (const marker of [true, 'unresolved'] as const) {
     const assumed = {
       ...fixtureModel('revision'),
@@ -80,6 +83,7 @@ it('distinguishes missing and unresolved assumption notices and omits them for f
     };
     act(() => useViewerStore.setState({ ...fixtureModels(assumed) }));
     const ui = render(<ModelMetadataPanel model={assumed} />);
+    await waitFor(() => /Assumed height system/.test(ui.textContent ?? ''), 'the lazy notice to render', 5000);
     assert.match(ui.textContent ?? '', /Assumed height system/);
     assert.match(ui.textContent ?? '', /source declarations are unchanged/);
     if (marker === 'unresolved') {
@@ -91,6 +95,7 @@ it('distinguishes missing and unresolved assumption notices and omits them for f
     cleanup();
     const failed = { ...assumed, federationAlignmentStatus: 'failed' as const };
     act(() => useViewerStore.setState({ ...fixtureModels(failed) }));
+    // The lazy notice resolved above, so it would render synchronously here if the slot let a failure through.
     const failureUi = render(<ModelMetadataPanel model={failed} />);
     assert.doesNotMatch(failureUi.textContent ?? '', /Assumed height system/);
     cleanup();

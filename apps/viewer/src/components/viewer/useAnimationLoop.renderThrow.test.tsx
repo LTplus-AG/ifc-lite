@@ -87,7 +87,9 @@ function fakeRenderer(state: FakeRendererState): Renderer {
   return {
     getCamera: () => camera,
     getScene: () => scene,
-    getGPUDevice: () => ({}),
+    // No device: the frame pacer (#5865, covered in useAnimationLoop.gpuBacklog.test.tsx)
+    // never engages, so these tests can step frames synchronously.
+    getGPUDevice: () => null,
     getPipeline: () => ({}),
     peekRenderRequest: () => state.renderRequested,
     consumeRenderRequest: () => { state.renderRequested = false; },

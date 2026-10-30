@@ -38,7 +38,13 @@ pub(super) fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option
     let x=unit(sub(x,z.map(|v|v*dot(x,z))))?;
     // IfcBaseAxis 2D (IfcOrthogonalComplement): without Axis2, Y is the counter-clockwise complement of X.
     let y=direction(d,axis2,if two_d {[-x[1],x[0],0.]} else {[0.,1.,0.]})?;
-    let y=unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x))))?;
+    // With Axis2 omitted the +Y default can lie in the plane of Z and X; there is nothing left to
+    // project, and production takes Z x X (a rigid rotation). Only that collapse falls back.
+    let y=match unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x)))) {
+        Some(y)=>y,
+        None if axis2.is_none()=>unit(cross(z,x))?,
+        None=>return None,
+    };
     let s=op.real_at(O::SCALE).unwrap_or(1.);
     let (s2,s3)=match op.ifc_type {
         IfcType::IfcCartesianTransformationOperator3DnonUniform=>
@@ -69,7 +75,8 @@ pub(super) fn stretches(m:&Frame) -> Option<(f64,f64)> {
     (min>0.&&max.is_finite()).then_some((min,max))
 }
 pub(super) fn nonrigid(m:&Frame) -> bool {
-    let Some((min,max))=stretches(m) else {return false};
+    // No singular values to report means a singular map: never rigid.
+    let Some((min,max))=stretches(m) else {return true};
     dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.
         || (min-1.).abs()>1e-12 || (max-1.).abs()>1e-12
 }

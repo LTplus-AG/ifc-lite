@@ -1,0 +1,48 @@
+diff --git a/rust/processing/src/prepass_wire.rs b/rust/processing/src/prepass_wire.rs
+index 2b15edede6..6ba465490c 100644
+--- a/rust/processing/src/prepass_wire.rs
++++ b/rust/processing/src/prepass_wire.rs
+@@ -66,6 +66,7 @@ pub fn voids_from_flat(
+             break;
+         };
+         void_index.insert(host_id, openings.to_vec());
++        value_offset = end;
+     }
+     void_index
+ }
+@@ -142,7 +143,7 @@ pub fn style_colors_from_flat(
+         FxHashMap::with_capacity_and_hasher(style_ids.len(), Default::default());
+     for (i, &style_id) in style_ids.iter().enumerate() {
+         let base = i * 4;
+-        if base + 4 < style_colors.len() {
++        if base + 3 < style_colors.len() {
+             let rgba8 = [
+                 style_colors[base],
+                 style_colors[base + 1],
+diff --git a/rust/processing/src/processor/instancing.rs b/rust/processing/src/processor/instancing.rs
+index 091d5258ce..fa1f59574d 100644
+--- a/rust/processing/src/processor/instancing.rs
++++ b/rust/processing/src/processor/instancing.rs
+@@ -126,6 +126,9 @@ pub fn index_templates_by_rep<'a, T>(
+ ) -> FxHashMap<u128, T> {
+     let mut templates: FxHashMap<u128, T> = FxHashMap::default();
+     for (i, m) in meshes.into_iter().enumerate() {
++        if m.positions.is_empty() {
++            continue;
++        }
+         if let Some(im) = m.instance.as_ref().filter(|im| im.instanceable) {
+             templates.entry(im.rep_identity).or_insert_with(|| info(i, m));
+         }
+diff --git a/rust/processing/src/style/indexed_colour.rs b/rust/processing/src/style/indexed_colour.rs
+index af74c535ca..b1a68b270e 100644
+--- a/rust/processing/src/style/indexed_colour.rs
++++ b/rust/processing/src/style/indexed_colour.rs
+@@ -129,7 +129,7 @@ pub fn collect_full_indexed_colour_maps(
+         }
+         let Ok(icm) = decoder.decode_at(start, end) else { continue };
+         if let Some(full) = resolve_indexed_colour_map_full(&icm, decoder) {
+-            maps.insert(full.geometry_id, full);
++            maps.entry(full.geometry_id).or_insert(full);
+         }
+     }
+     maps

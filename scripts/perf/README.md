@@ -4,6 +4,44 @@
 
 # Performance diagnosis kit
 
+## C4-7b fallback full-file work (#8341)
+
+Verdict: shipped. Instruction counts only, for the slice that reaches the lazy
+fallbacks; no worker-pool wall-time or browser memory claim. Output hashes are
+identical on six fixtures, merge layers off and on. Counts, fixtures and receipts
+are in `tests/evidence/c4-7b/README.md`.
+
+Two kinds of duplicate work remained. With merge layers on, every geometry worker's
+parts-to-skip rebuilt the material-layer index with an ungated full scan, even
+though the prepass had injected the same index, and then walked the aggregates.
+Passing the per-content index and returning early when nothing is sliceable
+removes both walks on files with no sliceable buildup, and the index walk on the
+rest. `buildPrePassOnce` (remesh, viewer-html, the C4-0 gate) rescanned for type
+jobs, then its first batch scanned again for the type plan and the layer index.
+Building both pre-passes' columns once from scan spans (`PrepassColumns`) and
+installing them on the once path removes all three.
+
+Lesson: an injected column helps only consumers that read the slot. Look for
+drivers that rebuild their own input. The keyword-gated indexed-colour and texture
+fallbacks remain, because the worker wire carries no spans for them.
+
+## C4 default browser worker-pool measurement (#8341)
+
+**Cumulative C4 window neutral within noise; peak memory not strictly at or below base.**
+One fresh-WASM, hardware-GPU browser cohort compared main before C4-10a with the
+last C4-11b merge: five randomized pairs on three fixtures, identical CPU payload roots
+and diagnostic lines. Observed readiness stays inside the base spread on every fixture.
+Peak RSS is lower on the CSG model and marginally higher, within spread, on the two small
+models. One reporter flag remains: later spatial-tree readiness on the CSG model,
+offset by earlier first paint. The window also contains retained and diff commits, so no
+single lane is attributed. Both native C4-10b layers show identical counts and no phase
+outside noise; the reporter stays inconclusive on sub-millisecond phases. Evidence: [c4-browser-8341](../../tests/evidence/c4-browser-8341/README.md).
+
+Lessons: pass `page.evaluate` bodies as source text, because tsx wraps named closures
+in a `__name` helper that is absent in the page. Chrome rewrites process titles, so
+`/proc/*/cmdline` needs a whitespace split to find `--type=`. A fixture with
+sub-millisecond phases makes the native reporter inconclusive by construction.
+
 ## Retained diff boundary A3 (#8042)
 
 **Hold: the tested transport changes do not close the retained gap.** Five

@@ -312,7 +312,9 @@ The upstream strict tessellation API rejects partial failed faces. Its polygon
 output is triangulated with the upstream planar/nonplanar algorithms, including
 planar polygons with holes; no triangle fan is synthesized. Output must contain
 only nondegenerate finite triangles with known source faces. Boundary/spine counts
-are recomputed after triangulation; such edges reject a manifold input. No weld,
+are recomputed after triangulation; any such edge is a kernel-error refusal
+(status 4), including for a non-manifold input such as a Boolean result whose
+BRep is open or meets itself along an edge. No weld,
 repair, coordinate rounding or f32 conversion is performed. One million source
 faces/polygons/final triangles is the adapter admission budget; this does not bound
 all allocations or work performed inside upstream tessellation. The `limits` and

@@ -2,7 +2,9 @@
 //! M10 decoder-only affine oracle. No retained program, receipt or bake helpers.
 use super::math::*;
 use ifc_lite_core::{slot, EntityDecoder, IfcType, SourceBundle};
-type Frame = [f64;16];
+pub(super) type Frame = [f64;16];
+pub use super::affine_classify::{winding_positive, Classification};
+use super::affine_classify::mapped_items;
 #[derive(Debug, Clone)]
 pub struct AffineExpectation {
     pub volume: f64,
@@ -65,24 +67,44 @@ fn placement(d:&mut EntityDecoder<'_>,mut id:Option<u32>) -> Option<Frame> {
     Some(m)
 }
 /// IfcBaseAxis: project Axis1 against D3 and Axis2 against both, preserving its sign.
-fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option<(Frame,Vec<u32>)> {
+/// The 2D operators have no Axis3 (their attribute 4 is Scale2); the plane normal
+/// is +Z and Z keeps the uniform Scale, as the production reader does.
+pub(super) fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option<(Frame,Vec<u32>)> {
     let map=d.decode_by_id(source).ok()?;
     let origin=axes(d,map.ref_at(slot::IfcRepresentationMap::MAPPING_ORIGIN))?;
     let rep=d.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?;
     let items=rep.ref_list_at(slot::IfcRepresentation::ITEMS)?;
     let op=d.decode_by_id(target).ok()?;
-    use slot::IfcCartesianTransformationOperator3D as O;
-    let z=direction(d,op.ref_at(O::AXIS3),[0.,0.,1.])?;
+    use slot::IfcCartesianTransformationOperator as O;
+    // Reject unsupported records before any typed-slot access (Axis3 is a 3D slot).
+    let two_d=match op.ifc_type {
+        IfcType::IfcCartesianTransformationOperator2D|IfcType::IfcCartesianTransformationOperator2DnonUniform=>true,
+        IfcType::IfcCartesianTransformationOperator3D|IfcType::IfcCartesianTransformationOperator3DnonUniform=>false,
+        _=>return None,
+    };
+    let z=if two_d {[0.,0.,1.]} else {
+        direction(d,op.ref_at(slot::IfcCartesianTransformationOperator3D::AXIS3),[0.,0.,1.])?
+    };
     let default=if z[0].abs()>0.999999 {[0.,1.,0.]} else {[1.,0.,0.]};
-    let x=direction(d,op.ref_at(O::AXIS1),default)?;
+    let (axis1,axis2)=(op.ref_at(O::AXIS1),op.ref_at(O::AXIS2));
+    let x=match (two_d,axis1,axis2) {
+        // IfcBaseAxis 2D: Axis2 alone fixes the frame; X is its clockwise perpendicular.
+        (true,None,Some(y)) => {let y=unit(d.direction3(y).ok()?)?;[y[1],-y[0],0.]}
+        _ => direction(d,axis1,default)?,
+    };
     let x=unit(sub(x,z.map(|v|v*dot(x,z))))?;
-    let y=direction(d,op.ref_at(O::AXIS2),[0.,1.,0.])?;
+    // IfcBaseAxis 2D (IfcOrthogonalComplement): without Axis2, Y is the counter-clockwise complement of X.
+    let y=direction(d,axis2,if two_d {[-x[1],x[0],0.]} else {[0.,1.,0.]})?;
     let y=unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x))))?;
     let s=op.real_at(O::SCALE).unwrap_or(1.);
-    let (s2,s3)=if op.ifc_type==IfcType::IfcCartesianTransformationOperator3DnonUniform {
-        (op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2).unwrap_or(s),
-         op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3).unwrap_or(s))
-    } else if op.ifc_type==IfcType::IfcCartesianTransformationOperator3D {(s,s)} else {return None};
+    let (s2,s3)=match op.ifc_type {
+        IfcType::IfcCartesianTransformationOperator3DnonUniform=>
+            (op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2).unwrap_or(s),
+             op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3).unwrap_or(s)),
+        IfcType::IfcCartesianTransformationOperator2DnonUniform=>
+            (op.real_at(slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2).unwrap_or(s),s),
+        _=>(s,s),
+    };
     let matrix=columns(x.map(|v|v*s),y.map(|v|v*s2),z.map(|v|v*s3),d.point3(op.ref_at(O::LOCAL_ORIGIN)?).ok()?);
     Some((multiply(&matrix,&inverse_rigid(&origin)),items))
 }
@@ -288,47 +310,21 @@ impl<'a> AffineOracle<'a> {
     }
     /// Mapping classification does not depend on an analytic solid oracle.
     pub fn is_affine_final(&mut self,id:u32) -> bool {
-        final_items(&mut self.decoder,id).is_some_and(|items| items.iter().any(|(_,_,_,affine)|*affine))
+        matches!(self.classify(id),Classification::Affine)
+    }
+    /// Classification needs neither the world placement nor an analytic solid.
+    /// A mapped body that cannot be classified is `Unmodelled`, never `Rigid`.
+    pub fn classify(&mut self,id:u32) -> Classification {
+        super::affine_classify::classify(&mut self.decoder,id)
     }
     pub fn expected(&mut self,id:u32) -> Option<Vec<AffineExpectation>> {
         expected_decoded(&mut self.decoder,self.units?,id,self.openings.contains(&id))
     }
 }
-fn nonrigid(m:&Frame) -> bool {
+pub(super) fn nonrigid(m:&Frame) -> bool {
     let Some((min,max))=stretches(m) else {return false};
     dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.
         || (min-1.).abs()>1e-12 || (max-1.).abs()>1e-12
-}
-fn final_items(d:&mut EntityDecoder<'_>,id:u32) -> Option<Vec<(u32,Frame,Frame,bool)>> {
-    let p=d.decode_by_id(id).ok()?;
-    let (reps,world)=if p.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
-        let mut reps=Vec::new();
-        for id in p.ref_list_at(slot::IfcTypeProduct::REPRESENTATION_MAPS)? {
-            let map=d.decode_by_id(id).ok()?;
-            reps.push(d.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?);
-        }
-        (reps,IDENTITY)
-    } else {
-        let world=placement(d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
-        let shape=ifc_lite_geometry::representation::product_shape(&p,d).ok()??;
-        (shape.representations().to_vec(),world)
-    };
-    let mut stack=Vec::new();
-    // Use the retained selector's predicate: RepresentationType selects body
-    // geometry even without an identifier, and direct geometry suppresses maps.
-    for rep in ifc_lite_geometry::representation::meshed_representations(&p,&reps) {
-        for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS)?.into_iter().rev() {stack.push((id,world,IDENTITY,0,false));}
-    }
-    let mut result=Vec::new();let mut work=0;
-    while let Some((id,world,mapping_matrix,depth,affine))=stack.pop() {
-        work+=1;if work>8192||depth>128 {return None}
-        let e=d.decode_by_id(id).ok()?;
-        if e.ifc_type==IfcType::IfcMappedItem {
-            let (map,items)=mapping(d,e.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?,e.ref_at(slot::IfcMappedItem::MAPPING_TARGET)?)?;
-            for item in items.into_iter().rev() {stack.push((item,world,multiply(&mapping_matrix,&map),depth+1,affine||nonrigid(&map)));}
-        } else {result.push((id,world,mapping_matrix,affine));}
-    }
-    Some(result)
 }
 /// Convenience for single-product witnesses; model comparisons use AffineOracle.
 pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
@@ -339,9 +335,11 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
 fn expected_decoded(d:&mut EntityDecoder<'_>,units:f64,id:u32,has_openings:bool) -> Option<Vec<AffineExpectation>> {
     // M9 owns type-map placement/quantities. Classification still gates winding.
     if d.decode_by_id(id).ok()?.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {return None}
-    let items=final_items(d,id)?;
+    let items=mapped_items(d,id).ok()?;
+    let product=d.decode_by_id(id).ok()?;
+    let world=placement(d,product.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
     let mut result=Vec::new();
-    for (id,world,mapping_matrix,affine_final) in items {
+    for (id,mapping_matrix,affine_final) in items {
         let s=solid(d,id,0,&mut 8192)?;let mut matrix=multiply(&world,&mapping_matrix);
         for col in 0..4 {for row in 0..3 {matrix[col*4+row]*=units;}}
         let det=dot([matrix[0],matrix[1],matrix[2]],cross([matrix[4],matrix[5],matrix[6]],[matrix[8],matrix[9],matrix[10]]));

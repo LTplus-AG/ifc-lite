@@ -37,7 +37,7 @@
 //! same key: its membership decides where each walk stops, exactly as the
 //! colour walks stop, and its colour is what the fallback compares against.
 
-use crate::prepass::{resolve_geometry_finishes, PrepassSpans};
+use crate::prepass::{resolve_geometry_finishes, PrepassSpans, Span};
 use crate::style::{GeometryStyleInfo, SpecularMaterial};
 use crate::types::mesh::MeshData;
 use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, IfcType};
@@ -177,12 +177,19 @@ impl<'c> ModelFinishes<'c> {
             index.insert(id, (start, end));
             spans.stash(type_name, id, start, end);
         }
-        let mut decoder = EntityDecoder::with_index(content, index);
-        let finishes = resolve_geometry_finishes(&spans.styled_items, &mut decoder);
+        Self::from_spans(&spans.styled_items, EntityDecoder::with_index(content, index))
+    }
+
+    /// The same join over a scan already done: the file's styled-item spans
+    /// and a lossless decoder with the file's whole index installed. The
+    /// native pass builds it this way for `Features::finishes`, so the server
+    /// no longer scans the file a second time.
+    pub(crate) fn from_spans(styled_items: &[Span], mut decoder: EntityDecoder<'c>) -> Self {
+        let finishes = resolve_geometry_finishes(styled_items, &mut decoder);
         let mut geometry_styles = FxHashMap::default();
         if !finishes.is_empty() {
             crate::prepass::resolve_styled_items_into(
-                &spans.styled_items,
+                styled_items,
                 &mut decoder,
                 false,
                 &mut FxHashMap::default(),

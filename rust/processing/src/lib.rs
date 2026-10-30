@@ -60,6 +60,7 @@ pub mod prepass;
 mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod prepass_type_material;
+mod prepass_wire;
 mod processor;
 mod product_geometry_audit;
 pub use product_geometry_audit::ProductGeometryAudit;
@@ -108,10 +109,13 @@ pub use pipeline_diagnostics::{
 /// Re-exported so the server can name the quality level without a direct
 /// `ifc-lite-geometry` dependency edge for one enum.
 pub use ifc_lite_geometry::TessellationQuality;
-/// The don't-bake occurrence → flat `MeshData` recovery, shared with the browser
-/// batch (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so the mapping
-/// has one home rather than two clones. See its doc comment.
-pub use processor::instancing::recover_occurrences_flat;
+/// The don't-bake occurrence grouping, template selection and occurrence → flat
+/// `MeshData` recovery, shared with the browser batch
+/// (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so each has one home
+/// rather than two clones. See their doc comments.
+pub use processor::instancing::{
+    group_occurrences_by_rep, index_templates_by_rep, recover_occurrences_flat,
+};
 #[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use processor::{
     convert_mesh_to_site_local, detect_schema_version, is_quick_spatial_type_ci, native_to_baked,

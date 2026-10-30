@@ -1,12 +1,14 @@
 # C4-11b completing layer (#7782)
 
-Stack: #8329 on structural #8328, on C4-11a #8320. The updated parent
-`6246d22dc446705b7c5664e7b17972f1cc81235b` includes merged #8317/#8318 and is integrated in both heads.
+Stack: #8329 on structural #8328. C4-11a #8320 is squash-merged on main at
+`7d391e2ad2`; both heads integrate that main additively. The original parent
+`6246d22dc446705b7c5664e7b17972f1cc81235b` included #8317/#8318.
 The parent owns merges. Earlier qualification used C4-11a `06cf742446`.
 
-`api/mod.rs`: 949 → 492 lines; prepass.rs: 583 → 92. The 501-line
-pre_pass_streaming_impl exception and prepass module exception are removed.
-The lowered wasm module digest is 9629139198197986638 (structural: 2062749831077530300).
+`api/mod.rs`: 949 → 378 lines; the new `content_install.rs` is 125 lines.
+The API module exception is removed. `prepass.rs`: 583 → 92; its module
+exception and the 501-line pre_pass_streaming_impl exception are removed.
+The recomputed wasm module digest is 2938203718511825757 (structural: 2729952386533288835).
 Streaming scan/meta, event payloads, worker columns and post-scan emission have separate modules.
 Existing sharded/postscan `with_arc_columnar_index` reuse is credited; only the serial copies are new removal.
 JS signatures and declaration API tokens are unchanged; generated declaration changes are documentation only.
@@ -93,3 +95,35 @@ declaration changes, whose exact bytes are now committed. Released snapshots wer
 reconciliation; no classifier/metadata guard was changed and no manual deletion bypassed it.
 Shared caches, fixtures, original receipts and foreign work remain untouched. Final clean receipt hash:
 cf4922054298a3be7f0f34bdd2914a6e0118688f20ce6e38502de1ad9557a360.
+
+## Round 1 review and acceptance
+
+All three P3 review items are addressed: clearing derived slots cannot bypass
+source-epoch invalidation through Deref; the lazy-slot lock's builder scope is
+documented; and the allocator witness explicitly documents its whole-test-binary
+installation, single-allocator constraint and thread-local counting gate.
+Structural B-SIZE-01 is also closed: unchanged public content-install methods
+move to `content_install.rs`, taking `api/mod.rs` below 400 and deleting its row.
+Both layers include main's C4-11a squash. Their new digest values are above.
+
+Acceptance (§6.5): the owner ruled perf-neutral results acceptable for required
+items. The measured metadata-handoff allocation reduction satisfies that
+criterion; there is no timing, worker-pool speedup or browser peak-memory claim.
+The earlier allocation measurements and their exclusions remain the verdict.
+
+The mobile tap failure is the independently identified repo-wide flake, not a
+Rust-slot defect; see the structural evidence and main/changeset-release run
+40925029853 at `edfbe7ed7a`. This round changes neither touch selection nor E2E.
+
+At `6401f129174ef01caf6ac06a453204c0061252dd`, Pop request
+`auto-793b95c02e56435684c7ca8bed50cd9e` passed 14 targeted C4-10a/C4-11 tests,
+including all four real allocation inputs, and 45 ratchet tests (two ignored
+reseed helpers). Module size, Rust API surface, AGENTS size, all three reverse
+patch checks and the extracted oracle `bash -n` passed; project/fleet exit 0,
+source unchanged. This run precedes the final API-module extraction; final
+qualification is recorded below.
+
+This PR remains draft and targets `sweep/c4-11b`. The Test workflow is restricted
+to `pull_request.branches: [main]` and does not run on that base; other checks
+are not a full Test verdict. The parent will retarget it to main after #8328
+merges, which triggers Test through the workflow's `edited` activity.

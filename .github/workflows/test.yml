@@ -997,6 +997,10 @@ jobs:
           # Keep the API; weaken fingerprint identity to key equality instead.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8341 C4-14: whole-change inversion deletes the new test module.
+          # Keep the one scan; drop wrappers authored after a styled item.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch --test rust/processing/src/symbolic/color_tests.rs)
           # #8341 C4-7b: whole-file inversion deletes the shared prepass columns
           # and the test module's wiring. Keep both; drop only reuse and install.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7b/behaviour.oracle.patch'; then
@@ -1023,6 +1027,11 @@ jobs:
           # Keep the module; report the wrong product count in the failure line.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-12x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-12x/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-12x/behaviour.oracle.patch --test rust/wasm-bindings/src/api/csg_console_tests.rs)
+          # #8341 C4-13a: keep Features::finishes, on_finishes and the route
+          # wiring; the pass reports no finish, and the routes stop asking.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-13a/behaviour.oracle.patch --test rust/processing/tests/issue_8341_finishes_event.rs)
+            oracle_args+=(--mutation tests/evidence/c4-13a/server.oracle.patch --test apps/server/src/routes/parse/finish_tests.rs)
           # #8113: retain the new harness modules; remove only admission validation.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-8113/admission.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-8113/admission.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/diff-e2e-8113/admission.oracle.patch --test scripts/perf/diff-e2e.test.mjs)

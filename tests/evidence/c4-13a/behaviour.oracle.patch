@@ -1,0 +1,11 @@
+--- a/rust/processing/src/processor/pass.rs
++++ b/rust/processing/src/processor/pass.rs
+@@ -235,7 +235,7 @@
+ /// the request asked for finishes.
+ fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&mut ModelFinishes<'_>>, meshes: &[MeshData]) {
+     let Some(finishes) = finishes else { return };
+-    let batch: Vec<_> = meshes.iter().map(|_| None).collect();
++    let batch: Vec<_> = meshes.iter().map(|mesh| finishes.finish_for_mesh(mesh)).collect();
+     sink.on_finishes(&batch);
+ }
+ 

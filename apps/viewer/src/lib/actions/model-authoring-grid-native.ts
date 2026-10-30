@@ -7,7 +7,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { applyFrame, placementRelativeTo, refId } from '../../../../../packages/create/src/in-store/host-geometry-frame.js';
-import { readAxisEnds } from '../../../../../packages/create/src/in-store/extract-grids.js';
+import { readGridAxisEnds } from '../../../../../packages/create/src/in-store/extract-grids.js';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
@@ -54,8 +54,8 @@ export function nativeGridExpected(target: ModelEditTarget | null, gridId: numbe
   // Compare using its shared axis reader and the canonical current frame;
   // refusal leaves the native producer authoritative, without a frame fork.
   for (const axis of rows) {
-    const curveId = refId(read.entity(axis.axisId)?.attributes[1]);
-    const ends = curveId === null ? null : readAxisEnds(id => read.entity(id), curveId);
+    const record = read.entity(axis.axisId);
+    const ends = record ? readGridAxisEnds(id => read.entity(id), record) : null;
     if (!ends) return null;
     for (const [index, actual] of [axis.a, axis.b].entries()) {
       const point = applyFrame(relative, [ends[index][0], ends[index][1], 0]);

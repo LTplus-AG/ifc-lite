@@ -19,7 +19,8 @@ workflow text are excluded. Preserved notice hashes and generated outputs are ch
 and `manifest.json` carries a `manifestSha256` digest of its inputs and components that
 `--check` and `--write` verify. It catches accidental damage (a text dropped by a merge
 resolution, hand-edited inputs); it is not a signature, because `--refresh` recomputes it.
-The Apache-2.0 election for `wasm_sync` below closes the missing-text gap.
+The maintainer's elections for `wasm_sync`, `r-efi` and `wide` are recorded in `supplemental.json`;
+the `wasm_sync` Apache-2.0 election below also closes its missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code
 remaining after link-time dead stripping. The roots are `ifc-lite-wasm` (default
@@ -210,11 +211,19 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    record](#review-record) for component obligations and evidence. Final scope,
    release copies and source identity still require the maintainer's check; no
    approval is asserted by this document.
-2. **Resolved: wasm_sync text/election.** Apache-2.0 election, exact attribution
-   and SPDX text are recorded in `supplemental.json` and generated bundles.
-   Its archive and upstream tree `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5`
-   have no LICENSE/NOTICE files. Existing VCS-pinned supplements for i_key_sort,
-   i_overlay, flatbuffers and valuable remain; r-efi's AUTHORS is preserved.
+2. **Resolved by the maintainer (stated 2026-10-30): wasm_sync, r-efi and wide
+   elections.** Each is recorded in `supplemental.json` with its exact attribution
+   and carried into the generated bundles:
+   * wasm_sync 0.1.2: Apache-2.0 from `MIT OR Apache-2.0` (maintainer-approved;
+     the canonical SPDX text is preserved by hash). Its archive and upstream tree
+     `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5` have no LICENSE/NOTICE files.
+   * r-efi 5.3.0: MIT from `MIT OR Apache-2.0 OR LGPL-2.1-or-later`. The preserved
+     `AUTHORS` carries the full MIT permission notice and copyright holders.
+   * wide 1.4.0: Zlib from `Zlib OR Apache-2.0 OR MIT`. The preserved
+     `LICENSE-ZLIB.md` is the complete Zlib text.
+
+   No new text was needed for r-efi or wide. Existing VCS-pinned supplements for
+   i_key_sort, i_overlay, flatbuffers and valuable remain.
 3. **Out of scope: native link map.** No native retained worker binaries ship
    in this release; users build from the pinned SDK. Before any future native
    binary distribution, collect actual link maps/import tables, compiler and
@@ -234,22 +243,17 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
    failures remain visible; this record does not waive publication prerequisites.
 
-7. **Open for the maintainer: unrecorded dual-licence elections.** Components
-   whose declaration offers alternatives but whose manifest entry has fewer than two
-   texts and no `election` record (only `wasm_sync` has one). Each has at least one
-   complete alternative preserved, so no text is missing for an OR election, but the
-   choice is the maintainer's and is not made here:
+7. **Open for the maintainer: remaining unrecorded dual-licence elections.**
+   Components whose declaration offers alternatives but whose manifest entry has no
+   `election` record (`wasm_sync`, `r-efi` and `wide` are resolved above). Each has
+   at least one complete alternative preserved, so no text is missing for an OR
+   election, but the maintainer has not made these choices:
    * Emscripten runtime (`MIT OR NCSA`): the preserved `LICENSE` reproduces both
-     licences and Node's MIT text; nothing missing. Its copyright line refers to
+     licences and Node's MIT text; nothing missing. OPEN: its copyright line refers to
      the Emscripten `AUTHORS` file, which is not preserved.
    * chrono 0.4.44 (`MIT OR Apache-2.0`): the preserved `LICENSE.txt` reproduces both.
-   * r-efi 5.3.0 (`MIT OR Apache-2.0 OR LGPL-2.1-or-later`): the archive and upstream
-     tag ship only `AUTHORS`, which holds the MIT permission notice and copyright
-     holders, but only boilerplate for Apache-2.0 and LGPL-2.1. MIT is fully
-     preserved; Apache-2.0 or LGPL would need their full texts added.
-   * wide 1.4.0 (`Zlib OR Apache-2.0 OR MIT`): the archive and upstream commit ship
-     only `LICENSE-ZLIB.md`, which is complete for Zlib; the Apache-2.0 and MIT
-     alternatives have no text at the origin.
+   * OPEN: no generic check yet flags every OR-licensed component that lacks an
+     `election` record; the script only validates elections that are recorded.
    * dlmalloc is not an alternative: public-domain dedication, header preserved.
 
 ## Regeneration

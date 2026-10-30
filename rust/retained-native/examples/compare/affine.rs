@@ -20,7 +20,7 @@ pub fn winding_gate(id:u32, class:&affine::Classification, winding:&[bool]) -> O
 }
 pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:&ShapeOnlyProduct, tolerances:&Value) {
     let class=oracle.classify(product.product_id);
-    let Some((results,violations))=winding_gate(product.product_id,&class,&affine::winding_positive(product)) else {return};
+    let Some((mut results,violations))=winding_gate(product.product_id,&class,&affine::winding_positive(product)) else {return};
     report.violations.extend(violations);
     if class!=affine::Classification::Affine {append(report,results);return}
     // Opening Booleans still require outward winding for every resulting part.

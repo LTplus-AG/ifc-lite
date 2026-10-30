@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! #7782: native discovery, browser spans, and batch fallback agree on the
-//! authored maps and class/order decisions for records both decoders accept.
+//! authored maps and class/order decisions, and (F2 #8341) on the type
+//! records the full decoder rejects, which both omit and report.
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_processing::{
     discovery::{Discovery, TypeGeometryPlan},
@@ -26,10 +27,12 @@ fn compare(content: &[u8], mode: TypeGeometryMode) -> TypeGeometryPlan {
             candidates.push((id, start, end, ty));
         }
     }
-    let native = TypeGeometryPlan::from_scan(discovery.types, discovery.mapped_item_plan, mode);
+    let mut native = TypeGeometryPlan::from_scan(discovery.types, discovery.mapped_item_plan, mode);
+    let native_omitted = native.retain_decodable_products(&EntityDecoder::new(content));
     let index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, index.clone());
-    let browser = TypeGeometryPlan::from_spans(content, &mapped, &defines, &candidates, &mut decoder, mode);
+    let mut browser = TypeGeometryPlan::from_spans(content, &mapped, &defines, &[], &mut decoder, mode);
+    assert_eq!(native_omitted, browser.decode_products_reporting(content, &candidates, &mut decoder));
     let mut fallback_decoder = EntityDecoder::with_index(content, index);
     let fallback = TypeGeometryPlan::from_file(content, &mut fallback_decoder, mode);
     for plan in [&browser, &fallback] {
@@ -57,6 +60,7 @@ fn issue_7782_type_plan_modes_and_fallback_agree() {
         include_bytes!("fixtures/c4_bare_type_map_7782.ifc").as_slice(),
         include_bytes!("fixtures/c4_native_unsliced_layers_7782.ifc").as_slice(),
         include_bytes!("fixtures/c4_type_geometry_modes_7782.ifc").as_slice(),
+        include_bytes!("fixtures/f2_omitted_type_record_8341.ifc").as_slice(),
         include_bytes!("fixtures/issue_1781_image_textures.ifc").as_slice(),
         include_bytes!("../../geometry/tests/fixtures/issue_1910_building_shell_geometry.ifc").as_slice(),
         include_bytes!("fixtures/issue_2019_wall_two_overlapping_openings.ifc").as_slice(),

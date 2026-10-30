@@ -6,7 +6,9 @@
 setup DRIVER_SHA   run on Pop outside any reservation; submits the original requests
 prepare SIDE       ordinary job in the SIDE commit's worker checkout: fresh WASM + viewer
 smoke              ordinary job in the driver checkout: headless functional run, not timing
-measure            benchmark job in the driver commit's checkout: browser-cohort.mts
+measure [ATTEMPT]  benchmark job in the driver commit's checkout: browser-cohort.mts
+remeasure DRIVER_SHA ATTEMPT  outside any reservation: a corrected driver commit reuses
+                   the settled builds; dependencies install inside the measure job
 
 Same submit/probe/receipt helpers as ifc-benchmark. Requests are never resubmitted:
 an existing request id resolves to its original receipt.
@@ -142,12 +144,50 @@ def smoke():
     sys.exit(code)
 
 
-def measure():
+def remeasure(driver_sha, attempt):
+    assert not os.environ.get('IFC_WORKER_ACTIVE_STATE'), 'start outside a reservation'
+    repo = BASE / 'ifc-lite'
+    me = Path(__file__).resolve()
+    committed = subprocess.check_output(['git', '-C', str(repo), 'show', f'{driver_sha}:{EVIDENCE}/cohort.py'])
+    assert hashlib.sha256(committed).hexdigest() == digest(me), 'orchestrator differs from the driver commit'
+    script = ROOT / f'cohort-{attempt}.py'
+    if me != script: shutil.copyfile(me, script)
+    checkout = BASE / 'worker-state/checkouts' / driver_sha
+    assets = {p: h for p, h in json.loads((ROOT / 'measurement-manifest.json').read_text())['assets'].items()
+              if p.startswith(str(ROOT / 'base-dist')) or p.startswith(str(ROOT / 'branch-dist')) or p.startswith(str(ROOT / 'fixtures'))}
+    files = subprocess.check_output(['git', '-C', str(repo), 'ls-tree', '-r', '--name-only', driver_sha, '--',
+                                     'scripts/perf', 'scripts/lib', 'tests/benchmark', EVIDENCE], text=True).split()
+    for rel in files:
+        if Path(rel).suffix in ('.mts', '.ts', '.mjs', '.py', '.json'):
+            blob = subprocess.check_output(['git', '-C', str(repo), 'show', f'{driver_sha}:{rel}'])
+            assets[str(checkout / rel)] = hashlib.sha256(blob).hexdigest()
+    for p in [script, ROOT / 'hardware-chrome', CHROME]:
+        assets[str(p)] = digest(p)
+    for side in SHA:
+        assert json.loads((ROOT / f'{side}-build.json').read_text())['source'] == SHA[side]
+    manifest = ROOT / f'measurement-manifest-{attempt}.json'
+    write(manifest, {'base': SHA['base'], 'branch': SHA['branch'], 'driver': driver_sha, 'attempt': attempt, 'seed': SEED,
+          'hardwareLaunch': {'display': ':1', 'headed': True, 'chrome': str(CHROME), 'flags': LAUNCH_FLAGS}, 'assets': assets})
+    out = ROOT / f'measurement-{attempt}'
+    receipt = submit(BASE, ROOT, f'measure-{attempt}', {
+        'id': f'{TASK}-measure-{attempt}', 'commit': driver_sha, 'kind': 'benchmark', 'cpu': 4, 'memoryGiB': 24,
+        'storageTask': TASK, 'storageScratch': [str(ROOT)],
+        'command': [sys.executable, str(script), 'measure', attempt],
+        'artifacts': [str(manifest), str(script), str(ROOT / 'base-build.json'), str(ROOT / 'branch-build.json')]
+                     + [str(out / n) for n in ['qualification.json', 'report.json', 'report.txt', 'summary.json', 'summary.txt',
+                                               'readiness-before.json', 'readiness-samples.json', 'cohort/runs.jsonl', 'cohort/plan.json']]})
+    print('c4-browser-8341 cohort settled:', receipt, flush=True)
+
+
+def measure(attempt=None):
     assert os.environ.get('IFC_WORKER_KIND') == 'benchmark'
-    manifest = json.loads((ROOT / 'measurement-manifest.json').read_text())
+    suffix = f'-{attempt}' if attempt else ''
+    if attempt:  # fresh driver checkout: offline install from the host store, before readiness and timing
+        subprocess.run(['pnpm', 'install', '--frozen-lockfile', '--prefer-offline'], check=True)
+    manifest = json.loads((ROOT / f'measurement-manifest{suffix}.json').read_text())
     def drift(): return [p for p, h in manifest['assets'].items() if digest(p) != h]
     assert not drift(), 'input drift before measurement'
-    out = ROOT / 'measurement'; out.mkdir(exist_ok=False)
+    out = ROOT / f'measurement{suffix}'; out.mkdir(exist_ok=False)
     readiness = []
     for _ in range(120):  # unmanaged activity: wait, never kill
         readiness.append(probe())
@@ -197,4 +237,5 @@ def measure():
 
 
 if __name__ == '__main__':
-    {'setup': lambda: setup(sys.argv[2]), 'prepare': lambda: prepare(sys.argv[2]), 'smoke': smoke, 'measure': measure}[sys.argv[1]]()
+    {'setup': lambda: setup(sys.argv[2]), 'prepare': lambda: prepare(sys.argv[2]), 'smoke': smoke,
+     'measure': lambda: measure(sys.argv[2] if len(sys.argv) > 2 else None), 'remeasure': lambda: remeasure(sys.argv[2], sys.argv[3])}[sys.argv[1]]()

@@ -109,19 +109,23 @@ function memorySummary(peaks: ProcessPeak[]) {
   };
 }
 
+/** In-page sources stay plain strings: tsx keeps function names by wrapping named
+ * closures in a `__name` helper that does not exist inside the page. */
+const IN_PAGE_HEX = `(b) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('')`;
+
 /** Order-independent root over the retained CPU payload; runs after readiness. */
 async function payloadRoot(page: Page) {
-  return page.evaluate(async () => {
-    const store = (globalThis as Record<string, unknown>).__ifc_lite_viewer_store__ as { getState(): Record<string, unknown> } | undefined;
+  return page.evaluate(`(async () => {
+    const hex = ${IN_PAGE_HEX};
+    const bytes = (v) => (ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : new Uint8Array());
+    const store = globalThis.__ifc_lite_viewer_store__;
     if (!store) return { error: 'viewer store singleton absent' };
-    const state = store.getState() as { models?: Map<string, { geometryResult?: unknown }>; geometryResult?: unknown };
+    const state = store.getState();
     const results = [...(state.models?.values() ?? [])].map((m) => m.geometryResult).filter(Boolean);
     if (results.length === 0 && state.geometryResult) results.push(state.geometryResult);
-    const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
-    const bytes = (v: unknown) => (ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : new Uint8Array());
-    const leaves: string[] = [];
-    let meshes = 0; let vertices = 0; let triangles = 0; let instanced = 0;
-    for (const r of results as { meshes: Array<Record<string, unknown>>; instancedGeometryHashes?: Map<number, bigint> }[]) {
+    const leaves = [];
+    let meshes = 0, vertices = 0, triangles = 0, instanced = 0;
+    for (const r of results) {
       for (const m of r.meshes) {
         const head = new TextEncoder().encode(JSON.stringify([m.expressId, m.color, m.geometryItemId ?? null]));
         const parts = [head, bytes(m.positions), bytes(m.normals), bytes(m.indices)];
@@ -129,14 +133,18 @@ async function payloadRoot(page: Page) {
         let offset = 0;
         for (const p of parts) { new DataView(joined.buffer).setFloat64(offset, p.byteLength); joined.set(p, offset + 8); offset += p.byteLength + 8; }
         leaves.push(hex(await crypto.subtle.digest('SHA-256', joined)));
-        meshes++; vertices += (m.positions as Float32Array).length / 3; triangles += (m.indices as Uint32Array).length / 3;
+        meshes++; vertices += m.positions.length / 3; triangles += m.indices.length / 3;
       }
-      for (const [id, h] of r.instancedGeometryHashes ?? []) { leaves.push(`i${id}:${h}`); instanced++; }
+      for (const [id, h] of r.instancedGeometryHashes ?? []) { leaves.push('i' + id + ':' + h); instanced++; }
     }
     leaves.sort();
-    const root = hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(leaves.join('\n'))));
+    const root = hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(leaves.join('\\n'))));
     return { root, models: results.length, meshes, vertices, triangles, instanced };
-  });
+  })()`) as Promise<Record<string, unknown>>;
+}
+
+async function textDigest(page: Page, text: string) {
+  return page.evaluate(`(async () => (${IN_PAGE_HEX})(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(${JSON.stringify(text)}))))()`) as Promise<string>;
 }
 
 let current = DIST.branch;
@@ -174,7 +182,7 @@ for (let round = 1; round <= ITERS; round++) {
         record.payload = await raceWithTimeout(payloadRoot(page), 120_000, 'payload root');
         const diagnostics = bp.getConsoleLogs().filter((l) => /refus|diagnos|fallback|failed/i.test(l));
         record.diagnosticLines = diagnostics.length;
-        record.diagnosticDigest = await page.evaluate(async (text) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((x) => x.toString(16).padStart(2, '0')).join(''), diagnostics.map((l) => l.replace(/\d+(\.\d+)?\s*ms/g, '#ms')).join('\n'));
+        record.diagnosticDigest = await textDigest(page, diagnostics.map((l) => l.replace(/\d+(\.\d+)?\s*ms/g, '#ms')).join('\n'));
         record.ok = true;
         writeFileSync(join(OUT, 'samples', `${tag}.console.log`), bp.getConsoleLogs().join('\n'));
       } catch (error) {

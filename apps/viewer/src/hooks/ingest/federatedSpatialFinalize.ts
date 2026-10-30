@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied, ifcVerticalAssumptionHint, type IfcVerticalAssumptionApplied } from './ifcGeorefAssumptions.js';
+import { conflictingVerticalDeclarations, ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied, ifcVerticalAssumptionHint, type IfcVerticalAssumptionApplied } from './ifcGeorefAssumptions.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
 import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
@@ -89,8 +89,10 @@ function reportFederationAlignmentOutcome(
     toast.info(`Reprojected "${fileName}" from ${sourceCrs} to ${targetCrs} for federation alignment.`);
   } else if (status === 'failed') {
     // Equal CRSs or a height refusal mean nothing was reprojected: the placement itself was refused.
-    const reason = sourceCrs === targetCrs ? `placement on ${sourceCrs} could not be resolved`
-      : heightHint ? `placement from ${sourceCrs} to ${targetCrs} could not be resolved` : `${sourceCrs} → ${targetCrs} reprojection failed`;
+    const placement = sourceCrs === targetCrs ? `placement on ${sourceCrs}` : `placement from ${sourceCrs} to ${targetCrs}`;
+    const reason = conflictingVerticalDeclarations(source.spatialReference, reference.spatialReference)
+      ? `${placement} was refused because the declared height systems differ`
+      : sourceCrs === targetCrs || heightHint ? `${placement} could not be resolved` : `${sourceCrs} → ${targetCrs} reprojection failed`;
     toast.error(`Could not align "${fileName}" with the federation anchor — ${reason}. The model is shown in its own local frame and may appear at the wrong real-world position.${heightHint}`);
   }
 }

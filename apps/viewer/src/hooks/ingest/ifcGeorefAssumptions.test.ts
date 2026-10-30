@@ -264,6 +264,14 @@ describe('explicit IFC shared height system (#8042)', () => {
     assert.doesNotMatch(errors[0], /reprojection failed/);
   });
 
+  it('reports different declared datums across CRSs as a refusal, not a reprojection failure', async () => {
+    await installAnchor(reference({ vertical: { id: 'EPSG:5729' } }));
+    await finalize(reference({ horizontal: { id: 'EPSG:2056' }, vertical: { id: 'EPSG:5773' } }));
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /placement from EPSG:2056 to EPSG:32760 was refused because the declared height systems differ/);
+    assert.doesNotMatch(errors[0], /reprojection failed|Settings/);
+  });
+
   it('does not offer the setting across CRSs when both models declare the same datum', () => {
     const vertical = { id: 'EPSG:5729' };
     assert.equal(ifcVerticalAssumptionHint(reference({ horizontal: { id: 'EPSG:2056' }, vertical }), reference({ vertical }), false), '');

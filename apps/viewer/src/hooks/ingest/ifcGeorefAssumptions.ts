@@ -13,7 +13,7 @@ function verticalDeclaration(reference: ModelSpatialReference): string | undefin
 }
 
 /** Different unreconciled declarations are not permission to assume an absent datum (#8042). */
-function conflictingVerticalDeclarations(source: ModelSpatialReference, target: ModelSpatialReference): boolean {
+export function conflictingVerticalDeclarations(source: ModelSpatialReference, target: ModelSpatialReference): boolean {
   const a = verticalDeclaration(source);
   const b = verticalDeclaration(target);
   return a !== undefined && b !== undefined && a !== b;

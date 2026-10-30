@@ -20,6 +20,7 @@ ifc-lite-geometry-runtime = { path = "../geometry-runtime" }
 
 [dev-dependencies]
 ifc-lite-geometry-runtime = { path = "../geometry-runtime", features = ["test-support"] }
+ifc-lite-testkit = { path = "../testkit" }
 ifc-lite-geometry = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 libc = "0.2"

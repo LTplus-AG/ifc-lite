@@ -23,6 +23,15 @@ Lesson: remeasure the cost premise after introducing resident ownership. Keep
 unproven boundary rewrites out, and investigate native compare/result construction
 under a separately agreed scope rather than broadening a transport task.
 
+## C4-10b shared router and batch adapters (#7782)
+
+Verdict: performance unmeasured; no speedup or neutrality claim. This is a
+structural refactor around the existing owned production transaction. Keep
+native worker caches and browser warm decode/batch-local template choice in the
+schedulers; share router arming and decode/type/drain boundaries. The C4-0
+contract and real-WASM contracts qualify output preservation, not worker-pool
+throughput. Native A/B, browser timing and headed GPU qualification remain unmeasured.
+
 ## C4-7a-R shared type geometry plan (#7782)
 
 The shared discovery-span plan passed the native instruction gate against
@@ -5516,6 +5525,23 @@ to a branch can reuse a dependency set that predates a newly added module.
 Check the rebuilt executable's dependency file for the new module, not just
 Cargo's success status. The initial cached branch run was rejected; processing
 was rebuilt and the branch measurements repeated before accepting the result.
+
+### Retained bounded halfspaces (M6, #7955)
+
+Verdict: fresh CUT-0/M6 builds at the same source path produce identical default
+WASM bytes and exact mesh fingerprints. The opt-in path constructs one bounded
+prism per clip and performs each Difference separately. Its real-SDK per-clip
+observations describe invocation cost under qualification load; they do not
+establish worker-pool throughput or a performance-neutrality claim. No grouping
+or exact-path optimization is part of this change.
+
+Lesson: feature-gating a helper does not preserve binary identity if inserting
+it moves existing source spans. Append the helper or isolate it in a gated
+module, and compare fresh same-path binaries. For source qualification, linear
+section areas are polynomial between topology events; repeatedly seeking
+relative convergence on adjacent floating-point events can exhaust work even
+when the integral is available directly. Prove disjoint source opening caps
+before expanding triangle tuples, while preserving the fixed work budget.
 
 ### Retained material bands and admission reuse (M4, #7955)
 

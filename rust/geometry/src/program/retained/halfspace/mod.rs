@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-//! CUT-0 dispatch preserves today's refusal; M5/M6 replace individual stubs.
+//! Shared dispatch; M5 owns plain planes and M6 owns bounded/boxed semantics.
 mod plane;
 mod boxed;
 mod bounded;
+#[cfg(feature = "retained-runtime")]
+mod bounded_projection;
 pub(in crate::program) mod plane_source;
 use super::{cutter::CutterStep, failure::{FailureHandle, FailureSite, OriginCause}, LogicalRetainedValue};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};

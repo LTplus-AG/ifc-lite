@@ -11,6 +11,8 @@ mod sources;
 mod types;
 #[path = "normals_retrace.rs"]
 mod retrace;
+#[path = "normals_halfspaces.rs"]
+mod halfspaces;
 pub use sources::surfaces;
 
 #[path = "normals_check.rs"]

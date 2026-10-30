@@ -22,6 +22,11 @@ mod tolerances;
 mod registry;
 #[path = "compare/checks/mod.rs"]
 mod checks;
+#[path = "compare/hand_volumes.rs"]
+mod hand_volumes;
+#[cfg(test)]
+#[path="compare/checks/bounded_tests.rs"]
+mod bounded_tests;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{canonical_element_jobs, canonical_type_maps};
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;
@@ -38,6 +43,7 @@ type Error = Box<dyn std::error::Error>;
 fn main() -> Result<(), Error> {
     let options = options::options()?;
     let tolerances = tolerances::registered()?;
+    let mut hand = hand_volumes::HandVolumes::parse(hand_volumes::REGISTERED)?;
     // Fail before reporting coverage if no qualified numerical engine exists.
     let startup = Instant::now();
     let qualified = ifc_lite_retained_native::NativeWorker::spawn(&options.worker)
@@ -54,9 +60,10 @@ fn main() -> Result<(), Error> {
                 .push(format!("{}: absent; run pnpm fixtures", path.display()));
             continue;
         }
-        compare(path, &mut driver, &tolerances, &mut report)?;
+        compare(path, &mut driver, &tolerances, &mut report, &mut hand)?;
         write_report(&options, &mut report, false)?;
     }
+    if let Err(error) = hand.finish() { report.violations.push(error); }
     report.rows.sort();
     report.coverage.sort();
     if options.bless && (!report.violations.is_empty() || !report.universe_mismatch.is_empty() || !report.skipped.is_empty()) {
@@ -96,9 +103,11 @@ fn compare(
     driver: &mut NativeModelDriver,
     tolerances: &serde_json::Value,
     report: &mut report::Report,
+    hand: &mut hand_volumes::HandVolumes,
 ) -> Result<(), Error> {
     let bytes = std::fs::read(path)?;
     let model = path.to_string_lossy();
+    hand.visit(&model);
     let start = Instant::now();
     let exact = ifc_lite_processing::process_geometry(&bytes);
     let exact_ms = start.elapsed().as_secs_f64() * 1000.;
@@ -207,6 +216,9 @@ fn compare(
                         // Bands partition one admitted source host.
                         retraced.or_else(|| source::expected(&sources, id, if layered { 1 } else { shape.parts.len() }))
                     };
+
+                    let m6 = ifc_lite_retained_native::oracle::bounded::applies(&bytes, id);
+                    let bounded = m6.then(|| ifc_lite_retained_native::oracle::bounded::expected(&bytes, &sources, id)).flatten();
                     report.published(
                         &model,
                         &shape,
@@ -217,8 +229,9 @@ fn compare(
                         tolerances,
                         ms,
                         opening_expectations.get(&id),
-                        &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle },
+                        &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle, hand_volume: bounded.as_ref().and_then(|_| hand.take(&model, id)) },
                         retraced.is_some() || (id == 72209 && has_retraced_opening),
+                        bounded.as_ref(),
                         &bytes,
                     );
                     affine::record(report, &mut affine_oracle, &shape, tolerances);

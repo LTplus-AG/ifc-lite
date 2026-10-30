@@ -82,6 +82,8 @@ the window. No commit is attributed.
   `-r2` measurement was refused by the adapter's single-shot readiness check
   (`cpu_pressure`, avg10 36%, no registered builders) before any round ran.
 
+Host overlap: both native resumes started while the browser cohort was running, because Pop was never idle otherwise, so their readiness checks overlapped the browser run lightly. Treat the native timing deltas as weaker evidence than an idle-host run. Mesh, vertex and triangle counts are unaffected.
+
 ## Not measured, and why
 
 - Per-lane browser attribution for C4-10a/10b/11a/11b. One cumulative pair was measured

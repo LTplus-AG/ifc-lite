@@ -969,7 +969,7 @@ cannot see them and leaves the report field at 0.
 The counts are per `IfcAPI`, not a deduplicated model-wide sum over workers.
 They survive `clearPrePassCache()` for inspection after a load, and reset on
 load start (`buildPrePassOnce`, streaming prepass, `setEntityIndex`, or
-`setSourceBytes`). Before any batch or refusal, the getter returns `undefined`.
+`setSourceBytes`). Before any batch, refusal or omitted type record, the getter returns `undefined`.
 
 Rust callers can use
 `ifc_lite_processing::pipeline_diagnostics::PipelineDiagnosticsReport` via

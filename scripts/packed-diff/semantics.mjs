@@ -115,6 +115,15 @@ export function semantics(api, { handles = false } = {}) {
   assert.deepEqual(aliasResult.counts, { added: 0, modified: 0, deleted: 0, unchanged: 1 });
   assert.deepEqual([...aliasResult.appliedKeyAliases], [['renamed', 'old']]);
   assert.equal(aliasResult.entries[0].head, renamed);
+  // Cross-check the placement expectations with the pre-handle TS oracle too.
+  // It has no strip option: project its inputs explicitly, as the contract says.
+  const placementRow = geometryHash => ({ key: 'placement', ifcType: 'IfcWall', dataHash: 'd', geometryHash });
+  for (const stripped of [false, true]) {
+    const actual = call('diffModels', [placementRow(stripped ? undefined : 'p:before')],
+      [placementRow(stripped ? undefined : 'p:after')]);
+    assert.deepEqual(actual.counts, { added: 0, modified: stripped ? 0 : 1, deleted: 0, unchanged: stripped ? 1 : 0 });
+    assert.deepEqual(actual.entries[0].changeKinds, stripped ? [] : ['geometry']);
+  }
   const handleOperations = [];
   if (handles) {
     // #8042 / #8266: the class is a runtime export, not a type-only name.

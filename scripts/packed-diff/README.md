@@ -131,9 +131,10 @@ logs via the owning launcher's artifact mechanism; never retain the consumer's
 `node_modules` or an entire generated workspace. Follow the fleet storage
 receipt/closure rules for an unknown outcome; do not blindly resubmit.
 
-## Preparation validation
+## Harness validation
 
-Only syntax checks and the tiny frozen-oracle vector check were performed while
-writing this runner. The oracle check passed under the discovered Node 22.13.0
-binary with native stripping disabled. The real packed WASM acceptance is
-deliberately left for the parent's admitted execution; it has not passed yet.
+`scripts/packed-diff.test.mjs` cross-checks frozen vectors against the private TS
+oracle without initializing WASM. CI's revert-oracle selector uses the focused
+`tests/evidence/packed-handle-8042/behaviour.oracle.patch` to show that corrupting a
+frozen expectation fails an assertion. This lightweight witness does not replace
+the admitted packed acceptance above.

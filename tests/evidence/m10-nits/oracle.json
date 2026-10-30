@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/src/oracle/affine_operator.rs",
+  "mutation": "tests/evidence/m10-nits/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/m10_classification.rs",
+  "why": "Reverse application drops the Z x X fallback for a collapsed +Y default and makes a singular map rigid again; the collapsed-default and singular-map witnesses must fail."
+}

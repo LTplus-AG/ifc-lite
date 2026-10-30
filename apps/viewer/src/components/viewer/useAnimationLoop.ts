@@ -235,7 +235,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // and only "reappear" on release — the reported bug. The large-model
       // interaction throttle still caps the cadence via `throttled`.
       const wantsRender = (isAnimating || renderRequested || queueFlushed || isInteractingRef.current) && !throttled;
-      const gpuBacklogged = wantsRender && framePacer.saturated(performance.now());
+      const gpuBacklogged = wantsRender && framePacer.saturated(renderer.getGPUDevice(), performance.now());
       // A held-back frame keeps its request; queueFlushed is per-iteration only.
       if (gpuBacklogged && queueFlushed) renderer.requestRender();
       const willRender = wantsRender && !gpuBacklogged;
@@ -282,8 +282,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           }
         }
         updateThrottle(performance.now() - renderStart);
-        const gpuDone = renderer.getGPUDevice()?.queue.onSubmittedWorkDone();
-        if (gpuDone) framePacer.noteSubmit(gpuDone, performance.now());
+        framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section
         // face-pick handler can compute a correct cardinal-fallback

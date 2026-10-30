@@ -13,14 +13,14 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRef } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Renderer, RenderOptions } from '@ifc-lite/renderer';
 import { useAnimationLoop, type UseAnimationLoopParams } from './useAnimationLoop.js';
-import { GPU_FRAMES_IN_FLIGHT } from './gpuFramePacer.js';
+import { GPU_FRAMES_IN_FLIGHT, GPU_FRAME_STALE_MS } from './gpuFramePacer.js';
 
 // ---- deterministic rAF -----------------------------------------------------
 
@@ -44,6 +44,10 @@ interface FakeRendererState {
   /** throw out of render(), the way an uncontained device loss does */
   /** settles the frames' GPU completion promises, oldest first */
   gpuDone: Array<() => void>;
+  gpuFail: Array<(reason: unknown) => void>;
+  device?: object;
+  deviceLost?: boolean;
+  completionThrows?: boolean;
   renderThrows: boolean;
   /**
    * The renderer's dirty flag, modelled as the real one behaves: CONSUMABLE.
@@ -60,6 +64,14 @@ interface FakeRendererState {
 }
 
 function fakeRenderer(state: FakeRendererState): Renderer {
+  state.device ??= {
+    queue: {
+      onSubmittedWorkDone: () => {
+        if (state.completionThrows) throw new Error('device destroyed');
+        return new Promise<void>((resolve, reject) => { state.gpuDone.push(resolve); state.gpuFail.push(reject); });
+      },
+    },
+  };
   const camera = {
     update: () => state.animating ?? false,
     getRotation: () => ({ azimuth: 0, elevation: 0 }),
@@ -74,9 +86,7 @@ function fakeRenderer(state: FakeRendererState): Renderer {
   return {
     getCamera: () => camera,
     getScene: () => scene,
-    getGPUDevice: () => ({
-      queue: { onSubmittedWorkDone: () => new Promise<void>((resolve) => { state.gpuDone.push(resolve); }) },
-    }),
+    getGPUDevice: () => (state.deviceLost ? null : state.device),
     getPipeline: () => ({}),
     peekRenderRequest: () => state.renderRequested,
     consumeRenderRequest: () => { state.renderRequested = false; },
@@ -171,7 +181,7 @@ async function mount(params: UseAnimationLoopParams): Promise<void> {
 
 describe('useAnimationLoop — GPU frame backlog (#5865)', () => {
   it('stops submitting at the allowed depth and resumes when the GPU catches up', async () => {
-    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [] };
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [], gpuFail: [] };
     await mount(baseParams(fakeRenderer(state)));
 
     // An orbit/inertia that keeps the camera animating: the loop wants a frame every rAF.
@@ -188,7 +198,7 @@ describe('useAnimationLoop — GPU frame backlog (#5865)', () => {
   });
 
   it('keeps a requested render for the first free slot instead of dropping it', async () => {
-    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: true, gpuDone: [] };
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: true, gpuDone: [], gpuFail: [] };
     await mount(baseParams(fakeRenderer(state)));
     for (let i = 0; i < GPU_FRAMES_IN_FLIGHT; i++) { state.renderRequested = true; step(); }
     assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT);
@@ -205,7 +215,7 @@ describe('useAnimationLoop — GPU frame backlog (#5865)', () => {
   });
 
   it('renders every requested frame while the GPU keeps up', async () => {
-    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [] };
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [], gpuFail: [] };
     await mount(baseParams(fakeRenderer(state)));
     for (let i = 0; i < 10; i++) {
       step();
@@ -213,5 +223,62 @@ describe('useAnimationLoop — GPU frame backlog (#5865)', () => {
       await act(async () => { await Promise.resolve(); });
     }
     assert.equal(state.renderCalls, 10);
+  });
+  it('survives a queue that throws on onSubmittedWorkDone() (device died after encode)', async () => {
+    const realWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [], gpuFail: [], completionThrows: true };
+      await mount(baseParams(fakeRenderer(state)));
+      for (let i = 0; i < 10; i++) {
+        step();
+        assert.ok(queued.length > 0, 'a throw must not skip the tail requestAnimationFrame');
+      }
+      assert.equal(state.renderCalls, 10, 'unpaced frames keep rendering');
+    } finally { console.warn = realWarn; }
+  });
+
+  it('frees the loop when the GPU reports the outstanding frames as failed (device loss)', async () => {
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [], gpuFail: [] };
+    await mount(baseParams(fakeRenderer(state)));
+    for (let i = 0; i < 10; i++) step();
+    assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT);
+    state.gpuFail.splice(0).forEach((fail) => fail(new Error('device lost')));
+    await act(async () => { await Promise.resolve(); });
+    step();
+    assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT + 1);
+  });
+
+  it('releases a loop whose completions never settle once the expiry has passed (hidden tab, lost device)', async () => {
+    // rAF does not run in a hidden tab, so nothing is submitted meanwhile; what
+    // is outstanding on return is either settled by then or expires.
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [], gpuFail: [] };
+    let nowMs = 1000;
+    const clock = mock.method(performance, 'now', () => nowMs);
+    try {
+      await mount(baseParams(fakeRenderer(state)));
+      for (let i = 0; i < 10; i++) step();
+      assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT, 'held back while the completions are pending');
+      nowMs += GPU_FRAME_STALE_MS - 1;
+      step();
+      assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT, 'still held back just inside the expiry');
+      nowMs += 2;
+      step();
+      assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT + 1, 'rendering resumes once the expiry has passed');
+    } finally { clock.mock.restore(); }
+  });
+
+  it('does not hold the loop back while the device is lost, and forgets its frames after recovery', async () => {
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: false, renderRequested: false, animating: true, gpuDone: [], gpuFail: [] };
+    await mount(baseParams(fakeRenderer(state)));
+    for (let i = 0; i < 10; i++) step();
+    assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT);
+    state.deviceLost = true; // getGPUDevice() is null while lost
+    step();
+    assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT + 1, 'the renderer, not the pacer, decides what a lost device does');
+    state.deviceLost = false;
+    state.device = { queue: { onSubmittedWorkDone: () => new Promise<void>(() => undefined) } }; // recovered: a new device
+    step();
+    assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT + 2, 'the old device\'s unfinished frames are not owed by the new one');
   });
 });

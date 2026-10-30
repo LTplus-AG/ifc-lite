@@ -25,28 +25,63 @@ export const GPU_FRAMES_IN_FLIGHT = 3;
  */
 export const GPU_FRAME_STALE_MS = 5000;
 
+/** The part of a GPUDevice the pacer needs. */
+export interface PacedDevice { queue: { onSubmittedWorkDone(): Promise<unknown> } }
+
 export class GpuFramePacer {
   private readonly submitted = new Map<number, number>();
   private serial = 0;
+  private device: PacedDevice | null = null;
+  private warned = false;
 
   constructor(
     private readonly maxInFlight = GPU_FRAMES_IN_FLIGHT,
     private readonly staleMs = GPU_FRAME_STALE_MS,
   ) {}
 
-  /** Record a frame just submitted; `done` settles when the GPU has finished it. */
-  noteSubmit(done: Promise<unknown>, now: number): void {
+  /**
+   * Record a frame just submitted on `device`, asking its queue to report the
+   * completion. That call can throw on a device that died after the frame was
+   * encoded, and that must never escape into the render loop: a throw there
+   * skips the tail `requestAnimationFrame` and the viewer freezes (#2229). A
+   * frame whose completion cannot be asked for is simply not counted. Both a
+   * resolved and a rejected completion free the slot.
+   */
+  noteSubmit(device: PacedDevice | null, now: number): void {
+    this.adopt(device);
+    if (!device) return;
+    let done: Promise<unknown>;
+    try {
+      done = device.queue.onSubmittedWorkDone();
+    } catch (error) {
+      if (!this.warned) {
+        this.warned = true;
+        console.warn('[GpuFramePacer] queue.onSubmittedWorkDone() threw; this frame is not paced:', error);
+      }
+      return;
+    }
     const id = this.serial++;
     this.submitted.set(id, now);
     const settle = () => { this.submitted.delete(id); };
     done.then(settle, settle);
   }
 
-  /** True while `maxInFlight` frames are still outstanding: do not submit another. */
-  saturated(now: number): boolean {
+  /**
+   * True while `maxInFlight` frames are still outstanding: do not submit
+   * another. Frames owed by a different (lost, then recovered) device are
+   * forgotten: nothing they were queued on will ever report back.
+   */
+  saturated(device: PacedDevice | null, now: number): boolean {
+    this.adopt(device);
     for (const [id, at] of this.submitted) {
       if (now - at > this.staleMs) this.submitted.delete(id);
     }
     return this.submitted.size >= this.maxInFlight;
+  }
+
+  private adopt(device: PacedDevice | null): void {
+    if (device === this.device) return;
+    this.device = device;
+    this.submitted.clear();
   }
 }

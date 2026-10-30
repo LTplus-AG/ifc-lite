@@ -73,6 +73,7 @@ interface FakeRendererState {
 }
 
 function fakeRenderer(state: FakeRendererState): Renderer {
+  const device = { queue: { onSubmittedWorkDone: () => ({ then: (done: () => void) => done() }) } };
   const camera = {
     update: () => state.animating ?? false,
     getRotation: () => ({ azimuth: 0, elevation: 0 }),
@@ -89,7 +90,7 @@ function fakeRenderer(state: FakeRendererState): Renderer {
     getScene: () => scene,
     // A GPU that has finished each frame by the time submit() returns, settled
     // synchronously because these tests step() frames without yielding to microtasks.
-    getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => ({ then: (done: () => void) => done() }) } }),
+    getGPUDevice: () => device,
     getPipeline: () => ({}),
     peekRenderRequest: () => state.renderRequested,
     consumeRenderRequest: () => { state.renderRequested = false; },

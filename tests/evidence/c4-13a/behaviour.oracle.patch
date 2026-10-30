@@ -1,0 +1,11 @@
+--- a/rust/processing/src/processor/pass.rs
++++ b/rust/processing/src/processor/pass.rs
+@@ -219,7 +219,7 @@ fn cancelled(req: &ProcessingRequest) -> bool {
+ 
+ /// `on_finishes` for the batch about to be emitted, one entry per mesh.
+ fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: &mut ModelFinishes<'_>, meshes: &[MeshData]) {
+-    let batch: Vec<_> = meshes.iter().map(|_| None).collect();
++    let batch: Vec<_> = meshes.iter().map(|mesh| finishes.finish_for_mesh(mesh)).collect();
+     sink.on_finishes(&batch);
+ }
+ 

@@ -67,17 +67,23 @@ if [[ $mode == gates ]]; then
 fi
 
 export IFC_C28_FIXTURE_CACHE="${IFC_C28_FIXTURE_CACHE:-$HOME/build-workers/ifc-lite/tests/models}"
-python3 -I - <<'PYFIX'
-import os
+# Link the fixture cache into a tree's tests/models (head now, the base export
+# below), so both sides of the gated-feature run see the same corpus.
+link_fixtures() {
+  python3 -I - "$1" <<'PYFIX'
+import os, sys
 from pathlib import Path
 cache = Path(os.environ['IFC_C28_FIXTURE_CACHE'])
+root = Path(sys.argv[1])
 if cache.is_dir():
     for source in cache.rglob('*'):
-        dest = Path('tests/models') / source.relative_to(cache)
+        dest = root / 'tests/models' / source.relative_to(cache)
         if source.is_file() and not dest.exists() and not dest.is_symlink():
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.symlink_to(source.resolve())
 PYFIX
+}
+link_fixtures "$head_dir"
 for fixture in "${fixtures[@]}"; do
   [[ -f $fixture ]] || node scripts/fixtures/fetch-fixtures.mjs "${fixture#tests/models/}"
   [[ -f $fixture ]] || { echo "missing fixture $fixture"; exit 2; }
@@ -98,6 +104,7 @@ git archive "$base" | tar -x -C "$scratch/base"
 git -C "$scratch/base" init -q
 git -C "$scratch/base" add -A
 git -C "$scratch/base" -c user.name=c28 -c user.email=c28@invalid commit -qm "base $base"
+link_fixtures "$scratch/base"
 
 side_dir() { [[ $1 == base ]] && echo "$scratch/base" || echo "$head_dir"; }
 
@@ -179,10 +186,12 @@ features)
     rc=$?
     set -e
     grep -E '^test result:' "$log" | sed "s/^/C28_FEATURES_RESULT $side /"
-    grep -E '^test .* \.\.\. FAILED$' "$log" | sed -E 's/^test (.*) \.\.\. FAILED$/\1/' | sort > "$scratch/$side-failing.txt"
+    { grep -E '^test .* \.\.\. FAILED$' "$log" || true; } | sed -E 's/^test (.*) \.\.\. FAILED$/\1/' | sort > "$scratch/$side-failing.txt"
     echo "C28_FEATURES $side exit=$rc failing=$(wc -l < "$scratch/$side-failing.txt")"
     sed "s/^/C28_FEATURES_FAILED $side /" "$scratch/$side-failing.txt"
-    grep -q 'error\[E' "$log" && { echo "C28_FEATURES $side did not compile"; grep -A5 'error\[E' "$log" | head -40; exit 1; }
+    if grep -q 'error\[E' "$log"; then
+      echo "C28_FEATURES $side did not compile"; grep -A5 'error\[E' "$log" | head -40; exit 1
+    fi
   done
   if cmp -s "$scratch/base-failing.txt" "$scratch/head-failing.txt"; then
     echo 'C28_FEATURES_VERDICT failing set identical to base'

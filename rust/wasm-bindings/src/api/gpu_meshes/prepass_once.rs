@@ -38,12 +38,7 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
-        // Load START on the serial/main-thread path: the previous load's
-        // pipeline diagnostics must not accumulate into this one. (The worker
-        // path resets via setEntityIndex; every load-start entry point resets.)
-        self.reset_pipeline_diagnostics();
-        self.production_model.invalidate_source();
-        self.invalidate_brep_signatures();
+        self.begin_content_install();
 
         let content = data;
 

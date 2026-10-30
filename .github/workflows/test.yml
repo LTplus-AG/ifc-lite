@@ -974,6 +974,9 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
+          # #7782 C4-11a: retain source/BRep epochs; break derived cache resets.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-11a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-11a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs)
           # #7782 C4-10b: preserve world-frame RTC and the scheduler policy split.
           # The adapter-only batch_run.rs keeps this selector active after
           # #8317's oracle patch lands on main and #8318 merges that base.

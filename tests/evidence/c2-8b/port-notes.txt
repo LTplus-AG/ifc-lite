@@ -1,0 +1,61 @@
+C2-8b / #8263: prism_cut extension, face, cut, pool and decompose modules.
+Stacked on C2-8a; qualified against main 70c91e8e617402ea2ca8949117fa2acbe61d97b7
+(cumulative, so every number below covers C2-8a + C2-8b).
+
+Derivation
+- Same generator as C2-8a: tests/evidence/c2-8a/slice.py --stage b, reading
+  main's prism_cut.rs. Range table (1-based base lines):
+    extension 1243-1608 (point_inside, cap/edge extension, ring guards,
+      tri_touches_slab_footprint) | face 1609-1701 (CrossCache, Seam,
+      face_plane, cached_crossing, face_coords) | cut 1702-1938 (cut_prism)
+    pool 1939-1984 (PointPool) | decompose 1985-2118 (decompose_tri)
+- Rewrites: pub(super) on moved items, Seam/PointPool fields and PointPool
+  methods; super::geom::parity::ray_triangle_param (base :1256, #8224's shared
+  ray intersection) becomes super::super::geom::... No WRAP needed.
+- cut.rs reaches build_face_cap / cap_plane_breakpoints and decompose.rs
+  reaches resolve_crossings through the facade (`use super::{..}`); PR-3
+  repoints those two import lines at caps/crossings when it moves them
+  (slice.py IMPORTS, keyed by stage).
+- Facade: drops the RAY_DIR (base :72) and Point2 (base :77) imports its
+  remaining code no longer uses; declares the five modules, with private globs
+  except decompose (no caller outside cut.rs, which imports it).
+  DAG: cut -> face, decompose, checks, frame, plane2, ptri, kit (+ facade:
+  caps); decompose -> face, pool, frame, ptri, kit (+ facade: crossings);
+  extension -> frame, plane2, profile, ptri, kit; face -> frame, kit.
+
+Move checks (commit cf75be4e47)
+- slice.py --stage b --check cf75be4e47: all five files identical to the
+  generated ones, 0 unmatched lines after normalising:
+    extension 380 = 15 preamble + 365 moved (8 rewrites)
+    face 103 = 11 + 92 (9) | cut 252 = 16 + 236 (1) | pool 55 = 10 + 45 (8)
+    decompose 148 = 15 + 133 (1) | facade 1057 lines, identical to generated
+- slice.py --stage b --concat cf75be4e47: +177 -8 against base (stage-a and
+  stage-b preambles and mod lines, the C2-8a WRAP, the dropped facade imports,
+  the doc-comment move and trailing blanks).
+- color_moved.py cf75be4e47^ cf75be4e47: 860/850 lines coloured moved; the
+  rest (+87 -28) are signature/field visibility lines, the super::super path,
+  headers, docs, imports and mod lines.
+- rustfmt: preambles are clean; remaining hunks in the moved bodies are the
+  ones base already had.
+
+Ratchets
+- module_size_allowlist: prism_cut.rs 1926 -> 1057; rust/geometry digest
+  4843835844353277487 -> 3907445196249583160.
+- function_length_allowlist: cut_prism 233 follows the function into
+  prism_cut/cut.rs (measured 233, unchanged).
+
+Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-14)
+- qualify.sh gates at cf75be4e47, job 6c69a681-9cfd-4eda-8e41-4d65c053ca0d:
+  all eight steps exit 0 (workspace clippy -D warnings; geometry/processing
+  clippy with retained-runtime; geometry lib+integration tests with and
+  without retained-runtime; module-size + function-length ratchets; wasm32
+  check; wasm32 clippy retained-browser).
+- qualify.sh all at cf75be4e47, job 08d62039-ed42-4b54-ac4c-e508e2d8458b:
+  * identity vs main: Haus, duplex, ISSUE_129 IDENTICAL; every count, FNV,
+    output SHA-256 and diagnostics SHA-256 equals the C2-8a values recorded in
+    tests/evidence/c2-8a/port-notes.txt.
+  * gated features: base and head each fail only
+    topology_gate_census_over_the_fixture_corpus; identical set.
+  * instructions vs main: worst phase 1.000339 (ISSUE_129 parse/entity scan/
+    preprocess); geometry 0.999959 / 0.999616 / 0.997836; total 1.000012 /
+    0.999656 / 0.997858 (Haus / duplex / ISSUE_129). All <= 1.0005.

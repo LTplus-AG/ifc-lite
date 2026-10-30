@@ -1983,6 +1983,8 @@ export function useIfcLoader() {
                   // A recovered load is missing elements (#4884); a cache hit would
                   // serve it silently, without the notice, so re-process instead.
                   !skippedHungElements &&
+                  // Same for omitted type records (#8341): the cache keeps no count.
+                  !omittedTypeRecords &&
                   allMeshes.length > 0 &&
                   finalCoordinateInfo
                 ) {

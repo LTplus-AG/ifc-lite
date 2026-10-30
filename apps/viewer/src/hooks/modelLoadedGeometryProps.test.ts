@@ -403,6 +403,13 @@ describe('ifc_model_loaded wiring (#2388)', () => {
     assert.ok(saveIdx !== -1 && saveIdx - cacheGate < 3_000, 'the gate must guard the saveToCache call that follows it');
   });
 
+  it('does not cache a load that omitted type records (#8341): a hit would drop the notice', () => {
+    const gate = src.indexOf('!omittedTypeRecords &&');
+    assert.notEqual(gate, -1, 'the cache write must be gated on omittedTypeRecords');
+    const saveIdx = src.indexOf('saveToCache(cacheKey', gate);
+    assert.ok(saveIdx !== -1 && saveIdx - gate < 3_000, 'the gate must guard the saveToCache call that follows it');
+  });
+
   it('aborts the geometry stream when it is closed, so a stalled pool is terminated (#4884)', () => {
     assert.match(src, /signal: geometryAbort\.signal/);
     const closeIdx = src.indexOf('closeGeometryIterator = async');

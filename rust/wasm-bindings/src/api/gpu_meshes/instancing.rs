@@ -19,10 +19,20 @@
 //!   as if instancing had never fired (byte-identical world triangles to the flat
 //!   baseline) — through the SAME `ifc_lite_processing::recover_occurrences_flat`
 //!   the native orphan recovery uses, so the two cannot drift.
+//!
+//! Grouping (`group_occurrences_by_rep`) and template selection
+//! (`index_templates_by_rep`, called by `batch_recovery`) are the native
+//! finalize's too. What stays here is the browser's own keep-or-recover policy,
+//! scoped to ONE batch: a group rides the shard only against a shard-eligible
+//! template from the same batch and only when it clears the per-batch
+//! threshold. The native finalize runs once over the whole model and has
+//! neither gate (EDGE-WASM-18, #8341).
 
 use super::batch_partition::is_class_toggled;
 use ifc_lite_geometry::SharedMappedItemCache;
-use ifc_lite_processing::{recover_occurrences_flat, MeshData, RawInstanceOccurrence};
+use ifc_lite_processing::{
+    group_occurrences_by_rep, recover_occurrences_flat, MeshData, RawInstanceOccurrence,
+};
 use rustc_hash::FxHashMap;
 
 /// A batch-local template's shard-relevant facts: its PRE-RTC composed world
@@ -70,15 +80,8 @@ pub(super) fn resolve_batch_occurrences(
     if raw.is_empty() {
         return Vec::new();
     }
-    let mut by_rep: FxHashMap<u128, Vec<RawInstanceOccurrence>> = FxHashMap::default();
-    for occ in raw {
-        by_rep.entry(occ.rep_identity).or_default().push(occ);
-    }
-    let mut groups: Vec<(u128, Vec<RawInstanceOccurrence>)> = by_rep.into_iter().collect();
-    groups.sort_by_key(|(rep, _)| *rep);
-
     let mut shard: Vec<ShardOccurrence> = Vec::new();
-    for (rep, occs) in groups {
+    for (rep, occs) in group_occurrences_by_rep(raw) {
         // A class-toggled occurrence (#5409) never rides the shard, whatever its
         // group's template is: the shard carries no class, so its toggle could
         // not reach it. It recovers flat, and only the rest weigh on the gate.

@@ -534,6 +534,8 @@ export interface FederatedModel extends ModelLoadReportFields {
    * on declared CRSs alone, even if assumptions were enabled.
    */
   landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
+  /** IFC shared-height choice: true for omitted datums, unresolved for an unrecognized authored declaration. */
+  ifcSharedVerticalDatumAssumed?: true | 'unresolved';
   /** Model-level visibility toggle */
   visible: boolean;
   /** UI collapse state in hierarchy panel */

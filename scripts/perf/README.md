@@ -4,6 +4,23 @@
 
 # Performance diagnosis kit
 
+## C4-11b content slots and serial metadata index (#7782)
+
+Verdict: native metadata-handoff allocation reduction on the committed bare-map
+and type-mode fixtures; no end-to-end worker-pool timing or browser peak-memory
+claim. Source-pinned counts and coverage limits are recorded in
+`tests/evidence/c4-11b-prepass/README.md`.
+
+Temporary Arc leases eliminate the populated-row metadata copies while keeping
+exclusive insertion between callbacks and consuming the same table into final
+columns. The lease must drop before scanning resumes; clone-on-write would put
+the full-table copy back. Existing sharded Arc columns already avoided this copy
+and are credited separately. Unit/RTC fallback can still build its own index.
+Content slots share one lazy initialization/publish lock and generate their reset
+walk from their declarations; settings and post-load diagnostics keep their own
+lifetimes. This result does not qualify the large-file crash band or the viewer's
+full worker-pool memory budget.
+
 ## C4-11a content-install reset contract (#7782)
 
 This is a correctness change at explicit browser load boundaries. Prepass and
@@ -70,8 +87,9 @@ must measure the consumer path rather than only a retained comparison kernel.
 
 ## Streaming pre-pass trap reporting and metadata snapshots (#8259)
 
-Metadata snapshots now copy populated hash entries instead of the streaming
-scan's unused reservation. The source-backed worker APIs still own a full WASM
+At #8259, metadata snapshots were reduced to populated hash entries instead
+of the streaming scan's unused reservation; C4-11b above removes those copies.
+The source-backed worker APIs still own a full WASM
 source copy; a SharedArrayBuffer view does not avoid wasm-bindgen marshalling.
 Model-dependent index fallback and discovery allocations prevent qualifying the
 observed large-file crash band. Existing successful large-file loads remain

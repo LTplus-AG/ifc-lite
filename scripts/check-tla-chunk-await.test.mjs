@@ -499,22 +499,26 @@ test('RED: a wrapped entry with no __tla export is caught even when a worker sup
   assert.match(out, /main-def\.js/);
 });
 
-test('RED: a static import on the start graph that names no emitted chunk fails', () => {
+test('a start-graph reference that names no emitted chunk warns, naming the chunk and specifier', () => {
   const entry = `import"./vendor-x.js";export{};`;
   const { status, out } = runOn(
     { 'store-abc.js': TLA_CHUNK, 'main-def.js': entry, 'vendor-x.js': `import"./gone-y.js";export{};` },
     { html: entryHtml('main-def.js') },
   );
-  assert.equal(status, 1, out);
-  assert.match(out, /1 static import\(s\) on the app-start graph are not among the emitted chunks/);
-  assert.match(out, /vendor-x\.js imports \.\/gone-y\.js/);
+  assert.equal(status, 0, out);
+  assert.match(out, /1 import-like reference\(s\) on the app-start graph name no emitted chunk/);
+  assert.match(out, /vendor-x\.js mentions \.\/gone-y\.js/);
 });
 
-test('a missing chunk only a lazy chunk imports does not fail the start graph', () => {
-  const entry = `const load=()=>import("./lazy-y.js");export{load};`;
-  const { status, out } = runOn(
-    { 'store-abc.js': TLA_CHUNK, 'main-def.js': entry, 'lazy-y.js': `import"./gone-z.js";export{};` },
-    { html: entryHtml('main-def.js') },
-  );
+test('import-like text in a string warns and does not fail the deploy build', () => {
+  const entry = `console.log('import "./example.js"');export{};`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'main-def.js': entry }, { html: entryHtml('main-def.js') });
   assert.equal(status, 0, out);
+  assert.match(out, /main-def\.js mentions \.\/example\.js/);
+});
+
+test('a clean start graph prints no reference warning', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'main-def.js': 'export{};' }, { html: entryHtml('main-def.js') });
+  assert.equal(status, 0, out);
+  assert.doesNotMatch(out, /import-like reference/);
 });

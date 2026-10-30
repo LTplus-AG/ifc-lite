@@ -262,6 +262,7 @@ if (entryCheck.error) {
   process.exit(1);
 }
 const entryPath = entryCheck.entryPath;
+if (entryCheck.warning) console.warn(entryCheck.warning);
 
 const violations = [];
 const sideEffectViolations = [];

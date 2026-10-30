@@ -75,8 +75,11 @@ export function wrappedOnEntryPath(html, sources, wrappedChunks) {
 }
 
 /**
- * The gate's verdict on the app-start graph: `{ entryPath }` when it was read
- * and nothing on it is wrapped, else `{ error }` with the message to print.
+ * The gate's verdict on the app-start graph: `{ entryPath, warning }` when it
+ * was read and nothing on it is wrapped, else `{ error }` with the message to
+ * print. A static import that names no emitted chunk is a `warning`, not an
+ * error: this check scans whole chunks, so text in a string that looks like an
+ * import lands here too, and this gate runs inside the deploy build.
  * `html` is `index.html`'s text, or null when the file is missing; `label` is
  * its path as printed.
  */
@@ -97,21 +100,6 @@ export function checkEntryGraph(html, sources, wrappedChunks, label) {
         `, so the app-start graph was not checked.\n`,
     };
   }
-  if (entryPath.missingDependencies.length > 0) {
-    const listed = entryPath.missingDependencies
-      .slice(0, 10)
-      .map(({ importer, specifier }) => `   ${importer} imports ./${specifier}\n`)
-      .join('');
-    const more = entryPath.missingDependencies.length > 10 ? `   ... and ${entryPath.missingDependencies.length - 10} more\n` : '';
-    return {
-      error:
-        `❌ ${entryPath.missingDependencies.length} static import(s) on the app-start graph are not among ` +
-        `the emitted chunks:\n\n${listed}${more}\n` +
-        `The page cannot load these, or the import is text inside a string that this\n` +
-        `check read as code (it scans whole chunks). Either way the app-start graph\n` +
-        `was not checked.\n`,
-    };
-  }
   if (entryPath.wrapped.length > 0) {
     const listed = entryPath.wrapped.slice(0, 10).map((file) => `   ${file}\n`).join('');
     const more = entryPath.wrapped.length > 10 ? `   ... and ${entryPath.wrapped.length - 10} more\n` : '';
@@ -126,5 +114,13 @@ export function checkEntryGraph(html, sources, wrappedChunks, label) {
         `app build's plugins in apps/viewer/vite.config.ts (the worker build keeps it).\n`,
     };
   }
-  return { entryPath };
+  const unresolved = entryPath.missingDependencies;
+  const warning =
+    unresolved.length === 0
+      ? null
+      : `⚠️ ${unresolved.length} import-like reference(s) on the app-start graph name no emitted chunk ` +
+        `(a real import the page cannot load, or text in a string):\n` +
+        unresolved.slice(0, 10).map(({ importer, specifier }) => `   ${importer} mentions ./${specifier}\n`).join('') +
+        (unresolved.length > 10 ? `   ... and ${unresolved.length - 10} more\n` : '');
+  return { entryPath, warning };
 }

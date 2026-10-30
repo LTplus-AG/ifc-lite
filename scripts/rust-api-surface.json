@@ -433,6 +433,8 @@
     "flat_styles_rgba8_from_geometry_columns": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "geometry_pool": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "geometry_pool_builder": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "group_occurrences_by_rep": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "index_templates_by_rep": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "is_quick_spatial_type_ci": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "native_to_baked": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "process": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

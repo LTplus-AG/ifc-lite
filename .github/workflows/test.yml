@@ -964,6 +964,16 @@ jobs:
           # import it. Keep the module; stop the pacer ever reporting a backlog.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch | grep -Fxq 'tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch --test apps/viewer/src/components/viewer/gpuFramePacer.test.ts --test apps/viewer/src/components/viewer/useAnimationLoop.gpuBacklog.test.tsx)
+          # #8341 C4-12: whole-change inversion deletes the new codec module and
+          # the shared helpers its tests call (INCONCLUSIVE). Keep them; break
+          # one behaviour per row: void offset, style quad bound, first-map-wins
+          # palette collection, empty-template skip.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-12-shared-homes/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-12-shared-homes/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-12-shared-homes/behaviour.oracle.patch --test rust/processing/src/prepass_wire_tests.rs --test rust/processing/src/prepass_tests.rs --test rust/processing/src/processor/instancing_shared_tests.rs)
+          # #8341 F2: the parity observers are helpers with no attributable tests.
+          # Keep the plumbing; stop reporting omitted type records.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/f2-8341/behaviour.oracle.patch --test rust/processing/tests/f2_omitted_type_records_8341.rs)
           # #8341 C4-13c: whole-file inversion deletes the test module's wiring.
           # Keep the helper; stop counting type-only map jobs.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13c/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13c/behaviour.oracle.patch'; then

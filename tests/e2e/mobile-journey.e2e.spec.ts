@@ -35,6 +35,15 @@ async function loadAuthoredModel(page: Page): Promise<void> {
   }, undefined, { timeout: 180_000 });
 }
 
+/**
+ * A GPU pick resolves only after a render pass and a `mapAsync` readback. On the
+ * hosted runners' SwiftShader WebGPU that takes 1-5 s (CI run 40855310027, 100
+ * taps: medians 1.0-3.0 s per runner, worst 5.0 s), so `expect.poll`'s default
+ * 5 s budget raced the pick and failed with `selectedEntityId === null` while the
+ * pick was still in flight; the pick itself resolved to the expected entity.
+ */
+const PICK_SETTLE_MS = 30_000;
+
 type TouchPoint = { x: number; y: number; id: number };
 
 async function touch(device: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd', points: TouchPoint[]): Promise<void> {
@@ -171,6 +180,7 @@ test('one finger orbits, two fingers pinch, taps select and measure, and hold op
     await page.touchscreen.tap(first.x, first.y);
     await requireRenderer('tap selection', () => expect.poll(
       () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId),
+      { timeout: PICK_SETTLE_MS },
     ).toBe(first.globalId));
 
     await page.getByRole('button', { name: 'Measure', exact: true }).click();
@@ -178,6 +188,7 @@ test('one finger orbits, two fingers pinch, taps select and measure, and hold op
     await page.touchscreen.tap(second.x, second.y);
     await requireRenderer('two-tap measurement', () => expect.poll(
       () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().measurements.length),
+      { timeout: PICK_SETTLE_MS },
     ).toBeGreaterThan(0));
 
     await page.getByRole('button', { name: 'Select', exact: true }).click();
@@ -186,6 +197,7 @@ test('one finger orbits, two fingers pinch, taps select and measure, and hold op
       expect(page.getByRole('menu', { name: 'Entity actions' })).toBeVisible({ timeout: 10_000 }));
     await requireRenderer('long-press entity pick', () => expect.poll(
       () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().contextMenu.entityId),
+      { timeout: PICK_SETTLE_MS },
     ).toBe(first.globalId));
     await info.attach('mobile-journey-authored-ifc.png', { body: await page.screenshot(), contentType: 'image/png' });
     await touch(device, 'touchEnd', []);

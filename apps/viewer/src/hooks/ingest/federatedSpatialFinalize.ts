@@ -88,8 +88,9 @@ function reportFederationAlignmentOutcome(
   if (status === 'reprojected') {
     toast.info(`Reprojected "${fileName}" from ${sourceCrs} to ${targetCrs} for federation alignment.`);
   } else if (status === 'failed') {
-    // Equal CRSs mean nothing was reprojected: the placement itself was refused.
-    const reason = sourceCrs === targetCrs ? `placement on ${sourceCrs} could not be resolved` : `${sourceCrs} → ${targetCrs} reprojection failed`;
+    // Equal CRSs or a height refusal mean nothing was reprojected: the placement itself was refused.
+    const reason = sourceCrs === targetCrs ? `placement on ${sourceCrs} could not be resolved`
+      : heightHint ? `placement from ${sourceCrs} to ${targetCrs} could not be resolved` : `${sourceCrs} → ${targetCrs} reprojection failed`;
     toast.error(`Could not align "${fileName}" with the federation anchor — ${reason}. The model is shown in its own local frame and may appear at the wrong real-world position.${heightHint}`);
   }
 }

@@ -33,6 +33,11 @@ async function loadAndReadCount(page: Page, file: { name: string; buffer: Buffer
   await page.waitForFunction((k) => !!(globalThis as Record<string, unknown>)[k], STORE, { timeout: 120000 });
   await page.locator('input[type="file"]').first().setInputFiles({ ...file, mimeType: 'application/octet-stream' });
   await expect(page.getByText(NOTICE).first()).toBeVisible({ timeout: 120000 });
+  // The notice fires on the stream's `complete`; the model record is finalized after it.
+  await page.waitForFunction((k) => {
+    const s = (globalThis as unknown as Record<string, { getState(): { models: Map<string, { omittedTypeRecords?: number }> } }>)[k].getState();
+    return [...s.models.values()].some((m) => m.omittedTypeRecords !== undefined);
+  }, STORE, { timeout: 60000 });
   return page.evaluate((k) => {
     const s = (globalThis as unknown as Record<string, { getState(): { models: Map<string, { omittedTypeRecords?: number }> } }>)[k].getState();
     return [...s.models.values()].map((m) => m.omittedTypeRecords);

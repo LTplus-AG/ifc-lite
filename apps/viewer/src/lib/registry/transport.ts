@@ -52,7 +52,7 @@ export class RegistryTransport {
   private accept(authorization: RegistryAuthorization, generation: number, previous?: RegistryAuthorization): RegistrySession {
     if (generation !== this.generation) throw new DOMException('Registry sign-in was cancelled', 'AbortError');
     if (previous) {
-      if (previous.session.subject !== authorization.session.subject || previous.session.remembered !== authorization.session.remembered) throw new RegistryError('The registry session identity changed. Please sign in again.');
+      if (previous.session.subject !== authorization.session.subject || previous.session.remembered !== authorization.session.remembered) throw new RegistryError('The registry session identity changed. Please sign in again.', 403);
       authorization.session.sessionExpiresAt = Math.min(previous.session.sessionExpiresAt, authorization.session.sessionExpiresAt);
     }
     this.scoped.clear();
@@ -113,6 +113,7 @@ export class RegistryTransport {
     return restoring;
   }
 
+  /** Renew once per transport, retaining authorization when the registry is temporarily unavailable. */
   private renew(): Promise<RegistrySession> {
     if (this.refreshing) return this.refreshing;
     const previous = this.authorization;
@@ -125,7 +126,11 @@ export class RegistryTransport {
     const refreshing = (previous.shareSecret ? redeemRegistryShare(this.origin, previous.shareSecret, controller.signal) : exchangeRegistrySession(this.origin, this.registryOrigin, previous.clientId, body,
       previous.session.repository || null, controller.signal, previous.session.remembered))
       .then(authorization => this.accept(authorization, generation, previous))
-      .catch((error: unknown) => { if (generation === this.generation) this.logout(); throw error; })
+      .catch((error: unknown) => {
+        const rejected = error instanceof RegistryError && [400, 401, 403].includes(error.status);
+        if (generation === this.generation && rejected) this.logout();
+        throw error;
+      })
       .finally(() => {
         clearTimeout(timer);
         if (this.renewing === controller) this.renewing = null;

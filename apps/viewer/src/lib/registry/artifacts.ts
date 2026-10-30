@@ -9,6 +9,8 @@ export const IFC_ARTIFACT_TYPE = 'application/vnd.ifc-lite.ifc.v1';
 export const OCI_MANIFEST_TYPE = 'application/vnd.oci.image.manifest.v1+json';
 const MAX_IFC_BYTES = 512 * 1024 * 1024;
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
+/** Bad artifact metadata may be skipped without hiding registry or session failures. */
+class UnreadableReleaseError extends RegistryError {}
 interface Descriptor { mediaType: string; digest: string; size: number; annotations?: Record<string, string> }
 interface Manifest { schemaVersion: 2; mediaType: string; artifactType?: string; config: Descriptor; layers: Descriptor[]; annotations?: Record<string, string> }
 export interface RegistryRelease {
@@ -23,16 +25,16 @@ export interface ReceivedIfc {
   reference: string;
 }
 
-export async function sha256(bytes: Uint8Array): Promise<string> {
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes.slice().buffer));
+export async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
   return `sha256:${Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function descriptor(value: unknown): Descriptor {
   if (!value || typeof value !== 'object' || !('mediaType' in value) || typeof value.mediaType !== 'string' ||
     !('digest' in value) || typeof value.digest !== 'string' || !SHA256.test(value.digest) ||
-    !('size' in value) || typeof value.size !== 'number' || !Number.isSafeInteger(value.size) || value.size < 0 || value.size > MAX_IFC_BYTES) {
-    throw new RegistryError('The release contains an invalid file descriptor.');
+    !('size' in value) || typeof value.size !== 'number' || !Number.isSafeInteger(value.size) || value.size < 0) {
+    throw new UnreadableReleaseError('The release contains an invalid file descriptor.');
   }
   const annotations: Record<string, string> = {};
   if ('annotations' in value && value.annotations && typeof value.annotations === 'object') {
@@ -42,10 +44,15 @@ function descriptor(value: unknown): Descriptor {
 }
 
 function manifest(bytes: Uint8Array): Manifest {
-  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  let value: unknown;
+  try { value = JSON.parse(new TextDecoder().decode(bytes)); }
+  catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new UnreadableReleaseError('The release contains invalid manifest JSON.');
+  }
   if (!value || typeof value !== 'object' || !('schemaVersion' in value) || value.schemaVersion !== 2 ||
     !('mediaType' in value) || value.mediaType !== OCI_MANIFEST_TYPE || !('config' in value) ||
-    !('layers' in value) || !Array.isArray(value.layers)) throw new RegistryError('This is not a supported OCI artifact manifest.');
+    !('layers' in value) || !Array.isArray(value.layers)) throw new UnreadableReleaseError('This is not a supported OCI artifact manifest.');
   const annotations: Record<string, string> = {};
   if ('annotations' in value && value.annotations && typeof value.annotations === 'object') {
     for (const [key, item] of Object.entries(value.annotations)) if (typeof item === 'string') annotations[key] = item;
@@ -75,7 +82,7 @@ export class RegistryArtifacts {
     const digest = await sha256(raw);
     const advertised = response.headers.get('docker-content-digest');
     if ((advertised && advertised !== digest) || (SHA256.test(reference) && reference !== digest)) {
-      throw new RegistryError('The release fingerprint does not match its manifest.');
+      throw new UnreadableReleaseError('The release fingerprint does not match its manifest.');
     }
     return { data: manifest(raw), digest, response };
   }
@@ -108,12 +115,22 @@ export class RegistryArtifacts {
       declaredAuthors: data.annotations?.['org.opencontainers.image.authors'], createdAt: data.annotations?.['org.opencontainers.image.created'] };
   }
 
+  /** List readable versions; retain auth, cancellation, and service failures as errors. */
   async releases(repository: string, signal?: AbortSignal): Promise<RegistryRelease[]> {
     const tags = await this.tags(repository, signal);
     if (tags.length > 1000) throw new RegistryError('This model has too many versions for the local demo. Paste a specific release address.');
     const releases: RegistryRelease[] = [];
     // Small batches avoid flooding the registry while reading release metadata.
-    for (let start = 0; start < tags.length; start += 8) releases.push(...await Promise.all(tags.slice(start, start + 8).map(tag => this.describe(repository, tag, signal))));
+    for (let start = 0; start < tags.length; start += 8) {
+      const batch = await Promise.allSettled(tags.slice(start, start + 8).map(tag => this.describe(repository, tag, signal)));
+      signal?.throwIfAborted();
+      for (const result of batch) {
+        if (result.status === 'fulfilled') { releases.push(result.value); continue; }
+        const failure: unknown = result.reason;
+        if (failure instanceof UnreadableReleaseError || (failure instanceof RegistryError && [404, 406, 415].includes(failure.status))) continue;
+        throw failure;
+      }
+    }
     return releases.sort((a, b) => (b.pushedAt ?? 0) - (a.pushedAt ?? 0) || b.tag.localeCompare(a.tag, undefined, { numeric: true }));
   }
 
@@ -123,6 +140,7 @@ export class RegistryArtifacts {
       layer.mediaType === 'application/x-step' || /\.ifc$/i.test(layer.annotations?.['org.opencontainers.image.title'] ?? ''));
     if (candidates.length !== 1) throw new RegistryError('Choose a release containing exactly one editable IFC source file.');
     const source = candidates[0];
+    if (source.size > MAX_IFC_BYTES) throw new RegistryError('This local registry supports files up to 512 MiB.');
     const blob = await this.transport.request(this.transport.path(repository, `blobs/${source.digest}`), { signal });
     const bytes = await responseBytes(blob, source.size);
     if (bytes.length !== source.size || await sha256(bytes) !== source.digest) throw new RegistryError('The IFC file failed its integrity check.');

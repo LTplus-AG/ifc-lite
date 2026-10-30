@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { installRegistryPopup, registryCallback, registryOAuthConfig, registryTokenReply } from '@/test/registry-oauth-fixture';
 import { RegistryTransport } from './transport';
-import type { RegistrySession } from './protocol';
+import { RegistryError, type RegistrySession } from './protocol';
 
 const registry = 'http://127.0.0.1:5000';
 const originalFetch = globalThis.fetch;
@@ -70,6 +70,67 @@ test('a 401 gets one renewal and retry; ambiguous write failures are never retri
   await client.login(null); failNetwork = true; dataCalls = 0;
   await assert.rejects(client.request('/v2/project/model/manifests/new', { method: 'PUT', body: '{}' }), /lost/);
   assert.equal(dataCalls, 1); assert.equal(renewals, 1);
+});
+
+test('transient renewal failures preserve memory and remembered sessions for a later retry (#8310)', async context => {
+  for (const remember of [false, true]) for (const failure of ['network', '503', 'timeout']) {
+    await context.test(`${remember ? 'remembered' : 'memory'} ${failure}`, async scenario => {
+      let now = Date.now(); scenario.mock.method(Date, 'now', () => now);
+      const browser = popup(); const notifications: Array<RegistrySession | null> = [];
+      const client = transport(session => notifications.push(session));
+      let failing = false; let renewals = 0;
+      let began!: () => void; const renewing = new Promise<void>(resolve => { began = resolve; });
+      globalThis.fetch = async (input, init) => {
+        const path = urlOf(input).pathname;
+        if (path === '/oauth/config') return Response.json(registryOAuthConfig(registry));
+        if (path !== '/oauth/token') return Response.json({ tags: ['issued'] });
+        if (new URLSearchParams(String(init?.body)).get('grant_type') === 'refresh_token') {
+          renewals++;
+          if (failing) {
+            if (failure === 'network') throw new TypeError('Network unavailable');
+            if (failure === '503') return new Response(null, { status: 503 });
+            return new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+              began();
+            });
+          }
+        }
+        return Response.json(remember ? remembered() : registryTokenReply());
+      };
+      const session = remember ? await client.restore() : await client.login(null);
+      assert(session); const deadline = session.sessionExpiresAt;
+      const initialRenewals = renewals; const opens = browser.opens(); notifications.length = 0;
+      now += 901000; failing = true;
+      if (failure === 'timeout') scenario.mock.timers.enable({ apis: ['setTimeout'] });
+      const request = client.request('/v2/project/model/tags/list');
+      const rejected = assert.rejects(request, failure === 'network' ? /Network unavailable/ : failure === '503' ? /503/ : /renewal timed out/);
+      if (failure === 'timeout') { await renewing; scenario.mock.timers.tick(15000); }
+      await rejected;
+      assert.equal(client.session, session, 'a transient error must not discard authorization');
+      assert(client.can('pull')); assert.deepEqual(notifications, []);
+      assert.equal(renewals, initialRenewals + 1, 'renewal is not retried within the failed request');
+      failing = false;
+      await client.request('/v2/project/model/tags/list');
+      assert.equal(client.session?.sessionExpiresAt, deadline);
+      assert.equal(renewals, initialRenewals + 2); assert.equal(browser.opens(), opens, 'recovery requires no sign-in popup');
+    });
+  }
+});
+
+test('credential rejections and identity changes during renewal still sign out (#8310)', async context => {
+  for (const failure of [400, 401, 403, 'subject', 'remembered'] as const) await context.test(String(failure), async scenario => {
+    let now = Date.now(); scenario.mock.method(Date, 'now', () => now);
+    popup(); const client = transport();
+    globalThis.fetch = async (input, init) => {
+      if (urlOf(input).pathname === '/oauth/config') return Response.json(registryOAuthConfig(registry));
+      if (new URLSearchParams(String(init?.body)).get('grant_type') !== 'refresh_token') return Response.json(registryTokenReply());
+      return typeof failure === 'number' ? new Response(null, { status: failure })
+        : Response.json(failure === 'subject' ? registryTokenReply('reader') : remembered());
+    };
+    await client.login(null); now += 901000;
+    await assert.rejects(client.request('/v2/project/model/tags/list'), (error: unknown) => error instanceof RegistryError && error.status === (typeof failure === 'number' ? failure : 403));
+    assert.equal(client.session, null); assert.equal(client.can('pull'), false); assert.equal(await client.restore(), null);
+  });
 });
 
 test('remembered sessions restore without a popup and serialize rotations across tabs (#8310)', async context => {

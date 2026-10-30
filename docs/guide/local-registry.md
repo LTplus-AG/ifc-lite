@@ -141,8 +141,10 @@ tokens never enter localStorage. Renewal cannot extend the original deadline or
 increase the originally approved grants. Web Locks serialize cookie exchanges
 across tabs, and concurrent model requests share one renewal within a tab.
 The viewer retries an authorization failure once after renewal and never
-retries a write after an ambiguous network error. If server sign-out fails,
-retry **Sign out** before reconnecting.
+retries a write after an ambiguous network error. A network failure, timeout or
+temporary server error during renewal keeps the session available for your next
+request; rejected credentials or a changed identity require sign-in again.
+If server sign-out fails, retry **Sign out** before reconnecting.
 
 Registry-owned local accounts remain available on the registry website; CLI and
 ORAS retain their separate OCI login. No external identity provider is required.
@@ -159,6 +161,11 @@ only that resource token accompanies manifest, tag, blob, and upload requests.
 The ordinary `registry:catalog:read` scope grants listing only. Added account
 rules/actions require another login; existing wildcard approvals include future
 matching repositories. Permission removals apply to existing tokens too.
+
+Version browsing skips unsupported or malformed manifests and tags that disappear
+during listing. Authorization, connection and server failures remain visible.
+Derived releases may include larger non-IFC layers; the 512 MiB download limit
+applies to the selected IFC source.
 
 ## Expiring shares
 

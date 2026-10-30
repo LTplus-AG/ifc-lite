@@ -25,6 +25,7 @@ test('registry references cannot escape their repository and SHA-256 uses actual
   for (const value of ['../private', 'Project/model', 'project//model', 'project/model?token=x']) assert.throws(() => repositoryName(value));
   for (const value of ['../issued', 'tag?x', '-bad']) assert.throws(() => releaseName(value));
   assert.equal(await sha256(new TextEncoder().encode('abc')), 'sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  assert.equal(await sha256(new TextEncoder().encode('_abc_').subarray(1, 4)), await sha256(new TextEncoder().encode('abc')), 'hash only the selected view (#8310)');
   assert.throws(() => new RegistryTransport('http://remote.example.com'));
 });
 
@@ -173,7 +174,10 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
     globalThis.fetch = originalFetch;
     for (const transport of clients) transport.logout();
     popup.restore();
-    server.kill('SIGTERM'); await new Promise<void>(resolve => server.once('exit', () => resolve()));
+    if (server.exitCode === null && server.signalCode === null) {
+      const exited = new Promise<void>(resolve => server.once('exit', () => resolve()));
+      server.kill('SIGTERM'); await exited;
+    }
     await rm(root, { recursive: true, force: true });
   }
 });

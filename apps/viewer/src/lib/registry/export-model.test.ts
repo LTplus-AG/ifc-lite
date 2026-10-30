@@ -12,7 +12,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { exportRegistryModel } from './export-model';
 
-test('registry publishing exports the complete active IFC with its pending property edit', async () => {
+test('registry publishing exports the complete active IFC with its pending property edit (#8310)', async () => {
   const bytes = new Uint8Array(await readFile(new URL('../../../public/samples/hello-wall.ifc', import.meta.url)));
   const parser = new IfcParser();
   const store = await parser.parseColumnar(bytes.buffer, { disableWorkerScan: true });
@@ -37,4 +37,5 @@ test('registry publishing exports the complete active IFC with its pending prope
   assert.equal(reopened.entityCount, store.entityCount, 'the full model is retained');
   const originalWall = reopened.entityIndex.byId.get(wall!);
   assert(originalWall, 'the edited wall still exists after re-parsing');
+  assert.equal(reopened.entities.getName(wall!), 'Registry persisted wall', 'the edit belongs to the exported wall');
 });

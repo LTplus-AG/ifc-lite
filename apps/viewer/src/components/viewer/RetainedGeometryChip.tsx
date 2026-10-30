@@ -46,13 +46,16 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
   const obligations = useObligationList(summary.obligationsUnmet);
   const state = chipState(summary);
   const refused = summary.refused.length - summary.cancelled;
-  const counts = { published: String(summary.published), candidates: String(summary.candidates), refused: String(refused), cancelled: String(summary.cancelled) };
+  const final = summary.published > 0 && summary.obligationsUnmet.length === 0;
+  const presentation = t(final ? 'retainedGeometry.final' : 'retainedGeometry.shapeOnly');
+  const counts = { presentation, published: String(summary.published), candidates: String(summary.candidates), refused: String(refused), cancelled: String(summary.cancelled) };
   const label = summary.completeness === 'running' && !summary.failure
     ? !summary.started
-      ? t('retainedGeometry.chip.starting')
-      : t('retainedGeometry.chip.running', { done: String(summary.published + summary.refused.length), candidates: counts.candidates })
+      ? t('retainedGeometry.chip.starting', { presentation })
+      : t('retainedGeometry.chip.running', { presentation, done: String(summary.published + summary.refused.length), candidates: counts.candidates })
     : summary.cancelled > 0 ? t('retainedGeometry.chip.labelCancelled', counts) : t('retainedGeometry.chip.label', counts);
-  const title = obligations ? t('retainedGeometry.chip.title', { obligations }) : t('retainedGeometry.chip.titleNone');
+  const title = obligations ? t('retainedGeometry.chip.title', { obligations })
+    : t(final ? 'retainedGeometry.chip.titleFinal' : 'retainedGeometry.chip.titleNone');
 
   // Order 4: after the edit-mode (0), level (1), section (2) and measurements (3) chips.
   return (

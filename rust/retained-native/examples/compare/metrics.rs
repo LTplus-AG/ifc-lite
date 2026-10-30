@@ -7,6 +7,10 @@ pub struct Metrics {
     pub area: f64,
     pub bbox: [f64; 6],
     pub defects: usize,
+    pub(crate) edges: BTreeMap<([u64;3],[u64;3]), usize>,
+    pub(crate) origin: Option<[f64;3]>,
+    pub(crate) signed_volume: f64,
+    pub(crate) assembly: bool,
 }
 impl Default for Metrics {
     fn default() -> Self {
@@ -22,6 +26,7 @@ impl Default for Metrics {
                 f64::NEG_INFINITY,
             ],
             defects: 0,
+            edges: BTreeMap::new(), origin: None, signed_volume: 0., assembly: false,
         }
     }
 }
@@ -51,6 +56,8 @@ fn key(p: [f64; 3]) -> [u64; 3] {
     p.map(|x| if x == 0. { 0 } else { x.to_bits() })
 }
 impl Metrics {
+    /// Open material bands form one skin; ordinary parts remain separate solids.
+    pub fn assembly() -> Self { Self { assembly: true, ..Self::default() } }
     pub fn add_mesh(&mut self, points: &[[f64; 3]], indices: &[u32]) -> Result<(), String> {
         if points.iter().flatten().any(|x| !x.is_finite()) || !indices.len().is_multiple_of(3) {
             return Err("nonfinite positions or incomplete triangle".into());
@@ -58,7 +65,8 @@ impl Metrics {
         let Some(origin) = points.first() else {
             return Err("empty mesh".into());
         };
-        let mut edges = BTreeMap::new();
+        if !self.assembly { self.origin = None; self.edges.clear(); }
+        let origin = *self.origin.get_or_insert(*origin);
         let mut volume = 0.;
         for triangle in indices.chunks_exact(3) {
             let a = *points.get(triangle[0] as usize).ok_or("bad mesh index")?;
@@ -69,18 +77,25 @@ impl Metrics {
             }
             let normal = cross(sub(b, a), sub(c, a));
             self.area += dot(normal, normal).sqrt() / 2.;
-            volume += dot(sub(a, *origin), cross(sub(b, *origin), sub(c, *origin))) / 6.;
+            volume += dot(sub(a, origin), cross(sub(b, origin), sub(c, origin))) / 6.;
             for (a, b) in [(a, b), (b, c), (c, a)] {
                 let (a, b) = (key(a), key(b));
-                *edges
+                *self.edges
                     .entry(if a < b { (a, b) } else { (b, a) })
                     .or_insert(0usize) += 1;
             }
         }
-        // Signed contributions cancel folds/cavities within this mesh. Only
-        // complete mesh volumes are made positive when accumulating parts.
-        self.volume += volume.abs();
-        self.defects += edges.values().filter(|&&n| n != 2).count();
+        // Material bands are open. Accumulate signed contributions and coordinate
+        // edges in one shared frame across the entire closed product skin.
+        let defects = self.edges.values().filter(|&&n| n != 2).count();
+        if self.assembly {
+            self.signed_volume += volume;
+            self.volume = self.signed_volume.abs();
+            self.defects = defects;
+        } else {
+            self.volume += volume.abs();
+            self.defects += defects;
+        }
         Ok(())
     }
 }

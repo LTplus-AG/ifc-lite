@@ -9,7 +9,7 @@ import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
 import { loadDiffOracle } from './lib/diff-oracle.mjs';
 import * as publicDiff from '../packages/diff/dist/index.js';
-import { prepareDiffModel } from '../packages/diff/dist/internal.js';
+import { prepareDiffModel } from '../packages/diff/dist/index.js';
 import { initSync } from '../packages/wasm/pkg/ifc-lite.js';
 import { enrichGeometry } from './lib/diff-real-geometry.mjs';
 import { assertDerivedClaims, assertOriginalReferences, derivedGeometryCases } from './lib/diff-derived-geometry.mjs';
@@ -41,6 +41,20 @@ function compare(base, head, options, label) {
     const headModel = prepareDiffModel(head);
     try {
       assert.deepEqual(baseModel.compare(headModel, options), expected, `${label}: retained snapshot facade`);
+      // Owned handles and one-shot calls must agree under both placement modes (#8266).
+      for (const stripPlacementGeometry of [false, true]) {
+        const strip = side => side.map(row => typeof row.geometryHash === 'string' && row.geometryHash.startsWith('p:')
+          ? { ...row, geometryHash: undefined } : row);
+        const want = stripPlacementGeometry ? diffModels(strip(base), strip(head), options) : expected;
+        const opts = { ...options, stripPlacementGeometry };
+        const retained = baseModel.compare(headModel, opts);
+        const transient = publicDiff.diffModels(base, head, opts);
+        assert.deepEqual(retained, want, `${label}: handle strip=${stripPlacementGeometry}`);
+        assert.deepEqual(transient, want, `${label}: one-shot strip=${stripPlacementGeometry}`);
+        const wire = value => JSON.stringify(value, (_, item) => item instanceof Map ? [...item] : typeof item === 'bigint' ? String(item) : item);
+        assert.equal(wire(retained), wire(want), `${label}: handle property order and wire bytes`);
+        assert.equal(wire(transient), wire(want), `${label}: one-shot property order and wire bytes`);
+      }
     } finally { headModel.dispose(); }
   } finally { baseModel.dispose(); }
   return actual;

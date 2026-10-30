@@ -34,6 +34,15 @@ Verdict: no measured end-to-end worker-pool timing or speedup claim. C4-0
 qualifies single-file output, not browser wall time or whole-host memory.
 Cache/slot restructuring and any measured optimization remain C4-11b work.
 
+## C4-10b shared router and batch adapters (#7782)
+
+Verdict: performance unmeasured; no speedup or neutrality claim. This is a
+structural refactor around the existing owned production transaction. Keep
+native worker caches and browser warm decode/batch-local template choice in the
+schedulers; share router arming and decode/type/drain boundaries. The C4-0
+contract and real-WASM contracts qualify output preservation, not worker-pool
+throughput. Native A/B, browser timing and headed GPU qualification remain unmeasured.
+
 ## C4-7a-R shared type geometry plan (#7782)
 
 The shared discovery-span plan passed the native instruction gate against
@@ -5528,3 +5537,21 @@ to a branch can reuse a dependency set that predates a newly added module.
 Check the rebuilt executable's dependency file for the new module, not just
 Cargo's success status. The initial cached branch run was rejected; processing
 was rebuilt and the branch measurements repeated before accepting the result.
+
+### Retained material bands and admission reuse (M4, #7955)
+
+Material-layer usage lookup belongs to the model snapshot. Build the element-to-usage
+index once, then admit each product once and carry that result through opening
+preparation and execution. Repeating an entity scan in each of those consumers makes
+source admission grow with both model size and layered-product count; a shared lookup
+removes that repeated walk without changing the kernel operation sequence.
+
+Verdict: per-product census times are report-only diagnostics, not a worker-pool
+speedup claim. No kernel grouping, tolerance or performance ceiling changes accompany
+this admission change. Default exact output and default WASM identity are qualified
+separately; retained bands, cap removal and presentation remain opt-in.
+
+Lesson: fault accounting is also a shared resource. Band transport retirements need
+their own bounded allowance so they cannot prevent subsequent ordinary products from
+publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
+summaries retain those observations without making artifact bytes depend on a run.

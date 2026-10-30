@@ -24,13 +24,14 @@ export type RetainedSessionEvent =
     | (RetainedShapeProduct & { kind: 'published' })
     | (RetainedProductRefusal & { kind: 'refused' })
     | { kind: 'published'; expressId: number; ifcType: string;
-        marker: 'PresentationObligationsUnmet';
+        marker: 'final' | 'PresentationObligationsUnmet';
         obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
         meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string;
         instanceWorldFromObject?: Float64Array };
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
+    layeredProducts?: number; bands?: number;
 }
 "#;
 
@@ -128,6 +129,8 @@ impl RetainedModelSession {
         for (key, value) in [
             ("candidates", summary.candidates as f64),
             ("published", summary.published as f64),
+            ("layeredProducts", summary.layered_products as f64),
+            ("bands", summary.bands as f64),
             ("refused", (summary.candidates - summary.published) as f64),
             ("restarts", f64::from(summary.restarts)),
             ("workersAcquired", f64::from(workers_acquired)),
@@ -173,7 +176,7 @@ fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut 
             set(&result, "kind", &"published".into())?;
             set(&result, "expressId", &product.product_id.into())?;
             set(&result, "ifcType", &product.ifc_type.name().into())?;
-            set(&result, "marker", &"PresentationObligationsUnmet".into())?;
+            set(&result, "marker", &product.marker().into())?;
             let obligations = Array::new();
             for obligation in &product.obligations.0 {
                 obligations.push(&obligation_name(*obligation).into());

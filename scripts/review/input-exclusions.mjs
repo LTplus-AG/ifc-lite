@@ -32,6 +32,7 @@ export const EXCLUDED = [
   // inventory manifest, its README, verbatim upstream licence texts and the
   // concatenated THIRD_PARTY_NOTICES.txt copies. Drift is gated by
   // `retained-notices.mjs --check`; the generator itself stays reviewed.
-  /^licenses\/retained\//,
+  // supplemental.json is hand-authored evidence (licence elections), so it stays reviewable.
+  /^licenses\/retained\/(texts\/|manifest\.json$|README\.md$|THIRD_PARTY_NOTICES\.txt$)/,
   /(^|\/)THIRD_PARTY_NOTICES\.txt$/,
 ];

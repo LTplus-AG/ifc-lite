@@ -51,8 +51,9 @@ malformed file therefore does not brick a long-lived or multi-tenant `IfcAPI`
 instance.
 
 Prepass and entity-index installation drop the previous file's derived caches
-and style finishes before processing the next file. A streaming callback failure
-cannot leave the previous file's index active. Sharded column-length validation
+and style finishes before processing the next file, and drop the previous entity
+index too: a one-shot prepass, a rejected or empty `setEntityIndex`, and a
+streaming callback failure all leave no previous index active. Sharded column-length validation
 still precedes installation; a length refusal leaves the current load intact.
 Source bytes and the pending sharded finish input survive installation because
 callers can supply them beforehand. Cleanup abandons that pending input.

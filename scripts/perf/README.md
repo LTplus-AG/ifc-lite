@@ -32,7 +32,23 @@ index construction also preserves inputs supplied for that batch.
 
 Verdict: no measured end-to-end worker-pool timing or speedup claim. C4-0
 qualifies single-file output, not browser wall time or whole-host memory.
-Cache/slot restructuring and any measured optimization remain C4-11b work.
+Cache/slot restructuring and the bounded allocation verdict are in the
+C4-11b stack (#8328/#8329), the base of this reconciliation; merge qualification
+is separate from the source-level description above.
+
+## C4-4b comparison correction and D66 policy (#7782)
+
+The original #8269 standalone qualification compared base with itself and is
+invalid. The corrected standalone comparison fails per-phase acceptance; the
+cumulative #8286 comparison recovers it. Its quick duplex total exception is
+disclosed in the evidence, so it is not blanket strict compliance. Keep exact
+figures in the run evidence, not this ledger.
+
+D66 makes native material-layer slicing explicit and default-off. Building an
+unused material-layer index on the unsliced path is dead work; gate construction
+on the request, while preserving the browser merge-layers policy. Neither this
+policy nor the C4-11b allocation-only result establishes worker-pool speedup or
+browser peak-memory neutrality.
 
 ## C4-10b shared router and batch adapters (#7782)
 

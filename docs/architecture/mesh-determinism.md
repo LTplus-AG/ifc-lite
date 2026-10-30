@@ -5,6 +5,14 @@ pinned manifest. It complements the kernel's predicate sign manifest
 (`rust/geometry/src/kernel/manifest.rs`), which pins exact-predicate SIGNS;
 this contract pins the actual bytes the pipeline emits.
 
+Native `process` (and its `process_geometry` convenience wrapper) and default
+browser batches share `produce_element_meshes_owned` in
+`rust/processing/src/element/owned_session.rs` and the `execution.rs` boundaries.
+The manifest below does not qualify every scheduler, JS encoding, stream or
+shard path. The C4-0 native/batch comparison has 22 narrow payload-bound
+exceptions in `rust/wasm-bindings/src/api/gpu_meshes/batch_parity_expected.json`,
+not universal byte equality. Retained bundles remain separately qualified.
+
 ## What is byte-stable
 
 Running `process_geometry` over the synthetic fixture in

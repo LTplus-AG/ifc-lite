@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! M10 signed volume and source-derived mapped centroids, never abs-only evidence.
-use ifc_lite_retained_native::{oracle::affine, ShapeOnlyProduct};
+use ifc_lite_retained_native::{oracle::affine, ShapeOnlyProduct, ShapePart};
 use serde_json::{json,Value};
 use super::report::Report;
 
@@ -19,19 +19,24 @@ pub fn winding_gate(id:u32, class:&affine::Classification, winding:&[bool]) -> O
     }
 }
 pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:&ShapeOnlyProduct, tolerances:&Value) {
-    let class=oracle.classify(product.product_id);
-    let Some((mut results,violations))=winding_gate(product.product_id,&class,&affine::winding_positive(product)) else {return};
+    record_parts(report,oracle,product.product_id,product.cuts,&product.parts,tolerances)
+}
+/// `record` on the fields it reads, so its whole path (classification, winding gate,
+/// report row, source comparison) runs without a published product or an SDK worker.
+pub fn record_parts(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, id:u32, cuts:u64, parts:&[ShapePart], tolerances:&Value) {
+    let class=oracle.classify(id);
+    let Some((mut results,violations))=winding_gate(id,&class,&affine::winding_positive(parts)) else {return};
     report.violations.extend(violations);
     if class!=affine::Classification::Affine {append(report,results);return}
     // Opening Booleans still require outward winding for every resulting part.
-    if product.cuts!=0 {append(report,results);return}
+    if cuts!=0 {append(report,results);return}
     // Winding is mandatory even when the analytic source family is unsupported.
-    let Some(expected)=oracle.expected(product.product_id) else {append(report,results);return};
-    if expected.len()!=product.parts.len() {
-        report.violations.push(format!("{}: affine source part count",product.product_id));
+    let Some(expected)=oracle.expected(id) else {append(report,results);return};
+    if expected.len()!=parts.len() {
+        report.violations.push(format!("{id}: affine source part count"));
         append(report,results);return;
     }
-    for (index,(part,e)) in product.parts.iter().zip(expected).enumerate() {
+    for (index,(part,e)) in parts.iter().zip(expected).enumerate() {
         let Some((volume,centroid))=affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object) else {continue};
         let kind=if e.radius==0. {"linear"} else {"curved"};
         let volume_error=(volume-e.volume).abs()/e.volume;
@@ -51,7 +56,7 @@ pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:
             let t=&tolerances["affineFinalBboxMetres"];
             pass &= bbox_error<=t["absolute"].as_f64().unwrap_or(f64::NAN)+extent*t["extentFactor"].as_f64().unwrap_or(f64::NAN);
         }
-        if !pass {report.violations.push(format!("{} part {index}: affine source oracle",product.product_id));}
+        if !pass {report.violations.push(format!("{id} part {index}: affine source oracle"));}
         results.push(json!({"family":"affineFinal","part":index,"volumeRelative":volume_error,"limit":volume_limit,
             "centroidMetres":centroid_error,"centroidLimit":centroid_limit,"affine_kappa":e.kappa,"pass":pass,"gated":true}));
     }
@@ -89,6 +94,58 @@ mod tests {
     use super::*;
     use affine::Classification;
     // #7955: the real-kernel winding witnesses live in tests/m10_native.rs; these pin the glue.
+    // Hosted review of #8360: `record` itself, end to end (classification -> winding gate ->
+    // report row), without a published product. The real-kernel witnesses are in tests/m10_native.rs.
+    const SOURCE:&str=include_str!("../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
+    const CUBE:[f64;24]=[0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.,0.,1., 1.,0.,1., 1.,1.,1., 0.,1.,1.];
+    const OUTWARD:[u32;36]=[0,2,1,0,3,2, 4,5,6,4,6,7, 0,1,5,0,5,4, 1,2,6,1,6,5, 2,3,7,2,7,6, 3,0,4,3,4,7];
+    fn part(reversed:bool)->ShapePart {
+        let mut indices=OUTWARD.to_vec();
+        if reversed {for t in indices.chunks_exact_mut(3) {t.swap(1,2);}}
+        ShapePart {layer:None,capped_volume_m3:None,positions:CUBE.to_vec(),indices,
+            world_from_object:[-1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 2.,3.,4.,1.],curved:false,halfspace_clipped:false,
+            revision_local_faces:vec![],normals:None,appearance:None,faces:None,instance_key:None}
+    }
+    /// `record` on product `id` of `text`; `cuts` != 0 skips the analytic source comparison.
+    fn recorded(text:&str,id:u32,reversed:bool)->(Report,Vec<Value>) {
+        let source=ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
+        let mut oracle=affine::AffineOracle::new(&source);
+        let mut report=Report {rows:vec!["row\t[]".into()],..Default::default()};
+        record_parts(&mut report,&mut oracle,id,1,&[part(reversed)],&Value::Null);
+        let rows=serde_json::from_str(report.rows[0].split('\t').next_back().unwrap()).unwrap();
+        (report,rows)
+    }
+    #[test]
+    fn record_gates_a_mirrored_map_with_outward_winding() {
+        let (report,rows)=recorded(SOURCE,42,false);
+        assert!(report.violations.is_empty(),"{:?}",report.violations);
+        assert_eq!(rows.len(),1);
+        assert_eq!((rows[0]["family"].as_str(),rows[0]["gated"].as_bool(),rows[0]["pass"].as_bool()),
+            (Some("affineSignedVolume"),Some(true),Some(true)));
+    }
+    #[test]
+    fn record_reports_reversed_winding_of_a_mirrored_map() {
+        let (report,rows)=recorded(SOURCE,42,true);
+        assert_eq!(report.violations,["42 part 0: affine signed-volume invariant"]);
+        assert_eq!((rows[0]["family"].as_str(),rows[0]["pass"].as_bool()),(Some("affineSignedVolume"),Some(false)));
+    }
+    #[test]
+    fn record_fails_closed_on_an_unclassifiable_mapped_body() {
+        let text=SOURCE.replace("#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,#37,1.,#3);",
+            "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,$,1.,#3);");
+        assert_ne!(text,SOURCE);
+        // Even with the winding outward, an unclassifiable mapped body is a violation.
+        let (report,rows)=recorded(&text,42,false);
+        assert_eq!(report.violations.len(),1);
+        assert!(report.violations[0].starts_with("42: affine_class_unmodelled:"),"{:?}",report.violations);
+        assert_eq!((rows[0]["family"].as_str(),rows[0]["gated"].as_bool(),rows[0]["pass"].as_bool()),
+            (Some("affineClassUnmodelled"),Some(true),Some(false)));
+    }
+    #[test]
+    fn record_leaves_a_rigid_product_alone() {
+        let (report,rows)=recorded(SOURCE,34,true);
+        assert!(report.violations.is_empty()&&rows.is_empty(),"{:?}",report.violations);
+    }
     #[test]
     fn reversed_winding_is_a_gated_violation() {
         let (rows,violations)=winding_gate(7,&Classification::Affine,&[true,false]).unwrap();

@@ -150,3 +150,27 @@ fn m10_undecodable_map_under_a_boolean_is_unmodelled() {
     let Classification::Unmodelled(reason) = classify(&text, 42) else { panic!("must not be rigid") };
     assert!(reason.contains("#39"), "{reason}");
 }
+
+// Review nits on #8360.
+#[test]
+fn m10_3d_operator_without_axis2_falls_back_to_z_cross_x_when_plus_y_collapses() {
+    // Axis2 omitted and +Y lies in the plane of Z and X, so projecting +Y leaves nothing. Production
+    // takes Z x X there and publishes a rigid rotation; the oracle must not call it unmodelled.
+    for (label, operator) in [
+        ("Axis1 = +Y", "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#36,$,#37,1.,$);"),
+        ("Axis3 = +X, default Axis1", "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#37,1.,#43);"),
+    ] {
+        let text = with(&[(MIRROR, operator)]);
+        assert_eq!(classify(&text, 42), Classification::Rigid, "{label}");
+        let e = affine::expected(text.as_bytes(), 42).unwrap();
+        assert!((e[0].volume - 0.56).abs() < 1e-12, "{label}: {}", e[0].volume);
+    }
+}
+
+#[test]
+fn m10_singular_map_is_affine_not_rigid() {
+    // Scale = 0 collapses the map. `stretches` has no singular values to report, which read as
+    // "rigid"; a singular map is the opposite of rigid and must reach the winding gate.
+    let text = with(&[(MIRROR, "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,#37,0.,#3);")]);
+    assert_eq!(classify(&text, 42), Classification::Affine);
+}

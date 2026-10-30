@@ -2,7 +2,7 @@
 //! M10 winding-gate classification: which published products carry a nonrigid map,
 //! decided from the source alone (no world placement, no analytic solid). Anything
 //! that cannot be decoded is `Unmodelled`, so the harness fails closed.
-use super::{affine::{mapping,mesh_moments,nonrigid,Frame},math::*};
+use super::{affine::{mesh_moments,Frame},affine_operator::{mapping,nonrigid},math::*};
 use ifc_lite_core::{slot, EntityDecoder, IfcType};
 
 /// Whether a published product's mapped body carries a nonrigid transform.
@@ -93,8 +93,8 @@ fn scan(d:&mut EntityDecoder<'_>,id:u32) -> Result<bool,String> {
 }
 /// Per published part: the signed volume of the baked mesh is positive. A
 /// mirrored map that kept its source winding fails here, whatever the oracle models.
-pub fn winding_positive(product:&crate::ShapeOnlyProduct) -> Vec<bool> {
-    product.parts.iter().map(|part|
+pub fn winding_positive(parts:&[crate::ShapePart]) -> Vec<bool> {
+    parts.iter().map(|part|
         mesh_moments(&part.positions,&part.indices,&part.world_from_object).is_some_and(|v|v.0>0.)).collect()
 }
 /// The classification the winding gate keys on; see `scan` for what fails closed.

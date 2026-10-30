@@ -310,11 +310,11 @@ fn winding_witness(text:&str,id:u32,with_cuts:bool,name:&str) {
     let ProductOutcome::Published(mut shape)=shapes.remove(0) else {panic!("#{id}: expected mirrored Boolean publication")};
     assert_eq!(shape.cuts>0,with_cuts,"#{id}");
     assert!(!shape.parts.is_empty());
-    let published=affine::winding_positive(&shape);
+    let published=affine::winding_positive(&shape.parts);
     assert_eq!(published.len(),shape.parts.len());
     assert!(published.iter().all(|&outward|outward),"#{id}: published winding");
     for t in shape.parts[0].indices.chunks_exact_mut(3) {t.swap(1,2);}
-    assert!(!affine::winding_positive(&shape)[0],"#{id}: reversed winding must be detected");
+    assert!(!affine::winding_positive(&shape.parts)[0],"#{id}: reversed winding must be detected");
     eprintln!("sdk witness executed: {name}");
 }
 // #7955: an unsupported analytic family must still gate EVERY part's winding.

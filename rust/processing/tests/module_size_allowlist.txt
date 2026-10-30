@@ -206,26 +206,7 @@
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
 # C2-5b (#7781): geom.rs is 240 lines after frame/parity extraction; its row is removed.
-# +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
-# admission gate and the sequential CSG path so they can't diverge on the
-# High/Highest small-opening floor (B11 regression, issue #976).
-# +32: engulf-cutter #635 AABB box-cut suppression on a #1109 budget trip (drop `!capped`) + its rewritten rationale comment and a diag_warn! else-branch (correctness: an engulfing box-cut would DELETE the host).
-# +5: ENGULF_TOLERANCE / ENGULF_TOLERANCE_F32 single-homed (3 sites shared one literal 0.03 tolerance, now one named const each).
-# +2: #1623 Phase 2 — route the voided sub-mesh path through process_element_with_submeshes_impl(allow_instancing=false) so cut occurrences never instance an un-cut template.
-# +42: analytic convex-prism fast-path wiring — module decl + apply_void_context
-# call site with residual composition and cut-effect diagnostics parity.
-# +27: #129 coaxial-union prepass wiring — module decl + feature-gated stats
-# re-export + the pre-batch `coaxial_union_prepass` call and its consumed-skip.
-# +6: the voided rebuild INHERITS the id discriminator instead of hard-coding rep-item, so a future layered producer cannot be silently relabelled (#3199).
-# -1 overall: the local-frame cut returns through `rotate_mesh_from_frame` (centre in
-# `Mesh::origin`) instead of a centre-baking transform, and the relativizing
-# branch now COMPOSES the inner cut's origin rather than assigning over it.
-# `voids/geom.rs` sheds 27 in the same change.
-# -51: the voided-host gateways drain the common void program (#7955 D4);
-# -17: the layered-slice gateway calls move into the program (D4b).
-# -379: C2-7a (#8263) moves the context, the stage-A strategies, RectFast and the post passes out.
-# -162: C2-7b moves the exact tail's batching state into strategy/exact.
-     973 rust/geometry/src/router/voids/mod.rs
+# C2-7 (#8263): voids/mod.rs is 268 lines after the void-cut stage split; its row is removed.
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast

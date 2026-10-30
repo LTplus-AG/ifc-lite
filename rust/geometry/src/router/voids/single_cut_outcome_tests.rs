@@ -90,7 +90,7 @@ fn a_same_count_cut_under_the_volume_band_is_kept_4692() {
     };
     let router = GeometryRouter::new();
     let bounds = world_host_bounds(&host);
-    let out = router.apply_void_context_inner(host.clone(), &ctx, 7, bounds, false);
+    let out = router.cut_in_frame(host.clone(), &ctx, 7, bounds, false);
 
     let removed = mesh_signed_volume(&host).abs() - mesh_signed_volume(&out).abs();
     let (_, hi) = out.bounds();

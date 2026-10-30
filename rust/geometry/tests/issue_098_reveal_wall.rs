@@ -5,7 +5,7 @@
 //! Issue #098: a plan-rotated Poroton wall (`IfcWallStandardCase` #928204,
 //! `2A8m$1B8T2VuclBPhPDl_W`) whose 7 window openings are `IfcFacetedBrep`
 //! stepped-reveal prisms carrying NO authored extrusion direction. Because the
-//! openings arrive with `depth = None`, `try_cut_wall_local_frame` (#1167)
+//! openings arrive with `depth = None`, `cut_in_wall_frame` (#1167)
 //! bails and the wall is cut in world space at ~1.5 Mm, fragmenting into flap
 //! triangles that bridge the openings (a 23 m edge spanning the whole wall
 //! face). This fixture is the wall isolated WITH its voids by

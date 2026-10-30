@@ -41,7 +41,7 @@ fn cut(host: Mesh, openings: Vec<CutterKind>) -> Mesh {
         param: None, bool2d: None };
     let bounds = world_host_bounds(&host);
     coaxial_union::set_enabled_override(Some(false));
-    let result = GeometryRouter::new().apply_void_context_inner(
+    let result = GeometryRouter::new().cut_in_frame(
         host, &context, 6516, bounds, false);
     coaxial_union::set_enabled_override(None);
     result

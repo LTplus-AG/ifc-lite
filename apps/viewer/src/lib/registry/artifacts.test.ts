@@ -45,7 +45,10 @@ async function registryFixture(context: TestContext) {
   await transport.login('project/model');
   const source = new TextEncoder().encode('ISO-10303-21; editable IFC source');
   const layer = { mediaType: 'application/x-step', digest: await sha256(source), size: source.length };
-  const manifest = { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config: layer, layers: [layer] };
+  const configBytes = new TextEncoder().encode('{}');
+  const config = { mediaType: 'application/vnd.oci.empty.v1+json', digest: await sha256(configBytes), size: configBytes.length };
+  const manifest = { schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config, layers: [layer] };
+  replies.set(`/v2/project/model/blobs/${config.digest}`, { body: configBytes });
   replies.set(`/v2/project/model/blobs/${layer.digest}`, { body: source });
   return { artifacts: new RegistryArtifacts(transport), replies, requests, source, layer, manifest };
 }

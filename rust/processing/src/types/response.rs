@@ -41,6 +41,40 @@ pub struct ParseResponse {
     pub symbolic_data: SymbolicData,
 }
 
+impl ParseResponse {
+    /// The one mapping from a pass's result to the response a native consumer
+    /// serialises (#8341 C4-13b). The FFI ships it as is; the server's
+    /// `POST /api/v1/parse` adds its own on top, explicitly: Y-up meshes that
+    /// carry their IFC-authored finish, and symbolic data with provenance.
+    ///
+    /// `symbolic_data` starts empty: the pass does not extract it. The
+    /// result's `instances` are not part of a response, and neither is the
+    /// full `frame` beyond its `mesh_coordinate_space` tag.
+    pub fn from_result(cache_key: String, result: crate::ProcessingResult) -> Self {
+        // Destructured in full, so a new result field is a decision here.
+        let crate::ProcessingResult {
+            meshes,
+            instances: _,
+            mesh_coordinate_space,
+            frame: _,
+            site_transform,
+            building_transform,
+            metadata,
+            stats,
+        } = result;
+        Self {
+            cache_key,
+            meshes,
+            mesh_coordinate_space: Some(mesh_coordinate_space),
+            site_transform,
+            building_transform,
+            metadata,
+            stats,
+            symbolic_data: SymbolicData::default(),
+        }
+    }
+}
+
 /// Model metadata extracted from the IFC file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelMetadata {

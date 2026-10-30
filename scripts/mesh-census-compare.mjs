@@ -13,10 +13,10 @@
  * id and its ordinal among that id's meshes. For a CHANGED mesh:
  *
  * - `regression`: it gained open or nonmanifold edges (bit-exact or at the
- *   10 um weld), or a thin shell.
+ *   10 um weld), or more than 1e-6 m2 of thin material or coincident sheet.
  * - `qualityWorse`: not a regression, closed no open edge, and gained slivers
  *   or raised its max aspect above 1.5x the base.
- * - `improved`: lost open edges, nonmanifold edges or thin shells and is
+ * - `improved`: lost open edges, nonmanifold edges or thin material and is
  *   neither of the above.
  * - `neutral`: anything else that changed.
  *
@@ -28,7 +28,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'slivers', 'degenerate', 'maxAspect', 'area', 'thinShells'];
+const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'slivers', 'degenerate', 'maxAspect', 'area', 'thinArea', 'coincidentArea'];
+/** Thin-material area (m2) a mesh may gain or lose before it counts. */
+const THIN_EPS = 1e-6;
+const SHEETS = ['thinArea', 'coincidentArea'];
 const EDGES = ['open', 'nonmanifold', 'open10', 'nonmanifold10'];
 
 export function parseCensus(text) {
@@ -44,12 +47,12 @@ export function parseCensus(text) {
 /** The verdict for one mesh present on both sides, or null when unchanged. */
 export function classify(base, branch) {
   if (METRICS.every((m) => base[m] === branch[m])) return null;
-  const gained = EDGES.some((m) => branch[m] > base[m]) || branch.thinShells > base.thinShells;
+  const gained = EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => (branch[m] ?? 0) > (base[m] ?? 0) + THIN_EPS);
   if (gained) return 'regression';
   const closed = base.open10 > branch.open10 || base.open > branch.open;
   const worse = branch.slivers > base.slivers || branch.maxAspect > 1.5 * base.maxAspect;
   if (worse && !closed) return 'qualityWorse';
-  const lost = EDGES.some((m) => branch[m] < base[m]) || branch.thinShells < base.thinShells;
+  const lost = EDGES.some((m) => branch[m] < base[m]) || SHEETS.some((m) => (branch[m] ?? 0) < (base[m] ?? 0) - THIN_EPS);
   return lost ? 'improved' : 'neutral';
 }
 

@@ -61,17 +61,21 @@ fn cut(gap: f64, others: usize) -> (usize, f64) {
     (seam_faces(&cut), removed)
 }
 
+/// Both gaps the prepass welds in one chunk: under a cell, and exactly one.
+/// The split arm must cut the same: the second chunk's lone partner is
+/// promoted onto the faces the first chunk's cut left on the seam plane, so
+/// the abutment is closed without the prepass ever seeing the pair.
 #[test]
 fn an_abutting_pair_split_across_chunks_cuts_like_one_chunk() {
-    // 8 um: under one snap cell, so the prepass welds the pair in one chunk.
-    let gap = 8e-6;
-    let (one_chunk, one_removed) = cut(gap, 14);
-    assert_eq!(one_chunk, 0, "control: one chunk leaves no sheet on the seam");
-    let (split, split_removed) = cut(gap, 15);
-    let expected = (2.0 + 15.0) * 0.3 * 1.2;
-    assert!(
-        (split_removed - expected).abs() < 1e-4 * expected,
-        "split: removed {split_removed}, expected {expected} (one chunk removed {one_removed})"
-    );
-    assert_eq!(split, 0, "split across chunks: a sheet stands on the seam");
+    for gap in [8e-6, crate::kernel::mesh_bridge::SNAP_GRID] {
+        let (one_chunk, _) = cut(gap, 14);
+        assert_eq!(one_chunk, 0, "gap {gap}: control, one chunk leaves no sheet on the seam");
+        let (split, removed) = cut(gap, 15);
+        let expected = (2.0 + 15.0) * 0.3 * 1.2;
+        assert!(
+            (removed - expected).abs() < 1e-4 * expected,
+            "gap {gap}: split removed {removed}, expected {expected}"
+        );
+        assert_eq!(split, 0, "gap {gap}: split across chunks, a sheet stands on the seam");
+    }
 }

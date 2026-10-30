@@ -4,20 +4,29 @@
 
 //! Per-mesh quality census for the per-mesh no-worse rule (#8190).
 //!
-//! Usage: `mesh_census [--ids 1,2,3] <model.ifc>...` — one JSON line per mesh
-//! on stdout, models in argument order, meshes in output order.
+//! Usage: `mesh_census [--no-voids] [--ids 1,2,3] <model.ifc>...` — one JSON
+//! line per mesh on stdout, models in argument order, meshes in output order.
+//! `--no-voids` cuts no openings (`OpeningFilterMode::IgnoreAll`): thin
+//! material a host has only WITH its voids cut is material the cut made.
+//! `IgnoreAll` clears voids only in a model that has an `IfcWindow` or
+//! `IfcDoor` job (`processor/opening_filter.rs`); elsewhere it cuts as usual.
 //!
 //! Every row carries the metrics the void-cut gate compares base against
 //! branch: open and nonmanifold edges (welded bit for bit, and at 10 um in
 //! world coordinates with the mesh origin folded in), slivers above 50:1,
-//! the maximum aspect, the area, and THIN SHELLS. A thin shell is a closed
-//! connected component, not the mesh's largest, whose mean thickness
-//! `2 |V| / A` is under 200 um: the shape of a host sliver standing between
-//! two abutting cutters (#8156). Such a sliver is watertight and removes no
-//! volume to speak of, so open-edge and volume checks never see it.
+//! the maximum aspect, the area, and THIN MATERIAL. Thin material is the
+//! area of triangles that have an anti-parallel triangle less than 200 um
+//! BEHIND them, overlapping in projection: the two faces of a sheet of material
+//! that thin, counted on both sides. A host pier standing between two abutting
+//! cutters (#8156) is exactly that: watertight, joined to the wall at its sill
+//! and head, and invisible to open-edge and volume checks. An authored feature
+//! that thin counts the same, so the number is for comparing two runs, not a
+//! defect count on its own. Pairs under 1 nm apart are COINCIDENT and counted
+//! apart: there a zero-thickness sheet and two solids touching face to face
+//! look the same, so "facing away" decides nothing.
 //! `scripts/mesh-census-compare.mjs` reads two of these files.
 
-use ifc_lite_processing::{process, MeshData, ProcessingRequest};
+use ifc_lite_processing::{process, MeshData, OpeningFilterMode, ProcessingRequest};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -27,19 +36,30 @@ use std::io::{BufWriter, Write};
 const SLIVER_ASPECT: f64 = 50.0;
 /// World weld for the tolerant edge census and the component split.
 const WELD: f64 = 1.0e-5;
-/// Mean thickness below which a closed minor component counts as a thin shell.
-const THIN_SHELL: f64 = 2.0e-4;
+/// Separation below which two facing-away anti-parallel faces are thin material.
+const THIN: f64 = 2.0e-4;
+/// Separation at or below which a pair is coincident rather than thin.
+const COINCIDENT: f64 = 1.0e-9;
+/// Normals agree to about 0.06 degrees inside one bucket.
+const NORMAL_BUCKET: f64 = 1.0e-3;
+/// Opposite-facing candidates examined per triangle, so a large coplanar
+/// face cannot make one mesh quadratic.
+const MAX_CANDIDATES: usize = 256;
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let mut request = ProcessingRequest::full_pass();
+    if args.first().map(String::as_str) == Some("--no-voids") {
+        request = request.opening_filter(OpeningFilterMode::IgnoreAll);
+        args.remove(0);
+    }
     if args.first().map(String::as_str) == Some("--ids") {
         let list = args.get(1).expect("--ids needs a list");
         let ids: HashSet<u32> = list.split(',').map(|s| s.trim().parse().expect("express id")).collect();
         request = request.ids(Some(Arc::new(ids)));
         args.drain(..2);
     }
-    assert!(!args.is_empty(), "usage: mesh_census [--ids 1,2,3] <model.ifc>...");
+    assert!(!args.is_empty(), "usage: mesh_census [--no-voids] [--ids 1,2,3] <model.ifc>...");
     let out = std::io::stdout();
     let mut out = BufWriter::new(out.lock());
     for path in &args {
@@ -61,8 +81,8 @@ fn main() {
                     "open10": row.open10, "nonmanifold10": row.nonmanifold10,
                     "slivers": row.slivers, "degenerate": row.degenerate,
                     "maxAspect": row.max_aspect, "area": row.area,
-                    "components": row.components, "thinShells": row.thin_shells,
-                    "thinArea": row.thin_area, "thinMinThickness": row.thin_min_thickness,
+                    "thinFaces": row.thin_faces, "thinArea": row.thin_area,
+                    "thinMinGap": row.thin_min_gap, "coincidentArea": row.coincident_area,
                 })
             )
             .expect("write row");
@@ -85,10 +105,10 @@ struct Row {
     degenerate: usize,
     max_aspect: f64,
     area: f64,
-    components: usize,
-    thin_shells: usize,
+    thin_faces: usize,
     thin_area: f64,
-    thin_min_thickness: Option<f64>,
+    thin_min_gap: Option<f64>,
+    coincident_area: f64,
 }
 
 fn world(mesh: &MeshData, i: usize) -> [f64; 3] {
@@ -134,14 +154,6 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-fn find(parent: &mut [u32], mut x: u32) -> u32 {
-    while parent[x as usize] != x {
-        parent[x as usize] = parent[parent[x as usize] as usize];
-        x = parent[x as usize];
-    }
-    x
-}
-
 fn census(mesh: &MeshData) -> Row {
     let count = mesh.positions.len() / 3;
     let tris: Vec<[usize; 3]> = mesh
@@ -184,58 +196,147 @@ fn census(mesh: &MeshData) -> Row {
         }
     }
 
-    // Components over the tolerant weld, then closure, area and volume each.
-    let mut parent: Vec<u32> = (0..count as u32).collect();
-    for t in &tris {
-        let v = t.map(|i| tolerant[i]);
-        for i in 1..3 {
-            let (x, y) = (find(&mut parent, v[0]), find(&mut parent, v[i]));
-            if x != y {
-                parent[x.max(y) as usize] = x.min(y);
-            }
-        }
-    }
-    struct Comp {
-        area: f64,
-        volume6: f64,
-        open: bool,
-        anchor: [f64; 3],
-    }
-    let mut comps: HashMap<u32, Comp> = HashMap::new();
-    for t in &tris {
-        let root = find(&mut parent, tolerant[t[0]]);
-        let [a, b, c] = t.map(|i| p[i]);
-        let comp = comps.entry(root).or_insert(Comp { area: 0.0, volume6: 0.0, open: false, anchor: a });
-        // About a point of the component, so world magnitude cancels.
-        let (a, b, c) = (sub(a, comp.anchor), sub(b, comp.anchor), sub(c, comp.anchor));
-        let n = cross(b, c);
-        comp.volume6 += dot(a, n);
-        let e = cross(sub(b, a), sub(c, a));
-        comp.area += dot(e, e).sqrt() / 2.0;
-    }
-    for (&(x, _), &c) in &uses10 {
-        if c != 2 {
-            let root = find(&mut parent, x);
-            if let Some(comp) = comps.get_mut(&root) {
-                comp.open = true;
-            }
-        }
-    }
-    row.components = comps.len();
-    if comps.len() > 1 {
-        let largest = comps.values().map(|c| c.area).fold(0.0, f64::max);
-        for comp in comps.values() {
-            if comp.open || comp.area >= largest || comp.area <= 0.0 {
-                continue;
-            }
-            let thickness = 2.0 * (comp.volume6 / 6.0).abs() / comp.area;
-            if thickness < THIN_SHELL {
-                row.thin_shells += 1;
-                row.thin_area += comp.area;
-                row.thin_min_thickness =
-                    Some(row.thin_min_thickness.map_or(thickness, |m: f64| m.min(thickness)));
-            }
-        }
-    }
+    thin_material(&tris, &p, &mut row);
     row
+}
+
+/// One oriented face for the thin-material census.
+struct Face {
+    n: [f64; 3],
+    /// Plane offset along the bucket's quantised normal, about the mesh
+    /// anchor: a sort key only, as coarse as the bucket.
+    s: f64,
+    area: f64,
+    lo: [f64; 3],
+    hi: [f64; 3],
+    /// `+1` when `n` points along the bucket's canonical normal.
+    side: i8,
+    centroid: [f64; 3],
+    corners: [[f64; 3]; 3],
+}
+
+/// Whether two triangles' projections onto the plane normal to `n` overlap
+/// in a region of positive area (separating axis test, touching excluded).
+fn projections_overlap(n: [f64; 3], a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> bool {
+    // Drop the dominant axis of `n`.
+    let k = (0..3).max_by(|&i, &j| n[i].abs().total_cmp(&n[j].abs())).unwrap_or(2);
+    let (u, v) = ((k + 1) % 3, (k + 2) % 3);
+    let pa = a.map(|p| [p[u], p[v]]);
+    let pb = b.map(|p| [p[u], p[v]]);
+    let scale = pa.iter().chain(&pb).flat_map(|p| p.iter()).fold(0.0f64, |m, c| m.max(c.abs()));
+    let eps = 1.0e-9 * scale.max(1.0);
+    for tri in [&pa, &pb] {
+        for i in 0..3 {
+            let (p, q) = (tri[i], tri[(i + 1) % 3]);
+            let axis = [q[1] - p[1], p[0] - q[0]];
+            let proj = |t: &[[f64; 2]; 3]| {
+                t.iter().map(|c| c[0] * axis[0] + c[1] * axis[1]).fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| (lo.min(x), hi.max(x)))
+            };
+            let ((alo, ahi), (blo, bhi)) = (proj(&pa), proj(&pb));
+            let len = (axis[0] * axis[0] + axis[1] * axis[1]).sqrt();
+            if ahi <= blo + eps * len || bhi <= alo + eps * len {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn thin_material(tris: &[[usize; 3]], p: &[[f64; 3]], row: &mut Row) {
+    let Some(&anchor) = p.first() else { return };
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for v in p {
+        for k in 0..3 {
+            lo[k] = lo[k].min(v[k]);
+            hi[k] = hi[k].max(v[k]);
+        }
+    }
+    let diag = dot(sub(hi, lo), sub(hi, lo)).sqrt();
+    // The sort key's error between two faces of one bucket is at most the
+    // bucket width times their distance apart, so widen the window by that.
+    let window = THIN + NORMAL_BUCKET * diag;
+    // Bucket by the canonical normal (first clear component positive), so a
+    // face and its anti-parallel partner land in one bucket on opposite sides.
+    let mut buckets: HashMap<[i64; 3], Vec<Face>> = HashMap::new();
+    for t in tris {
+        let [a, b, c] = t.map(|i| sub(p[i], anchor));
+        let e = cross(sub(b, a), sub(c, a));
+        let len = dot(e, e).sqrt();
+        if len <= 1.0e-12 {
+            continue;
+        }
+        let n = e.map(|v| v / len);
+        let flip = n.iter().find(|v| v.abs() > 1.0e-6).is_some_and(|v| *v < 0.0);
+        let canon = if flip { n.map(|v| -v) } else { n };
+        let key = canon.map(|v| (v / NORMAL_BUCKET).round() as i64);
+        let q = key.map(|k| k as f64 * NORMAL_BUCKET);
+        let centroid = [0, 1, 2].map(|k| (a[k] + b[k] + c[k]) / 3.0);
+        let face = Face {
+            n,
+            s: dot(q, centroid),
+            area: len / 2.0,
+            lo: [0, 1, 2].map(|k| a[k].min(b[k]).min(c[k])),
+            hi: [0, 1, 2].map(|k| a[k].max(b[k]).max(c[k])),
+            side: if flip { -1 } else { 1 },
+            centroid,
+            corners: [a, b, c],
+        };
+        buckets.entry(key).or_default().push(face);
+    }
+    for faces in buckets.values_mut() {
+        if !faces.iter().any(|f| f.side < 0) || !faces.iter().any(|f| f.side > 0) {
+            continue;
+        }
+        faces.sort_by(|x, y| x.s.total_cmp(&y.s));
+        // 1 thin, 2 coincident, 3 both.
+        let mut thin = vec![0u8; faces.len()];
+        for i in 0..faces.len() {
+            let mut seen = 0;
+            for j in (i + 1)..faces.len() {
+                let (f, g) = (&faces[i], &faces[j]);
+                if g.s - f.s > window || seen >= MAX_CANDIDATES {
+                    break;
+                }
+                if f.side == g.side {
+                    continue;
+                }
+                seen += 1;
+                if !(0..3).all(|k| f.lo[k] - THIN < g.hi[k] && g.lo[k] - THIN < f.hi[k])
+                    || !projections_overlap(f.n, &f.corners, &g.corners)
+                {
+                    continue;
+                }
+                // Each centroid's height above the OTHER face's own plane:
+                // both at most zero (facing away) and above -THIN.
+                let d1 = dot(f.n, sub(g.centroid, f.centroid));
+                let d2 = dot(g.n, sub(f.centroid, g.centroid));
+                let slack = 1.0e-9;
+                if d1 <= slack && d2 <= slack && d1 > -THIN && d2 > -THIN {
+                    let gap = (-d1).max(-d2).max(0.0);
+                    let class = if gap <= COINCIDENT { 2 } else { 1 };
+                    thin[i] |= class;
+                    thin[j] |= class;
+                    if class == 2 {
+                        continue;
+                    }
+                    if std::env::var_os("MESH_CENSUS_DEBUG").is_some() {
+                        eprintln!(
+                            "thin pair gap {gap:.3e} areas {:.4} {:.4} n {:?} c {:?} {:?}",
+                            f.area, g.area, f.n, f.centroid, g.centroid
+                        );
+                    }
+                    row.thin_min_gap = Some(row.thin_min_gap.map_or(gap, |m: f64| m.min(gap)));
+                }
+            }
+        }
+        for (f, t) in faces.iter().zip(&thin) {
+            if t & 1 != 0 {
+                row.thin_faces += 1;
+                row.thin_area += f.area;
+            }
+            if t & 2 != 0 {
+                row.coincident_area += f.area;
+            }
+        }
+    }
 }

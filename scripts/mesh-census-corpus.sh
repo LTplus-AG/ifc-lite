@@ -8,6 +8,7 @@
 # order (#8190).
 #
 # Usage: scripts/mesh-census-corpus.sh <mesh_census binary> <models dir> <out.jsonl> [max MiB=200] [jobs=4]
+# CENSUS_ARGS (e.g. --no-voids) is passed to every mesh_census run.
 #
 # Build the binary once per commit (`cargo build --release -p
 # ifc-lite-processing --example mesh_census`) and copy it out of target/
@@ -33,19 +34,20 @@ mkdir -p "$work"
 node -e '
   const m = require(process.argv[1]);
   const max = Number(process.argv[2]) * 1024 * 1024;
-  m.filter((e) => e.path.endsWith(".ifc") && e.size <= max)
+  m.files.filter((e) => e.path.endsWith(".ifc") && e.size <= max)
    .forEach((e, i) => console.log(`${String(i).padStart(4, "0")}\t${e.path}`));
 ' "$here/tests/models/manifest.json" "$max_mib" > "$work/list"
 
 echo "$(wc -l < "$work/list") models, $jobs at a time" >&2
 
-export bin models work out
+export bin models work out CENSUS_ARGS
 # shellcheck disable=SC2016
 xargs -P "$jobs" -I{} bash -c '
   n=${1%%$'"'"'\t'"'"'*}; path=${1#*$'"'"'\t'"'"'}
-  "$bin" "$models/$path" > "$work/$n.jsonl" 2> "$work/$n.err" || echo "$path" >> "$out.failed"
+  "$bin" ${CENSUS_ARGS:-} "$models/$path" > "$work/$n.jsonl" 2> "$work/$n.err" || echo "$path" >> "$out.failed"
 ' _ {} < "$work/list"
 
+[ -s "$work/list" ] || { echo "no models selected from the manifest" >&2; exit 1; }
 cat "$work"/*.jsonl > "$out"
 # Model paths relative to the models dir, so base and branch runs from
 # different checkouts key the same mesh identically.

@@ -93,12 +93,7 @@ export class RegistryArtifacts {
   async modelCatalog(signal?: AbortSignal, next?: string): Promise<{ repositories: string[]; titles: Record<string, string>; next?: string }> {
     const page = await this.catalog(signal, next);
     const titles: Record<string, string> = {};
-    for (let start = 0; start < page.repositories.length; start += 8) {
-      await Promise.all(page.repositories.slice(start, start + 8).map(async repository => {
-        const releases = await this.releases(repository, signal);
-        titles[repository] = releases[0]?.title || repository.split('/').pop() || repository;
-      }));
-    }
+    for (const repository of page.repositories) titles[repository] = repository.split('/').pop() || repository;
     return { ...page, titles };
   }
 

@@ -62,7 +62,7 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
   const root = await mkdtemp(join(tmpdir(), 'ifclite-registry-'));
   const password = 'test-only-registry-password';
   const data = join(root, 'store');
-  for (const [name, grant] of [['writer', 'project/model:pull,push'], ['reader', 'project/model:pull']]) {
+  for (const [name, grant] of [['writer', 'project/model:pull,push'], ['reader', 'project/model:pull'], ['oras-reader', 'project/model:pull']]) {
     execFileSync(binary, ['user', 'add', '--data', data, name, '--grant', grant, '--password-stdin'], { input: password, stdio: ['pipe', 'pipe', 'pipe'] });
   }
   const server = spawn(binary, ['serve', '--data', data, '--listen', '127.0.0.1:0', '--oauth-client-id', 'ifc-lite', '--oauth-redirect-uri', `${window.location.origin}${REGISTRY_CALLBACK_PATH}`], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -137,7 +137,7 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
     const oras = process.env.IFCX_ORAS_BINARY;
     if (oras) {
       const config = join(root, 'oras-auth.json'); const host = new URL(origin).host;
-      execFileSync(oras, ['login', '--plain-http', '--registry-config', config, host, '--username', 'writer', '--password-stdin'], { input: password, stdio: ['pipe', 'pipe', 'pipe'] });
+      execFileSync(oras, ['login', '--plain-http', '--registry-config', config, host, '--username', 'oras-reader', '--password-stdin'], { input: password, stdio: ['pipe', 'pipe', 'pipe'] });
       const manifest = execFileSync(oras, ['manifest', 'fetch', '--plain-http', '--registry-config', config, `${host}/project/model@${digest}`]);
       assert.equal(await sha256(manifest), digest);
       const output = join(root, 'received');
@@ -176,4 +176,90 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
     server.kill('SIGTERM'); await new Promise<void>(resolve => server.once('exit', () => resolve()));
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('catalog browsing does not fetch each repository manifest before selection (#8310)', async () => {
+  const originalFetch = globalThis.fetch;
+  const popup = installRegistryPopup(registryCallback);
+  const transport = new RegistryTransport('http://127.0.0.1:5000');
+  const requests: string[] = [];
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input)).pathname;
+    if (path === '/oauth/config') return Response.json(registryOAuthConfig('http://127.0.0.1:5000'));
+    if (path === '/oauth/token') return Response.json(registryTokenReply());
+    requests.push(path);
+    assert.equal(path, '/v2/_catalog', 'tag and manifest requests wait for model selection');
+    return Response.json({ repositories: ['project/model', 'project/another'] }, { headers: { Link: '</v2/_catalog?n=2&last=project/another>; rel="next"' } });
+  };
+  try {
+    await transport.login(null);
+    assert.deepEqual(await new RegistryArtifacts(transport).modelCatalog(), {
+      repositories: ['project/model', 'project/another'], titles: { 'project/model': 'model', 'project/another': 'another' },
+      next: '/v2/_catalog?n=2&last=project/another',
+    });
+    assert.deepEqual(requests, ['/v2/_catalog']);
+  } finally { globalThis.fetch = originalFetch; transport.logout(); popup.restore(); }
+});
+
+test('blob redirects preserve digest checks and omit the registry bearer across origins (#8310)', async () => {
+  const bytes = new TextEncoder().encode('ISO-10303-21; original');
+  const layer = { mediaType: 'application/x-step', digest: await sha256(bytes), size: bytes.length };
+  const manifest = JSON.stringify({ schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE, config: layer, layers: [layer] });
+  const manifestDigest = await sha256(new TextEncoder().encode(manifest));
+  const credentials: Array<string | undefined> = [];
+  let corrupt = false;
+  const storage = createServer((request, response) => {
+    credentials.push(request.headers.authorization);
+    response.end(corrupt ? new TextEncoder().encode('ISO-10303-21; modified') : bytes);
+  });
+  await new Promise<void>(resolve => storage.listen(0, '127.0.0.1', resolve));
+  const storageAddress = storage.address(); assert(storageAddress && typeof storageAddress !== 'string');
+  const server = createServer((request, response) => {
+    if (request.url === '/oauth/config') response.end(JSON.stringify(registryOAuthConfig(`http://${request.headers.host}`)));
+    else if (request.url === '/oauth/token') response.end(JSON.stringify(registryTokenReply('reader', ['pull'])));
+    else if (request.url?.includes('/manifests/')) { response.setHeader('Docker-Content-Digest', manifestDigest); response.end(manifest); }
+    else { response.writeHead(307, { Location: `http://127.0.0.1:${storageAddress.port}/object` }); response.end(); }
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address(); assert(address && typeof address !== 'string');
+  const origin = `http://127.0.0.1:${address.port}`;
+  const popup = installRegistryPopup(registryCallback);
+  const transport = new RegistryTransport(origin, origin);
+  try {
+    await transport.login('project/model');
+    const artifacts = new RegistryArtifacts(transport);
+    assert.deepEqual((await artifacts.pull('project/model', 'issued')).bytes, bytes);
+    corrupt = true;
+    await assert.rejects(artifacts.pull('project/model', 'issued'), /integrity check/);
+    assert.deepEqual(credentials, [undefined, undefined]);
+  } finally {
+    transport.logout(); popup.restore();
+    await Promise.all([server, storage].map(item => new Promise<void>((resolve, reject) => item.close(error => error ? reject(error) : resolve()))));
+  }
+});
+
+test('registry popup fixture preserves HTTP 429 and Retry-After instead of fabricating server_error (#8310)', async () => {
+  let exchanges = 0;
+  const server = createServer((request, response) => {
+    if (request.url === '/oauth/config') response.end(JSON.stringify(registryOAuthConfig(`http://${request.headers.host}`)));
+    else if (request.url?.startsWith('/oauth/authorize') && request.method === 'GET') {
+      response.setHeader('Set-Cookie', 'consent=fixture; HttpOnly');
+      response.end('<input name="request_id" value="fixture-request">');
+    } else if (request.url === '/oauth/authorize') {
+      response.writeHead(429, { 'Retry-After': '60' });
+      response.end(JSON.stringify({ error: 'temporarily_unavailable' }));
+    } else { exchanges++; response.writeHead(500); response.end(); }
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address(); assert(address && typeof address !== 'string');
+  const origin = `http://127.0.0.1:${address.port}`;
+  const popup = installRegistryPopup(request => approveRegistryLogin(request, 'writer', 'test-only-password'));
+  const transport = new RegistryTransport(origin, origin);
+  try {
+    await assert.rejects(transport.login(null), /fixture_error.*HTTP 429.*Retry-After: 60/);
+    assert.equal(exchanges, 0);
+    assert.equal(popup.errors.length, 1);
+    assert(popup.errors[0] instanceof Error);
+    assert.match(popup.errors[0].message, /HTTP 429.*Retry-After: 60.*temporarily_unavailable/);
+  } finally { transport.logout(); popup.restore(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

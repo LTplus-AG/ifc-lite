@@ -103,8 +103,11 @@ origin. The credential/approval page at `/oauth/authorize` opens directly on the
 configured registry origin and is never proxied under the viewer's origin.
 Discovery must identify that exact registry authorization endpoint, the public
 client ID configured by the registry, the registered viewer callback, and PKCE S256. Unexpected
-authorization addresses, token endpoints, redirects and upload locations are
-rejected. No browser security setting needs changing.
+authorization addresses, token endpoints and upload locations are rejected.
+Only blob GETs may follow redirects to object storage; the browser strips the
+registry bearer on a cross-origin redirect and the downloaded source must still
+match its SHA-256 digest. Metadata requests and writes reject redirects.
+No browser security setting needs changing.
 Remote registries, arbitrary destinations, static hosting and Vite preview are
 outside this demo's connection scope.
 

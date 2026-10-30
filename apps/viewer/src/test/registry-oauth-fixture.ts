@@ -64,7 +64,8 @@ export function installRegistryPopup(authorize: (request: URL) => string | Promi
       }, error => {
         errors.push(error);
         const callback = new URL(request.searchParams.get('redirect_uri')!);
-        callback.searchParams.set('state', request.searchParams.get('state')!); callback.searchParams.set('error', 'server_error');
+        callback.searchParams.set('state', request.searchParams.get('state')!); callback.searchParams.set('error', 'fixture_error');
+        callback.searchParams.set('error_description', error instanceof Error ? error.message : String(error));
         const channel = new BroadcastChannel(OAUTH_CALLBACK_CHANNEL);
         channel.postMessage({ type: OAUTH_CALLBACK_CHANNEL, state: request.searchParams.get('state'), url: callback.href });
         channel.close();
@@ -74,10 +75,17 @@ export function installRegistryPopup(authorize: (request: URL) => string | Promi
   return { requests, errors, opens: () => opens, restore: () => { window.open = original; } };
 }
 
+async function expectRegistryStatus(response: Response, expected: number, step: string): Promise<void> {
+  if (response.status === expected) return;
+  const retryAfter = response.headers.get('retry-after');
+  const body = await response.text();
+  throw new Error(`Registry ${step} returned HTTP ${response.status} (expected ${expected})${retryAfter ? `; Retry-After: ${retryAfter}` : ''}; ${body}`);
+}
+
 /** Drive the real registry's credential/consent page, never the viewer's origin. */
 export async function approveRegistryLogin(request: URL, subject: string, password: string, remember = false): Promise<string> {
   const response = await fetch(request, { redirect: 'manual' });
-  assert.equal(response.status, 200);
+  await expectRegistryStatus(response, 200, 'authorization page');
   const cookie = response.headers.get('set-cookie')?.split(';')[0]; assert(cookie);
   const page = new DOMParser().parseFromString(await response.text(), 'text/html');
   const requestId = page.querySelector<HTMLInputElement>('input[name="request_id"]')?.value; assert(requestId);
@@ -87,7 +95,7 @@ export async function approveRegistryLogin(request: URL, subject: string, passwo
     method: 'POST', redirect: 'manual', headers: { Origin: request.origin, Cookie: cookie },
     body,
   });
-  assert.equal(approved.status, 303);
+  await expectRegistryStatus(approved, 303, 'consent');
   const callback = approved.headers.get('location'); assert(callback);
   return callback;
 }

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export const registryEn = {
-  'registry.title': 'Model registry',
+  'registry.title': 'Model registry (experimental)',
   'registry.address': 'Registry address',
   'registry.signIn': 'Sign in to ifcx-oci',
   'registry.signOut': 'Sign out',

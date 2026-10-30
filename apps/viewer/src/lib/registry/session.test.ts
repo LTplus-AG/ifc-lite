@@ -168,3 +168,25 @@ test('sign-out during restore or code exchange revokes a late remembered cookie 
     assert.equal(await transport().restore(), null, 'a fresh tab cannot restore the revoked remembered cookie');
   });
 });
+
+test('only blob GETs follow object-storage redirects; metadata and writes reject them (#8310)', async () => {
+  popup(); const client = transport();
+  const policies: Array<{ path: string; method: string; redirect: RequestRedirect | undefined }> = [];
+  globalThis.fetch = async (input, init) => {
+    const path = urlOf(input).pathname;
+    if (path === '/oauth/config') return Response.json(registryOAuthConfig(registry));
+    if (path === '/oauth/token') return Response.json(registryTokenReply());
+    policies.push({ path, method: init?.method ?? 'GET', redirect: init?.redirect });
+    assert.equal(init?.credentials, 'omit');
+    return Response.json({});
+  };
+  await client.login(null);
+  const blob = `/v2/project/model/blobs/sha256:${'a'.repeat(64)}`;
+  await client.request(blob);
+  await client.request(blob, { method: 'HEAD' });
+  await client.request('/v2/project/model/manifests/issued');
+  await client.request('/v2/project/model/tags/list');
+  await client.request('/v2/project/model/blobs/uploads/', { method: 'POST' });
+  await client.request(blob, { method: 'PUT', redirect: 'follow', body: 'content' });
+  assert.deepEqual(policies.map(item => item.redirect), ['follow', 'error', 'error', 'error', 'error', 'error']);
+});

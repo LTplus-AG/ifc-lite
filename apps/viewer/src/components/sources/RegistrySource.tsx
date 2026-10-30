@@ -73,7 +73,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
     if (requested?.startsWith('sha256:')) available.unshift(await artifacts.describe(name, requested, signal));
     signal.throwIfAborted();
     const chosen = available.find(item => item.tag === requested) ?? available[0];
-    update({ repository: name, releases: available, tags: available.map(item => item.tag), release: chosen?.tag ?? '', version: nextVersion(available), fingerprint: '', published: '' });
+    update({ modelTitles: { ...useRegistryWorkspace.getState().modelTitles, [name]: chosen?.title || displayModel(name) }, repository: name, releases: available, tags: available.map(item => item.tag), release: chosen?.tag ?? '', version: nextVersion(available), fingerprint: '', published: '' });
     if (requested && !available.some(item => item.tag === requested)) setError(t('registry.releaseMissing'));
   };
   const pull = async (reference: string, signal: AbortSignal) => {
@@ -99,7 +99,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
         const repository = catalog.repositories[0] ?? '';
         const releases = repository ? await artifacts.releases(repository, controller.signal) : [];
         controller.signal.throwIfAborted();
-        update({ session, models: catalog.repositories, modelTitles: catalog.titles, catalogNext: catalog.next, repository, releases,
+        update({ session, models: catalog.repositories, modelTitles: { ...catalog.titles, ...(repository && releases[0] ? { [repository]: releases[0].title } : {}) }, catalogNext: catalog.next, repository, releases,
           release: releases[0]?.tag ?? '', version: nextVersion(releases), tags: releases.map(item => item.tag) });
       } catch (error) {
         if (!controller.signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')) {

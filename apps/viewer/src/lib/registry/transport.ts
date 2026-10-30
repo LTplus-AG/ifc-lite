@@ -170,7 +170,10 @@ export class RegistryTransport {
     headers.set('Authorization', `Bearer ${this.token}`);
     const target = this.url(path.toString());
     if (!target.pathname.startsWith('/v2/')) throw new RegistryError('The request is outside this registry connection.');
-    const response = await fetch(target, { ...init, headers, credentials: 'omit', redirect: 'error' });
+    // Blob storage may redirect GETs to object storage. Fetch strips Authorization
+    // across origins; RegistryArtifacts still verifies the downloaded source digest.
+    const blobGet = (init.method ?? 'GET').toUpperCase() === 'GET' && /\/blobs\/sha256:[a-f0-9]{64}$/.test(target.pathname);
+    const response = await fetch(target, { ...init, headers, credentials: 'omit', redirect: blobGet ? 'follow' : 'error' });
     if (generation !== this.generation) throw new DOMException('Registry request was cancelled', 'AbortError');
     if (response.status === 401) {
       if (!retried && generation === this.generation) {

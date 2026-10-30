@@ -35,7 +35,7 @@ test('Model registry uses a registry sign-in action without viewer credentials (
   const ui = await mount();
   assert(ui.textContent?.includes('Dropbox'));
   assert(ui.textContent?.includes('Autodesk Forma / Data Exchange'));
-  const entry = button(ui, 'Model registry');
+  const entry = button(ui, 'Model registry (experimental)');
   assert(entry.closest('ul > li'), 'registry belongs to the source connection list');
   assert.equal(entry.getAttribute('aria-expanded'), 'false');
   click(entry);
@@ -72,14 +72,14 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
     throw new Error(`Unexpected registry request ${url.pathname}`);
   };
   try {
-    let ui = await mount(); click(button(ui, 'Model registry'));
+    let ui = await mount(); click(button(ui, 'Model registry (experimental)'));
     const address = ui.querySelector<HTMLInputElement>('input[autocomplete="off"]'); assert(address); type(address, 'http://localhost:5000/project/model:issued');
     const form = ui.querySelector('form'); assert(form);
     act(() => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
     await waitFor(() => Boolean(ui.textContent?.includes('Can publish')), 'registry login should finish');
     const transport = useRegistryWorkspace.getState().transport; assert(transport); assert(transport.can('push'));
     cleanup();
-    ui = await mount(); click(button(ui, 'Model registry'));
+    ui = await mount(); click(button(ui, 'Model registry (experimental)'));
     assert(ui.textContent?.includes('Can publish'), 'connection survives the panel unmount');
     assert.equal(ui.querySelector('input[type="password"]'), null);
     assert.equal(signIns, 1, 'reopening does not ask for a second token');
@@ -121,15 +121,15 @@ test('remembered login restores the source after a fresh viewer mount without op
   window.open = () => { throw new Error('Remembered restoration must not open a popup'); };
   const freshPage = () => { clearRegistrySession(); useRegistryWorkspace.setState({ transport: null }); };
   try {
-    freshPage(); let ui = await mount(); click(button(ui, 'Model registry'));
+    freshPage(); let ui = await mount(); click(button(ui, 'Model registry (experimental)'));
     await waitFor(() => Boolean(ui.textContent?.includes('Can publish')), 'remembered session should restore and browse');
     assert(ui.textContent?.includes('Remembered building')); assert.equal(ui.querySelector('input[type="password"]'), null);
-    cleanup(); freshPage(); ui = await mount(); click(button(ui, 'Model registry'));
+    cleanup(); freshPage(); ui = await mount(); click(button(ui, 'Model registry (experimental)'));
     await waitFor(() => Boolean(ui.textContent?.includes('Can publish')), 'a reloaded viewer should restore again');
     assert.equal(restores, 2);
     click(button(ui, 'Sign out'));
     await waitFor(() => useRegistryWorkspace.getState().session === null, 'remembered sign-out should finish');
-    cleanup(); freshPage(); ui = await mount(); click(button(ui, 'Model registry'));
+    cleanup(); freshPage(); ui = await mount(); click(button(ui, 'Model registry (experimental)'));
     await waitFor(() => restores === 3, 'fresh viewer should check the cleared cookie');
     assert(button(ui, 'Sign in to ifcx-oci')); assert.equal(useRegistryWorkspace.getState().session, null);
   } finally { globalThis.fetch = originalFetch; window.open = originalOpen; }

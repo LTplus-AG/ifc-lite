@@ -3,12 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Production-path helpers shared by the fixture-driven void suites:
-//! `IfcRelVoidsElement` indexing exactly as
-//! `process_geometry_batch` does it, and the ray-cast machinery used to
+//! the production void index (`void_index_from_content`, the kernel the
+//! processing prepass runs), and the ray-cast machinery used to
 //! prove a wall actually has a hole at each opening footprint.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
-use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
+use ifc_lite_geometry::{void_index_from_content, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
 /// Find the express ID of an entity by GUID (attribute index 0).
@@ -29,25 +29,11 @@ pub fn find_entity_by_guid(content: &str, guid: &str) -> Option<u32> {
     None
 }
 
-/// Build the void index the same way production does in
-/// `process_geometry_batch` and `build_pre_pass_streaming`.
+/// The production void index: the shared kernel the processing prepass
+/// resolves (`resolve_prepass`), so these suites cut what production cuts.
 pub fn build_void_index_like_production(content: &str) -> FxHashMap<u32, Vec<u32>> {
-    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut scanner = EntityScanner::new(content);
     let mut decoder = EntityDecoder::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCRELVOIDSELEMENT" {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                if let (Some(host_id), Some(opening_id)) = (entity.get_ref(4), entity.get_ref(5)) {
-                    void_index.entry(host_id).or_default().push(opening_id);
-                }
-            }
-        }
-    }
-    // Combined (non-streaming) path also propagates to parts, so we
-    // mirror that. The streaming path SKIPS this — we run both modes.
-    let _ = propagate_voids_to_parts(&mut void_index, content, &mut decoder);
-    void_index
+    void_index_from_content(content, &mut decoder)
 }
 
 /// Ray-triangle intersection (Möller–Trumbore).

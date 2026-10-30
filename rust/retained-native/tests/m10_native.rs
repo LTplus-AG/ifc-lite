@@ -341,3 +341,12 @@ fn m10_sdk_omitted_identifier_affine_product_gates_winding() {
     assert_ne!(text,SOURCE,"h2 representation must be changed");
     winding_witness(&text,42,false,"m10_sdk_omitted_identifier_affine_product_gates_winding");
 }
+// Hosted review of #8360: a mirrored map under a Boolean operand must still be gated.
+#[test]
+fn m10_sdk_mirrored_boolean_operand_gates_winding() {
+    // Controller cross-check shape, as in the bake test: IFC4 excludes mapped operands.
+    let text=SOURCE.replace("#40=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#39));",
+        "#9400=IFCBOOLEANRESULT(.UNION.,#39,#39);\n#40=IFCSHAPEREPRESENTATION(#4,'Body','CSG',(#9400));");
+    assert_ne!(text,SOURCE);
+    winding_witness(&text,42,false,"m10_sdk_mirrored_boolean_operand_gates_winding");
+}

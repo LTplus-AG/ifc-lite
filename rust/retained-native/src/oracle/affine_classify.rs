@@ -58,29 +58,38 @@ pub(super) fn mapped_items(d:&mut EntityDecoder<'_>,id:u32) -> Result<Vec<(u32,F
     }
     Ok(result)
 }
-/// Detection independent of `mapping`: any IfcMappedItem under the selected body,
-/// through Boolean operands and CSG roots. Unknown or unreadable nodes fail closed,
-/// as `bounded_source::contains_bounded` does.
-fn contains_mapped(d:&mut EntityDecoder<'_>,id:u32) -> Result<bool,String> {
+/// Whether any mapped item anywhere under the selected Body is nonrigid. The walk
+/// follows Boolean operands and CSG roots as well as map contents: a mirrored map
+/// under a Boolean operand still needs its winding gate. A mapped item whose
+/// operator cannot be decoded, and any unreadable node, fail closed (`Err`), as
+/// `bounded_source::contains_bounded` does; a body with no map is simply rigid.
+fn scan(d:&mut EntityDecoder<'_>,id:u32) -> Result<bool,String> {
     let mut pending:Vec<_>=selected_items(d,id)?.into_iter().map(|item|(item,0u32)).collect();
     let mut visited=std::collections::BTreeSet::new();
+    let mut affine=false;
     while let Some((id,depth))=pending.pop() {
         if !visited.insert(id) {continue}
-        if visited.len()>8192 {return Err("mapped body scan work cap exceeded".into())}
+        if visited.len()>8192||depth>128 {return Err("body scan work or depth cap exceeded".into())}
         let node=d.decode_by_id(id).map_err(|_|format!("source node #{id} unavailable"))?;
         match node.ifc_type {
-            IfcType::IfcMappedItem=>return Ok(true),
+            IfcType::IfcMappedItem=>{
+                let (Some(source),Some(target))=(node.ref_at(slot::IfcMappedItem::MAPPING_SOURCE),node.ref_at(slot::IfcMappedItem::MAPPING_TARGET)) else {
+                    return Err(format!("mapped item #{id} has no source or target"))
+                };
+                let (map,items)=mapping(d,source,target).ok_or_else(||format!("mapped item #{id}: unsupported operator, degenerate axes or missing origin"))?;
+                affine|=nonrigid(&map);
+                pending.extend(items.into_iter().map(|item|(item,depth+1)));
+            }
             IfcType::IfcBooleanResult|IfcType::IfcBooleanClippingResult=>{
-                if depth>=ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH {return Err("Boolean depth cap exceeded".into())}
                 for operand in [slot::IfcBooleanResult::FIRST_OPERAND,slot::IfcBooleanResult::SECOND_OPERAND] {
-                    pending.push((node.ref_at(operand).ok_or("Boolean operand unavailable")?,depth+1));
+                    pending.push((node.ref_at(operand).ok_or_else(||format!("Boolean #{id} operand unavailable"))?,depth+1));
                 }
             }
-            IfcType::IfcCsgSolid=>pending.push((node.ref_at(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION).ok_or("CSG root unavailable")?,depth)),
+            IfcType::IfcCsgSolid=>pending.push((node.ref_at(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION).ok_or_else(||format!("CSG solid #{id} root unavailable"))?,depth+1)),
             _=>{}
         }
     }
-    Ok(false)
+    Ok(affine)
 }
 /// Per published part: the signed volume of the baked mesh is positive. A
 /// mirrored map that kept its source winding fails here, whatever the oracle models.
@@ -88,16 +97,11 @@ pub fn winding_positive(product:&crate::ShapeOnlyProduct) -> Vec<bool> {
     product.parts.iter().map(|part|
         mesh_moments(&part.positions,&part.indices,&part.world_from_object).is_some_and(|v|v.0>0.)).collect()
 }
-/// Mapped leaves are decoded first; when that fails, an independent scan decides
-/// whether the body is mapped at all (fail closed) or simply has no map (rigid).
+/// The classification the winding gate keys on; see `scan` for what fails closed.
 pub(super) fn classify(d:&mut EntityDecoder<'_>,id:u32) -> Classification {
-    match mapped_items(d,id) {
-        Ok(items) if items.iter().any(|(_,_,affine)|*affine) => Classification::Affine,
-        Ok(_) => Classification::Rigid,
-        Err(reason) => match contains_mapped(d,id) {
-            Ok(false) => Classification::Rigid,
-            Ok(true) => Classification::Unmodelled(reason),
-            Err(also) => Classification::Unmodelled(format!("{reason}; {also}")),
-        },
+    match scan(d,id) {
+        Ok(true) => Classification::Affine,
+        Ok(false) => Classification::Rigid,
+        Err(reason) => Classification::Unmodelled(reason),
     }
 }

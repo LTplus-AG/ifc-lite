@@ -20,9 +20,11 @@ set -x
 node scripts/check-module-size.mjs
 node scripts/check-rust-api-surface.mjs
 node scripts/check-agents-md-size.mjs
+if [[ ${1:-all} != static ]]; then
 cargo test -p ifc-lite-wasm --lib c4_10a -- --nocapture
 cargo test -p ifc-lite-wasm --lib c4_11 -- --nocapture
 cargo test -p ifc-lite-processing --test module_size_ratchet --test function_length_ratchet --test positional_read_ratchet
+fi
 for patch in tests/evidence/c4-11b/behaviour.oracle.patch tests/evidence/c4-11b-prepass/{behaviour,meta}.oracle.patch; do
   if [[ -f "$patch" ]]; then git apply --reverse --check "$patch"; fi
 done

@@ -1,0 +1,12 @@
+diff --git b/packages/geometry/src/omitted-type-records.ts a/packages/geometry/src/omitted-type-records.ts
+--- b/packages/geometry/src/omitted-type-records.ts
++++ a/packages/geometry/src/omitted-type-records.ts
+@@ -31,7 +31,7 @@ export function parseOmittedTypeRecords(value: unknown): number | undefined {
+ /** Read the count from the IfcAPI that ran the prepass; `undefined` when unknown. */
+ export function readOmittedTypeRecords(api: unknown): number | undefined {
+   const getter = (api as { getPipelineDiagnostics?: unknown } | null | undefined)?.getPipelineDiagnostics;
+-  if (typeof getter !== 'function') return 0;
++  if (typeof getter !== 'function') return undefined;
+   let report: unknown;
+   try {
+     report = getter.call(api);

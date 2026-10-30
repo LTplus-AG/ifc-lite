@@ -960,6 +960,16 @@ jobs:
           # Keep the API; weaken fingerprint identity to key equality instead.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8341 F2 viewer: inverting the whole change deletes the relay module its
+          # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
+          # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341-viewer/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341-viewer/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/behaviour.oracle.patch --test packages/geometry/src/geometry-parallel-omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/worker.oracle.patch --test packages/geometry/src/geometry-worker-omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/main-thread.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/unknown.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/panel.oracle.patch --test apps/viewer/src/components/viewer/LoadReportPanel.omitted-type-records.test.tsx --test apps/viewer/src/lib/loadReport.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/toast.oracle.patch --test apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts)
           # #5865: whole-file inversion deletes gpuFramePacer.ts and the tests that
           # import it. Keep the module; stop the pacer ever reporting a backlog.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch | grep -Fxq 'tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch'; then

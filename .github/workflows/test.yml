@@ -960,6 +960,10 @@ jobs:
           # Keep the API; weaken fingerprint identity to key equality instead.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8341 C4-14: whole-change inversion deletes the new test module.
+          # Keep the one scan; drop wrappers authored after a styled item.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch --test rust/processing/src/symbolic/color_tests.rs)
           # #8341 C4-12: whole-change inversion deletes the new codec module and
           # the shared helpers its tests call (INCONCLUSIVE). Keep them; break
           # one behaviour per row: void offset, style quad bound, first-map-wins

@@ -18,8 +18,7 @@
 //! Tests skip cleanly when absent.
 
 use ifc_lite_core::IfcType;
-use ifc_lite_geometry::{GeometryRouter, VoidIndex};
-use rustc_hash::FxHashMap;
+use ifc_lite_geometry::{void_index_from_content, GeometryRouter};
 
 fn read_fixture(rel: &str) -> Option<String> {
     ifc_lite_testkit::fixture_text(rel)
@@ -49,11 +48,9 @@ fn run_geometry_pipeline(content: &str) -> PipelineStats {
     let mut decoder = ifc_lite_core::EntityDecoder::with_index(content, entity_index);
     let router = GeometryRouter::with_units(content, &mut decoder);
 
-    let void_idx = VoidIndex::from_content(content, &mut decoder);
-    let mut void_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    for (host_id, voids) in void_idx.iter() {
-        void_map.insert(host_id, voids.to_vec());
-    }
+    // The production void index (aggregate propagation + canonical order),
+    // not a direct-relationship copy (#8341 C4-15).
+    let void_map = void_index_from_content(content, &mut decoder);
 
     let mut scanner = ifc_lite_core::EntityScanner::new(content);
     let mut stats = PipelineStats::default();

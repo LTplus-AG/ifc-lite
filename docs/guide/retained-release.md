@@ -86,7 +86,13 @@ Pick the refresh by what changed:
   not carry the pinned SMLib revision and Emscripten version, or when the committed
   components are not laid out as SDK/Emscripten, Cargo block (exactly the crates the
   committed inputs list), Rust std. Passing `--sdk` or
-  `--emscripten` with `--cargo-only` is an error. Commit the regenerated
+  `--emscripten` with `--cargo-only` is an error. Only the SMLib revision and the
+  Emscripten version are checked against the reused entries (plus the
+  `emsdkRef`/`rustChannel` pins against the committed inputs); the musl/LLVM,
+  dlmalloc and Rust standard-library texts are reused on that basis alone. The
+  result is built in memory and validated like `--check` before anything is
+  written, so a refusal leaves `licenses/retained/` untouched. A recorded licence
+  election or supplement in `supplemental.json` is applied to reused components too. Commit the regenerated
   `licenses/retained/`, `packages/*/THIRD_PARTY_NOTICES.txt` and review the new
   component rows and any `OPEN:` entries.
 * **A pin or the toolchain changed**: run the full

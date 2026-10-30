@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import * as notices from './retained-notices.mjs';
@@ -52,11 +52,11 @@ checksum="${'a'.repeat(64)}"
     put(`licenses/retained/texts/${sha256}.txt`, body);
     return { file: `texts/${sha256}.txt`, origin: name, sha256 };
   };
-  const nonCargo = (name, version) => ({ name, version, source: 'https://example.invalid/fixture', license: 'Apache-2.0', scope: 'inert fixture',
+  const nonCargo = (name, version, license = 'Apache-2.0') => ({ name, version, source: 'https://example.invalid/fixture', license, scope: 'inert fixture',
     notices: [text('LICENSE', `${name} licence text\n`)] });
   put('licenses/retained/manifest.json', JSON.stringify(stamp({ format: 2, inputs: inventoryInputs(root), components: [
     nonCargo('fixture SDK', 'b'.repeat(40)),
-    nonCargo('fixture Emscripten', '4.0.15'),
+    nonCargo('fixture Emscripten', '4.0.15', 'MIT OR NCSA'),
     { name: 'external', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index',
       license: 'MIT OR Apache-2.0', scope: 'inert fixture',
       notices: [text('LICENSE-MIT', 'Fixture MIT licence text\n'), text('LICENSE-APACHE', 'Fixture Apache licence text\n')] },
@@ -344,4 +344,50 @@ test('Refs #7955 cargo-only refresh applies a recorded licence election to a reb
   assert.equal(external.attribution, 'external 1.0.1 under Apache-2.0 by election');
   assert.deepEqual(external.notices.map(n => n.origin), ['LICENSE-MIT', notice.origin]);
   assert.match(readFileSync(join(f.root, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'utf8'), /Licence election: Apache-2.0/);
+});
+
+const textFiles = f => readdirSync(join(f.root, 'licenses/retained/texts')).sort();
+const manifestBytes = f => readFileSync(join(f.root, 'licenses/retained/manifest.json'), 'utf8');
+
+test('Refs #7955 cargo-only refresh writes nothing when a reused notice file is missing', t => {
+  const f = fixture(t);
+  const metadata = bumpExternal(f);
+  rmSync(join(f.root, 'licenses/retained', f.manifest().components[0].notices[0].file));
+  const manifest = manifestBytes(f), texts = textFiles(f);
+  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /ENOENT/);
+  assert.equal(manifestBytes(f), manifest, 'manifest.json untouched');
+  assert.deepEqual(textFiles(f), texts, 'no new text files written for the rebuilt crate');
+});
+
+test('Refs #7955 cargo-only refresh applies an election recorded for a reused component', t => {
+  const f = fixture(t);
+  const metadata = bumpExternal(f);
+  const mit = 'Fixture Emscripten MIT text\n', sha256 = createHash('sha256').update(mit).digest('hex');
+  f.put(`licenses/retained/texts/${sha256}.txt`, mit);
+  const notice = { origin: 'https://example.invalid/MIT.txt', file: `texts/${sha256}.txt`, sha256 };
+  const record = { name: 'fixture Emscripten', version: '4.0.15', election: 'MIT', attribution: 'fixture under MIT by election', notices: [notice] };
+  f.put('licenses/retained/supplemental.json', JSON.stringify([record]));
+  notices.refreshCargoOnly(f.root, metadata);
+  checkNotices(f.root, false);
+  assert.doesNotThrow(() => checkNotices(f.root));
+  const emscripten = f.manifest().components[1];
+  assert.equal(emscripten.election, 'MIT');
+  assert.equal(emscripten.attribution, record.attribution);
+  assert.equal(emscripten.notices.filter(n => n.sha256 === sha256).length, 1);
+  assert.match(readFileSync(join(f.root, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'utf8'), /Licence election: MIT/);
+  // Idempotent: the record is already present, so a second run changes nothing.
+  const once = manifestBytes(f);
+  notices.refreshCargoOnly(f.root, metadata);
+  assert.equal(manifestBytes(f), once);
+  // An invalid election for a reused component is refused before anything is written.
+  f.put('licenses/retained/supplemental.json', JSON.stringify([{ ...record, election: 'GPL-2.0' }]));
+  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /Invalid licence election/);
+  assert.equal(manifestBytes(f), once);
+});
+
+test('Refs #7955 check rejects an undeclared Cargo component even under a recomputed digest', t => {
+  const f = fixture(t);
+  f.regenerate(manifest => { manifest.components.splice(3, 0, { ...manifest.components[2], name: 'leftover', version: '0.1.0' }); });
+  assert.throws(() => checkNotices(f.root), /Undeclared Cargo component: leftover 0.1.0/);
+  assert.throws(() => checkNotices(f.root, false), /Undeclared Cargo component/);
 });

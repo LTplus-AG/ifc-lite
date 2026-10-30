@@ -4,6 +4,15 @@
 
 # Performance diagnosis kit
 
+## C4-10b shared router and batch adapters (#7782)
+
+Verdict: performance unmeasured; no speedup or neutrality claim. This is a
+structural refactor around the existing owned production transaction. Keep
+native worker caches and browser warm decode/batch-local template choice in the
+schedulers; share router arming and decode/type/drain boundaries. The C4-0
+contract and real-WASM contracts qualify output preservation, not worker-pool
+throughput. Native A/B, browser timing and headed GPU qualification remain unmeasured.
+
 ## C4-7a-R shared type geometry plan (#7782)
 
 The shared discovery-span plan passed the native instruction gate against

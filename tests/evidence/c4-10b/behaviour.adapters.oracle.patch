@@ -1,11 +1,11 @@
---- a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
-+++ b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
-@@ -418,7 +418,7 @@
-                 mesh_collection.add(mesh_js_with_finish(mesh_data, finish_at(&out.finishes, i)));
-             }
-             if let Some(fp) = fingerprint {
--                let _ = fp; // dropped output metadata
-+                mesh_collection.push_geometry_hash(fp);
-             }
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch_output.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch_output.rs
+@@ -76,7 +76,7 @@
+             mesh_collection.add(mesh_js_with_finish(mesh_data, finish_at(&out.finishes, i)));
          }
-         mesh_collection.set_diagnostics(csg_diag);
+         if let Some(fp) = fingerprint {
+-            let _ = fp; // dropped output metadata
++            mesh_collection.push_geometry_hash(fp);
+         }
+     }
+     mesh_collection.set_diagnostics(csg_diag);

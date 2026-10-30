@@ -297,7 +297,7 @@
     "source": "3d4ed464eb",
     "request": "auto-0ad78f7cd04d431197d4e1b477009646",
     "receipt": "/home/louistrue/build-workers/worker-state/jobs/9869bd02-1d47-4334-9bdd-74ab48cb0cf4/receipt.json",
-    "method": "Temporary performance.now imports split native compare/result construction from encode_result; clocks appended only for private profiling calls. Footer removed before raw-wire parity. Instrumentation removed from final source. Uses dictionary trial, whose improvement was rejected. These medians are not additive paired totals.",
+    "method": "Temporary performance.now imports split native compare/result construction from encode_result; clocks appended only for private profiling calls. Footer removed before raw-wire parity. Instrumentation removed from final source. Source 3d4ed464eb is that temporary instrumented build, a descendant of the dictionary trial 3d5be83e4eecf240cd220baa2071d2138a99ad01 recorded above, whose improvement was rejected; it was not retained. These medians are not additive paired totals.",
     "results": [
       {
         "fixture": "LARGE",
@@ -342,5 +342,5 @@
     "stable snapshot row and opaque ref identity; byKey values are entries",
     "result mutation isolation regression added"
   ],
-  "conclusion": "Native compare/result construction alone exceeds the requested LARGE margin in these diagnostics. Transport-only tuning cannot establish the target. No public API, model ownership, protocol, or production-code change retained."
+  "conclusion": "Diagnostic only, from the unretained instrumented build above: native compare/result construction alone exceeds the requested LARGE margin in these diagnostics. Transport-only tuning cannot establish the target. No public API, model ownership, protocol, or production-code change retained."
 }

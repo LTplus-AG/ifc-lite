@@ -10,7 +10,7 @@
 //! yields them. A span that fails to decode, or a relationship missing either
 //! end, is skipped.
 
-use crate::void_index::propagate_voids_via_aggregates;
+use crate::void_index::{propagate_voids_to_parts, propagate_voids_via_aggregates};
 use ifc_lite_core::{slot, EntityDecoder, EntityScanner};
 use rustc_hash::FxHashMap;
 
@@ -128,3 +128,35 @@ pub(crate) fn scan_rel_spans(
 #[cfg(test)]
 #[path = "void_rels_tests.rs"]
 mod tests;
+
+/// Compute the set of aggregated `IfcBuildingElementPart` ids to skip when the
+/// "merge multilayer wall as a single solid" toggle is on (issue #540): a part
+/// is skipped when its parent's layered build-up is *sliceable* in the caller's
+/// `material_layer_index` (the browser's per-content or prepass-injected one),
+/// so the parent's merged-layer geometry is drawn instead of the parts. An
+/// index with no sliceable buildup returns the empty set before any scan.
+///
+/// This layer/void **driver** composes the shared kernels
+/// ([`propagate_voids_to_parts`], [`crate::MaterialLayerIndex::is_sliceable`])
+/// next to them (#913 Phase 4 / §2.6) for the browser's `merge_layers` path. Its
+/// scratch `void_index` stays EMPTY (only the part → parent map is wanted);
+/// callers needing propagated voids call [`propagate_voids_to_parts`] themselves.
+#[must_use]
+pub fn compute_parts_to_skip_with_index<T>(
+    content: &T,
+    decoder: &mut EntityDecoder,
+    material_layer_index: &crate::MaterialLayerIndex,
+) -> rustc_hash::FxHashSet<u32>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    if material_layer_index.sliceable_count() == 0 {
+        return rustc_hash::FxHashSet::default();
+    }
+    let mut void_index_scratch: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    propagate_voids_to_parts(&mut void_index_scratch, content.as_ref(), decoder)
+        .into_iter()
+        .filter(|(_, parent_id)| material_layer_index.is_sliceable(*parent_id))
+        .map(|(part_id, _)| part_id)
+        .collect()
+}

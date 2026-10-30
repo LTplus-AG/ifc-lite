@@ -8,6 +8,67 @@ use ifc_lite_core::EntityDecoder;
 use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
+/// The per-content columns each geometry batch would otherwise rebuild with its
+/// own full-file walk (#957 type-geometry sets, #563 material-layer index),
+/// built ONCE from spans the pre-pass scan already collected. The streaming
+/// pre-pass flattens them onto the worker wire ([`emit_columns`]); the once
+/// path installs them on its own `IfcAPI` ([`IfcAPI::install_prepass_columns`]).
+pub(super) struct PrepassColumns {
+    pub type_plan: ifc_lite_processing::discovery::TypeGeometryPlan,
+    pub material_layers: ifc_lite_geometry::MaterialLayerIndex,
+}
+
+impl PrepassColumns {
+    /// `has_layer_set` is the caller's layer-set gate; an ungated file ships an
+    /// EMPTY index, as `get_or_build_material_layer_index` does.
+    pub(super) fn build(
+        content: &[u8],
+        prepass_spans: &ifc_lite_processing::prepass::PrepassSpans,
+        mapped_item_spans: &[(u32, usize, usize)],
+        has_layer_set: bool,
+        decoder: &mut EntityDecoder<'_>,
+    ) -> Self {
+        let type_plan = ifc_lite_processing::discovery::TypeGeometryPlan::from_spans(
+            content,
+            mapped_item_spans,
+            &prepass_spans.defines_by_type,
+            &[],
+            decoder,
+            ifc_lite_processing::element::TypeGeometryMode::EmitTagged,
+        );
+        // from_spans reuses the already-stashed IfcRelAssociatesMaterial
+        // spans and equals `MaterialLayerIndex::from_content` — no extra walk.
+        let material_layers = if has_layer_set {
+            ifc_lite_geometry::MaterialLayerIndex::from_spans(
+                &prepass_spans.rel_associates_material,
+                decoder,
+            )
+        } else {
+            ifc_lite_geometry::MaterialLayerIndex::new()
+        };
+        Self { type_plan, material_layers }
+    }
+}
+
+impl IfcAPI {
+    /// Install columns built by this `IfcAPI`'s own pre-pass, the same values
+    /// the worker setters install, so its batches never run the lazy fallbacks.
+    pub(super) fn install_prepass_columns(&self, columns: PrepassColumns) {
+        let PrepassColumns { type_plan, material_layers } = columns;
+        for (slot, set) in [
+            (&self.content.cached_referenced_repmaps, type_plan.referenced_representation_maps),
+            (&self.content.cached_instantiated_type_ids, type_plan.instantiated_type_ids),
+        ] {
+            *slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some(std::sync::Arc::new(set));
+        }
+        *self.content.cached_material_layer_index
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(std::sync::Arc::new(material_layers));
+    }
+}
+
 pub(super) fn emit_columns(
     api: &IfcAPI,
     on_event: &Function,
@@ -15,46 +76,27 @@ pub(super) fn emit_columns(
     discovery: &super::prepass_discovery::ColumnsDiscovery,
     decoder: &mut EntityDecoder<'_>,
 ) -> Result<ifc_lite_processing::discovery::TypeGeometryPlan, JsValue> {
-    let prepass_spans = &discovery.prepass_spans;
-    let mapped_item_spans = &discovery.mapped_item_spans;
-    let has_layer_set = discovery.has_layer_set;
-    // (B2) Pre-pass columns — the three per-content structures each geometry
-    // worker would otherwise rebuild with its OWN full-file walk on its first
-    // batch (issue #957 orphan/instanced type geometry + #563 material-layer
-    // slicing). Built ONCE here from spans this scan already collected, then
-    // installed on every worker via `set{ReferencedRepmaps,InstantiatedTypeIds,
-    // MaterialLayerIndex}`. Emitted BEFORE the first jobs chunk (below) and
-    // workers apply messages FIFO, so the injected data is always in place
-    // before any `processGeometryBatch` — the lazy per-worker build (the
-    // byte-identical fallback) never fires on the streaming path.
-
-    let type_plan = ifc_lite_processing::discovery::TypeGeometryPlan::from_spans(
+    // (B2) Pre-pass columns, installed on every worker via
+    // `set{ReferencedRepmaps,InstantiatedTypeIds,MaterialLayerIndex}`. Emitted
+    // BEFORE the first jobs chunk (below) and workers apply messages FIFO, so
+    // the injected data is always in place before any `processGeometryBatch` —
+    // the lazy per-worker build (the byte-identical fallback) never fires on
+    // the streaming path. Gate on the scanned layer-set class: no layer set
+    // ships an EMPTY index, like the lazy build's substring bail-out.
+    let PrepassColumns { type_plan, material_layers } = PrepassColumns::build(
         content,
-        mapped_item_spans,
-        &prepass_spans.defines_by_type,
-        &[],
+        &discovery.prepass_spans,
+        &discovery.mapped_item_spans,
+        discovery.has_layer_set,
         decoder,
-        ifc_lite_processing::element::TypeGeometryMode::EmitTagged,
     );
+    api.collect_pipeline_refusals(decoder);
     // #1623 Phase 3 don't-bake plan: the RepresentationMap ids an IfcMappedItem
     // instantiates >= 2 times, tallied from the SAME spans (no extra scan). The
     // batch path arms its router with these so a repeated single-solid mapped
     // source materializes once per batch and the rest ride as shard instances.
     let mapped_instance_plan = type_plan.browser_instance_sources();
-    // Gate on `has_layer_set` to stay bit-identical to
-    // `get_or_build_material_layer_index`, which ships an EMPTY index when the
-    // file authors no layer set (its substring bail-out). from_spans reuses
-    // the already-stashed IfcRelAssociatesMaterial spans — no extra walk.
-    api.collect_pipeline_refusals(decoder);
-    let material_layer_flat = if has_layer_set {
-        ifc_lite_geometry::MaterialLayerIndex::from_spans(
-            &prepass_spans.rel_associates_material,
-            decoder,
-        )
-        .to_flat()
-    } else {
-        ifc_lite_geometry::MaterialLayerFlat::default()
-    };
+    let material_layer_flat = material_layers.to_flat();
 
     let repmaps_arr: Vec<u32> = type_plan
         .referenced_representation_maps

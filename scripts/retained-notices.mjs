@@ -221,6 +221,11 @@ export function refreshCargoOnly(root = ROOT, readMetadata = cargoMetadata) {
   const previous = JSON.parse(readFileSync(join(root, DIR, 'manifest.json'), 'utf8'));
   const inputs = inventoryInputs(root);
   const { head, tail } = splitReusableComponents(previous, inputs);
+  // Reused components keep what earlier supplements gave them, and nothing here clears it: a
+  // withdrawn or changed record for one needs the full --refresh. Adding a record is fine.
+  const withdrawn = previous.inputs.supplemental.find(r => [...head, ...tail].some(c => c.name === r.name && c.version === r.version) &&
+    !inputs.supplemental.some(now => JSON.stringify(now) === JSON.stringify(r)));
+  if (withdrawn) throw new Error(`--cargo-only refused: supplemental record for ${withdrawn.name} was removed or changed; run the full --refresh`);
   const { components: cargo, add, pending } = collector(root, true);
   addCargoComponents(add, inputs, readMetadata(root));
   // Supplements (including elections) apply to rebuilt and reused components alike; reused

@@ -4,6 +4,11 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 # Run through ifc-fleet; no nested admission or automatic retries.
 set -euo pipefail
+if [[ ${1:-all} == wasm ]]; then
+  CI=1 pnpm build:wasm
+  git diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts
+  exit 0
+fi
 # The completing layer's allocator witness also uses these two catalog models.
 # Link only missing generated inputs; the host fixture cache is read-only here.
 python3 - <<'PY'

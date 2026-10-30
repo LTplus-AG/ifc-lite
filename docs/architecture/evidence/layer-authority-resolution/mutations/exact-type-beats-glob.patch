@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/charter.ts a/packages/extensions/src/authority/charter.ts
+index b298dec5b6..61809f1bee 100644
+--- b/packages/extensions/src/authority/charter.ts
++++ a/packages/extensions/src/authority/charter.ts
+@@ -77,7 +77,7 @@ function specificityOf(claim: ScopeClaim): number[] {
+   const segments = !target || target.isUniversalWildcard ? [] : target.segments;
+   const literals = segments.filter((s) => s.kind === 'literal' && !s.value.endsWith('*')).length;
+   const type = claim.selector?.ifcType;
+-  const typeRank = type === undefined ? 0 : type.endsWith('*') ? 2 : 1;
++  const typeRank = type === undefined ? 0 : type.endsWith('*') ? 1 : 2;
+   const constraints = Object.keys(claim.selector?.constraints ?? {}).length;
+   return [segments.length, literals, typeRank, constraints];
+ }

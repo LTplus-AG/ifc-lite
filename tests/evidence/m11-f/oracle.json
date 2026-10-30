@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/presentation/face_attribution.rs",
+  "mutation": "tests/evidence/m11-f/behaviour.oracle.patch",
+  "test": "rust/processing/tests/m11_faces.rs",
+  "why": "A tie-break that hands coincident source faces to the right operand must fail the flush-host and merged-cutter attribution witnesses without SMLib."
+}

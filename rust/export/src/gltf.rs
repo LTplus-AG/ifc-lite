@@ -114,6 +114,8 @@ pub struct GltfOptions {
     /// Tessellation density. `Medium` is the golden-output identity; coarser
     /// levels trade curve fidelity for vertex count on tube-heavy models.
     pub tessellation_quality: TessellationQuality,
+    /// Opt into material-layer wall slicing; default false.
+    pub layer_slicing: bool,
     /// Bytes the bounded single-GLB assembler may spend keeping the distinct
     /// shapes of its first pass, so the second pass writes them from memory
     /// instead of meshing the model again. Past the budget it keeps nothing and
@@ -149,6 +151,7 @@ impl Default for GltfOptions {
             model_id: None,
             quantize: false,
             tessellation_quality: TessellationQuality::Medium,
+            layer_slicing: false,
             single_pass_budget_bytes: 0,
             textures: false,
         }
@@ -156,6 +159,13 @@ impl Default for GltfOptions {
 }
 
 impl GltfOptions {
+    /// Opt into the native material-layer wall slicing path.
+    #[must_use]
+    pub fn with_layer_slicing(mut self, on: bool) -> Self {
+        self.layer_slicing = on;
+        self
+    }
+
     /// See [`GltfOptions::single_pass_budget_bytes`].
     #[must_use]
     pub fn with_single_pass_budget_bytes(mut self, bytes: u64) -> Self {
@@ -1749,7 +1759,7 @@ pub fn try_export_glb_with_stats(
     try_export_glb_from_result(
         process(
             content,
-            &ProcessingRequest::full_pass().quality(opts.tessellation_quality),
+            &ProcessingRequest::full_pass().quality(opts.tessellation_quality).layer_slicing(opts.layer_slicing),
             &mut (),
         ),
         opts,
@@ -1772,7 +1782,7 @@ pub fn try_export_glb_with_stats_with_index(
     try_export_glb_from_result(
         process(
             content,
-            &ProcessingRequest::full_pass().quality(opts.tessellation_quality).index(index),
+            &ProcessingRequest::full_pass().quality(opts.tessellation_quality).layer_slicing(opts.layer_slicing).index(index),
             &mut (),
         ),
         opts,
@@ -2427,7 +2437,10 @@ impl Retention {
 /// consumed as they arrive and never retained, over the caller's shared entity
 /// index when there is one (#1516).
 fn streamed_request(opts: &GltfOptions, index: &Option<Arc<EntityIndex>>) -> ProcessingRequest {
-    let request = ProcessingRequest::default().quality(opts.tessellation_quality).retain_meshes(false);
+    let request = ProcessingRequest::default()
+        .quality(opts.tessellation_quality)
+        .layer_slicing(opts.layer_slicing)
+        .retain_meshes(false);
     match index {
         Some(index) => request.index(index.clone()),
         None => request,

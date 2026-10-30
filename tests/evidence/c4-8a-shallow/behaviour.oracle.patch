@@ -1,0 +1,10 @@
+--- a/rust/geometry/src/representation/structural.rs
++++ b/rust/geometry/src/representation/structural.rs
+@@ -43,7 +43,6 @@
+ pub fn mapped_item_representation_id(item: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Option<u32> {
+     let source_id = item.get_ref(slot::IfcMappedItem::MAPPING_SOURCE.index())?;
+     let source = decoder.decode_by_id(source_id).ok()?;
+-    if source.ifc_type != IfcType::IfcRepresentationMap { return None; }
+     source.get_ref(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
+ }
+ 

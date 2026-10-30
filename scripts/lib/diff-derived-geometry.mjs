@@ -89,8 +89,8 @@ export function derivedGeometryCases(rows, fingerprintApi) {
  * path independently, including opaque callback refs that cannot cross WASM. */
 export function assertOriginalReferences(actual, base, head) {
   const inSide = (row, side) => {
+    // Reference membership implies the original `ref` is carried with it.
     assert.ok(side.includes(row), `${row.key}: result must reuse the original fingerprint`);
-    assert.strictEqual(row.ref, side.find(candidate => candidate === row).ref);
   };
   for (const entry of actual.entries) {
     assert.strictEqual(actual.byKey.get(entry.key), entry);
@@ -133,7 +133,14 @@ export function assertDerivedClaims(actual, scenario) {
     assert.equal(claim.kind, scenario.kind);
     assert.equal(claim.confidence, 'verified');
     assert.equal(claim.pieces.length, 2);
-    assert.equal(claim.wholeVolume, claim.piecesVolume);
+    // Check both reported volumes against the derived rows' known volumes, not
+    // only against each other: a shared error in both engines must still fail.
+    const [whole] = scenario.kind === 'split' ? scenario.base : scenario.head;
+    const pieces = scenario.kind === 'split' ? scenario.head : scenario.base;
+    assert.ok(pieces.every(piece => claim.pieces.includes(piece)), 'claim must name every derived piece');
+    assert.equal(claim.wholeVolume, whole.volume, 'whole volume must match the derived whole');
+    assert.equal(claim.piecesVolume, pieces.reduce((sum, piece) => sum + piece.volume, 0),
+      'pieces volume must match the derived pieces');
     assert.equal(claim.volumeResidual, 0);
   }
 }

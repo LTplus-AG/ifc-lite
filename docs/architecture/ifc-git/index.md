@@ -24,14 +24,16 @@
 ## 1. North star
 
 A delivered IFC file arriving from outside ifc-lite has no history. ifc-git gives
-it one: **every delivery that changed something becomes a commit**, and the
-commit is computed from the **diff against its parent** rather than from the
-file bytes, so an unchanged re-export creates no new history — it is recorded as
-pointing at the commit that already exists.
+it one: **every delivery that changed something becomes a delta layer** against
+that party's previous delivery, handed to Layer PRs (§4). The layer is computed
+from the **diff against that previous delivery** rather than from the file bytes,
+so an unchanged re-export produces no layer and no new history.
 
-It is used the way git is used — on the CLI to ingest files, and headlessly to
-diff — and it exposes the operations people already know: `status`, `commit`,
-`branch`, `diff <a> <b>`, `log`, `pull`, `push`.
+It is used on the CLI to ingest files and headlessly to diff. **It does not
+expose a git verb surface of its own** — an earlier version of this paragraph
+promised `status`, `commit`, `branch`, `log`, `pull` and `push`, which §4 struck
+on 2026-10-27 (#8203): those belong to Layer PRs, and ifc-git hands its output
+there as a delta layer rather than operating a second history.
 
 It is written in **Rust**, because the work is per-entity hashing and graph
 comparison over models with hundreds of thousands of entities, and that is where
@@ -143,9 +145,75 @@ the only thing that says what changed. The two meet at the component-key
 vocabulary, which is already shared between `@ifc-lite/diff` and
 `@ifc-lite/merge` and which ifc-git keeps.
 
-**ifc-git supersedes `@ifc-lite/merge` once mature.** Per the anti-cruft rule in
-`AGENTS.md`, that means the old path is deleted when the new one lands, not left
-alongside it. Until then `@ifc-lite/merge` is untouched.
+**Reversed on 2026-10-27 (#8203). ifc-git does not supersede
+`@ifc-lite/merge` — it feeds it.** An earlier version of this section said the
+opposite, and the maintainer's ruling is that there is **one** version-control
+story and it is Layer PRs. Layer PRs owns history, refs, merge and review.
+
+So ifc-git's role is narrower and better defined than "a version-control system
+for IFC": it is the **adapter that turns whole files into layers.** Ingesting a
+delivery produces a **delta layer against that party's previous delivery**, with
+the GUID-agnostic matching recorded in `identity_map` — the same
+`identity_map` Layer PRs already specifies (`04-identity.md`). Everything after
+that hand-over is Layer PRs' concern.
+
+**Removals are part of the delta, and need naming.** An entity present in the
+previous delivery and absent from the new one is recorded as a **tombstone**
+(`layer-prs/02-layer-format.md` §2.3): an `ifclite::deleted` opinion that
+shadows weaker opinions for that path, resurrectable by a stronger layer setting
+it `false`. A delta that merely *omitted* the entity would leave it visible in
+the composed state, which is the one failure mode worth calling out here —
+deletion is a change class the corpus exercises directly (`r04`).
+
+So the adapter needs a tombstone-capable layer writer, and it already has one.
+`minimal-layer.ts` emits `ifclite::deleted` for a deleted entity and `null` for
+removed children, inherits and attributes — **by default**:
+`includeDeletions` is `?? true`, with `false` kept only for the legacy
+additive-only shape. The adapter must therefore not set that flag to `false`,
+because doing so drops exactly the removals this paragraph exists to preserve,
+and drops them silently.
+
+Those same defaults carry a second load. Because the writer emits only the
+attribute keys a delivery actually changed, the delta layer asserts only what
+that party stated — which is what makes its opinions evaluable under the
+authority rule in [`layer-prs/12-authority.md`](../layer-prs/12-authority.md)
+§12.4, discussed in §6.3.
+
+Disabling either flag drops part of the delta rather than adding to it:
+`includeUpdatedValues: false` omits a changed existing attribute,
+`includeDeletions: false` omits tombstones and `null` removals, and in both
+cases the previous delivery's value survives composition. The authority cost
+follows from that, and it is misattribution of a *retracted* opinion rather
+than a fabricated one: the party's superseded value goes on reading as its
+current position, so a `contested` record (§12.6) would attach to a value it
+has already changed or withdrawn.
+
+(Note for whoever owns `02-layer-format.md`: its §2.3 still describes
+`minimal-layer.ts` as "additive-only today", which the implementation has since
+outgrown.)
+
+What stays ifc-git's own work is exactly what Layer PRs lacks: **whole-file
+diffing and GUID-agnostic identity.** Those are the two things that cannot be
+done by a system which assumes an overlay authored against a known base, and
+they are hard enough to be a spec set on their own.
+
+Three consequences worth stating, because they shrink this document rather than
+grow it:
+
+- **No second object store, no second ref model, no second merge.** §8's rows
+  for an object store, refs, a verb surface and a source-control view are
+  Layer PRs' surface, not ifc-git's, and are struck below.
+- **Conversion fidelity is a different spec set** (#8203), which *uses* the diff
+  engine rather than living here.
+- **Authority is per property, and the delta layer already carries it.**
+  Authority over `Pset_WallCommon.FireRating` can belong to a fire consultant
+  while the architect owns the rest of `Pset_WallCommon`, and the component-key
+  vocabulary shared with `@ifc-lite/diff` is set-level (`pset:<Name>`). An
+  earlier draft read that as a prerequisite ifc-git did not meet. It is not:
+  the component key is where the diff *compares*, while the layer format and
+  composition are per attribute key throughout, and the writer emits only the
+  members a delivery changed. Resolved in §6.3 against
+  `layer-prs/12-authority.md` §12.4.
 
 The commit-aware source work stays parked and is **not a dependency**.
 
@@ -158,22 +226,30 @@ planned, and land one per PR in roughly this order.
 | --- | --- |
 | [`01-concepts.md`](01-concepts.md) | Glossary: org, repo, commit, tree, blob, ref, branch. Repo kinds. What maps onto git and what cannot. |
 | [`02-graph-object-model.md`](02-graph-object-model.md) | The node DAG. Node kinds and component keys. Canonical encoding. Why this is GUID-agnostic. |
-| `03-diff.md` | Diff as the commit computer. Graph diff and change localisation. The Rust port and its parity contract. |
+| `03-diff.md` | Diff as the delta-layer computer. Graph diff and change localisation. The Rust port and its parity contract. |
 | `04-authorship.md` | The schema-neutral authorship record and its per-schema adapters. Resolution ladder, warning codes, and the rule against fabricated attribution. |
-| `05-operations.md` | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log`, `pull`, `push`. What each means for a graph rather than a tree of text files. |
-| `06-refs-and-history.md` | Branches, compare-and-swap on the head, rebase, revert, tags. |
-| `07-storage.md` | Object store interface, loose and packed tiers, on-disk layout. |
-| `08-ui.md` | A source-control view in the viewer, modelled on the one developers already use. |
-| `09-relationship-to-layer-prs.md` | The boundary in detail, and what superseding `@ifc-lite/merge` requires. |
+| `05-layer-adapter.md` | The hand-over: emitting a delta layer against a party's previous delivery, and recording the match in `identity_map`. |
+| `06-relationship-to-layer-prs.md` | The boundary in detail, and what ifc-git owes Layer PRs at the hand-over. |
+
+**Struck on 2026-10-27 (#8203):** `05-operations.md` (the verb surface),
+`06-refs-and-history.md` (branches, compare-and-swap, rebase, revert, tags),
+`07-storage.md` (object store, loose and packed tiers) and `08-ui.md` (a
+source-control view). All four are Layer PRs' surface. Writing them here would
+have specified a second version-control stack, and the old
+`09-relationship-to-layer-prs.md` entry — "what *superseding* `@ifc-lite/merge`
+requires" — had the direction backwards.
 
 ## 6. Open decisions
 
 **These are maintainer calls. This spec set records them as open rather than
-assuming an answer, and neither blocks the documents written so far.**
+assuming an answer. None of them blocks the documents written so far, and none
+blocks the delivery → layer adapter (§8, step 8).**
 
 §6.1's digest is **decided** as of 2026-10-26 and kept here with its reasoning
 rather than deleted, because the argument is what a later reader needs; where the
-encoding lives is still **proposed**. §6.2 is open.
+encoding lives is still **proposed**. §6.2 is open. §6.3 is **resolved** as of
+2026-10-28 and kept for the same reason: the conclusion it reversed is the part
+a later reader needs.
 
 ### 6.1 The digest — DECIDED. Where the encoding lives — PROPOSED
 
@@ -336,7 +412,8 @@ references between objects (§2.5). So under §6.1's BLAKE3 decision gix's objec
 ref and pack plumbing is unusable for a *format* reason, not a licence one, and
 not for want of a 256-bit hash.
 
-**Position, to be written into `07-storage.md`:**
+**Position.** `07-storage.md` was to carry this and is struck (§5), so it is
+recorded here and belongs with whoever specifies storage for Layer PRs:
 
 - Reuse git's **designs**, which are not themselves copyrightable expression:
   the loose-object plus packfile two-tier store, ref updates via lockfiles, the
@@ -348,6 +425,73 @@ not for want of a 256-bit hash.
 §6.1 landed on BLAKE3, so the format objection stands and this position holds.
 Had it landed on SHA-256 the objection would have disappeared, and this section
 would have needed revisiting rather than reapplying.
+
+### 6.3 Per-property change tracking — RESOLVED, and not a diff decision
+
+Authority, as #8203 frames it, is per property: `Pset_WallCommon.FireRating` may
+belong to a fire consultant while the architect owns the rest of
+`Pset_WallCommon`. An earlier version of this section concluded that carrying
+authority therefore required a new `pset:<Name>.<Property>` component key, and
+so a change to `@ifc-lite/diff`'s output shape, which it recorded as a
+prerequisite for the authority work. **That was wrong on both counts**, and the
+maintainer's correction on #8203 is the resolution.
+
+**The problem is real.** Layers are state-based, so a `set-component` carries
+the whole component value — `opsForComponentChange` assigns the complete `next`
+value and emits one `set-component` for it (`merge/src/three-way.ts`). A
+delivery that changes only `IsExternal` therefore carries its unchanged
+`FireRating` along with it, and read naively that becomes dissent the architect
+never expressed.
+
+**The fix is in what counts as an opinion, not in the key.**
+[`layer-prs/12-authority.md`](../layer-prs/12-authority.md) §12.4 (#8210,
+merged 2026-10-28) defines an opinion as what a layer *asserts*:
+an attribute key whose value differs from the same key in the layer's declared
+base (`manifest.base`, resolved against the ref's layer stack in
+`merge/src/ref-flow.ts`). Carried, unchanged members are not opinions. A layer
+with no base — a first delivery, an import — asserts everything it contains,
+which is correct, because that party did state those values. That is a
+per-member comparison *inside* the components the diff already flags, so
+`pset:<Name>` stays exactly as it is.
+
+Two properties of the existing implementation make this hold, and both were
+missed by the earlier conclusion:
+
+- **`pset:<Name>` is a derived comparison bucket, not a unit of storage or
+  transport.** `componentKeyForAttribute` computes it from a *single* IFCX
+  attribute key (`merge/src/component-state.ts`), and composition over a stack
+  is per-attribute last-writer-wins. So the authority unit —
+  `bsi::ifc::v5a::Pset_WallCommon::FireRating` — is already the native
+  granularity of both the layer format and composition. The component key is
+  the granularity at which the diff and the merge *compare*, which is a
+  different question.
+- **The adapter's writer rule is already the default.**
+  `extractMinimalLayer` emits only attribute keys that are new or whose value
+  changed (`includeUpdatedValues` is `?? true`) and explicit `null`s for keys
+  the delivery dropped (`includeDeletions` is `?? true`) —
+  `collab/src/snapshot/minimal-layer.ts`. "Emit only the changed members" is
+  therefore the writer's default rather than work the adapter has to add.
+  Turning either flag off does not widen what it emits, it narrows it — a
+  changed existing value or a removal goes missing — which is why §4's rule
+  about those flags is load-bearing for a second reason.
+
+Per-attribute last-writer-wins cuts both ways, and the asymmetry is worth
+naming: **omitting an unchanged member is safe, and omitting a removed member is
+not** — the previous delivery's value shines through the omission and the
+property looks retained. That is what the explicit `null` is for, and why §4's
+rule about `includeDeletions` is about correctness rather than completeness.
+
+So the over-assertion risk is real for **merge-authored** layers, where the
+whole component value is emitted by construction, and structurally absent from
+the **delivery adapter** path, whose writer is already member-level. Nothing
+here gates the authority work.
+
+**What stays open**, narrowly: whether a member-level component key is wanted
+for reasons unrelated to authority — per-property change display in a UI, for
+instance. That is a presentation decision, it carries the cost the earlier draft
+priced (one key per property per element, reaching the fingerprint layer and
+every consumer that switches on a key), and it is not a prerequisite for
+anything in this spec set.
 
 ## 7. Research
 
@@ -406,10 +550,19 @@ pinned by parity fixtures.
 | 4 | `03-diff.md`, documenting the engine that landed in 2 | next |
 | 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 4; §6.1 answered |
 | 6 | Authorship extraction across the four schemas | after 5 |
-| 7 | Object store and refs: commit, branch, compare-and-swap on the head | after 5; needs §6.2 answered |
-| 8 | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log` | after 7 |
-| 9 | `pull` / `push` against a remote | after 8 |
-| 10 | Source-control view in the viewer | after 8 |
+| 7 | ~~**Per-property change tracking**, replacing set-level `pset:<Name>` keys~~ | **struck** — not a prerequisite, and the writer is already member-level (§6.3) |
+| 8 | **Delivery → layer adapter**: emit a delta layer against the party's previous delivery, with the match recorded in `identity_map` | after 6; the hand-over point to Layer PRs |
+
+**Struck on 2026-10-27 (#8203), because they are Layer PRs' surface and not
+ifc-git's:** an object store and refs, the verb surface (`status`, `commit`,
+`branch`, `log`), `pull` / `push` against a remote, and a source-control view in
+the viewer. Keeping them here would have built a second version-control stack
+beside the one that already exists, which is the duplication the anti-cruft rule
+exists to prevent — and the earlier plan had it pointed the wrong way round.
+
+Conversion fidelity — migrating IFC2X3 and IFC4 into IFCX as reviewable
+changes — is its own spec set per the same ruling, and uses the diff engine
+rather than extending this plan.
 
 Two defects found while scoping this spec set were filed separately and are
 both now closed: a viewer Compare scope gap that hid any change confined to a

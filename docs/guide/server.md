@@ -1227,3 +1227,5 @@ Symbolic sidecars use schema-v2 cache entries and full JSON responses use v3
 to refresh direct fill provenance. Existing Parquet geometry keys stay valid;
 a replay needs current symbolic metadata, so stale sidecars trigger a reparse.
 Older symbol JSON remains decodable with unknown item provenance.
+
+Parse endpoints accept `?layer_slicing=true` to opt into material-layer wall slicing; omitted or false preserves unsliced geometry and its cache entries.

@@ -1,0 +1,20 @@
+--- a/rust/geometry/src/representation/walk/engine.rs
++++ b/rust/geometry/src/representation/walk/engine.rs
+@@ -145,7 +145,7 @@
+             return refuse(run, WalkRefusal::Cyclic);
+         }
+         if let NestedMaps::Expand { max_levels, .. } = self.nested {
+-            if false && run.levels >= max_levels {
++            if run.levels >= max_levels {
+                 refuse(run, WalkRefusal::Budget { max_levels });
+                 return Flow::Stop;
+             }
+@@ -230,7 +230,7 @@
+     /// source can no longer materialize N² items under an N-level allowance.
+     pub(super) fn admit_items(&self, used: &mut u32, count: usize) -> Result<(), WalkRefusal> {
+         if let NestedMaps::Expand { max_levels, .. } = self.nested {
+-            if false && count > (max_levels - *used) as usize {
++            if count > (max_levels - *used) as usize {
+                 return Err(WalkRefusal::Budget { max_levels });
+             }
+             *used += count as u32; // bounded by the u32 allowance above

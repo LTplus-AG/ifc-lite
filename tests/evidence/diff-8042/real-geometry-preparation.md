@@ -83,9 +83,10 @@ interloper exclusion and cross-class claims are not added by this preparation.
    acceptance run; otherwise record its named skip.
 4. From the prepared repository root, execute
    `timeout 300s node scripts/diff-real-fixture-parity.mjs` through the admitted
-   launcher. This is the same root script CI invokes. With both pairs present,
-   require ten comparisons and zero skips; with only the committed demo,
-   require seven comparisons and one named Haus skip. A timeout is a failure.
+   launcher. This is the same root script CI invokes. Require both pairs:
+   fourteen comparisons (five option shapes per pair plus four derived
+   revisions) and zero skips. A missing Haus fixture is a named skip and the
+   run exits 2 as incomplete. A timeout is a failure.
 5. Preserve compact logs and their receipt, reconcile outcomes, and close the
    owning storage task. Do not report parity until this execution succeeds.
 

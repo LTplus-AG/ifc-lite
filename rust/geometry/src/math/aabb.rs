@@ -105,3 +105,36 @@ impl Aabb3 {
         Aabb3 { min: [a[0], a[1], a[2]], max: [a[3], a[4], a[5]] }
     }
 }
+
+/// Internal f32 counterpart for folds whose rounding must remain f32 (#7781).
+/// Like `Aabb3`, starts at infinities, ignores NaN coordinates through native
+/// `min`/`max`, and visits points in order. Signed-zero ties use those same
+/// native operations; no widening, total ordering or zero normalization occurs.
+#[derive(Clone, Copy)]
+pub(crate) struct Aabb3f32 {
+    pub(crate) min: [f32; 3],
+    pub(crate) max: [f32; 3],
+}
+
+impl Aabb3f32 {
+    #[inline]
+    pub(crate) fn extend(&mut self, p: [f32; 3]) {
+        for k in 0..3 {
+            self.min[k] = self.min[k].min(p[k]);
+            self.max[k] = self.max[k].max(p[k]);
+        }
+    }
+
+    /// Complete triplets only; an empty buffer keeps the infinity sentinels.
+    #[inline]
+    pub(crate) fn from_positions(positions: &[f32]) -> Self {
+        let mut bounds = Self {
+            min: [f32::INFINITY; 3],
+            max: [f32::NEG_INFINITY; 3],
+        };
+        for p in positions.chunks_exact(3) {
+            bounds.extend([p[0], p[1], p[2]]);
+        }
+        bounds
+    }
+}

@@ -132,13 +132,12 @@ import { analyze } from './source-text-assertion-detect.mjs';
 // way under the same shallow-clone and no-remote conditions.
 import { readBlobAt, resolveBase } from './lib/module-size-git.mjs';
 
-// --root overrides the scanned tree; only the test harness passes it, to point
-// this UNMODIFIED script at a synthetic git repository. Production CI and
-// local runs take the default -- the real repo root -- exactly as before.
+// --root points fixture tests at a synthetic repo; --base pins the identity audit.
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--root') out.root = argv[++i];
+    else if (argv[i] === '--base') out.base = argv[++i];
   }
   return out;
 }
@@ -360,7 +359,7 @@ let identitySuffix = '';
 // `{ error }` when neither origin/main nor main has a merge base with HEAD
 // (no `origin` remote, or a clone too shallow to share history); `fellBack`
 // when only the local main did, which may be stale.
-const base = resolveBase(ROOT);
+const base = resolveBase(ROOT, { ref: args.base ?? null });
 if (base.error !== undefined) {
   console.warn(
     'check-source-text-assertions: WARNING -- could not resolve a merge base ' +

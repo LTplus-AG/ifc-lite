@@ -1,0 +1,60 @@
+C2-5a reconciliation for #7781 (no issue closure)
+
+Base: 787b20aedd5977691ee2cbc00ffb902a95325b0c (C2 walk lane).
+Initial port base: 0122b2e46eff079da28cd3907840795c23a5c9b8.
+Prepared source: f059468f5c399792589c7150035141cb86b7f025; source merge-base d0fb6f4f71.
+Witnesses: a4beecc1b7e0b734f81a83da511d62dc447173f3 successor review.
+Only the prepared geometry delta was three-way applied. The old ratchet pins,
+workflow, release metadata and qualification claims were not copied wholesale.
+
+Conflict decisions:
+1. voids/mod.rs engulf block: use the generic f32 aabb_engulfs extraction,
+   but retain the base's empty-result consumed-host protocol through
+   program::openings::execute. Do not restore record_void_consumed_host.
+   Both newer consumed_host_tests and host_frame_tests retain their behavior;
+   their only semantic edit is the private enum rename.
+2. voids/coaxial_union.rs acceptance block: remove omy_span and the inline
+   accept_cut, now implemented by Scalar::extent and admission::accept_cut.
+   Keep the base's corrected 'closure scan' comment in the new home. The
+   host-relative signed-volume calculation, retention and comparison are kept.
+3. mesh.rs budget: base allowance 953 cannot accommodate the prepared helper.
+   Move the unchanged public rebuilt_like body and documentation into a private
+   mesh_rebuild sibling alongside pub(crate) reframed_like. Public method path,
+   signature and behavior are unchanged. No new public helper or release change.
+4. Shared ratchets: recompute from this base, lower only touched entries and
+   derive the geometry FNV-1a pin by module_size_ratchet.rs::digest_rows.
+   Preserve walk-lane reductions and all unrelated scope digests.
+5. Workflow: add C2-5a as an elif after the existing walk-lane selector.
+   While both lanes are new relative to origin/main, the walk selector wins.
+   Once the prerequisite walk lane merges, this lane's newly added patch selects
+   C2-5a. Local mutation qualification uses the walk-lane base explicitly.
+   No #7955 manifest or unrelated selector is changed.
+
+Automatic merge review:
+The controller's newer placement/leaf reading and owned runtime are preserved;
+program/openings changes are exclusively OpeningType -> CutterKind. Router
+walks, hash dispatch, leaves, placement, Cargo manifests and lock, retained
+runtime and rust-major-offset.json are unchanged. The geometry helper's
+host-relative signed volume continues to use the canonical mesh_check home.
+The newer consumption diagnostics remain owned by Execution, not restored to
+GeometryRouter. Existing tests keep all assertions; the retired legacy_tests
+module is the authorized C2-1 comparison copy, not a live production fallback.
+
+Intentionally retained distinctions:
+Sequential admission/engulf uses f32; batch/coaxial/fallback/prism use f64.
+Volume extents subtract in f32 before widening. Diagonal local bounds omit the
+origin; world bounds widen first, then add the f64 origin. Nonrectangular
+bounds remain the authored payload. Authored-depth and inferred-depth reads
+remain distinct. The two invalid-cutter loops still evaluate host bounds before
+admission (prepared lane S6); instruction qualification must cover the cost.
+Reframed meshes clear obsolete placement metadata; rebuilt_like cannot replace
+those calls because it retains bounds and has an unchanged-extent precondition.
+Cutter's documentation explicitly leaves strategy-local projections to C2-7.
+
+Coordinator base update to 787b20aedd:
+6. Only upstream ratchet metadata changed: mesh.rs allowance 953 -> 962 and
+   geometry digest 3956900637573438126. Keep this lane's measured mesh.rs
+   allowance 917 (a reduction from the corrected 962) and recompute the entire
+   geometry digest: 15177329225288548000. No production merge was needed.
+   The initial-base geometry feature run remains a valid same-source control;
+   instruction counts use 787b20aedd and final ratchets run after this rebase.

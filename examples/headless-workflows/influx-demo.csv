@@ -1,0 +1,7 @@
+,result,table,_time,_value,_field,_measurement,ifc_guid,device
+,_result,0,2026-10-24T10:02:00Z,22.5,temperature,environment,0xY$LvXaDEswJDk_VU74C_,room-a
+,_result,0,2026-10-24T10:01:00Z,22.2,temperature,environment,0xY$LvXaDEswJDk_VU74C_,room-a
+,_result,0,2026-10-24T10:00:00Z,21.8,temperature,environment,0xY$LvXaDEswJDk_VU74C_,room-a
+,_result,0,2026-10-24T10:02:00Z,19.0,temperature,environment,missing-in-model,unknown
+,_result,0,2026-10-24T10:02:00Z,20.0,temperature,environment,18QhMtUIXBvQktPHXXxs7H,hall-a
+,_result,0,2026-10-24T10:02:00Z,21.0,temperature,environment,18QhMtUIXBvQktPHXXxs7H,hall-b

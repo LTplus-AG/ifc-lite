@@ -563,6 +563,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   maxExpressId: number;
   /** Unified ingest lifecycle state. */
   loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error';
+  /** Present only on a retained-kernel load (#7955 M2): shape-only, with every unpublished product listed. */
+  retainedGeometry?: import('./retainedGeometry.js').RetainedGeometrySummary;
   /** Geometry-first readiness for large desktop loads. */
   geometryLoadState?: GeometryLoadState;
   /** Metadata availability state for lazy desktop loads. */

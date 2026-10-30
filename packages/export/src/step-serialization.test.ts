@@ -254,3 +254,12 @@ describe('serializeAttributeValue (the shared number grammar)', () => {
     expect(serializeAttributeValue(value, current)).toBe(expected);
   });
 });
+
+describe('serializeTypedMarker type-name guard', () => {
+  it('refuses a type name that would break out of the attribute list', () => {
+    for (const bad of ["IfcLabel('x'));\n#999=IFCWALL(", 'IfcLabel(', 'Ifc Label', 'Ifc;', '', '1abc']) {
+      expect(() => serializeTypedMarker(bad, 'x')).toThrow(/not an IFC identifier/);
+    }
+    expect(serializeTypedMarker('IfcLabel', 'x')).toBe("IFCLABEL('x')");
+  });
+});

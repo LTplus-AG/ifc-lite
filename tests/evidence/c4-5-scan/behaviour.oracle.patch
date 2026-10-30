@@ -1,0 +1,11 @@
+--- a/rust/core/src/schema_helpers.rs
++++ b/rust/core/src/schema_helpers.rs
+@@ -126,7 +126,7 @@
+ pub fn is_geometry_job(type_name: &str, entity_bytes: &[u8]) -> bool {
+     let (geometry, spatial) = geometry_flags_by_name(type_name);
+     geometry
+-        || (spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::OBJECT_PLACEMENT.index()))
++        || (spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::REPRESENTATION.index()))
+ }
+ 
+ fn compute_has_geometry(upper: &str) -> bool {

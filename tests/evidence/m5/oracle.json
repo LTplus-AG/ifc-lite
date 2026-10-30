@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/src/oracle/clip_openings.rs",
+  "mutation": "tests/evidence/m5/behaviour.oracle.patch",
+  "test": "rust/geometry/tests/m5_halfspace_clips.rs",
+  "why": "M5 source-oracle addition registers this slice; the reverse-applied plane.rs mutation ignores AgreementFlag .F. and must fail the opposite removed-side invariant."
+}

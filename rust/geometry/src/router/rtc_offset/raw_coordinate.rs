@@ -48,9 +48,9 @@ impl GeometryRouter {
             _ => None,
         }?;
         Some((
-            point.0 * self.unit_scale,
-            point.1 * self.unit_scale,
-            point.2 * self.unit_scale,
+            point.0 * self.unit_scale(),
+            point.1 * self.unit_scale(),
+            point.2 * self.unit_scale(),
         ))
     }
 
@@ -109,12 +109,11 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<(f64, f64, f64)>> {
-        let mut placement = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut placement);
+        let placement = self.element_world_placement(element, decoder)?;
         let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
         Ok(linear.try_inverse().map(|inverse| {
-            let rtc = inverse
-                * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
+            let (x, y, z) = self.rtc_offset();
+            let rtc = inverse * nalgebra::Vector3::new(x, y, z);
             (rtc.x, rtc.y, rtc.z)
         }))
     }

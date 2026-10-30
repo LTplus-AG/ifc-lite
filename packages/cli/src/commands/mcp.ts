@@ -25,6 +25,7 @@ import {
   readOnlyScope,
   type AuthScope,
   VERSION,
+  routeConsoleToStderr,
 } from '@ifc-lite/mcp';
 import { isMcpValueFlag, MCP_SUBCOMMAND_UNSUPPORTED_FLAGS } from '@ifc-lite/mcp/cli-args';
 import { fatal, hasFlag, getFlag, getAllFlags } from '../output.js';
@@ -115,6 +116,8 @@ export async function mcpCommand(args: string[]): Promise<void> {
 
   if (transport === 'stdio') {
     if (files.length === 0) fatal('Provide at least one .ifc file (or use --transport http).');
+    // stdout is the JSON-RPC channel, and loading already runs code that logs.
+    routeConsoleToStderr();
     const registry = new InMemoryModelRegistry();
     for (const file of files) {
       const m = await loadIfcModel(file, { allowedPaths: allowedPaths.length > 0 ? allowedPaths : undefined });

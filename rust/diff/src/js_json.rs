@@ -78,7 +78,10 @@ fn write_value<S: JsonSink>(value: &JsonValue, sort_keys: bool, out: &mut S) {
         JsonValue::Null => out.push_str("null"),
         JsonValue::Bool(true) => out.push_str("true"),
         JsonValue::Bool(false) => out.push_str("false"),
-        JsonValue::Number(n) => out.push_str(&number_to_json(*n)),
+        JsonValue::Number(n) => {
+            let mut buffer = ryu_js::Buffer::new();
+            out.push_str(if n.is_finite() { buffer.format_finite(*n) } else { "null" });
+        },
         JsonValue::String(s) => out.push_json_string(s),
         JsonValue::Array(items) => {
             out.push_str("[");
@@ -134,21 +137,6 @@ where
         out.push_str(":");
         write_value(item, sort_keys, out);
     }
-}
-
-/// `JSON.stringify` of a number.
-///
-/// Non-finite values become `null`, which is what `JSON.stringify` does
-/// — RFC 8259 has no non-finite literal. That collision (an `Infinity`
-/// property hashing like an absent one) is why the fingerprint layer converts
-/// a non-finite number to a string token *before* it ever reaches here; see
-/// `normalize_value`.
-fn number_to_json(value: f64) -> String {
-    if !value.is_finite() {
-        return "null".to_owned();
-    }
-    let mut buffer = ryu_js::Buffer::new();
-    buffer.format_finite(value).to_owned()
 }
 
 /// Render a number the way `JsString(n)` does, for the non-finite tokens.

@@ -1,0 +1,24 @@
+diff --git a/rust/geometry/src/router/voids/admission.rs b/rust/geometry/src/router/voids/admission.rs
+--- a/rust/geometry/src/router/voids/admission.rs
++++ b/rust/geometry/src/router/voids/admission.rs
+@@ -134,7 +134,7 @@
+     host_hi: [T; 3],
+     tol: T,
+ ) -> bool {
+-    (0..3).any(|k| {
++    (0..3).all(|k| {
+         let slack = (host_hi[k] - host_lo[k]).abs().max(T::EXTENT_FLOOR) * tol;
+         lo[k] <= host_lo[k] + slack && hi[k] >= host_hi[k] - slack
+     })
+diff --git a/rust/geometry/src/router/voids/cutter.rs b/rust/geometry/src/router/voids/cutter.rs
+--- a/rust/geometry/src/router/voids/cutter.rs
++++ b/rust/geometry/src/router/voids/cutter.rs
+@@ -150,7 +150,7 @@
+         match self.kind {
+             CutterKind::DiagonalRectangular(m, _) => {
+                 let (lo, hi) = mesh_bounds_f64(m);
+-                let o = [0.0; 3];
++                let o = m.origin;
+                 (
+                     Point3::new(lo.x + o[0], lo.y + o[1], lo.z + o[2]),
+                     Point3::new(hi.x + o[0], hi.y + o[1], hi.z + o[2]),

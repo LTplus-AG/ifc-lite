@@ -124,15 +124,21 @@ fn current_terminal() -> Option<ProgramStop> {
     TERMINAL.with(|slot| slot.get().flatten())
 }
 
-/// Poll live stop state without constructing an aggregate result when no
-/// authorities are installed. Presence is observed afresh on every call.
+/// Poll live stop state without constructing an aggregate result for a live
+/// source-only authority. Presence and the source's atomic stop are read afresh.
+#[inline]
 pub fn is_stopped() -> bool {
-    if SOURCE_STOP.with(|slot| slot.borrow().is_none())
-        && CURRENT.with(|slot| slot.borrow().is_none())
-    {
-        current_terminal().is_some()
-    } else {
+    let source_stopped = SOURCE_STOP.with_borrow(|source| {
+        source
+            .as_ref()
+            .is_some_and(|source| source.check().is_err())
+    });
+    if source_stopped || CURRENT.with_borrow(Option::is_some) {
+        // Keep typed propagation, account polling and first-stop precedence on
+        // the slow path. A boolean observation must latch an actual refusal.
         check_active_stop()
+    } else {
+        current_terminal().is_some()
     }
 }
 

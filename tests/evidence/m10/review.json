@@ -1,0 +1,39 @@
+{
+  "review": "Claude Opus 5.5 adversarial fixture and implementation review",
+  "reviewedHead": "f365bc116e11fee48139aad6119890d385f7a2ae",
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "finding": "h22 halfspace DIFFERENCE complement",
+      "resolution": "Corrected volume to21 and independent complement centroid; schema and roundtrip rerun."
+    },
+    {
+      "finding": "coverage not blessed",
+      "resolution": "Rebased onto M5 main 2b629592f6. Committed comparison --bless at 069722ff46 (Pop receipt 87467643-1d00-4641-818c-f1277c97ed54) passed: 25 models, 321 candidates, 187 published, 0 violations/skips/mismatches. Applied only h22 #313 operation_unsupported -> published, volume 21; retained manifest comments. Native pre-bless M11-N coverage assertion saw this same newly published row with 0 normal violations; final-head gates rerun after committing the expectation. Base TSV keeps M7 e9/e10 publication; #74 stays incomplete."
+    },
+    {
+      "finding": "omitted Axis2 oracle default",
+      "resolution": "Oracle now uses IFC +Y. IfcOpenShell matrix and source witness added. Existing router convention mismatch remains outside this retained-only slice."
+    },
+    {
+      "finding": "hardcoded chord limits in check",
+      "resolution": "Narrowed rule depends only on singular value after witness failure; removed hardcoded run limits."
+    },
+    {
+      "finding": "coincident opening caps",
+      "resolution": "Intentional through-cut with coincident caps; real native h19 volume passed."
+    },
+    {
+      "finding": "kernel status parity missing",
+      "resolution": "Native reference includes kernelStatus and browser compares it."
+    },
+    {
+      "finding": "schema command missing",
+      "resolution": "Recorded exact validation command in schema.json."
+    },
+    {
+      "finding": "mirrored door h10 #119 kernel_failure status7",
+      "resolution": "Root-caused to SmSurfOfExtrusion (partial arc) outside the opcode-18 certificate; refused typed incomplete before dispatch per the 2026-10-29 ruling. See native-blockers.json."
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Agent Guidelines: ifc-lite
 
-Project-specific gotchas and guardrails: the things that bite you *here* and that you can't infer from the code. Generic good practice is assumed, not repeated. This file is the single source of truth; `CLAUDE.md` and `.cursorrules` just point here.
+Project-specific guardrails. This file is the source of truth; `CLAUDE.md` and `.cursorrules` point here.
 
 ## What this is
 Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. No first-party desktop app. Domain logic (decode, geometry, styling, export) lives in Rust crates under `rust/*` and is the source of truth for the server, CLI, SDK, and wasm; TypeScript packages under `packages/*` and apps under `apps/*` consume it (TS mostly does GPU upload and UI). Architecture docs: `docs/architecture/overview.md`.
@@ -42,6 +42,11 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 **The ~400-line rule is enforced on both sides**: for Rust by the `module_size_ratchet` test in `rust/processing/tests/`, for TypeScript by `scripts/check-module-size.mjs`. A new non-generated, non-test file over 400 lines fails unless it has an allowlist row, and an allowlisted file may not grow past its recorded budget. Prefer splitting to allowlisting. For a module whose bulk is `#[cfg(test)]`, the house pattern is a sibling `<name>_tests.rs` included via `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;` (see `stream_meta.rs`). The rule binds production modules only; test files are exempt, though a long test file should still be split where it has a genuine logical seam, never merely to hit a line count.
 
 **Do not trust any list of CI gates written down in this file.** The authoritative list of gates is `.github/workflows/`; the authoritative list of REQUIRED ones is the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Read them. A gate list is a measurement, and a measurement recorded as prose goes stale by the next merged workflow.
+
+## Before handing work back
+
+Run `node scripts/pre-handoff.mjs` after committing. A delegated task is not done
+until it passes or each failure is explained. Report SKIPPED coverage too.
 
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.
@@ -106,23 +111,15 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 ## Bounding walks over file-supplied references
 
-Entity references come from the file, so their shape is exporter- and
-attacker-controlled. An unbounded recursive walk over one self-referential
-entity dies by `SIGABRT`, which is not a catchable panic: nothing upstream turns
-it into a load error, and in the wasm geometry worker it takes down the
-instance. #2866 found seven such sites.
+File-supplied references can cycle, overflow the stack (uncatchable `SIGABRT`)
+or fan out until the loader hangs. #2866 found seven unbounded sites.
 
-The three mechanisms are not interchangeable, and each alone leaves a hole:
-
-- a **depth cap** bounds one path's LENGTH, not its breadth. `k` items each
-  leading back into a cycle cost `O(k^depth)`, turning an abort into a hang
-  (measured 7.21s at k=3). A hang is worse: nothing reports it.
-- a **visited set** bounds cycles and revisits. While the walk still recurses it
-  does NOT bound a long *acyclic* chain: every insert succeeds, the set never
-  fires, and the stack still overflows.
-- a **work budget** bounds acyclic DAG fan-out, which neither of the others
-  sees. A DAG where every branch succeeds never errors and never repeats an id;
-  it just emits `2^levels` outputs.
+- A **depth cap** bounds path length, not breadth: cycles can still cost
+  `O(k^depth)` (7.21s measured at k=3).
+- A **visited set** bounds revisits, not recursive stack use on a long acyclic
+  chain.
+- A **work budget** bounds acyclic DAG expansion even when no id repeats on
+  the current path.
 
 Choose the visited set's SCOPE by what the walk returns:
 
@@ -139,7 +136,10 @@ Prefer **iterative** walks with visited sets: no stack depth cap is needed.
 Tight caps reject valid input (#960: 42-node Revit `FirstOperand` chains).
 Use `ifc_lite_core::limits` for shared bounds; see
 `ifc_lite_geometry::placement::resolve_chain` for an iterative, visited-set
-`PlacementRelTo` walk without a depth cap.
+`PlacementRelTo` walk without a depth cap. For branching occurrences,
+`representation::RepresentationWalk` uses an explicit stack and path-scoped
+cycle checks, `MAX_MAPPED_ITEM_DEPTH` for geometry callers, and `Expand` work
+budgets for mapped attempts and Items members (default `MAX_WALK_LEVELS`).
 
 A guard that both ACTS and REPORTS has a two-part contract — bound the work, and
 report that you bounded it. Mutate the halves separately; they fail differently

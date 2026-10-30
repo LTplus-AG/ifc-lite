@@ -9,6 +9,7 @@ import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
 import { loadDiffOracle } from './lib/diff-oracle.mjs';
 import * as publicDiff from '../packages/diff/dist/index.js';
+import { prepareDiffModel } from '../packages/diff/dist/internal.js';
 import { initSync } from '../packages/wasm/pkg/ifc-lite.js';
 import { enrichGeometry } from './lib/diff-real-geometry.mjs';
 import { assertDerivedClaims, assertOriginalReferences, derivedGeometryCases } from './lib/diff-derived-geometry.mjs';
@@ -34,6 +35,14 @@ function compare(base, head, options, label) {
   const actual = publicDiff.diffModels(base, head, options);
   assert.deepEqual(actual, expected, label);
   assertOriginalReferences(actual, base, head);
+  // Retained snapshots must agree with the stateless facade (#8303).
+  const baseModel = prepareDiffModel(base);
+  try {
+    const headModel = prepareDiffModel(head);
+    try {
+      assert.deepEqual(baseModel.compare(headModel, options), expected, `${label}: retained snapshot facade`);
+    } finally { headModel.dispose(); }
+  } finally { baseModel.dispose(); }
   return actual;
 }
 const loaded = new Map();
@@ -67,9 +76,13 @@ for (const [basePath, headPath] of pairs) {
   }
   derivedSource ??= { fixture: basePath, rows: rows[0] };
   for (const options of [{ scope: 'data' }, { scope: 'data', matchUnpairedByContent: true },
-    { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true }]) {
+    { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true },
+    { scope: 'both', excludeTypes: ['IfcSpace'] },
+    { scope: 'data', keyAliases: new Map(), detectSuccessors: true }]) {
     const actual = compare(rows[0], rows[1], options, `${basePath}: ${JSON.stringify(options)}`);
-    if (basePath === headPath) assert.equal(actual.counts.unchanged, rows[0].length);
+    if (basePath === headPath) {
+      assert.equal(actual.counts.unchanged, rows[0].filter(row => !options.excludeTypes?.includes(row.ifcType)).length);
+    }
     comparisons++;
     console.log(JSON.stringify({ base: basePath, head: headPath, options, entities: rows.map(row => row.length), counts: actual.counts, parity: 'exact' }));
   }
@@ -95,5 +108,9 @@ console.log(JSON.stringify({ comparisons, skipped, coverage: 'real geometry plus
 
 if (comparisons === 0) {
   console.error('INCOMPLETE: no real IFC pairs executed; run pnpm fixtures and rerun parity.');
+  process.exitCode = 2;
+} else if (skipped > 0) {
+  // A skipped section is missing coverage, not a pass: every fixture must be present.
+  console.error(`INCOMPLETE: ${skipped} parity section(s) skipped; run pnpm fixtures and rerun parity.`);
   process.exitCode = 2;
 }

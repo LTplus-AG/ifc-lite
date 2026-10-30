@@ -17,6 +17,7 @@ const { peers, nextPeer } = await import(new URL('peer.mjs', fixtures));
 const module = await import('../../packages/wasm/pkg-retained/ifc-lite.js');
 await module.default({ module_or_path: await readFile(new URL('../../packages/wasm/pkg-retained/ifc-lite_bg.wasm', import.meta.url)) });
 const engine = { sdk: 'inert peer; not SMLib', capabilities: null, manifestSha256: '0'.repeat(64) };
+const instanceMinOccurrences = module.instanceMinOccurrences();
 const source = await readFile(new URL('../../tests/fixtures/synthetic-retained/f-c-extrusion.ifc', import.meta.url), 'utf8');
 const append = extra => new TextEncoder().encode(source.replace('ENDSEC;\nEND-ISO', `${extra}\nENDSEC;\nEND-ISO`));
 
@@ -27,10 +28,10 @@ test('#7955 actual retainedModel yields deterministic CLI report and no partial 
 #81=IFCMATERIALLAYER($,0.1,$);#85=IFCMATERIALLAYER($,0.2,$);#82=IFCMATERIALLAYERSET((#81,#85),'layers');
 #83=IFCMATERIALLAYERSETUSAGE(#82,.AXIS2.,.POSITIVE.,0.);
 #84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#80),#83);`));
-    const { obj, report } = retainedArtifacts(engine, outcomes, () => null);
+    const { obj, report } = retainedArtifacts(engine, instanceMinOccurrences, outcomes, () => null);
     assert.deepEqual(report.summary, { candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
     assert.equal(report.products[0].parts.length, 1);
-    assert.deepEqual(report.products[0].obligationsUnmet, ['OpeningClosure', 'MaterialLayers', 'IfcAppearance', 'PersistentFaces']);
+    assert.deepEqual(report.products[0].obligationsUnmet, ['MaterialLayers']);
     assert.equal(report.products[1].code, 'material_layer_strategy');
     assert.ok(!('parts' in report.products[1]));
     assert.equal(obj.split('\n').filter(line => line === '# PresentationObligationsUnmet').length, 1);
@@ -41,11 +42,11 @@ test('#7955 actual retainedModel yields deterministic CLI report and no partial 
 #102=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#19,#105));
 #103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));
 #100=IFCBUILDINGELEMENTPROXY('parts',$,$,$,$,#24,#103,$,.NOTDEFINED.);`), Uint32Array.of(100));
-    const failure = retainedReport(engine, partial, () => null);
+    const failure = retainedReport(engine, instanceMinOccurrences, partial, () => null);
     assert.equal(failure.products[0].code, 'kernel_failure');
     assert.equal(failure.products[0].kernelStatus, 4);
     assert.ok(!('parts' in failure.products[0]));
-    assert.throws(() => retainedArtifacts(engine, partial, () => null), /0 products/);
+    assert.throws(() => retainedArtifacts(engine, instanceMinOccurrences, partial, () => null), /0 products/);
   } finally { api.free(); }
 });
 
@@ -70,6 +71,8 @@ test('#7955 real CLI zero-publication refusal writes neither OBJ nor report', as
     const path = join(directory, 'LICENSES', name); await mkdir(dirname(path), { recursive: true });
     await writeFile(path, 'Inert test inventory, never distributed as an engine.');
   }
+  // The CLI requires the root notice bundle in every staged engine (#7955).
+  await writeFile(join(directory, 'THIRD_PARTY_NOTICES.txt'), 'Inert test inventory, never distributed as an engine.');
   const assets = [];
   async function inventory(prefix = '') {
     for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {

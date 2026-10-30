@@ -46,7 +46,7 @@ enum State<'a> {
 type Admitted = Option<std::result::Result<Option<LayerProgram>, LayerSkip>>;
 
 pub(super) enum LayerReply {
-    Eligible(Admitted),
+    Eligible(Result<Admitted>),
     Host(VoidReply),
     Frame(std::result::Result<ReadyLayerPlanes, LayerSkip>),
     Planes(std::result::Result<ReadyLayerSlice, LayerSkip>),
@@ -125,9 +125,9 @@ impl<'a> LayerControl<'a> {
 
     pub(super) fn accept(&mut self, reply: LayerReply, router: &GeometryRouter) {
         let state = std::mem::replace(&mut self.state, State::Taken);
-        // A stop reached by a layer step ends the attempt with the stop; the
-        // host child checks its own.
-        if !matches!(reply, LayerReply::Host(_)) && self.stopped() {
+        // A stop reached before acceptance also overrides a host reply, before
+        // the child can publish effects or schedule its next step.
+        if self.stopped() {
             return;
         }
         self.state = match (state, reply) {
@@ -184,7 +184,7 @@ impl<'a> LayerControl<'a> {
     }
 
     /// Whether the buildup is sliceable at all, and if so its admission.
-    fn admit(&self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Admitted {
+    fn admit(&self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<Admitted> {
         let element = self.element;
         let buildup = match self.mode {
             Mode::Buildup(buildup) => Some(buildup),
@@ -193,10 +193,37 @@ impl<'a> LayerControl<'a> {
                 .and_then(|index| index.get(element.id))
                 .filter(|buildup| buildup.is_sliceable()),
         };
-        buildup.map(|buildup| LayerProgram::admit(element, decoder, buildup, router.unit_scale()))
+        let Some(buildup) = buildup else {
+            return Ok(None);
+        };
+        // The eligibility probe must not decode an over-budget product first.
+        // Do not report here: the ordinary fallback owns product diagnostics.
+        if element.ifc_type != ifc_lite_core::IfcType::IfcAlignment {
+            let mut plan = crate::representation::product_budget::admit_product(
+                element,
+                decoder,
+                crate::representation::MAX_WALK_LEVELS,
+                router,
+            );
+            plan.strict()?;
+            plan.validate(router, decoder)?;
+            if plan.refusal.is_some() {
+                return Ok(None);
+            }
+        }
+        Ok(Some(LayerProgram::admit(
+            element,
+            decoder,
+            buildup,
+            router.unit_scale(),
+        )))
     }
 
-    fn admitted(&self, admitted: Admitted, router: &GeometryRouter) -> State<'a> {
+    fn admitted(&self, admitted: Result<Admitted>, router: &GeometryRouter) -> State<'a> {
+        let admitted = match admitted {
+            Ok(value) => value,
+            Err(error) => return State::Complete(Err(error)),
+        };
         match admitted {
             Some(Ok(Some(program))) => State::Host(program, VoidControl::merged(self.element, self.ids)),
             Some(Err(skip)) => self.skip(skip, router),
@@ -293,3 +320,7 @@ impl<'a> LayerControl<'a> {
 #[cfg(test)]
 #[path = "layers_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "layers_terminal_tests.rs"]
+mod terminal_tests;

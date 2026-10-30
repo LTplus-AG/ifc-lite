@@ -10,22 +10,23 @@ The geometry pipeline transforms IFC shape representations into GPU-ready triang
 (#1080 → #1088 → #1084 → shared prepass), per-element mesh production and
 prepass resolution exist exactly once, in `ifc-lite-processing`:
 
-- **`processing::element::produce_element_meshes`** — THE per-element decision
-  tree (type-product geometry #957, submesh-aware void cuts, per-item #858
-  palette splits, single-mesh fallback chain). Run by the native rayon loop
-  (server/CLI) and by the browser's `processGeometryBatch` per job. The only
-  sanctioned behavioural fork is `TypeGeometryMode` (an export suppresses
-  instanced type geometry; the viewer emits it tagged for its Model/Types
-  switch).
-- **`processing::prepass`** — the shared post-scan resolver (styled-item
-  precedence, IfcIndexedColourMap #663/#858, the #407 material chain, voids
-  with #845 aggregate propagation) plus `resolve_unit_scales` (length AND
-  plane-angle, resolved once with a documented fallback ladder for
-  late-in-file `IFCPROJECT`) and the flat wire codecs for the JS boundary.
-  The scan loops stay per-orchestration (native scan with properties/quick
-  metadata; browser `buildPrePassOnce`/`buildPrePassStreaming` with
-  incremental job emission), but they only span-stash — all semantics resolve
-  in the shared module.
+- **`processing::element::produce_element_meshes_owned`** in
+  `rust/processing/src/element/owned_session.rs` owns the element transaction.
+  Native jobs and browser batches share `execution::build_router`, `decode_job`,
+  `job_type` and `RouterDrain` (`rust/processing/src/execution.rs`). One owned
+  transaction serves two schedulers: native per-job decode/model-wide templates
+  and browser warm decode/batch-local templates.
+- **`processing::discovery::Discovery`**, `scan::ScanClass` and
+  `core::is_geometry_job` share native and browser serial/once discovery.
+  Streaming class columns retain the accepted `gpu_meshes/prepass_discovery.rs`
+  adapter and incremental scheduler. `discovery::TypeGeometryPlan` shares
+  type-map decisions; native `SuppressInstanced` and browser `EmitTagged` are
+  explicit policies, not identical configured outputs.
+- **`processing::prepass`** resolves collected spans into styles, materials,
+  voids, aggregate propagation and unit scales. Native D66 layer slicing is
+  default-off (`ProcessingRequest::layer_slicing`); the browser keeps its
+  merge-layers toggle. Scheduler caches, frame selection and output encoding
+  remain caller-owned.
 
 The native `process(content, request, sink)` entry sequences private phases:
 `scan` discovers jobs and plans mapped sources; `resolve` installs the index,
@@ -44,8 +45,8 @@ immutable schema table. These are the same predicates exposed separately by
 `has_geometry_by_name` and `is_representationless_spatial_container_by_name`;
 the second still requires the instance's `Representation` to be present.
 
-Geometry/styling fixes belong in those two modules; re-inlining logic in
-`processor.rs` or `gpu_meshes.rs` re-creates the historic both-sides drift
+Geometry/styling fixes belong in these shared homes; re-inlining logic in
+`processor/` or browser batch adapters re-creates the historic both-sides drift
 (#858, #913, #957, #961 each had to be fixed twice before the unification).
 
 The per-representation processing below is shared by construction:
@@ -358,7 +359,7 @@ flowchart TB
 
 ### Void Cutting
 
-Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and `produce_element_meshes` cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
+Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and the owned producer cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
 
 ## Mesh Hygiene
 

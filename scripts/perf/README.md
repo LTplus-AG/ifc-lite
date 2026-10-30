@@ -4,6 +4,25 @@
 
 # Performance diagnosis kit
 
+## Retained diff boundary A3 (#8042)
+
+**Hold: the tested transport changes do not close the retained gap.** Five
+fresh-process ordinary comparisons rejected both constructing final entries
+during decoding and reusing shared component-name dictionary identities. Neither
+consistently improved the complete handle call. Both production candidates were
+removed; eager objects, snapshot identities and Map order remain unchanged.
+
+An instrumented WASM split places most cost in native compare/result construction,
+with encoding a small share. Native work alone exceeds the requested margin
+against the supplied compiled TypeScript oracle in these diagnostics, so removing
+transport cannot establish that target. This is not an official cohort or an
+acceptance verdict. The [source pins, method, counts, medians and receipts](../../tests/evidence/diff-8042/a3-retained-diagnostics.json)
+preserve the changed oracle/warm-up conditions and measurement limits.
+
+Lesson: remeasure the cost premise after introducing resident ownership. Keep
+unproven boundary rewrites out, and investigate native compare/result construction
+under a separately agreed scope rather than broadening a transport task.
+
 ## C4-11b content slots and serial metadata index (#7782)
 
 Verdict: native metadata-handoff allocation reduction on the committed bare-map
@@ -32,7 +51,23 @@ index construction also preserves inputs supplied for that batch.
 
 Verdict: no measured end-to-end worker-pool timing or speedup claim. C4-0
 qualifies single-file output, not browser wall time or whole-host memory.
-Cache/slot restructuring and any measured optimization remain C4-11b work.
+Cache/slot restructuring and the bounded allocation verdict are in the
+C4-11b stack (#8328/#8329), the base of this reconciliation; merge qualification
+is separate from the source-level description above.
+
+## C4-4b comparison correction and D66 policy (#7782)
+
+The original #8269 standalone qualification compared base with itself and is
+invalid. The corrected standalone comparison fails per-phase acceptance; the
+cumulative #8286 comparison recovers it. Its quick duplex total exception is
+disclosed in the evidence, so it is not blanket strict compliance. Keep exact
+figures in the run evidence, not this ledger.
+
+D66 makes native material-layer slicing explicit and default-off. Building an
+unused material-layer index on the unsliced path is dead work; gate construction
+on the request, while preserving the browser merge-layers policy. Neither this
+policy nor the C4-11b allocation-only result establishes worker-pool speedup or
+browser peak-memory neutrality.
 
 ## C4-10b shared router and batch adapters (#7782)
 

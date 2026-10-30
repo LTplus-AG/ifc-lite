@@ -107,11 +107,18 @@ When reusing an API, every prepass or entity-index installation clears the
 previous content's derived caches and style finishes. Install finishes and
 prepass columns after the index. Source bytes survive index/prepass installation,
 so either source/index order is supported. `setSourceBytes` preserves previously
-installed columns; bytes and index must describe the same file. A staged sharded
+installed index and columns; bytes and index must describe the same file. A staged sharded
 finish stash survives installation until finalize consumes it. Cleanup releases
 source and unfinished stash, preserving diagnostics and user settings. See the
 [content lifetime contract](../../docs/api/wasm.md#content-installation-and-cleanup).
 
+
+`getPipelineDiagnostics()` returns a plain `schemaVersion: 1` report with
+additive `refusedInputElements` (attempted jobs, including retries) and
+`refusedPrepassRecords` (distinct semantic refusal IDs per API/worker).
+Syntax-invalid type drops are excluded. Prepass-only refusals are reportable;
+load installation resets counters and cleanup preserves them. See the
+[diagnostics contract](../../docs/api/wasm.md#diagnostics-and-tuning).
 
 ### Auxiliary geometry in the mesh frame
 

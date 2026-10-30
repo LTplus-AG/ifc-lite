@@ -238,3 +238,7 @@ impl ClippingProcessor {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "group_cut_abutting_tests.rs"]
+mod abutting_tests;

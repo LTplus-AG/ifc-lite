@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Run `mesh_census` over every .ifc fixture in tests/models/manifest.json up to
+# a size cap, one process per model, and concatenate the rows in manifest
+# order (#8190).
+#
+# Usage: scripts/mesh-census-corpus.sh <mesh_census binary> <models dir> <out.jsonl> [max MiB=200] [jobs=4]
+#
+# Build the binary once per commit (`cargo build --release -p
+# ifc-lite-processing --example mesh_census`) and copy it out of target/
+# before switching commits, so base and branch can run side by side. Compare
+# two outputs with scripts/mesh-census-compare.mjs. Per-model stderr (timing,
+# panics) lands next to the output as <out>.d/<n>.err; a model that fails is
+# listed in <out>.failed and its rows are absent, which the compare script
+# then reports as missing meshes.
+set -euo pipefail
+
+bin=$(realpath "$1")
+models=$(realpath "$2")
+out=$3
+max_mib=${4:-200}
+jobs=${5:-4}
+here=$(cd "$(dirname "$0")/.." && pwd)
+
+work="$out.d"
+rm -rf "$work"
+mkdir -p "$work"
+: > "$out.failed"
+
+node -e '
+  const m = require(process.argv[1]);
+  const max = Number(process.argv[2]) * 1024 * 1024;
+  m.filter((e) => e.path.endsWith(".ifc") && e.size <= max)
+   .forEach((e, i) => console.log(`${String(i).padStart(4, "0")}\t${e.path}`));
+' "$here/tests/models/manifest.json" "$max_mib" > "$work/list"
+
+echo "$(wc -l < "$work/list") models, $jobs at a time" >&2
+
+export bin models work out
+# shellcheck disable=SC2016
+xargs -P "$jobs" -I{} bash -c '
+  n=${1%%$'"'"'\t'"'"'*}; path=${1#*$'"'"'\t'"'"'}
+  "$bin" "$models/$path" > "$work/$n.jsonl" 2> "$work/$n.err" || echo "$path" >> "$out.failed"
+' _ {} < "$work/list"
+
+cat "$work"/*.jsonl > "$out"
+# Model paths relative to the models dir, so base and branch runs from
+# different checkouts key the same mesh identically.
+sed -i "s#\"model\":\"$models/#\"model\":\"#" "$out"
+echo "$(wc -l < "$out") meshes, $(wc -l < "$out.failed") failed models" >&2

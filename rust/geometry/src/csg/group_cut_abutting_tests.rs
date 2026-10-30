@@ -1,0 +1,77 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! #8190 2c: an abutting cutter pair split across the 16-cutter chunk boundary.
+//!
+//! The abutting prepass runs inside `subtract_many`, so it only sees one
+//! chunk. The control puts the pair in one chunk; the split arm puts the
+//! partner 16 cutters later, in the second chunk, where it is cut against the
+//! first chunk's intermediate.
+
+use super::*;
+use crate::kernel::arrangement::box_mesh;
+use crate::kernel::mesh_bridge::{mesh_to_tris, tris_to_mesh};
+use crate::kernel::signed_volume::signed_volume_of;
+
+fn mesh_box(lo: [f64; 3], hi: [f64; 3]) -> Mesh {
+    tris_to_mesh(&box_mesh(lo, hi))
+}
+
+/// A 35 m wall, 0.3 m thick and 3 m tall, along x.
+fn wall() -> Mesh {
+    mesh_box([-2.0, -0.15, -1.5], [33.0, 0.15, 1.5])
+}
+
+/// Two through-cutters abutting at x = 0.2 with `gap` between them, and
+/// `others` disjoint 1 m through-cutters further along the wall. The partner
+/// of the pair comes LAST, so with 15 others it is the 17th cutter.
+fn cutters(gap: f64, others: usize) -> Vec<Mesh> {
+    let mut v = vec![mesh_box([-1.0, -0.5, -0.6], [0.2, 0.5, 0.6])];
+    v.extend((0..others).map(|i| {
+        let x = 2.0 + 2.0 * i as f64;
+        mesh_box([x, -0.5, -0.6], [x + 1.0, 0.5, 0.6])
+    }));
+    v.push(mesh_box([0.2 + gap, -0.5, -0.6], [1.0, 0.5, 0.6]));
+    v
+}
+
+/// Triangles inside the opening on the seam plane: a sheet of host left
+/// standing between the pair.
+fn seam_faces(cut: &Mesh) -> usize {
+    mesh_to_tris(cut)
+        .iter()
+        .filter(|t| t.iter().all(|v| (v[0] - 0.2).abs() < 1e-3 && v[2].abs() < 0.59))
+        .count()
+}
+
+fn cut(gap: f64, others: usize) -> (usize, f64) {
+    let host = wall();
+    let cutters = cutters(gap, others);
+    let refs: Vec<&Mesh> = cutters.iter().collect();
+    let GroupCut::Cut(cut) = ClippingProcessor::new().subtract_mesh_many(&host, &refs) else {
+        panic!("{} cutters: the group cuts", refs.len());
+    };
+    assert!(
+        crate::exact_topology::strict_closed_mesh(&cut),
+        "{} cutters: the cut is closed",
+        refs.len()
+    );
+    let removed = signed_volume_of(&mesh_to_tris(&host)) - signed_volume_of(&mesh_to_tris(&cut));
+    (seam_faces(&cut), removed)
+}
+
+#[test]
+fn an_abutting_pair_split_across_chunks_cuts_like_one_chunk() {
+    // 8 um: under one snap cell, so the prepass welds the pair in one chunk.
+    let gap = 8e-6;
+    let (one_chunk, one_removed) = cut(gap, 14);
+    assert_eq!(one_chunk, 0, "control: one chunk leaves no sheet on the seam");
+    let (split, split_removed) = cut(gap, 15);
+    let expected = (2.0 + 15.0) * 0.3 * 1.2;
+    assert!(
+        (split_removed - expected).abs() < 1e-4 * expected,
+        "split: removed {split_removed}, expected {expected} (one chunk removed {one_removed})"
+    );
+    assert_eq!(split, 0, "split across chunks: a sheet stands on the seam");
+}

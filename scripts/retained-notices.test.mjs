@@ -380,9 +380,12 @@ test('Refs #7955 cargo-only refresh applies an election recorded for a reused co
   notices.refreshCargoOnly(f.root, metadata);
   assert.equal(manifestBytes(f), once);
   // An invalid election for a reused component is refused before anything is written.
-  f.put('licenses/retained/supplemental.json', JSON.stringify([{ ...record, election: 'GPL-2.0' }]));
-  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /Invalid licence election/);
-  assert.equal(manifestBytes(f), once);
+  const g = fixture(t);
+  const invalid = bumpExternal(g);
+  g.put('licenses/retained/supplemental.json', JSON.stringify([{ ...record, election: 'GPL-2.0' }]));
+  const untouched = manifestBytes(g);
+  assert.throws(() => notices.refreshCargoOnly(g.root, invalid), /Invalid licence election/);
+  assert.equal(manifestBytes(g), untouched);
 });
 
 test('Refs #7955 check rejects an undeclared Cargo component even under a recomputed digest', t => {
@@ -390,4 +393,29 @@ test('Refs #7955 check rejects an undeclared Cargo component even under a recomp
   f.regenerate(manifest => { manifest.components.splice(3, 0, { ...manifest.components[2], name: 'leftover', version: '0.1.0' }); });
   assert.throws(() => checkNotices(f.root), /Undeclared Cargo component: leftover 0.1.0/);
   assert.throws(() => checkNotices(f.root, false), /Undeclared Cargo component/);
+});
+
+test('Refs #7955 cargo-only refresh refuses a withdrawn or changed supplement for a reused component', t => {
+  const f = fixture(t);
+  const metadata = bumpExternal(f);
+  const mit = 'Fixture Emscripten MIT text\n', sha256 = createHash('sha256').update(mit).digest('hex');
+  f.put(`licenses/retained/texts/${sha256}.txt`, mit);
+  const record = { name: 'fixture Emscripten', version: '4.0.15', election: 'MIT', attribution: 'fixture under MIT by election',
+    notices: [{ origin: 'https://example.invalid/MIT.txt', file: `texts/${sha256}.txt`, sha256 }] };
+  f.put('licenses/retained/supplemental.json', JSON.stringify([record]));
+  notices.refreshCargoOnly(f.root, metadata);
+  checkNotices(f.root, false);
+  const recorded = manifestBytes(f), texts = textFiles(f);
+  f.change('Cargo.lock', text => text.replace('version="1.0.1"', 'version="1.0.2"'));
+  const bumped = () => ({ packages: metadata().packages.map(pkg => ({ ...pkg, version: '1.0.2' })) });
+  for (const now of [[], [{ ...record, election: 'NCSA' }]]) {
+    f.put('licenses/retained/supplemental.json', JSON.stringify(now));
+    assert.throws(() => notices.refreshCargoOnly(f.root, bumped), /supplemental record for fixture Emscripten was removed or changed/);
+    assert.equal(manifestBytes(f), recorded, 'manifest untouched');
+    assert.deepEqual(textFiles(f), texts, 'no texts written');
+  }
+  // An unchanged record plus an added one is still accepted.
+  const added = { name: 'external', version: '1.0.2', notices: [record.notices[0]] };
+  f.put('licenses/retained/supplemental.json', JSON.stringify([record, added]));
+  assert.doesNotThrow(() => notices.refreshCargoOnly(f.root, bumped));
 });

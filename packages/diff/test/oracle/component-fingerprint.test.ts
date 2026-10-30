@@ -123,7 +123,17 @@ describe('same-named sets on one entity (#8136)', () => {
   it('keys every set, ordinal in the prefix, instead of letting the last overwrite', () => {
     const components = buildComponentFingerprints(twice('REI60'));
     expect(Object.keys(components)).toEqual(['attr:core', 'pset:Pset_WallCommon', 'pset#2:Pset_WallCommon', 'qset:Qto', 'qset#2:Qto']);
-    expect(components['pset:Pset_WallCommon']).not.toBe(components['pset#2:Pset_WallCommon']);
+    // Each key carries its own set's hash, the one that set gets on its own.
+    const { propertySets = [], quantitySets = [] } = twice('REI60');
+    const alone = (set: number) => buildComponentFingerprints({
+      ifcType: 'IfcWall', propertySets: [propertySets[set]], quantitySets: [quantitySets[set]],
+    });
+    // Content order: FireRating sorts before IsExternal, A=1 before A=2.
+    expect(components['pset:Pset_WallCommon']).toBe(alone(1)['pset:Pset_WallCommon']);
+    expect(components['pset#2:Pset_WallCommon']).toBe(alone(0)['pset:Pset_WallCommon']);
+    expect(components['qset:Qto']).toBe(alone(0)['qset:Qto']);
+    expect(components['qset#2:Qto']).toBe(alone(1)['qset:Qto']);
+    expect(components['qset:Qto']).not.toBe(components['qset#2:Qto']);
   });
 
   it('cannot be forged by a set whose name contains # or :', () => {

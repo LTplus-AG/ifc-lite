@@ -11,7 +11,7 @@
  */
 
 import { useViewerStore } from '@/store';
-import type { EntityFingerprint } from '@ifc-lite/diff';
+import { prepareDiffModel, type DiffModelHandle, type EntityFingerprint } from '@ifc-lite/diff';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 
@@ -24,8 +24,14 @@ export const readGeometryContentVersion = (): number =>
 type Side = EntityFingerprint<CompareRef>[];
 
 export interface BuiltPair {
+  baseHandle: DiffModelHandle<CompareRef>;
+  headHandle: DiffModelHandle<CompareRef>;
+  dispose: () => void;
   baseModelId: string;
   headModelId: string;
+  /** Loaded store identities; same-ID replacement need not bump either version (#8271). */
+  baseStore: IfcDataStore | undefined;
+  headStore: IfcDataStore | undefined;
   baseName: string;
   headName: string;
   base: Side;
@@ -68,6 +74,24 @@ export interface BuiltPair {
   mutationVersion: number;
 }
 
+/** Transfer both native snapshots to one owner; roll back partial allocation. */
+export function preparePairHandles(base: Side, head: Side): Pick<BuiltPair,
+  'baseHandle' | 'headHandle' | 'dispose'> {
+  const baseHandle = prepareDiffModel(base);
+  try {
+    const headHandle = prepareDiffModel(head);
+    let disposed = false;
+    return { baseHandle, headHandle, dispose() {
+      if (disposed) return;
+      disposed = true;
+      try { baseHandle.dispose(); } finally { headHandle.dispose(); }
+    } };
+  } catch (error) {
+    baseHandle.dispose();
+    throw error;
+  }
+}
+
 /** Are these fingerprints the ones for this A/B pair, extracted from the mesh
  *  content the store holds NOW? (Ids compared field-wise rather than through a
  *  joined key string, so two ids can never alias.)
@@ -76,16 +100,21 @@ export interface BuiltPair {
  *  reused, again after the extraction's awaits, and again before a cheap
  *  re-diff. One definition, so the three cannot drift apart. */
 export function isCurrentFor(
-  built: Pick<BuiltPair, 'baseModelId' | 'headModelId' | 'contentVersion' | 'keyProperty' | 'mutationVersion'>,
+  built: Pick<BuiltPair, 'baseModelId' | 'headModelId' | 'contentVersion' | 'keyProperty' | 'mutationVersion' | 'baseStore' | 'headStore'>,
   baseModelId: string,
   headModelId: string,
   contentVersion: number,
   keyProperty: string | undefined,
 ): boolean {
+  const live = useViewerStore.getState();
+  const baseModel = live.models.get(baseModelId), headModel = live.models.get(headModelId);
   return built.baseModelId === baseModelId
     && built.headModelId === headModelId
     && built.contentVersion === contentVersion
     && built.keyProperty === keyProperty
     // Read live: an edit since extraction invalidates the cache (#5312).
-    && built.mutationVersion === useViewerStore.getState().mutationVersion;
+    && built.mutationVersion === live.mutationVersion
+    // Removal is handled by the cache subscription / run epoch, without retries.
+    && (!baseModel || built.baseStore === baseModel.ifcDataStore)
+    && (!headModel || built.headStore === headModel.ifcDataStore);
 }

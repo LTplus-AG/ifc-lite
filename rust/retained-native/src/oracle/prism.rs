@@ -21,7 +21,7 @@ impl Basis {
             z,
         })
     }
-    fn vector(&self, p: [f64; 3]) -> [f64; 3] {
+    pub(super) fn vector(&self, p: [f64; 3]) -> [f64; 3] {
         [dot(p, self.x), dot(p, self.y), dot(p, self.z)]
     }
     /// Convert a host-relative halfspace n·p <= c to world coordinates.

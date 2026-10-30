@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! V(extrusion ∩ halfspaces), by exact Green section areas and adaptive GL8.
 //! No retained request, kernel output, mesh sampling or fitted profile enters.
-use super::{clipping::{clipped_area, HalfPlane}, math::*};
+use super::{clipping::{clipped_area, HalfPlane, Edge}, math::*};
 pub use super::sections_source::ExtrudedHost;
 #[path = "section_events.rs"]
 mod events;
@@ -42,9 +42,15 @@ pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Op
         }
         (sum.is_finite() && sum >= -1e-13).then_some(sum.max(0.))
     };
+    let linear = host.loops.iter().all(|(_,edges)|edges.iter().all(|edge|matches!(edge,Edge::Line(..))));
     let mut volume = 0.;
     for span in breaks.windows(2) {
-        volume += integrate(&area, span[0], span[1], &mut work)?;
+        // Between topology events, line intersections move affinely with t,
+        // so Green area is a quadratic polynomial. GL8 is exact for it; a
+        // convergence loop adds no evidence and can exhaust on an adjacent-ULP
+        // event interval (the real FZK #60012/#67828 bounded cuts, #7955).
+        volume += if linear {gauss(&area,span[0],span[1],&mut work)?}
+            else {integrate(&area, span[0], span[1], &mut work)?};
     }
     let volume = volume * host.jacobian;
     (volume.is_finite() && volume >= 0.).then_some(volume)

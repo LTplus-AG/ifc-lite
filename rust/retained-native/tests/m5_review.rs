@@ -33,7 +33,7 @@ fn check(text: &str,shape: &ShapeOnlyProduct) -> Vec<checks::OracleResult> {
     let mut t:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m5.json")).unwrap();
     let faces:serde_json::Value=serde_json::from_str(include_str!("../../../tests/fixtures/cli-retained/tolerances.d/m11-f.json")).unwrap();
     t.as_object_mut().unwrap().extend(faces.as_object().unwrap().clone());
-    checks::check(shape,&checks::SourceContext {product_id:13,analytic:&sources,clips:&oracle},text.as_bytes(),&t)
+    checks::check(shape,&checks::SourceContext {product_id:13,analytic:&sources,clips:&oracle,hand_volume:None},text.as_bytes(),&t,None)
 }
 #[test]
 fn issue_7955_clipped_union_and_intersection_keep_real_mesh_gates() {

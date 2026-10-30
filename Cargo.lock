@@ -1704,6 +1704,7 @@ dependencies = [
  "ifc-lite-geometry",
  "ifc-lite-geometry-runtime",
  "ifc-lite-processing",
+ "ifc-lite-testkit",
  "libc",
  "serde",
  "serde_json",

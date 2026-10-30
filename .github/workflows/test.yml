@@ -1007,6 +1007,14 @@ jobs:
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/unknown.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/panel.oracle.patch --test apps/viewer/src/components/viewer/LoadReportPanel.omitted-type-records.test.tsx --test apps/viewer/src/lib/loadReport.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/toast.oracle.patch --test apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts)
+          # #8341 C4-13b: a byte-identical refactor, so a full revert passes.
+          # Keep ParseResponse::from_result; drop its coordinate-space tag.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13b/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-13b/behaviour.oracle.patch --test rust/ffi/src/tests.rs)
+          # #8341 C4-14: whole-change inversion deletes the new test module.
+          # Keep the one scan; drop wrappers authored after a styled item.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch --test rust/processing/src/symbolic/color_tests.rs)
           # #8341 C4-7b: whole-file inversion deletes the shared prepass columns
           # and the test module's wiring. Keep both; drop only reuse and install.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7b/behaviour.oracle.patch'; then

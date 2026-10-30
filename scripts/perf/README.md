@@ -4,6 +4,37 @@
 
 # Performance diagnosis kit
 
+## C4-14 independent levers (#8341)
+
+**Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item
+index read the file twice, once per record kind; one scan now records both and
+decodes in the old order. Callgrind puts `extract_symbolic_data` roughly a
+seventh lower on Haus, HouseZ, dental_clinic, duplex and schependomlaan with
+byte-identical symbolic JSON, because entity scans dominate that extractor.
+Counts, sources and receipts: [evidence](../../tests/evidence/c4-14-symbolic-style/README.md).
+Instructions only, no wall-time claim.
+
+**Declined: opening filter allocations (PROCESSING-17).** "Filter after the
+metadata phase" no longer has a home: identity metadata is now resolved per
+chunk inside the streaming pass, with thread-local uncached decoders, while
+the filter must settle skips and the void index before the first chunk. The
+remaining levers (allocation-free `glas` matching, handing back the void index
+instead of cloning it) moved at most 0.05% of the main thread's instructions
+under IgnoreOpaque and 0.015% on the default path, far below the 0.5% bar, with
+identical meshes, while the native geometry phase it does not touch moved
++0.04% to +0.05% from code layout alone. Do not re-spike without a mechanism that removes the
+per-opening representation decode itself.
+
+**Declined: a common reserve-capped index builder (PROCESSING-19).** No
+measurable lever. The browser serial index already carries the 40 M reserve
+cap (#8259/C4-11b); native sources from 32 MiB use the paged compact builder;
+the remaining `len / 50` reservations bind the cap only above a 2 GB source.
+An exact record count would not change the hash table either: Haus (44,249
+records against 50,530 estimated) and HouseZ (81,806 against 101,455) round
+to the same 65,536 and 131,072 buckets. Sharing the builder is DRY work, not
+a performance claim; the browser index must also answer metadata lookups
+mid-scan, which the paged builder cannot.
+
 ## C4-7b fallback full-file work (#8341)
 
 Verdict: shipped. Instruction counts only, for the slice that reaches the lazy
@@ -5742,3 +5773,25 @@ Lesson: fault accounting is also a shared resource. Band transport retirements n
 their own bounded allowance so they cannot prevent subsequent ordinary products from
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
+
+## The app-start task: no top-level-await wrapper on the app build
+
+On a production build the app-start task (module evaluation, before a model is
+read) was far longer than on the dev server, because only the build ran
+`vite-plugin-top-level-await`. The plugin wraps every chunk that has a dynamic
+`import()` in one `async` arrow function. Chrome compiles a module's top level
+while the script streams in, off the main thread, but a nested function only
+when it first runs, on the main thread, so each wrapped chunk was parsed whole
+inside the task. The build target is `esnext`, so the app build now emits
+native top-level await; the worker build keeps the plugin.
+`@ifc-lite/flow-nodes`' `xlsx-io.ts` also imported `exceljs` statically through
+the package barrel, which ran all of it at start; it is now loaded on first use.
+
+Lessons:
+- Measure start-up on a production build: the dev server skips build-only
+  plugins and under-reports this task.
+- A CPU profile shows lazy compilation as `(program)` with no script;
+  `--js-flags=--log-function-events` gives each `parse-function` with its
+  script id, offsets and duration.
+- `scripts/check-tla-chunk-await.mjs` now fails if a chunk the page evaluates
+  at start (`index.html`'s module scripts and their static imports) is wrapped.

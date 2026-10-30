@@ -1,0 +1,12 @@
+diff --git b/rust/wasm-bindings/src/api/csg_console.rs a/rust/wasm-bindings/src/api/csg_console.rs
+--- b/rust/wasm-bindings/src/api/csg_console.rs
++++ a/rust/wasm-bindings/src/api/csg_console.rs
+@@ -126,7 +126,7 @@ fn failure_detail(d: &GeometryDiagnostics) -> String {
+         "[IFC-LITE] CSG fallbacks: {} failures across {} products. Breakdown: {breakdown}.\n\
+          Worst-failing hosts ({} shown, by failures then id):\n{hosts}",
+         d.total_csg_failures,
+-        d.total_csg_failures,
++        d.products_with_failures,
+         d.worst_hosts.len(),
+     )
+ }

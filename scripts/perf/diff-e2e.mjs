@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { hostname, cpus, loadavg, freemem, totalmem, platform, release } from 'node:os';
 import { parseArgs } from 'node:util';
 import { performance } from 'node:perf_hooks';
-import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest, endpointVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
+import { protocol, validateProtocol, LIMITS, distribution, assertPair, digest, endpointVerdict, warmBudgetVerdict, cohortVerdict, planningEstimate } from './diff-e2e-protocol.mjs';
 import { readJson, fileReceipt, inventory, harnessReceipt, validateBuildReceipt, validateResolved, runtimeReceipt, sourceReceipt } from './diff-e2e-receipts.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -70,6 +70,9 @@ export function summary(pairs) {
   for (const arm of ['base', 'branch']) {
     const samples = pairs.map(pair => pair[arm]);
     result[arm] = {
+      callPaths: [...new Set(samples.map(s => s.callPath))],
+      statelessWarmProcessMediansMs: samples[0].statelessTimes?.length ? distribution(samples.map(s =>
+        distribution(s.statelessTimes.map(t => t.totalMs)).median)) : undefined,
       phases: Object.fromEntries(Object.keys(samples[0].phases).map(key =>
         [key, distribution(samples.map(s => s.phases[key]))])),
       processWallMs: distribution(samples.map(s => s.processWallMs)),
@@ -137,7 +140,7 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
   await mkdir(out, { recursive: false });
   const report = { version: p.version, state: 'running', performanceVerdict: 'not-assessed',
     fullIssue8042Accepted: false, protocol: p, protocolFile, admissionFile, exclusive,
-    coverage: { adapter: 'final public facade; per-call handles', fingerprintEngine: 'public API on each source; Rust pipeline acceptance still required',
+    coverage: { adapter: 'public diffModels cold; public resident handles warm vs TS diffModels; stateless candidate warm reported only', fingerprintEngine: 'public API on each source; Rust pipeline acceptance still required',
       geometry: 'absent from real CLI projection', auxiliaryOperations: 'not timed; separate parity evidence required' },
     harness, harnessSource, builds: {}, environment: environment(), cases: [],
     startedAt: new Date().toISOString() };
@@ -213,8 +216,9 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
         workload.summary = summary(workload.pairs);
         const endpoint = s => mode === 'cold' ? s.phases.lifecycleTotalMs
           : distribution(s.retainedTimes.map(t => t.totalMs)).median;
-        workload.timing = endpointVerdict(workload.pairs.map(p => endpoint(p.base)),
-          workload.pairs.map(p => endpoint(p.branch)));
+        workload.timing = mode === 'cold'
+          ? endpointVerdict(workload.pairs.map(p => endpoint(p.base)), workload.pairs.map(p => endpoint(p.branch)))
+          : warmBudgetVerdict(workload.pairs.map(p => endpoint(p.branch)), fixture.id);
       }
       assert.deepEqual(await Promise.all(fixture.paths.map(path => fileReceipt(path))), entry.fixtures, 'fixture mutated');
       entry.state = 'measured-separate-proof-identical';

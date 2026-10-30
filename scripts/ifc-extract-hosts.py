@@ -5,14 +5,16 @@
 """Cut a small IFC fixture out of a large model: the given host elements, the
 openings that void them, and everything those reference (#8190).
 
-Usage: scripts/ifc-extract-hosts.py <model.ifc> <out.ifc> <host id> [<host id>...]
+Usage: scripts/ifc-extract-hosts.py [--anonymise] <model.ifc> <out.ifc> <host id>...
 
 Kept: every IfcRelVoidsElement whose relating element is a host, every
 IfcRelFillsElement of those openings, the IfcProject (units and contexts),
 every IfcSite (its placement sets the RTC offset), and
 the transitive closure of #references from all of them. Nothing else, so the
-spatial structure and every other product drop out. Names stay as authored:
-blank them before committing a fixture from a model you may not publish.
+spatial structure and every other product drop out. `--anonymise` writes a
+minimal header and blanks every string of IfcPerson and of any
+IfcOrganization that is not an application's, and the project's names
+(GlobalIds stay): what a committed fixture should carry.
 The extract is meant to give the same host mesh as the full model through
 `process_geometry`; check that with `mesh_census --ids` before relying on it.
 """
@@ -46,7 +48,23 @@ def strip_strings(body):
     return re.sub(r"'(?:[^']|'')*'", "''", body)
 
 
+QUOTED = re.compile(r"'(?:[^']|'')*'")
+
+
+def blank(raw, keep_first):
+    """`raw` with its quoted strings emptied, the first one kept if asked."""
+    seen = [0]
+
+    def sub(m):
+        seen[0] += 1
+        return m.group(0) if keep_first and seen[0] == 1 else "''"
+
+    return QUOTED.sub(sub, raw)
+
+
 def main(argv):
+    anonymise = "--anonymise" in argv
+    argv = [a for a in argv if a != "--anonymise"]
     if len(argv) < 4:
         print(__doc__, file=sys.stderr)
         return 2
@@ -81,11 +99,26 @@ def main(argv):
         keep.add(i)
         stack.extend(refs[i])
 
+    applications = {refs[r[0]][0] for r in recs if r[1] == "IFCAPPLICATION" and refs[r[0]]}
+    if anonymise:
+        schema = re.search(r"FILE_SCHEMA\s*\(.*?\);", header, re.S)
+        name = dst.rsplit("/", 1)[-1]
+        header = (
+            "ISO-10303-21;\nHEADER;\n"
+            "FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');\n"
+            f"FILE_NAME('{name}','',(''),(''),'','','');\n"
+            f"{schema.group(0) if schema else 'FILE_SCHEMA((\'IFC2X3\'));'}\nENDSEC;\n"
+        )
     with open(dst, "w", encoding="utf-8", errors="surrogateescape") as f:
         f.write(header)
         f.write("DATA;\n")
         for rid in sorted(keep):
-            f.write(by_id[rid][3] + "\n")
+            _, typ, _, raw = by_id[rid]
+            if anonymise and (typ == "IFCPERSON" or (typ == "IFCORGANIZATION" and rid not in applications)):
+                raw = blank(raw, keep_first=False)
+            elif anonymise and typ == "IFCPROJECT":
+                raw = blank(raw, keep_first=True)
+            f.write(raw + "\n")
         f.write("ENDSEC;\nEND-ISO-10303-21;\n")
     print(f"{len(keep)} records, {len(openings)} openings -> {dst}", file=sys.stderr)
     return 0

@@ -28,7 +28,7 @@
 
 use ifc_lite_processing::{process, MeshData, OpeningFilterMode, ProcessingRequest};
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::io::{BufWriter, Write};
 
@@ -257,7 +257,8 @@ fn thin_material(tris: &[[usize; 3]], p: &[[f64; 3]], row: &mut Row) {
     let window = THIN + NORMAL_BUCKET * diag;
     // Bucket by the canonical normal (first clear component positive), so a
     // face and its anti-parallel partner land in one bucket on opposite sides.
-    let mut buckets: HashMap<[i64; 3], Vec<Face>> = HashMap::new();
+    // Ordered, so the area sums run in one order and two runs agree bit for bit.
+    let mut buckets: BTreeMap<[i64; 3], Vec<Face>> = BTreeMap::new();
     for t in tris {
         let [a, b, c] = t.map(|i| sub(p[i], anchor));
         let e = cross(sub(b, a), sub(c, a));

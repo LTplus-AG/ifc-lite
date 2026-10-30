@@ -44,9 +44,13 @@ export function parseCensus(text) {
   return rows;
 }
 
+/** Float metrics within this relative distance are the same number. */
+const REL_EPS = 1e-9;
+const same = (a, b) => a === b || (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) <= REL_EPS * Math.max(Math.abs(a), Math.abs(b)));
+
 /** The verdict for one mesh present on both sides, or null when unchanged. */
 export function classify(base, branch) {
-  if (METRICS.every((m) => base[m] === branch[m])) return null;
+  if (METRICS.every((m) => same(base[m] ?? 0, branch[m] ?? 0))) return null;
   const gained = EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => (branch[m] ?? 0) > (base[m] ?? 0) + THIN_EPS);
   if (gained) return 'regression';
   const closed = base.open10 > branch.open10 || base.open > branch.open;
@@ -75,7 +79,7 @@ export function compare(baseRows, branchRows) {
 
 function describe({ key, base, branch }) {
   const [model, id, ord] = key.split('\t');
-  const parts = METRICS.filter((m) => base && branch && base[m] !== branch[m]).map(
+  const parts = METRICS.filter((m) => base && branch && !same(base[m] ?? 0, branch[m] ?? 0)).map(
     (m) => `${m} ${fmt(base[m])}->${fmt(branch[m])}`,
   );
   return `${model} #${id}[${ord}] ${(base ?? branch).type}: ${parts.join(', ')}`;

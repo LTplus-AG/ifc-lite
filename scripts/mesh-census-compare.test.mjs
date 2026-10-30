@@ -50,6 +50,11 @@ test('losing thin material is an improvement', () => {
   assert.equal(classify(row({ thinArea: 2.3 }), row({ thinArea: 0, tris: 88 })), 'improved');
 });
 
+test('float metrics equal to 1e-9 relative are unchanged', () => {
+  assert.equal(classify(base, row({ area: 5 * (1 + 1e-12) })), null);
+  assert.equal(classify(base, row({ area: 5 * (1 + 1e-6) })), 'neutral');
+});
+
 test('a tessellation-only change is neutral', () => {
   assert.equal(classify(base, row({ tris: 102, area: 5.0000001 })), 'neutral');
 });

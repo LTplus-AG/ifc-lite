@@ -13,7 +13,7 @@ export async function registrySessionLock<T>(registryOrigin: string, operation: 
 
 export async function registryJsonReply(response: Response): Promise<unknown> {
   if (!response.ok) throw new RegistryError(`Registry sign-in failed (${response.status}).`, response.status);
-  const body = new TextDecoder().decode(await responseBytes(response, 64 * 1024));
+  const body = new TextDecoder().decode(await responseBytes(response, 2 * 1024 * 1024));
   try { return JSON.parse(body); }
   catch { throw new RegistryError('The registry returned an invalid sign-in response.'); }
 }

@@ -23,6 +23,13 @@ export function registryProxy(target: string): Record<string, ProxyOptions> {
   const options: ProxyOptions = {
     target: upstream.origin,
     changeOrigin: true,
+    bypass(request) {
+      const path = request.url?.split('?')[0] ?? '';
+      const bearer = request.headers.authorization?.startsWith('Bearer ');
+      if (path === '/token' && (request.method !== 'GET' || !bearer)) return false;
+      if (path.startsWith('/shares') && !(path === '/shares/redeem' ? request.method === 'POST' : bearer &&
+        (path === '/shares' ? ['GET', 'POST'].includes(request.method ?? '') : request.method === 'POST'))) return false;
+    },
     configure(proxy) {
       proxy.on('proxyReq', (forwarded, request) => {
         forwarded.removeHeader('cookie');
@@ -44,5 +51,5 @@ export function registryProxy(target: string): Record<string, ProxyOptions> {
       });
     },
   };
-  return { '^/v2(?:/|$)': options, '^/oauth/(?:config|token|revoke)(?:\\?|$)': options };
+  return { '^/v2(?:/|$)': options, '^/token(?:\\?|$)': options, '^/shares(?:/[0-9a-f-]+/revoke|/redeem)?(?:\\?|$)': options, '^/oauth/(?:config|token|revoke)(?:\\?|$)': options };
 }

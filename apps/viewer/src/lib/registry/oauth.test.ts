@@ -43,7 +43,7 @@ test('registry login sends an S256 challenge and redeems its matching verifier w
   assert.equal(request.origin, registryOrigin); assert.equal(request.pathname, '/oauth/authorize');
   assert.equal(request.searchParams.get('client_id'), 'ifc-lite');
   assert.equal(request.searchParams.get('code_challenge_method'), 'S256');
-  assert.equal(request.searchParams.get('scope'), 'registry:catalog:read');
+  assert.equal(request.searchParams.get('scope'), 'ifcx:session');
   assert.equal(request.searchParams.has('code_verifier'), false);
   const verifier = exchanges[0].get('code_verifier'); assert(verifier);
   assert.equal(await deriveCodeChallengeS256(verifier), request.searchParams.get('code_challenge'));
@@ -51,7 +51,7 @@ test('registry login sends an S256 challenge and redeems its matching verifier w
   assert.equal(exchanges[0].get('grant_type'), 'authorization_code');
   assert(transport.can('push', 'project/model'));
   await transport.login('project/model');
-  assert.equal(popup.requests[1].searchParams.get('scope'), 'repository:project/model:pull,push');
+  assert.equal(popup.requests[1].searchParams.get('scope'), 'ifcx:session');
   assert.notEqual(popup.requests[1].searchParams.get('state'), request.searchParams.get('state'));
   assert.notEqual(exchanges[1].get('code_verifier'), verifier);
   assert.deepEqual(popup.errors, []);

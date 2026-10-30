@@ -28,7 +28,7 @@ if (!globalThis.navigator?.locks) {
 }
 
 export function registryOAuthConfig(registryOrigin: string) {
-  return { client_id: 'ifc-lite', authorization_endpoint: `${registryOrigin}/oauth/authorize`, token_endpoint: '/oauth/token',
+  return { client_id: 'ifc-lite', authorization_endpoint: `${registryOrigin}/oauth/authorize`, token_endpoint: '/oauth/token', session_scope: 'ifcx:session', scoped_token_endpoint: '/token',
     redirect_uris: [`${window.location.origin}${REGISTRY_CALLBACK_PATH}`], code_challenge_methods_supported: ['S256'],
     refresh_cookie_name: 'ifcx_oci_refresh', revocation_endpoint: '/oauth/revoke', session_max_age: 28800, remembered_session_max_age: 2592000 };
 }

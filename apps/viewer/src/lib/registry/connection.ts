@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { RegistryError, releaseName, repositoryName } from './protocol';
-export interface RegistryAddress { origin: string; repository?: string; reference?: string }
+export interface RegistryAddress { origin: string; repository?: string; reference?: string; shareSecret?: string }
 export const localRegistryAddress = import.meta.env?.VITE_REGISTRY_ADDRESS ?? 'http://127.0.0.1:5000';
 const loopback = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -13,10 +13,13 @@ export function parseRegistryAddress(input: string, allowed = localRegistryAddre
   try { url = new URL(input.trim().replace(/^oci:\/\//, 'http://').replace(/^(?![a-z]+:\/\/)/i, 'http://')); }
   catch { throw new RegistryError('Paste a registry address, for example http://localhost:5000.'); }
   const pinned = new URL(allowed);
-  if (url.username || url.password || url.search || url.hash || !loopback.has(url.hostname) ||
+  const shareSecret = url.pathname === '/share' ? new URLSearchParams(url.hash.slice(1)).get('secret') : null;
+  const share = shareSecret !== null && /^[a-f0-9]{64}$/.test(shareSecret) && url.hash === `#secret=${shareSecret}`;
+  if (url.username || url.password || url.search || (url.hash && !share) || !loopback.has(url.hostname) ||
     url.protocol !== pinned.protocol || url.port !== pinned.port || !loopback.has(pinned.hostname)) {
     throw new RegistryError(`This demo connects to the local registry at ${pinned.origin}. Paste an address from that registry.`);
   }
+  if (share) return { origin: pinned.origin, shareSecret };
   let path: string;
   try { path = decodeURIComponent(url.pathname).replace(/^\/v2(?:\/|$)/, '').replace(/^\/+|\/+$/g, ''); }
   catch { throw new RegistryError('The registry address contains an invalid model path.'); }

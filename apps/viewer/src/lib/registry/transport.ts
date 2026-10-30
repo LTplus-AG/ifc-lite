@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { ScopedTokens } from './scoped-tokens';
+import { redeemRegistryShare } from './share-exchange';
+import { grantAllows } from './grants';
 import { localRegistryAddress } from './connection';
 import { discoverRegistryOAuth, registryOAuthLogin } from './oauth';
 import { exchangeRegistrySession, revokeRegistrySession } from './session-exchange';
@@ -10,6 +13,7 @@ import { RegistryError, repositoryName, type RegistrySession, type RegistryAutho
 /** Registry-owned PKCE sign-in and scoped Bearer requests. No persistent secrets. */
 export class RegistryTransport {
   private token: string | null = null;
+  private scoped = new ScopedTokens();
   private generation = 0;
   private attempt: AbortController | null = null;
   private current: RegistrySession | null = null;
@@ -32,13 +36,14 @@ export class RegistryTransport {
   }
 
   get session(): RegistrySession | null { return this.current; }
-  can(action: 'pull' | 'push', repository = this.current?.repository): boolean {
-    return Boolean(this.current && !this.pendingRevoke && this.current.sessionExpiresAt > Date.now() && this.current.repositories.some(access => access.repository === repository && access.actions.includes(action)));
+  can(action: 'pull' | 'push', repository = this.current?.repository, tag?: string): boolean {
+    return Boolean(this.current && !this.pendingRevoke && this.current.sessionExpiresAt > Date.now() && (repository ? (this.current.permissions ? grantAllows(this.current.permissions, repository, action, tag) : this.current.repositories.some(access => access.repository === repository && access.actions.includes(action))) : this.current.permissions?.some(g => g.actions.includes(action)) || this.current.repositories.some(a => a.actions.includes(action))));
   }
   logout(notify = true): void {
     this.generation += 1;
     this.attempt?.abort(); this.attempt = null;
     this.renewing?.abort(); this.renewing = null; this.refreshing = null; this.restoring = null;
+    this.scoped.clear();
     this.token = null; this.current = null; this.authorization = null; this.suppressedRestore = true;
     this.channel?.close(); this.channel = null;
     if (notify) this.onSession?.(null);
@@ -50,6 +55,7 @@ export class RegistryTransport {
       if (previous.session.subject !== authorization.session.subject || previous.session.remembered !== authorization.session.remembered) throw new RegistryError('The registry session identity changed. Please sign in again.');
       authorization.session.sessionExpiresAt = Math.min(previous.session.sessionExpiresAt, authorization.session.sessionExpiresAt);
     }
+    this.scoped.clear();
     this.authorization = authorization; this.token = authorization.token; this.current = authorization.session; this.suppressedRestore = false;
     if (!this.channel && typeof BroadcastChannel !== 'undefined') {
       this.channel = new BroadcastChannel('ifc-lite:registry-session');
@@ -65,6 +71,7 @@ export class RegistryTransport {
 
   async signOut(): Promise<void> {
     const authorization = this.authorization;
+    if (authorization?.shareSecret) { this.logout(); return; }
     const target = authorization ? { clientId: authorization.clientId, refreshToken: authorization.refreshToken, remembered: authorization.session.remembered }
       : this.pendingRevoke ?? { clientId: '', remembered: true };
     this.pendingRevoke = target;
@@ -115,8 +122,8 @@ export class RegistryTransport {
     const timer = setTimeout(() => controller.abort(new RegistryError('Registry renewal timed out. Please reconnect.')), 15000);
     const body = new URLSearchParams({ grant_type: 'refresh_token', client_id: previous.clientId });
     if (previous.refreshToken) body.set('refresh_token', previous.refreshToken);
-    const refreshing = exchangeRegistrySession(this.origin, this.registryOrigin, previous.clientId, body,
-      previous.session.repository || null, controller.signal, previous.session.remembered)
+    const refreshing = (previous.shareSecret ? redeemRegistryShare(this.origin, previous.shareSecret, controller.signal) : exchangeRegistrySession(this.origin, this.registryOrigin, previous.clientId, body,
+      previous.session.repository || null, controller.signal, previous.session.remembered))
       .then(authorization => this.accept(authorization, generation, previous))
       .catch((error: unknown) => { if (generation === this.generation) this.logout(); throw error; })
       .finally(() => {
@@ -156,6 +163,24 @@ export class RegistryTransport {
     }
   }
 
+  async loginShare(secret: string, signal: AbortSignal = AbortSignal.timeout(15000)): Promise<RegistrySession> {
+    if (this.pendingRevoke) throw new RegistryError('Finish signing out before opening a share.');
+    this.logout(); const generation = this.generation;
+    const authorization = await redeemRegistryShare(this.origin, secret, signal);
+    signal.throwIfAborted();
+    return this.accept(authorization, generation);
+  }
+
+  async shareRequest(path: string, init: RequestInit = {}): Promise<unknown> {
+    if (!this.current || this.current.authorizationType !== 'session' || !/^\/shares(?:\/[0-9a-f-]+\/revoke)?$/.test(path)) throw new RegistryError('Sign in as an account to manage shares.', 403);
+    if (this.current.expiresAt <= Date.now() + 30000) await this.renew();
+    const generation = this.generation;
+    const response = await fetch(this.url(path), { ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` }, credentials: 'omit', redirect: 'error', cache: 'no-store' });
+    if (generation !== this.generation) throw new DOMException('Share request cancelled', 'AbortError');
+    const { registryJsonReply } = await import('./session-exchange');
+    return registryJsonReply(response);
+  }
+
   async request(path: string | URL, init: RequestInit = {}, allowMissing = false, retried = false): Promise<Response> {
     if (!this.current || !this.token || this.current.sessionExpiresAt <= Date.now()) {
       this.logout();
@@ -167,9 +192,12 @@ export class RegistryTransport {
     const sentToken = this.token;
     const generation = this.generation;
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${this.token}`);
     const target = this.url(path.toString());
     if (!target.pathname.startsWith('/v2/')) throw new RegistryError('The request is outside this registry connection.');
+    const resource = target.pathname.match(/^\/v2\/(.+)\/(?:blobs|manifests)\//)?.[1] ?? target.pathname.match(/^\/v2\/(.+)\/tags\/list$/)?.[1];
+    const bearer = resource && this.current.authorizationType !== 'access' && this.current.authorizationType !== undefined ? await this.scoped.token(this.origin, this.token, repositoryName(resource)) : this.token;
+    if (generation !== this.generation) throw new DOMException('Registry request cancelled', 'AbortError');
+    headers.set('Authorization', `Bearer ${bearer}`);
     // Blob storage may redirect GETs to object storage. Fetch strips Authorization
     // across origins; RegistryArtifacts still verifies the downloaded source digest.
     const blobGet = (init.method ?? 'GET').toUpperCase() === 'GET' && /\/blobs\/sha256:[a-f0-9]{64}$/.test(target.pathname);
@@ -192,7 +220,8 @@ export class RegistryTransport {
 
   path(repository: string, suffix: string): string {
     if (!this.current) throw new RegistryError('Please sign in to the registry.', 401);
-    if (!this.current.repositories.some(access => access.repository === repositoryName(repository) && access.actions.includes('pull'))) {
+    repositoryName(repository);
+    if (!this.can('pull', repository) && !this.can('push', repository)) {
       throw new RegistryError('Sign in to the selected repository first.', 403);
     }
     return `/v2/${repository}/${suffix}`;

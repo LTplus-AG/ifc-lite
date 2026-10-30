@@ -17,8 +17,7 @@ the checkout; otherwise build with `pnpm build:wasm` and the pinned Rust toolcha
 Make an [ifcx-oci build from main](https://github.com/zahmadsaleem/ifcx-oci/tree/main)
 and `oras` available in your terminal. Follow its
 [browser application setup](https://github.com/zahmadsaleem/ifcx-oci/blob/main/DEVELOPMENT.md#connect-a-browser-application)
-for client and callback registration. The recorded checks use backend revision
-`8f25007`. These commands
+for client and callback registration. Use a matching backend build that advertises `ifcx:session`. These commands
 use only the public `hello-wall.ifc` fixture already in the repository. Run them
 from the IFClite repository root. Choose passwords when prompted:
 
@@ -83,7 +82,9 @@ reference can select a pinned release; users do not need to type a fingerprint.
 
 No models, no versions, expired sign-in, denied access and unknown publication
 records have explicit UI states. Use a new version name each time; the demo
-refuses an existing tag. This check is not an atomic multi-user tag lock.
+refuses an existing tag. The backend also enforces immutable tags atomically: a
+different manifest at an existing tag returns HTTP 409, while a retry of the
+same manifest preserves the original publication record.
 
 ## Connection and discovery boundaries
 
@@ -94,7 +95,9 @@ loopback aliases at its port resolve to the same pinned target. Changing input
 cannot route the proxy to another host or port. URLs containing credentials,
 queries or ambiguous references are rejected before sign-in begins.
 
-The proxy forwards `/v2/`, `/oauth/config`, `/oauth/token` and `/oauth/revoke`.
+The proxy forwards `/v2/`, `/oauth/config`, `/oauth/token`, `/oauth/revoke`,
+Bearer-only GET `/token` exchanges, and the exact share API routes. Basic token
+requests and share credentials in query strings are not part of this flow.
 Only the exact token/revoke routes may pass the named `ifcx_oci_refresh` cookie;
 other request cookies are stripped. Response cookies must have that exact name,
 `Path=/oauth/`, HttpOnly and SameSite=Strict, with no Domain attribute. Discovery
@@ -145,11 +148,39 @@ The viewer has no Basic-auth or password fallback.
 The UI uses the [Distribution catalog
 API](https://distribution.github.io/distribution/spec/api/#listing-repositories)
 at `/v2/_catalog`, plus OCI tag lists and manifests. Catalog listing is not a
-required OCI Distribution endpoint. The UI follows catalog pagination. The Rust registry's explicit local token scope
-`registry:catalog:read` returns the user's current exact repository/action grants
-plus a catalog read capability. It does not issue wildcard repository access.
-Catalog, tag, manifest and blob reads remain permission checked, and current
-SQLite grants can revoke access even while a token is still valid.
+required OCI Distribution endpoint. The UI follows catalog pagination. Browser
+sign-in requests the explicit `ifcx:session` approval, captures the current
+account rules once, and receives a catalog-only root credential. The viewer
+exchanges it at `/token` for each concrete repository's standard OCI token;
+only that resource token accompanies manifest, tag, blob, and upload requests.
+The ordinary `registry:catalog:read` scope grants listing only. Added account
+rules/actions require another login; existing wildcard approvals include future
+matching repositories. Permission removals apply to existing tokens too.
+
+## Expiring shares
+
+Choose **Manage shares** while signed in as an account. A share defaults to the
+selected immutable version with read access. Set an expiry in hours before
+creating the link. Live access to current/future versions and permission to
+publish new versions are explicit choices. The backend checks that the requested
+share is within the account's approved and current grants. Accounts restricted
+to particular tags may need to use the backend CLI/API to express a narrower
+live policy. Links are shown once; **Revoke** ends access immediately.
+
+Paste a `/share#secret=…` link into **Registry address** to connect as a guest
+without an account login. The input is cleared before redemption. The secret is
+sent by POST, stays only in tab memory, and renews short-lived root credentials
+until the share's absolute deadline. Repository tokens remain separately scoped.
+Snapshot shares cannot read future content; an explicitly writable live share
+can publish new version names. Guests cannot create or administer other shares.
+Signing out disconnects a guest locally. An account sign-out does not revoke the
+independent shares it issued; use **Revoke** for that.
+
+The registry's own share landing page removes the fragment before redemption.
+The viewer accepts links only from its configured loopback registry. HTTPS
+registry hosting and arbitrary remote viewer connections remain outside this
+local demo. For account JSON rules, TTL limits, and CLI/HTTP share operations,
+see the backend's [authorization guide](https://github.com/zahmadsaleem/ifcx-oci/blob/main/AUTHORIZATION.md).
 
 ## Titles, provenance and artifact integrity
 
@@ -162,9 +193,10 @@ The Rust registry independently records the authenticated pushing account and
 server timestamp on publication. Manifest GET/HEAD responses expose optional
 `IFCX-Registry-Publisher` and `IFCX-Registry-Pushed-At` headers. These are registry
 extensions; they do not claim the standard OCI manifest contains a trusted
-pusher or upload timestamp. Tag reads report that tag's latest publication;
+pusher or upload timestamp. Tag reads report that tag's original publication;
 digest reads report the first observed publication of those bytes in this
-registry. Older records with no captured provenance show **Publisher not
+registry. Share publications identify `share:<id>` and record the creator in
+`IFCX-Registry-Created-By`. Older records with no captured provenance show **Publisher not
 recorded** and **Publication time not recorded**. An ORAS publication through
 the updated backend records its actual account just like a browser publication.
 
@@ -189,8 +221,8 @@ Run through the root Turbo runner, supplying the real local executables:
 ```sh
 IFCX_OCI_BINARY=/absolute/path/to/ifcx-oci \
 IFCX_ORAS_BINARY=/absolute/path/to/oras \
-TEST_PATTERN='lib/registry/.*test|sources/RegistrySource.test' \
-  pnpm test --filter=@ifc-lite/viewer
+TEST_PATTERN='lib/registry/.*test|components/sources/Registry.*test' \
+  pnpm exec turbo test --filter=@ifc-lite/viewer --only --env-mode=loose
 pnpm typecheck
 pnpm lint
 ```

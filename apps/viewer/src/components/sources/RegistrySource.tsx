@@ -16,6 +16,7 @@ import { parseRegistryAddress } from '@/lib/registry/connection';
 import { clearRegistrySession, registryTransport, updateRegistryWorkspace as update, useRegistryWorkspace } from '@/lib/registry/workspace';
 import { RegistryArtifacts, type RegistryRelease } from '@/lib/registry/artifacts';
 import { exportRegistryModel } from '@/lib/registry/export-model';
+import { RegistryShares } from './RegistryShares';
 import { RegistryPublication, RegistryReleaseDetails } from './RegistryReleaseDetails';
 
 interface RegistrySourceProps {
@@ -125,10 +126,11 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
         event.preventDefault();
         void run(async signal => {
           const connection = parseRegistryAddress(address);
-          const connected = await transport.login(null, signal);
+          if (connection.shareSecret) update({ address: connection.origin });
+          const connected = connection.shareSecret ? await transport.loginShare(connection.shareSecret, signal) : await transport.login(null, signal);
           const catalog = await artifacts.modelCatalog(signal);
           const names = [...catalog.repositories];
-          if (connection.repository && connected.repositories.some(access => access.repository === connection.repository && access.actions.includes('pull')) && !names.includes(connection.repository)) names.unshift(connection.repository);
+          if (connection.repository && transport.can('pull', connection.repository) && !names.includes(connection.repository)) names.unshift(connection.repository);
           signal.throwIfAborted(); update({ session: connected, models: names, modelTitles: catalog.titles, catalogNext: catalog.next, address: connection.origin });
           const model = connection.repository && names.includes(connection.repository) ? connection.repository : names[0];
           if (model) await browseModel(model, signal, connection.reference);
@@ -166,7 +168,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
             <p className="text-xs text-muted-foreground">{modelName ? t('registry.activeModel', { name: modelName }) : t('registry.noModel')}</p>
             <Label htmlFor={`${id}-version`}>{t('registry.newVersion')}</Label>
             <Input id={`${id}-version`} value={version} onChange={event => update({ version: event.target.value })} disabled={busy || !transport.can('push', repository)} />
-            <Button disabled={busy || !modelName || !version || !transport.can('push', repository)} onClick={() => void run(async signal => {
+            <Button disabled={busy || !modelName || !version || !transport.can('push', repository, version)} onClick={() => void run(async signal => {
               const source = await exportRegistryModel(); signal.throwIfAborted();
               const digest = await artifacts.publish(repository, version, source.bytes, source.filename, signal);
               const info = await artifacts.describe(repository, version, signal);
@@ -176,6 +178,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
             })}>{t('registry.publish')}</Button>
             {published && <Button variant="outline" disabled={busy} onClick={() => void run(signal => pull(published, signal))}>{t('registry.reopen')}</Button>}
           </div>
+          <RegistryShares key={`${repository}:${release}`} transport={transport} repository={repository} tag={release} busy={busy} run={operation => void run(operation)} />
           <RegistryReleaseDetails address={address} repository={repository} release={selected} fingerprint={fingerprint || selected?.digest || ''} onCopy={() => void run(async () => { await navigator.clipboard.writeText(fingerprint || selected?.digest || ''); setMessage(t('registry.copied')); })} />
         </> : <p className="text-sm text-muted-foreground">{t('registry.noModels')}</p>}
         {catalogNext && <Button variant="ghost" disabled={busy} onClick={() => void run(async signal => {

@@ -146,13 +146,15 @@ export class RegistryArtifacts {
 
   async publish(repository: string, tag: string, bytes: Uint8Array<ArrayBuffer>, filename: string, signal?: AbortSignal): Promise<string> {
     releaseName(tag);
-    if (!this.transport.can('push', repository)) throw new RegistryError('This account can receive releases but cannot publish them.', 403);
+    if (!this.transport.can('push', repository, tag)) throw new RegistryError('This account can receive releases but cannot publish them.', 403);
     if (!new TextDecoder().decode(bytes.subarray(0, 64)).trimStart().startsWith('ISO-10303-21;')) {
       throw new RegistryError('Publish an IFC STEP source model for this demo.');
     }
     const path = this.transport.path(repository, `manifests/${encodeURIComponent(tag)}`);
-    const current = await this.transport.request(path, { method: 'HEAD', signal }, true);
-    if (current.status !== 404) throw new RegistryError('That version already exists. Choose a new version name.');
+    if (this.transport.can('pull', repository, tag)) {
+      const current = await this.transport.request(path, { method: 'HEAD', signal }, true);
+      if (current.status !== 404) throw new RegistryError('That version already exists. Choose a new version name.');
+    }
     const config = await this.upload(repository, new TextEncoder().encode('{}'), 'application/vnd.oci.empty.v1+json', signal);
     const layer = await this.upload(repository, bytes, 'application/x-step', signal);
     layer.annotations = { 'org.opencontainers.image.title': filename };

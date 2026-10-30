@@ -12,6 +12,7 @@ const TIMEOUT_MS = 5 * 60 * 1000;
 export function validateRegistryOAuthConfig(value: unknown, registryOrigin: string, redirectUri: string): { clientId: string; authorizationEndpoint: string } {
   if (!value || typeof value !== 'object' || !('client_id' in value) || typeof value.client_id !== 'string' || !/^[A-Za-z0-9._~-]{1,128}$/.test(value.client_id) ||
     !('authorization_endpoint' in value) || typeof value.authorization_endpoint !== 'string' ||
+    !('session_scope' in value) || value.session_scope !== 'ifcx:session' || !('scoped_token_endpoint' in value) || value.scoped_token_endpoint !== '/token' ||
     !('token_endpoint' in value) || value.token_endpoint !== '/oauth/token' ||
     !('code_challenge_methods_supported' in value) || !Array.isArray(value.code_challenge_methods_supported) || !value.code_challenge_methods_supported.includes('S256') ||
     !('redirect_uris' in value) || !Array.isArray(value.redirect_uris) || !value.redirect_uris.includes(redirectUri)) {
@@ -56,7 +57,7 @@ export async function registryOAuthLogin(origin: string, registryOrigin: string,
     const redirectUri = `${window.location.origin}${REGISTRY_CALLBACK_PATH}`;
     const { authorizationEndpoint, clientId } = await discoverRegistryOAuth(origin, registryOrigin, attempt.signal);
     const request = await createAuthorizationRequest({ authorizationEndpoint, clientId, redirectUri,
-      scope: repository ? `repository:${repository}:pull,push` : 'registry:catalog:read' });
+      scope: 'ifcx:session' });
     attempt.signal.throwIfAborted();
     const waiting = waitForOAuthCallback({ expectedState: request.state, timeoutMs: TIMEOUT_MS,
       timeoutMessage: 'Registry sign-in timed out. Please try again.', signal: attempt.signal });

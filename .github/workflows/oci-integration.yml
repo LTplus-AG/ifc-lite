@@ -1,0 +1,245 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# `oci://` model references against REAL registries. Not required: a separate,
+# path-filtered workflow (same shape as report-service.yml), so it runs on the
+# PRs that can break it and costs nothing elsewhere.
+#
+#   loopback-registry  zot on 127.0.0.1 with htpasswd auth, two IFC fixtures
+#                      pushed with ORAS, then `ifc-lite info` / `diff` over
+#                      `oci://` refs. Each answer is compared with the same
+#                      command over the local file, so "it printed something"
+#                      is not the bar. A wrong password must fail with an auth
+#                      error, and no output may contain the password.
+#   ghcr-exit-test     workflow_dispatch only: `ifc-lite diff` across the public
+#                      ghcr.io/ltplus-ag/ifc-lite-oci-fixtures:v1/:v2 packages,
+#                      authenticating as the workflow token (packages: read).
+#
+# The CLI reads registry credentials from IFC_LITE_OCI_USERNAME +
+# IFC_LITE_OCI_PASSWORD (or IFC_LITE_OCI_TOKEN). Loopback hosts (127.0.0.1,
+# localhost) are spoken to over plain HTTP; every other host over HTTPS.
+
+name: OCI integration
+
+on:
+  pull_request:
+    paths:
+      - 'packages/oci/**'
+      - 'packages/cli/src/model-input.ts'
+      - 'packages/cli/src/loader.ts'
+      - '.github/actions/setup-oci-registries/**'
+      - '.github/workflows/oci-integration.yml'
+      - 'scripts/oci-integration/**'
+      - 'apps/viewer/public/samples/building-architecture.ifc'
+      - 'apps/viewer/public/samples/building-architecture-rev-b.ifc'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oci-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  loopback-registry:
+    name: oci:// against a loopback zot registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OCI_REGISTRY_USER: ifclite-ci
+      # A committed sample and its derived revision (tools/demo-kit): same
+      # GlobalIds, real differences, so `diff` has something to report.
+      FIXTURE_V1: apps/viewer/public/samples/building-architecture.ifc
+      FIXTURE_V2: apps/viewer/public/samples/building-architecture-rev-b.ifc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # `diff` runs through @ifc-lite/wasm/diff, so the CLI needs a wasm
+      # runtime. The published bundle is the cheap path; it refuses itself when
+      # it does not match the committed .d.ts, and then this builds from source.
+      - name: Fetch prebuilt WASM
+        id: prebuilt-wasm
+        continue-on-error: true
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
+            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying"
+            sleep $((attempt * 5))
+          done
+          exit 1
+      - name: Setup WASM build toolchain
+        if: steps.prebuilt-wasm.outcome != 'success'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: oci-integration
+      - name: Build WASM from source
+        if: steps.prebuilt-wasm.outcome != 'success'
+        run: bash scripts/build-wasm.sh
+
+      - name: Build the CLI
+        run: pnpm turbo build --filter=@ifc-lite/cli
+
+      - name: Setup OCI registry tooling
+        uses: ./.github/actions/setup-oci-registries
+
+      - name: Generate a per-run registry password
+        run: |
+          set -euo pipefail
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "OCI_REGISTRY_PASSWORD=$password" >> "$GITHUB_ENV"
+
+      - name: Start zot on loopback (htpasswd auth)
+        id: registry
+        run: node scripts/oci-integration/start-registry.mjs start --state-dir "$RUNNER_TEMP/oci-registry" --user "$OCI_REGISTRY_USER"
+
+      - name: Push fixtures with ORAS
+        env:
+          REGISTRY: ${{ steps.registry.outputs.address }}
+        run: |
+          node scripts/oci-integration/push-fixtures.mjs --registry "$REGISTRY" --user "$OCI_REGISTRY_USER" \
+            --repository fixtures/model --tag "v1=$FIXTURE_V1" --tag "v2=$FIXTURE_V2"
+
+      - name: ifc-lite info over oci:// matches the local file
+        env:
+          REGISTRY: ${{ steps.registry.outputs.address }}
+          IFC_LITE_OCI_USERNAME: ${{ env.OCI_REGISTRY_USER }}
+          IFC_LITE_OCI_PASSWORD: ${{ env.OCI_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/oci-info"
+          mkdir -p "$out"
+          node packages/cli/dist/index.js info "oci://$REGISTRY/fixtures/model:v1"
+          node packages/cli/dist/index.js info "oci://$REGISTRY/fixtures/model:v1" --json > "$out/oci.json" 2> "$out/oci.stderr"
+          node packages/cli/dist/index.js info "$FIXTURE_V1" --json > "$out/local.json"
+          if grep -rFq -- "$IFC_LITE_OCI_PASSWORD" "$out"; then
+            echo "::error::the registry password appears in ifc-lite info output" >&2
+            exit 1
+          fi
+          # Source path and timing legitimately differ; the model must not.
+          jq -S 'del(.file, .parseTime)' "$out/oci.json" > "$out/oci.norm.json"
+          jq -S 'del(.file, .parseTime)' "$out/local.json" > "$out/local.norm.json"
+          test "$(jq '.entityCount' "$out/local.norm.json")" -gt 0
+          diff -u "$out/local.norm.json" "$out/oci.norm.json"
+
+      - name: ifc-lite diff over oci:// matches the local files
+        env:
+          REGISTRY: ${{ steps.registry.outputs.address }}
+          IFC_LITE_OCI_USERNAME: ${{ env.OCI_REGISTRY_USER }}
+          IFC_LITE_OCI_PASSWORD: ${{ env.OCI_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/oci-diff"
+          mkdir -p "$out"
+          node packages/cli/dist/index.js diff "oci://$REGISTRY/fixtures/model:v1" "oci://$REGISTRY/fixtures/model:v2"
+          node packages/cli/dist/index.js diff "oci://$REGISTRY/fixtures/model:v1" "oci://$REGISTRY/fixtures/model:v2" --json \
+            > "$out/oci.json" 2> "$out/oci.stderr"
+          node packages/cli/dist/index.js diff "$FIXTURE_V1" "$FIXTURE_V2" --json > "$out/local.json"
+          if grep -rFq -- "$IFC_LITE_OCI_PASSWORD" "$out"; then
+            echo "::error::the registry password appears in ifc-lite diff output" >&2
+            exit 1
+          fi
+          jq -S 'del(.file1.path, .file2.path)' "$out/oci.json" > "$out/oci.norm.json"
+          jq -S 'del(.file1.path, .file2.path)' "$out/local.json" > "$out/local.norm.json"
+          # The pair really differs, so an empty diff on both sides cannot pass.
+          if ! jq -e '(.entityCountDelta // 0) != 0 or ((.typeDifferences // []) | length) > 0' "$out/local.json" > /dev/null; then
+            echo "::error::local v1/v2 diff reports no difference; the fixture pair no longer exercises diff" >&2
+            exit 1
+          fi
+          diff -u "$out/local.norm.json" "$out/oci.norm.json"
+
+      - name: Wrong password is refused with an auth error
+        env:
+          REGISTRY: ${{ steps.registry.outputs.address }}
+          IFC_LITE_OCI_USERNAME: ${{ env.OCI_REGISTRY_USER }}
+          IFC_LITE_OCI_PASSWORD: not-the-registry-password
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/oci-wrong-password.log"
+          node packages/cli/dist/index.js info "oci://$REGISTRY/fixtures/model:v1" > "$out" 2>&1
+          status=$?
+          cat "$out"
+          if [ "$status" -eq 0 ]; then
+            echo "::error::ifc-lite info succeeded with a wrong registry password" >&2
+            exit 1
+          fi
+          if ! grep -Eiq 'unauthori[sz]ed|authenticat|401|credential' "$out"; then
+            echo "::error::ifc-lite exited ${status} without an authentication error" >&2
+            exit 1
+          fi
+          if grep -Fq -- "$IFC_LITE_OCI_PASSWORD" "$out"; then
+            echo "::error::the rejected password was echoed in the error output" >&2
+            exit 1
+          fi
+          echo "refused as expected (exit ${status})"
+
+      - name: Dump zot logs
+        if: failure() && steps.registry.outcome != 'skipped'
+        run: node scripts/oci-integration/start-registry.mjs logs --state-dir "$RUNNER_TEMP/oci-registry"
+
+      - name: Stop zot
+        if: always() && steps.registry.outcome != 'skipped'
+        run: node scripts/oci-integration/start-registry.mjs stop --state-dir "$RUNNER_TEMP/oci-registry"
+
+  ghcr-exit-test:
+    name: oci:// diff across public GHCR fixture packages
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch prebuilt WASM
+        id: prebuilt-wasm
+        continue-on-error: true
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
+            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying"
+            sleep $((attempt * 5))
+          done
+          exit 1
+      - name: Setup WASM build toolchain
+        if: steps.prebuilt-wasm.outcome != 'success'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: oci-integration
+      - name: Build WASM from source
+        if: steps.prebuilt-wasm.outcome != 'success'
+        run: bash scripts/build-wasm.sh
+      - name: Build the CLI
+        run: pnpm turbo build --filter=@ifc-lite/cli
+      - name: ifc-lite diff across ghcr.io fixture packages
+        env:
+          IFC_LITE_OCI_USERNAME: ${{ github.actor }}
+          IFC_LITE_OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node packages/cli/dist/index.js diff \
+            oci://ghcr.io/ltplus-ag/ifc-lite-oci-fixtures:v1 \
+            oci://ghcr.io/ltplus-ag/ifc-lite-oci-fixtures:v2

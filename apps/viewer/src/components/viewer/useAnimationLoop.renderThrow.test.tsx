@@ -73,7 +73,6 @@ interface FakeRendererState {
 }
 
 function fakeRenderer(state: FakeRendererState): Renderer {
-  const device = { queue: { onSubmittedWorkDone: () => ({ then: (done: () => void) => done() }) } };
   const camera = {
     update: () => state.animating ?? false,
     getRotation: () => ({ azimuth: 0, elevation: 0 }),
@@ -88,9 +87,9 @@ function fakeRenderer(state: FakeRendererState): Renderer {
   return {
     getCamera: () => camera,
     getScene: () => scene,
-    // A GPU that has finished each frame by the time submit() returns, settled
-    // synchronously because these tests step() frames without yielding to microtasks.
-    getGPUDevice: () => device,
+    // No device: the frame pacer (#5865, covered in useAnimationLoop.gpuBacklog.test.tsx)
+    // never engages, so these tests can step frames synchronously.
+    getGPUDevice: () => null,
     getPipeline: () => ({}),
     peekRenderRequest: () => state.renderRequested,
     consumeRenderRequest: () => { state.renderRequested = false; },

@@ -109,9 +109,12 @@ when a valid site placement has non-identity translation, otherwise `ModelRtc`
 for a detected nonzero large-coordinate anchor, otherwise `RawIfc`. Native
 production removes site rotation in `processor/site_local.rs`; the browser
 prepass deliberately passes no site placement and keeps world axes. Consumers
-use the emitted frame, never select a site tier again: widen positions before
-adding their f64 origin, then restore through `MeshFrame::to_world` or
-`world_matrix` in f64. See [the Rust sink API](../api/rust.md).
+of native `process` output use the emitted frame, never select a site tier
+again: widen positions before adding their f64 origin, then restore through
+`MeshFrame::to_world` or `world_matrix` in f64. See [the Rust sink API](../api/rust.md).
+Exception: `MeshFrame::for_overlay` still recomputes a whole-file frame for the
+overlay APIs, which can differ from a streaming prepass frame sampled from the
+indexed head (#4611).
 
 RTC is applied at different layers depending on the parsing path:
 

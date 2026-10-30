@@ -952,9 +952,9 @@ pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, Processi
 pub use parallel_scan::build_entity_index_parallel;
 ```
 
-Material-layer slicing is opt-in: `ProcessingRequest::layer_slicing(true)`;
+Material-layer slicing is opt-in: `ProcessingRequest::default().layer_slicing(true)`;
 the default is false and does not build the native material-layer index.
-The browser retains its separate merge-layers setting (see [exporting](../guide/exporting.md)).
+The browser retains its separate merge-layers setting (`setMergeLayers`, see [WASM diagnostics and tuning](./wasm.md#diagnostics-and-tuning)).
 
 `process(content, &ProcessingRequest, &mut sink)` is the one native entry point.
 `ProcessingRequest` is a `#[non_exhaustive]` value type with a builder; the two

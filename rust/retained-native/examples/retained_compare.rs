@@ -217,8 +217,8 @@ fn compare(
                         retraced.or_else(|| source::expected(&sources, id, if layered { 1 } else { shape.parts.len() }))
                     };
 
-                    let m6 = ifc_lite_retained_native::oracle::bounded::applies(&bytes, id);
-                    let bounded = m6.then(|| ifc_lite_retained_native::oracle::bounded::expected(&bytes, &sources, id)).flatten();
+                    let m6 = ifc_lite_retained_native::oracle::bounded::applies_from_source(&oracle_source, id);
+                    let bounded = m6.then(|| ifc_lite_retained_native::oracle::bounded::expected_from_source(&oracle_source, &sources, id)).flatten();
                     report.published(
                         &model,
                         &shape,

@@ -29,7 +29,11 @@ impl Expectation {
     }
 }
 pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Option<Expectation> {
-    let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    expected_from_source(&SourceBundle::new(bytes.to_vec()),sources,product)
+}
+/// Reuse the comparison model's source bytes and canonical index.
+pub fn expected_from_source(bundle:&std::sync::Arc<SourceBundle>,sources:&AnalyticQuantitySources,product:u32)->Option<Expectation> {
+    let mut decoder=bundle.decoder();
     let chain=chain(product,&mut decoder)?;if chain.clips.is_empty(){return None;}
     let instances=sources.extrusion_definitions.instances.get(&product)?;
     let instance=instances.iter().find(|i|i.source.solid_id==chain.host)?;
@@ -61,7 +65,7 @@ pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Optio
     }).collect::<Option<Vec<_>>>()?;
     let curved=clips.iter().any(|c|c.edges.as_ref().is_some_and(|e|e.iter().any(|s|matches!(s,super::clipping::Edge::Arc{..}))));
     let host_volume=section_volume(&host,&[])?;
-    let mut scanner=ifc_lite_core::EntityScanner::new(bytes);let mut opening_ids=Vec::new();
+    let mut scanner=ifc_lite_core::EntityScanner::new(bundle.bytes());let mut opening_ids=Vec::new();
     while let Some((id,name,_,_))=scanner.next_entity() {
         if name.eq_ignore_ascii_case("IFCRELVOIDSELEMENT") {
             let relation=decoder.decode_by_id(id).ok()?;
@@ -163,7 +167,11 @@ fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->R
 /// harness uses this separately from `expected`, so a missing oracle cannot
 /// quietly turn into an unverified published product.
 pub fn applies(bytes:&[u8],product:u32)->bool {
-    let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    applies_from_source(&SourceBundle::new(bytes.to_vec()),product)
+}
+/// Detect M6 using the comparison model's existing canonical source index.
+pub fn applies_from_source(bundle:&std::sync::Arc<SourceBundle>,product:u32)->bool {
+    let mut decoder=bundle.decoder();
     super::bounded_source::contains_bounded(product,&mut decoder).unwrap_or(true)
 }
 

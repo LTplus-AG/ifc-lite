@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { parse } from 'yaml';
 import { assertRunnableCargoTests, parseArgs } from './ci-assert-runnable-cargo-tests.mjs';
 import { EXPECTED_WHEEL_ARTIFACTS, prepareWheelMatrix } from './ci-prepare-wheel-matrix.mjs';
 import { runSdkCanaries } from './ci-run-sdk-canaries.mjs';
@@ -67,4 +68,17 @@ test('wheel guard requires the exact matrix and one wheel per artifact', (contex
   const first = join(dist, EXPECTED_WHEEL_ARTIFACTS[0]);
   writeFileSync(join(first, 'duplicate.whl'), 'wheel');
   assert.throws(() => prepareWheelMatrix(root), /exactly one wheel/);
+});
+
+// #8378: the artifact names carry the runner label, so a runner migration that
+// misses this list only fails when a release tag reaches the publish job.
+test('wheel guard expects exactly the artifacts the workflow matrix uploads', () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/python-wheels.yml', import.meta.url), 'utf8'));
+  const uploaded = [workflow.jobs.build, workflow.jobs['build-cross']].flatMap((job) => {
+    const upload = job.steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
+    return job.strategy.matrix.include.map((leg) => upload.with.name
+      .replace('${{ matrix.os }}', leg.os)
+      .replace('${{ matrix.target }}', leg.target));
+  });
+  assert.deepEqual([...EXPECTED_WHEEL_ARTIFACTS].sort(), uploaded.sort());
 });

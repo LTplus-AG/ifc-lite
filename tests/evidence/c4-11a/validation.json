@@ -1,0 +1,250 @@
+{
+  "issue": 7782,
+  "lane": "C4-11a",
+  "pr": "https://github.com/LTplus-AG/ifc-lite/pull/8320",
+  "previousEvidence": "aaae4e06dc1ba8a71469933eecaa728efe1a1853:tests/evidence/c4-11a/validation.json",
+  "source": "d235fc1be5f387d36a94cb0aa4d141d4dc13158f",
+  "base": "298693424041c38f0a44433e770e0b3e75b101ec",
+  "status": "Pushed and ready for GitHub CI; post-push native confirmation passed; oracle/WASM awaiting admission",
+  "parentDirection": "Push and mark ready after cheap local gates. GitHub CI is the merge gate; full green required. Do not reclaim other sessions outputs or relax guards.",
+  "conflictResolutions": {
+    "workflow": "C4-11a oracle first; C4-10a and C4-7a-R branches remain inert because their patches are already on main.",
+    "reset": "Retain begin_content_install/clear_content_derived; use shared discard for setSourceBytes mapped-item invalidation. Source setter retains entity index and injected columns.",
+    "parentTests": "Keep all seven C4-10a tests from main, including mapped-item clearing; batch.rs is identical to main.",
+    "contracts": "Keep extracted wasm-pipeline-diagnostics-contracts from main. Register C4-11a through wasm-early-contracts; test-wasm-contract.mjs remains exactly 2095 lines, budget unchanged.",
+    "ratchets": "Measured reductions retained: prepass.rs 583, api/mod.rs 949, pre_pass_streaming_impl 501. Digest 1392626513646517728 (rust/wasm-bindings, pre-#8317 head c8256598) was confirmed by the passing full workspace native ratchets; after merging main with the C4-10b router (#8317) the pinned digest is 5835089484191047630, recomputed from the merged allowlist with the ratchet's FNV-1a rule (verified to reproduce main's pin).",
+    "perf": "Keep all sections from both sides; no end-to-end performance claim.",
+    "latestMain": "Additional clean merge of main 2986934240 after the C4-10a squash merge 0ace993cc3."
+  },
+  "localChecks": [
+    {
+      "command": "node scripts/check-rust-api-surface.mjs",
+      "exitCode": 0,
+      "result": "8 crates, 726 tracked items match snapshot; four existing ambiguous names reported."
+    },
+    {
+      "command": "node scripts/check-module-size.mjs",
+      "exitCode": 0,
+      "result": "6532 files; no added or raised budgets; two Rust module budgets lowered."
+    },
+    {
+      "command": "git apply --reverse --check tests/evidence/c4-11a/behaviour.oracle.patch",
+      "exitCode": 0
+    },
+    {
+      "command": "git apply --check tests/evidence/c4-11a/behaviour.oracle.patch",
+      "exitCode": 1,
+      "result": "Expected rejection: forward mutation must not apply."
+    },
+    {
+      "command": "git diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts",
+      "exitCode": 0,
+      "result": "Committed declarations unchanged; fresh-build confirmation pending."
+    },
+    {
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exitCode": 0,
+      "result": "All 21 candidate walks guarded; eight pre-existing fan-out budget reviews."
+    },
+    {
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/check-test-wiring.mjs",
+      "exitCode": 0
+    }
+  ],
+  "fleet": {
+    "storageTask": "c4-11a-main-367c9abd",
+    "host": "pop-os",
+    "prefix": "~/build-workers/ifc-fleet run --host pop-os --storage-task c4-11a-main-367c9abd --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-367c9abd --cpu 4 --memory 16 --",
+    "refusedAttempt": {
+      "requestId": "auto-d2ab466cecf84e8997fc01edcb3f31ed",
+      "source": "a64ab48391d30896b8310545ff97ee8fd881fc5a",
+      "command": "cargo test -p ifc-lite-processing --test module_size_ratchet -- --nocapture",
+      "state": "blocked at preflight; no job dispatched",
+      "exitCode": 69
+    },
+    "commands": [
+      "cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace -- --nocapture",
+      "node scripts/check-test-revert-oracle.mjs --base origin/main --mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs --verify-restored --ci --json",
+      "pnpm install --frozen-lockfile && pnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export... && pnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc && CI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh && pnpm test:wasm-contract && git diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts"
+    ],
+    "coverage": "Full native workspace checks passed at source 50f8b0cb44. Optional fixture early-return branches remain unexercised; see native run coverage. Oracle execution and fresh retained/default WASM runtime contracts remain pending admission.",
+    "blocker": "Pop briefly reopened but refused the oracle/WASM preflight as capacity changed. PC also remains storage-guard blocked. No foreign outputs/jobs or guard settings changed.",
+    "postPushConfirmation": {
+      "result": "PASS: original native run completed with exit 0; its recovered evidence manifest is verified. Source 50f8b0cb44 has the same Rust, Cargo inputs and toolchain as parent head 15c10854f4."
+    },
+    "runs": [
+      {
+        "requestId": "auto-792cb75afd3a4c53aee1517e27d7d22d",
+        "jobId": "58dcbb5b-2a73-43b9-8d20-d57036ea1008",
+        "source": "50f8b0cb44458e8adbc76d0b7d9015f274e528ae",
+        "state": "completed",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/58dcbb5b-2a73-43b9-8d20-d57036ea1008/receipt.json",
+        "log": "/home/louistrue/build-workers/worker-state/jobs/58dcbb5b-2a73-43b9-8d20-d57036ea1008/output.log",
+        "inspect": "~/build-workers/ifc-fleet job --id auto-792cb75afd3a4c53aee1517e27d7d22d",
+        "resubmit": false,
+        "exitCode": 0,
+        "command": "cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace -- --nocapture",
+        "sourceUnchanged": true,
+        "receiptSha256": "fbcb0c80e055f5d11d3a9d70b2e61ca2f3be024da3e2483f7f0d15fa64894a79",
+        "outputSha256": "11ec0a3e629ae44cc670e2f81da17925a132c0e65cfa92be25b80a758871b3d9",
+        "evidence": {
+          "manifest": "pop-os-58dcbb5b-2a73-43b9-8d20-d57036ea1008-cf2a4410bc97",
+          "manifestSha256": "615a57e3df03edca74c5bfc270c0d2223722f1ec8130d48f4bee57d9244c6473",
+          "verified": true
+        },
+        "result": "Workspace all-target clippy -D warnings and cargo test --workspace passed. All three C4-11a witnesses, seven C4-10a WASM witnesses plus its report contract, C4-0 over 15 committed fixtures, and all native ratchets passed.",
+        "coverage": {
+          "reportedPasses": 7515,
+          "reportedIgnored": 48,
+          "resultLines": 475,
+          "countNote": "Totals sum successful harness result lines, including doctests and nested child-test output; early returns for optional fixtures are coverage gaps, not exercised fixtures.",
+          "missingOptionalFixtures": [
+            "AB22.ifc",
+            "ara3d/AC20-FZK-Haus.ifc",
+            "ara3d/AC20-FZK-Haus.ifctest appearance::catalog::tests::issue_4243_uses_effective_snapshot_retypes_and_relation_reassignment ... ",
+            "ara3d/C20-Institute-Var-2.ifc",
+            "ara3d/FM_ARC_DigitalHub.ifc",
+            "ara3d/ISSUE_021_Mini Project.ifc",
+            "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+            "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+            "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+            "ara3d/IfcOpenHouse_IFC4.ifc",
+            "ara3d/S_Office_Integrated Design Archi.ifc",
+            "ara3d/advanced_model.ifc",
+            "ara3d/dental_clinic.ifc",
+            "ara3d/duplex.ifc",
+            "ara3d/schependomlaan.ifc",
+            "buildingsmart/Building-Architecture.ifc",
+            "buildingsmart/Viadotto_Acerno.ifc",
+            "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+            "buildingsmart/annex_e/advanced-geometric-shape/basin-faceted-brep.ifc",
+            "buildingsmart/annex_e/advanced-geometric-shape/basin-tessellation.ifc",
+            "buildingsmart/annex_e/advanced-geometric-shape/bath-csg-solid.ifc",
+            "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+            "buildingsmart/annex_e/basic-geometric-shape/brep-model.ifc",
+            "buildingsmart/annex_e/basic-geometric-shape/csg-primitive.ifc",
+            "buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc",
+            "buildingsmart/annex_e/basic-geometric-shape/surface-model.ifc",
+            "buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc",
+            "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-multiple-items.ifc",
+            "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-transformation.ifc",
+            "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-without-transformation.ifc",
+            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+            "buildingsmart/annex_e/tessellated-shape/beam-curved-i-shape-tessellated.ifc",
+            "buildingsmart/annex_e/tessellated-shape/beam-straight-i-shape-tessellated.ifc",
+            "buildingsmart/annex_e/tessellated-shape/column-straight-rectangle-tessellation.ifc",
+            "buildingsmart/annex_e/tessellated-shape/polygonal-face-tessellation.ifc",
+            "buildingsmart/annex_e/tessellated-shape/slab-tessellated-unique-vertices.ifc",
+            "buildingsmart/wall-with-opening-and-window.ifc",
+            "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+            "ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+            "ifcopenshell/1019-column.ifc",
+            "ifcopenshell/1030-sphere.ifc",
+            "ifcopenshell/1032-curve.ifc",
+            "ifcopenshell/1269--Project_IfcDuctFitting.ifc",
+            "ifcopenshell/764--column--no-materials-or-surface-styles-found--augmented.ifc",
+            "ifcopenshell/928-column.ifc",
+            "ifcopenshell/advanced_brep.ifc",
+            "ifcopenshell/generated_structural_edge_curve.ifc",
+            "ifcopenshell/generated_structural_surface_member.ifc",
+            "ifcopenshell/structural_analysis_curve.ifc",
+            "issues/1007_roof_brep_opening_winding.ifc",
+            "issues/218_IFC-test-lite.ifc",
+            "issues/424_frame.ifc",
+            "issues/472_2222.ifc",
+            "issues/819_IFC4TessellationComplex.ifc",
+            "issues/820_RadianValuesOverPI.ifc",
+            "issues/821_TallBuilding.ifc",
+            "issues/828_sectioned-solid.ifc",
+            "issues/832_opening_representations.ifc",
+            "issues/841_house_stack_overflow.ifc",
+            "issues/842_rational_bspline_surface.ifc",
+            "issues/844_terrain_and_alignment.ifc",
+            "issues/845_wall_elemented_case.ifc",
+            "issues/846_revolved_beam.ifc",
+            "issues/846_revolved_beam.ifctest extrusion_beam_unchanged_under_revolved_fix ... ",
+            "issues/853_slab_pocket.ifc",
+            "issues/854_air_terminal_hollow_fillet.ifc",
+            "issues/858_indexed_colour_map.ifc",
+            "issues/859_linear_placement_of_signal.ifc",
+            "issues/860_solid_stratum.ifc",
+            "issues/953_trimmed_curve_cartesian_arc.ifc",
+            "issues/960_house_segmented_roof_clip.ifc",
+            "issues/964_slab_arbitrary_profile_voids.ifc",
+            "landxml/federation/bonsai-topo-control-v1/control.json",
+            "landxml/federation/bonsai-topo-control-v1/terrain.ifc",
+            "landxml/federation/bonsai-topo-control-v1/terrain.xml",
+            "landxml/producers/3d-win-6.6.4-m3-lighting-cgpoints.xml",
+            "landxml/producers/3d-win-6.6.4-m3-road-alignment.xml",
+            "landxml/producers/3d-win-6.6.4-m3-rockbed-terrain.xml",
+            "landxml/producers/aplitop-mdt-8.0-alignment.xml",
+            "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml",
+            "landxml/producers/bentley-openroads-designer-10.09-us-survey-foot-alignment.xml",
+            "landxml/producers/trimble-novapoint-21.354-drainage.xml",
+            "test issue_583_institute_var2_no_csg_failures ... ara3d/AC20-FZK-Haus.ifc",
+            "various/01_BIMcollab_Example_ARC.ifc",
+            "various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+            "various/02_BIMcollab_Example_STR_random_C_ebkp.ifc",
+            "various/issue-604-door.ifc",
+            "various/rvt01.ifc",
+            "various/test-colors.ifc",
+            "various/test.ifc",
+            "x.ifc"
+          ],
+          "c4ParityFixtures": [
+            "C4-0 c4_0_refusal_parity_7782.ifc: 0 differences, full payloads compared",
+            "C4-0 c4_bare_type_map_7782.ifc: 0 differences, full payloads compared",
+            "C4-0 c4_native_unsliced_layers_7782.ifc: 4 differences, full payloads compared",
+            "C4-0 c4_type_geometry_modes_7782.ifc: 2 differences, full payloads compared",
+            "C4-0 issue_1781_image_textures.ifc: 2 differences, full payloads compared",
+            "C4-0 issue_1910_building_shell_geometry.ifc: 0 differences, full payloads compared",
+            "C4-0 issue_2019_wall_two_overlapping_openings.ifc: 0 differences, full payloads compared",
+            "C4-0 issue_3641_voiding_trap.ifc: 0 differences, full payloads compared",
+            "C4-0 issue_4560_wall_roof_polygonal_cutters.ifc: 4 differences, full payloads compared",
+            "C4-0 issue_6601_multicolor_element.ifc: 2 differences, full payloads compared",
+            "C4-0 mapped_instances_indexed_colour.ifc: 0 differences, full payloads compared",
+            "C4-0 mapped_instances_indexed_colour_uniform.ifc: 0 differences, full payloads compared",
+            "C4-0 mapped_instances_site_rotated.ifc: 8 differences, full payloads compared",
+            "C4-0 mapped_instances_site_translated.ifc: 0 differences, full payloads compared",
+            "C4-0 mapped_instances_synthetic.ifc: 0 differences, full payloads compared"
+          ]
+        }
+      }
+    ],
+    "pending": {
+      "state": "One bounded admission waiter for combined oracle and fresh retained/default WASM confirmation; no duplicate executing job.",
+      "source": "Latest clean sweep/c4-11a head at admission; fleet receipt records its exact commit.",
+      "blockedRequestId": "auto-d457a9364e2b49c6b18a566f327d6259",
+      "blockedResult": "Pop capacity guard refused preflight, exit 69; no execution was dispatched.",
+      "commands": [
+        "node scripts/check-test-revert-oracle.mjs --base origin/main --mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs --verify-restored --ci --json",
+        "pnpm install --frozen-lockfile && pnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export... && pnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc && CI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh && pnpm test:wasm-contract && git diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts"
+      ]
+    }
+  },
+  "performanceVerdict": "End-to-end worker-pool timing and whole-host memory remain unmeasured. No speedup or performance-neutrality claim.",
+  "cleanup": {
+    "newGeneratedWorkspaces": 1,
+    "newBuildArtifacts": "Native job reconciled and evidence recovered; managed source/cache remain owned by c4-11a-main-367c9abd pending remaining confirmation.",
+    "bytesReclaimed": 0,
+    "priorOwnTask": "c4-11a-review-3f49607b",
+    "priorOwnTaskReclaim": "Attempt refused by live process/T3 reference guard; no bypass. Other sessions outputs preserved. Close new owning task after post-push fleet results and evidence publication.",
+    "publicationRecovery": "Original native job-finish mirror initially failed at PC ingest. Recovered publication using storage job-finish --receipt on the original completed receipt; no project command replayed. Manifest verified."
+  },
+  "pushedHead": "50f8b0cb44458e8adbc76d0b7d9015f274e528ae",
+  "parentChanges": {
+    "source": "15c10854f4e4da0800eda38bc39edf033fd6737c",
+    "preserved": [
+      "9d28d7e3f8: lane oracle selector is elif after the #8112 selector",
+      "15c10854f4: re-send style finishes after content installs"
+    ],
+    "nativeEquivalence": "git diff --quiet 50f8b0cb44 HEAD -- rust Cargo.toml Cargo.lock rust-toolchain.toml .cargo passed before this evidence update."
+  }
+}

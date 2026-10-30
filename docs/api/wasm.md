@@ -331,6 +331,35 @@ try {
 }
 ```
 
+#### Content installation and cleanup
+
+`buildPrePassOnce`, accepted streaming/sharded prepasses, and `setEntityIndex`
+start a new content lifetime. They drop derived textures, indexed colours,
+material layers, parts-to-skip, referenced maps, instantiated types, type-geometry
+and mapped-instance plans, style colours/finishes, item/mapped meshes and BRep
+signatures. They also expire previous owned production snapshots and restart
+pipeline diagnostics. A rejected or empty `setEntityIndex` discards the old
+index; the next batch scans its bytes. Sharded column-length validation occurs
+before installation, so a length refusal leaves the current load intact.
+
+Source bytes are a separate input: index/prepass installation preserves them.
+Workers install index and prepass columns before `setSourceBytes`; CLI clients
+may install bytes before prepass. `setSourceBytes` replaces bytes and expires
+production snapshots/BRep signatures, preserving the already-installed index
+and columns. Pair these inputs from the same file before calling `*FromSource`.
+A byte-only swap is not sufficient to reuse an old index for a different file.
+
+Install `setStyleFinishes` after the prepass/index boundary. Lazy batch index
+construction preserves finishes and columns supplied for that batch. The
+`setPrepassGeometryFinishes` stash is separate input for the next finalize call:
+content installation preserves it, successful finalize consumes it, and the
+worker reinstalls it before each SAB/owned-buffer retry.
+
+`clearPrePassCache` drops derived data, source bytes and any unfinished finalize
+stash, and expires production snapshots. It preserves completed diagnostics
+for reading after `finally` cleanup. Tessellation, layer merging, small-cut and
+geometry-hash settings persist across both installation and cleanup.
+
 #### Diagnostics and Tuning
 
 ```typescript

@@ -34,7 +34,7 @@ impl IfcAPI {
     /// but is handled defensively: the decoder validates every byte span, so an
     /// empty source simply yields zero meshes instead of panicking.
     pub(super) fn source_bytes_arc(&self) -> std::sync::Arc<Vec<u8>> {
-        self.cached_source_bytes
+        self.content.cached_source_bytes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
@@ -60,12 +60,11 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = setSourceBytes)]
     pub fn set_source_bytes(&self, data: Vec<u8>) {
         self.reset_pipeline_diagnostics();
-        self.production_model.invalidate_source();
+        self.content.production_model.invalidate_source();
         self.invalidate_brep_signatures();
         // Source-keyed like the brep signatures: a new file must not reuse old mapped meshes.
-        self.cached_mapped_item.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
-        let mut slot = self
-            .cached_source_bytes
+        super::super::content_lifetime::discard(&self.content.cached_mapped_item);
+        let mut slot = self.content.cached_source_bytes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::new(data));

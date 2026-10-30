@@ -1,5 +1,42 @@
 # @ifc-lite/cli
 
+## 0.44.0
+
+### Minor Changes
+
+- [#8324](https://github.com/LTplus-AG/ifc-lite/pull/8324) [`e88b3d4`](https://github.com/LTplus-AG/ifc-lite/commit/e88b3d4a082f03482fe75c8ce5b2ef1084a08eec) Thanks [@louistrue](https://github.com/louistrue)! - Publish retained material bands for eligible straight and circular-axis walls, remove their shared interface caps atomically, and report layer tags, certified band volumes and `layer_caps_unresolved` refusals. Exact geometry output is unchanged.
+
+- [#8285](https://github.com/LTplus-AG/ifc-lite/pull/8285) [`8a7d4ff`](https://github.com/LTplus-AG/ifc-lite/commit/8a7d4ff5bc5d095668d4e9f70cc4e8021176289f) Thanks [@louistrue](https://github.com/louistrue)! - Retained products now publish their resolved appearance. Every published part carries `color`, plus `geometryItemId` when it comes from an authored geometry item (type-map and unbound parts carry none, as in exact) and `materialName` when authored, resolved through the exact engine's own colour resolver, and `IfcAppearance` is discharged, so it is no longer listed in `obligationsUnmet` (with M4, surface normals and persistent faces also discharged, fully proved products publish `final` with no unmet obligations). A binding that carries a texture or an indexed colour palette refuses `appearance_unsupported`. The retained viewer joins the authored metallic/roughness finish. The default exact engine and default wasm are unchanged.
+
+- [#8299](https://github.com/LTplus-AG/ifc-lite/pull/8299) [`ae8a763`](https://github.com/LTplus-AG/ifc-lite/commit/ae8a76355e8cbc167b6c6decc72b4f26a67e6ce9) Thanks [@louistrue](https://github.com/louistrue)! - Add optional retained-only GPU instancing for byte-identical rigid mapped products.
+  Retained reports identify candidate instance groups from `instanceKey`; remove the
+  unused raw `RetainedShapeProduct.instanceGroup` field. OBJ keeps all occurrences baked.
+  Retained-only bounds and first-frame updates use the loaded source kernel; exact
+  loads keep their existing shard drain, camera fitting, and milestone timing.
+
+- [#8324](https://github.com/LTplus-AG/ifc-lite/pull/8324) [`e88b3d4`](https://github.com/LTplus-AG/ifc-lite/commit/e88b3d4a082f03482fe75c8ce5b2ef1084a08eec) Thanks [@louistrue](https://github.com/louistrue)! - Retained products publish as `final` when opening, layer and presentation proofs are complete. Products with remaining obligations retain their shape-only marker. OBJ headers, reports and the viewer reflect the same state; material bands resolve their own appearance through exact’s resolver.
+
+### Patch Changes
+
+- [#8322](https://github.com/LTplus-AG/ifc-lite/pull/8322) [`774052a`](https://github.com/LTplus-AG/ifc-lite/commit/774052abc729411e8b9ba8512aeaada61d9e4cb2) Thanks [@louistrue](https://github.com/louistrue)! - Include the wasm_sync Apache-2.0 licence election and the exact-release source URL template in third-party notices. Retained engine binaries remain separately staged.
+
+- [#8344](https://github.com/LTplus-AG/ifc-lite/pull/8344) [`659f787`](https://github.com/LTplus-AG/ifc-lite/commit/659f7878922efabcbde1879f093d881f554147ea) Thanks [@louistrue](https://github.com/louistrue)! - Initialize the shared diff runtime internally before the content comparison and layer merge operations that call the synchronous Rust facade. Initialization failures propagate and subsequent requests can retry through the shared runtime. Users of this package need no new setup.
+
+- [#8319](https://github.com/LTplus-AG/ifc-lite/pull/8319) [`8303762`](https://github.com/LTplus-AG/ifc-lite/commit/83037622abbc521cbce5764036fb33c44cbdb856) Thanks [@louistrue](https://github.com/louistrue)! - Publish mirrored and scaled retained mapped results atomically, preserving outward winding. Refuse enlarged curved results, and results with partial-arc or oblique swept surfaces, with `incomplete` before any kernel work. Exact remains the default.
+
+- [#8302](https://github.com/LTplus-AG/ifc-lite/pull/8302) [`f2271ec`](https://github.com/LTplus-AG/ifc-lite/commit/f2271ec4fb5b9bd59fedb7802b3438bbdf0b18ba) Thanks [@louistrue](https://github.com/louistrue)! - Add an internal-only batch fingerprint entry point for in-repo adapters and compact lossless WASM transport. The internal subpath has no semver guarantee; existing public APIs retain their behavior.
+- Updated dependencies [[`e88b3d4`](https://github.com/LTplus-AG/ifc-lite/commit/e88b3d4a082f03482fe75c8ce5b2ef1084a08eec), [`d3eb48a`](https://github.com/LTplus-AG/ifc-lite/commit/d3eb48a12d3b5982603e023961e0709c5933429d), [`2b62959`](https://github.com/LTplus-AG/ifc-lite/commit/2b629592f6c47cfe8958adc128b5309c0bfcf4e0), [`774052a`](https://github.com/LTplus-AG/ifc-lite/commit/774052abc729411e8b9ba8512aeaada61d9e4cb2), [`7d391e2`](https://github.com/LTplus-AG/ifc-lite/commit/7d391e2ad2e449c9713a02113c0a81a8381673af), [`0ace993`](https://github.com/LTplus-AG/ifc-lite/commit/0ace993cc37265019ad3b3241f863caeb8179de9), [`659f787`](https://github.com/LTplus-AG/ifc-lite/commit/659f7878922efabcbde1879f093d881f554147ea), [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65), [`2986934`](https://github.com/LTplus-AG/ifc-lite/commit/298693424041c38f0a44433e770e0b3e75b101ec), [`8a7d4ff`](https://github.com/LTplus-AG/ifc-lite/commit/8a7d4ff5bc5d095668d4e9f70cc4e8021176289f), [`ae8a763`](https://github.com/LTplus-AG/ifc-lite/commit/ae8a76355e8cbc167b6c6decc72b4f26a67e6ce9), [`e88b3d4`](https://github.com/LTplus-AG/ifc-lite/commit/e88b3d4a082f03482fe75c8ce5b2ef1084a08eec), [`d6363d7`](https://github.com/LTplus-AG/ifc-lite/commit/d6363d7d5377b2f12620eb7ab9ddfc46a739cb58), [`b46c759`](https://github.com/LTplus-AG/ifc-lite/commit/b46c759601838b5d91dd54e4355feec2fea047af), [`8303762`](https://github.com/LTplus-AG/ifc-lite/commit/83037622abbc521cbce5764036fb33c44cbdb856), [`2d2ee70`](https://github.com/LTplus-AG/ifc-lite/commit/2d2ee702676e6f270fbab498bf975c0c33a9c074), [`c0acc2d`](https://github.com/LTplus-AG/ifc-lite/commit/c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1), [`f2271ec`](https://github.com/LTplus-AG/ifc-lite/commit/f2271ec4fb5b9bd59fedb7802b3438bbdf0b18ba), [`2f028bb`](https://github.com/LTplus-AG/ifc-lite/commit/2f028bb080e8e5a1a0fb89539480de404e425400), [`68c8f8f`](https://github.com/LTplus-AG/ifc-lite/commit/68c8f8fed82fb903b26d45f059e8e1b0a09f0eaf), [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65)]:
+  - @ifc-lite/wasm@12.1.0
+  - @ifc-lite/export@4.13.2
+  - @ifc-lite/geometry@8.0.2
+  - @ifc-lite/mcp@0.28.1
+  - @ifc-lite/merge@0.5.0
+  - @ifc-lite/ids@3.4.3
+  - @ifc-lite/diff@0.13.0
+  - @ifc-lite/flow-nodes@0.12.0
+  - @ifc-lite/ids-authoring@0.3.3
+  - @ifc-lite/rules@0.7.11
+
 ## 0.43.0
 
 ### Minor Changes

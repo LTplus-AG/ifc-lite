@@ -11,15 +11,20 @@
      };
 --- a/rust/retained-native/src/oracle/affine_classify.rs
 +++ b/rust/retained-native/src/oracle/affine_classify.rs
-@@ -94,6 +94,10 @@ pub(super) fn classify(d:&mut EntityDecoder<'_>,id:u32) -> Classification {
-     match mapped_items(d,id) {
-         Ok(items) if items.iter().any(|(_,_,affine)|*affine) => Classification::Affine,
-         Ok(_) => Classification::Rigid,
+@@ -80,7 +80,7 @@ fn scan(d:&mut EntityDecoder<'_>,id:u32) -> Result<bool,String> {
+                 affine|=nonrigid(&map);
+                 pending.extend(items.into_iter().map(|item|(item,depth+1)));
+             }
+-            IfcType::IfcBooleanResult if false=>{
++            IfcType::IfcBooleanResult|IfcType::IfcBooleanClippingResult=>{
+                 for operand in [slot::IfcBooleanResult::FIRST_OPERAND,slot::IfcBooleanResult::SECOND_OPERAND] {
+                     pending.push((node.ref_at(operand).ok_or_else(||format!("Boolean #{id} operand unavailable"))?,depth+1));
+                 }
+@@ -102,6 +102,6 @@ pub(super) fn classify(d:&mut EntityDecoder<'_>,id:u32) -> Classification {
+     match scan(d,id) {
+         Ok(true) => Classification::Affine,
+         Ok(false) => Classification::Rigid,
 -        Err(_) => Classification::Rigid,
-+        Err(reason) => match contains_mapped(d,id) {
-+            Ok(false) => Classification::Rigid,
-+            Ok(true) => Classification::Unmodelled(reason),
-+            Err(also) => Classification::Unmodelled(format!("{reason}; {also}")),
-+        },
++        Err(reason) => Classification::Unmodelled(reason),
      }
  }

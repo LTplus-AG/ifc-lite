@@ -65,24 +65,39 @@ fn placement(d:&mut EntityDecoder<'_>,mut id:Option<u32>) -> Option<Frame> {
     Some(m)
 }
 /// IfcBaseAxis: project Axis1 against D3 and Axis2 against both, preserving its sign.
+/// The 2D operators have no Axis3 (their attribute 4 is Scale2); the plane normal
+/// is +Z and Z keeps the uniform Scale, as the production reader does.
 fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option<(Frame,Vec<u32>)> {
     let map=d.decode_by_id(source).ok()?;
     let origin=axes(d,map.ref_at(slot::IfcRepresentationMap::MAPPING_ORIGIN))?;
     let rep=d.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?;
     let items=rep.ref_list_at(slot::IfcRepresentation::ITEMS)?;
     let op=d.decode_by_id(target).ok()?;
-    use slot::IfcCartesianTransformationOperator3D as O;
-    let z=direction(d,op.ref_at(O::AXIS3),[0.,0.,1.])?;
+    use slot::IfcCartesianTransformationOperator as O;
+    let two_d=matches!(op.ifc_type,IfcType::IfcCartesianTransformationOperator2D|IfcType::IfcCartesianTransformationOperator2DnonUniform);
+    let z=if two_d {[0.,0.,1.]} else {
+        direction(d,op.ref_at(slot::IfcCartesianTransformationOperator3D::AXIS3),[0.,0.,1.])?
+    };
     let default=if z[0].abs()>0.999999 {[0.,1.,0.]} else {[1.,0.,0.]};
-    let x=direction(d,op.ref_at(O::AXIS1),default)?;
+    let (axis1,axis2)=(op.ref_at(O::AXIS1),op.ref_at(O::AXIS2));
+    let x=match (two_d,axis1,axis2) {
+        // IfcBaseAxis 2D: Axis2 alone fixes the frame; X is its clockwise perpendicular.
+        (true,None,Some(y)) => {let y=unit(d.direction3(y).ok()?)?;[y[1],-y[0],0.]}
+        _ => direction(d,axis1,default)?,
+    };
     let x=unit(sub(x,z.map(|v|v*dot(x,z))))?;
-    let y=direction(d,op.ref_at(O::AXIS2),[0.,1.,0.])?;
+    let y=direction(d,axis2,[0.,1.,0.])?;
     let y=unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x))))?;
     let s=op.real_at(O::SCALE).unwrap_or(1.);
-    let (s2,s3)=if op.ifc_type==IfcType::IfcCartesianTransformationOperator3DnonUniform {
-        (op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2).unwrap_or(s),
-         op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3).unwrap_or(s))
-    } else if op.ifc_type==IfcType::IfcCartesianTransformationOperator3D {(s,s)} else {return None};
+    let (s2,s3)=match op.ifc_type {
+        IfcType::IfcCartesianTransformationOperator3DnonUniform=>
+            (op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2).unwrap_or(s),
+             op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3).unwrap_or(s)),
+        IfcType::IfcCartesianTransformationOperator2DnonUniform=>
+            (op.real_at(slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2).unwrap_or(s),s),
+        IfcType::IfcCartesianTransformationOperator3D|IfcType::IfcCartesianTransformationOperator2D=>(s,s),
+        _=>return None,
+    };
     let matrix=columns(x.map(|v|v*s),y.map(|v|v*s2),z.map(|v|v*s3),d.point3(op.ref_at(O::LOCAL_ORIGIN)?).ok()?);
     Some((multiply(&matrix,&inverse_rigid(&origin)),items))
 }
@@ -265,6 +280,16 @@ fn length_unit(bytes:&[u8],d:&mut EntityDecoder<'_>) -> Option<f64> {
     }
     None
 }
+/// Whether a published product's mapped body carries a nonrigid transform.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Classification {
+    /// No mapped item changes handedness or scale.
+    Rigid,
+    /// At least one mapped item mirrors or scales: signed winding is mandatory.
+    Affine,
+    /// A mapped body this oracle cannot decode. The harness must fail closed.
+    Unmodelled(String),
+}
 /// One decoder and source index per model, shared by publication/refusal checks.
 pub struct AffineOracle<'a> {
     decoder: EntityDecoder<'a>,
@@ -288,7 +313,21 @@ impl<'a> AffineOracle<'a> {
     }
     /// Mapping classification does not depend on an analytic solid oracle.
     pub fn is_affine_final(&mut self,id:u32) -> bool {
-        final_items(&mut self.decoder,id).is_some_and(|items| items.iter().any(|(_,_,_,affine)|*affine))
+        matches!(self.classify(id),Classification::Affine)
+    }
+    /// Classification needs neither the world placement nor an analytic solid.
+    /// A mapped body that cannot be classified is `Unmodelled`, never `Rigid`:
+    /// a mirrored map must not publish without its winding gate (#7955).
+    pub fn classify(&mut self,id:u32) -> Classification {
+        match mapped_items(&mut self.decoder,id) {
+            Ok(items) if items.iter().any(|(_,_,affine)|*affine) => Classification::Affine,
+            Ok(_) => Classification::Rigid,
+            Err(reason) => match contains_mapped(&mut self.decoder,id) {
+                Ok(false) => Classification::Rigid,
+                Ok(true) => Classification::Unmodelled(reason),
+                Err(also) => Classification::Unmodelled(format!("{reason}; {also}")),
+            },
+        }
     }
     pub fn expected(&mut self,id:u32) -> Option<Vec<AffineExpectation>> {
         expected_decoded(&mut self.decoder,self.units?,id,self.openings.contains(&id))
@@ -299,36 +338,72 @@ fn nonrigid(m:&Frame) -> bool {
     dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.
         || (min-1.).abs()>1e-12 || (max-1.).abs()>1e-12
 }
-fn final_items(d:&mut EntityDecoder<'_>,id:u32) -> Option<Vec<(u32,Frame,Frame,bool)>> {
-    let p=d.decode_by_id(id).ok()?;
-    let (reps,world)=if p.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
+/// The product's selected representations, as item ids to walk.
+fn selected_items(d:&mut EntityDecoder<'_>,id:u32) -> Result<Vec<u32>,String> {
+    let unavailable=|what:&str| format!("{what} of #{id} unavailable");
+    let p=d.decode_by_id(id).map_err(|_|unavailable("product"))?;
+    let reps=if p.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
         let mut reps=Vec::new();
-        for id in p.ref_list_at(slot::IfcTypeProduct::REPRESENTATION_MAPS)? {
-            let map=d.decode_by_id(id).ok()?;
-            reps.push(d.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?);
+        for id in p.ref_list_at(slot::IfcTypeProduct::REPRESENTATION_MAPS).ok_or_else(||unavailable("representation maps"))? {
+            let map=d.decode_by_id(id).map_err(|_|unavailable("representation map"))?;
+            let rep=map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION).ok_or_else(||unavailable("mapped representation"))?;
+            reps.push(d.decode_by_id(rep).map_err(|_|unavailable("mapped representation"))?);
         }
-        (reps,IDENTITY)
+        reps
     } else {
-        let world=placement(d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
-        let shape=ifc_lite_geometry::representation::product_shape(&p,d).ok()??;
-        (shape.representations().to_vec(),world)
+        // `Ok(None)` is a product without a body: nothing selected, nothing mapped.
+        let Some(shape)=ifc_lite_geometry::representation::product_shape(&p,d).map_err(|_|unavailable("shape"))? else {return Ok(Vec::new())};
+        shape.representations().to_vec()
     };
-    let mut stack=Vec::new();
+    let mut items=Vec::new();
     // Use the retained selector's predicate: RepresentationType selects body
     // geometry even without an identifier, and direct geometry suppresses maps.
     for rep in ifc_lite_geometry::representation::meshed_representations(&p,&reps) {
-        for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS)?.into_iter().rev() {stack.push((id,world,IDENTITY,0,false));}
+        items.extend(rep.ref_list_at(slot::IfcRepresentation::ITEMS).ok_or_else(||unavailable("representation items"))?.into_iter().rev());
     }
+    Ok(items)
+}
+/// Mapped leaves as `(item, mapping matrix, affine)`; the world placement is
+/// deliberately absent, so IfcGridPlacement and IfcLinearPlacement cannot hide a mirror.
+fn mapped_items(d:&mut EntityDecoder<'_>,id:u32) -> Result<Vec<(u32,Frame,bool)>,String> {
+    let mut stack:Vec<_>=selected_items(d,id)?.into_iter().map(|item|(item,IDENTITY,0,false)).collect();
     let mut result=Vec::new();let mut work=0;
-    while let Some((id,world,mapping_matrix,depth,affine))=stack.pop() {
-        work+=1;if work>8192||depth>128 {return None}
-        let e=d.decode_by_id(id).ok()?;
+    while let Some((id,mapping_matrix,depth,affine))=stack.pop() {
+        work+=1;if work>8192||depth>128 {return Err("mapped body work or depth cap exceeded".into())}
+        let e=d.decode_by_id(id).map_err(|_|format!("source node #{id} unavailable"))?;
         if e.ifc_type==IfcType::IfcMappedItem {
-            let (map,items)=mapping(d,e.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?,e.ref_at(slot::IfcMappedItem::MAPPING_TARGET)?)?;
-            for item in items.into_iter().rev() {stack.push((item,world,multiply(&mapping_matrix,&map),depth+1,affine||nonrigid(&map)));}
-        } else {result.push((id,world,mapping_matrix,affine));}
+            let (Some(source),Some(target))=(e.ref_at(slot::IfcMappedItem::MAPPING_SOURCE),e.ref_at(slot::IfcMappedItem::MAPPING_TARGET)) else {
+                return Err(format!("mapped item #{id} has no source or target"))
+            };
+            let (map,items)=mapping(d,source,target).ok_or_else(||format!("mapped item #{id}: unsupported operator, degenerate axes or missing origin"))?;
+            for item in items.into_iter().rev() {stack.push((item,multiply(&mapping_matrix,&map),depth+1,affine||nonrigid(&map)));}
+        } else {result.push((id,mapping_matrix,affine));}
     }
-    Some(result)
+    Ok(result)
+}
+/// Detection independent of `mapping`: any IfcMappedItem under the selected body,
+/// through Boolean operands and CSG roots. Unknown or unreadable nodes fail closed,
+/// as `bounded_source::contains_bounded` does.
+fn contains_mapped(d:&mut EntityDecoder<'_>,id:u32) -> Result<bool,String> {
+    let mut pending:Vec<_>=selected_items(d,id)?.into_iter().map(|item|(item,0u32)).collect();
+    let mut visited=std::collections::BTreeSet::new();
+    while let Some((id,depth))=pending.pop() {
+        if !visited.insert(id) {continue}
+        if visited.len()>8192 {return Err("mapped body scan work cap exceeded".into())}
+        let node=d.decode_by_id(id).map_err(|_|format!("source node #{id} unavailable"))?;
+        match node.ifc_type {
+            IfcType::IfcMappedItem=>return Ok(true),
+            IfcType::IfcBooleanResult|IfcType::IfcBooleanClippingResult=>{
+                if depth>=ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH {return Err("Boolean depth cap exceeded".into())}
+                for operand in [slot::IfcBooleanResult::FIRST_OPERAND,slot::IfcBooleanResult::SECOND_OPERAND] {
+                    pending.push((node.ref_at(operand).ok_or("Boolean operand unavailable")?,depth+1));
+                }
+            }
+            IfcType::IfcCsgSolid=>pending.push((node.ref_at(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION).ok_or("CSG root unavailable")?,depth)),
+            _=>{}
+        }
+    }
+    Ok(false)
 }
 /// Convenience for single-product witnesses; model comparisons use AffineOracle.
 pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
@@ -339,9 +414,11 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
 fn expected_decoded(d:&mut EntityDecoder<'_>,units:f64,id:u32,has_openings:bool) -> Option<Vec<AffineExpectation>> {
     // M9 owns type-map placement/quantities. Classification still gates winding.
     if d.decode_by_id(id).ok()?.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {return None}
-    let items=final_items(d,id)?;
+    let items=mapped_items(d,id).ok()?;
+    let product=d.decode_by_id(id).ok()?;
+    let world=placement(d,product.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
     let mut result=Vec::new();
-    for (id,world,mapping_matrix,affine_final) in items {
+    for (id,mapping_matrix,affine_final) in items {
         let s=solid(d,id,0,&mut 8192)?;let mut matrix=multiply(&world,&mapping_matrix);
         for col in 0..4 {for row in 0..3 {matrix[col*4+row]*=units;}}
         let det=dot([matrix[0],matrix[1],matrix[2]],cross([matrix[4],matrix[5],matrix[6]],[matrix[8],matrix[9],matrix[10]]));
@@ -354,6 +431,12 @@ fn expected_decoded(d:&mut EntityDecoder<'_>,units:f64,id:u32,has_openings:bool)
             surface_certified:s.certified,has_openings});
     }
     (!result.is_empty()).then_some(result)
+}
+/// Per published part: the signed volume of the baked mesh is positive. A
+/// mirrored map that kept its source winding fails here, whatever the oracle models.
+pub fn winding_positive(product:&crate::ShapeOnlyProduct) -> Vec<bool> {
+    product.parts.iter().map(|part|
+        mesh_moments(&part.positions,&part.indices,&part.world_from_object).is_some_and(|v|v.0>0.)).collect()
 }
 /// Translation-stable signed volume and centroid, in absolute IFC axes.
 pub fn mesh_moments(p:&[f64],ids:&[u32],frame:&Frame) -> Option<(f64,[f64;3])> {

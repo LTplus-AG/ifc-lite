@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
+//! #7955 M10 follow-up: the winding gate's classification is source-only. It must not
+//! depend on the world placement, must read every operator production accepts, and
+//! must fail closed on a mapped body it cannot decode. No SDK worker is involved.
+use ifc_lite_core::SourceBundle;
+use ifc_lite_retained_native::oracle::affine::{self, AffineOracle, Classification};
+
+const SOURCE: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
+// h2 (#42) maps h1's profile through a mirror: Axis1 = -X, Axis2 = +Y.
+const MIRROR: &str = "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,#37,1.,#3);";
+
+fn with(replacements: &[(&str, &str)]) -> String {
+    let mut text = SOURCE.to_owned();
+    for (from, to) in replacements {
+        assert!(text.contains(from), "fixture lost {from}");
+        text = text.replace(from, to);
+    }
+    text
+}
+fn classify(text: &str, id: u32) -> Classification {
+    let source = SourceBundle::new(text.as_bytes().to_vec());
+    AffineOracle::new(&source).classify(id)
+}
+fn operator(text: &str) -> String {
+    with(&[(MIRROR, text)]).replace(
+        "ENDSEC;\nEND-ISO",
+        "#9201=IFCDIRECTION((-1.,0.));\n#9202=IFCDIRECTION((0.,1.));\n#9203=IFCDIRECTION((0.,-1.));\nENDSEC;\nEND-ISO",
+    )
+}
+
+#[test]
+fn m10_classification_does_not_need_the_world_placement() {
+    assert_eq!(classify(SOURCE, 42), Classification::Affine);
+    // Production resolves both placements (placement/chain.rs); the oracle must not
+    // let a mirrored map publish without its winding gate because it cannot.
+    for (label, placement) in [
+        ("linear", "#9100=IFCLINEARPLACEMENT($,#9101,$);\n#9101=IFCAXIS2PLACEMENTLINEAR($,$,$);"),
+        ("grid", "#9100=IFCGRIDPLACEMENT(#9101,$);\n#9101=IFCVIRTUALGRIDINTERSECTION($,(0.,0.,0.));"),
+    ] {
+        let text = with(&[
+            ("#42=IFCBUILDINGELEMENTPROXY('2ANRI009XL68a3hv0UbDE$',$,'h2',$,$,#9,",
+             "#42=IFCBUILDINGELEMENTPROXY('2ANRI009XL68a3hv0UbDE$',$,'h2',$,$,#9100,"),
+            ("ENDSEC;\nEND-ISO", &format!("{placement}\nENDSEC;\nEND-ISO")),
+        ]);
+        assert_eq!(classify(&text, 42), Classification::Affine, "{label} placement");
+        assert!(AffineOracle::new(&SourceBundle::new(text.into_bytes())).is_affine_final(42), "{label}");
+    }
+}
+
+#[test]
+fn m10_classification_reads_2d_operators_like_production() {
+    // Same mirror authored as a 2D operator: plane normal +Z, Z keeps Scale.
+    let text = operator("#38=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#9201,#9202,#37,1.);");
+    assert_eq!(classify(&text, 42), Classification::Affine);
+    let a = affine::expected(text.as_bytes(), 42).unwrap();
+    let b = affine::expected(SOURCE.as_bytes(), 42).unwrap();
+    assert!((a[0].volume - b[0].volume).abs() < 1e-12);
+    for (x, y) in a[0].centroid.into_iter().zip(b[0].centroid) {
+        assert!((x - y).abs() < 1e-12);
+    }
+    // Scale 2, Scale2 3, and Z at Scale: |det| = 2*3*2 over the h1 prism (0.56).
+    let text = operator("#38=IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM(#51,#52,#37,2.,3.);");
+    assert_eq!(classify(&text, 42), Classification::Affine);
+    let e = affine::expected(text.as_bytes(), 42).unwrap();
+    assert!((e[0].volume - 0.56 * 12.).abs() < 1e-9, "{}", e[0].volume);
+    // Axis1 omitted: Axis2 = (0,-1) fixes X = (-1,0), a 180-degree turn, not a mirror.
+    let text = operator("#38=IFCCARTESIANTRANSFORMATIONOPERATOR2D($,#9203,#37,1.);");
+    assert_eq!(classify(&text, 42), Classification::Rigid);
+}
+
+#[test]
+fn m10_unclassifiable_mapped_body_is_unmodelled_never_rigid() {
+    // Each is a mapped body whose operator cannot be decoded: the pre-fix oracle
+    // answered `not affine`, so such a product published with no winding gate.
+    for (label, text) in [
+        ("missing origin", "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,$,1.,#3);"),
+        ("zero Axis3", "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,#37,1.,#9301);"),
+        ("abstract operator", "#38=IFCCARTESIANTRANSFORMATIONOPERATOR(#35,#36,#37,1.);"),
+    ] {
+        let text = with(&[(MIRROR, text)]).replace("ENDSEC;\nEND-ISO", "#9301=IFCDIRECTION((0.,0.,0.));\nENDSEC;\nEND-ISO");
+        let Classification::Unmodelled(reason) = classify(&text, 42) else { panic!("{label}") };
+        assert!(reason.contains("#39"), "{label}: {reason}");
+        assert!(!AffineOracle::new(&SourceBundle::new(text.into_bytes())).is_affine_final(42), "{label}");
+    }
+    // An unreadable mapping source is the same failure, not a missing body.
+    let text = with(&[("#39=IFCMAPPEDITEM(#26,#38);", "#39=IFCMAPPEDITEM(#9999,#38);")]);
+    assert!(matches!(classify(&text, 42), Classification::Unmodelled(_)));
+}
+
+#[test]
+fn m10_classification_without_a_mapped_body_stays_rigid() {
+    // Fail-closed is for mapped bodies only: a direct extrusion is rigid, not unmodelled.
+    let text = with(&[("#33=IFCPRODUCTDEFINITIONSHAPE($,$,(#32));", "#33=IFCPRODUCTDEFINITIONSHAPE($,$,(#25));")]);
+    assert_eq!(classify(&text, 34), Classification::Rigid);
+    // Identity map (h1) stays rigid too.
+    assert_eq!(classify(SOURCE, 34), Classification::Rigid);
+}

@@ -4,15 +4,25 @@ use ifc_lite_retained_native::{oracle::affine, ShapeOnlyProduct};
 use serde_json::{json,Value};
 use super::report::Report;
 
-pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:&ShapeOnlyProduct, tolerances:&Value) {
-    if !oracle.is_affine_final(product.product_id) {return}
-    let mut results=Vec::new();
-    for (index,part) in product.parts.iter().enumerate() {
-        let signed=affine::mesh_moments(&part.positions,&part.indices,&part.world_from_object).map(|v|v.0);
-        let pass=signed.is_some_and(|v|v>0.);
-        if !pass {report.violations.push(format!("{} part {index}: affine signed-volume invariant",product.product_id));}
-        results.push(json!({"family":"affineSignedVolume","part":index,"pass":pass,"gated":true}));
+/// Winding rows and violations of one published product; `None` when it is rigid.
+/// A mapped body the oracle cannot classify fails closed, like M6's
+/// `bounded_chain_unmodelled`: a mirror must never publish unchecked.
+pub fn winding_gate(id:u32, class:&affine::Classification, winding:&[bool]) -> Option<(Vec<Value>,Vec<String>)> {
+    match class {
+        affine::Classification::Rigid=>None,
+        affine::Classification::Unmodelled(reason)=>Some((
+            vec![json!({"family":"affineClassUnmodelled","pass":false,"gated":true,"reason":reason})],
+            vec![format!("{id}: affine_class_unmodelled: {reason}")])),
+        affine::Classification::Affine=>Some((
+            winding.iter().enumerate().map(|(index,&pass)|json!({"family":"affineSignedVolume","part":index,"pass":pass,"gated":true})).collect(),
+            winding.iter().enumerate().filter(|(_,&pass)|!pass).map(|(index,_)|format!("{id} part {index}: affine signed-volume invariant")).collect())),
     }
+}
+pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:&ShapeOnlyProduct, tolerances:&Value) {
+    let class=oracle.classify(product.product_id);
+    let Some((results,violations))=winding_gate(product.product_id,&class,&affine::winding_positive(product)) else {return};
+    report.violations.extend(violations);
+    if class!=affine::Classification::Affine {append(report,results);return}
     // Opening Booleans still require outward winding for every resulting part.
     if product.cuts!=0 {append(report,results);return}
     // Winding is mandatory even when the analytic source family is unsupported.
@@ -77,59 +87,22 @@ pub fn refusal(report:&mut Report,oracle:&mut affine::AffineOracle<'_>,id:u32,co
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ifc_lite_retained_native::{ModelOptions,ProductOutcome};
-    // #7955: an unsupported analytic family must still gate EVERY part's winding.
+    use affine::Classification;
+    // #7955: the real-kernel winding witnesses live in tests/m10_native.rs; these pin the glue.
     #[test]
-    fn affine_boolean_without_source_volume_still_gates_signed_volume() {
-        let text=include_str!("../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc")
-            .replace("#24=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);",
-                "#900001=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);\n#24=IFCBOOLEANRESULT(.UNION.,#900001,#900001);")
-            .replace("#25=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid'", "#25=IFCSHAPEREPRESENTATION(#4,'Body','CSG'");
-        let source=ifc_lite_core::SourceBundle::new(text.into_bytes());
-        let mut oracle=affine::AffineOracle::new(&source);
-        assert!(oracle.is_affine_final(42));
-        assert!(oracle.expected(42).is_none());
-        assert_winding_gate(&source,42,false);
+    fn reversed_winding_is_a_gated_violation() {
+        let (rows,violations)=winding_gate(7,&Classification::Affine,&[true,false]).unwrap();
+        assert_eq!(violations,["7 part 1: affine signed-volume invariant"]);
+        assert!(rows.iter().all(|r|r["family"]=="affineSignedVolume"&&r["gated"]==true));
+        assert_eq!(rows[1]["pass"],false);
+        assert!(winding_gate(7,&Classification::Rigid,&[false]).is_none());
     }
-    // #7955: opening cuts must not bypass the per-part winding gate (#130/#133/#145/#146).
     #[test]
-    fn voided_affine_product_still_gates_every_part_signed_volume() {
-        let source=ifc_lite_core::SourceBundle::new(include_bytes!(
-            "../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc").to_vec());
-        assert_winding_gate(&source,242,true);
-    }
-    // #7955 / PR #8319: selected mapped geometry need not have a Body identifier.
-    #[test]
-    fn omitted_identifier_affine_product_still_gates_signed_volume() {
-        let original=include_str!("../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
-        let text=original.replace("#40=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation'",
-            "#40=IFCSHAPEREPRESENTATION(#4,$,'MappedRepresentation'");
-        assert_ne!(text,original,"h2 representation must be changed");
-        let source=ifc_lite_core::SourceBundle::new(text.into_bytes());
-        assert_winding_gate(&source,42,false);
-    }
-    fn assert_winding_gate(source:&std::sync::Arc<ifc_lite_core::SourceBundle>,id:u32,with_cuts:bool) {
-        let mut oracle=affine::AffineOracle::new(source);
-        let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
-            assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
-            eprintln!("SKIP M10 affine winding reporter: real SDK missing");return;
-        };
-        let mut shapes=Vec::new();
-        ifc_lite_retained_native::run_model_native(source.clone(),worker,
-            &ModelOptions {ids:Some([id].into_iter().collect()),..Default::default()},|o|shapes.push(o)).unwrap();
-        let ProductOutcome::Published(mut shape)=shapes.remove(0) else {panic!("expected mirrored Boolean publication")};
-        assert_eq!(shape.cuts>0,with_cuts);
-        let mut report=Report {rows:vec!["test\t[]".into()],..Default::default()};
-        let tolerances:Value=serde_json::from_str(include_str!(
-            "../../../../tests/fixtures/cli-retained/tolerances.d/m10.json")).unwrap();
-        record(&mut report,&mut oracle,&shape,&tolerances);
-        assert!(report.violations.is_empty());
-        let results:Vec<Value>=serde_json::from_str(report.rows[0].split('\t').next_back().unwrap()).unwrap();
-        let results:Vec<_>=results.iter().filter(|r|r["family"]=="affineSignedVolume").collect();
-        assert_eq!(results.len(),shape.parts.len());
-        assert!(results.iter().all(|r|r["family"]=="affineSignedVolume"&&r["gated"]==true&&r["pass"]==true));
-        for t in shape.parts[0].indices.chunks_exact_mut(3) {t.swap(1,2);}
-        record(&mut report,&mut oracle,&shape,&tolerances);
-        assert!(report.violations.iter().any(|v|v.contains("signed-volume invariant")));
+    fn unclassifiable_mapped_body_fails_closed() {
+        let (rows,violations)=winding_gate(9,&Classification::Unmodelled("grid placement".into()),&[true]).unwrap();
+        assert_eq!(violations.len(),1);
+        assert!(violations[0].contains("affine_class_unmodelled")&&violations[0].contains("grid placement"));
+        assert_eq!((rows[0]["family"].as_str(),rows[0]["gated"].as_bool(),rows[0]["pass"].as_bool()),
+            (Some("affineClassUnmodelled"),Some(true),Some(false)));
     }
 }

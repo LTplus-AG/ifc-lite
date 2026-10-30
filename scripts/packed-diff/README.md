@@ -92,10 +92,15 @@ is rewritten by this harness. Ancestor `node_modules` directories are rejected.
   initDiff()`, `initDiffSync({ module: bytes })`, and invalid asynchronous bytes
   followed by concurrent default retry. The synchronous process also checks a
   failed invalid-byte synchronous init before successful retry. Every one of
-  the 23 synchronous public functions must fail before initialization.
+  the 24 synchronous public functions and the public `DiffModelHandle` constructor must fail before initialization.
 - Real, unmodified Node `fetch(file:)` is shown to reject, while the facade's
   default init succeeds through its filesystem path. No mocked fetch, loader,
   WASM exports, or source workspace facade imports are used in the consumers.
+- The runtime class constructor and `prepareDiffModel` factory are exercised through
+  the tarball, including compare parity with frozen diff results, placement stripping
+  disabled/enabled/disabled cache isolation, idempotent disposal, disposed operands,
+  and `Symbol.dispose`. The private TS oracle cross-checks the original 23 functions;
+  it predates resident handles.
 - Every synchronous public function has fixed semantic assertions; an added
   uncovered function fails the coverage assertion. These include diff scopes,
   exclusions, geometry abstention, matching/aliases, object/ref identity,

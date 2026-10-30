@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 // #8042: frozen semantic expectations, reviewed against the pre-cutover oracle.
 // Never generate these from the facade under test. Also run against the oracle
 // using explicit tsx loading in a DIFFERENT process from the packed consumer.
-export function semantics(api) {
+export function semantics(api, { handles = false } = {}) {
   const calls = new Set();
   const call = (name, ...args) => { calls.add(name); return api[name](...args); };
   for (const [value, expected] of [
@@ -115,7 +115,59 @@ export function semantics(api) {
   assert.deepEqual(aliasResult.counts, { added: 0, modified: 0, deleted: 0, unchanged: 1 });
   assert.deepEqual([...aliasResult.appliedKeyAliases], [['renamed', 'old']]);
   assert.equal(aliasResult.entries[0].head, renamed);
+  const handleOperations = [];
+  if (handles) {
+    // #8042 / #8266: the class is a runtime export, not a type-only name.
+    // Both construction paths own snapshots; the private oracle has no handles.
+    calls.add('DiffModelHandle');
+    const left = new api.DiffModelHandle(base);
+    const right = call('prepareDiffModel', head);
+    try {
+      assert.ok(left instanceof api.DiffModelHandle);
+      assert.ok(right instanceof api.DiffModelHandle);
+      assert.deepEqual(left.compare(right), result);
+      assert.deepEqual(left.compare(right), call('diffModels', base, head));
+      assert.notEqual(left.compare(right).entries[0].base, base[0]);
+      assert.equal(left.compare(right).entries[0].base.ref, base[0].ref);
+      handleOperations.push('compare');
+    } finally { left.dispose(); right.dispose(); }
+    left.dispose(); right.dispose();
+    assert.throws(() => left.compare(right), /disposed/);
+    const live = call('prepareDiffModel', []);
+    try {
+      assert.throws(() => left.compare(live), /disposed/);
+      assert.throws(() => live.compare(right), /disposed/);
+    } finally { live.dispose(); }
+    handleOperations.push('dispose', 'use-after-dispose');
+
+    const placementBase = [row('placement', 'd', 'p:before')];
+    const placementHead = [row('placement', 'd', 'p:after')];
+    const a = call('prepareDiffModel', placementBase);
+    const b = new api.DiffModelHandle(placementHead);
+    let retained;
+    try {
+      // Return to false after true to detect a poisoned cached snapshot.
+      for (const stripPlacementGeometry of [false, true, false]) {
+        const strip = rows => rows.map(r => ({ ...r, geometryHash: undefined }));
+        const expectedBase = stripPlacementGeometry ? strip(placementBase) : placementBase;
+        const expectedHead = stripPlacementGeometry ? strip(placementHead) : placementHead;
+        const entry = { key: 'placement', state: stripPlacementGeometry ? 'unchanged' : 'modified',
+          changeKinds: stripPlacementGeometry ? [] : ['geometry'], base: expectedBase[0], head: expectedHead[0] };
+        const expected = { scope: 'both', excludedTypes: [], entries: [entry], byKey: new Map([['placement', entry]]),
+          counts: { added: 0, modified: stripPlacementGeometry ? 0 : 1, deleted: 0, unchanged: stripPlacementGeometry ? 1 : 0 } };
+        const options = { stripPlacementGeometry };
+        retained = a.compare(b, options);
+        assert.deepEqual(retained, expected);
+        assert.deepEqual(call('diffModels', placementBase, placementHead, options), expected);
+        assert.equal(retained.entries[0].base.ref, placementBase[0].ref);
+      }
+    } finally { a[Symbol.dispose](); b[Symbol.dispose](); }
+    a[Symbol.dispose](); b.dispose();
+    assert.throws(() => a.compare(b), /disposed/);
+    assert.equal(retained.entries[0].base.geometryHash, 'p:before');
+    handleOperations.push('Symbol.dispose');
+  }
   const exportedFunctions = Object.keys(api).filter(k => typeof api[k] === 'function' && !['initDiff', 'initDiffSync'].includes(k)).sort();
   assert.deepEqual([...calls].sort(), exportedFunctions, 'every public synchronous operation must have frozen expectations');
-  return { operations: [...calls].sort(), cases: 'frozen #8042 semantic vectors' };
+  return { operations: [...calls].sort(), handleOperations, cases: 'frozen #8042 semantic vectors' };
 }

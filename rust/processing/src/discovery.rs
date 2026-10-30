@@ -11,6 +11,9 @@ use ifc_lite_core::{
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
+#[path = "discovery_type_admission.rs"]
+mod type_admission;
+
 /// One file's type-geometry decisions. The mode is explicit because exports
 /// suppress instantiated types while the viewer tags them for its Types view.
 pub type PlannedTypeProduct = (u32, usize, usize, IfcType, Vec<(u32, u8)>);
@@ -98,7 +101,9 @@ impl TypeGeometryPlan {
     }
 
     /// Browser spans are decoded with the full decoder. A type record rejected
-    /// there is intentionally omitted, even if the scan-time parser accepts it.
+    /// there is intentionally omitted, even if the scan-time parser accepts it
+    /// ([`Self::decode_products_reporting`] reports it; native drops the same
+    /// records via [`Self::retain_decodable_products`]).
     pub fn from_spans(
         content: &[u8],
         mapped: &[(u32, usize, usize)],
@@ -142,26 +147,15 @@ impl TypeGeometryPlan {
         plan
     }
 
+    /// Plan the candidates the full decoder accepts. Use
+    /// [`Self::decode_products_reporting`] to also learn what was omitted (F2).
     pub fn decode_products(
         &mut self,
         content: &[u8],
         candidates: &[(u32, usize, usize, IfcType)],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) {
-        for (id, start, end, ty) in candidates {
-            if decoder.decode_at_with_id(*id, *start, *end).is_err() {
-                continue;
-            }
-            let maps = record_refs_at(
-                content.get(*start..*end).unwrap_or_default(),
-                ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS.index(),
-            );
-            if maps.is_empty() {
-                continue;
-            }
-            let maps = self.maps_for(*id, &maps);
-            self.products.push((*id, *start, *end, ty.clone(), maps));
-        }
+        self.decode_products_reporting(content, candidates, decoder);
     }
 
     pub fn jobs(&self) -> Vec<(u32, usize, usize, IfcType)> {

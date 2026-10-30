@@ -9,7 +9,7 @@ import type { EntityFingerprint } from './types.js';
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
 test.skipIf(!existsSync(binary))('retained snapshots preserve parity, ref identity, edits and release (#8042; run pnpm build:wasm)', async () => {
   const { initDiff } = await import('./wasm-runtime.js');
-  const { prepareDiffModel } = await import('./internal.js');
+  const { prepareDiffModel } = await import('./index.js');
   await initDiff();
   const ref = { opaque: () => 42 };
   const headRef = { opaque: () => 43 };
@@ -41,12 +41,13 @@ test.skipIf(!existsSync(binary))('retained snapshots preserve parity, ref identi
       const fresh = prepareDiffModel(base);
       try { expect(fresh.compare(right)).toEqual(diffModels(base, head)); }
       finally { fresh.dispose(); }
-      right.dispose();
+      right[Symbol.dispose]();
       right.dispose();
       expect(() => left.compare(right)).toThrow(/disposed/);
       expect(before.entries[0].base?.dataHash).toBe('a');
     } finally { right.dispose(); }
-    left.dispose();
+    left[Symbol.dispose]();
+    left[Symbol.dispose]();
     expect(() => left.compare(left)).toThrow(/disposed/);
   } finally { left.dispose(); }
 });

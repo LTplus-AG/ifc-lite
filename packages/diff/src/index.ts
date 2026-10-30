@@ -13,6 +13,7 @@
  */
 
 export { compareWithWasm as diffModels } from './wasm-diff.js';
+export { DiffModelHandle, prepareDiffModel } from './prepared-model.js';
 export { initDiff, initDiffSync } from './wasm-runtime.js';
 export {
   buildComponentFingerprints,

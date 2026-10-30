@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "Geometry processing and mesh generation for IFC models"
 keywords = ["ifc", "bim", "geometry", "mesh", "aec"]

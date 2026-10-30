@@ -71,6 +71,10 @@ pub fn prism_result_volume(
             cuts.push((p, planes));
         }
     }
+    cut_prisms_volume(hosts, cuts)
+}
+
+pub(super) fn cut_prisms_volume(hosts: Vec<prism::Prism>, cuts: Vec<(prism::Prism, Vec<super::clipping::HalfPlane>)>) -> Option<f64> {
     let mut result = 0.;
     let mut work = 10_000_000usize;
     for host in hosts {

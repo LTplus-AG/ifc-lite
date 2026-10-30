@@ -29,11 +29,10 @@ fn issue_7955_opening_strategy() {
 }
 #[test]
 fn issue_7955_material_layer_strategy() {
-    check(
-        RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy),
-        Refusal::MaterialLayerStrategy,
-        "material_layer_strategy",
-    );
+    let (actual, origin) = RetainedExecutionError::LayerStrategy("layer_axis_family").refusal();
+    assert_eq!(actual, Refusal::MaterialLayerStrategy);
+    assert_eq!(actual.code(), "material_layer_strategy");
+    assert_eq!(origin.map(|o| (o.site, o.cause)), Some(("layer_band", "layer_axis_family")));
 }
 #[test]
 fn issue_7955_operation_unsupported() {

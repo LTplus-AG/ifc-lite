@@ -197,6 +197,17 @@ test('excluded directory names match whole path segments', () => {
   assert.notEqual(licenseHeaderFor('packages/x/src/distribution/index.ts'), null);
 });
 
+test('staged Emscripten runtime keeps its own license, while adapter sources require MPL (#7955)', () => {
+  for (const staged of ['rust/wasm-bindings/smlib', 'apps/viewer/public/smlib']) {
+    assert.equal(licenseHeaderFor(`${staged}/ifclite_smlib_browser.mjs`), null);
+    assert.equal(withLicenseHeader(`${staged}/ifclite_smlib_browser.mjs`, UNLICENSED_FILE), null);
+    assert.notEqual(licenseHeaderFor(`${staged}/client.mjs`), null);
+  }
+  // A synthetic name exercises classification without implying a file read
+  // to the CI input-path audit (#7955).
+  assert.notEqual(licenseHeaderFor('native/smlib-adapter/browser/example-client.mjs'), null);
+});
+
 test('Windows-style separators classify the same as POSIX ones', () => {
   assert.equal(licenseHeaderFor('packages\\codegen\\generated\\ifc4\\enums.ts'), null);
   assert.equal(licenseHeaderFor('packages\\renderer\\src\\bvh.ts'), LICENSE_HEADERS.ts);

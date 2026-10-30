@@ -9,6 +9,10 @@
 
 mod affinity_chunks;
 mod batch;
+mod batch_run;
+mod batch_element;
+mod batch_output;
+mod batch_recovery;
 mod batch_prepare;
 mod batch_wire;
 mod batch_caches;

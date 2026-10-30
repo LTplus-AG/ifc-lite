@@ -708,3 +708,11 @@ build-time or runtime.
 
 - [Rendering Pipeline](rendering-pipeline.md) - WebGPU rendering
 - [API Reference](../api/rust.md) - Geometry API
+
+The default browser batch exports adapt their positional arguments to internal
+`BatchWire` and borrowed/held `BatchSource` values. Preparation captures one owned
+production context; the serial element loop uses the shared execution decode/type
+boundary and canonical owned producer. Recovery completes batch-local occurrences
+before the flat/IFNS output adapters encode them. Held bytes stay owned through
+encoding. Native jobs use the same router builder and diagnostic drain with
+per-job policy; their persistent worker caches remain in the native scheduler.

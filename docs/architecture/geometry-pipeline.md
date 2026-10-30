@@ -359,7 +359,38 @@ flowchart TB
 
 ### Void Cutting
 
-Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and the owned producer cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
+Opening voids (`IfcRelVoidsElement`, with aggregate propagation from the
+prepass) are cut by the owned opening program. `program::openings` classifies
+an element's openings ONCE into a `VoidContext` (raw and merged `CutterKind`s,
+plus parametric and 2D capture where they reconcile), and every frame part of
+the host is cut against it by `Execution::apply_void_context`
+(`rust/geometry/src/router/voids/`). That is not one exact path: it is an
+ordered chain of statically dispatched stages, and the first that accepts a
+host decides its geometry.
+
+| Stage | Steps, in order | Where |
+|---|---|---|
+| A, whole host | ParamRect (analytic box-minus-boxes in the host's placement frame), Bool2d (2D profile subtract and re-extrude, staged on a provisional child execution), Prism (analytic stepped-prism subtract). First acceptance wins; a residual it leaves is cut by recursion on its result. | `strategy::HOST_STAGES` |
+| Origin/frame | World host bounds captured for diagnostics; host and cutters moved into one origin-0 frame. | `apply_void_context` |
+| B, frame-local | WallLocalFrame (plan-rotated walls cut in their own frame, one retry on plane-snapped operands when the cut comes back open; a rejected retry restores the first run's diagnostics), facet weld, RectFast (axis-aligned box host, all-rectangular openings). | `Execution::cut_in_frame` |
+| C, exact tail | Dense-host subdivision, cutter preparation (rectangles synthesised as box meshes, malformed cutters left to the recut), coaxial union of overlapping coaxial clusters, disjoint batch cut at each group's first member, sequential exact subtract per opening, and the #635 AABB box cut when the kernel fails on an opening that reaches the host. | `strategy::exact::ExactTail` |
+| D, post passes | Kernel-failure drain, sliver refinement, malformed recut, flap clip to the pre-cut AABB, stray-shard sweep (only when a pass changed the host), cut-effect record. | `post::finish` |
+
+The #635 fallback is a real, deliberate approximation: it removes the opening's
+AABB from a host whose exact cut failed, and its result has an open rim. It is
+suppressed when the opening's extended box engulfs the host after an unchanged
+cut, and when the host already carries the void; it never runs on an opening the
+kernel found disjoint (#5362). Kernel failures are recorded per host as
+structured `BoolFailure` records and drained once per frame-local pass.
+
+An opening whose solid engulfs the host empties it, and the chain stops there.
+The consumed record is written in ONE place (#8125): when the cut of a host
+that had triangles comes back empty, `program::openings::execute` marks it
+consumed, so the element keeps the empty result instead of re-rendering the
+host uncut. No stage records it itself.
+
+The order of the table is frozen; see
+[mesh-determinism.md](mesh-determinism.md#frozen-void-cut-order).
 
 ## Mesh Hygiene
 

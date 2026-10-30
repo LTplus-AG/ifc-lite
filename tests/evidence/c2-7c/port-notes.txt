@@ -1,0 +1,54 @@
+C2-7c / #8263, stacked on C2-7b (refactor/c2-7b-exact-state)
+
+Port of backup/c2-7-recovery-r3 88e7754cf0 (owned exact tail and ordered cut
+passes). Every body is main's, moved out of apply_void_context_inner and
+try_cut_wall_local_frame; r3 supplied the layout.
+
+Commits
+1. ExactTail + cut_in_frame + wall_local_frame; both old functions deleted.
+   - strategy/exact/prepare.rs: refine_dense_host and the cutter preparation
+     (PreparedCutters owns the synthesised boxes; ordered() is main's chain
+     of synthesised-then-mesh cutters).
+   - strategy/exact/sequential.rs: cut_one -> Flow::{Next, Stop, Fallback}.
+   - strategy/exact/fallback_635.rs: the #635 box cut. Its two diag_warn!
+     blocks move into helpers (function-length budget) and name
+     target "ifc_lite_geometry::router::voids" explicitly, the target they
+     had as module_path!() inside voids/mod.rs. Callsite metadata (module
+     path, file, line) changes; target, fields and messages do not.
+   - strategy/exact/mod.rs: CutContext, Flow, ExactTail::run (owns host and
+     ExactState; ExactState fields are now private to strategy::exact).
+   - strategy/inner.rs: Execution::cut_in_frame (stage B straight-line, then
+     ExactTail, then post::finish). strategy/wall_local_frame.rs:
+     cut_in_wall_frame, wall_frame_axes, openings_in_frame (split verbatim).
+   - Tests: only the adapter method and call sites are renamed
+     (apply_void_context_inner -> cut_in_frame); the #8186 host_frame_tests
+     #[path] declaration and consumed_host_tests stay as on main.
+2. ROUTER-32 (refactor after the move): openings_in_frame reads Cutter's
+   mesh()/depth()/authored_depth() and a new Cutter::frame();
+   OpeningFrame::is_axis_aligned_in keeps the dot products and the
+   short-circuit order. cutter.rs's "strategy-local projections remain for
+   C2-7" note is dropped.
+3. Docs: geometry-pipeline.md Void Cutting rewritten (the single exact path /
+   no AABB fallback claim was false), the frozen-order contract added to
+   mesh-determinism.md, the strategy rule added to rust/AGENTS.md within its
+   byte budget (the STEP-strings bullet loses its redundant "keep the test
+   green" clause and G3 its mechanism list), voids module docs.
+
+Review findings applied
+- S1: no record_void_consumed_host in the engulf branch. It returns
+  Flow::Stop with the emptied host; program::openings::execute records the
+  consume once (#8125).
+- S3: Fallback is handled in the match arm of ExactTail::run, which calls
+  fallback_635 directly; no Option-carrying pass list, no positional arrays.
+- S6: ExactState fields private (not pub); &mut consumed / host_mutated are
+  lent through ExactState::coaxial_union; tracing target kept.
+- No new caching, hoisting or dynamic dispatch: the cutter Vec, the
+  extension calls and the clipper creation point are main's.
+
+Ratchets: apply_void_context_inner and try_cut_wall_local_frame rows deleted;
+voids/mod.rs is 268 lines and its module row is removed; no new function
+reaches 150 lines; geometry digest recomputed.
+
+Committed oracle: behaviour.oracle.patch swaps ExactTail::run's coaxial
+union and batch plan; stage_order_tests' coaxial_union_runs_before_the_batch_plan
+goes red (checked locally before commit, and via validate.sh mutation).

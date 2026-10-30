@@ -1,0 +1,12 @@
+--- a/rust/geometry/src/router/voids/strategy/exact/mod.rs
++++ b/rust/geometry/src/router/voids/strategy/exact/mod.rs
+@@ -108,8 +108,8 @@
+         // them in one `subtract_mesh_many`. See `coaxial_union`. Marks consumed
+         // openings so the batch + sequential loops skip them; a cluster that fails
+         // any guard is left unconsumed for the exact path (never worse than exact).
+-        state.plan_groups(execution, host, all_openings, wall_min, wall_max);
+         state.coaxial_union(execution, host, all_openings, clipper);
++        state.plan_groups(execution, host, all_openings, wall_min, wall_max);
+         for (opening_idx, opening) in all_openings.iter().enumerate() {
+             if state.consumed[opening_idx] {
+                 continue; // already handled by a batched disjoint group

@@ -62,6 +62,7 @@
   "packages/solar": 1,
   "packages/source-autodesk": 0,
   "packages/source-bimcollab": 0,
+  "packages/source-buildagil": 0,
   "packages/source-dalux": 0,
   "packages/source-dropbox": 0,
   "packages/source-fixture": 0,

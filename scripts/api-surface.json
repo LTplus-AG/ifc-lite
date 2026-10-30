@@ -10325,6 +10325,10 @@
     "spaceIdFromAccessToken: function",
     "spaceLabelFromServerUrl: function"
   ],
+  "@ifc-lite/source-buildagil": [
+    "BuildagilProvider: class",
+    "BuildagilProviderOptions: interface"
+  ],
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"

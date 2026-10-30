@@ -41,6 +41,7 @@
  * rule on `/api/bcf/oauth/token` like the one on `/api/dalux`.
  */
 
+import { forwardTokenGrant, parseJson, readCapped, tokenRelayError } from '../shared/oauth-token-forward.js';
 import { parseRelayGrant, upstreamTokenForm } from './bimcollab-token-grant.js';
 
 /** Callbacks registered with BIMcollab for IFClite's production client. */
@@ -76,96 +77,9 @@ export interface BcfTokenRelayDeps {
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_BODY_BYTES = 16 * 1024;
-const MAX_ERROR_FIELD_LENGTH = 500;
-
-/** Token response fields passed back; anything else the vendor adds is dropped. */
-const TOKEN_RESPONSE_FIELDS = [
-  'access_token',
-  'token_type',
-  'expires_in',
-  'refresh_token',
-  'scope',
-  'id_token',
-] as const;
-
-function json(status: number, body: Record<string, unknown>, extra: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'content-type': 'application/json',
-      // RFC 6749 §5.1: token responses must not be cached, by anyone.
-      'cache-control': 'no-store',
-      pragma: 'no-cache',
-      'x-content-type-options': 'nosniff',
-      ...extra,
-    },
-  });
-}
-
-function relayError(status: number, error: string, description: string, extra?: Record<string, string>): Response {
-  return json(status, { error, error_description: description }, extra);
-}
-
-type CappedRead = { ok: true; text: string } | { ok: false; reason: 'too_large' | 'invalid' };
-
-/** Reads a body as UTF-8, refusing it as soon as it passes `max` bytes. */
-async function readCapped(
-  body: ReadableStream<Uint8Array> | null,
-  declaredLength: string | null,
-  max: number,
-): Promise<CappedRead> {
-  if (declaredLength !== null && Number(declaredLength) > max) return { ok: false, reason: 'too_large' };
-  if (!body) return { ok: true, text: '' };
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel();
-      return { ok: false, reason: 'too_large' };
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return { ok: true, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
-  } catch {
-    return { ok: false, reason: 'invalid' };
-  }
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
 
 function isJsonContentType(value: string | null): boolean {
   return (value ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
-}
-
-/** Upstream error body cut down to the two RFC 6749 §5.2 fields, secret scrubbed. */
-function redactedUpstreamError(parsed: unknown, secret: string): Record<string, string> {
-  const record = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
-  const scrub = (value: unknown): string | undefined => {
-    if (typeof value !== 'string' || value === '') return undefined;
-    const clean = secret ? value.split(secret).join('[redacted]') : value;
-    return clean.slice(0, MAX_ERROR_FIELD_LENGTH);
-  };
-  const out: Record<string, string> = { error: scrub(record.error) ?? 'upstream_error' };
-  const description = scrub(record.error_description);
-  if (description) out.error_description = description;
-  return out;
 }
 
 export function createBcfTokenRelayHandler(
@@ -174,25 +88,25 @@ export function createBcfTokenRelayHandler(
 ): (request: Request) => Promise<Response> {
   return async function handleBcfTokenRelay(request: Request): Promise<Response> {
     if (request.method !== 'POST') {
-      return relayError(405, 'invalid_request', 'Only POST is accepted', { allow: 'POST' });
+      return tokenRelayError(405, 'invalid_request', 'Only POST is accepted', { allow: 'POST' });
     }
 
     // Same-origin only. A browser always sends Origin on a POST; a request
     // without one did not come from the viewer.
     const origin = request.headers.get('origin');
     if (!origin || !config.allowedOrigins.includes(origin)) {
-      return relayError(403, 'invalid_request', 'Origin not allowed');
+      return tokenRelayError(403, 'invalid_request', 'Origin not allowed');
     }
     const fetchSite = request.headers.get('sec-fetch-site');
     if (fetchSite !== null && fetchSite !== 'same-origin') {
-      return relayError(403, 'invalid_request', 'Cross-site requests are not accepted');
+      return tokenRelayError(403, 'invalid_request', 'Cross-site requests are not accepted');
     }
     if (!isJsonContentType(request.headers.get('content-type'))) {
-      return relayError(415, 'invalid_request', 'Content-Type must be application/json');
+      return tokenRelayError(415, 'invalid_request', 'Content-Type must be application/json');
     }
 
     if (!config.clientId || !config.clientSecret) {
-      return relayError(
+      return tokenRelayError(
         503,
         RELAY_NOT_CONFIGURED,
         'The BIMcollab token relay is not configured on this deployment (BCF_BIMCOLLAB_CLIENT_ID, BCF_BIMCOLLAB_CLIENT_SECRET).',
@@ -202,64 +116,22 @@ export function createBcfTokenRelayHandler(
     const read = await readCapped(request.body, request.headers.get('content-length'), config.maxBodyBytes);
     if (!read.ok) {
       return read.reason === 'too_large'
-        ? relayError(413, 'invalid_request', 'Request body too large')
-        : relayError(400, 'invalid_request', 'Request body is not UTF-8');
+        ? tokenRelayError(413, 'invalid_request', 'Request body too large')
+        : tokenRelayError(400, 'invalid_request', 'Request body is not UTF-8');
     }
     const grant = parseRelayGrant(parseJson(read.text), config.allowedRedirectUris);
-    if ('problem' in grant) return relayError(400, 'invalid_request', grant.problem);
+    if ('problem' in grant) return tokenRelayError(400, 'invalid_request', grant.problem);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), config.upstreamTimeoutMs);
-    let upstream: Response;
-    let upstreamBody: CappedRead;
-    try {
-      upstream = await deps.fetchImpl(grant.tokenUrl, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/x-www-form-urlencoded',
-          accept: 'application/json',
-        },
-        body: upstreamTokenForm(grant, config).toString(),
-        // Following a 3xx would re-post the form, client_secret included, to
-        // wherever the Location names.
-        redirect: 'manual',
-        signal: controller.signal,
-      });
-      upstreamBody = await readCapped(upstream.body, upstream.headers.get('content-length'), config.maxBodyBytes);
-    } catch (err) {
-      // Name only: the request this failed on carries the secret.
-      const name = err instanceof Error ? err.name : typeof err;
-      console.warn('[bcf-token-relay] upstream token request failed:', name);
-      return controller.signal.aborted
-        ? relayError(504, 'upstream_timeout', 'The BIMcollab token endpoint did not answer in time')
-        : relayError(502, 'upstream_unreachable', 'The BIMcollab token endpoint could not be reached');
-    } finally {
-      clearTimeout(timer);
-    }
-
-    // `redirect: 'manual'` yields the 3xx itself on the server, an
-    // opaque-redirect (status 0) in a browser-like fetch.
-    if ((upstream.status >= 300 && upstream.status < 400) || upstream.type === 'opaqueredirect') {
-      return relayError(502, 'upstream_redirect', 'The BIMcollab token endpoint redirected; refusing to follow');
-    }
-    const parsed = upstreamBody.ok ? parseJson(upstreamBody.text) : undefined;
-
-    if (!upstream.ok) {
-      // Pass 4xx through so the viewer still sees invalid_grant and friends;
-      // a vendor-side 5xx is our gateway's failure, not the caller's.
-      const status = upstream.status >= 400 && upstream.status < 500 ? upstream.status : 502;
-      return json(status, redactedUpstreamError(parsed, config.clientSecret));
-    }
-
-    const record = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
-    if (!record || typeof record.access_token !== 'string' || record.access_token === '') {
-      return relayError(502, 'invalid_upstream_response', 'The BIMcollab token endpoint returned no access_token');
-    }
-    const token: Record<string, unknown> = {};
-    for (const field of TOKEN_RESPONSE_FIELDS) {
-      if (record[field] !== undefined) token[field] = record[field];
-    }
-    return json(200, token);
+    return forwardTokenGrant({
+      tokenUrl: grant.tokenUrl,
+      form: upstreamTokenForm(grant, config),
+      clientSecret: config.clientSecret,
+      vendor: 'BIMcollab',
+      logTag: '[bcf-token-relay]',
+      upstreamTimeoutMs: config.upstreamTimeoutMs,
+      maxBodyBytes: config.maxBodyBytes,
+      fetchImpl: deps.fetchImpl,
+    });
   };
 }
 

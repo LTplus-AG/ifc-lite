@@ -70,6 +70,10 @@
       "destination": "/api/dalux?path=:path*"
     },
     {
+      "source": "/api/buildagil/:path*",
+      "destination": "/api/buildagil?path=:path*"
+    },
+    {
       "source": "/oauth/dropbox/callback",
       "destination": "/oauth/dropbox/callback.html"
     },

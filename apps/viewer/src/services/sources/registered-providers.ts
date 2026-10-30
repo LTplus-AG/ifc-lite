@@ -4,12 +4,15 @@
 
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import { AutodeskProvider, createAutodeskService } from '@ifc-lite/source-autodesk';
+import { BuildagilProvider } from '@ifc-lite/source-buildagil';
 import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
 import { DropboxProvider } from '@ifc-lite/source-dropbox';
 import { MsGraphProvider } from '@ifc-lite/source-msgraph';
 import { hostedDropbox, hostedMsGraph } from './hosted-cloud-providers';
 import { ViewerBimcollabProvider } from './bimcollab-source';
 import type { FileSourceProviderFactory } from './source-host';
+
+const BUILDAGIL_CLIENT_ID = import.meta.env.VITE_BUILDAGIL_CLIENT_ID?.trim() ?? '';
 
 /**
  * Every built-in file-source provider the viewer registers, in one place.
@@ -48,6 +51,10 @@ export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] =
   // /api/bimcollab relay. VITE_SOURCE_BIMCOLLAB=false is the kill switch, e.g.
   // for a deployment without the relay (docs/research/bimcollab-documents-api.md).
   ...(import.meta.env.VITE_SOURCE_BIMCOLLAB === 'false' ? [] : [() => new ViewerBimcollabProvider()]),
+  // buildagil is offered once the deployment holds its OAuth client:
+  // VITE_BUILDAGIL_CLIENT_ID here, BUILDAGIL_CLIENT_SECRET on the /api/buildagil
+  // relay. Without a client nobody could sign in, so it is not listed at all.
+  ...(BUILDAGIL_CLIENT_ID ? [() => new BuildagilProvider({ clientId: BUILDAGIL_CLIENT_ID })] : []),
 ];
 
 /** Every built-in provider, constructed. The drift guard's view of the list above. */

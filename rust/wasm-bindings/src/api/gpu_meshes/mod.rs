@@ -54,3 +54,7 @@ pub(crate) use batch_partition::{is_instancing_candidate, INSTANCE_MIN_OCCURRENC
 #[cfg(test)]
 #[path = "c4_11a_tests.rs"]
 mod c4_11a_tests;
+
+#[cfg(test)]
+#[path = "c4_7b_tests.rs"]
+mod c4_7b_tests;

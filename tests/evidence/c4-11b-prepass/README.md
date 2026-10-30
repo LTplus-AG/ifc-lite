@@ -23,7 +23,7 @@ Native metadata handoff: allocation calls / requested bytes, exact prior populat
 | AC20-FZK-Haus.ifc | 44,249 | 3 / 1,638,520 | 1 / 56 |
 | duplex.ifc | 38,898 | 3 / 1,638,520 | 1 / 56 |
 
-Measured on Pop at `3d5c31764b` with a thread-local counting allocator and real scanned indexes.
+Measured on Pop at `3d5c31764b`, repeated at `12c79d8adf`, with a thread-local counting allocator and real scanned indexes.
 The prior copy is the exact operation in 6246d22dc4's prepass_memory.rs. This excludes initial
 reservation/Arc allocation, scanning, metadata resolution/fallback, final columns and JS events.
 No whole-prepass/worker-pool timing, speedup or browser peak-memory claim. The ledger records that limit.
@@ -38,13 +38,26 @@ The fresh WASM build succeeded; its strict declaration comparison stopped on a d
 so contracts did not run in that attempt. Generated documentation and API-token verification now cover it.
 
 Post-integration source `12c79d8adf392306bbc3b85f8fe9bacfa97a571d`, request
-`auto-e928ac1d3e754dc382d180d729726c46`, Pop job `5b0e78c9-00da-46c5-8a64-02084c35342c`: running.
-Exact final command (ordinary admission, 4 CPU / 12 GiB, pinned repo toolchain):
+`auto-e928ac1d3e754dc382d180d729726c46`, Pop job `5b0e78c9-00da-46c5-8a64-02084c35342c`:
+clippy, full workspace/C4-0/ratchets, allocations and three controls passed; fresh WASM contracts: 258 passed, zero skips.
+Project exit 0; fleet exit 1 because retained regeneration changed its tracked declaration documentation and .gitignore.
+The exact generated declarations were committed; the generator now reproduces the tracked ignore rules.
+Exact cohort command (ordinary admission, 4 CPU / 12 GiB, pinned repo toolchain):
 
 ```sh
 ~/build-workers/ifc-fleet run --route fleet --storage-task c4-11b-prepass-r1 \
   --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-0d2321cb -- bash -c \
   'cargo test -p ifc-lite-testkit --test fixture_reads_are_gated && cargo test -p ifc-lite-wasm --lib c4_11 -- --nocapture && bash tests/evidence/c4-11b-prepass/validate.sh native && bash tests/evidence/c4-11b-prepass/validate.sh wasm'
+```
+
+Clean confirmation at `60619604c7959039fc8f69b2434904d39eb06428`, request
+`auto-0c4b789e7ba249abb3c7e4776c7e9ff4`, Pop job `8b45102f-25c6-49f2-b14d-8d6ea6db3768`:
+fresh baseline/default/retained builds, strict generated-file drift check and 258 contracts passed, zero skips;
+project/fleet exit 0, sourceUnchanged=true. Rust sources are identical to the full native qualification.
+
+```sh
+~/build-workers/ifc-fleet run --route fleet --storage-task c4-11b-prepass-r1 \
+  --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-0d2321cb -- bash tests/evidence/c4-11b-prepass/validate.sh wasm
 ```
 
 The recipe provisions all 182 cached fixtures with IFC_LITE_REQUIRE_FIXTURES=1; runs verbatim
@@ -71,5 +84,12 @@ All runs used the same absolute cwd through ifc-fleet; the exact phases are the 
 `auto-6b37d6f12d5347fa83514fe93a9e2377` at 12c79d8adf: refused before project start while original evidence publication was pending.
 The original f25b receipt was reconciled and publication verified; only after the task returned active was e928 submitted.
 
-The structural slots task is closed/reclaimed: 942,592,000 bytes. Completing task remains active
-until this final job and evidence are reconciled. Foreign jobs, original locks and shared active caches remain untouched.
+Both tasks are closed and all seven completing-job evidence manifests are verified.
+Registered reclamation removed the structural checkout (942,592,000 reported bytes) and two completing
+checkouts (1,885,229,056 bytes): 2,827,821,056 bytes total. Five released checkouts (10,775,625,728 bytes)
+remain protected. Reclaim stopped at unclassified generated packages/wasm/pkg-diff/.gitignore;
+the storage classifier pins an older build-recipe digest. Some older checkouts also retain tracked generated
+declaration changes, whose exact bytes are now committed. Released snapshots were preserved for owner
+reconciliation; no classifier/metadata guard was changed and no manual deletion bypassed it.
+Shared caches, fixtures, original receipts and foreign work remain untouched. Final clean receipt hash:
+cf4922054298a3be7f0f34bdd2914a6e0118688f20ce6e38502de1ad9557a360.

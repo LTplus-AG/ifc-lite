@@ -608,6 +608,19 @@ graph TB
     Plugins -.->|hooks| Core
 ```
 
+### Shared Rust production and browser scheduling
+
+Native callers use `ifc_lite_processing::process(content, &ProcessingRequest,
+sink)` (`rust/processing/src/processor/`); new inputs belong on the request and
+new output streams on `ProcessingSink`. Default browser clients keep their
+pull-driven `processGeometryBatch*` wrappers. Serial/once discovery shares
+`Discovery`, `scan::ScanClass` and `core::is_geometry_job`; column prepasses
+retain their scheduler adapter. `discovery::TypeGeometryPlan` owns type-map
+planning. Both schedulers use `execution` and `produce_element_meshes_owned`
+(`rust/processing/src/element/owned_session.rs`). See [geometry pipeline](geometry-pipeline.md).
+The retained runtime remains a separate opt-in, default-off path; it does not
+retire the public/default batch clients.
+
 ### Using the Geometry Processor
 
 `GeometryProcessor` is the entry point for turning IFC bytes into meshes. Construct it with options, call `init()`, then either `process()` a whole buffer or `processStreaming()` for large files.

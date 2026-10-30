@@ -7,19 +7,17 @@
 //! per-element producer ([`crate::element`]) consumes.
 //!
 //! Both pipelines run this exact code:
-//! - the native orchestrator (`processor.rs`) span-stashes during its scan and
+//! - the native orchestrator (`processor/`) span-stashes during its scan and
 //!   resolves here before the rayon loop;
 //! - the browser prepasses (`buildPrePassOnce` / `buildPrePassStreaming` in
 //!   `wasm-bindings`) span-stash during their scans and resolve here before
 //!   serialising the flat wire arrays.
 //!
-//! The two scan loops remain per-pipeline (they are mechanical `match`-arms
-//! over type names with pipeline-specific extras: quick-metadata, properties,
-//! incremental job emission), but everything SEMANTIC — styled-item
-//! precedence, IfcIndexedColourMap fallback, the #407 material chain, void
-//! collection and aggregate propagation (#845), and unit-scale resolution —
-//! lives here exactly once. The historic #858/#913-class drift was always in
-//! this resolution layer, not in the span stashing.
+//! Native and browser serial/once scans share `discovery::Discovery` and
+//! `scan::ScanClass`; streaming class columns retain their accepted adapter.
+//! Metadata decoration and incremental emission remain scheduler-owned.
+//! Styled-item precedence, indexed colours, material chains, aggregate voids
+//! and unit scales resolve here once, avoiding the historic #858/#913 drift.
 
 use crate::scan::ScanClass;
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo, SpecularMaterial};

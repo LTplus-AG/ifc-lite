@@ -97,6 +97,22 @@ Shifted:   (234.567, -108.766, 0.0)  ← GPU-friendly!
 
 ## Architecture Overview
 
+Native `process(content, request, sink)` publishes exactly one
+`ProcessingSink::on_frame(&FrameEvent)` before any meshes, including zero-job
+files (`rust/processing/src/processor/resolve/frame.rs`). `FrameEvent.baked_basis`
+is a total `[f64; 16]` column-major native-to-baked basis, not an optional value;
+it and `frame` derive from the same producer decision. The `OnceLock` out-slot
+in `processor/sink.rs::ClosureSink` serves deprecated wrappers only, until C10.
+
+`MeshFrame::select` (`rust/processing/src/mesh_frame.rs`) chooses `SiteLocal`
+when a valid site placement has non-identity translation, otherwise `ModelRtc`
+for a detected nonzero large-coordinate anchor, otherwise `RawIfc`. Native
+production removes site rotation in `processor/site_local.rs`; the browser
+prepass deliberately passes no site placement and keeps world axes. Consumers
+use the emitted frame, never select a site tier again: widen positions before
+adding their f64 origin, then restore through `MeshFrame::to_world` or
+`world_matrix` in f64. See [the Rust sink API](../api/rust.md).
+
 RTC is applied at different layers depending on the parsing path:
 
 ```mermaid

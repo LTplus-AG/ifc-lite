@@ -135,9 +135,9 @@ pub fn pick_material_style_for_submesh(
 /// This owns the precedence *below* the direct geometry style and the stateful
 /// transparent/opaque alternation, so every consumer (the native pipeline and
 /// the browser) applies the identical rule — the §4.2 "one place for the colour
-/// decision" guarantee. The caller resolves `direct_color` itself (its
-/// geometry-style index + `IfcMappedItem` traversal differ by data layout —
-/// `GeometryStyleInfo` vs `[f32; 4]` — so that one step stays at the boundary):
+/// decision" guarantee. Product style-source traversal is shared in
+/// `element/element_color.rs` (`find_geometry_item_style_source` and the
+/// product/map helpers); typed style-map lookup adapters supply `direct_color`:
 ///
 /// 1. `direct_color` (a direct `IfcStyledItem`, incl. mapped geometry) wins;
 /// 2. else the material chain, alternating transparent/opaque per sub-mesh via

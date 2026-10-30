@@ -129,7 +129,7 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = setStyleFinishes)]
     pub fn set_style_finishes(&self, style_ids: &[u32], style_finishes: &[f32]) {
         let finishes = style_finishes_from_wire(style_ids, style_finishes);
-        *self.style_finishes.lock().unwrap_or_else(PoisonError::into_inner) =
+        *self.content.style_finishes.lock().unwrap_or_else(PoisonError::into_inner) =
             (!finishes.is_empty()).then(|| (style_wire_signature(style_ids), Arc::new(finishes)));
     }
 
@@ -141,8 +141,7 @@ impl IfcAPI {
     /// finalize emits NaN finishes, as it always emitted colours only.
     #[wasm_bindgen(js_name = setPrepassGeometryFinishes)]
     pub fn set_prepass_geometry_finishes(&self, geom_ids: &[u32], geom_finishes: &[f32]) {
-        *self
-            .pending_geometry_finishes
+        *self.content.pending_geometry_finishes
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = Some(style_finishes_from_wire(geom_ids, geom_finishes));
     }
@@ -151,7 +150,7 @@ impl IfcAPI {
 impl IfcAPI {
     /// The installed finishes, when they were set for this exact style wire.
     pub(super) fn style_finishes_for(&self, style_ids: &[u32]) -> Option<Arc<StyleFinishes>> {
-        let slot = self.style_finishes.lock().unwrap_or_else(PoisonError::into_inner);
+        let slot = self.content.style_finishes.lock().unwrap_or_else(PoisonError::into_inner);
         match slot.as_ref() {
             Some((sig, finishes)) if *sig == style_wire_signature(style_ids) => Some(Arc::clone(finishes)),
             _ => None,
@@ -160,7 +159,7 @@ impl IfcAPI {
 
     /// Take the sharded stash (empty when none was set).
     pub(super) fn take_pending_geometry_finishes(&self) -> StyleFinishes {
-        self.pending_geometry_finishes
+        self.content.pending_geometry_finishes
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take()
@@ -169,8 +168,8 @@ impl IfcAPI {
 
     /// Drop both finish stores (end of load, `clearPrePassCache`).
     pub(crate) fn clear_style_finishes(&self) {
-        self.style_finishes.lock().unwrap_or_else(PoisonError::into_inner).take();
-        self.pending_geometry_finishes
+        self.content.style_finishes.lock().unwrap_or_else(PoisonError::into_inner).take();
+        self.content.pending_geometry_finishes
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take();

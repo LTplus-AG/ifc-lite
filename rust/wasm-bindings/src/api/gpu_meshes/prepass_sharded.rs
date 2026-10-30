@@ -175,8 +175,7 @@ impl IfcAPI {
     pub fn resolve_styled_items_shard(&self, data: &[u8], spans: &[u32]) -> Result<JsValue, JsValue> {
         use ifc_lite_core::EntityDecoder;
         let index = {
-            let slot = self
-                .cached_entity_index
+            let slot = self.content.cached_entity_index
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             slot.clone()
@@ -288,8 +287,7 @@ impl IfcAPI {
             defines_by_type: Vec::new(),
         };
         let index = {
-            let slot = self
-                .cached_entity_index
+            let slot = self.content.cached_entity_index
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             slot.clone()

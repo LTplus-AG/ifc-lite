@@ -58,7 +58,7 @@ fn warm_derived_slots(api: &IfcAPI, source: &[u8]) {
 fn check_derived_slots(api: &IfcAPI, populated: bool, install: &str) {
     macro_rules! check {
         ($($slot:ident),+ $(,)?) => {$(
-            assert_eq!(api.$slot.lock().unwrap().is_some(), populated,
+            assert_eq!(api.content.$slot.lock().unwrap().is_some(), populated,
                 "{install}: stale content cache {}", stringify!($slot));
         )+};
     }
@@ -75,8 +75,8 @@ fn c4_11a_install_rebuilds_texture_type_layer_caches_and_expires_snapshots_7782(
     for install in ["once", "index", "rejected", "empty", "cleanup"] {
         let api = IfcAPI::new();
         warm_derived_slots(&api, authored().as_bytes());
-        let old_index = api.cached_entity_index.lock().unwrap().clone().unwrap();
-        let snapshot = api.production_model.snapshot(OwnedMeshProductionData::default());
+        let old_index = api.content.cached_entity_index.lock().unwrap().clone().unwrap();
+        let snapshot = api.content.production_model.snapshot(OwnedMeshProductionData::default());
         match install {
             "once" => { api.build_prepass_once_data(PLAIN.as_bytes()); }
             "index" => {
@@ -89,7 +89,7 @@ fn c4_11a_install_rebuilds_texture_type_layer_caches_and_expires_snapshots_7782(
         }
         assert!(snapshot.validate_source().is_err(), "{install}: source epoch must expire");
         check_derived_slots(&api, false, install);
-        let index = api.cached_entity_index.lock().unwrap().clone();
+        let index = api.content.cached_entity_index.lock().unwrap().clone();
         if matches!(install, "once" | "index") {
             assert!(!std::sync::Arc::ptr_eq(&old_index, index.as_ref().unwrap()),
                 "{install}: the installed index must replace the old one");
@@ -128,7 +128,7 @@ fn c4_11a_source_after_columns_preserves_inputs_and_settings_7782() {
     api.set_merge_layers(true);
     api.set_skip_small_cuts(true);
     api.set_tessellation_quality(Some("highest".into())).unwrap();
-    let snapshot = api.production_model.snapshot(OwnedMeshProductionData::default());
+    let snapshot = api.content.production_model.snapshot(OwnedMeshProductionData::default());
     api.set_source_bytes(PLAIN.as_bytes().to_vec());
     assert!(snapshot.validate_source().is_err());
     // Real type planning must still use the injected sets, even though PLAIN
@@ -137,7 +137,7 @@ fn c4_11a_source_after_columns_preserves_inputs_and_settings_7782() {
     let plan = api.get_or_build_type_geometry_plan(PLAIN.as_bytes(), &mut decoder);
     assert!(plan.referenced_representation_maps.contains(&44));
     assert!(plan.instantiated_type_ids.contains(&43));
-    assert_eq!(api.cached_entity_index.lock().unwrap().as_ref().unwrap().lookup(48), Some((1, 3)));
+    assert_eq!(api.content.cached_entity_index.lock().unwrap().as_ref().unwrap().lookup(48), Some((1, 3)));
     api.record_pipeline_batch(7, 0, 0, 0, 0, 0, 0, &Default::default());
     api.clear_pre_pass_cache();
     assert_eq!(api.pipeline_diagnostics.lock().unwrap().element_count, 7);

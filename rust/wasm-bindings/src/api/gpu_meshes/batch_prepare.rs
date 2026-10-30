@@ -127,7 +127,7 @@ impl IfcAPI {
         };
 
         // One snapshot per batch: session caches shared, the batch's wire maps moved in.
-        let ctx = self.production_model.snapshot(OwnedMeshProductionData {
+        let ctx = self.content.production_model.snapshot(OwnedMeshProductionData {
             void_index: std::sync::Arc::new(void_index),
             geometry_style_index: std::sync::Arc::clone(&style_maps.1),
             indexed_colour_full: std::sync::Arc::clone(&indexed_colour.maps),
@@ -151,8 +151,7 @@ impl IfcAPI {
             // The clone is what gets handed to rayon — no lock contention
             // on the per-job hot path that follows. Poison panics here
             // (an earlier panic-with-lock-held has corrupted the cache).
-            let mut slot = self
-                .cached_entity_index
+            let mut slot = self.content.cached_entity_index
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
@@ -183,8 +182,7 @@ impl IfcAPI {
             let sig_len = style_ids.len();
             let sig_first = style_ids.first().copied().unwrap_or(0);
             let sig_last = style_ids.last().copied().unwrap_or(0);
-            let mut slot = self
-                .cached_geometry_styles
+            let mut slot = self.content.cached_geometry_styles
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             match slot.as_ref() {

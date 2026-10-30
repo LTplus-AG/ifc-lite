@@ -50,7 +50,7 @@ fn clear_pre_pass_cache_recovers_from_a_poisoned_cache_mutex() {
     let join_result = std::thread::scope(|scope| {
         scope
             .spawn(|| {
-                let _guard = api.cached_entity_index.lock().unwrap();
+                let _guard = api.content.cached_entity_index.lock().unwrap();
                 panic!("intentional poison for the poison-recovery test");
             })
             .join()
@@ -60,7 +60,7 @@ fn clear_pre_pass_cache_recovers_from_a_poisoned_cache_mutex() {
         "the spawned thread must have panicked while holding the lock"
     );
     assert!(
-        api.cached_entity_index.is_poisoned(),
+        api.content.cached_entity_index.is_poisoned(),
         "the mutex must be poisoned after the spawned thread panicked while holding it"
     );
 
@@ -108,7 +108,7 @@ fn constructing_an_ifc_api_then_panicking_natively_does_not_abort_the_process() 
 fn a_content_swap_expires_every_batch_snapshot_of_the_previous_content() {
     use ifc_lite_processing::element::{OwnedMeshProductionData, ProductionContextError};
     let api = IfcAPI::new();
-    let model = &api.production_model;
+    let model = &api.content.production_model;
     let snapshot = || model.snapshot(OwnedMeshProductionData::default());
     let (first, second) = (snapshot(), snapshot());
     assert_ne!(first.id(), second.id());
@@ -138,10 +138,10 @@ fn entity_index_replacement_expires_previous_production_snapshots() {
         (vec![2], vec![], vec![12], false),
         (vec![], vec![], vec![], true),
     ] {
-        let before = api.production_model.snapshot(OwnedMeshProductionData::default());
+        let before = api.content.production_model.snapshot(OwnedMeshProductionData::default());
         assert_eq!(api.set_entity_index(&ids, &starts, &lengths).is_ok(), succeeds);
         assert_eq!(before.validate_source(), Err(ProductionContextError::StaleSource));
-        let after = api.production_model.snapshot(OwnedMeshProductionData::default());
+        let after = api.content.production_model.snapshot(OwnedMeshProductionData::default());
         assert!(after.validate_source().is_ok());
     }
 }

@@ -2,7 +2,7 @@
 //! Per-slice source checks: shared reporting needs no feature-specific columns.
 mod layers;
 mod clips;
-mod bounded;
+pub(crate) mod bounded;
 pub mod faces;
 use ifc_lite_retained_native::ShapeOnlyProduct;
 use ifc_lite_processing::AnalyticQuantitySources;
@@ -10,6 +10,7 @@ use ifc_lite_processing::AnalyticQuantitySources;
 /// retained result; the analytical summaries alone omit Boolean/plane sources.
 pub struct SourceContext<'a> {
     pub product_id: u32,
+    pub hand_volume: Option<f64>,
     pub clips: &'a ifc_lite_retained_native::oracle::clips::ClipOracle<'a>,
     pub analytic: &'a AnalyticQuantitySources,
 }
@@ -29,12 +30,13 @@ pub struct ClipPartEvidence { pub index: usize, pub curved: bool, pub executed: 
 pub struct OracleResult {
     pub family: &'static str, pub value: f64, pub limit: f64, pub pass: bool, pub gated: bool,
     pub authority: Option<SourceAuthority>,
+    pub reason: Option<String>,
     pub clip_part: Option<ClipPartEvidence>,
 }
-pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, bytes: &[u8], tolerances: &serde_json::Value, bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>) -> Vec<OracleResult> {
     let mut results = layers::check(product, sources, bytes, tolerances);
     results.extend(clips::check(product, sources, tolerances));
-    results.extend(bounded::check(product, sources, tolerances));
+    results.extend(bounded::check(product, bounded, tolerances, sources.hand_volume, bytes));
     results.extend(faces::check(product, sources, tolerances));
     results
 }

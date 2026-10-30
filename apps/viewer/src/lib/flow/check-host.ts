@@ -93,8 +93,11 @@ export async function compareChecks(run: WorkflowRun, workflowId: string, modelV
     const built = await prepareComparison({ baseModel, headModel, getMutationView: state.getMutationView,
       mutationVersion: state.mutationVersion, contentVersion: state.geometryContentVersion,
       keyProperty: recipe.options.keyProperty, signal: run.controller.signal });
-    checkedModelSet(run, session);
-    const result = comparePreparedPair(built, recipe.options);
+    let result;
+    try {
+      checkedModelSet(run, session);
+      result = comparePreparedPair(built, recipe.options);
+    } finally { built.dispose(); }
     if (recipe.options.scope !== 'data' && (result.geometryUnavailable || result.placementOnlyGeometry)) throw new Error(`${job.id}: full geometry is unavailable; select data scope explicitly`);
     const metadata = provenance(run, workflowId, job, input, [base, head], session, JSON.parse(JSON.stringify({ ...recipe.options, acceptedIdentity: [] })) as Record<string, AutomationJsonValue>);
     const saved = { ...snapshotComparison(result, state.models, recipe.name), automation: metadata };

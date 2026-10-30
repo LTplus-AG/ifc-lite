@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MPL-2.0
+m6_bounded_volumes
+m6_boxed_twin_outcomes
+m6_typed_refusals
+m6_fzk_bounded_chains
+m6_atomic_failure
+m6_native_reference
+m6_960_bounded_report
+m6_circle_boundary
+m6_presentation_interactions
+m6_affine_boxed_interaction
+m6_clipped_style
+m6_equivalent_boundaries
+m6_mapped_boundaries
+m6_circle_volume_false_pass
+m6_mirrored_bounded

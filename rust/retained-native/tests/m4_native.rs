@@ -308,9 +308,9 @@ fn issue_7955_m4_opened_straight_wall_is_band_checked() {
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     let bundle=SourceBundle::new(text.as_bytes().to_vec());
     let clips=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&bundle,&sources);
-    let context=checks::SourceContext{product_id:248,clips:&clips,analytic:&sources};
+    let context=checks::SourceContext{product_id:248,clips:&clips,analytic:&sources,hand_volume:None};
     let limits=tolerances::registered().unwrap();
-    let checked=checks::check(product,&context,text.as_bytes(),&limits);
+    let checked=checks::check(product,&context,text.as_bytes(),&limits,None);
     assert_eq!(checked.iter().filter(|r|r.family=="layerBandVolumeRelative").count(),2);
     assert!(checked.iter().any(|r|r.family=="layerBandSumRelative"));
     assert!(checked.iter().all(|r|r.pass),"{:?}",checked.iter().map(|r|(r.family,r.value,r.limit)).collect::<Vec<_>>());

@@ -256,7 +256,7 @@ if (unminified.length > 0) {
 // The chunks evaluated at app start must not be wrapped at all:
 // scripts/lib/tla-entry-graph.mjs.
 const INDEX_HTML = join(ROOT, 'apps', 'viewer', 'dist', 'index.html');
-const entryCheck = checkEntryGraph(existsSync(INDEX_HTML) ? readFileSync(INDEX_HTML, 'utf8') : null, sources, tlaExporters, relative(ROOT, INDEX_HTML));
+const entryCheck = checkEntryGraph(existsSync(INDEX_HTML) ? readFileSync(INDEX_HTML, 'utf8') : null, sources, new Set(tlaChunks), relative(ROOT, INDEX_HTML));
 if (entryCheck.error) {
   console.error(entryCheck.error);
   process.exit(1);

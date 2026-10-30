@@ -34,6 +34,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { staticDependencies } from './lib/tla-entry-graph.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'check-tla-chunk-await.mjs');
@@ -452,4 +453,48 @@ test('RED: an index.html whose entry is not among the chunks, or that has none, 
   const none = runOn({ 'store-abc.js': TLA_CHUNK }, { html: '<!doctype html><script src="/legacy.js"></script>' });
   assert.equal(none.status, 1, none.out);
   assert.match(none.out, /loads 0 module script\(s\)/);
+});
+
+// Review findings on the start graph (#8373).
+
+test('RED: a wrapped chunk reached by a default or mixed static import is caught', () => {
+  for (const [name, entry] of [
+    ['default', `import vendor from"./vendor-x.js";vendor();`],
+    ['default spaced', `import vendor from "./vendor-x.js";vendor();`],
+    ['default and named', `import a,{b}from"./vendor-x.js";a(b);`],
+    ['default and namespace', `import a,*as ns from"./vendor-x.js";a(ns);`],
+  ]) {
+    const vendor = `export{z as default}from"./store-abc.js";`;
+    const { status, out } = runOn(
+      { 'store-abc.js': TLA_CHUNK, 'main-def.js': entry, 'vendor-x.js': vendor },
+      { html: entryHtml('main-def.js') },
+    );
+    assert.equal(status, 1, `${name}: ${out}`);
+    assert.match(out, /__tla-wrapped/, name);
+  }
+});
+
+test('staticDependencies reads every static import and re-export form, minified or spaced', () => {
+  const forms = [
+    'import a from"./x.js"', 'import a from "./x.js"', 'import a,{b}from"./x.js"',
+    'import a, { b } from "./x.js"', 'import a,*as ns from"./x.js"', 'import * as ns from "./x.js"',
+    'import*as ns from"./x.js"', 'import{b}from"./x.js"', 'import"./x.js"', "import'./x.js'",
+    'export*from"./x.js"', 'export * from "./x.js"', 'export*as ns from"./x.js"',
+    'export{b}from"./x.js"', 'export{b as default}from"./x.js"',
+  ];
+  for (const form of forms) assert.deepEqual(staticDependencies(`${form};`), ['x.js'], form);
+  for (const form of ['import("./x.js")', 'import a from"../x.js"', 'import a from"x.js"', 'export{b};const s="./x.js"']) {
+    assert.deepEqual(staticDependencies(form), [], form);
+  }
+});
+
+test('RED: a wrapped entry with no __tla export is caught even when a worker supplies the exporter', () => {
+  const entry = `(async()=>{const a=(()=>{try{return 0}catch{}})();const m=await import("./store-abc.js").then(async m=>{await m.__tla;return m});m.z()})();`;
+  const { status, out } = runOn(
+    { 'store-abc.js': TLA_CHUNK, 'main-def.js': entry },
+    { html: entryHtml('main-def.js') },
+  );
+  assert.equal(status, 1, out);
+  assert.match(out, /__tla-wrapped/);
+  assert.match(out, /main-def\.js/);
 });

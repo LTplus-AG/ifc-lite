@@ -34,11 +34,13 @@ export function entryChunks(html) {
 /**
  * Static imports and re-exports of sibling chunks: `import{a}from"./x.js"`,
  * `import"./x.js"`, `import * as n from"./x.js"`, `export{a}from"./x.js"`,
- * `export*from"./x.js"`. A dynamic `import("./x.js")` is not matched: the
+ * `export*from"./x.js"`, and the default and mixed forms `import a from"./x.js"`,
+ * `import a,{b}from"./x.js"`, `import a,*as n from"./x.js"`. A dynamic `import("./x.js")` is not matched: the
  * parenthesis does not fit any form below, and a lazy chunk is not evaluated
  * at app start.
  */
-const STATIC_DEPENDENCY = /\b(?:import|export)\s*(?:\{[^}]*\}\s*from\s*|\*\s*(?:as\s+[\w$]+\s*)?from\s*)?["']\.\/([^"']+\.js)["']/g;
+const STATIC_DEPENDENCY =
+  /\b(?:import|export)\s*(?:(?:[\w$]+\s*,\s*)?(?:\{[^}]*\}|\*\s*as\s+[\w$]+)\s*from\s*|[\w$]+\s+from\s*|\*\s*from\s*)?["']\.\/([^"']+\.js)["']/g;
 
 /** The chunk files `text` imports statically. */
 export function staticDependencies(text) {
@@ -47,10 +49,12 @@ export function staticDependencies(text) {
 
 /**
  * The entry chunks of `html`, the chunks reached from them by static imports
- * (`sources`: file name -> text), and those of them in `tlaExporters`.
+ * (`sources`: file name -> text), and those of them in `wrappedChunks`: every
+ * chunk the plugin rewrote, not only those that export `__tla`, because a
+ * wrapped entry whose only import is dynamic exports none.
  * `missing` lists entries that are not among `sources`.
  */
-export function wrappedOnEntryPath(html, sources, tlaExporters) {
+export function wrappedOnEntryPath(html, sources, wrappedChunks) {
   const entries = entryChunks(html);
   const missing = entries.filter((file) => !sources.has(file));
   const reached = new Set();
@@ -63,7 +67,7 @@ export function wrappedOnEntryPath(html, sources, tlaExporters) {
       if (sources.has(dep) && !reached.has(dep)) queue.push(dep);
     }
   }
-  const wrapped = [...reached].filter((file) => tlaExporters.has(file)).sort();
+  const wrapped = [...reached].filter((file) => wrappedChunks.has(file)).sort();
   return { entries, missing, reached, wrapped };
 }
 
@@ -73,7 +77,7 @@ export function wrappedOnEntryPath(html, sources, tlaExporters) {
  * `html` is `index.html`'s text, or null when the file is missing; `label` is
  * its path as printed.
  */
-export function checkEntryGraph(html, sources, tlaExporters, label) {
+export function checkEntryGraph(html, sources, wrappedChunks, label) {
   if (html === null) {
     return {
       error:
@@ -81,7 +85,7 @@ export function checkEntryGraph(html, sources, tlaExporters, label) {
         `found. Rebuild the viewer:\n\n    pnpm turbo build --filter=@ifc-lite/viewer\n`,
     };
   }
-  const entryPath = wrappedOnEntryPath(html, sources, tlaExporters);
+  const entryPath = wrappedOnEntryPath(html, sources, wrappedChunks);
   if (entryPath.entries.length === 0 || entryPath.missing.length > 0) {
     return {
       error:

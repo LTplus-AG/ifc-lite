@@ -52,11 +52,13 @@ export function staticDependencies(text) {
  * (`sources`: file name -> text), and those of them in `wrappedChunks`: every
  * chunk the plugin rewrote, not only those that export `__tla`, because a
  * wrapped entry whose only import is dynamic exports none.
- * `missing` lists entries that are not among `sources`.
+ * `missing` lists entries that are not among `sources`, `missingDependencies`
+ * the static imports on the graph that are not (`importer`, `specifier`).
  */
 export function wrappedOnEntryPath(html, sources, wrappedChunks) {
   const entries = entryChunks(html);
   const missing = entries.filter((file) => !sources.has(file));
+  const missingDependencies = [];
   const reached = new Set();
   const queue = entries.filter((file) => sources.has(file));
   while (queue.length > 0) {
@@ -64,16 +66,20 @@ export function wrappedOnEntryPath(html, sources, wrappedChunks) {
     if (reached.has(file)) continue;
     reached.add(file);
     for (const dep of staticDependencies(sources.get(file))) {
-      if (sources.has(dep) && !reached.has(dep)) queue.push(dep);
+      if (!sources.has(dep)) missingDependencies.push({ importer: file, specifier: dep });
+      else if (!reached.has(dep)) queue.push(dep);
     }
   }
   const wrapped = [...reached].filter((file) => wrappedChunks.has(file)).sort();
-  return { entries, missing, reached, wrapped };
+  return { entries, missing, missingDependencies, reached, wrapped };
 }
 
 /**
- * The gate's verdict on the app-start graph: `{ entryPath }` when it was read
- * and nothing on it is wrapped, else `{ error }` with the message to print.
+ * The gate's verdict on the app-start graph: `{ entryPath, warning }` when it
+ * was read and nothing on it is wrapped, else `{ error }` with the message to
+ * print. A static import that names no emitted chunk is a `warning`, not an
+ * error: this check scans whole chunks, so text in a string that looks like an
+ * import lands here too, and this gate runs inside the deploy build.
  * `html` is `index.html`'s text, or null when the file is missing; `label` is
  * its path as printed.
  */
@@ -108,5 +114,13 @@ export function checkEntryGraph(html, sources, wrappedChunks, label) {
         `app build's plugins in apps/viewer/vite.config.ts (the worker build keeps it).\n`,
     };
   }
-  return { entryPath };
+  const unresolved = entryPath.missingDependencies;
+  const warning =
+    unresolved.length === 0
+      ? null
+      : `⚠️ ${unresolved.length} import-like reference(s) on the app-start graph name no emitted chunk ` +
+        `(a real import the page cannot load, or text in a string):\n` +
+        unresolved.slice(0, 10).map(({ importer, specifier }) => `   ${importer} mentions ./${specifier}\n`).join('') +
+        (unresolved.length > 10 ? `   ... and ${unresolved.length - 10} more\n` : '');
+  return { entryPath, warning };
 }

@@ -1,5 +1,18 @@
 # @ifc-lite/merge
 
+## 0.5.0
+
+### Minor Changes
+
+- [#8111](https://github.com/LTplus-AG/ifc-lite/pull/8111) [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65) Thanks [@louistrue](https://github.com/louistrue)! - Initialize the shared diff runtime at async content comparison, table rekey, and layer merge boundaries before invoking the synchronous Rust facade. Initialization failures propagate and subsequent requests can retry through the shared runtime.
+  
+  Library users of synchronous merge planning, rebase, revert, comparison, and snapshot hashing must first initialize the shared runtime from `@ifc-lite/diff`, either with `await initDiff()` or, with preloaded WASM input, `initDiffSync(...)`. The merge package receives a minor release for this new initialization prerequisite.
+
+### Patch Changes
+
+- Updated dependencies [[`b46c759`](https://github.com/LTplus-AG/ifc-lite/commit/b46c759601838b5d91dd54e4355feec2fea047af), [`c0acc2d`](https://github.com/LTplus-AG/ifc-lite/commit/c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1), [`f2271ec`](https://github.com/LTplus-AG/ifc-lite/commit/f2271ec4fb5b9bd59fedb7802b3438bbdf0b18ba), [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65)]:
+  - @ifc-lite/diff@0.13.0
+
 ## 0.4.9
 
 ### Patch Changes

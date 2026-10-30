@@ -54,8 +54,11 @@ Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-1
   * identity vs main: Haus, duplex, ISSUE_129 IDENTICAL; every count, FNV,
     output SHA-256 and diagnostics SHA-256 equals the C2-8a values recorded in
     tests/evidence/c2-8a/port-notes.txt.
-  * gated features: base and head each fail only
-    topology_gate_census_over_the_fixture_corpus; identical set.
+  * gated features: that run fed the base export no fixture corpus (see
+    c2-8a/port-notes.txt), so it is superseded. Re-run after the qualify.sh
+    fix, rebased head 4016af3895 (Rust tree identical to cf75be4e47), job
+    acc3ccb0-b601-40a1-9ef3-17ee5504def3: base 3079 passed / 0 failed / 35
+    ignored, head 3079 / 0 / 35; failing set identical (empty).
   * instructions vs main: worst phase 1.000339 (ISSUE_129 parse/entity scan/
     preprocess); geometry 0.999959 / 0.999616 / 0.997836; total 1.000012 /
     0.999656 / 0.997858 (Haus / duplex / ISSUE_129). All <= 1.0005.

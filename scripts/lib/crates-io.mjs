@@ -38,6 +38,10 @@ export const CRATES = [
   // front.
   'ifc-lite-clash',
   'ifc-lite-geometry',
+  // ifc-lite-geometry-runtime follows geometry, which it depends on by version.
+  // Bootstrapped on crates.io by hand (27.1.0) and its Trusted Publisher then
+  // configured, so it now publishes through OIDC like the rest of this list.
+  'ifc-lite-geometry-runtime',
   'ifc-lite-processing',
   // ifc-lite-landxml depends on geometry and must precede wasm, which pins it
   // by version. It was missing from this list, so the release after #5078

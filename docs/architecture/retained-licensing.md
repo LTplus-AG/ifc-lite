@@ -60,8 +60,8 @@ OpenUSD licence text must never substitute for its complete licence if OpenUSD
 is added to a future artifact. `proposals/NOTICE` belongs to unshipped proposals.
 
 `ifc-lite-geometry-runtime` now has an explicit source-only Cargo include list.
-It remains outside the automatic `CRATES` release list until manual bootstrap;
-explicit package qualification still includes it.
+It is in the automatic `CRATES` release list (after geometry) since its manual
+27.1.0 bootstrap; package qualification covers it as a listed crate.
 Its retained feature forwards to `ifc-lite-geometry/retained-runtime`. Processing's
 current retained feature also forwards directly to geometry; it does **not** have
 an optional runtime dependency. The unpublished `ifc-lite-retained-native` harness
@@ -106,9 +106,9 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 
 ## Distribution scope for this release
 
-* **crates.io:** the eight crates in `scripts/lib/crates-io.mjs` (core, clash,
-  geometry, processing, landxml, export, ffi, wasm) and the separately qualified
-  geometry-runtime bootstrap candidate are source packages. `cargo package
+* **crates.io:** the nine crates in `scripts/lib/crates-io.mjs` (core, clash,
+  geometry, geometry-runtime, processing, landxml, export, ffi, wasm) are
+  source packages. `cargo package
   --list` is the archive selection check, not a build or publication. Their
   lists contain source, tests/fixtures, documentation and Cargo metadata, no SDK
   or third-party binaries. Each inherits `license-file = "LICENSE"` from the

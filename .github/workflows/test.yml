@@ -1020,6 +1020,10 @@ jobs:
           # Keep the one scan; drop wrappers authored after a styled item.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch --test rust/processing/src/symbolic/color_tests.rs)
+          # #8263 C2-7b (stacked on C2-7a): plan the batch over coaxial-consumed
+          # openings, so a consumed box is cut twice.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-7b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-7b/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-7b/behaviour.oracle.patch --test rust/geometry/src/router/voids/stage_order_tests.rs)
           # #8263 C2-7a: the stage move keeps every byte, so whole inversion is
           # unobserved by construction. Swap the frozen ParamRect/Bool2d order.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-7a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-7a/behaviour.oracle.patch'; then

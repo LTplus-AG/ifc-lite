@@ -56,9 +56,10 @@ test.skipIf(!existsSync(binary))('decoded handle entries are eager, independentl
   const { initDiff } = await import('./wasm-runtime.js');
   const { prepareDiffModel } = await import('./index.js');
   await initDiff();
-  const ref = { opaque: Symbol('ref') };
-  const row = (key: string, dataHash = 'before'): EntityFingerprint<typeof ref> => ({
-    key, ifcType: 'IfcWall', dataHash, components: { '\ud800': dataHash }, ref,
+  type Ref = { opaque: symbol };
+  // A distinct ref per row, so a wrong row-to-ref association cannot pass.
+  const row = (key: string, dataHash = 'before'): EntityFingerprint<Ref> => ({
+    key, ifcType: 'IfcWall', dataHash, components: { '\ud800': dataHash }, ref: { opaque: Symbol(`ref:${key}:${dataHash}`) },
   });
   const base = [row('changed'), row('unchanged'), row('deleted'), row('__proto__')];
   const head = [row('added'), row('unchanged'), row('changed', 'after'), row('alias')];
@@ -81,8 +82,8 @@ test.skipIf(!existsSync(binary))('decoded handle entries are eager, independentl
         expect(descriptor).toMatchObject({ enumerable: true, configurable: true, writable: true });
         expect(descriptor.get).toBeUndefined();
       }
-      if (entry.base) expect(entry.base.ref).toBe(ref);
-      if (entry.head) expect(entry.head.ref).toBe(ref);
+      expect(entry.base?.ref).toBe(expected.entries[i].base?.ref);
+      expect(entry.head?.ref).toBe(expected.entries[i].head?.ref);
       if (entry.changedComponents) {
         expect(entry.changedComponents).not.toBe(next.changedComponents);
         entry.changedComponents.push('caller edit');

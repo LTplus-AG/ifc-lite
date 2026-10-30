@@ -77,8 +77,7 @@ test('wheel guard expects exactly the artifacts the workflow matrix uploads', ()
   const uploaded = [workflow.jobs.build, workflow.jobs['build-cross']].flatMap((job) => {
     const upload = job.steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
     return job.strategy.matrix.include.map((leg) => upload.with.name
-      .replace('${{ matrix.os }}', leg.os)
-      .replace('${{ matrix.target }}', leg.target));
+      .replace(/\$\{\{ matrix\.(\w+) \}\}/g, (_, key) => leg[key]));
   });
   assert.deepEqual([...EXPECTED_WHEEL_ARTIFACTS].sort(), uploaded.sort());
 });

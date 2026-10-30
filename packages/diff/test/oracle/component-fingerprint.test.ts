@@ -107,6 +107,49 @@ describe('buildComponentFingerprints', () => {
   });
 });
 
+describe('same-named sets on one entity (#8136)', () => {
+  const twice = (second: string): DataFingerprintInput => ({
+    ifcType: 'IfcWall',
+    propertySets: [
+      { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
+      { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: second }] },
+    ],
+    quantitySets: [
+      { name: 'Qto', quantities: [{ name: 'A', value: 1 }] },
+      { name: 'Qto', quantities: [{ name: 'A', value: 2 }] },
+    ],
+  });
+
+  it('keys every set, ordinal in the prefix, instead of letting the last overwrite', () => {
+    const components = buildComponentFingerprints(twice('REI60'));
+    expect(Object.keys(components)).toEqual(['attr:core', 'pset:Pset_WallCommon', 'pset#2:Pset_WallCommon', 'qset:Qto', 'qset#2:Qto']);
+    expect(components['pset:Pset_WallCommon']).not.toBe(components['pset#2:Pset_WallCommon']);
+  });
+
+  it('cannot be forged by a set whose name contains # or :', () => {
+    const components = buildComponentFingerprints({
+      ifcType: 'IfcWall',
+      propertySets: [
+        { name: 'X', properties: [{ name: 'p', value: 1 }] },
+        { name: 'X', properties: [{ name: 'p', value: 2 }] },
+        { name: 'X#2', properties: [{ name: 'p', value: 1 }] },
+        { name: '2:X', properties: [{ name: 'p', value: 1 }] },
+      ],
+    });
+    expect(Object.keys(components)).toEqual(['attr:core', 'pset:2:X', 'pset:X', 'pset#2:X', 'pset:X#2']);
+  });
+
+  it('a modified entity names the duplicate that changed, never an empty list', () => {
+    const fp = (input: DataFingerprintInput): EntityFingerprint<null> => ({
+      key: 'w', ifcType: input.ifcType, dataHash: buildDataFingerprint(input),
+      components: buildComponentFingerprints(input), ref: null,
+    });
+    const entry = diffModels([fp(twice('REI60'))], [fp(twice('REI90'))]).byKey.get('w');
+    expect(entry?.state).toBe('modified');
+    expect(entry?.changedComponents).toEqual(['pset#2:Pset_WallCommon']);
+  });
+});
+
 describe('diffModels with component sub-hashes', () => {
   function fp(key: string, input: DataFingerprintInput): EntityFingerprint<null> {
     return {

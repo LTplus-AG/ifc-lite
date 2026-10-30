@@ -2,7 +2,7 @@
 //! Geometry-only classification of already admitted occurrence probes.
 use crate::program::opening::OpeningBounds;
 use crate::router::voids::geom::{infer_opening_frame, is_axis_aligned_direction, is_rectangular_box_mesh};
-use crate::router::voids::OpeningType;
+use crate::router::voids::CutterKind;
 use crate::router::{ClassificationKind, OpeningKindDiag};
 use crate::{Mesh, Point3, Vector3};
 
@@ -18,15 +18,15 @@ pub(super) fn world_bounds(mesh: &Mesh) -> (Point3<f64>, Point3<f64>) {
     )
 }
 
-pub(super) fn kind(opening: &OpeningType) -> (ClassificationKind, OpeningKindDiag) {
+pub(super) fn kind(opening: &CutterKind) -> (ClassificationKind, OpeningKindDiag) {
     match opening {
-        OpeningType::Rectangular(..) => {
+        CutterKind::Rectangular(..) => {
             (ClassificationKind::Rectangular, OpeningKindDiag::Rectangular)
         }
-        OpeningType::DiagonalRectangular(..) => {
+        CutterKind::DiagonalRectangular(..) => {
             (ClassificationKind::Diagonal, OpeningKindDiag::Diagonal)
         }
-        OpeningType::NonRectangular(..) => {
+        CutterKind::NonRectangular(..) => {
             (ClassificationKind::NonRectangular, OpeningKindDiag::NonRectangular)
         }
     }
@@ -61,15 +61,15 @@ pub(super) fn classify(
 }
 
 impl Iterator for Decisions {
-    type Item = OpeningType;
+    type Item = CutterKind;
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.0 {
             Inputs::Parts(parts) => parts.next().map(|mesh| {
                 let (min, max) = world_bounds(&mesh);
-                OpeningType::Rectangular(min, max, None)
+                CutterKind::Rectangular(min, max, None)
             }),
             Inputs::Bounds(bounds) => {
-                bounds.next().map(|(min, max, dir)| OpeningType::Rectangular(min, max, dir))
+                bounds.next().map(|(min, max, dir)| CutterKind::Rectangular(min, max, dir))
             }
             Inputs::Meshes(meshes) => {
                 meshes.next().map(|((min, max, dir), mesh)| classify_item(min, max, dir, mesh))
@@ -86,21 +86,21 @@ fn classify_item(
     max: Point3<f64>,
     dir: Option<Vector3<f64>>,
     mesh: Mesh,
-) -> OpeningType {
+) -> CutterKind {
     let frame = infer_opening_frame(&mesh, dir.as_ref());
     let diagonal = dir.map(|d| !is_axis_aligned_direction(&d)).unwrap_or(false);
     let clean_box = is_rectangular_box_mesh(&mesh);
     if let Some(frame) = frame {
         if !clean_box {
-            OpeningType::NonRectangular(mesh, min, max, dir)
+            CutterKind::NonRectangular(mesh, min, max, dir)
         } else if diagonal || !frame.is_axis_aligned() {
-            OpeningType::DiagonalRectangular(mesh, frame)
+            CutterKind::DiagonalRectangular(mesh, frame)
         } else {
-            OpeningType::Rectangular(min, max, dir)
+            CutterKind::Rectangular(min, max, dir)
         }
     } else if clean_box {
-        OpeningType::Rectangular(min, max, dir)
+        CutterKind::Rectangular(min, max, dir)
     } else {
-        OpeningType::NonRectangular(mesh, min, max, dir)
+        CutterKind::NonRectangular(mesh, min, max, dir)
     }
 }

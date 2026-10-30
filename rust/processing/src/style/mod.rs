@@ -31,6 +31,8 @@
 use ifc_lite_core::IfcType;
 
 pub(crate) mod fill;
+mod element_color;
+pub use element_color::resolve_element_color;
 mod finish_join;
 mod indexed_colour;
 mod material;
@@ -41,8 +43,8 @@ mod surface;
 // path can restore the per-triangle palette split it lost in the #874 mesh-pipeline
 // unification (issue #858) — keeping one shared splitter rather than a wasm copy.
 pub use indexed_colour::{
-    indexed_colour_split_guard_ids, resolve_indexed_colour_map_full, split_mesh_by_indexed_colour,
-    FullIndexedColourMap,
+    collect_full_indexed_colour_maps, indexed_colour_split_guard_ids, resolve_indexed_colour_map_full,
+    split_mesh_by_indexed_colour, FullIndexedColourMap,
 };
 pub use material::{
     build_element_material_colors, build_material_style_index, element_material_fallback_color,

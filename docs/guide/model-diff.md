@@ -21,11 +21,18 @@ large result groups scroll within a virtual list without truncating their rows.
 
 ## What the engine does
 
+Initialize the independent diff WASM module once with `await initDiff()` before
+calling synchronous diff APIs, or use `initDiffSync({ module: bytes })` with
+preloaded WASM bytes. If asynchronous initialization is in progress,
+`initDiffSync` throws: await `initDiff()` instead. Failed initialization may be
+retried; after success, both initializers are no-ops.
+
 `diffModels(base, head, options?)` takes two iterables of `EntityFingerprint`s and returns a `ModelDiff`:
 
 ```ts
-import { diffModels } from '@ifc-lite/diff';
+import { diffModels, initDiff } from '@ifc-lite/diff';
 
+await initDiff();
 const diff = diffModels(baseFingerprints, headFingerprints, { scope: 'both' });
 
 console.log(diff.counts); // { added, modified, deleted, unchanged }
@@ -37,6 +44,44 @@ for (const entry of diff.entries) {
 ```
 
 Entities are matched across revisions by a stable `key`, typically the IFC `GlobalId`. The result carries every entry, a `byKey` map for O(1) lookup (picking in a viewer), and the aggregate `counts`.
+
+### Resident model handles
+
+For repeated comparisons, prepare each model once. `DiffModelHandle<TRef>` owns
+an immutable snapshot in Rust; `compare` only sends options across the boundary.
+Opaque refs retain their identity, and source edits require preparing a new
+handle. There is no hidden identity cache.
+
+```ts
+import { prepareDiffModel } from '@ifc-lite/diff';
+
+const baseHandle = prepareDiffModel(baseFingerprints);
+try {
+  const headHandle = prepareDiffModel(headFingerprints);
+  try {
+    const data = baseHandle.compare(headHandle, { scope: 'data' });
+    const both = baseHandle.compare(headHandle, { scope: 'both' });
+  } finally { headHandle.dispose(); }
+} finally { baseHandle.dispose(); }
+```
+
+Release with `dispose()` or `Symbol.dispose` (`using` where supported). Release
+is idempotent, use after release throws, and returned results remain valid.
+`diffModels` remains a one-shot wrapper that transfers and frees both models on
+every call; handles avoid that repeated cost.
+
+`stripPlacementGeometry: true` ignores `p:` placement hashes on both sides and
+returns those fingerprints with `geometryHash: undefined`, exactly like JS
+stripping before comparison. It keeps mesh hashes, boxes, volumes and refs.
+Set it when exactly one full input has mesh hashes (judged before your
+exclusions or key deduplication), so placements cannot defeat geometry
+capability abstention. The comparison's own capability check still ignores
+excluded types.
+Keep its default `false` for symmetric pairs (including two placement-only
+models) so placement moves remain detectable. Changing the option leaves the
+resident snapshots intact. Each handle lazily owns a frozen stripped view;
+placement rows alone are shallow-copied and reused across comparisons, while
+other rows and opaque refs retain their identity. Disposal releases both views.
 
 ### Classification
 

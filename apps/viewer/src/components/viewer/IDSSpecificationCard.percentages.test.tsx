@@ -91,11 +91,18 @@ describe('IDS percentages (#8065)', () => {
     assert.ok(ui.querySelector('[style="width: 0%;"]'));
   });
 
-  it('lists unmatched specifications under Not checked without inventing entities for the benchmark', () => {
+  it('lists unmatched specifications without inventing entities for the benchmark', () => {
     const ui = render(<ValidationBenchmark summary={{ checked: 128, passed: 0, failed: 128, passRate: 0 }}
       name="Walls" notCheckedSpecifications={2} />);
-    assert.match(ui.textContent ?? '', /Not checked: 2 specifications/);
+    assert.match(ui.textContent ?? '', /2 specifications matched no entities/);
     assert.match(ui.querySelector('img')?.alt ?? '', /128 failed/);
+    // #8204: an always-zero entity "Not checked" row beside the specification count read as a contradiction.
+    assert.equal(ui.querySelector('[data-bucket="unanswered"]'), null);
+  });
+
+  it('keeps the Not checked legend row when entities really went unevaluated (#8204)', () => {
+    const ui = render(<ValidationBenchmark summary={{ checked: 10, passed: 4, failed: 5, passRate: 40 }} name="Walls" />);
+    assert.equal(ui.querySelector('[data-bucket="unanswered"]')?.textContent, 'Not checked1');
   });
 });
 
@@ -126,8 +133,14 @@ it('renders real SketchUp IFC validation through the IDS panel (#8065)', async (
     const ui = render(<IDSPanel />);
     const wallHeader = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('IFCWALL'));
     assert.ok(wallHeader?.querySelector('[style="width: 50%;"]'), 'main specification bar reflects half of requirement checks passing');
-    assert.match(ui.textContent ?? '', /Not checked: 1 specification/);
     assert.doesNotMatch(ui.textContent ?? '', /100%/);
+    // #8204: the vacuous pass is named once, under the headline, and the
+    // entity tile no longer shares the word "checks" with requirement checks.
+    const summary = ui.querySelector('[data-tour="ids-summary"]');
+    assert.ok(summary, 'IDS summary region is mounted');
+    assert.equal(summary.textContent?.match(/1 specification matched no entities/g)?.length, 1);
+    assert.match(summary.textContent ?? '', /Entity results/);
+    assert.equal(summary.querySelector('[data-validation-benchmark] [data-bucket="unanswered"]'), null);
     const empty = { ...report, specificationResults: [report.specificationResults[1]] };
     assert.equal(validationReportSummary(empty).passRate, 0);
   } finally {

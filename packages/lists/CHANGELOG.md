@@ -1,5 +1,20 @@
 # @ifc-lite/lists
 
+## 3.1.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/rules@0.7.11
+
+## 3.1.10
+
+### Patch Changes
+
+- Updated dependencies [[`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0)]:
+  - @ifc-lite/data@6.4.0
+  - @ifc-lite/rules@0.7.10
+
 ## 3.1.9
 
 ### Patch Changes

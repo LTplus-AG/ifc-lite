@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
+use ifc_lite_retained_native::oracle::normals::{self,Surface};
+fn source(text: &[u8],id: u32) -> Vec<Surface> {
+    normals::surfaces(text,&ifc_lite_processing::extract_analytic_quantity_sources(text,None),id).unwrap()
+}
+fn expected(surfaces: &[Surface], p: [f64;3], normal: [f64;3]) {
+    assert!(surfaces.iter().any(|s| s.sample(p).is_some_and(|(n,d)|
+        d < 1e-12 && normals::angle(n,normal) < 1e-12)), "no source normal {normal:?} at {p:?}");
+}
+#[test]
+fn m11_n_7955_source_box_uses_authored_axes() {
+    let surfaces = source(include_bytes!("../../../tests/fixtures/synthetic-retained/f-c-extrusion.ifc"),27);
+    // Authored frame columns are x=(.36,.48,-.8), y=(.48,.64,.6), z=(.8,-.6,0).
+    assert_eq!(surfaces.len(),6);
+    for n in [[0.36,0.48,-0.8],[0.48,0.64,0.6],[0.8,-0.6,0.]] {
+        for sign in [1.,-1.] {
+            assert!(surfaces.iter().any(|s| matches!(s,Surface::Plane {normal,..}
+                if normals::angle(*normal,n.map(|v|v*sign)) < 1e-12)));
+        }
+    }
+}
+#[test]
+fn m11_n_7955_source_arc_has_inner_outer_radials_and_difference_reveals() {
+    let surfaces = source(include_bytes!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"),55);
+    // Hand-authored annulus 10..10.6 m, height 3 m, opening x=9..12,
+    // y=-.5...5, height 2 m. Difference reverses the cutter's y planes.
+    expected(&surfaces,[10.6,0.,2.5],[1.,0.,0.]);
+    expected(&surfaces,[10.,0.,2.5],[-1.,0.,0.]);
+    expected(&surfaces,[10.3,0.5,1.],[0.,-1.,0.]);
+    expected(&surfaces,[10.3,-0.5,1.],[0.,1.,0.]);
+    expected(&surfaces,[10.3,0.,2.],[0.,0.,-1.]);
+}
+#[test]
+fn m11_n_7955_source_trimmed_disk_respects_millimetres_and_mapped_directrix() {
+    let surfaces = source(include_bytes!("../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc"),50);
+    assert_eq!(surfaces.len(),3);
+    expected(&surfaces,[1.,0.0145,0.],[0.,1.,0.]);
+    expected(&surfaces,[1.,0.,-0.0145],[0.,0.,-1.]);
+    expected(&surfaces,[0.,0.,0.],[-1.,0.,0.]);
+    expected(&surfaces,[2.75,0.,0.],[1.,0.,0.]);
+}
+
+#[test]
+fn m11_n_7955_negative_extrusion_keeps_outward_profile_sides() {
+    let text = include_str!("../../../tests/fixtures/synthetic-retained/f-c-extrusion.ifc")
+        .replace("#3=IFCDIRECTION((0.,0.,1.));","#3=IFCDIRECTION((0.,0.,-1.));");
+    // The +X side at local (2,.5,-1.5), under the fixture's authored frame.
+    expected(&source(text.as_bytes(),27),[3.76,-0.82,0.7],[0.36,0.48,-0.8]);
+}
+
+#[test]
+fn m11_n_7955_orphan_maps_have_analytic_normals_in_both_source_frames() {
+    let surfaces = source(include_bytes!("../../geometry/tests/fixtures/issue_6446_mapped_source_frames.ifc"),105);
+    // Three maps each contain two unit boxes, one at zero and one translated
+    // to 5,000,000.123456 m. Repeated instances remain separate source surfaces.
+    assert_eq!(surfaces.len(),36);
+    for x in [0.,5_000_000.123456] {
+        expected(&surfaces,[x+0.5,0.,0.5],[1.,0.,0.]);
+        expected(&surfaces,[x-0.5,0.,0.5],[-1.,0.,0.]);
+        expected(&surfaces,[x,0.,1.],[0.,0.,1.]);
+    }
+}
+
+#[test]
+fn m11_n_7955_retraced_profile_uses_independent_m8_source_region() {
+    let text = include_str!("../../processing/tests/fixtures/issue_3641_voiding_trap.ifc")
+        .replace("#72246=IFCLOCALPLACEMENT(#226962,#72247);", "#72246=IFCLOCALPLACEMENT($,#5);");
+    let surfaces = source(text.as_bytes(),72245);
+    // The authored residual is a quadrilateral, extruded from z=12.816 m
+    // toward (1e-9,3e-10,-1). Its y=0 side is oblique by the same 3e-10.
+    assert_eq!(surfaces.len(),6);
+    expected(&surfaces,[2.,-0.2,12.816],[0.,0.,1.]);
+    expected(&surfaces,[2.,0.,12.816],[0.,1.,3e-10]);
+    expected(&surfaces,[2.+25.632e-9,-0.2+25.632*3e-10,-12.816],[0.,0.,-1.]);
+}
+
+
+#[test]
+fn m11_n_7955_source_plane_gate_is_independent_of_sliver_facet_noise() {
+    let source = [Surface::Plane {origin:[0.;3],normal:[0.,0.,1.]}];
+    let positions = [0.,0.,0., 1.,0.,0., 0.5,1e-5,7e-8];
+    let frame = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+    let normals = [0.,0.,1.].repeat(3);
+    let check = normals::check_mesh(&positions,&[0,1,2],&frame,&normals,&source).unwrap();
+    assert_eq!(check.unattributed,0);
+    assert_eq!(check.planar_radians,0.);
+    let flipped = normals.iter().map(|v| -v).collect::<Vec<_>>();
+    assert_eq!(normals::check_mesh(&positions,&[0,1,2],&frame,&flipped,&source)
+        .unwrap().planar_radians,std::f64::consts::PI);
+    let mut off_plane = positions;
+    off_plane[8] = 2e-6;
+    assert_eq!(normals::check_mesh(&off_plane,&[0,1,2],&frame,&normals,&source).unwrap().unattributed,3);
+}
+
+
+#[test]
+fn m11_n_7955_disk_cap_near_rim_does_not_select_radial_surface() {
+    use ifc_lite_geometry::analytic::AnalyticCurveSegment;
+    let source = [
+        Surface::Disk {directrix:AnalyticCurveSegment::Line {start:[0.;3],end:[1.,0.,0.]},radius:1.,sign:1.},
+        Surface::Plane {origin:[0.;3],normal:[-1.,0.,0.]},
+    ];
+    // Cap points also satisfy radial incidence near the rim. A tiny facet
+    // perturbation must not let its positive radial dot product select the wall.
+    let positions = [0.,0.999,0., 1e-16,0.9995,1e-4, 0.,0.9995,-1e-4];
+    let frame = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+    let check = normals::check_mesh(&positions,&[0,1,2],&frame,&[-1.,0.,0.].repeat(3),&source).unwrap();
+    assert_eq!((check.planar,check.curved,check.unattributed),(3,0,0));
+    assert_eq!(check.planar_radians,0.);
+}

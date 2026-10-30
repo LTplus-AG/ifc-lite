@@ -125,12 +125,12 @@ fn issue_7955_recording_source_origin_does_not_preempt_owned_reply_acceptance() 
     let (reply, operations) = program.admit(ticket, &router, &mut decoder).unwrap();
     assert!(operations.is_empty());
     let recorded = program.selection().unwrap().failure_handle().origin().unwrap();
-    assert_eq!(program.inner.pending, Some((ticket.0, true)));
+    assert_eq!(program.geometry_ref().pending, Some((ticket.geometry_request(), true)));
     let rejected = program.accept(reply, &foreign_router).err().unwrap();
     assert_eq!(rejected.error, RetainedProgramError::WrongOwner);
-    assert_eq!(rejected.reply.0.request, ticket.0);
+    assert_eq!(rejected.reply.geometry_reply().request, ticket.geometry_request());
     program.accept(rejected.reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
-    assert!(program.inner.pending.is_none(), "B1 owned error reply must be consumed");
+    assert!(program.geometry_ref().pending.is_none(), "B1 owned error reply must be consumed");
     assert!(program.request().unwrap().is_none());
     let completed = origin(program.finish().unwrap_err());
     assert!(Arc::ptr_eq(&recorded, &completed));

@@ -3,36 +3,70 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The streaming pre-pass stashes `IfcMappedItem` and `IfcTypeProduct`
-//! candidate spans during its one scan; `collect_type_geometry_jobs_from_spans`
+//! candidate spans during its one scan; `plan_type_geometry_jobs_from_spans`
 //! reuses them instead of re-walking the file. These are the two-paths-that-
 //! must-agree tests for that twin, plus the #3187 legacy-keyword fixtures that
 //! make the widened gate distinguishable from the pre-#3187 one.
 //!
 //! Split out of `prepass.rs` to keep that module under its size ratchet.
-use super::{collect_type_geometry_jobs, collect_type_geometry_jobs_from_spans};
+use super::plan_type_geometry_jobs_from_spans;
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 
 /// Build the mapped-item + type-candidate spans exactly as the streaming
-/// pre-pass scan does, then assert the span-based orphan-type collector
-/// matches the full-scan one byte-for-byte.
+/// pre-pass scan does. Callers assert fixed expected job counts below.
 fn assert_match(content: &[u8]) -> usize {
     let index = std::sync::Arc::new(build_entity_index(content));
-    let mut d1 = EntityDecoder::with_arc_index(content, index.clone());
-    let old = collect_type_geometry_jobs(content, &mut d1);
     let mut mapped: Vec<(u32, usize, usize)> = Vec::new();
+    let mut defines: Vec<(u32, usize, usize)> = Vec::new();
     let mut cands: Vec<(u32, usize, usize, IfcType)> = Vec::new();
     let mut sc = EntityScanner::new(content);
     while let Some((id, tn, st, en)) = sc.next_entity() {
         if tn == "IFCMAPPEDITEM" {
             mapped.push((id, st, en));
+        } else if tn == "IFCRELDEFINESBYTYPE" {
+            defines.push((id, st, en));
         } else if let Some(t) = ifc_lite_core::type_product_ifc_type(tn) {
             cands.push((id, st, en, t));
         }
     }
     let mut d2 = EntityDecoder::with_arc_index(content, index);
-    let new = collect_type_geometry_jobs_from_spans(&mapped, &cands, &mut d2);
-    assert_eq!(old, new, "orphan type jobs diverged");
-    old.len()
+    let new = plan_type_geometry_jobs_from_spans(content, &mapped, &cands, &mut d2).0;
+    for mode in [
+        ifc_lite_processing::element::TypeGeometryMode::EmitTagged,
+        ifc_lite_processing::element::TypeGeometryMode::SuppressInstanced,
+    ] {
+        let mut d3 = EntityDecoder::with_index(content, build_entity_index(content));
+        let plan = ifc_lite_processing::discovery::TypeGeometryPlan::from_spans(
+            content, &mapped, &defines, &cands, &mut d3, mode,
+        );
+        if mode == ifc_lite_processing::element::TypeGeometryMode::EmitTagged {
+            assert_eq!(new, plan.jobs());
+            let mut early_decoder = EntityDecoder::with_index(content, build_entity_index(content));
+            let mut deferred = ifc_lite_processing::discovery::TypeGeometryPlan::from_spans(
+                content, &mapped, &defines, &[], &mut early_decoder, mode,
+            );
+            assert!(deferred.jobs().is_empty(), "columns and first jobs precede type decoding");
+            deferred.decode_products(content, &cands, &mut early_decoder);
+            assert_eq!(deferred.jobs(), new);
+        }
+        let mut d4 = EntityDecoder::with_index(content, build_entity_index(content));
+        let fallback = ifc_lite_processing::discovery::TypeGeometryPlan::from_file(
+            content, &mut d4, mode,
+        );
+        assert_eq!(plan.referenced_representation_maps, fallback.referenced_representation_maps);
+        assert_eq!(plan.instantiated_type_ids, fallback.instantiated_type_ids);
+        assert_eq!(plan.mapped_item_plan, fallback.mapped_item_plan);
+    }
+    new.len()
+}
+
+#[test]
+fn c4_7a_7782_bare_type_map_matches_native_and_typed_wrapper_is_refused() {
+    let source = include_str!("../../../../processing/tests/fixtures/c4_bare_type_map_7782.ifc");
+    assert_eq!(assert_match(source.as_bytes()), 1);
+    let wrapped = source.replace("#44,$,$,.NOTDEFINED.", "IFCREPRESENTATIONMAP(#44),$,$,.NOTDEFINED.");
+    assert_eq!(assert_match(wrapped.as_bytes()), 0);
+    assert_eq!(assert_match(include_bytes!("../../../../processing/tests/fixtures/c4_type_geometry_modes_7782.ifc")), 2);
 }
 
 // An IfcColumnType carrying a RepresentationMap that NO IfcMappedItem

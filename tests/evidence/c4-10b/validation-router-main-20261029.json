@@ -1,0 +1,236 @@
+{
+  "issue": 7782,
+  "lane": "C4-10b shared router",
+  "pr": 8317,
+  "mainAtRestack": "298693424041c38f0a44433e770e0b3e75b101ec",
+  "baseAtValidation": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+  "validatedSource": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40",
+  "validation": {
+    "host": "pop-os",
+    "request": "auto-77ea9b218fed4fceb312912409bd9568",
+    "job": "85f41ea5-246b-46f3-80ab-ccf62862f548",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/85f41ea5-246b-46f3-80ab-ccf62862f548/receipt.json",
+    "command": [
+      "bash",
+      "-c",
+      "set -eu\nexport CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4\ngit rev-parse HEAD origin/main\nrustc --version\ncargo --version\nnode --version\npnpm --version\npython3 - <<'PY'\nfrom pathlib import Path\nimport subprocess, tempfile, textwrap\nlines = Path('.github/workflows/test.yml').read_text().splitlines()\nanchor = next(i for i, line in enumerate(lines) if 'oracle_args=(--base origin/main --ci --json)' in line)\nstart = next(i for i in range(anchor, -1, -1) if lines[i].strip() == 'run: |') + 1\nend = start\nwhile end < len(lines) and (not lines[end].strip() or lines[end].startswith('          ')):\n    end += 1\nwith tempfile.NamedTemporaryFile(mode='w', suffix='.sh') as step:\n    step.write(textwrap.dedent('\\n'.join(lines[start:end])) + '\\n')\n    step.flush()\n    subprocess.run(['bash', '-n', step.name], check=True)\nprint(f'revert-oracle step: bash -n PASS ({end-start} lines)')\nPY\nnode scripts/check-rust-api-surface.mjs\nnode scripts/check-module-size.mjs\ncargo test -p ifc-lite-processing --test module_size_ratchet --test function_length_ratchet --test positional_read_ratchet\ncargo clippy --workspace --all-targets -- -D warnings\ncargo test --workspace\nnode --test scripts/lib/module-size-ratchet.test.mjs\nnode scripts/check-test-revert-oracle.mjs --base origin/main --mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs --mutation tests/evidence/c4-10b/behaviour.oracle.patch --test rust/processing/src/execution_tests.rs --mutation tests/evidence/c4-10b/behaviour.adapters.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/batch_tests.rs --mutation tests/evidence/c4-10b/policy.oracle.patch --test rust/processing/src/execution_tests.rs --verify-restored --ci --json\npnpm install --frozen-lockfile --prefer-offline\npnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc ara3d/AC20-FZK-Haus.ifc ara3d/duplex.ifc various/rvt01.ifc ifc5/Georeferencing_georeferenced-bridge-deck.ifc buildingsmart/Building-Architecture.ifc buildingsmart/wall-with-opening-and-window.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc\npnpm fixtures --check buildingsmart/column-straight-rectangle-tessellation.ifc ara3d/AC20-FZK-Haus.ifc ara3d/duplex.ifc various/rvt01.ifc ifc5/Georeferencing_georeferenced-bridge-deck.ifc buildingsmart/Building-Architecture.ifc buildingsmart/wall-with-opening-and-window.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc\npnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export...\nCI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh\ngit restore -- packages/wasm/pkg-retained/.gitignore\ncontracts_log=\"$(mktemp)\"\ntrap 'rm -f \"$contracts_log\"' EXIT\nif pnpm test:wasm-contract >\"$contracts_log\" 2>&1; then\n  python3 - \"$contracts_log\" <<'PY'\nfrom pathlib import Path\nimport sys,re,json,hashlib\nraw=Path(sys.argv[1]).read_bytes()\ns=raw.decode()\nm=re.search(r\"Results: (\\d+) passed, (\\d+) failed, (\\d+) skipped\",s)\nassert m,\"missing contract result summary\"\npassed,failed,skipped=map(int,m.groups())\nskip_lines=[line.strip() for line in s.splitlines() if \"SKIP\" in line]\nprint(json.dumps({\"wasmContracts\":{\"passed\":passed,\"failed\":failed,\"skipped\":skipped},\"skips\":skip_lines,\"fullLogSha256\":hashlib.sha256(raw).hexdigest()}))\nassert passed>=231 and failed==0 and skipped==1,(passed,failed,skipped)\nassert len(skip_lines)==1 and \"matched historical fingerprint fallback\" in skip_lines[0],skip_lines\nPY\nelse\n  cat \"$contracts_log\"\n  exit 1\nfi\ngit diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts rust/wasm-bindings/src/api/gpu_meshes/batch_parity_expected.json\nsha256sum packages/wasm/pkg/ifc-lite_bg.wasm packages/wasm/pkg-retained/ifc-lite_bg.wasm\ngit diff --exit-code\n"
+    ],
+    "tools": {
+      "git": {
+        "path": "/usr/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.43.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "exitCode": 0,
+        "version": "v24.22.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "status": "completed",
+    "exitCode": 0,
+    "processExitCode": 0,
+    "sourceUnchanged": true,
+    "outputSha256": "7be06ac274ae42773329de0731596f2023f6ad61ffde2e4c0e695250c5de7248",
+    "publication": {
+      "state": "published",
+      "manifest": "pop-os-85f41ea5-246b-46f3-80ab-ccf62862f548-6760ea17d38b",
+      "manifestSha256": "911146e196817c6bccb0696a5a10d0ea3b6dc73a1378ab9e103f1e51f2b95da4"
+    }
+  },
+  "milestones": {
+    "source": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40",
+    "workspace": {
+      "passed": 7516,
+      "failed": 0,
+      "ignored": 48,
+      "measured": 0,
+      "filtered": 0
+    },
+    "workspaceSummaryGroups": 475,
+    "oracles": [
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 7,
+          "total": 7
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 4,
+          "failed": 3,
+          "total": 7,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "c4f5ed3c-cde9-454a-bac2-e15e0c1fee3e",
+        "tests": [
+          "rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs"
+        ],
+        "base": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+        "head": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40"
+      },
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 3,
+          "total": 3
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 2,
+          "failed": 1,
+          "total": 3,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "6d642744-cc68-4596-b631-ac6fc37bfef8",
+        "tests": [
+          "rust/processing/src/execution_tests.rs"
+        ],
+        "base": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+        "head": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40"
+      },
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 5,
+          "total": 5
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 4,
+          "failed": 1,
+          "total": 5,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "c595aaac-0c69-4fb8-aab8-999b0ceba4ae",
+        "tests": [
+          "rust/wasm-bindings/src/api/gpu_meshes/batch_tests.rs"
+        ],
+        "base": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+        "head": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40"
+      },
+      {
+        "verdict": "OBSERVED",
+        "baseline": {
+          "kind": "pass",
+          "passed": 3,
+          "total": 3
+        },
+        "reverted": {
+          "kind": "assertion-failure",
+          "passed": 2,
+          "failed": 1,
+          "total": 3,
+          "evidence": []
+        },
+        "restoration": "verified",
+        "invocationId": "d5f36752-a0f5-4b28-a915-c84a27cfdd23",
+        "tests": [
+          "rust/processing/src/execution_tests.rs"
+        ],
+        "base": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+        "head": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40"
+      }
+    ],
+    "node": {
+      "tests": "18",
+      "pass": "18",
+      "fail": "0",
+      "skipped": "0"
+    },
+    "clippy": "PASS: cargo clippy --workspace --all-targets -- -D warnings",
+    "api": "PASS: 8 crates, 726 items; no snapshot changes",
+    "moduleSize": "PASS; existing budgets and Rust ratchet digests verified",
+    "rustStructuralRatchets": {
+      "passed": 45,
+      "ignored": 2,
+      "reason": "print helper tests"
+    },
+    "rootTurbo": {
+      "successful": 16,
+      "total": 16
+    },
+    "freshDefaultAndRetainedBuild": "PASS",
+    "declarationAndParityDiff": "zero vs origin/main12fb",
+    "nativeOptionalFixtures": {
+      "present": 0,
+      "catalogued": 182
+    },
+    "wasmFixturesVerified": 9
+  },
+  "byteIdentity": {
+    "defaultDeclarationsSha256": "0e9471316d96c4039873c0cfe9d5d866b76c25ffdac6dfb056173b96ee5b9fde",
+    "retainedDeclarationsSha256": "fc526bb1239bd2e7e8611d0b4050dc558f636dec7cd1420fd501a72209ecc737",
+    "batchParityExpectedSha256": "ec6b6974c54448c2d16ba1c19046f05c70a32df84951d3ac565ea32660183f2a",
+    "allThreeUnchangedFromMain": true,
+    "C4_0": "15 committed fixtures; native/browser full-payload parity and deliberate drift controls passed; expected payload pins unchanged."
+  },
+  "coverageNotes": [
+    "The native workspace phase had 0/182 optional catalogue fixtures. Committed in-tree C4 fixtures were exercised, including C4-0 full-payload parity. The 7516 returned-pass count is the Cargo harness total, not a claim that all optional catalogue-model cases executed.",
+    "The root Turbo dependency build completed 16/16 tasks. IFCX hello-example verification reported four absent optional IFCX fixtures."
+  ],
+  "resolutions": {
+    "refusalScopes": "Preserved main C4-10a refusal scope and all seven regressions.",
+    "sourceReset": "Retained main setSourceBytes mapped-item clear and its regression. Rejected a rerere content_lifetime::discard call whose helper was outside this lane.",
+    "wasmContracts": "Retained main extracted diagnostics contract module; test-wasm-contract.mjs remains 2095 lines. No budgets raised.",
+    "apiSnapshot": "No Rust API snapshot modification needed; 8 crates and 726 tracked items match.",
+    "workflow": "Parent-owned 8fea0ffe4c changes C4-10b if to elif after acceptance-harness-8112. Local extraction with actual newline separators passes bash -n on the complete 808-line step."
+  },
+  "syntaxProof": {
+    "source": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40",
+    "lines": 808,
+    "bashExit": 0,
+    "method": "Local Python extraction preserving actual newlines; bash -n /tmp/c4-10b-router-full-oracle-step-2b618b60.sh",
+    "note": "The recorded fleet command prefix used literal newline escapes when joining; independent local extraction validates the actual multiline script."
+  },
+  "performanceVerdict": "Unmeasured structural refactor; no speedup, neutrality or headed-GPU claim.",
+  "wasmHashes": {
+    "default": "4175446c62e8e9f2fadb3fbf4c0cbe7484c565217c4ed90c109c2c3dae6f06b4",
+    "retained": "f6b282d0e30bb369678ab769b718bf92b80b1b1a08b3907ed0f4e173d38c9280"
+  },
+  "wasmContracts": {
+    "wasmContracts": {
+      "passed": 231,
+      "failed": 0,
+      "skipped": 1
+    },
+    "skips": [
+      "\u23ed\ufe0f  SKIP matched historical fingerprint fallback"
+    ],
+    "fullLogSha256": "7aab6431d622c082a7e33007353063ad44d64dc8011950bb5ada6c7ea4868f4e"
+  },
+  "storage": {
+    "task": "c4-10b-router-main-2b618b60",
+    "state": "active; evidence published and verified; closure deferred",
+    "closureBlocker": "Registered lifecycle close refuses a live T3 reference from the active M6 rereview task f778-m6-rereview-r3-20261029. Read-only process_users found no users of the router cache or checkout. No foreign task interrupted and no guard bypassed.",
+    "blockingThread": "thread:delegated-task:command%3Amcp%3Ae48caa9e-dfe6-4f0c-a875-e34169bdae4f%3Adelegate-task%3Af778-m6-rereview-r3-20261029",
+    "nextAction": "After that reference naturally clears, use storage close --task c4-10b-router-main-2b618b60, then guarded reclaim. Generated outputs may also require reviewed worker recipe-pin maintenance."
+  },
+  "initialAdmission": {
+    "request": "auto-5b0911787a6d470494a21eaa5285a609",
+    "source": "aa52455cbc8bc6cb4c5f6156269449f0ef3c29ef",
+    "outcome": "storage guard refused admission; no project command executed",
+    "handling": "Waited for capacity before submitting the later exact-head qualification; no foreign outputs reclaimed and no guards relaxed."
+  }
+}

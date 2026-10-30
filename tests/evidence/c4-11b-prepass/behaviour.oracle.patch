@@ -1,0 +1,11 @@
+--- a/rust/wasm-bindings/src/api/gpu_meshes/prepass_index.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/prepass_index.rs
+@@ -27,7 +27,7 @@
+     }
+ 
+     pub(super) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
+-        EntityDecoder::with_index(content, self.0.iter().map(|(&id, &span)| (id, span)).collect())
++        EntityDecoder::with_arc_index(content, self.0.clone())
+     }
+ 
+     pub(super) fn into_columns(self) -> Result<ColumnarEntityIndex, String> {

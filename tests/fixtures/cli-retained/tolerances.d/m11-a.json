@@ -1,0 +1,6 @@
+{
+  "appearanceRgbaVsExactUlps": 0,
+  "appearanceMaterialNameVsExact": "equal",
+  "appearanceSyntheticRgbaAbsolute": 1e-6,
+  "appearanceExactComparison": "gated per (product, geometry_item_id), no fallback: a retained part finds exact's mesh under the same key and equals its RGBA bits and material name; a key exact does not emit is a failure (spec 3.1, 6)"
+}

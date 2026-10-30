@@ -206,6 +206,7 @@ pub mod space_dcel;
 pub(crate) mod triangulation;
 mod union_find;
 pub(crate) mod void_index;
+mod void_rels;
 /// World-frame test fixture corpus: far-from-origin placements whose offset
 /// axis differs from the axis under test, plus the normal-projected f32
 /// noise bound they demand (the #2598/#2600/#2529 defect class).
@@ -286,7 +287,7 @@ pub use router::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
-    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, AccountedMappedItemCache, SharedBrepSignatureCache, WorstHost,
+    ReasonCount, RectFastSummary, RectParam, RouterConfig, SharedMappedItemCache, AccountedMappedItemCache, SharedBrepSignatureCache, WorstHost,
 };
 
 /// The large-coordinate threshold and its predicate, defined in
@@ -304,8 +305,13 @@ pub use void_index::{
     build_aggregate_children_index, compute_parts_to_skip, propagate_voids_to_parts,
     propagate_voids_via_aggregates, VoidIndex,
 };
+pub use void_rels::{resolve_void_index, void_index_from_content};
 
 mod exact_topology;
 
 /// Explicit resource admission for audited canonical execution sites.
 pub mod resource;
+
+#[cfg(test)]
+#[path = "../tests/support/profile_walk_model.rs"]
+mod profile_walk_model;

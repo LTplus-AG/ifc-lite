@@ -14,8 +14,8 @@ Doors carry a fire rating.
 
 **Requires**
 
-- Optional: Eigenschaft ""Pset_DoorCommon"."FireRating"" muss existieren
-- Attribut ""Name"" muss existieren
+- Optional: Eigenschaft "Pset_DoorCommon.FireRating" muss existieren
+- Attribut "Name" muss existieren
 
 > Fill Pset_DoorCommon.FireRating.
 
@@ -27,5 +27,5 @@ Doors carry a fire rating.
 
 **Requires**
 
-- Eigenschaft ""Pset_WindowCommon"."ThermalTransmittance"" muss existieren
+- Eigenschaft "Pset_WindowCommon.ThermalTransmittance" muss existieren
 --- stderr

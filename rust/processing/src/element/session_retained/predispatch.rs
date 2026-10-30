@@ -85,15 +85,11 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     _ => traversal.product_submeshes(
                         self.state.job.entity, self.context.borrowed().texture_index),
                 };
-                let mut affines = Vec::new();
-                let mut storage = Storage::default();
+                let (mut lineage, mut storage) = (Vec::new(), Storage::default());
                 while let Some(ticket) = program.request().map_err(common)? {
                     let (reply, operations, _reservation) = program.admit(ticket, r, d).map_err(common)?;
-                    for operation in operations {
-                        if matches!(operation.kind(), RetainedOperationKind::Affine { .. }) {
-                            storage.reserve(&resources, &mut affines, 1)?;
-                            affines.push(operation.value().definition());
-                        }
+                    for operation in &operations {
+                        affine_final::record(&resources, &mut storage, &mut lineage, operation)?;
                     }
                     program.accept(reply, r).map_err(|e| common(e.error))?;
                 }
@@ -102,19 +98,12 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                         self.state.job.id, class, self.state.element_color),
                     _ => program.finish(),
                 }.map_err(common)?;
-                if plan.requirements().any(|r| r == Requirement::ProductPlacement) {
+                if plan.requirements().any(|r| r == Requirement::ProductPlacement)
+                    && !matches!(outer.kind, WorkKind::TypeMap { map_id, .. } if plan.type_origin_placed(self.state.job.id, &[map_id])) {
                     return Err(RetainedExecutionError::Unsupported(
                         Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));
                 }
-                for value in plan.values() {
-                    resource::charge(resource::Cost { work: affines.len() as u64 + 1, ..Default::default() })
-                        .map_err(RetainedExecutionError::Stopped)?.retain();
-                    if affines.contains(&value.definition()) {
-                        return Err(RetainedExecutionError::Unsupported(
-                            Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));
-                    }
-                }
-                Ok(())
+                affine_final::refuse_predicted(&lineage, plan.values(), !self.opening_entities.is_empty())
             })
         })).map_err(protocol).and_then(|(result, _)| result);
         check_resources(&resources)?;

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/extensions",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Extension manifest, capability grammar, and slot registry for ifc-lite user customization",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,6 +18,10 @@
     "./capability": {
       "import": "./dist/capability/index.js",
       "types": "./dist/capability/index.d.ts"
+    },
+    "./authority": {
+      "import": "./dist/authority/index.js",
+      "types": "./dist/authority/index.d.ts"
     },
     "./when": {
       "import": "./dist/when/index.js",

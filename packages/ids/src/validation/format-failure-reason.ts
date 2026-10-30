@@ -9,9 +9,21 @@
  * two functions are pure string formatting with no validation logic.
  */
 
-import type { IDSRequirement } from '../types.js';
-import { formatConstraint } from '../constraints/index.js';
+import type { IDSFailureDetail, IDSRequirement } from '../types.js';
+import { formatConstraint, formatPropertyPath } from '../constraints/index.js';
 import type { FacetCheckResult } from '../facets/index.js';
+
+/**
+ * The failed name for display, quoted once. `field` is the bare name, or
+ * the constraint description (already quoted, e.g. `pattern "X"`) when
+ * the facet names no single value; the producers put that same
+ * description in `expected`, which is how the two are told apart (#8306).
+ */
+export function failedName(failure: IDSFailureDetail): string {
+  const { field, expected } = failure;
+  if (field === undefined || field === '') return expected || '?';
+  return field === expected ? field : `"${field}"`;
+}
 
 /**
  * Format a failure reason without translation
@@ -31,15 +43,15 @@ export function formatFailureReason(result: FacetCheckResult): string {
     case 'PREDEFINED_TYPE_MISSING':
       return `Predefined type is missing, expected ${expected}`;
     case 'ATTRIBUTE_MISSING':
-      return `Attribute "${field}" is missing`;
+      return `Attribute ${failedName(result.failure)} is missing`;
     case 'ATTRIBUTE_VALUE_MISMATCH':
       return `Attribute "${field}" value "${actual}" does not match expected ${expected}`;
     case 'ATTRIBUTE_PATTERN_MISMATCH':
       return `Attribute "${field}" value "${actual}" does not match pattern ${expected}`;
     case 'PSET_MISSING':
-      return `Property set "${field || expected}" not found`;
+      return `Property set ${failedName(result.failure)} not found`;
     case 'PROPERTY_MISSING':
-      return `Property "${field}" not found`;
+      return `Property ${failedName(result.failure)} not found`;
     case 'PROPERTY_VALUE_MISMATCH':
       return `Property "${field}" value "${actual}" does not match expected ${expected}`;
     case 'PROPERTY_EMPTY':
@@ -94,17 +106,17 @@ export function formatRequirementDescription(requirement: IDSRequirement): strin
 
     case 'attribute':
       if (facet.value) {
-        desc = `Attribute "${formatConstraint(facet.name)}" must equal ${formatConstraint(facet.value)}`;
+        desc = `Attribute ${formatConstraint(facet.name)} must equal ${formatConstraint(facet.value)}`;
       } else {
-        desc = `Attribute "${formatConstraint(facet.name)}" must exist`;
+        desc = `Attribute ${formatConstraint(facet.name)} must exist`;
       }
       break;
 
     case 'property':
       if (facet.value) {
-        desc = `Property "${formatConstraint(facet.propertySet)}.${formatConstraint(facet.baseName)}" must equal ${formatConstraint(facet.value)}`;
+        desc = `Property ${formatPropertyPath(facet.propertySet, facet.baseName)} must equal ${formatConstraint(facet.value)}`;
       } else {
-        desc = `Property "${formatConstraint(facet.propertySet)}.${formatConstraint(facet.baseName)}" must exist`;
+        desc = `Property ${formatPropertyPath(facet.propertySet, facet.baseName)} must exist`;
       }
       break;
 

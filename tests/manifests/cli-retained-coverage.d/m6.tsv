@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MPL-2.0
+model	id	status	code
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1000	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1001	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1002	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1003	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1004	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1005	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1006	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1007	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1008	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1009	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1010	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1011	refused	empty_result
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1012	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1013	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1014	published	
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc	1015	published	

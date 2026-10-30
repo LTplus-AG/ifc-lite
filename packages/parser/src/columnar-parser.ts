@@ -30,7 +30,7 @@ import {
     RelationshipType,
     createLogger,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, QuantityTable, PropertySet, QuantitySet, IfcStoreBase } from '@ifc-lite/data';
+import type { SpatialHierarchy, QuantityTable, PropertySet, QuantitySet, IfcStoreBase, DerivedEntities } from '@ifc-lite/data';
 import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName, hasAttrValueAt } from './columnar-parser-attributes.js';
 import {
@@ -138,6 +138,8 @@ export interface IfcDataStore extends IfcStoreBase {
     lengthUnitScale?: number;
     /** Whether `lengthUnitScale` was declared by the first IFCPROJECT or is the assumed metre (#7395); absent when not parsed from STEP here. */
     lengthUnitSource?: LengthUnitSource;
+    /** IFCX: table rows the file does not state as such (see `DerivedEntities`); export writes the file's classes. */
+    derivedEntities?: DerivedEntities;
     /** Immutable pre-extracted georeferencing for stores without STEP resource rows. */
     georeferencing?: GeoreferenceInfo | null;
 }

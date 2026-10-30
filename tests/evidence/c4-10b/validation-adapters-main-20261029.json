@@ -1,0 +1,269 @@
+{
+  "issue": 7782,
+  "lane": "C4-10b browser batch adapters",
+  "pr": 8318,
+  "mainAtRestack": "298693424041c38f0a44433e770e0b3e75b101ec",
+  "mainAtFixtureConfirmation": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+  "validatedSource": "51914be0606510078a15936a2aa9ebdfc94d903b",
+  "validatedRustTree": "a299a49822d2208b612f1a8e63faa65739963e14",
+  "pushedHeadWithWorkflowOnlyChange": "f4ec71577b138758e3a165a2766dcf4dcd143962",
+  "validation": {
+    "host": "pop-os",
+    "request": "auto-7b9f1075c1f2447591bd899abfec2a08",
+    "job": "f4639207-81ce-4ad4-972b-8eeafe2ee350",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/f4639207-81ce-4ad4-972b-8eeafe2ee350/receipt.json",
+    "command": [
+      "bash",
+      "-c",
+      "set -eu\nexport CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4\ngit update-ref refs/remotes/origin/main 298693424041c38f0a44433e770e0b3e75b101ec\ngit rev-parse HEAD origin/main\nrustc --version\ncargo --version\nnode --version\npnpm --version\npython3 - <<'PY'\nfrom pathlib import Path\nimport subprocess, tempfile, textwrap\nlines = Path('.github/workflows/test.yml').read_text().splitlines()\nanchor = next(i for i, line in enumerate(lines) if 'oracle_args=(--base origin/main --ci --json)' in line)\nstart = next(i for i in range(anchor, -1, -1) if lines[i].strip() == 'run: |') + 1\nend = start\nwhile end < len(lines) and (not lines[end].strip() or lines[end].startswith('          ')):\n    end += 1\nwith tempfile.NamedTemporaryFile(mode='w', suffix='.sh') as step:\n    step.write(textwrap.dedent('\\n'.join(lines[start:end])) + '\\n')\n    step.flush()\n    subprocess.run(['bash', '-n', step.name], check=True)\nprint(f'revert-oracle step: bash -n PASS ({end-start} lines)')\nPY\nnode scripts/check-rust-api-surface.mjs\nnode scripts/check-module-size.mjs\ncargo test -p ifc-lite-wasm --lib c4_10a_tests\ncargo test -p ifc-lite-processing --test module_size_ratchet --test function_length_ratchet --test positional_read_ratchet\ncargo clippy --workspace --all-targets -- -D warnings\ncargo test --workspace\nnode --test scripts/lib/module-size-ratchet.test.mjs\nnode scripts/check-test-revert-oracle.mjs --base origin/main --mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs --mutation tests/evidence/c4-10b/behaviour.oracle.patch --test rust/processing/src/execution_tests.rs --mutation tests/evidence/c4-10b/behaviour.adapters.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/batch_adapter_tests.rs --mutation tests/evidence/c4-10b/policy.oracle.patch --test rust/processing/src/execution_tests.rs --verify-restored --ci --json\npnpm install --frozen-lockfile --prefer-offline\npnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc\npnpm build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export...\nCI=1 BUILD_RETAINED=1 bash scripts/build-wasm.sh\ngit restore -- packages/wasm/pkg-retained/.gitignore\npnpm test:wasm-contract\ngit diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts rust/wasm-bindings/src/api/gpu_meshes/batch_parity_expected.json\nsha256sum packages/wasm/pkg/ifc-lite_bg.wasm packages/wasm/pkg-retained/ifc-lite_bg.wasm\ngit diff --exit-code\n"
+    ],
+    "tools": {
+      "git": {
+        "path": "/usr/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.43.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "exitCode": 0,
+        "version": "v24.22.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "exitCode": 0,
+    "processExitCode": 0,
+    "sourceUnchanged": true,
+    "outputSha256": "99e72261ee39cca875d401f9c83c38778522713d3910a4711a93c8251d1cec8e",
+    "publication": {
+      "state": "published",
+      "manifest": "pop-os-f4639207-81ce-4ad4-972b-8eeafe2ee350-a17928b7a5e8",
+      "manifestSha256": "8d0749272cb3431697ae435a9ac5b6282cbd124bc6a522b7db4bab44e5644aa2"
+    }
+  },
+  "fixtureConfirmation": {
+    "job": "def2e2b2-5400-429e-96e6-b368368d37c0",
+    "command": [
+      "bash",
+      "-c",
+      "set -eu\ngit rev-parse HEAD origin/main\nprintf '%s\\n' '39117fa10f82128a2b7ff98b1b9b934d9b36c7d19142dd85418be2cabcc33b90  packages/wasm/pkg/ifc-lite_bg.wasm' 'd3af30137856c52f7d7b2ae3f7b6b5b918844c61da805342281ee03c35b4da87  packages/wasm/pkg-retained/ifc-lite_bg.wasm' | sha256sum -c -\npnpm fixtures buildingsmart/column-straight-rectangle-tessellation.ifc ara3d/AC20-FZK-Haus.ifc ara3d/duplex.ifc various/rvt01.ifc ifc5/Georeferencing_georeferenced-bridge-deck.ifc buildingsmart/Building-Architecture.ifc buildingsmart/wall-with-opening-and-window.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc\npnpm fixtures --check buildingsmart/column-straight-rectangle-tessellation.ifc ara3d/AC20-FZK-Haus.ifc ara3d/duplex.ifc various/rvt01.ifc ifc5/Georeferencing_georeferenced-bridge-deck.ifc buildingsmart/Building-Architecture.ifc buildingsmart/wall-with-opening-and-window.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc\ncontracts_log=\"$(mktemp)\"\ntrap 'rm -f \"$contracts_log\"' EXIT\nif pnpm test:wasm-contract >\"$contracts_log\" 2>&1; then\n  python3 - \"$contracts_log\" <<'PY'\nfrom pathlib import Path\nimport sys,re,json,hashlib\nraw=Path(sys.argv[1]).read_bytes()\ns=raw.decode()\nm=re.search(r\"Results: (\\d+) passed, (\\d+) failed, (\\d+) skipped\",s)\nassert m,\"missing contract result summary\"\npassed,failed,skipped=map(int,m.groups())\nskip_lines=[line.strip() for line in s.splitlines() if \"SKIP\" in line]\nprint(json.dumps({\"wasmContracts\":{\"passed\":passed,\"failed\":failed,\"skipped\":skipped},\"skips\":skip_lines,\"fullLogSha256\":hashlib.sha256(raw).hexdigest()}))\nassert passed>=231 and failed==0 and skipped==1,(passed,failed,skipped)\nassert len(skip_lines)==1 and \"matched historical fingerprint fallback\" in skip_lines[0],skip_lines\nPY\nelse\n  cat \"$contracts_log\"\n  exit 1\nfi\ngit diff --exit-code origin/main -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts rust/wasm-bindings/src/api/gpu_meshes/batch_parity_expected.json\ngit diff --exit-code\nsha256sum packages/wasm/pkg/ifc-lite_bg.wasm packages/wasm/pkg-retained/ifc-lite_bg.wasm\n"
+    ],
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "outputSha256": "b319e7173be9898311a23f6b11d1c4f4d49c04da8f2645cdd125d15774b690fc",
+    "publication": {
+      "state": "published",
+      "manifest": "pop-os-def2e2b2-5400-429e-96e6-b368368d37c0-a17928b7a5e8",
+      "manifestSha256": "0ef2fed247c1b0ae14f6bec4e05427c21fe4079d923d7dc55f67dccc90b04ec9"
+    }
+  },
+  "coverageNotes": [
+    "The first real-WASM pass had 207 passed, 0 failed, 17 skips due to absent fixture models. Fixture confirmation fetched eight missing models (9.68 MiB), verified all nine required fixture hashes, and passed 231 with only the optional historical fingerprint comparison skipped. Both fresh runtime hashes were checked before and after; no rebuild or source change occurred.",
+    "The native workspace phase had 0/182 optional catalogue fixtures. Committed in-tree C4 fixtures were exercised, including C4-0 full-payload parity. The 7517 returned-pass count is the Cargo harness total, not a claim that all optional catalogue-model cases executed.",
+    "The root Turbo dependency build completed 16/16 tasks. IFCX hello-example verification reported four absent optional IFCX fixtures."
+  ],
+  "byteIdentity": {
+    "defaultDeclarationsSha256": "0e9471316d96c4039873c0cfe9d5d866b76c25ffdac6dfb056173b96ee5b9fde",
+    "retainedDeclarationsSha256": "fc526bb1239bd2e7e8611d0b4050dc558f636dec7cd1420fd501a72209ecc737",
+    "batchParityExpectedSha256": "ec6b6974c54448c2d16ba1c19046f05c70a32df84951d3ac565ea32660183f2a",
+    "allThreeUnchangedFromMain": true,
+    "C4_0": "15 committed fixtures; native/browser full-payload parity and deliberate drift controls passed; expected payload pins unchanged."
+  },
+  "resolutions": {
+    "savedStart": "8bdbd84b110564b23a7ee9999674ff53230c9188",
+    "refusalDrains": "Retained decode-failure, production-error and post-finish drains in batch_element.rs, plus both type-product early-return drains. All seven C4-10a regressions pass.",
+    "sourceReset": "Retained main setSourceBytes mapped-item clear and its regression. Rejected a rerere content_lifetime::discard call whose helper was outside this lane.",
+    "wasmContracts": "Retained main extracted diagnostics contract module; test-wasm-contract.mjs remains 2095 lines. No budgets raised.",
+    "apiSnapshot": "No Rust API snapshot modification needed; 8 crates and 726 tracked items match.",
+    "testHelper": "Adapted C4-10a helper to BatchWire and the correct nested module path; prior compile failures are recorded below. All inputs and assertions retained.",
+    "workflow": "Merged router fix 8fea0ffe4c additively; fixed unclosed outer if. Added batch_run.rs selector key so adapter mutations remain selected after router lands; entire 810-line step passes bash -n."
+  },
+  "storage": {
+    "task": "c4-10b-adapters-main-2b618b60",
+    "state": "released",
+    "removedWorkspaces": [
+      "9e746833fa03174f2e707977a31bb0424e94b730",
+      "523b398755dfeea57a49fcc7e1361ca078961615"
+    ],
+    "remainingWorkspace": "51914be0606510078a15936a2aa9ebdfc94d903b",
+    "reclaimBlocker": "Generated pkg-diff output rejected by stale reviewed recipe hash in the worker classifier. Actual build-wasm.sh ab1bba1b7a9e3c7b075439cbc5463f897291371ec7dd0933211907f608e6bc2b; reviewed 95847fe4e8dc9ddf1c033e576a812f43155175c693d025603fbb6334ca0420c5. No guard relaxed; remaining source/fixtures/output preserved.",
+    "sharedCaches": "Preserved; managed bounded compatibility caches, including the active router cache."
+  },
+  "milestones": {
+    "source": "51914be0606510078a15936a2aa9ebdfc94d903b",
+    "focusedC4a": {
+      "passed": 7,
+      "failed": 0,
+      "filtered": 223
+    },
+    "workspace": {
+      "passed": 7517,
+      "failed": 0,
+      "ignored": 48
+    },
+    "nodeRatchets": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "c4Parity": "c4_0_native_browser_parity and full_payload_mutations_fail_in_exact_and_world_modes_7782 PASS",
+    "nativeFixtureAvailability": {
+      "catalogued": 182,
+      "present": 0,
+      "scope": "optional catalogue; committed in-tree C4 fixtures available"
+    },
+    "api": "PASS: 8 crates, 726 items; no snapshot change",
+    "moduleSize": "PASS; Rust digests and existing lowered budgets verified",
+    "clippy": "PASS: workspace all-targets -D warnings",
+    "oracles": "All four OBSERVED, green baselines, restoration verified"
+  },
+  "oracles": [
+    {
+      "mutation": "tests/evidence/c4-10a/behaviour.oracle.patch",
+      "verdict": "OBSERVED",
+      "baseline": {
+        "passed": 7,
+        "total": 7
+      },
+      "reverted": {
+        "passed": 4,
+        "failed": 3,
+        "total": 7
+      },
+      "restoration": "verified",
+      "invocationId": "0d45b3af-287a-428c-b142-24721a8861d8"
+    },
+    {
+      "mutation": "tests/evidence/c4-10b/behaviour.oracle.patch",
+      "verdict": "OBSERVED",
+      "baseline": {
+        "passed": 3,
+        "total": 3
+      },
+      "reverted": {
+        "passed": 2,
+        "failed": 1,
+        "total": 3
+      },
+      "restoration": "verified",
+      "invocationId": "a27be651-033b-41da-b993-6b4a3e8b2b12"
+    },
+    {
+      "mutation": "tests/evidence/c4-10b/behaviour.adapters.oracle.patch",
+      "verdict": "OBSERVED",
+      "baseline": {
+        "passed": 1,
+        "total": 1
+      },
+      "reverted": {
+        "passed": 0,
+        "failed": 1,
+        "total": 1
+      },
+      "restoration": "verified",
+      "invocationId": "0ee47276-6721-4abe-adb3-c2d1c9a94256"
+    },
+    {
+      "mutation": "tests/evidence/c4-10b/policy.oracle.patch",
+      "verdict": "OBSERVED",
+      "baseline": {
+        "passed": 3,
+        "total": 3
+      },
+      "reverted": {
+        "passed": 2,
+        "failed": 1,
+        "total": 3
+      },
+      "restoration": "verified",
+      "invocationId": "efaa56f2-7949-4738-8464-4f67e33d36bb"
+    }
+  ],
+  "wasmFixtureFollowup": {
+    "source": "51914be0606510078a15936a2aa9ebdfc94d903b",
+    "request": "auto-13fe8d7f285042a6a1004b5c5d82255c",
+    "job": "def2e2b2-5400-429e-96e6-b368368d37c0",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/def2e2b2-5400-429e-96e6-b368368d37c0/receipt.json",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "contracts": {
+      "passed": 231,
+      "failed": 0,
+      "skipped": 1,
+      "reason": "optional matched historical fingerprint fallback"
+    },
+    "fullLogSha256": "d1576f493061ffaeb17560d246306845eaebfb013f7cf476142cd3fcbfd5017e",
+    "outputSha256": "b319e7173be9898311a23f6b11d1c4f4d49c04da8f2645cdd125d15774b690fc",
+    "fixturesVerified": 9,
+    "baseAtFollowup": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+    "evidenceState": "published"
+  },
+  "wasmHashes": {
+    "default": "39117fa10f82128a2b7ff98b1b9b934d9b36c7d19142dd85418be2cabcc33b90",
+    "retained": "d3af30137856c52f7d7b2ae3f7b6b5b918844c61da805342281ee03c35b4da87"
+  },
+  "initialFailures": [
+    {
+      "source": "9e746833fa03174f2e707977a31bb0424e94b730",
+      "request": "auto-a7f8c7cf0b874cd99494f85f06fb2163",
+      "job": "b11d3e83-9ff6-405c-8393-3b07134f8682",
+      "exitCode": 101,
+      "sourceUnchanged": true,
+      "evidenceState": "published",
+      "outputSha256": "6a2459b52c799268e37669af5914c0530e951daf104a342c413c02a82531092d",
+      "ratchets": {
+        "passed": 45,
+        "ignored": 2
+      },
+      "failure": "E0061 c4_10a_tests.rs old positional produce_batch call; fixed by 523b398755 BatchWire fixture adaptation",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/b11d3e83-9ff6-405c-8393-3b07134f8682/receipt.json"
+    },
+    {
+      "source": "523b398755dfeea57a49fcc7e1361ca078961615",
+      "request": "auto-134e542916b44e779b55a82ce8872972",
+      "job": "9b9d40b2-0332-4770-a42d-7a20aa7a528f",
+      "exitCode": 101,
+      "sourceUnchanged": true,
+      "evidenceState": "published",
+      "outputSha256": "bd96ab3118bae214efd4d7fce06cd885b1a3e0974cbf48d19a4f524ad4a9b7e6",
+      "ratchets": {
+        "passed": 45,
+        "ignored": 2
+      },
+      "failure": "E0433 test helper relative BatchWire module path; corrected super::super path by 51914be060",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/9b9d40b2-0332-4770-a42d-7a20aa7a528f/receipt.json"
+    }
+  ],
+  "workflowProof": {
+    "source": "e015cf0c1958f0bb872e0b04a802e4c801c13ebe",
+    "bashExit": 0,
+    "lines": 810,
+    "onlyWorkflowDiffFromQualifiedSource": "51914be0606510078a15936a2aa9ebdfc94d903b",
+    "rustTree": "a299a49822d2208b612f1a8e63faa65739963e14",
+    "selectionBase": "8fea0ffe4c6c2f665099acf4d7acb897a9ce9c40",
+    "matchedAddedPath": "rust/wasm-bindings/src/api/gpu_meshes/batch_run.rs",
+    "method": "Independent extraction preserving actual newlines; bash -n on entire step",
+    "sha256": "735e4198793e128202beb6349db37734dff5652aa4ba9ffc8b82db4f998eb324",
+    "note": "The recorded fleet command prefix used literal newline escapes when joining; this independent check validates the actual multiline script."
+  },
+  "performanceVerdict": "Unmeasured structural refactor; no speedup, neutrality or headed-GPU claim.",
+  "mainAncestryMerge": {
+    "head": "e015cf0c1958f0bb872e0b04a802e4c801c13ebe",
+    "main": "12fb75e76647606c9d197da2b9e7dc7fea82efb2",
+    "treeUnchangedFrom": "f4ec71577b138758e3a165a2766dcf4dcd143962",
+    "tree": "d15851e8b29ea69557364037720981db7d8bd486"
+  }
+}

@@ -1,0 +1,125 @@
+# SPDX-License-Identifier: MPL-2.0
+model	id	status	code
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	14502	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	15042	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	15372	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	15848	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	16507	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	16982	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	17040	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	17106	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	17468	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	18407	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	18465	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	18698	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	18768	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	18836	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	19199	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	19504	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20069	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20268	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20299	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20329	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20374	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20598	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20808	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	20909	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	21283	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	21640	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	21966	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	22039	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	22107	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	22174	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	23024	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	23944	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	27013	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	27421	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	27487	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	27555	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	27622	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	27833	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	28113	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	31079	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	31470	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	31539	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	31607	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	31818	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	32098	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	32407	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	32483	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	32551	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	32618	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	32829	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	33109	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	33389	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	33672	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	33774	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	34191	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	34509	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	34763	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35053	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35169	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35304	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35427	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35550	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35673	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35796	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	35919	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36042	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36165	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36288	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36411	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36534	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36657	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36780	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	36903	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37026	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37149	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37272	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37395	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37582	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37710	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37833	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	37956	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38079	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38202	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38325	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38448	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38571	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38694	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38817	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	389	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	38940	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39063	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39186	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39309	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39432	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39555	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39678	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39801	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	39924	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	40047	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	40170	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	40293	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	40416	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	40539	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	40662	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	49831	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	59075	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	59290	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	59365	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	59553	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	59753	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	60012	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	60579	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	66459	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	67536	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	67828	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	68400	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	74280	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	75347	published	
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	75775	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	76112	refused	operation_unsupported
+apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc	76214	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc	113218	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_5314_halfspace_edge.ifc	30	published	

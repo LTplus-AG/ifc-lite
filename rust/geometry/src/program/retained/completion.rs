@@ -6,6 +6,10 @@ type Completion<T> = std::result::Result<T, RetainedFailure>;
 impl RetainedProgram<'_> {
     pub(in crate::program) fn finish(self) -> Completion<RetainedProductPlan> {
         self.check()?;
+        #[cfg(any(test, feature = "retained-runtime"))]
+        if let RetainedInner::Cuts(cuts) = self.inner { return cuts.finish(); }
+        #[cfg(feature = "retained-runtime")]
+        if let RetainedInner::Layers(layers) = self.inner { return layers.finish(); }
         let failure = self.completion_handle()?;
         match self.finish_retained_output(&failure, FailureSite::ProductCompletion)? {
             Output::Product(ProductOutput::Retained(values, selection)) => {
@@ -13,12 +17,12 @@ impl RetainedProgram<'_> {
                     return Err(RetainedFailure::Completion(CompletionReason::ProductPlacementMissing));
                 }
                 let _ = selection.program();
-                Ok(RetainedProductPlan {
+                Ok(RetainedProductPlan { #[cfg(feature = "retained-runtime")] layers: None, #[cfg(any(test, feature = "retained-runtime"))] opening: None,
                     values,
                     // Construction/placement discharge none of these obligations.
                     remaining: vec![RetainedRequirement::OpeningClosure,
                         RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
-                        RetainedRequirement::PersistentFaces],
+                        RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals],
                 })
             }
             _ => Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),
@@ -29,7 +33,10 @@ impl RetainedProgram<'_> {
         self.check()?;
         // Clone before consuming inner, and keep it through presentation allocation.
         let failure = self.completion_handle()?;
-        let map = match &self.inner.control {
+        let RetainedInner::Geometry(inner) = &self.inner else {
+            return Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind));
+        };
+        let map = match &inner.control {
             Control::Mapping(control) => control.representation_map_id(),
             _ => None,
         }.ok_or(RetainedFailure::Completion(CompletionReason::TypeMapRootMissing))?;
@@ -45,11 +52,11 @@ impl RetainedProgram<'_> {
                     value.present(binding).map_err(|error| failure.common(FailureSite::TypeBinding, error))?;
                 }
                 if let Some(error) = failure.reported() { return Err(error); }
-                Ok(RetainedProductPlan {
+                Ok(RetainedProductPlan { #[cfg(feature = "retained-runtime")] layers: None, #[cfg(any(test, feature = "retained-runtime"))] opening: None,
                     values,
                     remaining: vec![RetainedRequirement::ProductPlacement,
                         RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
-                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces],
+                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals],
                 })
             }
             _ => Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),
@@ -60,18 +67,21 @@ impl RetainedProgram<'_> {
             .ok_or(RetainedFailure::Protocol(RetainedProgramError::Unsupported))
     }
     fn finish_retained_output(self, failure: &FailureHandle, site: FailureSite) -> Completion<Output> {
-        if let Some((_, executed)) = self.inner.pending {
+        let RetainedInner::Geometry(inner) = self.inner else {
+            return Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind));
+        };
+        if let Some((_, executed)) = inner.pending {
             return Err(RetainedFailure::Completion(if executed {
                 CompletionReason::UnacceptedReply
             } else { CompletionReason::UnexecutedRequest }));
         }
-        let stage = match &self.inner.control {
+        let stage = match &inner.control {
             Control::Product(control) => control.stage(),
             Control::Mapping(control) => control.stage(),
             _ => return Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),
         }.map_err(|error| RetainedFailure::Protocol(error.into()))?;
         if stage.is_some() { return Err(RetainedFailure::Completion(CompletionReason::Incomplete)); }
-        let output = self.inner.finish_output().map_err(|error| failure.common(site, error))?;
+        let output = inner.finish_output().map_err(|error| failure.common(site, error))?;
         // A later completed sibling cannot erase an earlier traversal refusal.
         if let Some(error) = failure.reported() { return Err(error); }
         Ok(output)

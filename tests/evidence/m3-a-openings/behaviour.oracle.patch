@@ -1,0 +1,19 @@
+--- a/rust/geometry/src/program/retained/openings.rs
++++ b/rust/geometry/src/program/retained/openings.rs
+@@ -111,14 +111,14 @@
+         let Some((_, _, Some(value))) = self.pending.take() else { return Ok(()); };
+         let (part, opening, cutter) = self.cursor;
+         self.cuts += 1;
+-        if false && value.evaluated_empty() == Some(true) {
++        if value.evaluated_empty() == Some(true) {
+             self.consumed[part] = true;
+             let opening = self.cutters[opening].0;
+             self.failure = Some(RetainedFailure::Completion(CompletionReason::OpeningConsumed { opening }));
+             return Err(Protocol::OpeningConsumed { opening });
+         }
+         self.host.values[part] = value;
+-        if false && cutter + 1 < self.cutters[opening].1.len() {
++        if cutter + 1 < self.cutters[opening].1.len() {
+             self.cursor.2 += 1;
+         } else if opening + 1 < self.cutters.len() {
+             self.cursor = (part, opening + 1, 0);

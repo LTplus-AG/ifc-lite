@@ -161,8 +161,15 @@ registering a class at runtime:
 
 - Representation and profile handling lives in `rust/geometry/src/processors/`
   and `rust/geometry/src/profiles/`.
-- The `GeometryRouter` (`rust/geometry/src/router/mod.rs`) dispatches each
-  representation to the right processor.
+- `representation/` owns `ProductShape`, `Select::Meshed` and the decoder-only
+  `RepresentationWalk`; product admission bounds the selected roots before
+  meshing. Keep representation traversal there.
+- `GeometryRouter` (`rust/geometry/src/router/mod.rs`) drives `ProductControl`
+  and `MappingControl` in `program/`. Their plain items reach `ItemControl`
+  (wrapped by `CacheControl` where item caching applies), which selects the
+  processor from `router/processor_registry.rs`. Add processor support at that
+  registry boundary; keep frame handling, reports and cache publication in the
+  shared controllers.
 - See [Geometry Pipeline](../architecture/geometry-pipeline.md) for how a
   representation flows from the parser to a mesh.
 

@@ -37,6 +37,7 @@ import type { CesiumModelPrimitive } from './cesium-model-renderable';
 import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
 import {
   buildCesiumModelMatrix,
+  cesiumGlobeBake,
   loadCesiumModel,
   type CesiumModelGlbCache,
 } from './cesium-model-load';
@@ -158,6 +159,9 @@ export function useCesiumModel({
   // Key of the model actually ON the globe, which is not the same thing as the
   // key of the last GLB built — see the gate in the load effect.
   const loadedKeyRef = useRef<string | null>(null);
+  // An Exact (baked) model's positions depend on the georeference: a bridge
+  // change rebuilds it through the load effect instead of moving its matrix.
+  const loadedBakedRef = useRef(false);
   // Bumped every time a NEW model primitive reaches the globe. `cesiumGlbLoaded`
   // used to serve this purpose by flipping false->true around every rebuild, but
   // the model now stays loaded across one (#2583), so the flag no longer moves.
@@ -199,8 +203,9 @@ export function useCesiumModel({
           hiddenIds: visibilityRef.current.hiddenIds, isolatedIds: visibilityRef.current.isolatedIds,
           visibilityVersion, ghostExceptIds: visibilityRef.current.ghostExceptIds,
           selectedIds: visibilityRef.current.selectedIds, ghostVersion },
-        onInstalled: (_model, key) => {
+        onInstalled: (_model, key, baked) => {
           loadedKeyRef.current = key;
+          loadedBakedRef.current = baked;
           setCesiumGlbLoaded(true);
           setCesiumModelEpoch((epoch) => epoch + 1);
         },
@@ -231,6 +236,10 @@ export function useCesiumModel({
     const lifetime = viewerLifetimeRef.current;
     const Cesium = getCesiumModule();
     if (!model || !bridge || !viewer || !lifetime?.isLive(viewer) || !Cesium) return;
+    // Either side baked: a baked model is rebuilt by the load effect, and the
+    // Exact matrix is wrong for an unbaked GLB that is still installed while
+    // that rebuild is pending.
+    if (loadedBakedRef.current || cesiumGlobeBake(bridge)) return;
 
     const newMatrix = buildCesiumModelMatrix(Cesium, bridge, coordinateInfo);
     model.modelMatrix = newMatrix;

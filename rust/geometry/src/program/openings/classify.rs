@@ -5,7 +5,7 @@
 use super::requests::{OpeningReady, OpeningReply, OpeningSource};
 use super::{protocol, source_option, OpeningOutput, OpeningPoll};
 use crate::program::opening::{OpeningBounds, OpeningChild, OpeningProgram};
-use crate::router::voids::OpeningType;
+use crate::router::voids::CutterKind;
 use crate::router::OpeningDiagnostic;
 use crate::{GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -22,7 +22,7 @@ pub(crate) struct Classifier<'a> {
     probe: Option<OpeningProgram>,
     phase: Phase,
     next: Option<OpeningPoll>,
-    output: Vec<OpeningType>,
+    output: Vec<CutterKind>,
     diagnostic: Vec<OpeningDiagnostic>,
     /// Requested id and vertex count attributed to the running decisions.
     decision: (u32, usize),
@@ -280,7 +280,7 @@ impl<'a> Classifier<'a> {
     }
 
     /// Bump the aggregate counter and push the per-host line together.
-    fn publish(&mut self, opening: OpeningType, id: u32, vertices: usize, router: &GeometryRouter) {
+    fn publish(&mut self, opening: CutterKind, id: u32, vertices: usize, router: &GeometryRouter) {
         if self.recording {
             let (counter, kind) = super::decision::kind(&opening);
             router.bump_classification(counter);

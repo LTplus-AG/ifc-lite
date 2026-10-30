@@ -5,8 +5,8 @@
 
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
-const RELEASE_BRANCH = 'changeset-release/main';
-const RELEASE_TITLE = 'chore: version packages';
+export const RELEASE_BRANCH = 'changeset-release/main';
+export const RELEASE_TITLE = 'chore: version packages';
 
 /**
  * Decide whether a PR contains authored code for the probabilistic reviewer.

@@ -2,32 +2,49 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Lossless JavaScript strings and ordered JSON values for sidecar documents.
-use std::{fmt, ops::Index};
+use std::{cmp::Ordering, fmt, hash::{Hash, Hasher}, ops::Index, sync::{Arc, OnceLock}};
 
 /// JavaScript strings are UTF-16 sequences, including unpaired surrogates.
 /// Keep a scalar view only when it exists; equality, hashing and ordering use
 /// the original code units, never a replacement-character projection.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct JsString {
+#[derive(Debug, Clone)]
+pub struct JsString(Arc<StringData>);
+#[derive(Debug)]
+struct StringData {
     units: Vec<u16>,
-    scalar: Option<String>,
+    scalar: OnceLock<Option<String>>,
+}
+// The lazy scalar view must never affect identity or ordering (#8042).
+impl PartialEq for JsString {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0) || self.units() == other.units()
+    }
+}
+impl Eq for JsString {}
+impl PartialOrd for JsString {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+}
+impl Ord for JsString {
+    fn cmp(&self, other: &Self) -> Ordering { self.units().cmp(other.units()) }
+}
+impl Hash for JsString {
+    fn hash<H: Hasher>(&self, state: &mut H) { self.units().hash(state); }
 }
 impl Default for JsString {
     fn default() -> Self { Self::from("") }
 }
 impl JsString {
     pub fn from_units(units: Vec<u16>) -> Self {
-        let scalar = String::from_utf16(&units).ok();
-        Self { units, scalar }
+        Self(Arc::new(StringData { units, scalar: OnceLock::new() }))
     }
-    pub fn units(&self) -> &[u16] { &self.units }
+    pub fn units(&self) -> &[u16] { &self.0.units }
     pub fn surround(prefix: &str, value: &Self, suffix: &str) -> Self {
-        Self::from_units(prefix.encode_utf16().chain(value.units.iter().copied()).chain(suffix.encode_utf16()).collect())
+        Self::from_units(prefix.encode_utf16().chain(value.0.units.iter().copied()).chain(suffix.encode_utf16()).collect())
     }
-    pub fn as_str(&self) -> Option<&str> { self.scalar.as_deref() }
-    pub fn is_empty(&self) -> bool { self.units.is_empty() }
+    pub fn as_str(&self) -> Option<&str> { self.0.scalar.get_or_init(|| String::from_utf16(self.units()).ok()).as_deref() }
+    pub fn is_empty(&self) -> bool { self.0.units.is_empty() }
     pub fn is_blank(&self) -> bool {
-        self.units.iter().all(|&unit| char::from_u32(u32::from(unit))
+        self.0.units.iter().all(|&unit| char::from_u32(u32::from(unit))
             .is_some_and(crate::projections::is_ecmascript_whitespace))
     }
     /// Concatenate without projecting unpaired units into a scalar string.
@@ -40,7 +57,7 @@ impl JsString {
         Self::from_units(units)
     }
     pub fn starts_with(&self, prefix: &str) -> bool {
-        self.units.iter().copied().take(prefix.encode_utf16().count()).eq(prefix.encode_utf16())
+        self.0.units.iter().copied().take(prefix.encode_utf16().count()).eq(prefix.encode_utf16())
     }
     /// ECMAScript trim followed by Unicode default uppercase mapping. Surrogate
     /// code units remain unchanged and valid pairs are mapped as one scalar.
@@ -49,10 +66,10 @@ impl JsString {
         if let Some(normalized) = crate::class_normalization::lookup(self) { return normalized; }
         let whitespace = |unit: &u16| char::from_u32(u32::from(*unit))
             .is_some_and(crate::projections::is_ecmascript_whitespace);
-        let start = self.units.iter().position(|u| !whitespace(u)).unwrap_or(self.units.len());
-        let end = self.units.iter().rposition(|u| !whitespace(u)).map_or(start, |i| i + 1);
+        let start = self.0.units.iter().position(|u| !whitespace(u)).unwrap_or(self.0.units.len());
+        let end = self.0.units.iter().rposition(|u| !whitespace(u)).map_or(start, |i| i + 1);
         let mut units = Vec::new();
-        for ch in char::decode_utf16(self.units[start..end].iter().copied()) {
+        for ch in char::decode_utf16(self.0.units[start..end].iter().copied()) {
             match ch {
                 Err(error) => units.push(error.unpaired_surrogate()),
                 Ok(ch) => for upper in ch.to_uppercase() {
@@ -64,7 +81,7 @@ impl JsString {
     }
     pub fn write_json(&self, out: &mut String) {
         out.push('"');
-        for ch in char::decode_utf16(self.units.iter().copied()) {
+        for ch in char::decode_utf16(self.0.units.iter().copied()) {
             match ch {
                 Err(error) => out.push_str(&format!("\\u{:04x}", error.unpaired_surrogate())),
                 Ok('"') => out.push_str("\\\""),
@@ -82,14 +99,14 @@ impl JsString {
     }
 }
 impl From<&str> for JsString {
-    fn from(value: &str) -> Self { Self { units: value.encode_utf16().collect(), scalar: Some(value.into()) } }
+    fn from(value: &str) -> Self { Self::from(value.to_owned()) }
 }
 impl From<String> for JsString {
-    fn from(value: String) -> Self { Self { units: value.encode_utf16().collect(), scalar: Some(value) } }
+    fn from(value: String) -> Self { Self(Arc::new(StringData { units: value.encode_utf16().collect(), scalar: OnceLock::from(Some(value)) })) }
 }
 impl fmt::Display for JsString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for ch in char::decode_utf16(self.units.iter().copied()) {
+        for ch in char::decode_utf16(self.0.units.iter().copied()) {
             match ch {
                 Ok(c) => write!(f, "{c}")?,
                 // Native error messages are scalar strings; make an invalid
@@ -169,7 +186,7 @@ impl From<&JsString> for JsString {
     fn from(value: &JsString) -> Self { value.clone() }
 }
 impl PartialEq<str> for JsString {
-    fn eq(&self, value: &str) -> bool { self.units.iter().copied().eq(value.encode_utf16()) }
+    fn eq(&self, value: &str) -> bool { self.0.units.iter().copied().eq(value.encode_utf16()) }
 }
 impl PartialEq<&str> for JsString {
     fn eq(&self, value: &&str) -> bool { self == *value }

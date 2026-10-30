@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import {readFileSync,writeFileSync} from 'node:fs';
-import {validateIdentityMapSidecar,validateLineageSidecar} from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+const {validateIdentityMapSidecar,validateLineageSidecar} = await loadDiffOracle();
 const vectors=[];
 for(const kind of ['identity','lineage']) {
  const valid={format:`ifc-lite/${kind==='identity'?'identity-map':'lineage'}`,version:1,base:{hash:'a'},head:{hash:'b'},entries:[],...(kind==='lineage'?{deleted:[]}:{})};

@@ -3,8 +3,11 @@
 //! opens and closes source levels, applies their router effects (source and
 //! template claims, cache publication, dropped-item records) and selects the
 //! next step, as the historical recursive walks did at the same points.
-use super::{Action, Event, Level, MappingControl, Merging, Pending, Place, Placeholder, Placing, Reached,
-    Sink, Template, Walk};
+use super::drop::{report_drop, DropReason};
+use super::{
+    Action, Event, Level, MappingControl, Merging, Pending, Place, Placeholder, Placing, Reached,
+    Sink, Template, Walk,
+};
 use crate::router::frame_parts::SourceParts;
 use crate::router::mapped_item::StyledSource;
 use crate::{Error, GeometryRouter, Mesh, Result};
@@ -45,6 +48,7 @@ impl MappingControl<'_> {
         if let Sink::Shared(placeholder) = sink {
             // A refused merge is a typed terminal, not a skipped registration.
             let value = match value {
+                Ok(_) if self.logical_stopped => Ok(()),
                 Ok(parts) => router.publish_shared_mapped_source(source_id, parts),
                 Err(error @ Error::ProgramStopped(_)) => Err(error),
                 Err(_) => Ok(()),
@@ -56,7 +60,10 @@ impl MappingControl<'_> {
             return Event::Advance;
         }
         let published = value.and_then(|parts| {
-            router.publish_mapped_source(source_id, &parts, truncated).map(|()| parts)
+            if !self.logical_stopped {
+                router.publish_mapped_source(source_id, &parts, truncated)?;
+            }
+            Ok(parts)
         });
         match published {
             Ok(parts) => {
@@ -107,23 +114,15 @@ impl MappingControl<'_> {
         Self::record_drop(item, error, true, "styled-source", router)
     }
 
-    fn record_drop(item: &DecodedEntity, error: Error, policy: bool, walk: &'static str, router: &GeometryRouter)
-        -> Result<()> {
-        let _e = GeometryRouter::recoverable_source_error(error)?;
-        let _policy = router.enter_unsupported_policy(policy);
-        router.record_unsupported_item(item.ifc_type.clone());
-        let _ = walk;
-        crate::diag::diag_debug!(
-            { item_id = item.id, ifc_type = ?item.ifc_type, walk, error = %_e,
-              "skipping unsupported source item" }
-            else {
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "[ifc-lite] Skipping unsupported {walk} item #{} ({:?}): {}",
-                    item.id, item.ifc_type, _e
-                );
-            }
-        );
+    fn record_drop(
+        item: &DecodedEntity,
+        error: Error,
+        policy: bool,
+        walk: &'static str,
+        router: &GeometryRouter,
+    ) -> Result<()> {
+        let error = GeometryRouter::recoverable_source_error(error)?;
+        report_drop(DropReason::Item { item, walk }, &error, policy, router);
         Ok(())
     }
 
@@ -222,21 +221,24 @@ impl MappingControl<'_> {
         self.select_plain(Reached::Nested(item), router)
     }
 
-    /// A styled source's next item. Its depth bounds every item, plain or
-    /// mapped, and the cut item is recorded as its own type.
+    /// Only entering another mapped level consumes depth. Plain and textured
+    /// leaves under exactly 32 mapped levels remain reachable (#7887).
     fn next_styled(&mut self, item: DecodedEntity, router: &GeometryRouter) -> Option<Event> {
-        let depth = self.levels.len();
-        let error = if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
-            Error::geometry(format!(
-                "MappedItem nesting exceeded maximum depth of {} at #{}",
-                MAX_MAPPED_ITEM_DEPTH, item.id
-            ))
-        } else if item.ifc_type != IfcType::IfcMappedItem {
-            if self.textures.is_some_and(|index| index.contains_key(&item.id)) {
+        if item.ifc_type != IfcType::IfcMappedItem {
+            if self
+                .textures
+                .is_some_and(|index| index.contains_key(&item.id))
+            {
                 self.action = Action::Texture(Reached::Nested(item));
                 return None;
             }
             return self.select_plain(Reached::Nested(item), router);
+        }
+        let error = if self.levels.len() >= MAX_MAPPED_ITEM_DEPTH as usize {
+            Error::geometry(format!(
+                "MappedItem nesting exceeded maximum depth of {} at #{}",
+                MAX_MAPPED_ITEM_DEPTH, item.id
+            ))
         } else if self.levels.iter().any(|level| level.item_id == item.id) {
             Error::geometry(format!("Detected cyclic IfcMappedItem reference at #{}", item.id))
         } else {
@@ -320,8 +322,13 @@ impl MappingControl<'_> {
     }
 
     /// Hand a level's result to its parent source, or complete the walk.
-    fn deliver(&mut self, item_id: u32, truncated: bool, value: Result<Vec<Mesh>>,
-        router: &GeometryRouter) -> Option<Event> {
+    fn deliver(
+        &mut self,
+        item_id: u32,
+        truncated: bool,
+        value: Result<Vec<Mesh>>,
+        router: &GeometryRouter,
+    ) -> Option<Event> {
         let styled = self.walk == Walk::Styled;
         let Some(parent) = self.levels.last_mut() else {
             self.complete(value);
@@ -343,15 +350,7 @@ impl MappingControl<'_> {
                 // Recording `IfcMappedItem`, not the inner type, is deliberate:
                 // the nested walk failed before it could attribute anything.
                 parent.truncated = true;
-                let _policy = router.enter_unsupported_policy(parent.policy);
-                router.record_unsupported_item(IfcType::IfcMappedItem);
-                crate::diag::diag_debug!(
-                    { item_id = item_id, error = %_e, "skipping nested IfcMappedItem" }
-                    else {
-                        #[cfg(debug_assertions)]
-                        eprintln!("[ifc-lite] Skipping nested IfcMappedItem #{}: {}", item_id, _e);
-                    }
-                );
+                report_drop(DropReason::NestedFailure { item_id }, &_e, parent.policy, router);
                 Some(Event::Advance)
             }
             // A stop is terminal: every enclosing level observes it in turn.

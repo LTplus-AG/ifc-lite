@@ -12,7 +12,7 @@
 
 use super::GeometryRouter;
 use crate::representation::{
-    Flow, MappedLevel, NestedMaps, RepresentationWalk, Select, WalkCtx, WalkVisitor,
+    Flow, MappedLevel, NestedMaps, RepresentationWalk, Select, WalkCtx, WalkRefusal, WalkVisitor,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, MAX_MAPPED_ITEM_DEPTH};
 use nalgebra::{Matrix4, Point3};
@@ -68,6 +68,12 @@ impl WalkVisitor for FirstVertex<'_> {
         Flow::Continue
     }
 
+    fn refused(&mut self, _item: &DecodedEntity, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {
+        // This FirstChain probe produces no mesh. A broken/cyclic/deep chain
+        // abstains so the element retains its placement vote (#7781/#8020).
+        self.abstain = true;
+    }
+
     fn item(&mut self, item: &DecodedEntity, _at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
         let Some((x, y, z)) = self.router.item_first_vertex(item, decoder) else {
             return Flow::Continue;
@@ -75,5 +81,44 @@ impl WalkVisitor for FirstVertex<'_> {
         let p = self.transform.transform_point(&Point3::new(x, y, z));
         self.vertex = Some((p.x, p.y, p.z));
         Flow::Stop
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn issue_7781_malformed_nested_items_abstain_without_trying_a_mapped_sibling() {
+        for items in ["", ",7", ",(#1)"] {
+            let model = format!(
+                "#10=IFCMAPPEDITEM(#20,$);\
+                #20=IFCREPRESENTATIONMAP($,#30);\
+                #30=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#40,#50));\
+                #40=IFCMAPPEDITEM(#60,$);#60=IFCREPRESENTATIONMAP($,#70);\
+                #70=IFCSHAPEREPRESENTATION($,'Body','Brep'{items});\
+                #50=IFCMAPPEDITEM(#80,$);#80=IFCREPRESENTATIONMAP($,#90);\
+                #90=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2));\
+                #1=IFCCARTESIANPOINT((5000000.,2.,3.));\
+                #2=IFCCARTESIANPOINT((6000000.,2.,3.));"
+            );
+            let mut decoder = EntityDecoder::new(&model);
+            let root = decoder.decode_by_id(10).unwrap();
+            let vote = GeometryRouter::new().mapped_item_first_vertex(&root, &mut decoder);
+            if items == ",(#1)" {
+                assert_eq!(vote, Some((5000000., 2., 3.)), "valid first-chain control");
+            } else {
+                assert_eq!(vote, None, "malformed nested Items must abstain");
+            }
+            assert!(
+                decoder.get_cached(50).is_some(),
+                "root list resolves both siblings"
+            );
+            assert!(
+                decoder.get_cached(80).is_none(),
+                "FirstChain never enters the later sibling"
+            );
+            assert!(decoder.get_cached(2).is_none());
+        }
     }
 }

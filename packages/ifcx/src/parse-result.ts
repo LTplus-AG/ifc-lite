@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { StringTable, SpatialHierarchy, EntityTable, PropertyTable, QuantityTable, RelationshipGraph } from '@ifc-lite/data';
+import type { DerivedEntities, StringTable, SpatialHierarchy, EntityTable, PropertyTable, QuantityTable, RelationshipGraph } from '@ifc-lite/data';
 import type { MeshData } from './geometry-extractor.js';
 import type { PointCloudExtraction } from './pointcloud-extractor.js';
 import type { extractGeoreference } from './georeference.js';
@@ -14,6 +14,8 @@ import type { extractGeoreference } from './georeference.js';
 export interface IfcxParseResult {
   /** Columnar entity table */
   entities: EntityTable;
+  /** Rows of `entities` the file does not state as such (a derived type or material): export writes the file's classes. */
+  derivedEntities: DerivedEntities;
   /** Columnar property table */
   properties: PropertyTable;
   /** Columnar quantity table */
@@ -34,6 +36,8 @@ export interface IfcxParseResult {
   idToPath: Map<number, string>;
   /** Schema version */
   schemaVersion: 'IFC5';
+  /** Factor from the file's length unit to metres: always `IFCX_LENGTH_UNIT_SCALE` (1), the unit IFCX defines. */
+  lengthUnitScale: number;
   /** File size in bytes */
   fileSize: number;
   /** Number of entities */

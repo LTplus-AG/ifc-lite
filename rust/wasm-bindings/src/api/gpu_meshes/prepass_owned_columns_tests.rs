@@ -5,8 +5,9 @@
 use super::*;
 
 fn scan(content: &[u8]) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u8>) {
-    let (records, classes, _, _) =
-        ifc_lite_processing::scan_shard_classified_with_refusals(content, 0, content.len());
+    let scan = ifc_lite_processing::scan_shard_result(content, 0, content.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
     let ids = records.iter().map(|&(id, _, _)| id).collect();
     let starts = records.iter().map(|&(_, start, _)| start as u32).collect();
     let lengths = records.iter().map(|&(_, start, end)| (end - start) as u32).collect();

@@ -3,7 +3,7 @@
 use super::*;
 use ifc_lite_geometry::{document::RetainedTessellation, BoolOp};
 use ifc_lite_processing::element::retained_runtime::{
-    NumericalReceipt, ReceiptDomain, ReceiptEvidence,
+    NumericalReceipt, ReceiptDomain, ReceiptEvidence, ReceiptMesh,
 };
 use wasm_bindgen::JsValue;
 
@@ -69,6 +69,15 @@ impl NumericalReceipt for BrowserReceipt {
     type Error = BrowserError;
     fn heap_bytes() -> u64 {
         std::mem::size_of::<Self>() as u64
+    }
+    fn mesh(&self) -> Option<ReceiptMesh<'_>> {
+        // #7955: publication uses the trait view, not the inherent helper.
+        // Expose the already validated tessellation without another SDK call.
+        BrowserReceipt::mesh(self).map(|mesh| ReceiptMesh {
+            positions: &mesh.positions,
+            indices: &mesh.indices,
+            faces: &mesh.revision_local_faces,
+        })
     }
     fn buffer_bytes(&self) -> Result<u64, BrowserError> {
         let Some(mesh) = self.mesh() else {

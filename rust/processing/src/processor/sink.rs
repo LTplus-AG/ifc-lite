@@ -8,6 +8,8 @@
 //! reads. `()` is the sink that listens to nothing.
 //!
 //! Ordering contract (pinned by `tests/entry_point_trace.rs`):
+//! `on_omitted_type_records` fires at most once, before everything else, and
+//! only when the scan omitted a type record. Then
 //! `on_bootstrap` fires at most once, then `on_frame` exactly once, then any
 //! number of `on_batch` interleaved with `on_color_update`. `on_frame` fires
 //! before the first `on_batch`, also for a file with no jobs. A
@@ -41,6 +43,12 @@ pub trait ProcessingSink {
     /// The returned handle belongs to this request; ordinary sinks allocate none.
     fn product_geometry_audit(&self) -> Option<crate::ProductGeometryAudit> { None }
 
+    /// F2 (#8341): distinct type records, ascending, whose planned type
+    /// geometry was omitted because the full decoder rejects the record. A
+    /// plain decode failure, never an input-admission refusal, so it is in
+    /// neither `ProcessingStats::refused_*` counter. Its length is the native
+    /// `PipelineDiagnosticsReport::omitted_type_records`.
+    fn on_omitted_type_records(&mut self, _records: &[u32]) {}
     /// The lightweight spatial bootstrap, when `Features::quick_metadata_bootstrap` is on.
     fn on_bootstrap(&mut self, _bootstrap: &QuickMetadataBootstrap) {}
     /// The frame this pass bakes vertices in.

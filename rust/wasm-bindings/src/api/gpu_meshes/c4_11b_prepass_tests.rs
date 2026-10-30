@@ -89,6 +89,10 @@ mod allocations {
 
     thread_local! { static COUNTS: Cell<Option<(usize, usize)>> = const { Cell::new(None) }; }
     struct Counting;
+    // This installs the allocator for the entire wasm-bindings unit-test binary,
+    // not just this module. Reuse it if another test needs allocation counting;
+    // Rust permits only one global allocator. COUNTS enables measurement only
+    // on the current test thread; all other allocations delegate to System.
     #[global_allocator]
     static ALLOCATOR: Counting = Counting;
     fn record(bytes: usize) {

@@ -63,16 +63,27 @@ for side in base head; do
   src=$([[ $side == base ]] && echo "$scratch/base" || echo "$head_dir")
   cp "$head_dir/tests/evidence/c4-7b/measure_tests.rs" "$src/rust/wasm-bindings/src/api/gpu_meshes/c4_7b_measure.rs"
   printf '\n#[cfg(test)]\n#[path = "c4_7b_measure.rs"]\nmod c4_7b_measure;\n' >> "$src/$wiring"
-  bin=$(cd "$src" && cargo test --release -p ifc-lite-wasm --lib --no-run --message-format=json \
-    | python3 -c 'import json,sys
-for line in sys.stdin:
-    m = json.loads(line)
-    if m.get("reason") == "compiler-artifact" and m.get("executable") and m["target"]["name"] == "ifc_lite_wasm":
-        print(m["executable"])' | tail -1)
-  if [[ ! -x $bin ]]; then
-    (cd "$src" && cargo test --release -p ifc-lite-wasm --lib --no-run 2>&1 | grep -v '^warning: /' | tail -40)
-    echo "no test binary for $side"; exit 1
-  fi
+  build_log="$scratch/$side-build.jsonl"
+  set +e
+  (cd "$src" && cargo test --release -p ifc-lite-wasm --lib --no-run --message-format=json > "$build_log")
+  built=$?
+  set -e
+  bin=$(python3 - "$build_log" <<'PYBIN'
+import json, sys
+exe = ''
+for line in open(sys.argv[1]):
+    try:
+        m = json.loads(line)
+    except ValueError:
+        continue
+    if m.get('reason') == 'compiler-message' and m['message'].get('level') == 'error':
+        print(m['message'].get('rendered', ''), file=sys.stderr)
+    if m.get('reason') == 'compiler-artifact' and m.get('executable') and m['target']['name'] == 'ifc_lite_wasm':
+        exe = m['executable']
+print(exe)
+PYBIN
+)
+  [[ $built == 0 && -x $bin ]] || { echo "no test binary for $side (cargo exit $built)"; df -h "$src" "${CARGO_TARGET_DIR:-$src/target}" 2>/dev/null || true; exit 1; }
   echo "C4_7B_BINARY $side $bin"
   for fixture in "${fixtures[@]}"; do
     path="$head_dir/$fixture"

@@ -19,7 +19,8 @@ pub use ifc_lite_processing::{MeshCoordinateSpace, ModelMetadata, ParseResponse,
 pub struct MetadataResponse {
     /// Total number of entities.
     pub entity_count: usize,
-    /// Number of geometry-bearing entities.
+    /// Geometry jobs a default parse schedules: the parse response's
+    /// `metadata.geometry_entity_count` for the same file (#8341).
     pub geometry_count: usize,
     /// IFC schema version.
     pub schema_version: String,

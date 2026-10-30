@@ -1,5 +1,18 @@
 # @ifc-lite/flow-nodes
 
+## 0.12.0
+
+### Minor Changes
+
+- [#8297](https://github.com/LTplus-AG/ifc-lite/pull/8297) [`2d2ee70`](https://github.com/LTplus-AG/ifc-lite/commit/2d2ee702676e6f270fbab498bf975c0c33a9c074) Thanks [@louistrue](https://github.com/louistrue)! - Add pure, bounded InfluxDB 2 query and CSV adapters at `@ifc-lite/flow-nodes/influx`, shared by the headless recipe and experimental viewer panel. Preserve distinct series and report ambiguous IFC GlobalId matches; browser credentials stay in memory.
+
+### Patch Changes
+
+- Updated dependencies [[`d3eb48a`](https://github.com/LTplus-AG/ifc-lite/commit/d3eb48a12d3b5982603e023961e0709c5933429d), [`2986934`](https://github.com/LTplus-AG/ifc-lite/commit/298693424041c38f0a44433e770e0b3e75b101ec), [`68c8f8f`](https://github.com/LTplus-AG/ifc-lite/commit/68c8f8fed82fb903b26d45f059e8e1b0a09f0eaf)]:
+  - @ifc-lite/export@4.13.2
+  - @ifc-lite/ids@3.4.3
+  - @ifc-lite/ids-authoring@0.3.3
+
 ## 0.11.1
 
 ### Patch Changes

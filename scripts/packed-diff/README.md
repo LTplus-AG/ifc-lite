@@ -92,10 +92,15 @@ is rewritten by this harness. Ancestor `node_modules` directories are rejected.
   initDiff()`, `initDiffSync({ module: bytes })`, and invalid asynchronous bytes
   followed by concurrent default retry. The synchronous process also checks a
   failed invalid-byte synchronous init before successful retry. Every one of
-  the 23 synchronous public functions must fail before initialization.
+  the 24 synchronous public functions and the public `DiffModelHandle` constructor must fail before initialization.
 - Real, unmodified Node `fetch(file:)` is shown to reject, while the facade's
   default init succeeds through its filesystem path. No mocked fetch, loader,
   WASM exports, or source workspace facade imports are used in the consumers.
+- The runtime class constructor and `prepareDiffModel` factory are exercised through
+  the tarball, including compare parity with frozen diff results, placement stripping
+  disabled/enabled/disabled cache isolation, idempotent disposal, disposed operands,
+  and `Symbol.dispose`. The private TS oracle cross-checks the original 23 functions;
+  it predates resident handles.
 - Every synchronous public function has fixed semantic assertions; an added
   uncovered function fails the coverage assertion. These include diff scopes,
   exclusions, geometry abstention, matching/aliases, object/ref identity,
@@ -126,9 +131,10 @@ logs via the owning launcher's artifact mechanism; never retain the consumer's
 `node_modules` or an entire generated workspace. Follow the fleet storage
 receipt/closure rules for an unknown outcome; do not blindly resubmit.
 
-## Preparation validation
+## Harness validation
 
-Only syntax checks and the tiny frozen-oracle vector check were performed while
-writing this runner. The oracle check passed under the discovered Node 22.13.0
-binary with native stripping disabled. The real packed WASM acceptance is
-deliberately left for the parent's admitted execution; it has not passed yet.
+`scripts/packed-diff.test.mjs` cross-checks frozen vectors against the private TS
+oracle without initializing WASM. CI's revert-oracle selector uses the focused
+`tests/evidence/packed-handle-8042/behaviour.oracle.patch` to show that corrupting a
+frozen expectation fails an assertion. This lightweight witness does not replace
+the admitted packed acceptance above.

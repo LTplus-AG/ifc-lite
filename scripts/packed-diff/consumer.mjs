@@ -31,7 +31,7 @@ const constants = {
 };
 for (const [name, value] of Object.entries(constants)) assert.equal(api[name], value);
 const guarded = [
-  ['diffModels', [], []], ['stableHash', ''], ['normalizeValue', null],
+  ['prepareDiffModel', []], ['diffModels', [], []], ['stableHash', ''], ['normalizeValue', null],
   ['buildDataFingerprint', { ifcType: 'IfcWall' }], ['buildComponentFingerprints', { ifcType: 'IfcWall' }],
   ['identityMapFromContentMatches'], ['identityMapFromSuccessors'],
   ['lineageOfDiff', { entries: [] }], ['lineageFromDiff', { entries: [] }],
@@ -43,6 +43,7 @@ const guarded = [
   ['parseLineageSidecar', '{}'], ['validateLineageSidecar', {}], ['lineageSidecarMismatches', {}, {}],
 ];
 const preinit = () => {
+  assert.throws(() => new api.DiffModelHandle([]), /Initialize @ifc-lite\/diff.*initDiff/);
   for (const [name, ...args] of guarded) {
     assert.throws(() => api[name](...args), /Initialize @ifc-lite\/diff.*initDiff/);
   }
@@ -79,8 +80,8 @@ if (mode === 'sync') {
 // Once ready, init is idempotent even with unusable replacement input.
 await api.initDiff({ module_or_path: invalid });
 api.initDiffSync({ module: invalid });
-proof.semantics = semantics(api);
-proof.preinitOperations = guarded.map(([name]) => name).sort();
+proof.semantics = semantics(api, { handles: true });
+proof.preinitOperations = [...guarded.map(([name]) => name), 'DiffModelHandle'].sort();
 assert.deepEqual(proof.preinitOperations, proof.semantics.operations);
 assert.deepEqual(Object.keys(api).sort(), [...proof.semantics.operations,
   'initDiff', 'initDiffSync', ...Object.keys(constants)].sort(), 'public runtime export surface');

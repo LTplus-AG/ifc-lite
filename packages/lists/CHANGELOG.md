@@ -1,5 +1,12 @@
 # @ifc-lite/lists
 
+## 3.1.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/rules@0.7.11
+
 ## 3.1.10
 
 ### Patch Changes

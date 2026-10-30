@@ -22,30 +22,18 @@
 //! holes. The buggy AABB fallback removed ~3% more material (each round/hex
 //! hole grew to its bounding box), which this tolerance rejects.
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
-use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
+use ifc_lite_core::{build_entity_index, EntityDecoder};
+use ifc_lite_geometry::{void_index_from_content, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
 const FIXTURE: &str = "issues/964_slab_arbitrary_profile_voids.ifc";
 /// IfcSlab `3qy29DaXf0ivOFkuocsP7z` — body uses IfcArbitraryProfileDefWithVoids.
 const SLAB_ID: u32 = 6443;
 
-/// Build the void index the same way production does (scan IfcRelVoidsElement).
+/// The production void index (`void_index_from_content`, #8341 C4-15).
 fn build_void_index_like_production(content: &str) -> FxHashMap<u32, Vec<u32>> {
-    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut scanner = EntityScanner::new(content);
     let mut decoder = EntityDecoder::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCRELVOIDSELEMENT" {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                if let (Some(host_id), Some(opening_id)) = (entity.get_ref(4), entity.get_ref(5)) {
-                    void_index.entry(host_id).or_default().push(opening_id);
-                }
-            }
-        }
-    }
-    let _ = propagate_voids_to_parts(&mut void_index, content, &mut decoder);
-    void_index
+    void_index_from_content(content, &mut decoder)
 }
 
 /// Sum of |XY area| of triangles lying on the mesh's bottom face (z ≈ z_min).

@@ -285,6 +285,66 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Official resident-handle diff cohort v4 (#8042)
+
+**Unmeasured: the sole official submission failed in admission.** Pop job
+`bbba5197-1036-496f-8e95-344c9a95066f`, storage task
+`issue8042-v4-cohort-3ac58cbc`, exhausted the worker's one-hour admission wait
+while existing ordinary work drained. The project command never started;
+there is no `result.json`, no timing samples, and no cold or warm performance
+verdict. The requested execution timeout was 10,800 seconds; that does not
+extend the admission deadline. At that stage, no rerun or second submission was made.
+
+The frozen cohort used TS base `a3641a732a63beac0f90718d86d33585409faa33`,
+Rust candidate `37d9ff187a38c69d9bafe15f072a76b13f655b13`, and harness
+`d6568fa392d463f1f168c296a78b38bcc0aa858a`. Both preparations passed and their
+publications verified. Untimed preparation identity passed for demo, Haus and
+the frozen large revision across all three option shapes. Those proofs do not
+establish measured-cohort identity or performance acceptance.
+
+Lesson: distinguish the execution timeout from the worker admission deadline.
+An exact-once cohort can consume its only submission while waiting for active
+foreign work; preserve that original failure and report it without fabricating
+a verdict or quietly rerunning. See the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042)
+and the original job receipt in the storage task's verified evidence.
+
+## Authorized resident-handle v4 recovery (#8042)
+
+**Inconclusive: the measured cohort is noisy.** Pop benchmark
+`afe5139a-662a-4e37-9e82-a0ed16cc03ef`, task
+`issue8042-v4-cohort-r3-3ac58cbc`, completed every cold and resident-handle
+endpoint and passed exact output/reference identity for demo, Haus and the
+frozen large revision across every option shape. All cold confidence bounds
+meet noninferiority and all warm confidence bounds meet their absolute budgets.
+Demo's warm candidate spread exceeds the predeclared noise limit, which blocks
+a clean pass. Do not advertise performance acceptance or infer a regression
+from the report-only warm ratio against TS. No further cohort was submitted.
+The table and preserved raw evidence are linked from the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042).
+Canonical publication failed at vault ingest, and the bounded free-vault wait
+expired. The original job remains `evidence_pending`; raw results and a compact
+evidence bundle are preserved on Pop and locally. Lifecycle closure is
+requested, but workspace release remains blocked until publication verifies.
+
+The new active task used separate admission and output paths while reading the
+original verified preparation arms and frozen protocol in place. Both original
+lifecycle task locks stayed held through queueing and execution. The original
+failed receipts, admission binding and closing task records remained
+byte-identical. Exclusive benchmark admission followed the natural host drain;
+capacity and idle guards were unchanged.
+
+A preceding authorized recovery (`e9c01af8-b940-4e63-a444-6cec7cd04b4e`)
+failed before registration because its task already had a closure request.
+A fresh ordinary preparation (`e968e69f-521e-47ad-bc82-87a04cf440cd`)
+then failed capacity admission before project execution; its failure evidence
+is verified. Neither produced timing samples. The subsequent read-only recovery
+reverified the original build attestations, source/path bindings, runtime,
+fixtures and untimed identity proofs before its sole submission.
+
+Lesson: an active lifecycle state does not admit a producer after closure is
+requested. Use a new owner and protect reused verified inputs for the entire
+queue and run. A sub-budget interactive endpoint can still violate the declared
+noise rule; preserve that limitation instead of relabelling it as a clean win.
+
 ## HiDPI navigation and synchronous capture (#6709, #8089)
 
 **Functional qualification passes; performance is mixed.** The physical NVIDIA

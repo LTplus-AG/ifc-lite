@@ -8,8 +8,9 @@
 //! [`PassContext`] is everything a job reads (the shared maps and caches) and
 //! writes (the diagnostic collectors); [`super::jobs::run_job`] takes it by
 //! reference. [`run`] owns the order of the side effects: the cancel check
-//! before every chunk, the metadata step, `on_batch`, mesh retention and the
-//! one-time replay of deferred styles as `on_color_update`.
+//! before every chunk, the metadata step, `on_finishes` (when asked for),
+//! `on_batch`, mesh retention and the one-time replay of deferred styles as
+//! `on_color_update`.
 
 use super::diagnostics::DiagnosticCollectors;
 use super::entity_index::ProcessingIndex;
@@ -24,7 +25,7 @@ use super::resolve::{Facts, Resolved};
 use super::run_snapshot::{self, RunSnapshot};
 use super::{ProcessingRequest, ProcessingSink};
 use crate::mesh_frame::MeshCoordinateSpace;
-use crate::style::GeometryStyleInfo;
+use crate::style::{GeometryStyleInfo, ModelFinishes};
 use crate::types::mesh::{MeshData, RawInstanceOccurrence};
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::{GeometryRouter, TessellationQuality};
@@ -216,6 +217,28 @@ fn cancelled(req: &ProcessingRequest) -> bool {
         .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
 }
 
+/// #8341 C4-13a: with `Features::finishes`, the finish join over this pass's
+/// own scan and index, so a consumer that wants finishes need not read the
+/// file a second time.
+fn finish_join<'c>(
+    content: &'c [u8],
+    req: &ProcessingRequest,
+    facts: &Facts,
+    ctx: &PassContext<'c>,
+) -> Option<ModelFinishes<'c>> {
+    req.features.finishes.then(|| {
+        ModelFinishes::from_spans(&facts.prepass_spans.styled_items, ctx.entity_index.decoder(content))
+    })
+}
+
+/// `on_finishes` for the batch about to be emitted, one entry per mesh, when
+/// the request asked for finishes.
+fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&mut ModelFinishes<'_>>, meshes: &[MeshData]) {
+    let Some(finishes) = finishes else { return };
+    let batch: Vec<_> = meshes.iter().map(|mesh| finishes.finish_for_mesh(mesh)).collect();
+    sink.on_finishes(&batch);
+}
+
 pub(super) fn run<'c>(
     content: &'c [u8],
     req: &ProcessingRequest,
@@ -266,6 +289,7 @@ pub(super) fn run<'c>(
         },
         sink,
     );
+    let mut finishes = finish_join(content, req, &facts, &ctx);
     let mut appearance = AppearanceResolver::new(
         element_material_color,
         presentation_layer_by_assigned_id,
@@ -319,6 +343,7 @@ pub(super) fn run<'c>(
             total_meshes += chunk_meshes.len();
             let emit_mesh_chunk_size = current_chunk_size.max(1);
             for emitted_meshes in chunk_meshes.chunks(emit_mesh_chunk_size) {
+                emit_finishes(sink, finishes.as_mut(), emitted_meshes);
                 sink.on_batch(emitted_meshes, processed_jobs, total_jobs);
             }
             if req.retain_meshes {

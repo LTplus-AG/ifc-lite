@@ -55,10 +55,16 @@ fn warm_derived_slots(api: &IfcAPI, source: &[u8]) {
     check_derived_slots(api, true, "warm");
 }
 
+// C4-7b (#8341): the once path installs its own pre-pass columns for the NEW
+// source; `check_rebuilt(.., false)` then proves they hold no stale value.
+const ONCE_COLUMNS: [&str; 3] =
+    ["cached_material_layer_index", "cached_referenced_repmaps", "cached_instantiated_type_ids"];
+
 fn check_derived_slots(api: &IfcAPI, populated: bool, install: &str) {
     macro_rules! check {
         ($($slot:ident),+ $(,)?) => {$(
-            assert_eq!(api.content.$slot.lock().unwrap().is_some(), populated,
+            let installed = install == "once" && ONCE_COLUMNS.contains(&stringify!($slot));
+            assert_eq!(api.content.$slot.lock().unwrap().is_some(), populated || installed,
                 "{install}: stale content cache {}", stringify!($slot));
         )+};
     }

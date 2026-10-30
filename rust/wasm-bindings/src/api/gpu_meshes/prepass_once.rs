@@ -38,12 +38,7 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
-        // Load START on the serial/main-thread path: the previous load's
-        // pipeline diagnostics must not accumulate into this one. (The worker
-        // path resets via setEntityIndex; every load-start entry point resets.)
-        self.reset_pipeline_diagnostics();
-        self.production_model.invalidate_source();
-        self.invalidate_brep_signatures();
+        self.begin_content_install();
 
         let content = data;
 
@@ -55,8 +50,7 @@ impl IfcAPI {
         // pick up clones below without re-locking. Panic on poison —
         // an earlier panic with the lock held would mean the cached
         // index is in an inconsistent state.
-        let mut slot = self
-            .cached_entity_index
+        let mut slot = self.content.cached_entity_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());

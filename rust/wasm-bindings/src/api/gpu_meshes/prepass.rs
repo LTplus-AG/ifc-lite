@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::*;
 use super::prepass_affinity::fold_u128_to_u32;
 use super::prepass_discovery::ColumnsDiscovery;
 use super::prepass_memory::snapshot_entity_index;
+use super::prepass_mode::{PrepassMode, PrepassOptions};
 
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
@@ -68,9 +69,7 @@ impl IfcAPI {
             chunk_size,
             disabled_type_names,
             skip_type_geometry,
-            None,
-            false,
-            false,
+            PrepassOptions::serial(false),
         )
     }
 
@@ -82,16 +81,14 @@ impl IfcAPI {
         chunk_size: u32,
         disabled_type_names: Option<Vec<String>>,
         skip_type_geometry: bool,
-        columns: Option<super::prepass_owned_columns::ShardedColumns<'_>>,
-        external_styles: bool,
-        compute_source_fingerprint: bool,
+        options: PrepassOptions<'_>,
     ) -> Result<JsValue, JsValue> {
-        let have_columns = columns.is_some();
+        let (columns, external_styles) = match options.mode {
+            PrepassMode::Serial => (None, false),
+            PrepassMode::Sharded(columns) => (Some(columns), true),
+        };
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
-        // Load START on the streaming pre-pass path (see build_pre_pass_once).
-        self.reset_pipeline_diagnostics();
-        self.production_model.invalidate_source();
-        self.invalidate_brep_signatures();
+        self.begin_content_install();
         use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
@@ -122,7 +119,7 @@ impl IfcAPI {
         const PREPASS_INDEX_RESERVE_CAP: usize = 40_000_000; // ~0.5GB reserved
         // #3985: a prebuilt index serves every lookup and is retained below;
         // its unused staging map must not reserve another source-sized table.
-        let estimated = if have_columns {
+        let estimated = if external_styles {
             0
         } else {
             (content.len() / 50).min(PREPASS_INDEX_RESERVE_CAP)
@@ -345,8 +342,7 @@ impl IfcAPI {
 
         // Mutex held only briefly to install the Arc.
         {
-            let mut slot = self
-                .cached_entity_index
+            let mut slot = self.content.cached_entity_index
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             *slot = Some(entity_index_arc.clone());
@@ -570,7 +566,7 @@ impl IfcAPI {
         let done = js_sys::Object::new();
         crate::api::set_js_prop(&done, "type", &"complete".into());
         crate::api::set_js_prop(&done, "totalJobs", &(total_jobs as f64).into());
-        if compute_source_fingerprint {
+        if options.source_fingerprint {
             // Whole original source, including malformed/unparsed trailing bytes.
             let key = super::source_fingerprint::source_fingerprint(data);
             crate::api::set_js_prop(&done, "sourceContentKey", &key.into());

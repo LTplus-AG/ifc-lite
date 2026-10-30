@@ -11,7 +11,7 @@ fn populate_type_plan(api: &IfcAPI) {
     let mut decoder = ifc_lite_core::EntityDecoder::new(b"");
     let plan = api.get_or_build_type_geometry_plan(b"", &mut decoder);
     assert!(plan.referenced_representation_maps.contains(&91));
-    assert!(api.cached_type_geometry_plan.lock().unwrap().is_some());
+    assert!(api.content.cached_type_geometry_plan.lock().unwrap().is_some());
 }
 
 #[test]
@@ -19,7 +19,7 @@ fn issue_7782_type_plan_is_dropped_on_clear_prepass_cache() {
     let api = IfcAPI::new();
     populate_type_plan(&api);
     api.clear_pre_pass_cache();
-    assert!(api.cached_type_geometry_plan.lock().unwrap().is_none());
+    assert!(api.content.cached_type_geometry_plan.lock().unwrap().is_none());
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn issue_3989_borrowed_rust_api_preserves_caller_ownership_and_duplicate_semanti
     ids.fill(99);
     starts.fill(99);
     lengths.fill(99);
-    let slot = api.cached_entity_index.lock().unwrap();
+    let slot = api.content.cached_entity_index.lock().unwrap();
     let index = slot.as_ref().unwrap();
     assert_eq!(index.lookup(7), Some((30, 33)));
     assert_eq!(index.lookup(3), Some((20, 22)));
@@ -72,7 +72,7 @@ fn issue_3989_owned_binding_adopts_sorted_columns_without_reallocation() {
     let lengths = vec![2, 3];
     let pointers = (ids.as_ptr(), starts.as_ptr(), lengths.as_ptr());
     api.set_entity_index_owned_binding(ids, starts, lengths).unwrap();
-    let slot = api.cached_entity_index.lock().unwrap();
+    let slot = api.content.cached_entity_index.lock().unwrap();
     let index = slot.as_ref().unwrap();
     assert_eq!((index.ids().as_ptr(), index.starts().as_ptr(), index.lengths().as_ptr()), pointers);
     assert_eq!(index.lookup(7), Some((30, 33)));
@@ -86,14 +86,14 @@ fn issue_3989_both_adapters_reset_content_caches_on_replacement() {
     populate_type_plan(&api);
     // A new source must not inherit old representation-map suppression.
     api.set_entity_index_owned_binding(vec![2], vec![30], vec![4]).unwrap();
-    assert!(api.cached_referenced_repmaps.lock().unwrap().is_none());
-    assert!(api.cached_type_geometry_plan.lock().unwrap().is_none());
+    assert!(api.content.cached_referenced_repmaps.lock().unwrap().is_none());
+    assert!(api.content.cached_type_geometry_plan.lock().unwrap().is_none());
     api.set_referenced_repmaps(&[2]);
     populate_type_plan(&api);
     api.set_entity_index(&[3], &[40], &[5]).unwrap();
-    assert!(api.cached_referenced_repmaps.lock().unwrap().is_none());
-    assert!(api.cached_type_geometry_plan.lock().unwrap().is_none());
-    assert_eq!(api.cached_entity_index.lock().unwrap().as_ref().unwrap().lookup(3), Some((40, 45)));
+    assert!(api.content.cached_referenced_repmaps.lock().unwrap().is_none());
+    assert!(api.content.cached_type_geometry_plan.lock().unwrap().is_none());
+    assert_eq!(api.content.cached_entity_index.lock().unwrap().as_ref().unwrap().lookup(3), Some((40, 45)));
 }
 
 /// A rejected `setEntityIndex` is an error the caller sees and leaves nothing
@@ -114,14 +114,14 @@ fn a_rejected_entity_index_reports_the_mismatch_and_drops_the_previous_state() {
     assert_eq!(rejected, Err(ColumnLengthMismatch { ids: 1, starts: 0, lengths: 1 }));
 
     assert!(
-        api.cached_entity_index.lock().unwrap().is_none(),
+        api.content.cached_entity_index.lock().unwrap().is_none(),
         "file 1's index must not survive a rejected swap"
     );
     assert!(
-        api.cached_referenced_repmaps.lock().unwrap().is_none(),
+        api.content.cached_referenced_repmaps.lock().unwrap().is_none(),
         "file 1's content caches must not survive a rejected swap"
     );
-    assert!(api.cached_type_geometry_plan.lock().unwrap().is_none());
+    assert!(api.content.cached_type_geometry_plan.lock().unwrap().is_none());
     assert_eq!(
         api.pipeline_diagnostics.lock().unwrap().element_count,
         0,
@@ -134,9 +134,9 @@ fn a_rejected_entity_index_reports_the_mismatch_and_drops_the_previous_state() {
     api.set_referenced_repmaps(&[1]);
     populate_type_plan(&api);
     api.set_entity_index(&[], &[], &[]).expect("empty columns are consistent");
-    assert!(api.cached_entity_index.lock().unwrap().is_none(), "empty swaps in no index");
-    assert!(api.cached_referenced_repmaps.lock().unwrap().is_none());
-    assert!(api.cached_type_geometry_plan.lock().unwrap().is_none());
+    assert!(api.content.cached_entity_index.lock().unwrap().is_none(), "empty swaps in no index");
+    assert!(api.content.cached_referenced_repmaps.lock().unwrap().is_none());
+    assert!(api.content.cached_type_geometry_plan.lock().unwrap().is_none());
 
     // The owned JS binding (`setEntityIndex`) runs the same check and the
     // same install path; its `Err` arm builds a `JsValue`, which is a wasm

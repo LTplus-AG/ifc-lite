@@ -107,3 +107,13 @@ the main thread see the text, not the cause.
 This is a failure-reporting heuristic, not proof of OOM or a guarantee that a
 1.8 GB file will load. Snapshot compaction reduces an avoidable allocation;
 model density, metadata location and host memory still determine peak use.
+
+## Content ownership (C4-11b)
+
+`IfcAPI::content` separates source/pending-finish inputs from derived slots and
+session settings. Derived slot declarations also generate their exhaustive reset
+walk. Lazy builders publish under one slot lock; batch routers clone shared
+handles. ProductionModel keeps its identity and expires its snapshots at the
+same C4-11a install/cleanup boundaries. Source-byte installation retains the
+worker's already injected entity index and columns. End-of-load diagnostics
+remain readable after cleanup.

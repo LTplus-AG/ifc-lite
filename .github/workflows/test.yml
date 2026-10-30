@@ -1056,10 +1056,12 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
-          # #8266: preserve resident handle modules and option fields; ignore
-          # placement stripping so the explicit-projection witness fails assertions.
+          # #8042: corrupt the newly frozen placement count; the independent
+          # TS-oracle witness must reject that expectation with an assertion.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/packed-handle-8042/behaviour.oracle.patch | grep -Fxq 'tests/evidence/packed-handle-8042/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/packed-handle-8042/behaviour.oracle.patch --test scripts/packed-diff.test.mjs)
+          # #8266: preserve resident handle modules and option fields; ignore
+          # placement stripping so the explicit-projection witness fails assertions.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/handle-api-8266/behaviour.oracle.patch | grep -Fxq 'tests/evidence/handle-api-8266/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/handle-api-8266/behaviour.oracle.patch
               --test rust/diff/tests/placement_geometry.rs)

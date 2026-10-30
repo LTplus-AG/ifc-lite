@@ -1,9 +1,11 @@
 --- a/scripts/packed-diff/semantics.mjs
 +++ b/scripts/packed-diff/semantics.mjs
-@@ -12,5 +12,5 @@
-   const call = (name, ...args) => { calls.add(name); return api[name](...args); };
-   for (const [value, expected] of [
--    ['', '0000000000000000'], ['a', 'af63dc4c8601ec8c'],
-+    ['', 'cbf29ce484222325'], ['a', 'af63dc4c8601ec8c'],
-     ['\ud800', 'b03bbd4c8770bfdf'], ['\udfff', 'b03d724c8773a66e'],
-   ]) assert.equal(call('stableHash', value), expected);
+@@ -121,7 +121,7 @@
+   for (const stripped of [false, true]) {
+     const actual = call('diffModels', [placementRow(stripped ? undefined : 'p:before')],
+       [placementRow(stripped ? undefined : 'p:after')]);
+-    assert.deepEqual(actual.counts, { added: 0, modified: stripped ? 0 : 0, deleted: 0, unchanged: stripped ? 1 : 0 });
++    assert.deepEqual(actual.counts, { added: 0, modified: stripped ? 0 : 1, deleted: 0, unchanged: stripped ? 1 : 0 });
+     assert.deepEqual(actual.entries[0].changeKinds, stripped ? [] : ['geometry']);
+   }
+   const handleOperations = [];

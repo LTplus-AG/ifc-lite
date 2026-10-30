@@ -246,7 +246,7 @@ export interface ParseResponse {
 export interface MetadataResponse {
   /** Total number of entities */
   entity_count: number;
-  /** Geometry jobs a default parse schedules, equal to that parse's `metadata.geometry_entity_count` (#8341). Counts a spatial container only when it carries a Representation, and one job per type-only representation map. */
+  /** Geometry jobs a default parse schedules, equal to that parse's `metadata.geometry_entity_count` (#8341). Counts IfcBuildingStorey, IfcFacility and IfcFacilityPart (and subtypes) only when they carry a Representation, and one job per type-only representation map. */
   geometry_count: number;
   /** IFC schema version */
   schema_version: string;

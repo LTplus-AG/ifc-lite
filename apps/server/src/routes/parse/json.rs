@@ -308,8 +308,8 @@ pub async fn parse_metadata(
 /// [`TypeGeometryPlan`] (`SuppressInstanced`) the processor's scan uses, so it
 /// equals `ProcessingResult.metadata.geometry_entity_count` (#8341 C4-13c).
 ///
-/// That counts a spatial container carrying a Representation (#1910), never one
-/// without, and one job per type-only `IfcRepresentationMap` (#957), never a map
+/// That counts `IfcBuildingStorey`, `IfcFacility` and `IfcFacilityPart` (and
+/// subtypes) only when they carry a Representation (#1910), and one job per type-only `IfcRepresentationMap` (#957), never a map
 /// an occurrence or `IfcMappedItem` already draws. `IfcOpeningElement` stays a
 /// job: the default opening filter skips nothing, and this route takes no
 /// `opening_filter`.

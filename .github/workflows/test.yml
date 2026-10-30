@@ -960,6 +960,10 @@ jobs:
           # Keep the API; weaken fingerprint identity to key equality instead.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8341 C4-12x: whole-file inversion deletes csg_console and its tests.
+          # Keep the module; report the wrong product count in the failure line.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-12x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-12x/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-12x/behaviour.oracle.patch --test rust/wasm-bindings/src/api/csg_console_tests.rs)
           # #8113: retain the new harness modules; remove only admission validation.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-8113/admission.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-8113/admission.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/diff-e2e-8113/admission.oracle.patch --test scripts/perf/diff-e2e.test.mjs)

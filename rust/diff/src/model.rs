@@ -62,6 +62,8 @@ pub struct DiffEntry<'a, R> {
 
 #[derive(Debug, Default)]
 pub struct KeyDiffOptions {
+    /// Ignore placement hashes without copying or mutating the resident model.
+    pub strip_placement_geometry: bool,
     pub scope: DiffScope,
     pub exclude_types: Vec<JsString>,
     /// Absence differs from an explicitly supplied empty alias map.
@@ -79,4 +81,12 @@ pub struct KeyDiff<'a, R> {
     pub applied_key_aliases: Option<Vec<(JsString, JsString)>>,
     /// Resolved once for the content-matching stages too.
     pub use_geometry: bool,
+    pub strip_placement_geometry: bool,
+}
+
+impl<R> EntityFingerprint<R> {
+    pub(crate) fn geometry_hash(&self, strip_placement: bool) -> Option<&JsString> {
+        self.geometry_hash.as_ref().filter(|hash|
+            !strip_placement || !hash.units().starts_with(&[b'p' as u16, b':' as u16]))
+    }
 }

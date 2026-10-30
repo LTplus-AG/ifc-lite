@@ -1,0 +1,12 @@
+diff --git a/packages/ifcx/src/federated-composition.ts b/packages/ifcx/src/federated-composition.ts
+index 7a06959395..f26dcb53f8 100644
+--- a/packages/ifcx/src/federated-composition.ts
++++ b/packages/ifcx/src/federated-composition.ts
+@@ -204,6 +204,7 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[], retainOpinions: bo
+         for (const [key, value] of Object.entries(node.attributes)) {
+           result.attributes[key] = value;
+           result.attributeSources.set(key, layer.id);
++          layerValues?.set(key, value);
+         }
+       }
+     }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { diffModels, type EntityFingerprint, type IdentityMapEntry, type DiffScope } from '@ifc-lite/diff';
+import { type EntityFingerprint, type IdentityMapEntry, type DiffScope } from '@ifc-lite/diff';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types';
 import type { CompareResult } from '@/store/slices/compareSlice';
@@ -12,7 +12,7 @@ import { fallbackPairDuplicateAuthoredKeys } from './authoredKeys';
 import { geometryVolumesSurviveAlignment, resolveGeometryChannel } from './geometryCapability';
 import { keyAliasesFromAccepted } from './acceptedIdentity';
 import { comparisonNavigationInputs, rememberPreparedNavigation, rememberComparisonNavigation } from './comparison-navigation-lease';
-import type { BuiltPair } from '@/hooks/compare/comparePairCache';
+import { preparePairHandles, type BuiltPair } from '@/hooks/compare/comparePairCache';
 
 export interface ComparisonOptions {
   scope: DiffScope;
@@ -91,6 +91,8 @@ export async function prepareComparison(input: ComparisonPreparation): Promise<B
   ], duplicateAuthoredKeys);
   const built: BuiltPair = {
     comparedStores,
+    baseStore,
+    headStore,
     mutationVersion,
     baseModelId: baseId,
     headModelId: headId,
@@ -101,9 +103,15 @@ export async function prepareComparison(input: ComparisonPreparation): Promise<B
     headName: headModel.name,
     base,
     head,
+    ...preparePairHandles(base, head),
   };
-  rememberPreparedNavigation(built, navigation);
-  return built;
+  try {
+    rememberPreparedNavigation(built, navigation);
+    return built;
+  } catch (error) {
+    built.dispose();
+    throw error;
+  }
 }
 
 function collectExcludedHiddenIds(built: BuiltPair, excludedTypes: string[]): Set<number> {
@@ -134,13 +142,13 @@ export function comparePreparedPair(built: BuiltPair, options: ComparisonOptions
   // keeps them, still reports placement-driven moves, and the warning must say
   // reshapes-only.
   const {
-    base,
-    head,
+    stripPlacementGeometry,
     geometryUnavailable,
     placementOnlyGeometry,
   } = resolveGeometryChannel(built.base, built.head);
 
-  const diff = diffModels(base, head, {
+  const diff = built.baseHandle.compare(built.headHandle, {
+    stripPlacementGeometry,
     scope,
     excludeTypes: excludedTypes,
     // #1891. On by default: a from-scratch re-export re-GUIDs every element,

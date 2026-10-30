@@ -284,7 +284,11 @@ On Pop, outside any reservation, use one task for preparation and measurement:
 ```
 
 Paths above must be the actual frozen prepared paths. Admission is an attestation
-referencing the registered launcher's real exclusive/idle receipt; the JSON does
+referencing the registered launcher's real exclusive/idle receipt. The referenced
+worker JSON must have `kind: "benchmark"`, `state: "running"`, and a positive
+numeric `startedAt` in Unix seconds no later than the current time. The worker
+writes that state only after acquiring admission and passing its host guard;
+queued, ordinary, failed and completed receipts are rejected before sampling; the JSON does
 not acquire a lock. Original receipts must be reconciled after interruption,
 never resubmit an unknown outcome. Outputs are new and outside source roots.
 The runner checkpoints each pair and preserves failed proof/timing evidence.

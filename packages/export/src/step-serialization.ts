@@ -127,6 +127,12 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
 export function serializeTypedMarker(type: string, value: string | number | boolean): string {
   let token = type.toUpperCase();
   if (!token.startsWith('IFC')) token = `IFC${token}`;
+  // The token is written bare, outside any string quotes: a `(`, `;` or newline
+  // in an untrusted `typed.type` would close the attribute list and inject whole
+  // records into DATA (the class-name guard of EXPORT-STEP-26).
+  if (!/^IFC[A-Z][A-Z0-9_]*$/.test(token)) {
+    throw new Error(`Cannot write ${JSON.stringify(type)} as a STEP type name: it is not an IFC identifier`);
+  }
   return `${token}(${serializeInnerByBase(value, resolveExpressBase(type))})`;
 }
 

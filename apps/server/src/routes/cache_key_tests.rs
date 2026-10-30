@@ -18,7 +18,7 @@ const DIGEST: &str = "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737d
 fn issue_5750_every_key_the_writer_builds_resolves() {
     for filter in opening_filters() {
         for quality in tessellation_qualities() {
-            let key = cache_key_from_parts(DIGEST, filter, quality);
+            let key = cache_key_from_parts(DIGEST, filter, quality, false);
             let resolved = resolve_request_cache_key(&key)
                 .unwrap_or_else(|_| panic!("{key} is a request cache_key and must resolve"));
             assert_eq!(resolved.file_digest(), DIGEST);

@@ -342,6 +342,9 @@ importers:
       '@ifc-lite/source-autodesk':
         specifier: workspace:^
         version: link:../../packages/source-autodesk
+      '@ifc-lite/source-bimcollab':
+        specifier: workspace:^
+        version: link:../../packages/source-bimcollab
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -706,6 +709,9 @@ importers:
       '@ifc-lite/source-autodesk':
         specifier: workspace:^
         version: link:../../packages/source-autodesk
+      '@ifc-lite/source-bimcollab':
+        specifier: workspace:^
+        version: link:../../packages/source-bimcollab
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -808,6 +814,15 @@ importers:
 
   examples/headless-workflows:
     dependencies:
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../../packages/flow
+      '@ifc-lite/flow-nodes':
+        specifier: workspace:^
+        version: link:../../packages/flow-nodes
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -2218,6 +2233,19 @@ importers:
       '@ifc-lite/oauth-pkce':
         specifier: workspace:^
         version: link:../oauth-pkce
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../plugin-api
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/source-bimcollab:
+    dependencies:
       '@ifc-lite/plugin-api':
         specifier: workspace:^
         version: link:../plugin-api

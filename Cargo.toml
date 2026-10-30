@@ -4,23 +4,24 @@ members = ["rust/imported-geometry", "rust/core", "rust/diff", "rust/diff-wasm",
 resolver = "2"
 
 [workspace.package]
-version = "25.0.0"
+version = "27.0.0"
 edition = "2021"
 authors = ["IFC-Lite Contributors"]
 license = "MPL-2.0"
+license-file = "LICENSE"
 repository = "https://github.com/LTplus-AG/ifc-lite"
 
 [workspace.dependencies]
-ifc-lite-core = { version = "25.0.0", path = "rust/core" }
-ifc-lite-diff = { version = "25.0.0", path = "rust/diff" }
+ifc-lite-core = { version = "27.0.0", path = "rust/core" }
+ifc-lite-diff = { version = "27.0.0", path = "rust/diff" }
 # `default-features = false`: geometry's default set is empty, and the members that
 # spelled it out (processing, wasm, server) said so to keep it that way.
-ifc-lite-geometry = { version = "25.0.0", path = "rust/geometry", default-features = false }
-ifc-lite-processing = { version = "25.0.0", path = "rust/processing" }
-ifc-lite-clash = { version = "25.0.0", path = "rust/clash" }
-ifc-lite-export = { version = "25.0.0", path = "rust/export", default-features = false }
-ifc-lite-wasm = { version = "25.0.0", path = "rust/wasm-bindings" }
-ifc-lite-landxml = { version = "25.0.0", path = "rust/landxml" }
+ifc-lite-geometry = { version = "27.0.0", path = "rust/geometry", default-features = false }
+ifc-lite-processing = { version = "27.0.0", path = "rust/processing" }
+ifc-lite-clash = { version = "27.0.0", path = "rust/clash" }
+ifc-lite-export = { version = "27.0.0", path = "rust/export", default-features = false }
+ifc-lite-wasm = { version = "27.0.0", path = "rust/wasm-bindings" }
+ifc-lite-landxml = { version = "27.0.0", path = "rust/landxml" }
 
 # Third-party dependencies declared by more than one member. A member opts in
 # with `dep.workspace = true` and may only ADD features (`features = [...]`) or

@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/router/voids/opening_frame.rs
++++ b/rust/geometry/src/router/voids/opening_frame.rs
+@@ -131,7 +131,7 @@
+         weight: 0.0,
+         anchor: Point3::origin(),
+     });
+-    let clusters = cluster_face_normals(facets, 0.98, Merge::FirstSeen, 65, |_, _, _| {})?;
++    let clusters = cluster_face_normals(facets, 0.999, Merge::FirstSeen, 65, |_, _, _| {})?;
+     Some(clusters.into_iter().map(|(axis, _)| axis.into()).collect())
+ }
+ 

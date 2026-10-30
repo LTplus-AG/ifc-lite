@@ -4,12 +4,16 @@ name = "ifc-lite-geometry-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
-publish = false
-description = "Explicit isolated native geometry worker client for IFC-Lite (opt-in, not published)"
+description = "Explicit isolated native geometry worker client for IFC-Lite (opt-in, source-only)"
+
+readme = "README.md"
+include = ["src/**", "Cargo.toml", "README.md", "LICENSE"]
 
 [features]
 retained-runtime = ["ifc-lite-geometry/retained-runtime"]
+test-support = []
 
 [dependencies]
 # Retained requests and completions are GeometryDocument types. Nothing in

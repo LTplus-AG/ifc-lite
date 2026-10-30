@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/geometry/src/program/retained/halfspace/bounded_projection.rs",
+  "mutation": "tests/evidence/m6/behaviour.oracle.patch",
+  "test": "rust/geometry/tests/m6_bounded_halfspaces.rs",
+  "why": "Reverse application projects along the plane normal instead of Position.Z; the hand-derived 35-degree oblique projection witness must fail. Mixed-chain and boxed-twin cases are in m6_mixed_and_boxed.rs."
+}

@@ -107,7 +107,12 @@ export async function run({ protocolPath, admissionPath, baseRoot, branchRoot, f
   const { value: admission, receipt: admissionFile } = await readJson(admissionPath);
   assert.equal(admission.approvedProtocolSha256, protocolFile.sha256, 'parent must review this exact protocol');
   assert.equal(admission.hostname, hostname(), 'admission is for a different host');
-  const exclusive = await fileReceipt(admission.exclusiveReceipt);
+  const { value: execution, receipt: exclusive } = await readJson(admission.exclusiveReceipt);
+  assert.equal(execution.kind, 'benchmark', 'exclusive admission receipt must have kind=benchmark');
+  assert.equal(execution.state, 'running', 'exclusive admission receipt must be running');
+  assert.ok(Number.isFinite(execution.startedAt) && execution.startedAt > 0
+    && execution.startedAt <= Date.now() / 1000,
+  'exclusive admission receipt must have a valid admitted startedAt (Unix seconds)');
   const builds = {};
   for (const [arm, root, implementation] of [['base', baseRoot, 'typescript'], ['branch', branchRoot, 'rust-wasm']]) {
     const prep = admission.preparation[arm];

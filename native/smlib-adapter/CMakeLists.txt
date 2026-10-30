@@ -34,12 +34,13 @@ target_include_directories(smlib_api BEFORE PRIVATE "${SMLIB_SOURCE}/source/SM_A
 target_link_libraries(smlib_api PUBLIC smlib_kernel)
 # Upstream C++ types/includes stay private to the adapter.
 add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src/mesh.cpp
-  src/sweep.cpp src/disk.cpp src/protocol.cpp)
+  src/mesh_diagonals.cpp src/sweep.cpp src/disk.cpp src/protocol.cpp)
 target_include_directories(ifclite_smlib PUBLIC include)
 target_link_libraries(ifclite_smlib PRIVATE smlib_api)
 
 add_executable(ifclite_smlib_tests tests/adapter_tests.cpp tests/mesh_tests.cpp
-  tests/empty_tests.cpp tests/affine_tests.cpp tests/context_metadata_tests.cpp tests/c_header.c)
+  tests/mesh_diagonals_tests.cpp tests/empty_tests.cpp tests/affine_tests.cpp
+  tests/context_metadata_tests.cpp tests/c_header.c)
 target_compile_features(ifclite_smlib_tests PRIVATE c_std_11 cxx_std_17)
 target_link_libraries(ifclite_smlib_tests PRIVATE ifclite_smlib smlib_api)
 target_include_directories(ifclite_smlib_tests PRIVATE src)
@@ -111,3 +112,14 @@ add_test(NAME smlib_affine_failure_boundary
 add_test(NAME smlib_retained_sweeps COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_sweep_tests>)
 set_tests_properties(smlib_owned_boundary smlib_copy_failure_boundary
   smlib_affine_failure_boundary smlib_retained_sweeps PROPERTIES TIMEOUT 60)
+
+# Installation is explicit; no default runtime or SDK distribution is enabled.
+if(NOT EMSCRIPTEN)
+  install(TARGETS ifclite_smlib_worker RUNTIME DESTINATION bin)
+  install(FILES "${SMLIB_SOURCE}/LICENSE" "${SMLIB_SOURCE}/THIRD_PARTY_NOTICES.md"
+    DESTINATION share/licenses/ifclite-smlib)
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../LICENSE"
+    DESTINATION share/licenses/ifclite-smlib RENAME IFC_LITE_LICENSE.txt)
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../licenses/retained/THIRD_PARTY_NOTICES.txt"
+    DESTINATION share/licenses/ifclite-smlib)
+endif()

@@ -25,7 +25,7 @@ import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
-import { notCheckedIdsSpecifications, reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from './ids-report-types.js';
+import { idsBlockRequirementCheckRate, idsCheckBar, idsRequirementCheckRate, isUnmatchedIdsCheck, notCheckedIdsSpecifications, reportBlockSourceKind, reportItemsCountKey, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary, type RequirementCheckRate } from './ids-report-types.js';
 import type { LayoutCursor } from './compose-table.js';
 
 export const IDS_REPORT_TITLE_HEIGHT = 18;
@@ -66,8 +66,16 @@ function summaryLine({ checked, passed, failed, passRate, warnings }: IdsReportB
   return `${t('document.preview.idsReportChecked')} ${fmt(t, checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, failed)}${warned} · ${t('document.print.passPercent', { percent: passRate })}`;
 }
 
-function checkCountsLine(check: IdsReportCheckSummary, t: DocumentLabelFormatter): string {
+/** The panel's requirement-check sentence, so preview, PDF and panel word it once (#8204). */
+function checksPassedLine(rate: RequirementCheckRate, t: DocumentLabelFormatter): string {
+  return t('idsPanel.checksPassed', { passed: fmt(t, rate.passed), total: fmt(t, rate.total), rate: pct(rate.rate) });
+}
+
+function checkCountsLine(block: IdsReportBlock, check: IdsReportCheckSummary, t: DocumentLabelFormatter): string {
   if (check.error !== undefined) return t('document.preview.idsReportError', { error: check.error });
+  if (isUnmatchedIdsCheck(block, check)) return t('manualValidation.verdict.unanswered');
+  const checks = idsRequirementCheckRate(block, check);
+  if (checks) return `${t('document.preview.idsReportChecked')} ${fmt(t, check.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, check.passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, check.failed)} · ${checksPassedLine(checks, t)}`;
   if (check.severity === 'warning') return `${t('document.preview.idsReportWarningTag')} · ${t('document.preview.idsReportChecked')} ${fmt(t, check.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, check.passed)} · ${t('document.preview.idsReportWarnings')} ${fmt(t, check.failed)} · ${pct(check.passRate)}`;
   return `${t('document.preview.idsReportChecked')} ${fmt(t, check.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, check.passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, check.failed)} · ${pct(check.passRate)}`;
 }
@@ -82,13 +90,15 @@ function cardinalityExpected({ min, max }: IdsReportCardinality, t: DocumentLabe
 interface ChildRow { name: string; compactName?: string; description?: string; detail: string; bar?: { passed: number | null; checked: number; rate: number | null } }
 
 /** Everything printed indented under a check: IDS requirements, then a rule's cardinality and set rows (#6372). */
-function childRows(check: IdsReportCheckSummary, t: DocumentLabelFormatter): ChildRow[] {
+function childRows(block: IdsReportBlock, check: IdsReportCheckSummary, t: DocumentLabelFormatter): ChildRow[] {
+  // An unmatched specification's requirements were never evaluated: Not checked, not 0/0 · 0% (#8204).
+  const unmatched = isUnmatchedIdsCheck(block, check);
   const rows: ChildRow[] = check.rules.map((rule) => ({
     name: rule.shortDescription || rule.id,
     compactName: rule.name || rule.shortDescription || rule.id,
-    bar: { passed: rule.passed, checked: rule.checked, rate: rule.passRate },
+    ...(unmatched ? {} : { bar: { passed: rule.passed, checked: rule.checked, rate: rule.passRate } }),
     description: rule.longDescription,
-    detail: rule.passRate === null
+    detail: unmatched ? t('manualValidation.verdict.unanswered') : rule.passRate === null
       ? t('document.print.partialCounts', { checked: fmt(t, rule.checked) })
       : `${t('document.preview.idsReportChecked')} ${fmt(t, rule.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, rule.passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, rule.failed)} · ${pct(rule.passRate)}`,
   }));
@@ -138,24 +148,29 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
 
   const title = idsReportTitle(block, t);
   const first = block.checks[0];
-  const firstChild = first && !specificationsOnly ? childRows(first, t)[0] : undefined;
+  const firstChild = first && !specificationsOnly ? childRows(block, first, t)[0] : undefined;
   const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicHeight(first?.longDescription);
   const firstChildHeight = firstChild ? (compact ? COMPACT_ROW_HEIGHT : classicHeight(firstChild.description)) : 0;
   // Hidden stamp rows reserve no height; recorded identity remains in the block (#6678).
   const stamp = reportStamp(block);
   const stampHeight = stamp ? DATE_HEIGHT : 0;
   const scopeLines = wrappedReportProvenance(stamp?.models ? t('validationPanel.history.models', { models: stamp.models }) : '', contentW, wrap ?? ((text) => [text]));
-  const checksCount = t.formatNumber ? t('document.preview.idsReportChecksCount', { count: block.checks.length, countDisplay: fmt(t, block.checks.length) }) : undefined;
+  const checksCount = t.formatNumber ? t(reportItemsCountKey(block), { count: block.checks.length, countDisplay: fmt(t, block.checks.length) }) : undefined;
   const keepAfter = firstRowHeight + firstChildHeight + (checksCount ? DATE_HEIGHT : 0);
   const ringSize = 44;
   const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
   const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary, t), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary, t), summaryWidth, 9, false)];
+  const blockChecks = idsBlockRequirementCheckRate(block);
+  if (blockChecks) {
+    const line = checksPassedLine(blockChecks, t);
+    summaryLines.push(...(block.benchmarks && wrap ? wrap(line, summaryWidth, 9, false) : [cursor.truncate(line, summaryWidth, 9, false)]));
+  }
   const notChecked = block.benchmarks ? notCheckedIdsSpecifications(block) : 0;
   if (notChecked > 0) {
-    const label = `${t('manualValidation.verdict.unanswered')}: ${t('idsPanel.specifications', { count: notChecked, countDisplay: fmt(t, notChecked) })}`;
+    const label = t('idsPanel.unmatchedSpecifications', { count: notChecked, countDisplay: fmt(t, notChecked) });
     summaryLines.push(...(wrap ? wrap(label, summaryWidth, 9, false) : [cursor.truncate(label, summaryWidth, 9, false)]));
   }
-  const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;
+  const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : Math.max(SUMMARY_HEIGHT, summaryLines.length * 12 + 2);
   const titleHeight = IDS_REPORT_TITLE_HEIGHT + blockTitleStyle(block).extra;
   const lead = titleHeight + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
   cursor.ensure(Math.min(lead, cursor.bottom - cursor.top));
@@ -202,20 +217,21 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   };
 
   block.checks.forEach((check, index) => {
-    const children = childRows(check, t);
+    const children = childRows(block, check, t);
     if (compact) {
       // A specification starts a new group: air above it (not the first) so it does not read as one more requirement (#6550).
       if (index > 0) cursor.y += COMPACT_GROUP_GAP;
       // A check that could not be evaluated has no meaningful rate: print its error instead of a bar.
-      const bar = check.error === undefined ? { passed: check.passed, checked: check.checked, rate: check.passRate } : undefined;
-      compactRow(cursor.x, contentW, `${check.severity === 'warning' ? `(${t('document.preview.idsReportWarningTag')}) ` : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check, t));
+      // Requirement checks when every one is known, so the bar sums the rows under it (#8204).
+      const bar = idsCheckBar(block, check);
+      compactRow(cursor.x, contentW, `${check.severity === 'warning' ? `(${t('document.preview.idsReportWarningTag')}) ` : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, bar ? undefined : checkCountsLine(block, check, t));
       if (!specificationsOnly) for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
       return;
     }
     const lines = fit(check.shortDescription || check.id, contentW, 9.5, true, 0);
     if (check.longDescription) lines.push(...fit(check.longDescription, contentW, 8, false, 130));
     // Counts occupy their own line so a long description cannot print over them.
-    lines.push(...fit(checkCountsLine(check, t), contentW, 8, false, 60));
+    lines.push(...fit(checkCountsLine(block, check, t), contentW, 8, false, 60));
     cursor.ensure(rowHeight(lines.length) + (children.length > 0 ? classicHeight(children[0].description) : 0));
     emitLines(cursor, cursor.x, lines);
 

@@ -1,0 +1,11 @@
+--- a/rust/wasm-bindings/src/api/content_caches.rs
++++ b/rust/wasm-bindings/src/api/content_caches.rs
+@@ -23,3 +23,7 @@
+     pub(super) fn get_or_init(&self, build: impl FnOnce() -> T) -> T {
+-        build()
++        self.0
++            .lock()
++            .unwrap_or_else(PoisonError::into_inner)
++            .get_or_insert_with(build)
++            .clone()
+     }

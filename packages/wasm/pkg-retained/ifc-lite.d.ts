@@ -197,6 +197,25 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 
+export interface RetainedRunOptions { ids?: Uint32Array; detail: 'view' | 'shape'; }
+export interface RetainedRtcFrame { rtcOffset: Float64Array; needsShift: boolean; }
+export type RetainedSessionEvent =
+| { kind: 'start'; candidateIds: Uint32Array; frame: RetainedRtcFrame }
+| (RetainedShapeProduct & { kind: 'published' })
+| (RetainedProductRefusal & { kind: 'refused' })
+| { kind: 'published'; expressId: number; ifcType: string;
+marker: 'final' | 'PresentationObligationsUnmet';
+obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
+meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string;
+instanceWorldFromObject?: Float64Array };
+export interface RetainedRunSummary {
+    candidates: number; published: number; refused: number; restarts: number;
+    workersAcquired: number; productMs: number; acquireMs: number;
+    layeredProducts?: number; bands?: number;
+}
+
+
+
 export interface RetainedShapePart {
     /** Object-local metres. */
     positions: Float64Array;
@@ -204,23 +223,46 @@ export interface RetainedShapePart {
     /** Column-major object metres to absolute IFC Z-up world metres. */
     worldFromObject: Float64Array;
     curved: boolean;
+    revisionLocalFaces?: Uint32Array;
+    /** Per-corner unit normals in absolute IFC Z-up axes, placement already applied. */
+    normals?: Float64Array;
+    color?: [number, number, number, number];
+    materialName?: string;
+    geometryItemId?: number;
+    materialId?: number;
+    faces?: { table: string[]; triangles: Uint32Array };
+    instanceKey?: string;
+    /** Open material band; closure is validated across the product. */
+    layer?: { index: number; materialId: number };
+    /** Closed band volume before interface caps are removed, in cubic metres. */
+    cappedVolumeM3?: number;
 }
 export interface RetainedShapeProduct {
     status: 'published';
+    /** Opening cuts applied (M3). Always set by retainedModel/RetainedModelSession;
+     * optional so consumer-built literals stay valid across minor versions. */
+    cuts?: number;
+    bandMs?: number;
+    capMs?: number;
+    maxSnapMetres?: number;
+    /** Host parts consumed by a cut; always 0 on a published product. */
+    consumedParts?: number;
     expressId: number;
     ifcType: string;
     parts: RetainedShapePart[];
-    marker: 'PresentationObligationsUnmet';
-    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces'>;
+    marker: 'final' | 'PresentationObligationsUnmet';
+    obligationsUnmet: Array<'ProductPlacement' | 'OpeningClosure' | 'MaterialLayers' | 'IfcAppearance' | 'PersistentFaces' | 'SurfaceNormals'>;
+    instanceKey?: string;
 }
 export interface RetainedProductRefusal {
     status: 'refused';
     expressId: number;
     ifcType: string;
-    code: 'opening_strategy' | 'material_layer_strategy' | 'operation_unsupported'
-    | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
+    code: 'opening_strategy' | 'opening_unsupported' | 'material_layer_strategy' | 'operation_unsupported'
+    | 'layer_caps_unresolved' | 'source_invalid' | 'source_changed' | 'incomplete' | 'empty_result'
     | 'family_unqualified' | 'kernel_failure' | 'worker_fault' | 'worker_retired'
-    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach';
+    | 'resource_exhausted' | 'deadline_exceeded' | 'cancelled' | 'contract_breach'
+    | 'appearance_unsupported' | 'face_provenance_unproven';
     origin?: { site: string; entity?: number; cause: string };
     kernelStatus?: number;
 }
@@ -569,17 +611,11 @@ export class IfcAPI {
      *   1. Builds the entity index incrementally from the same scan that
      *      collects geometry jobs (a separate index scan would double
      *      wall-clock).
-     *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
-     *      first ~50 geometry jobs have been collected, resolves
-     *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
-     *      JS host can spin up geometry process workers.
-     *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
-     *      the meta phase already buffered some).
-     *   4. Emits `complete` with the total job count at end of scan.
-     *
-     * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
-     * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
-     * (first 100 K bytes scanned + meta + first chunk).
+     *   2. At the 50th accepted geometry job, resolves unit scale + RTC
+     *      (including a project not yet scanned) and emits `meta`.
+     *   3. After scan completion, emits the complete entity index, styles,
+     *      worker columns and chunked jobs with affinity keys.
+     *   4. Emits `complete` with the total job count.
      *
      * The callback receives a single `JsValue` argument shaped as one of:
      *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
@@ -954,8 +990,10 @@ export class IfcAPI {
     /**
      * Structured pipeline diagnostics accumulated across every
      * `processGeometryBatch*` call since the last load reset
-     * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
-     * `schemaVersion` field — or `undefined` when no batch has run yet.
+     * (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
+     * `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
+     * Returns `undefined` until a batch runs or a prepass refusal is recorded;
+     * `clearPrePassCache` preserves the report for post-load inspection.
      * Includes per-batch summed geometry wall time, mesh/triangle counts,
      * the degenerate-backstop drop count, and the CSG failure aggregates.
      */
@@ -1220,7 +1258,8 @@ export class IfcAPI {
     /**
      * Run the opt-in retained engine, with no exact fallback. Buffers outcomes
      * until completion; next() then consumes them in canonical file order.
-     * Type products and representationless jobs are skipped. Some(empty ids)
+     * Orphan type products are included; instanced types and representationless
+     * jobs are skipped. Some(empty ids)
      * selects no products. One qualified worker is reused, with at most three
      * replacements, and a failed product is never retried.
      */
@@ -1354,15 +1393,14 @@ export class IfcAPI {
     /**
      * Install the pre-computed set of type ids that an `IfcRelDefinesByType`
      * instantiates (#957 follow-up), so the worker's first type-product batch
-     * skips the per-worker [`Self::get_or_build_instantiated_type_ids`]
-     * full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
+     * skips the full-file walk once both precomputed sets are installed. Same injection contract as [`Self::set_referenced_repmaps`].
      */
     setInstantiatedTypeIds(ids: Uint32Array): void;
     /**
      * Install the pre-computed #1623 Phase 3 don't-bake plan: the flat list of
      * `IfcRepresentationMap` ids that an `IfcMappedItem` instantiates >= 2 times.
      * The streaming pre-pass tallies it in the SAME scan that builds the referenced-
-     * repmap set (`styling::build_mapped_instance_plan_from_spans`) and ships the id
+     * repmap set and ships the id
      * list here. The batch path arms its router with it (batch-local template mode),
      * so a repeated single-solid mapped source materializes ONCE per batch and the
      * rest ride as instances in the IFNS shard.
@@ -1428,10 +1466,8 @@ export class IfcAPI {
     /**
      * Install the pre-computed set of `IfcRepresentationMap` ids referenced by
      * an `IfcMappedItem` (issue #957), so the worker's first type-product batch
-     * SKIPS the per-worker [`Self::get_or_build_referenced_repmaps`] full-file
-     * walk. The streaming pre-pass built the same set once from the
-     * `IfcMappedItem` spans it already scanned (see
-     * `styling::build_referenced_representation_maps_from_spans`) and ships the
+     * skips the full-file walk once [`Self::set_instantiated_type_ids`] is also installed. The streaming pre-pass built
+     * the same set once from its `IfcMappedItem` spans and ships the
      * id list here — bit-identical to what each worker would compute, since a
      * set's membership is order-invariant and consumers only call `.contains`.
      *
@@ -2046,9 +2082,22 @@ export class RetainedModelRun {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Returns one atomic shape-only product or typed refusal, undefined at end.
+     * Returns one atomic final or shape-only product or typed refusal, undefined at end.
      */
     next(): RetainedProductOutcome | undefined;
+}
+
+export class RetainedModelSession {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor();
+    /**
+     * Runs one model in canonical order, reusing the qualified worker. The
+     * callback owns each MeshCollection and must free it after extraction.
+     * Callback exceptions reject the run after controller cleanup; terminate
+     * the host Worker to cancel work immediately.
+     */
+    run(content: Uint8Array, options: RetainedRunOptions, on_event: (event: RetainedSessionEvent) => void): Promise<RetainedRunSummary>;
 }
 
 /**
@@ -2584,6 +2633,12 @@ export function clashIntersectionSolid(positions_a: Float32Array, indices_a: Uin
 export function difference2d(a: Contours2D, b: Contours2D): Contours2D;
 
 /**
+ * Bounded host batch of baked Y-up meshes and controller-composed IFC frames.
+ * Keys are full SHA256 hex strings, never truncated to the collator's u128 id.
+ */
+export function encodeInstancedShard(meshes: { expressId: number; ifcType: string; positions: Float32Array; normals: Float32Array; indices: Uint32Array; color: number[]; worldFromObject: Float64Array; origin?: number[]; geometryClass?: number; geometryItemId?: number; material?: { metallic?: number; roughness?: number }; texture?: unknown }[], keys: string[], rtc: Float64Array): { shard: Uint8Array; flatIndices: Uint32Array; instanceCount: number; groupCount: number; verificationRejections: number };
+
+/**
  * Get WASM memory to allow JavaScript to create TypedArray views
  */
 export function get_memory(): any;
@@ -2596,6 +2651,11 @@ export function get_memory(): any;
  * and points core's scan diagnostics at that console too.
  */
 export function init(): void;
+
+/**
+ * Minimum occurrence count shared by retained encoding and diagnostic reports.
+ */
+export function instanceMinOccurrences(): number;
 
 /**
  * `a ∩ b`.
@@ -2751,6 +2811,7 @@ export interface InitOutput {
     readonly __wbg_retainedbrowserexecutor_free: (a: number, b: number) => void;
     readonly __wbg_retainedbrowsersources_free: (a: number, b: number) => void;
     readonly __wbg_retainedmodelrun_free: (a: number, b: number) => void;
+    readonly __wbg_retainedmodelsession_free: (a: number, b: number) => void;
     readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -2799,6 +2860,7 @@ export interface InitOutput {
     readonly contours2d_shapeCount: (a: number) => number;
     readonly contours2d_shapeOffsets: (a: number) => number;
     readonly difference2d: (a: number, b: number) => number;
+    readonly encodeInstancedShard: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly gridaxiscollection_getAxis: (a: number, b: number) => number;
     readonly gridaxiscollection_isEmpty: (a: number) => number;
     readonly gridaxiscollection_length: (a: number) => number;
@@ -2897,6 +2959,7 @@ export interface InitOutput {
     readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
+    readonly instanceMinOccurrences: () => number;
     readonly intersection2d: (a: number, b: number) => number;
     readonly landxmltinstreamsession_abort: (a: number) => void;
     readonly landxmltinstreamsession_advanceChunk: (a: number, b: number, c: number, d: number) => void;
@@ -2980,6 +3043,8 @@ export interface InitOutput {
     readonly retainedbrowsersources_refused: (a: number, b: number) => void;
     readonly retainedbrowsersources_sources: (a: number, b: number) => void;
     readonly retainedmodelrun_next: (a: number) => number;
+    readonly retainedmodelsession_new: () => number;
+    readonly retainedmodelsession_run: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly scanoutlinejs_coords: (a: number) => number;
     readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
     readonly scanoutlinejs_ringCount: (a: number) => number;

@@ -1,0 +1,11 @@
+--- a/packages/diff/src/wasm-binary.ts
++++ b/packages/diff/src/wasm-binary.ts
+@@ -21,7 +21,7 @@
+   const write = (v: unknown) => {
+     if (v == null) { byte(0); return; }
+     if (typeof v === 'boolean') { byte(v ? 2 : 1); return; }
+-    if (typeof v === 'number') { byte(3); room(8); view.setFloat64(cursor, v + 0, true); cursor += 8; return; }
++    if (typeof v === 'number') { byte(3); room(8); view.setFloat64(cursor, v, true); cursor += 8; return; }
+     if (typeof v === 'string') { byte(4); string(v); return; }
+     if (Array.isArray(v)) { byte(5); word(v.length); for (const child of v) write(child); return; }
+     if (typeof v !== 'object') throw new TypeError('unsupported binary document value');

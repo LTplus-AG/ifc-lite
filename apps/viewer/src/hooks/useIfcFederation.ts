@@ -235,7 +235,6 @@ export function useIfcFederation(
       anchorModelId: referenceSelection.modelId,
       anchorModel: selectedAnchor,
       anchorGeoref: referenceSelection.placement,
-      assumeIfcSharedVerticalDatum: state.ifcSharedVerticalDatum,
       resolveGeoref: (modelId, model) => (
         model.geometryResult && model.spatialReference
           ? { spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo }

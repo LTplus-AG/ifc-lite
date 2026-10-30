@@ -2,6 +2,11 @@
 //! Constructors for the common mapping control.
 use super::*;
 impl<'a> MappingControl<'a> {
+    #[cfg(test)]
+    pub(in crate::program) fn set_logical_limit(&mut self, limit: u32) {
+        self.budget = super::super::mapping_budget::LogicalBudget::with_limit(limit);
+    }
+
     pub(super) fn new(walk: Walk, action: Action<'a>) -> Self {
         Self {
             retained: None,
@@ -13,6 +18,8 @@ impl<'a> MappingControl<'a> {
             textured: Vec::new(),
             levels: Vec::new(),
             action,
+            budget: super::super::mapping_budget::LogicalBudget::default(),
+            logical_stopped: false,
         }
     }
 

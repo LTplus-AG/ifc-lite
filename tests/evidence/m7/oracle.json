@@ -1,0 +1,13 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/src/oracle/mapped.rs",
+  "mutation": "tests/evidence/m7/behaviour.oracle.patch",
+  "test": "rust/geometry/tests/m7_mapped_booleans.rs",
+  "why": "Rewalking a retained mapped Boolean source must fail e5: two occurrences share one Boolean definition and invocation.",
+  "sdkWitnesses": [
+    "m7_sdk_oracle_closed_shapes",
+    "m7_sdk_placement_and_inline_equivalence",
+    "m7_sdk_e5_one_boolean_two_parts",
+    "m7_sdk_affine_boundary_and_authenticated_empty"
+  ]
+}

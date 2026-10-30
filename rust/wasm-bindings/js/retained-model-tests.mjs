@@ -42,13 +42,13 @@ export async function preparePeer(failAt) {
   });
   return start;
 }
-export function assertPublished(value, id) {
+export function assertPublished(value, id, ifcType) {
   check(value.status === 'published' && value.expressId === id, `published #${id}: ${JSON.stringify(value)}`);
-  check(value.ifcType === 'IfcBuildingElementProxy', 'canonical IFC type');
-  check(value.marker === 'PresentationObligationsUnmet', 'shape-only marker');
-  check(JSON.stringify(value.obligationsUnmet) === JSON.stringify([
-    'OpeningClosure', 'MaterialLayers', 'IfcAppearance', 'PersistentFaces',
-  ]), `remaining obligations: ${JSON.stringify(value.obligationsUnmet)}`);
+  check(value.ifcType === ifcType, 'canonical IFC type');
+  check(value.marker === 'final', 'M11-Z final marker');
+  check(value.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === undefined), 'revision-local and persistent face partitions still index triangles');
+  check(value.parts.every(part => Array.isArray(part.color) && part.color.length === 4 && part.color.every(Number.isFinite) && (ifcType.endsWith('Type') ? part.geometryItemId === undefined : (part.geometryItemId === undefined || (Number.isInteger(part.geometryItemId) && part.geometryItemId > 0))) && part.materialId === undefined), 'M11-A resolved appearance on every part (type parts name no item)');
+  check(JSON.stringify(value.obligationsUnmet) === JSON.stringify([]), `remaining obligations: ${JSON.stringify(value.obligationsUnmet)}`);
   check(value.parts.length === 1, 'complete single-part product');
   const part = value.parts[0];
   check(part.positions instanceof Float64Array && part.positions.length === 9, 'f64 positions');
@@ -57,6 +57,22 @@ export function assertPublished(value, id) {
   check(part.worldFromObject.every(Number.isFinite), 'finite placement');
   check(part.worldFromObject[15] === 1, 'affine placement');
   check(part.curved === false, 'linear authored profile');
+  // M11-N adds a per-corner channel; source positions/indices and both face
+  // partitions retain their original cardinalities. No vertex split in this API.
+  check(part.normals instanceof Float64Array && part.normals.length === part.indices.length * 3,
+    'world-space f64 normal for every corner');
+  const point = index => Array.from(part.positions.slice(3 * index, 3 * index + 3));
+  const vector = v => [0, 1, 2].map(i => part.worldFromObject[i] * v[0]
+    + part.worldFromObject[i + 4] * v[1] + part.worldFromObject[i + 8] * v[2]);
+  const [a, b, c] = Array.from(part.indices, point);
+  const u = vector(b.map((v, i) => v - a[i])), v = vector(c.map((v, i) => v - a[i]));
+  const cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const winding = cross.map(value => value / Math.hypot(...cross));
+  for (let i = 0; i < part.indices.length; i++) {
+    const normal = Array.from(part.normals.slice(i * 3, i * 3 + 3));
+    check(normal.every(Number.isFinite) && Math.abs(Math.hypot(...normal) - 1) <= 1e-12, 'finite unit corner normal');
+    check(normal.every((value, axis) => Math.abs(value - winding[axis]) <= 1e-9), 'planar normal follows the world-space triangle winding');
+  }
   check(!('code' in value), 'published/refused discriminant');
 }
 export function assertRefused(value, id, code) {

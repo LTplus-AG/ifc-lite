@@ -5,8 +5,9 @@
 #![cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")),
     allow(unreachable_code, unused_variables, unused_mut))]
 use super::*;
-use crate::program::retained::failure::FailureSite;
 use crate::program::inner::retained_program::RetainedProgramError;
+use crate::program::retained::failure::FailureSite;
+use ifc_lite_core::EntityDecoder;
 #[path = "mapping_directions.rs"]
 mod directions;
 #[path = "mapping_validation.rs"]
@@ -60,25 +61,45 @@ impl<'a> MappingControl<'a> {
         Ok(())
     }
     pub(in crate::program) fn retained_ready(&self) -> bool {
-        crate::program::retained::ENABLED && matches!(&self.action, Action::Child(_, ChildControl::Item(c)) if c.retained_ready())
-            || (self.retained.is_some() && matches!(&self.action, Action::Place(Place { parts: Placing::Retained(_), .. }) | Action::TypeFinish(_)))
+        crate::program::retained::ENABLED
+            && matches!(&self.action, Action::Child(_, ChildControl::Item(c)) if c.retained_ready())
+            || (self.retained.is_some()
+                && matches!(
+                    &self.action,
+                    Action::Place(Place {
+                        parts: Placing::Retained(_),
+                        ..
+                    }) | Action::TypeFinish(_)
+                ))
     }
-    pub(in crate::program) fn admit_retained(&mut self)
-        -> std::result::Result<(MappingReply, Vec<RetainedPlanOperation>), RetainedProgramError> {
+    pub(in crate::program) fn admit_retained(
+        &mut self,
+    ) -> std::result::Result<(super::MappingReply, Vec<RetainedPlanOperation>), RetainedProgramError>
+    {
         if let Action::Child(_, ChildControl::Item(control)) = &mut self.action {
-            return control.admit_retained().map(|(reply, operations)| (MappingReply::Child(reply), operations));
+            return control.admit_retained().map(|(reply, operations)| {
+                (MappingValue::Child(reply), operations)
+            });
         }
         self.admit_retained_affine()
     }
-    pub(super) fn admit_retained_mapping(&mut self, item: &DecodedEntity, router: &GeometryRouter,
-        decoder: &mut EntityDecoder) -> MappingReply {
+    pub(super) fn admit_retained_mapping(
+        &mut self,
+        item: &DecodedEntity,
+        router: &GeometryRouter,
+        decoder: &mut EntityDecoder,
+        budget: &mut super::super::mapping_budget::LogicalBudget,
+    ) -> MappingValue {
         let Some(state) = &self.retained else {
-            return MappingReply::Entered { item_id: item.id, value: Err(crate::Error::geometry("missing retained selection")) };
+            return MappingValue::Entered {
+                budget: *budget,
+                item_id: item.id,
+                value: Err(crate::Error::geometry("missing retained selection")),
+            };
         };
         let admitted = (|| {
             if self.levels.is_empty() { state.selection.enter(item.id, &[])?; }
-            validation::occurrence(item, decoder)
-                .map_err(|error| error.into_common(&state.selection))?;
+            let items = validation::occurrence(item, decoder, budget, &state.selection)?;
             // Reuse source and transform admission, explicitly disabling the
             // exact instancing/cache paths. Validate every target even on hits.
             let source = router.admit_styled_occurrence(item,
@@ -88,39 +109,61 @@ impl<'a> MappingControl<'a> {
                     reason.into_common(&state.selection.failure_handle(), FailureSite::MappingPlacement, Some(item.id)))?;
             }
             let cached = state.selection.cached(decoder, router, source.source_id)?;
-            Ok::<_, crate::Error>((source, cached))
+            Ok::<_, super::super::mapping_budget::SourceFailure>((source, cached, items))
         })();
         let selection = state.selection.clone();
         let styled = state.styled;
-        let binding = admitted.as_ref().ok().filter(|_| styled).map(|(source, cached)| {
+        let binding = admitted.as_ref().ok().filter(|_| styled).map(|(source, cached, _)| {
             // Logical source cache publication is transactional and private to
             // this execution. It never claims an exact renderer template.
             RetainedPresentation::occurrence(item.id, source.source_id, source.solid_id,
                 source.solid_id.is_none() || cached.is_none())
         });
         match admitted {
-            Err(error) => MappingReply::Entered { item_id: item.id, value: Err(error) },
-            Ok((source, Some(values))) => MappingReply::RetainedCached(Place {
+            Err(error) => super::execute::source_reply(Err(error), item.id, *budget, |value| MappingValue::Entered {
+                budget: *budget,
+                item_id: item.id, value,
+            }),
+            Ok((source, Some(values), _)) => MappingValue::RetainedCached(Place {
                 parts: Placing::Retained(Box::new((values, selection, binding))),
                 item_id: item.id, source_id: source.source_id, transform: source.transform, truncated: false,
-            }),
-            Ok((source, None)) => {
-                if let Some(state) = &mut self.retained { state.pending_binding = binding; }
-                let value = GeometryRouter::styled_source_items(&source.representation, decoder).map(|items|
-                    (source.source_id, MappedOccurrence::Source {
-                        representation: source.representation, items, transform: source.transform,
-                    }));
-                MappingReply::Entered { item_id: item.id, value }
+            }, *budget),
+            Ok((source, None, items)) => {
+                if let Some(state) = &mut self.retained {
+                    state.pending_binding = binding;
+                }
+                MappingValue::Entered {
+                    budget: *budget,
+                    item_id: item.id,
+                    value: Ok((source.source_id, MappedOccurrence::Source {
+                        representation: source.representation,
+                        items,
+                        transform: source.transform,
+                    })),
+                }
             }
         }
     }
-    pub(super) fn finish_retained_level(&mut self) -> std::result::Result<MappingReply, ProgramError> {
-        let values = self.retained.as_mut().and_then(|state| state.levels.last_mut())
+    pub(super) fn finish_retained_level(
+        &mut self,
+    ) -> std::result::Result<MappingValue, ProgramError> {
+        let values = self
+            .retained
+            .as_mut()
+            .and_then(|state| state.levels.last_mut())
             .ok_or(ProgramError::StaleRequest)?;
-        Ok(MappingReply::RetainedFinished(Ok(std::mem::take(values))))
+        Ok(MappingValue::RetainedFinished(Ok(std::mem::take(values))))
     }
-    pub(super) fn place_retained_mapping(item_id: u32, source_id: u32, transform: Option<Matrix4<f64>>,
-        (mut values, selection, binding): (Vec<LogicalRetainedValue>, RetainedSelection, Option<RetainedPresentation>)) -> MappingReply {
+    pub(super) fn place_retained_mapping(
+        item_id: u32,
+        source_id: u32,
+        transform: Option<Matrix4<f64>>,
+        (mut values, selection, binding): (
+            Vec<LogicalRetainedValue>,
+            RetainedSelection,
+            Option<RetainedPresentation>,
+        ),
+    ) -> MappingValue {
         let value = (|| {
             let transform = transform.unwrap_or_else(Matrix4::identity);
             for value in &mut values {
@@ -130,21 +173,27 @@ impl<'a> MappingControl<'a> {
             }
             Ok(values)
         })();
-        MappingReply::RetainedPlaced { item_id, value }
+        MappingValue::RetainedPlaced { item_id, value }
     }
-    pub(super) fn accept_retained_reply(&self, reply: &MappingReply) -> bool {
-        self.retained.is_some() && matches!(reply, MappingReply::Child(_) | MappingReply::RetainedTypeFinished(_)
-            | MappingReply::RetainedCached(_) | MappingReply::RetainedFinished(_)
-            | MappingReply::RetainedPlaced { .. })
+    pub(super) fn accept_retained_reply(&self, reply: &MappingValue) -> bool {
+        self.retained.is_some()
+            && matches!(
+                reply,
+                MappingValue::Child(_)
+                    | MappingValue::RetainedTypeFinished(_)
+                    | MappingValue::RetainedCached(..)
+                    | MappingValue::RetainedFinished(_)
+                    | MappingValue::RetainedPlaced { .. }
+            )
     }
-    pub(super) fn accept_retained(&mut self, reply: MappingReply, router: &GeometryRouter) {
+    pub(super) fn accept_retained(&mut self, reply: MappingValue, router: &GeometryRouter) {
         match reply {
-            MappingReply::RetainedTypeFinished(value) => {
+            MappingValue::RetainedTypeFinished(value) => {
                 self.levels.pop();
                 if let Some(state) = &mut self.retained { state.levels.pop(); state.bindings.pop(); }
                 self.action = Action::Complete(value.map(MappingOutput::Retained));
             }
-            MappingReply::Child(step) => {
+            MappingValue::Child(step) => {
                 let Action::Child(item, ChildControl::Item(control)) = &mut self.action else { return };
                 let id = item.item().id;
                 control.accept(step, router);
@@ -161,8 +210,11 @@ impl<'a> MappingControl<'a> {
                 });
                 self.append_retained(value, router);
             }
-            MappingReply::RetainedCached(place) => self.action = Action::Place(place),
-            MappingReply::RetainedFinished(value) => {
+            MappingValue::RetainedCached(place, budget) => {
+                self.budget = budget;
+                self.action = Action::Place(place);
+            }
+            MappingValue::RetainedFinished(value) => {
                 let Some(level) = self.levels.pop() else { return };
                 let Some(state) = &mut self.retained else { return };
                 state.levels.pop();
@@ -179,7 +231,7 @@ impl<'a> MappingControl<'a> {
                     Err(error) => Action::Complete(Err(error)),
                 };
             }
-            MappingReply::RetainedPlaced { item_id, value } => {
+            MappingValue::RetainedPlaced { item_id, value } => {
                 // Identity belongs to the already validated common reply. The
                 // explicit active levels choose the destination, never this id.
                 let _ = item_id;
@@ -227,7 +279,11 @@ impl<'a> MappingControl<'a> {
     pub(in crate::program) fn representation_map_id(&self) -> Option<u32> {
         self.rep_map.as_ref().map(|map| map.item().id)
     }
-    pub(super) fn retained_type_origin(&self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> MappingReply {
+    pub(super) fn retained_type_origin(
+        &self,
+        router: &GeometryRouter,
+        decoder: &mut EntityDecoder,
+    ) -> MappingValue {
         let value = (|| {
             let map = self.rep_map.as_ref().map(Reached::item)
                 .ok_or_else(|| crate::Error::geometry("retained type-map root missing"))?;
@@ -237,11 +293,15 @@ impl<'a> MappingControl<'a> {
                 .map_err(|error| error.into_common(selection))?;
             router.type_map_origin(map,decoder)
         })();
-        MappingReply::Origin(value)
+        MappingValue::Origin(value)
     }
-    pub(super) fn finish_retained_type_map(&mut self, origin: Option<Matrix4<f64>>)
-        -> std::result::Result<MappingReply, ProgramError> {
-        let id = self.representation_map_id().ok_or(ProgramError::StaleRequest)?;
+    pub(super) fn finish_retained_type_map(
+        &mut self,
+        origin: Option<Matrix4<f64>>,
+    ) -> std::result::Result<MappingValue, ProgramError> {
+        let id = self
+            .representation_map_id()
+            .ok_or(ProgramError::StaleRequest)?;
         let state = &mut **self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
         let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
         let value = (|| {
@@ -258,13 +318,14 @@ impl<'a> MappingControl<'a> {
             }
             Ok(values)
         })();
-        Ok(MappingReply::RetainedTypeFinished(value))
+        Ok(MappingValue::RetainedTypeFinished(value))
     }
 }
 
 impl MappingControl<'_> {
     pub(super) fn validate_retained_map(map: &DecodedEntity, decoder: &mut EntityDecoder,
-        selection: &RetainedSelection) -> Result<()> {
-        validation::map(map, decoder).map_err(|error| error.into_common(selection))
+        selection: &RetainedSelection, budget: &mut super::super::mapping_budget::LogicalBudget,
+    ) -> super::super::mapping_budget::SourceResult<(DecodedEntity, Vec<DecodedEntity>)> {
+        validation::map(map, decoder, budget, selection)
     }
 }

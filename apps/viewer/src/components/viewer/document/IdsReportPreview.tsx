@@ -10,7 +10,7 @@
  */
 import { BlockHeading } from './BlockHeading';
 import { blockTitle } from '@/lib/document/block-title';
-import { notCheckedIdsSpecifications } from '@/lib/document/ids-report-types';
+import { idsBlockRequirementCheckRate, idsCheckBar, idsRequirementCheckRate, isUnmatchedIdsCheck, notCheckedIdsSpecifications, reportItemsCountKey } from '@/lib/document/ids-report-types';
 import { ValidationBenchmark } from '../validation/ValidationBenchmark';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportStamp } from '@/lib/document/report-provenance';
@@ -85,7 +85,7 @@ function RateBar({ rate }: { rate: number | null }) {
 }
 
 /** Compact row: name, bar and percent on one line, nothing else. `error` replaces the bar when a check could not be evaluated. */
-function CompactRow({ name, passed, checked, rate, nested, error, warning }: { name: string; passed: number | null; checked: number; rate: number | null; nested?: boolean; error?: string; warning?: boolean }) {
+function CompactRow({ name, passed, checked, rate, nested, error, warning, note }: { name: string; passed: number | null; checked: number; rate: number | null; nested?: boolean; error?: string; warning?: boolean; note?: string }) {
   const { t, locale } = useTranslation();
   return (
     <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-semibold'}`} data-ids-report-row>
@@ -95,6 +95,8 @@ function CompactRow({ name, passed, checked, rate, nested, error, warning }: { n
       </span>
       {error !== undefined ? (
         <span className="min-w-0 flex-1 truncate text-2xs text-red-700" title={error} data-ids-report-error>{t('document.preview.idsReportError', { error })}</span>
+      ) : note !== undefined ? (
+        <span className="min-w-0 flex-1 truncate text-2xs text-neutral-500" data-ids-report-not-checked>{note}</span>
       ) : (
         <>
           <RateBar rate={rate} />
@@ -108,18 +110,26 @@ function CompactRow({ name, passed, checked, rate, nested, error, warning }: { n
 }
 
 function CompactChecks({ block }: { block: IdsReportBlock }) {
+  const { t } = useTranslation();
+  const notChecked = t('manualValidation.verdict.unanswered');
   return (
     <ul className="mt-1 flex flex-col gap-2.5" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
       {/* A specification heads a group; its requirements sit indented under a rule, as the PDF indents them (#6550). */}
-      {block.checks.map((check) => (
+      {block.checks.map((check) => {
+        // Requirement checks when every one is known, so the bar sums the rows under it (#8204).
+        const bar = idsCheckBar(block, check);
+        const unmatched = isUnmatchedIdsCheck(block, check);
+        return (
         <li key={check.id} className="list-none" data-ids-report-spec={check.id}>
           <ul className="flex flex-col gap-1">
-            <CompactRow name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />
+            <CompactRow name={check.shortDescription || check.id} passed={bar?.passed ?? null} checked={bar?.checked ?? check.checked} rate={bar?.rate ?? null}
+              error={check.error} warning={check.severity === 'warning'} note={unmatched ? notChecked : undefined} />
             {!block.specificationsOnly && (check.rules.length > 0 || !!check.cardinality || (check.sets?.length ?? 0) > 0 || !!check.setsTruncated) && (
               <li className="ml-3 list-none border-l border-neutral-200 pl-2">
                 <ul className="flex flex-col gap-1" data-ids-report-requirements={check.rules.length}>
                   {check.rules.map((rule) => (
-                    <CompactRow key={rule.id} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
+                    <CompactRow key={rule.id} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate}
+                      note={unmatched ? notChecked : undefined} />
                   ))}
                   <RuleDetailRows check={check} />
                 </ul>
@@ -127,7 +137,8 @@ function CompactChecks({ block }: { block: IdsReportBlock }) {
             )}
           </ul>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }
@@ -148,6 +159,7 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
     : t('document.preview.idsReportHeading', { name: block.sourceName }));
 
   const stamp = reportStamp(block);
+  const blockChecks = idsBlockRequirementCheckRate(block);
 
   return (
     <div data-block-ids-report data-source-kind={reportBlockSourceKind(block)}>
@@ -166,8 +178,11 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
         {warnings !== undefined && <Stat label={t('document.preview.idsReportWarnings')} value={warnings.toLocaleString(locale)} />}
         <Stat label={t('document.preview.idsReportPassRate')} value={`${passRate}%`} />
       </div>
+      {blockChecks && <div className="mt-1 text-xs" data-ids-report-requirement-checks>
+        {t('idsPanel.checksPassed', { passed: blockChecks.passed.toLocaleString(locale), total: blockChecks.total.toLocaleString(locale), rate: `${blockChecks.rate}%` })}
+      </div>}
       <div className={`mt-1.5 text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
-        {t('document.preview.idsReportChecksCount', localeCount(locale, block.checks.length))}
+        {t(reportItemsCountKey(block), localeCount(locale, block.checks.length))}
       </div>
       {block.checks.length === 0 ? (
         <div className="mt-1 rounded border border-dashed border-neutral-300 px-3 py-2 text-xs text-neutral-500">
@@ -176,6 +191,8 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
       ) : block.variant === 'compact' ? <CompactChecks block={block} /> : (
         <ul className="mt-1 flex flex-col gap-1" data-ids-report-checks={block.checks.length}>
           {block.checks.map((check) => {
+            const unmatched = isUnmatchedIdsCheck(block, check);
+            const checks = idsRequirementCheckRate(block, check);
             const hasChildren = check.rules.length > 0 || !!check.cardinality || (check.sets?.length ?? 0) > 0 || !!check.setsTruncated;
             return (
               <li key={check.id} className="rounded border border-neutral-200 px-2 py-1" data-ids-report-check={check.id}>
@@ -190,7 +207,11 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
                       {check.severity === 'warning' && (
                         <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>
                       )}
-                      {check.checked.toLocaleString(locale)} · {check.passed.toLocaleString(locale)} / {check.failed.toLocaleString(locale)} · {check.passRate}%
+                      {unmatched ? t('manualValidation.verdict.unanswered') : <>
+                        {check.checked.toLocaleString(locale)} · {check.passed.toLocaleString(locale)} / {check.failed.toLocaleString(locale)} · {checks
+                          ? t('idsPanel.checksPassed', { passed: checks.passed.toLocaleString(locale), total: checks.total.toLocaleString(locale), rate: `${checks.rate}%` })
+                          : `${check.passRate}%`}
+                      </>}
                     </span>
                   )}
                 </div>
@@ -202,9 +223,9 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
                         <div className="flex items-baseline justify-between gap-2">
                           <span className={`min-w-0 ${cut} font-medium`} title={rule.shortDescription}>{rule.shortDescription}</span>
                           <span className="shrink-0 text-neutral-600">
-                            {rule.checked.toLocaleString(locale)} · {rule.passRate === null
+                            {unmatched ? t('manualValidation.verdict.unanswered') : <>{rule.checked.toLocaleString(locale)} · {rule.passRate === null
                               ? t('document.preview.idsReportCountsUnavailable')
-                              : `${rule.passed?.toLocaleString(locale)} / ${rule.failed?.toLocaleString(locale)} · ${rule.passRate}%`}
+                              : `${rule.passed?.toLocaleString(locale)} / ${rule.failed?.toLocaleString(locale)} · ${rule.passRate}%`}</>}
                           </span>
                         </div>
                         {rule.longDescription && <div className={`${cut} text-neutral-500`} title={rule.longDescription}>{rule.longDescription}</div>}

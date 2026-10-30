@@ -7,9 +7,14 @@ pub use timing::NativeTimings;
 mod native_types;
 mod runtime_native;
 mod runtime_receipt_native;
+#[cfg(test)]
+mod refusal_lifecycle_tests;
 pub use ifc_lite_processing::element::retained_runtime::{
     ModelOptions, ModelSummary, PresentationObligationsUnmet, ProductBudgetSpec, ProductOutcome,
     ShapeOnlyProduct, ShapePart,
 };
 pub use model::{block_on, run_model_native, run_model_native_timed, NativeModelDriver};
 pub use native_types::{NativeDomain, NativeReceipt, NativeWorker};
+
+/// Source-only validation utilities; never used by product execution.
+pub mod oracle;

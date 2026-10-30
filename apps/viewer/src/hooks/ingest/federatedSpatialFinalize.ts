@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied, ifcVerticalAssumptionHint, type IfcVerticalAssumptionApplied } from './ifcGeorefAssumptions.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
 import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
@@ -20,7 +19,6 @@ import { landXmlAssumptionsApplied } from './sourceSpatialReference';
 
 export interface FederatedSpatialFinalizeResult {
   preAlignment?: PreAlignmentSnapshot;
-  ifcSharedVerticalDatumAssumed?: IfcVerticalAssumptionApplied;
   federationAlignmentStatus: FederatedModel['federationAlignmentStatus'];
   /** LandXML only, and only when non-empty: the assumptions the placement actually rests on. */
   landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
@@ -81,14 +79,13 @@ function reportFederationAlignmentOutcome(
   fileName: string,
   source: ModelSpatialPlacement,
   reference: ModelSpatialPlacement,
-  heightHint = '',
 ): void {
   const sourceCrs = source.spatialReference.horizontal?.id ?? 'unknown CRS';
   const targetCrs = reference.spatialReference.horizontal?.id ?? 'unknown CRS';
   if (status === 'reprojected') {
     toast.info(`Reprojected "${fileName}" from ${sourceCrs} to ${targetCrs} for federation alignment.`);
   } else if (status === 'failed') {
-    toast.error(`Could not align "${fileName}" with the federation anchor — ${sourceCrs} → ${targetCrs} reprojection failed. The model is shown in its own local frame and may appear at the wrong real-world position.${heightHint}`);
+    toast.error(`Could not align "${fileName}" with the federation anchor — ${sourceCrs} → ${targetCrs} reprojection failed. The model is shown in its own local frame and may appear at the wrong real-world position.`);
   }
 }
 
@@ -153,9 +150,8 @@ export async function finalizeFederatedSpatialPlacement(options: {
     : extractModelSpatialPlacement(options.dataStore, options.geometry.coordinateInfo, mutation);
   let preAlignment: PreAlignmentSnapshot | undefined;
   let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
-  const assumeIfcSharedVertical = useViewerStore.getState().ifcSharedVerticalDatum;
-  const unknownVertical = options.landXmlDocument ? unknownVerticalPolicy(options.landXmlAssumptions)
-    : parsed && reference ? ifcUnknownVerticalPolicy(parsed.spatialReference, reference.spatialReference, assumeIfcSharedVertical) : 'refuse';
+  // Only a LandXML load carries assumptions; every other format stays fail-closed.
+  const unknownVertical = options.landXmlDocument ? unknownVerticalPolicy(options.landXmlAssumptions) : 'refuse';
   if (reference && parsed) {
     options.setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
     preAlignment = capturePreAlignment(options.geometry);
@@ -180,9 +176,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
       if (!options.isCurrent()) return null;
       applyLandXmlRenderedLineUpdates(renderedLines);
     }
-    reportFederationAlignmentOutcome(status, options.fileName, parsed, reference,
-      status === 'failed' && !options.landXmlDocument
-        ? ifcVerticalAssumptionHint(parsed.spatialReference, reference.spatialReference, assumeIfcSharedVertical) : '');
+    reportFederationAlignmentOutcome(status, options.fileName, parsed, reference);
   } else if (parsed) {
     federationAlignmentStatus = 'anchor';
   }
@@ -210,8 +204,5 @@ export async function finalizeFederatedSpatialPlacement(options: {
   }
   const applied = options.landXmlDocument
     ? landXmlAssumptionsApplied(options.spatialReference, reference?.spatialReference, federationAlignmentStatus) : undefined;
-  const ifcSharedVerticalDatumAssumed = parsed && reference && !options.landXmlDocument
-    ? ifcSharedVerticalDatumApplied(parsed.spatialReference, reference.spatialReference, federationAlignmentStatus, assumeIfcSharedVertical)
-    : undefined;
-  return { preAlignment, federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...appliedPatch(applied) };
+  return { preAlignment, federationAlignmentStatus, ...appliedPatch(applied) };
 }

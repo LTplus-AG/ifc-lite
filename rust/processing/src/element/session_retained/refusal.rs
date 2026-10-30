@@ -10,7 +10,9 @@ use ifc_lite_geometry::program::transactions::TransactionFailureKind as Kind;
 #[non_exhaustive]
 pub enum RetainedProductRefusal {
     OpeningStrategy,
+    OpeningUnsupported,
     MaterialLayerStrategy,
+    LayerCapsUnresolved,
     OperationUnsupported,
     SourceInvalid,
     SourceChanged,
@@ -24,6 +26,8 @@ pub enum RetainedProductRefusal {
     DeadlineExceeded,
     Cancelled,
     ContractBreach,
+    AppearanceUnsupported,
+    FaceProvenanceUnproven,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,8 +40,10 @@ pub struct RefusalOrigin {
 impl RetainedProductRefusal {
     pub fn code(&self) -> &'static str {
         match self {
+            Self::OpeningUnsupported => "opening_unsupported",
             Self::OpeningStrategy => "opening_strategy",
             Self::MaterialLayerStrategy => "material_layer_strategy",
+            Self::LayerCapsUnresolved => "layer_caps_unresolved",
             Self::OperationUnsupported => "operation_unsupported",
             Self::SourceInvalid => "source_invalid",
             Self::SourceChanged => "source_changed",
@@ -51,6 +57,8 @@ impl RetainedProductRefusal {
             Self::DeadlineExceeded => "deadline_exceeded",
             Self::Cancelled => "cancelled",
             Self::ContractBreach => "contract_breach",
+            Self::AppearanceUnsupported => "appearance_unsupported",
+            Self::FaceProvenanceUnproven => "face_provenance_unproven",
         }
     }
 }
@@ -60,9 +68,20 @@ impl RetainedExecutionError {
         use RetainedProductRefusal as Refusal;
         let mut origin = None;
         let refusal = match self {
+            Self::LayerStrategy(cause) => {
+                origin = Some(RefusalOrigin { site: "layer_band", entity: None, cause });
+                Refusal::MaterialLayerStrategy
+            }
+            Self::LayerCaps(cause) => {
+                origin = Some(RefusalOrigin { site: "layer_caps", entity: None, cause });
+                Refusal::LayerCapsUnresolved
+            }
+            Self::LayerRetirementsExhausted => {
+                origin = Some(RefusalOrigin { site: "layer_band", entity: None, cause: "layer_retirement_allowance" });
+                Refusal::WorkerFault
+            }
             Self::Unsupported(reason) => match reason {
                 Unsupported::RetainedOpeningStrategy => Refusal::OpeningStrategy,
-                Unsupported::RetainedMaterialLayerStrategy => Refusal::MaterialLayerStrategy,
                 Unsupported::ConstructionRecipe | Unsupported::RetainedStrategy => {
                     Refusal::OperationUnsupported
                 }
@@ -70,6 +89,11 @@ impl RetainedExecutionError {
                     Refusal::Incomplete
                 }
             },
+            Self::Opening { inner, .. } => {
+                let (code, inner_origin) = inner.refusal();
+                origin = inner_origin;
+                if code == Refusal::OperationUnsupported { Refusal::OpeningUnsupported } else { code }
+            }
             Self::Common(error) => {
                 origin = error
                     .origin_view()
@@ -79,6 +103,10 @@ impl RetainedExecutionError {
                         cause,
                     });
                 common_kind_refusal(error.kind(), error.original_stop())
+            }
+            Self::FaceProvenance { cause, entity } => {
+                origin = Some(RefusalOrigin { site: "faces", entity: *entity, cause });
+                Refusal::FaceProvenanceUnproven
             }
             Self::Recipe(ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_)) => {
                 Refusal::OperationUnsupported
@@ -108,6 +136,10 @@ impl RetainedExecutionError {
             Self::Stopped(ProgramStop::Cancelled) | Self::Transition(CANCELLED) => {
                 Refusal::Cancelled
             }
+            Self::Presentation { refusal, origin: declined } => {
+                origin = Some(*declined);
+                *refusal
+            }
             Self::Owner(_) | Self::Transition(_) => Refusal::ContractBreach,
         };
         (refusal, origin)
@@ -119,8 +151,11 @@ pub(super) fn common_kind_refusal(kind: Kind, stop: Option<ProgramStop>) -> Reta
     use RetainedProductRefusal as Refusal;
     match kind {
         Kind::OperationUnsupported => Refusal::OperationUnsupported,
+        Kind::MaterialLayerStrategy => Refusal::MaterialLayerStrategy,
         Kind::Source | Kind::Unsupported => Refusal::SourceInvalid,
+        Kind::Empty => Refusal::EmptyResult,
         Kind::Incomplete => Refusal::Incomplete,
+        Kind::EmptyResult => Refusal::EmptyResult,
         Kind::DeadlineExceeded => Refusal::DeadlineExceeded,
         Kind::Cancelled => Refusal::Cancelled,
         Kind::Stopped => match stop {

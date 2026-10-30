@@ -97,11 +97,11 @@ export function VerdictIcon({ bucket, className }: { bucket: RingBucket; classNa
 }
 
 /** Icon + label + count per bucket, in the ring's segment order. */
-export function ManualValidationLegend({ counts, mutedClassName = 'text-muted-foreground' }: { counts: ManualCounts; mutedClassName?: string }) {
+export function ManualValidationLegend({ counts, mutedClassName = 'text-muted-foreground', buckets = RING_BUCKETS }: { counts: ManualCounts; mutedClassName?: string; buckets?: readonly RingBucket[] }) {
   const { t } = useTranslation();
   return (
     <ul className="flex flex-col gap-0.5 text-xs">
-      {RING_BUCKETS.map((bucket) => (
+      {buckets.map((bucket) => (
         <li key={bucket} className="flex items-center gap-1.5" data-bucket={bucket}>
           <VerdictIcon bucket={bucket} />
           <span className={mutedClassName}>{t(BUCKET_LABEL[bucket])}</span>

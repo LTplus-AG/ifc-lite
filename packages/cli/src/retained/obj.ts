@@ -19,14 +19,30 @@ export function worldPoints(part: RetainedShapePart): number[][] {
 }
 
 export function partVolume(part: RetainedShapePart): number {
-  const points = worldPoints(part), origin = points[0];
+  const points = worldPoints(part);
+  if (part.layer) {
+    const volume = part.cappedVolumeM3;
+    if (volume === undefined || !Number.isFinite(volume) || volume <= 0) throw new Error('Missing closed band volume');
+    return volume;
+  }
+  return Math.abs(signedVolume(points, part.indices, points[0]));
+}
+
+/** Open material parts close only as an assembly, with one shared origin. */
+export function productVolume(parts: RetainedShapePart[]): number {
+  if (!parts.some(part => part.layer)) return parts.reduce((sum, part) => sum + partVolume(part), 0);
+  const origin = parts.length ? worldPoints(parts[0])[0] : [0, 0, 0];
+  return Math.abs(parts.reduce((sum, part) => sum + signedVolume(worldPoints(part), part.indices, origin), 0));
+}
+
+function signedVolume(points: number[][], indices: Uint32Array, origin: number[]): number {
   let volume = 0;
-  for (let i = 0; i < part.indices.length; i += 3) {
-    const [a, b, c] = Array.from(part.indices.subarray(i, i + 3), index => points[index].map((v, j) => v - origin[j]));
+  for (let i = 0; i < indices.length; i += 3) {
+    const [a, b, c] = Array.from(indices.subarray(i, i + 3), index => points[index].map((v, j) => v - origin[j]));
     volume += (a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
   }
   if (!Number.isFinite(volume)) throw new Error('Nonfinite retained volume');
-  return Math.abs(volume);
+  return volume;
 }
 
 function fixed(value: number): string {
@@ -45,21 +61,33 @@ function fixed(value: number): string {
 export function retainedObj(products: RetainedShapeProduct[]): string {
   const obligations = [...new Set(products.flatMap(p => p.obligationsUnmet))].sort();
   const lines = ['# ifc-lite OBJ export', '# units: metres (renderer Y-up frame, origin-folded world coords)',
-    '# kernel: retained', `# retained shape-only: presentation obligations unmet: ${obligations.join(', ')}`,
-    '# PresentationObligationsUnmet'];
-  let base = 1;
+    '# kernel: retained', ...(obligations.length
+      ? [`# retained shape-only: presentation obligations unmet: ${obligations.join(', ')}`, '# PresentationObligationsUnmet']
+      : ['# retained final', '# final'])];
+  let base = 1, normalBase = 1;
   for (const product of products) {
-    if (product.marker !== 'PresentationObligationsUnmet' || !product.obligationsUnmet.length || !product.parts.length ||
+    if (product.marker !== (product.obligationsUnmet.length ? 'PresentationObligationsUnmet' : 'final') || !product.parts.length ||
         !/^Ifc[A-Za-z0-9]+$/.test(product.ifcType) || !Number.isSafeInteger(product.expressId)) {
-      throw new Error('Invalid retained shape-only product');
+      throw new Error('Invalid retained publication');
     }
     lines.push(`o ${product.ifcType}_${product.expressId}`, `g ${product.ifcType}_${product.expressId}`);
     for (const part of product.parts) {
       const points = worldPoints(part);
       for (const [x, y, z] of points) lines.push(`v ${fixed(x)} ${fixed(z)} ${fixed(-y)}`);
-      for (let i = 0; i < part.indices.length; i += 3) {
-        lines.push(`f ${part.indices[i] + base} ${part.indices[i + 1] + base} ${part.indices[i + 2] + base}`);
+      if (part.layer) lines.push(`# layer ${part.layer.index} material #${part.layer.materialId}`);
+      if (part.normals) {
+        if (part.normals.length !== part.indices.length * 3 || !part.normals.every(Number.isFinite)) {
+          throw new Error('Invalid retained corner normals; refusing partial product');
+        }
+        for (let i = 0; i < part.normals.length; i += 3) {
+          lines.push(`vn ${fixed(part.normals[i])} ${fixed(part.normals[i + 2])} ${fixed(-part.normals[i + 1])}`);
+        }
       }
+      for (let i = 0; i < part.indices.length; i += 3) {
+        const corners = [0, 1, 2].map(j => `${part.indices[i + j] + base}${part.normals ? `//${normalBase + i + j}` : ''}`);
+        lines.push(`f ${corners.join(' ')}`);
+      }
+      if (part.normals) normalBase += part.indices.length;
       base += points.length;
     }
   }

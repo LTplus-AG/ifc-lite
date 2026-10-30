@@ -75,6 +75,9 @@
         "index.html"
       ],
       "env": [
+        "VITE_RETAINED_GEOMETRY",
+        "IFCLITE_RETAINED_ENGINE",
+        "VERCEL",
         "VITE_AUTODESK_CLIENT_ID",
         "VITE_AUTODESK_HOSTED",
         "VITE_CLOUD_HOSTED",

@@ -56,8 +56,9 @@ export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, mod
   // so the JSON-RPC channel on stdout isn't polluted.
   const origLog = console.log;
   const origWarn = console.warn;
-  console.log = (): void => undefined;
-  console.warn = (): void => undefined;
+  const silent = (): void => undefined;
+  console.log = silent;
+  console.warn = silent;
   let store: IfcDataStore;
   // Kept, not silenced with the console: a `scan:` line says the model is
   // missing records, which the caller has to hear (#7610).
@@ -72,8 +73,10 @@ export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, mod
     });
     store.fileSize = buffer.byteLength;
   } finally {
-    console.log = origLog;
-    console.warn = origWarn;
+    // Restore only what is still ours: a stdio transport that connected
+    // mid-load has re-pointed console.log at stderr, and that must stay.
+    if (console.log === silent) console.log = origLog;
+    if (console.warn === silent) console.warn = origWarn;
   }
 
   const id = modelId ?? deriveModelId(name);

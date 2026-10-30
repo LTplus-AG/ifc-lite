@@ -28,6 +28,7 @@ import { spatialReferenceFromIfc } from '../lib/geo/ifc-spatial-reference.js';
 
 describe('isCurrentFor — the compare fingerprint cache key (#1891)', () => {
   const built = {
+    baseStore: undefined, headStore: undefined,
     baseModelId: 'a', headModelId: 'b', contentVersion: 3, keyProperty: undefined,
     mutationVersion: useViewerStore.getState().mutationVersion,
   };

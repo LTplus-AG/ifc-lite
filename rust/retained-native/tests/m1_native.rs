@@ -136,8 +136,9 @@ fn contract_fault_keeps_one_worker_for_the_next_product() {
     );
 }
 
-// #7955: model boundaries do not reacquire a healthy preflight peer. A final
-// affine refuses before the first invocation and spends no replacement budget.
+// #7955: model boundaries do not reacquire a healthy preflight peer. #74's
+// scaled-up curved affine final fails M10's source-determined contraction-only
+// fallback, so it still refuses before the first invocation.
 #[test]
 fn affine_predispatch_and_model_boundaries_keep_the_preflight_worker() {
     let mut transport = peer();
@@ -213,7 +214,7 @@ fn reused_retired_domain_is_discarded_and_replacements_are_bounded_per_model() {
 #[test]
 fn exhausted_restart_budget_preserves_source_refusals() {
     let mut text =
-        include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc").to_string();
+        include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc").replace("(#25));","(#25,#9001));").replace("ENDSEC;\nEND-ISO","#9000=IFCPOLYLINE((#1,#1,#1));#9001=IFCSHAPEREPRESENTATION(#4,'Axis','Curve2D',(#9000));\nENDSEC;\nEND-ISO");
     let mut first_products = String::new();
     for id in 100..104 {
         first_products.push_str(&format!(

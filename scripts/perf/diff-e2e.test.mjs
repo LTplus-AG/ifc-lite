@@ -39,6 +39,14 @@ test('#8042 protocol requires six pairs, reproducible balanced interleaving and 
   assert.throws(() => validateProtocol({ ...p, cases: p.cases.slice(0, 1) }));
 });
 
+test('#8113 v3 requires the preserved large head artifact, not a fresh derivation', () => {
+  const p = protocol({ largeBase: '/frozen/base.ifc', largeHead: '/frozen/head.ifc' });
+  const large = p.cases.find(c => c.id === 'large');
+  assert.equal(large.headSha256, 'f8e748cf1f2128609257c939aac9df40c6f62f70bbca6813ff5a67bb06ac853a');
+  large.headSha256 = '0'.repeat(64);
+  assert.throws(() => validateProtocol(p), /protocol changed/);
+});
+
 test('#8042 empty input cannot yield a vacuous identity/performance result', () => {
   assert.throws(() => nonempty([]), /fingerprint count/);
   const input = [{ key: 'a', ref: 7, ifcType: 'IfcWall', dataHash: 'hash', components: { p: 'x' } }];
@@ -356,7 +364,8 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     const demo = join(fixtureRoot, 'apps/viewer/public/samples'); await mkdir(demo, { recursive: true });
     const files = ['building-architecture.ifc', 'building-architecture-rev-b.ifc'].map(n => join(demo, n));
     for (const file of files) await writeFile(file, 'unit input');
-    await writeFile(originalPath, '{"exclusive":"unit"}');
+    const exclusive = { kind: 'benchmark', state: 'running', startedAt: Date.now() / 1000 };
+    await writeFile(originalPath, JSON.stringify(exclusive));
     const bindings = { runtime: await runtimeReceipt(), harnessSource: inventories.base.source,
       measurement: { hostname: hostname() },
       harness: digest(await harnessReceipt()), base: digest(inventories.base), branch: digest(inventories.branch),
@@ -369,6 +378,15 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     const args = { protocolPath, admissionPath, baseRoot: root, branchRoot: root, fixtureRoot, out: join(dir, 'output') };
     const runUnit = (args, sampleFn) => run(args, sampleFn, () => inventories.base.source);
     await save(protocol());
+    for (const bad of [{ state: 'failed' }, { ...exclusive, state: 'failed' },
+      { ...exclusive, kind: 'ordinary' }, { ...exclusive, state: 'queued' },
+      { ...exclusive, state: 'completed' }, { ...exclusive, startedAt: null },
+      { ...exclusive, startedAt: '2026-10-30' }]) {
+      await writeFile(originalPath, JSON.stringify(bad));
+      await assert.rejects(runUnit(args, () => assert.fail('invalid admission reached sampling')),
+        /exclusive admission receipt/);
+    }
+    await writeFile(originalPath, JSON.stringify(exclusive));
     await assert.rejects(runUnit(args), /freeze runtime/);
     await save(protocol({ bindings }));
     const calls = [];

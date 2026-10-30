@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
-import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
+import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
@@ -25,6 +25,7 @@ import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureR
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
+import { beginGeometryKernel, openGeometryEvents } from './ingest/geometryEventSource.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
@@ -42,7 +43,6 @@ import {
   type SkippedHungElements,
   type StallPhaseHandle,
   type ModelSpatialReference,
-  DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { notifyResourceRetry, resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
@@ -50,7 +50,7 @@ import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuff
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob, type GeometryData } from '@ifc-lite/cache';
-import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
+import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
   createCoordinateInfo,
@@ -279,6 +279,7 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
+    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return geometryKernel.refused; // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
     // Federated additions capture this hook's session and remain independent.
@@ -575,7 +576,7 @@ export function useIfcLoader() {
             isCurrent: () => isCurrent(), setProgress,
           });
           if (!spatialFinalize) return;
-          const { preAlignment, federationAlignmentStatus, landXmlAssumptionsApplied, ifcSharedVerticalDatumAssumed } = spatialFinalize;
+          const { preAlignment, federationAlignmentStatus, landXmlAssumptionsApplied } = spatialFinalize;
 
           // Federation registry: transform expressIds to globally-unique ids.
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes, geometryResult.pointClouds);
@@ -632,7 +633,7 @@ export function useIfcLoader() {
             pointCloudHandleId: patch?.pointCloudHandleId,
             ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
-            federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
+            federationAlignmentStatus, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
@@ -758,6 +759,7 @@ export function useIfcLoader() {
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : countCopy('source.detectFormat', new Uint8Array(buffer).slice().buffer));
 
       const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : countCopy('source.arrayBuffer', new Uint8Array(buffer).slice().buffer); buffer = arrayBuffer;
+      if (geometryKernel.refuseSource(format, arrayBuffer.byteLength, { modelId, activity })) return;
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
@@ -1114,12 +1116,12 @@ export function useIfcLoader() {
       // nothing else caches. Gating the READ on `shouldCache` too makes the kill
       // switch complete — with it off, a previously written mesh-only entry is
       // NOT served (and files outside any band skip a pointless lookup).
-      const cachePlan = planCacheWrite(buffer.byteLength, {
+      const cachePlan = geometryKernel.cachePlan(planCacheWrite(buffer.byteLength, {
         meshOnlyEnabled: isMeshOnlyCacheEnabled(),
         minSize: CACHE_SIZE_THRESHOLD,
         maxSourceSize: CACHE_MAX_SOURCE_SIZE,
         maxMeshOnlySize: CACHE_MESH_ONLY_MAX_SIZE,
-      });
+      }));
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
@@ -1252,7 +1254,7 @@ export function useIfcLoader() {
       // EXCEPT texture-carrying containers (#1781): the server mesh wire format
       // doesn't transport UVs/texture refs yet, so the server fast-path would
       // silently render the model untextured — route those through local WASM.
-      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         loadStage = 'server-fetch';
         const serverSuccess = await loadFromServer(file, arrayBuffer, () => isStale());
@@ -1296,7 +1298,7 @@ export function useIfcLoader() {
       // From here the WASM tessellation path runs, so a resource-limit failure
       // downstream (stall / worker crash / OOM) is one a lower tier can help —
       // record the tier we attempted for the retry decision in the catch.
-      attemptedTessellationTier = loadTessellationTier;
+      attemptedTessellationTier = geometryKernel.kind === 'exact' ? loadTessellationTier : null;
 
       // Initialize geometry processor first (WASM init is fast if already loaded)
       // Reuses the merge-layers snapshot taken above for the cache key so the
@@ -1439,7 +1441,7 @@ export function useIfcLoader() {
       const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
       const geometryWillEmitEntityIndex =
         useParserWorker
-        && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB;
+        && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB && geometryKernel.kind === 'exact';
 
       const startDataModelParsing = () => {
         if (metadataAbort.signal.aborted || isStale()) {
@@ -1586,8 +1588,6 @@ export function useIfcLoader() {
 
       try {
         loadStage = 'geometry-stream';
-        // Use dynamic batch sizing for optimal throughput
-        const dynamicBatchConfig = getDynamicBatchConfig(fileSizeMB);
         memoryAccounting.beginPhase('geometry');
         // When the parser worker is in use, hand the geometry workers the
         // same SAB so we don't pay the file-bytes copy twice.
@@ -1595,28 +1595,11 @@ export function useIfcLoader() {
         // Closing aborts: return() can't stop a pool parked on a hung worker (#4884).
         const geometryAbort = new AbortController();
         abortGeometry = () => geometryAbort.abort(); // #5849: a user Cancel stops the pool, not just the session
-        const geometryEvents = geometryProcessor.processAdaptive(geometryView, {
-              signal: geometryAbort.signal,
-              hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // reads skippedHungElements below
-              stallPhaseHandle,
-              sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
-              batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
-              existingSab: sharedSource ?? undefined,
-              // Federated adds share the anchor's RTC origin so all models sit in
-              // one coordinate space (pixel-perfect alignment, no post-shift).
-              sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
-              // Let a geometry worker finish before materializing large parser
-              // reference arrays. Small loads still receive immediately.
-              // Refusal counts and malformed-stop diagnostics remain attached.
-              onEntityIndex: parserEntityIndexHandoff,
-              sourceFingerprint,
-              // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
-              // count heuristic so the host's thermal sweet spot can be measured.
-              // Still clamped to the memory budget by the engine. Geometry output
-              // is unaffected by the count (disjoint deterministic element slices).
-              workerCountOverride: getGeomWorkerOverride(),
-              trace,
-            });
+        const geometryEvents = openGeometryEvents(geometryKernel, {
+          processor: geometryProcessor, view: geometryView, fileSizeMB, signal: geometryAbort.signal, stallPhaseHandle,
+          existingSab: sharedSource ?? undefined, sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
+          onEntityIndex: parserEntityIndexHandoff, sourceFingerprint, trace, modelId, activity,
+        });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;
         closeGeometryIterator = async () => {
@@ -1811,6 +1794,15 @@ export function useIfcLoader() {
                     phase: `Rendering geometry (${totalMeshes} meshes)`,
                     percent: progressPercent
                   });
+                }
+                // #7955: only retained shard-only batches publish bounds and a first
+                // frame here. Exact keeps its original flat-batch throttle.
+                if (geometryKernel.kind === 'retained' && event.meshes.length === 0 && (event.instancedShards?.length ?? 0) > 0) {
+                  if (firstAppendGeometryBatchMs === null) {
+                    firstAppendGeometryBatchMs = trace.milestone('geometry.firstAppend');
+                  }
+                  appendGeometryBatch(modelId, [], event.coordinateInfo);
+                  markFirstVisibleGeometry();
                 }
               } else {
                 // Federated add: accumulate into allMeshes only (done above) and

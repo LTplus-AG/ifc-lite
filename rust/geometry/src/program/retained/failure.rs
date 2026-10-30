@@ -26,15 +26,23 @@ pub(in crate::program) enum FailureSite {
     MappingItems,
     MappingScale,
     MappingDirection,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    OpeningCut,
     BooleanSource,
     BooleanOperator,
     BooleanFirstOperand,
     BooleanSecondOperand,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    BooleanStep,
     ProductPlacement,
     MappingPlacement,
     TypeMapPlacement,
     MappingAffine,
     TypeMapAffine,
+    #[cfg(feature = "retained-runtime")]
+    LayerBand,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    HalfSpaceClip,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum StructuralReason {
@@ -71,6 +79,8 @@ pub(in crate::program) enum BooleanReason {
     UnknownOperator,
     OperandAttributeMissing,
     OperandReferenceRequired,
+    #[cfg(any(test, feature = "retained-runtime"))]
+    EmptyHost,
 }
 #[derive(Debug)]
 pub(in crate::program) enum OriginCause {
@@ -318,6 +328,8 @@ impl std::fmt::Debug for FailureHandle {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum CompletionReason {
+    #[cfg(any(test, feature = "retained-runtime"))]
+    OpeningConsumed { opening: u32 },
     UnexecutedRequest,
     UnacceptedReply,
     Incomplete,
@@ -328,6 +340,10 @@ pub(in crate::program) enum CompletionReason {
 }
 #[derive(Debug)]
 pub(in crate::program) enum RetainedFailure {
+    #[cfg(feature = "retained-runtime")]
+    LayerStrategy(&'static str),
+    #[cfg(feature = "retained-runtime")]
+    LayerEmpty,
     Stopped(ProgramStop),
     #[cfg(feature = "retained-runtime")]
     DeadlineExceeded,
@@ -338,6 +354,10 @@ pub(in crate::program) enum RetainedFailure {
 impl From<crate::program::inner::retained_program::RetainedProgramError> for RetainedFailure {
     fn from(error: crate::program::inner::retained_program::RetainedProgramError) -> Self {
         match error {
+            #[cfg(any(test, feature = "retained-runtime"))]
+            crate::program::inner::retained_program::RetainedProgramError::OpeningConsumed { opening } => {
+                Self::Completion(CompletionReason::OpeningConsumed { opening })
+            }
             crate::program::inner::retained_program::RetainedProgramError::Stopped(stop) => {
                 Self::Stopped(stop)
             }

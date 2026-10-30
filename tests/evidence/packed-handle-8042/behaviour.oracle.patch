@@ -1,0 +1,9 @@
+--- a/scripts/packed-diff/semantics.mjs
++++ b/scripts/packed-diff/semantics.mjs
+@@ -12,7 +12,7 @@
+   const call = (name, ...args) => { calls.add(name); return api[name](...args); };
+   for (const [value, expected] of [
+-    ['', '0000000000000000'], ['a', 'af63dc4c8601ec8c'],
++    ['', 'cbf29ce484222325'], ['a', 'af63dc4c8601ec8c'],
+     ['\ud800', 'b03bbd4c8770bfdf'], ['\udfff', 'b03d724c8773a66e'],
+   ]) assert.equal(call('stableHash', value), expected);

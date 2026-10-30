@@ -127,3 +127,28 @@ This PR remains draft and targets `sweep/c4-11b`. The Test workflow is restricte
 to `pull_request.branches: [main]` and does not run on that base; other checks
 are not a full Test verdict. The parent will retarget it to main after #8328
 merges, which triggers Test through the workflow's `edited` activity.
+
+Final completing code source `4d8cda58aa43df0e23b85496b079a8051f8d8c59`, Pop
+request `auto-ceefd80d53134b04a19b7b3e6f36bcf9`, job
+`7f7ff05e-e994-4253-8dc7-68eacd3ddc4a`: 14 targeted tests (including all four
+allocation inputs), 45 ratchet tests, all three static guards, all three reverse
+patch checks and extracted oracle `bash -n` pass. The two ignored tests are
+reseed helpers; there are no missing-fixture skips. Fresh default WASM plus diff
+bindings build and exact-diff against committed declarations without drift.
+Project/fleet exit 0, source unchanged; output SHA256
+`b908c355e3c35b39a059308ffe17500eef5000cdbab79ba6ecac805daa5de90d`.
+
+The exact command is the structural README's final two-phase
+`validate-round1.sh` invocation through `ifc-fleet`, using this source pin.
+Only evidence and structural oracle context change afterward; Rust sources and
+committed declarations remain identical to this qualification source.
+Broader new-head checks remain CI's responsibility as directed by the owner;
+this feature-branch base has no full Test run until retargeting.
+
+Round-1 storage task `c4-11b-fix-r1` is closed with all ten job manifests
+published and verified. Reclaim is blocked by the registered classifier's
+`packages/wasm/pkg-diff/.gitignore` refusal; the structural README records the
+six protected checkout pins and allocated-byte inventory. Source, fixtures,
+shared caches, release metadata and foreign work are preserved. Local artifact
+copies totaling 243,289,411 logical bytes were removed; only compact evidence is
+retained locally. No guard was bypassed and no uncertain job was resubmitted.

@@ -6,10 +6,11 @@ use super::{gpu_meshes, IfcAPI, IndexedColourCache};
 
 impl IfcAPI {
     /// Get or lazily build the cached parts-to-skip set used by
-    /// `processGeometryBatch` when the merge-layers toggle is on. Two
-    /// full-file scans (`MaterialLayerIndex` plus `propagate_voids_to_parts`)
-    /// are amortised across every batch on the same content; first-call cost
-    /// ~one IFC re-scan, subsequent calls are an `Arc::clone`.
+    /// `processGeometryBatch` when the merge-layers toggle is on. It reuses the
+    /// per-content material-layer index (prepass-injected on workers, else
+    /// built once with its substring bail-out), so the only scan left is the
+    /// aggregate walk, and a file with no sliceable buildup skips that too.
+    /// Subsequent calls are an `Arc::clone`.
     ///
     /// Returns an empty set when no eligible parts exist — callers can
     /// still cheaply test `parts.contains(&id)` without a branch.
@@ -18,63 +19,35 @@ impl IfcAPI {
         content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
+        let layers = self.get_or_build_material_layer_index(content, decoder);
         self.content.cached_parts_to_skip.get_or_init(|| {
-            // The layer/void driver now lives in the geometry crate next to its
-            // kernels (#913 Phase 4 / §2.6); this method just caches its result
-            // per content so it isn't recomputed on every batch.
-            let skip_set = ifc_lite_geometry::compute_parts_to_skip(content, decoder);
-
-            std::sync::Arc::new(skip_set)
+            // The layer/void driver lives in the geometry crate next to its
+            // kernels (#913 Phase 4 / §2.6); this caches its result per content.
+            std::sync::Arc::new(ifc_lite_geometry::compute_parts_to_skip(content, decoder, &layers))
         })
     }
 
     /// Get or lazily build the per-content [`MaterialLayerIndex`] (#563) used to
     /// slice single-solid walls/slabs with an `IfcMaterialLayerSetUsage` into one
-    /// sub-mesh per layer. Built once per load (one IFCRELASSOCIATESMATERIAL
-    /// decode scan, with a cheap substring bail-out on files that carry no layer
-    /// set) and `Arc`-shared with every batch router so the layer control
-    /// fires. Subsequent batches are an `Arc::clone`.
+    /// sub-mesh per layer, and by the merge-layers parts-to-skip set. Built once
+    /// per load (one IFCRELASSOCIATESMATERIAL decode scan, with a cheap substring
+    /// bail-out on files that carry no layer set) and `Arc`-shared with every
+    /// batch router so the layer control fires. Subsequent batches are an
+    /// `Arc::clone`. Pre-passes install it instead (worker wire or once path).
     pub(crate) fn get_or_build_material_layer_index(
         &self,
         content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex> {
         self.content.cached_material_layer_index.get_or_init(|| {
-
-        // Most models carry no IfcMaterialLayerSet. A cheap raw-byte substring
-        // probe (no entity decode) lets us cache an EMPTY index without the
-        // per-`IfcRelAssociatesMaterial` decode scan `from_content` runs — the
-        // cost the streaming pre-pass deliberately avoided. Only layered files
-        // pay the full build; non-layered files behave identically (an absent
-        // entry and a `NotSliceable` entry both mean "don't slice").
-        const LAYER_SET_KW: &[u8] = b"IFCMATERIALLAYERSET";
-        // memmem (SIMD O(n)) not the naive O(n*k) `windows().any()`: this runs on
-        // the whole file on each worker's first batch call, so on a 200-340MB model
-        // the naive scan cost ~100-400ms per worker. Byte-identical boolean.
-        let has_layer_set = ifc_lite_core::find_keyword(content, LAYER_SET_KW).is_some();
-        let index = if has_layer_set {
-            ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder)
-        } else {
-            ifc_lite_geometry::MaterialLayerIndex::new()
-        };
-        // Diagnostic (#563/#874): stay silent for the ~99% of models with no
-        // sliceable buildup (every load otherwise logged a line). Only speak up
-        // when there's something to slice — or when the layer-set keyword is
-        // present but NOTHING resolved as sliceable (e.g. an IfcMaterialLayerSet
-        // associated without a LayerSetUsage), which is the case worth flagging.
-        // The per-batch "sliced N wall(s)" line already reports success.
-        let sliceable = index.sliceable_count();
-        if sliceable > 0 {
-            gpu_meshes::batch_host::info(&format!(
-                "[ifc-lite layers] {sliceable} sliceable buildup(s) of {} association(s)",
-                index.len()
-            ));
-        } else if has_layer_set {
-            gpu_meshes::batch_host::warn(
-                "[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)",
-            );
-        }
-        std::sync::Arc::new(index)
+            let has_layer_set = has_material_layer_set(content);
+            let index = if has_layer_set {
+                ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder)
+            } else {
+                ifc_lite_geometry::MaterialLayerIndex::new()
+            };
+            report_material_layers(&index, has_layer_set);
+            std::sync::Arc::new(index)
         })
     }
 
@@ -190,5 +163,34 @@ impl IfcAPI {
         self.content
             .cached_plane_angle_to_radians
             .get_or_init(|| decoder.plane_angle_to_radians())
+    }
+}
+
+/// Most models carry no IfcMaterialLayerSet. A cheap raw-byte substring probe
+/// (no entity decode) lets a builder cache an EMPTY index without the
+/// per-`IfcRelAssociatesMaterial` decode. Only layered files pay the build;
+/// non-layered files behave identically (an absent entry and a `NotSliceable`
+/// entry both mean "don't slice"). memmem (SIMD O(n)) not the naive O(n*k)
+/// `windows().any()`: on a 200-340MB model the naive scan cost ~100-400ms.
+pub(crate) fn has_material_layer_set(content: &[u8]) -> bool {
+    ifc_lite_core::find_keyword(content, b"IFCMATERIALLAYERSET").is_some()
+}
+
+/// Diagnostic (#563/#874): stay silent for the ~99% of models with no
+/// sliceable buildup. Only speak up when there's something to slice — or when
+/// the layer-set keyword is present but NOTHING resolved as sliceable (e.g. an
+/// IfcMaterialLayerSet associated without a LayerSetUsage), which is the case
+/// worth flagging. The per-batch "sliced N wall(s)" line reports success.
+pub(crate) fn report_material_layers(index: &ifc_lite_geometry::MaterialLayerIndex, has_layer_set: bool) {
+    let sliceable = index.sliceable_count();
+    if sliceable > 0 {
+        gpu_meshes::batch_host::info(&format!(
+            "[ifc-lite layers] {sliceable} sliceable buildup(s) of {} association(s)",
+            index.len()
+        ));
+    } else if has_layer_set {
+        gpu_meshes::batch_host::warn(
+            "[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)",
+        );
     }
 }

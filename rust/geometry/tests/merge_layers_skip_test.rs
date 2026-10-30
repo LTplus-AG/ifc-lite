@@ -94,7 +94,8 @@ END-ISO-10303-21;
 /// exact same function this exercises.
 fn build_skip_set(content: &str) -> FxHashSet<u32> {
     let mut decoder = EntityDecoder::new(content);
-    compute_parts_to_skip(content, &mut decoder)
+    let layers = ifc_lite_geometry::MaterialLayerIndex::from_content(content, &mut decoder);
+    compute_parts_to_skip(content, &mut decoder, &layers)
 }
 
 #[test]

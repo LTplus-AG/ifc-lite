@@ -96,3 +96,39 @@ fn m10_classification_without_a_mapped_body_stays_rigid() {
     // Identity map (h1) stays rigid too.
     assert_eq!(classify(SOURCE, 34), Classification::Rigid);
 }
+
+// Hosted review of #8360: a mirrored IfcMappedItem under a Boolean operand or a CSG
+// root is still part of the Body. `mapped_items` stopped at the Boolean and said Rigid.
+fn csg_body(solids: &str, root: &str) -> String {
+    // h2 (#42): #39 is the mirrored map item, #31 h1's identity map item.
+    with(&[("#40=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#39));",
+        &format!("{solids}\n#40=IFCSHAPEREPRESENTATION(#4,'Body','CSG',({root}));"))])
+}
+
+#[test]
+fn m10_mirrored_map_under_a_boolean_or_csg_root_is_never_rigid() {
+    for (label, solids, root) in [
+        ("union of the mirror", "#9400=IFCBOOLEANRESULT(.UNION.,#39,#39);", "#9400"),
+        ("mirror as second operand", "#9400=IFCBOOLEANRESULT(.DIFFERENCE.,#31,#39);", "#9400"),
+        ("mirror as first operand", "#9400=IFCBOOLEANRESULT(.DIFFERENCE.,#39,#31);", "#9400"),
+        ("under a CSG solid", "#9400=IFCBOOLEANRESULT(.UNION.,#31,#39);\n#9401=IFCCSGSOLID(#9400);", "#9401"),
+        ("nested Boolean", "#9400=IFCBOOLEANRESULT(.UNION.,#31,#31);\n#9402=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#9400,#39);", "#9402"),
+    ] {
+        assert_eq!(classify(&csg_body(solids, root), 42), Classification::Affine, "{label}");
+    }
+}
+
+#[test]
+fn m10_rigid_maps_under_a_boolean_stay_rigid() {
+    let text = csg_body("#9400=IFCBOOLEANRESULT(.UNION.,#31,#31);", "#9400");
+    assert_eq!(classify(&text, 42), Classification::Rigid);
+}
+
+#[test]
+fn m10_undecodable_map_under_a_boolean_is_unmodelled() {
+    // The mirror's operator has no origin: it cannot be classified, and it sits under a Boolean.
+    let text = csg_body("#9400=IFCBOOLEANRESULT(.UNION.,#39,#39);", "#9400")
+        .replace(MIRROR, "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,$,1.,#3);");
+    let Classification::Unmodelled(reason) = classify(&text, 42) else { panic!("must not be rigid") };
+    assert!(reason.contains("#39"), "{reason}");
+}

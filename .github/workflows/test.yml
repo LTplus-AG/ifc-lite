@@ -909,8 +909,13 @@ jobs:
       # rebuilds the worker from the checkout it reverts. Provision the pinned
       # SDK (fetched, never vendored) and a configured native build OUTSIDE the
       # checkout, so the oracle's restoration check sees a clean tree;
-      # scripts/smlib-open-tessellation.test.mjs re-runs `cmake --build` on
-      # both oracle sides. Missing prerequisites are not evidence.
+      # scripts/smlib-open-tessellation.test.mjs and the open-tessellation
+      # Rust tests re-run `cmake --build` on both oracle sides. Without
+      # IFCLITE_SMLIB_NATIVE_BUILD those Rust tests return early and cargo
+      # counts them as passed (not evidence); their sdk witnesses are enforced
+      # in geometry-platform's native-adapter lane. Missing prerequisites are
+      # not evidence. The tools venv is NOT put on PATH (its python3 would
+      # shadow the interpreter with pytest); CMAKE names its cmake instead.
       - name: Detect changed SMLib adapter sources
         id: smlib
         run: |
@@ -929,11 +934,12 @@ jobs:
           git -C "$sdk" checkout -q FETCH_HEAD
           python3 -m venv "$RUNNER_TEMP/smlib-tools"
           "$RUNNER_TEMP/smlib-tools/bin/pip" install -q cmake==3.31.6 ninja==1.11.1.4
-          echo "$RUNNER_TEMP/smlib-tools/bin" >> "$GITHUB_PATH"
-          export PATH="$RUNNER_TEMP/smlib-tools/bin:$PATH"
-          cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
+          cmake="$RUNNER_TEMP/smlib-tools/bin/cmake"
+          "$cmake" -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
+            -DCMAKE_MAKE_PROGRAM="$RUNNER_TEMP/smlib-tools/bin/ninja" \
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$sdk"
-          cmake --build "$RUNNER_TEMP/smlib-native" --target ifclite_smlib_worker --parallel 4
+          "$cmake" --build "$RUNNER_TEMP/smlib-native" --target ifclite_smlib_worker --parallel 4
+          echo "CMAKE=$cmake" >> "$GITHUB_ENV"
           echo "IFCLITE_SMLIB_NATIVE_BUILD=$RUNNER_TEMP/smlib-native" >> "$GITHUB_ENV"
           test -z "$(git status --porcelain)"
       # #7495: report integration witnesses must run against real durable

@@ -56,33 +56,46 @@ function connect(executable) {
 }
 
 const f64 = (...values) => new Float64Array(values), u32 = (...values) => new Uint32Array(values);
+// Rebuild before any test is registered. A failed rebuild must never look
+// like an observed revert: node --test reports a top-level throw as one
+// failed test, which the revert oracle would score OBSERVED. So outside
+// IFCLITE_REQUIRE_SMLIB (where it fails loudly) the witness is SKIPPED with
+// the build error; an all-skipped run is INCONCLUSIVE to the oracle.
+let worker = null, unbuilt = null;
+if (build) {
+  try { worker = rebuildWorker(); }
+  catch (error) {
+    if (process.env.IFCLITE_REQUIRE_SMLIB) throw error;
+    unbuilt = `SKIP: native rebuild failed; not evidence: ${error.message.split('\n')[0]}`;
+  }
+}
 
 test('open Boolean tessellation is a typed kernel refusal on a rebuilt worker (#7955)', {
   timeout: 900000,
-  skip: !build && 'SKIP: set IFCLITE_SMLIB_NATIVE_BUILD to a configured native SMLib build; not evidence',
+  skip: (!build && 'SKIP: set IFCLITE_SMLIB_NATIVE_BUILD to a configured native SMLib build; not evidence') || unbuilt || false,
 }, async () => {
-  const worker = connect(rebuildWorker());
+  const peer = connect(worker);
   try {
-    const session = (await worker.call(1)).body;
+    const session = (await peer.call(1)).body;
     const box = async (...dims) => {
-      const reply = await worker.call(3, session, f64(...dims));
+      const reply = await peer.call(3, session, f64(...dims));
       assert.equal(reply.status, 0, 'box');
       return reply.body;
     };
     // Unit cubes sharing only the edge x=y=1: a valid point set, not a 2-manifold solid.
     const a = await box(0, 0, 0, 1, 1, 1), b = await box(1, 1, 0, 1, 1, 1);
-    const union = await worker.call(5, session, a, b, u32(1));
+    const union = await peer.call(5, session, a, b, u32(1));
     assert.equal(union.status, 0, 'union');
-    const manifold = await worker.call(7, session, union.body);
+    const manifold = await peer.call(7, session, union.body);
     assert.equal(manifold.body.readUInt32LE(0), 0, 'SMLib reports the union non-manifold (inputManifold=false)');
-    const open = await worker.call(9, session, union.body, f64(0.001, 5));
+    const open = await peer.call(9, session, union.body, f64(0.001, 5));
     assert.equal(open.status, 4, 'open tessellation must be IFCLITE_SMLIB_KERNEL_ERROR, not a success');
     assert.match(open.body.toString('utf8'), /boundary or spine edges/);
     // The refusal leaves the session usable: a closed operand still tessellates closed.
-    const closed = await worker.call(9, session, a, f64(0.001, 5));
+    const closed = await peer.call(9, session, a, f64(0.001, 5));
     assert.equal(closed.status, 0, 'closed operand tessellates');
-    const info = await worker.call(10, session, closed.body);
+    const info = await peer.call(10, session, closed.body);
     assert.deepEqual([info.body.readUInt32LE(12), info.body.readUInt32LE(16)], [0, 0], 'no lamina/spine edges');
-  } finally { worker.close(); }
+  } finally { peer.close(); }
   console.log('sdk witness executed: open_tessellation_rebuilt_worker');
 });

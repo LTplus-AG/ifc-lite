@@ -11,42 +11,19 @@
 //! and divides each component, so swapping it would move the last bit of
 //! every unit vector the cut derives. `lerp` and `bits` have no `math::v3`
 //! twin. `V2` is a ROUTER-7 site, moved as-is (no `math::v2` swap).
+//!
+//! `V3`, `dot`, `sub`, `add`, `scale`, `cross` and `norm` are `math::v3`'s.
+//! Each body there is the deleted local one token for token: the same
+//! left-to-right operand order, no `mul_add`, `#[inline]` on both sides, so
+//! every call computes the same bits.
 
 // ─────────────────────────── small f64 vector kit ───────────────────────────
 // Explicit component arithmetic (no nalgebra matrix products) so no FMA can
 // sneak in and break native==wasm byte identity.
 
-pub(in crate::router::voids) type V3 = [f64; 3];
+pub(in crate::router::voids) use crate::math::v3::{add, cross, dot, norm, scale, sub, V3};
 pub(super) type V2 = [f64; 2];
 
-#[inline]
-pub(in crate::router::voids) fn dot(a: V3, b: V3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-#[inline]
-pub(in crate::router::voids) fn sub(a: V3, b: V3) -> V3 {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-#[inline]
-pub(in crate::router::voids) fn add(a: V3, b: V3) -> V3 {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-#[inline]
-pub(in crate::router::voids) fn scale(a: V3, s: f64) -> V3 {
-    [a[0] * s, a[1] * s, a[2] * s]
-}
-#[inline]
-pub(in crate::router::voids) fn cross(a: V3, b: V3) -> V3 {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
-}
-#[inline]
-pub(in crate::router::voids) fn norm(a: V3) -> f64 {
-    dot(a, a).sqrt()
-}
 #[inline]
 pub(in crate::router::voids) fn normalize(a: V3) -> Option<V3> {
     let n = norm(a);

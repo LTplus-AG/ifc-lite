@@ -15,14 +15,14 @@
 # `git archive` next to the head checkout and both sides run the same harness.
 set -euo pipefail
 mode=${1:?usage: qualify.sh identity|instructions|features|gates}
-base=${C28_BASE:-70c91e8e61ef97d10a4aaa219d0c97ab42b5d5d1}
+base=$(git rev-parse --verify "${C28_BASE:-70c91e8e617402ea2ca8949117fa2acbe61d97b7}^{commit}")
 head_dir=$PWD
 fixtures=(
   tests/models/ara3d/AC20-FZK-Haus.ifc
   tests/models/ara3d/duplex.ifc
   tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc
 )
-echo "C28 mode=$mode head=$(git rev-parse HEAD) base=$(git rev-parse "$base") host=$(hostname)"
+echo "C28 mode=$mode head=$(git rev-parse HEAD) base=$base host=$(hostname)"
 git diff --quiet && git diff --cached --quiet || { echo 'head checkout is dirty'; exit 2; }
 rustc --version
 

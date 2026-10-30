@@ -387,6 +387,40 @@ const buffer = createMinimalIfc([
 ]);
 ```
 
+### Per-Mesh Corpus Gate for Geometry Changes
+
+A change to void cutting or mesh cleanup is judged mesh by mesh, never in
+aggregate: a mesh that gains open edges is a regression, and one that gains
+slivers or raises its max aspect above 1.5x without closing an open edge is
+quality-worse. Three tools run that comparison over the fixture corpus in a
+few minutes:
+
+```bash
+# 1. Build the census once per commit and copy it out of target/ before
+#    switching commits, so base and branch binaries can sit side by side.
+cargo build --release -p ifc-lite-processing --example mesh_census
+cp target/release/examples/mesh_census /tmp/mesh_census_branch
+
+# 2. One JSON line per mesh for every manifest .ifc up to 200 MiB, 6 at a time.
+scripts/mesh-census-corpus.sh /tmp/mesh_census_branch tests/models /tmp/branch.jsonl 200 6
+
+# 3. The per-mesh verdict (exit 1 on any regression, quality-worse or missing mesh).
+node scripts/mesh-census-compare.mjs /tmp/base.jsonl /tmp/branch.jsonl
+```
+
+Besides open and nonmanifold edges, slivers, max aspect and area, the census
+reports thin material (anti-parallel faces under 200 um apart, facing away)
+and coincident sheets. A host sliver left between two flush openings is
+watertight and removes almost no volume, so only those two catch it. Running
+it with `CENSUS_ARGS=--no-voids` attributes thin material to the cut (in
+models with an `IfcWindow` or `IfcDoor` job only; see the example's doc).
+
+For a fast inner loop on one host, cut it out of its model with
+`scripts/ifc-extract-hosts.py [--anonymise] <model.ifc> <out.ifc> <host id>`
+(the host, its openings, the project and the site, whose placement sets the
+RTC offset), check with `mesh_census --ids <host id> <out.ifc>` that the
+extract meshes like the full model, and iterate on the extract.
+
 ## Mocking
 
 ### TypeScript Mocks

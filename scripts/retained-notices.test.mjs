@@ -435,4 +435,12 @@ test('Refs #7955 cargo-only withdrawn-supplement guard ignores a key-only reorde
     attribution: record.attribution, election: record.election, version: record.version, name: record.name };
   f.put('licenses/retained/supplemental.json', JSON.stringify([reordered]));
   assert.doesNotThrow(() => notices.refreshCargoOnly(f.root, bumped));
+  const emscripten = f.manifest().components.find(c => c.name === 'fixture Emscripten');
+  assert.equal(emscripten.notices.filter(n => n.sha256 === sha256).length, 1, 'reordered notice is not appended twice');
+  checkNotices(f.root, false);
+  assert.doesNotThrow(() => checkNotices(f.root));
+  // The check's evidence comparison is key-order independent too, and a repeat run is a no-op.
+  const once = manifestBytes(f);
+  assert.doesNotThrow(() => notices.refreshCargoOnly(f.root, bumped));
+  assert.equal(manifestBytes(f), once);
 });

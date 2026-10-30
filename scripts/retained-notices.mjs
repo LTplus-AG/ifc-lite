@@ -62,7 +62,7 @@ export function applySupplemental(components, supplements) {
     }
     // Idempotent: a reused component may already carry the record from an earlier refresh.
     for (const notice of supplement.notices) {
-      if (!component.notices.some(actual => JSON.stringify(actual) === JSON.stringify(notice))) component.notices.push(notice);
+      if (!component.notices.some(actual => canonical(actual) === canonical(notice))) component.notices.push(notice);
     }
   }
 }
@@ -94,7 +94,7 @@ export function renderNotices(manifest, readText) {
 // validate its result before writing anything. Returns the generated outputs.
 function validateManifest(manifest, root, readText) {
   verifyManifestIntegrity(manifest);
-  if (JSON.stringify(manifest.inputs) !== JSON.stringify(inventoryInputs(root))) {
+  if (canonical(manifest.inputs) !== canonical(inventoryInputs(root))) {
     throw new Error('Retained notice inventory inputs changed; refresh against pinned SDK, toolchain and Cargo metadata');
   }
   for (const closure of Object.values(manifest.inputs.cargoClosures)) {
@@ -118,7 +118,7 @@ function validateManifest(manifest, root, readText) {
     const component = manifest.components.find(c => c.name === supplement.name && c.version === supplement.version);
     if (!component || (supplement.election && (component.election !== supplement.election ||
         component.attribution !== supplement.attribution)) || supplement.notices.some(n =>
-        !component.notices.some(actual => JSON.stringify(actual) === JSON.stringify(n)))) {
+        !component.notices.some(actual => canonical(actual) === canonical(n)))) {
       throw new Error(`Missing supplemental evidence: ${supplement.name}`);
     }
   }

@@ -41,7 +41,7 @@ case "${1:-native}" in
   wasm)
     # Fresh matched base/head WASM (CI=1 forbids build-wasm's soft skip). The
     # base export lives in this task checkout and is removed afterwards.
-    base=${C4_7B_BASE:-1a3d4a83a79bdad791125eebc64a6a69776c7b42}
+    base=${C4_7B_BASE:-51d6e067a558c98dc2ad49be982e43cbed4e5c08}
     scratch="$PWD/.c4-7b-baseline"
     [[ ! -e "$scratch" ]] || { echo 'baseline scratch already exists'; exit 1; }
     mkdir "$scratch"

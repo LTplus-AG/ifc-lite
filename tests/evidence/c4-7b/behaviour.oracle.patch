@@ -12,15 +12,15 @@ index 79b37e67e6..00d57ca20e 100644
              // The layer/void driver lives in the geometry crate next to its
              // kernels (#913 Phase 4 / §2.6); this caches its result per content.
 diff --git b/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs a/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs
-index 01bd48a897..d6ce7111a8 100644
+index c7993c3e93..550d9e2d69 100644
 --- b/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs
 +++ a/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs
-@@ -111,7 +111,7 @@ impl IfcAPI {
-         // occurrences; processGeometryBatch tags each with its geometry_class.
-         columns.type_plan.decode_products(content, &pre_pass.type_candidate_spans, &mut decoder);
+@@ -116,7 +116,7 @@ impl IfcAPI {
+             &mut decoder,
+         );
          pre_pass.complex_jobs.extend(columns.type_plan.jobs());
 -        drop(columns);
 +        self.install_prepass_columns(columns);
  
          self.collect_pipeline_refusals(&decoder);
-         PrepassOnceData {
+         self.note_omitted_type_records(&omitted_type_records);

@@ -10,7 +10,7 @@
 # (rayon helpers included). The measured cost of a mode is its total Ir minus
 # its `-setup` twin, which runs the identical setup without the measured call.
 set -euo pipefail
-base=${C4_7B_BASE:-1a3d4a83a79bdad791125eebc64a6a69776c7b42}
+base=${C4_7B_BASE:-51d6e067a558c98dc2ad49be982e43cbed4e5c08}
 head_dir=$PWD
 fixtures=(
   rust/processing/tests/fixtures/c4_native_unsliced_layers_7782.ifc

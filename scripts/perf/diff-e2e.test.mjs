@@ -257,7 +257,8 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     const demo = join(fixtureRoot, 'apps/viewer/public/samples'); await mkdir(demo, { recursive: true });
     const files = ['building-architecture.ifc', 'building-architecture-rev-b.ifc'].map(n => join(demo, n));
     for (const file of files) await writeFile(file, 'unit input');
-    await writeFile(originalPath, '{"exclusive":"unit"}');
+    const exclusive = { kind: 'benchmark', state: 'running', startedAt: Date.now() / 1000 };
+    await writeFile(originalPath, JSON.stringify(exclusive));
     const bindings = { runtime: await runtimeReceipt(), harnessSource: inventories.base.source,
       measurement: { hostname: hostname() },
       harness: digest(await harnessReceipt()), base: digest(inventories.base), branch: digest(inventories.branch),
@@ -270,6 +271,15 @@ test('#8042 cohort requires frozen bindings and keeps separate proof failure evi
     const args = { protocolPath, admissionPath, baseRoot: root, branchRoot: root, fixtureRoot, out: join(dir, 'output') };
     const runUnit = (args, sampleFn) => run(args, sampleFn, () => inventories.base.source);
     await save(protocol());
+    for (const bad of [{ state: 'failed' }, { ...exclusive, state: 'failed' },
+      { ...exclusive, kind: 'ordinary' }, { ...exclusive, state: 'queued' },
+      { ...exclusive, state: 'completed' }, { ...exclusive, startedAt: null },
+      { ...exclusive, startedAt: '2026-10-30' }]) {
+      await writeFile(originalPath, JSON.stringify(bad));
+      await assert.rejects(runUnit(args, () => assert.fail('invalid admission reached sampling')),
+        /exclusive admission receipt/);
+    }
+    await writeFile(originalPath, JSON.stringify(exclusive));
     await assert.rejects(runUnit(args), /freeze runtime/);
     await save(protocol({ bindings }));
     const calls = [];

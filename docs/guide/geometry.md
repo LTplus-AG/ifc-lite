@@ -955,6 +955,17 @@ matching native admission-refusal semantics. Repeated reads and batches do not a
 record twice. These counters are separate from owned-producer refusal warnings
 and CSG failure diagnostics. They do not change which geometry is emitted.
 
+`omittedTypeRecords` (#8341) makes a different loss countable: a type product
+whose RepresentationMaps the scan can read, but whose own record the full
+decoder rejects (a syntax error in another attribute), cannot be meshed, so its
+type geometry is left out of the plan. It counts distinct records whose plan
+had at least one map to draw in that pipeline's type mode, once per load
+however many maps or re-reads. Type records are exempt from input admission,
+so these are plain decode failures and never appear in the refusal counters.
+Native drops the same records before scheduling and reports their ids, once,
+through `ProcessingSink::on_omitted_type_records`; `from_processing_stats`
+cannot see them and leaves the report field at 0.
+
 The counts are per `IfcAPI`, not a deduplicated model-wide sum over workers.
 They survive `clearPrePassCache()` for inspection after a load, and reset on
 load start (`buildPrePassOnce`, streaming prepass, `setEntityIndex`, or
@@ -962,8 +973,8 @@ load start (`buildPrePassOnce`, streaming prepass, `setEntityIndex`, or
 
 Rust callers can use
 `ifc_lite_processing::pipeline_diagnostics::PipelineDiagnosticsReport` via
-`Default` or `from_processing_stats`. It contains the original counters/timings
-and the two refusal counters, serialized as one flat object. The published
+`Default` or `from_processing_stats`. It contains the original counters/timings,
+the two refusal counters and `omitted_type_records`, serialized as one flat object. The published
 `PipelineDiagnostics` v1 struct and its constructor remain available unchanged;
 the new report is non-exhaustive so future counters can be added without
 breaking struct literals. Inspection of the published `ifc-lite-processing`

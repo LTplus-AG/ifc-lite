@@ -17,7 +17,7 @@
 //! the removed solid is `union(footprint_i) × depth`. This module recovers it
 //! CHEAPLY and EXACTLY:
 //!   1. CLUSTER cutters by extended-AABB overlap (union-find, the SAME 1 mm pad
-//!      the batching uses so touching-but-not-overlapping cutters stay disjoint).
+//!      the batching uses, so touching and abutting cutters cluster too).
 //!   2. For a COAXIAL cluster whose members share ONE depth band along the axis,
 //!      project every cutter's cap footprint to the plane ⟂ the axis, UNION them
 //!      in ONE i_overlay pass (`union_contours_to_shapes`, NonZero fill — not
@@ -47,6 +47,8 @@
 
 #[path = "coaxial_union3d.rs"]
 mod union3d;
+#[path = "coaxial_union_snap.rs"]
+mod snap;
 
 use nalgebra::{Matrix4, Point2, Vector3};
 
@@ -134,9 +136,8 @@ impl Execution {
         if !enabled() || all_openings.len() < 2 {
             return;
         }
-        // 1 mm pad — identical to the disjoint batching's BATCH_PAD, so a cutter
-        // pair that the batching would treat as disjoint (touching, not
-        // overlapping) is ALSO disjoint here and never merged into a cluster.
+        // 1 mm pad (BATCH_PAD) on both boxes: cutters up to 2 mm apart DO cluster,
+        // so abutting openings reach the footprint union (#8190).
         const PAD: f64 = 1.0e-3;
 
         // Admit candidates with the same light guards the sequential loop applies
@@ -379,7 +380,9 @@ impl Execution {
             if contours.is_empty() {
                 continue; // an empty slab (a gap between depth bands) removes nothing
             }
-            // ONE i_overlay union of the slab's footprints (overlaps merge exactly).
+            // Flush footprints made to coincide first (#8190), then ONE i_overlay
+            // union of the slab's footprints (overlaps merge exactly).
+            snap::reconcile(&mut contours);
             let shapes = union_contours_to_shapes(&contours);
             if shapes.is_empty() {
                 return None;
@@ -453,12 +456,9 @@ impl Execution {
         };
         accept_cut(result, cut, max_removed)
     }
-
-
 }
 
-/// AABB overlap on all three axes (half-open, matching the batching's disjoint
-/// test negated).
+/// AABB overlap on all three axes (the batching's disjoint test negated).
 #[inline]
 fn aabb_overlap(alo: &[f64; 3], ahi: &[f64; 3], blo: &[f64; 3], bhi: &[f64; 3]) -> bool {
     !(ahi[0] < blo[0]

@@ -19,7 +19,12 @@ fixtures=(
   tests/models/ara3d/duplex.ifc
   tests/models/ara3d/schependomlaan.ifc
 )
+# Pop provisions valgrind as a user toolchain rather than a system package.
+for dir in "$HOME"/build-workers/toolchains/valgrind-*/bin; do
+  command -v valgrind >/dev/null || { [[ -x $dir/valgrind ]] && PATH="$dir:$PATH"; }
+done
 command -v valgrind >/dev/null || { echo 'valgrind (callgrind) is required'; exit 2; }
+valgrind --version
 
 export IFC_C4_FIXTURE_CACHE="${IFC_C4_FIXTURE_CACHE:-$HOME/build-workers/ifc-lite/tests/models}"
 python3 - <<'PYFIX'

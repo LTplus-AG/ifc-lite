@@ -66,6 +66,8 @@ Stream-complete and observed readiness are unchanged. Geometry becomes visible e
 and the spatial tree arrives later, which looks like a main-thread ordering shift inside
 the window. No commit is attributed.
 
+Scope of the host gates: admission required a ready, idle host. Mid-run sampling recorded external builds, unreadable processes, CPU policy, temperature and throttling, and all stayed clean. It did not record CPU pressure, so a later `cpu_pressure` readiness failure would not appear here. The native resumes below overlapped this cohort, so browser timings may carry that load too. `cohort.py` is kept as the script that ran; its smoke check requires a renderer peak this host never labelled, so that stage would abort on a rerun (the smoke did not run here).
+
 ## Native C4-10b A/B (`ifc-benchmark`, reviewed ab.sh protocol)
 
 - **Layer 1, #8317** (`70da3ece1b` → `5287a9a5bb`): complete five randomized pairs.
@@ -82,7 +84,7 @@ the window. No commit is attributed.
   `-r2` measurement was refused by the adapter's single-shot readiness check
   (`cpu_pressure`, avg10 36%, no registered builders) before any round ran.
 
-Host overlap: both native resumes started while the browser cohort was running, because Pop was never idle otherwise, so their readiness checks overlapped the browser run lightly. Treat the native timing deltas as weaker evidence than an idle-host run. Mesh, vertex and triangle counts are unaffected.
+Host overlap: both native resumes started while the browser cohort was running, because Pop was never idle otherwise, so their readiness checks overlapped the browser run lightly. Treat both the native and the browser timing deltas as weaker evidence than an idle-host run. Mesh, vertex and triangle counts are unaffected.
 
 ## Not measured, and why
 

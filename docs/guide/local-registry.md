@@ -204,6 +204,6 @@ reader denials, existing-version refusal, panel-close session survival and
 independent ORAS retrieval. Generic file-source providers retain their existing
 download API; publishing is a registry-specific action within Cloud Sources.
 
-The [recorded browser walkthrough](../architecture/evidence/registry-pkce-login/README.md)
+The [recorded browser walkthrough](https://github.com/zahmadsaleem/ifc-lite/blob/897e9c9f730849aa090a2117ce03423bde09ddfc/docs/architecture/evidence/registry-pkce-login/README.md)
 shows the password-free viewer, successful registry login, publication and reopen,
 with independent ORAS integrity verification.

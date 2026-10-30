@@ -15,7 +15,10 @@ are under `licenses/retained/texts/`; they are not paraphrased licence templates
 CI compares semantic inputs: external locked package identities/checksums in each
 production dependency closure, the SMLib and emsdk pins, Emscripten version, Rust
 toolchain channel and supplemental notice records. Workspace versions and unrelated
-workflow text are excluded. Preserved notice hashes and generated outputs are checked.
+workflow text are excluded. Preserved notice hashes and generated outputs are checked,
+and `manifest.json` carries a `manifestSha256` digest of its inputs and components that
+`--check` and `--write` verify. It catches accidental damage (a text dropped by a merge
+resolution, hand-edited inputs); it is not a signature, because `--refresh` recomputes it.
 The Apache-2.0 election for `wasm_sync` below closes the missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code
@@ -231,6 +234,24 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
    failures remain visible; this record does not waive publication prerequisites.
 
+7. **Open for the maintainer: unrecorded dual-licence elections.** Components
+   whose declaration offers alternatives but whose manifest entry has fewer than two
+   texts and no `election` record (only `wasm_sync` has one). Each has at least one
+   complete alternative preserved, so no text is missing for an OR election, but the
+   choice is the maintainer's and is not made here:
+   * Emscripten runtime (`MIT OR NCSA`): the preserved `LICENSE` reproduces both
+     licences and Node's MIT text; nothing missing. Its copyright line refers to
+     the Emscripten `AUTHORS` file, which is not preserved.
+   * chrono 0.4.44 (`MIT OR Apache-2.0`): the preserved `LICENSE.txt` reproduces both.
+   * r-efi 5.3.0 (`MIT OR Apache-2.0 OR LGPL-2.1-or-later`): the archive and upstream
+     tag ship only `AUTHORS`, which holds the MIT permission notice and copyright
+     holders, but only boilerplate for Apache-2.0 and LGPL-2.1. MIT is fully
+     preserved; Apache-2.0 or LGPL would need their full texts added.
+   * wide 1.4.0 (`Zlib OR Apache-2.0 OR MIT`): the archive and upstream commit ship
+     only `LICENSE-ZLIB.md`, which is complete for Zlib; the Apache-2.0 and MIT
+     alternatives have no text at the origin.
+   * dlmalloc is not an alternative: public-domain dedication, header preserved.
+
 ## Regeneration
 
 The refresh resolves the current locked source closures and reads Cargo archive paths
@@ -242,6 +263,12 @@ node scripts/retained-notices.mjs --refresh --sdk /absolute/pinned-usd-brep \
   --emscripten /absolute/emsdk/upstream/emscripten
 node scripts/retained-notices.mjs --check
 ```
+
+When only Cargo closures changed, `--refresh --cargo-only` reuses the committed SDK
+and toolchain components instead (see the
+[release runbook](../guide/retained-release.md#refreshing-retained-notices-after-a-dependency-change)):
+it fails closed if the manifest digest, the SDK/emsdk/Emscripten/Rust pins or the
+component layout do not match. `--write` cannot bypass the digest.
 
 Refresh reads actual installed licence files and preserves byte hashes, including
 line endings. Review changed pins, missing texts and supplemental sources before

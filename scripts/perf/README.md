@@ -35,6 +35,27 @@ to the same 65,536 and 131,072 buckets. Sharing the builder is DRY work, not
 a performance claim; the browser index must also answer metadata lookups
 mid-scan, which the paged builder cannot.
 
+## C4-7b fallback full-file work (#8341)
+
+Verdict: shipped. Instruction counts only, for the slice that reaches the lazy
+fallbacks; no worker-pool wall-time or browser memory claim. Output hashes are
+identical on six fixtures, merge layers off and on. Counts, fixtures and receipts
+are in `tests/evidence/c4-7b/README.md`.
+
+Two kinds of duplicate work remained. With merge layers on, every geometry worker's
+parts-to-skip rebuilt the material-layer index with an ungated full scan, even
+though the prepass had injected the same index, and then walked the aggregates.
+Passing the per-content index and returning early when nothing is sliceable
+removes both walks on files with no sliceable buildup, and the index walk on the
+rest. `buildPrePassOnce` (remesh, viewer-html, the C4-0 gate) rescanned for type
+jobs, then its first batch scanned again for the type plan and the layer index.
+Building both pre-passes' columns once from scan spans (`PrepassColumns`) and
+installing them on the once path removes all three.
+
+Lesson: an injected column helps only consumers that read the slot. Look for
+drivers that rebuild their own input. The keyword-gated indexed-colour and texture
+fallbacks remain, because the worker wire carries no spans for them.
+
 ## C4 default browser worker-pool measurement (#8341)
 
 **Cumulative C4 window neutral within noise; peak memory not strictly at or below base.**

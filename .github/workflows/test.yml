@@ -964,9 +964,17 @@ jobs:
           # Keep the plumbing; stop reporting omitted type records.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/f2-8341/behaviour.oracle.patch --test rust/processing/tests/f2_omitted_type_records_8341.rs)
+          # #8341 C4-12x: whole-file inversion deletes csg_console and its tests.
+          # Keep the module; report the wrong product count in the failure line.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-12x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-12x/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-12x/behaviour.oracle.patch --test rust/wasm-bindings/src/api/csg_console_tests.rs)
           # #8113: retain the new harness modules; remove only admission validation.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-8113/admission.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-8113/admission.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/diff-e2e-8113/admission.oracle.patch --test scripts/perf/diff-e2e.test.mjs)
+          # #8277: retain the v4 protocol exports; loosen only the warm budget upper-bound
+          # gate, so the inconclusive warm-budget witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-v4-8277/behaviour.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-v4-8277/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/diff-e2e-v4-8277/behaviour.oracle.patch --test scripts/perf/diff-e2e.test.mjs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/api/gpu_meshes/prepass_index.rs | grep -Fxq 'rust/wasm-bindings/src/api/gpu_meshes/prepass_index.rs'; then
             oracle_args+=(--mutation tests/evidence/c4-11b-prepass/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11b_prepass_tests.rs)
             oracle_args+=(--mutation tests/evidence/c4-11b-prepass/meta.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11b_prepass_tests.rs)

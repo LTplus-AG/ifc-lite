@@ -1,5 +1,13 @@
 # @ifc-lite/ids-agent
 
+## 0.2.10
+
+### Patch Changes
+
+- Updated dependencies [[`2986934`](https://github.com/LTplus-AG/ifc-lite/commit/298693424041c38f0a44433e770e0b3e75b101ec)]:
+  - @ifc-lite/ids@3.4.3
+  - @ifc-lite/ids-authoring@0.3.3
+
 ## 0.2.9
 
 ### Patch Changes

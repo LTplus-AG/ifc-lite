@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { roundOrder, seededRand } from './ab-order.mjs';
 
-export const VERSION = 'ifc-diff-e2e/3';
+export const VERSION = 'ifc-diff-e2e/4';
+export const WARM_BUDGET_MS = Object.freeze({ demo: 1, haus: 1, large: 50 });
 export const OPTIONS = [
   { scope: 'data' },
   { scope: 'data', matchUnpairedByContent: true },
@@ -18,15 +19,15 @@ export const LIMITS = Object.freeze({ pairs: 6, rows: 1_000_000,
 // Frozen before timing; identity remains independent of statistical inference.
 export const ACCEPTANCE = Object.freeze({
   status: 'premeasurement-rule',
-  primaryEndpoints: ['cold lifecycleTotalMs', 'warm per-process median public-call totalMs'],
+  primaryEndpoints: ['cold lifecycleTotalMs', 'warm candidate per-process median handle compare totalMs (absolute budget)'],
   primaryCases: ['demo', 'haus', 'large'], options: [2],
-  noninferiorityRatio: 1.10,
-  statisticalMethod: 'paired percentile bootstrap median branch/base ratio; 95% pointwise CI; 10000 resamples; fixed seed 8042; no familywise speedup claim',
+  noninferiorityRatio: 1.10, warmBudgetMs: WARM_BUDGET_MS,
+  statisticalMethod: 'cold paired percentile bootstrap median branch/base ratio; warm percentile bootstrap candidate process medians in ms; 95% pointwise CI; 10000 resamples; fixed seed 8042; no familywise speedup claim',
   inferenceUnit: 'fresh process pair; repeats summarized by process median',
   noise: { maximumArmRelativeRange: 0.20, definition: '(max-min)/median across process summaries' },
   contamination: 'failed admission, timeout, failure or changed identity blocks verdict; spread over 20% flags noisy and blocks a clean pass; preserve every observation',
   idle: 'standard exclusive physical-host admission and idle check at start; per-round load average and CPU deltas are descriptive, with no process classification',
-  decision: 'regression if any lower CI exceeds 1.10; pass if every upper CI is at most 1.10 and no noise; otherwise inconclusive',
+  decision: 'regression if any cold lower CI exceeds 1.10 or any warm lower CI exceeds its case budget; pass if all cold upper CI are at most 1.10 and all warm upper CI are at most their case budgets and no noise; otherwise inconclusive',
   timingScope: 'CLI fingerprints are data-only; geometry-enriched proof is separate required coverage',
   largeRevision: {
     permitted: 'real large IFC with an authored revision or a reproducible controlled derived IFC revision; independently authored revisions are not required by #8042',
@@ -56,9 +57,10 @@ export function protocol({ pairs = 6, seed = 8042, dryRun = false,
   const haus = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
   return {
     version: VERSION, dryRun, bindings, acceptance: ACCEPTANCE, execution: {
-      primary: 'final public diffModels facade, handles packed/constructed/freed per call',
+      primary: 'cold public diffModels; warm public DiffModelHandle.compare vs TS diffModels',
       cold: 'fresh process, one option, continuous imports/init/read/parse/fingerprints/call/release+GC',
-      warm: 'separate fresh process, one untimed conditioning call, retained JS rows, repeated public calls',
+      warm: 'separate fresh process; candidate prepares two public handles once, one untimed conditioning compare, repeated timed base.compare(head, options), disposal in lifecycle only; TS retains JS rows and repeats diffModels',
+      secondary: 'warm branch/base ratio is report-only; candidate stateless diffModels warm process median after primary calls and handle disposal; one conditioning call, same repeats; reported only, never gated',
       proof: 'separate audited processes before timing each fixture; no hashes in timing processes',
       optionOrder: [2], modeOrder: ['cold', 'warm'],
       caches: 'cold JS/WASM process; uncontrolled warm OS filesystem cache; no cache eviction',
@@ -149,6 +151,30 @@ export function resultProof(result, base, head) {
   return { sha256: digest(result, references), counts: result.counts };
 }
 
+// Public handles own immutable row snapshots (#8042 A1), while opaque refs
+// must retain input identity. Re-index those validated snapshots in input order
+// so the existing tagged proof stays byte-comparable with the stateless arm.
+export function handleResultProof(result, base, head) {
+  const snapshots = (side, rows) => {
+    const byKey = new Map();
+    for (const entry of result.entries) {
+      const row = entry[side];
+      if (row === undefined) continue;
+      assert.ok(!byKey.has(row.key), 'duplicate snapshot row in entries');
+      byKey.set(row.key, row);
+    }
+    assert.equal(byKey.size, rows.length, 'handle result must cover every input row');
+    return rows.map(original => {
+      const snapshot = byKey.get(original.key);
+      assert.ok(snapshot, 'handle snapshot missing input key');
+      assert.deepEqual(snapshot, original, 'handle snapshot changed input values');
+      assert.equal(snapshot.ref, original.ref, 'handle snapshot lost opaque ref identity');
+      return snapshot;
+    });
+  };
+  return resultProof(result, snapshots('base', base), snapshots('head', head));
+}
+
 export function fixtureInvariant(fixture, result, base, head) {
   if (fixture.id === 'haus') {
     assert.equal(result.counts.unchanged, base.length, 'Haus self-comparison lost entities');
@@ -198,6 +224,25 @@ export function endpointVerdict(base, branch) {
   return { medianRatio: distribution(ratios).median, ci95, armSpread, noisy,
     verdict: ratios.length < 5 ? 'dry-run-only' : ci95[0] > 1.10 ? 'regression'
       : noisy ? 'noisy' : ci95[1] <= 1.10 ? 'pass' : 'inconclusive' };
+}
+
+// Same percentile resampling and seed as the cold ratio gate, using only
+// candidate per-process medians. TS latency and noise cannot gate this budget.
+export function warmBudgetVerdict(candidate, caseId) {
+  const budgetMs = WARM_BUDGET_MS[caseId];
+  assert.ok(budgetMs > 0, 'unknown warm budget case');
+  assert.ok(candidate.length > 0 && candidate.every(v => Number.isFinite(v) && v > 0));
+  const rand = seededRand(8042), medians = [];
+  for (let repeat = 0; repeat < 10000; repeat++) {
+    medians.push(distribution(candidate.map(() => candidate[Math.floor(rand() * candidate.length)])).median);
+  }
+  medians.sort((a, b) => a - b);
+  const ci95 = [medians[249], medians[9749]], d = distribution(candidate);
+  const candidateSpread = (d.max - d.min) / d.median;
+  const noisy = candidateSpread > 0.20;
+  return { budgetMs, medianMs: d.median, ci95, candidateSpread, noisy,
+    verdict: candidate.length < 5 ? 'dry-run-only' : ci95[0] > budgetMs ? 'regression'
+      : noisy ? 'noisy' : ci95[1] <= budgetMs ? 'pass' : 'inconclusive' };
 }
 
 export function cohortVerdict(endpoints) {

@@ -1,0 +1,13 @@
+diff --git a/scripts/perf/diff-e2e-protocol.mjs b/scripts/perf/diff-e2e-protocol.mjs
+index 97a289d51e..424a0ec623 100644
+--- a/scripts/perf/diff-e2e-protocol.mjs
++++ b/scripts/perf/diff-e2e-protocol.mjs
+@@ -242,7 +242,7 @@ export function warmBudgetVerdict(candidate, caseId) {
+   const noisy = candidateSpread > 0.20;
+   return { budgetMs, medianMs: d.median, ci95, candidateSpread, noisy,
+     verdict: candidate.length < 5 ? 'dry-run-only' : ci95[0] > budgetMs ? 'regression'
+-      : noisy ? 'noisy' : ci95[1] <= budgetMs * 100 ? 'pass' : 'inconclusive' };
++      : noisy ? 'noisy' : ci95[1] <= budgetMs ? 'pass' : 'inconclusive' };
+ }
+ 
+ export function cohortVerdict(endpoints) {

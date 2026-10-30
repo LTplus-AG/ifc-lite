@@ -21,6 +21,7 @@ mod pdf_vector;
 mod bool2d;
 mod clash;
 mod clash_solid;
+mod csg_console;
 mod csg_diagnostics;
 mod diagnose;
 mod entity_index;

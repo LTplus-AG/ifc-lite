@@ -27,7 +27,7 @@ from scan spans) is the one construction both pre-passes use. The streaming
 pre-pass flattens it onto the worker wire as before. `buildPrePassOnce` now
 collects mapped-item and type-candidate spans in its single scan, plans its
 type jobs from them and installs the columns on its own `IfcAPI`.
-`compute_parts_to_skip` takes the caller's index and returns early when none
+`compute_parts_to_skip_with_index` takes the caller's index (the published `compute_parts_to_skip` keeps its signature and builds the index itself) and returns early when none
 is sliceable. `collect_type_geometry_jobs` (the rescan) is deleted.
 
 ## Instruction counts

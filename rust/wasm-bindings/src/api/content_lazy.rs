@@ -23,7 +23,7 @@ impl IfcAPI {
         self.content.cached_parts_to_skip.get_or_init(|| {
             // The layer/void driver lives in the geometry crate next to its
             // kernels (#913 Phase 4 / §2.6); this caches its result per content.
-            std::sync::Arc::new(ifc_lite_geometry::compute_parts_to_skip(content, decoder, &layers))
+            std::sync::Arc::new(ifc_lite_geometry::compute_parts_to_skip_with_index(content, decoder, &layers))
         })
     }
 

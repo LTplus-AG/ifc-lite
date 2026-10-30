@@ -305,7 +305,7 @@ pub use void_index::{
     build_aggregate_children_index, compute_parts_to_skip, propagate_voids_to_parts,
     propagate_voids_via_aggregates, VoidIndex,
 };
-pub use void_rels::{resolve_void_index, void_index_from_content};
+pub use void_rels::{compute_parts_to_skip_with_index, resolve_void_index, void_index_from_content};
 
 mod exact_topology;
 

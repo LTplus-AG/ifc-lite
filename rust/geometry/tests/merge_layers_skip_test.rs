@@ -23,7 +23,7 @@
 //! two unit-level guarantees.
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_geometry::compute_parts_to_skip;
+use ifc_lite_geometry::{compute_parts_to_skip, compute_parts_to_skip_with_index};
 use rustc_hash::FxHashSet;
 
 /// Multilayer wall:
@@ -95,7 +95,10 @@ END-ISO-10303-21;
 fn build_skip_set(content: &str) -> FxHashSet<u32> {
     let mut decoder = EntityDecoder::new(content);
     let layers = ifc_lite_geometry::MaterialLayerIndex::from_content(content, &mut decoder);
-    compute_parts_to_skip(content, &mut decoder, &layers)
+    let skipped = compute_parts_to_skip_with_index(content, &mut decoder, &layers);
+    // The published two-argument form builds the same index itself.
+    assert_eq!(compute_parts_to_skip(content, &mut EntityDecoder::new(content)), skipped);
+    skipped
 }
 
 #[test]

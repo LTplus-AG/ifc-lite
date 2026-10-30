@@ -146,8 +146,14 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
    private release evidence; absence of a public API result is not a verified
    setting. Revoke the bootstrap token after registry confirmation.
 7. **Only after bootstrap and publisher verification, add
-   `ifc-lite-geometry-runtime` to `CRATES` in `scripts/lib/crates-io.mjs`, after
-   geometry.** In that same reviewed change, run `pnpm rust-api-surface:update`
+   `ifc-lite-geometry-runtime` to `CRATES` in `scripts/lib/crates-io.mjs`, at the
+   END of the list (after `ifc-lite-wasm`; it only has to follow geometry).**
+   The release stops at the first failed `cargo publish`, so until one release
+   has proven the runtime's OIDC Trusted Publisher, a refusal must strand only
+   the runtime, not the crates after it; it may move next to geometry later.
+   The runtime's 27.1.0 baseline came from commit f113d9c7fd, not a tag, so
+   semver-baseline's tag-rebuild fallback could raise `BASELINE_SOURCE_MISMATCH`
+   if that baseline ever stops resolving from the registry. In that same reviewed change, run `pnpm rust-api-surface:update`
    and commit the newly enrolled API snapshot; run the semver and API-surface
    gates plus release-order and version-sync checks. Do not lower `CRATE_FLOOR`
    or exempt `NO_BASELINE`. The crate already inherits `version.workspace` and

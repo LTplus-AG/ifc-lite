@@ -17,7 +17,8 @@ import { join } from 'path';
 // Dependency order: geometry depends on core; clash is dependency-free;
 // processing depends on core+geometry; ffi (cdylib C bindings) depends on
 // processing; landxml depends on geometry; wasm depends on
-// core+geometry+clash+processing+landxml.
+// core+geometry+clash+processing+landxml; geometry-runtime depends on
+// geometry and nothing depends on it, so it sits last (see its entry).
 export const CRATES = [
   'ifc-lite-core',
   // ifc-lite-clash must precede ifc-lite-geometry. geometry carries a
@@ -38,10 +39,6 @@ export const CRATES = [
   // front.
   'ifc-lite-clash',
   'ifc-lite-geometry',
-  // ifc-lite-geometry-runtime follows geometry, which it depends on by version.
-  // Bootstrapped on crates.io by hand (27.1.0) and its Trusted Publisher then
-  // configured, so it now publishes through OIDC like the rest of this list.
-  'ifc-lite-geometry-runtime',
   'ifc-lite-processing',
   // ifc-lite-landxml depends on geometry and must precede wasm, which pins it
   // by version. It was missing from this list, so the release after #5078
@@ -56,6 +53,14 @@ export const CRATES = [
   'ifc-lite-export',
   'ifc-lite-ffi',
   'ifc-lite-wasm',
+  // ifc-lite-geometry-runtime depends on geometry by version and nothing
+  // depends on it. It is deliberately LAST: bootstrapped on crates.io by hand
+  // (27.1.0) with a maintainer-attested, not yet exercised, Trusted Publisher.
+  // The release stops at the first failed `cargo publish`, so if its OIDC
+  // setup is wrong the refusal strands only the runtime instead of every crate
+  // after it. It may move next to geometry once one release has proven the
+  // OIDC setup.
+  'ifc-lite-geometry-runtime',
 ];
 
 /** Read the workspace version straight out of `Cargo.toml` (the source of

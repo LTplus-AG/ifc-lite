@@ -9,7 +9,7 @@ import * as notices from './retained-notices.mjs';
 
 const { renderNotices, inventoryInputs, checkNotices } = notices;
 // A manifest written by --refresh always carries a digest of its components.
-const stamp = manifest => ({ componentsSha256: notices.componentsDigest(manifest.components), ...manifest });
+const stamp = manifest => ({ manifestSha256: notices.manifestDigest(manifest), ...manifest });
 // Namespace access: a missing election helper fails an assertion, not the module load.
 const applySupplemental = (...args) => {
   assert.equal(typeof notices.applySupplemental, 'function', 'retained-notices exports applySupplemental (licence elections)');
@@ -52,10 +52,11 @@ checksum="${'a'.repeat(64)}"
     put(`licenses/retained/texts/${sha256}.txt`, body);
     return { file: `texts/${sha256}.txt`, origin: name, sha256 };
   };
-  const nonCargo = (name, version) => ({ name, version, source: 'fixture', license: 'Apache-2.0', scope: 'inert fixture',
+  const nonCargo = (name, version) => ({ name, version, source: 'https://example.invalid/fixture', license: 'Apache-2.0', scope: 'inert fixture',
     notices: [text('LICENSE', `${name} licence text\n`)] });
   put('licenses/retained/manifest.json', JSON.stringify(stamp({ format: 2, inputs: inventoryInputs(root), components: [
     nonCargo('fixture SDK', 'b'.repeat(40)),
+    nonCargo('fixture Emscripten', '4.0.15'),
     { name: 'external', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index',
       license: 'MIT OR Apache-2.0', scope: 'inert fixture',
       notices: [text('LICENSE-MIT', 'Fixture MIT licence text\n'), text('LICENSE-APACHE', 'Fixture Apache licence text\n')] },
@@ -68,7 +69,7 @@ checksum="${'a'.repeat(64)}"
     // Edit the manifest as a hand edit or merge resolution would (digest left stale).
     editManifest(mutate) { const m = JSON.parse(readFileSync(manifestPath, 'utf8')); mutate(m); writeFileSync(manifestPath, JSON.stringify(m)); },
     // Edit and re-stamp, as if a (buggy) refresh had generated the result.
-    regenerate(mutate) { const m = JSON.parse(readFileSync(manifestPath, 'utf8')); mutate(m); writeFileSync(manifestPath, JSON.stringify({ ...m, componentsSha256: notices.componentsDigest(m.components) })); } };
+    regenerate(mutate) { const m = JSON.parse(readFileSync(manifestPath, 'utf8')); mutate(m); writeFileSync(manifestPath, JSON.stringify({ ...m, manifestSha256: notices.manifestDigest(m) })); } };
 }
 
 test('Refs #7955 notice check accepts a pure workspace version bump', t => {
@@ -155,31 +156,34 @@ test('Refs #7955 notice check refuses omitted election evidence even after outpu
 
 test('Refs #7955 a component without any preserved licence text fails the check', t => {
   const f = fixture(t);
-  f.regenerate(manifest => { manifest.components[1] = { ...manifest.components[1], notices: [] }; });
+  f.regenerate(manifest => { manifest.components[2] = { ...manifest.components[2], notices: [] }; });
   assert.throws(() => checkNotices(f.root, false), /without preserved licence text/);
 });
 
 test('Refs #7955 deleting one text of a multi-text component fails check and --write', t => {
   const f = fixture(t);
-  assert.equal(f.manifest().components[1].notices.length, 2);
+  assert.equal(f.manifest().components[2].notices.length, 2);
   // Drop the Apache text only: the component keeps one text, so the zero-text check passes.
-  f.editManifest(manifest => { manifest.components[1].notices.pop(); });
-  assert.throws(() => checkNotices(f.root), /componentsSha256/);
-  assert.throws(() => checkNotices(f.root, false), /componentsSha256/, '--write must not regenerate around the loss');
+  f.editManifest(manifest => { manifest.components[2].notices.pop(); });
+  assert.throws(() => checkNotices(f.root), /manifestSha256/);
+  assert.throws(() => checkNotices(f.root, false), /manifestSha256/, '--write must not regenerate around the loss');
 });
 
 test('Refs #7955 a manifest without a components digest is refused', t => {
   const f = fixture(t);
-  f.editManifest(manifest => { delete manifest.componentsSha256; });
-  assert.throws(() => checkNotices(f.root), /no componentsSha256/);
-  assert.throws(() => checkNotices(f.root, false), /no componentsSha256/);
+  f.editManifest(manifest => { delete manifest.manifestSha256; });
+  assert.throws(() => checkNotices(f.root), /no manifestSha256/);
+  assert.throws(() => checkNotices(f.root, false), /no manifestSha256/);
 });
 
-test('Refs #7955 components digest ignores key order but not content', () => {
-  const a = [{ name: 'x', notices: [{ file: 'f', sha256: '1' }] }];
-  assert.equal(notices.componentsDigest(a), notices.componentsDigest([{ notices: [{ sha256: '1', file: 'f' }], name: 'x' }]));
-  assert.notEqual(notices.componentsDigest(a), notices.componentsDigest([{ name: 'x', notices: [] }]));
-  assert.notEqual(notices.componentsDigest(a), notices.componentsDigest([{ name: 'x', notices: [{ file: 'f', sha256: '2' }] }]));
+test('Refs #7955 manifest digest ignores key order but covers inputs and components', () => {
+  const m = { format: 2, inputs: { pin: 'a' }, components: [{ name: 'x', notices: [{ file: 'f', sha256: '1' }] }] };
+  const digest = notices.manifestDigest(m);
+  assert.equal(digest, notices.manifestDigest({ components: [{ notices: [{ sha256: '1', file: 'f' }], name: 'x' }], inputs: { pin: 'a' }, format: 2 }));
+  assert.equal(digest, notices.manifestDigest({ ...m, manifestSha256: 'ignored' }));
+  assert.notEqual(digest, notices.manifestDigest({ ...m, components: [{ name: 'x', notices: [] }] }));
+  assert.notEqual(digest, notices.manifestDigest({ ...m, components: [{ name: 'x', notices: [{ file: 'f', sha256: '2' }] }] }));
+  assert.notEqual(digest, notices.manifestDigest({ ...m, inputs: { pin: 'b' } }));
 });
 
 // `--refresh --cargo-only`: a Cargo.lock bump inside the closure must not need the SDK or emsdk.
@@ -201,10 +205,11 @@ test('Refs #7955 cargo-only refresh reuses SDK/toolchain components for a Cargo.
   assert.doesNotThrow(() => checkNotices(f.root));
   const after = f.manifest();
   assert.deepEqual(after.components[0], before.components[0]);
-  assert.deepEqual(after.components[2], before.components[2]);
-  assert.equal(after.components[1].version, '1.0.1');
-  assert.equal(after.components[1].notices[0].origin, 'LICENSE-MIT');
-  assert.equal(after.componentsSha256, notices.componentsDigest(after.components));
+  assert.deepEqual(after.components[1], before.components[1]);
+  assert.deepEqual(after.components[3], before.components[3]);
+  assert.equal(after.components[2].version, '1.0.1');
+  assert.equal(after.components[2].notices[0].origin, 'LICENSE-MIT');
+  assert.equal(after.manifestSha256, notices.manifestDigest(after));
 });
 
 test('Refs #7955 cargo-only refresh fails closed when an SDK or toolchain pin changed', t => {
@@ -226,16 +231,16 @@ test('Refs #7955 cargo-only refresh fails closed when an SDK or toolchain pin ch
 test('Refs #7955 cargo-only refresh cannot launder a damaged committed manifest', t => {
   const f = fixture(t);
   const metadata = bumpExternal(f);
-  f.editManifest(manifest => { manifest.components[0].notices = manifest.components[0].notices.slice(0, 0); });
-  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /componentsSha256/);
-  f.editManifest(manifest => { delete manifest.componentsSha256; });
-  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /no componentsSha256/);
+  f.editManifest(manifest => { manifest.components[0].notices = []; });
+  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /manifestSha256/);
+  f.editManifest(manifest => { delete manifest.manifestSha256; });
+  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /no manifestSha256/);
 });
 
 test('Refs #7955 cargo-only refresh refuses a manifest whose layout it cannot reuse', t => {
   const f = fixture(t);
   const metadata = bumpExternal(f);
-  f.regenerate(manifest => { manifest.components.unshift(manifest.components.splice(1, 1)[0]); });
+  f.regenerate(manifest => { manifest.components.unshift(manifest.components.splice(2, 1)[0]); });
   assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /cargo-only refused/);
   f.regenerate(manifest => { manifest.components = manifest.components.filter(c => c.name === 'external'); });
   assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /cargo-only refused/);
@@ -251,4 +256,92 @@ test('Refs #7955 cargo-only flag is rejected with SDK paths or without --refresh
   // Plain --check / --write through the CLI entry still work on an intact fixture.
   assert.match(notices.main(['--check'], f.root), /match/);
   assert.match(notices.main(['--write'], f.root), /match/);
+});
+
+// Hand edits to `inputs` (a merge resolution, or the obvious reaction to "inventory inputs
+// changed") must not let --cargo-only keep components that no longer match the inputs.
+test('Refs #7955 case A: a bumped SDK pin with hand-edited inputs cannot reuse the stale SDK text', t => {
+  const pinBump = fx => {
+    fx.change('native/smlib-adapter/CMakeLists.txt', text => text.replace('b'.repeat(40), 'e'.repeat(40)));
+    return () => fx.editManifest(manifest => { manifest.inputs = inventoryInputs(fx.root); });
+  };
+  // Only the pin and `inputs` change: the components (still the old SDK) and their digest do not.
+  const f = fixture(t);
+  pinBump(f)();
+  assert.throws(() => checkNotices(f.root), /manifestSha256/);
+  assert.throws(() => checkNotices(f.root, false), /manifestSha256/);
+  const h = fixture(t);
+  const metadata = bumpExternal(h);
+  pinBump(h)();
+  assert.throws(() => notices.refreshCargoOnly(h.root, metadata), /manifestSha256/);
+  // Even with a digest regenerated over the skewed manifest, the SDK entry is not the pinned one.
+  const g = fixture(t);
+  g.change('native/smlib-adapter/CMakeLists.txt', text => text.replace('b'.repeat(40), 'e'.repeat(40)));
+  g.regenerate(manifest => { manifest.inputs = inventoryInputs(g.root); });
+  const manifest = readFileSync(join(g.root, 'licenses/retained/manifest.json'), 'utf8');
+  assert.throws(() => notices.refreshCargoOnly(g.root, () => assert.fail('metadata must not be read')), /do not carry the pinned SMLib revision/);
+  assert.equal(readFileSync(join(g.root, 'licenses/retained/manifest.json'), 'utf8'), manifest);
+});
+
+// Two Cargo crates, so one can leave the Cargo block's edge while the other stays inside it.
+function twoCrateFixture(t) {
+  const f = fixture(t);
+  for (const dir of ['wasm', 'diff']) f.change(`rust/${dir}/Cargo.toml`, text => text.replace('external="1"', 'external="1"\nzzz="1"'));
+  f.change('Cargo.lock', text => `${text.replaceAll('dependencies=["external"]', 'dependencies=["external", "zzz"]')}
+[[package]]
+name="zzz"
+version="1.0.0"
+source="registry+https://github.com/rust-lang/crates.io-index"
+checksum="${'f'.repeat(64)}"
+`);
+  const body = 'Fixture zzz licence text\n', sha256 = createHash('sha256').update(body).digest('hex');
+  f.put(`licenses/retained/texts/${sha256}.txt`, body);
+  f.regenerate(manifest => {
+    manifest.inputs = inventoryInputs(f.root);
+    manifest.components.splice(3, 0, { name: 'zzz', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index',
+      license: 'MIT', scope: 'inert fixture', notices: [{ file: `texts/${sha256}.txt`, origin: 'LICENSE', sha256 }] });
+  });
+  checkNotices(f.root, false);
+  assert.doesNotThrow(() => checkNotices(f.root));
+  return f;
+}
+
+test('Refs #7955 case B: hand-edited inputs cannot demote a stale crate into a reusable non-Cargo entry', t => {
+  const f = twoCrateFixture(t);
+  const bumped = bumpExternal(f);
+  const metadata = () => ({ packages: [...bumped().packages, { name: 'zzz', version: '1.0.0', license: 'MIT',
+    source: 'registry+https://github.com/rust-lang/crates.io-index', manifest_path: join(f.root, 'crate-src/Cargo.toml') }] });
+  // The obvious reaction to "inventory inputs changed": refresh only the inputs, keep the components.
+  f.editManifest(manifest => { manifest.inputs = inventoryInputs(f.root); });
+  assert.throws(() => checkNotices(f.root, false), /manifestSha256|Missing inventory component/);
+  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /manifestSha256/);
+  // With a digest regenerated over that skew, the stale crate still may not be reused.
+  f.regenerate(manifest => { manifest.inputs = inventoryInputs(f.root); });
+  const before = readFileSync(join(f.root, 'licenses/retained/manifest.json'), 'utf8');
+  assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /Cargo components do not match the committed inventory inputs/);
+  assert.equal(readFileSync(join(f.root, 'licenses/retained/manifest.json'), 'utf8'), before);
+  // The same skew from the other side: a stale extra crate sitting in the committed block.
+  const g = twoCrateFixture(t);
+  g.regenerate(manifest => { manifest.components.splice(3, 0, { ...manifest.components[2], version: '0.9.0' }); });
+  assert.throws(() => notices.refreshCargoOnly(g.root, () => assert.fail('metadata must not be read')), /Cargo components do not match/);
+});
+
+test('Refs #7955 cargo-only refresh applies a recorded licence election to a rebuilt Cargo component', t => {
+  const f = fixture(t);
+  const bumped = bumpExternal(f);
+  const metadata = () => ({ packages: bumped().packages.map(pkg => ({ ...pkg, license: 'MIT OR Apache-2.0' })) });
+  const apache = 'Fixture Apache licence text 1.0.1\n';
+  const sha256 = createHash('sha256').update(apache).digest('hex');
+  f.put(`licenses/retained/texts/${sha256}.txt`, apache);
+  const notice = { origin: 'https://example.invalid/Apache-2.0.txt', file: `texts/${sha256}.txt`, sha256 };
+  f.put('licenses/retained/supplemental.json', JSON.stringify([{ name: 'external', version: '1.0.1', election: 'Apache-2.0',
+    attribution: 'external 1.0.1 under Apache-2.0 by election', notices: [notice] }]));
+  notices.refreshCargoOnly(f.root, metadata);
+  checkNotices(f.root, false);
+  assert.doesNotThrow(() => checkNotices(f.root));
+  const external = f.manifest().components[2];
+  assert.equal(external.election, 'Apache-2.0');
+  assert.equal(external.attribution, 'external 1.0.1 under Apache-2.0 by election');
+  assert.deepEqual(external.notices.map(n => n.origin), ['LICENSE-MIT', notice.origin]);
+  assert.match(readFileSync(join(f.root, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'utf8'), /Licence election: Apache-2.0/);
 });

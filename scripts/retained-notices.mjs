@@ -27,16 +27,19 @@ function canonical(value) {
   }
   return JSON.stringify(value);
 }
-export const componentsDigest = components => hash(canonical(components));
+// Everything but the digest itself: `inputs` decides what --cargo-only may reuse, so it is
+// as load-bearing as `components`.
+export const manifestDigest = ({ manifestSha256, ...rest }) => hash(canonical(rest));
 // manifest.json is generated and excluded from review, so a hand edit or merge resolution
-// that drops one text from a multi-text component would otherwise pass: the textless check
-// only catches a component with zero texts. `--refresh` is the only writer of the digest.
+// that drops one text from a multi-text component, or skews `inputs` against `components`,
+// would otherwise pass: the textless check only catches a component with zero texts.
+// The digest detects accidental damage, not a deliberate `--refresh` (the only writer).
 export function verifyManifestIntegrity(manifest) {
-  if (typeof manifest.componentsSha256 !== 'string') {
-    throw new Error('Retained manifest has no componentsSha256 digest; only --refresh may write it');
+  if (typeof manifest.manifestSha256 !== 'string') {
+    throw new Error('Retained manifest has no manifestSha256 digest; only --refresh may write it');
   }
-  if (manifest.componentsSha256 !== componentsDigest(manifest.components)) {
-    throw new Error('Retained manifest components do not match componentsSha256 (partial licence-text loss or hand edit); '
+  if (manifest.manifestSha256 !== manifestDigest(manifest)) {
+    throw new Error('Retained manifest does not match manifestSha256 (lost licence text, hand-edited inputs or components); '
       + 'restore manifest.json or rerun --refresh, never --write');
   }
 }
@@ -160,7 +163,8 @@ function addCargoComponents(add, inputs, data) {
   }
 }
 function writeManifest(root, inputs, components) {
-  const manifest = { format: 2, componentsSha256: componentsDigest(components), inputs, components };
+  const unsigned = { format: 2, inputs, components };
+  const manifest = { format: unsigned.format, manifestSha256: manifestDigest(unsigned), inputs, components };
   writeFileSync(join(root, DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 // A Cargo.lock change inside the WASM closure needs new Cargo archive texts and nothing from
@@ -174,15 +178,29 @@ export function splitReusableComponents(previous, inputs) {
   if (changed.length) {
     throw new Error(`--cargo-only refused: ${changed.join(', ')} changed; run the full --refresh with --sdk and --emscripten`);
   }
-  const wasCargo = c => Object.values(previous.inputs.cargoClosures).some(closure =>
-    closure.some(p => p.name === c.name && p.version === c.version && p.source === c.source));
-  const first = previous.components.findIndex(wasCargo);
-  const last = previous.components.findLastIndex(wasCargo);
+  // Cargo components are identified by their Cargo source; SDK/toolchain ones carry URLs.
+  const isCargo = c => /^(registry|sparse|git)\+/.test(c.source);
+  const first = previous.components.findIndex(isCargo);
+  const last = previous.components.findLastIndex(isCargo);
   if (first < 1 || last === previous.components.length - 1 ||
-      previous.components.slice(first, last + 1).some(c => !wasCargo(c))) {
+      previous.components.slice(first, last + 1).some(c => !isCargo(c))) {
     throw new Error('--cargo-only refused: committed components are not SDK/Emscripten, Cargo block, Rust std; run the full --refresh');
   }
-  return { head: previous.components.slice(0, first), tail: previous.components.slice(last + 1) };
+  // The Cargo block must be exactly what the committed inputs say it is, so a stale crate
+  // cannot hide in it (and none can be reused as an SDK/toolchain entry).
+  const key = p => `${p.name}@${p.version} ${p.source}`;
+  const declared = new Set(Object.values(previous.inputs.cargoClosures).flat().map(key));
+  const block = previous.components.slice(first, last + 1);
+  if (block.length !== declared.size || block.some(c => !declared.has(key(c)))) {
+    throw new Error('--cargo-only refused: committed Cargo components do not match the committed inventory inputs; run the full --refresh');
+  }
+  const head = previous.components.slice(0, first), tail = previous.components.slice(last + 1);
+  // Reused entries must be the ones the (unchanged) pins name, not merely some earlier SDK.
+  const pinned = (list, version) => list.some(c => c.version === version);
+  if (!pinned(head, inputs.smlibRevision) || !pinned(head, inputs.emscriptenVersion)) {
+    throw new Error('--cargo-only refused: committed SDK/Emscripten components do not carry the pinned SMLib revision and Emscripten version; run the full --refresh');
+  }
+  return { head, tail };
 }
 export function refreshCargoOnly(root = ROOT, readMetadata = cargoMetadata) {
   const previous = JSON.parse(readFileSync(join(root, DIR, 'manifest.json'), 'utf8'));

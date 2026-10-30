@@ -81,9 +81,11 @@ Pick the refresh by what changed:
   checkout and no emsdk. It re-reads the Cargo archive texts and reuses the
   committed SDK, Emscripten, musl/LLVM, dlmalloc and Rust standard-library
   components verbatim. It refuses (and writes nothing) when the committed
-  `manifest.json` fails its `componentsSha256` digest, when any of those four pins
-  differs from the committed manifest, or when the committed components are not
-  laid out as SDK/Emscripten, Cargo block, Rust std. Passing `--sdk` or
+  `manifest.json` fails its `manifestSha256` digest, when any of those four pins
+  differs from the committed manifest, when the committed SDK/Emscripten entries do
+  not carry the pinned SMLib revision and Emscripten version, or when the committed
+  components are not laid out as SDK/Emscripten, Cargo block (exactly the crates the
+  committed inputs list), Rust std. Passing `--sdk` or
   `--emscripten` with `--cargo-only` is an error. Commit the regenerated
   `licenses/retained/`, `packages/*/THIRD_PARTY_NOTICES.txt` and review the new
   component rows and any `OPEN:` entries.
@@ -93,11 +95,14 @@ Pick the refresh by what changed:
   release owner owns this step.
 
 `--write` regenerates the bundle from the committed manifest and never recomputes
-`componentsSha256`, so it cannot paper over a damaged manifest: if a merge conflict
-in `manifest.json` loses a licence text, `--check` and `--write` both fail until
-`manifest.json` is restored or `--refresh` rebuilds it. The digest catches
-accidental loss and hand edits; it is not a signature, because `--refresh`
-legitimately recomputes it. Review of the diff still applies.
+`manifestSha256`, so it cannot paper over a damaged manifest: if a merge conflict
+in `manifest.json` loses a licence text or skews `inputs` against `components`,
+`--check` and `--write` both fail until `manifest.json` is restored or `--refresh`
+rebuilds it. The digest covers `inputs` and `components`. It catches accidental
+loss and hand edits; it is not a signature, because `--refresh` legitimately
+recomputes it. Review of the diff still applies. An open PR that carries a
+manifest from before the digest (or the earlier `componentsSha256` field) must
+re-run `--refresh` after this lands; `--cargo-only` refuses such a manifest.
 
 ## First crates.io publication (human operation)
 

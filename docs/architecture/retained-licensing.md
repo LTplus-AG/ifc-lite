@@ -16,8 +16,9 @@ CI compares semantic inputs: external locked package identities/checksums in eac
 production dependency closure, the SMLib and emsdk pins, Emscripten version, Rust
 toolchain channel and supplemental notice records. Workspace versions and unrelated
 workflow text are excluded. Preserved notice hashes and generated outputs are checked,
-and `manifest.json` carries a `componentsSha256` digest of its components that
-`--check` and `--write` verify, so a partially lost text cannot pass.
+and `manifest.json` carries a `manifestSha256` digest of its inputs and components that
+`--check` and `--write` verify. It catches accidental damage (a text dropped by a merge
+resolution, hand-edited inputs); it is not a signature, because `--refresh` recomputes it.
 The Apache-2.0 election for `wasm_sync` below closes the missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code

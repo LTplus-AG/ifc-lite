@@ -994,7 +994,7 @@ is the shard wire code.
 
 `ParseResponse::from_result(cache_key, result)` is the one mapping from a
 `ProcessingResult` to the serialised response. The FFI buffer is exactly that
-response (geometry only, Z-up, no finishes). The server's `POST /api/v1/parse`
+response: meshes in Z-up with metadata and stats, without symbolic data or IFC-authored finishes. The server's `POST /api/v1/parse`
 builds on it and adds Y-up meshes carrying their IFC-authored finish and
 symbolic data with provenance.
 

@@ -82,7 +82,7 @@ pub struct ModelMetadata {
     pub schema_version: String,
     /// Total number of entities in the file.
     pub entity_count: usize,
-    /// Number of geometry-bearing entities.
+    /// Geometry jobs scheduled: one per geometry-bearing product, one per type-only map.
     pub geometry_entity_count: usize,
     /// Coordinate system information.
     pub coordinate_info: CoordinateInfo,

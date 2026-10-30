@@ -69,6 +69,7 @@ import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import type { TranslationValue } from './types';
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 import type { landXmlGeorefAssumptionsEn } from './catalogues/landxml-georef-assumptions.en';
+import type { ifcFederationAssumptionsEn } from './catalogues/ifc-federation-assumptions.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -316,7 +317,7 @@ export const en = {
 } as const;
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */
-type LazyEnglish = typeof semanticAssistEn & typeof landXmlGeorefAssumptionsEn;
+type LazyEnglish = typeof semanticAssistEn & typeof landXmlGeorefAssumptionsEn & typeof ifcFederationAssumptionsEn;
 export type TranslationKey = keyof typeof en | keyof LazyEnglish | LazyTranslationKey | keyof typeof reviewWorkspaceEn;
 /** The live English catalogue: `en` plus whatever lazy catalogues have registered. */
 export const englishCatalogue: Partial<Record<TranslationKey, TranslationValue>> = en;

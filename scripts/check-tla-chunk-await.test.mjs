@@ -39,6 +39,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'check-tla-chunk-await.mjs');
 const ASSETS_REL = join('apps', 'viewer', 'dist', 'assets');
 
+const ENTRY = 'index-test.js';
+const entryHtml = (file) => `<!doctype html><script>var x=1</script><script type="module" crossorigin src="/assets/${file}"></script>`;
+
 /**
  * Runs the gate over a synthetic assets dir.
  *
@@ -46,15 +49,20 @@ const ASSETS_REL = join('apps', 'viewer', 'dist', 'assets');
  * create the assets directory at all"; an empty map creates it with no .js
  * files in it.
  */
-function runOn(chunks, { assetsRel = ASSETS_REL, env = {} } = {}) {
+function runOn(chunks, { assetsRel = ASSETS_REL, env = {}, html } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tla-chunk-await-'));
   try {
     if (chunks !== null) {
       const assets = join(dir, assetsRel);
       mkdirSync(assets, { recursive: true });
-      for (const [name, text] of Object.entries(chunks)) {
+      // Unless the case says otherwise, the page loads one plain entry chunk
+      // that imports nothing, so the app-start rule passes and every other
+      // rule sees the case's own chunks (an empty case stays empty).
+      const all = html === undefined && Object.keys(chunks).length > 0 ? { [ENTRY]: 'export{};', ...chunks } : chunks;
+      for (const [name, text] of Object.entries(all)) {
         writeFileSync(join(assets, name), text);
       }
+      if (html !== null) writeFileSync(join(dir, 'apps', 'viewer', 'dist', 'index.html'), html ?? entryHtml(ENTRY));
     }
     const r = spawnSync(process.execPath, [GATE, '--root', dir], {
       encoding: 'utf8',
@@ -102,7 +110,7 @@ test('a healthy bundle -- a __tla chunk and an importer that awaits it -- passes
   assert.match(out, /1 static import\(s\) of a __tla-wrapped chunk checked/);
   // Both chunks count as wrapped: an importer that propagates the wait is
   // itself transformed, so it re-exports its own `__tla` -- the real shape.
-  assert.match(out, /\(2 __tla-wrapped chunk\(s\) among 2 emitted chunk\(s\)\)/);
+  assert.match(out, /\(2 __tla-wrapped chunk\(s\) among 3 emitted chunk\(s\)\)/);
 });
 
 test('a healthy bundle whose __tla chunk is only imported dynamically passes', () => {
@@ -163,7 +171,7 @@ test('RED: chunks emitted but not one __tla-wrapped chunk must fail, not tick', 
   assert.match(out, /NOT ONE of\s*\n?them exports a `__tla` binding/);
   // ...and it never reaches the minification scan to report "all 0 minified".
   assert.doesNotMatch(out, /plugin-rewritten chunk\(s\) minified/);
-  assert.match(out, /2 \.js chunk\(s\)/);
+  assert.match(out, /3 \.js chunk\(s\)/); // the two above and the page's entry
 });
 
 test('a Skew-Protected Vercel build is inspected in its per-deployment asset dir (#4886)', () => {
@@ -393,4 +401,55 @@ test('#7955: the retained worker URL prologue is classifiable without counting l
   for (const url of ['`/${location.host}/x`', String.raw`"/x\";(){}"`, '/*(){}*/"/x"']) {
     assert.equal(chunkFormatting(`(async()=>{const e=new URL(${url},self.location.origin);`), 'unknown');
   }
+});
+
+// The app-start graph: scripts/lib/tla-entry-graph.mjs.
+
+test('RED: a __tla-wrapped chunk the page evaluates at start is caught', () => {
+  // The page's entry imports the store statically; both are wrapped, as every
+  // chunk with a dynamic import() was while the app build used the plugin.
+  const { status, out } = runOn(
+    { 'store-abc.js': TLA_CHUNK, 'main-def.js': GOOD_IMPORTER },
+    { html: entryHtml('main-def.js') },
+  );
+  assert.equal(status, 1, out);
+  assert.match(out, /2 of the 2 chunk\(s\) the page evaluates at start are __tla-wrapped/);
+  assert.match(out, /main-def\.js/);
+  assert.match(out, /store-abc\.js/);
+});
+
+test('RED: a wrapped chunk reached through a plain one is caught', () => {
+  const plainEntry = `import{z as C}from"./vendor-x.js";import"./polyfill-y.js";C();export{};`;
+  const vendor = `export{z}from"./store-abc.js";`;
+  const { status, out } = runOn(
+    { 'store-abc.js': TLA_CHUNK, 'main-def.js': plainEntry, 'vendor-x.js': vendor, 'polyfill-y.js': 'export{};' },
+    { html: entryHtml('main-def.js') },
+  );
+  assert.equal(status, 1, out);
+  assert.match(out, /1 of the 4 chunk\(s\) the page evaluates at start are __tla-wrapped/);
+});
+
+test('wrapped chunks only a worker or a dynamic import reaches pass, and the start graph is counted', () => {
+  const plainEntry = `import"./vendor-x.js";const load=()=>import("./store-abc.js");export{load};`;
+  const { status, out } = runOn(
+    { 'store-abc.js': TLA_CHUNK, 'parser.worker-def.js': GOOD_IMPORTER, 'main-def.js': plainEntry, 'vendor-x.js': 'export{};' },
+    { html: entryHtml('main-def.js') },
+  );
+  assert.equal(status, 0, out);
+  assert.match(out, /2 chunk\(s\) evaluated at app start, none __tla-wrapped/);
+});
+
+test('RED: a build without index.html fails instead of skipping the start graph', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK }, { html: null });
+  assert.equal(status, 1, out);
+  assert.match(out, /index\.html does not exist/);
+});
+
+test('RED: an index.html whose entry is not among the chunks, or that has none, fails', () => {
+  const missing = runOn({ 'store-abc.js': TLA_CHUNK }, { html: entryHtml('main-gone.js') });
+  assert.equal(missing.status, 1, missing.out);
+  assert.match(missing.out, /main-gone\.js is not among the emitted chunks/);
+  const none = runOn({ 'store-abc.js': TLA_CHUNK }, { html: '<!doctype html><script src="/legacy.js"></script>' });
+  assert.equal(none.status, 1, none.out);
+  assert.match(none.out, /loads 0 module script\(s\)/);
 });

@@ -84,6 +84,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { deploymentAssetsDir } from './lib/deployment-assets-dir.mjs';
 import { chunkFormatting, MIN_PUNCTUATION, rewrittenByPlugin } from './lib/tla-chunk-prologue.mjs';
+import { checkEntryGraph } from './lib/tla-entry-graph.mjs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -168,10 +169,11 @@ for (const file of files) {
 // chunk(s))`) while exiting 0.
 //
 // Zero wrapped chunks is not a state a healthy viewer build reaches.
-// `vite-plugin-top-level-await` is registered for both the app build and the
-// worker build (apps/viewer/vite.config.ts), and it wraps every chunk it
-// flags for transformation -- which includes any chunk containing a dynamic
-// `import()`, of which this code-split app emits many. So an empty set means
+// `vite-plugin-top-level-await` is registered for the worker build
+// (apps/viewer/vite.config.ts; the app build uses native top-level await, see
+// scripts/lib/tla-entry-graph.mjs), and it wraps every worker chunk it flags
+// for transformation -- which includes any chunk containing a dynamic
+// `import()`, of which the workers emit several. So an empty set means
 // the plugin is gone or renamed, its `__tla` fingerprint changed shape, or the
 // build now emits its chunks somewhere this check does not look. In all three
 // the check is inert, and an inert gate must say so rather than tick.
@@ -188,8 +190,8 @@ if (tlaExporters.size === 0) {
       `set is empty.\n\n` +
       `A viewer build reaches this state only if something changed underneath the\n` +
       `check:\n\n` +
-      `  * vite-plugin-top-level-await was removed from apps/viewer/vite.config.ts,\n` +
-      `    or is no longer applied to the build that produced these chunks;\n` +
+      `  * vite-plugin-top-level-await was removed from the worker build in\n` +
+      `    apps/viewer/vite.config.ts, or is no longer applied to it;\n` +
       `  * the plugin was upgraded and no longer emits the literal \`__tla\` export\n` +
       `    this check fingerprints (see the header of this file);\n` +
       `  * the build emits its chunks somewhere other than the directory above.\n\n` +
@@ -250,6 +252,16 @@ if (unminified.length > 0) {
   );
   process.exit(1);
 }
+
+// The chunks evaluated at app start must not be wrapped at all:
+// scripts/lib/tla-entry-graph.mjs.
+const INDEX_HTML = join(ROOT, 'apps', 'viewer', 'dist', 'index.html');
+const entryCheck = checkEntryGraph(existsSync(INDEX_HTML) ? readFileSync(INDEX_HTML, 'utf8') : null, sources, tlaExporters, relative(ROOT, INDEX_HTML));
+if (entryCheck.error) {
+  console.error(entryCheck.error);
+  process.exit(1);
+}
+const entryPath = entryCheck.entryPath;
 
 const violations = [];
 const sideEffectViolations = [];
@@ -349,6 +361,7 @@ console.log(
     `${staticTlaImports} static import(s) of a __tla-wrapped chunk checked ` +
     `(${tlaExporters.size} __tla-wrapped chunk(s) among ${files.length} emitted chunk(s)); ` +
     `${sideEffectImports} bare side-effect import(s) checked; ` +
+    `${entryPath.reached.size} chunk(s) evaluated at app start, none __tla-wrapped; ` +
     `all ${tlaChunks.length} plugin-rewritten chunk(s) minified.`,
 );
 

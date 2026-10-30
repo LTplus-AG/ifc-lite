@@ -19,6 +19,27 @@ function files(root) {
     return entry.isDirectory() ? files(path) : entry.isFile() ? [path] : [];
   }).sort();
 }
+// Canonical (key-sorted) JSON so the digest is independent of key order and formatting.
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+export const componentsDigest = components => hash(canonical(components));
+// manifest.json is generated and excluded from review, so a hand edit or merge resolution
+// that drops one text from a multi-text component would otherwise pass: the textless check
+// only catches a component with zero texts. `--refresh` is the only writer of the digest.
+export function verifyManifestIntegrity(manifest) {
+  if (typeof manifest.componentsSha256 !== 'string') {
+    throw new Error('Retained manifest has no componentsSha256 digest; only --refresh may write it');
+  }
+  if (manifest.componentsSha256 !== componentsDigest(manifest.components)) {
+    throw new Error('Retained manifest components do not match componentsSha256 (partial licence-text loss or hand edit); '
+      + 'restore manifest.json or rerun --refresh, never --write');
+  }
+}
 export function inventoryInputs(root) {
   return JSON.parse(execFileSync('python3', [join(ROOT, 'scripts/retained-notice-inputs.py'), root], { encoding: 'utf8' }));
 }
@@ -62,6 +83,7 @@ export function renderNotices(manifest, readText) {
 }
 export function checkNotices(root = ROOT, check = true) {
   const manifest = JSON.parse(readFileSync(join(root, DIR, 'manifest.json')));
+  verifyManifestIntegrity(manifest);
   if (JSON.stringify(manifest.inputs) !== JSON.stringify(inventoryInputs(root))) {
     throw new Error('Retained notice inventory inputs changed; refresh against pinned SDK, toolchain and Cargo metadata');
   }
@@ -102,16 +124,7 @@ export function checkNotices(root = ROOT, check = true) {
     } else writeFileSync(join(root, path), contents);
   }
 }
-function refresh({ sdk, emscripten }, root = ROOT) {
-  const inputs = inventoryInputs(root);
-  const revision = readFileSync(join(root, 'native/smlib-adapter/CMakeLists.txt'), 'utf8')
-    .match(/set\(IFCLITE_SMLIB_REVISION ([a-f0-9]{40})\)/)[1];
-  const git = (...args) => execFileSync('git', ['-C', sdk, ...args], { encoding: 'utf8' }).trim();
-  if (git('rev-parse', 'HEAD') !== revision || git('status', '--porcelain', '--untracked-files=all', '--ignored', '--',
-    'source/SMLib', 'source/SM_API', 'LICENSE', 'THIRD_PARTY_NOTICES.md')) throw new Error('SDK pin/cleanliness mismatch');
-  if (inputs.emscriptenVersion !== '4.0.15' || JSON.parse(readFileSync(join(emscripten, 'emscripten-version.txt'), 'utf8')) !== inputs.emscriptenVersion) throw new Error('Review runtime notice paths for the changed Emscripten version');
-  if (execFileSync('git', ['-C', resolve(emscripten, '../..'), 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() !== inputs.emsdkRef) throw new Error('emsdk checkout pin mismatch');
-  mkdirSync(join(root, DIR, 'texts'), { recursive: true });
+function collector(root) {
   const components = [];
   function add(name, version, license, source, scope, base, paths) {
     const notices = paths.map(path => {
@@ -122,6 +135,80 @@ function refresh({ sdk, emscripten }, root = ROOT) {
     });
     components.push({ name, version, license, source, scope, notices });
   }
+  return { components, add };
+}
+const cargoMetadata = root => JSON.parse(execFileSync('cargo', ['metadata', '--locked', '--format-version', '1', '--all-features'],
+  { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+// Locked production closures of the shipped WASM roots, read from the Cargo archives.
+function addCargoComponents(add, inputs, data) {
+  const selected = new Map();
+  for (const [rootName, closure] of Object.entries(inputs.cargoClosures)) {
+    for (const entry of closure) {
+      const key = JSON.stringify(entry);
+      if (!selected.has(key)) selected.set(key, { entry, scopes: [] });
+      selected.get(key).scopes.push(rootName === 'ifc-lite-diff-wasm' ? 'pkg-diff' : 'default pkg + pkg-retained');
+    }
+  }
+  for (const { entry, scopes } of [...selected.values()].sort((a, b) => `${a.entry.name}@${a.entry.version}`.localeCompare(`${b.entry.name}@${b.entry.version}`))) {
+    const pkg = data.packages.find(p => p.name === entry.name && p.version === entry.version && p.source === entry.source);
+    if (!pkg) throw new Error(`Missing archive metadata: ${entry.name} ${entry.version}`);
+    const base = dirname(pkg.manifest_path);
+    const paths = files(base).filter(path => /^(LICENSE|COPYING|COPYRIGHT|NOTICE|AUTHORS)/i.test(path.split('/').at(-1)))
+      .map(path => relative(base, path));
+    add(pkg.name, pkg.version, pkg.license ?? 'OPEN: no licence declaration', pkg.source,
+      `${scopes.join('; ')} (locked production closure, includes optional/target-specific dependencies and build tools)`, base, paths);
+  }
+}
+function writeManifest(root, inputs, components) {
+  const manifest = { format: 2, componentsSha256: componentsDigest(components), inputs, components };
+  writeFileSync(join(root, DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+}
+// A Cargo.lock change inside the WASM closure needs new Cargo archive texts and nothing from
+// the SDK or Emscripten. `--refresh --cargo-only` reuses those components from the committed
+// manifest, but only while that manifest is intact and every SDK/toolchain pin is unchanged;
+// otherwise it fails closed and the full refresh with the pinned checkouts is required.
+const PINNED_INPUTS = ['smlibRevision', 'emsdkRef', 'emscriptenVersion', 'rustChannel'];
+export function splitReusableComponents(previous, inputs) {
+  verifyManifestIntegrity(previous);
+  const changed = PINNED_INPUTS.filter(key => previous.inputs?.[key] !== inputs[key]);
+  if (changed.length) {
+    throw new Error(`--cargo-only refused: ${changed.join(', ')} changed; run the full --refresh with --sdk and --emscripten`);
+  }
+  const wasCargo = c => Object.values(previous.inputs.cargoClosures).some(closure =>
+    closure.some(p => p.name === c.name && p.version === c.version && p.source === c.source));
+  const first = previous.components.findIndex(wasCargo);
+  const last = previous.components.findLastIndex(wasCargo);
+  if (first < 1 || last === previous.components.length - 1 ||
+      previous.components.slice(first, last + 1).some(c => !wasCargo(c))) {
+    throw new Error('--cargo-only refused: committed components are not SDK/Emscripten, Cargo block, Rust std; run the full --refresh');
+  }
+  return { head: previous.components.slice(0, first), tail: previous.components.slice(last + 1) };
+}
+export function refreshCargoOnly(root = ROOT, readMetadata = cargoMetadata) {
+  const previous = JSON.parse(readFileSync(join(root, DIR, 'manifest.json'), 'utf8'));
+  const inputs = inventoryInputs(root);
+  const { head, tail } = splitReusableComponents(previous, inputs);
+  mkdirSync(join(root, DIR, 'texts'), { recursive: true });
+  const { components: cargo, add } = collector(root);
+  addCargoComponents(add, inputs, readMetadata(root));
+  const owns = (list, s) => list.some(c => c.name === s.name && c.version === s.version);
+  applySupplemental(cargo, inputs.supplemental.filter(s => owns(cargo, s)));
+  // A supplement for a reused component is already in it; checkNotices verifies that.
+  const stale = inputs.supplemental.find(s => !owns(cargo, s) && !owns([...head, ...tail], s));
+  if (stale) throw new Error(`Stale supplemental notice: ${stale.name}`);
+  writeManifest(root, inputs, [...head, ...cargo, ...tail]);
+}
+function refresh({ sdk, emscripten }, root = ROOT) {
+  const inputs = inventoryInputs(root);
+  const revision = readFileSync(join(root, 'native/smlib-adapter/CMakeLists.txt'), 'utf8')
+    .match(/set\(IFCLITE_SMLIB_REVISION ([a-f0-9]{40})\)/)[1];
+  const git = (...args) => execFileSync('git', ['-C', sdk, ...args], { encoding: 'utf8' }).trim();
+  if (git('rev-parse', 'HEAD') !== revision || git('status', '--porcelain', '--untracked-files=all', '--ignored', '--',
+    'source/SMLib', 'source/SM_API', 'LICENSE', 'THIRD_PARTY_NOTICES.md')) throw new Error('SDK pin/cleanliness mismatch');
+  if (inputs.emscriptenVersion !== '4.0.15' || JSON.parse(readFileSync(join(emscripten, 'emscripten-version.txt'), 'utf8')) !== inputs.emscriptenVersion) throw new Error('Review runtime notice paths for the changed Emscripten version');
+  if (execFileSync('git', ['-C', resolve(emscripten, '../..'), 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() !== inputs.emsdkRef) throw new Error('emsdk checkout pin mismatch');
+  mkdirSync(join(root, DIR, 'texts'), { recursive: true });
+  const { components, add } = collector(root);
   add('NVIDIA usd-brep SMLib + SM_API', revision, 'Apache-2.0 (kernel/API)',
     `https://github.com/NVIDIA-Omniverse/usd-brep/tree/${revision}`, 'native worker and Emscripten SDK module; full upstream notices retained conservatively',
     sdk, ['LICENSE', 'THIRD_PARTY_NOTICES.md']);
@@ -151,25 +238,7 @@ function refresh({ sdk, emscripten }, root = ROOT) {
     notices: [{ origin: 'system/lib/dlmalloc.c licence/version header', file: allocatorFile, sha256: allocatorHash }] });
   // Resolve now: a stale user-supplied metadata file must not be stamped with
   // the current lockfile's hash and mistaken for a fresh dependency inventory.
-  const data = JSON.parse(execFileSync('cargo', ['metadata', '--locked', '--format-version', '1', '--all-features'],
-  { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
-  const selected = new Map();
-  for (const [rootName, closure] of Object.entries(inputs.cargoClosures)) {
-    for (const entry of closure) {
-      const key = JSON.stringify(entry);
-      if (!selected.has(key)) selected.set(key, { entry, scopes: [] });
-      selected.get(key).scopes.push(rootName === 'ifc-lite-diff-wasm' ? 'pkg-diff' : 'default pkg + pkg-retained');
-    }
-  }
-  for (const { entry, scopes } of [...selected.values()].sort((a, b) => `${a.entry.name}@${a.entry.version}`.localeCompare(`${b.entry.name}@${b.entry.version}`))) {
-    const pkg = data.packages.find(p => p.name === entry.name && p.version === entry.version && p.source === entry.source);
-    if (!pkg) throw new Error(`Missing archive metadata: ${entry.name} ${entry.version}`);
-    const base = dirname(pkg.manifest_path);
-    const paths = files(base).filter(path => /^(LICENSE|COPYING|COPYRIGHT|NOTICE|AUTHORS)/i.test(path.split('/').at(-1)))
-      .map(path => relative(base, path));
-    add(pkg.name, pkg.version, pkg.license ?? 'OPEN: no licence declaration', pkg.source,
-      `${scopes.join('; ')} (locked production closure, includes optional/target-specific dependencies and build tools)`, base, paths);
-  }
+  addCargoComponents(add, inputs, cargoMetadata(root));
   const sysroot = execFileSync('rustc', ['--print', 'sysroot'], { cwd: root, encoding: 'utf8' }).trim();
   const rustDocs = join(sysroot, 'share/doc/rust');
   add('Rust standard library', execFileSync('rustc', ['--version'], { cwd: root, encoding: 'utf8' }).trim(),
@@ -177,18 +246,25 @@ function refresh({ sdk, emscripten }, root = ROOT) {
     'default pkg, pkg-retained and pkg-diff wasm; COPYRIGHT-library.html enumerates bundled library components', rustDocs,
     ['COPYRIGHT-library.html', ...files(join(rustDocs, 'licenses')).map(path => relative(rustDocs, path))]);
   applySupplemental(components, inputs.supplemental);
-  const manifest = { format: 2, inputs, components };
-  writeFileSync(join(root, DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  writeManifest(root, inputs, components);
 }
 if (isMainEntry(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     if (args[0] === '--refresh') {
+      const cargoOnly = args.includes('--cargo-only');
       const options = {};
-      for (let i = 1; i < args.length; i += 2) options[args[i].replace(/^--/, '')] = args[i + 1];
-      if (!options.sdk || !options.emscripten) throw new Error('--refresh requires --sdk ABS --emscripten ABS');
-      refresh(options);
-    }
+      for (let i = 1; i < args.length; i += 2) {
+        if (args[i] === '--cargo-only') i -= 1; else options[args[i].replace(/^--/, '')] = args[i + 1];
+      }
+      if (cargoOnly) {
+        if (Object.keys(options).length) throw new Error('--cargo-only reuses the committed SDK/Emscripten components and takes no --sdk/--emscripten');
+        refreshCargoOnly();
+      } else {
+        if (!options.sdk || !options.emscripten) throw new Error('--refresh requires --sdk ABS --emscripten ABS (or --cargo-only)');
+        refresh(options);
+      }
+    } else if (args.includes('--cargo-only')) throw new Error('--cargo-only is only valid with --refresh');
     checkNotices(ROOT, args[0] !== '--refresh' && args[0] !== '--write');
     console.log('Retained notice inventory and generated bundles match; human release review remains required.');
   } catch (error) { console.error(error.message); process.exitCode = 1; }

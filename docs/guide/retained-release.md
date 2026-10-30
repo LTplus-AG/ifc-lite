@@ -62,6 +62,43 @@ Before release, run `node scripts/check-rust-semver.mjs` and
 `publish = false` is removed for explicit runtime bootstrap qualification; the
 automatic list and both crate floors remain at their original eight crates.
 
+## Refreshing retained notices after a dependency change
+
+`node scripts/retained-notices.mjs --check` (the `node-guards` job) fails when a
+`Cargo.lock` change touches the WASM dependency closure, including the weekly
+Dependabot Cargo group, because new package versions need their archive texts.
+Pick the refresh by what changed:
+
+* **Only Cargo closures changed** (the SDK pin `IFCLITE_SMLIB_REVISION`, the emsdk
+  ref, the Emscripten version and `rust-toolchain.toml` are untouched): on the PR
+  branch run
+
+  ```sh
+  node scripts/retained-notices.mjs --refresh --cargo-only
+  ```
+
+  It needs only the pinned Rust toolchain and the Cargo registry, no usd-brep
+  checkout and no emsdk. It re-reads the Cargo archive texts and reuses the
+  committed SDK, Emscripten, musl/LLVM, dlmalloc and Rust standard-library
+  components verbatim. It refuses (and writes nothing) when the committed
+  `manifest.json` fails its `componentsSha256` digest, when any of those four pins
+  differs from the committed manifest, or when the committed components are not
+  laid out as SDK/Emscripten, Cargo block, Rust std. Passing `--sdk` or
+  `--emscripten` with `--cargo-only` is an error. Commit the regenerated
+  `licenses/retained/`, `packages/*/THIRD_PARTY_NOTICES.txt` and review the new
+  component rows and any `OPEN:` entries.
+* **A pin or the toolchain changed**: run the full
+  `--refresh --sdk /absolute/pinned-usd-brep --emscripten /absolute/emsdk/upstream/emscripten`
+  (SDK at the pinned revision and clean, emsdk 4.0.15 at the pinned ref). The
+  release owner owns this step.
+
+`--write` regenerates the bundle from the committed manifest and never recomputes
+`componentsSha256`, so it cannot paper over a damaged manifest: if a merge conflict
+in `manifest.json` loses a licence text, `--check` and `--write` both fail until
+`manifest.json` is restored or `--refresh` rebuilds it. The digest catches
+accidental loss and hand edits; it is not a signature, because `--refresh`
+legitimately recomputes it. Review of the diff still applies.
+
 ## First crates.io publication (human operation)
 
 Observed on 2026-10-29: runtime name returned HTTP 404; core and geometry latest

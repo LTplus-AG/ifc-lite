@@ -1,5 +1,6 @@
 {
   "format": 2,
+  "componentsSha256": "e6b956fb3d8730eaf3d14baba03161401df5599e7173aab1a55e4c29fc868cca",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [

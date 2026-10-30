@@ -1,0 +1,12 @@
+diff --git a/rust/geometry/src/program/retained/bounds.rs b/rust/geometry/src/program/retained/bounds.rs
+--- a/rust/geometry/src/program/retained/bounds.rs
++++ b/rust/geometry/src/program/retained/bounds.rs
+@@ -42,7 +42,7 @@
+ }
+ pub(super) fn boolean_bounds(inputs: &[LogicalRetainedValue; 2], operation: crate::BoolOp) -> Option<EvaluationBounds> {
+     match operation {
+-        crate::BoolOp::Difference => inputs[1].bounds,
++        crate::BoolOp::Difference => inputs[0].bounds,
+         crate::BoolOp::Intersection => inputs[0].bounds,
+         crate::BoolOp::Union => {
+             let (left, right) = (inputs[0].bounds?, inputs[1].bounds?);

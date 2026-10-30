@@ -554,11 +554,11 @@ const stampFingerprint = (
 // with it. If a WebGLRenderer is ever constructed outside that guard again, the
 // throw would arrive here benign; the guard is the thing keeping this honest.
 //
-// `file_unreadable` meets the same bar and joins them, and is safe here ONLY
-// because the ambiguous WebKit wording is context-gated -- the argument, and
-// what breaks without it, are in ./file-not-found-errors.ts.
+// `file_unreadable` is safe here because its ambiguous WebKit wording is
+// context-gated (./file-not-found-errors.ts). `invalid_archive` only claims
+// anchored parser content/size refusals (./invalid-archive-errors.ts).
 const BENIGN_ERROR_KINDS = new Set<string>([
-  'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable',
+  'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable', 'invalid_archive',
 ]);
 
 const downgradeBenignExceptions = (

@@ -144,3 +144,40 @@ fn the_fast_path_reads_the_f4_1_number_forms_as_the_full_decode_does() {
         assert_eq!(d.point3(id).unwrap(), want);
     }
 }
+
+/// #7779 / #8045: reusing a decoded point keeps the leaf result, error kind,
+/// signed zero and distinct-record refusal census of decode-then-point3.
+#[test]
+fn issue_7779_decoded_point_matches_id_read_after_decode() {
+    let content = format!("{CONTENT}#23=IFCCARTESIANPOINT((-0.,1.E-400));");
+    for strict in [false, true] {
+        let mut reference = EntityDecoder::new(&content);
+        let mut reused = EntityDecoder::new(&content);
+        if strict {
+            reference = reference.with_strict_reals();
+            reused = reused.with_strict_reals();
+        }
+        for id in (1..=23).chain([1, 6, 22, 999]) {
+            let expected = reference
+                .decode_by_id(id)
+                .and_then(|_| reference.point3(id));
+            let actual = reused
+                .decode_by_id(id)
+                .and_then(|point| reused.point3_decoded(&point));
+            match (expected, actual) {
+                (Ok(expected), Ok(actual)) => {
+                    assert_eq!(expected.map(f64::to_bits), actual.map(f64::to_bits));
+                }
+                (Err(expected), Err(actual)) => {
+                    assert_eq!(expected.to_string(), actual.to_string())
+                }
+                (expected, actual) => panic!("#{id}: {expected:?} != {actual:?}"),
+            }
+            let mut expected = reference.refused_record_ids();
+            let mut actual = reused.refused_record_ids();
+            expected.sort_unstable();
+            actual.sort_unstable();
+            assert_eq!(expected, actual, "#{id}, strict={strict}");
+        }
+    }
+}

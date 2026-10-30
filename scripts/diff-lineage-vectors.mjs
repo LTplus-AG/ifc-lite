@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { diffModels, lineageOfDiff, lineageConflicts, keyAliasesFromLineage, rekeyByLineage,
- identityMapFromContentMatches, identityMapFromSuccessors } from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+const { diffModels, lineageOfDiff, lineageConflicts, keyAliasesFromLineage, rekeyByLineage,
+ identityMapFromContentMatches, identityMapFromSuccessors } = await loadDiffOracle();
 const cases=JSON.parse(readFileSync(new URL('../rust/diff/tests/successor_vectors.json',import.meta.url),'utf8'))
- .filter(v=>!v.name.startsWith('budget-')).map(({expected,...v})=>v);
+ .filter(v=>!v.name.startsWith('budget-')).map(({expected: _expected,...v})=>v);
 const e=(key)=>({key,ref:key,ifcType:'IfcWall',dataHash:'same'});
 for(const [reason,relation] of [['successor:position',undefined],['manual',undefined],['successor:position','identity'],['manual','replaced']]) {
  cases.push({name:`alias-${reason}-${relation}`,base:[e('a')],head:[e('b')],options:{keyAliases:[['b','a']]},
@@ -29,6 +30,6 @@ for(const input of cases) for(const accept of [false,true]) {
 const path=new URL('../rust/diff/tests/lineage_vectors.json',import.meta.url);
 const text=`[\n${vectors.map(v=>JSON.stringify(v)).join(',\n')}\n]\n`;
 if(process.argv.includes('--check')) {
- if(readFileSync(path,'utf8')!==text) throw new Error('Lineage vectors differ from the built TypeScript engine');
+ if(readFileSync(path,'utf8')!==text) throw new Error('Lineage vectors differ from the test-only TypeScript oracle');
 } else writeFileSync(path,text);
 console.log(`Lineage parity: ${vectors.length} cases`);

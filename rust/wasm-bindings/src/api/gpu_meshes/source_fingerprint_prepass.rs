@@ -14,7 +14,7 @@ impl IfcAPI {
         disabled_type_names: Option<Vec<String>>, skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue> {
         self.pre_pass_streaming_impl(data, on_event, chunk_size, disabled_type_names,
-            skip_type_geometry, None, false, true)
+            skip_type_geometry, super::prepass_mode::PrepassOptions::serial(true))
     }
 }
 

@@ -4,6 +4,7 @@
 
 use super::GeometryRouter;
 use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
+use crate::Vector3;
 use ifc_lite_core::EntityDecoder;
 
 /// #6263: a mapping origin's Location must be an IfcCartesianPoint. The raw
@@ -140,7 +141,7 @@ fn router_csg_failures_append_under_same_product() {
 }
 
 #[test]
-fn test_parse_cartesian_point() {
+fn test_point3_at() {
     let content = r#"
 #1=IFCCARTESIANPOINT((100.0,200.0,300.0));
 #2=IFCWALL('guid',$,$,$,$,$,#1,$);
@@ -149,24 +150,20 @@ fn test_parse_cartesian_point() {
     let mut decoder = EntityDecoder::new(content);
 
     let wall = decoder.decode_by_id(2).unwrap();
-    let point = crate::transform::parse_cartesian_point(&wall, &mut decoder, 6).unwrap();
+    let point = decoder.point3_at(&wall, 6).unwrap().unwrap();
 
-    assert_eq!(point.x, 100.0);
-    assert_eq!(point.y, 200.0);
-    assert_eq!(point.z, 300.0);
+    assert_eq!(point, [100.0, 200.0, 300.0]);
 }
 
 #[test]
-fn test_parse_direction() {
+fn canonical_direction_reader_for_probe_7781() {
     let content = r#"
 #1=IFCDIRECTION((1.0,0.0,0.0));
 "#;
 
     let mut decoder = EntityDecoder::new(content);
-    let router = GeometryRouter::new();
-
     let direction = decoder.decode_by_id(1).unwrap();
-    let vec = router.parse_direction(&direction).unwrap();
+    let vec = Vector3::from(EntityDecoder::direction3_of(&direction).unwrap());
 
     assert_eq!(vec.x, 1.0);
     assert_eq!(vec.y, 0.0);
@@ -1283,7 +1280,7 @@ fn capped_curve_in_mapped_source_is_reported_and_not_misattributed_to_the_next_i
 // leaf policy even when a default/lossless decoder has already parsed input.
 #[test]
 fn decoderless_direction_preserves_raw_2d_3d_and_zero_ratios_7670() {
-    let read = crate::transform::parse_direction;
+    let read = |entity: &ifc_lite_core::DecodedEntity| EntityDecoder::direction3_of(entity).map(Vector3::from);
     for (record, expected) in [
         ("IFCDIRECTION((3,-4.))", [3.0, -4.0, 0.0]),
         ("IFCDIRECTION((2.,-3.,4.))", [2.0, -3.0, 4.0]),
@@ -1300,7 +1297,7 @@ fn decoderless_direction_preserves_raw_2d_3d_and_zero_ratios_7670() {
 
 #[test]
 fn decoderless_direction_rejects_malformed_parsed_entities_7670() {
-    let read = crate::transform::parse_direction;
+    let read = |entity: &ifc_lite_core::DecodedEntity| EntityDecoder::direction3_of(entity).map(Vector3::from);
     for record in [
         "IFCDIRECTION()", "IFCDIRECTION($)", "IFCDIRECTION(*)",
         "IFCDIRECTION(1.)", "IFCDIRECTION(())", "IFCDIRECTION((1.))",
@@ -1311,16 +1308,14 @@ fn decoderless_direction_rejects_malformed_parsed_entities_7670() {
         let content = format!("#42={record};");
         let mut decoder = EntityDecoder::new(&content);
         let entity = decoder.decode_by_id(42).expect("malformed leaf must still parse");
-        let error = read(&entity).expect_err("malformed direction must not become a vector");
-        assert!(matches!(error, crate::Error::GeometryError(ref message)
-            if message == "#42 is not a readable IfcDirection"), "{record}: {error}");
+        assert!(read(&entity).is_none(), "malformed direction must not become a vector: {record}");
         assert_eq!(decoder.refused_records(), 0, "{record}: no decoder to count through");
     }
 }
 
 #[test]
 fn decoderless_direction_rejects_parsed_nonfinite_ratios_7670() {
-    let read = crate::transform::parse_direction;
+    let read = |entity: &ifc_lite_core::DecodedEntity| EntityDecoder::direction3_of(entity).map(Vector3::from);
     // The default decoder is lossless: overflowing STEP REALs parse as
     // infinities. Strict-reals decoding would reject before reaching this API.
     for literal in ["1.E400", "-1.E400"] {
@@ -1329,9 +1324,7 @@ fn decoderless_direction_rejects_parsed_nonfinite_ratios_7670() {
         let entity = decoder.decode_by_id(42).expect("default decoder retains overflow");
         let first = entity.get_list(0).unwrap()[0].as_float().unwrap();
         assert!(first.is_infinite(), "control must actually reach reader as non-finite");
-        let error = read(&entity).expect_err("non-finite ratios must not become a vector");
-        assert!(matches!(error, crate::Error::GeometryError(ref message)
-            if message == "#42 is not a readable IfcDirection"), "{literal}: {error}");
+        assert!(read(&entity).is_none(), "non-finite ratios must not become a vector: {literal}");
         assert_eq!(decoder.refused_records(), 0, "decoder-less refusal is uncounted");
     }
 }

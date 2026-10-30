@@ -103,6 +103,24 @@ api.clearPrePassCache();
 api.free();                           // release the API instance when done
 ```
 
+When reusing an API, every prepass or entity-index installation clears the
+previous content's derived caches and style finishes. Install finishes and
+prepass columns after the index. Source bytes survive index/prepass installation,
+so either source/index order is supported. `setSourceBytes` preserves previously
+installed index and columns; bytes and index must describe the same file. A staged sharded
+finish stash survives installation until finalize consumes it. Cleanup releases
+source and unfinished stash, preserving diagnostics and user settings. See the
+[content lifetime contract](../../docs/api/wasm.md#content-installation-and-cleanup).
+
+
+`getPipelineDiagnostics()` returns a plain `schemaVersion: 1` report with
+additive `refusedInputElements` (attempted jobs, including retries) and
+`refusedPrepassRecords` (distinct semantic refusal IDs per API/worker).
+Syntax-invalid type drops are excluded there and counted instead, per distinct
+record, in `omittedTypeRecords`. Prepass-only refusals and omissions are reportable;
+load installation resets counters and cleanup preserves them. See the
+[diagnostics contract](../../docs/api/wasm.md#diagnostics-and-tuning).
+
 ### Auxiliary geometry in the mesh frame
 
 Grid, alignment, and symbolic parsers accept the mesh pre-pass decision through
@@ -295,24 +313,195 @@ worker when used by the viewer, so releasing the tool also releases WASM pages.
 
 ## Rust diff bindings
 
-After initializing `@ifc-lite/wasm/diff`, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. Raw column dictionary strings, comparison options and result keys preserve arbitrary UTF-16 code units. The internal TypeScript column adapter still rejects lone surrogates; the public TypeScript comparison API remains unchanged until the later facade cutover in #8042. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
+The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from
+`rust/diff-wasm` by `scripts/build-wasm.sh`. Initialize this raw module explicitly
+with its default asynchronous initializer or its `initSync` export before using
+the bindings. Diff and geometry have independent initialization and memory;
+initializing either module does not initialize the other. The committed
+`pkg-diff/ifc-lite-diff.d.ts` describes the low-level interface and supports
+typechecking without a Rust toolchain.
+
+After initialization, `DiffModel` owns fingerprint columns for repeated
+synchronous comparisons. Its constructor accepts a string dictionary, five
+string indices per entity (key, IFC class, data hash, geometry hash, container),
+presence flags, six bounding-box coordinates per entity, volumes, component
+offsets, and component key/value indices. Dictionary strings, comparison options
+and result keys preserve original UTF-16 code units, including lone surrogates.
+An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a
+bounding box, volume, and components. Call `.free()` in `finally` for each model.
 
 Class matching uses the running JavaScript host's Unicode version for `trim().toUpperCase()`, including Node 22's older casing tables. Each model retains its unique non-ASCII IFC class names in Rust. After decoding comparison options, the boundary normalizes those names and non-ASCII exclusion/family members once per unique string, catching host exceptions before entering the pure Rust comparison. A scoped map also preserves normalized outputs as fixed points and is restored before result conversion. Native Rust callers retain their toolchain's Unicode mappings. ASCII IFC names require no JavaScript normalization calls.
 
 This normalization contract assumes standard, idempotent string intrinsics. The boundary looks up the host methods at comparison time, but does not reproduce the TypeScript engine's per-entity method observation count or order for custom `String.prototype` overrides. Host exceptions from normalization retain their original thrown value, and the same models can be reused after a caught failure. Runtime parity regressions are in `test/diff-runtime-unicode-parity.test.mjs`; set `IFC_LITE_REQUIRE_UNICODE_WASM=1` to fail on missing built artifacts instead of skipping, and run against both Node 22 and Node 24.
 
-`DiffModel.compare` returns row indices instead of JavaScript references. Keep the original fingerprint arrays and restore those references on the JavaScript side; opaque references never cross into WASM. The model can be reused for more comparisons before freeing it.
+`DiffModel.compare` returns row indices instead of JavaScript references. Keep
+the original fingerprint arrays and restore those references on the JavaScript
+side; opaque references never cross into WASM. Reuse a model for further
+comparisons before freeing it.
 
-`diffStableHash` accepts UTF-16 code units, including unpaired surrogates. `diffBuildDataFingerprint` and `diffBuildComponentFingerprints` accept IFC adapter projections directly.
+`diffStableHash` accepts UTF-16 code units. `diffBuildDataFingerprint` and
+`diffBuildComponentFingerprints` accept typed IFC adapter projections. They read
+only known fields, preserving lone surrogates in names and nested property keys
+and values; ignored extras, including assigned-type `globalId`, are not observed.
+`diffCheckFingerprintCollections(collection, components)` is the facade's
+ordering helper, not a fingerprint: given one freshly projected sparse
+`propertySets`, `quantitySets` or `typeAssignments` collection, it raises the
+host engine's string-length `RangeError` where the TypeScript oracle would
+while sorting or hashing that collection, before the facade reads the next
+field. It leaves the outer-hole `TypeError` to the caller's own read.
+`diffNormalizeValue` handles live host values before typed fingerprint projection:
+it preserves scalar values, represents non-finite numbers as strings, and
+serializes composite values with stable object-key ordering and observable host
+array/JSON behavior. Raw normalization propagates host exceptions; the calling
+facade owns warning and `String()` fallback behavior.
 
-These two raw typed boundaries preserve arbitrary UTF-16 code units, including lone surrogates in typed names, material/classification strings, property/quantity object keys and recursively nested values. Only known record fields are read; ignored extras (including assigned-type `globalId`) are not observed or hashed. Each known field and nested value is read once. Property-value objects are content, so their keys and values participate in the fingerprint. The decoder mirrors the Rust input schema and must be kept in sync when that schema changes. Scalar strings use a checked bulk copy; non-scalar strings use original code units. The public `@ifc-lite/diff` index still uses the unchanged TypeScript engine. The TypeScript column adapter and raw lineage scalar guards remain until their corresponding lossless cutovers land.
+`diffIdentityMapFromContentMatches` derives committed one-to-one identity claims
+from projected content matches. `diffIdentityMapFromSuccessors` derives claims
+only from explicitly accepted successor suggestions. `diffLineageOfDiff`
+assembles lineage from projected comparison entries, applied aliases, content
+matches, split/merge evidence, accepted successors, and alias reasons/relations.
+These projections transfer keys, entry states and piece volumes; opaque adapter
+references remain in JavaScript.
 
-`diffCreateSidecar`, `diffValidateSidecar`, and `diffSerializeSidecar` handle the small JSON sidecar documents; date validation uses the host's `Date.parse`. Sidecar serialization includes the trailing newline.
+`diffCreateSidecar`, `diffValidateSidecar`, and `diffSerializeSidecar` accept JSON
+text. The live-value helpers `diffCreateSidecarValue` and
+`diffValidateSidecarValue` create/validate identity-map or lineage objects;
+their boolean argument selects lineage when true. Creation projects known fields,
+deduplicates structural tuples with host `JSON.stringify`, sorts entries, then
+validates the result. Tuple boundaries preserve NUL, SOH and lone UTF-16 units
+(#8130/#8088); exact duplicates retain the first reason and shares. The stringify
+callee is captured before tuple-field getters, matching the TypeScript expression.
+`diffSerializeSidecarValue` uses host `JSON.stringify` observations, including
+`toJSON`, unsupported values and exceptions, with two-space indentation and a
+trailing newline. Date validation uses host `Date.parse`; strings and diagnostics
+retain their original UTF-16 code units.
 
-`diffLineageConflicts(entries)` returns ordered conflict diagnostics, and `diffKeyAliasesFromLineage(entries)` returns head/base pairs in insertion order for constructing a JavaScript `Map`. `diffRekeyByLineage(keys, entries, deleted, policy)` migrates external keys using `copy-to-all`, `largest-share`, or `orphan-on-split`. These helpers accept lineage objects directly, preserving non-finite share values for policy validation. Deleted keys have no `relation` field in their result. `largest-share` orphans splits with missing, empty, mismatched, non-finite or negative shares, or a tied maximum; invalid evidence does not throw. Zero is valid and shares need not sum to one. In this staging payload, every raw lineage string (base/head keys, reason, relation, rekey keys, deleted keys, and policy) must be well-formed UTF-16. The bindings reject unpaired surrogates before serde or wasm-bindgen can replace them; literal U+FFFD and valid surrogate pairs remain accepted. This limited scalar domain is temporary: the full lossless `JsString` engine/facade followup removes the rejection before public cutover.
+`diffSidecarValueMismatches` compares pinned sidecar metadata with supplied model
+metadata: base/head hashes and the key-property scheme. Its boolean argument
+selects lineage diagnostics when true. `diffKeyAliasesFromSidecarValue` returns
+ordered head/base pairs for unambiguous, non-identity sidecar claims.
 
-These bindings are the staged backend for issue #8042. The public `@ifc-lite/diff` facade has not switched to them yet; existing consumers keep their current initialization contract until integration and performance qualification complete.
+`diffLineageConflicts` returns ordered conflict diagnostics, and
+`diffKeyAliasesFromLineage` returns head/base pairs in insertion order for a
+JavaScript `Map`. `diffRekeyByLineage` migrates external keys using `copy-to-all`,
+`largest-share`, or `orphan-on-split`. These live-value helpers preserve original
+UTF-16 strings and non-finite share values. Deleted keys have no `relation` field
+in their result. `largest-share` orphans splits with missing, empty, mismatched,
+non-finite or negative shares, or a tied maximum (#8131/#8084). Zero is valid
+and shares need not sum to one. The live path follows the TypeScript length
+checks and `shares.every(share => Number.isFinite(share) && share >= 0)` before
+ranking, including custom methods, sparse arrays and repeated getters.
 
-The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from `rust/diff-wasm` by `scripts/build-wasm.sh`. Its `DiffModel`, canonical fingerprint, sidecar and lineage bindings are loaded by explicit diff initialization; they are excluded from both geometry bundles. The committed `pkg-diff/ifc-lite-diff.d.ts` supports wasm-free typechecking.
+The public `@ifc-lite/diff` entry points use this Rust module. Call
+`await initDiff()` or `initDiffSync(...)` once at application startup, then use
+the existing comparison, fingerprint, lineage and sidecar operations
+synchronously. The shared runtime centralizes Node asset loading and browser
+initialization, with no top-level await or silent TypeScript engine fallback.
+Operations called before initialization throw; initialization failures propagate.
+The public fingerprint facade normalizes live property and quantity values
+before passing their typed projections to the raw fingerprint bindings.
 
 The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports executed/total pairs. Missing fixtures are skipped with a `pnpm fixtures` hint; zero executed pairs exits with status 2 (incomplete), rather than claiming parity.
+
+### Experimental retained whole-model engine
+
+Build the separate `pkg-retained` bundle with `BUILD_RETAINED=1 bash scripts/build-wasm.sh`
+and stage the SMLib transport at `/smlib/`. Its `IfcAPI.retainedModel(bytes, ids?)`
+returns a `Promise<RetainedModelRun>`. The default `pkg` does not expose this method.
+
+The run buffers results until completion. Call `run.next()` until it returns
+`undefined`, then `run.free()`. Results follow the canonical processor's file
+order; `ids` filters products and orphan type products, and an empty ID array
+selects none. Orphan types follow products, with one atomic outcome per type and
+all its unreferenced maps in source order. Their MappingOrigin supplies placement;
+nested mappings retain f64 world precision. Instanced types, types with only curve maps
+that exact does not mesh, and representationless jobs are absent. One unsupported
+map refuses the entire type; there is no partial publication or exact retry.
+Published orphan types discharge all applicable obligations and publish final.
+Instanced type-library geometry is unavailable in retained mode.
+
+A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
+Each part has object-local metre `Float64Array` positions, `Uint32Array` indices,
+a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
+and `curved`. The optional `revisionLocalFaces` array preserves one kernel diagnostic
+index per triangle; these indices are not persistent IFC face identities. Every part
+carries `color` (RGBA); `geometryItemId` when the part comes from an authored geometry item (type-map and
+unbound parts carry none, as in exact); and, when the source names one, `materialName`:
+the IFC source decides, through the colour resolver the exact engine uses, so a part's
+colour is bitwise the exact engine's for the same product and item. `IfcAppearance` is
+discharged. Optional `normals` are populated on every published part (per corner,
+absolute IFC Z-up axes).
+Planar faces use the attributed source-plane normal after every vertex passes
+planarity verification. Other faces use angle-weighted smoothing within each
+revision-local face and a 10° crease guard, after applying the composed world frame. Positions
+and indices stay unchanged, and `SurfaceNormals` is discharged. Band parts carry their own
+`materialId`, resolved colour and material name through exact’s colour resolver.
+`instanceKey` identifies eligible byte-equal mapped geometry, including its persistent
+face keys, for optional view instancing. Products with the canonical layer class,
+including source-proven unsliced skips, are excluded from instancing.
+Every published part carries `faces`: a string table of persistent source keys
+`#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
+`disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
+and cross-checked against the kernel's faces; `PersistentFaces` is discharged.
+Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambiguous`).
+`appearance_unsupported` is the typed refusal for a binding that carries a texture or an
+indexed colour palette (origin `{site: 'appearance', entity, cause}`). Textures and indexed
+palettes are proven absent for retained-eligible products; tessellated bodies still refuse.
+A fully presented product carries `marker: 'final'` and an empty `obligationsUnmet` list.
+A product with remaining obligations carries `marker: 'PresentationObligationsUnmet'`
+and its nonempty list; consumers show shape-only for those products. Final describes published
+products, independently of refused products that make a model incomplete.
+Supported openings discharge `OpeningClosure`; `cuts` counts completed cuts and
+`consumedParts` is zero. A consumed part refuses the entire product with `empty_result`.
+Eligible material-layer hosts publish planar or curved bands after opening cuts, with internal
+caps removed and a closed combined skin. This discharges `MaterialLayers` (as does a
+source-proven layer skip). Unsupported families refuse `material_layer_strategy`; unresolved
+cap or seam conformity refuses `layer_caps_unresolved`. Unsupported opening bodies report
+`opening_unsupported`. The M4 and M11 appearance, normals and face proofs together allow final publication.
+
+A refusal has `status: 'refused'`, `expressId`, `ifcType`, a typed snake-case
+`code`, optional `{site, entity?, cause}` `origin`, and `kernelStatus` for kernel
+failures. It has no parts. A failed part refuses the entire product. There is no
+exact fallback. One independently qualified worker is reused; worker failures
+retire it and contract faults preserve it. Ordinary fault replacement is capped
+at three per model. Band-phase transport retirements have a separate allowance
+of four; exhaustion refuses remaining layered products before kernel work,
+without consuming the allowance used by non-layer products. Known synchronized
+band kernel refusals preserve the live worker. Each failed product stays atomic.
+The worker is released before the completed run is returned.
+
+For progressive display, the same opt-in bundle exports `RetainedModelSession`.
+Create one session per retained host Worker and call
+`await session.run(bytes, { detail: 'view', ids }, onEvent)`. `ids` is an optional
+`Uint32Array`; `detail: 'shape'` returns the M1 shape parts instead of view meshes.
+The synchronous callback receives `start` (canonical `candidateIds` and a
+`frame` containing `rtcOffset` and `needsShift`), followed by one `published` or
+`refused` event per candidate. Frame selection uses the same resolver as
+`buildPrePassOnce`, regardless of the ID filter.
+
+View events own a `MeshCollection`: extract its meshes and free every mesh
+handle and collection in `finally` blocks. Positions, smoothed corner normals and f64
+origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
+Z-up metres. Each mesh takes its part's resolved appearance colour (`IfcAppearance`) and the authored
+metallic/roughness finish, falling back to the type default only for a part that carries no
+appearance. The event carries `final` when its obligations are empty, otherwise the shape-only marker.
+The returned summary counts candidates, publications, refusals, restarts and
+worker acquisitions, plus controller product/acquisition milliseconds. A warm
+run acquires no new worker and reuses its completed qualification. `session.free()`
+releases the worker; terminate the host Worker for immediate cancellation.
+Callback exceptions reject after controller cleanup, rather than cancel work.
+The source buffer moves into the Rust source bundle without a second Rust copy.
+`IfcAPI.retainedModel` and the default WASM engine remain unchanged.
+
+Eligible single-part view events also carry `instanceKey` and optional
+`instanceWorldFromObject`, the controller's composed IFC frame. The retained-only
+`encodeInstancedShard(meshes, keys, rtc)` accepts up to 256 extracted Y-up meshes,
+their full keys, and the session RTC offset. Supply each event's frame as the
+mesh's `worldFromObject`. It returns IFNS `shard` bytes, `flatIndices` into the
+input, and instance, group and pairing-rejection counts. The retained-only
+`instanceMinOccurrences()` returns the engine’s minimum eligible occurrence count,
+shared by the encoder and CLI reports. Groups must meet that threshold and pass
+the existing geometric pairing check;
+rejected groups remain flat. Render each input exactly once, through its shard
+or its flat mesh. The viewer flushes every 256 completed products and at session
+completion. CLI OBJ export continues to bake every occurrence.

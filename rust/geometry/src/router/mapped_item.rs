@@ -12,6 +12,7 @@
 use super::frame_parts::single_frame_source;
 use super::transforms::instancing_enabled;
 use crate::math::mat4;
+use crate::program::mapping_budget::{LogicalBudget, SourceResult};
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
@@ -69,7 +70,8 @@ impl GeometryRouter {
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> Result<(u32, MappedOccurrence)> {
+        budget: &mut LogicalBudget,
+    ) -> SourceResult<(u32, MappedOccurrence)> {
         // IfcMappedItem attributes:
         // 0: MappingSource (IfcRepresentationMap)
         // 1: MappingTarget (IfcCartesianTransformationOperator)
@@ -83,10 +85,7 @@ impl GeometryRouter {
 
         // MappingTarget (attr 1) composed over the map's MappingOrigin (attr 0),
         // which applies innermost. #1985
-        let mut transform = self.mapped_item_transform(item, &source_entity, decoder)?;
-        if let Some(transform) = &mut transform {
-            self.scale_transform(transform);
-        }
+        let transform = self.scaled_mapped_item_transform(item, &source_entity, decoder)?;
 
         // The model-wide shared cache (#1623) takes precedence over the
         // per-router RefCell fallback so a source shared across owning elements
@@ -119,6 +118,7 @@ impl GeometryRouter {
         let items_attr = representation
             .get(3)
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
+        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
         let items = decoder.resolve_ref_list(items_attr)?;
         Ok((source_id, MappedOccurrence::Source { representation, items, transform }))
     }
@@ -131,7 +131,9 @@ impl GeometryRouter {
         &self,
         item: &DecodedEntity,
         eligible: bool,
-        textures: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
+        textures: Option<
+            &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+        >,
         decoder: &mut EntityDecoder,
     ) -> Result<StyledSource> {
         let source_attr = item
@@ -146,10 +148,7 @@ impl GeometryRouter {
             .resolve_ref(representation_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
         // MappingTarget · MappingOrigin (#1985), scaled once for every use.
-        let mut transform = self.mapped_item_transform(item, &source, decoder)?;
-        if let Some(transform) = &mut transform {
-            self.scale_transform(transform);
-        }
+        let transform = self.scaled_mapped_item_transform(item, &source, decoder)?;
         let solid_id = if eligible {
             self.dont_bake_solid(source.id, &representation, textures, decoder)
         } else {
@@ -160,10 +159,16 @@ impl GeometryRouter {
 
     /// A styled source's items. A representation without an Items attribute
     /// walks nothing; one whose Items do not resolve is an error.
-    pub(crate) fn styled_source_items(representation: &DecodedEntity, decoder: &mut EntityDecoder)
-        -> Result<Vec<DecodedEntity>> {
+    pub(crate) fn styled_source_items(
+        representation: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        budget: &mut LogicalBudget,
+    ) -> SourceResult<Vec<DecodedEntity>> {
         match representation.get(slot::IfcRepresentation::ITEMS.index()) {
-            Some(items_attr) => Ok(decoder.resolve_ref_list(items_attr)?),
+            Some(items_attr) => {
+                budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+                Ok(decoder.resolve_ref_list(items_attr)?)
+            }
             None => Ok(Vec::new()),
         }
     }
@@ -229,13 +234,7 @@ impl GeometryRouter {
             }
         }
         if let ([part], true) = (parts, instancing_enabled()) {
-            part.instance_meta = Some(InstanceMeta {
-                transform: mat4::IDENTITY,
-                local_transform: local_rm,
-                canonical_transform: None,
-                rep_identity: source_id as u128,
-                instanceable: true,
-            });
+            part.instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
         }
     }
 
@@ -274,7 +273,8 @@ impl GeometryRouter {
     pub(crate) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
         if mesh.rtc_applied {
             mesh.rtc_applied = false;
-            let rtc = [self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2];
+            let (x, y, z) = self.rtc_offset();
+            let rtc = [x, y, z];
             for (origin, offset) in mesh.origin.iter_mut().zip(rtc) {
                 *origin += offset;
             }

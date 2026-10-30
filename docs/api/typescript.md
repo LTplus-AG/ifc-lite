@@ -64,6 +64,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
 | [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |
+| [`@ifc-lite/source-bimcollab`](https://www.npmjs.com/package/@ifc-lite/source-bimcollab) | BIMcollab Documents file-source provider for ifc-lite |
 | [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
 | [`@ifc-lite/source-dropbox`](https://www.npmjs.com/package/@ifc-lite/source-dropbox) | Dropbox file-source provider for ifc-lite |
 | [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph file-source provider for the signed-in user's own OneDrive |
@@ -1145,13 +1146,25 @@ WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the 
 ### Independent diff WASM module
 
 `@ifc-lite/wasm/diff` exposes the Rust comparison bindings in a separate module.
-Initialize that module explicitly before constructing `DiffModel` handles;
-initializing the geometry engine does not initialize diff, and initializing
-diff does not load the geometry engine. Free each model handle in `finally`.
-The bindings include canonical fingerprints, sidecar encoding and lineage
-helpers. See the `@ifc-lite/wasm` package README for the low-level interface.
-The public `@ifc-lite/diff` comparison API still uses TypeScript during the
-staged facade migration tracked in #8042.
+Initialize its default asynchronous initializer or `initSync` explicitly before
+constructing `DiffModel` handles. Diff and geometry initialize independently;
+free each model handle in `finally`. Restore returned row indices to opaque
+application references in JavaScript.
+
+The raw exports cover UTF-16 fingerprints and live host normalization,
+identity-claim derivation, lineage assembly, and JSON-text/live-value sidecars.
+Host Date/JSON observations are preserved. See the
+[`@ifc-lite/wasm` low-level guide](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#rust-diff-bindings)
+for helper groups, transport and lifetime requirements.
+
+The public `@ifc-lite/diff` entry points use this Rust module. Call
+`await initDiff()` or `initDiffSync(...)` once at application startup, then use
+the existing comparison, fingerprint, lineage and sidecar operations
+synchronously. The shared runtime centralizes Node asset loading and browser
+initialization, with no top-level await or silent TypeScript engine fallback.
+Operations called before initialization throw; initialization failures propagate.
+The public fingerprint facade normalizes live property and quantity values
+before passing their typed projections to the raw fingerprint bindings.
 
 ## @ifc-lite/codegen
 

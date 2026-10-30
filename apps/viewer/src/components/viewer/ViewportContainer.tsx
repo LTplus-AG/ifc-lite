@@ -23,6 +23,7 @@ import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LandXmlUnitsRefusalPrompt } from './LandXmlUnitsRefusalPrompt';
+import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { LandXmlAssumptionRefusalPromptSlot } from './LandXmlGeorefAssumptionsLazy';
 import { VisibilityChips } from '@/components/viewport-ui/hud/VisibilityChips';
 import { ToolOverlays } from './ToolOverlays';
@@ -70,7 +71,7 @@ import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
-import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/geo/effective-georef';
 import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 
 /**
@@ -207,8 +208,8 @@ export function ViewportContainer() {
         georefMutations.get(modelId),
       );
       if (
-        effective?.projectedCRS?.name
-        && effective.mapConversion
+        hasDeclaredCrs(effective?.projectedCRS)
+        && effective?.mapConversion
         && effective.source !== 'siteLocation'
       ) {
         return {
@@ -228,8 +229,8 @@ export function ViewportContainer() {
         georefMutations.get('__legacy__'),
       );
       if (
-        effective?.projectedCRS?.name
-        && effective.mapConversion
+        hasDeclaredCrs(effective?.projectedCRS)
+        && effective?.mapConversion
         && effective.source !== 'siteLocation'
       ) {
         return {
@@ -283,7 +284,7 @@ export function ViewportContainer() {
           model.geometryResult?.coordinateInfo,
           georefMutations.get(modelId),
         );
-        if (effective?.projectedCRS?.name && effective.source !== 'siteLocation') return true;
+        if (offersCesium(effective)) return true;
       }
       // Fallback to legacy single-model
       if (ifcDataStore) {
@@ -292,7 +293,7 @@ export function ViewportContainer() {
           mergedGeometryResult?.coordinateInfo,
           georefMutations.get('__legacy__'),
         );
-        if (effective?.projectedCRS?.name && effective.source !== 'siteLocation') return true;
+        if (offersCesium(effective)) return true;
       }
       return false;
     }
@@ -860,6 +861,8 @@ export function ViewportContainer() {
           model in place (full page reload would drop it — no boot auto-restore). */}
       <MergeLayersBanner onReload={handleMergeLayersReload} />
       <GeometryModeBanner onReload={handleGeometryModeReload} />
+      {/* #7955 M2: the retained chip + panel; `null` (nothing) in a default build. */}
+      {retainedKernel && <retainedKernel.Chip reload={loadFile} />}
       {/* #5175: offers a retry with a user-chosen linear unit when a LandXML
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />

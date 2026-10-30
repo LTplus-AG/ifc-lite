@@ -17,10 +17,7 @@ use super::bspline_parse::expand_knots;
 pub(super) fn extract_vertex_coords(vertex: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Point3<f64>> {
     let point_attr = vertex.get(0)?;
     let point = decoder.resolve_ref(point_attr).ok().flatten()?;
-    let coords = point.get(0).and_then(|v| v.as_list())?;
-    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+    let [x, y, z] = decoder.point3(point.id).ok()?;
     Some(Point3::new(x, y, z))
 }
 
@@ -187,11 +184,7 @@ fn parse_bspline_curve(
         .iter()
         .map(|ref_val| {
             let id = ref_val.as_entity_ref()?;
-            let pt = decoder.decode_by_id(id).ok()?;
-            let coords = pt.get(0)?.as_list()?;
-            let x = coords.first()?.as_float().unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let [x, y, z] = decoder.point3(id).ok()?;
             Some(Point3::new(x, y, z))
         })
         .collect::<Option<Vec<_>>>()

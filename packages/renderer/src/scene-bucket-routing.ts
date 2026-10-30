@@ -5,7 +5,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BatchedMesh } from './types.js';
 import { BATCH_CONSTANTS } from './constants.js';
-import { originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
+import { type TopologyMemo, originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
 
 export interface PrecisionBucket {
   key: string;
@@ -29,13 +29,14 @@ export function resolvePrecisionBucket(
   state: RoutingState,
   baseKey: string,
   mesh: MeshData,
+  memo?: TopologyMemo,
 ): string {
   let key = state.activeKeys.get(baseKey) ?? baseKey;
   const current = state.buckets.get(key);
   const meshBytes = (mesh.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
   const currentOrigin = current?.frameOrigin ?? current?.batchedMesh?.origin;
   const precisionOverflow = (current?.vertexBytes ?? 0) > 0 && currentOrigin !== undefined
-    && !originPreservesTriangleTopology([mesh], currentOrigin);
+    && !(memo ? memo.preserves(mesh, currentOrigin) : originPreservesTriangleTopology([mesh], currentOrigin));
   const sizeOverflow = (current?.vertexBytes ?? 0) > 0
     && (current?.vertexBytes ?? 0) + meshBytes > state.maxBufferSize;
 
@@ -48,7 +49,7 @@ export function resolvePrecisionBucket(
 
   let target = state.buckets.get(key);
   if (!target) {
-    const frameOrigin = topologySafeBatchOrigin([mesh], undefined, state.sharedOrigin);
+    const frameOrigin = topologySafeBatchOrigin([mesh], undefined, state.sharedOrigin, undefined, memo);
     // Never publish a bucket which cannot be uploaded without collapsing a
     // valid triangle.  In particular, leaving this undefined used to defer the
     // failure until `mergeGeometry`, after callers had already mutated scene

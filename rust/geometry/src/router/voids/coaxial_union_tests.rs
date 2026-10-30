@@ -20,7 +20,7 @@ impl GeometryRouter {
         members: &[usize],
         axis: &Vector3<f64>,
     ) -> Option<(Vec<Mesh>, bool, Vec<usize>, f64)> {
-        crate::program::openings::execute::Execution::new(self.tessellation_quality)
+        crate::program::openings::execute::Execution::new(self.tessellation_quality())
             .build_coaxial_prisms(result, cands, members, axis)
     }
 }
@@ -88,9 +88,9 @@ fn host_wall() -> Mesh {
 }
 
 /// A `NonRectangular` box opening spanning `[min, max]`, penetration axis +Y.
-fn box_opening_y(min: [f64; 3], max: [f64; 3]) -> OpeningType {
+fn box_opening_y(min: [f64; 3], max: [f64; 3]) -> CutterKind {
     let m = box_mesh(min, max);
-    OpeningType::NonRectangular(
+    CutterKind::NonRectangular(
         m,
         Point3::new(min[0], min[1], min[2]),
         Point3::new(max[0], max[1], max[2]),
@@ -216,12 +216,12 @@ fn cutter_footprint_recovers_box_cross_section_and_depth() {
 
 /// Run just the prepass on a fresh host + opening set, returning
 /// (result, consumed, host_mutated).
-fn run_prepass(openings: &[OpeningType]) -> (Mesh, Vec<bool>, bool) {
+fn run_prepass(openings: &[CutterKind]) -> (Mesh, Vec<bool>, bool) {
     super::set_enabled_override(Some(true));
     let router = GeometryRouter::new();
     let clipper = ClippingProcessor::new();
     let mut result = host_wall();
-    let refs: Vec<&OpeningType> = openings.iter().collect();
+    let refs: Vec<&CutterKind> = openings.iter().collect();
     let mut consumed = vec![false; openings.len()];
     let mut mutated = false;
     router.coaxial_union_prepass(&mut result, &refs, &mut consumed, &mut mutated, &clipper);
@@ -390,7 +390,7 @@ fn tilted_member_defers_to_exact_and_does_not_over_cut() {
     let tilted_mesh = rotate_z(&base, 7.0);
     let (tmn, tmx) = tilted_mesh.bounds();
     let (s, c) = 7f64.to_radians().sin_cos();
-    let tilted = OpeningType::NonRectangular(
+    let tilted = CutterKind::NonRectangular(
         tilted_mesh,
         Point3::new(tmn.x as f64, tmn.y as f64, tmn.z as f64),
         Point3::new(tmx.x as f64, tmx.y as f64, tmx.z as f64),
@@ -432,7 +432,7 @@ fn non_coaxial_cluster_routes_through_union3d() {
     // coaxial → the 3D union_many fallback cuts them; both consumed, watertight.
     let a = box_opening_y([-0.6, -0.4, -0.6], [0.6, 0.4, 0.6]); // dir +Y
     let m = box_mesh([-1.6, -0.15, -0.4], [-0.4, 0.15, 0.4]);
-    let b = OpeningType::NonRectangular(
+    let b = CutterKind::NonRectangular(
         m,
         Point3::new(-1.6, -0.15, -0.4),
         Point3::new(-0.4, 0.15, 0.4),
@@ -474,7 +474,7 @@ fn feature_off_is_a_noop_and_deterministic() {
     let run = || -> (Vec<f32>, Vec<u32>, Vec<f32>, Vec<bool>, bool) {
         super::set_enabled_override(Some(false));
         let mut result = host_wall();
-        let refs: Vec<&OpeningType> = openings.iter().collect();
+        let refs: Vec<&CutterKind> = openings.iter().collect();
         let mut consumed = vec![false; openings.len()];
         let mut mutated = false;
         router.coaxial_union_prepass(&mut result, &refs, &mut consumed, &mut mutated, &clipper);
@@ -690,4 +690,69 @@ fn issue_6940_depth_slice_seams_do_not_become_host_jambs() {
     assert!(prisms.iter().all(|p| super::super::geom::point_inside_mesh_agreed(
         p, Point3::new(0.85, 0.02, 0.85),
     ) == Some(false)), "the shallow cutter must keep its authored depth");
+}
+
+// ---------------------------------------------------------------------------
+// abutting footprints (the kernel merges the prisms, #8156)
+// ---------------------------------------------------------------------------
+
+/// Triangles whose three vertices lie within `tol` of the plane `x = at`.
+fn triangles_on_plane_x(m: &Mesh, at: f64, tol: f64) -> usize {
+    m.indices
+        .chunks_exact(3)
+        .filter(|t| {
+            t.iter().all(|&i| {
+                let x = m.positions[i as usize * 3] as f64 + m.origin[0];
+                (x - at).abs() < tol
+            })
+        })
+        .count()
+}
+
+/// Two openings that abut in the file reach the 2D union a few micrometres
+/// apart, so it hands the kernel two prisms that land one snap cell apart. The
+/// kernel merges them; no sliver of host stands on the seam.
+#[test]
+fn abutting_boxes_a_snap_cell_apart_cut_as_one_void() {
+    const GAP: f64 = 8e-6;
+    let openings = [
+        box_opening_y([-1.0, -0.4, -0.6], [0.2, 0.4, 0.6]),
+        box_opening_y([0.2 + GAP, -0.4, -0.6], [1.0, 0.4, 0.6]),
+    ];
+    let host_v = vol(&host_wall());
+    let (result, consumed, mutated) = run_prepass(&openings);
+    assert!(mutated, "prepass must cut the abutting cluster");
+    assert!(consumed.iter().all(|&c| c), "both openings consumed by the union");
+    assert!(watertight(&result), "union cut must be watertight");
+    let removed = host_v - vol(&result);
+    assert!((removed - 0.72).abs() < 5e-3, "removed {removed}, expected 0.72");
+    // The tolerance must exceed a snap cell (1.53e-5): the sheet this test
+    // guards against sits at the kernel grid's 0.1999969 / 0.2000122, which a
+    // 1e-6 probe walks straight past.
+    assert_eq!(
+        triangles_on_plane_x(&result, 0.2, 3e-5) + triangles_on_plane_x(&result, 0.2 + GAP, 3e-5),
+        0,
+        "triangles left on the seam plane"
+    );
+}
+
+/// A 160 um pier is ten snap cells wide: both of its faces stand.
+#[test]
+fn a_pier_wider_than_a_snap_cell_between_boxes_is_kept() {
+    const PIER: f64 = 160e-6;
+    let openings = [
+        box_opening_y([-1.0, -0.4, -0.6], [0.2, 0.4, 0.6]),
+        box_opening_y([0.2 + PIER, -0.4, -0.6], [1.0, 0.4, 0.6]),
+    ];
+    let (result, consumed, mutated) = run_prepass(&openings);
+    assert!(mutated, "prepass must cut the cluster");
+    assert!(consumed.iter().all(|&c| c), "both openings consumed by the union");
+    assert!(watertight(&result), "union cut must be watertight");
+    // The kernel grid puts the pier faces at 0.199997 and 0.200165, so the
+    // tolerance has to be wider than a snap cell but under half the pier.
+    assert!(
+        triangles_on_plane_x(&result, 0.2, 3e-5) > 0
+            && triangles_on_plane_x(&result, 0.2 + PIER, 3e-5) > 0,
+        "both pier faces must remain"
+    );
 }

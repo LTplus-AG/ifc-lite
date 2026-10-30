@@ -684,7 +684,10 @@ written in the exported coordinates, then lands on the authored map
 coordinates; a target copied with a translation from the original file does
 not. Such a map nested inside another one is refused, because it would be
 scaled twice, as is one whose mapped nesting leaves no room for both the
-type-level wrapper and an instance. The scaled path carries annotations, but refuses
+type-level wrapper and an instance. A type's `RepresentationMaps` may be a list
+or a single bare reference, as geometry reads it; a typed wrapper such as
+`IFCREPRESENTATIONMAP(#n)` or a non-reference member is refused rather than
+skipped. The scaled path carries annotations, but refuses
 voids/fills, shape aspects, non-Body representations with surface items (for
 example annotation fills or bounding boxes) and other coordinate consumers it
 cannot preserve. Its added wrapper requires fewer
@@ -1366,3 +1369,5 @@ Crop each federation source before merging when sources use different project
 length units. The viewer follows this order automatically. Section export needs
 the built WASM runtime; it is deliberately opt-in and does not run during normal
 model loading or ordinary IFC export.
+
+Native export options expose `layer_slicing` (GLB: `with_layer_slicing(true)`); it defaults to false for GLB, OBJ, USD and BOS. Native callers can use `ProcessingRequest::layer_slicing(true)` directly.

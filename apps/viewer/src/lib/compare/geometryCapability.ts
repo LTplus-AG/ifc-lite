@@ -48,37 +48,10 @@ function isPlacementFingerprint(hash: bigint | string): boolean {
   return typeof hash === 'string' && hash.startsWith('p:');
 }
 
-/**
- * The same side with every composed-placement fingerprint removed — mesh
- * hashes, refs and everything else pass through by identity.
- *
- * For a MIXED-CAPABILITY pair only: when exactly one side of a compare carries
- * mesh hashes (`hasGeometryHashes` disagrees — e.g. one model loaded outside
- * the WASM mesh path), the engine must abstain from geometry classification,
- * or `geometryEqual(bigint, undefined)` reports the entire meshed population
- * as modified. That abstention (`resolveUseGeometry`) asks "does this side
- * carry ANY geometry hash?", and placement fingerprints — present on any model
- * with a placed site or storey, i.e. essentially all of them — would make the
- * answer an unconditional yes on both sides and permanently defeat it. The
- * caller (`useCompare`) strips them from BOTH sides in that situation, giving
- * up placement detection for a pair whose geometry channel is untrustworthy
- * anyway; a capability-symmetric pair keeps them and never comes here.
- */
-export function withPlacementFingerprintsStripped(
-  side: readonly EntityFingerprint<CompareRef>[],
-): EntityFingerprint<CompareRef>[] {
-  return side.map((fingerprint) =>
-    fingerprint.geometryHash !== undefined && isPlacementFingerprint(fingerprint.geometryHash)
-      ? { ...fingerprint, geometryHash: undefined }
-      : fingerprint,
-  );
-}
-
 /** The whole geometry-capability decision for one built pair, in one place. */
 export interface GeometryChannelResolution {
-  /** The sides to hand the engine (stripped only for a mixed pair). */
-  base: readonly EntityFingerprint<CompareRef>[];
-  head: readonly EntityFingerprint<CompareRef>[];
+  /** Ask resident models to strip placements for a mixed-capability pair. */
+  stripPlacementGeometry: boolean;
   /** At least one side has no usable MESH hashes, so mesh-shape changes
    *  cannot be detected — the panel warns on this. */
   geometryUnavailable: boolean;
@@ -102,7 +75,7 @@ export interface GeometryChannelResolution {
  *
  * - Both sides mesh-hashed: full geometry channel, no warning.
  * - Exactly one side mesh-hashed (MIXED): placement fingerprints stripped from
- *   BOTH sides (see {@link withPlacementFingerprintsStripped}) so the engine's
+ *   BOTH sides via the engine's `stripPlacementGeometry` option so its
  *   asymmetry abstention can fire; warn.
  * - Neither side mesh-hashed (symmetric): placements kept — two same-pipeline
  *   loads compare placements soundly — so warn, but flag the warning as
@@ -122,8 +95,7 @@ export function resolveGeometryChannel(
         fingerprint.geometryHash !== undefined && isPlacementFingerprint(fingerprint.geometryHash),
     );
   return {
-    base: symmetric ? base : withPlacementFingerprintsStripped(base),
-    head: symmetric ? head : withPlacementFingerprintsStripped(head),
+    stripPlacementGeometry: !symmetric,
     geometryUnavailable,
     placementOnlyGeometry:
       geometryUnavailable && symmetric && (hasPlacement(base) || hasPlacement(head)),

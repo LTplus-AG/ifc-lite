@@ -118,12 +118,16 @@ pub(crate) fn begin_element() -> ElementTally {
 /// With local-frame precision on, the mesh is stored relative to `origin` (small
 /// coords) so collapse is PREVENTED upstream and this drops nothing; it stays as
 /// the defence-in-depth safety net for any element still too large for its frame.
+///
+/// A mesh whose every edge is used exactly once in each direction is left
+/// alone: there a 1e5 aspect needle is a real face triangle, and dropping it
+/// opened two side faces of a gable wall (#8156).
 pub(crate) fn clean(mesh: &mut Mesh) {
     if disabled() {
         return;
     }
     let indices_before = mesh.indices.len();
-    mesh.drop_degenerate_triangles();
+    mesh.drop_degenerate_triangles_unless_closed();
     let dropped = ((indices_before - mesh.indices.len()) / 3) as u64;
     if dropped > 0 {
         DROPPED.with(|c| c.set(c.get() + dropped));

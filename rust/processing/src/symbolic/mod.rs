@@ -15,7 +15,7 @@
 //! Primitive coverage matches the wasm pipeline that ships to production:
 //!
 //! - `IfcPolyline`, `IfcIndexedPolyCurve` → [`SymbolicPolyline`].
-//! - `IfcCircle` → [`SymbolicCircle`] (full circle).
+//! - `IfcCircle` → [`SymbolicCircle`] for XY similarities, otherwise a sampled [`SymbolicPolyline`].
 //! - `IfcEllipse` → [`SymbolicPolyline`] (64-segment tessellation).
 //! - `IfcTrimmedCurve` on `IfcCircle` → [`SymbolicPolyline`] (arc with
 //!   `PLANEANGLEUNIT` scaling, sense agreement, wrap-around). Near-
@@ -35,11 +35,11 @@
 //!
 //! Coordinate handling matches the wasm pipeline:
 //!
-//! - Per-product `ObjectPlacement` is resolved through the
-//!   `IfcLocalPlacement` chain; symbolic uses a 2D
-//!   translation-plus-rotation accumulation that intentionally diverges
-//!   from the 3D geometry router so floor-plan annotations aren't
-//!   distorted by parent rotations.
+//! - Per-product `ObjectPlacement` is resolved through the shared 3D chain
+//!   (`ifc_lite_geometry::placement::resolve_chain`: `IfcLocalPlacement`,
+//!   `IfcLinearPlacement` and `IfcGridPlacement`, no depth cap, memoised on
+//!   the decoder) and projected to XY. A symbol therefore lands where the mesh
+//!   of the same product does; under a tilted parent it is foreshortened.
 //! - Per-representation `ContextOfItems.WorldCoordinateSystem` is
 //!   composed in when present (Plan reps occasionally use a different
 //!   WCS than Body).
@@ -68,8 +68,9 @@
 
 
 use output_cap::SymbolicAccumulator;
+use ifc_lite_core::resource_stop::ProgramStop;
 use rebase::RenderFrameRebase;
-use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner};
 
 mod color;
 mod conic;
@@ -80,18 +81,22 @@ pub use provenance::SymbolicDataWithProvenance;
 mod grid;
 mod item_walk;
 mod items;
-mod output_cap;
-mod output_cap_types;
-mod output_cap_validate;
 #[cfg(test)]
 mod items_cycle_tests;
+mod output_cap;
 #[cfg(test)]
 mod output_cap_tests;
+mod output_cap_types;
+mod output_cap_validate;
 mod primitives;
+#[cfg(test)]
+mod projected_conic_tests;
 mod rebase;
 mod text;
 mod transform;
+mod representation_walk;
 mod trimmed_curve;
+mod type_symbols;
 
 pub use output_cap_types::{SymbolicTruncation, SymbolicTruncationReason};
 pub use primitives::{
@@ -100,8 +105,8 @@ pub use primitives::{
 
 use color::build_styled_item_index;
 use grid::extract_grid;
-use item_walk::extract_symbolic_item;
-use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_placement, Transform2D};
+use representation_walk::walk_own_representations;
+use transform::resolve_object_placement;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Top-level extraction. Mirror of the wasm `parse_symbolic_representations`
@@ -113,11 +118,15 @@ use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_pla
 /// Annotation / FootPrint / Axis representation, and return the full
 /// symbolic primitive collection. Pure-Rust (no `wasm_bindgen`), so it
 /// works inside the HTTP server.
-pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
+///
+/// In controlled execution, a terminal stop discards all staged symbols and
+/// provenance and returns the exact `ProgramStop`. An empty successful collection
+/// means no symbols were found; geometric truncation remains an `Ok` result.
+pub fn extract_symbolic_data<T>(content: &T) -> Result<SymbolicData, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    extract_symbolic_data_with_provenance(content).into_parts().0
+    extract_symbolic_data_with_provenance(content).map(|data| data.into_parts().0)
 }
 
 /// Extract symbols with ordinal-bound direct fill provenance, preserving the legacy data shape.
@@ -128,13 +137,15 @@ where
 /// caller that also ran the native geometry pipeline must use
 /// [`extract_symbolic_data_with_provenance_in_frame`] instead, or its symbols
 /// and its meshes end up in two different frames (#4706).
-pub fn extract_symbolic_data_with_provenance<T>(content: &T) -> SymbolicDataWithProvenance
+pub fn extract_symbolic_data_with_provenance<T>(content: &T) -> Result<SymbolicDataWithProvenance, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_data_into(content, &mut out);
-    out.into_provenance()
+    ifc_lite_geometry::resource::with_terminal_scope(|| {
+        let mut out = SymbolicAccumulator::new();
+        extract_symbolic_data_into(content, &mut out);
+        out.into_provenance()
+    })
 }
 
 /// Extract symbols in a frame the caller already chose: the native pipeline's
@@ -149,13 +160,15 @@ where
 pub fn extract_symbolic_data_with_provenance_in_frame<T>(
     content: &T,
     frame: crate::MeshFrame,
-) -> SymbolicDataWithProvenance
+) -> Result<SymbolicDataWithProvenance, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_data_into_frame(content, Some(frame), &mut out);
-    out.into_provenance()
+    ifc_lite_geometry::resource::with_terminal_scope(|| {
+        let mut out = SymbolicAccumulator::new();
+        extract_symbolic_data_into_frame(content, Some(frame), &mut out);
+        out.into_provenance()
+    })
 }
 
 /// The overlay-frame extraction, writing into a caller-supplied accumulator.
@@ -176,10 +189,10 @@ fn extract_symbolic_data_into_frame<T>(
     content: &T,
     frame: Option<crate::MeshFrame>,
     out: &mut SymbolicAccumulator,
-)
-where
+) where
     T: AsRef<[u8]> + ?Sized,
 {
+    if out.is_exhausted() { return; }
     let content = content.as_ref();
     let entity_index = build_entity_index(content);
     // Symbolic geometry refuses unrepresentable reals (#7678, D15).
@@ -202,9 +215,14 @@ where
     // IfcFillAreaStyle → IfcColourRgb).
     let styled_items = build_styled_item_index(content, &mut decoder);
 
+    // Occurrence -> type, for the type-level symbol fallback (#8233).
+    let type_of = type_symbols::build_type_of(content, &mut decoder);
+
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        #[cfg(test)]
+        output_cap::execution_tests::on_entity(id, out);
         // Stop the SCAN, not just the innermost item loop. Breaking only the
         // inner loop still decodes every remaining product, resolves its
         // placements and composes its transforms, which is not the "stop" this
@@ -241,117 +259,33 @@ where
 
         // Standard representation walk: IfcProductDefinitionShape → Plan /
         // Annotation / FootPrint / Axis IfcShapeRepresentation → items.
-        let Some(representation_attr) = entity.get(6) else {
-            continue;
-        };
-        if representation_attr.is_null() {
-            continue;
-        }
-        let Ok(Some(representation)) = decoder.resolve_ref(representation_attr) else {
-            continue;
-        };
-        let Some(reps_attr) = representation.get(2) else {
-            continue;
-        };
-        let Ok(representations) = decoder.resolve_ref_list(reps_attr) else {
-            continue;
-        };
-
-        let ifc_type_name = entity.ifc_type.name().to_string();
-
-        let single_representation = representations.len() == 1;
-        for shape_rep in representations {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-            let rep_identifier = shape_rep
-                .get(1)
-                .and_then(|a| a.as_string())
-                .unwrap_or("")
-                .to_string();
-            if !matches!(
-                rep_identifier.as_str(),
-                "Plan" | "Annotation" | "FootPrint" | "Axis"
-            ) {
-                continue;
-            }
-
-            // ObjectPlacement transform for this entity (translations
-            // accumulated directly, rotations accumulated to orient symbols).
-            let placement_transform = resolve_object_placement(&entity, &mut decoder, unit_scale);
-
-            // ContextOfItems WCS: some Plan reps use a different coord
-            // system than Body. Compose it in when present and non-trivial.
-            // `ContextOfItems` (IfcRepresentation attr 0) and
-            // `WorldCoordinateSystem` (IfcGeometricRepresentationContext
-            // attr 4) are both MANDATORY, so a dangling ref or absent
-            // attribute is malformed data, not a legitimate default —
-            // `unresolved()` per #2352's convention. A resolved
-            // `IfcGeometricRepresentationSubContext`, in contrast, derives
-            // its WCS from `ParentContext` and legitimately does not store
-            // one inline, so it alone stays `identity()`.
-            let context_transform = match shape_rep.get_ref(0) {
-                Some(context_ref) => match decoder.decode_by_id(context_ref) {
-                    Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
-                        match context.get_ref(4) {
-                            Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
-                                Ok(wcs) => parse_axis2_placement_2d(&wcs, &mut decoder, unit_scale),
-                                Err(_) => Transform2D::unresolved(),
-                            },
-                            None => Transform2D::unresolved(),
-                        }
-                    }
-                    // SubContext inherits WCS from ParentContext — legitimately
-                    // has none inline (the wasm pipeline does the same).
-                    Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationSubContext => {
-                        Transform2D::identity()
-                    }
-                    // Dangling context_ref, or a ref resolving to neither
-                    // Context nor SubContext: malformed data.
-                    _ => Transform2D::unresolved(),
-                },
-                None => Transform2D::unresolved(),
-            };
-            let combined_transform = if context_transform.tx.abs() > 0.001
-                || context_transform.ty.abs() > 0.001
-                || context_transform.tz.abs() > 0.001
-                || (context_transform.m00 - 1.0).abs() > 0.0001
-                || context_transform.m01.abs() > 0.0001
-                || context_transform.m10.abs() > 0.0001
-                || (context_transform.m11 - 1.0).abs() > 0.0001
-                || context_transform.tz.is_nan()
-            {
-                compose_transforms(&context_transform, &placement_transform)
-            } else {
-                placement_transform
-            };
-
-            let Some(items_attr) = shape_rep.get(3) else {
-                continue;
-            };
-            let Ok(items) = decoder.resolve_ref_list(items_attr) else {
-                continue;
-            };
-            let direct_fill_ids = fill_provenance::direct_fill_ids(&items, single_representation);
-            for item in items {
-                if out.is_exhausted() {
-                    break;
-                }
-                extract_symbolic_item(
-                    &item,
-                    &mut decoder,
+        let ifc_type_name = entity.ifc_type.name();
+        let has_own_symbolic = walk_own_representations(
+            &entity,
+            id,
+            ifc_type_name,
+            &mut decoder,
+            unit_scale,
+            rebase,
+            &styled_items,
+            out,
+        );
+        // No symbolic representation of its own: the symbol may be held only
+        // on the type's RepresentationMaps (#8233).
+        if !has_own_symbolic {
+            if let Some(&type_id) = type_of.get(&id) {
+                type_symbols::walk_type_representation_maps(
+                    &entity,
                     id,
-                    &ifc_type_name,
-                    &rep_identifier,
+                    type_id,
+                    ifc_type_name,
+                    &mut decoder,
                     unit_scale,
-                    &combined_transform,
                     rebase,
                     &styled_items,
                     out,
-                    direct_fill_ids.contains(&item.id).then_some(item.id),
                 );
             }
         }
     }
-
 }

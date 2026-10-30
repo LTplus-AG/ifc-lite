@@ -13,7 +13,9 @@ use crate::plan::add_types::{ClassSpec, NewObject, NewType, Representation, Type
 use crate::plan::attrs::attribute_index;
 use crate::plan::types::{ObjectRef, SurfaceColour};
 use super::assoc::{CheckedClassification, CheckedMaterial};
+use super::nest::Nest;
 use super::mapped::MapPlan;
+use super::same_as::ReusedRepresentation;
 use super::units::CheckedUnits;
 use super::AddState;
 
@@ -24,6 +26,7 @@ pub(super) struct Checked {
     pub(super) predefined: Option<String>,
     pub(super) parent_placement: Option<u32>,
     pub(super) container: Option<(u32, RelKind)>,
+    pub(super) nest: Option<(u32, Nest)>,
     pub(super) existing_type: Option<u32>,
     /// Class, `PredefinedType` and value units of a new type.
     pub(super) new_type: Option<(String, Option<String>, CheckedUnits)>,
@@ -34,6 +37,8 @@ pub(super) struct Checked {
     pub(super) units: CheckedUnits,
     /// Where a mapped body's maps come from.
     pub(super) mapped: Option<MapPlan>,
+    /// The source representations reused geometry repeats.
+    pub(super) same_as: Option<Vec<ReusedRepresentation>>,
 }
 
 impl AddState<'_, '_> {
@@ -120,7 +125,7 @@ impl AddState<'_, '_> {
         added.ok_or_else(|| if deleted { format!("{r} is deleted by this plan") } else { format!("{r} not found") })
     }
 
-    fn placement_of(&self, id: u32, class: &str) -> Option<u32> {
+    pub(super) fn placement_of(&self, id: u32, class: &str) -> Option<u32> {
         if let Some(&placement) = self.placement_of_added.get(&id) {
             return placement;
         }
@@ -146,11 +151,6 @@ impl AddState<'_, '_> {
                 if upper.is_empty() || !upper.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
                     return Err(format!("'{value}' is not an enumeration value"));
                 }
-                // USERDEFINED obliges an ObjectType or ElementType naming the
-                // kind, which an Add does not write.
-                if upper == "USERDEFINED" {
-                    return Err("PredefinedType USERDEFINED needs a type name, which an Add does not write".into());
-                }
                 let members = crate::step_log::predefined_type_members(schema, &class).unwrap_or(&[]);
                 if !members.is_empty() && !members.contains(&upper.as_str()) {
                     return Err(format!("'{value}' is not a PredefinedType of {class} in {schema}"));
@@ -159,6 +159,23 @@ impl AddState<'_, '_> {
             }
         };
         Ok((class, predefined))
+    }
+
+    /// Refuse a value for a string attribute `class` lacks in the schema,
+    /// and a `USERDEFINED` `PredefinedType` without a non-blank `kind`
+    /// (`ObjectType` or `ElementType`) naming what it is.
+    fn check_string_attributes<'v>(&self, class: &str, predefined: Option<&str>, attrs: impl Iterator<Item = (&'static str, &'v str)>, kind: &str) -> Result<(), String> {
+        let mut named = false;
+        for (name, value) in attrs {
+            if attribute_index(self.schema, class, name).is_none() {
+                return Err(format!("{class} has no {name} in {}", self.schema));
+            }
+            named |= name == kind && !value.trim().is_empty();
+        }
+        if predefined == Some(".USERDEFINED.") && !named {
+            return Err(format!("PredefinedType USERDEFINED needs an {kind} naming the kind"));
+        }
+        Ok(())
     }
 
     /// Refuse a plan key that names something already there, a GlobalId key
@@ -194,8 +211,12 @@ impl AddState<'_, '_> {
         }
         validate_psets(self.schema, &t.psets)?;
         let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+        self.check_string_attributes(&class, predefined.as_deref(), t.string_attributes(), "ElementType")?;
         if matches!(t.representation, Representation::Mapped(_)) {
             return Err("a type's representation cannot itself be mapped".into());
+        }
+        if matches!(t.representation, Representation::SameAs(_)) {
+            return Err("a type's representation cannot reuse a product's".into());
         }
         check_representation(&t.representation, t.style.as_ref()).map_err(|e| format!("type: {e}"))?;
         Ok((class, predefined, self.check_units(&t.psets)?))
@@ -206,6 +227,7 @@ impl AddState<'_, '_> {
         self.check_new_identity(key, &encoded)?;
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
+        self.check_string_attributes(&class, predefined.as_deref(), obj.string_attributes(), "ObjectType")?;
         if let Some(e) = obj.elevation {
             if !self.is_a(&class, "IFCBUILDINGSTOREY") {
                 return Err(format!("{class} has no Elevation; only a storey takes one"));
@@ -215,6 +237,7 @@ impl AddState<'_, '_> {
             }
         }
         let spatial = self.is_structure_element(&class);
+        let nest = obj.nest_in.as_ref().map(|r| self.check_nest(r, &class, spatial, obj.container.is_some())).transpose()?;
 
         let container = match &obj.container {
             None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
@@ -266,7 +289,8 @@ impl AddState<'_, '_> {
                     Some(self.placement_of(id, &c).ok_or_else(|| format!("placement parent {r} ({c}) has no ObjectPlacement"))?)
                 }
             }
-            None => container.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c)),
+            // The host's placement, else the container's.
+            None => nest.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c)).or_else(|| container.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c))),
         };
         // The placement patch's rule, checked before any id is allocated.
         crate::plan::placement::check_matrix(&obj.placement.matrix)?;
@@ -311,6 +335,7 @@ impl AddState<'_, '_> {
         let classifications = self.check_classifications(&obj.classifications)?;
         check_representation(&obj.representation, obj.style.as_ref())?;
         let mapped = self.check_mapped(obj, existing_type)?;
+        let same_as = self.check_same_as(obj)?;
 
         let host = match &obj.opening {
             None => None,
@@ -331,6 +356,7 @@ impl AddState<'_, '_> {
             predefined,
             parent_placement,
             container: container.map(|(id, kind, _)| (id, kind)),
+            nest: nest.map(|(id, n, _)| (id, n)),
             existing_type,
             new_type,
             host,
@@ -339,15 +365,17 @@ impl AddState<'_, '_> {
             classifications,
             units,
             mapped,
+            same_as,
         })
     }
 }
 
 /// Refuse geometry that cannot be written validly, and a colour with
-/// nothing to apply to. A mapped body's own rules are `check_mapped`'s.
+/// nothing to apply to. A mapped body's own rules are `check_mapped`'s, a
+/// reused one's `check_same_as`'s.
 fn check_representation(rep: &Representation, style: Option<&SurfaceColour>) -> Result<(), String> {
     match rep {
-        Representation::None | Representation::Mapped(_) => {}
+        Representation::None | Representation::Mapped(_) | Representation::SameAs(_) => {}
         Representation::Extrusion(e) => validate_extrusion(e)?,
         Representation::Extrusions(es) => {
             if es.is_empty() {

@@ -16,7 +16,8 @@ use crate::step_log::MeasureNumber;
 use crate::step_text::quoted;
 
 use super::tessellation::Emit;
-use super::add_types::{GlobalId, NewPropertySet, PropertyValue};
+use super::add_assoc_types::{NewPropertySet, PropertyValue};
+use super::add_types::GlobalId;
 use super::props_synth::{build_value_record, quantity_entity_for_measure, set_record};
 use super::types::PsetKind;
 

@@ -244,3 +244,84 @@ fn material_colors_from_flat_does_not_size_by_the_wire_count() {
     assert_eq!(back.len(), 1, "{back:?}");
     assert_eq!(back[&1], vec![[1.0, 0.0, 0.0, 1.0]]);
 }
+
+/// C4-15 (#8341): the prepass void index IS the geometry kernel's. Openings
+/// written in descending order come back sorted (#2019), a bare
+/// `RelatedObjects` reference still propagates (#845), and a lowercase
+/// keyword classifies like an uppercase one on both entry points.
+#[test]
+fn prepass_void_index_matches_shared_geometry_kernel_8341() {
+    const IFC: &str = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#211=IFCRELVOIDSELEMENT('v2',$,$,$,#100,#201);
+#210=ifcrelvoidselement('v1',$,$,$,#100,#200);
+#212=IFCRELVOIDSELEMENT('v3',$,$,$,#110,#202);
+#300=IFCRELAGGREGATES('a1',$,$,$,#100,(#101));
+#301=IFCRELAGGREGATES('a2',$,$,$,#101,#102);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let mut spans = PrepassSpans::default();
+    let mut scanner = EntityScanner::new(IFC.as_bytes());
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        spans.stash(type_name, id, start, end);
+    }
+    let mut decoder = EntityDecoder::new(IFC);
+    let prepass = resolve_prepass(&spans, &mut decoder, ResolveOptions::default()).void_index;
+    let mut decoder = EntityDecoder::new(IFC);
+    let kernel = ifc_lite_geometry::void_index_from_content(IFC, &mut decoder);
+
+    assert_eq!(prepass, kernel);
+    for host in [100, 101, 102] {
+        assert_eq!(prepass.get(&host), Some(&vec![200, 201]), "host #{host}");
+    }
+    assert_eq!(prepass.get(&110), Some(&vec![202]));
+    assert_eq!(prepass.len(), 4);
+}
+
+/// EDGE-WASM-7 (#8341): the browser batch's whole-file collection
+/// (`style::collect_full_indexed_colour_maps`) and the native span-driven
+/// collection in `resolve_prepass` must produce the same full palette index.
+/// The fixture exercises every way the two could part: a later map for an
+/// already-painted face set (first wins), a lowercase keyword, a map with an
+/// empty `ColourIndex` (refused) and one whose colour list is missing.
+#[test]
+fn browser_and_native_collect_the_same_full_indexed_colour_maps() {
+    let content: &[u8] = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+        #30=IFCCOLOURRGBLIST(((1.,0.,0.),(0.,1.,0.)));\n\
+        #31=IFCCOLOURRGBLIST(((0.,0.,1.)));\n\
+        #40=IFCINDEXEDCOLOURMAP(#20,$,#30,(1,2,2));\n\
+        #41=IFCINDEXEDCOLOURMAP(#20,0.5,#31,(1,1,1));\n\
+        #42=IFCINDEXEDCOLOURMAP(#21,$,#30,());\n\
+        #43=ifcindexedcolourmap(#22,0.25,#31,(1));\n\
+        #44=IFCINDEXEDCOLOURMAP(#23,$,#99,(1));\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let mut spans = PrepassSpans::default();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        spans.stash(type_name, id, start, end);
+    }
+    let native = resolve_prepass(&spans, &mut EntityDecoder::new(content), ResolveOptions::default());
+    let browser =
+        crate::style::collect_full_indexed_colour_maps(content, &mut EntityDecoder::new(content));
+
+    let sorted = |maps: &FxHashMap<u32, FullIndexedColourMap>| {
+        let mut rows: Vec<String> = maps.iter().map(|(id, m)| format!("{id}: {m:?}")).collect();
+        rows.sort();
+        rows
+    };
+    assert_eq!(sorted(&browser), sorted(&native.indexed_colour_full));
+    let mut ids: Vec<u32> = browser.keys().copied().collect();
+    ids.sort_unstable();
+    assert_eq!(ids, vec![20, 22], "#21 has no ColourIndex and #23 no colour list");
+    assert_eq!(browser[&20].map_id, 40, "the first map for face set #20 wins");
+    assert_eq!(browser[&22].colours, vec![crate::style::Rgba::new(0.0, 0.0, 1.0, 0.25)]);
+    for (id, full) in &browser {
+        assert_eq!(native.indexed_colour_index[id], full.dominant().to_array());
+    }
+}

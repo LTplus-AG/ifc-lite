@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reviewed/schema-validated candidates; coverage must be blessed by a passing run.
+# The non-schema mapped-operand adversary is deliberately excluded.
+tests/fixtures/synthetic-retained/f-e-clips.ifc

@@ -41,6 +41,7 @@ impl IfcAPI {
         isolated: Option<Vec<u32>>,
     ) -> Result<Vec<u8>, JsValue> {
         let opts = ifc_lite_export::ObjOptions {
+            layer_slicing: false,
             include_normals,
             hidden: hidden.to_vec(),
             isolated,

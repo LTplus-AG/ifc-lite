@@ -127,3 +127,20 @@ describe('saved section cuts (#5514)', () => {
     assert.deepEqual(state().sectionPlane, before);
   });
 });
+
+// #8162: a cut beyond the bounds (a plan cut above the model top) is saved and
+// restored where it was, not clamped back onto the bound face.
+describe('saved section cuts beyond the bounds (#8162)', () => {
+  for (const position of [123.25, -15]) {
+    it(`saves and restores a cut at ${position} %`, () => {
+      state().setActiveTool('section');
+      state().setSectionPlaneAxis('down');
+      state().setSectionPlanePosition(position);
+      const id = saveCurrentSectionCut(`Plan @ ${position}`);
+      state().setSectionPlanePosition(10);
+      applySavedSectionCut(id);
+      assert.equal(state().sectionPlane.position, position);
+      assert.equal(activeSectionPlane(state())?.position, position, 'and it is the cut on screen');
+    });
+  }
+});

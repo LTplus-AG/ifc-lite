@@ -86,3 +86,28 @@ edge_functions!(
     geometry_end = 8u8,
     total_end = 9u8,
 );
+
+/// Wall-clock timer for diagnostic `ProcessingStats`. On wasm32
+/// `std::time::Instant::now()` traps ("time not implemented on this platform"),
+/// so the non-streaming `process_geometry*` entry points (used by the in-browser
+/// Rust exporters via `ifc-lite-export`) would panic. Timing is purely diagnostic,
+/// so on wasm32 this is a zero-duration no-op; on native it IS `std::time::Instant`
+/// (identical behaviour, no overhead).
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) use std::time::Instant as Clock;
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy)]
+pub(super) struct Clock;
+
+#[cfg(target_arch = "wasm32")]
+impl Clock {
+    #[inline]
+    pub(super) fn now() -> Self {
+        Clock
+    }
+    #[inline]
+    pub(super) fn elapsed(&self) -> std::time::Duration {
+        std::time::Duration::ZERO
+    }
+}

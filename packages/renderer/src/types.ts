@@ -161,7 +161,7 @@ export interface SectionPlane {
   /** False hides the preview quad of the primary plane (the plane still clips and caps). Default true (#7545). */
   showGizmo?: boolean;
   axis: SectionPlaneAxis;
-  position: number; // 0-100 percentage of model bounds
+  position: number; // percentage of model bounds: 0-100 spans them, values outside are cuts beyond them
   enabled: boolean;
   flipped?: boolean; // If true, show the opposite side of the cut
   min?: number;      // Optional override for min range value

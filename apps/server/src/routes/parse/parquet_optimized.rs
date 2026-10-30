@@ -120,7 +120,7 @@ pub async fn parse_parquet_optimized(
             // each on its own rayon thread.
             // #5984: the finish index is a third independent read of the bytes.
             let (mut result, (mut data_model, mut finishes)) = rayon::join(
-                || process(&content, &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality), &mut ()),
+                || process(&content, &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing), &mut ()),
                 || rayon::join(|| extract_data_model(&content), || ModelFinishes::from_content(&content)),
             );
             let meshes = finish_meshes(&mut finishes, std::mem::take(&mut result.meshes));
@@ -180,7 +180,7 @@ pub async fn parse_parquet_optimized(
             Ok((
                 result,
                 dm_stats,
-                symbolic_data,
+                symbolic_data?,
                 parquet_data,
                 dm_parquet,
                 opt_stats,

@@ -4,15 +4,15 @@
 
 //! Source admission for planar boundaries and cylindrical patches.
 
+use super::analytic_plan::{CylinderPlan, PlanarPlan};
+use super::bounds::extract_face_bounds;
+use super::edge_loop::extract_edge_loop_points_for_bounds;
+use super::plan::FaceGeometry;
 use crate::math::tol;
+use crate::placement::Axis2Placement;
 use crate::{scale_segments, Error, Point3, Result, TessellationQuality};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
-use super::super::helpers::get_axis2_placement_transform_by_id;
-use super::bounds::extract_face_bounds;
-use super::edge_loop::extract_edge_loop_points_for_bounds;
-use super::analytic_plan::{PlanarPlan, CylinderPlan};
-use super::plan::FaceGeometry;
 
 /// Read a planar or boundary-represented face's loops.
 ///
@@ -70,7 +70,7 @@ pub(super) fn lower_cylindrical(
     let position_attr = surface.attr(slot::IfcCylindricalSurface::POSITION);
     let axis_transform = if let Some(attr) = position_attr {
         if let Some(pos_id) = attr.as_entity_ref() {
-            get_axis2_placement_transform_by_id(pos_id, decoder)?
+            Axis2Placement::read_id(pos_id, decoder)?.matrix()
         } else {
             Matrix4::identity()
         }

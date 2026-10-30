@@ -174,7 +174,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // lists.
     findings.extend(super::orphans::unplaced_by_removed_structure(index, schema, &removed, &reasons));
     // The Adds name the history the patches settled on, or take one.
-    let adding = AddState::new(index, schema, &removed, &mut history, body_context.chosen());
+    let adding = AddState::new(index, schema, &removed, &reshaped, &mut history, body_context.chosen());
     let added = adding.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals, &mut findings);
 
     // Every rewrite has settled: what the plan modified is read off them.
@@ -268,8 +268,8 @@ fn split_dispositions<'p>(
 /// goes. A patched object (not also deleted: delete wins) survives pruning by
 /// construction, since a copy-on-write patch can give it a relationship the
 /// source never had, which the reference count cannot see. So does what an
-/// Add names (its container, placement parent, type, host, and the owner
-/// history): deleting a type's last occurrence must not take the type an Add
+/// Add names (its container, nesting host, placement parent, type, opening
+/// host, and the owner history): deleting a type's last occurrence must not take the type an Add
 /// in the same plan is typed by. Only what an Add names keeps a hostless
 /// feature: a patch cannot make an opening without a host valid IFC, so it
 /// is refused instead.

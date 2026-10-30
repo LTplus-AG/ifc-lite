@@ -128,6 +128,7 @@ pub fn process_streaming(
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
     admission: Option<std::sync::Arc<AdmissionGuard>>,
+    layer_slicing: bool,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
     // Zero is a caller bug, not a reason to stall the stream.
     let initial_batch_size = initial_batch_size.max(1);
@@ -170,7 +171,7 @@ pub fn process_streaming(
 
         let request = ProcessingRequest::default()
             .opening_filter(opening_filter)
-            .quality(tessellation_quality)
+            .quality(tessellation_quality).layer_slicing(layer_slicing)
             .batching(Batching::new(initial_batch_size, max_batch_size))
             // Batches are forwarded as they are emitted - retaining them
             // in the ProcessingResult would double peak memory.
@@ -203,8 +204,13 @@ pub fn process_streaming(
         // In the frame the batches above were meshed in: the `Complete` event
         // carries the symbols and `mesh_coordinate_space` together, so they
         // must agree (#4706).
-        let symbolic_data =
-            extract_symbolic_data_with_provenance_in_frame(&content, result.frame);
+        let symbolic_data = match extract_symbolic_data_with_provenance_in_frame(&content, result.frame) {
+            Ok(data) => data,
+            Err(error) => {
+                let _ = tx.blocking_send(StreamEvent::Error { message: error.to_string() });
+                return;
+            }
+        };
 
         let _ = tx.blocking_send(StreamEvent::Complete {
             stats: result.stats,

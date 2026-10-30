@@ -2111,3 +2111,49 @@ fn a_none_basis_emits_the_native_rel_unchanged() {
         "collate_refs and an explicit None basis must be the same call"
     );
 }
+
+/// The run behind `super`'s claim that a normals compare in `group`'s same-shape
+/// guard would refuse CORRECT groups: baked normals are rotated per occurrence,
+/// so a group spanning two placements legitimately differs in them. Asserts the
+/// difference is real, then that the group still collates.
+#[test]
+fn a_rotated_group_has_different_baked_normals_and_still_collates() {
+    use std::f64::consts::FRAC_PI_2;
+    // One canonical face normal, +Z, under two placements a quarter turn apart.
+    const CANON_NORMALS: [f32; 12] = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    let placements = [
+        Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0)),
+        Matrix4::from_euler_angles(FRAC_PI_2, 0.0, 0.0)
+            * Matrix4::new_translation(&nalgebra::Vector3::new(-2.0, 1.0, 0.0)),
+    ];
+    let meshes: Vec<Mesh> = placements
+        .iter()
+        .map(|m| {
+            let mut mesh = mesh_from(
+                baked(&CANON, m),
+                InstanceMeta {
+                    transform: mat_rm(m),
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: 8287,
+                    instanceable: true,
+                },
+            );
+            mesh.normals = CANON_NORMALS.to_vec();
+            crate::math::normals::transform_normals_in_place(&mut mesh.normals, m);
+            mesh
+        })
+        .collect();
+
+    assert_ne!(
+        meshes[0].normals, meshes[1].normals,
+        "fixture rot: the two placements no longer rotate the normals apart, so this \
+         test no longer shows what a normals compare in the guard would reject",
+    );
+
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.templates.len(), 1, "the rotated group must still collate");
+    assert_eq!(collated.templates[0].occurrences.len(), 2);
+    assert_eq!(collated.flat_indices.len(), 0, "nothing may be left flat");
+    assert_eq!(collated.verification_rejections, 0);
+}

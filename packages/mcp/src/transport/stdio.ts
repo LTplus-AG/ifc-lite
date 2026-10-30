@@ -19,6 +19,7 @@ import { JsonRpcMessage } from '../protocol/index.js';
 import { errorResponse, parseMessage } from '../protocol/jsonrpc.js';
 import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
+import { routeConsoleToStderr } from './stdio-console.js';
 
 export interface StdioTransportOptions {
   stdin?: Readable;
@@ -42,6 +43,8 @@ export class StdioTransport {
 
   async connect(server: MCPServer): Promise<void> {
     this.server = server;
+    // stdout is the JSON-RPC channel: nothing that logs may reach it.
+    if (this.stdout === process.stdout) routeConsoleToStderr();
     server.attach(this.makeSink());
 
     // UTF-8 — MCP spec mandates it.

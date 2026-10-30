@@ -12,16 +12,37 @@ use wasm_bindgen_futures::JsFuture;
 extern "C" {
     #[wasm_bindgen(js_name = RetainedDriver)]
     pub(super) type Driver;
+    #[cfg(not(test))]
     #[wasm_bindgen(constructor, catch, js_class = RetainedDriver)]
     fn new() -> Result<Driver, JsValue>;
+    #[cfg(test)]
+    #[wasm_bindgen(constructor, catch, js_class = RetainedDriver)]
+    fn new(observe_for_tests: bool) -> Result<Driver, JsValue>;
     #[wasm_bindgen(method)]
     pub(super) fn live(this: &Driver) -> bool;
     #[wasm_bindgen(method)]
     pub(super) fn retire(this: &Driver);
     #[wasm_bindgen(method, js_name = objectLive)]
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
+    #[cfg(test)]
+    #[wasm_bindgen(method, js_name = liveObjectCount)]
+    pub(super) fn live_object_count(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = releaseObject)]
     pub(super) fn release_object(this: &Driver, object: &JsValue);
+    #[wasm_bindgen(method)]
+    pub(super) fn affine(this: &Driver, object: &JsValue, matrix: &[f64]) -> js_sys::Promise;
+    #[wasm_bindgen(method, js_name = boolean)]
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn boolean_call(
+        this: &Driver,
+        left: &JsValue,
+        right: &JsValue,
+        matrix: &[f64],
+        op: u32,
+        chord: f64,
+        angle: f64,
+        max_bytes: u32,
+    ) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn qualify(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method)]
@@ -45,22 +66,40 @@ extern "C" {
 }
 
 #[derive(serde::Deserialize)]
-struct Mesh {
-    positions: Vec<f64>,
-    indices: Vec<u32>,
-    flat_corner_normals: Vec<f64>,
-    revision_local_faces: Vec<u32>,
-    source_face_count: u32,
-    boundary_edges: u32,
-    spine_edges: u32,
+pub(super) struct Mesh {
+    pub(super) positions: Vec<f64>,
+    pub(super) indices: Vec<u32>,
+    pub(super) flat_corner_normals: Vec<f64>,
+    pub(super) revision_local_faces: Vec<u32>,
+    pub(super) source_face_count: u32,
+    pub(super) boundary_edges: u32,
+    pub(super) spine_edges: u32,
 }
 
-fn driver_error(error: JsValue) -> BrowserError {
+pub(super) fn driver_error(error: JsValue) -> BrowserError {
     let message = error
         .dyn_ref::<js_sys::Error>()
         .map(|error| String::from(error.message()))
         .or_else(|| error.as_string())
         .unwrap_or_else(|| "unknown driver failure".into());
+    if let Ok(status) = js_sys::Reflect::get(&error, &JsValue::from_str("kernelStatus")) {
+        if let Some(status) = status
+            .as_f64()
+            .filter(|s| s.fract() == 0. && *s >= i32::MIN as f64 && *s <= i32::MAX as f64)
+        {
+            return BrowserError::Kernel {
+                status: status as i32,
+                message,
+            };
+        }
+    }
+    if js_sys::Reflect::get(&error, &JsValue::from_str("resourceLimit"))
+        .ok()
+        .and_then(|value| value.as_bool())
+        == Some(true)
+    {
+        return BrowserError::ResourceLimit(message);
+    }
     BrowserError::Driver(message)
 }
 
@@ -69,11 +108,15 @@ impl BrowserWorker {
     /// loaded by this call, never by importing or initializing the package.
     pub fn new() -> Result<Self, BrowserError> {
         let identity = next_identity()?;
+        #[cfg(not(test))]
+        let driver = Driver::new();
+        #[cfg(test)]
+        let driver = Driver::new(true);
         Ok(Self {
             owner: Arc::new(Owner {
                 identity,
                 live: AtomicBool::new(true),
-                driver: Driver::new().map_err(driver_error)?,
+                driver: driver.map_err(driver_error)?,
             }),
             regions_qualified: false,
             disks_qualified: false,
@@ -108,7 +151,8 @@ impl BrowserWorker {
             .map_err(driver_error)?
             .as_f64()
             .filter(|bits| bits.fract() == 0. && (0. ..=f64::from(u32::MAX)).contains(bits))
-            .ok_or_else(|| BrowserError::Driver("invalid capability bits".into()))? as u32;
+            .ok_or_else(|| BrowserError::Driver("invalid capability bits".into()))?
+            as u32;
         self.owner.validate()?;
         flight.disarm();
         Ok(BrowserCapabilities::select(
@@ -148,7 +192,7 @@ impl BrowserWorker {
             ));
         }
         let mut flight = InFlight::new(&self.owner);
-        let value = JsFuture::from(self.owner.driver.evaluate(
+        let response = JsFuture::from(self.owner.driver.evaluate(
             &payload.bytes,
             payload.format,
             payload.loops,
@@ -158,11 +202,27 @@ impl BrowserWorker {
             angle_degrees,
             max_bytes,
         ))
-        .await
-        .map_err(driver_error)?;
+        .await;
+        let value = match response {
+            Ok(value) => value,
+            Err(error) => {
+                let error = driver_error(error);
+                // The driver released every unpublished handle on a known
+                // refusal. Cleanup failure or uncertain delivery still retires.
+                if (matches!(&error, BrowserError::Kernel { status, .. } if (1..=7).contains(status))
+                    || matches!(&error, BrowserError::ResourceLimit(_)))
+                    && self.owner.validate().is_ok()
+                {
+                    flight.disarm();
+                }
+                return Err(error);
+            }
+        };
         self.owner.validate()?;
-        let object = js_sys::Reflect::get(&value, &JsValue::from_str("object")).map_err(driver_error)?;
-        let mesh = js_sys::Reflect::get(&value, &JsValue::from_str("mesh")).map_err(driver_error)?;
+        let object =
+            js_sys::Reflect::get(&value, &JsValue::from_str("object")).map_err(driver_error)?;
+        let mesh =
+            js_sys::Reflect::get(&value, &JsValue::from_str("mesh")).map_err(driver_error)?;
         let mesh: Mesh = serde_wasm_bindgen::from_value(mesh)
             .map_err(|error| BrowserError::Driver(error.to_string()))?;
         let (source_from_evaluation, evaluation_from_source) = (
@@ -170,6 +230,7 @@ impl BrowserWorker {
             payload.evaluation_from_source,
         );
         let realization = BrowserRealization {
+            domain: self.cancellation(),
             owner: self.owner.clone(),
             object_live: AtomicBool::new(true),
             object,

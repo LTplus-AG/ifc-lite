@@ -29,14 +29,14 @@ fn tetra_host() -> Mesh {
     host
 }
 
-fn vertical_box(x0: f64, y0: f64, x1: f64, y1: f64) -> OpeningType {
+fn vertical_box(x0: f64, y0: f64, x1: f64, y1: f64) -> CutterKind {
     let min = Point3::new(x0, y0, -1.0);
     let max = Point3::new(x1, y1, 2.0);
-    OpeningType::NonRectangular(GeometryRouter::make_box_mesh(min, max),
+    CutterKind::NonRectangular(GeometryRouter::make_box_mesh(min, max),
         min, max, Some(Vector3::new(0.0, 0.0, 1.0)))
 }
 
-fn cut(host: Mesh, openings: Vec<OpeningType>) -> Mesh {
+fn cut(host: Mesh, openings: Vec<CutterKind>) -> Mesh {
     let context = VoidContext { merged_openings: openings.clone(), openings,
         param: None, bool2d: None };
     let bounds = world_host_bounds(&host);
@@ -47,7 +47,7 @@ fn cut(host: Mesh, openings: Vec<OpeningType>) -> Mesh {
     result
 }
 
-fn jittered_opening(x: f32) -> OpeningType {
+fn jittered_opening(x: f32) -> CutterKind {
     let min = Point3::new(x as f64, -0.5, 0.2);
     let max = Point3::new(2.0, 0.5, 0.8);
     let mut mesh = GeometryRouter::make_box_mesh(min, max);
@@ -57,13 +57,13 @@ fn jittered_opening(x: f32) -> OpeningType {
     let duplicate = mesh.positions.chunks_exact(3).enumerate()
         .skip(1).find(|(_, p)| *p == corner.as_slice()).unwrap().0;
     mesh.positions[duplicate * 3] = x.next_down();
-    OpeningType::NonRectangular(mesh, min, max, Some(Vector3::new(0.0, 1.0, 0.0)))
+    CutterKind::NonRectangular(mesh, min, max, Some(Vector3::new(0.0, 1.0, 0.0)))
 }
 
-fn identity_guard(opening: &OpeningType) -> bool {
+fn identity_guard(opening: &CutterKind) -> bool {
     let host = GeometryRouter::make_box_mesh(
         Point3::new(0.0, -0.15, 0.0), Point3::new(3.0, 0.15, 1.0));
-    let (mesh, direction) = opening.mesh_cutter().unwrap();
+    let (mesh, direction) = opening.cutter().mesh_cutter().unwrap();
     let cutter = GeometryRouter::batch_cutter(mesh, direction, &host)
         .expect("the admitted weld must restore a closed cutter");
     GeometryRouter::batch_cutters_match_sequential(&host, &[opening], &[(0, cutter)])
@@ -123,7 +123,7 @@ fn retained_group_retessellation_preserves_a_later_real_cut_6516() {
     // quarter-triangle retention floor. Deeper simplification keeps fallback.
     let host = tetra_host().subdivided(1);
     let miss = vertical_box(0.6, 0.6, 0.8, 0.8);
-    let miss_mesh = miss.mesh_cutter().unwrap().0;
+    let miss_mesh = miss.cutter().mesh_cutter().unwrap().0;
     let GroupCut::Retessellated(retessellated) = ClippingProcessor::new().subtract_mesh(&host, miss_mesh) else {
         panic!("fixture must expose a real single-cutter retessellation");
     };
@@ -217,7 +217,7 @@ fn exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516() {
     let host = tetra_host().subdivided(2);
     let actual = vertical_box(0.125, 0.125, 0.625, 0.625);
     let outcome = crate::csg::ClippingProcessor::new()
-        .subtract_mesh(&host, actual.mesh_cutter().unwrap().0);
+        .subtract_mesh(&host, actual.cutter().mesh_cutter().unwrap().0);
     assert!(matches!(outcome, crate::csg::GroupCut::Rejected(crate::csg::GroupReject::BudgetTripped)),
         "real prior element work must exhaust the cap");
     crate::opening_perf_trace::take();
@@ -244,7 +244,7 @@ fn captured_group_replays_effective_miss_retention_7024() {
     let host = tetra_host().subdivided(1);
     let openings = vec![vertical_box(0.6, 0.6, 0.8, 0.8),
         vertical_box(0.85, 0.3, 0.95, 0.4)];
-    let cutters: Vec<&Mesh> = openings.iter().map(|o| o.mesh_cutter().unwrap().0).collect();
+    let cutters: Vec<&Mesh> = openings.iter().map(|o| o.cutter().mesh_cutter().unwrap().0).collect();
     let csg = ClippingProcessor::new();
     let retained = csg.subtract_mesh_many_retaining_miss(&host, &cutters);
     let GroupCut::Retessellated(expected) = retained else {
@@ -279,11 +279,11 @@ fn captured_group_replays_effective_miss_retention_7024() {
 
     // Requested retention is disabled for >16 live cutters. Capture the
     // effective false value on BOTH actual chunks, not the caller's true.
-    let many: Vec<OpeningType> = (0..17).map(|i| {
+    let many: Vec<CutterKind> = (0..17).map(|i| {
         let y = 0.6 + f64::from(i) * 0.01;
         vertical_box(0.6, y, 0.61, y + 0.005)
     }).collect();
-    let refs: Vec<&Mesh> = many.iter().map(|o| o.mesh_cutter().unwrap().0).collect();
+    let refs: Vec<&Mesh> = many.iter().map(|o| o.cutter().mesh_cutter().unwrap().0).collect();
     csg_capture::set_enabled(true);
     let recording = Recording;
     let _ = csg.subtract_mesh_many_retaining_miss(&host, &refs);

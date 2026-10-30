@@ -27,7 +27,8 @@ use crate::router::instancing::TemplateClaim;
 use crate::router::mapped_item::{MappedOccurrence, StyledSource};
 use crate::router::textured::{TexturedPart, TypeParts};
 use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+pub(super) use execute::MappingReply;
+use ifc_lite_core::DecodedEntity;
 use nalgebra::Matrix4;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -136,11 +137,14 @@ enum Merging {
 }
 
 enum Placing {
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
+    Retained(Box<(Vec<super::retained::LogicalRetainedValue>, super::retained::RetainedSelection,
+        Option<super::retained::RetainedPresentation>)>),
     Cached(Arc<Mesh>),
     Walked(Vec<Mesh>),
 }
 
-struct Place {
+pub(super) struct Place {
     parts: Placing,
     item_id: u32,
     source_id: u32,
@@ -182,6 +186,7 @@ enum Action<'a> {
 
 /// A completed walk's output.
 pub(super) enum MappingOutput {
+    Retained(Vec<super::retained::LogicalRetainedValue>),
     Parts(Vec<Mesh>),
     Styled(SubMeshCollection),
     Type(TypeParts),
@@ -193,42 +198,56 @@ pub(super) enum Merged {
     Styled(SubMeshCollection),
 }
 
-pub(super) enum MappingReply {
-    Entered { item_id: u32, value: Result<(u32, MappedOccurrence)> },
-    SharedItems(Vec<DecodedEntity>),
+pub(super) enum MappingValue {
+    RetainedTypeFinished(Result<Vec<super::retained::LogicalRetainedValue>>),
+    RetainedCached(Place, super::mapping_budget::LogicalBudget),
+    RetainedFinished(Result<Vec<super::retained::LogicalRetainedValue>>),
+    RetainedPlaced { item_id: u32, value: Result<Vec<super::retained::LogicalRetainedValue>> },
+    Entered { item_id: u32, value: Result<(u32, MappedOccurrence)>, budget: super::mapping_budget::LogicalBudget },
+    SharedItems(Result<Vec<DecodedEntity>>, super::mapping_budget::LogicalBudget),
+    Refused {
+        item_id: u32,
+        refusal: super::mapping_budget::LogicalRefusal,
+        budget: super::mapping_budget::LogicalBudget,
+    },
     Child(ItemStep),
     Merged(Merged),
     Finished(Result<Vec<Mesh>>),
     Placed { item_id: u32, truncated: bool, value: Result<Vec<Mesh>> },
     CacheChild(CacheReply),
-    StyledEntered { item_id: u32, value: Result<StyledSource> },
-    StyledItems(Result<Vec<DecodedEntity>>),
+    StyledEntered { item_id: u32, value: Result<StyledSource>, budget: super::mapping_budget::LogicalBudget },
+    StyledItems(Result<Vec<DecodedEntity>>, super::mapping_budget::LogicalBudget),
     Textured(Option<(Mesh, Vec<f32>)>),
-    TypeMapEntered(Result<(DecodedEntity, Vec<DecodedEntity>)>),
+    TypeMapEntered(Result<(DecodedEntity, Vec<DecodedEntity>)>, super::mapping_budget::LogicalBudget),
     Origin(Result<Option<Matrix4<f64>>>),
     TypeFinished(Result<TypeParts>),
     StyledFinished(SubMeshCollection),
     Placeholder(SubMeshCollection),
 }
 
-impl MappingReply {
+impl MappingValue {
     pub(super) fn tag(&self) -> u8 {
         match self {
+            Self::RetainedTypeFinished(_) => 18,
+            Self::RetainedCached(..) => 15,
+            Self::RetainedFinished(_) => 16,
+            Self::RetainedPlaced { .. } => 17,
             Self::Entered { .. } => 0,
-            Self::SharedItems(_) => 1,
+            Self::SharedItems(..) => 1,
             Self::Child(_) => 2,
             Self::Merged(_) => 3,
             Self::Finished(_) => 4,
             Self::Placed { .. } => 5,
             Self::CacheChild(_) => 6,
             Self::StyledEntered { .. } => 7,
-            Self::StyledItems(_) => 8,
+            Self::StyledItems(..) => 8,
             Self::Textured(_) => 9,
-            Self::TypeMapEntered(_) => 10,
+            Self::TypeMapEntered(..) => 10,
             Self::Origin(_) => 11,
             Self::TypeFinished(_) => 12,
             Self::StyledFinished(_) => 13,
             Self::Placeholder(_) => 14,
+            Self::Refused { .. } => 19,
         }
     }
 }
@@ -243,10 +262,11 @@ enum Event {
 }
 
 pub(super) struct MappingControl<'a> {
+    retained: super::retained::RetainedSlot<retained_impl::State>,
     walk: Walk,
     textures: Textures<'a>,
     /// The type map's `IfcRepresentationMap`.
-    rep_map: Option<&'a DecodedEntity>,
+    rep_map: Option<Reached<'a>>,
     /// Styled only: whether the top-level occurrence may don't-bake.
     allow_instancing: bool,
     /// The styled walk's sub-meshes, and the type map's textured parts.
@@ -254,50 +274,11 @@ pub(super) struct MappingControl<'a> {
     textured: Vec<TexturedPart>,
     levels: Vec<Level>,
     action: Action<'a>,
+    budget: super::mapping_budget::LogicalBudget,
+    logical_stopped: bool,
 }
 
 impl<'a> MappingControl<'a> {
-    fn new(walk: Walk, action: Action<'a>) -> Self {
-        Self {
-            walk,
-            textures: None,
-            rep_map: None,
-            allow_instancing: false,
-            meshes: SubMeshCollection::new(),
-            textured: Vec::new(),
-            levels: Vec::new(),
-            action,
-        }
-    }
-
-    pub(super) fn occurrence(item: Reached<'a>) -> Self {
-        Self::new(Walk::Occurrence, Action::Enter(item))
-    }
-
-    #[cfg(test)]
-    pub(super) fn shared_source(representation: &'a DecodedEntity, source_id: u32) -> Self {
-        Self::new(Walk::Shared, Action::SharedItems(Reached::Root(representation), source_id, None))
-    }
-
-    /// One styled representation item, appending to `meshes`. A plain item
-    /// is meshed under its own id; a mapped item walks its source.
-    pub(super) fn styled(root: Reached<'a>, meshes: SubMeshCollection, allow_instancing: bool,
-        textures: Textures<'a>, offset: (f64, f64, f64)) -> Self {
-        let item = root.item();
-        let action = if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
-            Action::EnterStyled(root)
-        } else if textures.is_some_and(|index| index.contains_key(&item.id)) {
-            Action::Texture(root)
-        } else {
-            Action::Child(root, ChildControl::Cache(CacheControl::new(offset)))
-        };
-        Self { textures, allow_instancing, meshes, ..Self::new(Walk::Styled, action) }
-    }
-
-    pub(super) fn type_map(rep_map: &'a DecodedEntity, textures: &'a FxHashMap<u32, ResolvedTextureMap>) -> Self {
-        Self { textures: Some(textures), rep_map: Some(rep_map), ..Self::new(Walk::TypeMap, Action::EnterTypeMap) }
-    }
-
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
         Ok(match &self.action {
             Action::Enter(_) | Action::EnterStyled(_) | Action::EnterTypeMap | Action::SharedItems(..)
@@ -309,69 +290,6 @@ impl<'a> MappingControl<'a> {
             }
             Action::Complete(_) => None,
             Action::Taken => return Err(ProgramError::Outstanding),
-        })
-    }
-
-    pub(super) fn execute(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
-        -> std::result::Result<MappingReply, ProgramError> {
-        // Steps that keep their action in place: the accept consumes it.
-        match &mut self.action {
-            Action::Child(item, ChildControl::Item(control)) => {
-                return control.execute(item.item(), router, decoder).map(MappingReply::Child);
-            }
-            Action::Child(item, ChildControl::Cache(control)) => {
-                return control.execute(item.item(), router, decoder).map(MappingReply::CacheChild);
-            }
-            Action::SharedItems(representation, ..) => {
-                return Ok(MappingReply::SharedItems(GeometryRouter::shared_source_items(representation.item(), decoder)));
-            }
-            Action::StyledItems(pending) => {
-                let items = GeometryRouter::styled_source_items(&pending.representation, decoder);
-                return Ok(MappingReply::StyledItems(items));
-            }
-            Action::Texture(item) => {
-                let item = item.item();
-                let map = self.textures.and_then(|index| index.get(&item.id)).ok_or(ProgramError::StaleRequest)?;
-                return Ok(MappingReply::Textured(router.textured_face_set(item, decoder, map, Some(router.rtc_offset()))));
-            }
-            _ => {}
-        }
-        Ok(match std::mem::replace(&mut self.action, Action::Taken) {
-            Action::Enter(entering) => {
-                let item = entering.item();
-                let value = router.admit_mapped_occurrence(item, decoder);
-                MappingReply::Entered { item_id: item.id, value }
-            }
-            Action::EnterStyled(entering) => {
-                let item = entering.item();
-                // Only the top-level occurrence is independent: a nested map is
-                // part of its parent's shared geometry, never don't-baked.
-                let eligible = self.allow_instancing && self.levels.is_empty();
-                let value = router.admit_styled_occurrence(item, eligible, self.textures, decoder);
-                MappingReply::StyledEntered { item_id: item.id, value }
-            }
-            Action::EnterTypeMap => {
-                let rep_map = self.rep_map.ok_or(ProgramError::StaleRequest)?;
-                MappingReply::TypeMapEntered(router.admit_type_map(rep_map, decoder))
-            }
-            Action::Origin => {
-                let rep_map = self.rep_map.ok_or(ProgramError::StaleRequest)?;
-                MappingReply::Origin(router.type_map_origin(rep_map, decoder))
-            }
-            Action::TypeFinish(origin) => {
-                let level = self.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
-                let parts = std::mem::take(&mut level.parts);
-                let textured = std::mem::take(&mut self.textured);
-                MappingReply::TypeFinished(router.finish_type_map(parts, textured, origin.as_ref()))
-            }
-            Action::Merge(merging) => self.merge(merging, router)?,
-            Action::Finish => self.finish(router)?,
-            Action::Place(place) => Self::place(place, router),
-            Action::Placeholder(placeholder) => self.push_placeholder(placeholder),
-            other => {
-                self.action = other;
-                return Err(ProgramError::StaleRequest);
-            }
         })
     }
 
@@ -390,3 +308,18 @@ impl<'a> MappingControl<'a> {
 mod accept;
 #[path = "mapping_reduce.rs"]
 mod reduce;
+
+#[path = "mapping_entries.rs"]
+mod entries;
+#[path = "mapping_retained.rs"]
+mod retained_impl;
+#[path = "mapping_stop.rs"]
+mod stop;
+
+#[path = "mapping_execute.rs"]
+mod execute;
+#[path = "mapping_affine.rs"]
+mod affine;
+
+#[path = "mapping_drop.rs"]
+mod drop;

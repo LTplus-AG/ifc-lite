@@ -10,22 +10,34 @@ The geometry pipeline transforms IFC shape representations into GPU-ready triang
 (#1080 → #1088 → #1084 → shared prepass), per-element mesh production and
 prepass resolution exist exactly once, in `ifc-lite-processing`:
 
-- **`processing::element::produce_element_meshes`** — THE per-element decision
-  tree (type-product geometry #957, submesh-aware void cuts, per-item #858
-  palette splits, single-mesh fallback chain). Run by the native rayon loop
-  (server/CLI) and by the browser's `processGeometryBatch` per job. The only
-  sanctioned behavioural fork is `TypeGeometryMode` (an export suppresses
-  instanced type geometry; the viewer emits it tagged for its Model/Types
-  switch).
-- **`processing::prepass`** — the shared post-scan resolver (styled-item
-  precedence, IfcIndexedColourMap #663/#858, the #407 material chain, voids
-  with #845 aggregate propagation) plus `resolve_unit_scales` (length AND
-  plane-angle, resolved once with a documented fallback ladder for
-  late-in-file `IFCPROJECT`) and the flat wire codecs for the JS boundary.
-  The scan loops stay per-orchestration (native scan with properties/quick
-  metadata; browser `buildPrePassOnce`/`buildPrePassStreaming` with
-  incremental job emission), but they only span-stash — all semantics resolve
-  in the shared module.
+- **`processing::element::produce_element_meshes_owned`** in
+  `rust/processing/src/element/owned_session.rs` owns the element transaction.
+  Native jobs and browser batches share `execution::build_router`, `decode_job`,
+  `job_type` and `RouterDrain` (`rust/processing/src/execution.rs`). One owned
+  transaction serves two schedulers: native per-job decode/model-wide templates
+  and browser warm decode/batch-local templates.
+- **`processing::discovery::Discovery`**, `scan::ScanClass` and
+  `core::is_geometry_job` share native and browser serial/once discovery.
+  Streaming class columns retain the accepted `gpu_meshes/prepass_discovery.rs`
+  adapter and incremental scheduler. `discovery::TypeGeometryPlan` shares
+  type-map decisions; native `SuppressInstanced` and browser `EmitTagged` are
+  explicit policies, not identical configured outputs.
+- **`processing::prepass`** resolves collected spans into styles, materials,
+  voids, aggregate propagation and unit scales. Native D66 layer slicing is
+  default-off (`ProcessingRequest::layer_slicing`); the browser keeps its
+  merge-layers toggle. Scheduler caches, frame selection and output encoding
+  remain caller-owned.
+
+The native `process(content, request, sink)` entry sequences private phases:
+`scan` discovers jobs and plans mapped sources; `resolve` installs the index,
+resolves prepass data and filters, then publishes the bootstrap and frame;
+`pass` resolves job metadata and meshes chunks; `finalize` collates diagnostics,
+instances and result metadata. The bodies live under `processing/src/processor/`.
+Native metadata identity runs in parallel and appearance resolution runs serially;
+wasm32 uses those same identity and appearance bodies serially. The pass checks
+cancellation before each chunk, emits its batches, retains meshes if requested,
+and then replays deferred styles. Each job borrows a `PassContext`, with a fresh
+`GeometryRouter::from_config` and the existing shared caches and model snapshot.
 
 The native scanner uses `ifc_lite_core::geometry_flags_by_name` to obtain
 `(has_geometry, representationless_spatial)` with one lookup of the existing
@@ -33,8 +45,8 @@ immutable schema table. These are the same predicates exposed separately by
 `has_geometry_by_name` and `is_representationless_spatial_container_by_name`;
 the second still requires the instance's `Representation` to be present.
 
-Geometry/styling fixes belong in those two modules; re-inlining logic in
-`processor.rs` or `gpu_meshes.rs` re-creates the historic both-sides drift
+Geometry/styling fixes belong in these shared homes; re-inlining logic in
+`processor/` or browser batch adapters re-creates the historic both-sides drift
 (#858, #913, #957, #961 each had to be fixed twice before the unification).
 
 The per-representation processing below is shared by construction:
@@ -347,7 +359,7 @@ flowchart TB
 
 ### Void Cutting
 
-Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and `produce_element_meshes` cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
+Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and the owned producer cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
 
 ## Mesh Hygiene
 
@@ -393,14 +405,19 @@ let world = resolve_chain(&placement, &mut decoder)?;
 let world = resolve_object_placement(&product, &mut decoder)?;
 ```
 
-`resolve_chain` is the placement walk of the router and the 2D profile
-extractor. The symbolic, analytic-export and export-preflight walks still
-carry their own depth caps until they move onto `ifc_lite_geometry::placement`
-(#7779). Nothing in the chain is defaulted: a cyclic chain, a `$`
+`resolve_chain` is the placement walk of the router, the 2D profile
+extractor and symbolic extraction. Analytic export, appearance, alignment
+sampling and map-normalization preflight use the same iterative walk with a
+`ChainPolicy`. Nothing in the chain is defaulted: a cyclic chain, a `$`
 `RelativePlacement`, a record that is not a placement (as `PlacementRelTo` or as
 `RelativePlacement`) and a linear or grid frame that cannot be sampled are each
 refused and counted (`EntityDecoder::refused_records`), so the element is lost
-visibly instead of drawn at its parent's origin. A 2D `RelativePlacement` is
+visibly instead of drawn at its parent's origin. Symbolic extraction is the one
+exception: it drops symbols only for admission refusals (malformed point,
+direction or real input and missing mandatory attributes, see
+`PlacementError::is_admission_refusal`) and keeps its established unresolved
+policy for dangling references, wrong record types and cycles, which place the
+symbol at the origin with unknown elevation. A 2D `RelativePlacement` is
 honoured. An absent, `$` or `*` `ObjectPlacement` remains identity ("genuinely
 missing"); a present value of the wrong kind is refused. An authored linear
 `CartesianPosition` is authoritative: an unreadable authored frame does not
@@ -409,8 +426,50 @@ degenerate frames retain their existing repair rules. A chain of any length
 resolves in full. Execution cancellations and resource refusals propagate as
 `PlacementError::ProgramStopped`, retain their terminal source authority, and
 do not increment the malformed-record counter.
+Symbolic extraction observes the same terminal authority at scan, item and
+append boundaries. A terminal stop discards its staged primitives and direct-fill
+provenance; it is not converted into malformed input or geometric truncation.
+The three public symbolic extraction APIs return `Result<_, ProgramStop>` and
+report the exact terminal stop before the execution domain exits. Extraction
+installs a lexical terminal domain even without an account, preserving an outer
+domain when present. WASM throws on a stop; HTTP parse routes fail before cache
+publication, and SSE sends `Error` instead of `Complete`. Successful collection
+and wire shapes are unchanged.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
+
+`validate_chain` reads local frames through `Axis2Placement`, including the
+canonical typed point/direction refusal rule. `strict_spatial` additionally
+requires exactly three components, finite nonzero direction norms and
+nonparallel Axis/RefDirection after applying the IFC defaults. The same rule
+is available for standalone frames as `placement::validate_spatial_frame`.
+Readable degenerate axes remain repairable for ordinary rendering; a strict
+consumer's additional restriction returns a policy error.
+
+When inspecting many products from one source under one policy, use
+`placement::ChainValidator::new(&mut decoder, policy)` and `validate(id)`.
+The session returns the root and only the newly verified links, leaf first,
+and stops at a previously verified ancestor. It holds the decoder borrow and
+keeps its policy fixed. Only successful chains enter this private memo;
+transform-cache entries cannot substitute for validation. Linear source
+admission shares the renderer's schema-dependent position-slot reader: at least
+one RelativePlacement or CartesianPosition must exist in its declared slot,
+with the required placement type. Cartesian frames use the typed Axis2 reader. Consumer-specific
+linear checks run on the returned new links; export aborts if any fails.
+
+Symbolic extraction retains the full 3D product and conic frames through
+composition, then projects to XY. Opposing product and conic tilts can cancel;
+projecting each input separately loses that geometry. The length scale applies
+to the composed product translation once. Circles keep their exact
+circle primitive under similarities. Under a foreshortening projection they
+use the bounded sampled-polyline representation already used for ellipses,
+including an edge-on circle whose projection is a line. Trimmed circular
+arcs likewise transform sampled points rather than multiplying a scalar radius.
+Polyline, indexed-curve and fill vertices use the same full frame, including
+local Z and the representative vertex elevation. A projected arc becomes a
+chord only if it has no interior reversal along that chord; coincident endpoints
+can still enclose a visible segment. Text baselines stay unit length after
+projection, independently of the scalar text-height convention.
 
 ### Large Coordinate Handling
 
@@ -452,8 +511,47 @@ Tessellation detail is controlled by a single `TessellationQuality` enum (`rust/
 
 ## Mapped Representations
 
-IFC reuses geometry via `IfcMappedItem` (a source `IfcRepresentationMap` plus a
-per-instance placement transform). For the primary model the engine collates
+IFC reuses geometry via `IfcMappedItem`: `MappingSource` references an
+`IfcRepresentationMap`, and `MappingTarget` composes with its `MappingOrigin`.
+The structural home is `rust/geometry/src/representation/`: `product_shape`
+reads a `ProductShape`, `Select::Meshed` selects what renders, and the
+decoder-only `RepresentationWalk` visits items in list order with an explicit
+DFS stack. Mapped paths use cycle checks, `MAX_MAPPED_ITEM_DEPTH`, and separate
+work allowances for mapped attempts and `Items` members. `MappedLevel` returns
+transforms in file units; the router scales their translations to metres.
+
+Before rendering, `representation/product_budget.rs` admits roots across the
+selected product representations without consulting mesh caches. Repeated
+mapped occurrences pay again. On budget exhaustion it retains completed roots
+and withholds the current root and all later roots. The profile extractor uses
+the same admission for drawings. The private `structural.rs` helpers serve
+shallow routing identity, RTC item-id sampling and Reference-only opening
+checks; `unwrap.rs` owns the policy-specific first-item/boolean probe chains.
+
+Rendering remains in the controllers under `rust/geometry/src/program/`:
+
+- `ProductControl` consumes admitted roots, merges frame parts or collects
+  styled sub-meshes, and applies product placement.
+- `ItemControl` selects a processor through the router's `ProcessorRegistry`,
+  drives owned construction or extension callbacks, and publishes reports.
+  `CacheControl` wraps it with item-cache admission and publication.
+- `MappingControl` owns the active source stack. Its `Sink` variants are
+  `Occurrence` (cached source then placement), `Shared` (shared source and an
+  instance placeholder), `Styled` (per-item sub-meshes), and `TypeMap` (type
+  representation parts followed by `MappingOrigin`). Merged/type source items
+  use `ItemControl`; styled plain items use `CacheControl`.
+
+The frame boundary is explicit. `router/processing.rs::finish_item_mesh`
+validates indices, scales positions and publishes object-frame bounds for
+rebased items. Direct items retain `rtc_applied`. Before a mapped-source mesh
+is merged or transformed, `MappingControl` calls `keep_rebase_in_origin`
+(`router/mapped_item.rs`): it clears that flag and adds the model RTC offset to
+the mesh's f64 origin. This preserves precision through mapping and lets final
+placement subtract RTC once; `M(p - rtc)` is not `M(p) - rtc` under rotation.
+Raw product items instead choose an element-frame offset through the inverse
+placement linear transform. See [Coordinate Handling](coordinate-handling.md#geometryrouter).
+
+For the primary model the engine collates
 congruent occurrences into **GPU instances**: the wasm
 `processGeometryBatchInstanced` entry point (backed by
 `rust/geometry/src/instancing` and `processors/mapped.rs`) partitions opaque
@@ -611,3 +709,11 @@ build-time or runtime.
 
 - [Rendering Pipeline](rendering-pipeline.md) - WebGPU rendering
 - [API Reference](../api/rust.md) - Geometry API
+
+The default browser batch exports adapt their positional arguments to internal
+`BatchWire` and borrowed/held `BatchSource` values. Preparation captures one owned
+production context; the serial element loop uses the shared execution decode/type
+boundary and canonical owned producer. Recovery completes batch-local occurrences
+before the flat/IFNS output adapters encode them. Held bytes stay owned through
+encoding. Native jobs use the same router builder and diagnostic drain with
+per-job policy; their persistent worker caches remain in the native scheduler.

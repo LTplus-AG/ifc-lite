@@ -24,6 +24,7 @@ export class SmlibWorkerTransport {
   slot = 0;
   session = 42n;
   meshInfo = [3, 1, 1, 0, 0, 0];
+  capabilities = 1 | 16 | 32;
   constructor(options) { this.options = options; peers.push(this); imports.push('client'); constructors.shift()?.(this); }
   allocate() { const slot = ++this.slot; this.objects.add(slot); return handle(this.session, slot); }
   retire(token) { if (token === this.incarnation) { this.retired = true; this.incarnation = undefined; } }
@@ -34,18 +35,37 @@ export class SmlibWorkerTransport {
     return owned.map((frame) => {
       const view = new DataView(frame), op = view.getUint32(8, true);
       this.commands.push({ op, slot: frame.byteLength >= 32 ? view.getUint32(28, true) : undefined });
+      const occurrence = this.commands.filter(command => command.op === op).length;
+      const fails = op === this.failOpcode && (!this.failAtOccurrence || occurrence === this.failAtOccurrence);
       let bytes = new Uint8Array();
-      if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, this.session, true); }
+      if (fails) { /* Typed kernel refusal has no success payload. */ }
+      else if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, this.session, true); }
+      else if (op === 12) {
+        bytes = new Uint8Array(8); const capabilities = new DataView(bytes.buffer);
+        capabilities.setUint32(0, 1, true); capabilities.setUint32(4, this.capabilities, true);
+      }
       else if (op === 8) { if (!this.objects.delete(view.getUint32(28, true))) throw new Error('fixture: unknown release'); }
+      else if (op === 5 || op === 17) bytes = this.allocate();
+      else if (op === 18) {
+        bytes = new Uint8Array(72); bytes.set(this.allocate());
+        const cert = new DataView(bytes.buffer); cert.setUint32(16, 1, true); cert.setUint32(20, 1, true);
+      }
+      else if (op === 19) { bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, this.empty ? 1 : 0, true); }
       else if (op === 9) bytes = this.allocate();
       else if (op === 10) { bytes = new Uint8Array(24); this.meshInfo.forEach((n, i) => new DataView(bytes.buffer).setUint32(i * 4, n, true)); }
       else if (op === 11) {
         const stream = view.getUint32(36, true), count = view.getUint32(44, true);
         bytes = new Uint8Array(count * ([1, 4].includes(stream) ? 8 : 4)); // zeros: in-bounds indices
+        // One real triangle on the evaluation-frame start cap (outward -Z at the profile
+        // anchor), so persistent-face attribution (#7955 M11-F) has genuine evidence.
+        const values = stream === 1 ? [0, 0, 0, 0, 1e-3, 0, 1e-3, 0, 0] : stream === 2 ? [0, 1, 2] : [];
+        values.slice(0, count).forEach((value, i) => stream === 1
+          ? new DataView(bytes.buffer).setFloat64(i * 8, value, true) : new DataView(bytes.buffer).setUint32(i * 4, value, true));
       } else throw new Error(`fixture: unexpected opcode ${op}`);
       const response = new Uint8Array(12 + bytes.length), envelope = new DataView(response.buffer);
       envelope.setUint32(0, 1, true);
       envelope.setUint32(4, this.wrongReply ? 0 : view.getUint32(4, true), true);
+      if (fails) envelope.setInt32(8, this.kernelStatus, true);
       response.set(bytes, 12);
       return response.buffer;
     });
@@ -55,6 +75,7 @@ export async function uploadSweep(transport, session, recipe, declaration, incar
   imports.push('sweep');
   const peer = peers.find((candidate) => candidate.incarnation === incarnation);
   if (!peer || transport.incarnation !== incarnation) throw new Error('fixture: stale upload');
+  if (peer.uploadStatus !== undefined) throw Object.assign(new Error('fixture: sweep refusal'), { domainStatus: peer.uploadStatus });
   peer.uploads = [...(peer.uploads ?? []), { session, declaration, bytes: Array.from(recipe) }];
   return { bytes: peer.allocate().buffer };
 }

@@ -1,0 +1,11 @@
+--- a/rust/wasm-bindings/src/retained_model_refusal.rs
++++ b/rust/wasm-bindings/src/retained_model_refusal.rs
+@@ -34,7 +34,7 @@
+             status: "refused",
+             express_id,
+             ifc_type,
+-            code: "worker_fault",
++            code: refusal.code(),
+             origin: origin.map(|o| Origin {
+                 site: o.site,
+                 entity: o.entity,

@@ -11,6 +11,7 @@
 //! than being rewritten.
 
 use super::super::{GeometryRouter, NORMALIZE_EPSILON};
+use crate::math::aabb::Aabb3;
 use crate::{Mesh, Vector3};
 
 impl GeometryRouter {
@@ -55,13 +56,8 @@ impl GeometryRouter {
         // supplied depth direction; fall back to the cutter's longest bbox axis.
         let mut d = axis_dir;
         if d.norm() < NORMALIZE_EPSILON {
-            let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
-            for c in opening_mesh.positions.chunks_exact(3) {
-                for a in 0..3 {
-                    lo[a] = lo[a].min(c[a] as f64);
-                    hi[a] = hi[a].max(c[a] as f64);
-                }
-            }
+            let bounds = Aabb3::from_f32_positions(&opening_mesh.positions);
+            let (lo, hi) = (bounds.min, bounds.max);
             let ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
             // Use a total order: non-finite file coords (e.g. `1.E999` → +inf,
             // whose `inf - inf` extent is NaN) would make `partial_cmp` return

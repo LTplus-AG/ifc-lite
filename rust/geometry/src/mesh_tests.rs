@@ -769,3 +769,48 @@ fn watertight_clean_leaves_an_apex_only_touched_elsewhere_5313() {
     mesh.clean_degenerate_watertight();
     assert_eq!(mesh.indices, vec![1, 0, 3, 2, 4, 5], "sliver dropped, nothing split");
 }
+
+/// #8156: a needle tetrahedron (A-B 0.1 mm, the rest ~22-25 m; faces ACB and
+/// ABD exceed the 1e5 edge ratio) wound outward, so every edge is used once in
+/// each direction.
+fn needle_tetrahedron() -> Mesh {
+    Mesh {
+        positions: vec![0.0, 0.0, 0.0, 1.0e-4, 0.0, 0.0, 10.0, 20.0, 0.0, 10.0, 5.0, 20.0],
+        indices: vec![0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3],
+        ..Mesh::new()
+    }
+}
+
+#[test]
+fn issue_8156_a_strictly_closed_mesh_keeps_its_needles() {
+    let mut mesh = needle_tetrahedron();
+    assert!(crate::exact_topology::strict_closed_mesh(&mesh), "fixture premise");
+    mesh.drop_degenerate_triangles_unless_closed();
+    assert_eq!(mesh.indices, needle_tetrahedron().indices, "the closed shell is left alone");
+
+    // The unconditional backstop still drops both needle faces.
+    mesh.drop_degenerate_triangles();
+    assert_eq!(mesh.indices, vec![0, 3, 2, 1, 2, 3]);
+}
+
+#[test]
+fn issue_8156_an_open_mesh_still_loses_its_needles() {
+    // Without face BCD the shell is open, so the exemption does not apply.
+    let mut mesh = needle_tetrahedron();
+    mesh.indices.truncate(9);
+    mesh.drop_degenerate_triangles_unless_closed();
+    assert_eq!(mesh.indices, vec![0, 3, 2]);
+
+    // A bit-identical pair is refused by the closure test itself, so a shell
+    // carrying an f32 collapse is never exempt either.
+    let mut collapsed = needle_tetrahedron();
+    collapsed.positions[3] = 0.0;
+    collapsed.drop_degenerate_triangles_unless_closed();
+    assert_eq!(collapsed.indices, vec![0, 3, 2, 1, 2, 3]);
+
+    // An incomplete trailing triangle goes, exactly as with the plain drop.
+    let mut clean = Mesh { positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0], ..Mesh::new() };
+    clean.indices = vec![0, 1, 2, 2, 1];
+    clean.drop_degenerate_triangles_unless_closed();
+    assert_eq!(clean.indices, vec![0, 1, 2]);
+}

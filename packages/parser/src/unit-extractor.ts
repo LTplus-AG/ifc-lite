@@ -14,10 +14,12 @@ import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 import { extractProjectUnits } from './project-units.js';
+import { declaredLengthUnitScale } from './declared-length-unit.js';
 import { declared, defaulted, unknownUnitMessage, type ResolvedLengthUnit } from './length-unit-source.js';
 
 export { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 export type { LengthUnitSource, ResolvedLengthUnit } from './length-unit-source.js';
+export { declareLengthUnitScale } from './declared-length-unit.js';
 
 /**
  * SI Prefix multipliers, keyed by the members of the `IfcSIPrefix` EXPRESS
@@ -141,6 +143,11 @@ export function resolveLengthUnit(
   projectId?: number,
   onDiagnostic?: (message: string) => void
 ): ResolvedLengthUnit {
+  // A format with no IfcProject to read (IFCX) stated its scale up front: still `default` (the file declares
+  // none), but with no reason, so it is neither warned about nor reported as a diagnostic on every call.
+  const stated = declaredLengthUnitScale(entityIndex);
+  if (stated !== undefined) return { scale: stated, source: 'default' };
+
   // Find IFCPROJECT
   // @raw-entity-enumeration-ok source parser selects the file's IfcProject to establish its declared units
   const projectIds = entityIndex.byType.get('IFCPROJECT') || [];

@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/retained/retained-client.ts
++++ b/apps/viewer/src/lib/retained/retained-client.ts
+@@ -82,7 +82,7 @@
+   }
+ 
+   cancel(): void {
+-    // Mutation: resolve cancellation without terminating the host.
++    this.stopWorker();
+     const run = this.active;
+     if (!run || run.done) return;
+     for (const expressId of run.candidates) {

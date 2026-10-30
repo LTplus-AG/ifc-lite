@@ -9,6 +9,7 @@
  * selection boundary (`layerStackPathToId`).
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { getProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import { diffLayerStacks } from '@ifc-lite/merge';
@@ -78,6 +79,7 @@ export async function computeLayerContribution(
   // Yield so the busy state paints before the synchronous fold.
   await new Promise((resolve) => setTimeout(resolve, 0));
   const files = stack.map((entry) => entry.file);
+  await initDiff();
   return diffLayerStacks(files.slice(0, index), files.slice(0, index + 1));
 }
 

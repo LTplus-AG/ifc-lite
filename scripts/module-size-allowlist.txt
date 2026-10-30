@@ -81,7 +81,7 @@
    594 apps/viewer/src/components/viewer/measureHandlers.ts
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
-   652 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
+   594 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
    825 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
@@ -186,12 +186,11 @@
    432 packages/data/src/property-table.ts
    457 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
-   439 packages/diff/src/fingerprint.ts
    550 packages/drawing-2d/src/drawing-generator.ts
    507 packages/drawing-2d/src/dxf/convert.ts
    898 packages/drawing-2d/src/dxf/parser.ts
    413 packages/drawing-2d/src/dxf/writer.ts
-   428 packages/drawing-2d/src/edge-extractor.ts
+   421 packages/drawing-2d/src/edge-extractor.ts
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    499 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
@@ -204,8 +203,8 @@
    599 packages/drawing-2d/src/sheet/title-block-renderer.ts
    489 packages/drawing-2d/src/styles.ts
    537 packages/drawing-2d/src/svg-exporter.ts
-   573 packages/drawing-2d/src/symbols/door-symbol.ts
-   808 packages/drawing-2d/src/types.ts
+   530 packages/drawing-2d/src/symbols/door-symbol.ts
+   807 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    680 packages/export/src/ifc5-exporter.ts
   1585 packages/export/src/merged-exporter.ts
@@ -226,8 +225,8 @@
    628 packages/ids/src/translation/service.ts
    636 packages/ids/src/types.ts
    755 packages/ids/src/validation/validator.ts
-   468 packages/ifcx/src/federated-composition.ts
-   704 packages/ifcx/src/index.ts
+   425 packages/ifcx/src/federated-composition.ts
+   693 packages/ifcx/src/index.ts
    749 packages/lists/src/engine.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
@@ -254,7 +253,7 @@
   1032 packages/provenance/src/merge-model.ts
    609 packages/provenance/src/node-hash.ts
    529 packages/query/src/duckdb-integration.ts
-   412 packages/renderer/src/camera-animation.ts
+   410 packages/renderer/src/camera-animation.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
   3699 packages/renderer/src/index.ts
@@ -305,7 +304,6 @@
    499 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
    506 scripts/generate-coverage-ledger.mjs
-   422 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs
    460 scripts/lib/pr-green-sweep.mjs
   1113 scripts/lib/pr-review-signal.mjs
@@ -319,5 +317,5 @@
    559 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2163 scripts/test-wasm-contract.mjs
+  2095 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

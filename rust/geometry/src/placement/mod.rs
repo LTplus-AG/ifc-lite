@@ -19,9 +19,15 @@ mod chain;
 mod chain_walk;
 mod grid;
 mod grid_frame;
+mod heading;
 pub(crate) mod linear;
 mod validate;
+mod validated_chain;
+#[cfg(test)]
+mod validated_chain_tests;
 
+#[cfg(test)]
+mod axis_frame_tests;
 #[cfg(test)]
 mod chain_policy_tests;
 #[cfg(test)]
@@ -36,7 +42,9 @@ mod leaf_policy_tests;
 mod mod_tests;
 
 pub use chain::{chain, resolve_chain, resolve_object_placement, Link, LinkKind};
-pub use validate::{validate_chain, ChainPolicy};
+pub use heading::rotation_angle_about_z;
+pub use validate::{validate_chain, validate_spatial_frame, ChainPolicy};
+pub use validated_chain::ChainValidator;
 
 use crate::math::tol;
 use crate::axis_projection::perpendicular_x_axis;
@@ -75,6 +83,23 @@ impl From<PlacementError> for crate::Error {
             PlacementError::ProgramStopped(stop) => Self::ProgramStopped(stop),
             other => Self::GeometryError(other.to_string()),
         }
+    }
+}
+
+impl PlacementError {
+    /// The refusals D15/D30 drop rather than keep at a fallback position:
+    /// input admission refused a real (`UnrepresentableReal`), a point or
+    /// direction is malformed (`MalformedRecord`), or a mandatory attribute is
+    /// missing. A dangling id, a wrong record type and a cycle are not.
+    pub fn is_admission_refusal(&self) -> bool {
+        matches!(
+            self,
+            Self::Missing { .. }
+                | Self::Decode(
+                    ifc_lite_core::Error::UnrepresentableReal(_)
+                        | ifc_lite_core::Error::MalformedRecord(_)
+                )
+        )
     }
 }
 

@@ -1,0 +1,11 @@
+diff --git a/rust/geometry/src/router/config.rs b/rust/geometry/src/router/config.rs
+--- a/rust/geometry/src/router/config.rs
++++ b/rust/geometry/src/router/config.rs
+@@ -83,6 +83,6 @@
+         router.set_tessellation_quality(tessellation_quality);
+         router.config.local_frame = local_frame;
+         router.set_skip_small_cuts(skip_small_cuts);
+-        router.set_instancing_batch_local(!instancing_batch_local);
++        router.set_instancing_batch_local(instancing_batch_local);
+         router
+     }

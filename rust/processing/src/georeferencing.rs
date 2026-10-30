@@ -76,9 +76,9 @@ pub struct Georeferencing {
     /// millimetres); absent when no MapUnit is authored.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub map_unit_scale: Option<f64>,
-    /// Provenance: `"mapConversion"`, `"ePSetMapConversion"`, or
-    /// `"siteLocation"` — same labels as the TS parser's
-    /// `GeoreferenceInfo.source`.
+    /// Provenance: `"mapConversion"`, `"rigidOperation"`,
+    /// `"ePSetMapConversion"`, or `"siteLocation"` — same labels as the TS
+    /// parser's `GeoreferenceInfo.source`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub source: Option<String>,
 }
@@ -115,7 +115,7 @@ impl Default for Georeferencing {
 }
 
 impl Georeferencing {
-    fn from_core(geo: &ifc_lite_core::GeoReference) -> Self {
+    fn from_core(geo: &ifc_lite_core::GeoReference, details: &ifc_lite_core::GeoReferenceDetails) -> Self {
         Self {
             crs_name: geo.crs_name.clone(),
             geodetic_datum: geo.geodetic_datum.clone(),
@@ -136,18 +136,21 @@ impl Georeferencing {
             map_zone: geo.map_zone.clone(),
             map_unit: geo.map_unit.clone(),
             map_unit_scale: geo.map_unit_scale,
-            source: geo.source.map(|s| s.label().to_string()),
+            source: details.source_label(geo.source).map(str::to_string),
         }
     }
 }
 
 /// Extract georeferencing from an IFC file, returning `None` when the model
-/// carries no `IfcMapConversion`, named `IfcProjectedCRS`,
+/// carries no `IfcMapConversion`, `IfcRigidOperation`, declared CRS,
 /// `ePSet_MapConversion` or `IfcSite` lat/long data.
 ///
 /// Only the entity types the extractor needs (`IfcMapConversion`,
-/// `IfcProjectedCRS`, and `IfcPropertySet` for the IFC2x3 `ePSet_MapConversion`
-/// fallback) are collected from the scan — their `IfcType` is known from the
+/// `IfcRigidOperation`, `IfcProjectedCRS`, `IfcGeographicCRS`,
+/// `IfcWellKnownText`, `IfcProject` for the plane-angle unit, and
+/// `IfcPropertySet` for the IFC2x3 `ePSet_MapConversion` fallback) are
+/// collected from the scan; everything else the extractor reads (units,
+/// referenced CRSs) it resolves by reference — their `IfcType` is known from the
 /// entity name, so no decoding happens while building the candidate list.
 pub fn extract_georeferencing<T>(content: &T) -> Option<Georeferencing>
 where
@@ -196,22 +199,28 @@ pub fn extract_georeferencing_with_index(
 /// nothing an allocated canonical form would be reused for — the same shape
 /// `processor::quick_metadata::is_quick_spatial_type_ci` uses.
 pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> {
-    // Scaled's first eight attributes have the base conversion layout.
-    if keyword_eq(type_name, "IFCMAPCONVERSION")
-        || keyword_eq(type_name, "IFCMAPCONVERSIONSCALED")
-    {
-        return Some(IfcType::IfcMapConversion);
-    }
-    if keyword_eq(type_name, "IFCPROJECTEDCRS") {
-        return Some(IfcType::IfcProjectedCRS);
-    }
-    if keyword_eq(type_name, "IFCPROPERTYSET") {
-        return Some(IfcType::IfcPropertySet);
-    }
-    if keyword_eq(type_name, "IFCSITE") {
-        return Some(IfcType::IfcSite);
-    }
-    None
+    // Dispatch on length first: this runs for every scanned entity, and a
+    // non-candidate then costs one length match and at most three
+    // case-folded comparisons (no more than before IFC4X3 support).
+    let candidates: &[(&str, IfcType)] = match type_name.len() {
+        7 => &[("IFCSITE", IfcType::IfcSite)],
+        10 => &[("IFCPROJECT", IfcType::IfcProject)],
+        14 => &[("IFCPROPERTYSET", IfcType::IfcPropertySet)],
+        15 => &[("IFCPROJECTEDCRS", IfcType::IfcProjectedCRS)],
+        // Scaled's first eight attributes have the base conversion layout.
+        16 => &[
+            ("IFCMAPCONVERSION", IfcType::IfcMapConversion),
+            ("IFCGEOGRAPHICCRS", IfcType::IfcGeographicCRS),
+            ("IFCWELLKNOWNTEXT", IfcType::IfcWellKnownText),
+        ],
+        17 => &[("IFCRIGIDOPERATION", IfcType::IfcRigidOperation)],
+        22 => &[("IFCMAPCONVERSIONSCALED", IfcType::IfcMapConversion)],
+        _ => return None,
+    };
+    candidates
+        .iter()
+        .find(|(keyword, _)| keyword_eq(type_name, keyword))
+        .map(|(_, ifc_type)| ifc_type.clone())
 }
 
 /// Reuse candidates from the geometry scan, avoiding the remaining whole-file
@@ -225,8 +234,8 @@ pub(crate) fn extract_georeferencing_from_candidates(
         return None;
     }
 
-    match GeoRefExtractor::extract(decoder, entity_types) {
-        Ok(Some(geo)) => Some(Georeferencing::from_core(&geo)),
+    match GeoRefExtractor::extract_with_details(decoder, entity_types) {
+        Ok(Some((geo, details))) => Some(Georeferencing::from_core(&geo, &details)),
         Ok(None) => None,
         Err(e) => {
             tracing::debug!(error = %e, "Georeferencing extraction failed");

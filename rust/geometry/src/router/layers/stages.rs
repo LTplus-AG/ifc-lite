@@ -23,7 +23,7 @@ pub(crate) struct LayerProgram {
 /// diagnostic string.
 pub(crate) enum LayerSkip {
     TooFewLayers,
-    ShiftedOrMultipleItems,
+    RotatedOrMultipleItems,
     ThinLayersCollapsed,
     EmptyHost,
     PlacementUnresolved,
@@ -34,7 +34,7 @@ impl LayerSkip {
     pub(crate) fn reason(&self) -> &'static str {
         match self {
             Self::TooFewLayers => "skip:fewer-than-2-layers",
-            Self::ShiftedOrMultipleItems => "skip:not-single-unshifted-item",
+            Self::RotatedOrMultipleItems => "skip:not-single-unrotated-item",
             Self::ThinLayersCollapsed => "skip:thin-layers-collapsed-to-1",
             Self::EmptyHost => "skip:empty-base-mesh",
             Self::PlacementUnresolved => "skip:placement-unresolved",
@@ -44,6 +44,11 @@ impl LayerSkip {
 }
 
 impl LayerProgram {
+    #[cfg(feature = "retained-runtime")]
+    pub(crate) fn retained_parameters(self) -> (Vec<(u32, f64)>, LayerAxis, f64, f64) {
+        (self.layers.into_iter().map(|l| (l.material_id, l.thickness_m)).collect(),
+            self.axis, self.direction_sense, self.offset)
+    }
     /// Eligibility, evaluated before any host callback runs. `Ok(None)` means
     /// the buildup is not sliceable at all (no diagnostic).
     pub(crate) fn admit(
@@ -65,9 +70,9 @@ impl LayerProgram {
             return Err(LayerSkip::TooFewLayers);
         }
         // Layer planes are built from the element placement alone, so the
-        // representation must be one item with identity Position.
-        if !source::element_is_single_unshifted_item(element, decoder) {
-            return Err(LayerSkip::ShiftedOrMultipleItems);
+        // representation must be one item whose Position does not rotate.
+        if !source::element_is_single_unrotated_item(element, decoder) {
+            return Err(LayerSkip::RotatedOrMultipleItems);
         }
         // Merge sub-mm layers before any geometry work so planes never sit on
         // degenerate interfaces.

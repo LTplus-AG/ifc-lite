@@ -34,6 +34,7 @@ it('retires mounted GLB work before a replacement Viewer owns the scene (#4807)'
     modelOrigin: { longitude: 0, latitude: 0, height: 0 },
     viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
     viewerUpScale: 1,
+    placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null,
   } as unknown as CesiumBridge };
   const zero = { x: 0, y: 0, z: 0 };
   const geometry: GeometryResult = {

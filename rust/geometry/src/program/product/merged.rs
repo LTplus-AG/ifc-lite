@@ -79,6 +79,7 @@ pub(in crate::program) enum Prepared {
 /// (#5313); cut-created candidates require path-specific handling (#4797).
 pub(super) fn finish(sink: Sink, hygiene: SourceHygiene) -> Result<Prepared> {
     match sink {
+        Sink::Retained(..) => Err(crate::Error::geometry("retained sink cannot enter exact finish")),
         Sink::Merged(mut merged) => {
             // A refused merge only records the account's sticky stop; surface it
             // before hygiene or placement run over partial output.

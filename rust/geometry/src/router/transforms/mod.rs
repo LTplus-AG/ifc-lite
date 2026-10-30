@@ -9,8 +9,6 @@ mod mesh_world;
 pub(crate) use mesh_world::{WorldFrame, LARGE_MAPPED_ORIGIN_M};
 pub(crate) mod operator;
 
-mod parsers;
-
 use super::GeometryRouter;
 use crate::math::mat4;
 use crate::placement;
@@ -22,7 +20,7 @@ use nalgebra::Matrix4;
 /// source. `placed` is false for the identity fallback, which stamps no
 /// instance transform.
 pub(crate) struct ObjectPlacement {
-    transform: Matrix4<f64>,
+    pub(crate) transform: Matrix4<f64>,
     placed: bool,
 }
 
@@ -94,7 +92,7 @@ pub(crate) fn instancing_enabled() -> bool {
 
 impl GeometryRouter {
     pub(super) fn local_frame_enabled(&self) -> bool {
-        self.local_frame_enabled.unwrap_or_else(local_frame_enabled)
+        self.config.local_frame.unwrap_or_else(local_frame_enabled)
     }
 
     /// The source half of placing a product's meshes: its `ObjectPlacement`,
@@ -171,6 +169,15 @@ impl GeometryRouter {
         }
     }
 
+    /// The canonical product placement in metres; absent placement is identity.
+    pub(super) fn element_world_placement(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Matrix4<f64>> {
+        Ok(self.resolve_object_placement(element, decoder)?.transform)
+    }
+
     /// Get placement transform from element without applying it
     pub(super) fn get_placement_transform_from_element(
         &self,
@@ -196,8 +203,7 @@ impl GeometryRouter {
                 )));
             }
         }
-        let mut transform = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut transform);
+        let transform = self.element_world_placement(element, decoder)?;
         Ok(mat4::col_major_array(&transform))
     }
 
@@ -211,5 +217,12 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         placement::linear::local_strict(placement, decoder)
+    }
+}
+
+// Logical source metadata only; this does not resolve retained face appearance.
+impl GeometryRouter {
+    pub(crate) fn retained_indexed_colour_pending(&self, id: u32) -> bool {
+        self.is_indexed_colour_split_source(id)
     }
 }

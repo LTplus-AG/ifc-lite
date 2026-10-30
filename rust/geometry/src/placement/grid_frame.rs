@@ -61,12 +61,17 @@ pub(super) enum OwningFrame {
 pub(super) fn owning_grid_frame(
     intersection: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    use_transform_cache: bool,
 ) -> PlacementResult<OwningFrame> {
     let Some(axis_id) = intersection.ref_list_at(slot::IfcVirtualGridIntersection::INTERSECTING_AXES).and_then(|axes| axes.first().copied()) else {
         return Ok(OwningFrame::Identity);
     };
-    if let Some(m) = decoder.get_placement_transform_cached(axis_id) {
-        return Ok(OwningFrame::Cached(Matrix4::from_column_slice(&m)));
+    // A composed transform is not evidence that a validation policy holds.
+    // Non-meshing walks must include the owner regardless of renderer warmth.
+    if use_transform_cache {
+        if let Some(m) = decoder.get_placement_transform_cached(axis_id) {
+            return Ok(OwningFrame::Cached(Matrix4::from_column_slice(&m)));
+        }
     }
     let parent = match decoder.grid_of_axis(axis_id) {
         Some(grid_id) => {

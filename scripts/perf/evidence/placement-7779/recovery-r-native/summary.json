@@ -1,0 +1,89 @@
+{
+  "status": "historical full-output identity passed; adverse native phase observed; timing report inconclusive; current R2a qualification pending",
+  "base": "a806aed09f4aa860d180c2cc1059032bd87b4a20",
+  "branch": "fde7d3c7fdbefae58c8c3a3c3142ed6c79b171de",
+  "issue": 7779,
+  "pullRequests": [
+    7880,
+    7896
+  ],
+  "originalJob": "0edab23a-2bfb-40ce-9155-547876a95216",
+  "originalReceiptSha256": "fbd1c92f7f8c414a1be968a12997edf20f05f35ffeccb10b47f7f5348e80d38b",
+  "originalOutputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "originalReconciliationSha256": "7d76f8f63c95824e6ec29c072a10740f8859c9de48f0b06fa9518d63621e9d4e",
+  "freezeSha256": "f87374fb0fa150135333a7323d66f5827cab1cd042706359488f919541c5b049",
+  "sourceBindingsSha256": "ddde298dc0f45ef1678e72f6a974e30a54d4826023b230f56198e6025693bef8",
+  "runtime": {
+    "IFC_LITE_INSTANCING": "0",
+    "IFC_LITE_DEDUP_EXTRA": "0",
+    "RAYON_NUM_THREADS": "4",
+    "CARGO_BUILD_JOBS": "4",
+    "IFC_LITE_LOCAL_FRAME": null
+  },
+  "profile": "profiling",
+  "features": [],
+  "counts": {
+    "untimedPayloadCalls": 6,
+    "timedProcesses": 10,
+    "selectedRows": 30,
+    "timedFullModelLoads": 150
+  },
+  "allFullOrderedOutputFloatFrameMetadataInstanceRawDiagnosticsMatch": true,
+  "allTimedCountersAndFingerprintsMatch": true,
+  "stockVerdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": true,
+    "inconclusive": true,
+    "zeroBaselineIncrease": false
+  },
+  "realStockPhaseChanges": {
+    "AC20-FZK-Haus.ifc": [
+      {
+        "phase": "parse",
+        "baseMedianMs": 12,
+        "branchMedianMs": 13,
+        "deltaPct": 8.333333333333332,
+        "noisePct": 0,
+        "real": true,
+        "direction": "slower"
+      }
+    ],
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": [],
+    "ISSUE_053_20181220Holter_Tower_10.ifc": []
+  },
+  "allInnerOuterBlockMedianDeltasPercent": {
+    "AC20-FZK-Haus.ifc": {
+      "parseMs": 8.333333333333325,
+      "geometryMs": 0.0,
+      "totalMs": 0.0,
+      "fullCallWallMs": 1.7513177877042096
+    },
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "parseMs": 0.0,
+      "geometryMs": -0.5499999999999949,
+      "totalMs": -0.5452292441139983,
+      "fullCallWallMs": -0.5218124232626464
+    },
+    "ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "parseMs": 2.898550724637672,
+      "geometryMs": 0.6881948120698755,
+      "totalMs": 1.5512674990540987,
+      "fullCallWallMs": 0.672247770069867
+    }
+  },
+  "provenance": [
+    "All four binary helpers completed in original b1ef preparation, whose strict actual-rustc guard failed on R Fresh core; that original failure remains immutable.",
+    "X has actual core, geometry, processing and both example compiler records. R has actual geometry, processing and both examples; its unchanged core is transitively associated with the earlier X compilation in the same admitted serialized managed cache.",
+    "No original core rlib/rmeta byte hash exists. Recovered bindings explicitly distinguish this dependency provenance from a new R core compilation or cryptographic dependency byte identity.",
+    "New ordinary copy/assembly authenticated and copied the exact retained binaries. All six output calls and150 timed loads are fresh; no previous timings are reused."
+  ],
+  "limitations": [
+    "Actual corrected X a806 versus R fde only; no own-layer standalone03-to-X qualification and no main-to-X verdict.",
+    "No speed or neutrality claim. Stock report flags Haus parse12to13ms/+8.33% as real while overall inconclusive; cause unproven.",
+    "Full-call wall and selected-best-phase reports are distinct; raw five outer/five inner observations retained without treating25 samples as independent rounds.",
+    "Native ordinary full load only, no WASM/browser/GPU or throughput guarantee.",
+    "No baseline/ceiling/band/pin changes; other required gates remain binding."
+  ],
+  "acceptance": "No native-cost acceptance or neutrality verdict. This historical source pair does not qualify the current R2a head; fresh instruction and neutral end-to-end A/B evidence remain required."
+}

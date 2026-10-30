@@ -148,16 +148,7 @@ type TypeJobs = Vec<(u32, usize, usize, ifc_lite_core::IfcType)>;
 /// referenced set (same mapped-item spans, file order), same candidates (same
 /// type spans in file order, same attr-6 RepresentationMaps decode), same
 /// unreferenced-map filter, same output order.
-pub(crate) fn collect_type_geometry_jobs_from_spans(
-    content: &[u8],
-    mapped_item_spans: &[(u32, usize, usize)],
-    type_candidate_spans: &[(u32, usize, usize, ifc_lite_core::IfcType)],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> TypeJobs {
-    plan_type_geometry_jobs_from_spans(content, mapped_item_spans, type_candidate_spans, decoder).0
-}
-
-fn plan_type_geometry_jobs_from_spans(
+pub(crate) fn plan_type_geometry_jobs_from_spans(
     content: &[u8],
     mapped_item_spans: &[(u32, usize, usize)],
     type_candidate_spans: &[(u32, usize, usize, ifc_lite_core::IfcType)],

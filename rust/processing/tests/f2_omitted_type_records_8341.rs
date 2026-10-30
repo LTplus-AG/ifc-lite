@@ -52,9 +52,13 @@ fn f2_native_reports_distinct_omitted_type_record_first_8341() {
     let result = process(FIXTURE, &ProcessingRequest::full_pass(), &mut sink);
     assert_ordering_contract(&sink.events, "f2");
     assert_eq!(sink.events[0], Event::OmittedTypeRecords(vec![MALFORMED]));
-    // Two orphan maps were two doomed jobs (attempts); one record is omitted.
-    // The product and the valid neighbour's one map are the only jobs left.
-    assert_eq!(result.metadata.geometry_entity_count, 2);
+    // Its two orphan maps were two doomed jobs (attempts); one record is
+    // omitted and schedules nothing, exactly as if it were absent.
+    let without = String::from_utf8(FIXTURE.to_vec()).unwrap().lines()
+        .filter(|l| !l.starts_with("#500=")).collect::<Vec<_>>().join("\n");
+    let clean = process(without.as_bytes(), &ProcessingRequest::full_pass(), &mut ());
+    assert_eq!(result.metadata.geometry_entity_count, clean.metadata.geometry_entity_count);
+    assert_eq!(format!("{:?}", result.meshes), format!("{:?}", clean.meshes), "mesh output unchanged");
     assert!(result.meshes.iter().any(|m| m.express_id == NEIGHBOUR && !m.indices.is_empty()));
     assert!(result.meshes.iter().any(|m| m.express_id == 31 && !m.indices.is_empty()));
     assert!(!result.meshes.iter().any(|m| m.express_id == MALFORMED));

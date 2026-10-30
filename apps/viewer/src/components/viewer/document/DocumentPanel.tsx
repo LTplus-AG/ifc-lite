@@ -268,7 +268,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             {document.aiReport && <AiReportRefresh key={document.id} document={document} onChange={update} />}
             <DocumentBlockList key={document.id} document={document} selected={selection.ids} onToggle={selection.toggle}
               onSelectOnly={selection.selectOnly} onMove={moveBlocks}>
-              {(block, index) => <BlockEditor
+              {(block, index, edges) => <BlockEditor
                   block={block}
                   index={index}
                   count={document.blocks.length}
@@ -282,6 +282,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
                     if (target < 0 || target >= document.blocks.length) return;
                     moveBlocks(new Set([block.id]), delta < 0 ? document.blocks[target].id : document.blocks[target + 1]?.id ?? null);
                   }}
+                  edges={edges}
                   onCopy={() => copyBlock(block.id)}
                   onRemove={() => setBlocks(document.blocks.filter((b) => b.id !== block.id))}
                 />}

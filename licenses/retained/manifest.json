@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "manifestSha256": "0e0269ef0b92ec0a73fe6cad2a856a0843bc4b59e0ded87d32be5598352e62cd",
+  "manifestSha256": "4ac27f25a22420e6f435e5421bcef36d4aab1894515cb998d5811b7990f02087",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [
@@ -1349,6 +1349,32 @@
             "origin": "https://raw.githubusercontent.com/tokio-rs/valuable/9efc29b6e58cef28f6566a47aa7e142a55fead77/LICENSE",
             "file": "texts/ed60d479b8fd1f64e9cbc3de449a16a53ac1b3d1b6aeb9bf9d190a8e93061b44.txt",
             "sha256": "ed60d479b8fd1f64e9cbc3de449a16a53ac1b3d1b6aeb9bf9d190a8e93061b44"
+          }
+        ]
+      },
+      {
+        "name": "r-efi",
+        "version": "5.3.0",
+        "election": "MIT",
+        "attribution": "r-efi 5.3.0 (crates.io), licensed under MIT by election from MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+        "notices": [
+          {
+            "origin": "AUTHORS",
+            "file": "texts/ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7.txt",
+            "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
+          }
+        ]
+      },
+      {
+        "name": "wide",
+        "version": "1.4.0",
+        "election": "Zlib",
+        "attribution": "wide 1.4.0 (crates.io), licensed under Zlib by election from Zlib OR Apache-2.0 OR MIT",
+        "notices": [
+          {
+            "origin": "LICENSE-ZLIB.md",
+            "file": "texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt",
+            "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
           }
         ]
       },
@@ -3687,7 +3713,9 @@
           "file": "texts/ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7.txt",
           "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
         }
-      ]
+      ],
+      "election": "MIT",
+      "attribution": "r-efi 5.3.0 (crates.io), licensed under MIT by election from MIT OR Apache-2.0 OR LGPL-2.1-or-later"
     },
     {
       "name": "rawpointer",
@@ -4642,7 +4670,9 @@
           "file": "texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt",
           "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
         }
-      ]
+      ],
+      "election": "Zlib",
+      "attribution": "wide 1.4.0 (crates.io), licensed under Zlib by election from Zlib OR Apache-2.0 OR MIT"
     },
     {
       "name": "windows-core",

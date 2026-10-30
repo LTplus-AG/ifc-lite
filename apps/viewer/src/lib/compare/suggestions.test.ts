@@ -73,6 +73,11 @@ describe('successorEvidence', () => {
     const line = successorEvidence(successor({ agreeingComponents: ['attr:core', 'pset:A', 'qset:B', 'material', 'type-assignment'] }));
     assert.ok(line.endsWith('agrees on attr:core, A, B +2'), line);
   });
+
+  it('labels a repeated set name by its ordinal (#8136)', () => {
+    const line = successorEvidence(successor({ agreeingComponents: ['pset:Pset_WallCommon', 'pset#2:Pset_WallCommon'] }));
+    assert.ok(line.endsWith('agrees on Pset_WallCommon, Pset_WallCommon (2)'), line);
+  });
 });
 
 describe('splitMergeEvidence / unresolvedEvidence', () => {

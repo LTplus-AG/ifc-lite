@@ -14,8 +14,9 @@ use crate::admission::ResidentBytes;
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::process_streaming;
-use crate::types::{finish_meshes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
-use ifc_lite_processing::style::ModelFinishes;
+use crate::types::{
+    with_finishes, CollectedFinishes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent,
+};
 use crate::AppState;
 use axum::{
     extract::{Multipart, Query, State},
@@ -113,10 +114,12 @@ pub async fn parse_full(
     // detached blocking work keeps running - and keeps its admission slot -
     // until it actually exits, so a replacement cannot be admitted on top.
     let (body, symbolic_data, admission) = tokio::task::spawn_blocking(move || {
+        // #5984: each mesh's IFC-authored finish, joined by the pass itself.
+        let mut finishes = CollectedFinishes::default();
         let result = process(
             &content,
-            &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing),
-            &mut (),
+            &with_finishes(ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing)),
+            &mut finishes,
         );
         // In the frame the meshes above were baked in, not one this re-derives
         // for itself: the two travel in one response, so a site-local model's
@@ -126,8 +129,7 @@ pub async fn parse_full(
             &content,
             result.frame,
         )?;
-        // #5984: each mesh's IFC-authored finish, joined before the bytes go.
-        let mut meshes = finish_meshes(&mut ModelFinishes::from_content(&content), result.meshes);
+        let mut meshes = finishes.attach(result.meshes);
         drop(content);
 
         // Emit the SAME Y-up wire frame as the parquet transports (issue #1841).

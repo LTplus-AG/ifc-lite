@@ -7,7 +7,12 @@ import { fingerprintColumns } from './wasm-columns.js';
 import { diffModelConstructor } from './wasm-runtime.js';
 import { restoreDiffReferences, type IndexedDiff } from './wasm-result.js';
 
-/** Synchronous Rust comparison after explicit runtime initialization. */
+/**
+ * One-shot synchronous Rust comparison after explicit runtime initialization.
+ * Every call marshals both models into WASM, compares them, and frees both
+ * native models. For repeated comparisons, prepare each model once with
+ * {@link prepareDiffModel} and explicitly dispose the resulting handles.
+ */
 export function compareWithWasm<TRef = unknown>(base: Iterable<EntityFingerprint<TRef>>, head: Iterable<EntityFingerprint<TRef>>, options: DiffOptions = {}): ModelDiff<TRef> {
   const Model = diffModelConstructor();
   const baseRows = Array.from(base);
@@ -32,9 +37,12 @@ export function compareWasmModels<TRef>(
   baseRows: readonly EntityFingerprint<TRef>[], headRows: readonly EntityFingerprint<TRef>[],
   options: DiffOptions,
   keys: readonly [readonly string[], readonly string[]],
+  placementRows?: () => readonly [readonly EntityFingerprint<TRef>[], readonly EntityFingerprint<TRef>[]],
 ): ModelDiff<TRef> {
+  const stripPlacementGeometry = options.stripPlacementGeometry === true;
   const raw = unpackDocument(baseModel.comparePacked(headModel, {
     scope: options.scope,
+    stripPlacementGeometry,
     moveTolerance: options.moveTolerance,
     reshapeTolerance: options.reshapeTolerance,
     maxMoveDistance: options.maxMoveDistance,
@@ -51,5 +59,20 @@ export function compareWasmModels<TRef>(
     ...(options.excludeTypes === undefined ? {} : { excludeTypes: [...options.excludeTypes] }),
     ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
   })) as IndexedDiff;
-  return restoreDiffReferences(raw, baseRows, headRows, keys);
+  // Classification is Rust-owned; handle owners supply their stable stripped
+  // view, while one-shot calls project only for this call.
+  const [baseView, headView] = stripPlacementGeometry
+    ? placementRows?.() ?? [stripPlacementRows(baseRows), stripPlacementRows(headRows)]
+    : [baseRows, headRows];
+  return restoreDiffReferences(raw, baseView, headView, keys);
+}
+
+/** Project returned records only; native models always retain original hashes. */
+export function stripPlacementRows<TRef>(rows: readonly EntityFingerprint<TRef>[], frozen = false): readonly EntityFingerprint<TRef>[] {
+  const view = rows.map(row => {
+    if (typeof row.geometryHash !== 'string' || !row.geometryHash.startsWith('p:')) return row;
+    const projected = { ...row, geometryHash: undefined };
+    return frozen ? Object.freeze(projected) : projected;
+  });
+  return frozen ? Object.freeze(view) : view;
 }

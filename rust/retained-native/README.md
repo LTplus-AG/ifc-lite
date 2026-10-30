@@ -16,18 +16,22 @@ captured worker. The first sixteen controller-owned replacements per model are
 uncharged; further replacements spend the fault recovery budget. No cancellation
 refunds earlier faults. `ModelSummary.restarts` reports charged recovery attempts.
 An invocation fault takes precedence over an elapsed product deadline, and a
-domain retired by the executor always requires charged recovery.
+domain retired by the executor requires recovery. Band-phase transport retirements
+have a separate allowance of four; exhaustion refuses later banded products before
+kernel work. Known synchronized band kernel refusals preserve the worker. Host and
+opening failures keep their existing recovery accounting.
 
 Published parts contain f64 object-local metres and column-major placement
-matrices into absolute IFC Z-up world metres. Every product carries
-`PresentationObligationsUnmet`. Completed opening cuts and plan-proven unvoided
+matrices into absolute IFC Z-up world metres. The marker reflects the remaining
+presentation obligations. Completed opening cuts and plan-proven unvoided
 products discharge `OpeningClosure`, and every published part carries its resolved
 appearance (`IfcAppearance` is discharged through exact's own colour resolver), and
 persistent source face keys (`PersistentFaces`) and corner normals (`SurfaceNormals`);
-only `MaterialLayers` remains, so `obligations` is `[MaterialLayers]`. M10 publishes linear
+M4 also completes `MaterialLayers`, so fully presented products have empty `obligations`
+and publish with marker `final`. Products with remaining obligations retain their shape-only marker. M10 publishes linear
 affine finals and contracting curved finals when the existing SDK operations succeed;
 source-predicted uncertifiable affine finals refuse `incomplete` before invocation.
-`require_final_product` still refuses.
+The intermediate witness’s `require_final_product` still refuses before presentation.
 
 Build the real worker using `native/smlib-adapter/README.md`, then run from the
 repository root:

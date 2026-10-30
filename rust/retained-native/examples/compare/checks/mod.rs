@@ -31,8 +31,8 @@ pub struct OracleResult {
     pub authority: Option<SourceAuthority>,
     pub clip_part: Option<ClipPartEvidence>,
 }
-pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, tolerances: &serde_json::Value) -> Vec<OracleResult> {
-    let mut results = layers::check(product, sources, tolerances);
+pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+    let mut results = layers::check(product, sources, bytes, tolerances);
     results.extend(clips::check(product, sources, tolerances));
     results.extend(bounded::check(product, sources, tolerances));
     results.extend(faces::check(product, sources, tolerances));

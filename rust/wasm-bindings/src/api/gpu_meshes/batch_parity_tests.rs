@@ -50,7 +50,7 @@ thread_local! {
     static JOB_TRACE: std::cell::RefCell<Option<Vec<PlannedJob>>> = const { std::cell::RefCell::new(None) };
 }
 
-pub(super) fn record_job(id: u32, kind: &ifc_lite_processing::element::ElementJobKind) {
+pub(in crate::api::gpu_meshes) fn record_job(id: u32, kind: &ifc_lite_processing::element::ElementJobKind) {
     JOB_TRACE.with_borrow_mut(|slot| {
         if let Some(jobs) = slot {
             match kind {

@@ -4,6 +4,7 @@ name = "ifc-lite-geometry-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "Explicit isolated native geometry worker client for IFC-Lite (opt-in, source-only)"
 

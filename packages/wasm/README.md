@@ -409,7 +409,7 @@ all its unreferenced maps in source order. Their MappingOrigin supplies placemen
 nested mappings retain f64 world precision. Instanced types, types with only curve maps
 that exact does not mesh, and representationless jobs are absent. One unsupported
 map refuses the entire type; there is no partial publication or exact retry.
-Published orphan types leave MaterialLayers unmet.
+Published orphan types discharge all applicable obligations and publish final.
 Instanced type-library geometry is unavailable in retained mode.
 
 A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
@@ -426,10 +426,11 @@ absolute IFC Z-up axes).
 Planar faces use the attributed source-plane normal after every vertex passes
 planarity verification. Other faces use angle-weighted smoothing within each
 revision-local face and a 10° crease guard, after applying the composed world frame. Positions
-and indices stay unchanged, and `SurfaceNormals` is discharged. Optional `materialId`
-remains reserved for an independently qualified slice.
+and indices stay unchanged, and `SurfaceNormals` is discharged. Band parts carry their own
+`materialId`, resolved colour and material name through exact’s colour resolver.
 `instanceKey` identifies eligible byte-equal mapped geometry, including its persistent
-face keys, for optional view instancing.
+face keys, for optional view instancing. Products with the canonical layer class,
+including source-proven unsliced skips, are excluded from instancing.
 Every published part carries `faces`: a string table of persistent source keys
 `#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
 `disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
@@ -438,22 +439,27 @@ Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambig
 `appearance_unsupported` is the typed refusal for a binding that carries a texture or an
 indexed colour palette (origin `{site: 'appearance', entity, cause}`). Textures and indexed
 palettes are proven absent for retained-eligible products; tessellated bodies still refuse.
-Every publication carries `marker: 'PresentationObligationsUnmet'`
-and a nonempty `obligationsUnmet` list; consumers must display that marker. This
-is shape-only output. Supported openings are cut individually; completed cuts and
-plan-proven unvoided products discharge `OpeningClosure`. `cuts` reports completed
-cuts and `consumedParts` is zero: a consumed part refuses the entire product with
-`empty_result`. `MaterialLayers` remains unmet, so a published
-product's `obligationsUnmet` is exactly `['MaterialLayers']`:
-`OpeningClosure`, `PersistentFaces`, `SurfaceNormals` and `IfcAppearance` are discharged.
-Unsupported opening bodies report `opening_unsupported`; hosts with internal
-material-layer boundaries refuse `material_layer_strategy` before opening work.
+A fully presented product carries `marker: 'final'` and an empty `obligationsUnmet` list.
+A product with remaining obligations carries `marker: 'PresentationObligationsUnmet'`
+and its nonempty list; consumers show shape-only for those products. Final describes published
+products, independently of refused products that make a model incomplete.
+Supported openings discharge `OpeningClosure`; `cuts` counts completed cuts and
+`consumedParts` is zero. A consumed part refuses the entire product with `empty_result`.
+Eligible material-layer hosts publish planar or curved bands after opening cuts, with internal
+caps removed and a closed combined skin. This discharges `MaterialLayers` (as does a
+source-proven layer skip). Unsupported families refuse `material_layer_strategy`; unresolved
+cap or seam conformity refuses `layer_caps_unresolved`. Unsupported opening bodies report
+`opening_unsupported`. The M4 and M11 appearance, normals and face proofs together allow final publication.
 
 A refusal has `status: 'refused'`, `expressId`, `ifcType`, a typed snake-case
 `code`, optional `{site, entity?, cause}` `origin`, and `kernelStatus` for kernel
 failures. It has no parts. A failed part refuses the entire product. There is no
 exact fallback. One independently qualified worker is reused; worker failures
-retire it, contract faults preserve it, and replacement is capped at three.
+retire it and contract faults preserve it. Ordinary fault replacement is capped
+at three per model. Band-phase transport retirements have a separate allowance
+of four; exhaustion refuses remaining layered products before kernel work,
+without consuming the allowance used by non-layer products. Known synchronized
+band kernel refusals preserve the live worker. Each failed product stays atomic.
 The worker is released before the completed run is returned.
 
 For progressive display, the same opt-in bundle exports `RetainedModelSession`.
@@ -470,7 +476,7 @@ handle and collection in `finally` blocks. Positions, smoothed corner normals an
 origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
 Z-up metres. Each mesh takes its part's resolved appearance colour (`IfcAppearance`) and the authored
 metallic/roughness finish, falling back to the type default only for a part that carries no
-appearance; the shape-only marker still applies.
+appearance. The event carries `final` when its obligations are empty, otherwise the shape-only marker.
 The returned summary counts candidates, publications, refusals, restarts and
 worker acquisitions, plus controller product/acquisition milliseconds. A warm
 run acquires no new worker and reuses its completed qualification. `session.free()`

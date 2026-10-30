@@ -918,18 +918,16 @@ The separate opt-in WASM `pkg-retained` bundle exposes
 returned meshes. An empty ID filter selects no jobs. Orphan type products follow
 product occurrences, once per type, with all unreferenced maps processed atomically
 at their MappingOrigin. Instanced types, types with only curve maps that exact does not mesh,
-and jobs without representations are skipped. Published orphan types leave
-MaterialLayers unmet.
+and jobs without representations are skipped. Published orphan types discharge all applicable obligations.
 
 Published outcomes contain `expressId`, `ifcType`, and atomic `parts` with f64
 object-local metre positions, u32 indices, and column-major `worldFromObject`
-matrices into IFC Z-up world metres. Consumers must show the
-`PresentationObligationsUnmet` marker and its `obligationsUnmet` list, which for
-every published product is exactly `['MaterialLayers']`: material layers are not yet
-delivered. `OpeningClosure` (openings are cut or the product is plan-proven unvoided),
-`PersistentFaces` (each part's faces carry source keys), `SurfaceNormals` (per-corner
-normals) and `IfcAppearance` (each part's colour comes from the exact engine's own
-colour resolver) are discharged. Refused outcomes carry
+matrices into IFC Z-up world metres. Consumers show `final` for a product with empty
+`obligationsUnmet`, and `PresentationObligationsUnmet` (shape-only) with its nonempty list
+otherwise. M4 completes material layers (including source-proven skips); M11 completes
+appearance, persistent faces and surface normals. Each band resolves its own material’s
+appearance through exact’s resolver. A model may contain final published products alongside
+refused products; its coverage remains explicit. Refused outcomes carry
 an ID, typed code and optional origin, with no partial product or exact fallback.
 See the [WASM package contract](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#experimental-retained-whole-model-engine)
 for lifecycle, transport and result details. The default engine is unchanged.
@@ -941,7 +939,7 @@ frame, then atomic `published` mesh collections or typed `refused` events.
 Extract and free each collection and its mesh handles in `finally` blocks.
 Use `detail: 'shape'` for the M1 f64 shape parts. A session reuses its qualified
 worker across runs; free the session when finished, or terminate the host Worker
-to cancel immediately. Consumers must continue to show the shape-only marker.
+to cancel immediately. Consumers show each product’s final or shape-only presentation state.
 
 
 ## Pipeline refusal diagnostics

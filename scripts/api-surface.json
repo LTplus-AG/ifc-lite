@@ -5292,6 +5292,7 @@
     "DiffChangeKind: type",
     "DiffCounts: interface",
     "DiffEntry: interface",
+    "DiffModelHandle: class",
     "DiffOptions: interface",
     "DiffScope: type",
     "DiffState: type",
@@ -5345,6 +5346,7 @@
     "normalizeValue: function",
     "parseIdentityMapSidecar: function",
     "parseLineageSidecar: function",
+    "prepareDiffModel: function",
     "rekeyByLineage: function",
     "serializeIdentityMapSidecar: function",
     "serializeLineageSidecar: function",
@@ -5353,6 +5355,7 @@
     "validateLineageSidecar: function"
   ],
   "@ifc-lite/diff/internal": [
+    "DiffModelHandle: class",
     "PreparedDiffModel: class (type-only)",
     "buildFingerprintBatch: function",
     "prepareDiffModel: function"

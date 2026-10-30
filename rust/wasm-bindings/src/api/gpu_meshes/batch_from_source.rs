@@ -18,7 +18,7 @@
 //! These are additive: the legacy `data`-taking `processGeometryBatch*` methods
 //! in `batch.rs` are unchanged and remain the fallback for native, non-streaming,
 //! and older-JS callers. Each `*FromSource` method is a thin wrapper that resolves
-//! the held `Arc<Vec<u8>>` and delegates to its legacy twin with that slice — an
+//! the held `Arc<Vec<u8>>` and uses the same internal wire and output adapter — an
 //! internal Rust call, so no marshalling/copy happens at that boundary.
 
 use crate::api::IfcAPI;
@@ -94,25 +94,10 @@ impl IfcAPI {
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
     ) -> MeshCollection {
-        let source = self.source_bytes_arc();
-        self.process_geometry_batch(
-            &source,
-            jobs_flat,
-            unit_scale,
-            rtc_x,
-            rtc_y,
-            rtc_z,
-            needs_shift,
-            void_keys,
-            void_counts,
-            void_values,
-            style_ids,
-            style_colors,
-            plane_angle_to_radians,
-            material_element_ids,
-            material_color_counts,
-            material_colors_rgba,
-        )
+        let wire = super::batch_wire::BatchWire {
+            jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba,
+        };
+        self.batch_flat(super::batch_wire::BatchSource::Held(self.source_bytes_arc()), wire)
     }
 
     /// Like [`IfcAPI::process_geometry_batch_partitioned`] but reads the source
@@ -138,24 +123,9 @@ impl IfcAPI {
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
     ) -> PartitionedBatch {
-        let source = self.source_bytes_arc();
-        self.process_geometry_batch_partitioned(
-            &source,
-            jobs_flat,
-            unit_scale,
-            rtc_x,
-            rtc_y,
-            rtc_z,
-            needs_shift,
-            void_keys,
-            void_counts,
-            void_values,
-            style_ids,
-            style_colors,
-            plane_angle_to_radians,
-            material_element_ids,
-            material_color_counts,
-            material_colors_rgba,
-        )
+        let wire = super::batch_wire::BatchWire {
+            jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba,
+        };
+        self.batch_partitioned(super::batch_wire::BatchSource::Held(self.source_bytes_arc()), wire)
     }
 }

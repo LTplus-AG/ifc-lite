@@ -1,0 +1,9 @@
+{
+  "layerBandVolumeRelative": {"linear": 1e-6, "curved": 2e-3},
+  "layerBandSumRelative": {"linear": 1e-6, "curved": 2e-3},
+  "layerCapOnSurfaceMetres": 1e-6,
+  "layerCapAreaRelative": {"linear": 1e-6, "curved": 2e-3},
+  "layerCapWeldMetres": {"linear": 1e-6, "curved": 1e-3},
+  "layerAssemblyClosureDefects": 0,
+  "layerExactComparison": "report"
+}

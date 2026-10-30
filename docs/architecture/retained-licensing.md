@@ -1,7 +1,7 @@
 # Retained artifact licensing review inputs
 
 Refs #7955. Release review draft. **Review inputs,
-not a licence-compatibility decision or distribution approval.** Exact remains
+not a licence-compatibility decision or distribution approval.** Not legal advice. Exact remains
 the default; this change changes packaging, not geometry execution.
 
 ## Evidence and scope
@@ -16,7 +16,7 @@ CI compares semantic inputs: external locked package identities/checksums in eac
 production dependency closure, the SMLib and emsdk pins, Emscripten version, Rust
 toolchain channel and supplemental notice records. Workspace versions and unrelated
 workflow text are excluded. Preserved notice hashes and generated outputs are checked.
-The explicitly recorded missing upstream text below remains a release blocker.
+The Apache-2.0 election for `wasm_sync` below closes the missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code
 remaining after link-time dead stripping. The roots are `ifc-lite-wasm` (default
@@ -26,8 +26,8 @@ optional and target-specific production dependencies and build tools are include
 conservatively. Each component records its root scope. Cargo metadata supplies
 the actual archive paths during refresh, not during the SDK-free CI check.
 The Rust standard-library copyright inventory includes its own nested components.
-The exact final native linker dependencies are platform-specific and remain a
-release input to collect. No claim of a complete final-linked-artifact audit is made.
+The exact final native linker dependencies are platform-specific and must be
+collected before a future native worker binary release. No claim of a complete final-linked-artifact audit is made.
 
 ## Kernel, runtime and artifact mapping
 
@@ -101,6 +101,78 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
   and retained declarations only. Do not describe `npm install` as installation
   of the retained engine.
 
+## Distribution scope for this release
+
+* **crates.io:** the eight crates in `scripts/lib/crates-io.mjs` (core, clash,
+  geometry, processing, landxml, export, ffi, wasm) and the separately qualified
+  geometry-runtime bootstrap candidate are source packages. `cargo package
+  --list` is the archive selection check, not a build or publication. Their
+  lists contain source, tests/fixtures, documentation and Cargo metadata, no SDK
+  or third-party binaries. Each inherits `license-file = "LICENSE"` from the
+  workspace, so Cargo includes the repository MPL-2.0 text. Runtime also has an
+  explicit source-only `include` list. Even ffi's `cdylib` declaration does not
+  put a compiled library in a source archive.
+* **npm:** `packages/wasm/package.json#files` includes the retained loader/types,
+  default `pkg` and `pkg-diff` JS/WASM, and `THIRD_PARTY_NOTICES.txt`, but excludes
+  retained implementation JS/WASM and SMLib. CLI's `files` selects `dist`, README
+  and the notice; its generated JS/declarations consume the WASM package rather
+  than bundle SMLib. These are loader/client packages, not SDK delivery.
+* **Hosted browser retained assets:** separately built `pkg-retained` JS/WASM,
+  declarations and snippets, and SMLib's generated wasm/JS and module Workers
+  may be served after review, with the notices and MPL text staged alongside as
+  described above. `stage-retained-browser-assets.mjs` and
+  `stage-cli-retained-engine.mjs` hash-inventory those copies. The viewer Vite
+  integration does not copy these into build output and rejects retained Vercel
+  builds; this scope does not claim the production viewer currently serves them.
+* **Native retained worker binaries are not distributed in this release.** Users
+  build from the pinned SDK. CMake install support and native CI evidence are not
+  a release channel. `.github/workflows/release.yml` publishes npm and source
+  crates; its separate `server-v<version>` release is for server-bin, not the
+  retained worker. A future native retained binary release must first complete
+  the platform link/runtime audit (item 3).
+
+## Review record
+
+This records evidence and fulfilment mechanisms for the scope above, not a
+signature or a blanket conclusion about every possible linked artifact.
+
+| Component | Licence and obligation | How addressed in this scope |
+|---|---|---|
+| SMLib / SM_API | Apache-2.0 section 4: copy LICENSE, retain applicable notices; identify modified upstream files | Original SDK LICENSE and THIRD_PARTY_NOTICES.md preserved in `/smlib/` and `LICENSES/SMLib/`. Verified local SDK HEAD is `c9c5979f04cea8c38213004d4f04df0dcfb40d05` and `git status --porcelain --untracked-files=all --ignored -- source/SMLib source/SM_API LICENSE THIRD_PARTY_NOTICES.md` is empty. No modifications to those pinned paths; IFC-Lite adapter is separate. CMake and stagers enforce cleanliness, not binary provenance. |
+| Emscripten runtime | MIT OR NCSA, including Node MIT attribution: retain permission/copyright/disclaimer texts | Installed 4.0.15 LICENSE preserved whole in generated bundle, including both alternatives and subordinate notices. Compiler tools are not shipped. |
+| dlmalloc | Public domain / CC0-1.0 dedication in source | Actual 2.8.6 licence/version header preserved, full source hash recorded; Emscripten modifications covered by its separate licence. |
+| musl | MIT and BSD-style portions: retain applicable notices/disclaimers | Complete installed COPYRIGHT preserved in bundle, including individual holders/portions. |
+| LLVM runtimes | Apache-2.0 WITH LLVM-exception plus legacy terms: retain texts and applicable attribution | libc++, libc++abi, libunwind, compiler-rt and llvm-libc LICENSE.TXT files preserved; conservative superset avoids discarding legacy notices without link evidence. |
+| Rust std and crates | MIT / Apache-2.0 and other per-component terms (including ISC, BSD, Unicode, Zlib, Boost): retain actual applicable texts | Generated inventory and bundle preserve archive texts and Rust COPYRIGHT-library.html plus its licence directory; supplemental pinned texts cover archive omissions. No single generic MIT notice substitutes for component holders. |
+| wasm_sync 0.1.2 | MIT OR Apache-2.0; Apache-2.0 elected | `supplemental.json` records the election and attribution: “wasm_sync 0.1.2 (crates.io), licensed under Apache-2.0 by election from MIT OR Apache-2.0”. Canonical [SPDX Apache-2.0 text](https://spdx.org/licenses/Apache-2.0.html) preserved by hash. This supplies section 4(a)'s licence copy; the archive and pinned upstream tree have no NOTICE, so section 4(d) adds no separate NOTICE-copy requirement. No copyright holder is invented. |
+| IFC-Lite | MPL-2.0: file-level copyleft, retain notices and make covered source available to executable recipients | Source crates include source and MPL LICENSE. Hosted copies include IFC_LITE_LICENSE.txt and notice with exact release-tag source URL; see source offer below. Combining separate Apache-2.0 and MIT code with MPL files is permitted while respecting each licence; this does not relicense those components. See [MPL FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/) questions 11–12 and MPL section 3.3. |
+
+### Source offer and release owner actions
+
+IFC-Lite covered source is available under MPL-2.0 at
+`https://github.com/LTplus-AG/ifc-lite/tree/<tag>`, where `<tag>` is the exact tag
+for the distributed release commit. `release.yml` creates the root `v<version>`
+tag using `release-tag-commit.mjs`, explicitly resolving the version commit;
+Changesets also creates per-package tags. Use the matching root tag, not `main`
+or the unrelated `server-v<version>` tag. Verify that it resolves to the source
+used to build the supplied assets.
+
+The generated THIRD_PARTY_NOTICES header carries this placeholder. Before
+staging a release, the owner fills it in the distributed notice copies (including
+copies used by both stagers), then stages/hashes the final files and keeps the
+source available at that URL. The repository's template remains reproducible;
+`--check` validates that template, not a filled release archive. See the
+[hosting guide](../guide/retained-installation.md) for delivery paths.
+
+Remaining for the maintainer: verify the final tag/source and deployed notice
+copies, review this record against the actual release scope, and sign below.
+No final release archive, deployed host, or future native binary was audited here.
+Registry bootstrap/Trusted Publisher settings and actual OIDC publication are
+also unverified; they are operational release prerequisites, not inferred from
+this licence record.
+
+Approved for the scope above by: ____ (date: ____)
+
 ## Why the default npm package includes the notice file
 
 `@ifc-lite/wasm` ships the default Rust WASM/wasm-bindgen runtime as well as
@@ -119,7 +191,7 @@ The file is standalone npm archive content, not imported JavaScript, a runtime
 fetch, or input to WASM compilation. It increases npm archive contents (the
 notice size is reported by the package inventory); it does not enter the default viewer or
 WASM code bundle. Default Rust source, dependency lock and compiler flags are
-unchanged by this branch. The only `build-wasm.sh` changes copy licence texts
+unchanged by this branch. The retained `build-wasm.sh` packaging path copies licence texts
 inside `BUILD_RETAINED=1`.
 
 Use `node scripts/retained-default-identity.mjs <base-commit>` in the admitted
@@ -131,33 +203,33 @@ notice content changes; a runtime byte comparison does not imply tarball identit
 
 ## Open release decisions and evidence gaps
 
-1. Human reviewer must decide final-linked-artifact compatibility and approve
-   redistribution/hosting on each platform. A complete source notice inventory
-   alone does not authorize distribution.
-2. `wasm_sync` 0.1.2 declares MIT OR Apache-2.0 but its archive and pinned upstream
-   tree `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5` contain no LICENSE/NOTICE files.
-   Obtain authoritative permission/attribution text; do not invent it. `i_key_sort`
-   0.11.0 and `i_overlay` 8.1.2 also omit texts from their archives; exact VCS-pinned
-   upstream texts were recovered and recorded in `supplemental.json`, as were
-   missing archive texts for `flatbuffers` 25.12.19 and `valuable` 0.1.1.
-   `r-efi` stores its permission text and copyright holders in `AUTHORS`, which
-   is preserved as an upstream notice.
-3. Collect the **actual release** native link map, `readelf -d` (Linux), `otool -L`
-   (macOS) or import table (Windows), compiler version and any bundled runtime
-   notices. `retained-native-link-inventory.mjs` is wired into the Linux native
-   CI lane to collect exact binary/library hashes, compiler and dpkg versions,
-   installed copyright files and referenced common licences; its report is
-   uploaded with the existing evidence. CI also verifies CMake-installed notices.
-   This newly wired collector is not a completed release-artifact audit.
-4. Bind final JS/WASM/native hashes to their clean source, build toolchain,
-   linker inputs and this notice inventory. Existing staging manifests explicitly
-   say `buildAttestation: false`; that remains honest and unchanged.
-5. Record the exact release source URL and any required source/relink delivery
-   mechanism. A human must approve the final source-offer wording.
-6. Registry bootstrap and per-crate Trusted Publisher configuration remain
-   manual. See [release runbook](../guide/retained-release.md); public lookup
-   found runtime absent and the existing core/geometry crates at 25.0.1 while
-   this checkout uses 26.0.0. Real dry-run failures must stay visible.
+1. **Review record prepared; maintainer signature remains.** See [Review
+   record](#review-record) for component obligations and evidence. Final scope,
+   release copies and source identity still require the maintainer's check; no
+   approval is asserted by this document.
+2. **Resolved: wasm_sync text/election.** Apache-2.0 election, exact attribution
+   and SPDX text are recorded in `supplemental.json` and generated bundles.
+   Its archive and upstream tree `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5`
+   have no LICENSE/NOTICE files. Existing VCS-pinned supplements for i_key_sort,
+   i_overlay, flatbuffers and valuable remain; r-efi's AUTHORS is preserved.
+3. **Out of scope: native link map.** No native retained worker binaries ship
+   in this release; users build from the pinned SDK. Before any future native
+   binary distribution, collect actual link maps/import tables, compiler and
+   bundled runtime notices for every platform. The Linux CI collector
+   `retained-native-link-inventory.mjs` supplies evidence infrastructure, not a
+   completed release audit.
+4. **Out of scope as a licence gate: build attestation.** Staging manifests
+   honestly retain `buildAttestation: false`. Binding binary hashes to clean
+   source, toolchains and linker inputs is recommended release evidence, not a
+   licence obligation. Hash inventories alone do not prove provenance.
+5. **Source-offer mechanism resolved; release value remains.** The notice header
+   and [hosting guide](../guide/retained-installation.md) specify the exact
+   `https://github.com/LTplus-AG/ifc-lite/tree/<tag>` source URL. Owner must fill
+   and verify the matching `v<version>` tag before distribution, as above.
+6. **Outside this licence closure: registry operations.** Bootstrap and per-crate
+   Trusted Publisher configuration remain manual and unverified; follow the
+   [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
+   failures remain visible; this record does not waive publication prerequisites.
 
 ## Regeneration
 

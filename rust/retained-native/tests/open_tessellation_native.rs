@@ -189,14 +189,21 @@ fn issue_7955_band_phase_open_tessellations_do_not_spend_the_layer_allowance() {
     let summary = run_model_native(SourceBundle::new(text.into_bytes()), &path,
         &ModelOptions { ids: Some(notched.iter().copied().chain([healthy]).collect()), ..Default::default() },
         |o| results.push(o)).unwrap();
-    assert_eq!(results.len(), notched.len() + 1, "{results:?}");
+    // Every product's outcome, so a failing run states the whole sequence
+    // (before the fix: four poisons, then LayerRetirementsExhausted).
+    let outcomes: Vec<String> = results.iter().map(|o| match o {
+        ProductOutcome::Published(p) => format!("#{} published", p.product_id),
+        ProductOutcome::Refused { product_id, refusal, origin, .. } =>
+            format!("#{product_id} {} {:?}", refusal.code(), origin.map(|o| o.cause)),
+    }).collect();
+    assert_eq!(results.len(), notched.len() + 1, "{outcomes:?}");
     for id in &notched {
         let refused = results.iter().find_map(|o| match o {
             ProductOutcome::Refused { product_id, refusal, message, .. } if product_id == id => Some((*refusal, message)),
             _ => None,
         });
         let Some((refusal, message)) = refused else { panic!("#{id} must be refused: {results:?}") };
-        assert_eq!(refusal, RetainedProductRefusal::KernelFailure { status: 4 }, "#{id}: {message}");
+        assert_eq!(refusal, RetainedProductRefusal::KernelFailure { status: 4 }, "#{id}: {message}; {outcomes:?}");
         assert!(message.contains("boundary or spine edges"), "#{id}: {message}");
     }
     // The healthy layered wall is attempted on the kept worker and publishes

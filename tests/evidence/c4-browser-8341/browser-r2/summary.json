@@ -1,0 +1,290 @@
+{
+  "fixtures": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "pairs": 5,
+      "metrics": {
+        "metadataRenderReadyMs": {
+          "label": "observed readiness ms",
+          "baseMedian": 1046,
+          "headMedian": 1003,
+          "deltaPct": -4.1108986615678775,
+          "baseSpreadPct": 12.332695984703633,
+          "headSpreadPct": 14.556331006979061,
+          "baseMax": 1131,
+          "headMax": 1124
+        },
+        "streamCompleteMs": {
+          "label": "stream-complete ms",
+          "baseMedian": 690,
+          "headMedian": 657,
+          "deltaPct": -4.782608695652174,
+          "baseSpreadPct": 10.434782608695652,
+          "headSpreadPct": 10.6544901065449,
+          "baseMax": 715,
+          "headMax": 712
+        },
+        "rendererPeakRssKiB": {
+          "label": "renderer peak RSS KiB",
+          "missing": true
+        },
+        "maxProcessPeakRssKiB": {
+          "label": "largest Chrome process peak RSS KiB",
+          "baseMedian": 520096,
+          "headMedian": 524216,
+          "deltaPct": 0.7921614471174553,
+          "baseSpreadPct": 3.2009475173814064,
+          "headSpreadPct": 3.0628595845987148,
+          "baseMax": 528984,
+          "headMax": 530380
+        },
+        "gpuPeakRssKiB": {
+          "label": "GPU-process peak RSS KiB",
+          "missing": true
+        },
+        "browserTreePeakRssSumKiB": {
+          "label": "browser-tree peak RSS sum KiB",
+          "baseMedian": 1625512,
+          "headMedian": 1629928,
+          "deltaPct": 0.27166824975761483,
+          "baseSpreadPct": 1.207742545118092,
+          "headSpreadPct": 1.1853284316853259,
+          "baseMax": 1636564,
+          "headMax": 1639240
+        }
+      },
+      "payload": {
+        "base": [
+          "0e509f83f6bbc4e19c4450189797784f5a07cafdc6e6804420a31d0732b31797"
+        ],
+        "head": [
+          "0e509f83f6bbc4e19c4450189797784f5a07cafdc6e6804420a31d0732b31797"
+        ],
+        "counts": {
+          "base": {
+            "root": "0e509f83f6bbc4e19c4450189797784f5a07cafdc6e6804420a31d0732b31797",
+            "models": 1,
+            "meshes": 275,
+            "vertices": 56698,
+            "triangles": 32852,
+            "instanced": 42
+          },
+          "head": {
+            "root": "0e509f83f6bbc4e19c4450189797784f5a07cafdc6e6804420a31d0732b31797",
+            "models": 1,
+            "meshes": 275,
+            "vertices": 56698,
+            "triangles": 32852,
+            "instanced": 42
+          }
+        }
+      },
+      "payloadIdentical": true,
+      "diagnostics": {
+        "base": [
+          "a08a52e98d9c89d50115b4e994d62f466391bbefae2836ff090d1e40691b48ad"
+        ],
+        "head": [
+          "a08a52e98d9c89d50115b4e994d62f466391bbefae2836ff090d1e40691b48ad"
+        ]
+      },
+      "diagnosticsIdentical": true,
+      "targets": {
+        "medianTimingWithinOnePct": true,
+        "timingDeltaBeyondBaseSpread": false,
+        "peakMemoryMedianAtOrBelowBase": false
+      }
+    },
+    {
+      "fixture": "duplex.ifc",
+      "pairs": 5,
+      "metrics": {
+        "metadataRenderReadyMs": {
+          "label": "observed readiness ms",
+          "baseMedian": 1095,
+          "headMedian": 1090,
+          "deltaPct": -0.45662100456621,
+          "baseSpreadPct": 4.474885844748858,
+          "headSpreadPct": 6.513761467889909,
+          "baseMax": 1099,
+          "headMax": 1125
+        },
+        "streamCompleteMs": {
+          "label": "stream-complete ms",
+          "baseMedian": 722,
+          "headMedian": 713,
+          "deltaPct": -1.2465373961218837,
+          "baseSpreadPct": 7.617728531855955,
+          "headSpreadPct": 8.134642356241233,
+          "baseMax": 736,
+          "headMax": 732
+        },
+        "rendererPeakRssKiB": {
+          "label": "renderer peak RSS KiB",
+          "missing": true
+        },
+        "maxProcessPeakRssKiB": {
+          "label": "largest Chrome process peak RSS KiB",
+          "baseMedian": 529148,
+          "headMedian": 531712,
+          "deltaPct": 0.484552525947372,
+          "baseSpreadPct": 3.585386319139447,
+          "headSpreadPct": 3.258907077515648,
+          "baseMax": 546984,
+          "headMax": 539244
+        },
+        "gpuPeakRssKiB": {
+          "label": "GPU-process peak RSS KiB",
+          "missing": true
+        },
+        "browserTreePeakRssSumKiB": {
+          "label": "browser-tree peak RSS sum KiB",
+          "baseMedian": 1639444,
+          "headMedian": 1639964,
+          "deltaPct": 0.031718070272604613,
+          "baseSpreadPct": 1.348017986585696,
+          "headSpreadPct": 1.3975916544509515,
+          "baseMax": 1655248,
+          "headMax": 1650240
+        }
+      },
+      "payload": {
+        "base": [
+          "0cf59aa6fec17cf89337ee6139c0c8fa8436ed4cb5053c246e1f296fc091140d"
+        ],
+        "head": [
+          "0cf59aa6fec17cf89337ee6139c0c8fa8436ed4cb5053c246e1f296fc091140d"
+        ],
+        "counts": {
+          "base": {
+            "root": "0cf59aa6fec17cf89337ee6139c0c8fa8436ed4cb5053c246e1f296fc091140d",
+            "models": 1,
+            "meshes": 622,
+            "vertices": 63419,
+            "triangles": 39677,
+            "instanced": 0
+          },
+          "head": {
+            "root": "0cf59aa6fec17cf89337ee6139c0c8fa8436ed4cb5053c246e1f296fc091140d",
+            "models": 1,
+            "meshes": 622,
+            "vertices": 63419,
+            "triangles": 39677,
+            "instanced": 0
+          }
+        }
+      },
+      "payloadIdentical": true,
+      "diagnostics": {
+        "base": [
+          "a08a52e98d9c89d50115b4e994d62f466391bbefae2836ff090d1e40691b48ad"
+        ],
+        "head": [
+          "a08a52e98d9c89d50115b4e994d62f466391bbefae2836ff090d1e40691b48ad"
+        ]
+      },
+      "diagnosticsIdentical": true,
+      "targets": {
+        "medianTimingWithinOnePct": true,
+        "timingDeltaBeyondBaseSpread": false,
+        "peakMemoryMedianAtOrBelowBase": false
+      }
+    },
+    {
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "pairs": 5,
+      "metrics": {
+        "metadataRenderReadyMs": {
+          "label": "observed readiness ms",
+          "baseMedian": 5201,
+          "headMedian": 5210,
+          "deltaPct": 0.17304364545279755,
+          "baseSpreadPct": 3.768506056527591,
+          "headSpreadPct": 1.2092130518234165,
+          "baseMax": 5371,
+          "headMax": 5245
+        },
+        "streamCompleteMs": {
+          "label": "stream-complete ms",
+          "baseMedian": 4843,
+          "headMedian": 4818,
+          "deltaPct": -0.5162089613875697,
+          "baseSpreadPct": 4.191616766467066,
+          "headSpreadPct": 2.82274802822748,
+          "baseMax": 5019,
+          "headMax": 4900
+        },
+        "rendererPeakRssKiB": {
+          "label": "renderer peak RSS KiB",
+          "missing": true
+        },
+        "maxProcessPeakRssKiB": {
+          "label": "largest Chrome process peak RSS KiB",
+          "baseMedian": 624252,
+          "headMedian": 611684,
+          "deltaPct": -2.01328950487944,
+          "baseSpreadPct": 7.364974401363551,
+          "headSpreadPct": 9.962660458668202,
+          "baseMax": 666760,
+          "headMax": 662168
+        },
+        "gpuPeakRssKiB": {
+          "label": "GPU-process peak RSS KiB",
+          "missing": true
+        },
+        "browserTreePeakRssSumKiB": {
+          "label": "browser-tree peak RSS sum KiB",
+          "baseMedian": 1754848,
+          "headMedian": 1746308,
+          "deltaPct": -0.4866518353726363,
+          "baseSpreadPct": 2.5971480150987434,
+          "headSpreadPct": 3.4486470886006364,
+          "baseMax": 1799028,
+          "headMax": 1797008
+        }
+      },
+      "payload": {
+        "base": [
+          "f0f3ea7c59b4eed21519a7aea410600f267e1d08c8415e687daab457166502aa"
+        ],
+        "head": [
+          "f0f3ea7c59b4eed21519a7aea410600f267e1d08c8415e687daab457166502aa"
+        ],
+        "counts": {
+          "base": {
+            "root": "f0f3ea7c59b4eed21519a7aea410600f267e1d08c8415e687daab457166502aa",
+            "models": 1,
+            "meshes": 1402,
+            "vertices": 216410,
+            "triangles": 134053,
+            "instanced": 0
+          },
+          "head": {
+            "root": "f0f3ea7c59b4eed21519a7aea410600f267e1d08c8415e687daab457166502aa",
+            "models": 1,
+            "meshes": 1402,
+            "vertices": 216410,
+            "triangles": 134053,
+            "instanced": 0
+          }
+        }
+      },
+      "payloadIdentical": true,
+      "diagnostics": {
+        "base": [
+          "746d7d2a087e17f5328aa21bc32fca4c56d62f5a471a023cf31ffd0c9f3980e8"
+        ],
+        "head": [
+          "746d7d2a087e17f5328aa21bc32fca4c56d62f5a471a023cf31ffd0c9f3980e8"
+        ]
+      },
+      "diagnosticsIdentical": true,
+      "targets": {
+        "medianTimingWithinOnePct": true,
+        "timingDeltaBeyondBaseSpread": false,
+        "peakMemoryMedianAtOrBelowBase": true
+      }
+    }
+  ],
+  "failures": 0
+}

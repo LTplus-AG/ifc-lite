@@ -26,6 +26,9 @@ const METRICS = [
   ['metadataRenderReadyMs', 'observed readiness ms', (r) => r.metadataRenderReadyMs],
   ['streamCompleteMs', 'stream-complete ms', (r) => r.streamCompleteMs],
   ['rendererPeakRssKiB', 'renderer peak RSS KiB', (r) => r.memory?.rendererPeakRssKiB],
+  // Chrome rewrites its process titles, so the f1f661a4 driver could not read --type= and
+  // classified every process as `browser`; the largest kernel peak is the page's renderer.
+  ['maxProcessPeakRssKiB', 'largest Chrome process peak RSS KiB', (r) => (r.memory?.processes?.length ? Math.max(...r.memory.processes.map((p) => p.hwmKiB)) : null)],
   ['gpuPeakRssKiB', 'GPU-process peak RSS KiB', (r) => r.memory?.gpuPeakRssKiB],
   ['browserTreePeakRssSumKiB', 'browser-tree peak RSS sum KiB', (r) => r.memory?.browserTreePeakRssSumKiB],
 ];
@@ -53,11 +56,11 @@ for (const fixture of [...new Set(rows.map((r) => r.fixture))]) {
   fx.diagnostics = { base: digests(base), head: digests(head) };
   fx.diagnosticsIdentical = fx.diagnostics.base.length === 1 && fx.diagnostics.head.length === 1 && fx.diagnostics.base[0] === fx.diagnostics.head[0];
   const t = fx.metrics.metadataRenderReadyMs;
-  const m = fx.metrics.rendererPeakRssKiB;
+  const m = fx.metrics.rendererPeakRssKiB.missing ? fx.metrics.maxProcessPeakRssKiB : fx.metrics.rendererPeakRssKiB;
   fx.targets = {
     medianTimingWithinOnePct: t && !t.missing ? t.deltaPct <= 1 : null,
     timingDeltaBeyondBaseSpread: t && !t.missing ? Math.abs(t.deltaPct) > t.baseSpreadPct : null,
-    rendererPeakAtOrBelowBase: m && !m.missing ? m.headMedian <= m.baseMedian : null,
+    peakMemoryMedianAtOrBelowBase: m && !m.missing ? m.headMedian <= m.baseMedian : null,
   };
   report.fixtures.push(fx);
 }

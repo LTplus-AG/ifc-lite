@@ -1,5 +1,15 @@
 # @ifc-lite/export
 
+## 4.13.2
+
+### Patch Changes
+
+- [#8300](https://github.com/LTplus-AG/ifc-lite/pull/8300) [`d3eb48a`](https://github.com/LTplus-AG/ifc-lite/commit/d3eb48a12d3b5982603e023961e0709c5933429d) Thanks [@louistrue](https://github.com/louistrue)! - Accept bare `IfcTypeProduct.RepresentationMaps` references in browser geometry discovery and in exported EntityRows, matching native geometry. Typed wrappers remain refused. Tabular and semantic exports now include orphan type rows for bare map references.
+
+- [#8343](https://github.com/LTplus-AG/ifc-lite/pull/8343) [`68c8f8f`](https://github.com/LTplus-AG/ifc-lite/commit/68c8f8fed82fb903b26d45f059e8e1b0a09f0eaf) Thanks [@louistrue](https://github.com/louistrue)! - A `{ typed: { type, value } }` attribute value now takes its inner encoding from the defined type's EXPRESS base however the type name is spelled: `IFCLENGTHMEASURE`, `LengthMeasure` and `IfcLengthMeasure` all write `IFCLENGTHMEASURE(3.)`. Upper-case and prefix-less names used to fall back to the JSON value's shape, writing e.g. `IFCLENGTHMEASURE(3)`. Both STEP writers (TS and Rust) agree.
+- Updated dependencies [[`7d391e2`](https://github.com/LTplus-AG/ifc-lite/commit/7d391e2ad2e449c9713a02113c0a81a8381673af)]:
+  - @ifc-lite/geometry@8.0.2
+
 ## 4.13.1
 
 ### Patch Changes

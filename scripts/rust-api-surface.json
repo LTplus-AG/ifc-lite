@@ -259,6 +259,7 @@
     "collate_refs_verified_in": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "compose_instance_world_row_major": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "compute_parts_to_skip": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "compute_parts_to_skip_with_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "compute_signed_area": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "coord_is_large": "external re-export",
     "count_attributed_products": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

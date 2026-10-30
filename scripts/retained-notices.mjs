@@ -62,7 +62,7 @@ export function applySupplemental(components, supplements) {
     }
     // Idempotent: a reused component may already carry the record from an earlier refresh.
     for (const notice of supplement.notices) {
-      if (!component.notices.some(actual => JSON.stringify(actual) === JSON.stringify(notice))) component.notices.push(notice);
+      if (!component.notices.some(actual => canonical(actual) === canonical(notice))) component.notices.push(notice);
     }
   }
 }
@@ -94,7 +94,7 @@ export function renderNotices(manifest, readText) {
 // validate its result before writing anything. Returns the generated outputs.
 function validateManifest(manifest, root, readText) {
   verifyManifestIntegrity(manifest);
-  if (JSON.stringify(manifest.inputs) !== JSON.stringify(inventoryInputs(root))) {
+  if (canonical(manifest.inputs) !== canonical(inventoryInputs(root))) {
     throw new Error('Retained notice inventory inputs changed; refresh against pinned SDK, toolchain and Cargo metadata');
   }
   for (const closure of Object.values(manifest.inputs.cargoClosures)) {
@@ -118,7 +118,7 @@ function validateManifest(manifest, root, readText) {
     const component = manifest.components.find(c => c.name === supplement.name && c.version === supplement.version);
     if (!component || (supplement.election && (component.election !== supplement.election ||
         component.attribution !== supplement.attribution)) || supplement.notices.some(n =>
-        !component.notices.some(actual => JSON.stringify(actual) === JSON.stringify(n)))) {
+        !component.notices.some(actual => canonical(actual) === canonical(n)))) {
       throw new Error(`Missing supplemental evidence: ${supplement.name}`);
     }
   }
@@ -221,6 +221,11 @@ export function refreshCargoOnly(root = ROOT, readMetadata = cargoMetadata) {
   const previous = JSON.parse(readFileSync(join(root, DIR, 'manifest.json'), 'utf8'));
   const inputs = inventoryInputs(root);
   const { head, tail } = splitReusableComponents(previous, inputs);
+  // Reused components keep what earlier supplements gave them, and nothing here clears it: a
+  // withdrawn or changed record for one needs the full --refresh. Adding a record is fine.
+  const withdrawn = previous.inputs.supplemental.find(r => [...head, ...tail].some(c => c.name === r.name && c.version === r.version) &&
+    !inputs.supplemental.some(now => canonical(now) === canonical(r)));
+  if (withdrawn) throw new Error(`--cargo-only refused: supplemental record for ${withdrawn.name} was removed or changed; run the full --refresh`);
   const { components: cargo, add, pending } = collector(root, true);
   addCargoComponents(add, inputs, readMetadata(root));
   // Supplements (including elections) apply to rebuilt and reused components alike; reused

@@ -30,12 +30,12 @@
 
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { basename } from 'node:path';
 import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { IDSNamespace } from '@ifc-lite/sdk';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { computeValidationIssues, type ValidationIssue } from './validate.js';
+import { ModelInputError, openModelInput } from '../model-input.js';
 
 export type CheckStatus = 'pass' | 'fail' | 'error';
 
@@ -48,7 +48,7 @@ export interface LoadedModel {
    * (#5138 PR 7b review) — `sourceModelIdentity(basename, bytes)`,
    * `@ifc-lite/cache`'s spread-sampled xxhash64 over the post-unwrap bytes,
    * prefixed with the file's base name exactly as `useIfcLoader.ts` builds
-   * `modelSourceIdentity`. A `.rules.json` rule set's `targets.modelFingerprints`
+   * `modelSourceIdentity` (for an `oci://` model, the layer's title name). A `.rules.json` rule set's `targets.modelFingerprints`
    * (saved from `RuleModelPicker`, which persists `model.sourceFingerprint`
    * verbatim) only resolves against a headless model when this matches
    * bit-for-bit — a SHA-256 (a different algorithm entirely) never would.
@@ -65,9 +65,11 @@ export interface ModelLoadError {
 /** Load one model file for delivery checking, never throwing and never exiting the process. */
 export async function loadModelForDelivery(path: string): Promise<LoadedModel | ModelLoadError> {
   let bytes: Uint8Array;
+  let name: string;
   try {
-    bytes = await readFile(path);
+    ({ bytes, name } = await openModelInput(path));
   } catch (err) {
+    if (err instanceof ModelInputError) return { path, error: err.message };
     return { path, error: `could not be read: ${(err as Error).message}` };
   }
 
@@ -87,7 +89,7 @@ export async function loadModelForDelivery(path: string): Promise<LoadedModel | 
   }
 
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const sourceFingerprint = sourceModelIdentity(basename(path), bytes);
+  const sourceFingerprint = sourceModelIdentity(name, bytes);
 
   const parser = new IfcParser();
   const origLog = console.log;

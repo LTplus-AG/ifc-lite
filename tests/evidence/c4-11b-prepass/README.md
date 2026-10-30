@@ -1,59 +1,75 @@
 # C4-11b completing layer (#7782)
 
-Stack: #8329 on structural #8328, itself on C4-11a #8320. No merge authorization.
-Final qualification base: `6246d22dc446705b7c5664e7b17972f1cc81235b`.
-Pre-integration measurements used C4-11a `06cf742446`.
+Stack: #8329 on structural #8328, on C4-11a #8320. The updated parent
+`6246d22dc446705b7c5664e7b17972f1cc81235b` includes merged #8317/#8318 and is integrated in both heads.
+The parent owns merges. Earlier qualification used C4-11a `06cf742446`.
 
-`api/mod.rs`: 949 → 492 lines in the structural layer; prepass.rs: 583 → 92.
-The 501-line pre_pass_streaming_impl row and prepass module row are deleted;
-module digest is re-pinned downward. Scan/meta, event payloads, worker columns
-and post-scan emission have separate homes, with functions below 150 lines. JS APIs,
-wasm declaration API tokens and batch_parity_expected.json are unchanged.
-Generated declaration documentation follows the corrected streaming comment.
+`api/mod.rs`: 949 → 492 lines; prepass.rs: 583 → 92. The 501-line
+pre_pass_streaming_impl exception and prepass module exception are removed.
+The lowered wasm module digest is 9629139198197986638 (structural: 2062749831077530300).
+Streaming scan/meta, event payloads, worker columns and post-scan emission have separate modules.
+Existing sharded/postscan `with_arc_columnar_index` reuse is credited; only the serial copies are new removal.
+JS signatures and declaration API tokens are unchanged; generated declaration changes are documentation only.
+`batch_parity_expected.json` has no changes. The main WASM harness stays at 2,095 lines.
 
-## Measurement and tests
+## Scoped allocation measurement
 
-Pop native targeted run `auto-b36c3a8cdeea4fbcbe6f2ccfa8950d20`, source
-`e330204b24210da06d47caa407bf59abbd28651e`: six C4-11 tests passed, including
-C4-11a resets. Native metadata handoff (allocation calls, requested bytes):
+Native metadata handoff: allocation calls / requested bytes, exact prior populated-row copy vs shared lease:
 
-| In-tree fixture | Rows | Base handoff | Shared handoff |
+| Fixture | Rows | Prior handoff | Shared handoff |
 | --- | ---: | ---: | ---: |
-| c4_bare_type_map_7782.ifc | 16 | 3, 920 | 1, 56 |
-| c4_type_geometry_modes_7782.ifc | 33 | 3, 1720 | 1, 56 |
+| c4_bare_type_map_7782.ifc | 16 | 3 / 920 | 1 / 56 |
+| c4_type_geometry_modes_7782.ifc | 33 | 3 / 1,720 | 1 / 56 |
+| AC20-FZK-Haus.ifc | 44,249 | 3 / 1,638,520 | 1 / 56 |
+| duplex.ifc | 38,898 | 3 / 1,638,520 | 1 / 56 |
 
-The test uses the exact former populated-row snapshot and current decoder
-handoff under a thread-local counting allocator, not a timing benchmark. It
-excludes the initial table allocation, scanning, metadata resolution, final
-columns and JS events; no whole-prepass or worker-pool speedup is claimed.
-Haus and duplex were absent in that initial targeted run and explicitly skipped.
-The later validation script provisions all manifest fixtures from the host cache.
+Measured on Pop at `3d5c31764b` with a thread-local counting allocator and real scanned indexes.
+The prior copy is the exact operation in 6246d22dc4's prepass_memory.rs. This excludes initial
+reservation/Arc allocation, scanning, metadata resolution/fallback, final columns and JS events.
+No whole-prepass/worker-pool timing, speedup or browser peak-memory claim. The ledger records that limit.
 
-Both oracle patches reverse-apply. The extracted workflow step passes `bash -n`
-on both heads. The second selector is FIRST after acceptance-harness-8112 and
-keys on the ADDED prepass_index.rs; the predicate also matches relative to the
-structural branch, independently of the first layer's patch addition.
+## Qualification and negative controls
 
-## Fleet history
+Pre-integration source `3d5c31764bfe5995b8fd128473fc39edb8f96917`, request
+`auto-9b0616c072274805b13a79b8547f58a6`, Pop job `f25b4511-66b0-4db2-b1d7-b5441cbfcdf3`:
+clippy -D warnings, full workspace tests (including C4-0 parity and all Rust ratchets),
+all four allocation measurements and all three independent reverse mutations passed/caught.
+The fresh WASM build succeeded; its strict declaration comparison stopped on a documentation-only diff,
+so contracts did not run in that attempt. Generated documentation and API-token verification now cover it.
 
-All commands use `~/build-workers/ifc-fleet run --cwd
-/home/louistrue/.t3/worktrees/ifc-lite/t3-0d2321cb -- …`; task IDs are explicit.
+Post-integration source `12c79d8adf392306bbc3b85f8fe9bacfa97a571d`, request
+`auto-e928ac1d3e754dc382d180d729726c46`, Pop job `5b0e78c9-00da-46c5-8a64-02084c35342c`: running.
+Exact final command (ordinary admission, 4 CPU / 12 GiB, pinned repo toolchain):
 
-- slots-r1 (`--storage-task c4-11b-slots-r1`), `cargo test -p ifc-lite-wasm --lib c4_11`,
-  auto-c06403d4ca1c47e4a145d372eeb216ec at 5f9ff0796e: compile failed; corrected
-  wire-payload field owner in 35eb14e3c7. No production tests ran in that attempt.
-- prepass-r1 (`--storage-task c4-11b-prepass-r1`), `cargo test -p ifc-lite-wasm --lib c4_11 -- --nocapture`,
-  auto-b36c3a8cdeea4fbcbe6f2ccfa8950d20: six pass, counts above.
-- Same task, `--route fleet`, `bash tests/evidence/c4-11b-prepass/validate.sh native`,
-  auto-fe6892ef440b4b2583c03d939a6fd3c7 at d62a75ad17: clippy found two needless
-  borrows; corrected at b02a8108e0. Workspace/oracles did not run in that attempt.
-- Same native command at b02a8108e0, auto-a0331bbf508946bdb18c1590a99ba868:
-  storage job-open refused before project start (original receipt reconciled).
-- Same task and route, `bash tests/evidence/c4-11b-prepass/validate.sh wasm`,
-  auto-ffae4ffb8e5e482c8a2a9e456d232afe at b02a8108e0: both fresh builds and
-  declaration check passed; contracts could not load missing renderer dist. The
-  recipe now builds its TS dependencies through root pnpm/Turbo first.
+```sh
+~/build-workers/ifc-fleet run --route fleet --storage-task c4-11b-prepass-r1 \
+  --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-0d2321cb -- bash -c \
+  'cargo test -p ifc-lite-testkit --test fixture_reads_are_gated && cargo test -p ifc-lite-wasm --lib c4_11 -- --nocapture && bash tests/evidence/c4-11b-prepass/validate.sh native && bash tests/evidence/c4-11b-prepass/validate.sh wasm'
+```
 
-The first task's close attempt failed at remote manifest-release; source, logs,
-receipts and unresolved storage remain preserved. No foreign process or output
-was touched. Pending full-suite, fresh-WASM and mutation execution are not passes.
+The recipe provisions all 182 cached fixtures with IFC_LITE_REQUIRE_FIXTURES=1; runs verbatim
+workspace clippy/tests; checks each mutation causes an actual Rust assertion failure (exit 101);
+builds both matched baseline and head freshly, builds TS dependencies through root pnpm/Turbo,
+checks all tracked declaration tokens, and runs pnpm test:wasm-contract with the matched runtime.
+The new WASM contract observes exact serial/sharded event order, complete columns and 4,103 ordered jobs.
+The existing matched-runtime contract deeply compares events, cached-index meshes and styles.
+
+All three patches reverse-apply. Extracted workflow steps pass bash -n on BOTH heads.
+The completing selector is FIRST after acceptance-harness-8112 and keys on added prepass_index.rs;
+its added-file predicate also matches against the structural branch, surviving its future squash merge.
+Cheap checks pass: TS module size, Rust API surface (726 items), test wiring, source assertions,
+reference-walk guards, float sorts, changeset names and license headers. No new parity exceptions.
+
+## Earlier fleet outcomes and storage
+
+All runs used the same absolute cwd through ifc-fleet; the exact phases are the checked-in recipe above.
+`auto-b36c3a8cdeea4fbcbe6f2ccfa8950d20` at e330204b24: focused c4_11 tests, six passed (catalog allocation fixtures absent then).
+`auto-fe6892ef440b4b2583c03d939a6fd3c7` at d62a75ad17: native stopped on two clippy borrows, fixed at b02a8108e0.
+`auto-a0331bbf508946bdb18c1590a99ba868` at b02a8108e0: storage job-open refused before project start.
+`auto-ffae4ffb8e5e482c8a2a9e456d232afe` at b02a8108e0: wasm builds passed; missing renderer dist stopped contracts; root Turbo deps added.
+`auto-35c485a8360447ce957929639e89651c` at e7fb5615d3: clippy passed, workspace stopped on fixture-read policy; fixed with testkit at 3d5c31764b.
+`auto-6b37d6f12d5347fa83514fe93a9e2377` at 12c79d8adf: refused before project start while original evidence publication was pending.
+The original f25b receipt was reconciled and publication verified; only after the task returned active was e928 submitted.
+
+The structural slots task is closed/reclaimed: 942,592,000 bytes. Completing task remains active
+until this final job and evidence are reconciled. Foreign jobs, original locks and shared active caches remain untouched.

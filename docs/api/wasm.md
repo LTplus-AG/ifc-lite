@@ -397,7 +397,7 @@ are excluded; these are not model-wide deduplicated totals. A separate additive
 prepass on that worker omitted because the full decoder rejects the record
 (F2, #8341): one per record, not per map, never in the two refusal counters.
 A prepass-only refusal or omission produces a report even before a batch;
-before either, the getter is `undefined`. Prepass/index installation and `setSourceBytes` reset the report;
+before either, the getter is `undefined`. Prepass/index installation and `setSourceBytes` reset the report, so read prepass-only values (`refusedPrepassRecords`, `omittedTypeRecords`) from the instance that ran the prepass, before installing source bytes on it;
 `clearPrePassCache` preserves it. See [refusal diagnostics](../guide/geometry.md#pipeline-refusal-diagnostics)
 and `rust/wasm-bindings/src/api/pipeline_diagnostics.rs`.
 

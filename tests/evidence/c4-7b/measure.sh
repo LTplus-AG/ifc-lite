@@ -72,14 +72,14 @@ for line in sys.stdin:
     for mode in parts-setup parts once-setup once; do
       out="$scratch/$side-$(basename "$fixture")-$mode.cg"
       C4_7B_MODE=$mode C4_7B_FIXTURE=$path valgrind --tool=callgrind --callgrind-out-file="$out" \
-        "$bin" c4_7b_measure::c4_7b_measure --exact --ignored --test-threads=1 --nocapture \
+        "$bin" api::gpu_meshes::c4_7b_measure::c4_7b_measure --exact --ignored --test-threads=1 --nocapture \
         > "$out.log" 2>&1 || { cat "$out.log"; exit 1; }
       grep -q '^test result: ok. 1 passed' "$out.log" || { cat "$out.log"; exit 1; }
       ir=$(sed -n 's/^summary: //p' "$out")
       printf '%s\t%s\t%s\t%s\t%s\n' "$side" "$(basename "$fixture")" "$mode" "$ir" \
         "$(grep -o 'C4_7B [a-z]*=[0-9a-f]*' "$out.log" || true)" >> "$results"
     done
-    C4_7B_MODE=identity C4_7B_FIXTURE=$path "$bin" c4_7b_measure::c4_7b_measure --exact --ignored --nocapture \
+    C4_7B_MODE=identity C4_7B_FIXTURE=$path "$bin" api::gpu_meshes::c4_7b_measure::c4_7b_measure --exact --ignored --nocapture \
       | sed -n "s/^C4_7B_IDENTITY /C4_7B_IDENTITY $side $(basename "$fixture") /p"
   done
 done

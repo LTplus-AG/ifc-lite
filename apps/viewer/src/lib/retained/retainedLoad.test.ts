@@ -90,7 +90,7 @@ describe('#7955 M2-C retained scope', () => {
     assert.equal(load.spawned(), 0);
   });
 
-  it('nothing is federated onto an open retained model, not even with the exact kernel', async () => {
+  it('M11-Z keeps federation refused for an open final retained model, including an exact add', async () => {
     useViewerStore.getState().addModel({
       id: 'r', name: 'r.ifc', ifcDataStore: null, geometryResult: null, visible: true, collapsed: false,
       schemaVersion: 'IFC4', loadedAt: 0, fileSize: 0, idOffset: 0, maxExpressId: 0, loadState: 'complete',

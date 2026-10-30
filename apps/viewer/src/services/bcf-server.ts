@@ -203,6 +203,47 @@ async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
 }
 
 /**
+ * Token source bound to one saved account. Storage can change mid-request:
+ * only the same account on this server may feed tokens, because a different
+ * user on the same host would otherwise send their bearer token on this
+ * caller's requests. Token rotation still matches (account identity ignores
+ * the refresh token). Shared by the BCF client and the BIMcollab Documents
+ * source, so both refresh through the same single-flight path.
+ */
+export function connectedTokenSource(config: BcfServerConfig): {
+  boundConfig: () => BcfServerConfig;
+  getAccessToken: () => Promise<string>;
+  refreshAfterUnauthorized: () => Promise<string | null>;
+} {
+  const boundConfig = (): BcfServerConfig => {
+    const current = loadBcfServerConfig();
+    return current && isSameBcfAccount(current, config) ? current : config;
+  };
+  return {
+    boundConfig,
+    getAccessToken: async () => {
+      const current = boundConfig();
+      const expiring =
+        current.tokenExpiresAt > 0 && Date.now() > current.tokenExpiresAt - EXPIRY_SKEW_MS;
+      if (expiring && canReauthenticate(current)) {
+        return refreshStoredToken(current);
+      }
+      return current.accessToken;
+    },
+    refreshAfterUnauthorized: async () => {
+      const current = boundConfig();
+      if (!canReauthenticate(current)) return null;
+      try {
+        return await refreshStoredToken(current);
+      } catch (error) {
+        console.warn('[bcf-server] token refresh after 401 failed', error);
+        return null;
+      }
+    },
+  };
+}
+
+/**
  * Client bound to the saved connection. Its token provider transparently
  * refreshes the access token shortly before expiry, and a 401 answer gets
  * one refresh-and-retry (covers servers that omit expires_in); a failed
@@ -213,37 +254,15 @@ export async function createConnectedClient(): Promise<BcfApiClient> {
   const api = await loadApi();
   const config = loadBcfServerConfig();
   if (!config) throw new Error('Not connected to a BCF server');
-  // Storage can change mid-pull. Only the same account on this server may
-  // feed tokens — a different user on the same host would send their bearer
-  // token on this client's requests. Token rotation still matches (account
-  // identity ignores the refresh token).
-  const boundConfig = (): BcfServerConfig => {
-    const current = loadBcfServerConfig();
-    return current && isSameBcfAccount(current, config) ? current : config;
-  };
+  const tokens = connectedTokenSource(config);
   return new api.BcfApiClient({
     baseUrl: config.serverUrl,
-    getAccessToken: async () => {
-      const current = boundConfig();
-      const expiring =
-        current.tokenExpiresAt > 0 && Date.now() > current.tokenExpiresAt - EXPIRY_SKEW_MS;
-      if (expiring && canReauthenticate(current)) {
-        return refreshStoredToken(current);
-      }
-      return current.accessToken;
-    },
+    getAccessToken: tokens.getAccessToken,
     fetchFn: async (input, init) => {
       const response = await fetch(input, init);
       if (response.status !== 401) return response;
-      const current = boundConfig();
-      if (!canReauthenticate(current)) return response;
-      let freshToken: string;
-      try {
-        freshToken = await refreshStoredToken(current);
-      } catch (error) {
-        console.warn('[bcf-server] token refresh after 401 failed', error);
-        return response;
-      }
+      const freshToken = await tokens.refreshAfterUnauthorized();
+      if (freshToken === null) return response;
       const headers = new Headers(init?.headers);
       headers.set('Authorization', `Bearer ${freshToken}`);
       return fetch(input, { ...init, headers });

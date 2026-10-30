@@ -279,6 +279,7 @@ nav:
     - Geometry Pipeline: architecture/geometry-pipeline.md
     - Retained Cutters: architecture/retained-cutters.md
     - Retained Chained Clips: architecture/retained-m5-clips.md
+    - Retained Bounded and Boxed Halfspaces: architecture/retained-halfspaces.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md

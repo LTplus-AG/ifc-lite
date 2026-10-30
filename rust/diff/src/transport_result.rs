@@ -19,8 +19,16 @@ macro_rules! json {
 use crate::{engine::ModelDiff,model::{DiffScope,DiffState,DiffChangeKind},content_types::{ContentMatchKind,ContentMatchTier},
     split_types::{SplitMergeKind,SplitConfidence},successor::SuccessorConfidence};
 pub fn result_to_document(diff: &ModelDiff<'_,usize>) -> Value {
+    result_document(diff, Value::Array(diff.core.entries.iter().map(entry_document).collect()))
+}
+
+/// Metadata for the packed facade writer, which streams entries directly.
+pub fn result_metadata(diff: &ModelDiff<'_, usize>) -> Value {
+    result_document(diff, Value::Array(Vec::new()))
+}
+
+fn result_document(diff: &ModelDiff<'_, usize>, entries: Value) -> Value {
     let core=&diff.core;
-    let entries = Value::Array(core.entries.iter().map(entry_document).collect());
     // Already-built documents must move into the envelope. Serializing them
     // through serde again re-allocates every row, key and UTF-16 value (#8042).
     let mut result = Value::Object(vec![

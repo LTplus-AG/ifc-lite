@@ -4,7 +4,7 @@ use super::*;
 use ifc_lite_geometry::resource::{BudgetStart, ProductBudget};
 
 fn part(positions: Vec<f64>, indices: Vec<u32>, faces: Vec<u32>) -> ShapePart {
-    ShapePart { positions, indices, revision_local_faces: faces,
+    ShapePart { layer: None, capped_volume_m3: None, positions, indices, revision_local_faces: faces,
         world_from_object: [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.],
         curved: true, halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None }
 }

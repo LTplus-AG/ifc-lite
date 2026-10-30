@@ -67,7 +67,7 @@ function gridSubject(ratios) {
  * The outer finally also covers a prepass throw, before its own finally starts.
  * Each load owns its API so counters and caches cannot leak between controls.
  */
-function load(IfcAPI, body, elementCount, meshCount, schema = 'IFC4') {
+function load(IfcAPI, body, elementCount, meshCount, schema = 'IFC4', refusedInputElements = 0) {
   const api = new IfcAPI();
   let collection;
   try {
@@ -81,6 +81,7 @@ function load(IfcAPI, body, elementCount, meshCount, schema = 'IFC4') {
     assert.equal(diagnostics.batches, 1);
     assert.equal(diagnostics.elementCount, elementCount, 'every product reached the producer');
     assert.equal(diagnostics.meshCount, meshCount);
+    assert.equal(diagnostics.refusedInputElements, refusedInputElements);
     assert.equal(diagnostics.triangleCount, meshCount * 12, 'complete six-face solids');
     assert.equal(diagnostics.backstopCount, 0, 'no degenerate-triangle drops');
     assert.equal(diagnostics.totalCsgFailures, 0, 'no unrelated CSG failure');
@@ -161,7 +162,7 @@ export function runPlacementRefusalContracts(IfcAPI, test) {
   test('#7877: present non-reference ObjectPlacement refuses geometry and preserves neighbor', () => {
     const control = load(IfcAPI, NEIGHBOR, 1, 1);
     for (const placement of ['42', "IFCLABEL('bad')", '(#4)']) {
-      const meshes = load(IfcAPI, subject(placement) + NEIGHBOR, 2, 1);
+      const meshes = load(IfcAPI, subject(placement) + NEIGHBOR, 2, 1, 'IFC4', 1);
       assert.deepEqual([...meshes.keys()], [200], `${placement} must not fabricate identity`);
       assertBounds(meshes.get(200), [9.5, 0, -0.5, 10.5, 1, 0.5]);
       assert.deepEqual(meshes.get(200), control.get(200));
@@ -195,7 +196,7 @@ export function runPlacementRefusalContracts(IfcAPI, test) {
     // STEP has no NaN real literal: NaN is unreadable input. Overflowing real
     // literals exercise decoded positive/negative infinity through the real API.
     for (const ratios of ['NaN,0.', '1.E400,0.', '-1.E400,0.']) {
-      const meshes = load(IfcAPI, gridSubject(ratios) + NEIGHBOR, 2, 1, 'IFC4X3');
+      const meshes = load(IfcAPI, gridSubject(ratios) + NEIGHBOR, 2, 1, 'IFC4X3', ratios.startsWith('NaN') ? 0 : 1);
       assert.deepEqual([...meshes.keys()], [200], `${ratios} must not invent a grid frame`);
       assert.deepEqual(meshes.get(200), control.get(200));
     }
@@ -213,27 +214,26 @@ export function runPlacementRefusalContracts(IfcAPI, test) {
     assert.deepEqual(meshes.get(200), control.get(200));
   });
 
-  for (const [name, placement, frames] of [
-    ['unreadable authored ObjectPlacement', '#999', ''],
-    ['missing PlacementRelTo parent', '#109', '#109=IFCLOCALPLACEMENT(#999,#4);'],
+  // Missing references and syntax failures are not numeric admission refusals;
+  // cycles and malformed authored directions explicitly refuse their records.
+  for (const [name, placement, frames, refusals] of [
+    ['unreadable authored ObjectPlacement', '#999', '', 0],
+    ['missing PlacementRelTo parent', '#109', '#109=IFCLOCALPLACEMENT(#999,#4);', 0],
     ['cyclic PlacementRelTo parents', '#109', `
 #109=IFCLOCALPLACEMENT(#110,#4);
-#110=IFCLOCALPLACEMENT(#109,#4);`],
+#110=IFCLOCALPLACEMENT(#109,#4);`, 1],
     ['malformed relative-placement direction', '#109', `
 #106=IFCCARTESIANPOINT((5.,0.,0.));
 #107=IFCDIRECTION((1.));
 #108=IFCAXIS2PLACEMENT3D(#106,#107,$);
-#109=IFCLOCALPLACEMENT($,#108);`],
+#109=IFCLOCALPLACEMENT($,#108);`, 1],
   ]) {
     test(`#7877/#7779: ${name} refuses geometry and preserves neighbor`, () => {
       const control = load(IfcAPI, NEIGHBOR, 1, 1);
-      const meshes = load(IfcAPI, subject(placement, frames) + NEIGHBOR, 2, 1);
+      const meshes = load(IfcAPI, subject(placement, frames) + NEIGHBOR, 2, 1, 'IFC4', refusals);
       assert.deepEqual([...meshes.keys()], [200], '#100 must not fabricate identity geometry');
       assertBounds(meshes.get(200), [9.5, 0, -0.5, 10.5, 1, 0.5]);
       assert.deepEqual(meshes.get(200), control.get(200), 'neighbor payload stays unchanged');
-      // PipelineDiagnostics has no refusedInputElements field on this head.
-      // elementCount=2, meshCount=1 proves submission vs output, not a typed
-      // placement-refusal diagnostic; the native test separately checks that.
     });
   }
 }

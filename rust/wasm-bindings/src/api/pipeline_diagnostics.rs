@@ -13,7 +13,7 @@
 //! scan/prepass phases run in JS workers outside this module and report 0
 //! here (the native server/CLI surface those numbers through ProcessingStats +
 //! GeometryDiagnostics, not through this channel). Crossed to JS via
-//! `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
+//! a serde-wasm-bindgen serializer configured to emit plain JS objects.
 
 use super::IfcAPI;
 use wasm_bindgen::prelude::*;
@@ -22,8 +22,10 @@ use wasm_bindgen::prelude::*;
 impl IfcAPI {
     /// Structured pipeline diagnostics accumulated across every
     /// `processGeometryBatch*` call since the last load reset
-    /// (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
-    /// `schemaVersion` field — or `undefined` when no batch has run yet.
+    /// (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
+    /// `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
+    /// Returns `undefined` until a batch runs or a prepass refusal is recorded;
+    /// `clearPrePassCache` preserves the report for post-load inspection.
     /// Includes per-batch summed geometry wall time, mesh/triangle counts,
     /// the degenerate-backstop drop count, and the CSG failure aggregates.
     #[wasm_bindgen(js_name = getPipelineDiagnostics)]
@@ -32,10 +34,13 @@ impl IfcAPI {
             .pipeline_diagnostics
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if diag.is_empty() {
+        if diag.is_empty() && diag.refused_input_elements == 0 && diag.refused_prepass_records == 0 {
             return JsValue::UNDEFINED;
         }
-        serde_wasm_bindgen::to_value(&*diag).unwrap_or(JsValue::UNDEFINED)
+        // Serde flatten uses serialize_map; keep the v1 plain-object JS boundary
+        // instead of serde-wasm-bindgen's default Map for that map serializer.
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        serde::Serialize::serialize(&*diag, &serializer).unwrap_or(JsValue::UNDEFINED)
     }
 }
 
@@ -73,13 +78,41 @@ impl IfcAPI {
         );
     }
 
+    /// Union record identities, never decoder totals. Returns whether this
+    /// element's own scope saw a refusal; earlier jobs have already drained.
+    pub(crate) fn collect_pipeline_refusals(&self, decoder: &ifc_lite_core::EntityDecoder) -> bool {
+        let ids = decoder.take_refused_record_ids();
+        if ids.is_empty() { return false; }
+        let mut records = self.pipeline_refusals.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        records.extend(ids);
+        self.pipeline_diagnostics.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .refused_prepass_records = records.len() as u64;
+        true
+    }
+
+    pub(crate) fn record_input_refusals(&self, decoder: &ifc_lite_core::EntityDecoder, refused_unit: bool) {
+        if self.collect_pipeline_refusals(decoder) || refused_unit {
+            self.note_refused_input();
+        }
+    }
+
+    pub(crate) fn note_refused_input(&self) {
+        self.pipeline_diagnostics.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .refused_input_elements += 1;
+    }
+
     /// Reset the accumulator (a new load on a reused IfcAPI). Called from
-    /// `clearPrePassCache` and `setEntityIndex`.
+    /// load-start entry points. End-of-load cleanup preserves the counters.
     pub(crate) fn reset_pipeline_diagnostics(&self) {
+        self.pipeline_refusals.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner).clear();
         let mut acc = self
             .pipeline_diagnostics
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *acc = ifc_lite_processing::PipelineDiagnostics::default();
+        *acc = ifc_lite_processing::PipelineDiagnosticsReport::default();
     }
 }

@@ -715,12 +715,6 @@ jobs:
           fi
           echo "✅ committed wasm types match the Rust source"
 
-      # A separate feature bundle exposes only the test ownership probe.
-      # Do not overwrite pkg-diff or its committed production declarations.
-      - name: Fingerprint getter ownership (actual WASM, no skips)
-        if: needs.changes.outputs.wasm_prebuilt != 'true'
-        run: pnpm test:diff-decode-leaks
-
       # The generated IFCX imported-geometry kernel must match the Rust crate it
       # is built from. Regenerates into a temp dir and diffs; not a build gate for
       # packages (their --verify is Rust-free). Needs cargo, so 'Setup WASM build toolchain'
@@ -734,6 +728,13 @@ jobs:
       # downstream consumers — turbo handles the dep graph.
       - name: Build packages
         run: pnpm build
+
+      # A separate feature bundle exposes only the test ownership probe.
+      # Do not overwrite pkg-diff or its committed production declarations.
+      # Runs after Build packages: the public-handle case imports packages/diff/dist.
+      - name: Fingerprint getter ownership (actual WASM, no skips)
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        run: pnpm test:diff-decode-leaks
 
       - name: Verify Rust fingerprint vectors against TypeScript
         run: |
@@ -973,6 +974,17 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
+          # #7782 C4-10b: preserve world-frame RTC and the scheduler policy split.
+          # The adapter-only batch_run.rs keeps this selector active after
+          # #8317's oracle patch lands on main and #8318 merges that base.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10b/behaviour.oracle.patch rust/wasm-bindings/src/api/gpu_meshes/batch_run.rs | grep -Fxq -e 'tests/evidence/c4-10b/behaviour.oracle.patch' -e 'rust/wasm-bindings/src/api/gpu_meshes/batch_run.rs'; then
+            oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.oracle.patch --test rust/processing/src/execution_tests.rs)
+            oracle_args+=(--mutation tests/evidence/c4-10b/policy.oracle.patch --test rust/processing/src/execution_tests.rs)
+            oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.adapters.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/batch_adapter_tests.rs)
+          # #7782 C4-10a: retain cache/report APIs and test wiring; suppress
+          # input-refusal counting so the per-attempt witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-10a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs)
           # #7782 C4-7a-R: keep the shared plan and mutate its browser class
           # decision; the mode witness must observe the wrong class.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-r/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-r/behaviour.oracle.patch'; then
@@ -1029,6 +1041,11 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8266: preserve resident handle modules and option fields; ignore
+          # placement stripping so the explicit-projection witness fails assertions.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/handle-api-8266/behaviour.oracle.patch | grep -Fxq 'tests/evidence/handle-api-8266/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/handle-api-8266/behaviour.oracle.patch
+              --test rust/diff/tests/placement_geometry.rs)
           # #8303: preserve native diff modules/exports; substitute base rows for
           # head result rows so distinct per-side refs fail real assertions.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/native-diff-8303/behaviour.oracle.patch | grep -Fxq 'tests/evidence/native-diff-8303/behaviour.oracle.patch'; then

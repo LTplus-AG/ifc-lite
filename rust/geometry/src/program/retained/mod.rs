@@ -7,6 +7,14 @@ mod capture;
 mod walk;
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 mod cache;
+#[cfg(feature = "retained-runtime")]
+pub(in crate::program) mod layer_family;
+#[cfg(feature = "retained-runtime")]
+pub(in crate::program) mod layer_source;
+#[cfg(feature = "retained-runtime")]
+mod layer_cutters;
+#[cfg(feature = "retained-runtime")]
+pub(in crate::program) mod layers;
 mod presentation;
 mod affine;
 mod identity;
@@ -185,6 +193,8 @@ pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
 /// Traversal completion is explicitly NOT final-net or runtime completion.
 #[derive(Debug)]
 pub(crate) struct RetainedProductPlan {
+    #[cfg(feature = "retained-runtime")]
+    pub(crate) layers: Option<Box<layer_family::LayerCompletion>>,
     pub(crate) values: Vec<LogicalRetainedValue>,
     /// Conservatively unchecked obligations until a consumer proves them
     /// unnecessary or discharges them; traversal alone does neither.

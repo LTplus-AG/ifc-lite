@@ -48,5 +48,7 @@ export async function exportRetained(args: string[], engine: RetainedEngine, sto
   const reportPath = getFlag(args, '--retained-report');
   if (reportPath) await writeFile(reportPath, json);
   await writeOutput(obj, getFlag(args, '--out'));
-  process.stderr.write(`Retained shape-only: ${report.summary.published}/${report.summary.candidates} products published; refusals ${JSON.stringify(report.summary.byCode)}; PresentationObligationsUnmet\n`);
+  const marker = report.products.some(p => 'obligationsUnmet' in p && p.obligationsUnmet.length)
+    ? 'PresentationObligationsUnmet' : 'final';
+  process.stderr.write(`Retained ${marker === 'final' ? 'final' : 'shape-only'}: ${report.summary.published}/${report.summary.candidates} products published; refusals ${JSON.stringify(report.summary.byCode)}; ${marker}\n`);
 }

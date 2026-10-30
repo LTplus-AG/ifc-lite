@@ -3,17 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { DiffOptions, EntityFingerprint, ModelDiff } from './types.js';
 import { fingerprintColumns } from './wasm-columns.js';
-import { packDocument } from './wasm-binary.js';
+import { packStrings } from './wasm-binary.js';
 import { diffModelConstructor } from './wasm-runtime.js';
-import { compareWasmModels } from './wasm-diff.js';
+import { compareWasmModels, stripPlacementRows } from './wasm-diff.js';
 
 /** Explicit immutable fingerprint snapshot; opaque ref objects retain their identity.
  * Dispose in finally. Prepare again to observe edits to the source fingerprints.
  * Results refer to the owned snapshots, not mutable source fingerprint objects.
  */
-export class PreparedDiffModel<TRef = unknown> {
+export class DiffModelHandle<TRef = unknown> {
   private model: InstanceType<ReturnType<typeof diffModelConstructor>> | undefined;
   private rows: EntityFingerprint<TRef>[];
+  private keys: string[];
+  private strippedRows: readonly EntityFingerprint<TRef>[] | undefined;
 
   constructor(entities: Iterable<EntityFingerprint<TRef>>) {
     const Model = diffModelConstructor();
@@ -27,25 +29,36 @@ export class PreparedDiffModel<TRef = unknown> {
       return Object.freeze(row);
     });
     const c = fingerprintColumns(this.rows);
-    this.model = Model.fromPacked(packDocument(c.strings), c.fields, c.flags,
+    this.keys = c.keys;
+    this.model = Model.fromPacked(packStrings(c.strings), c.fields, c.flags,
       c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
   }
 
-  compare(head: PreparedDiffModel<TRef>, options: DiffOptions = {}): ModelDiff<TRef> {
-    if (!this.model || !head.model) throw new Error('Prepared diff model has been disposed.');
-    return compareWasmModels(this.model, head.model, this.rows, head.rows, options);
+  compare(head: DiffModelHandle<TRef>, options: DiffOptions = {}): ModelDiff<TRef> {
+    if (!this.model || !head.model) throw new Error('Diff model handle has been disposed.');
+    return compareWasmModels(this.model, head.model, this.rows, head.rows, options, [this.keys, head.keys],
+      () => [this.withoutPlacementGeometry(), head.withoutPlacementGeometry()]);
   }
+
+  /** Owned lazy view: placement rows alone are copied, once per handle. */
+  private withoutPlacementGeometry(): readonly EntityFingerprint<TRef>[] {
+    return this.strippedRows ??= stripPlacementRows(this.rows, true);
+  }
+
+  [Symbol.dispose](): void { this.dispose(); }
 
   /** Idempotent; results already returned remain valid after release. */
   dispose(): void {
     const model = this.model;
     this.model = undefined;
     this.rows = [];
+    this.strippedRows = undefined;
+    this.keys = [];
     model?.free();
   }
 }
 
 /** Initialize the runtime first; ownership is explicit and never identity-cached. */
-export function prepareDiffModel<TRef>(entities: Iterable<EntityFingerprint<TRef>>): PreparedDiffModel<TRef> {
-  return new PreparedDiffModel(entities);
+export function prepareDiffModel<TRef>(entities: Iterable<EntityFingerprint<TRef>>): DiffModelHandle<TRef> {
+  return new DiffModelHandle(entities);
 }

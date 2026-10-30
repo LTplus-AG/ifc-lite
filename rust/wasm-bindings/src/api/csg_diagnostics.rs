@@ -39,13 +39,14 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // whatever still sits on the router (non-canonical paths).
     collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
 ) -> ifc_lite_geometry::GeometryDiagnostics {
-    let cls = router.take_classification_stats();
+    let drain = ifc_lite_processing::execution::RouterDrain::take(router);
+    let cls = drain.classification;
     let mut csg_failures = router.take_csg_failures();
     for (product_id, fails) in collected_failures {
         csg_failures.entry(product_id).or_default().extend(fails);
     }
-    let host_diags = router.take_host_opening_diagnostics();
-    let oversized_ref_drops = router.take_content_hash_oversized_ref_drops() as u64;
+    let host_diags = drain.hosts;
+    let oversized_ref_drops = drain.oversized_refs;
     let unsupported_items = router.take_unsupported_items();
 
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
@@ -239,7 +240,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // AND nothing deferred (no rect-opening hosts in the batch); presence with
     // fired=0 + high host_not_box means the walls aren't clean axis-aligned
     // boxes (multi-layer / non-box) and correctly fell back to the exact kernel.
-    let rf = router.take_rect_fast_stats();
+    let rf = drain.rect_fast;
     if rf.fired > 0
         || rf.defer_host_not_box > 0
         || rf.defer_not_through > 0

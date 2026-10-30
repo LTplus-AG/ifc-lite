@@ -1,0 +1,13 @@
+--- a/rust/diff/src/model.rs
++++ b/rust/diff/src/model.rs
+@@ -85,7 +85,8 @@
+ }
+ 
+ impl<R> EntityFingerprint<R> {
+-    pub(crate) fn geometry_hash(&self, _strip_placement: bool) -> Option<&JsString> {
+-        self.geometry_hash.as_ref()
++    pub(crate) fn geometry_hash(&self, strip_placement: bool) -> Option<&JsString> {
++        self.geometry_hash.as_ref().filter(|hash|
++            !strip_placement || !hash.units().starts_with(&[b'p' as u16, b':' as u16]))
+     }
+ }

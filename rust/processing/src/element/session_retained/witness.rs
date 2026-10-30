@@ -2,6 +2,8 @@
 use super::*;
 /// Owned intermediate evidence. This deliberately exposes no final mesh/product.
 pub struct RuntimeProductWitness<R: NumericalReceipt> {
+    pub(super) layer_class: u8,
+    pub(super) band_ms: f64,
     pub(super) cut_times_ms: Vec<f64>,
     pub(super) presentation_context: OwnedMeshProductionContext,
     pub(super) element_color: [f32; 4],
@@ -55,6 +57,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             presentation_context: self.context.presentation_snapshot(),
             element_color: self.state.element_color,
             limits,
+            layer_class: self.layer_class,
+            band_ms: self.band_ms,
             plan,
             cut_times_ms: std::mem::take(&mut self.cut_times_ms),
             product_id: self.state.job.id,

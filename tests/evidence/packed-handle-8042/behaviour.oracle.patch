@@ -1,6 +1,6 @@
 --- a/scripts/packed-diff/semantics.mjs
 +++ b/scripts/packed-diff/semantics.mjs
-@@ -12,7 +12,7 @@
+@@ -12,5 +12,5 @@
    const call = (name, ...args) => { calls.add(name); return api[name](...args); };
    for (const [value, expected] of [
 -    ['', '0000000000000000'], ['a', 'af63dc4c8601ec8c'],

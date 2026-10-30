@@ -33,7 +33,7 @@ describe('viewer resident pair parity (#8042 A2)', () => {
         row('old', 3, 'A', meshA ? 3n : 'p:three')];
       const head = [row('same', 11, 'B', meshB ? 2n : 'p:two'), row('reclass', 12, 'B', 'p:two'),
         row('new', 13, 'B', meshB ? 3n : 'p:three')];
-      const built: BuiltPair = { baseModelId: 'A', headModelId: 'B', baseName: 'A', headName: 'B',
+      const built: BuiltPair = { baseStore: undefined, headStore: undefined, baseModelId: 'A', headModelId: 'B', baseName: 'A', headName: 'B',
         base, head, keyProperty: undefined, contentVersion: 0, mutationVersion: 0,
         comparedStores: new Map(), duplicateAuthoredKeys: new Map(), ...preparePairHandles(base, head) };
       const mixed = meshA !== meshB;

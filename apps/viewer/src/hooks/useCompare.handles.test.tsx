@@ -95,6 +95,29 @@ describe('resident compare ownership (#8042 A2)', () => {
     });
   }
 
+  for (const id of ['A', 'B']) {
+    it(`releases and rebuilds when ${id}'s store is replaced under the same ID (#8271)`, async () => {
+      await run();
+      const before = useViewerStore.getState();
+      const replacement = await new IfcParser().parseColumnar(new TextEncoder().encode(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#2=IFCWALL('0Replacement00000000001',$,'Replacement',$,$,$,$,'wall',.STANDARD.);\nENDSEC;\nEND-ISO-10303-21;",
+      ).buffer as ArrayBuffer, { disableWorkerScan: true });
+      act(() => {
+        const models = new Map(before.models);
+        models.set(id, { ...models.get(id)!, ifcDataStore: replacement });
+        useViewerStore.setState({ models });
+      });
+      assert.equal(useViewerStore.getState().geometryContentVersion, before.geometryContentVersion);
+      assert.equal(useViewerStore.getState().mutationVersion, before.mutationVersion);
+      assert.equal(frees.mock.callCount(), 2, 'same-ID replacement releases both native snapshots');
+      await run();
+      assert.equal(creates.mock.callCount(), 4, 'Run extracts and prepares a fresh pair');
+      assert.ok(useViewerStore.getState().compareResult?.diff.entries.some(
+        entry => (id === 'A' ? entry.base : entry.head)?.ref.localId === 2,
+      ), 'the comparison describes the replacement store');
+    });
+  }
+
   it('rebuilds after invalidation and releases the replacement on unmount', async () => {
     await run();
     act(() => { useViewerStore.getState().bumpGeometryContentVersion(); });

@@ -1,6 +1,6 @@
 # C4-7b fallback full-file work (#8341)
 
-Base `1a3d4a83a7` (main after C4-15). Optional performance lane: PROCESSING-9 and
+Base `51d6e067a5` (main after F2 #8350 and the C4 browser measurement #8361). Optional performance lane: PROCESSING-9 and
 EDGE-WASM-12 fallback halves, PROC-AL-19.
 
 ## Fallback scans before and after
@@ -45,20 +45,22 @@ same setup without the measured call).
 
 | Fixture | parts base | parts head | ratio | once base | once head | ratio |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| c4_native_unsliced_layers_7782 | 99,966 | 29,681 | 0.297 | 2,706,060 | 2,677,221 | 0.989 |
-| 845_wall_elemented_case | 952,767 | 1,958 | 0.002 | 7,213,265 | 6,452,310 | 0.895 |
-| AC20-FZK-Haus | 58,408,467 | 2,984 | 0.0001 | 204,765,179 | 117,178,258 | 0.572 |
-| duplex | 54,014,308 | 26,475,298 | 0.490 | 162,333,783 | 109,630,003 | 0.675 |
-| schependomlaan | 1,117,849,383 | 546,187,333 | 0.489 | 2,673,575,890 | 1,570,398,760 | 0.587 |
-| sliceable wall with parts | 126,835 | 62,169 | 0.490 | 2,635,312 | 2,617,786 | 0.993 |
+| c4_native_unsliced_layers_7782 | 99,960 | 29,693 | 0.297 | 2,706,130 | 2,677,293 | 0.989 |
+| 845_wall_elemented_case | 954,141 | 2,012 | 0.002 | 7,213,272 | 6,452,264 | 0.895 |
+| AC20-FZK-Haus | 58,408,406 | 3,135 | 0.0001 | 204,749,052 | 117,263,712 | 0.573 |
+| duplex | 54,014,229 | 26,475,340 | 0.490 | 162,326,176 | 109,672,922 | 0.676 |
+| schependomlaan | 1,117,848,985 | 546,187,397 | 0.489 | 2,673,499,278 | 1,570,906,333 | 0.588 |
+| sliceable wall with parts | 126,950 | 62,189 | 0.490 | 2,635,538 | 2,617,843 | 0.993 |
 
 The last fixture is `merge_layers_skip_test.rs`'s sliceable wall (three parts
 skipped on both sides). duplex and schependomlaan author sliceable buildups, so
 head still pays the aggregate walk there. Haus and #845 have none and return
 early.
 
-Pop, source `16c79561f2`, request `auto-89675d365e8b4b3f8b8eb926674eba65`, job
-`78142cdf-f7bd-41d8-bffa-cb5dbb90d139`:
+Pop, source `547424c4b4`, request `auto-5ca3f5412d89443bae6355d2f2f9bb85`, job
+`a83b244b-33d1-4379-a166-81a6bd364a12`. The pre-rebase run (base `1a3d4a83a7`,
+source `16c79561f2`, job `78142cdf-f7bd-41d8-bffa-cb5dbb90d139`) agreed to within
+0.1% per row and produced the same hashes.
 
 ```sh
 ~/build-workers/ifc-fleet run --host pop-os --storage-task c4-7b-fallback-r1 \

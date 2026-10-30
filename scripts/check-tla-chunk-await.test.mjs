@@ -498,3 +498,23 @@ test('RED: a wrapped entry with no __tla export is caught even when a worker sup
   assert.match(out, /__tla-wrapped/);
   assert.match(out, /main-def\.js/);
 });
+
+test('RED: a static import on the start graph that names no emitted chunk fails', () => {
+  const entry = `import"./vendor-x.js";export{};`;
+  const { status, out } = runOn(
+    { 'store-abc.js': TLA_CHUNK, 'main-def.js': entry, 'vendor-x.js': `import"./gone-y.js";export{};` },
+    { html: entryHtml('main-def.js') },
+  );
+  assert.equal(status, 1, out);
+  assert.match(out, /1 static import\(s\) on the app-start graph are not among the emitted chunks/);
+  assert.match(out, /vendor-x\.js imports \.\/gone-y\.js/);
+});
+
+test('a missing chunk only a lazy chunk imports does not fail the start graph', () => {
+  const entry = `const load=()=>import("./lazy-y.js");export{load};`;
+  const { status, out } = runOn(
+    { 'store-abc.js': TLA_CHUNK, 'main-def.js': entry, 'lazy-y.js': `import"./gone-z.js";export{};` },
+    { html: entryHtml('main-def.js') },
+  );
+  assert.equal(status, 0, out);
+});

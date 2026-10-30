@@ -52,11 +52,13 @@ export function staticDependencies(text) {
  * (`sources`: file name -> text), and those of them in `wrappedChunks`: every
  * chunk the plugin rewrote, not only those that export `__tla`, because a
  * wrapped entry whose only import is dynamic exports none.
- * `missing` lists entries that are not among `sources`.
+ * `missing` lists entries that are not among `sources`, `missingDependencies`
+ * the static imports on the graph that are not (`importer`, `specifier`).
  */
 export function wrappedOnEntryPath(html, sources, wrappedChunks) {
   const entries = entryChunks(html);
   const missing = entries.filter((file) => !sources.has(file));
+  const missingDependencies = [];
   const reached = new Set();
   const queue = entries.filter((file) => sources.has(file));
   while (queue.length > 0) {
@@ -64,11 +66,12 @@ export function wrappedOnEntryPath(html, sources, wrappedChunks) {
     if (reached.has(file)) continue;
     reached.add(file);
     for (const dep of staticDependencies(sources.get(file))) {
-      if (sources.has(dep) && !reached.has(dep)) queue.push(dep);
+      if (!sources.has(dep)) missingDependencies.push({ importer: file, specifier: dep });
+      else if (!reached.has(dep)) queue.push(dep);
     }
   }
   const wrapped = [...reached].filter((file) => wrappedChunks.has(file)).sort();
-  return { entries, missing, reached, wrapped };
+  return { entries, missing, missingDependencies, reached, wrapped };
 }
 
 /**
@@ -92,6 +95,21 @@ export function checkEntryGraph(html, sources, wrappedChunks, label) {
         `❌ ${label} loads ${entryPath.entries.length} module script(s)` +
         (entryPath.missing.length > 0 ? `, and ${entryPath.missing.join(', ')} is not among the emitted chunks` : '') +
         `, so the app-start graph was not checked.\n`,
+    };
+  }
+  if (entryPath.missingDependencies.length > 0) {
+    const listed = entryPath.missingDependencies
+      .slice(0, 10)
+      .map(({ importer, specifier }) => `   ${importer} imports ./${specifier}\n`)
+      .join('');
+    const more = entryPath.missingDependencies.length > 10 ? `   ... and ${entryPath.missingDependencies.length - 10} more\n` : '';
+    return {
+      error:
+        `❌ ${entryPath.missingDependencies.length} static import(s) on the app-start graph are not among ` +
+        `the emitted chunks:\n\n${listed}${more}\n` +
+        `The page cannot load these, or the import is text inside a string that this\n` +
+        `check read as code (it scans whole chunks). Either way the app-start graph\n` +
+        `was not checked.\n`,
     };
   }
   if (entryPath.wrapped.length > 0) {

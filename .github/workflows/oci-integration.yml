@@ -171,8 +171,9 @@ jobs:
         run: |
           set -uo pipefail
           out="$RUNNER_TEMP/oci-wrong-password.log"
-          node packages/cli/dist/index.js info "oci://$REGISTRY/fixtures/model:v1" > "$out" 2>&1
-          status=$?
+          # Steps run under `bash -e`; capture the expected failure instead of aborting on it.
+          status=0
+          node packages/cli/dist/index.js info "oci://$REGISTRY/fixtures/model:v1" > "$out" 2>&1 || status=$?
           cat "$out"
           if [ "$status" -eq 0 ]; then
             echo "::error::ifc-lite info succeeded with a wrong registry password" >&2

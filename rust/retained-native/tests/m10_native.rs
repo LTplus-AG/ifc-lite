@@ -294,3 +294,59 @@ fn m10_affine_classification_uses_retained_selection_without_identifier() {
         assert!((e[0].volume-0.56).abs()<1e-12);
     }
 }
+
+/// Real-kernel winding witness: the mirrored publication must have positive signed
+/// volume per part, and reversing one part's winding must be detected. Prints the
+/// witness line only after every assertion, so a skip can never look like a run.
+fn winding_witness(text:&str,id:u32,with_cuts:bool,name:&str) {
+    use ifc_lite_core::SourceBundle;
+    use ifc_lite_retained_native::{run_model_native,ModelOptions};
+    let Some(worker)=support::worker_path() else {return};
+    let source=SourceBundle::new(text.as_bytes().to_vec());
+    assert_eq!(affine::AffineOracle::new(&source).classify(id),affine::Classification::Affine,"#{id}");
+    let mut shapes=Vec::new();
+    run_model_native(source.clone(),std::path::Path::new(&worker),
+        &ModelOptions {ids:Some([id].into_iter().collect()),..Default::default()},|o|shapes.push(o)).unwrap();
+    let ProductOutcome::Published(mut shape)=shapes.remove(0) else {panic!("#{id}: expected mirrored Boolean publication")};
+    assert_eq!(shape.cuts>0,with_cuts,"#{id}");
+    assert!(!shape.parts.is_empty());
+    let published=affine::winding_positive(&shape);
+    assert_eq!(published.len(),shape.parts.len());
+    assert!(published.iter().all(|&outward|outward),"#{id}: published winding");
+    for t in shape.parts[0].indices.chunks_exact_mut(3) {t.swap(1,2);}
+    assert!(!affine::winding_positive(&shape)[0],"#{id}: reversed winding must be detected");
+    eprintln!("sdk witness executed: {name}");
+}
+// #7955: an unsupported analytic family must still gate EVERY part's winding.
+#[test]
+fn m10_sdk_affine_boolean_without_source_volume_gates_winding() {
+    let text=SOURCE.replace("#24=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);",
+            "#900001=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);\n#24=IFCBOOLEANRESULT(.UNION.,#900001,#900001);")
+        .replace("#25=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid'","#25=IFCSHAPEREPRESENTATION(#4,'Body','CSG'");
+    assert_ne!(text,SOURCE);
+    let source=ifc_lite_core::SourceBundle::new(text.clone().into_bytes());
+    assert!(affine::AffineOracle::new(&source).expected(42).is_none(),"no analytic volume for this family");
+    winding_witness(&text,42,false,"m10_sdk_affine_boolean_without_source_volume_gates_winding");
+}
+// #7955: opening cuts must not bypass the per-part winding gate (#130/#133/#145/#146).
+#[test]
+fn m10_sdk_voided_affine_product_gates_every_part_winding() {
+    winding_witness(SOURCE,242,true,"m10_sdk_voided_affine_product_gates_every_part_winding");
+}
+// #7955 / PR #8319: selected mapped geometry need not have a Body identifier.
+#[test]
+fn m10_sdk_omitted_identifier_affine_product_gates_winding() {
+    let text=SOURCE.replace("#40=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation'",
+        "#40=IFCSHAPEREPRESENTATION(#4,$,'MappedRepresentation'");
+    assert_ne!(text,SOURCE,"h2 representation must be changed");
+    winding_witness(&text,42,false,"m10_sdk_omitted_identifier_affine_product_gates_winding");
+}
+// Hosted review of #8360: a mirrored map under a Boolean operand must still be gated.
+#[test]
+fn m10_sdk_mirrored_boolean_operand_gates_winding() {
+    // Controller cross-check shape, as in the bake test: IFC4 excludes mapped operands.
+    let text=SOURCE.replace("#40=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#39));",
+        "#9400=IFCBOOLEANRESULT(.UNION.,#39,#39);\n#40=IFCSHAPEREPRESENTATION(#4,'Body','CSG',(#9400));");
+    assert_ne!(text,SOURCE);
+    winding_witness(&text,42,false,"m10_sdk_mirrored_boolean_operand_gates_winding");
+}

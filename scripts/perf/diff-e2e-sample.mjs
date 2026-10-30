@@ -88,6 +88,9 @@ export async function measure({ root, fixture, options, retained, implementation
         baseHandle = facade.prepareDiffModel(rows[0]);
         headHandle = facade.prepareDiffModel(rows[1]);
       });
+      // Never let a missing handle fall back to one-shot calls under a handle label.
+      assert.equal(typeof baseHandle?.compare, 'function', 'prepareDiffModel must return a base handle');
+      assert.equal(typeof headHandle?.compare, 'function', 'prepareDiffModel must return a head handle');
     };
     if (mode === 'warm' && handleApiAvailable) await prepare();
     const compare = i => baseHandle

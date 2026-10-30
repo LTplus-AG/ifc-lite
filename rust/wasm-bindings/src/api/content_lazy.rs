@@ -157,42 +157,18 @@ impl IfcAPI {
     /// full per-triangle palette) used by `processGeometryBatch` to split a
     /// tessellated face set into one sub-mesh per palette group (issue #858).
     ///
-    /// Mirrors the native processor's collection pass (processor.rs ~905):
-    /// one entity scan that decodes every `IFCINDEXEDCOLOURMAP` and resolves
-    /// it to a [`FullIndexedColourMap`]. Cached per worker so the scan is paid
-    /// once, not per batch. Returns an empty map when the file authors none
-    /// (the common case), so callers can cheaply `.get(&geometry_id)`.
+    /// The collection is the shared
+    /// [`ifc_lite_processing::style::collect_full_indexed_colour_maps`]; only
+    /// the per-worker caching is the binding's. Cached so the scan is paid
+    /// once per content, not per batch, including the empty result most files
+    /// produce, so later batches skip even the substring search.
     pub(crate) fn get_or_build_indexed_colour_maps(
         &self,
         content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<IndexedColourCache> {
         self.content.cached_indexed_colour_maps.get_or_init(|| {
-            let mut map: rustc_hash::FxHashMap<
-                u32,
-                ifc_lite_processing::style::FullIndexedColourMap,
-            > = rustc_hash::FxHashMap::default();
-            // Fast bail-out for the overwhelming common case: files with no
-            // IfcIndexedColourMap pay only a single substring search (SIMD memmem),
-            // not a full entity scan + decode, on the first batch of every worker.
-            // The empty result is still cached so later batches skip even that.
-            if ifc_lite_core::find_keyword(content, b"IFCINDEXEDCOLOURMAP").is_some() {
-                let mut scanner = ifc_lite_core::EntityScanner::new(content);
-                while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-                    if ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
-                        if let Ok(icm) = decoder.decode_at(start, end) {
-                            if let Some(full) =
-                                ifc_lite_processing::style::resolve_indexed_colour_map_full(
-                                    &icm, decoder,
-                                )
-                            {
-                                map.entry(full.geometry_id).or_insert(full);
-                            }
-                        }
-                    }
-                }
-            }
-
+            let map = ifc_lite_processing::style::collect_full_indexed_colour_maps(content, decoder);
             std::sync::Arc::new(IndexedColourCache {
                 split_guard_ids: ifc_lite_processing::style::indexed_colour_split_guard_ids(&map),
                 maps: std::sync::Arc::new(map),

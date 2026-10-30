@@ -3,14 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import * as notices from './retained-notices.mjs';
 
 const { renderNotices, inventoryInputs, checkNotices } = notices;
-const SCRIPT = fileURLToPath(new URL('./retained-notices.mjs', import.meta.url));
 // A manifest written by --refresh always carries a digest of its components.
 const stamp = manifest => ({ componentsSha256: notices.componentsDigest(manifest.components), ...manifest });
 // Namespace access: a missing election helper fails an assertion, not the module load.
@@ -244,10 +241,14 @@ test('Refs #7955 cargo-only refresh refuses a manifest whose layout it cannot re
   assert.throws(() => notices.refreshCargoOnly(f.root, metadata), /cargo-only refused/);
 });
 
-test('Refs #7955 cargo-only flag is rejected with SDK paths or without --refresh', () => {
+test('Refs #7955 cargo-only flag is rejected with SDK paths or without --refresh, leaving the manifest alone', t => {
+  const f = fixture(t);
+  const before = readFileSync(join(f.root, 'licenses/retained/manifest.json'), 'utf8');
   for (const args of [['--refresh', '--cargo-only', '--sdk', '/nonexistent'], ['--cargo-only'], ['--write', '--cargo-only']]) {
-    const run = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
-    assert.equal(run.status, 1, args.join(' '));
-    assert.match(run.stderr, /--cargo-only/);
+    assert.throws(() => notices.main(args, f.root), /--cargo-only/, args.join(' '));
   }
+  assert.equal(readFileSync(join(f.root, 'licenses/retained/manifest.json'), 'utf8'), before);
+  // Plain --check / --write through the CLI entry still work on an intact fixture.
+  assert.match(notices.main(['--check'], f.root), /match/);
+  assert.match(notices.main(['--write'], f.root), /match/);
 });

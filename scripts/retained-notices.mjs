@@ -248,24 +248,25 @@ function refresh({ sdk, emscripten }, root = ROOT) {
   applySupplemental(components, inputs.supplemental);
   writeManifest(root, inputs, components);
 }
+// CLI entry; throws on refusal so tests can drive it against a fixture root.
+export function main(args, root = ROOT) {
+  if (args[0] === '--refresh') {
+    const cargoOnly = args.includes('--cargo-only');
+    const options = {};
+    for (let i = 1; i < args.length; i += 2) {
+      if (args[i] === '--cargo-only') i -= 1; else options[args[i].replace(/^--/, '')] = args[i + 1];
+    }
+    if (cargoOnly) {
+      if (Object.keys(options).length) throw new Error('--cargo-only reuses the committed SDK/Emscripten components and takes no --sdk/--emscripten');
+      refreshCargoOnly(root);
+    } else {
+      if (!options.sdk || !options.emscripten) throw new Error('--refresh requires --sdk ABS --emscripten ABS (or --cargo-only)');
+      refresh(options, root);
+    }
+  } else if (args.includes('--cargo-only')) throw new Error('--cargo-only is only valid with --refresh');
+  checkNotices(root, args[0] !== '--refresh' && args[0] !== '--write');
+  return 'Retained notice inventory and generated bundles match; human release review remains required.';
+}
 if (isMainEntry(import.meta.url)) {
-  try {
-    const args = process.argv.slice(2);
-    if (args[0] === '--refresh') {
-      const cargoOnly = args.includes('--cargo-only');
-      const options = {};
-      for (let i = 1; i < args.length; i += 2) {
-        if (args[i] === '--cargo-only') i -= 1; else options[args[i].replace(/^--/, '')] = args[i + 1];
-      }
-      if (cargoOnly) {
-        if (Object.keys(options).length) throw new Error('--cargo-only reuses the committed SDK/Emscripten components and takes no --sdk/--emscripten');
-        refreshCargoOnly();
-      } else {
-        if (!options.sdk || !options.emscripten) throw new Error('--refresh requires --sdk ABS --emscripten ABS (or --cargo-only)');
-        refresh(options);
-      }
-    } else if (args.includes('--cargo-only')) throw new Error('--cargo-only is only valid with --refresh');
-    checkNotices(ROOT, args[0] !== '--refresh' && args[0] !== '--write');
-    console.log('Retained notice inventory and generated bundles match; human release review remains required.');
-  } catch (error) { console.error(error.message); process.exitCode = 1; }
+  try { console.log(main(process.argv.slice(2))); } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

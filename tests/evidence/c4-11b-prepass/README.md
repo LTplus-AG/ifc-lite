@@ -1,13 +1,15 @@
 # C4-11b completing layer (#7782)
 
 Stack: #8329 on structural #8328, itself on C4-11a #8320. No merge authorization.
-Baseline: `06cf74244610e5272ffbff53b54db88e1eac0675`.
+Final qualification base: `6246d22dc446705b7c5664e7b17972f1cc81235b`.
+Pre-integration measurements used C4-11a `06cf742446`.
 
 `api/mod.rs`: 949 → 492 lines in the structural layer; prepass.rs: 583 → 92.
 The 501-line pre_pass_streaming_impl row and prepass module row are deleted;
 module digest is re-pinned downward. Scan/meta, event payloads, worker columns
 and post-scan emission have separate homes, with functions below 150 lines. JS APIs,
-committed wasm declarations and batch_parity_expected.json are unchanged.
+wasm declaration API tokens and batch_parity_expected.json are unchanged.
+Generated declaration documentation follows the corrected streaming comment.
 
 ## Measurement and tests
 

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 # Run ONLY through ifc-fleet. No nested admission, retries or guard overrides.
 set -euo pipefail
 phase=${1:?native, proof or wasm}
@@ -45,7 +48,7 @@ if [[ "$phase" == native || "$phase" == proof ]]; then
 elif [[ "$phase" == wasm ]]; then
   # Temporary source export lives in this managed task checkout, shares only
   # the admitted Cargo target, and is removed after the matched pair check.
-  base=06cf74244610e5272ffbff53b54db88e1eac0675
+  base=6246d22dc446705b7c5664e7b17972f1cc81235b
   scratch="$PWD/.c4-baseline"
   [[ ! -e "$scratch" ]] || { echo 'baseline scratch already exists'; exit 1; }
   mkdir "$scratch"
@@ -56,7 +59,26 @@ elif [[ "$phase" == wasm ]]; then
   CI=1 pnpm build --concurrency=2 --filter=@ifc-lite/renderer... --filter=@ifc-lite/geometry... --filter=@ifc-lite/export...
   # Fresh build is mandatory: CI=1 forbids build-wasm's developer soft skip.
   CI=1 pnpm build:wasm
-  git diff --exit-code -- 'packages/wasm/pkg*/ifc-lite.d.ts'
+  # Public declarations may change documentation only; use TS tokens so
+  # comment-like strings in actual types cannot hide a surface change.
+  node --input-type=module <<'JSTYPES'
+import ts from 'typescript';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+const files = execFileSync('git', ['ls-files', 'packages/wasm/pkg*/ifc-lite.d.ts'], { encoding: 'utf8' }).trim().split('\n');
+assert.ok(files.includes('packages/wasm/pkg/ifc-lite.d.ts'));
+function tokens(text) {
+  const s = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, text), out = [];
+  for (let k = s.scan(); k !== ts.SyntaxKind.EndOfFileToken; k = s.scan()) out.push([k, s.getTokenText()]);
+  return out;
+}
+for (const file of files) {
+  const before = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf8' }), after = readFileSync(file, 'utf8');
+  assert.deepEqual(tokens(after), tokens(before), `${file}: public API changed`);
+  if (before !== after) console.log(`C4_DTS_DOC_ONLY ${file}`);
+}
+JSTYPES
   IFC_WASM_BASE_JS="$scratch/packages/wasm/pkg/ifc-lite.js" \
   IFC_WASM_BASE_BINARY="$scratch/packages/wasm/pkg/ifc-lite_bg.wasm" \
     pnpm test:wasm-contract

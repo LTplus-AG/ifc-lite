@@ -245,7 +245,12 @@ export default defineConfig(({ mode }) => {
       },
     }),
     wasm(),
-    topLevelAwait(),
+    // No vite-plugin-top-level-await here: the target is `esnext`, so top-level
+    // await is emitted natively. The plugin wrapped every chunk with a dynamic
+    // import() in one async function, which the browser parses on the main
+    // thread when it runs, inside the app-start task. The worker build below
+    // keeps it; scripts/check-tla-chunk-await.mjs fails if a chunk evaluated
+    // at app start is wrapped again.
     cesiumStaticAssets(),
     oauthCallbackRoutes(),
     // Dalux's API sends no CORS headers, so it must go through a same-origin

@@ -1617,8 +1617,10 @@ name = "ifc-lite-ffi"
 version = "27.1.0"
 dependencies = [
  "ifc-lite-processing",
+ "ifc-lite-testkit",
  "mimalloc",
  "rayon",
+ "serde",
  "serde_json",
 ]
 

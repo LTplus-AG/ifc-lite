@@ -14,6 +14,7 @@ import {
   toStepInteger,
   escapeStepString,
 } from './step-serialization.js';
+import { SCHEMA_REGISTRY } from '@ifc-lite/parser';
 import { serializePropertyValue } from './property-value-serialization.js';
 import { toStepRealScaled } from './unit-normalize.js';
 
@@ -272,6 +273,13 @@ describe('defined-type base lookup ignores spelling (#8312)', () => {
     expect(resolveExpressBase('IFCPOSITIVELENGTHMEASURE')).toBe('REAL');
     expect(resolveExpressBase('IFCNOSUCHTYPE')).toBeNull();
     expect(resolveExpressBase('CONSTRUCTOR')).toBeNull();
+  });
+
+  it('sees a type added to a registry after an earlier lookup', () => {
+    const registry = { ...SCHEMA_REGISTRY, types: { ...SCHEMA_REGISTRY.types } };
+    expect(resolveExpressBase('IFCCUSTOMMEASURE', registry)).toBeNull();
+    registry.types.IfcCustomMeasure = 'REAL';
+    expect(resolveExpressBase('IFCCUSTOMMEASURE', registry)).toBe('REAL');
   });
 
   it('encodes the inner value from the base, not the JSON shape', () => {

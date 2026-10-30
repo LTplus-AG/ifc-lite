@@ -44,18 +44,20 @@ const TYPE_KEYS_BY_TOKEN = new WeakMap<SchemaRegistry['types'], Map<string, stri
  * The registry key a type name spells, matched the way the written token is:
  * `IFCLENGTHMEASURE`, `LengthMeasure` and `IfcLengthMeasure` all write
  * `IFCLENGTHMEASURE`, so all resolve to `IfcLengthMeasure`. A `Map`, not an
- * object, so no inherited name can match.
+ * object, so no inherited name can match. A caller's registry may gain a type
+ * after the first lookup, so a miss rebuilds the map before giving up.
  */
 function canonicalTypeName(typeName: string, types: SchemaRegistry['types']): string {
   if (Object.prototype.hasOwnProperty.call(types, typeName)) return typeName;
-  let keys = TYPE_KEYS_BY_TOKEN.get(types);
-  if (!keys) {
-    keys = new Map(Object.keys(types).map((key) => [key.toUpperCase(), key]));
-    TYPE_KEYS_BY_TOKEN.set(types, keys);
-  }
   let token = typeName.toUpperCase();
   if (!token.startsWith('IFC')) token = `IFC${token}`;
-  return keys.get(token) ?? typeName;
+  let key = TYPE_KEYS_BY_TOKEN.get(types)?.get(token);
+  if (key === undefined) {
+    const keys = new Map(Object.keys(types).map((k) => [k.toUpperCase(), k]));
+    TYPE_KEYS_BY_TOKEN.set(types, keys);
+    key = keys.get(token);
+  }
+  return key ?? typeName;
 }
 
 /**

@@ -116,7 +116,8 @@ source and unfinished stash, preserving diagnostics and user settings. See the
 `getPipelineDiagnostics()` returns a plain `schemaVersion: 1` report with
 additive `refusedInputElements` (attempted jobs, including retries) and
 `refusedPrepassRecords` (distinct semantic refusal IDs per API/worker).
-Syntax-invalid type drops are excluded. Prepass-only refusals are reportable;
+Syntax-invalid type drops are excluded there and counted instead, per distinct
+record, in `omittedTypeRecords`. Prepass-only refusals and omissions are reportable;
 load installation resets counters and cleanup preserves them. See the
 [diagnostics contract](../../docs/api/wasm.md#diagnostics-and-tuning).
 

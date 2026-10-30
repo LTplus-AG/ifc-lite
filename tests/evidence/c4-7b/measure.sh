@@ -39,11 +39,15 @@ if cache.is_dir():
             dest.symlink_to(source.resolve())
 PYFIX
 node scripts/fixtures/fetch-fixtures.mjs
-for fixture in "${fixtures[@]}"; do [[ -f $fixture ]] || { echo "missing fixture $fixture"; exit 2; }; done
-
 scratch="$head_dir/.c4-7b-measure"
 [[ ! -e "$scratch" ]] || { echo 'measure scratch already exists'; exit 1; }
 mkdir -p "$scratch/base"
+# merge_layers_skip_test.rs's sliceable wall: three parts must be skipped.
+awk '/^fn sliceable_multilayer_wall_ifc/{on=1;next} on&&/r#"ISO-10303-21;/{p=1} p{print} p&&/^END-ISO-10303-21;/{exit}' \
+  rust/geometry/tests/merge_layers_skip_test.rs | sed 's/^.*r#"//' > "$scratch/sliceable_wall_parts.ifc"
+grep -q IFCRELAGGREGATES "$scratch/sliceable_wall_parts.ifc" || { echo 'sliceable wall fixture not extracted'; exit 1; }
+fixtures+=("${scratch#"$head_dir"/}/sliceable_wall_parts.ifc")
+for fixture in "${fixtures[@]}"; do [[ -f $fixture ]] || { echo "missing fixture $fixture"; exit 2; }; done
 wiring='rust/wasm-bindings/src/api/gpu_meshes/mod.rs'
 cleanup() {
   git -C "$head_dir" checkout -- "$wiring"
@@ -65,7 +69,10 @@ for line in sys.stdin:
     m = json.loads(line)
     if m.get("reason") == "compiler-artifact" and m.get("executable") and m["target"]["name"] == "ifc_lite_wasm":
         print(m["executable"])' | tail -1)
-  [[ -x $bin ]] || { echo "no test binary for $side"; exit 1; }
+  if [[ ! -x $bin ]]; then
+    (cd "$src" && cargo test --release -p ifc-lite-wasm --lib --no-run 2>&1 | grep -v '^warning: /' | tail -40)
+    echo "no test binary for $side"; exit 1
+  fi
   echo "C4_7B_BINARY $side $bin"
   for fixture in "${fixtures[@]}"; do
     path="$head_dir/$fixture"

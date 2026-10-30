@@ -367,7 +367,7 @@ const metadata = await client.getMetadata(file);
 // Returns:
 // - schema_version: string (e.g. 'IFC2X3', 'IFC4', 'IFC4X3')
 // - entity_count: number
-// - geometry_count: number
+// - geometry_count: number  // geometry jobs a default parse schedules (#8341)
 // - file_size: number
 // - oversized_id_count?: number  // records the scan refused (#3395)
 // - malformed_record_found?: boolean  // a record was dropped (#3695)

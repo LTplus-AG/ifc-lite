@@ -218,14 +218,7 @@ pub fn resolve_prepass_with_style_seeds(
     }
 
     crate::prepass_type_material::propagate_type_material(&spans.defines_by_type, decoder, &mut out.element_to_material);
-    // ── Voids + fills + aggregate propagation (#845) ──
-    for &(id, start, end) in &spans.void_rels {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            if let (Some(host), Some(opening)) = (entity.get_ref(4), entity.get_ref(5)) {
-                out.void_index.entry(host).or_default().push(opening);
-            }
-        }
-    }
+    // ── Fills + voids with aggregate propagation (#845) ──
     for &(id, start, end) in &spans.fills_rels {
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
             // attr 4 = RelatingOpeningElement, attr 5 = RelatedBuildingElement.
@@ -234,35 +227,10 @@ pub fn resolve_prepass_with_style_seeds(
             }
         }
     }
-    if !out.void_index.is_empty() && !spans.aggregate_rels.is_empty() {
-        let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-        for &(id, start, end) in &spans.aggregate_rels {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                let Some(parent_id) = entity.get_ref(4) else {
-                    continue;
-                };
-                if let Some(children) = entity.get_refs(5) {
-                    aggregate_children
-                        .entry(parent_id)
-                        .or_default()
-                        .extend(children);
-                }
-            }
-        }
-        ifc_lite_geometry::propagate_voids_via_aggregates(
-            &mut out.void_index,
-            &aggregate_children,
-        );
-    }
-
-    // Canonicalise each host's opening order (#2019). The scan pushes in
-    // statement order, aggregate propagation in hashmap-BFS order; neither
-    // is a property of the model. Sequential void cuts are not associative
-    // (each pass snaps f64->f32), so reordering them moves the world
-    // geometry hash on a re-export that only shuffled statements.
-    for openings in out.void_index.values_mut() {
-        openings.sort_unstable();
-    }
+    // Shared geometry kernel: void fold, bare-tolerant aggregate fold and
+    // canonical opening order (#2019) live in one place.
+    out.void_index =
+        ifc_lite_geometry::resolve_void_index(&spans.void_rels, &spans.aggregate_rels, decoder);
 
     // ── Material chain join (#407): element id → colour list ──
     out.element_material_colors = crate::style::build_element_material_colors(

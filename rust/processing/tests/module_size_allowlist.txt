@@ -286,7 +286,9 @@
      504 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      782 rust/geometry/src/triangulation.rs
-     745 rust/geometry/src/void_index.rs
+# -40 (C4-15, #8341): the RelVoids/RelAggregates scans fold through the shared
+# geometry kernel in void_rels.rs; 745 -> 642.
+     642 rust/geometry/src/void_index.rs
      499 rust/processing/src/determinism.rs
 # +48: #1623 Phase 2 don't-bake — ProducedElementMeshes.instance_occurrences + threading it through produce_inner (tuple returns), and emit_sub_meshes converting empty-with-InstanceMeta placeholders into RawInstanceOccurrences.
 # +19: #1781 textured occurrence sub-meshes — emit_sub_meshes attaches UVs+texture (length-guarded) and the non-void path calls the texture-aware router entry.
@@ -312,7 +314,9 @@
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
-     781 rust/processing/src/prepass.rs
+# -32 (C4-15, #8341): void/aggregate folds and the #2019 opening sort moved
+# to the shared geometry kernel (`resolve_void_index`); 781 -> 552.
+     552 rust/processing/src/prepass.rs
 # C4-4b (#7782): native orchestration split into sub-400-line phases;
 # processor/mod.rs no longer needs a module budget.
 # C4-10b (#7782): batch preparation, production and output adapters are bounded

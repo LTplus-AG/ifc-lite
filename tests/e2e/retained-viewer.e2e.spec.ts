@@ -23,7 +23,13 @@ test.use({ trace: 'off' });
 const SKIP = 'SKIP: no staged SMLib engine; this is NOT parity evidence';
 interface ViewerGlobals {
   __ifc_lite_viewer_store__: { getState(): ViewerState; subscribe(listener: (state: ViewerState) => void): () => void };
-  __retainedCancel?: { clickMs: number; clickWallMs: number; rowsReadyMs?: number; before: { meshIds: number[]; published: number }; error?: string };
+  __retainedCancel?: {
+    clickMs: number; clickEpochMs: number; before: { meshIds: number[]; published: number }; error?: string;
+    /** Page clock when the viewer called `terminate()` on the retained host Worker. */
+    terminatedMs?: number;
+    /** Page clock when the store first carried the cancelled rows. */
+    cancelledMs?: number;
+  };
   __IFC_LITE_LOAD_TRACE__: { latest(): LoadTraceSnapshot | null };
   __retainedLongTasks: number[];
   /** Installed by the viewport once its renderer is ready: the parts the renderer's scene holds for one owner. */
@@ -467,16 +473,39 @@ test.describe('retained viewer acceptance', () => {
     // #7955: a Node-side snapshot between first batch and click can take
     // seconds under GPU load and let this small model finish. Observe the first
     // append in-page and click the real DOM button in the same microtask turn.
-    // The close time is taken in the event handler, on the wall clock the
-    // click was also stamped with: awaiting the event and then asking the page
-    // for performance.now() adds a CDP round trip that waits behind whatever
-    // long task the main thread is running, none of which is Cancel latency.
+    // Node's wall clock when Playwright saw the real host close: CDP transport
+    // included, so attribution only. The 1 s contract is timed in the page.
     const closed = new Promise<number>(done => page.on('worker', host => {
       if (/retained\.worker/.test(host.url())) host.once('close', () => done(Date.now()));
     }));
     await page.evaluate(() => {
       const globals = globalThis as typeof globalThis & ViewerGlobals;
       const store = globals.__ifc_lite_viewer_store__;
+      // #8341: time the page's own termination of the retained host and the
+      // store publication of its cancelled rows, both on the page clock. The
+      // client creates its Worker lazily, after this, through the global.
+      const NativeWorker = globalThis.Worker;
+      const hosts = new WeakSet<Worker>();
+      globalThis.Worker = new Proxy(NativeWorker, {
+        construct(target, args, newTarget) {
+          const worker = Reflect.construct(target, args, newTarget) as Worker;
+          if (/retained\.worker/.test(String(args[0]))) hosts.add(worker);
+          return worker;
+        },
+      });
+      const terminate = NativeWorker.prototype.terminate;
+      NativeWorker.prototype.terminate = function (this: Worker) {
+        terminate.call(this);
+        const cancel = globals.__retainedCancel;
+        if (hosts.has(this) && cancel && cancel.terminatedMs === undefined) cancel.terminatedMs = performance.now();
+      };
+      const unpublished = store.subscribe(state => {
+        const cancel = globals.__retainedCancel;
+        const summary = [...state.models.values()][0]?.retainedGeometry;
+        if (!cancel || !summary?.cancelled || summary.completeness !== 'incomplete') return;
+        unpublished();
+        cancel.cancelledMs = performance.now();
+      });
       const unsubscribe = store.subscribe(state => {
         const model = [...state.models.values()][0];
         if (!model?.geometryResult?.meshes.length || model.retainedGeometry?.completeness !== 'running') return;
@@ -487,44 +516,34 @@ test.describe('retained viewer acceptance', () => {
           // single-model stream carries the fixture's express IDs directly.
           const meshIds = [...new Set(current.geometryResult!.meshes.map(mesh => mesh.expressId))];
           const button = [...document.querySelectorAll('button')].filter(button => button.textContent?.trim() === 'Cancel').at(-1);
-          const cancel = globals.__retainedCancel = {
-            clickMs: performance.now(), clickWallMs: Date.now(), before: { meshIds, published: current.retainedGeometry!.published },
-          } as NonNullable<ViewerGlobals['__retainedCancel']>;
+          const clickMs = performance.now();
+          globals.__retainedCancel = { clickMs, clickEpochMs: performance.timeOrigin + clickMs,
+            before: { meshIds, published: current.retainedGeometry!.published } };
           if (!button || button.disabled || current.retainedGeometry?.completeness !== 'running') {
-            cancel.error = 'No enabled Cancel button during the first published batch';
+            globals.__retainedCancel.error = 'No enabled Cancel button during the first published batch';
             return;
           }
-          // Stamp the cancelled rows in the store update that publishes them,
-          // not when a later poll happens to look: a waitForFunction polls on
-          // animation frames, and under software WebGPU a frame can take
-          // hundreds of ms, all of it test-harness latency.
-          const stopRows = store.subscribe(state => {
-            const model = [...state.models.values()][0];
-            if ((model?.retainedGeometry?.cancelled ?? 0) > 0 && model.retainedGeometry?.completeness === 'incomplete') {
-              cancel.rowsReadyMs = performance.now();
-              stopRows();
-            }
-          });
           button.click();
         });
       });
     });
     await page.locator('#file-input-open').setInputFiles(resolve(WALL));
     await page.waitForFunction(() => Boolean((globalThis as typeof globalThis & ViewerGlobals).__retainedCancel));
+    const clicked = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!);
+    expect(clicked.error).toBeUndefined();
+    expect(clicked.before.meshIds.length).toBeGreaterThan(0);
+    // The real host must still close, as Playwright observes it (untimed).
+    const closedEpochMs = await closed;
+    await page.waitForFunction(() => (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel?.cancelledMs !== undefined);
     const click = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!);
-    expect(click.error).toBeUndefined();
-    expect(click.before.meshIds.length).toBeGreaterThan(0);
-    const workerCloseMs = await closed - click.clickWallMs;
-    await page.waitForFunction(() => Boolean((globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!.rowsReadyMs));
-    const rowsReadyMs = await page.evaluate(() => {
-      const cancel = (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!;
-      return cancel.rowsReadyMs! - cancel.clickMs;
-    });
     const before = click.before;
     await complete(page, true);
     const after = await snapshot(page);
-    const cancelMs = Math.max(workerCloseMs, rowsReadyMs);
-    expect(cancelMs).toBeLessThanOrEqual(1000);
+    expect(click.terminatedMs, 'the page never terminated the retained host Worker').toBeDefined();
+    const terminateMs = click.terminatedMs! - click.clickMs;
+    const publishMs = click.cancelledMs! - click.clickMs;
+    expect(terminateMs, 'Cancel to retained host terminate(), page clock').toBeLessThanOrEqual(1000);
+    expect(publishMs, 'Cancel to cancelled rows in the store, page clock').toBeLessThanOrEqual(1000);
     expect(after.summary!.cancelled).toBeGreaterThan(0);
     // #7955: this fixture streams flat walls so Cancel can run before a
     // 256-product instance flush. Refusals already reported before cancellation
@@ -538,7 +557,12 @@ test.describe('retained viewer acceptance', () => {
     for (const id of before.meshIds) expect(after.meshIds).toContain(id);
     for (const row of after.summary!.refused) expect(after.meshIds).not.toContain(row.expressId);
     expect(after.meshIds).toHaveLength(after.summary!.published);
-    await record('cancel', { cancelMs, workerCloseMs, rowsReadyMs, measurement: 'click to the Worker close event (wall clock, stamped in the event handler) and to the store update that publishes the cancelled rows (browser clock, stamped in the subscription)', before, after });
+    await record('cancel', {
+      cancelMs: Math.max(terminateMs, publishMs), terminateMs, publishMs,
+      observedCloseMs: closedEpochMs - click.clickEpochMs,
+      measurement: 'page clock from the Cancel click to the host terminate() call and to the cancelled-row store publication; observedCloseMs is Playwright-observed Worker close on the wall clock, CDP transport included, attribution only',
+      before, after,
+    });
   });
 
   test('flagged preview with an empty engine fails before listening', async () => {

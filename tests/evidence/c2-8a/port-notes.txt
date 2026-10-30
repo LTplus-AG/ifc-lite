@@ -87,8 +87,12 @@ Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-1
         output e76f29cfd3f780efa43689355b264b6bb02237e3f8d83deddb2928af17b34dbf
         diagnostics 86b8cfae97ce143fe55225ab72bf81ce05b400d35270c5798402721599f15625
     every value identical, diagnostics JSON byte-identical.
-  * csg_manifold_gate,csg_topology_gate,opening-perf-trace: base and head each
-    fail exactly topology_gate_census_over_the_fixture_corpus; identical set.
+  * csg_manifold_gate,csg_topology_gate,opening-perf-trace: this first run
+    fed the base export no fixture corpus, so its census test failed for lack
+    of fixtures (and head's for a partial corpus): not a valid comparison.
+    Re-run with qualify.sh linking the same corpus into both trees (724048404c,
+    job 0b694c33-4391-4a92-8b3c-e3449e0eda67): base 3079 passed / 0 failed /
+    35 ignored, head 3079 / 0 / 35; failing set identical (empty).
   * instructions.sh per phase, head/base: worst 1.000309 (ISSUE_129 parse /
     entity scan / preprocess); geometry 0.999962 Haus, 0.999592 duplex,
     0.997836 ISSUE_129; total 1.000008 / 0.999633 / 0.997858. All <= 1.0005.

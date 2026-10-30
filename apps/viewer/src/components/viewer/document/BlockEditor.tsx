@@ -45,11 +45,15 @@ export interface BlockEditorProps {
   idsValidationReport: ValidationReport | null;
   onChange: (block: DocumentBlock) => void;
   onMove: (delta: -1 | 1) => void;
-  /** Jumps to the document's start or end; a missing jump renders disabled (#8227). */
+  /** Jumps to the document's start or end; a missing jump renders aria-disabled (#8227). */
   edges?: BlockEdgeMoves;
   onCopy: () => void;
   onRemove: () => void;
 }
+
+// aria-disabled, not disabled: a successful jump makes its own button unavailable, and a
+// disabled button would drop keyboard focus to the page (#8227).
+const JUMP_CLASS = 'h-6 w-6 p-0 aria-disabled:cursor-default aria-disabled:opacity-50 aria-disabled:hover:bg-transparent';
 
 const KIND_LABEL_KEY = {
   text: 'document.block.kindText',
@@ -232,10 +236,10 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
         <span className="text-muted-foreground">#{index + 1}</span>
         {block.kind === 'text' && <AiOriginBadge block={block} />}
         <span className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={!edges?.toStart} onClick={edges?.toStart} aria-label={t(topKey)} title={t(topKey)}><ArrowUpToLine className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="sm" className={JUMP_CLASS} aria-disabled={!edges?.toStart || undefined} onClick={edges?.toStart} aria-label={t(topKey)} title={t(topKey)}><ArrowUpToLine className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === 0} onClick={() => onMove(-1)} aria-label={t('document.block.moveUpAriaLabel')}><ArrowUp className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={t('document.block.moveDownAriaLabel')}><ArrowDown className="h-3.5 w-3.5" /></Button>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={!edges?.toEnd} onClick={edges?.toEnd} aria-label={t(bottomKey)} title={t(bottomKey)}><ArrowDownToLine className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="sm" className={JUMP_CLASS} aria-disabled={!edges?.toEnd || undefined} onClick={edges?.toEnd} aria-label={t(bottomKey)} title={t(bottomKey)}><ArrowDownToLine className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onCopy} aria-label={t('document.block.copyAriaLabel')} title={t('document.block.copyAriaLabel')}><Copy className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onRemove} aria-label={t('document.block.removeAriaLabel')}><X className="h-3.5 w-3.5" /></Button>
       </div>

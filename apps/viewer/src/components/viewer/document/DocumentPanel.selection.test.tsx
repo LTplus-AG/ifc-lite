@@ -122,20 +122,23 @@ it('#8066 a move reads current content and keeps unsaved ordering visible when s
 it('#8227 each block card jumps to the bottom or top, carrying the selection like a drag', async () => {
   const ui = await mount();
   const jump = (id: string, label: string) => element<HTMLButtonElement>(ui, `[data-block-editor="${id}"] button[aria-label="${label}"]`);
-  assert.equal(jump('e', 'Move block to bottom').disabled, true, 'the last block is already at the bottom');
-  assert.equal(jump('a', 'Move block to top').disabled, true, 'the first block is already at the top');
+  const unavailable = (button: HTMLButtonElement) => button.getAttribute('aria-disabled') === 'true';
+  assert.equal(unavailable(jump('e', 'Move block to bottom')), true, 'the last block is already at the bottom');
+  assert.equal(unavailable(jump('a', 'Move block to top')), true, 'the first block is already at the top');
+  click(jump('e', 'Move block to bottom'));
+  assert.equal(order(), 'abcde', 'an unavailable jump stays focusable but does nothing');
   click(jump('b', 'Move block to bottom'));
   assert.equal(order(), 'acdeb', 'an unselected block moves alone');
   assert.equal(checkbox(ui, 'b').checked, true, 'and becomes the selection, as a dragged handle does');
   assert.match(element(ui, '[data-block-selection-toolbar] output').textContent ?? '', /moved to the end/);
   click(checkbox(ui, 'c'));
-  assert.equal(jump('b', 'Move selected blocks to bottom').disabled, false, 'b is last but c is not, so the group can still move');
+  assert.equal(unavailable(jump('b', 'Move selected blocks to bottom')), false, 'b is last but c is not, so the group can still move');
   click(jump('c', 'Move selected blocks to bottom'));
   assert.equal(order(), 'adecb', 'a selected group keeps its authored order');
-  assert.equal(jump('b', 'Move selected blocks to bottom').disabled, true);
+  assert.equal(unavailable(jump('b', 'Move selected blocks to bottom')), true);
   click(jump('b', 'Move selected blocks to top'));
   assert.equal(order(), 'cbade');
-  assert.equal(jump('c', 'Move selected blocks to top').disabled, true);
+  assert.equal(unavailable(jump('c', 'Move selected blocks to top')), true);
   click(jump('e', 'Move block to top'));
   assert.equal(order(), 'ecbad');
   assert.equal(checkbox(ui, 'c').checked, false, 'an unselected jump replaces the selection');

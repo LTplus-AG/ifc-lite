@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/presentation/instancing_key.rs
++++ b/rust/processing/src/element/session_retained/presentation/instancing_key.rs
+@@ -10,7 +10,7 @@
+     hash.update((part.positions.len() as u64).to_le_bytes());
+     for value in &part.positions { hash.update(value.to_le_bytes()); }
+     hash.update((part.indices.len() as u64).to_le_bytes());
+-    for _value in &part.indices { hash.update(0u32.to_le_bytes()); }
++    for value in &part.indices { hash.update(value.to_le_bytes()); }
+     match &part.normals {
+         None => hash.update([0]),
+         Some(values) => {

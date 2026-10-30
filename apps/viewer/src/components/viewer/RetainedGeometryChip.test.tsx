@@ -59,6 +59,17 @@ afterEach(() => {
 });
 
 describe('#7955 M2-C retained chip', () => {
+  it('M11-Z shows final published bands without claiming refused products are complete', () => {
+    seed(summary({ published: 3, refused: [{ expressId: 30, ifcType: 'IfcWall', code: 'operation_unsupported' }],
+      cancelled: 0, obligationsUnmet: [], completeness: 'incomplete' }));
+    mount();
+    assert.match(chip()?.textContent ?? '', /Retained · final · 3\/4 products · 1 refused/);
+    assert.match(chip()?.title ?? '', /all presentation obligations are discharged/);
+    assert.equal(chip()?.dataset.retainedChip, 'incomplete');
+    click(chip()!);
+    assert.match(panel()?.textContent ?? '', /Published products are final/);
+    assert.doesNotMatch(panel()?.textContent ?? '', /Not applied to published products/);
+  });
   it('shows nothing for an exact model', () => {
     seed(undefined);
     mount();

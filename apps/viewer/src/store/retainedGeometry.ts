@@ -21,6 +21,14 @@ export interface RetainedUnpublishedRow {
   kernelStatus?: number;
 }
 
+/** One persistent source face of a published product (#7955 M11-F): `#item[>#via]:role`. */
+export interface RetainedFaceRow {
+  key: string;
+  triangles: number;
+  /** Display-precision area of its triangles, square metres. */
+  areaM2: number;
+}
+
 export interface RetainedGeometrySummary {
   kernel: 'retained';
   /** Products the run planned (`start.candidateIds`); 0 until the engine started. */
@@ -43,6 +51,14 @@ export interface RetainedGeometrySummary {
   completeness: 'running' | 'complete' | 'incomplete';
   /** Model-level failure (engine missing, host crash, stall), if the run ended in one. */
   failure?: string;
+  /** Persistent face table per published product id (M11-F), source order. */
+  faces?: Record<number, RetainedFaceRow[]>;
+}
+
+/** Kernel scope and worker lifetime depend on the open model, independently of presentation. */
+export function hasRetainedGeometryModel(models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>): boolean {
+  for (const model of models.values()) if (model.retainedGeometry) return true;
+  return false;
 }
 
 /** Tooltip/reason for every mesh-derived export and tool refused on a retained model. */
@@ -53,6 +69,8 @@ export const RETAINED_SHAPE_ONLY_REASON: TranslationKey = 'retainedGeometry.shap
  * measure, clash): their output would present shape-only meshes as the model.
  */
 export function hasRetainedShapeOnlyModel(models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>): boolean {
-  for (const model of models.values()) if (model.retainedGeometry) return true;
+  for (const model of models.values()) if (model.retainedGeometry && (model.retainedGeometry.obligationsUnmet.length > 0
+    || model.retainedGeometry.completeness !== 'complete' || model.retainedGeometry.failure
+    || model.retainedGeometry.published === 0)) return true;
   return false;
 }

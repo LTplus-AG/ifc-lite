@@ -27,10 +27,31 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
                 self,
             ));
         }
-        let completed = self
-            .execute_started_async(worker, limits)
-            .await
-            .map_err(RuntimeRejectedExecution::terminal)?;
+        let completed = match self.execute_started_async(worker, limits).await {
+            Ok(completed) => completed,
+            Err(reason) => {
+                // Every invocation has returned. Source/resource refusals can
+                // release their receipts normally; no kernel work is in flight.
+                self.armed = false;
+                self.cancellation.stage.store(SETTLED_FAULT, Ordering::Release);
+                let contract = matches!(&reason, RetainedExecutionError::Runtime(fault)
+                    if fault.kind == RuntimeFaultKind::Contract);
+                // #7955: a failed band is still atomic, but a synchronized
+                // transactional refusal must not consume the host model's
+                // restart budget. Native and browser executors preserve their
+                // domain only for known pre-copy statuses 1..7. Unknown status,
+                // transport loss, and non-layer faults retain fault recovery.
+                let layer_refusal = self.layer_phase
+                    && self.cancellation.owner.incarnation().is_some()
+                    && matches!(&reason, RetainedExecutionError::Runtime(fault)
+                        if matches!(fault.kind, RuntimeFaultKind::Kernel { status: 1..=7 }));
+                if !reason.controller_cancelled() && !contract && !layer_refusal {
+                    // Fault recovery, never a controller-owned cancellation.
+                    self.cancellation.owner.retire();
+                }
+                return Err(RuntimeRejectedExecution::terminal(reason));
+            }
+        };
         self.armed = false;
         Ok(completed)
     }
@@ -50,18 +71,11 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
             // its captured domain, including a still-running Worker operation.
             let permit = self.reserve_receipt()?;
             let result = worker.invoke(operation.invocation(), limits).await;
+            // A transport/kernel fault wins over a deadline that elapsed while
+            // awaiting it. Do not relabel a dead worker as a cooperative stop.
+            let result = result?;
             self.checkpoint()?;
-            let result = match result {
-                Err(fault) if fault.kind == RuntimeFaultKind::Contract => {
-                    // invoke settled without an outstanding numerical operation.
-                    // A cancelled/checkpoint-failed invocation remains armed above.
-                    self.armed = false;
-                    self.cancellation.stage.store(SETTLED_FAULT, Ordering::Release);
-                    return Err(fault.into());
-                }
-                result => result,
-            };
-            realizations.push(operation.seal(result?, permit, &self.resources)?);
+            realizations.push(operation.seal(result, permit, &self.resources)?);
         }
         self.finish(realizations, storage)
     }

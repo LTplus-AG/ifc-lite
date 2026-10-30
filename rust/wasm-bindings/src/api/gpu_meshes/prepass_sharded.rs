@@ -27,6 +27,18 @@ pub(super) fn check_rgba_columns(what: &str, ids: &[u32], colors: &[f32]) -> Res
     ))
 }
 
+/// The `unitScale` wire value: NaN when the length unit is refused (#7678),
+/// which every batch router the host builds from it refuses, so the browser
+/// meshes nothing rather than the model at a metre scale. One encoder for the
+/// JS object below and the native C4-0 parity gate.
+pub(super) fn stream_meta_unit_scale(meta: &ifc_lite_processing::stream_meta::StreamMeta) -> f64 {
+    if meta.length_unit_refused.is_some() {
+        f64::NAN
+    } else {
+        meta.length_unit_scale
+    }
+}
+
 /// Serialize the shared [`StreamMeta`] onto a JS object as the wire fields the
 /// host reads: `unitScale`, `planeAngleToRadians`, `rtcOffset` (`[x,y,z]`),
 /// `needsShift`, `buildingRotation` (`null` when absent). Used by both the
@@ -36,11 +48,8 @@ pub(super) fn set_stream_meta_props(
     obj: &js_sys::Object,
     meta: &ifc_lite_processing::stream_meta::StreamMeta,
 ) {
-    // A refused length unit (#7678) sends NaN, which every batch router the
-    // host builds from `unitScale` refuses, so the browser meshes nothing
-    // rather than the model at a metre scale; `unitRefused` says why.
-    let unit_scale = if meta.length_unit_refused.is_some() { f64::NAN } else { meta.length_unit_scale };
-    crate::api::set_js_prop(obj, "unitScale", &unit_scale.into());
+    // `unitRefused` says why a NaN `unitScale` was sent.
+    crate::api::set_js_prop(obj, "unitScale", &stream_meta_unit_scale(meta).into());
     crate::api::set_js_prop(obj, "unitRefused", &meta.length_unit_refused.is_some().into());
     crate::api::set_js_prop(obj, "planeAngleToRadians", &meta.plane_angle_to_radians.into());
     let rtc_arr = js_sys::Float64Array::new_with_length(3);
@@ -95,17 +104,16 @@ impl IfcAPI {
     /// what makes the number attributable to a record the stitch retained
     /// (#3430).
     #[wasm_bindgen(js_name = scanEntityIndexShard)]
-    pub fn scan_entity_index_shard(
-        &self,
-        data: &[u8],
-        range_start: u32,
-        range_end: u32,
-    ) -> JsValue {
+    pub fn scan_entity_index_shard(&self, data: &[u8], range_start: u32, range_end: u32) -> JsValue {
         let total = data.len();
         let start = (range_start as usize).min(total);
         let end = (range_end as usize).min(total);
-        let (records, classes, handoff, oversized_id_starts) =
-            ifc_lite_processing::scan_shard_classified_with_refusals(data, start, end);
+        // Shared named-result scanner; preserve the established JS wire.
+        let scan = ifc_lite_processing::scan_shard_result(data, start, end, true);
+        let records = scan.records;
+        let classes = scan.classes.expect("classified scan");
+        let handoff = scan.handoff;
+        let oversized_id_starts = scan.refusals;
 
         let n = records.len() as u32;
         let ids = js_sys::Uint32Array::new_with_length(n);
@@ -199,6 +207,7 @@ impl IfcAPI {
         // first-wins colour merge picks each id's finish from the same slice.
         let finishes = ifc_lite_processing::prepass::resolve_geometry_finishes(&styled, &mut decoder);
 
+        self.collect_pipeline_refusals(&decoder);
         let orphan_ids = js_sys::Uint32Array::new_with_length(orphan.len() as u32);
         let orphan_colors = js_sys::Float32Array::new_with_length((orphan.len() * 4) as u32);
         for (i, (&id, color)) in orphan.iter().enumerate() {
@@ -324,6 +333,7 @@ impl IfcAPI {
             geom_finishes.get(&id).copied()
         });
 
+        self.collect_pipeline_refusals(&decoder);
         Ok(styles_payload_with_flat((style_ids, style_colors, style_finishes), &resolved).into())
     }
 }

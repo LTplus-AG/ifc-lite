@@ -366,7 +366,13 @@ export async function buildEntityFingerprints(
     }
   }
 
-  const hashes = buildFingerprintBatch(inputs);
-  for (let i = 0; i < fingerprints.length; i++) Object.assign(fingerprints[i], hashes[i]);
+  // Hash in the same bounded slices and yield between them, so one large model
+  // doesn't freeze the main thread in a single WASM call (#924). Inputs hash
+  // independently, so slicing doesn't change any result.
+  for (let start = 0; start < inputs.length; start += 1500) {
+    const hashes = buildFingerprintBatch(inputs.slice(start, start + 1500));
+    for (let i = 0; i < hashes.length; i++) Object.assign(fingerprints[start + i], hashes[i]);
+    if (start + 1500 < inputs.length) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
   return fingerprints;
 }

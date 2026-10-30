@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/affine_final.rs",
+  "mutation": "tests/evidence/m10/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/m10_affine_logic.rs",
+  "why": "A mirrored affine final must keep outward winding."
+}

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/flow-nodes",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,6 +25,11 @@
       "types": "./dist/bcf-publication-node.d.ts",
       "import": "./dist/bcf-publication-node.js",
       "default": "./dist/bcf-publication-node.js"
+    },
+    "./influx": {
+      "types": "./dist/influx.d.ts",
+      "import": "./dist/influx.js",
+      "default": "./dist/influx.js"
     }
   },
   "scripts": {

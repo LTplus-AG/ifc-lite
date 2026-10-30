@@ -27,8 +27,9 @@ export interface DiffOptions {
    * Set this for a mixed-capability pair (exactly one model has mesh hashes),
    * so placement-only entities cannot defeat the whole-model geometry
    * abstention. Keep false for symmetric pairs, including two placement-only
-   * models, so placement moves remain detectable. Capability must be assessed
-   * on the full inputs, before type exclusions or key deduplication.
+   * models, so placement moves remain detectable. Decide whether to set it from
+   * the full inputs, before your type exclusions or key deduplication; the
+   * comparison's own capability check still ignores excluded types.
    */
   stripPlacementGeometry?: boolean;
   /**

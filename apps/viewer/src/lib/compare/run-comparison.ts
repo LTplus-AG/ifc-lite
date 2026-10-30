@@ -91,6 +91,8 @@ export async function prepareComparison(input: ComparisonPreparation): Promise<B
   ], duplicateAuthoredKeys);
   const built: BuiltPair = {
     comparedStores,
+    baseStore,
+    headStore,
     mutationVersion,
     baseModelId: baseId,
     headModelId: headId,

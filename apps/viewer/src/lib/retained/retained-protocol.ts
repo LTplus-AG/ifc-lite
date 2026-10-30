@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import type { RetainedFaceRow } from '@/store/retainedGeometry';
 import type {
   RetainedProductRefusal, RetainedRunOptions, RetainedSessionEvent,
 } from '../../../../../packages/wasm/pkg-retained/ifc-lite.js';
@@ -14,13 +15,17 @@ export type { RetainedProductRefusal, RetainedRtcFrame, RetainedRunOptions, Reta
 export type RetainedRefusalCode = RetainedProductRefusal['code'];
 type SessionEvent<K extends RetainedSessionEvent['kind']> = Extract<RetainedSessionEvent, { kind: K }>;
 export type RetainedStart = SessionEvent<'start'>;
-/** The `detail: 'view'` publication: the shape-only variant carries `parts`, not meshes. */
+/** The `detail: 'view'` publication: `detail: 'shape'` carries `parts` instead of meshes; either may be final. */
 export type RetainedPublished = Extract<SessionEvent<'published'>, { meshes: unknown }>;
 export type RetainedRefused = SessionEvent<'refused'>;
+type PublishedMetadata = Omit<RetainedPublished, 'meshes'> & { faceRows?: RetainedFaceRow[] };
 
 export type RetainedHostEvent = RetainedStart
-  | (Omit<RetainedPublished, 'meshes'> & { meshes: MeshData[] })
+  | (PublishedMetadata & { meshes: MeshData[]; instancedShards?: ArrayBuffer[];
+      instanceProducts?: PublishedMetadata[];
+      meshCount?: number; bounds?: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } })
   | RetainedRefused
+  | { kind: 'progress' }
   | { kind: 'workerMemory'; wasmHeapBytes: number }
   | { kind: 'complete'; cancelled: boolean }
   | { kind: 'cancelled'; expressId: number; code: 'cancelled' };

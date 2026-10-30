@@ -76,6 +76,7 @@ impl NumericalReceipt for BrowserReceipt {
         BrowserReceipt::mesh(self).map(|mesh| ReceiptMesh {
             positions: &mesh.positions,
             indices: &mesh.indices,
+            faces: &mesh.revision_local_faces,
         })
     }
     fn buffer_bytes(&self) -> Result<u64, BrowserError> {

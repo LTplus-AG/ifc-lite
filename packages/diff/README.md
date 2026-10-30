@@ -97,7 +97,9 @@ sides, allowing geometry capability abstention to work. Results expose those
 hashes as `undefined`, exactly like stripping in JS first. Mesh hashes, bounding
 boxes, volumes and refs are preserved. Keep the default `false` for symmetric
 pairs, including two placement-only models, to retain placement move detection.
-Resolve capability before exclusions and key deduplication. The option never
+Decide whether to set it from the full inputs, before your exclusions and key
+deduplication; the comparison's own capability check still ignores excluded
+types. The option never
 changes either handle's snapshot. A handle lazily owns a frozen stripped view:
 only placement rows are shallow-copied, refs remain identical, and repeated
 stripped comparisons return the same row objects. Disposal releases both views.

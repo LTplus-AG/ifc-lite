@@ -33,3 +33,18 @@ The API key is stored in the browser's `localStorage`, unencrypted, with no
 expiry. Anything that can execute script in the page (e.g. the viewer's own
 script panel) can read it. Users who want to revoke access should rotate the
 key in Dalux and use the "forget key" action in Source Settings.
+
+### BIMcollab relay
+
+The viewer also serves `/api/bimcollab/*` through the same production-handler
+pattern in Vite and on Vercel. It accepts a caller's OAuth bearer for enumerated
+Documents API reads (`docs/<spaceGuid>/…`), streaming web-app downloads
+(`space/<label>/download/<id>`), and a fixed, paged index request
+(`space/<label>/index?locationId=<id>&projectId=<id>`; project is optional).
+Index results contain only document/version identifiers, names and attachment
+metadata; an index over 5,000 records is an error (never truncated), and an
+unreadable record marks the result `incomplete`. Cookies are never forwarded and responses
+are not cached. `BIMCOLLAB_RELAY_ALLOWED_ORIGINS` overrides the comma-separated
+origin allowlist; defaults include `APP_URL` and registered BIMcollab callback
+origins. Configure a Vercel WAF rate-limit rule on `/api/bimcollab`: holders of
+valid tokens can otherwise consume deployment bandwidth through our egress IPs.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Typed origins retained until the diagnostic boundary; no prose classification.
 use super::super::session_protocol::WorkError;
-use super::runtime::RuntimeFault;
+use super::runtime::{RuntimeFault, RuntimeFaultKind};
 use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReceiptFailure {
@@ -46,11 +46,14 @@ pub enum Unsupported {
     ConstructionRecipe,
     RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs,
     RetainedOpeningStrategy,
-    RetainedMaterialLayerStrategy,
     RetainedStrategy,
 }
 #[derive(Debug)]
 pub enum RetainedExecutionError {
+    LayerStrategy(&'static str),
+    LayerCaps(&'static str),
+    /// The model's band-phase worker allowance is spent; refused before any kernel call.
+    LayerRetirementsExhausted,
     Source(RetainedContextError),
     Core(ifc_lite_core::Error),
     Owner(WorkError),
@@ -64,7 +67,12 @@ pub enum RetainedExecutionError {
     Transition(u8),
     DomainRetired,
     Unsupported(Unsupported),
+    /// #7955 M11-F: a published triangle has no unique source face (`unattributed`/`ambiguous`).
+    FaceProvenance { cause: &'static str, entity: Option<u32> },
     Stopped(ProgramStop),
+    /// A presentation slice (M11) declined to attest the product: explicit
+    /// absence with its typed origin, never a fabricated value.
+    Presentation { refusal: refusal::RetainedProductRefusal, origin: refusal::RefusalOrigin },
     // Refs #7955: D's model driver validates type-product source before admission.
     #[cfg_attr(not(test), allow(dead_code))]
     InvalidTypeSource,
@@ -137,6 +145,30 @@ impl From<u8> for RetainedExecutionError {
 }
 
 impl RetainedExecutionError {
+    /// Settled logical/source/resource refusals can release receipts normally.
+    /// This taxonomy does not establish who retired a worker.
+    pub(super) fn controller_cancelled(&self) -> bool {
+        if let Self::Opening { inner, .. } = self { return inner.controller_cancelled(); }
+        use ifc_lite_geometry::program::transactions::TransactionFailureKind as Kind;
+        use ifc_lite_geometry::document::RetainedRefusal;
+        // A worker resource limit is raised before a request is sent or between
+        // complete pull-based mesh reads, after the worker released its mesh;
+        // it is a settled refusal. A worker that died doing so is still charged
+        // by retirement provenance (model.rs), never by this classification.
+        if matches!(self, Self::Runtime(fault) if fault.kind == RuntimeFaultKind::ResourceLimit) {
+            return true;
+        }
+        matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_)
+            | Self::DeadlineExceeded
+            | Self::Unsupported(_) | Self::InvalidTypeSource
+            | Self::Owner(WorkError::StaleSource | WorkError::Aborted)
+            | Self::Recipe(RetainedRefusal::InvalidSource(_)
+                | RetainedRefusal::UnsupportedSource(_) | RetainedRefusal::SourceNotCaptured))
+            || matches!(self, Self::Common(error) if matches!(error.kind(),
+                Kind::Source | Kind::OperationUnsupported | Kind::Unsupported
+                | Kind::EmptyResult | Kind::Empty | Kind::Incomplete
+                | Kind::Stopped | Kind::DeadlineExceeded))
+    }
     pub(super) fn terminal(&self) -> bool {
         if let Self::Opening { inner, .. } = self { return inner.terminal(); }
         if matches!(self, Self::Runtime(_)) {
@@ -144,7 +176,9 @@ impl RetainedExecutionError {
         }
         matches!(
             self,
-            Self::Stopped(_)
+            Self::LayerStrategy(_)
+                | Self::LayerCaps(_)
+                | Self::Stopped(_)
                 | Self::Source(_)
                 | Self::Core(_)
                 | Self::DomainRetired
@@ -157,7 +191,9 @@ impl RetainedExecutionError {
                 | Self::Transition(CANCELLED)
                 | Self::Owner(WorkError::StaleSource | WorkError::Aborted)
         ) || matches!(self, Self::Common(error) if matches!(error.kind(),
-                ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
+                ifc_lite_geometry::program::transactions::TransactionFailureKind::MaterialLayerStrategy
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::EmptyResult
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::OperationUnsupported
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::DeadlineExceeded
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Unsupported

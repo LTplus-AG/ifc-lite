@@ -21,6 +21,7 @@ fn cube() -> ShapePart {
     // Unit cube with non-binary local offsets, rotated 90° about IFC Z.
     // A whole-metre cube alone would hide the RTC mutation's f32 rounding.
     ShapePart {
+        layer: None, capped_volume_m3: None,
         positions: [
             [0., 0., 0.],
             [1., 0., 0.],
@@ -56,7 +57,9 @@ fn cube() -> ShapePart {
             73.5,
             1.,
         ],
+        halfspace_clipped: false,
         curved: false,
+        revision_local_faces: vec![], normals: None, appearance: None, faces: None, instance_key: None,
     }
 }
 
@@ -118,4 +121,29 @@ fn m2_a_retained_view_preserves_local_precision_axes_and_outward_flat_faces() {
             .sum();
         assert!(dot > 0., "face normal must point away from the cube center");
     }
+}
+
+
+// #7955 M11-0: selecting the optional corner channel never reapplies placement.
+#[test]
+fn m11_corner_normals_are_world_axes_and_none_keeps_the_existing_mesh_bytes() {
+    let mut part = cube();
+    let before = retained_view::view_part(&part, [2_600_000., 1_200_000., 70.]);
+    part.normals = Some([1., 0., 0.].repeat(part.indices.len()));
+    let after = retained_view::view_part(&part, [2_600_000., 1_200_000., 70.]);
+    assert_eq!(after.positions, before.positions);
+    assert_eq!(after.indices, before.indices);
+    assert_eq!(after.origin, before.origin);
+    assert_eq!(after.normals, [1., 0., 0.].repeat(part.indices.len()));
+    let data = ifc_lite_processing::MeshData::new(42, "IfcWall".into(), before.positions.clone(),
+        before.normals.clone(), before.indices.clone(), [1.; 4]).with_origin(before.origin);
+    let old = mesh_boundary::MeshDataJs::new(42, "IfcWall".into(), before, [1.; 4]);
+    let new = mesh_boundary::MeshDataJs::from_mesh_data(data);
+    let bits = |mesh: &mesh_boundary::MeshDataJs| {
+        let (positions, normals, indices, origin) = mesh_boundary::buffers(mesh);
+        (positions.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            normals.iter().map(|v| v.to_bits()).collect::<Vec<_>>(), indices.to_vec(), origin.map(f64::to_bits))
+    };
+    assert_eq!(bits(&old), bits(&new),
+        "the retained constructor migration preserves every position/normal/index/origin bit");
 }

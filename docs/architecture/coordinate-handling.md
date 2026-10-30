@@ -187,6 +187,36 @@ moved onto `detect_rtc_offset_for_file`. The two job-list entry points
 (`detect_rtc_offset_with_fallback`, `detect_rtc_offset_from_jobs`) went in the
 same issue, for the reason on `detect_rtc_offset_for_file` above.
 
+### Direct, element and mapped-source frames
+
+`ItemControl` (`rust/geometry/src/program/item.rs`) receives the offset in the
+item's frame. `raw_item_rtc_file_units` in `router/processing.rs` enables early
+f64 rebasing only with active model RTC and a raw-coordinate first-vertex probe
+that is beyond the large-coordinate threshold and becomes smaller after the
+shift. The processor receives that offset in file units, before f32 narrowing.
+`finish_item_mesh` validates indices, scales to metres and publishes
+object-frame `local_bounds`, reconstructed in f64 and rounded outward to f32.
+The processor's `rtc_applied` flag prevents final placement subtracting twice.
+
+A direct `process_representation_item` call supplies the model RTC offset.
+Product processing first considers `raw_item_element_offset` and
+`element_frame_rtc` (`router/rtc_offset/raw_coordinate.rs`): for raw geometry it
+pulls model RTC through the **inverse linear part** of the scaled element
+placement, so placement of the rebased item yields `M(p) - rtc`. A singular
+linear transform supplies no element-frame offset. The same magnitude test
+still decides whether early rebasing helps; otherwise the item stays in its
+object frame until final placement.
+
+Mapped sources still have mapping and occurrence transforms ahead of them:
+`M(p - rtc)` differs from `M(p) - rtc` when `M` rotates. In
+`program/mapping_accept.rs`, source merges call
+`GeometryRouter::keep_rebase_in_origin` (`router/mapped_item.rs`). For a rebased
+mesh it clears `rtc_applied` and adds the model RTC to `Mesh::origin` in f64,
+leaving the small f32 positions intact. Later transforms carry that origin in
+f64 and final placement subtracts RTC once. This applies to merged, styled and
+textured source items, including shared and type-map sources; an unrebased
+mesh needs no conversion.
+
 ### RTC Detection Logic
 
 Detection is sample-based, not first-element-wins:

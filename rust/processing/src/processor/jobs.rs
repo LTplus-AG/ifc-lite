@@ -4,12 +4,21 @@
 
 //! Per-entity geometry job execution.
 //!
-//! Split out of `processor/mod.rs` (module-size ratchet). `process_entity_job` is
-//! the body of the parallel batch loop's per-element closure — one job = one product,
-//! meshed on a fresh router with the worker's warm CartesianPoint cache moved in and
-//! back out. `build_color_updates_for_jobs` backfills deferred/orphan-type colours.
+//! [`run_job`] is the body of the parallel pass's `map` closure: one job = one
+//! product, meshed on a fresh router with the worker's warm CartesianPoint and
+//! placement caches moved in and back out. Everything it reads is the shared
+//! [`PassContext`]; everything it reports goes to `ctx.diag`.
+//! `build_color_updates_for_jobs` backfills deferred/orphan-type colours.
 
-use super::*;
+use super::color_layer::resolve_element_color_for_product_definition_shape;
+use super::entity_index::ProcessingIndex;
+use super::job::EntityJob;
+use super::pass::PassContext;
+use crate::style::GeometryStyleInfo;
+use crate::types::mesh::MeshData;
+use ifc_lite_core::EntityDecoder;
+use ifc_lite_geometry::{GeometryRouter, RouterConfig};
+use rustc_hash::FxHashMap;
 
 /// Per-rayon-worker CartesianPoint caches: one `FxHashMap` behind a `Mutex` per
 /// worker thread, indexed by `rayon::current_thread_index()`.
@@ -92,65 +101,76 @@ impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
     }
 }
 
-// Carries the full per-job processing context; factoring the args into a struct
-// would not change behavior and is out of scope for the lint gate.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn process_entity_job(
+/// Mesh one job on the calling rayon worker, borrowing that worker's persistent
+/// caches by thread index so a shared point list is parsed once per worker for
+/// the whole model, not per chunk/part. `.map`/`.flatten_iter()` at the call
+/// site keeps the former `flat_map_iter` order; the caches are pure
+/// memoization, so meshes are byte-identical.
+pub(super) fn run_job(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<MeshData> {
+    let widx = rayon::current_thread_index().unwrap_or(0) % ctx.worker_point_caches.len();
+    // `try_lock`, not `lock`: faceted-brep triangulation nests a rayon
+    // `par_iter`, so a worker blocked at that nested join can work-steal
+    // another element job onto its OWN thread index and re-enter here.
+    // `lock()` on the non-reentrant `Mutex` this thread already holds
+    // would self-deadlock (regression from the persistent per-worker
+    // cache). Each slot is a thread's own index, so `try_lock` only ever
+    // fails on that re-entrant steal; the re-entered job uses a throwaway
+    // cache instead. Output is byte-identical: the cache is pure
+    // memoization of deterministic coordinates, so a miss just re-decodes.
+    let mut fallback_cache = FxHashMap::default();
+    let mut slot_guard = ctx.worker_point_caches[widx].try_lock().ok();
+    let worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)> = match slot_guard.as_deref_mut() {
+        Some(cache) => cache,
+        None => &mut fallback_cache,
+    };
+    // Placement-transform slot: the SAME `try_lock` (not `lock`) discipline as
+    // the point cache above (#1587). On a re-entrant steal we fall back to a
+    // throwaway cache; output stays byte-identical since the cache is pure
+    // memoization of a deterministic composition.
+    let mut fallback_placement_cache = FxHashMap::default();
+    let mut placement_slot_guard = ctx.worker_placement_caches[widx].try_lock().ok();
+    let worker_placement_cache: &mut FxHashMap<u32, [f64; 16]> =
+        match placement_slot_guard.as_deref_mut() {
+            Some(cache) => cache,
+            None => &mut fallback_placement_cache,
+        };
+    mesh_job(job, ctx, worker_point_cache, worker_placement_cache)
+}
+
+/// The per-job router: a fresh one at the pass scale, armed with the model-wide
+/// caches (content dedup #1109, brep signatures, IfcMappedItem sources #1623)
+/// and, when enabled, the #1623 Phase 2 don't-bake plan.
+fn job_router(ctx: &PassContext<'_>) -> GeometryRouter {
+    crate::execution::build_router(
+        RouterConfig {
+            unit_scale: ctx.unit_scale,
+            tessellation_quality: ctx.quality,
+            rtc_offset: ctx.rtc_offset,
+            ..RouterConfig::default()
+        },
+        crate::execution::SchedulerPolicy::PerJob,
+        crate::execution::RouterCaches {
+            items: ctx.item_dedup_cache.clone(),
+            brep_signatures: ctx.brep_signature_cache.clone(),
+            mapped_items: ctx.mapped_item_cache.clone(),
+        },
+        ctx.material_layers.clone(),
+        ctx.instancing_plan.as_ref(),
+        ctx.indexed_colour_split_ids.as_ref(),
+    )
+}
+
+fn mesh_job(
     job: &EntityJob,
-    content: &[u8],
-    entity_index_arc: &ProcessingIndex,
-    unit_scale: f64,
-    rtc_offset: (f64, f64, f64),
-    // Pre-resolved scales seeded into this job's decoder so arc tessellation and
-    // unit conversion never trigger a per-element full-file IFCPROJECT scan.
-    seed_plane_angle_to_radians: f64,
-    tessellation_quality: TessellationQuality,
-    // The run's immutable model snapshot (voids, styles, palettes, material
-    // colours, textures and the site-local rotation), shared by every job.
-    production_context: &crate::element::OwnedMeshProductionContext,
-    skipped_entity_ids: &HashSet<u32>,
-    // Every request-local diagnostic sink this job feeds (CSG failures, opening
-    // classification, per-host diagnostics, rect_fast, dropped representation
-    // items, the degenerate backstop, refused oversized refs).
-    diag: &super::diagnostics::DiagnosticCollectors,
-    // Model-wide content-dedup cache shared by every per-job router (#1109).
-    item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
-    brep_signature_cache: &ifc_lite_geometry::SharedBrepSignatureCache,
-    // Model-wide IfcMappedItem source cache so a RepresentationMap source shared
-    // across owning elements is meshed once model-wide, not once per element — #1623.
-    mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
-    // #1623 Phase 2: don't-bake plan (Some only when enabled) armed on this job's
-    // router, + the shared sink for its emitted don't-bake occurrences.
-    instancing_plan: Option<&ifc_lite_geometry::MappedInstancePlan>,
-    // #858: geometry ids of mapped sources carrying an IfcIndexedColourMap (Some only
-    // when the plan is armed AND the model has indexed-colour maps). Armed on this
-    // job's router so such a source materializes flat (per-palette split) instead of
-    // don't-bake, keeping its per-triangle palette.
-    indexed_colour_split_ids: Option<&std::sync::Arc<rustc_hash::FxHashSet<u32>>>,
-    raw_instance_collector: &std::sync::Mutex<Vec<crate::RawInstanceOccurrence>>,
-    // The current rayon worker's PERSISTENT CartesianPoint cache, reused across
-    // every element that worker meshes for the whole model (see the
-    // `worker_point_caches` store at the call site). Moved into this job's decoder
-    // and moved back out afterwards so a shared point list is parsed once per worker
-    // for the entire pass, not once per chunk or once per part.
+    ctx: &PassContext<'_>,
     worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)>,
-    // The current rayon worker's PERSISTENT placement-transform cache, reused
-    // across every element that worker meshes for the whole model (see the
-    // `worker_placement_caches` store at the call site). Moved into this job's
-    // decoder and moved back out afterwards so a placement chain shared by many
-    // elements (storey/building) is composed once per worker, not once per element.
     worker_placement_cache: &mut FxHashMap<u32, [f64; 16]>,
-    // Request-local point-cache hit/miss + faceted-brep-timing sinks (see the
-    // collectors declared before the chunk loop).
-    point_cache_hits_collector: &std::sync::atomic::AtomicU64,
-    point_cache_misses_collector: &std::sync::atomic::AtomicU64,
-    faceted_brep_ns_collector: &std::sync::atomic::AtomicU64,
 ) -> Vec<MeshData> {
-    if skipped_entity_ids.contains(&job.id) {
+    if ctx.skipped_entity_ids.contains(&job.id) {
         return Vec::new();
     }
 
-    let mut local_decoder = entity_index_arc.decoder(content).with_strict_reals(); // #7678
+    let mut local_decoder = ctx.entity_index.decoder(ctx.content).with_strict_reals(); // #7678
     // Adopt this worker's persistent point cache so faceted-brep polyloop points
     // shared across elements are served from memory instead of re-parsed per element.
     local_decoder.set_point_cache(std::mem::take(worker_point_cache));
@@ -160,9 +180,9 @@ pub(super) fn process_entity_job(
     local_decoder.set_placement_transform_cache(std::mem::take(worker_placement_cache));
     // Seed the unit-scale caches so curve/arc processing skips the O(file)
     // IFCPROJECT scan that each fresh per-element decoder would otherwise repeat.
-    local_decoder.seed_unit_scales(unit_scale, seed_plane_angle_to_radians);
+    local_decoder.seed_unit_scales(ctx.unit_scale, ctx.seed_plane_angle_to_radians);
     // From here the decoder is owned by the guard, which writes its (warmer)
-    // point + placement caches back into the worker slots on Drop — so the early
+    // point + placement caches back into the worker slots on Drop, so the early
     // return below, and any panic, still hand the caches to the worker's next element.
     let mut decoder = WorkerCacheGuard {
         decoder: local_decoder,
@@ -170,28 +190,16 @@ pub(super) fn process_entity_job(
         placement_slot: worker_placement_cache,
     };
 
-    let entity = match decoder.decode_at(job.start, job.end) {
+    let span = crate::execution::JobSpan { id: job.id, start: job.start, end: job.end };
+    let entity = match crate::execution::decode_job(&mut decoder, span, crate::execution::SchedulerPolicy::PerJob) {
         Ok(entity) => entity,
-        Err(_) => { diag.note_refused_input(&decoder); return Vec::new() }
+        Err(_) => {
+            ctx.diag.note_refused_input(&decoder);
+            return Vec::new();
+        }
     };
 
-    let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
-    local_router.set_rtc_offset(rtc_offset);
-    local_router.enable_content_dedup_shared(item_dedup_cache.clone());
-    local_router.enable_shared_brep_signature_cache(brep_signature_cache.clone());
-    local_router.enable_shared_mapped_item_cache(mapped_item_cache.clone());
-    // #1623 Phase 2: arm the don't-bake plan so single-solid occurrences of a repeated
-    // mapped source emit instance placeholders instead of full meshes.
-    if let Some(plan) = instancing_plan {
-        local_router.enable_output_instancing(plan.clone());
-        // #858: exclude indexed-colour sources from don't-bake so their per-triangle
-        // palette survives the flat split (only meaningful with the plan armed).
-        if let Some(ids) = indexed_colour_split_ids {
-            local_router.enable_indexed_colour_split_guard(ids.clone());
-        }
-    }
-    let local_router = local_router;
-
+    let local_router = job_router(ctx);
     let metadata = crate::element::ElementMeshMetadata {
         global_id: job.global_id.clone(),
         name: job.name.clone(),
@@ -200,7 +208,7 @@ pub(super) fn process_entity_job(
     };
     // #957: the scan loop plans type geometry with `SuppressInstanced` (see
     // `plan_type_geometry`), so a synthetic job's map always renders as an
-    // orphan — geometry_class 1.
+    // orphan: geometry_class 1.
     let kind = match job.representation_map_id {
         Some(rep_map_id) => crate::element::ElementJobKind::TypeProduct {
             rep_maps: vec![(rep_map_id, 1)],
@@ -208,23 +216,22 @@ pub(super) fn process_entity_job(
         None => crate::element::ElementJobKind::Product,
     };
     // Per-part faceted-brep phase timing (observability only; Instant traps on
-    // wasm32). Attributed below to `faceted_brep_ns_collector` for parts that
-    // actually touched the point cache (i.e. faceted breps), mirroring the
-    // diag.rs feature-off byte-identity policy.
+    // wasm32), attributed by `note_point_cache` to parts that touched the point
+    // cache (i.e. faceted breps).
     #[cfg(all(feature = "observability", not(target_arch = "wasm32")))]
     let brep_timer = std::time::Instant::now();
 
     let produced = crate::element::produce_element_meshes_owned(
         &crate::element::ElementMeshJob {
             id: job.id,
-            ifc_type: job.ifc_type.clone(),
+            ifc_type: crate::execution::job_type(&entity, ctx.content, span, Some(&job.ifc_type)),
             entity: &entity,
             kind,
             element_color: Some(job.element_color),
             metadata: Some(&metadata),
         },
-        production_context,
-        // Geometry hashing is a viewer diff feature — off on the native path.
+        ctx.run.context(),
+        // Geometry hashing is a viewer diff feature: off on the native path.
         &crate::element::MeshProductionOptions::default(),
         // Deref-coerces &mut WorkerCacheGuard -> &mut EntityDecoder.
         &mut decoder,
@@ -236,107 +243,25 @@ pub(super) fn process_entity_job(
         return super::run_snapshot::refused_by_context();
     };
 
-    diag.drain_job(job.id, &local_router, &decoder, &produced);
+    // The warm cache is moved back to the worker by `WorkerCacheGuard::drop`, on
+    // every exit path.
+    ctx.diag
+        .drain_job(job.id, &local_router, &decoder, &produced);
 
-    // Fold this element's point-cache activity into the pass tallies. The warm
-    // cache is moved back to the worker by `WorkerCacheGuard::drop`, on every
-    // exit path. `hits + misses > 0` means this element was a faceted brep that
-    // walked polyloops.
-    let (part_hits, part_misses) = decoder.point_cache_stats();
-    if part_hits + part_misses > 0 {
-        use std::sync::atomic::Ordering::Relaxed;
-        point_cache_hits_collector.fetch_add(part_hits, Relaxed);
-        point_cache_misses_collector.fetch_add(part_misses, Relaxed);
-        // Faceted-brep wall time is measured only under `observability` (Instant
-        // traps on wasm32); the timer/log block compiles out entirely with the
-        // feature off, so default builds stay byte-identical. Adding a 0 ns delta
-        // in that case keeps `faceted_brep_ns_collector` always-used.
+    ctx.diag.note_point_cache(
+        job.id,
+        decoder.point_cache_stats(),
         #[cfg(all(feature = "observability", not(target_arch = "wasm32")))]
-        {
-            let elapsed_ns = brep_timer.elapsed().as_nanos() as u64;
-            faceted_brep_ns_collector.fetch_add(elapsed_ns, Relaxed);
-            // Under `observability` this is what the geometry crate's `diag_debug!`
-            // expands to (`tracing::debug!`).
-            tracing::debug!(
-                element_id = job.id,
-                point_cache_hits = part_hits,
-                point_cache_misses = part_misses,
-                faceted_brep_us = elapsed_ns / 1000,
-                "faceted-brep part meshed"
-            );
-        }
-        #[cfg(not(all(feature = "observability", not(target_arch = "wasm32"))))]
-        faceted_brep_ns_collector.fetch_add(0, Relaxed);
-    }
+        brep_timer,
+    );
+    ctx.diag
+        .absorb_produced(produced.degenerate_triangles_dropped, produced.csg_failures);
+    ctx.diag.drain_router(&local_router);
 
-    // Fold this element's degenerate-backstop drops into the pass tally.
-    if produced.degenerate_triangles_dropped > 0 {
-        diag.backstop.fetch_add(
-            produced.degenerate_triangles_dropped,
-            std::sync::atomic::Ordering::Relaxed,
-        );
-    }
-
-    // Surface this element's CSG diagnostics in the shared collector. The
-    // wasm path logs them in the browser console; without this the server
-    // would silently discard every failed opening cut.
-    if !produced.csg_failures.is_empty() {
-        if let Ok(mut collector) = diag.csg_failures.lock() {
-            for (product_id, fails) in produced.csg_failures {
-                collector.entry(product_id).or_default().extend(fails);
-            }
-        }
-    }
-
-    // Drain this job's router opening diagnostics (classification counts +
-    // per-host detail) and merge them. Each job uses a FRESH router that
-    // processed exactly this one element, so the drained values are this
-    // element's only — summing across jobs mirrors the wasm batch router's
-    // accumulate-then-drain, giving the same GeometryDiagnostics counts.
-    let cls = local_router.take_classification_stats();
-    if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
-        if let Ok(mut acc) = diag.classification.lock() {
-            acc.rectangular += cls.rectangular;
-            acc.diagonal += cls.diagonal;
-            acc.non_rectangular += cls.non_rectangular;
-        }
-    }
-    let host_diags = local_router.take_host_opening_diagnostics();
-    if !host_diags.is_empty() {
-        if let Ok(mut acc) = diag.host_diags.lock() {
-            // Product ids are disjoint across jobs (one product = one job), so this
-            // is an insert; `extend` is robust if that ever changes.
-            acc.extend(host_diags);
-        }
-    }
-    // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
-    let oversized_refs = local_router.take_content_hash_oversized_ref_drops() as u64;
-    diag.oversized_ref_drops.fetch_add(oversized_refs, std::sync::atomic::Ordering::Relaxed);
-    // Drain this job's router rect_fast counters into the request-local collector
-    // (process-global counters are gone — see GeometryRouter::record_rect_fast).
-    let rf = local_router.take_rect_fast_stats();
-    if rf.fired != 0
-        || rf.openings_cut != 0
-        || rf.defer_host_not_box != 0
-        || rf.defer_not_through != 0
-        || rf.defer_off_face != 0
-        || rf.defer_near_edge != 0
-        || rf.defer_no_openings != 0
-    {
-        if let Ok(mut acc) = diag.rect_fast.lock() {
-            acc.fired += rf.fired;
-            acc.openings_cut += rf.openings_cut;
-            acc.defer_host_not_box += rf.defer_host_not_box;
-            acc.defer_not_through += rf.defer_not_through;
-            acc.defer_off_face += rf.defer_off_face;
-            acc.defer_near_edge += rf.defer_near_edge;
-            acc.defer_no_openings += rf.defer_no_openings;
-        }
-    }
-
-    // Hand don't-bake occurrences to finalization (#1623).
+    // #1623 Phase 2: hand this element's don't-bake occurrences to the shared
+    // collector (resolved into InstanceRecords later; empty on the flat path).
     if !produced.instance_occurrences.is_empty() {
-        if let Ok(mut acc) = raw_instance_collector.lock() {
+        if let Ok(mut acc) = ctx.raw_instance_collector.lock() {
             acc.extend(produced.instance_occurrences);
         }
     }

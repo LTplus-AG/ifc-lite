@@ -35,7 +35,10 @@ pub fn expectations(
             }
         }
         if !cuts.is_empty() {
-            result.insert(host, openings::expected(sources, host, &cuts));
+            let expected = openings::expected(sources, host, &cuts).or_else(|| {
+                ifc_lite_retained_native::oracle::mapped::opened(bytes, host, &cuts)
+            });
+            result.insert(host, expected);
         }
     }
     Ok(result)
@@ -63,7 +66,7 @@ pub fn check_opened(
 }
 /// A preregistered tolerance; a missing or renamed key is a harness bug, never
 /// a silent zero.
-fn tolerance(t: &Value, key: &str, field: &str) -> f64 {
+pub fn tolerance(t: &Value, key: &str, field: &str) -> f64 {
     t[key][field]
         .as_f64()
         .unwrap_or_else(|| panic!("tolerances.json lacks preregistered {key}.{field}"))
@@ -105,6 +108,26 @@ pub fn check(
 mod tests {
     use super::*;
     #[test]
+    fn m7_mapped_boolean_opening_has_a_gated_source_expectation() {
+        // #7955: M3-A publishes the mapped Boolean host; the corpus gate must
+        // check its post-cut volume and reject a runtime that omits the cut.
+        let bytes = include_bytes!("../../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(bytes, None);
+        let expectations = expectations(bytes, &sources).unwrap();
+        let expected = expectations.get(&181).unwrap().as_ref().unwrap();
+        assert!((expected.result_volume.unwrap() - 5.186).abs() < 1e-12);
+        let actual = super::super::metrics::Metrics {
+            volume: 5.25,
+            area: 0.,
+            bbox: [0., 0., 0., 2., 1., 3.],
+            defects: 0,
+            ..Default::default()
+        };
+        let mut violations = Vec::new();
+        check_opened("e13", &actual, Some(expected), &crate::tolerances::registered().unwrap(), &mut violations);
+        assert!(!violations.is_empty());
+    }
+    #[test]
     fn m3_source_gates_detect_cut_errors_and_allow_shrunken_bbox() {
         let t = crate::tolerances::registered().unwrap();
         // Hand box: host 4*2*3=24, cutter 1*2*1=2, remaining 22.
@@ -120,6 +143,7 @@ mod tests {
             area: 0.,
             bbox: [0.1, 0., 0., 3.9, 2., 3.],
             defects: 0,
+            ..Default::default()
         };
         let mut violations = Vec::new();
         assert_eq!(check("box", &m, &e, &t, &mut violations), Some(0.));
@@ -137,6 +161,7 @@ mod tests {
             area: 0.,
             bbox: [0., 0., 0., 4., 2., 3.],
             defects: 0,
+            ..Default::default()
         };
         let mut violations = Vec::new();
         assert_eq!(check_opened("brep", &m, None, &t, &mut violations), None);

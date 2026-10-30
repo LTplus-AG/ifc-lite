@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
+index f9c7e696ba..27aa883ab0 100644
+--- b/packages/extensions/src/authority/resolve.ts
++++ a/packages/extensions/src/authority/resolve.ts
+@@ -106,7 +106,7 @@ export function resolveAttribute<O extends Opinion>(
+     return { ...base, state: 'unconfirmed', shown: strongest, dissent: [] };
+   }
+ 
+-  const shown = opinions[opinions.length - 1];
++  const shown = authoritative[authoritative.length - 1];
+   const shownKey = canonicalValueKey(shown.value);
+   const dissent = opinions.filter((o) => !isAuthoritative(o) && canonicalValueKey(o.value) !== shownKey);
+   if (distinctValues(authoritative) > 1) return { ...base, state: 'authority-split', shown, dissent };

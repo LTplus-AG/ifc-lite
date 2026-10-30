@@ -6,15 +6,26 @@ use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub struct Report {
+    pub layers: super::layer_report::LayerReport,
     pub candidates: usize,
     pub published: usize,
+    pub normal_planar_fallbacks: usize,
+    pub type_candidates: usize,
+    pub type_published: usize,
     pub histogram: BTreeMap<String, usize>,
     pub violations: Vec<String>,
+    pub exact_defects: Vec<Value>,
+    pub exact_waivers: Vec<Value>,
     pub universe_mismatch: Vec<String>,
     pub skipped: Vec<String>,
     pub maxima: [f64; 4],
     pub cuts: u64,
+    pub layered_products: usize,
+    pub bands: usize,
+    pub band_ms: f64,
+    pub cap_ms: f64,
     pub cut_times_ms: Vec<f64>,
+    pub oracle_maxima: BTreeMap<String, f64>,
     pub exact_ms: f64,
     pub retained_ms: f64,
     pub startup_ms: f64,
@@ -23,6 +34,8 @@ pub struct Report {
     pub coverage: Vec<String>,
     pub models: Vec<Value>,
     pub exact_only_type_products: Vec<Value>,
+    /// M11-F report-only projection rows (`checks::faces::exact_projection`).
+    pub face_projection: Vec<Value>,
 }
 impl Report {
     // One comparison row combines both independently measured sides and source expectations.
@@ -38,21 +51,40 @@ impl Report {
         tolerances: &Value,
         ms: f64,
         opening: Option<&Option<ifc_lite_retained_native::oracle::openings::OpeningExpectation>>,
+        sources: &super::checks::SourceContext<'_>,
+        exact_report_only: bool,
+        bytes: &[u8],
     ) {
         self.published += 1;
+        let bands=shape.parts.iter().filter(|p|p.layer.is_some()).count();
+        self.layered_products+=usize::from(bands>0); self.bands+=bands;
+        self.band_ms+=shape.band_ms; self.cap_ms+=shape.cap_ms;
+        self.normal_planar_fallbacks += shape.normal_planar_fallbacks;
         self.cuts += shape.cuts;
         self.cut_times_ms.extend_from_slice(&shape.cut_times_ms);
+        let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
+        self.type_published += usize::from(type_product);
         let curved = shape.parts.iter().any(|p| p.curved);
+        let results = super::checks::check(shape, sources, bytes, tolerances);
+        let authorities: Vec<_> = results.iter().filter_map(|r| r.authority).collect();
+        let authority = authorities.first();
+        if authorities.iter().any(|a| authority.is_some_and(|first|
+            a.volume != first.volume || a.bbox != first.bbox || a.curved != first.curved)) {
+            self.violations.push(format!("{model}:{}: conflicting source authorities", shape.product_id));
+        }
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             &format!("{model}:{}", shape.product_id),
-            curved || opening.is_some(),
+            authority.map_or(curved || opening.is_some(), |a| a.curved),
+            type_product,
             actual,
             rounded,
             exact,
-            if opening.is_some() { None } else { source },
+            authority.map(|a| (a.volume, a.bbox)).or(if opening.is_some() { None } else { source }),
             tolerances,
+            exact_report_only,
         );
         let cut_rel = opening.and_then(|e| {
+            if let Some(authority) = authority { return Some(relative(actual.volume, authority.volume)); }
             super::openings::check_opened(
                 &format!("{model}:{}", shape.product_id),
                 actual,
@@ -77,6 +109,14 @@ impl Report {
             shape.cuts, shape.cut_times_ms.iter().sum::<f64>(), shape.consumed_parts,
             format(cut_rel)
         ));
+        for result in &results {
+            let maximum = self.oracle_maxima.entry(result.family.into()).or_default();
+            *maximum = maximum.max(if result.value.is_finite() { result.value } else { f64::INFINITY });
+            if result.gated && (!result.pass || !result.value.is_finite() || !result.limit.is_finite()) {
+                self.violations.push(format!("{model}:{}: {} source oracle failed", shape.product_id, result.family));
+            }
+        }
+        self.rows.last_mut().unwrap().push_str(&format!("\t{}", serde_json::to_string(&results.iter().map(|r| json!({"family":r.family,"value":r.value,"limit":r.limit,"pass":r.pass,"gated":r.gated,"sourceCurved":r.clip_part.as_ref().map(|p|p.curved).or(r.authority.map(|a|a.curved)),"part":r.clip_part.as_ref().map(|p|p.index),"clipExecuted":r.clip_part.as_ref().map(|p|p.executed)})).collect::<Vec<_>>()).expect("oracle results serialize")));
         self.coverage
             .push(format!("{model}\t{}\tpublished\t", shape.product_id));
     }
@@ -87,13 +127,16 @@ impl Report {
         &mut self,
         label: &str,
         curved: bool,
+        type_product: bool,
         actual: &Metrics,
         rounded: Option<&Metrics>,
         exact: Option<&Metrics>,
         source: Option<(f64, Option<[f64; 6]>)>,
         tolerances: &Value,
+        exact_report_only: bool,
     ) -> [Option<f64>; 5] {
         let source_rel = source.as_ref().map(|(v, _)| relative(actual.volume, *v));
+        let exact_source_rel = exact.zip(source).map(|(e, (v, _))| relative(e.volume, v));
         let vol = exact
             .zip(rounded)
             .map(|(e, a)| relative(a.volume, e.volume));
@@ -126,6 +169,7 @@ impl Report {
         // report-only for finite deviations, never for invalid arithmetic.
         for (name, value) in [
             ("source volume", source_rel),
+            ("exact source volume", exact_source_rel),
             ("exact volume", vol),
             ("exact area", area),
             ("exact bbox", bbox),
@@ -156,9 +200,11 @@ impl Report {
         if let Some(value) = source_rel {
             let key = if curved { "curved" } else { "linear" };
             if value
-                > tolerances["sourceVolumeRelative"][key]
-                    .as_f64()
-                    .unwrap_or(0.)
+                > super::openings::tolerance(
+                    tolerances,
+                    if type_product { "typeProductSourceVolumeRelative" } else { "sourceVolumeRelative" },
+                    key,
+                )
             {
                 self.violations
                     .push(format!("{label}: source volume deviation {value}"));
@@ -166,20 +212,45 @@ impl Report {
         }
         if let Some((_, Some(bounds))) = source {
             let extent = (0..3).map(|i| bounds[i + 3] - bounds[i]).fold(0., f64::max);
-            let limit = tolerances["sourceWorldBboxMetres"]["absolute"]
-                .as_f64()
-                .unwrap_or(0.)
-                + extent
-                    * tolerances["sourceWorldBboxMetres"]["extentFactor"]
-                        .as_f64()
-                        .unwrap_or(0.);
+            // A missing or renamed preregistered key panics, never reads as 0.
+            let bbox_key = if type_product { "typeProductSourceWorldBboxMetres" } else { "sourceWorldBboxMetres" };
+            let limit = super::openings::tolerance(tolerances, bbox_key, "absolute")
+                + extent * super::openings::tolerance(tolerances, bbox_key, "extentFactor");
             let deviation = bbox_deviation(&actual.bbox, &bounds);
             if deviation > limit {
                 self.violations
                     .push(format!("{label}: source bbox deviation {deviation}"));
             }
         }
-        if !curved {
+        // #7955, CUT-0 Round 3 orchestrator ruling (2026-10-27): the
+        // independent source oracle outranks an exact mesh that it disproves.
+        // Source, closure and finite-arithmetic checks above remain mandatory.
+        let source_limit = tolerances["sourceVolumeRelative"][if curved { "curved" } else { "linear" }]
+            .as_f64().unwrap_or(0.);
+        let exact_limit = tolerances["exactLinear"]["volumeRelative"].as_f64().unwrap_or(0.);
+        let exact_defect = !curved && source_rel.zip(exact_source_rel).is_some_and(|(r, e)| {
+            r.is_finite() && e.is_finite() && r <= source_limit && e > exact_limit
+        });
+        if exact_defect {
+            self.exact_defects.push(json!({
+                "classification": "exact_defect", "product": label,
+                "sourceVolumeM3": source.map(|(v, _)| v),
+                "retainedVolumeM3": actual.volume, "exactVolumeM3": exact.map(|e| e.volume),
+                "retainedVsSourceVolumeRelative": source_rel,
+                "exactVsSourceVolumeRelative": exact_source_rel,
+                "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
+                "sourceVolumeRelativeLimit": source_limit, "exactVolumeRelativeLimit": exact_limit,
+            }));
+        }
+        // The waiver is audit-visible: which products skipped the exact gate and
+        // by how much they deviated, so it cannot hide a regression.
+        if exact_report_only && !curved && !type_product && !exact_defect {
+            self.exact_waivers.push(json!({
+                "classification": "exact_report_only", "product": label,
+                "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
+            }));
+        }
+        if !curved && !type_product && !exact_defect && !exact_report_only {
             for (value, key) in [
                 (vol, "volumeRelative"),
                 (area, "areaRelative"),
@@ -196,11 +267,13 @@ impl Report {
     }
     pub fn summary(&self) -> Value {
         json!({"schema":"ifc-lite.native-retained-comparison/1", "candidates":self.candidates,
-            "published":self.published, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
+            "typeProducts":{"candidates":self.type_candidates,"published":self.type_published},
+            "published":self.published,"layeredProducts":self.layered_products,"bands":self.bands,"bandMs":self.band_ms,"capMs":self.cap_ms, "normalPlanarFallbacks":self.normal_planar_fallbacks, "coveragePercent":if self.candidates == 0 { 0. } else { 100.*self.published as f64/self.candidates as f64 },
             "byCode":self.histogram, "cuts":self.cuts, "cutTimesMs":self.cut_times_ms, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
-            "violations":self.violations,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
-            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
+            "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
+            "layers":self.layers.summary(), "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
+            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }
 fn finite(v: f64) -> Value {

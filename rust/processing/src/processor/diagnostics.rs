@@ -10,7 +10,7 @@
 //! together, filled by every job, drained together at the end), and keeping
 //! them in the pipeline function is what pushed that file past its module-size
 //! budget when #3691's counter was added. Bundling them also collapses seven
-//! `process_entity_job` parameters into one, which is the same subject seen
+//! `run_job` parameters into one, which is the same subject seen
 //! from the job side.
 
 use rustc_hash::FxHashMap;
@@ -47,6 +47,15 @@ pub(super) struct DiagnosticCollectors {
     /// Elements whose geometry read a record refused by input admission
     /// (#7678, D3's refused-element counter).
     pub(super) refused_input: std::sync::atomic::AtomicU64,
+    /// Per-part point-cache instrumentation (feeds `ProcessingStats` and,
+    /// through it, `PipelineDiagnostics`). `hits`/`misses` count CartesianPoints
+    /// served by `EntityDecoder::get_polyloop_coords_cached` across every
+    /// faceted part; a non-zero `hits` proves the per-worker cache memoized
+    /// points ACROSS elements. `faceted_brep_ns` is summed only under the
+    /// `observability` feature (native), since `std::time::Instant` traps on wasm32.
+    pub(super) point_cache_hits: std::sync::atomic::AtomicU64,
+    pub(super) point_cache_misses: std::sync::atomic::AtomicU64,
+    pub(super) faceted_brep_ns: std::sync::atomic::AtomicU64,
 }
 
 impl DiagnosticCollectors {
@@ -61,6 +70,126 @@ impl DiagnosticCollectors {
             backstop: std::sync::atomic::AtomicU64::new(0),
             oversized_ref_drops: std::sync::atomic::AtomicU64::new(0),
             refused_input: std::sync::atomic::AtomicU64::new(0),
+            point_cache_hits: std::sync::atomic::AtomicU64::new(0),
+            point_cache_misses: std::sync::atomic::AtomicU64::new(0),
+            faceted_brep_ns: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Fold one element's point-cache activity into the pass tallies.
+    /// `hits + misses > 0` means the element was a faceted brep that walked
+    /// polyloops. `brep_timer` is the element's start, kept only under
+    /// `observability`, since `Instant` traps on wasm32.
+    pub(super) fn note_point_cache(
+        &self,
+        element_id: u32,
+        (part_hits, part_misses): (u64, u64),
+        #[cfg(all(feature = "observability", not(target_arch = "wasm32")))]
+        brep_timer: std::time::Instant,
+    ) {
+        if part_hits + part_misses == 0 {
+            return;
+        }
+        use std::sync::atomic::Ordering::Relaxed;
+        self.point_cache_hits.fetch_add(part_hits, Relaxed);
+        self.point_cache_misses.fetch_add(part_misses, Relaxed);
+        // Faceted-brep wall time is measured only under `observability`; the
+        // timer/log block compiles out entirely with the feature off, so default
+        // builds stay byte-identical. Adding a 0 ns delta in that case keeps
+        // `faceted_brep_ns` always-used.
+        #[cfg(all(feature = "observability", not(target_arch = "wasm32")))]
+        {
+            let elapsed_ns = brep_timer.elapsed().as_nanos() as u64;
+            self.faceted_brep_ns.fetch_add(elapsed_ns, Relaxed);
+            // Under `observability` this is what the geometry crate's `diag_debug!`
+            // expands to (`tracing::debug!`).
+            tracing::debug!(target: "ifc_lite_processing::processor::jobs",
+                element_id,
+                point_cache_hits = part_hits,
+                point_cache_misses = part_misses,
+                faceted_brep_us = elapsed_ns / 1000,
+                "faceted-brep part meshed"
+            );
+        }
+        #[cfg(not(all(feature = "observability", not(target_arch = "wasm32"))))]
+        {
+            let _ = element_id;
+            self.faceted_brep_ns.fetch_add(0, Relaxed);
+        }
+    }
+
+    /// Fold one element's degenerate-backstop drops and CSG diagnostics into the
+    /// pass tallies. The wasm path logs the CSG failures in the browser console;
+    /// without this the server would silently discard every failed opening cut.
+    pub(super) fn absorb_produced(
+        &self,
+        degenerate_triangles_dropped: u64,
+        csg_failures: FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
+    ) {
+        if degenerate_triangles_dropped > 0 {
+            self.backstop.fetch_add(
+                degenerate_triangles_dropped,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
+        if !csg_failures.is_empty() {
+            if let Ok(mut collector) = self.csg_failures.lock() {
+                for (product_id, fails) in csg_failures {
+                    collector.entry(product_id).or_default().extend(fails);
+                }
+            }
+        }
+    }
+
+    /// Drain a per-job router's opening diagnostics (classification counts +
+    /// per-host detail), the content-hash oversized-ref refusals and the
+    /// rect_fast counters. Each job uses a FRESH router that processed exactly
+    /// this one element, so the drained values are this element's only; summing
+    /// across jobs mirrors the wasm batch router's accumulate-then-drain, giving
+    /// the same GeometryDiagnostics counts.
+    pub(super) fn drain_router(&self, router: &ifc_lite_geometry::GeometryRouter) {
+        let drain = crate::execution::RouterDrain::take(router);
+        let cls = drain.classification;
+        if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
+            if let Ok(mut acc) = self.classification.lock() {
+                acc.rectangular += cls.rectangular;
+                acc.diagonal += cls.diagonal;
+                acc.non_rectangular += cls.non_rectangular;
+            }
+        }
+        let host_diags = drain.hosts;
+        if !host_diags.is_empty() {
+            if let Ok(mut acc) = self.host_diags.lock() {
+                // Product ids are disjoint across jobs (one product = one job), so
+                // this is an insert; `extend` is robust if that ever changes.
+                acc.extend(host_diags);
+            }
+        }
+        // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
+        let oversized_refs = drain.oversized_refs;
+        self.oversized_ref_drops
+            .fetch_add(oversized_refs, std::sync::atomic::Ordering::Relaxed);
+        // Drain this job's router rect_fast counters into the request-local
+        // collector (process-global counters are gone; see
+        // GeometryRouter::record_rect_fast).
+        let rf = drain.rect_fast;
+        if rf.fired != 0
+            || rf.openings_cut != 0
+            || rf.defer_host_not_box != 0
+            || rf.defer_not_through != 0
+            || rf.defer_off_face != 0
+            || rf.defer_near_edge != 0
+            || rf.defer_no_openings != 0
+        {
+            if let Ok(mut acc) = self.rect_fast.lock() {
+                acc.fired += rf.fired;
+                acc.openings_cut += rf.openings_cut;
+                acc.defer_host_not_box += rf.defer_host_not_box;
+                acc.defer_not_through += rf.defer_not_through;
+                acc.defer_off_face += rf.defer_off_face;
+                acc.defer_near_edge += rf.defer_near_edge;
+                acc.defer_no_openings += rf.defer_no_openings;
+            }
         }
     }
 
@@ -111,7 +240,11 @@ pub(super) fn unit_metadata(units: &crate::prepass::UnitScales, unit_scale: f64)
 /// The pass router at the geometry scale, refused with the length unit, so no
 /// site or building placement it resolves reads file units as metres (#7678).
 pub(super) fn unit_router(units: &crate::prepass::UnitScales) -> ifc_lite_geometry::GeometryRouter {
-    let mut router = ifc_lite_geometry::GeometryRouter::with_scale(units.geometry_length_scale());
+    let mut router =
+        ifc_lite_geometry::GeometryRouter::from_config(ifc_lite_geometry::RouterConfig {
+            unit_scale: units.geometry_length_scale(),
+            ..Default::default()
+        });
     if units.length_unit_refused.is_some() {
         router.refuse_length_unit();
     }

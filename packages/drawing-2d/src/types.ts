@@ -785,12 +785,11 @@ export interface EntityMetadata {
   /** IFC type name */
   ifcType: string;
   /** 3D bounding box */
-  bounds?: {
-    min: Vec3;
-    max: Vec3;
-  };
+  bounds?: { min: Vec3; max: Vec3 };
   /** Property set values (for door operation, etc.) */
   properties?: Record<string, unknown>;
+  /** Host-supplied `OperationType` of the element's type (`IfcDoorType`; `IfcDoorStyle` in IFC2X3), used when a door's own is NOTDEFINED or absent. drawing-2d does not resolve `IfcRelDefinesByType`. */
+  typeOperationType?: string;
 }
 
 /**

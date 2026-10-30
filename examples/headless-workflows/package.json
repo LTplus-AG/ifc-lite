@@ -11,6 +11,9 @@
     "extract:dev": "tsx --tsconfig test/tsconfig.json src/extract.mts"
   },
   "dependencies": {
+    "@ifc-lite/extensions": "workspace:^",
+    "@ifc-lite/flow": "workspace:^",
+    "@ifc-lite/flow-nodes": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/geometry": "workspace:^"

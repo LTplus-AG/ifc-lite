@@ -48,12 +48,12 @@
    168 rust/geometry/src/router/voids/aabb_clip.rs Execution::triangle_intersects_box
    715 rust/geometry/src/router/voids/mod.rs Execution::apply_void_context_inner
    182 rust/geometry/src/router/voids/mod.rs Execution::try_cut_wall_local_frame
-   306 rust/geometry/src/router/voids/prism_cut.rs Execution::try_prism_cut
+   297 rust/geometry/src/router/voids/prism_cut.rs Execution::try_prism_cut
    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
-   193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
-   214 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction
-   168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
+   185 rust/geometry/src/router/voids/prism_cut.rs detect_prism
+   197 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction
+   163 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
    159 rust/geometry/src/space_dcel/arrangement.rs Arrangement::resolve
    164 rust/landxml/src/parser/capture.rs TinHandler::finish_capture
@@ -67,11 +67,9 @@
    250 rust/processing/src/appearance/pdf_fill.rs plan_pdf_fill_annotation_with_clip
    158 rust/processing/src/appearance/transfer_points.rs PointSurface::observe
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
-   248 rust/processing/src/processor/jobs.rs process_entity_job
-   746 rust/processing/src/processor/mod.rs process
    165 rust/processing/src/simplify_session.rs simplify_element
    296 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
-   296 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
+   274 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
    158 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::process_geometry_batch_partitioned
-   589 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
-   563 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl
+   313 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
+   504 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl

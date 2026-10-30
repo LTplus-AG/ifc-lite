@@ -13,6 +13,7 @@ use ifc_lite_core::parser::StepRecord;
 /// class byte was computed at shard-scan time from the SAME predicates the
 /// serial loop matches on, so filling these from the columns reproduces the
 /// serial discovery byte-for-byte — without re-walking the file.
+#[derive(Default)]
 pub(super) struct ColumnsDiscovery {
     pub buffered_jobs: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
     pub total_jobs: u32,
@@ -24,10 +25,58 @@ pub(super) struct ColumnsDiscovery {
     pub has_layer_set: bool,
 }
 
+impl ColumnsDiscovery {
+    /// The serial path emits meta at the 50th accepted job, before EOF or a
+    /// late project. Columns already have a full index and use tail meta.
+    pub(super) fn early_meta_end(&self, emitted: bool) -> Option<usize> {
+        if !emitted && self.buffered_jobs.len() >= 50 {
+            self.buffered_jobs.last().map(|job| job.2)
+        } else {
+            None
+        }
+    }
+
+    /// Browser scheduling decorates the shared collector without changing its order.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn observe(
+        &mut self,
+        shared: &mut ifc_lite_processing::discovery::Discovery,
+        content: &[u8],
+        id: u32,
+        kw: &str,
+        start: usize,
+        end: usize,
+        disabled: &rustc_hash::FxHashSet<String>,
+    ) {
+        use ifc_lite_processing::scan::ScanClass;
+        let class = ScanClass::classify(kw);
+        let job = shared.observe_browser(content, class, id, kw, start, end);
+        self.project_id = shared.project_id;
+        if class == ScanClass::Site {
+            self.site_position.get_or_insert((id, start, end));
+        }
+        if class == ScanClass::MappedItem {
+            self.mapped_item_spans.push((id, start, end));
+        }
+        if class == ScanClass::MaterialLayerSet {
+            self.has_layer_set = true;
+        }
+        if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
+            self.type_candidate_spans.push((id, start, end, ty));
+        }
+        if let Some(ty) = job {
+            if !is_disabled(disabled, kw) {
+                self.buffered_jobs.push((id, start, end, ty));
+                self.total_jobs += 1;
+            }
+        }
+    }
+}
+
 /// The raw STEP keyword at a record start (`#id=KEYWORD(...`), read through
 /// core's [`StepRecord`] so trivia between the `=` and the keyword (`#1= /*c*/
-/// IFCWALL(`) is skipped. Only called for the few records that need it
-/// (geometry jobs + type candidates), never for the 19M-entity bulk. A span
+/// IFCWALL(`) is skipped. Only geometry/type flag rows need a keyword; named class rows
+/// and unclassified records are skipped without inspecting their bytes. A span
 /// outside `content` (columns stitched against a different buffer) yields
 /// `""`, like a record with no keyword.
 fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
@@ -54,8 +103,8 @@ pub(super) fn is_disabled(disabled_types: &rustc_hash::FxHashSet<String>, kw: &s
 }
 
 /// Walk the stitched (file-ordered) class columns and reproduce the serial
-/// pre-pass scan's discovery. `disabled_types` (rare) forces a keyword parse
-/// per flagged geometry record; the empty default never touches the bytes.
+/// pre-pass scan's discovery through the shared collector. Class bytes select
+/// the relevant rows; keyword parsing preserves schema labels and filtering.
 pub(super) fn discover_from_columns(
     content: &[u8],
     ids: &[u32],
@@ -64,111 +113,56 @@ pub(super) fn discover_from_columns(
     classes: &[u8],
     disabled_types: &rustc_hash::FxHashSet<String>,
 ) -> ColumnsDiscovery {
-    use ifc_lite_processing as p;
-    let mut d = ColumnsDiscovery {
-        buffered_jobs: Vec::new(),
-        total_jobs: 0,
-        project_id: None,
-        site_position: None,
-        prepass_spans: p::prepass::PrepassSpans::default(),
-        mapped_item_spans: Vec::new(),
-        type_candidate_spans: Vec::new(),
-        has_layer_set: false,
-    };
-    // Zipped, so a short column ends the walk rather than trapping the worker.
+    let mut d = ColumnsDiscovery::default();
+    // Preserve shard/file order, including duplicate ids, before index sorting.
     for (((&id, &start), &length), &class) in ids.iter().zip(starts).zip(lengths).zip(classes) {
-        if class == p::PREPASS_CLASS_NONE {
+        if class == ifc_lite_processing::PREPASS_CLASS_NONE {
             continue;
         }
         let start = start as usize;
-        // Saturating: `+` wraps on wasm32 release builds (no overflow checks).
         let end = start.saturating_add(length as usize);
-        match class & p::PREPASS_CLASS_CODE_MASK {
-            c if c == p::PREPASS_CLASS_PROJECT => {
-                if d.project_id.is_none() {
-                    d.project_id = Some(id);
-                }
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_SITE => {
-                if d.site_position.is_none() {
-                    d.site_position = Some((id, start, end));
-                }
-                if !is_disabled(disabled_types, "IFCSITE") {
-                    d.buffered_jobs.push((id, start, end, ifc_lite_core::IfcType::IfcSite));
-                    d.total_jobs += 1;
-                }
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_STYLED_ITEM => {
-                d.prepass_spans.styled_items.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_INDEXED_COLOUR_MAP => {
-                d.prepass_spans.indexed_colour_maps.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_MATERIAL_DEF_REPR => {
-                d.prepass_spans.material_def_reprs.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_REL_ASSOCIATES_MATERIAL => {
-                d.prepass_spans.rel_associates_material.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_REL_VOIDS => {
-                d.prepass_spans.void_rels.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_REL_FILLS => {
-                d.prepass_spans.fills_rels.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_REL_AGGREGATES => {
-                d.prepass_spans.aggregate_rels.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_MATERIAL_LAYER_SET => {
-                d.has_layer_set = true;
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_MAPPED_ITEM => {
-                d.mapped_item_spans.push((id, start, end));
-                continue;
-            }
-            c if c == p::PREPASS_CLASS_REL_DEFINES_BY_TYPE => {
-                // Feeds both the instantiated-type-id build and the shared
-                // resolver's material type-fallback (an occurrence with no
-                // material of its own inherits its type's
-                // IfcRelAssociatesMaterial).
-                d.prepass_spans.defines_by_type.push((id, start, end));
-                continue;
-            }
+        use ifc_lite_processing::{scan::ScanClass, PREPASS_CLASS_CODE_MASK,
+            PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_TYPE_CANDIDATE};
+        let kind = ScanClass::try_from(class & PREPASS_CLASS_CODE_MASK).unwrap_or(ScanClass::Other);
+        // The shard already classified these rows. Reuse its authority even
+        // for malformed spans: the decoder must receive and count refusals.
+        // Named rows need no keyword or native-only TypeScan allocations.
+        d.prepass_spans.stash_class(kind, id, start, end);
+        match kind {
+            ScanClass::Project => { d.project_id.get_or_insert(id); }
+            ScanClass::Site => { d.site_position.get_or_insert((id, start, end)); }
+            ScanClass::MappedItem => d.mapped_item_spans.push((id, start, end)),
+            ScanClass::MaterialLayerSet => d.has_layer_set = true,
             _ => {}
         }
-        // Flag bits (the serial `_` arm): type candidate and/or geometry job.
-        if class & p::PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0 {
-            let kw = keyword_at(content, start, end);
-            // The same predicate `classify_type_name` used to SET this flag, so
-            // the label can never disagree with the gate that admitted it.
+        let site = kind == ScanClass::Site;
+        let kw = if site {
+            "IFCSITE"
+        } else if class & (PREPASS_CLASS_FLAG_TYPE_CANDIDATE | PREPASS_CLASS_FLAG_GEOMETRY_JOB) != 0 {
+            keyword_at(content, start, end)
+        } else {
+            ""
+        };
+        // Named match arms return before the serial scan's flag predicates.
+        // Site is the one named arm that schedules its own geometry job.
+        if class & PREPASS_CLASS_CODE_MASK != 0 {
+            if site && !is_disabled(disabled_types, kw) {
+                d.buffered_jobs.push((id, start, end, ifc_lite_core::ifc_type_from_keyword(kw)));
+                d.total_jobs += 1;
+            }
+            continue;
+        }
+        if class & PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0 {
             if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
                 d.type_candidate_spans.push((id, start, end, ty));
             }
         }
-        if class & p::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0 {
-            let kw = keyword_at(content, start, end);
-            if !is_disabled(disabled_types, kw) {
-                // Schema-resolved, for the same reason as the type-candidate
-                // branch: `classify_type_name` and this label must both use the
-                // generated schema universe. Exact variants are retained, while
-                // the bounded exporter aliases remain owned unknown keywords
-                // (#3179, #4203).
-                d.buffered_jobs
-                    .push((id, start, end, ifc_lite_core::ifc_type_from_keyword(kw)));
-                d.total_jobs += 1;
-            }
+        if (site || class & PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0) && !is_disabled(disabled_types, kw) {
+            d.buffered_jobs.push((id, start, end, ifc_lite_core::ifc_type_from_keyword(kw)));
+            d.total_jobs += 1;
         }
     }
+
     d
 }
 

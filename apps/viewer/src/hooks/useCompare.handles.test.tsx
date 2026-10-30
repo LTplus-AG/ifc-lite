@@ -95,6 +95,29 @@ describe('resident compare ownership (#8042 A2)', () => {
     });
   }
 
+  for (const id of ['A', 'B']) {
+    it(`releases and rebuilds when ${id}'s store is replaced under the same ID (#8271)`, async () => {
+      await run();
+      const before = useViewerStore.getState();
+      const replacement = await new IfcParser().parseColumnar(new TextEncoder().encode(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#2=IFCWALL('0Replacement00000000001',$,'Replacement',$,$,$,$,'wall',.STANDARD.);\nENDSEC;\nEND-ISO-10303-21;",
+      ).buffer as ArrayBuffer, { disableWorkerScan: true });
+      act(() => {
+        const models = new Map(before.models);
+        models.set(id, { ...models.get(id)!, ifcDataStore: replacement });
+        useViewerStore.setState({ models });
+      });
+      assert.equal(useViewerStore.getState().geometryContentVersion, before.geometryContentVersion);
+      assert.equal(useViewerStore.getState().mutationVersion, before.mutationVersion);
+      assert.equal(frees.mock.callCount(), 2, 'same-ID replacement releases both native snapshots');
+      await run();
+      assert.equal(creates.mock.callCount(), 4, 'Run extracts and prepares a fresh pair');
+      assert.ok(useViewerStore.getState().compareResult?.diff.entries.some(
+        entry => (id === 'A' ? entry.base : entry.head)?.ref.localId === 2,
+      ), 'the comparison describes the replacement store');
+    });
+  }
+
   it('rebuilds after invalidation and releases the replacement on unmount', async () => {
     await run();
     act(() => { useViewerStore.getState().bumpGeometryContentVersion(); });
@@ -114,6 +137,29 @@ describe('resident compare ownership (#8042 A2)', () => {
     assert.equal(creates.mock.callCount(), 4);
     assert.equal(useViewerStore.getState().compareError, null);
   });
+
+  for (const [name, change] of [
+    ['scope', () => useViewerStore.setState({ compareScope: 'data' })],
+    ['exclusions', () => useViewerStore.setState({ compareExcludedTypes: ['IfcWall'] })],
+    ['matching', () => useViewerStore.setState({ compareMatchByContent: true })],
+    ['accepted identities', () => useViewerStore.setState({ compareAcceptedIdentity: [] })],
+  ] as const) {
+    it(`does not retain a stale result after cancelling a cached run then changing ${name} (#8271)`, async () => {
+      await run();
+      assert.ok(useViewerStore.getState().compareResult);
+      let pending: Promise<void>;
+      act(() => { pending = hook.runComparison(); hook.cancelComparison(); });
+      assert.equal(frees.mock.callCount(), 2, 'cancel still releases the cached pair');
+      await act(async () => { await pending; change(); });
+      assert.equal(useViewerStore.getState().compareResult, null,
+        'a result without reusable handles must not disagree with the controls');
+      assert.equal(useViewerStore.getState().compareRunning, false);
+      assert.equal(creates.mock.callCount(), 2, 'cancelled continuation must not rebuild');
+      await run();
+      assert.ok(useViewerStore.getState().compareResult, 'Run can rebuild after cancellation');
+      assert.equal(creates.mock.callCount(), 4);
+    });
+  }
 
   for (const action of ['cancel', 'clear', 'unmount', 'supersede', 'selection', 'key', 'teardown'] as const) {
     it(`releases a locally owned build when ${action} happens after allocation, before publication`, async () => {

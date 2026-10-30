@@ -8,18 +8,17 @@
 /// bounds the optional detail list.
 const WORST_HOSTS_LIMIT: usize = 16;
 
+use super::gpu_meshes::batch_host::{info, warn};
+
 /// Products refused by the owned producer publish no meshes. Report the batch
 /// count without attributing a cause; refusal can occur at any producer check.
 /// Refused products are not counted as produced elements.
 pub(super) fn warn_refused_products(refused: u64) {
     if refused > 0 {
-        web_sys::console::warn_1(
-            &format!(
-                "[IFC-LITE] geometry batch: {refused} product(s) refused by the canonical \
-                 producer; they publish no meshes"
-            )
-            .into(),
-        );
+        warn(&format!(
+            "[IFC-LITE] geometry batch: {refused} product(s) refused by the canonical \
+             producer; they publish no meshes"
+        ));
     }
 }
 
@@ -40,13 +39,14 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // whatever still sits on the router (non-canonical paths).
     collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
 ) -> ifc_lite_geometry::GeometryDiagnostics {
-    let cls = router.take_classification_stats();
+    let drain = ifc_lite_processing::execution::RouterDrain::take(router);
+    let cls = drain.classification;
     let mut csg_failures = router.take_csg_failures();
     for (product_id, fails) in collected_failures {
         csg_failures.entry(product_id).or_default().extend(fails);
     }
-    let host_diags = router.take_host_opening_diagnostics();
-    let oversized_ref_drops = router.take_content_hash_oversized_ref_drops() as u64;
+    let host_diags = drain.hosts;
+    let oversized_ref_drops = drain.oversized_refs;
     let unsupported_items = router.take_unsupported_items();
 
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
@@ -60,14 +60,11 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // every embedded viewer. The full diagnostics summary is still returned
     // to JS so callers can opt into deeper inspection.
     if total_failures > 0 {
-        web_sys::console::warn_1(
-            &format!(
-                "[IFC-LITE] CSG diagnostics: {cls_total} openings classified, \
-                 {total_failures} failures, {} hosts tracked",
-                host_diags.len()
-            )
-            .into(),
-        );
+        warn(&format!(
+            "[IFC-LITE] CSG diagnostics: {cls_total} openings classified, \
+             {total_failures} failures, {} hosts tracked",
+            host_diags.len()
+        ));
     }
 
     if cls_total > 0 {
@@ -78,13 +75,10 @@ pub(super) fn drain_and_log_csg_diagnostics(
         // default "All levels" view; the noisy detail (failure breakdown,
         // worst-failing list) stays at `warn` and only fires when there
         // is a failure to surface.
-        web_sys::console::info_1(
-            &format!(
-                "[IFC-LITE] Opening classifier: rect={} diag={} non_rect={} (total={cls_total})",
-                cls.rectangular, cls.diagonal, cls.non_rectangular
-            )
-            .into(),
-        );
+        info(&format!(
+            "[IFC-LITE] Opening classifier: rect={} diag={} non_rect={} (total={cls_total})",
+            cls.rectangular, cls.diagonal, cls.non_rectangular
+        ));
     }
 
     let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
@@ -203,49 +197,40 @@ pub(super) fn drain_and_log_csg_diagnostics(
         // Smiley-West — the cut pipeline ran clean but the geometry
         // came out unchanged.
         if silent_noop_total > 0 {
-            web_sys::console::warn_1(
-                &format!(
-                    "[IFC-LITE] Rectangular cut SILENT NO-OP on {silent_noop_total} hosts \
-                     (rect boxes processed but mesh unchanged — likely opening box \
-                     doesn't intersect host). Top {} (by box count):\n{}",
-                    silent_noop_lines.len(),
-                    silent_noop_lines.join("\n"),
-                )
-                .into(),
-            );
+            warn(&format!(
+                "[IFC-LITE] Rectangular cut SILENT NO-OP on {silent_noop_total} hosts \
+                 (rect boxes processed but mesh unchanged — likely opening box \
+                 doesn't intersect host). Top {} (by box count):\n{}",
+                silent_noop_lines.len(),
+                silent_noop_lines.join("\n"),
+            ));
         }
 
         if total_failures > 0 {
-            web_sys::console::warn_1(
-                &format!(
-                    "[IFC-LITE] CSG fallbacks: {total_failures} failures across \
-                     {products_with_failures} products. \
-                     Breakdown: {breakdown:?}.\n\
-                     By host type:\n  {}\n\
-                     Worst-failing hosts (top 10):\n{}",
-                    host_type_lines.join("\n  "),
-                    if worst_lines.is_empty() {
-                        "  (none)".into()
-                    } else {
-                        worst_lines.join("\n")
-                    },
-                )
-                .into(),
-            );
+            warn(&format!(
+                "[IFC-LITE] CSG fallbacks: {total_failures} failures across \
+                 {products_with_failures} products. \
+                 Breakdown: {breakdown:?}.\n\
+                 By host type:\n  {}\n\
+                 Worst-failing hosts (top 10):\n{}",
+                host_type_lines.join("\n  "),
+                if worst_lines.is_empty() {
+                    "  (none)".into()
+                } else {
+                    worst_lines.join("\n")
+                },
+            ));
         } else {
             // No failures but we still have host data. info_1 (not debug)
             // so devs can confirm at a glance that the void-subtraction
             // path engaged for this model and which host types had
             // openings.
-            web_sys::console::info_1(
-                &format!(
-                    "[IFC-LITE] Opening pipeline: 0 CSG failures. \
-                     {} hosts with openings.\n  {}",
-                    host_diags.len(),
-                    host_type_lines.join("\n  "),
-                )
-                .into(),
-            );
+            info(&format!(
+                "[IFC-LITE] Opening pipeline: 0 CSG failures. \
+                 {} hosts with openings.\n  {}",
+                host_diags.len(),
+                host_type_lines.join("\n  "),
+            ));
         }
     }
 
@@ -255,26 +240,23 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // AND nothing deferred (no rect-opening hosts in the batch); presence with
     // fired=0 + high host_not_box means the walls aren't clean axis-aligned
     // boxes (multi-layer / non-box) and correctly fell back to the exact kernel.
-    let rf = router.take_rect_fast_stats();
+    let rf = drain.rect_fast;
     if rf.fired > 0
         || rf.defer_host_not_box > 0
         || rf.defer_not_through > 0
         || rf.defer_off_face > 0
         || rf.defer_near_edge > 0
     {
-        web_sys::console::info_1(
-            &format!(
-                "[IFC-LITE] rect_fast: fired={} (cut {} openings) | deferred: \
-                 host_not_box={} not_through={} off_face={} near_edge={}",
-                rf.fired,
-                rf.openings_cut,
-                rf.defer_host_not_box,
-                rf.defer_not_through,
-                rf.defer_off_face,
-                rf.defer_near_edge,
-            )
-            .into(),
-        );
+        info(&format!(
+            "[IFC-LITE] rect_fast: fired={} (cut {} openings) | deferred: \
+             host_not_box={} not_through={} off_face={} near_edge={}",
+            rf.fired,
+            rf.openings_cut,
+            rf.defer_host_not_box,
+            rf.defer_not_through,
+            rf.defer_off_face,
+            rf.defer_near_edge,
+        ));
     }
 
     if oversized_ref_drops > 0 {
@@ -282,13 +264,10 @@ pub(super) fn drain_and_log_csg_diagnostics(
         // #3421), not wrapped onto a real entity — the dedup key stays
         // correct, but until now nothing told the caller this model has an
         // id ifc-lite cannot represent.
-        web_sys::console::warn_1(
-            &format!(
-                "[IFC-LITE] {oversized_ref_drops} content-hash reference(s) above the \
-                 u32 express-id bound were refused (see issue #3421)"
-            )
-            .into(),
-        );
+        warn(&format!(
+            "[IFC-LITE] {oversized_ref_drops} content-hash reference(s) above the \
+             u32 express-id bound were refused (see issue #3421)"
+        ));
     }
 
     // Dropped representation items: no processor registered for the IFC type,
@@ -303,15 +282,12 @@ pub(super) fn drain_and_log_csg_diagnostics(
     if total_unsupported_items > 0 {
         // Shared with the native tracing warning so the two surfaces cannot drift.
         let breakdown = ifc_lite_geometry::format_unsupported_breakdown(&unsupported_items);
-        web_sys::console::warn_1(
-            &format!(
-                "[IFC-LITE] {total_unsupported_items} representation item(s) dropped \
-                 (unsupported type or failed geometry) — these elements are missing or \
-                 incomplete: {}",
-                breakdown,
-            )
-            .into(),
-        );
+        warn(&format!(
+            "[IFC-LITE] {total_unsupported_items} representation item(s) dropped \
+             (unsupported type or failed geometry) — these elements are missing or \
+             incomplete: {}",
+            breakdown,
+        ));
     }
 
     // The console logging above is the human-facing surface; this is the typed,

@@ -1,0 +1,13 @@
+diff --git b/packages/extensions/src/authority/resolve.ts a/packages/extensions/src/authority/resolve.ts
+index 2c196a9e10..27aa883ab0 100644
+--- b/packages/extensions/src/authority/resolve.ts
++++ a/packages/extensions/src/authority/resolve.ts
+@@ -98,7 +98,7 @@ export function resolveAttribute<O extends Opinion>(
+ 
+   const holders = charter.roles.get(rule.role) ?? new Set<string>();
+   const isAuthoritative = (o: Opinion) =>
+-    o.principal !== undefined && holders.has(o.principal) && (!options.requireSignature || o.signatureVerified !== false);
++    o.principal !== undefined && holders.has(o.principal) && (!options.requireSignature || o.signatureVerified === true);
+   const authoritative = opinions.filter(isAuthoritative);
+   const base = { ruleId: rule.id, role: rule.role, authoritative };
+ 

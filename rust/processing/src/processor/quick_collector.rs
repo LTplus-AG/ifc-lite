@@ -70,16 +70,7 @@ impl QuickCollector {
     pub(super) fn note_element(&mut self, id: u32, type_name: &str) {
         self.element_summaries.insert(
             id,
-            QuickMetadataEntitySummary {
-                express_id: id,
-                type_name: type_name.to_string(),
-                name: format!("{type_name} #{id}"),
-                global_id: None,
-                kind: "element".to_string(),
-                has_children: false,
-                element_count: None,
-                elevation: None,
-            },
+            super::quick_metadata::element_placeholder(id, type_name),
         );
     }
 

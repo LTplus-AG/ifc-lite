@@ -161,6 +161,8 @@ export function useCompare() {
     builtRef.current?.dispose();
     builtRef.current = null;
     cancelCompareRun(epochRef);
+    // Without cached handles, option changes cannot reconcile the old result.
+    useViewerStore.getState().setCompareResult(null);
   }, [builtRef]);
 
   const runComparison = useCallback(async () => {

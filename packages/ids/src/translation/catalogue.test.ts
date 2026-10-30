@@ -61,7 +61,7 @@ describe('translation catalogues are complete', () => {
       {
         "bounds": "tra 0 e 2.5",
         "optionality": "Vietato",
-        "requirement": "La proprietà ""Pset_WallCommon"."FireRating"" deve essere uguale a uno tra ["EI60", "EI90"]",
+        "requirement": "La proprietà "Pset_WallCommon.FireRating" deve essere uguale a uno tra ["EI60", "EI90"]",
         "status": "NON CONFORME",
         "summary": "3/4 elementi conformi (75%)",
       }

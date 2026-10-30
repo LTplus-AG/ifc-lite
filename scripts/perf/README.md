@@ -5773,3 +5773,25 @@ Lesson: fault accounting is also a shared resource. Band transport retirements n
 their own bounded allowance so they cannot prevent subsequent ordinary products from
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
+
+## The app-start task: no top-level-await wrapper on the app build
+
+On a production build the app-start task (module evaluation, before a model is
+read) was far longer than on the dev server, because only the build ran
+`vite-plugin-top-level-await`. The plugin wraps every chunk that has a dynamic
+`import()` in one `async` arrow function. Chrome compiles a module's top level
+while the script streams in, off the main thread, but a nested function only
+when it first runs, on the main thread, so each wrapped chunk was parsed whole
+inside the task. The build target is `esnext`, so the app build now emits
+native top-level await; the worker build keeps the plugin.
+`@ifc-lite/flow-nodes`' `xlsx-io.ts` also imported `exceljs` statically through
+the package barrel, which ran all of it at start; it is now loaded on first use.
+
+Lessons:
+- Measure start-up on a production build: the dev server skips build-only
+  plugins and under-reports this task.
+- A CPU profile shows lazy compilation as `(program)` with no script;
+  `--js-flags=--log-function-events` gives each `parse-function` with its
+  script id, offsets and duration.
+- `scripts/check-tla-chunk-await.mjs` now fails if a chunk the page evaluates
+  at start (`index.html`'s module scripts and their static imports) is wrapped.

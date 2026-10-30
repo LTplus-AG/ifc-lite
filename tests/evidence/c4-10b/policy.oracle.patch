@@ -1,0 +1,19 @@
+--- a/rust/processing/src/execution.rs
++++ b/rust/processing/src/execution.rs
+@@ -29,14 +29,14 @@
+ /// merge toggle. Indexed-colour exclusion is meaningful only with instancing armed.
+ pub fn build_router(
+     mut config: RouterConfig,
+-    _policy: SchedulerPolicy,
++    policy: SchedulerPolicy,
+     caches: RouterCaches,
+     layers: Option<Arc<MaterialLayerIndex>>,
+     instances: Option<&MappedInstancePlan>,
+     indexed_colours: Option<&Arc<FxHashSet<u32>>>,
+ ) -> GeometryRouter {
+     config.instancing_batch_local =
+-        instances.is_some();
++        instances.is_some() && matches!(policy, SchedulerPolicy::PerBatch);
+     // Preserve the caller's world-frame rebase.
+     let mut router = GeometryRouter::from_config(config);
+     router.enable_content_dedup_shared(caches.items);

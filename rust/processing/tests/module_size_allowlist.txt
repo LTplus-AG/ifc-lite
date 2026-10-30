@@ -16,7 +16,7 @@
      531 apps/server/src/services/parquet_optimized.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
-    1064 rust/core/src/decoder.rs
+    685 rust/core/src/decoder.rs
 # -35: the ePSet MapUnit label rules moved to unit_labels.rs, next to the unit
 # tables they resolve through (#3292); 793 -> 758.
      758 rust/core/src/georef.rs
@@ -286,7 +286,9 @@
      504 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      782 rust/geometry/src/triangulation.rs
-     745 rust/geometry/src/void_index.rs
+# -40 (C4-15, #8341): the RelVoids/RelAggregates scans fold through the shared
+# geometry kernel in void_rels.rs; 745 -> 642.
+     642 rust/geometry/src/void_index.rs
      499 rust/processing/src/determinism.rs
 # +48: #1623 Phase 2 don't-bake — ProducedElementMeshes.instance_occurrences + threading it through produce_inner (tuple returns), and emit_sub_meshes converting empty-with-InstanceMeta placeholders into RawInstanceOccurrences.
 # +19: #1781 textured occurrence sub-meshes — emit_sub_meshes attaches UVs+texture (length-guarded) and the non-void path calls the texture-aware router entry.
@@ -312,39 +314,20 @@
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
-     781 rust/processing/src/prepass.rs
+# -32 (C4-15, #8341): void/aggregate folds and the #2019 opening sort moved
+# to the shared geometry kernel (`resolve_void_index`); 781 -> 552.
+     552 rust/processing/src/prepass.rs
 # C4-4b (#7782): native orchestration split into sub-400-line phases;
 # processor/mod.rs no longer needs a module budget.
-# +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
-# +13: attach the per-worker shared IfcMappedItem source cache to each batch router, mirroring the item-dedup attach (#1623).
-# +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
-# +4: #1891 follow-on — carry ProducedElementMeshes.geometry_aabb through ElementMeshOutput to push_geometry_hash on both the flat and partitioned paths.
-# +31: #1891 closedness — ElementMeshOutput gains geometry_volume + geometry_closure_bits, and the ONE ElementMeshOutput::fingerprint() builder both push sites now call (net shorter than the two struct literals it replaces, and the flat/partitioned paths can no longer fill different subsets of the index-parallel arrays). The fingerprint is taken into a local before each loop moves `out.meshes`, with a one-line note at both sites so the ordering is not "tidied" back into a borrow error.
-# +5: #2985 — both instanced call sites populate InstanceMeshRef::item_id (from MeshData::geometry_item_id for a template, from the ShardOccurrence for a don't-bake occurrence). The shard is the ONLY route to the host for this geometry, so the field cannot live anywhere cheaper.
-     956 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+# C4-10b (#7782): batch preparation, production and output adapters are bounded
+# modules; batch.rs no longer needs a module budget.
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).
 # +17: #1910 mirrors the identical processor/mod.rs exception — schedule an exceptional representationless-spatial-container job so the browser/wasm viewer doesn't silently drop the same geometry the server would now mesh.
-     586 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
 # grid_lines.rs row removed: the file is 327 lines on main, under the 400
 # budget, and the ratchet itself flagged the row as stale. Unrelated to the
 # change that prompted the edit; removed because the total must trend down.
-# +75: add the setReferencedRepmaps / setInstantiatedTypeIds / setMaterialLayerIndex wasm setters that install the pre-pass-computed per-content structures into the worker's IfcAPI (perf/single-scan #957/#563), mirroring setEntityIndex.
-# +23: add the cached_source_bytes session field (doc + init + clearPrePassCache drop) for cold-load lever 1c (setSourceBytes); the setter + FromSource batch variants live in the new sub-400 gpu_meshes/batch_from_source.rs, not here (perf/coldload-setsourcebytes).
-# +37: hold the per-worker shared IfcMappedItem source cache field + drop it on content swap / setEntityIndex / setTessellationQuality, mirroring cached_item_dedup (#1623).
-# +10: drop the shared mapped-item cache in set_skip_small_cuts too (boolean-processor swap; #1623 P1 settings-hole fix).
-# +65: #1623 Phase 3 — cached_mapped_instance_plan field (doc + init + clear on clearPrePassCache/setEntityIndex) + setMappedInstancePlan wasm setter + mapped_instance_plan accessor (mirrors setReferencedRepmaps).
-# +3: three disjoint one-line additions that each landed at exactly the old
-# budget alone and only breach in combination: the `clash_solid` mod
-# declaration (#2573), the `set_panic_hook()` call that keeps init()'s
-# panic-location stash (#2539), and the geometry-hash tolerance clamp doc
-# (#2528). Splitting this file is the real fix and is tracked separately; it
-# would conflict with all three of those PRs at once.
-# +1: #2573 landing on main: `mod clash_solid;` was anticipated in the note
-# above but had not actually merged yet — main's 1091 only carried #2539 and
-# #2528. This is that fourth, previously-uncounted line.
-     1028 rust/wasm-bindings/src/api/mod.rs
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
 # +17: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the Y-up frame contract and the world-box rationale so a future reader does not re-derive them), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt). Net +17 and not +56, because the two Z-up→Y-up conversion helpers moved out to a new sibling frame_swap.rs (107 lines, under the house limit, no row): the box swap is now shared by the f32 local bounds and the f64 world AABB, so the min/max reversal lives in exactly one place.
 # -46: #1891 closedness added geometry_volume_values + geometry_closure_flags, and the whole per-entity fingerprint surface (the five index-parallel arrays' getters — including the Y-up swap on the way out — plus GeometryFingerprint and push_geometry_hash) moved OUT to the child module zero_copy/mesh_fingerprint.rs (new, 161 lines, under the house limit, no row) — net down despite two new arrays; budget refreshed downward.

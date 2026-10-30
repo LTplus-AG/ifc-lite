@@ -175,8 +175,7 @@ impl IfcAPI {
     pub fn resolve_styled_items_shard(&self, data: &[u8], spans: &[u32]) -> Result<JsValue, JsValue> {
         use ifc_lite_core::EntityDecoder;
         let index = {
-            let slot = self
-                .cached_entity_index
+            let slot = self.content.cached_entity_index
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             slot.clone()
@@ -207,6 +206,7 @@ impl IfcAPI {
         // first-wins colour merge picks each id's finish from the same slice.
         let finishes = ifc_lite_processing::prepass::resolve_geometry_finishes(&styled, &mut decoder);
 
+        self.collect_pipeline_refusals(&decoder);
         let orphan_ids = js_sys::Uint32Array::new_with_length(orphan.len() as u32);
         let orphan_colors = js_sys::Float32Array::new_with_length((orphan.len() * 4) as u32);
         for (i, (&id, color)) in orphan.iter().enumerate() {
@@ -287,8 +287,7 @@ impl IfcAPI {
             defines_by_type: Vec::new(),
         };
         let index = {
-            let slot = self
-                .cached_entity_index
+            let slot = self.content.cached_entity_index
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             slot.clone()
@@ -332,6 +331,7 @@ impl IfcAPI {
             geom_finishes.get(&id).copied()
         });
 
+        self.collect_pipeline_refusals(&decoder);
         Ok(styles_payload_with_flat((style_ids, style_colors, style_finishes), &resolved).into())
     }
 }

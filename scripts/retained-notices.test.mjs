@@ -5,7 +5,14 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { renderNotices, inventoryInputs, checkNotices } from './retained-notices.mjs';
+import * as notices from './retained-notices.mjs';
+
+const { renderNotices, inventoryInputs, checkNotices } = notices;
+// Namespace access: a missing election helper fails an assertion, not the module load.
+const applySupplemental = (...args) => {
+  assert.equal(typeof notices.applySupplemental, 'function', 'retained-notices exports applySupplemental (licence elections)');
+  return notices.applySupplemental(...args);
+};
 
 test('Refs #7955 notice bundle preserves attribution bytes and refuses corrupted inputs', () => {
   const text = 'Copyright Example Author\nPermission and disclaimer\n';
@@ -37,9 +44,14 @@ checksum="${'a'.repeat(64)}"
   put('.github/workflows/geometry-platform.yml', `repository: emscripten-core/emsdk\nref: ${'c'.repeat(40)}\nrun: emsdk/emsdk install 4.0.15\n`);
   put('licenses/retained/supplemental.json', '[]');
   for (const dir of ['packages/cli', 'packages/wasm']) mkdirSync(join(root, dir), { recursive: true });
+  // Every component must preserve a licence text (absence is not compliance).
+  const licenceText = 'Fixture MIT licence text\n';
+  const licenceSha = createHash('sha256').update(licenceText).digest('hex');
+  put(`licenses/retained/texts/${licenceSha}.txt`, licenceText);
   put('licenses/retained/manifest.json', JSON.stringify({ inputs: inventoryInputs(root), components: [{
     name: 'external', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index',
-    license: 'MIT', scope: 'inert fixture', notices: [],
+    license: 'MIT', scope: 'inert fixture',
+    notices: [{ file: `texts/${licenceSha}.txt`, origin: 'LICENSE', sha256: licenceSha }],
   }] }));
   checkNotices(root, false);
   return { root, change(path, replace) { put(path, replace(readFileSync(join(root, path), 'utf8'))); } };
@@ -93,4 +105,50 @@ test('Refs #7955 removing a declared closure component cannot be hidden by regen
   const f = fixture(t);
   f.change('licenses/retained/manifest.json', text => JSON.stringify({ ...JSON.parse(text), components: [] }));
   assert.throws(() => checkNotices(f.root, false), /Missing inventory component: external/);
+});
+
+// Refs #7955: an OR election preserves the declaration and supplies an identified text.
+test('Refs #7955 Apache election renders attribution and preserves the licence text', () => {
+  const text = 'Apache licence fixture\n';
+  const component = { name: 'wasm_sync', version: '0.1.2', license: 'MIT OR Apache-2.0',
+    source: 'crates.io', scope: 'fixture', notices: [] };
+  const supplement = { name: component.name, version: component.version, election: 'Apache-2.0',
+    attribution: 'wasm_sync 0.1.2 (crates.io), licensed under Apache-2.0 by election from MIT OR Apache-2.0',
+    notices: [{ file: 'apache.txt', origin: 'SPDX fixture', sha256: createHash('sha256').update(text).digest('hex') }] };
+  applySupplemental([component], [supplement]);
+  const rendered = renderNotices({ components: [component] }, () => text);
+  assert.match(rendered, /Licence declaration: MIT OR Apache-2.0/);
+  assert.match(rendered, /Licence election: Apache-2.0/);
+  assert.ok(rendered.includes(supplement.attribution));
+  assert.ok(rendered.includes(text));
+  assert.doesNotMatch(rendered, /OPEN:/);
+  for (const license of ['MIT', 'MIT AND Apache-2.0', '(MIT OR Apache-2.0)']) {
+    assert.throws(() => applySupplemental([{ ...component, license, notices: [] }], [supplement]), /Invalid licence election/);
+  }
+  assert.throws(() => applySupplemental([component], [{ ...supplement, election: 'BSD-3-Clause' }]), /Invalid licence election/);
+  assert.throws(() => applySupplemental([component], [{ ...supplement, notices: [] }]), /Invalid licence election/);
+  assert.throws(() => applySupplemental([], [supplement]), /Stale supplemental notice/);
+});
+
+test('Refs #7955 notice check refuses omitted election evidence even after output regeneration', t => {
+  const f = fixture(t);
+  const supplement = { name: 'external', version: '1.0.0', election: 'Apache-2.0',
+    attribution: 'external by election', notices: [] };
+  f.change('licenses/retained/supplemental.json', () => JSON.stringify([supplement]));
+  f.change('licenses/retained/manifest.json', text => {
+    const manifest = JSON.parse(text);
+    manifest.inputs = inventoryInputs(f.root);
+    return JSON.stringify(manifest);
+  });
+  assert.throws(() => checkNotices(f.root, false), /Missing supplemental evidence/);
+});
+
+test('Refs #7955 a component without any preserved licence text fails the check', t => {
+  const f = fixture(t);
+  f.change('licenses/retained/manifest.json', text => {
+    const manifest = JSON.parse(text);
+    manifest.components[0] = { ...manifest.components[0], notices: [] };
+    return JSON.stringify(manifest);
+  });
+  assert.throws(() => checkNotices(f.root, false), /without preserved licence text/);
 });

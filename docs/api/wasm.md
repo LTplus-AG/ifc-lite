@@ -331,6 +331,44 @@ try {
 }
 ```
 
+#### Content installation and cleanup
+
+`buildPrePassOnce`, accepted streaming/sharded prepasses, and `setEntityIndex`
+start a new content lifetime. They drop the previous entity index, derived textures, indexed colours,
+material layers, parts-to-skip, referenced maps, instantiated types, type-geometry
+and mapped-instance plans, style colours/finishes, item/mapped meshes and BRep
+signatures. They also expire previous owned production snapshots and restart
+pipeline diagnostics. A rejected or empty `setEntityIndex` discards the old
+index; the next batch scans its bytes. Sharded column-length validation occurs
+before installation, so a length refusal leaves the current load intact.
+
+Source bytes are a separate input: index/prepass installation preserves them.
+Workers install index and prepass columns before `setSourceBytes`; CLI clients
+may install bytes before prepass. `setSourceBytes` replaces bytes and expires
+production snapshots/BRep signatures, preserving the already-installed index
+and columns. Pair these inputs from the same file before calling `*FromSource`.
+A byte-only swap is not sufficient to reuse an old index for a different file.
+
+Install `setStyleFinishes` after the prepass/index boundary. Lazy batch index
+construction preserves finishes and columns supplied for that batch. The
+`setPrepassGeometryFinishes` stash is separate input for the next finalize call:
+content installation preserves it, successful finalize consumes it, and the
+worker reinstalls it before each SAB/owned-buffer retry.
+
+`clearPrePassCache` drops derived data, source bytes and any unfinished finalize
+stash, and expires production snapshots. It preserves completed diagnostics
+for reading after `finally` cleanup. Tessellation, layer merging, small-cut and
+geometry-hash settings persist across both installation and cleanup.
+
+Internally, C4-11b groups derived caches in `ContentSlots`/`ContentState`
+(`rust/wasm-bindings/src/api/content_caches.rs`); `LazySlot::get_or_init` holds
+one lock across lookup, construction and publication. Slot declarations generate
+the reset walk, including the entity index. Source bytes and pending finishes
+remain separate inputs; the production model keeps its identity while resets
+expire snapshots. `PrepassOptions`/`PrepassMode::{Serial, Sharded}` in
+`gpu_meshes/prepass_mode.rs` make orchestration explicit without changing the
+positional JS ABI; sharded columns supply the full index and workers resolve styles.
+
 #### Diagnostics and Tuning
 
 ```typescript
@@ -349,6 +387,19 @@ setInstantiatedTypeIds(ids: Uint32Array): void;
 setMaterialLayerIndex(/* per-element layer buildup columns, see the .d.ts */): void;
 clearPrePassCache(): void;
 ```
+
+`getPipelineDiagnostics()` returns a plain object with `schemaVersion: 1`.
+Its additive fields `refusedInputElements` count attempted jobs that refused
+input (a retry counts again), while `refusedPrepassRecords` counts distinct
+semantically refused record IDs per `IfcAPI` worker. Syntax/decode failures
+are excluded; these are not model-wide deduplicated totals. A separate additive
+`omittedTypeRecords` counts distinct type records whose type geometry the
+prepass on that worker omitted because the full decoder rejects the record
+(F2, #8341): one per record, not per map, never in the two refusal counters.
+A prepass-only refusal or omission produces a report even before a batch;
+before either, the getter is `undefined`. Prepass/index installation and `setSourceBytes` reset the report, so read prepass-only values (`refusedPrepassRecords`, `omittedTypeRecords`) from the instance that ran the prepass, before installing source bytes on it;
+`clearPrePassCache` preserves it. See [refusal diagnostics](../guide/geometry.md#pipeline-refusal-diagnostics)
+and `rust/wasm-bindings/src/api/pipeline_diagnostics.rs`.
 
 #### Getters
 

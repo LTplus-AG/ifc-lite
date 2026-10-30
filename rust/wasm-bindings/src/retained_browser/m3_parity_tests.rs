@@ -6,6 +6,7 @@ export function m3Measure(outcome) {
   if (outcome.status === 'refused') return {id:outcome.expressId,code:outcome.code,volume:null};
   let volume = 0;
   for (const part of outcome.parts) {
+    if (part.layer) { volume += part.cappedVolumeM3; continue; }
     const p = part.positions, t = part.indices;
     let six = 0;
     const point = i => [0,1,2].map(k => p[i*3+k] - p[k]);

@@ -292,6 +292,7 @@
     "propagate_voids_to_parts": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "propagate_voids_via_aggregates": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "resolve_2d": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "resolve_void_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "rotation_angle_about_z": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "sample_alignment_axes": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "sanitize_contours": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
@@ -310,7 +311,8 @@
     "triangulate_polygon": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "triangulate_terrain_pslg": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "triangulate_terrain_pslg_with_progress": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
-    "verify_recomposition": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)"
+    "verify_recomposition": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "void_index_from_content": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)"
   },
   "ifc-lite-processing": {
     "AnalyticQuantitySources": "struct { extrusion_definitions: ExtrusionDefinitions; swept_disk_definitions: SweptDiskDefinitions; swept_disk_descriptions: SweptDiskDescriptions }",
@@ -362,6 +364,7 @@
     "PaletteBinding": "enum { Absent { map_id: u32; reason: PaletteAbsence }; Bound { face_set_id: u32; map_id: u32; palette_index: u32 } }",
     "ParseResponse": "struct { building_transform: Option<Vec<f64>>; cache_key: String; mesh_coordinate_space: Option<MeshCoordinateSpace>; meshes: Vec<MeshData>; metadata: ModelMetadata; site_transform: Option<Vec<f64>>; stats: ProcessingStats; symbolic_data: SymbolicData }",
     "PipelineDiagnostics": "struct { backstop_count: u64; batches: u64; element_count: u64; faceted_brep_ms: u64; hosts_with_openings: u64; mesh_count: u64; phase_ms: PipelinePhaseTimings; point_cache_hits: u64; point_cache_misses: u64; products_with_failures: u64; rect_fast: RectFastSummary; schema_version: u32; silent_no_ops: u64; total_csg_failures: u64; triangle_count: u64 }",
+    "PipelineDiagnosticsReport": "struct (non_exhaustive)",
     "PipelinePhaseTimings": "struct { entity_scan_ms: u64; geometry_ms: u64; lookup_ms: u64; parse_ms: u64; preprocess_ms: u64; total_ms: u64 }",
     "ProcessingRequest": "struct (non_exhaustive)",
     "ProcessingResult": "struct { building_transform: Option<Vec<f64>>; frame: MeshFrame; instances: Vec<InstanceRecord>; mesh_coordinate_space: MeshCoordinateSpace; meshes: Vec<MeshData>; metadata: ModelMetadata; site_transform: Option<Vec<f64>>; stats: ProcessingStats }",

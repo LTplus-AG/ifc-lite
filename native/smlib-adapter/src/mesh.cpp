@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "mesh.hpp"
 #include "empty.hpp"
+#include "mesh_diagonals.hpp"
 #include <SmApiBrep.h>
 #include <SmBrep.h>
+#include <SmCone.h>
 #include <SmPoly.h>
 #include <array>
 #include <cmath>
@@ -36,10 +38,9 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
         ensure(found != source_ids.end(),"tessellation lost source face attribution");
         const uint32_t source = found->second;
         SmTArray<SmPolyFace*> added;
-        if (!polygon->IsTriangle()) {
+        if (!polygon->IsTriangle())
             checked(polygon->IsPlanar() ? polygon->TriangulatePlanar(added)
                                        : polygon->TriangulateNonPlanar(added));
-        }
         triangle_sources.emplace(polygon,source);
         for (auto* triangle : added) triangle_sources.emplace(triangle,source);
     }
@@ -77,6 +78,15 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
             mesh->normals.insert(mesh->normals.end(),{nx/length,ny/length,nz/length});
         mesh->faces.push_back(source->second);
     }
+    std::vector<std::optional<CylinderPatch>> cylinders(source_faces.GetSize());
+    for (ULONG i=0;i<source_faces.GetSize();++i) {
+        auto* surface=source_faces[i]->GetSurface();
+        if (!surface->IsKindOf(SmCone_TYPE)) continue;
+        CylinderPatch patch; double semi_angle=0;
+        if (static_cast<SmCone*>(surface)->GetCanonical(patch.frame,patch.radius,semi_angle)==SM_SUCCESS &&
+            semi_angle==0 && std::isfinite(patch.radius) && patch.radius>0) cylinders[i]=patch;
+    }
+    normalize_mesh_diagonals(*mesh,angle,chord,cylinders);
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
     ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");

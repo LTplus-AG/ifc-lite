@@ -65,6 +65,19 @@ pub(crate) fn changed_components(base: &HashMap<JsString, JsString>, head: &Hash
 pub fn diff_by_key<'a, R>(
     base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
 ) -> KeyDiff<'a, R> {
+    diff_by_key_impl(base, head, options, true)
+}
+
+pub(crate) fn diff_by_key_for_transport<'a, R>(
+    base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
+) -> KeyDiff<'a, R> {
+    diff_by_key_impl(base, head, options, false)
+}
+
+fn diff_by_key_impl<'a, R>(
+    base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
+    build_index: bool,
+) -> KeyDiff<'a, R> {
     let excluded: HashSet<JsString> = options.exclude_types.iter().map(normalize_type)
         .filter(|name| !name.is_empty()).collect();
     let is_excluded = |entity: &EntityFingerprint<R>| !excluded.is_empty() && excluded.contains(&normalize_type(&entity.ifc_type));
@@ -78,11 +91,11 @@ pub fn diff_by_key<'a, R>(
         head_index = head_order.iter().map(|(key, i)| (key, *i)).collect();
     }
     let base_has_geometry = base_order.iter().any(|(key, i)| {
-        base[*i].geometry_hash.is_some() && !is_excluded(&base[*i])
+        base[*i].geometry_hash(options.strip_placement_geometry).is_some() && !is_excluded(&base[*i])
             && head_index.get(key).is_none_or(|j| !is_excluded(&head[*j]))
     });
     let head_has_geometry = head_order.iter().any(|(key, i)| {
-        head[*i].geometry_hash.is_some() && !is_excluded(&head[*i])
+        head[*i].geometry_hash(options.strip_placement_geometry).is_some() && !is_excluded(&head[*i])
             && base_index.get(key).is_none_or(|j| !is_excluded(&base[*j]))
     });
     let consider_data = options.scope != DiffScope::Geometry;
@@ -100,7 +113,7 @@ pub fn diff_by_key<'a, R>(
             if consider_data && (base_entity.ifc_type != other.ifc_type || base_entity.data_hash != other.data_hash) {
                 entry.change_kinds.push(DiffChangeKind::Data);
             }
-            if use_geometry && base_entity.geometry_hash != other.geometry_hash {
+            if use_geometry && base_entity.geometry_hash(options.strip_placement_geometry) != other.geometry_hash(options.strip_placement_geometry) {
                 entry.change_kinds.push(DiffChangeKind::Geometry);
             }
             if consider_data {
@@ -125,9 +138,9 @@ pub fn diff_by_key<'a, R>(
         });
     }
     let mut counts = DiffCounts::default();
-    let mut by_key = HashMap::with_capacity(entries.len());
+    let mut by_key = if build_index { HashMap::with_capacity(entries.len()) } else { HashMap::new() };
     for (i, entry) in entries.iter().enumerate() {
-        by_key.insert(entry.key.clone(), i);
+        if build_index { by_key.insert(entry.key.clone(), i); }
         match entry.state {
             DiffState::Added => counts.added += 1,
             DiffState::Modified => counts.modified += 1,
@@ -137,7 +150,7 @@ pub fn diff_by_key<'a, R>(
     }
     let mut excluded_types: Vec<_> = excluded.into_iter().collect();
     excluded_types.sort_by(cmp_code_units);
-    KeyDiff { scope: options.scope, excluded_types, entries, by_key, counts, applied_key_aliases, use_geometry }
+    KeyDiff { scope: options.scope, excluded_types, entries, by_key, counts, applied_key_aliases, use_geometry, strip_placement_geometry: options.strip_placement_geometry }
 }
 
 #[cfg(test)]

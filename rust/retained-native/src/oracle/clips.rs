@@ -23,6 +23,15 @@ pub struct ClipPart {
     pub curved: bool,
     pub mixed: bool,
 }
+impl ClipPart {
+    /// Independent host section with additional source-derived constraints (M4).
+    pub fn volume_with_planes(&self, extra: &[([f64; 3], f64)]) -> Option<f64> {
+        if self.mixed { return None; }
+        let mut planes: Vec<_> = self.planes.iter().map(Plane::equation).collect();
+        planes.extend_from_slice(extra);
+        section_volume(self.host.as_ref()?, &planes)
+    }
+}
 pub struct ClipExpectation { pub parts: Vec<ClipPart> }
 impl ClipExpectation {
     pub fn section_volume(&self) -> Option<f64> { self.parts.iter().try_fold(0., |v,p| Some(v+p.section_volume?)) }
@@ -144,15 +153,6 @@ fn source_parts(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, pr
         }
     }
     Ok(parts)
-}
-/// Authored plane clips of one product's own Body parts, in world metres with
-/// outward normals (the removed side is positive). The normal oracle needs these
-/// as independent source surfaces of the cut face. This walks `source_parts`, so
-/// it also computes the per-leaf section volumes, which this caller discards; no
-/// opening work is done.
-pub fn source_planes(model: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, product: u32)
-    -> Result<Vec<Plane>, String> {
-    Ok(source_parts(model, sources, product)?.into_iter().flat_map(|p| p.planes).collect())
 }
 /// Model-scoped source oracle. Relationship extraction runs once, not once per
 /// clipped product. The cache borrows the source so it cannot outlive its model.

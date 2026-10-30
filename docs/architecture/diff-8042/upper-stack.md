@@ -1,3 +1,29 @@
+# R146: merged-main source composition (2026-10-25)
+
+This source-only composition starts from fetched GitHub main
+`8e2778ca041f027ab95d59532ce43d18bb42dab6`, the merged #8106 engine,
+and preserves #8134/#8137 infrastructure. Host source is the reviewed
+`6996c40486c509e3f127f2244bdd3524f8fbd3f6` preparation; its production
+behavior is unchanged. Accepted-main structural signatures, share guards and
+lineage regressions are retained in the public/native and independent TS
+oracle paths appropriate to each arm. Reviewed retained-callback GC tests are
+included as test source.
+
+E is the Rust public-facade arm. F is reconstructed from the new pre-public
+sparse ancestor and the original R13/R94 TS delivery. Both retain the same
+measurement protocol, input setup, raw WASM tests, GC harness and explicit
+federation height policy. The E/F consumer initialization differences follow
+their respective public implementations.
+
+Status: **HOLD / UNQUALIFIED**. Source integration is separate from runtime
+approval. No build, test, typecheck, install, benchmark, package binding or
+fleet/storage task ran for this composition. The parent owns fresh final
+qualification. The historical preparation notes below retain their original
+refs and chronology; their pending foundation statements describe that prior
+preparation, not the merged foundation used here.
+
+---
+
 # #8042 host observations: current-main source preparation
 
 This focused layer starts at engine
@@ -235,3 +261,35 @@ oracle parity, built viewer browser asset initialization/retry and consumer
 commands. Node runtime coverage does not qualify browser loading. This layer
 has approximately 1,500 changed production/tool lines after Git rename
 recognition; the larger total diff is predominantly relocated oracle/tests.
+
+## Layer 8: real-model and packed-package acceptance harness
+
+`stack/8042-v3-acceptance-harness` depends on the public cutover.
+The exact integrated real-geometry parity harness, bounded derived-revision
+claims, geometry extraction helpers and packed Node 22 acceptance runner arrive
+with their documentation. The existing CI real-IFC parity step now has a
+five-minute timeout. Historical real-geometry preparation evidence is copied
+unchanged as source provenance, not a result for these layer commits.
+
+These tools require prepared package dist plus fresh geometry AND independent
+diff runtimes, real fixtures, and the documented Node/pnpm environment. They
+were not executed. Derived revisions are explicit synthetic mutations of real
+geometry and are not authored split/merge ground truth. Preserve zero-execution
+incomplete status and never treat missing-fixture coverage as acceptance.
+Run packed acceptance inside parent admission, retain original receipts and
+publish compact evidence outside generated workspaces before releasing them.
+
+## Layer 9: end-to-end and large-revision performance qualification tools
+
+`stack/8042-v3-performance-harness` depends on acceptance harnesses.
+Exact integrated end-to-end protocol, receipts, isolated samplers/resolution
+proofs and large-revision preparation/child tools arrive with their tests and
+protocol docs. No protocol is relaxed and no benchmark is run. These are
+qualification tools, not measured performance evidence for #8042 or this stack.
+
+The parent owns all fleet admission, exclusive idle-window checks, paired
+base-versus-branch measurements, source/build/runtime receipts, fixture and
+output-identity evidence, compact evidence publication and generated workspace
+release. Recover unknown outcomes by the original receipt. Performance verdict
+and lesson remain pending until actual end-to-end measurements exist; do not
+record a fabricated win in the performance ledger.

@@ -7,7 +7,7 @@ import { ownedWasmBuffer } from './wasm-owned-buffer.js';
 import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
-import { applyStyleFinishes } from './style-finishes.js';
+import { applyStyleFinishes, forgetAppliedFinishes } from './style-finishes.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import * as wasmBindings from '@ifc-lite/wasm';
 import { createInCallHeartbeat, installInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
@@ -662,6 +662,7 @@ let entityIndexApplied: boolean = false;
 function applyEntityIndexToApi(): void {
   const ifcApi = api;
   if (!ifcApi || entityIndexApplied || !cachedEntityIndex) return;
+  forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
   ifcApi.setEntityIndex(cachedEntityIndex.ids, cachedEntityIndex.starts, cachedEntityIndex.lengths);
   entityIndexApplied = true;
 }
@@ -1667,6 +1668,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       cachedEntityIndex = null;
       cachedPrepassColumns = null;
       prepassColumnsApplied = false;
+      forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = true;

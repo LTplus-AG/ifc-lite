@@ -32,8 +32,20 @@ jobs and retains native metadata, property and georeferencing handling.
 `scan_shard_result(content, start, end, classified)` returns a non-exhaustive
 `ShardScan`: records, optional class column, handoff, refusal offsets and
 malformed-record offsets. Diagnostics remain speculative until stitching.
-The five tuple APIs remain deprecated compatibility adapters until C10;
-browser discovery migration is C4-6b.
+The five tuple APIs remain deprecated compatibility adapters until C10.
+Native and browser serial/once scans share `Discovery` and `scan::ScanClass`;
+streaming class columns use the accepted `gpu_meshes/prepass_discovery.rs`
+adapter. Metadata decoration and incremental emission stay scheduler-owned.
+
+`discovery::TypeGeometryPlan::{from_spans, from_file_missing}` in
+`rust/processing/src/discovery.rs` plans type geometry from collected spans or
+only the missing referenced-map/instantiated-type sets. Native uses
+`TypeGeometryMode::SuppressInstanced`; the browser uses `EmitTagged` for its
+Model/Types switch. `IfcTypeProduct.RepresentationMaps` accepts a bare `#n` or
+list of plain references; invalid list items are skipped, typed wrappers such
+as `IFCREPRESENTATIONMAP(#n)` are not unwrapped. Browser candidates must also
+pass full decoder admission (`decode_products`); syntax-invalid type records
+are omitted, not counted as semantic refusals.
 
 ## Placement readers
 
@@ -939,6 +951,10 @@ pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
 pub use parallel_scan::build_entity_index_parallel;
 ```
+
+Material-layer slicing is opt-in: `ProcessingRequest::default().layer_slicing(true)`;
+the default is false and does not build the native material-layer index.
+The browser retains its separate merge-layers setting (`setMergeLayers`, see [WASM diagnostics and tuning](./wasm.md#diagnostics-and-tuning)).
 
 `process(content, &ProcessingRequest, &mut sink)` is the one native entry point.
 `ProcessingRequest` is a `#[non_exhaustive]` value type with a builder; the two
@@ -1876,3 +1892,16 @@ report map without invoking hooks, changing attribution, or adopting ambient
 reports. Explicit `take_csg_failures` returns it once; subsequent products cannot
 publish it. Callers of `finish_product_csg_failures` must likewise retain their
 returned reports until publication succeeds and quarantine them on rejection.
+
+### Scheduler execution boundaries
+
+`ifc_lite_processing::execution::build_router` applies `RouterConfig` and arms
+model caches (including brep signatures), optional material layers, instancing,
+and the indexed-colour exclusion together before production starts.
+`SchedulerPolicy::PerJob` keeps native model-wide template selection and uncached
+job decoding; `PerBatch` keeps the browser's warm decoder and batch-local
+instancing. `decode_job` and `job_type` preserve scanned native types and checked
+browser source-keyword recovery. `RouterDrain::take` drains router-wide counters
+at the corresponding job or batch boundary. Both schedulers still plan and
+produce through `produce_element_meshes_owned` and its immutable context/session.
+Native worker caches and browser wire/source ownership stay scheduler-owned.

@@ -74,6 +74,34 @@ def curved():
     return m.finish(), {'products':products, 'bands':volumes, 'before_total':sum(v['before'] for v in volumes), 'after_total':sum(v['after'] for v in volumes), 'material_usage':int(usage[1:]), 'material_association':int(association[1:]), 'layer_decomposition':{'status':'retained_path_oracle_only_NOT_ASSERTED_by_exact_tests','reason':'Current exact LayerFrame builds planar placement-axis cuts, not radial curved-axis material bands; whether this host is sliced or falls back must be observed, not inferred from its total.','expected_host_layer_count':3,'expected_material_ids':material_ids,'expected_after_volumes':[v['after'] for v in volumes],'qualification':'UNMET; controls are separate proxies with no material association. A conventional start/tangent-placement layer-decomposition witness is also not supplied.'}, 'axis_radius':10, 'angular_span_radians':math.pi/2, 'height':3, 'opening_bounds':[[9,-0.5,0],[12,0.5,2]], 'note':'Controls qualify individual band meshes; they do not prove automatic layer decomposition, internal-cap suppression or smooth-normal provenance.'}
 
 
+def band_appearance():
+    """#7955: styled keys surround a missing style, exercising the material cursor."""
+    m = Model('M4-band-appearance')
+    wall = m.product('three-band-wall', m.box((2, 0.6, 3), (1, 0.3)), entity='IFCWALL')
+    layers, materials = [], []
+    for name, rgb, transparency, thickness in [
+        ('Red band', (0.8, 0.2, 0.1), 0, 0.1),
+        ('Air gap', None, 0, 0.2),
+        ('Blue band', (0.1, 0.2, 0.8), 0.25, 0.3),
+    ]:
+        material = m.add('IFCMATERIAL', repr(name), '$', '$')
+        materials.append(int(material[1:]))
+        if rgb is not None:
+            colour = m.add('IFCCOLOURRGB', '$', *(real(v) for v in rgb))
+            rendering = m.add('IFCSURFACESTYLERENDERING', colour, real(transparency),
+                              '$', '$', '$', '$', '$', '$', '.NOTDEFINED.')
+            style = m.add('IFCSURFACESTYLE', repr(name), '.BOTH.', seq([rendering]))
+            item = m.add('IFCSTYLEDITEM', '$', seq([style]), '$')
+            representation = m.shape([item], 'Material', 'S')
+            m.add('IFCMATERIALDEFINITIONREPRESENTATION', '$', '$', seq([representation]), material)
+        layers.append(m.add('IFCMATERIALLAYER', material, real(thickness), '.F.', repr(name), '$', '$', '$'))
+    layer_set = m.add('IFCMATERIALLAYERSET', seq(layers), "'Three bands'", '$')
+    usage = m.add('IFCMATERIALLAYERSETUSAGE', layer_set, '.AXIS2.', '.POSITIVE.', '0.', '$')
+    m.add('IFCRELASSOCIATESMATERIAL', m.gid('materials'), '$', '$', '$', seq([wall]), usage)
+    return m.finish(), {'product_id': int(wall[1:]), 'material_ids': materials,
+                        'note': 'Compare exact and retained by product/material key; air gap uses the transparent material fallback.'}
+
+
 def mapped():
     m = Model('F-B')
     base = face_set(m)
@@ -176,7 +204,7 @@ def png():
 def outputs():
     result = {'checker.png':png()}
     oracle = {'license':LICENSE,'issue':7955,'provenance':'SYNTHETIC; no external authoring tool','tolerances':'tolerances.json','cases':{}}
-    for filename, builder in [('f-a-curved.ifc',curved),('f-b-mapped.ifc',mapped),('f-c-extrusion.ifc',lambda:internal_consistency(False)),('f-c-brep.ifc',lambda:internal_consistency(True)),('f-d-texture.ifc',sidecar)]:
+    for filename, builder in [('m4-band-appearance.ifc',band_appearance),('f-a-curved.ifc',curved),('f-b-mapped.ifc',mapped),('f-c-extrusion.ifc',lambda:internal_consistency(False)),('f-c-brep.ifc',lambda:internal_consistency(True)),('f-d-texture.ifc',sidecar)]:
         source, info = builder()
         result[filename] = source.encode()
         oracle['cases'][filename] = info

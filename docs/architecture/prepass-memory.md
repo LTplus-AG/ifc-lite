@@ -49,16 +49,17 @@ This is an illustrative overlap, not proof of the exact trap site. At
 1,649,550,000 source bytes the same bucket rounding puts that subtotal at
 about 3.974 GiB, leaving almost no room for the omitted allocations.
 
-The compact snapshot now reserves for the **populated row count**. If metadata
+After #8259, the compact snapshot reserved for the **populated row count**. If metadata
 triggers early with few indexed rows, the illustrative subtotal becomes
-**3,544,830,464 bytes (3.301 GiB) plus the small snapshot**. If the first 50
-jobs occur late, the snapshot can still be large. This is why fixing the
-clone alone does not qualify a 1.8 GB source as safe.
+**3,544,830,464 bytes (3.301 GiB) plus the small snapshot**. C4-11b removes that snapshot entirely: metadata holds a temporary Arc lease on
+the scan table, releases it before insertion resumes, and the scan consumes
+the original table at final column conversion. Metadata fallback may still
+build a separate full index; this does not qualify a 1.8 GB source as safe.
 
 Hash-table growth can overlap old and new tables. At final conversion,
 `from_hashmap_consuming` overlaps the table with `12N` interleaved rows, frees
 the table, sorts in place, then overlaps rows with the final `12N` columns.
-The metadata snapshot changes no spans or duplicate-id precedence; final
+The shared metadata lease changes no spans or duplicate-id precedence; final
 sorted index bytes are covered by its regression test. Discovery, job order,
 style resolution, and wire encodings are unchanged.
 
@@ -105,5 +106,15 @@ set only inside the worker: the worker posts the message alone, so callers on
 the main thread see the text, not the cause.
 
 This is a failure-reporting heuristic, not proof of OOM or a guarantee that a
-1.8 GB file will load. Snapshot compaction reduces an avoidable allocation;
+1.8 GB file will load. Metadata index sharing removes an avoidable allocation;
 model density, metadata location and host memory still determine peak use.
+
+## Content ownership (C4-11b)
+
+`IfcAPI::content` separates source/pending-finish inputs from derived slots and
+session settings. Derived slot declarations also generate their exhaustive reset
+walk. Lazy builders publish under one slot lock; batch routers clone shared
+handles. ProductionModel keeps its identity and expires its snapshots at the
+same C4-11a install/cleanup boundaries. Source-byte installation retains the
+worker's already injected entity index and columns. End-of-load diagnostics
+remain readable after cleanup.

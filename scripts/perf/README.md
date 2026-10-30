@@ -4,6 +4,80 @@
 
 # Performance diagnosis kit
 
+## Retained diff boundary A3 (#8042)
+
+**Hold: the tested transport changes do not close the retained gap.** Five
+fresh-process ordinary comparisons rejected both constructing final entries
+during decoding and reusing shared component-name dictionary identities. Neither
+consistently improved the complete handle call. Both production candidates were
+removed; eager objects, snapshot identities and Map order remain unchanged.
+
+An instrumented WASM split places most cost in native compare/result construction,
+with encoding a small share. Native work alone exceeds the requested margin
+against the supplied compiled TypeScript oracle in these diagnostics, so removing
+transport cannot establish that target. This is not an official cohort or an
+acceptance verdict. The [source pins, method, counts, medians and receipts](../../tests/evidence/diff-8042/a3-retained-diagnostics.json)
+preserve the changed oracle/warm-up conditions and measurement limits.
+
+Lesson: remeasure the cost premise after introducing resident ownership. Keep
+unproven boundary rewrites out, and investigate native compare/result construction
+under a separately agreed scope rather than broadening a transport task.
+
+## C4-11b content slots and serial metadata index (#7782)
+
+Verdict: native metadata-handoff allocation reduction on the committed bare-map
+and type-mode fixtures; no end-to-end worker-pool timing or browser peak-memory
+claim. Source-pinned counts and coverage limits are recorded in
+`tests/evidence/c4-11b-prepass/README.md`.
+
+Temporary Arc leases eliminate the populated-row metadata copies while keeping
+exclusive insertion between callbacks and consuming the same table into final
+columns. The lease must drop before scanning resumes; clone-on-write would put
+the full-table copy back. Existing sharded Arc columns already avoided this copy
+and are credited separately. Unit/RTC fallback can still build its own index.
+Content slots share one lazy initialization/publish lock and generate their reset
+walk from their declarations; settings and post-load diagnostics keep their own
+lifetimes. This result does not qualify the large-file crash band or the viewer's
+full worker-pool memory budget.
+
+## C4-11a content-install reset contract (#7782)
+
+This is a correctness change at explicit browser load boundaries. Prepass and
+external-index installation now discard all derived state together, while source
+bytes and pending finalize finishes keep their separate input lifetime. Worker
+columns installed before source bytes remain valid; clearing them from the byte
+setter would force rebuilds and lose the prepass's injected plan. Lazy batch
+index construction also preserves inputs supplied for that batch.
+
+Verdict: no measured end-to-end worker-pool timing or speedup claim. C4-0
+qualifies single-file output, not browser wall time or whole-host memory.
+Cache/slot restructuring and the bounded allocation verdict are in the
+C4-11b stack (#8328/#8329), the base of this reconciliation; merge qualification
+is separate from the source-level description above.
+
+## C4-4b comparison correction and D66 policy (#7782)
+
+The original #8269 standalone qualification compared base with itself and is
+invalid. The corrected standalone comparison fails per-phase acceptance; the
+cumulative #8286 comparison recovers it. Its quick duplex total exception is
+disclosed in the evidence, so it is not blanket strict compliance. Keep exact
+figures in the run evidence, not this ledger.
+
+D66 makes native material-layer slicing explicit and default-off. Building an
+unused material-layer index on the unsliced path is dead work; gate construction
+on the request, while preserving the browser merge-layers policy. Neither this
+policy nor the C4-11b allocation-only result establishes worker-pool speedup or
+browser peak-memory neutrality.
+
+## C4-10b shared router and batch adapters (#7782)
+
+Verdict: performance unmeasured; no speedup or neutrality claim. This is a
+structural refactor around the existing owned production transaction. Keep
+native worker caches and browser warm decode/batch-local template choice in the
+schedulers; share router arming and decode/type/drain boundaries. The C4-0
+contract and real-WASM contracts qualify output preservation, not worker-pool
+throughput. Native A/B, browser timing and headed GPU qualification remain unmeasured.
+
 ## C4-7a-R shared type geometry plan (#7782)
 
 The shared discovery-span plan passed the native instruction gate against
@@ -48,8 +122,9 @@ must measure the consumer path rather than only a retained comparison kernel.
 
 ## Streaming pre-pass trap reporting and metadata snapshots (#8259)
 
-Metadata snapshots now copy populated hash entries instead of the streaming
-scan's unused reservation. The source-backed worker APIs still own a full WASM
+At #8259, metadata snapshots were reduced to populated hash entries instead
+of the streaming scan's unused reservation; C4-11b above removes those copies.
+The source-backed worker APIs still own a full WASM
 source copy; a SharedArrayBuffer view does not avoid wasm-bindgen marshalling.
 Model-dependent index fallback and discovery allocations prevent qualifying the
 observed large-file crash band. Existing successful large-file loads remain
@@ -210,6 +285,66 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Official resident-handle diff cohort v4 (#8042)
+
+**Unmeasured: the sole official submission failed in admission.** Pop job
+`bbba5197-1036-496f-8e95-344c9a95066f`, storage task
+`issue8042-v4-cohort-3ac58cbc`, exhausted the worker's one-hour admission wait
+while existing ordinary work drained. The project command never started;
+there is no `result.json`, no timing samples, and no cold or warm performance
+verdict. The requested execution timeout was 10,800 seconds; that does not
+extend the admission deadline. At that stage, no rerun or second submission was made.
+
+The frozen cohort used TS base `a3641a732a63beac0f90718d86d33585409faa33`,
+Rust candidate `37d9ff187a38c69d9bafe15f072a76b13f655b13`, and harness
+`d6568fa392d463f1f168c296a78b38bcc0aa858a`. Both preparations passed and their
+publications verified. Untimed preparation identity passed for demo, Haus and
+the frozen large revision across all three option shapes. Those proofs do not
+establish measured-cohort identity or performance acceptance.
+
+Lesson: distinguish the execution timeout from the worker admission deadline.
+An exact-once cohort can consume its only submission while waiting for active
+foreign work; preserve that original failure and report it without fabricating
+a verdict or quietly rerunning. See the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042)
+and the original job receipt in the storage task's verified evidence.
+
+## Authorized resident-handle v4 recovery (#8042)
+
+**Inconclusive: the measured cohort is noisy.** Pop benchmark
+`afe5139a-662a-4e37-9e82-a0ed16cc03ef`, task
+`issue8042-v4-cohort-r3-3ac58cbc`, completed every cold and resident-handle
+endpoint and passed exact output/reference identity for demo, Haus and the
+frozen large revision across every option shape. All cold confidence bounds
+meet noninferiority and all warm confidence bounds meet their absolute budgets.
+Demo's warm candidate spread exceeds the predeclared noise limit, which blocks
+a clean pass. Do not advertise performance acceptance or infer a regression
+from the report-only warm ratio against TS. No further cohort was submitted.
+The table and preserved raw evidence are linked from the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042).
+Canonical publication failed at vault ingest, and the bounded free-vault wait
+expired. The original job remains `evidence_pending`; raw results and a compact
+evidence bundle are preserved on Pop and locally. Lifecycle closure is
+requested, but workspace release remains blocked until publication verifies.
+
+The new active task used separate admission and output paths while reading the
+original verified preparation arms and frozen protocol in place. Both original
+lifecycle task locks stayed held through queueing and execution. The original
+failed receipts, admission binding and closing task records remained
+byte-identical. Exclusive benchmark admission followed the natural host drain;
+capacity and idle guards were unchanged.
+
+A preceding authorized recovery (`e9c01af8-b940-4e63-a444-6cec7cd04b4e`)
+failed before registration because its task already had a closure request.
+A fresh ordinary preparation (`e968e69f-521e-47ad-bc82-87a04cf440cd`)
+then failed capacity admission before project execution; its failure evidence
+is verified. Neither produced timing samples. The subsequent read-only recovery
+reverified the original build attestations, source/path bindings, runtime,
+fixtures and untimed identity proofs before its sole submission.
+
+Lesson: an active lifecycle state does not admit a producer after closure is
+requested. Use a new owner and protect reused verified inputs for the entire
+queue and run. A sub-budget interactive endpoint can still violate the declared
+noise rule; preserve that limitation instead of relabelling it as a clean win.
+
 ## HiDPI navigation and synchronous capture (#6709, #8089)
 
 **Functional qualification passes; performance is mixed.** The physical NVIDIA
@@ -286,6 +421,15 @@ only the comparison engine. Default and retained geometry modules exclude diff
 exports. Actual-WASM tests verify independent memories and that retained diff
 models survive geometry initialization. This is a packaging result; full
 facade startup, marshaling, and end-to-end timing qualification remain open.
+
+**Timing protocol:** [diff-e2e v3](./diff-e2e.md) replaces the oversized frozen
+cohort with six balanced seeded pairs on demo, Haus and the preserved large
+controlled revision. Cold lifecycle and retained-input public calls include the
+production boundary costs; full identity is a separate hard gate. Pointwise
+paired bootstrap intervals use a 1.10 margin and flag spread above 20%. Standard
+exclusive idle admission replaces per-process classification. This is protocol
+preparation, not a measured performance verdict; record the actual verdict here
+before consumer cutover.
 
 ## Shared record discovery (C4-5, #7782)
 
@@ -5331,6 +5475,34 @@ above the timer resolution before a wall-time cohort can say anything; on small
 models the instruction comparison is the meaningful measurement. Numbers and
 the cohort report live in the PR and its evidence, not here.
 
+## Right-sized public diff qualification (#8042, protocol v3)
+
+**Performance verdict: inconclusive; benchmark command never started.** The
+right-sized harness is carried onto the refreshed stack in #8113. Its behavioral
+suite passes all checks. Fresh ordinary Pop preparations succeeded for the
+public TypeScript source `a3641a732a` and public Rust source `a3cb13ddf2`, using
+the latter's identical harness bytes for both arms. Their original receipts are
+`8a810dc7-9b3b-4689-b010-aa499e7ed79d` and
+`9714c623-c725-4f54-8514-e7bf98748d26`. Comparing the preserved preparation
+proofs confirms identical fingerprints and full output/reference-identity proofs
+for demo, Haus and the frozen large revision pair across all option shapes.
+Those ordinary proofs do not constitute an exclusive timing cohort.
+
+The single benchmark submission,
+`d3327c91-b32e-4812-9a18-f5af16f25bb1`, failed at storage job-open before project
+execution (`processExitCode: null`, `projectStarted: false`). Preparation evidence
+publication had left the owning storage task pending after a canonical-ingest
+error. No endpoint has samples, a median ratio or a confidence interval; no
+large-case cohort duration exists to compare with the planning projection.
+No second cohort was submitted, and performance acceptance remains open.
+
+Lesson: successful build exits and valid artifact hashes do not establish that
+the storage task is ready for the next producer. Reconcile evidence publication
+and check the owning task's lifecycle state before requesting benchmark admission.
+Recover the original receipts rather than replaying builds or silently retrying
+a failed cohort. Preserve the fixed protocol and seek coordinator approval
+before another measurement attempt.
+
 ### C2 remaining structural consumers (#7781)
 
 The Reference-only opening guard, routing-key identity read and RTC Items
@@ -5449,6 +5621,39 @@ profile slices: that capture extends a large graph's lifetime into the next call
 and can inflate GC cost. Use the non-capturing production-lifetime harness for
 end-to-end conclusions, and the slice harness only for native investigation.
 
+### Warm-call transport follow-up (#8042, 2026-10-28)
+
+Ordinary diagnostics only; measured code `625b2beb8f`, starting point
+`70847c1ccc`. Typed dictionary decoding, streamed compact result records,
+construction-time key snapshots, fused reference/Map restoration, omitted
+destination-owned native indexes and bounded component-map reservations preserve
+canonical outputs and original references. No hidden public input cache was added.
+
+With the protocol's options, conditioned public calls improved from 2.207 to
+1.258 ms on Haus and 29.994 to 18.091 ms on a changed 2,000-row LARGE slice.
+Final phase medians (Haus / slice, ms): pack 0.384 / 6.425; construct
+0.186 / 2.664; WASM compare plus encoding 0.224 / 4.425; JS decode
+0.015 / 0.169; fused restoration plus Map 0.020 / 0.191; model free
+0.128 / 1.358. Phase medians are not additive; checkpoint effects are combined,
+not isolated commit measurements.
+
+Separate full-model data-scope diagnostics: TS / Rust public / Rust retained
+were 0.185 / 0.928 / 0.195 ms on Haus and 30.786 / 144.575 / 36.012 ms
+on LARGE (17,010 rows per side). Canonical hashes matched exactly. Final-source
+validation passed native tests (129), strict workspace clippy, a WASM-inclusive
+root build, root typecheck, diff tests (527), independent-oracle raw WASM (70)
+and leak tests (12), real-fixture parity (10/10, zero skips), and API snapshot.
+Native/clippy/build receipt: `90d2cef7-219e-48ff-a52f-6aa6506d9e41`
+(later wrapper failure); remaining checks and profiles:
+`a133ce2e-3950-4496-96db-daab45598bcb` (exit 0, verified publication recovered).
+
+The user intentionally cancelled the official v3 cohort before submission:
+public warm parity remains unmet, and Pop time is reserved for a later v4
+explicit-handle protocol. There is no v3 acceptance verdict or cohort job.
+Lesson: removing result graphs helps, but retained JavaScript inputs still pay
+packing, construction and release on every public call. Explicit internal model
+retention is a different lifetime contract and cannot qualify that endpoint.
+
 ## C4-9 browser colour resolver consolidation (#7782)
 
 The browser's flat colour-map adapter now delegates to processing's canonical
@@ -5464,3 +5669,38 @@ to a branch can reuse a dependency set that predates a newly added module.
 Check the rebuilt executable's dependency file for the new module, not just
 Cargo's success status. The initial cached branch run was rejected; processing
 was rebuilt and the branch measurements repeated before accepting the result.
+
+### Retained bounded halfspaces (M6, #7955)
+
+Verdict: fresh CUT-0/M6 builds at the same source path produce identical default
+WASM bytes and exact mesh fingerprints. The opt-in path constructs one bounded
+prism per clip and performs each Difference separately. Its real-SDK per-clip
+observations describe invocation cost under qualification load; they do not
+establish worker-pool throughput or a performance-neutrality claim. No grouping
+or exact-path optimization is part of this change.
+
+Lesson: feature-gating a helper does not preserve binary identity if inserting
+it moves existing source spans. Append the helper or isolate it in a gated
+module, and compare fresh same-path binaries. For source qualification, linear
+section areas are polynomial between topology events; repeatedly seeking
+relative convergence on adjacent floating-point events can exhaust work even
+when the integral is available directly. Prove disjoint source opening caps
+before expanding triangle tuples, while preserving the fixed work budget.
+
+### Retained material bands and admission reuse (M4, #7955)
+
+Material-layer usage lookup belongs to the model snapshot. Build the element-to-usage
+index once, then admit each product once and carry that result through opening
+preparation and execution. Repeating an entity scan in each of those consumers makes
+source admission grow with both model size and layered-product count; a shared lookup
+removes that repeated walk without changing the kernel operation sequence.
+
+Verdict: per-product census times are report-only diagnostics, not a worker-pool
+speedup claim. No kernel grouping, tolerance or performance ceiling changes accompany
+this admission change. Default exact output and default WASM identity are qualified
+separately; retained bands, cap removal and presentation remain opt-in.
+
+Lesson: fault accounting is also a shared resource. Band transport retirements need
+their own bounded allowance so they cannot prevent subsequent ordinary products from
+publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
+summaries retain those observations without making artifact bytes depend on a run.

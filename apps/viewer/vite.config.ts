@@ -20,6 +20,7 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 // Same allowlist the production relay uses, so dev and prod cannot disagree
 // about which Dalux node a request reaches (#2792).
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
+import { bimcollabRelayRoute } from './vite-plugins/bimcollab-relay';
 import { bcfTokenRelayRoute } from './vite-plugins/bcf-token-relay';
 import { deploymentAssetsDir } from '../../scripts/lib/deployment-assets-dir.mjs';
 
@@ -252,6 +253,7 @@ export default defineConfig(({ mode }) => {
     // relay. Dev runs the SAME handler production does (#2792), rather than a
     // second proxy config that can drift from it.
     daluxRelayRoute(),
+    bimcollabRelayRoute(),
     // Confidential-client token exchange for BIMcollab (#4919): the same
     // handler as api/bcf/oauth/token.ts, secret from .env.local or the shell.
     bcfTokenRelayRoute(),

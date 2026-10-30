@@ -538,17 +538,11 @@ export class IfcAPI {
      *   1. Builds the entity index incrementally from the same scan that
      *      collects geometry jobs (a separate index scan would double
      *      wall-clock).
-     *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
-     *      first ~50 geometry jobs have been collected, resolves
-     *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
-     *      JS host can spin up geometry process workers.
-     *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
-     *      the meta phase already buffered some).
-     *   4. Emits `complete` with the total job count at end of scan.
-     *
-     * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
-     * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
-     * (first 100 K bytes scanned + meta + first chunk).
+     *   2. At the 50th accepted geometry job, resolves unit scale + RTC
+     *      (including a project not yet scanned) and emits `meta`.
+     *   3. After scan completion, emits the complete entity index, styles,
+     *      worker columns and chunked jobs with affinity keys.
+     *   4. Emits `complete` with the total job count.
      *
      * The callback receives a single `JsValue` argument shaped as one of:
      *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
@@ -923,8 +917,11 @@ export class IfcAPI {
     /**
      * Structured pipeline diagnostics accumulated across every
      * `processGeometryBatch*` call since the last load reset
-     * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
-     * `schemaVersion` field — or `undefined` when no batch has run yet.
+     * (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
+     * `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
+     * Returns `undefined` until a batch runs or a prepass refusal or omitted
+     * type record (`omittedTypeRecords`, #8341) is recorded;
+     * `clearPrePassCache` preserves the report for post-load inspection.
      * Includes per-batch summed geometry wall time, mesh/triangle counts,
      * the degenerate-backstop drop count, and the CSG failure aggregates.
      */

@@ -244,3 +244,42 @@ fn material_colors_from_flat_does_not_size_by_the_wire_count() {
     assert_eq!(back.len(), 1, "{back:?}");
     assert_eq!(back[&1], vec![[1.0, 0.0, 0.0, 1.0]]);
 }
+
+/// C4-15 (#8341): the prepass void index IS the geometry kernel's. Openings
+/// written in descending order come back sorted (#2019), a bare
+/// `RelatedObjects` reference still propagates (#845), and a lowercase
+/// keyword classifies like an uppercase one on both entry points.
+#[test]
+fn prepass_void_index_matches_shared_geometry_kernel_8341() {
+    const IFC: &str = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#211=IFCRELVOIDSELEMENT('v2',$,$,$,#100,#201);
+#210=ifcrelvoidselement('v1',$,$,$,#100,#200);
+#212=IFCRELVOIDSELEMENT('v3',$,$,$,#110,#202);
+#300=IFCRELAGGREGATES('a1',$,$,$,#100,(#101));
+#301=IFCRELAGGREGATES('a2',$,$,$,#101,#102);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let mut spans = PrepassSpans::default();
+    let mut scanner = EntityScanner::new(IFC.as_bytes());
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        spans.stash(type_name, id, start, end);
+    }
+    let mut decoder = EntityDecoder::new(IFC);
+    let prepass = resolve_prepass(&spans, &mut decoder, ResolveOptions::default()).void_index;
+    let mut decoder = EntityDecoder::new(IFC);
+    let kernel = ifc_lite_geometry::void_index_from_content(IFC, &mut decoder);
+
+    assert_eq!(prepass, kernel);
+    for host in [100, 101, 102] {
+        assert_eq!(prepass.get(&host), Some(&vec![200, 201]), "host #{host}");
+    }
+    assert_eq!(prepass.get(&110), Some(&vec![202]));
+    assert_eq!(prepass.len(), 4);
+}

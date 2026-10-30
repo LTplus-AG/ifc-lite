@@ -71,7 +71,7 @@
 1 rust/geometry/src/router/transforms/mod.rs
 7 rust/geometry/src/router/voids/probe.rs
 5 rust/geometry/src/trimmed_curve.rs
-5 rust/geometry/src/void_index.rs
+1 rust/geometry/src/void_index.rs
 2 rust/processing/src/analytic_export/mapped.rs
 1 rust/processing/src/analytic_export/walk.rs
 3 rust/processing/src/analytic_export/walk/seed.rs
@@ -97,7 +97,7 @@
 1 rust/processing/src/data_model/relationships.rs
 5 rust/processing/src/element/element_color.rs
 1 rust/processing/src/pdf_vector/extent.rs
-15 rust/processing/src/prepass.rs
+11 rust/processing/src/prepass.rs
 2 rust/processing/src/prepass_styled.rs
 2 rust/processing/src/prepass_type_material.rs
 3 rust/processing/src/processor/color_layer.rs
@@ -119,7 +119,6 @@
 5 rust/processing/src/symbolic/text.rs
 1 rust/processing/src/symbolic/transform.rs
 4 rust/processing/src/symbolic/trimmed_curve.rs
-1 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 3 rust/wasm-bindings/src/api/grid_lines.rs
 2 rust/wasm-bindings/src/api/scan_outline.rs
 1 rust/wasm-bindings/src/utils.rs

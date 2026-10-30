@@ -205,7 +205,8 @@ pub(super) fn admit<R: NumericalReceipt>(witness: &witness::RuntimeProductWitnes
     })
 }
 pub(super) fn bake<R: NumericalReceipt>(ledger: &[(LogicalRetainedValue, Arc<RuntimeRealization<R>>)],
-    realization: &Arc<RuntimeRealization<R>>, object_frame: &[f64;16], resources: &OwnedResourceContext, storage: &mut Storage)
+    realization: &Arc<RuntimeRealization<R>>, object_frame: &[f64;16], resources: &OwnedResourceContext,
+    storage: &mut Storage, layered: bool)
     -> Result<(publication::ShapePart, presentation::FaceSources), RetainedExecutionError> {
     retained_wire::rigid(*object_frame).map_err(|_| contract())?;
     let (base, matrix) = chain(realization, ledger.len())?;
@@ -224,7 +225,7 @@ pub(super) fn bake<R: NumericalReceipt>(ledger: &[(LogicalRetainedValue, Arc<Run
     resource::charge(resource::Cost { work: 1, ..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
     transform(matrix, &mut part.positions, &mut part.indices);
     if part.positions.iter().chain(part.world_from_object.iter()).any(|x| !x.is_finite()) { return Err(contract()); }
-    let mut sources = presentation::face_sources(realization)?;
+    let mut sources = presentation::face_sources(realization, layered)?;
     // M11-F pulls triangles back into source coordinates. Our local frame omits
     // the affine translation, so put it back before applying that pullback.
     if let Ok(operands) = &mut sources {

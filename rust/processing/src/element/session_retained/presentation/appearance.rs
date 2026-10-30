@@ -2,7 +2,7 @@
 //! M11-A IfcAppearance. A product discharges the obligation only when every
 //! part resolves through exact's own colour resolver and none binds a texture
 //! or indexed palette; those refuse `appearance_unsupported` (proven absent).
-use super::appearance_resolve::{bind, resolve_parts, unsupported, Bound};
+use super::appearance_resolve::{bind, resolve_parts, unsupported, Bound, PartSource};
 use super::{Context, OwnedMeshProductionContext, RetainedProductPlan, Requirement, ShapeOnlyProduct};
 use crate::element::assembly_job::AssemblyJob;
 use crate::element::session_retained::error::RetainedExecutionError as Error;
@@ -23,7 +23,8 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
         let live_bytes = (std::mem::size_of::<PartAppearance>() + name) as u64;
         product._storage.charge(context.resources, Cost { work: 1, live_bytes, ..Default::default() })?;
     }
-    for (part, appearance) in product.parts.iter_mut().zip(appearances) {
+    for (part, mut appearance) in product.parts.iter_mut().zip(appearances) {
+        if context.layer_class != 0 { appearance.geometry_class = context.layer_class; }
         part.appearance = Some(appearance);
     }
     Ok(vec![Requirement::IfcAppearance])
@@ -39,7 +40,11 @@ fn resolve_plan(
     element_color: [f32; 4],
 ) -> Result<Vec<PartAppearance>, Error> {
     let source = model.source().ok_or(Error::Source(RetainedContextError::Missing))?;
-    let parts: Vec<Bound> = plan.values().map(|value| bind(&value.presentation().collect::<Vec<_>>())).collect::<Result<_, _>>()?;
+    let parts: Vec<Bound> = plan.values().enumerate().map(|(index, value)| {
+        let mut part = bind(&value.presentation().collect::<Vec<_>>())?;
+        if let Some(layers) = plan.layers() { part.source = PartSource::Material(layers.tags[index].material_id); }
+        Ok(part)
+    }).collect::<Result<_, Error>>()?;
     let mut decoder = source.decoder();
     let entity = decoder.decode_by_id(product_id).map_err(Error::Core)?;
     let job = ElementMeshJob { id: product_id, ifc_type: ifc_type.clone(), entity: &entity,

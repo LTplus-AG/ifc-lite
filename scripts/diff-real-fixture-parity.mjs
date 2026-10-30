@@ -3,84 +3,128 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // #8042: exercise the actual WASM boundary on real IFC adapter output.
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
 import { loadDiffOracle } from './lib/diff-oracle.mjs';
 import * as publicDiff from '../packages/diff/dist/index.js';
-import { prepareDiffModel } from '../packages/diff/dist/internal.js';
-import { fingerprintColumns } from '../packages/diff/dist/wasm-columns.js';
-import { restoreDiffReferences } from '../packages/diff/dist/wasm-result.js';
-import { initSync, DiffModel } from '../packages/wasm/pkg-diff/ifc-lite-diff.js';
+import { prepareDiffModel } from '../packages/diff/dist/index.js';
+import { initSync } from '../packages/wasm/pkg/ifc-lite.js';
+import { enrichGeometry } from './lib/diff-real-geometry.mjs';
+import { assertDerivedClaims, assertOriginalReferences, derivedGeometryCases } from './lib/diff-derived-geometry.mjs';
 
-initSync({ module: readFileSync(new URL('../packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url)) });
 const { diffModels } = await loadDiffOracle();
-publicDiff.initDiffSync({ module: readFileSync(new URL('../packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url)) });
+
+const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+const geometryWasm = readFileSync(new URL('../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
+const diffWasm = readFileSync(new URL('../packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url));
+initSync({ module: geometryWasm });
+publicDiff.initDiffSync({ module: diffWasm });
+console.log(JSON.stringify({ geometryWasmSha256: digest(geometryWasm), diffWasmSha256: digest(diffWasm) }));
 const root = new URL('../', import.meta.url);
 const demo = 'apps/viewer/public/samples/';
 const pairs = [
   [demo + 'building-architecture.ifc', demo + 'building-architecture-rev-b.ifc'],
   ['tests/models/ara3d/AC20-FZK-Haus.ifc', 'tests/models/ara3d/AC20-FZK-Haus.ifc'],
 ];
-function retained(rows) {
-  const c = fingerprintColumns(rows);
-  const raw = new DiffModel(c.strings, c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
+function compare(base, head, options, label) {
+  const expected = diffModels(base, head, options);
+  // Exercise the full PUBLIC facade, including option projection and reference
+  // restoration. Calling DiffModel.compare directly missed facade regressions.
+  const actual = publicDiff.diffModels(base, head, options);
+  assert.deepEqual(actual, expected, label);
+  assertOriginalReferences(actual, base, head);
+  // Retained snapshots must agree with the stateless facade (#8303).
+  const baseModel = prepareDiffModel(base);
   try {
-    const prepared = prepareDiffModel(rows);
-    return { raw, prepared, free() { prepared.dispose(); raw.free(); } };
-  } catch (error) { raw.free(); throw error; }
+    const headModel = prepareDiffModel(head);
+    try {
+      assert.deepEqual(baseModel.compare(headModel, options), expected, `${label}: retained snapshot facade`);
+      // Owned handles and one-shot calls must agree under both placement modes (#8266).
+      for (const stripPlacementGeometry of [false, true]) {
+        const strip = side => side.map(row => typeof row.geometryHash === 'string' && row.geometryHash.startsWith('p:')
+          ? { ...row, geometryHash: undefined } : row);
+        const want = stripPlacementGeometry ? diffModels(strip(base), strip(head), options) : expected;
+        const opts = { ...options, stripPlacementGeometry };
+        const retained = baseModel.compare(headModel, opts);
+        const transient = publicDiff.diffModels(base, head, opts);
+        assert.deepEqual(retained, want, `${label}: handle strip=${stripPlacementGeometry}`);
+        assert.deepEqual(transient, want, `${label}: one-shot strip=${stripPlacementGeometry}`);
+        const wire = value => JSON.stringify(value, (_, item) => item instanceof Map ? [...item] : typeof item === 'bigint' ? String(item) : item);
+        assert.equal(wire(retained), wire(want), `${label}: handle property order and wire bytes`);
+        assert.equal(wire(transient), wire(want), `${label}: one-shot property order and wire bytes`);
+      }
+    } finally { headModel.dispose(); }
+  } finally { baseModel.dispose(); }
+  return actual;
 }
-let executedPairs = 0;
+const loaded = new Map();
+let derivedSource;
 let comparisons = 0;
+let executedPairs = 0;
+let skipped = 0;
 for (const [basePath, headPath] of pairs) {
   const paths = [basePath, headPath].map(path => new URL(path, root));
   if (paths.some(path => !existsSync(path))) {
     console.log(`SKIP ${basePath} / ${headPath}: missing IFC fixture; run pnpm fixtures`);
+    skipped++;
     continue;
   }
   // The CLI loader captures process-wide console output while parsing.
   // Load sequentially so overlapping captures cannot swallow the evidence.
   const rows = [];
   for (const path of paths) {
-    const fingerprints = buildFileFingerprints(await loadIfcBytes(readFileSync(path), path.pathname));
-    assert.ok(fingerprints.length > 0, `${path.pathname}: expected at least one fingerprint (#8042)`);
-    rows.push(fingerprints);
+    let model = loaded.get(path.href);
+    if (!model) {
+      assert.ok(statSync(path).size <= 16 * 1024 * 1024, 'acceptance input is capped at 16 MiB');
+      const bytes = readFileSync(path);
+      const fingerprints = buildFileFingerprints(await loadIfcBytes(bytes, path.pathname));
+      assert.ok(fingerprints.length > 0, `${path.pathname}: expected at least one fingerprint (#8042)`);
+      model = enrichGeometry(bytes, fingerprints);
+      loaded.set(path.href, model);
+      console.log(JSON.stringify({ fixture: path.pathname, sha256: digest(bytes), geometry: model.evidence }));
+    }
+    // Each revision owns its original rows, even for the self-comparison.
+    rows.push(model.rows.map(row => ({ ...row })));
   }
-  const base = retained(rows[0]);
-  try {
-    const head = retained(rows[1]);
-    try {
-      for (const options of [{ scope: 'data' }, { scope: 'data', matchUnpairedByContent: true },
-        { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true },
-        { scope: 'both', excludeTypes: ['IfcSpace'] },
-        { scope: 'data', keyAliases: new Map(), detectSuccessors: true }]) {
-        const expected = diffModels(rows[0], rows[1], options);
-        const publicResult = publicDiff.diffModels(rows[0], rows[1], options);
-        assert.deepEqual(publicResult, expected, `${basePath}: public binary facade`);
-        assert.deepEqual(base.prepared.compare(head.prepared, options), expected, `${basePath}: retained snapshot facade`);
-        comparisons++;
-        const rawOptions = { ...options,
-          ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
-        };
-        const actual = restoreDiffReferences(base.raw.compare(head.raw, rawOptions), rows[0], rows[1]);
-        assert.deepEqual(actual, expected, `${basePath}: ${JSON.stringify(options)}`);
-        for (const entry of actual.entries) {
-          assert.equal(actual.byKey.get(entry.key), entry);
-          if (entry.base) assert.ok(rows[0].includes(entry.base));
-          if (entry.head) assert.ok(rows[1].includes(entry.head));
-        }
-        if (basePath === headPath) {
-          assert.equal(actual.counts.unchanged, rows[0].filter(row => !options.excludeTypes?.includes(row.ifcType)).length);
-        }
-        console.log(JSON.stringify({ base: basePath, head: headPath, options, entities: rows.map(row => row.length), counts: actual.counts, parity: 'exact' }));
-      }
-    } finally { head.free(); }
-  } finally { base.free(); }
+  derivedSource ??= { fixture: basePath, rows: rows[0] };
+  for (const options of [{ scope: 'data' }, { scope: 'data', matchUnpairedByContent: true },
+    { matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true },
+    { scope: 'both', excludeTypes: ['IfcSpace'] },
+    { scope: 'data', keyAliases: new Map(), detectSuccessors: true }]) {
+    const actual = compare(rows[0], rows[1], options, `${basePath}: ${JSON.stringify(options)}`);
+    if (basePath === headPath) {
+      assert.equal(actual.counts.unchanged, rows[0].filter(row => !options.excludeTypes?.includes(row.ifcType)).length);
+    }
+    comparisons++;
+    console.log(JSON.stringify({ base: basePath, head: headPath, options, entities: rows.map(row => row.length), counts: actual.counts, parity: 'exact' }));
+  }
   executedPairs++;
 }
 console.log(`Real IFC parity: ${executedPairs}/${pairs.length} pairs executed.`);
-console.log(`Real IFC parity: ${comparisons}/10 comparisons; ${pairs.length - executedPairs} skipped pairs.`);
-if (executedPairs !== pairs.length) {
-  console.error('INCOMPLETE: real IFC coverage missing; run pnpm fixtures and rerun parity.');
+if (derivedSource) {
+  const derived = derivedGeometryCases(derivedSource.rows, publicDiff);
+  console.log(JSON.stringify({ fixture: derivedSource.fixture, derivedProvenance: derived.provenance }));
+  for (const scenario of derived.cases) {
+    const actual = compare(scenario.base, scenario.head, scenario.options, scenario.name);
+    assertDerivedClaims(actual, scenario);
+    comparisons++;
+    console.log(JSON.stringify({ scenario: scenario.name, options: scenario.options, counts: actual.counts,
+      splitMerges: actual.splitMerges, successors: actual.successors, parity: 'exact' },
+    (_key, value) => typeof value === 'bigint' ? value.toString() : value));
+  }
+} else {
+  skipped++;
+  console.log('SKIP derived geometry revisions: no real IFC source available; run pnpm fixtures');
+}
+console.log(JSON.stringify({ comparisons, skipped, coverage: 'real geometry plus explicitly derived revisions; no authored split/merge ground truth' }));
+
+if (comparisons === 0) {
+  console.error('INCOMPLETE: no real IFC pairs executed; run pnpm fixtures and rerun parity.');
+  process.exitCode = 2;
+} else if (skipped > 0) {
+  // A skipped section is missing coverage, not a pass: every fixture must be present.
+  console.error(`INCOMPLETE: ${skipped} parity section(s) skipped; run pnpm fixtures and rerun parity.`);
   process.exitCode = 2;
 }

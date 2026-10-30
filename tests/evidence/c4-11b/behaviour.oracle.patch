@@ -1,8 +1,6 @@
 --- a/rust/wasm-bindings/src/api/content_caches.rs
 +++ b/rust/wasm-bindings/src/api/content_caches.rs
-@@ -19,7 +19,11 @@
- 
- impl<T: Clone> LazySlot<T> {
+@@ -23,3 +23,7 @@
      pub(super) fn get_or_init(&self, build: impl FnOnce() -> T) -> T {
 -        build()
 +        self.0
@@ -11,5 +9,3 @@
 +            .get_or_insert_with(build)
 +            .clone()
      }
- }
- 

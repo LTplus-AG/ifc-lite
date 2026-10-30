@@ -18,6 +18,8 @@ impl<T> Default for LazySlot<T> {
 }
 
 impl<T: Clone> LazySlot<T> {
+    /// Holds the slot lock across `build`: worker batch-entry callers are fine;
+    /// a threaded bundle serializes concurrent builders of the same slot.
     pub(super) fn get_or_init(&self, build: impl FnOnce() -> T) -> T {
         self.0
             .lock()
@@ -40,7 +42,7 @@ macro_rules! content_slots {
         #[derive(Default)]
         pub(super) struct ContentSlots { $(pub(super) $name: LazySlot<$ty>,)* }
         impl ContentSlots {
-            pub(super) fn clear(&self) { $(super::content_lifetime::discard(&self.$name);)* }
+            fn clear(&self) { $(super::content_lifetime::discard(&self.$name);)* }
         }
     };
 }

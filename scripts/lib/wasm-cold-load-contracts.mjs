@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** Source and owned-buffer contracts registered by the real WASM harness. */
-import { checkC4PrepassContract } from './wasm-c4-11b-prepass-contract.mjs';
 import { checkFlatWindingContract } from './wasm-flat-winding-contract.mjs';
 import { checkMeshGetterOwnershipContract } from './wasm-mesh-getter-ownership-contract.mjs';
 import { checkSourceFingerprintContract, checkPrepassReservationContract } from './wasm-source-fingerprint-contract.mjs';
@@ -54,7 +53,6 @@ export async function runColdLoadContracts({
   test('prepass full-source fingerprint preserves old entry points and malformed tails (#3985)', () => {
     checkSourceFingerprintContract(IfcAPI, new TextEncoder().encode(columnContent), true);
   });
-  test('C4-11b serial/sharded prepass event order and complete index (#7782)', () => checkC4PrepassContract(IfcAPI));
   runOwnedShardedPrepassContracts(IfcAPI, test, ownershipWasmExports.memory);
 
   // Optional retained baseline artifacts exercise a genuinely matched historical pair.

@@ -28,6 +28,7 @@ import { runGpuUpload } from './gpu-upload-guard';
 import { registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
 import { viewportRenderOptions } from './viewport-render-options';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
+import { GpuFramePacer } from './gpuFramePacer';
 /** Sun cast-shadow render options, driven by the Environment panel (#2670). */
 export interface SunShadowSettings {
   enabled: boolean;
@@ -140,6 +141,10 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     // 30ms a frame cannot overwhelm the main thread any more than before.
     let continuousThrottleMs = 0; // 0 = no throttle
     let emaRenderMs = 0;          // EMA of render() wall time, rendered frames only
+    // render() wall time is CPU-side only: queue.submit() returns at once, so a
+    // GPU slower than the loop (software WebGPU) never shows up above and frames
+    // queue without bound, delaying every pick readback behind them (#5865).
+    const framePacer = new GpuFramePacer();
 
     function updateThrottle(renderMs: number) {
       emaRenderMs = emaRenderMs === 0 ? renderMs : renderMs * 0.2 + emaRenderMs * 0.8;
@@ -229,8 +234,11 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // preserve canvas contents between frames then show BLANK while orbiting
       // and only "reappear" on release — the reported bug. The large-model
       // interaction throttle still caps the cadence via `throttled`.
-      const willRender =
-        (isAnimating || renderRequested || queueFlushed || isInteractingRef.current) && !throttled;
+      const wantsRender = (isAnimating || renderRequested || queueFlushed || isInteractingRef.current) && !throttled;
+      const gpuBacklogged = wantsRender && framePacer.saturated(performance.now());
+      // A held-back frame keeps its request; queueFlushed is per-iteration only.
+      if (gpuBacklogged && queueFlushed) renderer.requestRender();
+      const willRender = wantsRender && !gpuBacklogged;
       if (willRender) {
         renderer.consumeRenderRequest();
         const renderStart = performance.now();
@@ -274,6 +282,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           }
         }
         updateThrottle(performance.now() - renderStart);
+        const gpuDone = renderer.getGPUDevice()?.queue.onSubmittedWorkDone();
+        if (gpuDone) framePacer.noteSubmit(gpuDone, performance.now());
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section
         // face-pick handler can compute a correct cardinal-fallback

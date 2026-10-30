@@ -87,7 +87,9 @@ function fakeRenderer(state: FakeRendererState): Renderer {
   return {
     getCamera: () => camera,
     getScene: () => scene,
-    getGPUDevice: () => ({}),
+    // A GPU that has finished each frame by the time submit() returns, settled
+    // synchronously because these tests step() frames without yielding to microtasks.
+    getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => ({ then: (done: () => void) => done() }) } }),
     getPipeline: () => ({}),
     peekRenderRequest: () => state.renderRequested,
     consumeRenderRequest: () => { state.renderRequested = false; },

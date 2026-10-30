@@ -146,7 +146,9 @@ describe('same-named sets on one entity (#8136)', () => {
     });
     const entry = diffModels([fp(twice('REI60'))], [fp(twice('REI90'))]).byKey.get('w');
     expect(entry?.state).toBe('modified');
-    expect(entry?.changedComponents).toEqual(['pset#2:Pset_WallCommon']);
+    // Ordinals follow content order: the FireRating set sorts before the
+    // IsExternal one, so the edited set is the unnumbered first occurrence.
+    expect(entry?.changedComponents).toEqual(['pset:Pset_WallCommon']);
   });
 });
 

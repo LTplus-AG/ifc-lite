@@ -98,7 +98,7 @@ function ModelReportCard({
       {(report.actions.length > 0 || hasOmittedTypeRecords(report)) && (
         <ul className="mt-2 list-disc space-y-1 pl-4 text-2xs">
           {hasOmittedTypeRecords(report) && (
-            <li>{t('loadReportPanel.omittedTypeRecords', { count: report.omittedTypeRecords ?? 0 })}</li>
+            <li>{t('loadReportPanel.omittedTypeRecords', { name: report.name, count: report.omittedTypeRecords ?? 0 })}</li>
           )}
           {report.actions.map((action, i) => (
             // Actions are a fixed, stable-order list built from this report's

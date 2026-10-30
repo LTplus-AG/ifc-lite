@@ -214,11 +214,8 @@ export const miscPanelsBEn = {
   'loadReportPanel.status.clean': 'Clean',
   'loadReportPanel.status.issuesFound': 'Issues found',
   // #8341: type records the decoder could not read; only their type geometry is affected.
+  // One message for the load notice and the report line (eager-bundle budget).
   'loadReportPanel.omittedTypeRecords': {
-    one: '{count} type definition could not be read, so its type geometry was left out.',
-    other: '{count} type definitions could not be read, so their type geometry was left out.',
-  },
-  'loadReportPanel.omittedTypeRecordsToast': {
     one: '"{name}": {count} type definition could not be read, so its type geometry was left out.',
     other: '"{name}": {count} type definitions could not be read, so their type geometry was left out.',
   },

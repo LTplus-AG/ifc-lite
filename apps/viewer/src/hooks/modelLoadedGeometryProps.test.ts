@@ -229,13 +229,7 @@ describe('reportRefusedLengthUnit (#7678)', () => {
 describe('reportOmittedTypeRecords (#8341)', () => {
   function notices(count: number | undefined): string[] {
     const out: string[] = [];
-    const warn = console.warn;
-    console.warn = () => {};
-    try {
-      reportOmittedTypeRecords('haus.ifc', count, (message) => out.push(message));
-    } finally {
-      console.warn = warn;
-    }
+    reportOmittedTypeRecords('haus.ifc', count, (message) => out.push(message));
     return out;
   }
 

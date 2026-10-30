@@ -37,7 +37,7 @@ export function readOmittedTypeRecords(api: unknown): number | undefined {
     report = getter.call(api);
   } catch (err) {
     // A diagnostics read must not fail the load it describes.
-    console.warn('[prepass] getPipelineDiagnostics failed; omitted type records unknown', err);
+    console.warn('[prepass] getPipelineDiagnostics failed', err);
     return undefined;
   }
   if (typeof report !== 'object' || report === null) return undefined;

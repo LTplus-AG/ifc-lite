@@ -164,8 +164,7 @@ export function reportOmittedTypeRecords(
   notify: (message: string) => void,
 ): void {
   if (count === undefined || count <= 0) return;
-  console.warn(`[useIfc] ${fileName}: ${count} type record(s) could not be decoded; their type geometry was left out (#8341)`);
-  notify(resolve('loadReportPanel.omittedTypeRecordsToast', { name: fileName, count }));
+  notify(resolve('loadReportPanel.omittedTypeRecords', { name: fileName, count }));
 }
 
 /**

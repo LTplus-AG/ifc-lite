@@ -960,6 +960,9 @@ jobs:
           # Keep the API; weaken fingerprint identity to key equality instead.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8113: retain the new harness modules; remove only admission validation.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-8113/admission.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-8113/admission.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/diff-e2e-8113/admission.oracle.patch --test scripts/perf/diff-e2e.test.mjs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-11b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-11b/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-11b/behaviour.oracle.patch --test rust/wasm-bindings/src/api/c4_11b_slots_tests.rs)
           # #7714: whole-file inversion removes the new module/test wiring,

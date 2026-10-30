@@ -36,6 +36,14 @@ test('#8042 protocol requires six pairs, reproducible balanced interleaving and 
   assert.throws(() => validateProtocol({ ...p, cases: p.cases.slice(0, 1) }));
 });
 
+test('#8113 v3 requires the preserved large head artifact, not a fresh derivation', () => {
+  const p = protocol({ largeBase: '/frozen/base.ifc', largeHead: '/frozen/head.ifc' });
+  const large = p.cases.find(c => c.id === 'large');
+  assert.equal(large.headSha256, 'f8e748cf1f2128609257c939aac9df40c6f62f70bbca6813ff5a67bb06ac853a');
+  large.headSha256 = '0'.repeat(64);
+  assert.throws(() => validateProtocol(p), /protocol changed/);
+});
+
 test('#8042 empty input cannot yield a vacuous identity/performance result', () => {
   assert.throws(() => nonempty([]), /fingerprint count/);
   const input = [{ key: 'a', ref: 7, ifcType: 'IfcWall', dataHash: 'hash', components: { p: 'x' } }];

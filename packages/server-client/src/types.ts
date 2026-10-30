@@ -113,7 +113,7 @@ export interface ModelMetadata {
   schema_version: string;
   /** Total number of entities in the file */
   entity_count: number;
-  /** Number of geometry-bearing entities */
+  /** Geometry jobs scheduled: one per geometry-bearing product and one per type-only representation map (#8341). */
   geometry_entity_count: number;
   /** Coordinate system information */
   coordinate_info: CoordinateInfo;

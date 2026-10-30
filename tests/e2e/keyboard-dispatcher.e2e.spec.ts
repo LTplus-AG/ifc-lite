@@ -39,27 +39,31 @@ test('#5841 shared dispatcher preserves 3D commands while a modal owns its keys'
   const used = [JSON.stringify(initial?.position)];
   for (const key of ['1', '2', '3', '4', '5', '6']) {
     await page.keyboard.press(key);
-    const pressedAt = Date.now();
     // Camera.setPresetView tweens its pose over 300 ms of wall clock, but the
     // tween is only applied by the render loop's update(). On a loaded hosted
     // runner one SwiftShader frame can outlast a fixed sleep, and the pose read
     // after it is still the previous preset's (CI run 40977269130 attempt 2:
-    // preset 6 read back exactly preset 5's position, Set size 5). Inspect the
-    // settled renderer viewpoint, not the intentionally static store
-    // cameraRotation: the tween's 300 ms have elapsed, the pose has stopped
-    // changing and is not one an earlier preset already settled on. A preset
-    // that never moves the camera still fails, by this poll's timeout.
-    let previous: string | undefined;
+    // preset 6 read back exactly preset 5's position, Set size 5). Equal reads
+    // do not prove a tween finished either: with the render loop stalled they
+    // are equally what an intermediate pose looks like. So wait on the camera's
+    // own signal, which stays true until update() has applied the final pose,
+    // and take the pose only then. Inspect the renderer viewpoint, not the
+    // intentionally static store cameraRotation. A preset that never moves the
+    // camera still fails: its pose is one an earlier preset already used.
+    let settled: string | undefined;
     await expect.poll(async () => {
-      const viewpoint = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.getViewpoint?.());
-      expect(viewpoint, `view preset ${key} has a live camera`).toBeTruthy();
-      const position = JSON.stringify(viewpoint?.position);
-      const settled = Date.now() - pressedAt >= 300 && position === previous && !used.includes(position);
-      previous = position;
-      return settled ? position : null;
-    }, { message: `view preset ${key} settles on a pose no earlier preset used`, timeout: 30_000, intervals: [150] }).not.toBeNull();
-    viewpoints.push(previous!);
-    used.push(previous!);
+      const read = await page.evaluate(() => {
+        const callbacks = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
+        return { tweening: callbacks.isCameraTweening?.(), viewpoint: callbacks.getViewpoint?.() };
+      });
+      expect(read.tweening, 'the viewer exposes the camera tween state').not.toBeUndefined();
+      expect(read.viewpoint, `view preset ${key} has a live camera`).toBeTruthy();
+      const position = JSON.stringify(read.viewpoint?.position);
+      settled = read.tweening === false && !used.includes(position) ? position : undefined;
+      return settled ?? null;
+    }, { message: `view preset ${key} finishes its tween on a pose no earlier preset used`, timeout: 30_000, intervals: [150] }).not.toBeNull();
+    viewpoints.push(settled!);
+    used.push(settled!);
   }
   expect(new Set(viewpoints).size, 'all six view presets drive distinct camera positions').toBe(6);
 

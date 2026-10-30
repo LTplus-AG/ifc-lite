@@ -99,6 +99,16 @@ export class CameraAnimator {
   }
 
   /**
+   * True from the moment a timed pose tween is started until an `update()` has
+   * applied its final pose. Unlike the value `update()` returns, this does not
+   * depend on a frame having run, so a stalled render loop cannot make an
+   * unfinished tween look finished. Inertia is not a tween and does not count.
+   */
+  isTweening(): boolean {
+    return this.animationStartTime > 0 && this.animationDuration > 0;
+  }
+
+  /**
    * Update camera animation and inertia
    * Returns true if camera is still animating
    */

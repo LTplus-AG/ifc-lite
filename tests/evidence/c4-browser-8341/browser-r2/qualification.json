@@ -1,0 +1,22 @@
+{
+  "commandExitCode": 0,
+  "artifactDrift": false,
+  "completeFivePairsPerFixture": true,
+  "confirmedHardwareGpu": true,
+  "observedExternalBuildActivity": false,
+  "cpuPolicyChanged": false,
+  "thermalInvalid": false,
+  "throttled": false,
+  "protocolVerdict": {
+    "noSuccessfulSamples": false,
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": true,
+    "insufficientPairedSamples": false,
+    "incomparableFixture": false,
+    "inconclusive": false,
+    "zeroBaselineIncrease": false
+  },
+  "order": "balanced randomized within-pair order per fixture, scripts/perf/ab-order.mjs, seed 8341",
+  "scope": "Fresh-process default browser worker-pool cold load (4 pinned geometry workers), hardware GPU; kernel peak RSS per Chrome process; CPU payload root, not GPU buffer identity."
+}

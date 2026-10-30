@@ -95,6 +95,7 @@ impl IfcAPI {
             );
 
         self.collect_pipeline_refusals(&decoder);
+        self.note_omitted_type_records(&pre_pass.omitted_type_records);
         PrepassOnceData {
             simple_jobs: pre_pass.simple_jobs,
             complex_jobs: pre_pass.complex_jobs,

@@ -165,10 +165,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * `IfcMaterial*SetUsage` with no bound, in a root nothing scanned. At the
  * parent of its fix this gate reports exactly that site; at the fix it passes.
  * `rust/export/src` holds ~100 `decode_by_id` sinks and no candidate walk today,
- * so it is scanned for the next one. `rust/retained-native/src` holds the M6/M10
- * source oracles, which walk file references (Boolean operands, mapped items,
- * placement chains) in the same way and were not scanned. `rust/landxml` has no
- * decode sinks and is deliberately not a root.
+ * so it is scanned for the next one. `rust/landxml` has no decode sinks and is
+ * deliberately not a root.
  */
 const SCAN_ROOTS = [
   'rust/core/src',
@@ -177,7 +175,6 @@ const SCAN_ROOTS = [
   'rust/wasm-bindings/src',
   'apps/server/src',
   'rust/export/src',
-  'rust/retained-native/src',
 ];
 
 /**

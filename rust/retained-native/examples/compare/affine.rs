@@ -99,11 +99,15 @@ mod tests {
     const SOURCE:&str=include_str!("../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
     const CUBE:[f64;24]=[0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.,0.,1., 1.,0.,1., 1.,1.,1., 0.,1.,1.];
     const OUTWARD:[u32;36]=[0,2,1,0,3,2, 4,5,6,4,6,7, 0,1,5,0,5,4, 1,2,6,1,6,5, 2,3,7,2,7,6, 3,0,4,3,4,7];
+    // A baked mirror, as production publishes it: reflected positions, winding swapped so the
+    // signed volume stays positive, and a proper-rigid (translation-only) frame.
     fn part(reversed:bool)->ShapePart {
         let mut indices=OUTWARD.to_vec();
-        if reversed {for t in indices.chunks_exact_mut(3) {t.swap(1,2);}}
-        ShapePart {layer:None,capped_volume_m3:None,positions:CUBE.to_vec(),indices,
-            world_from_object:[-1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 2.,3.,4.,1.],curved:false,halfspace_clipped:false,
+        if !reversed {for t in indices.chunks_exact_mut(3) {t.swap(1,2);}}
+        let mut positions=CUBE.to_vec();
+        for p in positions.chunks_exact_mut(3) {p[0]=-p[0];}
+        ShapePart {layer:None,capped_volume_m3:None,positions,indices,
+            world_from_object:[1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 2.,3.,4.,1.],curved:false,halfspace_clipped:false,
             revision_local_faces:vec![],normals:None,appearance:None,faces:None,instance_key:None}
     }
     /// `record` on product `id` of `text`; `cuts` != 0 skips the analytic source comparison.

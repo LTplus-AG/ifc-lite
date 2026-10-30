@@ -91,11 +91,19 @@ fn scan(d:&mut EntityDecoder<'_>,id:u32) -> Result<bool,String> {
     }
     Ok(affine)
 }
-/// Per published part: the signed volume of the baked mesh is positive. A
-/// mirrored map that kept its source winding fails here, whatever the oracle models.
+/// Per published part: the mesh is outward-wound in world space. Retained publication keeps
+/// `world_from_object` proper-rigid (det = +1): `bake()` in `program/mapping_affine.rs` turns any
+/// other object frame into an Affine operation, `affine_final::bake` asserts `rigid()` and publishes
+/// only a translation on top, and `require_frame` refuses det <= 0 at presentation. The local signed
+/// volume therefore is the world one. The determinant is still applied (a mirrored frame flips it),
+/// and a singular or nonfinite frame cannot certify anything, so it fails closed.
 pub fn winding_positive(parts:&[crate::ShapePart]) -> Vec<bool> {
-    parts.iter().map(|part|
-        mesh_moments(&part.positions,&part.indices,&part.world_from_object).is_some_and(|v|v.0>0.)).collect()
+    parts.iter().map(|part|{
+        let m=&part.world_from_object;
+        let det=dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]));
+        det.is_finite()&&det!=0.
+            &&mesh_moments(&part.positions,&part.indices,m).is_some_and(|v|v.0*det.signum()>0.)
+    }).collect()
 }
 /// The classification the winding gate keys on; see `scan` for what fails closed.
 pub(super) fn classify(d:&mut EntityDecoder<'_>,id:u32) -> Classification {

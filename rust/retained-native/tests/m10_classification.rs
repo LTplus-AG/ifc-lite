@@ -174,3 +174,41 @@ fn m10_singular_map_is_affine_not_rigid() {
     let text = with(&[(MIRROR, "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,#37,0.,#3);")]);
     assert_eq!(classify(&text, 42), Classification::Affine);
 }
+
+// Hosted review of #8379: `winding_positive` must judge the mesh in WORLD space. Production
+// publishes proper-rigid frames only (see its doc), but a negative-determinant frame flips the
+// signed volume, and a singular one certifies nothing.
+mod frames {
+    use ifc_lite_retained_native::{oracle::affine::winding_positive, ShapePart};
+    const CUBE: [f64; 24] = [0.,0.,0., 1.,0.,0., 1.,1.,0., 0.,1.,0., 0.,0.,1., 1.,0.,1., 1.,1.,1., 0.,1.,1.];
+    // Outward when read in the frame the positions are authored in (signed volume +1).
+    const OUTWARD: [u32; 36] = [0,2,1,0,3,2, 4,5,6,4,6,7, 0,1,5,0,5,4, 1,2,6,1,6,5, 2,3,7,2,7,6, 3,0,4,3,4,7];
+    fn flipped() -> Vec<u32> { OUTWARD.chunks_exact(3).flat_map(|t| [t[0], t[2], t[1]]).collect() }
+    fn part(indices: Vec<u32>, frame: [f64; 16]) -> ShapePart {
+        ShapePart { layer: None, capped_volume_m3: None, positions: CUBE.to_vec(), indices, world_from_object: frame,
+            curved: false, halfspace_clipped: false, revision_local_faces: vec![], normals: None, appearance: None,
+            faces: None, instance_key: None }
+    }
+    const RIGID: [f64; 16] = [0.,1.,0.,0., -1.,0.,0.,0., 0.,0.,1.,0., 5.,6.,7.,1.]; // quarter turn about Z + translation
+    const MIRROR: [f64; 16] = [-1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 2.,3.,4.,1.];
+    const SINGULAR: [f64; 16] = [0.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+
+    #[test]
+    fn a_proper_rigid_frame_leaves_the_local_verdict_unchanged() {
+        assert_eq!(winding_positive(&[part(OUTWARD.to_vec(), RIGID)]), [true]);
+        assert_eq!(winding_positive(&[part(flipped(), RIGID)]), [false]);
+    }
+    #[test]
+    fn a_negative_determinant_frame_flips_the_verdict() {
+        // Outward in local space becomes inward once the frame mirrors it; the converse holds too.
+        assert_eq!(winding_positive(&[part(OUTWARD.to_vec(), MIRROR)]), [false]);
+        assert_eq!(winding_positive(&[part(flipped(), MIRROR)]), [true]);
+    }
+    #[test]
+    fn a_singular_or_nonfinite_frame_certifies_nothing() {
+        let mut nan = RIGID;
+        nan[12] = f64::NAN;
+        assert_eq!(winding_positive(&[part(OUTWARD.to_vec(), SINGULAR)]), [false]);
+        assert_eq!(winding_positive(&[part(OUTWARD.to_vec(), nan)]), [false]);
+    }
+}

@@ -209,6 +209,27 @@ fn f2_repeated_plans_count_each_omitted_type_record_once_per_load_8341() {
 }
 
 #[test]
+fn f2_instantiated_type_counts_in_the_browser_prepass_8341() {
+    // Browser plans are EmitTagged, so an instantiated malformed type would
+    // draw and counts; native SuppressInstanced draws nothing and does not.
+    let source = String::from_utf8(
+        include_bytes!("../../../../processing/tests/fixtures/f2_omitted_type_record_8341.ifc").to_vec(),
+    )
+    .unwrap()
+    .replace(
+        "ENDSEC;\nEND-ISO",
+        "#200=IFCRELDEFINESBYTYPE('7777777777777777777200',$,$,$,(#31),#500);\nENDSEC;\nEND-ISO",
+    );
+    assert!(source.contains("IFCRELDEFINESBYTYPE"), "fixture line endings changed");
+    let api = IfcAPI::new();
+    let pre = api.build_prepass_once_data(source.as_bytes());
+    assert!(!pre.complex_jobs.iter().any(|j| j.0 == 500));
+    let diag = api.pipeline_diagnostics.lock().unwrap().clone();
+    assert_eq!(diag.omitted_type_records, 1);
+    assert_eq!((diag.refused_input_elements, diag.refused_prepass_records), (0, 0));
+}
+
+#[test]
 fn c4_10a_refused_unit_counts_each_attempt_without_geometry_7782() {
     let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc")
         .replace("#8=IFCUNITASSIGNMENT((#7));", "#8=IFCUNITASSIGNMENT((#800));\n#800=IFCCONVERSIONBASEDUNIT(#803,.LENGTHUNIT.,'CUSTOM',#801);\n#801=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.E400),#7);\n#803=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);");

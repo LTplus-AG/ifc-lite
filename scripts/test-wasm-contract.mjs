@@ -1469,7 +1469,7 @@ if (existsSync(HELLO_WALL)) {
     `apps/landing/samples/hello-wall.ifc missing — ${FIXTURES_HINT}`);
 }
 
-runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent });
+await runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent });
 
 // ===== setEntityIndex (production load-start reset path, #1551) =====
 // The `getPipelineDiagnostics` test above only exercises the buildPrePassOnce

@@ -1,0 +1,12 @@
+diff --git b/packages/geometry/src/index.ts a/packages/geometry/src/index.ts
+--- b/packages/geometry/src/index.ts
++++ a/packages/geometry/src/index.ts
+@@ -436,7 +436,7 @@ export class GeometryProcessor {
+ 
+     const api = this.bridge.getApi();
+     const prePass = buildPrePassWithFinishes(api, buffer);
+-    const omittedTypeRecords = undefined;
++    const omittedTypeRecords = readOmittedTypeRecords(api); // F2 #8341: before the next install resets it
+     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
+     try {
+       const meshes: MeshData[] = [];

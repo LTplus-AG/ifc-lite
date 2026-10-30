@@ -264,10 +264,8 @@
 # only rim slivers the cut created are bisected, not the host's authored
 # long-thin faces; skip the probe/audit tail when the fixpoint was a no-op.
 # C2-5b (#7781): shared ray intersection replaces the inline body; measured 2953 -> 2939.
-# C2-8a (#8263): the kit, plane, triangle, check, frame, profile and detect
-# modules moved into prism_cut/; measured 2921 -> 1926.
-# C2-8b (#8263): extension, face, cut, pool and decompose moved; 1926 -> 1057.
-    1057 rust/geometry/src/router/voids/prism_cut.rs
+# C2-8 (#8263) split it into prism_cut/ modules, each under 400 lines; the
+# facade measures 262, so the row is gone.
 # NEW: #129 coaxial footprint-union for OVERLAPPING opening clusters. One cohesive
 # algorithm: extended-AABB overlap clustering (union-find), coaxial detection, 2.5D
 # depth-slicing with per-slab i_overlay footprint union + watertight re-extrude to

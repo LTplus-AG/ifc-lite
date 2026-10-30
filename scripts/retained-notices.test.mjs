@@ -419,3 +419,20 @@ test('Refs #7955 cargo-only refresh refuses a withdrawn or changed supplement fo
   f.put('licenses/retained/supplemental.json', JSON.stringify([record, added]));
   assert.doesNotThrow(() => notices.refreshCargoOnly(f.root, bumped));
 });
+
+test('Refs #7955 cargo-only withdrawn-supplement guard ignores a key-only reorder of an unchanged record', t => {
+  const f = fixture(t);
+  const metadata = bumpExternal(f);
+  const mit = 'Fixture Emscripten MIT text\n', sha256 = createHash('sha256').update(mit).digest('hex');
+  f.put(`licenses/retained/texts/${sha256}.txt`, mit);
+  const record = { name: 'fixture Emscripten', version: '4.0.15', election: 'MIT', attribution: 'fixture under MIT by election',
+    notices: [{ origin: 'https://example.invalid/MIT.txt', file: `texts/${sha256}.txt`, sha256 }] };
+  f.put('licenses/retained/supplemental.json', JSON.stringify([record]));
+  notices.refreshCargoOnly(f.root, metadata);
+  f.change('Cargo.lock', text => text.replace('version="1.0.1"', 'version="1.0.2"'));
+  const bumped = () => ({ packages: metadata().packages.map(pkg => ({ ...pkg, version: '1.0.2' })) });
+  const reordered = { notices: [{ sha256, file: record.notices[0].file, origin: record.notices[0].origin }],
+    attribution: record.attribution, election: record.election, version: record.version, name: record.name };
+  f.put('licenses/retained/supplemental.json', JSON.stringify([reordered]));
+  assert.doesNotThrow(() => notices.refreshCargoOnly(f.root, bumped));
+});

@@ -11,6 +11,7 @@ export class RegistryError extends Error {
 export interface RegistryAccess { repository: string; actions: string[] }
 export interface RegistrySession {
   permissions?: RegistryGrant[];
+  publicationHeaders?: { publisher: string; pushedAt: string };
   authorizationType?: 'session' | 'share' | 'access';
   subject: string;
   repositories: RegistryAccess[];
@@ -22,7 +23,7 @@ export interface RegistrySession {
 }
 
 export interface RegistryAuthorization { token: string; session: RegistrySession; clientId: string; refreshToken?: string; shareSecret?: string }
-export const REGISTRY_REFRESH_COOKIE = 'ifcx_oci_refresh';
+export const REGISTRY_REFRESH_COOKIE = 'oci_registry_refresh';
 
 export function repositoryName(value: string): string {
   if (value.length > 255 || !/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)*$/.test(value)) {
@@ -91,12 +92,20 @@ export function registryTokenSession(reply: unknown, repository: string | null, 
   const selected = repository ? repositories.find(access => access.repository === repository) : repositories.find(access => access.actions.includes('pull'));
   if (repository && !(permissions ? grantAllows(permissions, repository, 'pull') : selected?.actions.includes('pull'))) throw new RegistryError('This account cannot open that model.', 403);
   if (!repository && !catalog) throw new RegistryError('Model browsing is not available at this registry.');
+  let publicationHeaders: RegistrySession['publicationHeaders'];
+  if ('publication_headers' in reply) {
+    const headers = reply.publication_headers;
+    const validName = (name: unknown): name is string => typeof name === 'string' && /^[A-Za-z][A-Za-z0-9-]{0,127}$/.test(name);
+    if (!headers || typeof headers !== 'object' || !('publisher' in headers) || !validName(headers.publisher) ||
+      !('pushed_at' in headers) || !validName(headers.pushed_at)) throw new RegistryError('Invalid publication header metadata.');
+    publicationHeaders = { publisher: headers.publisher, pushedAt: headers.pushed_at };
+  }
   const now = Date.now();
   const sessionExpiresAt = Math.min(reply.session_expires_at * 1000, now + reply.session_expires_in * 1000);
   if (sessionExpiresAt <= now) throw new RegistryError('Your registry session has expired. Please sign in again.', 401);
   const approvedRepository = permissions ? repository ?? permissions.flatMap(g => g.repositories).find(r => !r.includes('*')) ?? '' : selected?.repository ?? '';
   const actions = permissions ? (['pull', 'push'] as const).filter(a => grantAllows(permissions, approvedRepository, a)) : selected?.actions ?? [];
   return { token: reply.access_token, clientId, refreshToken: 'refresh_token' in reply && typeof reply.refresh_token === 'string' ? reply.refresh_token : undefined,
-    session: { subject: reply.subject, permissions, authorizationType, repositories, repository: approvedRepository, actions,
+    session: { subject: reply.subject, permissions, authorizationType, publicationHeaders, repositories, repository: approvedRepository, actions,
       expiresAt: Math.min(sessionExpiresAt, now + reply.expires_in * 1000), sessionExpiresAt, remembered: reply.remember_me } };
 }

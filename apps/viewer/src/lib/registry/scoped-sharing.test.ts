@@ -41,7 +41,7 @@ test('one approval exchanges and coalesces concrete tokens; root never accompani
     assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer resource:hospital-a/models/architecture');
     assert.equal(init?.credentials, 'omit'); return Response.json({ tags: ['issued'] });
   };
-  await c.login(null); assert.equal(popup.requests[0].searchParams.get('scope'), 'ifcx:session');
+  await c.login(null); assert.equal(popup.requests[0].searchParams.get('scope'), 'example:session');
   assert(c.can('push', 'hospital-a/models/architecture', 'review-2')); assert(!c.can('push', 'hospital-a/models/architecture', 'draft'));
   await Promise.all([c.request('/v2/hospital-a/models/architecture/tags/list'), c.request('/v2/hospital-a/models/architecture/manifests/issued')]);
   assert.equal(exchanges, 1); assert.equal(popup.opens(), 1);

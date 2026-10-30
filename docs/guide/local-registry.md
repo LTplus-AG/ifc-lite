@@ -14,17 +14,20 @@ Install the workspace dependencies using the repository's
 WASM runtime. `pnpm build:wasm:fetch` obtains an official prebuilt when it matches
 the checkout; otherwise build with `pnpm build:wasm` and the pinned Rust toolchain.
 
-Make an [ifcx-oci build from main](https://github.com/zahmadsaleem/ifcx-oci/tree/main)
+Make a [Subsoil build from main](https://github.com/zahmadsaleem/subsoil/tree/main)
 and `oras` available in your terminal. Follow its
-[browser application setup](https://github.com/zahmadsaleem/ifcx-oci/blob/main/DEVELOPMENT.md#connect-a-browser-application)
-for client and callback registration. Use a matching backend build that advertises `ifcx:session`. These commands
-use only the public `hello-wall.ifc` fixture already in the repository. Run them
+[browser application setup](https://github.com/zahmadsaleem/subsoil/blob/main/DEVELOPMENT.md#connect-a-browser-application)
+for client and callback registration. The connector is named `oci-registry`;
+Subsoil is the demo backend. Browser sign-in and sharing require the session
+extensions described below, in addition to standard OCI distribution.
+
+These commands use only the public `hello-wall.ifc` fixture already in the repository. Run them
 from the IFClite repository root. Choose passwords when prompted:
 
 ```sh
-ifcx-oci user add --data build/registry-demo/store writer --grant project/model:pull,push
-ifcx-oci user add --data build/registry-demo/store reader --grant project/model:pull
-ifcx-oci serve --data build/registry-demo/store --listen 127.0.0.1:5000 \
+subsoil user add --data build/registry-demo/store writer --grant project/model:pull,push
+subsoil user add --data build/registry-demo/store reader --grant project/model:pull
+subsoil serve --data build/registry-demo/store --listen 127.0.0.1:5000 \
   --oauth-client-id ifc-lite \
   --oauth-redirect-uri http://localhost:3000/oauth/registry/callback \
   --oauth-redirect-uri http://127.0.0.1:3000/oauth/registry/callback
@@ -37,7 +40,7 @@ standard OCI client using the writer's password:
 oras login --plain-http --registry-config build/registry-demo/oras-auth.json \
   127.0.0.1:5000 --username writer
 oras push --plain-http --registry-config build/registry-demo/oras-auth.json \
-  --artifact-type application/vnd.ifcx-oci.ifc.v1 \
+  --artifact-type application/vnd.ifc-lite.ifc.v1 \
   --annotation org.opencontainers.image.title="Hello wall" \
   127.0.0.1:5000/project/model:issued \
   apps/viewer/public/samples/hello-wall.ifc:application/x-step
@@ -57,7 +60,7 @@ Register that exact viewer origin and callback path with the registry. If Vite
 uses another port, restart the registry with its matching `--oauth-redirect-uri`.
 
 1. Open **File → Cloud Sources**, expand **Model registry**, and paste
-   `http://localhost:5000` into **Registry address**. Click **Sign in to ifcx-oci**.
+   `http://localhost:5000` into **Registry address**. Click **Sign in to registry**.
    A popup opens on the registry's own address. Sign in there as the writer and
    approve access; the viewer never asks for or receives the password. Allow
    popups for the viewer if your browser blocks this window.
@@ -98,7 +101,7 @@ queries or ambiguous references are rejected before sign-in begins.
 The proxy forwards `/v2/`, `/oauth/config`, `/oauth/token`, `/oauth/revoke`,
 Bearer-only GET `/token` exchanges, and the exact share API routes. Basic token
 requests and share credentials in query strings are not part of this flow.
-Only the exact token/revoke routes may pass the named `ifcx_oci_refresh` cookie;
+Only the exact token/revoke routes may pass the named `oci_registry_refresh` cookie;
 other request cookies are stripped. Response cookies must have that exact name,
 `Path=/oauth/`, HttpOnly and SameSite=Strict, with no Domain attribute. Discovery
 and distribution never pass cookies. Upload locations are rewritten to the viewer
@@ -149,7 +152,7 @@ The UI uses the [Distribution catalog
 API](https://distribution.github.io/distribution/spec/api/#listing-repositories)
 at `/v2/_catalog`, plus OCI tag lists and manifests. Catalog listing is not a
 required OCI Distribution endpoint. The UI follows catalog pagination. Browser
-sign-in requests the explicit `ifcx:session` approval, captures the current
+sign-in requests the session scope advertised by discovery (`subsoil:session` for Subsoil), captures the current
 account rules once, and receives a catalog-only root credential. The viewer
 exchanges it at `/token` for each concrete repository's standard OCI token;
 only that resource token accompanies manifest, tag, blob, and upload requests.
@@ -180,7 +183,7 @@ The registry's own share landing page removes the fragment before redemption.
 The viewer accepts links only from its configured loopback registry. HTTPS
 registry hosting and arbitrary remote viewer connections remain outside this
 local demo. For account JSON rules, TTL limits, and CLI/HTTP share operations,
-see the backend's [authorization guide](https://github.com/zahmadsaleem/ifcx-oci/blob/main/AUTHORIZATION.md).
+see the backend's [authorization guide](https://github.com/zahmadsaleem/subsoil/blob/main/AUTHORIZATION.md).
 
 ## Titles, provenance and artifact integrity
 
@@ -189,14 +192,15 @@ New browser publications include standard `org.opencontainers.image.title`,
 `.authors` and `.created` annotations. Declared author and creation time are
 package claims, shown separately in Technical details.
 
-The Rust registry independently records the authenticated pushing account and
+Subsoil independently records the authenticated pushing account and
 server timestamp on publication. Manifest GET/HEAD responses expose optional
-`IFCX-Registry-Publisher` and `IFCX-Registry-Pushed-At` headers. These are registry
-extensions; they do not claim the standard OCI manifest contains a trusted
+`Subsoil-Registry-Publisher` and `Subsoil-Registry-Pushed-At` headers. The
+connector reads their names from the optional `publication_headers` token-response
+metadata. These are registry extensions; they do not claim the standard OCI manifest contains a trusted
 pusher or upload timestamp. Tag reads report that tag's original publication;
 digest reads report the first observed publication of those bytes in this
 registry. Share publications identify `share:<id>` and record the creator in
-`IFCX-Registry-Created-By`. Older records with no captured provenance show **Publisher not
+`Subsoil-Registry-Created-By`. Older records with no captured provenance show **Publisher not
 recorded** and **Publication time not recorded**. An ORAS publication through
 the updated backend records its actual account just like a browser publication.
 
@@ -204,7 +208,7 @@ Registry publication records are stored separately and never change submitted
 manifest bytes or digests. The browser verifies the manifest and IFC source
 layer against SHA-256 before loading. New releases contain an empty OCI config
 and one `application/x-step` layer, named by `org.opencontainers.image.title`,
-with the experimental artifact type `application/vnd.ifcx-oci.ifc.v1`.
+with the experimental artifact type `application/vnd.ifc-lite.ifc.v1`.
 A derived release's optional single `source/model.ifc` can also be opened;
 its Parquet/GLB profile is not imported by this adapter.
 
@@ -219,10 +223,10 @@ on the model and the pinned IFClite exporter.
 Run through the root Turbo runner, supplying the real local executables:
 
 ```sh
-IFCX_OCI_BINARY=/absolute/path/to/ifcx-oci \
-IFCX_ORAS_BINARY=/absolute/path/to/oras \
+OCI_REGISTRY_BINARY=/absolute/path/to/subsoil \
+ORAS_BINARY=/absolute/path/to/oras \
 TEST_PATTERN='lib/registry/.*test|components/sources/Registry.*test' \
-  pnpm exec turbo test --filter=@ifc-lite/viewer --only --env-mode=loose
+  pnpm exec turbo test --filter=@ifc-lite/viewer --only
 pnpm typecheck
 pnpm lint
 ```

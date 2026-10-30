@@ -18,8 +18,8 @@ test('registry proxy isolates cookies and never serves the credential page on th
     for await (const chunk of request) body += String(chunk);
     calls.push({ path: request.url ?? '', cookie: request.headers.cookie, host: request.headers.host, body });
     response.setHeader('Set-Cookie', ['registry-only=must-not-reach-viewer; HttpOnly',
-      'ifcx_oci_refresh=rotated; Path=/oauth/; HttpOnly; SameSite=Strict',
-      'ifcx_oci_refresh=foreign; Path=/oauth/; HttpOnly; SameSite=Strict; Domain=example.com']);
+      'oci_registry_refresh=rotated; Path=/oauth/; HttpOnly; SameSite=Strict',
+      'oci_registry_refresh=foreign; Path=/oauth/; HttpOnly; SameSite=Strict; Domain=example.com']);
     response.setHeader('Content-Type', 'application/json');
     if (request.url?.startsWith('/v2/')) response.setHeader('Location', `http://${request.headers.host}/v2/project/model/blobs/uploads/test`);
     response.end(JSON.stringify({ host: request.headers.host }));
@@ -34,20 +34,20 @@ test('registry proxy isolates cookies and never serves the credential page on th
     await vite.listen();
     const address = vite.httpServer?.address(); assert(address && typeof address !== 'string');
     const viewer = `http://127.0.0.1:${address.port}`;
-    const config = await fetch(`${viewer}/oauth/config?discovery=1`, { headers: { Cookie: 'viewer-only=private; ifcx_oci_refresh=private' } });
+    const config = await fetch(`${viewer}/oauth/config?discovery=1`, { headers: { Cookie: 'viewer-only=private; oci_registry_refresh=private' } });
     assert.equal(config.status, 200); assert.equal(config.headers.has('set-cookie'), false);
     assert.deepEqual(await config.json(), { host: new URL(target).host });
     const grant = new URLSearchParams({ grant_type: 'authorization_code', code: 'test-code', code_verifier: 'test-verifier' });
-    const token = await fetch(`${viewer}/oauth/token`, { method: 'POST', body: grant, headers: { Cookie: 'viewer-only=private; ifcx_oci_refresh=remembered' } });
+    const token = await fetch(`${viewer}/oauth/token`, { method: 'POST', body: grant, headers: { Cookie: 'viewer-only=private; oci_registry_refresh=remembered' } });
     assert.equal(token.status, 200); assert.equal(calls[1].body, grant.toString());
-    assert.equal(calls[0].cookie, undefined); assert.equal(calls[1].cookie, 'ifcx_oci_refresh=remembered');
-    assert.equal(token.headers.get('set-cookie'), 'ifcx_oci_refresh=rotated; Path=/oauth/; HttpOnly; SameSite=Strict');
+    assert.equal(calls[0].cookie, undefined); assert.equal(calls[1].cookie, 'oci_registry_refresh=remembered');
+    assert.equal(token.headers.get('set-cookie'), 'oci_registry_refresh=rotated; Path=/oauth/; HttpOnly; SameSite=Strict');
     const upload = await fetch(`${viewer}/v2/project/model/blobs/uploads/`, { method: 'POST' });
     assert.equal(upload.headers.get('location'), '/v2/project/model/blobs/uploads/test');
     assert.equal(upload.headers.has('set-cookie'), false); assert.equal(calls[2].cookie, undefined);
-    await fetch(`${viewer}/oauth/revoke`, { method: 'POST', body: new URLSearchParams({ client_id: 'ifc-lite' }), headers: { Cookie: 'other=private; ifcx_oci_refresh=rotated' } });
-    assert.equal(calls[3].cookie, 'ifcx_oci_refresh=rotated');
-    await fetch(`${viewer}/oauth/token`, { method: 'POST', body: grant, headers: { Cookie: 'ifcx_oci_refresh=a; ifcx_oci_refresh=b' } });
+    await fetch(`${viewer}/oauth/revoke`, { method: 'POST', body: new URLSearchParams({ client_id: 'ifc-lite' }), headers: { Cookie: 'other=private; oci_registry_refresh=rotated' } });
+    assert.equal(calls[3].cookie, 'oci_registry_refresh=rotated');
+    await fetch(`${viewer}/oauth/token`, { method: 'POST', body: grant, headers: { Cookie: 'oci_registry_refresh=a; oci_registry_refresh=b' } });
     assert.equal(calls[4].cookie, undefined, 'duplicate cookie names are ambiguous and are not forwarded');
     assert.equal(calls.length, 5);
     for (const path of ['/oauth/authorize', '/oauth/configuration', '/oauth/token/other', '/oauth/revoke/other', '/oauth/registry/callback', '/token']) {

@@ -9,21 +9,21 @@ import { exchangeRegistrySession, registryJsonReply, validateRegistrySessionConf
 export const REGISTRY_CALLBACK_PATH = '/oauth/registry/callback';
 const TIMEOUT_MS = 5 * 60 * 1000;
 
-export function validateRegistryOAuthConfig(value: unknown, registryOrigin: string, redirectUri: string): { clientId: string; authorizationEndpoint: string } {
+export function validateRegistryOAuthConfig(value: unknown, registryOrigin: string, redirectUri: string): { clientId: string; authorizationEndpoint: string; sessionScope: string } {
   if (!value || typeof value !== 'object' || !('client_id' in value) || typeof value.client_id !== 'string' || !/^[A-Za-z0-9._~-]{1,128}$/.test(value.client_id) ||
     !('authorization_endpoint' in value) || typeof value.authorization_endpoint !== 'string' ||
-    !('session_scope' in value) || value.session_scope !== 'ifcx:session' || !('scoped_token_endpoint' in value) || value.scoped_token_endpoint !== '/token' ||
+    !('session_scope' in value) || typeof value.session_scope !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.session_scope) || !('scoped_token_endpoint' in value) || value.scoped_token_endpoint !== '/token' ||
     !('token_endpoint' in value) || value.token_endpoint !== '/oauth/token' ||
     !('code_challenge_methods_supported' in value) || !Array.isArray(value.code_challenge_methods_supported) || !value.code_challenge_methods_supported.includes('S256') ||
     !('redirect_uris' in value) || !Array.isArray(value.redirect_uris) || !value.redirect_uris.includes(redirectUri)) {
-    throw new RegistryError('Registry browser sign-in is not configured for this viewer. Register its callback address with ifcx-oci.');
+    throw new RegistryError('Registry browser sign-in is not configured for this viewer. Register its callback address with the registry.');
   }
   validateRegistrySessionConfig(value);
   const endpoint = new URL(value.authorization_endpoint);
   if (endpoint.origin !== new URL(registryOrigin).origin || endpoint.pathname !== '/oauth/authorize' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw new RegistryError('The registry returned an unexpected sign-in address.');
   }
-  return { clientId: value.client_id, authorizationEndpoint: endpoint.href };
+  return { clientId: value.client_id, authorizationEndpoint: endpoint.href, sessionScope: value.session_scope };
 }
 
 export function validateRegistryCallback(callback: string, redirectUri: string, state: string): string {
@@ -55,9 +55,9 @@ export async function registryOAuthLogin(origin: string, registryOrigin: string,
   const timeout = setTimeout(() => attempt.abort(new RegistryError('Registry sign-in timed out. Please try again.')), TIMEOUT_MS);
   try {
     const redirectUri = `${window.location.origin}${REGISTRY_CALLBACK_PATH}`;
-    const { authorizationEndpoint, clientId } = await discoverRegistryOAuth(origin, registryOrigin, attempt.signal);
+    const { authorizationEndpoint, clientId, sessionScope } = await discoverRegistryOAuth(origin, registryOrigin, attempt.signal);
     const request = await createAuthorizationRequest({ authorizationEndpoint, clientId, redirectUri,
-      scope: 'ifcx:session' });
+      scope: sessionScope });
     attempt.signal.throwIfAborted();
     const waiting = waitForOAuthCallback({ expectedState: request.state, timeoutMs: TIMEOUT_MS,
       timeoutMessage: 'Registry sign-in timed out. Please try again.', signal: attempt.signal });

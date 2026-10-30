@@ -28,14 +28,15 @@ if (!globalThis.navigator?.locks) {
 }
 
 export function registryOAuthConfig(registryOrigin: string) {
-  return { client_id: 'ifc-lite', authorization_endpoint: `${registryOrigin}/oauth/authorize`, token_endpoint: '/oauth/token', session_scope: 'ifcx:session', scoped_token_endpoint: '/token',
+  return { client_id: 'ifc-lite', authorization_endpoint: `${registryOrigin}/oauth/authorize`, token_endpoint: '/oauth/token', session_scope: 'example:session', scoped_token_endpoint: '/token',
     redirect_uris: [`${window.location.origin}${REGISTRY_CALLBACK_PATH}`], code_challenge_methods_supported: ['S256'],
-    refresh_cookie_name: 'ifcx_oci_refresh', revocation_endpoint: '/oauth/revoke', session_max_age: 28800, remembered_session_max_age: 2592000 };
+    refresh_cookie_name: 'oci_registry_refresh', revocation_endpoint: '/oauth/revoke', session_max_age: 28800, remembered_session_max_age: 2592000 };
 }
 
 export function registryTokenReply(subject = 'writer', actions = ['pull', 'push'], remember = false) {
   const seconds = remember ? 2592000 : 28800;
   return { token: 'test-session-only', access_token: 'test-session-only', token_type: 'Bearer', expires_in: 900, subject,
+    publication_headers: { publisher: 'example-registry-publisher', pushed_at: 'example-registry-pushed-at' },
     ...(remember ? {} : { refresh_token: 'test-refresh-only' }), remember_me: remember, session_expires_in: seconds, session_expires_at: Math.floor(Date.now() / 1000) + seconds,
     access: [{ type: 'registry', name: 'catalog', actions: ['read'] }, { type: 'repository', name: 'project/model', actions }] };
 }

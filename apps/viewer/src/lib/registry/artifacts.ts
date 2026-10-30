@@ -5,7 +5,7 @@
 import { RegistryTransport } from './transport';
 import { RegistryError, releaseName, repositoryName, responseBytes } from './protocol';
 
-export const IFC_ARTIFACT_TYPE = 'application/vnd.ifcx-oci.ifc.v1';
+export const IFC_ARTIFACT_TYPE = 'application/vnd.ifc-lite.ifc.v1';
 export const OCI_MANIFEST_TYPE = 'application/vnd.oci.image.manifest.v1+json';
 const MAX_IFC_BYTES = 512 * 1024 * 1024;
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
@@ -100,9 +100,10 @@ export class RegistryArtifacts {
   async describe(repository: string, tag: string, signal?: AbortSignal): Promise<RegistryRelease> {
     const { data, digest, response } = await this.readManifest(repository, tag, signal);
     const filename = data.layers.find(layer => layer.mediaType === 'application/x-step')?.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop();
-    const pushedAt = Number(response.headers.get('ifcx-registry-pushed-at'));
+    const headers = this.transport.session?.publicationHeaders;
+    const pushedAt = Number(headers ? response.headers.get(headers.pushedAt) : null);
     return { tag, digest, title: data.annotations?.['org.opencontainers.image.title'] || filename?.replace(/\.ifc$/i, '') || repository.split('/').pop() || repository,
-      publisher: response.headers.get('ifcx-registry-publisher') || undefined,
+      publisher: headers ? response.headers.get(headers.publisher) || undefined : undefined,
       pushedAt: Number.isSafeInteger(pushedAt) && pushedAt > 0 ? pushedAt : undefined,
       declaredAuthors: data.annotations?.['org.opencontainers.image.authors'], createdAt: data.annotations?.['org.opencontainers.image.created'] };
   }

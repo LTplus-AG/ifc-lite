@@ -42,7 +42,7 @@ test('Model registry uses a registry sign-in action without viewer credentials (
   assert.equal(entry.getAttribute('aria-expanded'), 'true');
   assert.equal(ui.querySelector('input[type="password"]'), null);
   assert.equal(ui.querySelector('input[autocomplete="username"]'), null);
-  assert(button(ui, 'Sign in to ifcx-oci'));
+  assert(button(ui, 'Sign in to registry'));
   click(entry);
   assert.equal(ui.querySelector('fieldset')?.hidden, true);
 });
@@ -67,7 +67,7 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
     }
     if (url.pathname === '/oauth/revoke') return new Response(null, { status: 200 });
     if (url.pathname === '/v2/_catalog') return Response.json({ repositories: ['project/model'] });
-    if (url.pathname === '/v2/project/model/manifests/issued') return new Response(raw, { headers: { 'Docker-Content-Digest': digest, 'ifcx-registry-publisher': 'writer', 'ifcx-registry-pushed-at': '1793136000' } });
+    if (url.pathname === '/v2/project/model/manifests/issued') return new Response(raw, { headers: { 'Docker-Content-Digest': digest, 'example-registry-publisher': 'writer', 'example-registry-pushed-at': '1793136000' } });
     if (url.pathname === '/v2/project/model/tags/list') return Response.json({ tags: ['issued'] });
     throw new Error(`Unexpected registry request ${url.pathname}`);
   };
@@ -91,7 +91,7 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
     assert.equal(useRegistryWorkspace.getState().session, null);
     assert.equal(transport.can('pull'), false);
     assert.equal(ui.querySelector('input[type="password"]'), null);
-    assert(button(ui, 'Sign in to ifcx-oci'));
+    assert(button(ui, 'Sign in to registry'));
     assert.equal(popup.opens(), 1); assert.deepEqual(popup.errors, []);
   } finally { globalThis.fetch = originalFetch; popup.restore(); }
 });
@@ -131,6 +131,6 @@ test('remembered login restores the source after a fresh viewer mount without op
     await waitFor(() => useRegistryWorkspace.getState().session === null, 'remembered sign-out should finish');
     cleanup(); freshPage(); ui = await mount(); click(button(ui, 'Model registry (experimental)'));
     await waitFor(() => restores === 3, 'fresh viewer should check the cleared cookie');
-    assert(button(ui, 'Sign in to ifcx-oci')); assert.equal(useRegistryWorkspace.getState().session, null);
+    assert(button(ui, 'Sign in to registry')); assert.equal(useRegistryWorkspace.getState().session, null);
   } finally { globalThis.fetch = originalFetch; window.open = originalOpen; }
 });

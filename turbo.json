@@ -108,7 +108,7 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "IFCX_OCI_BINARY", "IFCX_ORAS_BINARY"],
+      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "OCI_REGISTRY_BINARY", "ORAS_BINARY"],
       "cache": false,
       "env": [
         "TEST_PATTERN",

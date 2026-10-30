@@ -57,8 +57,8 @@ test('an IFC blob with the expected size but different bytes is refused', async 
 });
 
 test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the published artifact (#8310)', { timeout: 30000 }, async context => {
-  const binary = process.env.IFCX_OCI_BINARY;
-  if (!binary) { context.skip('Set IFCX_OCI_BINARY to run against the Rust registry.'); return; }
+  const binary = process.env.OCI_REGISTRY_BINARY;
+  if (!binary) { context.skip('Set OCI_REGISTRY_BINARY to run against the Rust registry.'); return; }
   const root = await mkdtemp(join(tmpdir(), 'ifclite-registry-'));
   const password = 'test-only-registry-password';
   const data = join(root, 'store');
@@ -134,7 +134,7 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
     await assert.rejects(new RegistryArtifacts(reader).publish('project/model', 'denied', source, 'model.ifc'), (error: unknown) => error instanceof RegistryError && error.status === 403);
     await assert.rejects(reader.request('/v2/project/model/manifests/denied', { method: 'PUT', body: '{}' }), (error: unknown) => error instanceof RegistryError && error.status === 403);
     await assert.rejects(reader.request('/v2/private/model/tags/list'), (error: unknown) => error instanceof RegistryError && error.status === 403);
-    const oras = process.env.IFCX_ORAS_BINARY;
+    const oras = process.env.ORAS_BINARY;
     if (oras) {
       const config = join(root, 'oras-auth.json'); const host = new URL(origin).host;
       execFileSync(oras, ['login', '--plain-http', '--registry-config', config, host, '--username', 'oras-reader', '--password-stdin'], { input: password, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -143,7 +143,7 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
       const output = join(root, 'received');
       execFileSync(oras, ['pull', '--plain-http', '--registry-config', config, '--output', output, `${host}/project/model@${digest}`], { stdio: ['ignore', 'pipe', 'pipe'] });
       assert.deepEqual(new Uint8Array(await readFile(join(output, 'model.ifc'))), source);
-    } else { context.diagnostic('ORAS check skipped: set IFCX_ORAS_BINARY.'); }
+    } else { context.diagnostic('ORAS check skipped: set ORAS_BINARY.'); }
     let now = Date.now(); context.mock.method(Date, 'now', () => now);
     const deadline = writer.session?.sessionExpiresAt;
     now += 901000;

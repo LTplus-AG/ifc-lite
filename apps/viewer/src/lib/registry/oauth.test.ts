@@ -43,7 +43,7 @@ test('registry login sends an S256 challenge and redeems its matching verifier w
   assert.equal(request.origin, registryOrigin); assert.equal(request.pathname, '/oauth/authorize');
   assert.equal(request.searchParams.get('client_id'), 'ifc-lite');
   assert.equal(request.searchParams.get('code_challenge_method'), 'S256');
-  assert.equal(request.searchParams.get('scope'), 'ifcx:session');
+  assert.equal(request.searchParams.get('scope'), 'example:session');
   assert.equal(request.searchParams.has('code_verifier'), false);
   const verifier = exchanges[0].get('code_verifier'); assert(verifier);
   assert.equal(await deriveCodeChallengeS256(verifier), request.searchParams.get('code_challenge'));
@@ -51,7 +51,7 @@ test('registry login sends an S256 challenge and redeems its matching verifier w
   assert.equal(exchanges[0].get('grant_type'), 'authorization_code');
   assert(transport.can('push', 'project/model'));
   await transport.login('project/model');
-  assert.equal(popup.requests[1].searchParams.get('scope'), 'ifcx:session');
+  assert.equal(popup.requests[1].searchParams.get('scope'), 'example:session');
   assert.notEqual(popup.requests[1].searchParams.get('state'), request.searchParams.get('state'));
   assert.notEqual(exchanges[1].get('code_verifier'), verifier);
   assert.deepEqual(popup.errors, []);
@@ -60,13 +60,15 @@ test('registry login sends an S256 challenge and redeems its matching verifier w
 test('registry OAuth discovery is limited to the configured registry and registered viewer callback (#8310)', () => {
   const redirect = `${window.location.origin}${REGISTRY_CALLBACK_PATH}`;
   const valid = registryOAuthConfig(registryOrigin);
-  assert.deepEqual(validateRegistryOAuthConfig(valid, registryOrigin, redirect), { clientId: valid.client_id, authorizationEndpoint: valid.authorization_endpoint });
+  assert.deepEqual(validateRegistryOAuthConfig(valid, registryOrigin, redirect), { clientId: valid.client_id, authorizationEndpoint: valid.authorization_endpoint, sessionScope: valid.session_scope });
+  assert.equal(validateRegistryOAuthConfig({ ...valid, session_scope: 'different:approval' }, registryOrigin, redirect).sessionScope, 'different:approval');
   assert.equal(validateRegistryOAuthConfig({ ...valid, client_id: 'another-viewer' }, registryOrigin, redirect).clientId, 'another-viewer');
   for (const changed of [
     { authorization_endpoint: 'https://foreign.example/oauth/authorize' },
     { authorization_endpoint: `${registryOrigin}/oauth/authorize?client_id=other` },
     { authorization_endpoint: `${registryOrigin}/api/other` },
     { token_endpoint: '/token' }, { token_endpoint: 'https://foreign.example/oauth/token' },
+    { session_scope: '' }, { session_scope: 'one two' }, { session_scope: 'a'.repeat(129) }, { session_scope: 'scope\nInjected' },
     { client_id: '' }, { client_id: 'unsafe client' }, { redirect_uris: [] }, { code_challenge_methods_supported: ['plain'] },
   ]) assert.throws(() => validateRegistryOAuthConfig({ ...valid, ...changed }, registryOrigin, redirect));
 });
@@ -134,7 +136,7 @@ test('blocked popups and malformed tokens never create a registry session (#8310
   await assert.rejects(transport.login(null), /Navigation refused/);
   window.open = withPopup;
   const baseFetch = globalThis.fetch;
-  for (const changed of [{ access_token: ' ' }, { expires_in: Infinity }, { expires_in: 901 }, { token_type: 'Basic' }, { subject: '' }, { access: [] }]) {
+  for (const changed of [{ access_token: ' ' }, { expires_in: Infinity }, { expires_in: 901 }, { token_type: 'Basic' }, { subject: '' }, { access: [] }, { publication_headers: { publisher: 'Bad\nHeader', pushed_at: 'timestamp' } }]) {
     globalThis.fetch = async (input, init) => new URL(String(input)).pathname === '/oauth/token'
       ? Response.json({ ...registryTokenReply(), ...changed }) : baseFetch(input, init);
     await assert.rejects(transport.login(null));

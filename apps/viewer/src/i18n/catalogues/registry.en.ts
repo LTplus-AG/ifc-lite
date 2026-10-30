@@ -5,7 +5,7 @@
 export const registryEn = {
   'registry.title': 'Model registry (experimental)',
   'registry.address': 'Registry address',
-  'registry.signIn': 'Sign in to ifcx-oci',
+  'registry.signIn': 'Sign in to registry',
   'registry.signOut': 'Sign out',
   'registry.connected': 'Connected',
   'registry.readOnly': 'Read only',

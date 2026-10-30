@@ -58,10 +58,10 @@ elif [[ "$phase" == wasm ]]; then
   pnpm install --frozen-lockfile --prefer-offline
   CI=1 pnpm build --concurrency=2 --filter=@ifc-lite/renderer... --filter=@ifc-lite/geometry... --filter=@ifc-lite/export...
   # Fresh build is mandatory: CI=1 forbids build-wasm's developer soft skip.
-  CI=1 pnpm build:wasm
+  BUILD_RETAINED=1 CI=1 pnpm build:wasm
   # Public declarations may change documentation only; use TS tokens so
   # comment-like strings in actual types cannot hide a surface change.
-  node --input-type=module <<'JSTYPES'
+  C4_PREPASS_BASE="$base" node --input-type=module <<'JSTYPES'
 import ts from 'typescript';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -74,7 +74,7 @@ function tokens(text) {
   return out;
 }
 for (const file of files) {
-  const before = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf8' }), after = readFileSync(file, 'utf8');
+  const before = execFileSync('git', ['show', `${process.env.C4_PREPASS_BASE}:${file}`], { encoding: 'utf8' }), after = readFileSync(file, 'utf8');
   assert.deepEqual(tokens(after), tokens(before), `${file}: public API changed`);
   if (before !== after) console.log(`C4_DTS_DOC_ONLY ${file}`);
 }

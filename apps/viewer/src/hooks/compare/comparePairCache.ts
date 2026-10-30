@@ -107,12 +107,14 @@ export function isCurrentFor(
   keyProperty: string | undefined,
 ): boolean {
   const live = useViewerStore.getState();
+  const baseModel = live.models.get(baseModelId), headModel = live.models.get(headModelId);
   return built.baseModelId === baseModelId
     && built.headModelId === headModelId
     && built.contentVersion === contentVersion
     && built.keyProperty === keyProperty
     // Read live: an edit since extraction invalidates the cache (#5312).
     && built.mutationVersion === live.mutationVersion
-    && built.baseStore === live.models.get(baseModelId)?.ifcDataStore
-    && built.headStore === live.models.get(headModelId)?.ifcDataStore;
+    // Removal is handled by the cache subscription / run epoch, without retries.
+    && (!baseModel || built.baseStore === baseModel.ifcDataStore)
+    && (!headModel || built.headStore === headModel.ifcDataStore);
 }

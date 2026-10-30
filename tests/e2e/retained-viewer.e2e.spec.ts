@@ -23,7 +23,7 @@ test.use({ trace: 'off' });
 const SKIP = 'SKIP: no staged SMLib engine; this is NOT parity evidence';
 interface ViewerGlobals {
   __ifc_lite_viewer_store__: { getState(): ViewerState; subscribe(listener: (state: ViewerState) => void): () => void };
-  __retainedCancel?: { clickMs: number; before: { meshIds: number[]; published: number }; error?: string };
+  __retainedCancel?: { clickMs: number; clickWallMs: number; rowsReadyMs?: number; before: { meshIds: number[]; published: number }; error?: string };
   __IFC_LITE_LOAD_TRACE__: { latest(): LoadTraceSnapshot | null };
   __retainedLongTasks: number[];
   /** Installed by the viewport once its renderer is ready: the parts the renderer's scene holds for one owner. */
@@ -467,8 +467,12 @@ test.describe('retained viewer acceptance', () => {
     // #7955: a Node-side snapshot between first batch and click can take
     // seconds under GPU load and let this small model finish. Observe the first
     // append in-page and click the real DOM button in the same microtask turn.
-    const closed = new Promise<void>(done => page.on('worker', host => {
-      if (/retained\.worker/.test(host.url())) host.once('close', () => done());
+    // The close time is taken in the event handler, on the wall clock the
+    // click was also stamped with: awaiting the event and then asking the page
+    // for performance.now() adds a CDP round trip that waits behind whatever
+    // long task the main thread is running, none of which is Cancel latency.
+    const closed = new Promise<number>(done => page.on('worker', host => {
+      if (/retained\.worker/.test(host.url())) host.once('close', () => done(Date.now()));
     }));
     await page.evaluate(() => {
       const globals = globalThis as typeof globalThis & ViewerGlobals;
@@ -483,11 +487,24 @@ test.describe('retained viewer acceptance', () => {
           // single-model stream carries the fixture's express IDs directly.
           const meshIds = [...new Set(current.geometryResult!.meshes.map(mesh => mesh.expressId))];
           const button = [...document.querySelectorAll('button')].filter(button => button.textContent?.trim() === 'Cancel').at(-1);
-          globals.__retainedCancel = { clickMs: performance.now(), before: { meshIds, published: current.retainedGeometry!.published } };
+          const cancel = globals.__retainedCancel = {
+            clickMs: performance.now(), clickWallMs: Date.now(), before: { meshIds, published: current.retainedGeometry!.published },
+          } as NonNullable<ViewerGlobals['__retainedCancel']>;
           if (!button || button.disabled || current.retainedGeometry?.completeness !== 'running') {
-            globals.__retainedCancel.error = 'No enabled Cancel button during the first published batch';
+            cancel.error = 'No enabled Cancel button during the first published batch';
             return;
           }
+          // Stamp the cancelled rows in the store update that publishes them,
+          // not when a later poll happens to look: a waitForFunction polls on
+          // animation frames, and under software WebGPU a frame can take
+          // hundreds of ms, all of it test-harness latency.
+          const stopRows = store.subscribe(state => {
+            const model = [...state.models.values()][0];
+            if ((model?.retainedGeometry?.cancelled ?? 0) > 0 && model.retainedGeometry?.completeness === 'incomplete') {
+              cancel.rowsReadyMs = performance.now();
+              stopRows();
+            }
+          });
           button.click();
         });
       });
@@ -497,19 +514,16 @@ test.describe('retained viewer acceptance', () => {
     const click = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!);
     expect(click.error).toBeUndefined();
     expect(click.before.meshIds.length).toBeGreaterThan(0);
-    await closed;
-    // Both endpoints use the browser clock. Reading the clock after Playwright
-    // observed close is an upper bound, including transport/main-thread delay.
-    const closedAt = await page.evaluate(() => performance.now());
-    const rowsReady = await page.waitForFunction(() => {
-      const model = [...(globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState().models.values()][0];
-      return (model?.retainedGeometry?.cancelled ?? 0) > 0 && model?.retainedGeometry?.completeness === 'incomplete' && performance.now();
+    const workerCloseMs = await closed - click.clickWallMs;
+    await page.waitForFunction(() => Boolean((globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!.rowsReadyMs));
+    const rowsReadyMs = await page.evaluate(() => {
+      const cancel = (globalThis as typeof globalThis & ViewerGlobals).__retainedCancel!;
+      return cancel.rowsReadyMs! - cancel.clickMs;
     });
-    const cancelledAt = await rowsReady.jsonValue() as number;
     const before = click.before;
     await complete(page, true);
     const after = await snapshot(page);
-    const cancelMs = Math.max(closedAt, cancelledAt) - click.clickMs;
+    const cancelMs = Math.max(workerCloseMs, rowsReadyMs);
     expect(cancelMs).toBeLessThanOrEqual(1000);
     expect(after.summary!.cancelled).toBeGreaterThan(0);
     // #7955: this fixture streams flat walls so Cancel can run before a
@@ -524,7 +538,7 @@ test.describe('retained viewer acceptance', () => {
     for (const id of before.meshIds) expect(after.meshIds).toContain(id);
     for (const row of after.summary!.refused) expect(after.meshIds).not.toContain(row.expressId);
     expect(after.meshIds).toHaveLength(after.summary!.published);
-    await record('cancel', { cancelMs, workerCloseMs: closedAt - click.clickMs, measurement: 'browser-clock upper bound through observed Worker close and cancelled rows', before, after });
+    await record('cancel', { cancelMs, workerCloseMs, rowsReadyMs, measurement: 'click to the Worker close event (wall clock, stamped in the event handler) and to the store update that publishes the cancelled rows (browser clock, stamped in the subscription)', before, after });
   });
 
   test('flagged preview with an empty engine fails before listening', async () => {

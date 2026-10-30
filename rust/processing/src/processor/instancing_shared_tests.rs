@@ -59,7 +59,7 @@ fn groups_ascend_by_rep_and_keep_arrival_order_within() {
 /// the iterated sequence.
 #[test]
 fn the_first_non_empty_instanceable_mesh_is_the_template() {
-    let meshes = vec![
+    let meshes = [
         mesh(1, Vec::new(), 10, true),
         mesh(2, vec![0.0; 3], 10, false),
         mesh(3, vec![0.0; 3], 10, true),

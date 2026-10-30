@@ -27,6 +27,9 @@ use axum::{
 use bytes::Bytes;
 use futures::stream::StreamExt;
 use ifc_lite_core::EntityScanner;
+use ifc_lite_processing::discovery::{Discovery, TypeGeometryPlan};
+use ifc_lite_processing::element::TypeGeometryMode;
+use ifc_lite_processing::scan::ScanClass;
 use ifc_lite_processing::{process, ProcessingRequest};
 use std::convert::Infallible;
 
@@ -265,15 +268,7 @@ pub async fn parse_metadata(
     // Fast path - just scan entities, no geometry processing
     let result = tokio::task::spawn_blocking(move || {
         let mut scanner = EntityScanner::new(&content);
-        let mut entity_count = 0usize;
-        let mut geometry_count = 0usize;
-
-        while let Some((_, type_name, _, _)) = scanner.next_entity() {
-            entity_count += 1;
-            if ifc_lite_core::has_geometry_by_name(type_name) {
-                geometry_count += 1;
-            }
-        }
+        let (entity_count, geometry_count) = scheduled_geometry_jobs(&content, &mut scanner);
 
         // The walk above ends on `None`, which does not only mean "the file
         // ended": the scanner skips a record whose instance name does not fit
@@ -305,4 +300,30 @@ pub async fn parse_metadata(
     let (result, _admission) = result;
 
     Ok(Json(result))
+}
+
+/// Walk `scanner` once and return `(entity_count, geometry_count)`, where
+/// `geometry_count` is the number of geometry jobs the native pass schedules
+/// for a default request: the same [`Discovery`] predicate and the same
+/// [`TypeGeometryPlan`] (`SuppressInstanced`) the processor's scan uses, so it
+/// equals `ProcessingResult.metadata.geometry_entity_count` (#8341 C4-13c).
+///
+/// That counts `IfcBuildingStorey`, `IfcFacility` and `IfcFacilityPart` (and
+/// subtypes) only when they carry a Representation (#1910), and one job per type-only `IfcRepresentationMap` (#957), never a map
+/// an occurrence or `IfcMappedItem` already draws. `IfcOpeningElement` stays a
+/// job: the default opening filter skips nothing, and this route takes no
+/// `opening_filter`.
+fn scheduled_geometry_jobs(content: &[u8], scanner: &mut EntityScanner<'_>) -> (usize, usize) {
+    let mut discovery = Discovery::new(false);
+    let (mut entity_count, mut product_jobs) = (0usize, 0usize);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        entity_count += 1;
+        let class = ScanClass::classify(type_name);
+        if discovery.observe(content, class, id, type_name, start, end).is_some() {
+            product_jobs += 1;
+        }
+    }
+    let types = TypeGeometryPlan::from_scan(discovery.types, Default::default(), TypeGeometryMode::SuppressInstanced);
+    let type_jobs: usize = types.products.iter().map(|(_, _, _, _, maps)| maps.len()).sum();
+    (entity_count, product_jobs + type_jobs)
 }

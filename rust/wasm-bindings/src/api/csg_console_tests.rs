@@ -8,7 +8,7 @@
 use super::{console_summary, Level};
 use ifc_lite_geometry::{
     aggregate_diagnostics, BoolFailure, BoolFailureReason, BoolOp, ClassificationStats,
-    GeometryDiagnostics, HostOpeningDiagnostic, RectFastStats, ReasonCount, WorstHost,
+    ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, RectFastStats, RectFastSummary, ReasonCount, WorstHost,
 };
 use rustc_hash::FxHashMap;
 
@@ -37,26 +37,20 @@ fn a_clean_batch_prints_nothing() {
 
 #[test]
 fn every_line_is_formatted_from_the_contract() {
-    let mut d = GeometryDiagnostics::default();
-    d.total_csg_failures = 4;
-    d.products_with_failures = 2;
-    d.hosts_with_openings = 3;
-    d.classification.rectangular = 5;
-    d.classification.diagonal = 1;
-    d.classification.non_rectangular = 2;
-    d.classification.total = 8;
-    d.failures_by_reason = vec![reason("EmptyOperand", 3), reason("KernelError", 1)];
-    d.silent_no_ops = 1;
-    d.rect_fast.fired = 2;
-    d.rect_fast.openings_cut = 4;
-    d.rect_fast.defer_near_edge = 1;
-    d.worst_hosts = vec![
-        worst(42, "IfcWall", 3, Some("EmptyOperand")),
-        worst(7, "IfcSlab", 1, None),
-    ];
-    d.oversized_ref_drops = 2;
-    d.total_unsupported_items = 3;
-    d.unsupported_items_by_type = vec![reason("IfcTextLiteral", 2), reason("IfcAnnotationFillArea", 1)];
+    let d = GeometryDiagnostics {
+        total_csg_failures: 4,
+        products_with_failures: 2,
+        hosts_with_openings: 3,
+        classification: ClassificationSummary { rectangular: 5, diagonal: 1, non_rectangular: 2, total: 8 },
+        failures_by_reason: vec![reason("EmptyOperand", 3), reason("KernelError", 1)],
+        silent_no_ops: 1,
+        rect_fast: RectFastSummary { fired: 2, openings_cut: 4, defer_near_edge: 1, ..RectFastSummary::default() },
+        worst_hosts: vec![worst(42, "IfcWall", 3, Some("EmptyOperand")), worst(7, "IfcSlab", 1, None)],
+        oversized_ref_drops: 2,
+        total_unsupported_items: 3,
+        unsupported_items_by_type: vec![reason("IfcTextLiteral", 2), reason("IfcAnnotationFillArea", 1)],
+        ..GeometryDiagnostics::default()
+    };
 
     let expected = vec![
         (Level::Warn, "[IFC-LITE] CSG diagnostics: 8 openings classified, 4 failures, 3 hosts tracked"),
@@ -94,8 +88,7 @@ fn every_line_is_formatted_from_the_contract() {
 
 #[test]
 fn hosts_without_failures_print_the_pipeline_note() {
-    let mut d = GeometryDiagnostics::default();
-    d.hosts_with_openings = 2;
+    let d = GeometryDiagnostics { hosts_with_openings: 2, ..GeometryDiagnostics::default() };
     let lines = console_summary(&d);
     assert_eq!(
         lines,
@@ -107,9 +100,8 @@ fn hosts_without_failures_print_the_pipeline_note() {
 /// engagement worth a line, as before.
 #[test]
 fn rect_fast_stays_quiet_without_engagement() {
-    let mut d = GeometryDiagnostics::default();
-    d.rect_fast.defer_no_openings = 3;
-    d.rect_fast.defer_too_many_openings = 1;
+    let rect_fast = RectFastSummary { defer_no_openings: 3, defer_too_many_openings: 1, ..RectFastSummary::default() };
+    let d = GeometryDiagnostics { rect_fast, ..GeometryDiagnostics::default() };
     assert!(console_summary(&d).is_empty());
 }
 

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { GeometryDiagnostics, StallPhaseHandle } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportRefusedLengthUnit, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -223,6 +223,30 @@ describe('reportRefusedLengthUnit (#7678)', () => {
 
   it('is wired to the geometry stream\'s unitRefused event in the loader', () => {
     assert.match(loader.code, /case 'unitRefused':\s*reportRefusedLengthUnit\(file\.name, toast\.error\)/);
+  });
+});
+
+describe('reportOmittedTypeRecords (#8341)', () => {
+  function notices(count: number | undefined): string[] {
+    const out: string[] = [];
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      reportOmittedTypeRecords('haus.ifc', count, (message) => out.push(message));
+    } finally {
+      console.warn = warn;
+    }
+    return out;
+  }
+
+  it('tells the user how many type definitions could not be read and that their type geometry is missing', () => {
+    assert.deepEqual(notices(3), ['"haus.ifc": 3 type definitions could not be read, so their type geometry was left out.']);
+    assert.deepEqual(notices(1), ['"haus.ifc": 1 type definition could not be read, so its type geometry was left out.']);
+  });
+
+  it('says nothing for 0 or for an unknown count (older wasm, cache, server)', () => {
+    assert.deepEqual(notices(0), []);
+    assert.deepEqual(notices(undefined), []);
   });
 });
 

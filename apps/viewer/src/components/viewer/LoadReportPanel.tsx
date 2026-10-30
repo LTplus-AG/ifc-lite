@@ -22,7 +22,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
-import { buildLoadReports, downloadLoadReportJSON, type LoadReportAffectedEntity, type LoadReportSummary } from '@/lib/loadReport';
+import { buildLoadReports, downloadLoadReportJSON, hasOmittedTypeRecords, type LoadReportAffectedEntity, type LoadReportSummary } from '@/lib/loadReport';
 import { cn } from '@/lib/utils';
 import { AssistantAction } from './assistant/AssistantAction';
 
@@ -31,7 +31,8 @@ interface LoadReportPanelProps {
 }
 
 function statusLabel(report: LoadReportSummary): { labelKey: TranslationKey; className: string } {
-  if (!report.diagnosticsAvailable) {
+  // A known type-geometry omission (#8341) is an issue even without CSG diagnostics.
+  if (!report.diagnosticsAvailable && !hasOmittedTypeRecords(report)) {
     return { labelKey: 'loadReportPanel.status.unavailable', className: 'text-muted-foreground' };
   }
   if (report.isClean) {
@@ -94,8 +95,11 @@ function ModelReportCard({
         {report.tessellationTier ? t('loadReportPanel.tierSuffix', { tier: report.tessellationTier }) : ''}
         {report.skipSmallCuts ? t('loadReportPanel.fastModeSuffix') : ''}
       </div>
-      {report.actions.length > 0 && (
+      {(report.actions.length > 0 || hasOmittedTypeRecords(report)) && (
         <ul className="mt-2 list-disc space-y-1 pl-4 text-2xs">
+          {hasOmittedTypeRecords(report) && (
+            <li>{t('loadReportPanel.omittedTypeRecords', { count: report.omittedTypeRecords ?? 0 })}</li>
+          )}
           {report.actions.map((action, i) => (
             // Actions are a fixed, stable-order list built from this report's
             // own counters — no reorderable/keyed identity beyond position.

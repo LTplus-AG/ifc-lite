@@ -213,6 +213,15 @@ export const miscPanelsBEn = {
   'loadReportPanel.status.unavailable': 'Diagnostics unavailable',
   'loadReportPanel.status.clean': 'Clean',
   'loadReportPanel.status.issuesFound': 'Issues found',
+  // #8341: type records the decoder could not read; only their type geometry is affected.
+  'loadReportPanel.omittedTypeRecords': {
+    one: '{count} type definition could not be read, so its type geometry was left out.',
+    other: '{count} type definitions could not be read, so their type geometry was left out.',
+  },
+  'loadReportPanel.omittedTypeRecordsToast': {
+    one: '"{name}": {count} type definition could not be read, so its type geometry was left out.',
+    other: '"{name}": {count} type definitions could not be read, so their type geometry was left out.',
+  },
 
   // ---- GeometryModeBanner.tsx ---------------------------------------------
   'geometryModeBanner.detailPinRemoved': 'Detail pin removed',

@@ -16,7 +16,7 @@ import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/co
 import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
@@ -366,6 +366,7 @@ export function useIfcLoader() {
     // any, which the capture reports as absent rather than as a zero.
     let loadDiagnostics: GeometryDiagnostics | null = null;
     let skippedHungElements: SkippedHungElements | undefined; // hung geometry calls (#4884)
+    let omittedTypeRecords: number | undefined; // undecodable type records, unknown when absent (#8341)
 
     /**
      * Which phase of the load was in flight, for the captured exception (#1903).
@@ -634,7 +635,7 @@ export function useIfcLoader() {
             ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
             federationAlignmentStatus, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
-            ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
+            ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
           };
           useViewerStore.getState().addModel(federatedModel);
           activity.published = true;
@@ -685,7 +686,7 @@ export function useIfcLoader() {
           loadError: patch?.loadError ?? null,
           pointCloudHandleId: patch?.pointCloudHandleId,
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
-          ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
+          ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
         });
         activity.published = true;
         modelCompletion?.settleModel();
@@ -1845,6 +1846,8 @@ export function useIfcLoader() {
               }
               skippedHungElements = event.skippedHungElements;
               if (skippedHungElements) reportSkippedHungElements(file.name, skippedHungElements, toast.info);
+              omittedTypeRecords = event.omittedTypeRecords;
+              reportOmittedTypeRecords(file.name, omittedTypeRecords, toast.info);
 
               if (target.kind === 'primary') {
                 // Finalize the primary slot; federated geometry is published by addModel.

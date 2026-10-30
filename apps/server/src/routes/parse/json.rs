@@ -323,7 +323,9 @@ fn scheduled_geometry_jobs(content: &[u8], scanner: &mut EntityScanner<'_>) -> (
             product_jobs += 1;
         }
     }
-    let types = TypeGeometryPlan::from_scan(discovery.types, Default::default(), TypeGeometryMode::SuppressInstanced);
+    let mut types = TypeGeometryPlan::from_scan(discovery.types, Default::default(), TypeGeometryMode::SuppressInstanced);
+    // The native scan drops type records the full decoder rejects (F2), so must this count.
+    types.retain_decodable_products(&ifc_lite_core::EntityDecoder::new(content));
     let type_jobs: usize = types.products.iter().map(|(_, _, _, _, maps)| maps.len()).sum();
     (entity_count, product_jobs + type_jobs)
 }

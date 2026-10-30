@@ -100,3 +100,13 @@ async fn metadata_geometry_count_matches_the_native_pass_8341() {
     let json = metadata_json("geometry-count-native-8341", FIXTURE).await;
     assert_eq!(geometry_count(&json), native.metadata.geometry_entity_count as u64);
 }
+
+/// F2: a type record the full decoder rejects schedules no job natively, so the
+/// route must not count its maps either.
+#[tokio::test]
+async fn metadata_geometry_count_skips_omitted_type_records_8341() {
+    const MALFORMED: &str = include_str!("../../../../../rust/processing/tests/fixtures/f2_omitted_type_record_8341.ifc");
+    let native = ifc_lite_processing::process_geometry(MALFORMED.as_bytes());
+    let json = metadata_json("geometry-count-f2-8341", MALFORMED).await;
+    assert_eq!(geometry_count(&json), native.metadata.geometry_entity_count as u64);
+}

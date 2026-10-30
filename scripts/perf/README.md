@@ -4,6 +4,23 @@
 
 # Performance diagnosis kit
 
+## C4 default browser worker-pool measurement (#8341)
+
+**Cumulative C4 window neutral within noise; peak memory not strictly at or below base.**
+One fresh-WASM, hardware-GPU browser cohort compared main before C4-10a with the
+last C4-11b merge: five randomized pairs on three fixtures, identical CPU payload roots
+and diagnostic lines. Observed readiness stays inside the base spread on every fixture.
+Peak RSS is lower on the CSG model and marginally higher, within spread, on the two small
+models. One reporter flag remains: later spatial-tree readiness on the CSG model,
+offset by earlier first paint. The window also contains retained and diff commits, so no
+single lane is attributed. Both native C4-10b layers show identical counts and no phase
+outside noise; the reporter stays inconclusive on sub-millisecond phases. Evidence: [c4-browser-8341](../../tests/evidence/c4-browser-8341/README.md).
+
+Lessons: pass `page.evaluate` bodies as source text, because tsx wraps named closures
+in a `__name` helper that is absent in the page. Chrome rewrites process titles, so
+`/proc/*/cmdline` needs a whitespace split to find `--type=`. A fixture with
+sub-millisecond phases makes the native reporter inconclusive by construction.
+
 ## Retained diff boundary A3 (#8042)
 
 **Hold: the tested transport changes do not close the retained gap.** Five

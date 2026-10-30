@@ -70,6 +70,24 @@ fn m10_classification_reads_2d_operators_like_production() {
 }
 
 #[test]
+fn m10_2d_operator_with_axis1_only_derives_y_as_the_counter_clockwise_complement() {
+    // Hosted review of #8360. Axis2 omitted: Y = (-x_y, x_x). Axis1 = (0,1) is a quarter turn and
+    // Axis1 = (-1,0) a half turn; both are rotations. A +Y default made the first unclassifiable
+    // (y collapses onto x) and the second a false mirror.
+    for (label, axis1) in [("quarter turn", "#9204=IFCDIRECTION((0.,1.));"), ("half turn", "#9204=IFCDIRECTION((-1.,0.));")] {
+        let text = operator("#38=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#9204,$,#37,1.);")
+            .replace("ENDSEC;\nEND-ISO", &format!("{axis1}\nENDSEC;\nEND-ISO"));
+        assert_eq!(classify(&text, 42), Classification::Rigid, "{label}");
+        let e = affine::expected(text.as_bytes(), 42).unwrap();
+        assert!((e[0].volume - 0.56).abs() < 1e-12, "{label}: {}", e[0].volume);
+    }
+    // An Axis1 that really is a mirror partner still is one: Axis1 = (1,0), Axis2 = (0,-1).
+    let text = operator("#38=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#9201,#9203,#37,1.);")
+        .replace("#9201=IFCDIRECTION((-1.,0.));", "#9201=IFCDIRECTION((1.,0.));");
+    assert_eq!(classify(&text, 42), Classification::Affine);
+}
+
+#[test]
 fn m10_unclassifiable_mapped_body_is_unmodelled_never_rigid() {
     // Each is a mapped body whose operator cannot be decoded: the pre-fix oracle
     // answered `not affine`, so such a product published with no winding gate.

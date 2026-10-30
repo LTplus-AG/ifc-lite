@@ -93,7 +93,8 @@ pub(super) fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option
         _ => direction(d,axis1,default)?,
     };
     let x=unit(sub(x,z.map(|v|v*dot(x,z))))?;
-    let y=direction(d,axis2,[0.,1.,0.])?;
+    // IfcBaseAxis 2D (IfcOrthogonalComplement): without Axis2, Y is the counter-clockwise complement of X.
+    let y=direction(d,axis2,if two_d {[-x[1],x[0],0.]} else {[0.,1.,0.]})?;
     let y=unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x))))?;
     let s=op.real_at(O::SCALE).unwrap_or(1.);
     let (s2,s3)=match op.ifc_type {

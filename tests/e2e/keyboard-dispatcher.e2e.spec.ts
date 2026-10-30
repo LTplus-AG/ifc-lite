@@ -33,6 +33,23 @@ test('#5841 shared dispatcher preserves 3D commands while a modal owns its keys'
   await page.keyboard.press('Escape');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().activeTool)).toBe('select');
 
+  const tweening = () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.isCameraTweening?.());
+  // The preset loop below trusts isCameraTweening() to say a tween is over, so
+  // show the viewer's wiring is neither stuck false nor stuck true. The first two reads
+  // run in one task, before any frame can have applied the tween: a tween
+  // started through the viewer's own animated applyViewpoint must read true at
+  // once, and must read false again once the render loop has finished it.
+  const wiring = await page.evaluate(() => {
+    const callbacks = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
+    const view = callbacks.getViewpoint?.();
+    if (!view || !callbacks.applyViewpoint || !callbacks.isCameraTweening) throw new Error('camera callbacks are missing');
+    const before = callbacks.isCameraTweening();
+    callbacks.applyViewpoint({ ...view, position: { ...view.position, y: view.position.y + 5 } }, true, 300);
+    return { before, started: callbacks.isCameraTweening() };
+  });
+  expect(wiring, 'idle camera is not tweening; an animated applyViewpoint starts a tween').toEqual({ before: false, started: true });
+  await expect.poll(tweening, { message: 'the viewer reports the tween finished once the render loop has applied it', timeout: 30_000 }).toBe(false);
+
   const viewpoints: string[] = [];
   const initial = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.getViewpoint?.());
   // Poses a settled preset must differ from: the load framing, then each earlier preset.

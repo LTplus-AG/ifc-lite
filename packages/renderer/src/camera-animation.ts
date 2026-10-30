@@ -98,12 +98,7 @@ export class CameraAnimator {
     this.presetViewRotation = 0;
   }
 
-  /**
-   * True from the moment a timed pose tween is started until an `update()` has
-   * applied its final pose. Unlike the value `update()` returns, this does not
-   * depend on a frame having run, so a stalled render loop cannot make an
-   * unfinished tween look finished. Inertia is not a tween and does not count.
-   */
+  /** A timed pose tween has started and no update() has applied its final pose yet; needs no frame (inertia excluded). */
   isTweening(): boolean {
     return this.animationStartTime > 0 && this.animationDuration > 0;
   }
@@ -180,18 +175,7 @@ export class CameraAnimator {
           if (next !== null) this.state.orthoSize = next;
         }
         this.updateMatrices();
-
-        this.animationStartTime = 0;
-        this.animationDuration = 0;
-        this.animationStartPos = null;
-        this.animationEndPos = null;
-        this.animationStartTarget = null;
-        this.animationEndTarget = null;
-        this.animationStartUp = null;
-        this.animationEndUp = null;
-        this.animationStartOrthoSize = null;
-        this.animationEndOrthoSize = null;
-        this.animationEasing = null;
+        this.clearTween();
       }
     }
 
@@ -403,7 +387,14 @@ export class CameraAnimator {
    */
   reset(): void {
     this.stopInertia();
-    // Cancel any ongoing animations
+    this.clearTween();
+    // Reset preset view tracking
+    this.lastPresetView = null;
+    this.presetViewRotation = 0;
+  }
+
+  /** Drop the in-flight pose tween (finished, or cancelled by a reset). */
+  private clearTween(): void {
     this.animationStartTime = 0;
     this.animationDuration = 0;
     this.animationStartPos = null;
@@ -415,8 +406,5 @@ export class CameraAnimator {
     this.animationStartOrthoSize = null;
     this.animationEndOrthoSize = null;
     this.animationEasing = null;
-    // Reset preset view tracking
-    this.lastPresetView = null;
-    this.presetViewRotation = 0;
   }
 }

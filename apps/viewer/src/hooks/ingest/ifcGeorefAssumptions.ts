@@ -45,16 +45,13 @@ export function ifcSharedVerticalDatumApplied(
   return unresolvedVertical(source, target) ? 'unresolved' : true;
 }
 
-/** Only offer an unused choice for an actual unknown-vertical refusal, which cross-CRS placement applies after the resolver's CRS check. */
+/** Only offer an unused choice for the resolver's actual unknown-vertical refusal. */
 export function ifcVerticalAssumptionHint(
   source: ModelSpatialReference, target: ModelSpatialReference, enabled: boolean,
 ): string {
   if (enabled || source.sourceMetadata?.format !== 'ifc' || conflictingVerticalDeclarations(source, target)) return '';
   const resolved = resolveSpatialPlacement(source, target);
-  if (resolved.ok) return '';
-  const unknownVertical = resolved.refusal === 'vertical-crs-unknown'
-    || (resolved.refusal === 'crs-mismatch' && !(source.vertical && target.vertical));
-  if (!unknownVertical) return '';
+  if (resolved.ok || resolved.refusal !== 'vertical-crs-unknown') return '';
   const reason = unresolvedVertical(source, target)
     ? 'A vertical datum declaration could not be resolved.' : 'A vertical datum is missing.';
   return ` ${reason} If you know these models share a height system, enable the IFC federation assumption in Settings → General, then reload or re-align.`;

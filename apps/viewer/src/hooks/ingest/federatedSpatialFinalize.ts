@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { UnknownVerticalPolicy } from './federationSpatialTransform.js';
 import { conflictingVerticalDeclarations, ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied, ifcVerticalAssumptionHint, type IfcVerticalAssumptionApplied } from './ifcGeorefAssumptions.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
@@ -81,6 +82,7 @@ function reportFederationAlignmentOutcome(
   fileName: string,
   source: ModelSpatialPlacement,
   reference: ModelSpatialPlacement,
+  unknownVertical: UnknownVerticalPolicy,
   heightHint = '',
 ): void {
   const sourceCrs = source.spatialReference.horizontal?.id ?? 'unknown CRS';
@@ -90,9 +92,11 @@ function reportFederationAlignmentOutcome(
   } else if (status === 'failed') {
     // Equal CRSs or a height refusal mean nothing was reprojected: the placement itself was refused.
     const placement = sourceCrs === targetCrs ? `placement on ${sourceCrs}` : `placement from ${sourceCrs} to ${targetCrs}`;
+    const missingVertical = !source.spatialReference.vertical || !reference.spatialReference.vertical;
     const reason = conflictingVerticalDeclarations(source.spatialReference, reference.spatialReference)
       ? `${placement} was refused because the declared height systems differ`
-      : sourceCrs === targetCrs || heightHint ? `${placement} could not be resolved` : `${sourceCrs} → ${targetCrs} reprojection failed`;
+      : sourceCrs === targetCrs || (missingVertical && unknownVertical !== 'assume-compatible')
+        ? `${placement} could not be resolved` : `${sourceCrs} → ${targetCrs} reprojection failed`;
     toast.error(`Could not align "${fileName}" with the federation anchor — ${reason}. The model is shown in its own local frame and may appear at the wrong real-world position.${heightHint}`);
   }
 }
@@ -143,6 +147,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
         options.fileName,
         source,
         reference,
+        unknownVerticalPolicy(options.landXmlAssumptions),
       );
     }
     return {
@@ -185,7 +190,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
       if (!options.isCurrent()) return null;
       applyLandXmlRenderedLineUpdates(renderedLines);
     }
-    reportFederationAlignmentOutcome(status, options.fileName, parsed, reference,
+    reportFederationAlignmentOutcome(status, options.fileName, parsed, reference, unknownVertical,
       status === 'failed' && !options.landXmlDocument
         ? ifcVerticalAssumptionHint(parsed.spatialReference, reference.spatialReference, assumeIfcSharedVertical) : '');
   } else if (parsed) {

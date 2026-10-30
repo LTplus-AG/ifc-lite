@@ -14,7 +14,6 @@ import { toast } from '@/components/ui/toast.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './federationAlign.js';
 import { finalizeFederatedSpatialPlacement } from './federatedSpatialFinalize.js';
 import { realignFederationModels, type RealignableModel } from './federationRealign.js';
-import { ifcVerticalAssumptionHint } from './ifcGeorefAssumptions.js';
 
 const initialState = useViewerStore.getState();
 const originalError = toast.error;
@@ -255,13 +254,12 @@ describe('explicit IFC shared height system (#8042)', () => {
     assert.deepEqual(firstVertex(b.geometryResult!), [2, 3, 4]);
   });
 
-  it('offers the setting for a cross-CRS refusal caused by a missing datum, not as a reprojection failure', async () => {
+  it('reports a cross-CRS missing datum as a refusal, without claiming the setting would help', async () => {
     await installAnchor(reference());
     await finalize(reference({ horizontal: { id: 'EPSG:2056' } }));
     assert.equal(errors.length, 1);
     assert.match(errors[0], /placement from EPSG:2056 to EPSG:32760 could not be resolved/);
-    assert.match(errors[0], /vertical datum is missing.*Settings/);
-    assert.doesNotMatch(errors[0], /reprojection failed/);
+    assert.doesNotMatch(errors[0], /reprojection failed|Settings/);
   });
 
   it('reports different declared datums across CRSs as a refusal, not a reprojection failure', async () => {
@@ -270,10 +268,5 @@ describe('explicit IFC shared height system (#8042)', () => {
     assert.equal(errors.length, 1);
     assert.match(errors[0], /placement from EPSG:2056 to EPSG:32760 was refused because the declared height systems differ/);
     assert.doesNotMatch(errors[0], /reprojection failed|Settings/);
-  });
-
-  it('does not offer the setting across CRSs when both models declare the same datum', () => {
-    const vertical = { id: 'EPSG:5729' };
-    assert.equal(ifcVerticalAssumptionHint(reference({ horizontal: { id: 'EPSG:2056' }, vertical }), reference({ vertical }), false), '');
   });
 });

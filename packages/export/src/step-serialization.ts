@@ -37,15 +37,37 @@ export { escapeStepString };
 /** EXPRESS base primitives a defined type ultimately resolves to. */
 const EXPRESS_PRIMITIVES = new Set(['BOOLEAN', 'LOGICAL', 'INTEGER', 'REAL', 'NUMBER', 'STRING', 'BINARY']);
 
+/** Per-registry `IFC…` token → registry key, for {@link canonicalTypeName}. */
+const TYPE_KEYS_BY_TOKEN = new WeakMap<SchemaRegistry['types'], Map<string, string>>();
+
+/**
+ * The registry key a type name spells, matched the way the written token is:
+ * `IFCLENGTHMEASURE`, `LengthMeasure` and `IfcLengthMeasure` all write
+ * `IFCLENGTHMEASURE`, so all resolve to `IfcLengthMeasure`. A `Map`, not an
+ * object, so no inherited name can match.
+ */
+function canonicalTypeName(typeName: string, types: SchemaRegistry['types']): string {
+  if (Object.prototype.hasOwnProperty.call(types, typeName)) return typeName;
+  let keys = TYPE_KEYS_BY_TOKEN.get(types);
+  if (!keys) {
+    keys = new Map(Object.keys(types).map((key) => [key.toUpperCase(), key]));
+    TYPE_KEYS_BY_TOKEN.set(types, keys);
+  }
+  let token = typeName.toUpperCase();
+  if (!token.startsWith('IFC')) token = `IFC${token}`;
+  return keys.get(token) ?? typeName;
+}
+
 /**
  * Resolve an IFC defined type (`IfcLengthMeasure`, `IfcPositiveLengthMeasure`,
  * `IfcBoolean`, …) to its underlying EXPRESS primitive (`REAL`, `BOOLEAN`, …)
  * by walking the schema registry's `types` alias chain. Returns `null` for a
  * type the registry doesn't know or one that bottoms out in an entity/select.
- * `registry` defaults to the parser's IFC4 pin.
+ * The name is matched case-insensitively, with the `Ifc` prefix optional
+ * (#8312). `registry` defaults to the parser's IFC4 pin.
  */
 export function resolveExpressBase(typeName: string, registry: SchemaRegistry = SCHEMA_REGISTRY): string | null {
-  let cursor: string | undefined = typeName;
+  let cursor: string | undefined = canonicalTypeName(typeName, registry.types);
   const seen = new Set<string>();
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);

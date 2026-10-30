@@ -263,3 +263,23 @@ describe('serializeTypedMarker type-name guard', () => {
     expect(serializeTypedMarker('IfcLabel', 'x')).toBe("IFCLABEL('x')");
   });
 });
+
+describe('defined-type base lookup ignores spelling (#8312)', () => {
+  it('resolves upper-case and prefix-less names to the same base', () => {
+    for (const name of ['IfcLengthMeasure', 'IFCLENGTHMEASURE', 'ifclengthmeasure', 'LengthMeasure', 'LENGTHMEASURE']) {
+      expect(resolveExpressBase(name)).toBe('REAL');
+    }
+    expect(resolveExpressBase('IFCPOSITIVELENGTHMEASURE')).toBe('REAL');
+    expect(resolveExpressBase('IFCNOSUCHTYPE')).toBeNull();
+    expect(resolveExpressBase('CONSTRUCTOR')).toBeNull();
+  });
+
+  it('encodes the inner value from the base, not the JSON shape', () => {
+    for (const name of ['IfcLengthMeasure', 'IFCLENGTHMEASURE', 'LengthMeasure']) {
+      expect(serializeTypedMarker(name, 3)).toBe('IFCLENGTHMEASURE(3.)');
+    }
+    expect(serializeTypedMarker('LABEL', 42)).toBe("IFCLABEL('42')");
+    expect(serializeTypedMarker('ifcboolean', 'false')).toBe('IFCBOOLEAN(.F.)');
+    expect(serializeTypedMarker('COUNTMEASURE', 3)).toBe('IFCCOUNTMEASURE(3.)');
+  });
+});

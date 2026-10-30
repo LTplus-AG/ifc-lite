@@ -110,3 +110,15 @@ fn typed_marker_refuses_a_type_name_that_breaks_out_of_the_attribute_list() {
     }
     assert_eq!(typed_marker("IfcLabel", &json!("x")).unwrap(), "IFCLABEL('x')");
 }
+
+#[test]
+fn typed_marker_base_lookup_ignores_spelling_8312() {
+    use super::super::values::typed_marker;
+    for name in ["IfcLengthMeasure", "IFCLENGTHMEASURE", "ifclengthmeasure", "LengthMeasure", "LENGTHMEASURE"] {
+        assert_eq!(typed_marker(name, &json!(3)).unwrap(), "IFCLENGTHMEASURE(3.)", "{name:?}");
+    }
+    assert_eq!(typed_marker("IFCPOSITIVELENGTHMEASURE", &json!(3)).unwrap(), "IFCPOSITIVELENGTHMEASURE(3.)");
+    assert_eq!(typed_marker("LABEL", &json!(42)).unwrap(), "IFCLABEL('42')");
+    assert_eq!(typed_marker("ifcboolean", &json!("false")).unwrap(), "IFCBOOLEAN(.F.)");
+    assert_eq!(typed_marker("COUNTMEASURE", &json!(3)).unwrap(), "IFCCOUNTMEASURE(3.)");
+}

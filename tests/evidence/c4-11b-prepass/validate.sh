@@ -79,6 +79,7 @@ for (const file of files) {
   if (before !== after) console.log(`C4_DTS_DOC_ONLY ${file}`);
 }
 JSTYPES
+  git diff --exit-code -- 'packages/wasm/pkg*/ifc-lite*.d.ts'
   IFC_WASM_BASE_JS="$scratch/packages/wasm/pkg/ifc-lite.js" \
   IFC_WASM_BASE_BINARY="$scratch/packages/wasm/pkg/ifc-lite_bg.wasm" \
     pnpm test:wasm-contract

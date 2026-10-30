@@ -76,3 +76,39 @@ line. The unchanged mutation was regenerated against the new comments.
 At `ca4557b6ce`, static request `auto-5069183209c84b74974eb7bc87f9ea47` passed
 module size, Rust API surface, AGENTS size, reverse-apply check and extracted
 oracle `bash -n`. These precede B-SIZE-01; final extraction qualification follows.
+
+Final structural code source `20a1316a1335dc700856f47d6b9a83035ef59e77`, Pop
+request `auto-8422078e80354df6b91c0bcbd6ba6eda`, job
+`41562f2d-0dc6-475b-950f-d8d642aacb24`: 11 targeted tests, 45 ratchet tests,
+all three static guards, reverse-patch check and extracted oracle `bash -n`
+pass. The two ignored tests are explicitly marked reseed helpers, not fixture
+skips. Fresh default WASM plus diff bindings build successfully and exact-diff
+against committed declarations; no drift. Project/fleet exit 0, source unchanged;
+output SHA256 `fcf1cd7d64e6fd4d3be245fb7e5cc1ef5f43b4e03152859985cbeb97e1e8532c`.
+Only evidence and patch context change after that source; the mutation itself
+still replaces cached publication with `build()`. Its narrowed context keeps
+comment edits from invalidating the control.
+
+Exact final qualification command (both heads use the same recipe, sequentially):
+
+```sh
+~/build-workers/ifc-fleet run --host pop-os --storage-task c4-11b-fix-r1 \
+  --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-26da8b18 -- bash -c \
+  'set -euo pipefail; bash tests/evidence/c4-11b/validate-round1.sh; bash tests/evidence/c4-11b/validate-round1.sh wasm'
+```
+
+As directed after independent approval, broader new-head workspace/clippy,
+TypeScript and real-WASM contract coverage is left to CI. Earlier full runs
+retain their original source pins and are not relabeled as new-head results.
+
+Round-1 storage task `c4-11b-fix-r1` is closed/released after verification of all
+ten published job manifests, including known setup failures. Registered reclaim
+stopped before removing worker workspaces with
+`untracked/ignored file not promoted or catalogued: packages/wasm/pkg-diff/.gitignore`.
+The six protected checkouts are the source pins `12fbb504618d`, `b212a01977`,
+`ca4557b6ce`, `6401f12917`, `20a1316a13`, and `4d8cda58aa` under the Pop worker's
+`worker-state/checkouts/`; their close inventory reports 7,407,050,752 allocated
+bytes. No classifier, release metadata, source, fixture, shared cache or foreign
+output was changed to bypass that guard. Local downloaded artifact copies
+(243,289,411 logical bytes) were removed after retaining the small CI screenshot,
+error context and hash/result summary in the thread's artifact directory.

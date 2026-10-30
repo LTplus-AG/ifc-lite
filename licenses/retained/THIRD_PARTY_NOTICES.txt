@@ -10639,6 +10639,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0 OR LGPL-2.1-or-later
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: r-efi 5.3.0 (crates.io), licensed under MIT by election from MIT OR Apache-2.0 OR LGPL-2.1-or-later
 
 --- AUTHORS (sha256 ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7) ---
 LICENSE:
@@ -12599,6 +12601,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: Zlib OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: Zlib
+Attribution: wide 1.4.0 (crates.io), licensed under Zlib by election from Zlib OR Apache-2.0 OR MIT
 
 --- LICENSE-ZLIB.md (sha256 c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9) ---
 Full text reproduced above under this SHA-256.

@@ -185,11 +185,11 @@ fn issue_7955_band_phase_open_tessellations_do_not_spend_the_layer_allowance() {
     // poisoned the worker and spent one band-phase allowance, so the fifth
     // notched wall and the healthy wall were refused LayerRetirementsExhausted.
     let (text, notched, healthy) = notched_walls_then_healthy(5);
-    let ids: std::collections::BTreeSet<u32> = notched.iter().copied().chain([healthy]).collect();
     let mut results = Vec::new();
     let summary = run_model_native(SourceBundle::new(text.into_bytes()), &path,
-        &ModelOptions { ids: Some(ids.clone()), ..Default::default() }, |o| results.push(o)).unwrap();
-    assert_eq!(results.len(), ids.len(), "{results:?}");
+        &ModelOptions { ids: Some(notched.iter().copied().chain([healthy]).collect()), ..Default::default() },
+        |o| results.push(o)).unwrap();
+    assert_eq!(results.len(), notched.len() + 1, "{results:?}");
     for id in &notched {
         let refused = results.iter().find_map(|o| match o {
             ProductOutcome::Refused { product_id, refusal, message, .. } if product_id == id => Some((*refusal, message)),

@@ -40,8 +40,26 @@ jobs:
     # `CLAUDE_REVIEW_ENABLED` is the kill switch. Unset means off, so this lands
     # dark and is turned on deliberately; flipping it back off stops the lane in
     # seconds without a revert.
+    #
+    # DRAFTS ARE SKIPPED, EXCEPT THE GENERATED VERSION PACKAGES PR. That PR is
+    # drafted on purpose: `release-pr-freshness.yml` converts it to a draft
+    # whenever `main` moves and un-drafts it with GITHUB_TOKEN once the Release
+    # run has refreshed the branch, and a GITHUB_TOKEN `ready_for_review` starts
+    # no workflow. The refresh itself is a `synchronize`, which lands while the
+    # PR is still a draft, so on a skipped job the head got no marker, the gate
+    # (which by then sees a ready PR) reported STALE_REVIEW, and a re-run
+    # replays the same draft event payload and skips again (runs 40988968195
+    # and 41003636568; 40997416981 ran only because the draft flip had not
+    # happened yet). Running the lane on that PR is cheap: the classifier step
+    # below skips the model and posts the explicit `nothing-to-review` marker.
+    # The two string tests mirror scripts/review/classify-review-target.mjs
+    # (a test pins that). `==` on strings is case-insensitive here, so a draft
+    # whose name differs only by case runs the lane and the classifier sends it
+    # down the normal review path, which is what a ready PR of that name gets.
     if: >-
-      github.event.pull_request.draft == false &&
+      (github.event.pull_request.draft == false ||
+        (github.event.pull_request.head.ref == 'changeset-release/main' &&
+         github.event.pull_request.title == 'chore: version packages')) &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.CLAUDE_REVIEW_ENABLED == 'true'
     runs-on: ubuntu-latest

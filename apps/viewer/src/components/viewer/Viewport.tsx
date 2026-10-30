@@ -1115,6 +1115,7 @@ export function Viewport({
           projectionMode: camera.getProjectionMode(),
           orthoSize: camera.getProjectionMode() === 'orthographic' ? camera.getOrthoSize() : undefined,
         }),
+        isCameraTweening: () => camera.isTweening(),
         applyViewpoint,
       });
 

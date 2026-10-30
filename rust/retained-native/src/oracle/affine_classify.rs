@@ -2,7 +2,7 @@
 //! M10 winding-gate classification: which published products carry a nonrigid map,
 //! decided from the source alone (no world placement, no analytic solid). Anything
 //! that cannot be decoded is `Unmodelled`, so the harness fails closed.
-use super::{affine::{mapping,nonrigid,Frame},math::*};
+use super::{affine::{mapping,mesh_moments,nonrigid,Frame},math::*};
 use ifc_lite_core::{slot, EntityDecoder, IfcType};
 
 /// Whether a published product's mapped body carries a nonrigid transform.

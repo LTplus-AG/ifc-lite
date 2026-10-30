@@ -38,8 +38,28 @@ case "${1:-native}" in
   measure)
     bash tests/evidence/c4-7b/measure.sh
     ;;
+  wasm)
+    # Fresh matched base/head WASM (CI=1 forbids build-wasm's soft skip). The
+    # base export lives in this task checkout and is removed afterwards.
+    base=${C4_7B_BASE:-1a3d4a83a79bdad791125eebc64a6a69776c7b42}
+    scratch="$PWD/.c4-7b-baseline"
+    [[ ! -e "$scratch" ]] || { echo 'baseline scratch already exists'; exit 1; }
+    mkdir "$scratch"
+    trap 'rm -rf -- "$scratch"' EXIT
+    git archive "$base" | tar -x -C "$scratch"
+    (cd "$scratch"; CI=1 bash scripts/build-wasm.sh)
+    pnpm install --frozen-lockfile --prefer-offline
+    pnpm fixtures
+    CI=1 pnpm build --concurrency=2 --filter=@ifc-lite/renderer... --filter=@ifc-lite/geometry... --filter=@ifc-lite/export...
+    BUILD_RETAINED=1 CI=1 pnpm build:wasm
+    # JS/.d.ts must be unchanged: no wasm-bound doc comment moved.
+    git diff --exit-code -- 'packages/wasm/pkg*/ifc-lite*.d.ts' 'packages/wasm/pkg*/.gitignore'
+    IFC_WASM_BASE_JS="$scratch/packages/wasm/pkg/ifc-lite.js" \
+    IFC_WASM_BASE_BINARY="$scratch/packages/wasm/pkg/ifc-lite_bg.wasm" \
+      pnpm test:wasm-contract
+    ;;
   *)
-    echo "usage: $0 native|mutation|measure" >&2
+    echo "usage: $0 native|mutation|measure|wasm" >&2
     exit 64
     ;;
 esac

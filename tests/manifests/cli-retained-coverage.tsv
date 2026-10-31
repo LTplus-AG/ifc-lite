@@ -114,17 +114,17 @@ tests/fixtures/synthetic-retained/f-a-curved.ifc	261	published
 tests/fixtures/synthetic-retained/f-a-curved.ifc	55	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	63	published	
 tests/fixtures/synthetic-retained/f-a-curved.ifc	93	published	
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	113	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	113	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	128	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	135	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	153	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	160	published	
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	172	refused	operation_unsupported
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	183	refused	operation_unsupported
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	53	refused	operation_unsupported
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	68	refused	operation_unsupported
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	83	refused	operation_unsupported
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	98	refused	operation_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	172	refused	appearance_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	183	refused	appearance_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	53	published	
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	68	published	
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	83	refused	incomplete
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	98	refused	incomplete
 tests/fixtures/synthetic-retained/f-c-brep.ifc	1051	refused	operation_unsupported
 tests/fixtures/synthetic-retained/f-c-extrusion.ifc	27	published	
 tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc	107	published	

@@ -32,6 +32,12 @@ impl AsyncRetainedExecutor for BrowserWorker {
             .map_err(|_| RuntimeFault::resource_limit("wasm mesh byte budget exceeds u32"))?;
         evaluation_limits(limits.chord_metres, limits.angle_degrees, max_bytes)?;
         match call {
+            Invocation::Construction(request)
+                if request.payload().qualification
+                    == ifc_lite_geometry::document::RegionQualification::SourceFaceSet =>
+            {
+                self.seal_source_face_set(request, max_bytes)
+            }
             Invocation::Construction(request) => self
                 .evaluate_retained(
                     request.clone(),
@@ -65,6 +71,27 @@ fn invalid(message: &'static str) -> RuntimeFault {
     RuntimeFault::transport(message)
 }
 impl BrowserWorker {
+    /// Same incarnation and byte budget as a kernel mesh, without a Worker call.
+    fn seal_source_face_set(
+        &self,
+        request: &ifc_lite_geometry::document::RetainedRequest,
+        max_bytes: u32,
+    ) -> Result<BrowserReceipt, RuntimeFault> {
+        self.owner.validate().map_err(RuntimeFault::from)?;
+        if request.worker_incarnation() != self.incarnation() {
+            return Err(BrowserError::WrongWorker.into());
+        }
+        if request.payload().bytes.len() > max_bytes as usize {
+            return Err(BrowserError::ResourceLimit("mesh exceeds max_bytes".to_owned()).into());
+        }
+        let completion = request
+            .source_exact_completion()
+            .ok_or_else(|| invalid("request is not a decodable source-exact face set"))?;
+        Ok(BrowserReceipt::SourceFaceSet {
+            domain: self.cancellation(),
+            completion,
+        })
+    }
     fn validate_input(&self, input: &BrowserReceipt) -> Result<(), RuntimeFault> {
         input.validate_live()?;
         if !input.belongs_to_domain(&self.cancellation()) {

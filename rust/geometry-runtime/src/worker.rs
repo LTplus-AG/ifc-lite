@@ -30,7 +30,7 @@ pub use qualification::RegionQualificationReport;
 mod disk_qualification;
 #[path = "worker_sweep.rs"]
 mod sweep;
-pub use sweep::RetainedRealization;
+pub use sweep::{RetainedRealization, RetainedSourceFaceSet};
 #[path = "worker_objects.rs"]
 mod objects;
 #[path = "worker_dependencies.rs"]

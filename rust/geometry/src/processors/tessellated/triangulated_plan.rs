@@ -82,6 +82,15 @@ impl TriangulatedFaceSetPlan {
         (mesh, uvs)
     }
 
+    /// Winding-final corners into the f32 point list, with each triangle's
+    /// `CoordIndex` row. Corners outside the list drop as the mesher drops them.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn source_triangles(self) -> super::SourceTriangles {
+        let (positions, indices, _, _) = self.oriented();
+        let rows = (0..indices.len() as u32 / 3).collect();
+        super::SourceTriangles { positions, indices, rows, row_count: 0 }.keep_emitted()
+    }
+
     fn oriented(self) -> OrientedTriangles {
         let mut indices = self.coord_index;
         let mut authored = None;

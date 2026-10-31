@@ -11,19 +11,29 @@
  * both windows, the cell ratio is median(recent) / median(baseline). The
  * divisor comes from the baseline window ONLY and from the `default` arm only,
  * so a person whose loads are all recent, or all in a ramp arm, cannot cancel
- * out by construction (see "Reading the FIELD telemetry" in README.md). A
- * group's pooled ratio is the median of its cell ratios; above 1 is slower.
+ * out by construction (see "Reading the FIELD telemetry" in README.md).
  *
- * The verdict's threshold is on SPEED, 1 / ratio: a pooled speed below 0.95
- * (5% slower) is a regression. A group with fewer paired cells than
- * `--min-cells` is `insufficient`: its ratio is not small, it is undefined.
+ * A group is judged per journey and per person: each person's median cell
+ * ratio, then the median across people, above 1 is slower. Cells are not the
+ * unit because one federated batch is dozens of them: on build 8d3ffe9d1f62
+ * two people owned 28 of 42 cells, so the cell median read 1.86 while the
+ * median person read 0.96. Pooling journeys hid the same batch in cold loads.
+ *
+ * `regressed` needs both the point estimate past the threshold (speed = 1 /
+ * ratio below 0.95) and a 99% person bootstrap interval excluding 1, because a
+ * nightly judges about ten metrics at once. Past the threshold without that is
+ * `inconclusive`. Fewer people than `--min-persons` is `insufficient`: the
+ * ratio is not small, it is undefined. Context metrics are reported and never
+ * judged: `file_read_ms` barely depends on the app, so when it moves the
+ * load comparison is suspect; `federated_session_loads` shows when a J4 change
+ * comes with bigger batches.
  *
  * Input is the result of the HogQL in README.md (marker
  * `field-verdict-hogql`), as the PostHog query API returns it
  * (`{ columns, results }`), or an array of row objects. Offline by design:
  * the fetch lives in `field-verdict-fetch.mjs` and the workflow.
  *
- *   node scripts/perf/field-verdict.mjs result.json [--threshold 0.95] [--min-cells 5]
+ *   node scripts/perf/field-verdict.mjs result.json [--threshold 0.95] [--min-persons 5]
  *        [--build <sha>] [--json] [--fail-on-regression]
  *   node scripts/perf/field-verdict.mjs --print-sql --build <12-char sha> [--baseline-days 14]
  */
@@ -89,23 +99,56 @@ export function quantile(sorted, q) {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
-function summarize(key, cells, { threshold, minCells }) {
-  const ratios = cells.map((c) => c.ratio).sort((a, b) => a - b);
-  const ratio = quantile(ratios, 0.5);
+const CONTEXT_METRICS = new Set(['file_read_ms', 'federated_session_loads']);
+const BOOTSTRAP_ROUNDS = 2000;
+const BOOTSTRAP_SEED = 6961;
+
+/** Small seeded generator, so one input always renders one verdict. */
+function seededRandom(seed) {
+  let state = seed;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const ascending = (values) => [...values].sort((a, b) => a - b);
+
+/** 99% percentile interval of the median, resampling people. */
+export function personInterval(personRatios, { rounds = BOOTSTRAP_ROUNDS, seed = BOOTSTRAP_SEED } = {}) {
+  const random = seededRandom(seed);
+  const medians = [];
+  for (let round = 0; round < rounds; round++) {
+    const sample = personRatios.map(() => personRatios[Math.floor(random() * personRatios.length)]);
+    medians.push(quantile(ascending(sample), 0.5));
+  }
+  const sorted = ascending(medians);
+  return [quantile(sorted, 0.005), quantile(sorted, 0.995)];
+}
+
+function summarize(key, cells, { threshold, minPersons }) {
+  const byPerson = new Map();
+  for (const c of cells) byPerson.set(c.person, [...(byPerson.get(c.person) ?? []), c.ratio]);
+  const personRatios = ascending([...byPerson.values()].map((ratios) => quantile(ascending(ratios), 0.5)));
+  const ratio = quantile(personRatios, 0.5);
   const speed = 1 / ratio;
+  const [low, high] = personInterval(personRatios);
   let status;
-  if (cells.length < minCells) status = 'insufficient';
-  else if (speed < threshold) status = 'regressed';
-  else if (speed > 1 / threshold) status = 'improved';
+  if (CONTEXT_METRICS.has(key.metric)) status = 'context';
+  else if (personRatios.length < minPersons) status = 'insufficient';
+  else if (speed < threshold) status = low > 1 ? 'regressed' : 'inconclusive';
+  else if (speed > 1 / threshold) status = high < 1 ? 'improved' : 'inconclusive';
   else status = 'flat';
   return {
     ...key,
     cells: cells.length,
-    persons: new Set(cells.map((c) => c.person)).size,
+    persons: personRatios.length,
     loads: cells.reduce((sum, c) => sum + c.recentN + c.baselineN, 0),
     ratio: round(ratio),
-    p25: round(quantile(ratios, 0.25)),
-    p75: round(quantile(ratios, 0.75)),
+    low: round(low),
+    high: round(high),
     speed: round(speed),
     status,
   };
@@ -125,30 +168,29 @@ function groupBy(cells, keyOf) {
 }
 
 const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-const order = (a, b) => byText(a.event, b.event) || byText(a.metric, b.metric) || byText(a.journey ?? '', b.journey ?? '') || byText(a.arm, b.arm);
+const order = (a, b) => byText(a.event, b.event) || byText(a.journey, b.journey) || byText(a.metric, b.metric) || byText(a.arm, b.arm);
 
 /**
- * The verdict: per (event, metric, journey, arm) and pooled across journeys per
- * (event, metric, arm). `regressed` lists the pooled groups whose speed fell
- * below the threshold with enough cells to say so.
+ * The verdict per (event, metric, journey, arm). `regressed` lists the groups
+ * judged slower; `controlMoved` the file read groups whose interval excludes 1
+ * past the threshold, whose journey's load comparison is then suspect.
  */
-export function fieldVerdict(rows, { threshold = 0.95, minCells = 5, baselineArm = 'default' } = {}) {
-  if (!(threshold > 0 && threshold < 1) || !Number.isInteger(minCells) || minCells < 1) throw new Error('field-verdict: threshold must be in (0, 1) and minCells a positive integer');
+export function fieldVerdict(rows, { threshold = 0.95, minPersons = 5, baselineArm = 'default' } = {}) {
+  if (!(threshold > 0 && threshold < 1) || !Number.isInteger(minPersons) || minPersons < 1) throw new Error('field-verdict: threshold must be in (0, 1) and minPersons a positive integer');
   const cells = pairCells(rows, { baselineArm });
-  const opts = { threshold, minCells };
-  const perJourney = groupBy(cells, (c) => ({ event: c.event, metric: c.metric, journey: c.journey, arm: c.arm }))
-    .map((g) => summarize(g.key, g.cells, opts)).sort(order);
-  const pooled = groupBy(cells, (c) => ({ event: c.event, metric: c.metric, arm: c.arm }))
-    .map((g) => summarize(g.key, g.cells, opts)).sort(order);
-  return { threshold, minCells, baselineArm, cells: cells.length, perJourney, pooled, regressed: pooled.filter((g) => g.status === 'regressed') };
+  const groups = groupBy(cells, (c) => ({ event: c.event, metric: c.metric, journey: c.journey, arm: c.arm }))
+    .map((g) => summarize(g.key, g.cells, { threshold, minPersons })).sort(order);
+  const controlMoved = groups.filter((g) => g.metric === 'file_read_ms' && g.persons >= minPersons
+    && ((g.low > 1 && 1 / g.ratio < threshold) || (g.high < 1 && 1 / g.ratio > 1 / threshold)));
+  return { threshold, minPersons, baselineArm, cells: cells.length, groups, regressed: groups.filter((g) => g.status === 'regressed'), controlMoved };
 }
 
-function table(groups, withJourney) {
-  const head = ['event', 'metric', ...(withJourney ? ['journey'] : []), 'arm', 'cells', 'persons', 'ratio (IQR)', 'speed', 'verdict'];
+function table(groups) {
+  const head = ['event', 'journey', 'metric', 'arm', 'persons', 'cells', 'ratio (99% interval)', 'speed', 'verdict'];
   const lines = [`| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`];
   for (const g of groups) {
-    const iqr = g.ratio === null ? 'n/a' : `${g.ratio} (${g.p25}-${g.p75})`;
-    lines.push(`| ${[g.event, g.metric, ...(withJourney ? [g.journey] : []), `\`${g.arm}\``, g.cells, g.persons, iqr, g.speed ?? 'n/a', g.status].join(' | ')} |`);
+    const interval = g.ratio === null ? 'n/a' : `${g.ratio} (${g.low}-${g.high})`;
+    lines.push(`| ${[g.event, g.journey, g.metric, `\`${g.arm}\``, g.persons, g.cells, interval, g.speed ?? 'n/a', g.status].join(' | ')} |`);
   }
   return lines.join('\n');
 }
@@ -156,29 +198,26 @@ function table(groups, withJourney) {
 /** Markdown for the PR comment / step summary. */
 export function renderMarkdown(verdict, { build } = {}) {
   const title = build ? `Field verdict for build \`${build}\`` : 'Field verdict';
+  const judged = verdict.groups.filter((g) => g.status !== 'context');
   const headline = verdict.cells === 0
     ? 'No (person, model) cell has loads in both windows yet, so there is no paired ratio to report.'
-    : verdict.pooled.every((g) => g.status === 'insufficient')
-      ? `**Insufficient paired data:** no pooled group reached ${verdict.minCells} paired cells, so there is no verdict for this build (not a pass).`
+    : judged.every((g) => g.status === 'insufficient')
+      ? `**Insufficient paired data:** no group reached ${verdict.minPersons} paired people, so there is no verdict for this build (not a pass).`
       : verdict.regressed.length > 0
-      ? `**${verdict.regressed.length} pooled group(s) regressed** (speed below ${verdict.threshold}).`
-      : `No pooled group regressed (speed threshold ${verdict.threshold}, at least ${verdict.minCells} paired cells).`;
+      ? `**${verdict.regressed.length} group(s) regressed** (speed below ${verdict.threshold}, 99% interval excluding 1).`
+      : `No group regressed (speed threshold ${verdict.threshold}, 99% interval, at least ${verdict.minPersons} paired people).`;
+  const control = verdict.controlMoved.length > 0
+    ? [`**Treat load results as suspect in ${verdict.controlMoved.map((g) => g.journey).join(', ')}:** \`file_read_ms\` moved, and it barely depends on the app.`, '']
+    : [];
   return [
     `### ${title}`,
     '',
     headline,
     '',
-    `Paired ratio = median(recent) / median(baseline) per (person, model) cell, baseline window and \`${verdict.baselineArm}\` arm only; pooled = median over cells; speed = 1 / ratio. Method: \`scripts/perf/README.md\`, "Reading the FIELD telemetry".`,
+    ...control,
+    `Paired ratio = median(recent) / median(baseline) per (person, model) cell, baseline window and \`${verdict.baselineArm}\` arm only; each person's median, then the median across people; speed = 1 / ratio. Method: \`scripts/perf/README.md\`, "Reading the FIELD telemetry".`,
     '',
-    '#### Pooled across journeys',
-    '',
-    verdict.pooled.length ? table(verdict.pooled, false) : '_no paired cells_',
-    '',
-    '<details><summary>Per journey</summary>',
-    '',
-    verdict.perJourney.length ? table(verdict.perJourney, true) : '_no paired cells_',
-    '',
-    '</details>',
+    verdict.groups.length ? table(verdict.groups) : '_no paired cells_',
     '',
   ].join('\n');
 }
@@ -196,7 +235,7 @@ export function verdictSql({ build, baselineDays = 14, readme = readFileSync(REA
 }
 
 function parseArgs(argv) {
-  const args = { threshold: 0.95, minCells: 5, baselineDays: 14 };
+  const args = { threshold: 0.95, minPersons: 5, baselineDays: 14 };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -206,7 +245,7 @@ function parseArgs(argv) {
       return v;
     };
     if (a === '--threshold') args.threshold = Number(value());
-    else if (a === '--min-cells') args.minCells = Number(value());
+    else if (a === '--min-persons') args.minPersons = Number(value());
     else if (a === '--baseline-days') args.baselineDays = Number(value());
     else if (a === '--build') args.build = value();
     else if (a === '--out') args.out = value();
@@ -217,7 +256,7 @@ function parseArgs(argv) {
     else rest.push(a);
   }
   if (!(args.threshold > 0 && args.threshold < 1)) throw new Error('field-verdict: --threshold must be a number in (0, 1)');
-  if (!Number.isInteger(args.minCells) || args.minCells < 1) throw new Error('field-verdict: --min-cells must be a positive integer');
+  if (!Number.isInteger(args.minPersons) || args.minPersons < 1) throw new Error('field-verdict: --min-persons must be a positive integer');
   args.input = rest[0];
   return args;
 }

@@ -40,7 +40,8 @@ Move checks (commit cf75be4e47)
 
 Ratchets
 - module_size_allowlist: prism_cut.rs 1926 -> 1057; rust/geometry digest
-  4843835844353277487 -> 3907445196249583160.
+  re-pinned to this layer's allowlist: the value is the one in
+  module_size_ratchet.rs, recomputed on every rebase.
 - function_length_allowlist: cut_prism 233 follows the function into
   prism_cut/cut.rs (measured 233, unchanged).
 

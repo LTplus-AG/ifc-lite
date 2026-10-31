@@ -292,10 +292,18 @@ jobs:
     steps:
 ${steps}
 `;
-  const good = fixture({ 'server-binaries.yml': workflow('      - run: gh issue create --title red') });
-  const inert = fixture({ 'server-binaries.yml': workflow('      - run: echo ok') });
-  context.after(() => [good, inert].forEach((root) => rmSync(root, { recursive: true, force: true })));
+  const variants = {
+    good: '      - run: gh issue create --title red',
+    goodMultiline: '      - run: |\n          set -e\n          if true; then\n            gh issue create --title red\n          fi',
+    goodAlways: '      - if: always()\n        run: gh issue create --title red',
+    inert: '      - run: echo ok',
+    echoOnly: '      - run: echo "gh issue create"',
+    disabled: '      - if: false\n        run: gh issue create --title red',
+    tolerant: '      - continue-on-error: true\n        run: gh issue create --title red',
+  };
+  const roots = Object.fromEntries(Object.entries(variants).map(([k, steps]) => [k, fixture({ 'server-binaries.yml': workflow(steps) })]));
+  context.after(() => Object.values(roots).forEach((root) => rmSync(root, { recursive: true, force: true })));
   const named = (root) => auditRoot(root).filter((f) => f.includes('partial main-only matrix'));
-  assert.deepEqual(named(good), []);
-  assert.equal(named(inert).length, 1);
+  for (const ok of ['good', 'goodMultiline', 'goodAlways']) assert.deepEqual(named(roots[ok]), [], ok);
+  for (const bad of ['inert', 'echoOnly', 'disabled', 'tolerant']) assert.equal(named(roots[bad]).length, 1, bad);
 });

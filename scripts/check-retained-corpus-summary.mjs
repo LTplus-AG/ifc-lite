@@ -30,11 +30,16 @@ export function corpusFindings(summary, { reportViolations = false } = {}) {
   if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return { problems: ['INCOMPLETE: summary.json is not an object'], warnings: [] };
   const problems = [];
   const warnings = [];
-  if (summary.complete !== true) problems.push('INCOMPLETE: the run is not marked complete (timeout or crash; not a parity result)');
+  if (summary.complete !== true) problems.push('INCOMPLETE: the run is not marked complete (timeout or crash; not a parity result) -- read the comparison step log of the shard, then re-run the failed shard; if it timed out again, the shard needs a larger budget or fewer/lighter models');
   for (const key of ['violations', 'universeMismatch', 'skipped']) {
-    if (!Array.isArray(summary[key])) problems.push(`INCOMPLETE: ${key} is missing or not an array`);
+    if (!Array.isArray(summary[key])) problems.push(`INCOMPLETE: ${key} is missing or not an array -- summary.json is truncated or from a different tool version; re-run the shard`);
     else if (summary[key].length > 0) {
-      const line = `PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`;
+      const remedy = {
+        violations: 'open the named model in products.tsv and compare its retained and exact rows; report-only until a baseline exists',
+        universeMismatch: 'the named model\'s exact and retained product sets differ; check the candidate/outcome rows for that model before trusting its parity',
+        skipped: 'a corpus model is absent from the checkout; re-run the download step (pnpm fixtures) and check the manifest',
+      }[key];
+      const line = `PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')} -- ${remedy}`;
       (reportViolations && key === 'violations' ? warnings : problems).push(line);
     }
   }

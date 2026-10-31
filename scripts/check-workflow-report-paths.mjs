@@ -30,6 +30,11 @@ const needs = (job, id) => {
   return job.needs === id || (Array.isArray(job.needs) && job.needs.includes(id));
 };
 
+/** An active step that runs `gh issue create` as a command: not echoed or quoted, not `if: false`, not failure-tolerant. */
+const createsIssue = (step) => /(^|\n)[ \t]*gh issue create\b/.test(expression(step.run))
+  && step.if !== false && !/^\s*(?:\$\{\{\s*)?false(?:\s*\}\})?\s*$/.test(String(step.if ?? ''))
+  && !(step['continue-on-error'] === true || /^\$\{\{/.test(String(step['continue-on-error'] ?? '')));
+
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
 
 /** Split on `operator` where it sits at paren depth 0 and outside a quoted
@@ -246,7 +251,7 @@ export function auditRoot(root) {
       if (!isRecord(reporter) || condition !== expectedCondition
         || !expected.every((dependency) => needs(reporter, dependency))
         || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write'
-        || !stepsOf(reporter).some((step) => expression(step.run).includes('gh issue create'))) {
+        || !stepsOf(reporter).some(createsIssue)) {
         failures.push(`${displayPath(root, path)}: partial main-only matrix has no active issue reporter disposition`);
       }
     }

@@ -76,3 +76,11 @@ test('the CLI flag makes a complete run with violations pass with a warning, an 
   assert.equal(spawnSync(process.execPath, [script, '--report-violations', i]).status, 1);
   assert.equal(spawnSync(process.execPath, [script, v]).status, 1);
 });
+
+test('each failure class names a remedy that matches its finding', () => {
+  assert.match(corpusProblems({ ...ok, complete: false }).join(), /INCOMPLETE.*re-run the failed shard/);
+  assert.match(corpusProblems({ ...ok, universeMismatch: ['m'] }).join(), /exact and retained product sets differ/);
+  assert.match(corpusProblems({ ...ok, skipped: ['m'] }).join(), /pnpm fixtures/);
+  assert.match(corpusProblems({ ...ok, violations: ['m'] }).join(), /products\.tsv/);
+  assert.match(corpusProblems({ complete: true }).join(), /truncated or from a different tool version/);
+});

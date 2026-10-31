@@ -209,3 +209,19 @@ test('a browser corpus job that does not fetch the corpus is reported', (context
   mutate(root, (t) => t.replace(/      # The models the product table names come from the fetch, not the checkout.\n      - name: Download the corpus\n        run: pnpm fixtures\n/, ''));
   assert.ok(audit(root).some((f) => f.includes('browser-corpus must download the corpus')));
 });
+
+test('dotted keys refuse; both TOML string quotes read as a path', () => {
+  assert.throws(() => pathDeps('[dependencies]\nfoo.path = "../foo"\n', 'rust/me', new Map()), /dotted key foo\.path/);
+  assert.throws(() => pathDeps('[dev-dependencies]\nfoo.default-features = false\n', 'rust/me', new Map()), /dotted key/);
+  assert.deepEqual([...pathDeps("[dependencies]\nfoo = { path = '../foo' }\nbar.workspace = true\n", 'rust/me', new Map())], ['rust/foo']);
+  assert.throws(() => workspaceDeps('[workspace.dependencies]\nfoo.path = "rust/foo"\n'), /dotted key foo\.path/);
+  assert.deepEqual([...workspaceDeps("[workspace.dependencies]\nfoo = { path = 'rust/foo' }\n")], [['foo', 'rust/foo']]);
+});
+
+test('an if: always() on an earlier step does not satisfy the judge-step check', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t
+    .replace('      - name: Download the corpus\n        run: pnpm fixtures\n      - name: Select', '      - name: Download the corpus\n        if: always()\n        run: pnpm fixtures\n      - name: Select')
+    .replace('      - name: Judge this shard\n        if: always()\n', '      - name: Judge this shard\n'));
+  assert.ok(audit(root).some((f) => f.includes('if: always() step')));
+});

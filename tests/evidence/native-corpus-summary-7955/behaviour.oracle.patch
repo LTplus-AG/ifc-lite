@@ -1,10 +1,10 @@
 diff --git a/scripts/check-retained-corpus-summary.mjs b/scripts/check-retained-corpus-summary.mjs
 --- a/scripts/check-retained-corpus-summary.mjs
 +++ b/scripts/check-retained-corpus-summary.mjs
-@@ -35,7 +35,7 @@ export function corpusFindings(summary, { reportViolations = false } = {}) {
-     if (!Array.isArray(summary[key])) problems.push(`INCOMPLETE: ${key} is missing or not an array`);
-     else if (summary[key].length > 0) {
-       const line = `PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`;
+@@ -40,7 +40,7 @@ export function corpusFindings(summary, { reportViolations = false } = {}) {
+         skipped: 'a corpus model is absent from the checkout; re-run the download step (pnpm fixtures) and check the manifest',
+       }[key];
+       const line = `PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')} -- ${remedy}`;
 -      warnings.push(line);
 +      (reportViolations && key === 'violations' ? warnings : problems).push(line);
      }

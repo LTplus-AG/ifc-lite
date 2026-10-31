@@ -63,13 +63,17 @@ export function pathDeps(manifestText, crateDir, workspace) {
       continue;
     }
     const isDep = DEP_SECTION.test(section) || section === '[workspace.dependencies]';
+    if (isDep) {
+      const dotted = line.match(/^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)\s*=/);
+      if (dotted && dotted[2] !== 'workspace') throw new Error(`${crateDir}/Cargo.toml: dotted key ${dotted[1]}.${dotted[2]} is not parsed; write ${dotted[1]} as an inline table`);
+    }
     const named = line.match(/^([A-Za-z0-9_-]+)(?:\.workspace\s*=\s*true|\s*=\s*(.*))/);
     if (!isDep || !named) continue;
     const spec = named[2] ?? '';
     if (spec.trim().startsWith('{') && !spec.includes('}')) {
       throw new Error(`${crateDir}/Cargo.toml: multi-line inline table for ${named[1]} is not parsed; keep it on one line`);
     }
-    const path = spec.match(/\bpath\s*=\s*"([^"]+)"/);
+    const path = spec.match(/\bpath\s*=\s*["']([^"']+)["']/);
     if (path) found.add(posix.normalize(posix.join(crateDir, path[1])));
     else if (section !== '[workspace.dependencies]' && (named[2] === undefined || /\bworkspace\s*=\s*true/.test(spec))) {
       const via = workspace.get(named[1]);
@@ -91,9 +95,11 @@ export function workspaceDeps(rootManifestText) {
       inSection = line === '[workspace.dependencies]';
       continue;
     }
+    const dotted = inSection && line.match(/^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)\s*=/);
+    if (dotted) throw new Error(`Cargo.toml: dotted key ${dotted[1]}.${dotted[2]} under [workspace.dependencies] is not parsed; write ${dotted[1]} as an inline table`);
     const open = inSection && line.match(/^([A-Za-z0-9_-]+)\s*=\s*\{(?!.*\})/);
     if (open) throw new Error(`Cargo.toml: multi-line inline table for workspace dependency ${open[1]} is not parsed; keep it on one line`);
-    const m = inSection && line.match(/^([A-Za-z0-9_-]+)\s*=\s*\{.*\bpath\s*=\s*"([^"]+)"/);
+    const m = inSection && line.match(/^([A-Za-z0-9_-]+)\s*=\s*\{.*\bpath\s*=\s*["']([^"']+)["']/);
     if (m) map.set(m[1], posix.normalize(m[2]));
   }
   return map;
@@ -170,7 +176,8 @@ export function corpusJobProblems(text) {
   if (!compare || !/^ {8}continue-on-error: true[ \t]*$/m.test(compare[1]) || !/^ {8}timeout-minutes: \d+[ \t]*$/m.test(compare[1])) {
     out.push(`${WORKFLOW}: the corpus comparison step needs continue-on-error and its own timeout-minutes so a timeout is judged, not fatal`);
   }
-  if (!/^ {8}if: always\(\)\s*\n(?:[\s\S]*?)check-retained-corpus-summary\.mjs --report-violations "\$RUNNER_TEMP\/native-corpus\/summary\.json"/m.test(corpus)) {
+  // `(?!^ {6}- )` stops the lazy match at the next step, so an earlier step's `if: always()` cannot satisfy it.
+  if (!/^ {8}if: always\(\)\s*\n(?:(?!^ {6}- )[\s\S])*?check-retained-corpus-summary\.mjs --report-violations "\$RUNNER_TEMP\/native-corpus\/summary\.json"/m.test(corpus)) {
     out.push(`${WORKFLOW}: every shard must judge its summary.json in an if: always() step`);
   }
   if (result !== null) {

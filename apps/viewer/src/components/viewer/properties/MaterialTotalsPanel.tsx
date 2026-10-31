@@ -182,7 +182,7 @@ function formatTotal(
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
   const { t, locale, revision } = useTranslation();
   const { ifcDataStore, models } = useIfc();
-  const { stores: effectiveStores, ready: materialsReady } = useEffectiveMaterialStores(
+  const { stores: effectiveStores, ready: materialsReady, pendingEditsMissing } = useEffectiveMaterialStores(
     models, ifcDataStore, true,
   );
   // Display-unit converter overrides (issue #1573 proposal 2).
@@ -322,6 +322,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
 
       <ScrollArea className="flex-1 bg-white dark:bg-black">
         <div className="p-3 space-y-3 w-full overflow-hidden">
+          {pendingEditsMissing && <p role="status" className="text-xs text-amber-700 dark:text-amber-400">{t('properties.materialTotals.pendingEditsMissing')}</p>}
           {/* Totals */}
           <div className="border-2 border-amber-200 dark:border-amber-800 bg-amber-50/20 dark:bg-amber-950/20">
             <div className="flex items-center gap-2 px-2.5 py-2 border-b-2 border-amber-200 dark:border-amber-800">

@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
+import { QuantityType } from '@ifc-lite/data';
 import { IfcParser, buildMaterialUsageIndex, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { federationRegistry } from '@ifc-lite/renderer';
@@ -194,4 +195,18 @@ it('material tree includes a new wall and material association before save (#789
   click(reveal);
   assert.equal(ui.querySelector('[data-testid="revealed"]')?.textContent, 'missing',
     'reveal must not retain the previous edited material membership');
+});
+
+it('a pending edit the exporter refuses leaves the material panel open and says so (#8407)', async () => {
+  const source = await parse();
+  const view = new MutablePropertyView(null, '__legacy__');
+  view.setQuantity(10, 'Qto_WallBaseQuantities', 'Length', Number.NaN, QuantityType.Length);
+  useViewerStore.setState({ ifcDataStore: source, models: new Map(),
+    mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1 });
+
+  const ui = render(<MaterialTotalsPanel materialId={20} modelId="legacy" />);
+  const count = () => [...ui.querySelectorAll('span')]
+    .find((span) => span.textContent === 'Elements')?.parentElement?.lastElementChild?.textContent;
+  await waitForUsage(count, '2');
+  assert.match(ui.querySelector('[role="status"]')?.textContent ?? '', /pending edits could not be included/);
 });

@@ -4,8 +4,8 @@
                  edges.entry(if a < b { (a, b) } else { (b, a) }).or_default()[usize::from(a < b)] += 1;
              }
          }
--        edges.values().all(|&walks| walks == [1, 1])
-+        edges.values().all(|&walks| walks[0] + walks[1] >= 1)
++        edges.values().all(|&walks| walks == [1, 1])
+-        edges.values().all(|&walks| walks[0] + walks[1] >= 1)
      }
  
      pub(crate) fn lower(&self) -> Result<SweepPayload, RetainedRefusal> {

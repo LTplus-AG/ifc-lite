@@ -70,6 +70,7 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadingCard.cancel': 'Cancel',
   // ── ViewportLoadErrorCard.tsx — one load-error card for every load
   // path: the picker, drop, ?model= autoload and federated adds (#5851) ──
+  'viewportLighting.container.loadErrorCard.invalidInput': 'This file is invalid or is not in the expected format. Check the file type, or export a new copy and open it again.',
   'viewportLighting.container.loadErrorCard.title': 'Could not load the model',
   'viewportLighting.container.loadErrorCard.retry': 'Retry',
   'viewportLighting.container.loadErrorCard.dismiss': 'Dismiss',

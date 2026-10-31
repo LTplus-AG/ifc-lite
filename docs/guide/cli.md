@@ -110,8 +110,10 @@ ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc --overwrite --j
 The artifact has type `application/vnd.ifc-lite.ifc.v1`, the OCI empty config,
 and one `application/x-step` layer titled with the file name; the manifest
 carries `org.opencontainers.image.created` (from `SOURCE_DATE_EPOCH` when set,
-so equal files give equal digests) and `org.opencontainers.image.title` (the
-file name without extension). The file must pass the loader's IFC check before
+so equal files give equal digests), `org.opencontainers.image.title` (the file
+name without extension), and the provisional `org.buildingsmart.ifc.profile` and
+`org.buildingsmart.ifc.schema` keys (a convention shared with subsoil, not a
+buildingSMART standard). The file must pass the loader's IFC check before
 any request is made, and `.ifczip` is not supported yet. The reference needs a
 tag; an existing tag is refused unless `--overwrite` is given (exit 1). Same
 credentials and http/https rule as above. `--json` prints

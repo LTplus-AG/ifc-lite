@@ -3,11 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   EXPECTED_REPO, EXPECTED_WORKFLOW, auditProblems, binaryKind, boundaryViolations, cargoLockProblems, contentViolation,
   crateManifestProblems, isInside, isInsideResolved, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent,
-  selectWheel, stripArchiveRoot, summarize,
+  selectWheel, stripArchiveRoot, summarize, verifiedAttestations,
 } from './released-smoke-checks.mjs';
 import { chooseToolchain, parseArgs } from './released-smoke-support.mjs';
 
@@ -64,9 +66,18 @@ test('summary: failures dominate, skips are explicit, never silently pass', () =
   assert.deepEqual(failed.counts, { pass: 0, fail: 1, skip: 1 });
 });
 
-test('isInside distinguishes repo from scratch', () => {
-  assert.equal(isInside(process.cwd(), process.cwd()), true);
-  assert.equal(isInside(process.cwd(), '/tmp'), false);
+test('isInside distinguishes a parent from its sibling directories', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'inside-test-'));
+  try {
+    const parent = path.join(root, 'repo');
+    const child = path.join(parent, 'sub');
+    const sibling = path.join(root, 'repo-sibling');
+    for (const dir of [parent, child, sibling]) mkdirSync(dir);
+    assert.equal(isInside(parent, parent), true);
+    assert.equal(isInside(parent, child), true);
+    assert.equal(isInside(parent, sibling), false, 'a sibling sharing the name prefix is outside');
+    assert.equal(isInside(parent, root), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('isInsideResolved is correct for win32 paths, including another drive', () => {
@@ -178,4 +189,20 @@ test('toolchain precedence and --strict parsing', () => {
   assert.equal(chooseToolchain({}, process.cwd(), {}).source, 'rust-toolchain.toml');
   assert.equal(parseArgs(['--wasm', '1', '--cli', '2', '--crate', '3', '--strict']).strict, true);
   assert.throws(() => parseArgs(['--wasm', '1', '--cli', '2']), /--crate/);
+});
+
+test('identity policy runs only on the bundles npm verified; a forged second copy cannot pass', () => {
+  const genuine = attestation().attestations;
+  const forgedRepo = 'https://github.com/evil/ifc-lite';
+  const forged = attestation({ repository: forgedRepo }).attestations;
+  const report = { invalid: [], missing: [], verified: [{ name: NAME, version: VERSION, attestations: { provenance: {} }, attestationBundles: genuine }] };
+  const verified = verifiedAttestations(report, NAME, VERSION);
+  assert.deepEqual(provenanceProblems(verified, { name: NAME, version: VERSION, integrity: INTEGRITY }, () => SAN), []);
+  // The only source of bundles is the audit report: a separately fetched (forged) copy has no way in.
+  assert.equal(verifiedAttestations({ ...report, verified: [] }, NAME, VERSION), undefined);
+  assert.match(provenanceProblems(undefined, { name: NAME, version: VERSION, integrity: INTEGRITY }, () => SAN)[0], /no npm-verified attestation bundles/);
+  assert.equal(verifiedAttestations(report, NAME, '9.9.9'), undefined);
+  // If npm had verified a forged identity, the policy rejects it.
+  const forgedReport = { verified: [{ name: NAME, version: VERSION, attestationBundles: forged }] };
+  assert.ok(provenanceProblems(verifiedAttestations(forgedReport, NAME, VERSION), { name: NAME, version: VERSION, integrity: INTEGRITY }, () => `URI:${forgedRepo}/${EXPECTED_WORKFLOW}@refs/heads/main`).length >= 2);
 });

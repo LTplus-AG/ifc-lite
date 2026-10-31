@@ -43,7 +43,7 @@ import {
 } from './lib/released-smoke-support.mjs';
 import {
   EXPECTED_REPO, EXPECTED_WORKFLOW, NPM_REGISTRY, auditProblems, boundaryViolations, cargoLockProblems, contentViolation,
-  crateManifestProblems, isInside, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent, selectWheel,
+  crateManifestProblems, isInside, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent, selectWheel, verifiedAttestations,
   stripArchiveRoot, summarize,
 } from './lib/released-smoke-checks.mjs';
 
@@ -94,18 +94,21 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
   };
 
   const toolchain = chooseToolchain(options, REPO);
+  const scratchHome = join(work, 'home');
+  mkdirSync(scratchHome);
   const emptyConfig = join(work, 'empty.npmrc');
   const emptyGlobalConfig = join(work, 'empty-global.npmrc');
   writeFileSync(emptyConfig, '');
   writeFileSync(emptyGlobalConfig, '');
   const env = {
-    PATH: process.env.PATH, HOME: process.env.HOME, LANG: 'C', CI: '1',
+    // Registry code (npm, wasm glue, CLI, build scripts, wheel) sees a scratch HOME, never ~/.npmrc or ~/.cargo/credentials.
+    PATH: process.env.PATH, HOME: scratchHome, LANG: 'C', CI: '1',
     npm_config_userconfig: emptyConfig, npm_config_globalconfig: emptyGlobalConfig,
     npm_config_registry: NPM_REGISTRY, npm_config_update_notifier: 'false',
     npm_config_cache: join(work, 'npm-cache'),
     CARGO_HOME: join(work, 'cargo-home'), CARGO_TARGET_DIR: join(work, 'cargo-target'),
     ...(toolchain.name ? { RUSTUP_TOOLCHAIN: toolchain.name } : {}),
-    ...(process.env.RUSTUP_HOME ? { RUSTUP_HOME: process.env.RUSTUP_HOME } : {}),
+    RUSTUP_HOME: process.env.RUSTUP_HOME ?? join(process.env.HOME ?? '', '.rustup'),
   };
   const resolved = {};
   const resolveNpm = (name, wanted) => {
@@ -118,7 +121,7 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
   try {
     await step('isolation', () => {
       if (isInside(REPO, work)) return { fail: `scratch ${work} is inside the repository` };
-      return { detail: `scratch project ${work} is outside ${REPO}; empty npm config, private CARGO_HOME` };
+      return { detail: `scratch project ${work} is outside ${REPO}; empty npm config, scratch HOME, private CARGO_HOME` };
     });
 
     resolved.crate = options.crate;
@@ -133,11 +136,14 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
     const project = join(work, 'consumer');
     mkdirSync(project);
     writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'released-smoke-consumer', private: true, version: '0.0.0' }));
+    const lockIntegrity = {};
     const installed = await step('npm-install', () => {
       const r = run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--registry', NPM_REGISTRY, '--save-exact',
         `@ifc-lite/wasm@${resolved.wasm}`, `@ifc-lite/cli@${resolved.cli}`], { cwd: project, env });
       if (!r.ok) return { fail: tail(r) };
-      const problems = npmLockProblems(JSON.parse(readFileSync(join(project, 'package-lock.json'), 'utf8')));
+      const lock = JSON.parse(readFileSync(join(project, 'package-lock.json'), 'utf8'));
+      for (const name of ['@ifc-lite/wasm', '@ifc-lite/cli']) lockIntegrity[name] = lock.packages?.[`node_modules/${name}`]?.integrity;
+      const problems = npmLockProblems(lock);
       return problems.length ? { fail: problems.slice(0, 5).join('; ') } : { detail: `@ifc-lite/wasm@${resolved.wasm}, @ifc-lite/cli@${resolved.cli}; every lock entry resolves from ${NPM_REGISTRY}` };
     });
     const wasmDir = join(project, 'node_modules/@ifc-lite/wasm');
@@ -212,6 +218,7 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
       const problems = [...boundaryViolations(files, kind), ...(extracted.error ? [extracted.error] : contentProblems(extracted.dir, kind, stripArchiveRoot)),
         ...noticeProblems(notices.ok ? notices.stdout : undefined)];
       integrity[name] = meta.integrity;
+      if (lockIntegrity[name] !== meta.integrity) problems.push(`lockfile integrity ${lockIntegrity[name]} differs from the npm pack tarball ${meta.integrity}`);
       return problems.length ? { fail: problems.slice(0, 6).join('; ') }
         : { detail: `${files.length} files, no SDK/native binaries (by name and by ELF/Mach-O/PE/wasm content), THIRD_PARTY_NOTICES.txt present with no OPEN:`, evidence: { shasum: meta.shasum, integrity: meta.integrity } };
     });
@@ -220,24 +227,25 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
 
     // ---- provenance ----------------------------------------------------------------------
     const published = [['@ifc-lite/wasm', resolved.wasm], ['@ifc-lite/cli', resolved.cli]];
+    let auditReport;
     await step('npm-signatures', () => {
       if (needInstall()) return needInstall();
       const r = run('npm', ['audit', 'signatures', '--json', '--include-attestations'], { cwd: project, env, timeout: 300_000 });
       let report;
       try { report = JSON.parse(r.stdout); } catch { return { fail: tail(r) }; }
+      auditReport = report;
       const problems = auditProblems(report, published);
       if (!r.ok && !problems.length) problems.push(`npm audit signatures exited ${r.status}`);
       return problems.length ? { fail: problems.join('; ') }
         : { detail: `${report.verified.length} packages verified; ${published.map(([n, v]) => `${n}@${v}`).join(' and ')} verified with provenance attestations; 0 invalid, 0 missing` };
     });
+    // The identity policy runs on the bundles npm verified above, never on a second fetch.
     for (const [name, version] of published) {
-      await step(`provenance:${name}`, async () => {
+      await step(`provenance:${name}`, () => {
         if (!integrity[name]) return { fail: 'no downloaded tarball integrity to bind the attestation to' };
-        const response = await fetch(`https://registry.npmjs.org/-/npm/v1/attestations/${name.replace('/', '%2f')}@${version}`);
-        if (!response.ok) return { fail: `attestations for ${name}@${version}: HTTP ${response.status}` };
-        const problems = provenanceProblems(await response.json(), { name, version, integrity: integrity[name] });
+        const problems = provenanceProblems(verifiedAttestations(auditReport, name, version), { name, version, integrity: integrity[name] });
         return problems.length ? { fail: problems.join('; ') }
-          : { detail: `${name}@${version}: SLSA provenance binds the downloaded tarball digest to ${EXPECTED_REPO} ${EXPECTED_WORKFLOW} (statement and signing-certificate identity)` };
+          : { detail: `${name}@${version}: the npm-verified SLSA provenance binds the downloaded tarball digest to ${EXPECTED_REPO} ${EXPECTED_WORKFLOW} (statement and signing-certificate identity)` };
       });
     }
 

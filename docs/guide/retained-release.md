@@ -212,17 +212,17 @@ see `rust-toolchain.toml`, so the toolchain is passed explicitly: `--toolchain`,
 chosen toolchain, where it came from and `cargo -V` are recorded in the JSON summary.
 Code taken from the registries (the WASM glue and `retained.js`) runs only in child
 processes with a cleaned environment (no `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`,
-`CARGO_REGISTRY_TOKEN` or other inherited variables).
+`CARGO_REGISTRY_TOKEN` or other inherited variables) and a scratch `HOME`, so registry code cannot read `~/.npmrc` or `~/.cargo/credentials`.
 
 | Step | What it proves |
 |---|---|
-| `npm-install`, `npm-installed-versions` | the exact `@ifc-lite/wasm` and `@ifc-lite/cli` install from npm; the lock resolves only from the registry |
+| `npm-install`, `npm-installed-versions` | the exact `@ifc-lite/wasm` and `@ifc-lite/cli` install from npm; the lock resolves only from the registry, and each locked `integrity` must equal the `npm pack` tarball inspected by the archive steps (one set of bytes) |
 | `wasm-default-engine` | the published default engine loads and processes the committed `tests/fixtures/cli-retained/layered-wall.ifc` (jobs, meshes, triangles) |
 | `cli-default-export` | the published CLI exports that IFC to OBJ with the default (exact) kernel |
 | `wasm-retained-subpath` | `@ifc-lite/wasm/retained` resolves; it ships types only, and `loadRetainedEngine()` fails with exactly `ERR_MODULE_NOT_FOUND` for `pkg-retained/ifc-lite.js` when no engine is deployed (any other failure, such as a `TypeError`, fails the step) |
 | `wasm-archive-boundaries`, `cli-archive-boundaries`, `crate-archive` | registry archives are extracted into fresh directories and hold no SDK sources, native binaries or unexpected wasm, judged by path **and** by content (ELF, Mach-O, PE and wasm magic, so a renamed binary is caught); the crate is source-only with no build script, a registry `ifc-lite-geometry` version and the `retained-runtime` forwarding; npm archives carry `THIRD_PARTY_NOTICES.txt` with no `OPEN:` line |
 | `npm-signatures` | `npm audit signatures --json --include-attestations` reports 0 invalid and 0 missing, and lists both exact `@ifc-lite/wasm` and `@ifc-lite/cli` versions as verified with a provenance attestation |
-| `provenance:*` | per package, the registry's SLSA attestation (`dist.attestations.url`): the subject digest equals the sha512 of the tarball just downloaded, the statement's workflow repository is `https://github.com/LTplus-AG/ifc-lite` and path `.github/workflows/release.yml`, and the Fulcio signing certificate's identity is that workflow in that repository. A token publish, or an attestation from a fork's workflow, fails here. The git ref/tag and the specific run are recorded by the registry but not constrained |
+| `provenance:*` | per package, the SLSA attestation bundle **that `npm audit signatures` verified** (taken from the audit report, never from a second fetch of the registry, whose signature nothing would check): the subject digest equals the sha512 of the tarball just downloaded, the statement's workflow repository is `https://github.com/LTplus-AG/ifc-lite` and path `.github/workflows/release.yml`, and the Fulcio signing certificate's identity is that workflow in that repository. A token publish, or an attestation from a fork's workflow, fails here; a forged copy of the attestations cannot reach the policy. The git ref/tag and the specific run are recorded by the registry but not constrained |
 | `crate-default-features`, `crate-retained-runtime` | a consumer built from crates.io (`cargo add ifc-lite-geometry-runtime@=<version>`) compiles and runs with default features and with `--features retained-runtime` |
 | `python-wheel` | the published `ifclite-geom` binary wheel (latest, its own release train; manylinux for this arch with a `cpXY`/`abi3` tag that fits the local CPython; sha256 checked against PyPI) imports and tessellates the fixture in an isolated interpreter |
 | `retained-export-e2e` | with a staged engine directory, the **published** CLI runs `export --kernel retained` end to end and the report publishes products |

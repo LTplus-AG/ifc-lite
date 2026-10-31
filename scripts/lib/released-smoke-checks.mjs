@@ -147,13 +147,26 @@ export const EXPECTED_WORKFLOW = '.github/workflows/release.yml';
 const defaultSan = (rawBase64) => new X509Certificate(Buffer.from(rawBase64, 'base64')).subjectAltName ?? '';
 
 /**
- * Check a registry attestation document (`dist.attestations.url`) for one tarball:
+ * The attestation bundles npm itself verified for `name@version` in an
+ * `npm audit signatures --json --include-attestations` report. The identity policy
+ * (provenanceProblems) must run on THESE bundles: a separately fetched copy of the
+ * attestations would be unverified, so a forged identity there could pass.
+ */
+export function verifiedAttestations(report, name, version) {
+  const entry = (report?.verified ?? []).find((v) => v.name === name && v.version === version);
+  return entry?.attestationBundles ? { attestations: entry.attestationBundles } : undefined;
+}
+
+/**
+ * Check the attestations for one tarball (from verifiedAttestations):
  * an SLSA provenance statement whose subject digest is the downloaded tarball, whose
  * workflow is EXPECTED_REPO's release.yml, and whose Fulcio certificate identity (SAN)
- * is that same workflow. Signature validity is established separately (npm audit signatures).
+ * is that same workflow. Signature validity comes from npm audit signatures having verified
+ * exactly these bundles; this function adds the identity policy npm does not apply.
  * `integrity` is the tarball's `sha512-<base64>`; `readSan` is injectable for tests.
  */
 export function provenanceProblems(doc, { name, version, integrity }, readSan = defaultSan) {
+  if (!doc) return [`${name}@${version}: no npm-verified attestation bundles to check`];
   const slsa = (doc?.attestations ?? []).find((a) => String(a.predicateType).startsWith('https://slsa.dev/provenance/'));
   if (!slsa) return [`${name}@${version}: no SLSA provenance attestation`];
   const problems = [];

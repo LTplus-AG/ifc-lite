@@ -29,6 +29,13 @@ import { useViewerStore } from '../store/index.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 
+/**
+ * Triangles a cache hit draws as transient streaming fragments for first paint
+ * (×3 indices). The rest joins its buckets and is merged and uploaded once, by
+ * finalize, instead of twice (Scene.limitStreamingFragments).
+ */
+const CACHE_FIRST_PAINT_INDICES = 500_000 * 3;
+
 // Re-export types for convenience
 export type { CacheResult } from '../services/cacheService.js';
 export { getCached, setCached, deleteCached } from '../services/cacheService.js';
@@ -166,6 +173,7 @@ export function useIfcCache() {
           return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
         }
 
+        getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);
         setGeometryStreamingActive(true);
         const allMeshes: MeshData[] = [];
         let superseded = false;

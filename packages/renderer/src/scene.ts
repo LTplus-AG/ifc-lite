@@ -151,6 +151,18 @@ const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
 
 export { computeFlushChunkEnd } from './scene-flush.js';
 
+/** Run `task` in a fresh macrotask with no timer clamp (see finalizeStreamingAsync). */
+function yieldTask(task: () => void): void {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => {
+    // An open port keeps a Node process alive.
+    channel.port1.close();
+    channel.port2.close();
+    task();
+  };
+  channel.port2.postMessage(null);
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -372,6 +384,8 @@ export class Scene {
   // Buckets that received streamed meshes since the last finalize — the only
   // ones a finalize re-groups and rebuilds (#5358).
   private streamedBucketKeys: Set<string> = new Set();
+  /** Indices the transient streaming-fragment pass may still draw; see limitStreamingFragments. */
+  private streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
 
   // ─── Mesh command queue ────────────────────────────────────────────
   // Decouples React state updates from GPU work.  Callers push meshes
@@ -1275,7 +1289,12 @@ export class Scene {
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.
       // finalizeStreaming() destroys fragments and merges the streamed buckets.
       // `renderable` excludes textured meshes (drawn via the textured pipeline).
-      this.createStreamingFragments(renderable, device, pipeline);
+      // Past the fragment budget a retained mesh only joins its bucket and is
+      // first drawn by finalize; ephemeral mode keeps no bucket, so it always draws.
+      if (!retainStreamingGeometry || this.streamingFragmentIndexBudget > 0) {
+        this.createStreamingFragments(renderable, device, pipeline);
+        for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
+      }
       return;
     }
 
@@ -1875,6 +1894,18 @@ export class Scene {
   }
 
   /**
+   * Cap the transient fragment pass of the current stream at `maxIndices`.
+   * Every streamed mesh is merged and uploaded twice: once as a throwaway
+   * fragment so it shows while streaming, then again by finalize. A load that
+   * holds its whole geometry up front (a cache hit) needs fragments only for
+   * first paint; the rest appears at the finalize swap, uploaded once.
+   * Finalize and clear() restore the default (no cap).
+   */
+  limitStreamingFragments(maxIndices: number): void {
+    this.streamingFragmentIndexBudget = maxIndices;
+  }
+
+  /**
    * Drain the mesh queue with a per-frame time budget.
    * Processes queued meshes through appendToBatches in streaming mode
    * (creates lightweight fragment batches for immediate rendering).
@@ -1960,6 +1991,7 @@ export class Scene {
       this.finalizeStreamingInner(device, pipeline);
     } finally {
       this.finalizeInProgress = false;
+      this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     }
   }
 
@@ -2138,9 +2170,11 @@ export class Scene {
             bucket.frameOrigin = batchedMesh.origin;
             createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
 
-            // Check time budget — yield if exceeded
+            // Check time budget — yield if exceeded. A MessageChannel task, not
+            // setTimeout(0): nested timers clamp to >= 4 ms, idling a third of
+            // every 8 ms slice; rAF and input still run between slices.
             if (performance.now() - chunkStart >= budgetMs) {
-              setTimeout(processChunk, 0);
+              yieldTask(processChunk);
               return;
             }
           }
@@ -2163,6 +2197,7 @@ export class Scene {
           scene.retireFinalizedBatches(retired);
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
+          scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
         } catch (err) {
@@ -3678,6 +3713,7 @@ export class Scene {
     this.cachedMaxBufferSize = 0;
     this.pendingBatchKeys.clear();
     this.streamedBucketKeys.clear();
+    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     this.meshQueue = [];
     this.meshQueueReadIndex = 0;
     this.geometryReleased = false;

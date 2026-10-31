@@ -124,8 +124,9 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
     for (row, published) in set.rows.iter().zip(areas) {
         let Some(area) = row.area_m2 else {
             // A warped row has no single area, but no surface over its ring can be smaller
-            // than the ring's projection: a dropped triangle falls below that.
-            if row.outer >= 3 {
+            // than the ring's projection: a dropped triangle falls below that. A hole removes
+            // surface the outer ring still projects over, so only a hole-free row can say.
+            if row.outer >= 3 && row.outer == row.points.len() {
                 let n = newell(&row.points[..row.outer]);
                 let projected = dot(n, n).sqrt() / 2.;
                 if published < projected * (1. - 1e-9) { result.missing_rows += 1; }

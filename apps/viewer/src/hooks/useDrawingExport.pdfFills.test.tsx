@@ -34,22 +34,23 @@ const LINE_OUTERS = {
   ],
 };
 
-/** Degenerate holes the SVG still draws: the PDF must fill like it. */
+/** Degenerate holes that open nothing, so the wall must still be filled. */
 const HOLES = {
   point: [{ x: 1, y: 1 }],
+  nanPoint: [{ x: Number.NaN, y: 1 }],
   empty: [],
   line: [{ x: 1, y: 1 }, { x: 2, y: 1 }],
   collinear: [{ x: 1, y: 1 }, { x: 1.5, y: 1 }, { x: 2, y: 1 }],
 };
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false, lineOuter, lv95Wall = false, hole }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false, lineOuter, lv95Wall = false, hole, overflowHole = false }: ExportOptions = {}): Drawing2D {
   const at = (ring: 'hole' | 'outer', v: number) => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : v);
   const shift = (ring: { x: number; y: number }[]) => (lv95Wall ? ring.map((p) => ({ x: p.x + 2600000, y: p.y + 1200000 })) : ring);
   const wall: Drawing2D['cutPolygons'][number] = {
     polygon: {
       outer: noOuter ? [] : lineOuter ? LINE_OUTERS[lineOuter] : shift([{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }]),
-      holes: [hole ? HOLES[hole] : shift([{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }])],
+      holes: [hole ? HOLES[hole] : overflowHole ? [{ x: 1e308, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }] : shift([{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }])],
     },
     ifcType: 'IfcWall',
     entityId: 7,
@@ -94,6 +95,8 @@ interface ExportOptions {
   lineOuter?: keyof typeof LINE_OUTERS;
   /** Replace the hole with a degenerate one. */
   hole?: keyof typeof HOLES;
+  /** A hole vertex that is finite in the model but overflows to Infinity on the page. */
+  overflowHole?: boolean;
   /** Shift the wall to LV95-scale coordinates. */
   lv95Wall?: boolean;
   /** A second, identical wall polygon. */
@@ -319,10 +322,17 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
   for (const hole of Object.keys(HOLES) as (keyof typeof HOLES)[]) {
     it(`fills a wall with a degenerate hole like the SVG does (${hole}, #8464)`, async () => {
       const text = await exportPdf({ hole, cutLine: true });
-      assert.ok(text.includes('f*'), 'a hole the SVG draws does not stop the fill');
+      assert.ok(text.includes('f*'), 'a degenerate hole does not stop the fill');
+      assert.ok(text.includes('h\nS\n'), 'the wall is still outlined');
       assert.doesNotMatch(text, CUT_LINE, 'and the outline still covers the cut lines');
     });
   }
+
+  it('skips a hole that overflows to Infinity on the page instead of aborting (#8464)', async () => {
+    const text = await exportPdf({ overflowHole: true });
+    assert.ok(!text.includes('f*'), 'the opening jsPDF cannot draw is not painted solid');
+    assert.ok(text.includes('h\nS\n'), 'the wall is still outlined');
+  });
 
   it('still fills a real wall at LV95-scale coordinates (#8464)', async () => {
     const text = await exportPdf({ lv95Wall: true });

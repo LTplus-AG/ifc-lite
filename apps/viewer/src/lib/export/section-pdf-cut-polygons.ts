@@ -29,10 +29,10 @@ export interface PdfCutPolygon {
   /** Page-space rings that survived (outer first when drawn). */
   rings: Point[][];
   /**
-   * The outer ring is drawable and encloses area, and every hole has finite
-   * points. Then an even-odd fill is safe and the outline stands in for the
-   * entity's cut lines. Holes the SVG can draw are filled as the SVG fills
-   * them; only a hole jsPDF cannot draw keeps the opening from being painted.
+   * The outer ring is drawable and encloses area, and no hole of two or more
+   * points has non-finite page coordinates (jsPDF cannot draw it; every other
+   * hole fills as in the SVG). Then an even-odd fill is safe and the outline
+   * stands in for the entity's cut lines.
    */
   fillable: boolean;
 }
@@ -70,10 +70,18 @@ export function prepareCutPolygonsPdf(
   ctx: CutPolygonStyleContext,
   mapPoint: (x: number, y: number) => Point,
 ): PdfCutPolygon[] {
-  return styleCutPolygons(polygons, ctx, ({ polygon: { outer, holes } }) => ({
-    rings: [outer, ...holes].filter(drawableRing).map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-    fillable: drawableRing(outer) && enclosesArea(outer) && holes.every(finiteRing),
-  })).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
+  return styleCutPolygons(polygons, ctx, ({ polygon: { outer, holes } }) => {
+    // Checked on page coordinates: that is what jsPDF receives, and a huge
+    // but finite model value can still overflow there.
+    const page = (ring: Point[]) => ring.map((p) => mapPoint(p.x, p.y));
+    const pageOuter = page(outer);
+    const pageHoles = holes.map(page);
+    return {
+      rings: [pageOuter, ...pageHoles].filter(drawableRing),
+      fillable: drawableRing(pageOuter) && enclosesArea(outer)
+        && pageHoles.every((ring) => ring.length < 2 || finiteRing(ring)),
+    };
+  }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }
 
 /** Two decimals is what jsPDF prints; rounding keeps one ExtGState per printed value. */

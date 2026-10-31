@@ -5,37 +5,46 @@
 # `main` requires review conversations to be resolved, so a PR with an open
 # thread cannot enter the merge queue even when every check is green, and
 # auto-merge waits without saying why. Agents watching a PR wake on new comments,
-# so post one naming the open threads. It posts again only when that set changes.
-# Runs from the default branch's copy of this file, and checks out no code.
+# so post one naming the open threads. It posts again only when that set changes,
+# and never when there are none, so a clean review or a summary comment stays quiet.
+# `workflow_run` covers reviewers that run here, whose token raises no review
+# event; `pull_request_review` covers external apps such as CodeRabbit and Bugbot.
+# Checks out no code.
 name: PR unresolved threads
 
 on:
   workflow_run:
     workflows: [Test, Claude review, PR-Agent review]
     types: [completed]
+  pull_request_review:
+    types: [submitted]
 
 permissions:
   pull-requests: write
 
 jobs:
   notify:
-    if: contains(fromJSON('["pull_request","pull_request_target"]'), github.event.workflow_run.event)
+    if: github.event_name == 'pull_request_review' || contains(fromJSON('["pull_request","pull_request_target"]'), github.event.workflow_run.event)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # One notice per PR at a time, so two finishing runs cannot post it twice.
     concurrency:
-      group: pr-unresolved-threads-${{ github.event.workflow_run.head_sha }}
+      group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
     steps:
       - name: Post the open threads
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
+          REVIEWED_PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           owner=${REPO%/*}
           name=${REPO#*/}
-          pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')
+          pr=$REVIEWED_PR
+          if [ -z "$pr" ]; then
+            pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')
+          fi
           if [ -z "$pr" ]; then
             echo "no open PR for $SHA"
             exit 0

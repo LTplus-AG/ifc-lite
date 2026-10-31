@@ -29,6 +29,9 @@ it('refuses KMZ submission after an open exact-model dialog becomes incomplete r
     meshes: [{ expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] }],
     totalTriangles: 1, totalVertices: 3,
+    coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } } },
   };
   const model = { ...fixtureModel('m'), ifcDataStore: await parseFixtureModel(), geometryResult };
   useViewerStore.setState({ ...fixtureModels(model), georefMutations: new Map([['m', {

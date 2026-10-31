@@ -169,10 +169,13 @@ async function keepFrame(name: string, frame: FrameWitness) {
 }
 
 // ---- #7955 item 4: authored metallic/roughness parity and viewer export, in memory so no fixture file changes ----
-/** The pixel scene with two authored finishes, hand-derived from IfcSurfaceStyleRendering's attributes (never read back
- * from the code under test): #29 SpecularHighlight = IfcSpecularRoughness(0.125) wins and ReflectanceMethod METAL gives
- * metallic 1; #39 (a material-defined style) SpecularColour 0.75 gives roughness 1 - 0.75 = 0.25 and no metal evidence. */
-const FINISHES: Record<number, { metallic?: number; roughness: number }> = { 29: { metallic: 1, roughness: 0.125 }, 39: { roughness: 0.25 } };
+/** The pixel scene with two authored specular finishes, hand-derived from IfcSurfaceStyleRendering's attributes and the
+ * documented join rule (rust/processing/src/style/finish_join.rs: a finish comes from an ITEM-level style or the
+ * element's own product-shape style; a material-chain style is colour-only), never read back from the code under test:
+ * #29 (item style) SpecularHighlight = IfcSpecularRoughness(0.125) wins and ReflectanceMethod METAL gives metallic 1;
+ * #39 takes its colour from a material-defined style whose SpecularColour 0.75 would give roughness 0.25 if the join
+ * read it, and it must not: no finish at all, in either kernel. */
+const FINISHES: Record<number, { metallic?: number; roughness: number }> = { 29: { metallic: 1, roughness: 0.125 } };
 function finishPixel(): string {
   const source = readFileSync(PIXEL, 'utf8');
   const metal = '#21=IFCSURFACESTYLERENDERING(#20,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.5),IFCSPECULARROUGHNESS(0.125),.METAL.);';
@@ -222,6 +225,8 @@ function glbJson(glb: Buffer): { meshes?: unknown[]; nodes?: { mesh?: number }[]
 }
 /** Open a ribbon export dialog the way a user does, and return it. */
 async function openExport(page: Page, id: string) {
+  // The privacy toast sits over the dialog's footer until dismissed.
+  for (const dismiss of await page.getByRole('button', { name: 'Dismiss notification' }).all()) await dismiss.click();
   await page.getByRole('tab', { name: 'File', exact: true }).click();
   await page.locator(`[data-export-command="${id}"]`).click();
   const dialog = page.locator('[data-export-dialog-shell]');
@@ -669,7 +674,7 @@ test.describe('retained viewer acceptance', () => {
     return (model?.geometryResult?.meshes ?? []).map(m => ({ id: state.resolveGlobalIdFromModels(m.expressId)?.expressId as number,
       metallic: m.material?.metallic, roughness: m.material?.roughness }));
   });
-  test('M11-A: retained and exact carry the same authored metallic/roughness on flat products', async ({ page }) => {
+  test('M11-A: retained and exact carry the same authored metallic/roughness on flat products, and no finish from a material style', async ({ page }) => {
     const observed: Record<string, { id: number; metallic?: number; roughness?: number }[]> = {};
     for (const kernel of ['exact', 'retained'] as const) {
       await setup(page, kernel);
@@ -681,9 +686,8 @@ test.describe('retained viewer acceptance', () => {
       observed[kernel] = (await storedMaterials(page)).sort((a, b) => a.id - b.id);
       expect(observed[kernel].map(m => m.id), `${kernel} products`).toEqual([29, 39]);
       for (const mesh of observed[kernel]) {
-        const authoredFinish = FINISHES[mesh.id];
-        expect(mesh.roughness, `${kernel} #${mesh.id} roughness`).toBeCloseTo(authoredFinish.roughness, 6);
-        expect(mesh.metallic, `${kernel} #${mesh.id} metallic`).toBe(authoredFinish.metallic);
+        expect({ metallic: mesh.metallic, roughness: mesh.roughness }, `${kernel} #${mesh.id}`)
+          .toEqual(FINISHES[mesh.id] ?? { metallic: undefined, roughness: undefined });
       }
     }
     expect(observed.retained, 'retained and exact agree product by product').toEqual(observed.exact);

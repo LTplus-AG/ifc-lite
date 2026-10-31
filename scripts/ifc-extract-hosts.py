@@ -15,7 +15,8 @@ spatial structure and every other product drop out. `--anonymise` writes a
 minimal header, blanks every string of IfcPerson, its addresses and roles,
 and of any IfcOrganization that is not an application's, and blanks the
 project's and site's names (GlobalIds stay), and unsets the site's reference
-latitude, longitude and elevation: what a committed fixture should carry. The
+latitude, longitude and elevation, and drops every STEP comment: what a
+committed fixture should carry. The
 site placement stays (it sets the RTC offset), so the extract is only as
 anonymous as that placement; use it on models that are already public. Product names and type names are kept; check them before committing.
 The extract is meant to give the same host mesh as the full model through
@@ -27,28 +28,46 @@ import sys
 
 ENTITY = re.compile(r"^#(\d+)\s*=\s*([A-Z0-9_]+)\s*\((.*)\);\s*$", re.S)
 REF = re.compile(r"#(\d+)")
+LEADING_COMMENTS = re.compile(r"^(?:/\*.*?\*/\s*)+", re.S)
 
 
 def records(text):
-    """(id, type, body, raw) for each DATA record, joining wrapped lines."""
+    """(id, type, body, raw) for each DATA record, joining wrapped lines.
+
+    A record ends at a ';' outside strings AND block comments, so a comment
+    holding a ';' cannot cut a record in two. Comments ahead of a record are
+    dropped so it still matches `ENTITY`."""
     data = text.split("DATA;", 1)[1].rsplit("ENDSEC;", 1)[0]
-    # Split on ';' outside strings.
-    out, buf, in_str = [], [], False
+    out, buf, in_str, in_comment, previous = [], [], False, False, ""
     for ch in data:
         buf.append(ch)
-        if ch == "'":
-            in_str = not in_str
-        elif ch == ";" and not in_str:
-            raw = "".join(buf).strip()
+        mark = ch
+        if in_comment:
+            if previous == "*" and ch == "/":
+                in_comment = False
+                mark = ""  # a closing '/' must not open a new comment
+        elif in_str:
+            if ch == "'":
+                in_str = False
+        elif previous == "/" and ch == "*":
+            in_comment = True
+            mark = ""  # an opening '*' must not close it
+        elif ch == "'":
+            in_str = True
+        elif ch == ";":
+            raw = LEADING_COMMENTS.sub("", "".join(buf).strip())
             buf = []
             m = ENTITY.match(raw)
             if m:
                 out.append((int(m.group(1)), m.group(2), m.group(3), raw))
+        previous = mark
     return out
 
 
 def strip_strings(body):
-    return re.sub(r"'(?:[^']|'')*'", "''", body)
+    """`body` with strings emptied and comments removed: what is left holds
+    only the record's real #references."""
+    return re.sub(r"'(?:[^']|'')*'|/\*.*?\*/", "''", body, flags=re.S)
 
 
 # A string, or a STEP block comment (dropped from anonymised records: it can
@@ -163,6 +182,9 @@ def main(argv):
                 raw = blank(raw, keep_first=True)
                 if typ == "IFCSITE":
                     raw = drop_site_location(rid, ENTITY.match(raw).group(3))
+            elif anonymise:
+                # Comments anywhere can carry text nobody meant to publish.
+                raw = STEP_TOKEN.sub(lambda m: "" if m.group(0).startswith("/*") else m.group(0), raw)
             f.write(raw + "\n")
         f.write("ENDSEC;\nEND-ISO-10303-21;\n")
     print(f"{len(keep)} records, {len(openings)} openings -> {dst}", file=sys.stderr)

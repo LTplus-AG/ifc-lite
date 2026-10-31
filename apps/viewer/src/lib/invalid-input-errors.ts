@@ -34,6 +34,6 @@ const CONTENT_REFUSALS = [
   /^PLY: invalid vertex count \S+$/,
   /^PLY: vertex property "[^"\r\n]*" must not be declared more than once$/,
   /^(?:XYZ|PTS|CSV): file does not look like ASCII point data$/,
-  /^Invalid IFCX file(?: "[^"\r\n]*")?: (?:JSON parse error - [\s\S]+|missing or invalid header\.ifcxVersion)$/,
+  /^Invalid IFCX file(?: "[^"\r\n]*")?: (?:JSON parse error - SyntaxError: [\s\S]+|missing or invalid header\.ifcxVersion)$/,
   /^Unknown file format\. Expected IFC \(STEP\) or IFCX \(JSON\)\.$/,
 ];

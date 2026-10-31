@@ -1049,6 +1049,12 @@ describe('invalid input content refusals', () => {
     }
     assert.equal(classifyLoadError(Object.assign(new Error('synthetic'), { name: 'IfcInputError', code: 'TRUNCATED_STEP' })), 'unknown');
   });
+  it('keeps a memory failure during IFCX parsing out of invalid input', () => {
+    assert.equal(
+      classifyLoadError(new Error('Invalid IFCX file: JSON parse error - RangeError: Array buffer allocation failed')),
+      'out_of_memory',
+    );
+  });
   it('keeps runtime, transport and unsupported-feature failures loud', () => {
     for (const message of [
       'Invalid packed parser index offsets', 'Cannot read properties of undefined',

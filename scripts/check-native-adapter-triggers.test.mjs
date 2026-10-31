@@ -107,13 +107,19 @@ test('a missing path-dependency manifest is a named failure, not a smaller closu
   assert.throws(() => crateClosure(root), /rust\/testkit\/Cargo\.toml does not exist/);
 });
 
-test('unthrottled main pushes or a cancelling main run are reported', (context) => {
+test('unthrottled main pushes, a cancelling main run or a workflow-level group are reported', (context) => {
   const noGroup = copyTree(context);
-  mutate(noGroup, (t) => t.replace(/concurrency:\n(?:  .*\n)+/, ''));
-  assert.ok(audit(noGroup).some((f) => f.includes('concurrency')));
+  mutate(noGroup, (t) => t.replace(/    concurrency:\n(?: {6}.*\n)+/, ''));
+  assert.ok(audit(noGroup).some((f) => f.includes('concurrency must group by event and ref')));
+  const runIdGroup = copyTree(context);
+  mutate(runIdGroup, (t) => t.replace('group: native-adapter-${{ github.event_name }}-${{ github.ref }}', 'group: native-adapter-${{ github.run_id }}'));
+  assert.ok(audit(runIdGroup).some((f) => f.includes('concurrency must group by event and ref')));
   const cancelsMain = copyTree(context);
   mutate(cancelsMain, (t) => t.replace(`cancel-in-progress: \${{ github.event_name == 'pull_request' }}`, 'cancel-in-progress: true'));
-  assert.ok(audit(cancelsMain).some((f) => f.includes('concurrency')));
+  assert.ok(audit(cancelsMain).some((f) => f.includes('concurrency must group by event and ref')));
+  const workflowLevel = copyTree(context);
+  mutate(workflowLevel, (t) => t.replace('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n\nconcurrency:\n  group: x\n'));
+  assert.ok(audit(workflowLevel).some((f) => f.includes('not the workflow')));
 });
 
 test('a cancelled run opening an issue, or a missing closer, is reported', (context) => {

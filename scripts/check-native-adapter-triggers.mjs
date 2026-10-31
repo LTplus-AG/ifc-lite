@@ -239,8 +239,11 @@ export function audit(root) {
     }
   }
   failures.push(...corpusJobProblems(text));
-  if (!/^concurrency:\s*\n {2}group: native-adapter-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\s*\n {2}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\s*$/m.test(text)) {
-    failures.push(`${WORKFLOW}: top-level concurrency must group by event and ref and cancel only pull_request runs (main pushes would run unthrottled, or an in-flight main run would be cancelled)`);
+  // Job level (#8460): a workflow-level group lets a skipped run cancel the running qualification.
+  if (/^concurrency:/m.test(text)) failures.push(`${WORKFLOW}: concurrency must be set on the native-adapter job, not the workflow (a skipped run would cancel a running one)`);
+  const mainJob = jobBlock(text, 'native-adapter') ?? '';
+  if (!/^ {4}concurrency:\s*\n {6}group: native-adapter-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\s*\n {6}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\s*$/m.test(mainJob)) {
+    failures.push(`${WORKFLOW}: the native-adapter job's concurrency must group by event and ref and cancel only pull_request runs (main pushes would run unthrottled, or an in-flight main run would be cancelled)`);
   }
   if (!/github\.ref == 'refs\/heads\/main' && needs\.native-adapter\.result == 'failure'/.test(text)) failures.push(`${WORKFLOW}: report-red-on-main must fire on 'failure' only; a cancelled (superseded) run is not red`);
   if ((text.match(/is not main's head/g) ?? []).length < 2) failures.push(`${WORKFLOW}: both main reporters must ignore a stale rerun (compare github.sha with main's head before touching the issue)`);

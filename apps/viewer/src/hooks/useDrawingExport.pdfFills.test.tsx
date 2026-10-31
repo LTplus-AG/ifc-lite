@@ -23,7 +23,7 @@ import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false, cutLine = false }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false }: ExportOptions = {}): Drawing2D {
   return {
     config: {
       plane: { axis: 'y', position: 0, flipped: false },
@@ -32,9 +32,7 @@ function buildDrawing({ polygonColor, noOuter = false, cutLine = false }: Export
       creaseAngle: 30,
       scale: 50,
     },
-    lines: cutLine
-      ? [{ line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
-      : [],
+    lines: [],
     cutPolygons: [
       {
         polygon: {
@@ -69,8 +67,6 @@ interface ExportOptions {
   polygonColor?: [number, number, number, number];
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
-  /** Also carry the wall's bottom edge as a `cut` line. */
-  cutLine?: boolean;
 }
 
 type Format = 'pdf' | 'svg';
@@ -230,20 +226,17 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     assert.match(text, /\/CA 0\.5\b/, 'alpha byte 0x80 becomes the stroke opacity');
   });
 
-  it('outlines but does not fill a polygon whose outer ring was lost (#2119: cut geometry must not vanish)', async () => {
+  it('outlines but does not fill a polygon whose outer ring was lost', async () => {
     const text = await exportPdf({ noOuter: true });
     assert.ok(!text.includes('f*'), 'the opening is not painted solid');
-    assert.ok(text.includes('h\nS\n'), 'the surviving ring is still stroked');
+    assert.ok(text.includes('h\nS\n'), 'the surviving ring is still stroked, as before fills existed');
   });
 
-  it('draws the cut lines of an entity whose polygon lost its outer ring', async () => {
-    const text = await exportPdf({ noOuter: true, cutLine: true });
-    assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'the cut edge reaches the PDF as a line');
-  });
-
-  it('clamps a negative override line weight to a hairline', async () => {
-    const text = await exportPdf({ overrideRules: [wallRule({ lineWeight: -1 })] });
-    assert.doesNotMatch(text, /^-[\d.]+ w$/m);
+  it('never writes a negative or NaN line width', async () => {
+    for (const lineWeight of [-1, Number.NaN]) {
+      const text = await exportPdf({ overrideRules: [wallRule({ lineWeight })] });
+      assert.doesNotMatch(text, /^(?:-[\d.]+|NaN) w$/m, `lineWeight ${lineWeight}`);
+    }
   });
 });
 

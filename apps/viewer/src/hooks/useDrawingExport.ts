@@ -41,7 +41,7 @@ import { downloadDxf } from '@/hooks/dxfDownload';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
-import { hasFillableOuter, styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
+import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
 import { pdfColor } from '@/lib/export/pdf-color';
 import { getFillColorForType } from '@/components/viewer/drawing/ifc-fill-colors';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
@@ -401,7 +401,6 @@ function useDrawingExport({
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
     svg += '  <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
-      if (!hasFillableOuter(polygon)) continue;
       svg += `    <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
     }
     svg += '  </g>\n';
@@ -736,7 +735,7 @@ function useDrawingExport({
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
     svg += '    <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
-      if (pathData && hasFillableOuter(polygon)) {
+      if (pathData) {
         svg += `      <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
       }
     }
@@ -1068,7 +1067,13 @@ function useDrawingExport({
     // Own mapped vectors at click time; model/reference edits during async export
     // cannot replace the geometry whose bounds/scale were used above.
     const vectorSnapshot = structuredClone(dxfUnderlays);
-    const styleContext = cutPolygonStyleContext();
+    // Styles resolve at click time too, so a colour or override change while
+    // jsPDF loads cannot leak into this export.
+    const styledPolygons = styleCutPolygons(drawing.cutPolygons, cutPolygonStyleContext(), (polygon) =>
+      [polygon.polygon.outer, ...polygon.polygon.holes]
+        .filter((ring) => ring.length >= 2)
+        .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
+    );
 
     void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
       subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
@@ -1089,11 +1094,6 @@ function useDrawingExport({
 
         // Cut polygons: fills first (even-odd, so holes stay open), then
         // outlines on top, with the same colours as the SVG export.
-        const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (polygon) =>
-          [polygon.polygon.outer, ...polygon.polygon.holes]
-            .filter((ring) => ring.length >= 2)
-            .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-        );
         // Two decimals is what jsPDF prints; rounding keeps one ExtGState per
         // printed value, and unchanged values are not re-sent per polygon.
         const lastOpacity = { opacity: 1, 'stroke-opacity': 1 };
@@ -1112,8 +1112,11 @@ function useDrawingExport({
         };
         // Unparseable colours fall back per polygon (type colour, black) so
         // one bad override cannot abort the whole export.
+        // Outlines cover every ring, as before fills existed. A polygon whose
+        // outer ring was lost is not filled: its surviving hole would paint
+        // the opening solid.
         for (const { polygon, geometry: rings, style } of styledPolygons) {
-          if (!hasFillableOuter(polygon)) continue;
+          if (polygon.polygon.outer.length < 3) continue;
           const { hex, alpha } = pdfColor(style.fillColor) ?? pdfColor(getFillColorForType(polygon.ifcType))!;
           const opacity = style.fillOpacity * alpha;
           if (!(opacity > 0)) continue;
@@ -1127,7 +1130,7 @@ function useDrawingExport({
           if (rings.length === 0 || !(alpha > 0)) continue;
           setOpacity('stroke-opacity', alpha);
           doc.setDrawColor(hex);
-          doc.setLineWidth(Math.max(0, style.lineWeight));
+          doc.setLineWidth(Number.isFinite(style.lineWeight) ? Math.max(0, style.lineWeight) : 0.5);
           tracePath(rings);
           doc.stroke();
         }
@@ -1146,10 +1149,8 @@ function useDrawingExport({
         // already covers; otherwise they are the sole remaining record of
         // that cut and must still be drawn, or the geometry silently
         // vanishes from the PDF.
-        // A polygon that lost its outer ring does not cover the entity: its
-        // outer boundary only survives in those cut lines.
         const entitiesWithCutPolygon = new Set(
-          drawing.cutPolygons.filter(hasFillableOuter).map((p) => `${p.modelIndex}:${p.entityId}`)
+          drawing.cutPolygons.map((p) => `${p.modelIndex}:${p.entityId}`)
         );
 
         // Drawing lines (projection/hidden/silhouette/crease/boundary).

@@ -54,15 +54,6 @@ export function resolveCutPolygonStyle(
   return { fillColor: getFillColorForType(polygon.ifcType), fillOpacity: 1, ...stroke };
 }
 
-/**
- * Whether a cut polygon can be filled. Loop reconstruction can lose the outer
- * ring and keep only a hole; filling that would paint the opening solid, so
- * every writer outlines it instead (the canvas skips it too).
- */
-export function hasFillableOuter(polygon: Pick<DrawingPolygon, 'polygon'>): boolean {
-  return polygon.polygon.outer.length >= 3;
-}
-
 /** Style every cut polygon once, alongside the writer's own geometry for it. */
 export function styleCutPolygons<P extends Pick<DrawingPolygon, 'entityId' | 'ifcType' | 'color'>, G>(
   polygons: readonly P[],

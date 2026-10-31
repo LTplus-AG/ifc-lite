@@ -1,0 +1,61 @@
+# Real-authoring fixture qualification — Refs #7955
+
+The seven implementation commits through `1fc097466c` are inherited from the
+interrupted agent. This continuation merged main `417877fe65` normally, producing
+`14a8e45b55392eb49d23bfb3f29bb88a1ce6d4fe`. That includes the omitted-Axis2
+repair `c7ddb2b9a0` and the landed M6/M10 work. No production source, default
+output implementation, fixture bytes or frozen tolerances change in this PR.
+
+## Fixture provenance and size review
+
+All three registrations reference existing tracked bytes; no IFC payload is
+added or uploaded. Their combined size is 369,609 bytes, each below 1 MiB and
+GitHub's 100 MiB blob limit. This is a payload-size check, not a performance claim.
+
+| Fixture | Bytes | SHA-256 | Provenance / terms |
+| --- | ---: | --- | --- |
+| SketchUp `apps/viewer/public/samples/building-architecture.ifc` | 225635 | `3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5` | buildingSMART Certification-datasets; CC-BY-4.0, credit buildingSMART International Ltd. Existing pinned evidence: `tests/ai-eval/native/sketchup-licence-provenance.json`. |
+| Bonsai `apps/viewer/public/samples/hello-wall.ifc` | 79592 | `0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014` | Byte-identical to [IFC5 example](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/examples/Hello%20Wall/hello-wall.ifc). The [README](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/README.md) permits educational/testing use and asks not to create derivatives. No SPDX model licence is declared; the viewer MIT licence is not applied to the model. This PR uses unmodified bytes. |
+| Revit `rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc` | 64382 | `b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597` | Existing extracted fixture introduced in `84cd5aa3b5`, from ara3d/web-ifc ISSUE_098, exporter Revit 2022. The current ara3d data manifest directs users to check per-file rights before redistribution. A model-specific licence grant has not been established by this review. Do not infer one from ara3d's MIT code licence. |
+
+No new completed human privacy/licence approval is asserted. The existing
+SketchUp record explicitly leaves those approvals pending. Revit's unresolved
+model rights remain a review limitation, even though no model bytes are new.
+
+## Inherited coverage and continuation checks
+
+The new fragment adds 35 candidates to the universe, without changing the base
+`tests/manifests/cli-retained-coverage.tsv` in the implementation commits:
+
+- SketchUp: 14 refused (`operation_unsupported`). These surface representations
+  are outside this branch's retained adapter scope; an all-refused CLI export
+  must fail without writing OBJ, and the viewer must retain identities/refusals.
+- Bonsai: 3 published, 3 refused (`operation_unsupported`).
+- Revit V5C: 7 published, 7 refused (`operation_unsupported`), and the wall with
+  faceted reveal openings refused (`opening_unsupported`).
+
+These are inherited classifications, not a new measured acceptance verdict.
+No published-to-refused transition has been accepted by this continuation.
+Final re-bless deltas must be reviewed before this PR is ready.
+
+Verified locally on merged source: 15 helper/metrics/tolerance tests pass with
+zero skips; explicit-base pre-handoff reports **OBSERVED**, with restored
+witnesses green. Available gates pass. Skipped: source-text assertions
+(TypeScript absent), workflow report paths (YAML absent), default viewer
+(bundle absent). These skips do not establish engine or browser acceptance.
+
+## Pending Pop receipts
+
+Fresh native re-bless: automatic request
+`auto-4ebff5cd14e04c56991fd68edb231656`, worker job
+`9dc22272-baf0-421a-ba85-80c98c4c6e15`; original receipt under
+`/home/louistrue/build-workers/worker-state/jobs/9dc22272-baf0-421a-ba85-80c98c4c6e15/receipt.json`.
+It targets merged source `14a8e45b55`, builds a fresh native worker and uses a
+private Cargo target that its script deletes afterwards. The result has not
+been observed yet; Compiling paths and manifest deltas are still pending.
+
+The separate full engine/browser lane preflight was refused before submission
+(request `auto-affdd5bc9dd942e397c784784137579e`, capacity guard exit 78,
+fleet wrapper exit 69). It is not an active or successful execution receipt.
+Earlier successful lane logs at `1fc097466c` are inherited and do not qualify
+the merged head.

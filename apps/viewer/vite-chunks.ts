@@ -27,3 +27,19 @@ export function legacyManualChunk(id: string): string | undefined {
   if (id.includes('/node_modules/three/') || id.includes('/node_modules/.pnpm/three@')) return 'three';
   return undefined;
 }
+
+/**
+ * tslib's helpers are shared by eager code (Radix's scroll lock) and by lazy
+ * vendors (cesium via @swc/helpers, apache-arrow). Left unclaimed, the
+ * recursive `legacyManualChunk` group puts tslib in whichever vendor chunk
+ * reaches it first, and that whole chunk becomes eager: a react bump that
+ * re-resolved Radix onto cesium's tslib copy put all of cesium (~4.9 MB) on the
+ * eager path. A higher-priority, non-recursive group claims tslib first, so no
+ * vendor rides along with it.
+ */
+export const tslibChunkGroup = {
+  name: 'tslib',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /\/node_modules\/tslib\//,
+};

@@ -116,7 +116,7 @@ test('curved families need this incarnation’s witnesses; refusal keeps Worker 
   assert.equal(peer.commands.length, count, 'nothing submitted');
   assert.equal(driver.objectLive(object), true);
   await assert.rejects(driver.evaluate(new Uint8Array(1), 1, 1, 4, 0, 0.001, 181, 4096), /limits/);
-  await assert.rejects(driver.evaluate(new Uint8Array(1), 1, 1, 4, 3, 0.001, 5, 4096), /qualification/);
+  await assert.rejects(driver.evaluate(new Uint8Array(1), 1, 1, 4, 4, 0.001, 5, 4096), /qualification/);
   assert.equal(driver.live(), true);
   await driver.qualify();
   await evaluate(driver, 1);

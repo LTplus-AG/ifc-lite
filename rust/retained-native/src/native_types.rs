@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Local ownership wrappers keep the runtime implementation within orphan rules.
 use ifc_lite_geometry_runtime::{
-    RetainedAffineCopy, RetainedDependencyResult, RetainedRealization, RuntimeOwner, SmlibWorker,
+    RetainedAffineCopy, RetainedDependencyResult, RetainedRealization, RetainedSourceFaceSet, RuntimeOwner, SmlibWorker,
 };
 
 pub struct NativeWorker(pub(crate) SmlibWorker);
@@ -15,6 +15,7 @@ pub struct NativeReceipt {
 }
 pub(crate) enum RealizationKind {
     Construction(Box<RetainedRealization>),
+    SourceFaceSet(Box<RetainedSourceFaceSet>),
     Affine(Box<RetainedAffineCopy>),
     Boolean(Box<RetainedDependencyResult>),
 }

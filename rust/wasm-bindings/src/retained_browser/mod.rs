@@ -290,6 +290,8 @@ mod m6_parity_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod m11_a_parity_tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod m11_t_parity_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod cut0_parity_tests;

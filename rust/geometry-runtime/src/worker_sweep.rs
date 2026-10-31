@@ -50,6 +50,64 @@ impl RetainedRealization {
     }
 }
 
+/// An uncut source-exact face set (#8291): authored triangles with no SDK object.
+#[cfg(feature = "retained-runtime")]
+#[derive(Debug)]
+pub struct RetainedSourceFaceSet {
+    no_solid: BrepHandle,
+    completion: RetainedCompletion,
+    owner: crate::RuntimeOwner,
+    /// The closed solid, built only when a Boolean or copy first consumes it.
+    realized: std::sync::OnceLock<RetainedRealization>,
+}
+#[cfg(feature = "retained-runtime")]
+impl RetainedSourceFaceSet {
+    /// The realized solid, else a handle no operation can resolve.
+    pub fn solid(&self) -> BrepHandle { self.realized.get().map_or(self.no_solid, RetainedRealization::solid) }
+    pub fn completion(&self) -> &RetainedCompletion { &self.completion }
+    pub fn realized(&self) -> Option<&RetainedRealization> { self.realized.get() }
+    pub fn validate_live(&self) -> Result<(), WorkerError> {
+        if let Some(realized) = self.realized.get() { return realized.validate_live(); }
+        if self.owner.incarnation() == Some(self.no_solid.worker) { Ok(()) } else { Err(WorkerError::WrongWorker) }
+    }
+}
+
+#[cfg(feature = "retained-runtime")]
+impl SmlibWorker {
+    /// Seal one source-exact request under this incarnation without a kernel
+    /// call, at the same byte budget a kernel mesh of that size must meet.
+    pub fn seal_source_face_set(&self, request: &RetainedRequest, limits: MeshLimits) -> Result<RetainedSourceFaceSet, WorkerError> {
+        if !self.is_live() || request.worker_incarnation() != self.incarnation() {
+            return Err(WorkerError::WrongWorker);
+        }
+        if request.source_exact_mesh_bytes().is_none_or(|bytes| bytes > limits.max_bytes) {
+            return Err(WorkerError::ResourceLimit("mesh exceeds max_bytes"));
+        }
+        let completion = request.source_exact_completion()
+            .ok_or(WorkerError::InvalidArgument("request is not a decodable source-exact face set"))?;
+        Ok(RetainedSourceFaceSet {
+            no_solid: BrepHandle { worker: self.identity, wire: crate::protocol::WireHandle { session: 0, slot: 0, generation: 0 } },
+            completion,
+            owner: self.retained_owner(),
+            realized: std::sync::OnceLock::new(),
+        })
+    }
+
+    /// Build the closed solid behind a source-exact face set, once. Its kernel mesh
+    /// is dropped: the receipt's budget covers the authored mesh, and only the solid
+    /// is needed from here on.
+    pub fn realize_source_face_set<'a>(&mut self, source: &'a RetainedSourceFaceSet, chord_metres: f64,
+        angle_degrees: f64, limits: MeshLimits) -> Result<&'a RetainedRealization, WorkerError> {
+        if source.realized.get().is_none() {
+            let mut realized = self.evaluate_retained(source.completion.request().clone(), chord_metres, angle_degrees, limits)?;
+            realized.completion.tessellation = Default::default();
+            // Single-threaded executor: the cell was checked empty just above.
+            source.realized.set(realized).map_err(|_| WorkerError::Protocol("face set realized twice"))?;
+        }
+        source.realized.get().ok_or(WorkerError::Protocol("face set realization missing"))
+    }
+}
+
 impl SmlibWorker {
     /// Independently captured liveness/retirement for this exact process.
     pub fn retained_owner(&self) -> crate::RuntimeOwner {
@@ -75,6 +133,7 @@ impl SmlibWorker {
             RegionQualification::Rectangle => true,
             RegionQualification::OrderedRegion => self.regions_qualified,
             RegionQualification::RationalDisk => self.disks_qualified,
+            RegionQualification::SourceFaceSet => self.face_sets_qualified,
             _ => false,
         };
         if !qualified {

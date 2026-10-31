@@ -28,4 +28,4 @@ pub use worker::{
 };
 
 #[cfg(all(feature = "retained-runtime", not(target_arch = "wasm32")))]
-pub use worker::RetainedBooleanIdentity;
+pub use worker::{RetainedBooleanIdentity, RetainedSourceFaceSet};

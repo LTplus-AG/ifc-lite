@@ -163,6 +163,9 @@ fn compare(
     if let Some(expected) = retraced_opening {
         opening_expectations.insert(72209, Some(expected));
     }
+    for (host, expected) in source::face_set_openings(path)? {
+        opening_expectations.insert(host, Some(expected));
+    }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
     let oracle_source = source.clone();
@@ -200,6 +203,21 @@ fn compare(
                             report.violations.push(format!("{model}:{id}: {e}"));
                         }
                     }
+                    // An authored face set claims no closed solid: an open shell is its source, and
+                    // the authored-row oracles prove the published triangles are exactly that.
+                    let closed_shell = actual.defects == 0;
+                    if shape.parts.iter().any(|part| part.source_exact) {
+                        // Measure closure over what the kernel built: authored parts claim none.
+                        let mut built = metrics::Metrics::default();
+                        for part in shape.parts.iter().filter(|part| !part.source_exact) {
+                            let points: Vec<_> = part.positions.chunks_exact(3)
+                                .map(|p| transform(&part.world_from_object, [p[0], p[1], p[2]])).collect();
+                            if let Err(e) = built.add_mesh(&points, &part.indices) {
+                                report.violations.push(format!("{model}:{id}: {e}"));
+                            }
+                        }
+                        actual.defects = built.defects;
+                    }
                     let rounded = exact_origins.get(&id).and_then(|origins| {
                         match precision::measure(&shape, exact.frame, origins) {
                             Ok(metrics) => Some(metrics),
@@ -208,13 +226,16 @@ fn compare(
                     });
                     let retraced = (shape.product_id == 72245).then_some(retraced).flatten();
                     let expectation = if let Some(value) = type_expectations.get(&id) {
-                        if value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
+                        // A face set has no analytic quantity: its authored-row oracle is the authority.
+                        let face_sets = shape.parts.iter().all(|part| part.source_exact);
+                        if !face_sets && value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
                             report.violations.push(format!("{model}:{id}: missing or incomplete type source oracle"));
                         }
                         value.as_ref().map(|v| (v.volume, v.bbox))
                     } else {
                         // Bands partition one admitted source host.
                         retraced.or_else(|| source::expected(&sources, id, if layered { 1 } else { shape.parts.len() }))
+                            .or_else(|| closed_shell.then(|| source::face_set_volume(&shape, &bytes)).flatten())
                     };
 
                     let m6 = ifc_lite_retained_native::oracle::bounded::applies(&bytes, id);
@@ -230,7 +251,10 @@ fn compare(
                         ms,
                         opening_expectations.get(&id),
                         &checks::SourceContext { product_id: id, analytic: &sources, clips: &clip_oracle, hand_volume: bounded.as_ref().and_then(|_| hand.take(&model, id)) },
-                        retraced.is_some() || (id == 72209 && has_retraced_opening),
+                        // Exact splits a palette into separately measured patches (#858), so its
+                        // quantities are not one solid's; the authored-row oracles gate these parts.
+                        retraced.is_some() || (id == 72209 && has_retraced_opening)
+                            || shape.parts.iter().any(|part| part.surface.as_ref().is_some_and(|s| s.palette.is_some())),
                         bounded.as_ref(),
                         &bytes,
                     );

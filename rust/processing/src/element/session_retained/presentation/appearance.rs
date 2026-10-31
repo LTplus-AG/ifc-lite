@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! M11-A IfcAppearance. A product discharges the obligation only when every
-//! part resolves through exact's own colour resolver and none binds a texture
-//! or indexed palette; those refuse `appearance_unsupported` (proven absent).
+//! part resolves through exact's own colour resolver. A texture or indexed palette
+//! binding is flagged here and answered by the surface slice, or refuses there.
 use super::appearance_resolve::{bind, resolve_parts, unsupported, Bound, PartSource};
 use super::{Context, OwnedMeshProductionContext, RetainedProductPlan, Requirement, ShapeOnlyProduct};
 use crate::element::assembly_job::AssemblyJob;

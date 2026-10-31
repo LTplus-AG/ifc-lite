@@ -43,6 +43,7 @@ fn probes(operand: &Operand, face: &SourceFace) -> Option<Vec<V>> {
             let s = if face.role == (Role::Cap { end: true }) { region.depth } else { 0. };
             Some(region.loops.iter().flatten().flat_map(marks).map(|q| lift(region, q, s)).collect())
         }
+        (Extent::Row { triangles, .. }, _, _) => Some(triangles.iter().flatten().copied().collect()),
         (Extent::Plane, _, Support::Plane { origin, normal }) => {
             // Three non-collinear points determine the unbounded source plane.
             // They are support probes, never artificial finite cutter extents.

@@ -15,6 +15,7 @@ mod face_surfaces;
 #[cfg(test)]
 mod face_surfaces_tests;
 mod instancing;
+mod surface;
 pub(super) use faces::{sources as face_sources, FaceSources};
 
 // M11-A/N/F/I consume these immutable inputs in their own modules.
@@ -39,6 +40,7 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
     discharged.extend(appearance::apply(product, context)?);
     normals::prepare(product, context)?;
     discharged.extend(faces::apply(product, context)?);
+    surface::apply(product, context)?;
     discharged.extend(normals::apply(product, context)?);
     discharged.extend(instancing::apply(product, context));
     Ok(discharged)

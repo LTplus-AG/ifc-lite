@@ -66,3 +66,37 @@ pub fn retraced_opening(
         volume_bounds: [volume, host.volume()], host_bbox: Some(bbox), curved: false,
     }))
 }
+
+/// A face-set host has no analytic prism, so its cut comes from the fixture's
+/// hand-specified table. An unlisted host stays unverified and fails closed (#8291).
+pub fn face_set_openings(model: &std::path::Path) -> Result<Vec<(u32, ifc_lite_retained_native::oracle::openings::OpeningExpectation)>, String> {
+    use ifc_lite_retained_native::oracle::openings::OpeningExpectation;
+    let (file, oracle) = match model.to_str() {
+        Some("tests/fixtures/synthetic-retained/f-b-mapped.ifc") => ("f-b-mapped.ifc", "oracles.json"),
+        Some("tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc") => ("f-t-face-set-presentation.ifc", "f-t-face-set-presentation.oracle.json"),
+        _ => return Ok(Vec::new()),
+    };
+    let table = std::fs::read_to_string(format!("tests/fixtures/synthetic-retained/{oracle}")).map_err(|e| e.to_string())?;
+    let table: serde_json::Value = serde_json::from_str(&table).map_err(|e| e.to_string())?;
+    let products = table["cases"][file]["products"].as_array().ok_or("face-set oracle products absent")?;
+    Ok(products.iter().filter(|p| p["opening_id"].is_u64()).map(|p| {
+        let (volume, opening) = (p["volume"].as_f64().unwrap_or(f64::NAN), p["opening_volume"].as_f64().unwrap_or(f64::NAN));
+        (p["id"].as_u64().unwrap_or(0) as u32, OpeningExpectation { nominal_host_volume: volume + opening,
+            volume_bounds: [volume, volume + opening], result_volume: Some(volume), host_bbox: None, curved: false })
+    }).collect())
+}
+
+/// A closed face-set product's solid volume from its authored rows: exact's f32 storage
+/// cannot measure a small shell at survey scale, so this is what outranks it (#8291).
+pub fn face_set_volume(shape: &ifc_lite_retained_native::ShapeOnlyProduct, bytes: &[u8]) -> Option<SourceExpectation> {
+    use ifc_lite_retained_native::oracle::face_sets;
+    let mut decoder = ifc_lite_core::EntityDecoder::new(bytes);
+    let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
+    let mut volume = 0.;
+    for part in &shape.parts {
+        let key = part.faces.as_ref().filter(|_| part.source_exact)?.table.first()?;
+        let item = decoder.decode_by_id(key.item).ok()?;
+        volume += face_sets::authored_volume(&face_sets::authored(&item, &mut decoder, units)?)?;
+    }
+    Some((volume, None))
+}

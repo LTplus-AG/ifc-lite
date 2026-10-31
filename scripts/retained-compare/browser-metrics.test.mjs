@@ -91,3 +91,22 @@ test('#7955 view parity still rejects a one-ulp displacement after reordering', 
   y.view.outcomes[0].meshes[0].positions[0] += 1;
   assert.ok(run(y).violations.length > 0);
 });
+
+test('#8291 a part the view split by surface rejoins, and a split that cannot land still fails', () => {
+  const split = triangle();
+  const [mesh] = split.view.outcomes[0].meshes;
+  const part = split.shape.outcomes[0].parts[0];
+  // The same triangle twice: two palette groups of one authored part.
+  part.indices = [...part.indices, ...part.indices];
+  split.view.outcomes[0].meshes = [mesh, { ...mesh }];
+  const joined = compareView(split.shape, split.view, split.prepass);
+  assert.deepEqual(joined.violations, []);
+  assert.equal(joined.triangles, 2);
+  const extra = triangle();
+  extra.view.outcomes[0].meshes = [mesh, { ...mesh }];
+  assert.ok(compareView(extra.shape, extra.view, extra.prepass).violations.some(v => v.includes('part count mismatch')), 'an extra mesh');
+  const moved = triangle();
+  moved.shape.outcomes[0].parts[0].indices = [...part.indices];
+  moved.view.outcomes[0].meshes = [mesh, { ...mesh, origin: [1, 0, 0] }];
+  assert.ok(compareView(moved.shape, moved.view, moved.prepass).violations.some(v => v.includes('part count mismatch')), 'a moved origin');
+});

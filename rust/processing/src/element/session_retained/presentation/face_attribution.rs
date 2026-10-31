@@ -35,9 +35,13 @@ pub(crate) enum Segment {
 }
 /// Bounded extent of a face, used only to choose between coincident supports.
 #[derive(Debug, Clone)]
-pub(crate) enum Extent { Plane, Side { segment: Segment }, Cap, Disk { center: [f64; 3], radius: f64 }, Wall }
+pub(crate) enum Extent { Plane, Side { segment: Segment }, Cap, Disk { center: [f64; 3], radius: f64 }, Wall,
+    /// The authored triangles of one face-set row.
+    Row { triangles: Vec<[[f64; 3]; 3]>, indices: Vec<u32> } }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Role { Cap { end: bool }, Side { boundary: u32, segment: u32 }, DiskWall, DiskCap { end: bool }, HalfSpace }
+pub(crate) enum Role { Cap { end: bool }, Side { boundary: u32, segment: u32 }, DiskWall, DiskCap { end: bool }, HalfSpace,
+    /// One authored row of an `IfcTessellatedFaceSet` (`CoordIndex` row or `Faces` position).
+    FaceSetRow { row: u32 } }
 impl std::fmt::Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let end = |end: bool| if end { "end" } else { "start" };
@@ -47,6 +51,7 @@ impl std::fmt::Display for Role {
             Self::DiskWall => f.write_str("disk(wall)"),
             Self::HalfSpace => f.write_str("halfspace"),
             Self::DiskCap { end: e } => write!(f, "disk({})", end(e)),
+            Self::FaceSetRow { row } => write!(f, "row({row})"),
         }
     }
 }
@@ -68,6 +73,14 @@ pub(crate) struct Operand {
     pub stretch: f64,
     pub faces: Vec<SourceFace>,
     pub region: Option<Region>,
+    /// An uncut source-exact face set: each kernel-free face index IS its row, so
+    /// no incidence search applies (coplanar rows would be indistinguishable).
+    pub rows_identify_faces: bool,
+    /// The sealed request of a face-set leaf, for its authored presentation.
+    pub request: Option<ifc_lite_geometry::document::RetainedRequest>,
+    /// Removed material: a Boolean's subtracted operand or under one. Its faces bound
+    /// the result as reveals, but its presentation is not the host's.
+    pub subtracted: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Unproven { Unattributed { entity: Option<u32> }, Ambiguous { entity: Option<u32> } }
@@ -156,6 +169,9 @@ impl Operand {
     fn contains(&self, face: &SourceFace, p: V, tol: f64) -> bool {
         match (&face.extent, &self.region) {
             (Extent::Wall | Extent::Plane, _) => true,
+            // Rows are exact planar pieces: the chord has no meaning here, and a
+            // chord-wide band would hand a point to the coplanar row beside it.
+            (Extent::Row { triangles, .. }, _) => triangles.iter().any(|t| in_triangle(p, t, self.stretch * INCIDENCE_PLANAR_M)),
             (Extent::Disk { center, radius }, _) => dot(sub(p, *center), sub(p, *center)).sqrt() <= radius + tol,
             (Extent::Cap, Some(region)) => region.contains(region.project(p).0, tol),
             (Extent::Side { segment }, Some(region)) => {
@@ -188,6 +204,15 @@ impl Operand {
         Ok(distance <= tolerance
             && normal.is_none_or(|n| outward.is_some_and(|o| angle(n, o.map(|v| v * self.sign)) <= NORMAL_RADIANS)))
     }
+}
+/// Whether `p`, already on the triangle's plane, lies within `tol` of its interior.
+pub(super) fn in_triangle(p: V, t: &[V; 3], tol: f64) -> bool {
+    let Some(n) = unit(cross(sub(t[1], t[0]), sub(t[2], t[0]))) else { return false };
+    (0..3).all(|i| {
+        let (a, b) = (t[i], t[(i + 1) % 3]);
+        let edge = sub(b, a);
+        dot(cross(edge, sub(p, a)), n) >= -tol * dot(edge, edge).sqrt()
+    })
 }
 impl Support {
     fn radial(center: [f64; 2], g: V, p: V) -> [f64; 2] {
@@ -271,17 +296,26 @@ pub(crate) fn resolve(operands: &[Operand], face: &[Candidates], chord: f64) -> 
         let seen = face.iter().flat_map(|c| c.matches.first()).next();
         return Err(Unproven::Unattributed { entity: seen.and_then(|&(c, _)| item(c)) });
     };
-    let common: Vec<(Choice, bool)> = first.matches.iter().filter_map(|&(choice, inside)| {
-        let mut held = inside;
+    let common: Vec<(Choice, usize)> = first.matches.iter().filter_map(|&(choice, inside)| {
+        let mut held = usize::from(inside);
         for other in oriented.clone() {
-            held |= other.matches.iter().find(|(c, _)| *c == choice)?.1;
+            held += usize::from(other.matches.iter().find(|(c, _)| *c == choice)?.1);
         }
         Some((choice, held))
     }).collect();
-    let bounded = common.iter().any(|&(_, held)| held);
-    let survivors: Vec<Choice> = common.into_iter().filter(|&(_, held)| held || !bounded).map(|(choice, _)| choice).collect();
+    let bounded = common.iter().any(|&(_, held)| held > 0);
+    let survivors: Vec<(Choice, usize)> = common.into_iter().filter(|&(_, held)| held > 0 || !bounded).collect();
+    // Coplanar rows are one surface but different authored rows, so "any is fine"
+    // does not hold: a sliver on their shared edge must not outvote the face.
+    let is_row = |(o, f): Choice| matches!(operands[o].faces[f].role, Role::FaceSetRow { .. });
+    let most = survivors.iter().filter(|&&(c, _)| is_row(c)).map(|&(_, held)| held).max();
+    let survivors: Vec<Choice> = survivors.into_iter()
+        .filter(|&(c, held)| !is_row(c) || Some(held) == most).map(|(c, _)| c).collect();
     let choice = survivors.iter().copied().min()
         .ok_or(Unproven::Ambiguous { entity: first.matches.first().and_then(|&(c, _)| item(c)) })?;
+    if survivors.iter().filter(|&&c| is_row(c)).count() > 1 {
+        return Err(Unproven::Ambiguous { entity: item(choice) });
+    }
     if survivors.iter().any(|&other| !coincident(operands, choice, other, chord))
         || face.iter().any(|c| !c.oriented && !c.matches.iter().any(|(m, _)| *m == choice)) {
         return Err(Unproven::Ambiguous { entity: item(choice) });

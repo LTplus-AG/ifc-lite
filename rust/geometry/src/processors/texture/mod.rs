@@ -109,6 +109,8 @@ pub struct ResolvedTextureMap {
     pub texture: TextureSource,
     /// `IfcTextureVertexList.TexCoordsList` as `[u, v]` (0-based storage).
     pub tex_coords: Vec<[f32; 2]>,
+    /// Express id of the `IfcTextureVertexList`, for f64 source readers.
+    pub tex_coords_id: u32,
     /// `TexCoordIndex`: per-triangle 1-based indices into `tex_coords`,
     /// parallel to the face set's `CoordIndex`. `None` when the attribute is
     /// `$` — the spec default, meaning texture vertices pair 1:1 with the face
@@ -323,6 +325,7 @@ fn resolve_triangle_texture_map(
             texture_id,
             texture,
             tex_coords,
+            tex_coords_id: tvl_id,
             tex_coord_index,
         },
     ))

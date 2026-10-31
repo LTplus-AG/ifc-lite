@@ -39,6 +39,10 @@ mod retained_prism;
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 pub use retained_prism::{RetainedPrism, PrismRole, PrismLoop, PrismSegment};
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+mod retained_face_set;
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub use retained_face_set::RetainedFaceSet;
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 pub use crate::program::bounds::EvaluationBounds;
 mod types;
 mod validation;

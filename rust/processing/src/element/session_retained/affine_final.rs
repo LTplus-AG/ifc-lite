@@ -61,6 +61,8 @@ fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
         }
         RetainedRecipe::Prism(p) => affine_sweep_surfaces_certifiable(
             p.loops.iter().flat_map(|l| &l.segments).any(|s| matches!(s, PrismSegment::Arc { .. })), p.direction),
+        // Lines bounding planes, the SDK's certified copy classes.
+        RetainedRecipe::FaceSet(_) => true,
         // Swept disks, and any variant added later, carry no certificate.
         _ => false,
     }
@@ -160,6 +162,7 @@ fn recipe_radius(recipe: &RetainedRecipe) -> f64 {
         RetainedRecipe::Prism(p) => p.loops.iter().flat_map(|l| &l.segments).map(|s| match s {
             PrismSegment::Line { .. } => 0., PrismSegment::Arc { radius, .. } | PrismSegment::Circle { radius, .. } => *radius,
         }).fold(0., f64::max),
+        RetainedRecipe::FaceSet(_) => 0.,
         _ => f64::INFINITY,
     }
 }

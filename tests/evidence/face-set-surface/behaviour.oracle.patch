@@ -1,0 +1,9 @@
+--- a/rust/processing/src/element/session_retained/presentation/surface_rows.rs
++++ b/rust/processing/src/element/session_retained/presentation/surface_rows.rs
+@@ -14,5 +14,5 @@
+     let det = ee * ff - ef * ef;
+     if !det.is_finite() || det == 0. { return None; }
+     let (v, w) = ((ff * qe - ef * qf) / det, (ee * qf - ef * qe) / det);
++    Some([1. - v - w, v, w])
+-    Some([v, w, 1. - v - w])
+ }

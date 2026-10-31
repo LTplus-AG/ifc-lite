@@ -48,6 +48,50 @@ fn orients_outward(closed: Option<&AttributeValue>) -> bool {
     closed.and_then(AttributeValue::as_bool) == Some(true)
 }
 
+/// A face set's winding-final triangles over its f32 point list (#8291).
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub(crate) struct SourceTriangles {
+    pub(crate) positions: Vec<f32>,
+    pub(crate) indices: Vec<u32>,
+    pub(crate) rows: Vec<u32>,
+    /// Authored row count, including rows no triangle came from.
+    pub(crate) row_count: u32,
+    /// Per published corner: its `CoordIndex` value before `PnIndex`. Empty for polygons.
+    pub(crate) authored: Vec<u32>,
+    /// Per published corner: its position (0..3) in the authored row. Empty for polygons.
+    pub(crate) slots: Vec<u8>,
+}
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+impl SourceTriangles {
+    /// The mesher's own out-of-range rule, row by row.
+    fn keep_emitted(mut self) -> Self {
+        let vertices = self.positions.len() / 3;
+        let keep: Vec<bool> = self.indices.chunks_exact(3)
+            .map(|t| mesh_build::emits_triangle([t[0] as usize, t[1] as usize, t[2] as usize], vertices)).collect();
+        let mut flags = keep.iter();
+        self.rows.retain(|_| flags.next().copied().unwrap_or(false));
+        let mut at = 0;
+        self.indices.retain(|_| { at += 1; keep[(at - 1) / 3] });
+        let mut at = 0;
+        self.authored.retain(|_| { at += 1; keep[(at - 1) / 3] });
+        let mut at = 0;
+        self.slots.retain(|_| { at += 1; keep[(at - 1) / 3] });
+        self
+    }
+}
+
+/// The same point list as [`read_point_list`], in full f64 raw file units.
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub(crate) fn read_point_list_f64(decoder: &mut EntityDecoder, id: u32) -> Result<Vec<f64>> {
+    if let Some(values) = decoder.get_raw_bytes(id).and_then(extract_coordinate_list_from_entity_f64) {
+        return Ok(values);
+    }
+    let list = decoder.decode_by_id(id)?;
+    let rows = list.attr(ifc_lite_core::slot::IfcCartesianPointList3D::COORD_LIST).and_then(AttributeValue::as_list)
+        .ok_or_else(|| Error::geometry("CartesianPointList3D missing CoordList".to_string()))?;
+    Ok(AttributeValue::parse_coordinate_list_3d_f64(rows).into_iter().flat_map(|(x, y, z)| [x, y, z]).collect())
+}
+
 /// Read an `IfcCartesianPointList3D` as flat `[x, y, z, ...]` f32 positions.
 ///
 /// With `rtc_file_units`, coordinates are read as f64 and the offset is

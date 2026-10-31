@@ -184,6 +184,7 @@ impl BrowserWorker {
             RegionQualification::Rectangle => (0, true),
             RegionQualification::OrderedRegion => (1, self.regions_qualified),
             RegionQualification::RationalDisk => (2, self.disks_qualified),
+            RegionQualification::SourceFaceSet => (3, self.disks_qualified),
             _ => (u32::MAX, false),
         };
         if !qualified {

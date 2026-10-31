@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 model	id	status	code
 rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	1215	refused	operation_unsupported
-rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	1216	refused	operation_unsupported
+rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	1216	published	
 rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	1315	refused	operation_unsupported
 rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	360	refused	operation_unsupported
 rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc	456	refused	operation_unsupported

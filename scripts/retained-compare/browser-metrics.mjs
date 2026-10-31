@@ -24,6 +24,32 @@ function canonicalTriangle(corners, pointOf) {
 }
 const triangleKey = (triangle, pointOf) => triangle.map(c => pointOf(c).join(',')).join(';');
 
+/**
+ * One view mesh per shape part, rejoining a part the view split by palette colour or
+ * textured state (#8291): meshes are consumed in order until they hold exactly the part's
+ * triangles. `null` when they cannot land on it, or a split changed the origin.
+ */
+function rejoinParts(parts, meshes) {
+  const joined = [];
+  let next = 0;
+  for (const part of parts) {
+    const first = meshes[next];
+    if (!first) return null;
+    let merged = first, count = first.indices?.length ?? 0;
+    next++;
+    while (count < part.indices.length && meshes[next]) {
+      const more = meshes[next++];
+      if (!same(more.origin, first.origin) || !same(more.rtcOffset, first.rtcOffset) || more.expressId !== first.expressId) return null;
+      const offset = merged.positions.length / 3;
+      merged = { ...merged, positions: [...merged.positions, ...more.positions],
+        indices: [...merged.indices, ...Array.from(more.indices, index => index + offset)] };
+      count += more.indices.length;
+    }
+    joined.push(merged);
+  }
+  return next === meshes.length ? joined : null;
+}
+
 export function compareView(shape, view, prepass) {
   const violations = [];
   let vertices = 0, triangles = 0, maxVertexMetres = 0, maxVertexUlps = 0;
@@ -44,9 +70,10 @@ export function compareView(shape, view, prepass) {
       if (meshProduct.meshes?.length || product.parts?.length) fail('refused product has geometry');
       continue;
     }
-    if (meshProduct.meshes.length !== product.parts.length) { fail('shape/view part count mismatch'); continue; }
+    const partMeshes = rejoinParts(product.parts, meshProduct.meshes);
+    if (!partMeshes) { fail('shape/view part count mismatch'); continue; }
     for (const [partIndex, part] of product.parts.entries()) {
-      const mesh = meshProduct.meshes[partIndex], m = part.worldFromObject;
+      const mesh = partMeshes[partIndex], m = part.worldFromObject;
       if (mesh.expressId !== product.expressId) fail('mesh belongs to another product');
       if (mesh.indices.length !== part.indices.length || mesh.positions.length !== part.indices.length * 3) {
         fail('view triangle count or unwelded vertex count mismatch'); continue;

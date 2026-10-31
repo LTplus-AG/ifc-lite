@@ -14,6 +14,7 @@ use crate::program::openings::execute::Execution;
 use crate::Mesh;
 
 mod bool2d;
+pub(super) mod exact;
 mod param_rect;
 mod prism;
 pub(super) mod rect_fast;

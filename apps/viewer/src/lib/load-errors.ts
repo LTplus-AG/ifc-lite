@@ -27,6 +27,7 @@
 
 import { isCancelledError, isNetworkUnavailableError } from './cancelled-and-network-errors.js';
 import { isFileNotFoundMessage } from './file-not-found-errors.js';
+import { isInvalidInputError } from './invalid-input-errors.js';
 import { isInvalidArchiveError } from './invalid-archive-errors.js';
 import { isWebglUnavailable } from './webgl-unavailable.js';
 import { isWorkerScriptSkewMessage } from '@ifc-lite/geometry';
@@ -97,6 +98,8 @@ export type LoadErrorKind =
    * Only the anchored parser refusals in ./invalid-archive-errors.ts qualify.
    */
   | 'invalid_archive'
+  /** Recognised content/header refusals; unreadable files keep their own kind. */
+  | 'invalid_input'
   /**
    * The WebAssembly geometry engine trapped at runtime on THIS thread — a Rust
    * panic, a failed `assert!` or an allocator abort, all of which reach JS
@@ -283,6 +286,7 @@ export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKin
   // and may contain their keywords. Only complete parser refusals claim this
   // warning-level kind; actual OOMs while decompressing keep their own kind.
   if (isInvalidArchiveError(message)) return 'invalid_archive';
+  if (isInvalidInputError(err, message)) return 'invalid_input';
   // Checked before the memory/worker buckets: a NotReadableError says nothing
   // about the model or this device's capacity, and its message ("...could not
   // be read...permission problems...") must not be mistaken for one of them.

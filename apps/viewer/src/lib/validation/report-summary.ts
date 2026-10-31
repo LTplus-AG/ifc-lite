@@ -29,6 +29,10 @@ export function reportRingCounts(summary: ReportSummary): ManualCounts {
     unanswered: Math.max(0, summary.checked - summary.passed - summary.failed - warning) };
 }
 
+/** Requirement checks have only passed and failed outcomes, so their ring has no other segment (#8417). */
+export function requirementRingCounts({ passed, total }: { passed: number; total: number }): ManualCounts {
+  return { total, pass: passed, fail: total - passed, warning: 0, unanswered: 0 };
+}
 
 /** An evaluation error is not evidence that a specification matched no entities (#8065). */
 export function isUnmatchedSpecification(applicableCount: number, error: string | undefined): boolean {

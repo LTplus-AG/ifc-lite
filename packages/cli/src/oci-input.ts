@@ -29,13 +29,13 @@ export class ModelInputError extends Error {
 }
 
 /** Loopback hosts (any port) are reached over plain http; every other host over https. */
-const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+export const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 const DEFAULT_MAX_BYTES = 1024 * 1024 * 1024;
-const CREDENTIAL_HINT =
+export const CREDENTIAL_HINT =
   'set IFC_LITE_OCI_USERNAME and IFC_LITE_OCI_PASSWORD, or IFC_LITE_OCI_TOKEN';
 const TITLE = 'org.opencontainers.image.title';
 
-type Env = Readonly<Record<string, string | undefined>>;
+export type Env = Readonly<Record<string, string | undefined>>;
 
 /** Parses an `oci://` reference with the CLI's loopback-only plain-http rule. */
 export function parseModelReference(arg: string): OciReference {
@@ -49,7 +49,7 @@ function envValue(env: Env, key: string): string | undefined {
 }
 
 /** Registry credentials from the environment, or `undefined` for anonymous pulls. */
-function credentialsFromEnv(env: Env): OciCredentials | undefined {
+export function credentialsFromEnv(env: Env): OciCredentials | undefined {
   const username = envValue(env, 'IFC_LITE_OCI_USERNAME');
   const password = envValue(env, 'IFC_LITE_OCI_PASSWORD');
   const token = envValue(env, 'IFC_LITE_OCI_TOKEN');
@@ -77,7 +77,7 @@ function maxBytesFromEnv(env: Env): number {
   return value;
 }
 
-function nodeHasher(): OciHasher {
+export function nodeHasher(): OciHasher {
   const hash = createHash('sha256');
   return {
     update: (chunk) => {

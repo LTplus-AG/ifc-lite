@@ -166,8 +166,14 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
                 resolve(operands, &lists, chord).map_err(refuse)?
             };
             if let Support::Plane { origin, normal } = operands[key.0].faces[key.1].support {
-                *normal_planar_fallbacks += usize::from(super::normals::apply_plane(
-                    part,&operands[key.0].from_part,origin,normal,face,context.resources)?);
+                let fell_back = super::normals::apply_plane(
+                    part,&operands[key.0].from_part,origin,normal,face,context.resources)?;
+                *normal_planar_fallbacks += usize::from(fell_back);
+                // An authored row has no kernel face to smooth over: a warped row keeps its
+                // facets, and a sliver with no facet of its own takes the row's plane.
+                if fell_back && operands[key.0].rows_identify_faces {
+                    super::normals::apply_row_facets(part,normal,face,context.resources)?;
+                }
             }
             for &t in face { choices[t] = key; }
         }

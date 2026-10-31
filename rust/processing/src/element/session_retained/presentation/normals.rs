@@ -37,6 +37,11 @@ pub(super) fn apply_plane(part: &mut super::super::publication::ShapePart, from_
     mesh::plane::apply(part,from_part,origin,normal,triangles,resources)
 }
 
+pub(super) fn apply_row_facets(part: &mut super::super::publication::ShapePart, row_normal: [f64;3],
+    triangles: &[usize], resources: &super::OwnedResourceContext) -> Result<(),RetainedExecutionError> {
+    mesh::plane::apply_row_facets(part,row_normal,triangles,resources)
+}
+
 fn require_frame(part: &super::super::publication::ShapePart) -> Result<(), RetainedExecutionError> {
     // M10 bakes reflections into positions and winding before generating normals.
     // An unbaked negative frame still violates the publication contract.

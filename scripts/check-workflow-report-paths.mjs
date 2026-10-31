@@ -139,6 +139,7 @@ const REPORTER_NEEDS = new Map([
   ['determinism.yml', ['arm64-determinism', 'wasm32-mesh-determinism']],
   ['export-schema-conformance.yml', ['validate', 'terrain-imagery']],
   ['field-verdict.yml', ['verdict']],
+  ['geometry-platform.yml', ['native-adapter']],
   ['ifcopenshell-parity.yml', ['full', 'cost-full']],
   ['perf-ratchet-lower.yml', ['lower']],
   ['wide-arithmetic.yml', ['wide-arithmetic-tripwire']],
@@ -237,9 +238,9 @@ export function auditRoot(root) {
         failures.push(`${displayPath(root, path)}: artifact upload does not fail when its input is absent`);
       }
     }
-    if (name === 'python-wheels.yml' || name === 'server-binaries.yml') {
+    if (name === 'python-wheels.yml' || name === 'server-binaries.yml' || name === 'geometry-platform.yml') {
       const reporter = jobs['report-red-on-main'];
-      const expected = name === 'python-wheels.yml' ? ['build', 'build-cross'] : ['validate-server-binaries', 'validate-server-binaries-cross'];
+      const expected = name === 'python-wheels.yml' ? ['build', 'build-cross'] : name === 'geometry-platform.yml' ? ['native-adapter'] : ['validate-server-binaries', 'validate-server-binaries-cross'];
       const condition = normalizeCondition(reporter?.if);
       const expectedCondition = `always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && ${nonSuccessCondition(expected)}`;
       if (!isRecord(reporter) || condition !== expectedCondition

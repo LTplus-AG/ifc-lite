@@ -2395,6 +2395,8 @@ jobs:
         run: node scripts/retained-notices.mjs --check
       - name: Check CI path coverage
         run: node scripts/check-ci-path-coverage.mjs
+      - name: Check native-adapter lane triggers cover the retained crate graph
+        run: node scripts/check-native-adapter-triggers.mjs
       # The neighbouring class, and the one the comment above names in passing:
       # a skipped job counts as success in the aggregate `test` gate, so a job
       # that is in its `needs:` but MISSING from its results map is unjudged --

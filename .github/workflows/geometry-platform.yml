@@ -1,12 +1,33 @@
 # SPDX-License-Identifier: MPL-2.0
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
 # worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
-# this workflow is path-filtered to them and is intentionally NOT a required check.
+# this workflow is path-filtered to them. It runs on PRs, on pushes to main and
+# nightly with the corpus; making it a required check is a maintainer ruleset setting.
 name: Geometry platform (native adapter)
 
 on:
-  pull_request:
+  # Guards main with the same paths as pull requests; a red push opens an issue.
+  push:
+    branches: [main]
     paths:
+      # Every crate in the retained engine's path-dependency closure, derived from
+      # the Cargo manifests and held by scripts/check-native-adapter-triggers.mjs.
+      # Directory-wide, not exact paths: shared exact-engine code (geometry/src/processors,
+      # core, processing/src/style) feeds retained parity too (#7955).
+      - 'rust/clash/**'
+      - 'rust/core/**'
+      - 'rust/export/**'
+      - 'rust/geometry/**'
+      - 'rust/geometry-runtime/**'
+      - 'rust/landxml/**'
+      - 'rust/processing/**'
+      - 'rust/retained-native/**'
+      - 'rust/testkit/**'
+      - 'rust/wasm-bindings/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
       - 'native/**'
       # M2-D builds and drives the real opt-in viewer.
       - 'apps/viewer/**'
@@ -14,35 +35,15 @@ on:
       - 'tests/benchmark/frames/**'
       - 'playwright.config.ts'
       - 'tests/evidence/m2-d/**'
-      - 'rust/geometry-runtime/**'
-      - 'rust/retained-native/**'
-      - 'rust/processing/tests/fixtures/issue_2019_*'
-      - 'rust/processing/tests/fixtures/issue_3641_*'
-      - 'rust/processing/src/processor/**'
-      - 'rust/processing/src/element/session_retained/**'
-      - 'rust/geometry/src/program/retained/**'
-      - 'rust/geometry/tests/m3_*'
-      - 'rust/geometry/tests/support/m3_opening_fixtures.rs'
-      - 'rust/processing/tests/m3_*'
-      - 'rust/processing/src/element.rs'
-      - 'rust/processing/Cargo.toml'
       - 'tests/fixtures/cli-retained/**'
       - 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc'
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
       - 'tests/models/manifest.json'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
       # Retained requests the worker executes are lowered here.
-      - 'rust/geometry/src/document/**'
-      - 'rust/geometry/src/program/**'
-      - 'rust/geometry/tests/m*'
       # Shared test fixtures (CUT-0 prisms) used by the native and Worker witnesses.
-      - 'rust/geometry/tests/support/**'
-      - 'rust/processing/tests/m*'
       - 'tests/manifests/cli-retained-coverage.d/**'
       - 'tests/evidence/*/witnesses.txt'
-      - 'rust/geometry/src/analytic/**'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/stage-retained-runtime-peer.mjs'
@@ -68,26 +69,90 @@ on:
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
-      - 'rust/wasm-bindings/src/retained_browser/**'
       # M2-A streaming session and view meshes.
-      - 'rust/wasm-bindings/src/api/retained_*.rs'
-      - 'rust/wasm-bindings/src/retained_view.rs'
-      - 'rust/wasm-bindings/js/**'
       # Feature wiring for the retained-browser build (the wasm32 path
       # only these actual-Worker lanes exercise).
-      - 'rust/wasm-bindings/Cargo.toml'
-      - 'rust/wasm-bindings/src/lib.rs'
-      - 'rust/geometry/Cargo.toml'
-      - 'rust/wasm-bindings/src/api/retained_browser.rs'
-      - 'rust/wasm-bindings/tests/retained-browser/**'
       - 'scripts/retained-browser-contract.mjs'
       # The actual-Worker contract serves the geometry fixture directory to the browser.
-      - 'rust/geometry/tests/fixtures/**'
       - 'scripts/build-wasm.sh'
       - 'packages/wasm/retained.*'
       - 'packages/wasm/pkg-retained/**'
       - 'packages/wasm/test/retained-browser.test.mjs'
       - '.github/workflows/geometry-platform.yml'
+  pull_request:
+    paths:
+      # Every crate in the retained engine's path-dependency closure, derived from
+      # the Cargo manifests and held by scripts/check-native-adapter-triggers.mjs.
+      # Directory-wide, not exact paths: shared exact-engine code (geometry/src/processors,
+      # core, processing/src/style) feeds retained parity too (#7955).
+      - 'rust/clash/**'
+      - 'rust/core/**'
+      - 'rust/export/**'
+      - 'rust/geometry/**'
+      - 'rust/geometry-runtime/**'
+      - 'rust/landxml/**'
+      - 'rust/processing/**'
+      - 'rust/retained-native/**'
+      - 'rust/testkit/**'
+      - 'rust/wasm-bindings/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'native/**'
+      # M2-D builds and drives the real opt-in viewer.
+      - 'apps/viewer/**'
+      - 'tests/e2e/retained-viewer.e2e.spec.ts'
+      - 'tests/benchmark/frames/**'
+      - 'playwright.config.ts'
+      - 'tests/evidence/m2-d/**'
+      - 'tests/fixtures/cli-retained/**'
+      - 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc'
+      - 'tests/fixtures/synthetic-retained/**'
+      - 'tests/manifests/cli-retained-coverage.tsv'
+      - 'tests/models/manifest.json'
+      # Retained requests the worker executes are lowered here.
+      # Shared test fixtures (CUT-0 prisms) used by the native and Worker witnesses.
+      - 'tests/manifests/cli-retained-coverage.d/**'
+      - 'tests/evidence/*/witnesses.txt'
+      # Browser module-Worker staging and its actual-Worker probe.
+      - 'scripts/stage-retained-browser-assets.mjs'
+      - 'scripts/stage-retained-runtime-peer.mjs'
+      - 'scripts/lib/__fixtures__/retained-driver/**'
+      - 'scripts/stage-cli-retained-engine.mjs'
+      - 'scripts/stage-cli-retained-engine.test.mjs'
+      - 'scripts/cli-retained-engine/**'
+      - 'scripts/retained-compare/**'
+      - 'packages/cli/**'
+      - 'packages/**'
+      - 'shared/**'
+      - 'scripts/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'turbo.json'
+      - 'tsconfig*.json'
+      - 'scripts/smlib-node-transport.test.mjs'
+      - 'scripts/lib/__fixtures__/smlib-node/**'
+      - 'tests/evidence/m1-f1/**'
+      - 'LICENSE'
+      - 'licenses/retained/**'
+      - 'scripts/smlib-browser-worker-probe.mjs'
+      - 'scripts/wasm-test-mime-driver.mjs'
+      # The browser executor lives in the published wasm crate.
+      # M2-A streaming session and view meshes.
+      # Feature wiring for the retained-browser build (the wasm32 path
+      # only these actual-Worker lanes exercise).
+      - 'scripts/retained-browser-contract.mjs'
+      # The actual-Worker contract serves the geometry fixture directory to the browser.
+      - 'scripts/build-wasm.sh'
+      - 'packages/wasm/retained.*'
+      - 'packages/wasm/pkg-retained/**'
+      - 'packages/wasm/test/retained-browser.test.mjs'
+      - '.github/workflows/geometry-platform.yml'
+  # Nightly, with the downloaded corpus. The corpus is not run per PR or push.
+  schedule:
+    - cron: '41 2 * * *'
   workflow_dispatch:
     inputs:
       corpus:
@@ -106,6 +171,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
+      - name: Guard the lane's own triggers
+        run: node scripts/check-native-adapter-triggers.mjs
       - name: Checkout pinned upstream SDK (fetched, never vendored)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -201,10 +268,10 @@ jobs:
             grep -E "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/m3-native.log"
           done
       - name: Download optional corpus
-        if: inputs.corpus == true
+        if: inputs.corpus == true || github.event_name == 'schedule'
         run: corepack enable && pnpm fixtures
       - name: Optional retained native corpus
-        if: inputs.corpus == true
+        if: inputs.corpus == true || github.event_name == 'schedule'
         run: |
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json
@@ -395,7 +462,7 @@ jobs:
           node scripts/check-viewer-retained-free.mjs
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default
       - name: Optional retained browser corpus (report only)
-        if: inputs.corpus == true
+        if: inputs.corpus == true || github.event_name == 'schedule'
         continue-on-error: true
         run: |
           node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
@@ -439,3 +506,43 @@ jobs:
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done
           exit "$failed"
+
+  # A red nightly or main run must not scroll by: open or update one issue.
+  report-scheduled-failure:
+    needs: [native-adapter]
+    if: always() && github.event_name == 'schedule' && needs.native-adapter.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Geometry platform (native adapter)
+      jobs: native-adapter
+      result: native-adapter=${{ needs.native-adapter.result }}
+    permissions:
+      contents: read
+      issues: write
+
+  report-red-on-main:
+    name: Open an issue when main is red
+    needs: [native-adapter]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native-adapter.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          title="ci: geometry-platform native adapter is red on main"
+          body="The retained native-adapter lane failed on push to main at ${SHA}. Run: ${RUN_URL}"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\") | .number] | first // empty")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+            echo "updated #$existing"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi

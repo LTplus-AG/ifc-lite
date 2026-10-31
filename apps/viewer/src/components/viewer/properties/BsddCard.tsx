@@ -26,6 +26,7 @@ import {
   type BsddClassProperty,
 } from '@/services/bsdd';
 import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
+import { BsddQuantityAdd } from './BsddQuantityAdd.js';
 import { formatLocaleNumber, localeCount, useTranslation } from '@/i18n';
 // ---------------------------------------------------------------------------
 // Helpers for Qto_* (quantity set) detection and mapping
@@ -179,7 +180,7 @@ export function BsddCard({
   }, []);
 
   const handleAddProperty = useCallback(
-    (psetName: string, prop: BsddClassProperty) => {
+    (psetName: string, prop: BsddClassProperty, quantityValue?: number) => {
       let normalizedModelId = modelId;
       if (modelId === 'legacy') normalizedModelId = '__legacy__';
 
@@ -189,13 +190,16 @@ export function BsddCard({
         // afterwards in the Properties tab (issue #1107).
         storeSetAttribute(normalizedModelId, entityId, prop.name, '');
       } else if (isQuantitySet(psetName)) {
-        // Route Qto_* through quantity creation
+        // Route Qto_* through quantity creation. A quantity has no "empty": its
+        // measure is a mandatory REAL the exporter refuses to invent (#7679), and
+        // no surface can fill one in later, so the row supplies the value (#8407).
+        if (quantityValue === undefined) return;
         const qType = inferQuantityType(prop.units);
         const qsetExists = existingQsets.includes(psetName);
 
         if (!qsetExists) {
           createQuantitySet(normalizedModelId, entityId, psetName, [
-            { name: prop.name, value: NaN, quantityType: qType, unit: prop.units?.[0] },
+            { name: prop.name, value: quantityValue, quantityType: qType, unit: prop.units?.[0] },
           ]);
         } else {
           setQuantity(
@@ -203,7 +207,7 @@ export function BsddCard({
             entityId,
             psetName,
             prop.name,
-            NaN,
+            quantityValue,
             qType,
             prop.units?.[0],
           );
@@ -244,13 +248,9 @@ export function BsddCard({
       const isAttrGroup = psetName === BSDD_ATTRIBUTES_GROUP;
 
       // Determine which "existing" set to check against
-      const existingSet = isAttrGroup
-        ? existingAttributes
-        : isQuantitySet(psetName)
-          ? existingQuants
-          : existingProps;
+      const existingSet = isAttrGroup ? existingAttributes : existingProps;
 
-      // For attributes, key is just the name; for props/quants, key is "PsetName:PropName"
+      // For attributes, key is just the name; for props, key is "PsetName:PropName"
       const toAdd = props.filter(
         (p) => {
           const key = isAttrGroup ? p.name : `${psetName}:${p.name}`;
@@ -264,35 +264,6 @@ export function BsddCard({
         // Route entity-level attributes
         for (const p of toAdd) {
           storeSetAttribute(normalizedModelId, entityId, p.name, '');
-        }
-      } else if (isQuantitySet(psetName)) {
-        // Route Qto_* through quantity creation
-        const qsetExists = existingQsets.includes(psetName);
-
-        if (!qsetExists) {
-          createQuantitySet(
-            normalizedModelId,
-            entityId,
-            psetName,
-            toAdd.map((p) => ({
-              name: p.name,
-              value: NaN,
-              quantityType: inferQuantityType(p.units),
-              unit: p.units?.[0],
-            })),
-          );
-        } else {
-          for (const p of toAdd) {
-            setQuantity(
-              normalizedModelId,
-              entityId,
-              psetName,
-              p.name,
-              NaN,
-              inferQuantityType(p.units),
-              p.units?.[0],
-            );
-          }
         }
       } else {
         const added = addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, psetName,
@@ -309,13 +280,13 @@ export function BsddCard({
 
       // Same as single-add: stay put, arm a one-shot focus on the first new
       // property (Pset_* only — attributes/quantities aren't inline-editable).
-      const isEditableProps = !isAttrGroup && !isQuantitySet(psetName);
+      const isEditableProps = !isAttrGroup;
       if (isEditableProps) {
         setPendingPropertyFocus({ modelId, entityId, psetName, propName: toAdd[0].name });
       }
       toast.success(t(isEditableProps ? 'properties.bsdd.addedManyWithFollowUp' : 'properties.bsdd.addedMany', { ...localeCount(locale, toAdd.length), pset: psetName }));
     },
-    [modelId, entityId, existingPsets, inheritedFrom, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus, locale],
+    [modelId, entityId, existingPsets, inheritedFrom, existingProps, existingAttributes, addedKeys, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus, locale],
   );
 
   // The deliberate "take me to what I just added" action behind the card's
@@ -433,7 +404,8 @@ export function BsddCard({
               <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-400 shrink-0">
                 {formatLocaleNumber(locale, props.length)}
               </span>
-              {addableCount > 0 && (
+              {/* A quantity needs its own value, so a Qto_* set has no bulk add (#8407). */}
+              {addableCount > 0 && !isQto && (
                 <IconButton
                   label={t('properties.bsdd.addAllTooltip', localeCount(locale, addableCount))}
                   className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
@@ -487,6 +459,8 @@ export function BsddCard({
                           edited afterwards in the Properties tab (issue #1107). */}
                       {alreadyExists ? (
                         <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                      ) : isQto ? (
+                        <BsddQuantityAdd name={prop.name} onAdd={(value) => handleAddProperty(psetName, prop, value)} />
                       ) : (
                         <IconButton
                           label={t('properties.bsdd.addToElementTooltip')}

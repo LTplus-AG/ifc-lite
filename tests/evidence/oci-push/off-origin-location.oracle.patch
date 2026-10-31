@@ -1,0 +1,25 @@
+diff --git a/packages/oci/src/push.ts b/packages/oci/src/push.ts
+--- a/packages/oci/src/push.ts
++++ b/packages/oci/src/push.ts
+@@ -39,6 +39,9 @@ export function uploadTarget(location: string, requestUrl: string, origin: strin
+     throw new OciError('PROTOCOL', `${what}: unparseable upload Location`, { cause: err });
+   }
+   if (url.username || url.password) throw new OciError('PROTOCOL', `${what}: upload Location carries userinfo`);
++  if (url.origin !== origin) {
++    throw new OciError('PROTOCOL', `${what}: upload Location points to another origin (${url.origin}); refusing to send the blob there`);
++  }
+   url.hash = '';
+   const base = url.href.endsWith('?') ? url.href.slice(0, -1) : url.href;
+   return `${base}${url.search === '' ? '?' : '&'}digest=${encodeURIComponent(digest)}`;
+diff --git a/packages/oci/src/transport.ts b/packages/oci/src/transport.ts
+--- a/packages/oci/src/transport.ts
++++ b/packages/oci/src/transport.ts
+@@ -128,7 +128,7 @@ export interface SendOnceOptions {
+  */
+ export async function sendOnce(url: string, options: SendOnceOptions): Promise<FollowResult> {
+   const headers: Record<string, string> = { ...options.headers };
+-  if (options.authorization !== undefined) {
++  if (options.authorization !== undefined && new URL(url).origin === options.registryOrigin) {
+     headers.authorization = options.authorization;
+   }
+   const response = await guardedFetch(options.fetch, url, {

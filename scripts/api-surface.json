@@ -7759,6 +7759,7 @@
     "waitForOAuthCallback: function"
   ],
   "@ifc-lite/oci": [
+    "OciBuiltManifest: interface",
     "OciClient: class",
     "OciClientOptions: interface",
     "OciCredentials: type",
@@ -7766,11 +7767,16 @@
     "OciError: class",
     "OciErrorCode: type",
     "OciHasher: interface",
+    "OciImageManifestInput: interface",
     "OciIndex: interface",
     "OciManifest: interface",
     "OciManifestResult: interface",
+    "OciPushManifestOptions: interface",
+    "OciPushedBlob: interface",
+    "OciPushedManifest: interface",
     "OciReference: interface",
     "OciRepositoryRef: type",
+    "buildImageManifest: function",
     "parseReference: function"
   ],
   "@ifc-lite/opencde-foundation": [

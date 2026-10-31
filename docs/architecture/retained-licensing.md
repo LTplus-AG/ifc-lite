@@ -275,7 +275,10 @@ When only Cargo closures changed, `--refresh --cargo-only` reuses the committed 
 and toolchain components instead (see the
 [release runbook](../guide/retained-release.md#refreshing-retained-notices-after-a-dependency-change)):
 it fails closed if the manifest digest, the SDK/emsdk/Emscripten/Rust pins or the
-component layout do not match. `--write` cannot bypass the digest.
+component layout do not match, or if a reused entry is not the one a pin names
+(SMLib revision, Emscripten version, and the Rust standard library against the
+installed pinned toolchain's `rustc --version`). The emsdk commit is bound only through
+the unchanged `inputs` pin, since no component records it. `--write` cannot bypass the digest.
 
 Refresh reads actual installed licence files and preserves byte hashes, including
 line endings. Review changed pins, missing texts and supplemental sources before

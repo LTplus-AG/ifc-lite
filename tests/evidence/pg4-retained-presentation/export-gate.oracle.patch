@@ -1,8 +1,7 @@
 diff --git a/apps/viewer/src/components/viewer/ExportDialog.tsx b/apps/viewer/src/components/viewer/ExportDialog.tsx
-index b6c1a46963..9093aee348 100644
 --- a/apps/viewer/src/components/viewer/ExportDialog.tsx
 +++ b/apps/viewer/src/components/viewer/ExportDialog.tsx
-@@ -412,7 +412,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
+@@ -415,7 +415,7 @@
          // IFC5 carries the meshes the viewer holds; a retained model that is incomplete or shape-only would export
          // them as if they were the model (the same guard the GLB/KMZ/USD ribbon commands use).
          const federatedModel = models.get(selectedModelId);
@@ -12,35 +11,55 @@ index b6c1a46963..9093aee348 100644
          }
          const idOffset = federatedModel?.idOffset ?? 0;
 diff --git a/apps/viewer/src/components/viewer/GLBExportDialog.tsx b/apps/viewer/src/components/viewer/GLBExportDialog.tsx
-index 1b337f4c91..b0a5553949 100644
 --- a/apps/viewer/src/components/viewer/GLBExportDialog.tsx
 +++ b/apps/viewer/src/components/viewer/GLBExportDialog.tsx
-@@ -201,6 +201,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
+@@ -163,7 +163,7 @@
+   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+     // #8415: the dialog can stay open while the selected model changes kernels.
+     const live = useViewerStore.getState().models.get(selectedModelId);
+-    if (false && live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
++    if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
+       return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+     }
+     if (!selectedModel?.geometryResult) {
+@@ -201,7 +201,8 @@
        // A retained-kernel model never re-meshes its file (the exact engine's geometry is not the one on screen): it
        // takes the held meshes.
        const canUseSource =
+-                !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
 +        !federatedModel?.retainedGeometry &&
-         !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
++        !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
          colorSource === 'rendering' && !mergeLayers && idOffset === 0 && !!sourceFile &&
          /\.ifc$/i.test(sourceFile.name);
+
+diff --git a/apps/viewer/src/components/viewer/KmzExportDialog.tsx b/apps/viewer/src/components/viewer/KmzExportDialog.tsx
+--- a/apps/viewer/src/components/viewer/KmzExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/KmzExportDialog.tsx
+@@ -147,7 +147,7 @@
+   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+     // #8415: the model can become incomplete while this dialog is already open.
+     const live = useViewerStore.getState().models.get(selectedModelId);
+-    if (false && live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
++    if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
+       return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+     }
+     if (!selectedModel) {
 diff --git a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
-index 1f5c271bc3..ec3bc69e03 100644
 --- a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
 +++ b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
-@@ -171,7 +171,7 @@ export function useExportCommands(surface: ExportSurface) {
+@@ -172,7 +172,7 @@
    const commands = useMemo<ResolvedExportCommand[]>(
      () => EXPORT_COMMANDS.map((command) => shapeOnly && MESH_DERIVED_EXPORTS.has(command.id)
        ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
--      : false && retained && EXACT_ONLY_EXPORTS.has(command.id)
-+      : retained && EXACT_ONLY_EXPORTS.has(command.id)
+-      : (false && retained && EXACT_ONLY_EXPORTS.has(command.id)) || (retainedSection && command.id === 'ifc')
++      : (retained && EXACT_ONLY_EXPORTS.has(command.id)) || (retainedSection && command.id === 'ifc')
        ? { command, disabled: true, disabledReasonKey: RETAINED_EXACT_ONLY_REASON }
        : {
          command,
 diff --git a/apps/viewer/src/utils/instancedExport.ts b/apps/viewer/src/utils/instancedExport.ts
-index 7379f45894..c07c17bd2b 100644
 --- a/apps/viewer/src/utils/instancedExport.ts
 +++ b/apps/viewer/src/utils/instancedExport.ts
-@@ -116,6 +116,6 @@ export function resolveInstancedExportGate(
+@@ -116,6 +116,6 @@
      ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }
      : null;
    // An incomplete or shape-only retained model would export its partial meshes as the model (#7955).
@@ -48,3 +67,39 @@ index 7379f45894..c07c17bd2b 100644
 +  const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(models);
    return { instancedModelRange, canExport };
  }
+diff --git a/apps/viewer/src/components/viewer/UsdExportDialog.tsx b/apps/viewer/src/components/viewer/UsdExportDialog.tsx
+--- a/apps/viewer/src/components/viewer/UsdExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/UsdExportDialog.tsx
+@@ -89,7 +89,7 @@
+
+   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+     // #8415: a dialog can stay open while a model switches kernels; recheck the live launch policy.
+-    if (false && hasRetainedGeometryModel(useViewerStore.getState().models)) {
++    if (hasRetainedGeometryModel(useViewerStore.getState().models)) {
+       return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+     }
+     if (!selectedModel?.sourceFile) {
+diff --git a/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx b/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx
+--- a/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx
+@@ -109,7 +109,7 @@
+
+   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+     // #8415: a dialog can stay open while a model switches kernels; recheck the live launch policy.
+-    if (false && hasRetainedGeometryModel(useViewerStore.getState().models)) {
++    if (hasRetainedGeometryModel(useViewerStore.getState().models)) {
+       return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+     }
+     if (!selectedModel) {
+diff --git a/apps/viewer/src/components/viewer/CesiumIonExportDialog.tsx b/apps/viewer/src/components/viewer/CesiumIonExportDialog.tsx
+--- a/apps/viewer/src/components/viewer/CesiumIonExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/CesiumIonExportDialog.tsx
+@@ -64,7 +64,7 @@
+     try {
+       // Resolve again at invocation: never export a removed model or stale view.
+       const state = useViewerStore.getState();
+-      if (false && hasRetainedGeometryModel(state.models)) {
++      if (hasRetainedGeometryModel(state.models)) {
+         return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+       }
+       const model = resolveExportModel(state.models, selectedId, state.ifcDataStore, state.geometryResult);

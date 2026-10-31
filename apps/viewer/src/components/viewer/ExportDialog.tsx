@@ -56,7 +56,7 @@ import { listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
-import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
+import { hasRetainedSectionExport, RETAINED_EXACT_ONLY_REASON, hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 import { ExportDialogScopeOptions } from './export-dialog-scope-options';
 import { ExportDialogSchemaOptions } from './export-dialog-schema-options';
@@ -290,6 +290,9 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    if (!isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState())) {
+      return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+    }
     if (!schema || (exportScope === 'single' && !selectedModel)) {
       return { success: false, message: t('exportDialog.notReadyError') };
     }

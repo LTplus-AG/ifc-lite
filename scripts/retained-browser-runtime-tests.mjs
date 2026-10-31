@@ -12,7 +12,7 @@ try {
   console.log('SMLib-free runtime tests: inert protocol peer; no geometry or parity evidence');
   const child = spawn('wasm-pack', ['test', '--headless', '--chrome', '--chromedriver',
     `${root}scripts/wasm-test-mime-driver.mjs`, 'rust/wasm-bindings', '--lib',
-    '--features', 'retained-browser', '--', process.argv[2] ?? 'retained_browser_smlib_free'], {
+    '--features', 'retained-browser', '--', ...(process.argv.length > 2 ? process.argv.slice(2) : ['retained_browser_smlib_free'])], {
     cwd: root, stdio: 'inherit', env: { ...process.env, WASM_BINDGEN_TEST_TIMEOUT: '120' },
   });
   process.exitCode = await new Promise((resolve, reject) => {

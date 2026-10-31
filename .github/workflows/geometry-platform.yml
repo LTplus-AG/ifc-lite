@@ -308,6 +308,8 @@ jobs:
         run: |
           node scripts/smlib-browser-worker-probe.mjs --build "$RUNNER_TEMP/smlib-wasm" \
             --sdk "$GITHUB_WORKSPACE/upstream-smlib"
+      - name: Retained finish join allocation and equality witnesses
+        run: cargo test -p ifc-lite-processing --features retained-runtime --test retained_finishes_from_source -- --nocapture
       - name: Strict Clippy and unit tests with the opt-in retained-browser feature
         id: retained-clippy
         continue-on-error: true

@@ -1,0 +1,24 @@
+diff --git a/apps/viewer/src/components/viewer/ExportDialog.tsx b/apps/viewer/src/components/viewer/ExportDialog.tsx
+--- a/apps/viewer/src/components/viewer/ExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/ExportDialog.tsx
+@@ -290,7 +290,7 @@
+   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
+ 
+   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+-    if (false && !isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState())) {
++    if (!isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState())) {
+       return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+     }
+     if (!schema || (exportScope === 'single' && !selectedModel)) {
+diff --git a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
+--- a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
++++ b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
+@@ -172,7 +172,7 @@
+   const commands = useMemo<ResolvedExportCommand[]>(
+     () => EXPORT_COMMANDS.map((command) => shapeOnly && MESH_DERIVED_EXPORTS.has(command.id)
+       ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
+-      : (retained && EXACT_ONLY_EXPORTS.has(command.id)) || (false && retainedSection && command.id === 'ifc')
++      : (retained && EXACT_ONLY_EXPORTS.has(command.id)) || (retainedSection && command.id === 'ifc')
+       ? { command, disabled: true, disabledReasonKey: RETAINED_EXACT_ONLY_REASON }
+       : {
+         command,

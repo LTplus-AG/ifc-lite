@@ -15,4 +15,5 @@ test('retained session publishes without rescanning finishes (#8415)', {
   assert.equal(run.error, undefined, run.error?.message);
   assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
   assert.match(run.stdout, /test result: ok\. 1 passed/);
+  assert.match(run.stdout, /retained session scan witness: published meshes, zero finish rescans/);
 });

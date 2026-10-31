@@ -1,22 +1,16 @@
-diff --git a/rust/processing/src/style/finish_join.rs b/rust/processing/src/style/finish_join.rs
-index ae3e9eab00..7ded96b2ac 100644
---- a/rust/processing/src/style/finish_join.rs
-+++ b/rust/processing/src/style/finish_join.rs
-@@ -186,8 +186,7 @@ impl<'c> ModelFinishes<'c> {
-     /// Equal to [`Self::from_content`] over `source.bytes()`, without that scan or its second index
-     /// (about 16 bytes per entity of heap, ~100-200 MB on a large model).
-     pub fn from_source(source: &'c std::sync::Arc<ifc_lite_core::SourceBundle>, styled_items: &[Span]) -> Self {
--        let _ = styled_items;
--        Self::from_content(source.bytes())
-+        Self::from_spans(styled_items, source.decoder())
-     }
- 
-     /// The same join over a scan already done: the file's styled-item spans
 diff --git a/rust/wasm-bindings/src/api/retained_session.rs b/rust/wasm-bindings/src/api/retained_session.rs
-index efceb8777b..1ee96ac7e2 100644
 --- a/rust/wasm-bindings/src/api/retained_session.rs
 +++ b/rust/wasm-bindings/src/api/retained_session.rs
-@@ -189,7 +189,7 @@ fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut
+@@ -70,7 +70,7 @@
+     ) -> Result<RetainedRunSummary, JsValue> {
+         let (options, view) = parse_options(&options)?;
+         let source = SourceBundle::new(content);
+-        let (jobs, styled_items) = (ifc_lite_processing::element::retained_runtime::canonical_element_jobs(&source), Vec::new());
++        let (jobs, styled_items) = canonical_element_jobs_and_styled_items(&source);
+         let candidate_ids: Vec<u32> = jobs
+             .into_iter()
+             .map(|(id, _)| id)
+@@ -189,7 +189,7 @@
              let mut meshes = MeshCollection::with_capacity(product.parts.len());
              meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
              for mesh in view_meshes(&product, rtc) {

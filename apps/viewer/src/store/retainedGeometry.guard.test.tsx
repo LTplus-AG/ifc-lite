@@ -121,3 +121,15 @@ for (const retained of [false, true]) {
     for (const id of ['glb', 'kmz']) assert.equal(exportState(id).disabled, false, id);
   });
 }
+
+// #8415: sectioned STEP re-meshes exactly, unlike ordinary source-based STEP export.
+for (const retained of [false, true]) {
+  it(`sectioned IFC launch ${retained ? 'refuses retained geometry' : 'keeps exact geometry available'}`, async () => {
+    await seed(retained);
+    act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: true } }));
+    render(<ExportProbe />);
+    assert.deepEqual(exportState('ifc'), { disabled: retained, reason: retained ? RETAINED_EXACT_ONLY_REASON : undefined });
+    act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: false }, inactiveSectionPlanes: [] }));
+    assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined }, 'unsectioned STEP remains available');
+  });
+}

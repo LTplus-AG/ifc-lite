@@ -77,3 +77,14 @@ export function hasRetainedShapeOnlyModel(models: ReadonlyMap<string, { retained
     || model.retainedGeometry.published === 0)) return true;
   return false;
 }
+
+/** Sectioned STEP rebuilds exact tessellation; reject it for a retained session (#8415). */
+export function hasRetainedSectionExport(state: {
+  models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>;
+  sectionPlane: { enabled: boolean };
+  inactiveSectionPlanes: ReadonlyArray<{ enabled: boolean }>;
+  sceneState?: { section?: { visible?: boolean } };
+}): boolean {
+  return hasRetainedGeometryModel(state.models) && (state.sceneState?.section?.visible ?? true)
+    && (state.sectionPlane.enabled || state.inactiveSectionPlanes.some(plane => plane.enabled));
+}

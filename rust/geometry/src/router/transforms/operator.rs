@@ -116,14 +116,11 @@ pub(crate) fn parse_transformation_operator(
     // ignoring it silently un-mirrored those items. The agreeing case keeps
     // the exact cross-product bits, so the frozen output corpus is
     // bit-identical. #1985
-    //
-    // An OMITTED 3D Axis2 is not Z × X: IfcSecondProjAxis defaults it to the
-    // constant +Y and projects that, so Axis1 = -X (or Axis3 = -Z) with no
-    // Axis2 is a mirror, as IfcOpenShell builds it (#8308). Feeding +Y through
-    // the authored branch keeps `$` and an authored (0,1,0) bit-identical, and
-    // a +Y that projects to nothing (it lies in the Z-X plane, which the schema
-    // leaves undefined) keeps Z × X. The 2D form differs: IfcBaseAxis takes an
-    // omitted 2D Axis2 as IfcOrthogonalComplement(Axis1), which is Z × X.
+    // An OMITTED 3D Axis2 is IfcSecondProjAxis' constant +Y, projected: with
+    // Axis1 = -X (or Axis3 = -Z) it is a mirror, as in IfcOpenShell (#8308).
+    // Taking the authored branch keeps `$` and (0,1,0) bit-identical; a +Y in
+    // the Z-X plane (undefined) keeps Z × X. An omitted 2D Axis2 is
+    // IfcOrthogonalComplement(Axis1), i.e. Z × X.
     let cross_y = z_axis.cross(&x_axis).normalize();
     let y_arg = match y_axis_raw {
         None if !is_2d => Some(Vector3::new(0.0, 1.0, 0.0)),

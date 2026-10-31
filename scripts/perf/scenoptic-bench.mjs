@@ -20,7 +20,7 @@
  * admission on an otherwise idle host with a physical GPU.
  *
  *   DISPLAY=:97 node scripts/perf/scenoptic-bench.mjs \
- *     --dist apps/viewer/dist [--dist-base /abs/base/dist] \
+ *     --dist apps/viewer/dist [--dist-base /abs/base/dist] [--build name=/abs/dist ...] \
  *     --set test1=/abs/sixty5.ifc [--set fed=/abs/a.ifc,/abs/b.ifc] \
  *     [--rounds 3] [--orbit-s 20] [--out /abs/dir] [--no-orbit] [--no-warm]
  *
@@ -43,15 +43,15 @@ const { chromium } = require('@playwright/test');
 
 // ---------------------------------------------------------------- args
 const argv = process.argv.slice(2);
-const opt = { set: [], rounds: 3, 'orbit-s': 20, width: 1920, height: 1080 };
+const opt = { set: [], build: [], rounds: 3, 'orbit-s': 20, width: 1920, height: 1080 };
 for (let i = 0; i < argv.length; i++) {
   const key = argv[i].replace(/^--/, '');
   if (key === 'no-orbit' || key === 'no-warm') { opt[key] = true; continue; }
   // --profile cold,warm,orbit: main-thread CPU profile per phase (build with VITE_SOURCEMAP=1 to symbolize).
   const value = argv[++i];
-  if (key === 'set') opt.set.push(value); else opt[key] = value;
+  if (key === 'set') opt.set.push(value); else if (key === 'build') opt.build.push(value); else opt[key] = value;
 }
-if (!opt.dist || opt.set.length === 0) {
+if ((!opt.dist && opt.build.length === 0) || opt.set.length === 0) {
   console.error('usage: scenoptic-bench.mjs --dist DIR [--dist-base DIR] --set name=a.ifc[,b.ifc] [--rounds N]');
   process.exit(2);
 }
@@ -68,8 +68,10 @@ const SETS = opt.set.map((s) => {
   for (const f of list) if (!existsSync(f)) throw new Error(`missing fixture ${f}`);
   return { name, files: list, bytes: list.reduce((n, f) => n + statSync(f).size, 0) };
 });
-const BUILDS = [{ id: 'branch', dist: resolve(opt.dist) }];
+// The first build is the reference every ratio is taken against.
+const BUILDS = opt.dist ? [{ id: 'branch', dist: resolve(opt.dist) }] : [];
 if (opt['dist-base']) BUILDS.unshift({ id: 'base', dist: resolve(opt['dist-base']) });
+for (const b of opt.build) { const [id, dir] = b.split('='); BUILDS.push({ id, dist: resolve(dir) }); }
 const PROFILE = new Set((opt.profile ?? '').split(',').filter(Boolean));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
@@ -337,7 +339,7 @@ log(`scenoptic-bench: ${BUILDS.map((b) => `${b.id}=${b.dist}`).join(' ')} -> ${O
 const samples = [];
 for (let round = 0; round < ROUNDS; round++) {
   for (const set of SETS) {
-    // ABBA: alternate which build goes first each round.
+    // Rotate which build goes first each round (ABBA for two builds).
     const order = round % 2 === 0 ? BUILDS : [...BUILDS].reverse();
     for (const build of order) samples.push(await runSample(build, set, round));
   }
@@ -354,15 +356,16 @@ const METRICS = [
   ['orbit CPU ms/frame', (s) => s.orbit?.cpuMsPerFrame],
 ];
 const summary = {};
-const lines = [`| set | metric | ${BUILDS.map((b) => b.id).join(' | ')}${BUILDS.length > 1 ? ' | branch/base' : ''} |`,
-  `|---|---|${BUILDS.map(() => '---|').join('')}${BUILDS.length > 1 ? '---|' : ''}`];
+const lines = [`| set | metric | ${BUILDS.map((b, i) => i ? `${b.id} | ×` : b.id).join(' | ')} |`,
+  `|---|---|${BUILDS.map((_, i) => i ? '---|---|' : '---|').join('')}`];
 for (const set of SETS) {
   for (const [name, get] of METRICS) {
     const vals = BUILDS.map((b) => median(samples.filter((s) => s.build === b.id && s.set === set.name && !s.error).map(get)));
     if (vals.every((v) => v === null)) continue;
     (summary[set.name] ??= {})[name] = Object.fromEntries(BUILDS.map((b, i) => [b.id, vals[i]]));
-    const ratio = BUILDS.length > 1 && vals[0] ? `${(vals[1] / vals[0]).toFixed(2)}x` : '';
-    lines.push(`| ${set.name} | ${name} | ${vals.map((v) => fmt(v, name.includes('GPU') || name.includes('cores') ? 2 : 0)).join(' | ')}${BUILDS.length > 1 ? ` | ${ratio}` : ''} |`);
+    const digits = name.includes('GPU') || name.includes('cores') ? 2 : 0;
+    const cells = vals.map((v, i) => i ? `${fmt(v, digits)} | ${vals[0] && v !== null ? (v / vals[0]).toFixed(2) : 'n/a'}` : fmt(v, digits));
+    lines.push(`| ${set.name} | ${name} | ${cells.join(' | ')} |`);
   }
 }
 const failures = samples.filter((s) => s.error).length;

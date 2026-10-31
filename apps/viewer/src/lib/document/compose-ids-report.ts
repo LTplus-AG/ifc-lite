@@ -162,7 +162,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const ringSize = 44;
   const blockChecks = idsBlockRequirementCheckRate(block);
   // Entity and requirement rings need captions to tell them apart; a lone ring keeps its original layout (#8417).
-  const rings = !block.benchmarks ? [] : blockChecks
+  const rings: Array<Pick<RingDrawnItem, 'counts' | 'label' | 'passRate'>> = !block.benchmarks ? [] : blockChecks
     ? [{ counts: reportRingCounts(block.summary), label: t('idsPanel.entityResults'), passRate: block.summary.passRate },
       { counts: requirementRingCounts(blockChecks), label: t('idsPanel.requirementChecks'), passRate: blockChecks.rate }]
     : [{ counts: reportRingCounts(block.summary) }];
@@ -190,7 +190,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   rings.forEach((ring, i) => {
     const x = cursor.x + i * (ringSlot + 12);
     pushRing({ kind: 'ring', x, y: cursor.y, size: ringSize, ...ring });
-    if (ring.label !== undefined) cursor.push(
+    if (ring.label !== undefined && ring.passRate !== undefined) cursor.push(
       { kind: 'text', x, y: cursor.y + ringSize + 8, size: 7, bold: false, gray: 60, text: cursor.truncate(ring.label, ringSlot, 7, false) },
       { kind: 'text', x, y: cursor.y + ringSize + 17, size: 8, bold: true, gray: 45, text: pct(ring.passRate) },
     );

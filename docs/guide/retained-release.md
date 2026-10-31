@@ -197,9 +197,9 @@ for the "install the actual release archives into a clean consumer" step above. 
 installs only from the public registries and changes no registry state.
 
 ```sh
-RUSTUP_TOOLCHAIN=<pinned toolchain> node scripts/smoke-released-retained.mjs \
+node scripts/smoke-released-retained.mjs \
   --wasm 12.1.0 --cli 0.44.0 --crate 27.1.0 [--wheel latest|X.Y.Z|skip] \
-  [--retained-engine /abs/staged/engine] [--out summary.json] [--keep]
+  [--toolchain NAME] [--retained-engine /abs/staged/engine] [--strict] [--out summary.json] [--keep]
 ```
 
 `--wasm`, `--cli` and `--crate` are required explicit versions (the npm ones also
@@ -207,19 +207,24 @@ accept `latest`, recorded as resolved). The scratch project is created under the
 OS temp directory, never inside the repository, with empty npm configuration and a
 private `CARGO_HOME`. No workspace path, link or patch is used, and the lock files
 are checked to contain only registry sources. Cargo outside the repository does not
-see `rust-toolchain.toml`, so export the pinned `RUSTUP_TOOLCHAIN`; without a usable
-Cargo the crate-build steps are reported `skip`.
+see `rust-toolchain.toml`, so the toolchain is passed explicitly: `--toolchain`, else
+`RUSTUP_TOOLCHAIN`, else the channel pinned in the repo's `rust-toolchain.toml`. The
+chosen toolchain, where it came from and `cargo -V` are recorded in the JSON summary.
+Code taken from the registries (the WASM glue and `retained.js`) runs only in child
+processes with a cleaned environment (no `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`,
+`CARGO_REGISTRY_TOKEN` or other inherited variables).
 
 | Step | What it proves |
 |---|---|
 | `npm-install`, `npm-installed-versions` | the exact `@ifc-lite/wasm` and `@ifc-lite/cli` install from npm; the lock resolves only from the registry |
 | `wasm-default-engine` | the published default engine loads and processes the committed `tests/fixtures/cli-retained/layered-wall.ifc` (jobs, meshes, triangles) |
 | `cli-default-export` | the published CLI exports that IFC to OBJ with the default (exact) kernel |
-| `wasm-retained-subpath` | `@ifc-lite/wasm/retained` resolves; it ships types only, and `loadRetainedEngine` rejects without a deployed engine |
-| `wasm-archive-boundaries`, `cli-archive-boundaries`, `crate-archive` | registry archives hold no SDK sources, native binaries or unexpected wasm; the crate is source-only with no build script, a registry `ifc-lite-geometry` version and the `retained-runtime` forwarding; npm archives carry `THIRD_PARTY_NOTICES.txt` with no `OPEN:` line |
-| `provenance:*`, `npm-signatures` | each npm tarball carries a SLSA provenance attestation; registry signatures verify |
+| `wasm-retained-subpath` | `@ifc-lite/wasm/retained` resolves; it ships types only, and `loadRetainedEngine()` fails with exactly `ERR_MODULE_NOT_FOUND` for `pkg-retained/ifc-lite.js` when no engine is deployed (any other failure, such as a `TypeError`, fails the step) |
+| `wasm-archive-boundaries`, `cli-archive-boundaries`, `crate-archive` | registry archives are extracted into fresh directories and hold no SDK sources, native binaries or unexpected wasm, judged by path **and** by content (ELF, Mach-O, PE and wasm magic, so a renamed binary is caught); the crate is source-only with no build script, a registry `ifc-lite-geometry` version and the `retained-runtime` forwarding; npm archives carry `THIRD_PARTY_NOTICES.txt` with no `OPEN:` line |
+| `npm-signatures` | `npm audit signatures --json --include-attestations` reports 0 invalid and 0 missing, and lists both exact `@ifc-lite/wasm` and `@ifc-lite/cli` versions as verified with a provenance attestation |
+| `provenance:*` | per package, the registry's SLSA attestation (`dist.attestations.url`): the subject digest equals the sha512 of the tarball just downloaded, the statement's workflow repository is `https://github.com/LTplus-AG/ifc-lite` and path `.github/workflows/release.yml`, and the Fulcio signing certificate's identity is that workflow in that repository. A token publish, or an attestation from a fork's workflow, fails here. The git ref/tag and the specific run are recorded by the registry but not constrained |
 | `crate-default-features`, `crate-retained-runtime` | a consumer built from crates.io (`cargo add ifc-lite-geometry-runtime@=<version>`) compiles and runs with default features and with `--features retained-runtime` |
-| `python-wheel` | the published `ifclite-geom` binary wheel (latest, its own release train; sha256 checked against PyPI) imports and tessellates the fixture in an isolated interpreter |
+| `python-wheel` | the published `ifclite-geom` binary wheel (latest, its own release train; manylinux for this arch with a `cpXY`/`abi3` tag that fits the local CPython; sha256 checked against PyPI) imports and tessellates the fixture in an isolated interpreter |
 | `retained-export-e2e` | with a staged engine directory, the **published** CLI runs `export --kernel retained` end to end and the report publishes products |
 
 `retained-export-e2e` runs only when an engine directory is supplied
@@ -228,6 +233,13 @@ Cargo the crate-build steps are reported `skip`.
 "not run", never `pass`. The JSON summary lists every step as `pass`, `fail` or
 `skip` with its detail; the overall `status` is `fail`, `pass-with-skips` or `pass`,
 and the process exits 1 when any step failed.
+
+`--strict` is the release sign-off mode: a step that would be skipped (crate builds
+without a usable toolchain, `--wheel skip`, no engine directory) is recorded as a
+failure (`skipped under --strict`) and the exit code is 1. Use it for the run whose
+evidence goes into the release handoff. The pure checks live in
+`scripts/lib/released-smoke-checks.mjs` and run offline in the `scripts/lib/*.test.mjs`
+`node --test` lane.
 
 What it does not cover: the Python **wheel build** from release source (the
 `python-wheels.yml` build/import checks on the release commit), the runtime

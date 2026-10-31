@@ -10,11 +10,18 @@
  * leak in. It never publishes or changes registry state.
  *
  *   node scripts/smoke-released-retained.mjs --wasm 12.1.0 --cli 0.44.0 \
- *        --crate 27.1.0 [--wheel latest|X.Y.Z|skip] [--out summary.json] [--keep]
+ *        --crate 27.1.0 [--wheel latest|X.Y.Z|skip] [--toolchain NAME] [--strict]
+ *        [--out summary.json] [--keep]
  *
- * npm versions accept `latest` (resolved and recorded). Cargo steps need a
- * toolchain outside the repo's rust-toolchain.toml scope: export
- * RUSTUP_TOOLCHAIN (the pinned one) or those steps are reported as skipped.
+ * npm versions accept `latest` (resolved and recorded). Cargo outside the repo
+ * does not see rust-toolchain.toml, so the toolchain is passed explicitly:
+ * --toolchain, else RUSTUP_TOOLCHAIN, else the channel pinned in the repo's
+ * rust-toolchain.toml. The toolchain, its source and `cargo -V` are recorded in
+ * the JSON. Untrusted registry code (the WASM glue, `retained.js`) runs only in
+ * child processes with a cleaned environment: no registry or CI tokens.
+ *
+ * --strict is the release sign-off mode: any skipped step (crate builds, wheel,
+ * retained export) is a failure.
  *
  * A locally staged engine directory (scripts/stage-cli-retained-engine.mjs
  * output) enables the end-to-end retained export step through the PUBLISHED
@@ -27,13 +34,16 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import {
-  NPM_REGISTRY, boundaryViolations, cargoLockProblems, crateManifestProblems, isInside, noticeProblems, npmLockProblems,
+  PROBE_FLAG, RETAINED_PROBE_FLAG, chooseToolchain, parseArgs, retainedProbe, walkFiles, wasmProbe,
+} from './lib/released-smoke-support.mjs';
+import {
+  EXPECTED_REPO, EXPECTED_WORKFLOW, NPM_REGISTRY, auditProblems, boundaryViolations, cargoLockProblems, contentViolation,
+  crateManifestProblems, isInside, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent, selectWheel,
   stripArchiveRoot, summarize,
 } from './lib/released-smoke-checks.mjs';
 
@@ -55,43 +65,10 @@ function run(file, args, { cwd, env, timeout = 600_000, input } = {}) {
 }
 const tail = (r, n = 600) => (r.error ?? '') + (r.stderr + r.stdout).trim().slice(-n);
 
-function parseArgs(argv) {
-  const out = { wheel: 'latest' };
-  const known = new Set(['wasm', 'cli', 'crate', 'wheel', 'out', 'fixture', 'retained-engine']);
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--keep') out.keep = true;
-    else if (a.startsWith('--') && known.has(a.slice(2))) {
-      const value = argv[++i];
-      if (value === undefined || value.startsWith('--')) throw new Error(`${a} requires a value`);
-      out[a.slice(2)] = value;
-    } else throw new Error(`Unknown argument ${a}`);
-  }
-  for (const k of ['wasm', 'cli', 'crate']) if (!out[k]) throw new Error(`--${k} VERSION is required (explicit version)`);
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // Smoke
 // ---------------------------------------------------------------------------
 
-const PROBE_FLAG = '--wasm-probe';
-
-/** Runs in a child process: load the published default engine and process the fixture. */
-async function wasmProbe(packageDir, fixture) {
-  const url = (rel) => pathToFileURL(join(packageDir, rel)).href;
-  const engine = await import(url('pkg/ifc-lite.js'));
-  engine.initSync({ module: readFileSync(join(packageDir, 'pkg/ifc-lite_bg.wasm')) });
-  const api = new engine.IfcAPI();
-  const data = readFileSync(fixture);
-  const pre = api.buildPrePassOnce(data);
-  const [x = 0, y = 0, z = 0] = pre.rtcOffset ?? [];
-  const meshes = api.processGeometryBatch(data, pre.jobs, pre.unitScale, x, y, z, pre.needsShift, pre.voidKeys,
-    pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors, pre.planeAngleToRadians, pre.materialElementIds,
-    pre.materialColorCounts, pre.materialColors);
-  console.log(JSON.stringify({ version: api.version, ready: api.is_ready, jobs: pre.totalJobs, meshes: meshes.length,
-    triangles: meshes.totalTriangles, vertices: meshes.totalVertices }));
-}
 
 export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)) {
   const fixture = resolve(options.fixture ?? join(REPO, 'tests/fixtures/cli-retained/layered-wall.ifc'));
@@ -107,12 +84,16 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
     } catch (error) {
       record = { id, status: 'fail', detail: error?.message ?? String(error) };
     }
+    if (options.strict && record.status === 'skip') {
+      record = { id, status: 'fail', detail: `skipped under --strict: ${record.detail}`, skipped: true };
+    }
     record.ms = Date.now() - started;
     log(`${record.status.toUpperCase().padEnd(4)} ${id}${record.detail ? `: ${String(record.detail).split('\n')[0]}` : ''}`);
     steps.push(record);
     return record;
   };
 
+  const toolchain = chooseToolchain(options, REPO);
   const emptyConfig = join(work, 'empty.npmrc');
   const emptyGlobalConfig = join(work, 'empty-global.npmrc');
   writeFileSync(emptyConfig, '');
@@ -123,7 +104,7 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
     npm_config_registry: NPM_REGISTRY, npm_config_update_notifier: 'false',
     npm_config_cache: join(work, 'npm-cache'),
     CARGO_HOME: join(work, 'cargo-home'), CARGO_TARGET_DIR: join(work, 'cargo-target'),
-    ...(process.env.RUSTUP_TOOLCHAIN ? { RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN } : {}),
+    ...(toolchain.name ? { RUSTUP_TOOLCHAIN: toolchain.name } : {}),
     ...(process.env.RUSTUP_HOME ? { RUSTUP_HOME: process.env.RUSTUP_HOME } : {}),
   };
   const resolved = {};
@@ -190,46 +171,75 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
     });
 
     // ---- retained subpath and boundaries --------------------------------------------------
-    await step('wasm-retained-subpath', async () => {
+    await step('wasm-retained-subpath', () => {
       if (needInstall()) return needInstall();
-      const require = createRequire(join(project, 'package.json'));
-      const entry = require.resolve('@ifc-lite/wasm/retained');
-      const module = await import(pathToFileURL(entry).href);
-      if (typeof module.loadRetainedEngine !== 'function') return { fail: 'loadRetainedEngine export missing' };
       if (!existsSync(join(wasmDir, 'retained.d.ts')) || !existsSync(join(wasmDir, 'pkg-retained/ifc-lite.d.ts'))) return { fail: 'retained type declarations missing' };
       if (existsSync(join(wasmDir, 'pkg-retained/ifc-lite.js'))) return { fail: 'package unexpectedly ships a retained engine' };
-      const rejected = await module.loadRetainedEngine().then(() => false, () => true);
-      return rejected ? { detail: `resolves to ${relative(project, entry)}; loadRetainedEngine rejects with no engine installed (types only)` } : { fail: 'loadRetainedEngine succeeded without an engine' };
+      const r = run(process.execPath, [fileURLToPath(import.meta.url), RETAINED_PROBE_FLAG, project], { cwd: work, env });
+      if (!r.ok) return { fail: tail(r) };
+      const probe = JSON.parse(r.stdout.trim().split('\n').pop());
+      if (!probe.hasLoader) return { fail: 'loadRetainedEngine export missing' };
+      // The one expected refusal: the engine module is not installed. A TypeError or any other failure is a broken package.
+      if (!retainedAbsent(probe)) return { fail: `loadRetainedEngine did not fail with the missing-engine error: ${probe.rejected ? `${probe.name} ${probe.code ?? ''} ${probe.message}` : 'it resolved'}` };
+      return { detail: `resolves to ${relative(project, probe.entry)}; loadRetainedEngine fails with ${probe.code} for pkg-retained/ifc-lite.js (types only, no engine installed)` };
     });
 
     const tarballs = join(work, 'tarballs');
     mkdirSync(tarballs);
+    const integrity = {};
+    // Untrusted archives are extracted into their own new, empty directories; nothing is run from them.
+    const extractArchive = (archive, name) => {
+      const dir = join(work, name);
+      mkdirSync(dir);
+      const r = run('tar', ['-xzf', archive, '-C', dir, '--no-same-owner']);
+      return r.ok ? { dir } : { error: `extract failed: ${tail(r, 200)}` };
+    };
+    const contentProblems = (dir, kind, strip) => {
+      const bad = [];
+      for (const file of walkFiles(dir)) {
+        const problem = contentViolation(strip(relative(dir, file).split(sep).join('/')), readFileSync(file), kind);
+        if (problem) bad.push(problem);
+      }
+      return bad;
+    };
     const inspectNpm = (id, name, version, kind) => step(id, () => {
       const pack = run('npm', ['pack', `${name}@${version}`, '--json', '--pack-destination', tarballs], { cwd: work, env });
       if (!pack.ok) return { fail: tail(pack) };
       const meta = JSON.parse(pack.stdout)[0];
       const files = meta.files.map((f) => f.path);
       const notices = run('tar', ['-xOzf', join(tarballs, meta.filename), 'package/THIRD_PARTY_NOTICES.txt']);
-      const problems = [...boundaryViolations(files, kind), ...noticeProblems(notices.ok ? notices.stdout : undefined)];
+      const extracted = extractArchive(join(tarballs, meta.filename), `${id}-files`);
+      const problems = [...boundaryViolations(files, kind), ...(extracted.error ? [extracted.error] : contentProblems(extracted.dir, kind, stripArchiveRoot)),
+        ...noticeProblems(notices.ok ? notices.stdout : undefined)];
+      integrity[name] = meta.integrity;
       return problems.length ? { fail: problems.slice(0, 6).join('; ') }
-        : { detail: `${files.length} files, no SDK/native binaries, THIRD_PARTY_NOTICES.txt present with no OPEN:`, evidence: { shasum: meta.shasum, integrity: meta.integrity } };
+        : { detail: `${files.length} files, no SDK/native binaries (by name and by ELF/Mach-O/PE/wasm content), THIRD_PARTY_NOTICES.txt present with no OPEN:`, evidence: { shasum: meta.shasum, integrity: meta.integrity } };
     });
     await inspectNpm('wasm-archive-boundaries', '@ifc-lite/wasm', resolved.wasm, 'npm-wasm');
     await inspectNpm('cli-archive-boundaries', '@ifc-lite/cli', resolved.cli, 'npm-cli');
 
     // ---- provenance ----------------------------------------------------------------------
-    for (const [name, version] of [['@ifc-lite/wasm', resolved.wasm], ['@ifc-lite/cli', resolved.cli]]) {
-      await step(`provenance:${name}`, () => {
-        const r = run('npm', ['view', `${name}@${version}`, 'dist.attestations.provenance.predicateType', '--json'], { cwd: work, env });
-        const predicate = r.ok ? r.stdout.trim().replace(/"/g, '') : '';
-        return predicate.startsWith('https://slsa.dev/provenance') ? { detail: predicate } : { fail: `no SLSA provenance attestation on ${name}@${version}` };
-      });
-    }
+    const published = [['@ifc-lite/wasm', resolved.wasm], ['@ifc-lite/cli', resolved.cli]];
     await step('npm-signatures', () => {
       if (needInstall()) return needInstall();
-      const r = run('npm', ['audit', 'signatures'], { cwd: project, env });
-      return r.ok && /verified registry signatures/.test(r.stdout) ? { detail: r.stdout.trim().replace(/\n+/g, ' ') } : { fail: tail(r) };
+      const r = run('npm', ['audit', 'signatures', '--json', '--include-attestations'], { cwd: project, env, timeout: 300_000 });
+      let report;
+      try { report = JSON.parse(r.stdout); } catch { return { fail: tail(r) }; }
+      const problems = auditProblems(report, published);
+      if (!r.ok && !problems.length) problems.push(`npm audit signatures exited ${r.status}`);
+      return problems.length ? { fail: problems.join('; ') }
+        : { detail: `${report.verified.length} packages verified; ${published.map(([n, v]) => `${n}@${v}`).join(' and ')} verified with provenance attestations; 0 invalid, 0 missing` };
     });
+    for (const [name, version] of published) {
+      await step(`provenance:${name}`, async () => {
+        if (!integrity[name]) return { fail: 'no downloaded tarball integrity to bind the attestation to' };
+        const response = await fetch(`https://registry.npmjs.org/-/npm/v1/attestations/${name.replace('/', '%2f')}@${version}`);
+        if (!response.ok) return { fail: `attestations for ${name}@${version}: HTTP ${response.status}` };
+        const problems = provenanceProblems(await response.json(), { name, version, integrity: integrity[name] });
+        return problems.length ? { fail: problems.join('; ') }
+          : { detail: `${name}@${version}: SLSA provenance binds the downloaded tarball digest to ${EXPECTED_REPO} ${EXPECTED_WORKFLOW} (statement and signing-certificate identity)` };
+      });
+    }
 
     // ---- crates.io: archive and consumer builds -----------------------------------------
     await step('crate-archive', async () => {
@@ -242,12 +252,14 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
       if (!list.ok) return { fail: tail(list) };
       const files = list.stdout.split('\n').filter(Boolean).map(stripArchiveRoot);
       const manifest = run('tar', ['-xOzf', archive, `${CRATE}-${resolved.crate}/Cargo.toml`]);
-      const problems = [...boundaryViolations(files, 'crate'), ...(manifest.ok ? crateManifestProblems(manifest.stdout) : ['Cargo.toml unreadable'])];
+      const extracted = extractArchive(archive, 'crate-files');
+      const problems = [...boundaryViolations(files, 'crate'), ...(extracted.error ? [extracted.error] : contentProblems(extracted.dir, 'crate', stripArchiveRoot)), ...(manifest.ok ? crateManifestProblems(manifest.stdout) : ['Cargo.toml unreadable'])];
       return problems.length ? { fail: problems.slice(0, 6).join('; ') } : { detail: `${files.length} files; source-only, no SDK/WASM/build script; registry geometry dependency and retained-runtime forwarding intact` };
     });
 
     const cargoProbe = run('cargo', ['-V'], { cwd: work, env });
-    const noCargo = cargoProbe.ok ? null : { skip: `cargo unusable outside the repo toolchain scope (set RUSTUP_TOOLCHAIN): ${tail(cargoProbe, 200)}` };
+    toolchain.cargo = cargoProbe.ok ? cargoProbe.stdout.trim() : undefined;
+    const noCargo = cargoProbe.ok ? null : { skip: `cargo unusable outside the repo toolchain scope (pass --toolchain or set RUSTUP_TOOLCHAIN): ${tail(cargoProbe, 200)}` };
     const consumer = join(work, 'rust-consumer');
     const cargoSetup = await step('crate-consumer-setup', () => {
       if (noCargo) return noCargo;
@@ -287,8 +299,12 @@ fn main() {
       if (!response.ok) return { fail: `PyPI lookup HTTP ${response.status}` };
       const release = await response.json();
       const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
-      const file = release.urls.find((u) => u.packagetype === 'bdist_wheel' && u.filename.includes('manylinux') && u.filename.includes(arch));
-      if (!file) return { skip: `no manylinux ${arch} wheel in ifclite-geom ${release.info.version}` };
+      const py = run('python3', ['-I', '-c', 'import sys; print(sys.version_info[0], sys.version_info[1])'], { cwd: work, env });
+      if (!py.ok) return { skip: `python3 unavailable: ${tail(py, 200)}` };
+      const python = py.stdout.trim().split(' ').map(Number);
+      const wanted = selectWheel(release.urls.filter((u) => u.packagetype === 'bdist_wheel').map((u) => u.filename), { python, arch });
+      const file = release.urls.find((u) => u.filename === wanted);
+      if (!file) return { fail: `no ifclite-geom ${release.info.version} manylinux ${arch} wheel matches local CPython ${python.join('.')} (cpXY/abi3)` };
       const wheel = await fetch(file.url);
       if (!wheel.ok) return { fail: `${file.url} -> HTTP ${wheel.status}` };
       const bytes = Buffer.from(await wheel.arrayBuffer());
@@ -331,7 +347,7 @@ fn main() {
     return {
     schema: 'ifc-lite.released-artifact-smoke/1',
     requested: { wasm: options.wasm, cli: options.cli, crate: options.crate, wheel: options.wheel },
-    resolved, fixture: relative(REPO, fixture), retainedEngineSupplied: Boolean(retainedEngine),
+    resolved, toolchain, strict: Boolean(options.strict), fixture: relative(REPO, fixture), retainedEngineSupplied: Boolean(retainedEngine),
     workDir: options.keep ? work : null, ...summarize(steps), steps,
     };
   }
@@ -340,6 +356,8 @@ fn main() {
 if (isMainEntry(import.meta.url)) {
   if (process.argv[2] === PROBE_FLAG) {
     await wasmProbe(process.argv[3], process.argv[4]);
+  } else if (process.argv[2] === RETAINED_PROBE_FLAG) {
+    await retainedProbe(process.argv[3]);
   } else {
     let options;
     try { options = parseArgs(process.argv.slice(2)); } catch (error) {

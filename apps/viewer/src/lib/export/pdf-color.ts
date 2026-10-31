@@ -17,10 +17,11 @@ function parseHexOrRgb(css: string): PdfColor | null {
 }
 
 /**
- * Let the browser resolve any other CSS colour (names, hsl(), space syntax,
- * percentages) exactly as the canvas and SVG do: a 2D context normalises a
- * valid `fillStyle` to `#rrggbb` or `rgba(...)` and ignores an invalid one,
- * which two different sentinels detect. Null where no canvas exists.
+ * Let the browser resolve other CSS colours (names, hsl(), space syntax,
+ * percentages) as the canvas and SVG do: a 2D context normalises a valid
+ * sRGB `fillStyle` to `#rrggbb` or `rgba(...)` and ignores an invalid one,
+ * which two different sentinels detect. Null where no canvas exists, and for
+ * wide-gamut colours the browser serialises in their own space (oklch()).
  */
 function resolveWithCanvas(css: string): PdfColor | null {
   const ctx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
@@ -47,5 +48,7 @@ function resolveWithCanvas(css: string): PdfColor | null {
 export function pdfColor(input: string): PdfColor | null {
   const css = input.trim().toLowerCase();
   if (css === 'transparent' || css === 'none') return { color: '#000000', alpha: 0 };
+  // A detached canvas would resolve currentcolor to black, unlike the SVG.
+  if (css === 'currentcolor') return null;
   return parseHexOrRgb(css) ?? resolveWithCanvas(css);
 }

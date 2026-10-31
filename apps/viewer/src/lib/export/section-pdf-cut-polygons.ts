@@ -71,10 +71,11 @@ type ColorCache = Map<string, PdfColor | null>;
  * bad override cannot abort the whole export.
  */
 function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string, cache: ColorCache): number {
-  let parsed = cache.get(color);
+  const key = color.trim().toLowerCase();
+  let parsed = cache.get(key);
   if (parsed === undefined) { // pdfColor returns null, never undefined
     parsed = pdfColor(color);
-    cache.set(color, parsed);
+    cache.set(key, parsed);
     if (!parsed) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF; affected elements use their fallback colour`);
   }
   const css = parsed?.color ?? fallback;

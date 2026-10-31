@@ -39,8 +39,9 @@ export interface PdfCutPolygon {
 
 /**
  * A page point jsPDF can write. It throws on NaN, writes Infinity as a broken
- * operand and switches to exponential notation (also invalid PDF) from 1e21;
- * 1e15 mm is far beyond any page, so nothing visible is lost.
+ * operand and switches to exponential notation (also invalid PDF) from 1e21
+ * in its output points (mm x 72/25.4); 1e15 mm stays well below that and is
+ * far beyond any page.
  */
 export const isPagePoint = (p: Point) => Math.abs(p.x) < 1e15 && Math.abs(p.y) < 1e15;
 const drawableRing = (ring: Point[]) => ring.length >= 2 && ring.every(isPagePoint);

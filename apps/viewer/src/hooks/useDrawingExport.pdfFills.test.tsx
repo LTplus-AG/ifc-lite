@@ -339,6 +339,7 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
   it('drops a line whose page coordinate jsPDF would write in exponential notation (#8464)', async () => {
     const text = await exportPdf({ cutLine: 'huge' });
     assert.ok(!/\de[+-]\d/.test(text.slice(text.indexOf('stream'))), 'no exponential operand in the content stream');
+    assert.ok(text.includes('f*') && text.includes('h\nS\n'), 'only the off-page line is dropped; the wall is still drawn');
   });
 
   it('still fills a real wall at LV95-scale coordinates (#8464)', async () => {

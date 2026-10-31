@@ -4,6 +4,34 @@
 
 # Performance diagnosis kit
 
+## Scenoptic-axes viewer levers (`scenoptic-bench.mjs`, 2026-10-31)
+
+Measured on Pop's RTX 4000 Ada with an identical WASM hash per cohort, 3 rounds,
+on the 343 MB Sixty5 model and a 7-file federation. Ratios are branch/base.
+
+**Won: cache reopen (#8438).** Federated models had no cache at all, so a warm
+open equalled a cold one; warm federation is now 0.48x. Single-file warm geometry
+is 0.81x, from uploading once on a hit and from taking two whole-source hashes off
+the main thread. Adding a federated model was O(N^2) in copies and GPU batches.
+
+**Won: frame CPU (#8439).** Orbit CPU per frame 0.84x and clock-normalized GPU
+0.82x. One uniform write per arena page, rather than one per batch, is why a CPU
+change also cut GPU time.
+
+**Won, with a cost: one compressed source (#8441).** Warm PSS 0.73x, at about 15
+CPU-seconds of worker deflate after each load of this model. It is background
+work and does not touch orbit CPU once settled (0.98x).
+
+**Not the warm-open gap.** Even with all of these, warm geometry stays near 5 s.
+The profile is flat, so more trimming will not close it: the time is the rebuild
+itself (streaming, drain, regroup). The next lever is storing the finished batches.
+
+**Measurement traps.** Timer queries move with DVFS on this GPU (base alone went
+from 2.2 to 4.2 ms) and the clock cannot be locked without root, so compare
+Mcycles. A cold `scene.finalize` is bimodal in every build including base (about
+5.8 s against 7.3 s geometry), so one slow round says nothing. Wait for post-load
+CPU to settle before an orbit, or source compaction reads as a frame-CPU regression.
+
 ## C4-14 independent levers (#8341)
 
 **Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item

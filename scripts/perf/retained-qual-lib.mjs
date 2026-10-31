@@ -11,13 +11,16 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { cpus, hostname, loadavg, platform, arch, release, totalmem } from 'node:os';
+import { cpus, homedir, hostname, loadavg, platform, arch, release, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const SCHEMA = 'ifc-lite.retained-qual/1';
-/** The PLAN's popup windows: an unreleased one blocks Pop work (qualification/PLAN.md). */
-export const QUIET_WINDOW_DIR = '/home/louistrue/.t3/artifacts';
+/**
+ * Where `pop-quiet-window-*.json` markers live; an unreleased one blocks work on the shared timing host.
+ * `IFC_QUIET_WINDOW_DIR` overrides it (the cohort scripts check the same files before submitting).
+ */
+export const QUIET_WINDOW_DIR = process.env.IFC_QUIET_WINDOW_DIR ?? join(homedir(), '.t3', 'artifacts');
 
 export function parseArgs(argv, { values = [], repeated = [], flags = [] }) {
   const out = Object.fromEntries(repeated.map(name => [name, []]));
@@ -61,7 +64,7 @@ export function hostIdentity() {
     machineIdSha256: machine ? sha256Bytes(readFileSync(machine, 'utf8').trim()) : null, loadAtStart: { load1, load5 } };
 }
 
-/** Every unreleased quiet window blocks work on Pop (same rule as qualification/exclusive-native.sh). */
+/** Every unreleased quiet window blocks work on Pop. */
 export function unreleasedQuietWindows(dir = QUIET_WINDOW_DIR) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir).filter(name => /^pop-quiet-window-.*\.json$/.test(name)).map(name => join(dir, name)).filter(path => {
@@ -127,11 +130,29 @@ export function summarizeRows(rows, columns) {
   return out;
 }
 
-export function exclusivity(options) {
-  // Declared by the cohort submitter, never inferred: a smoke run must stay "non-exclusive".
-  return options['exclusive-receipt']
-    ? { exclusive: true, receipt: options['exclusive-receipt'], verified: false, note: 'declared by the submitter; not verified by this runner' }
-    : { exclusive: false, note: 'non-exclusive observation; not benchmark evidence' };
+/**
+ * Pinned {candidates, published} for a fixture, from a prior correctness run: flat `{name: pin}`, or per side
+ * `{base: {name: pin}, branch: {name: pin}}` when the arms legitimately publish different counts.
+ */
+export function pinFor(pins, side, name) {
+  return pins?.[side]?.[name] ?? (pins?.base || pins?.branch ? undefined : pins?.[name]);
+}
+
+/**
+ * Exclusive only when the admission environment (`IFC_WORKER_KIND=benchmark`, set by ifc-fleet for
+ * `--kind benchmark` jobs) or the submitter (`--exclusive-receipt`) says so; never inferred from the
+ * host or the load, and never `verified` here. A flag that contradicts an ordinary job is refused,
+ * so an ordinary-admission smoke cannot be mislabelled.
+ */
+export function exclusivity(options, env = process.env) {
+  const kind = env.IFC_WORKER_KIND ?? null, job = env.IFC_WORKER_JOB_ID ?? null;
+  const claimed = options['exclusive-receipt'];
+  if (claimed && kind && kind !== 'benchmark') throw new Error(`--exclusive-receipt contradicts this job's admission kind ${kind}`);
+  if (claimed || kind === 'benchmark') {
+    return { exclusive: true, receipt: claimed ?? job, source: claimed ? '--exclusive-receipt' : 'IFC_WORKER_KIND=benchmark', jobId: job, workerKind: kind,
+      verified: false, note: 'declared by the submitter or admission environment; not verified by this runner' };
+  }
+  return { exclusive: false, workerKind: kind, jobId: job, note: 'non-exclusive observation; not benchmark evidence' };
 }
 
 /** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */

@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // Built Node `ifc-lite export --format obj --kernel retained` timing (#7955 item 6,
-// qualification/PLAN.md "Retained path"): one fresh process per sample from the
+// the #7955 qualification plan, "Retained path"): one fresh process per sample from the
 // checkout's `packages/cli/dist`, with the staged engine's inventory recorded.
 // Node uses its own WASM/worker transport: the memory columns are the Node process
 // tree (RSS/HWM), never the native SMLib worker's. Every sample is checked against its
@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { engineIdentity, gitIdentity, parseArgs, parseArms, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertCliRetained } from './retained-qual-assert.mjs';
@@ -107,7 +107,7 @@ export async function main(argv) {
   const rows = [];
   for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
     console.log(`retained-qual-cli: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
-    const row = await cliSample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: expectations[basename(fixture.path)] });
+    const row = await cliSample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: pinFor(expectations, side, basename(fixture.path)) });
     rows.push(row);
     appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
     console.log(row.ok ? `  ok ${row.totalMs.toFixed(0)} ms (control ${row.startupControlMs.toFixed(0)} ms), published ${row.published}/${row.candidates}` : `  FAILED ${row.error}`);

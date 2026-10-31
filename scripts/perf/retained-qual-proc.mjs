@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Linux-only /proc sampler for the #7955 retained qualification (PLAN.md,
+// Linux-only /proc sampler for the #7955 retained qualification (the #7955 qualification plan,
 // "Native memory"): poll ONLY the descendants of one root process (and, for a
 // browser, the processes whose command line names its private profile) for
 // VmRSS/VmHWM and, optionally, Pss. Never reads or signals foreign processes.

@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Viewer time to FIRST RETAINED FRAME (#7955 item 6, qualification/PLAN.md "Viewer").
+// Viewer time to FIRST RETAINED FRAME (#7955 item 6, the #7955 qualification plan, "Viewer").
 //
 // One fresh Chrome process and profile per sample; the built viewer (`pnpm build:e2e`
 // with VITE_RETAINED_GEOMETRY=on) is served by `vite preview` with the staged engine;
@@ -16,13 +16,13 @@
 //     --arm branch:/abs/checkout:/abs/engine [--arm base:/abs/checkout:/abs/engine] \
 //     --fixture /abs/model.ifc [--fixture ...] [--gpu swiftshader|hardware] [--headed]
 //
-// Report-only. Add --exclusive-receipt ID only when the cohort was submitted under
-// explicit exclusive Pop admission; without it every number is labelled non-exclusive.
+// Report-only. A run is labelled exclusive only under an `ifc-fleet --kind benchmark` job
+// (IFC_WORKER_KIND) or with --exclusive-receipt ID; every other number says non-exclusive.
 
-import { readFileSync, statSync, appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { engineIdentity, gitIdentity, parseArgs, parseArms, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertMilestones, assertViewerRetained } from './retained-qual-assert.mjs';
@@ -56,7 +56,6 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
   let sampler;
   try {
     const { page } = browser;
-    row.browserVersion = browser.version;
     await page.addInitScript(INIT_SCRIPT);
     await page.goto(`${preview.origin}/?perfTrace=1&kernel=retained`);
     await page.waitForFunction(() => Boolean(globalThis.__ifc_lite_viewer_store__));
@@ -74,7 +73,7 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
     const losses = deviceLossCount(browser.consoleLines);
     const ua = await raceWithTimeout(userAgentMemory(page), 120000, 'measureUserAgentSpecificMemory');
     Object.assign(row, { gpuAdapter: adapter, softwareAdapter: isSoftwareAdapter(adapter), webgpuDeviceLosses: losses,
-      hardwareConcurrency: state.hardwareConcurrency, crossOriginIsolated: state.crossOriginIsolated, loadTraceMilestonesMs: state.milestones,
+      userAgent: state.userAgent, hardwareConcurrency: state.hardwareConcurrency, crossOriginIsolated: state.crossOriginIsolated, loadTraceMilestonesMs: state.milestones,
       uaMemory: ua, uaMemoryBytes: ua.bytes, longTaskMs: m.longTaskMs, drawCallsAtFirstFrame: m.drawCallsAtFirstFrame,
       browserPeakHwmKiB: memory.maxIndividualHwmKiB, browserPeakConcurrentRssKiB: memory.maxObservedConcurrentRssKiB,
       browserPeakConcurrentPssKiB: memory.maxObservedConcurrentPssKiB, browserMemorySamples: memory.samples,
@@ -119,6 +118,9 @@ export async function main(argv) {
   const expectations = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : {};
   for (const arm of arms) {
     arm.identity = { git: gitIdentity(arm.checkout), engine: await engineIdentity(arm.checkout, arm.engine) };
+    if (!existsSync(join(arm.checkout, 'apps/viewer/dist/index.html'))) {
+      throw new Error(`${arm.checkout}: no apps/viewer/dist; build it with VITE_RETAINED_GEOMETRY=on IFCLITE_RETAINED_ENGINE=<engine> pnpm build:e2e`);
+    }
     arm.dist = treeDigest(join(arm.checkout, 'apps/viewer/dist'));
   }
   const fixtures = [];
@@ -138,7 +140,7 @@ export async function main(argv) {
       const arm = arms.find(a => a.side === side);
       console.log(`retained-qual-viewer: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
       const row = await viewerSample({ arm, preview: previews.get(side), fixture, round, options, distTree: arm.dist,
-        expectation: expectations[basename(fixture.path)] });
+        expectation: pinFor(expectations, side, basename(fixture.path)) });
       rows.push(row);
       appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
       console.log(row.ok ? `  ok first retained frame ${row.firstRetainedFrameMs.toFixed(1)} ms (published ${row.published}/${row.candidates})` : `  FAILED ${row.error}`);

@@ -49,7 +49,9 @@ runner exit 1. There is no soft path.
 - **Browser memory**: the session starts, the page's event tally equals the session
   summary, the served manifest is the staged one.
 - Optional `--expect pins.json` (`{"model.ifc": {"candidates": N, "published": M}}`,
-  taken from a prior correctness run) pins counts; the cohort must pin them.
+  taken from a prior correctness run) pins counts; the cohort must pin them. A file may also be
+  per side, `{"base": {...}, "branch": {...}}`, when the arms legitimately publish different counts
+  (a pin never falls back to the other side).
 
 ## The first retained frame
 
@@ -103,11 +105,12 @@ Per-row GPU adapter, browser version, `softwareAdapter`, `webgpuDeviceLosses`, w
 count (`hardwareConcurrency`), fixture hash and served-dist digest are recorded. A
 software adapter (SwiftShader) is named; `--require-hardware-gpu` refuses it.
 
-`exclusivity.exclusive` is **false** unless the submitter passes
-`--exclusive-receipt ID`, and even then it records `verified: false`: the runner
-cannot verify admission. Any run without a receipt, including every smoke run, is a
-non-exclusive observation. `--require-quiet` refuses to start while a
-`pop-quiet-window-*.json` is unreleased.
+`exclusivity.exclusive` is **true** only inside an `ifc-fleet --kind benchmark` job
+(`IFC_WORKER_KIND=benchmark`, the job id becomes the receipt) or when the submitter passes
+`--exclusive-receipt ID`; the runner records `verified: false` (it cannot verify
+admission) and refuses a flag that contradicts an ordinary job. Every other run,
+including every smoke run, is a non-exclusive observation. `--require-quiet` refuses to
+start while a `pop-quiet-window-*.json` is unreleased.
 
 ## Arms and rounds
 

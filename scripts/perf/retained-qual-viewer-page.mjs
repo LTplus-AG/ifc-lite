@@ -17,7 +17,7 @@
 //                        COMPLETED frame that began after sceneHeldMs and issued draw
 //                        calls. Under `kernel=retained` every mesh is retained geometry,
 //                        so a draw call is a retained draw. A product event alone is not
-//                        a frame (PLAN.md).
+//                        a frame (the #7955 qualification plan).
 //   terminalMs           loadState 'complete', not loading, completeness != 'running'.
 //   settledFrameMs       the first completed frame after terminalMs and firstRetainedFrameMs
 //                        that drew, with resident GPU bytes unchanged since the previous tick

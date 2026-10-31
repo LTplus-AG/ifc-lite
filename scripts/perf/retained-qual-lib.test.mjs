@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { exclusivity, hostIdentity, median, parseArgs, parseArms, roundSides, spreadPct, summarizeRows, unreleasedQuietWindows } from './retained-qual-lib.mjs';
+import { exclusivity, hostIdentity, median, parseArgs, parseArms, pinFor, roundSides, spreadPct, summarizeRows, unreleasedQuietWindows } from './retained-qual-lib.mjs';
 
 test('statistics are the ab-report.mjs definitions (median, spread percent of the median)', () => {
   assert.equal(median([3, 1, 2]), 2);
@@ -59,11 +59,15 @@ test('summaries use only OK rows and keep sides apart', () => {
   assert.equal(out['branch/m'].columns.totalMs.n, 1);
 });
 
-test('exclusivity is never inferred: no receipt means non-exclusive', () => {
-  assert.equal(exclusivity({}).exclusive, false);
-  assert.match(exclusivity({}).note, /non-exclusive/);
-  const declared = exclusivity({ 'exclusive-receipt': 'abc' });
-  assert.deepEqual([declared.exclusive, declared.verified], [true, false]);
+test('exclusivity comes only from a benchmark admission or the submitter, and a contradiction is refused', () => {
+  assert.equal(exclusivity({}, {}).exclusive, false);
+  assert.match(exclusivity({}, {}).note, /non-exclusive/);
+  assert.deepEqual(exclusivity({}, { IFC_WORKER_KIND: 'ordinary', IFC_WORKER_JOB_ID: 'j1' }), { exclusive: false, workerKind: 'ordinary', jobId: 'j1', note: exclusivity({}, {}).note });
+  const declared = exclusivity({ 'exclusive-receipt': 'abc' }, {});
+  assert.deepEqual([declared.exclusive, declared.verified, declared.receipt], [true, false, 'abc']);
+  const admitted = exclusivity({}, { IFC_WORKER_KIND: 'benchmark', IFC_WORKER_JOB_ID: 'j2' });
+  assert.deepEqual([admitted.exclusive, admitted.receipt, admitted.source], [true, 'j2', 'IFC_WORKER_KIND=benchmark']);
+  assert.throws(() => exclusivity({ 'exclusive-receipt': 'x' }, { IFC_WORKER_KIND: 'ordinary' }), /contradicts/);
 });
 
 test('unreleased quiet windows block; released ones do not', () => {
@@ -83,4 +87,14 @@ test('host identity names the machine without leaking its raw id', () => {
   const host = hostIdentity();
   assert.ok(host.hostname && host.cpuCount > 0 && host.node.startsWith('v'));
   assert.ok(host.machineIdSha256 === null || /^[a-f0-9]{64}$/.test(host.machineIdSha256));
+});
+
+test('pins are flat, or per side when the arms publish different counts', () => {
+  const pin = { candidates: 4, published: 3 };
+  assert.deepEqual(pinFor({ 'a.ifc': pin }, 'base', 'a.ifc'), pin);
+  assert.equal(pinFor(undefined, 'base', 'a.ifc'), undefined);
+  const sided = { base: { 'a.ifc': pin }, branch: { 'a.ifc': { candidates: 4, published: 4 } } };
+  assert.equal(pinFor(sided, 'base', 'a.ifc').published, 3);
+  assert.equal(pinFor(sided, 'branch', 'a.ifc').published, 4);
+  assert.equal(pinFor(sided, 'branch', 'missing.ifc'), undefined, 'a per-side file never falls back to another side');
 });

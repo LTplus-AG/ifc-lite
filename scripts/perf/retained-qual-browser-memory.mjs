@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Retained BROWSER memory (#7955 item 6, qualification/PLAN.md "Browser"): one fresh
+// Retained BROWSER memory (#7955 item 6, the #7955 qualification plan, "Browser"): one fresh
 // Chrome process and page per sample runs one model through the real
 // `RetainedModelSession` over the staged, inventory-validated engine (the same serving
 // as scripts/retained-compare/browser.mjs). Reported per sample: retained WASM linear
@@ -24,7 +24,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { serveRoots } from '../smlib-browser-worker-probe.mjs';
-import { engineIdentity, gitIdentity, parseArgs, parseArms, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertBrowserSession } from './retained-qual-assert.mjs';
@@ -48,9 +48,9 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
     await new Promise(done => server.listen(0, '127.0.0.1', done));
     const origin = `http://127.0.0.1:${server.address().port}`;
     browser = await launchFresh({ gpu: options.gpu ?? 'swiftshader', channel: options.channel ?? 'chrome', executable: options['browser-executable'], headed: Boolean(options.headed) });
-    row.browserVersion = browser.version;
     const { page } = browser;
     await page.goto(`${origin}/page/index.html`);
+    row.userAgent = await page.evaluate(() => navigator.userAgent);
     await page.evaluate(async () => {
       window.harness = await import('/harness/retained-qual-browser-memory-page.mjs');
       await window.harness.initialize();
@@ -108,7 +108,7 @@ export async function main(argv) {
   const rows = [];
   for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
     console.log(`retained-qual-browser-memory: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
-    const row = await browserMemorySample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: expectations[basename(fixture.path)] });
+    const row = await browserMemorySample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: pinFor(expectations, side, basename(fixture.path)) });
     rows.push(row);
     appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
     console.log(row.ok ? `  ok wasm max ${row.wasmHeapMaxObservedBytes} B, browser peak HWM ${row.browserPeakHwmKiB} KiB, published ${row.published}/${row.candidates}` : `  FAILED ${row.error}`);

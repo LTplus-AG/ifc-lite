@@ -46,7 +46,7 @@ export async function launchFresh({ gpu, channel, executable, headed, closeMs = 
   page.on('console', message => consoleLines.push(message.text()));
   page.on('pageerror', error => pageErrors.push(String(error)));
   context.on('request', request => requests.push(request.url()));
-  return { profileDir, context, page, consoleLines, requests, pageErrors, version: context.browser()?.version() ?? null,
+  return { profileDir, context, page, consoleLines, requests, pageErrors,
     async close() {
       let error = null;
       try { await raceWithTimeout(context.close(), closeMs, 'context.close()'); } catch (e) { error = String(e); }

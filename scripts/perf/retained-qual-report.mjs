@@ -8,7 +8,7 @@
 // noise floor; a movement is "real" only beyond max(noise, 3%) AND a 1-unit floor; base
 // TOTAL spread > 15% is too noisy; a zero baseline blocks; count drift invalidates the
 // comparison) to the retained runners' columns, and never prints a no-regression verdict:
-// no retained performance or memory threshold is registered (qualification/PLAN.md).
+// no retained performance or memory threshold is registered (the #7955 qualification plan).
 //
 //   node scripts/perf/retained-qual-report.mjs RUNS.jsonl|RESULT_DIR [...] [--json OUT]
 //
@@ -25,8 +25,8 @@ export const NOISE_FLOOR_PCT = 3, ABSOLUTE_FLOOR = 1, TOO_NOISY_PCT = 15;
 const FINGERPRINT = ['candidates', 'published', 'refused', 'meshes'];
 const PHASES = ['productMs', 'sceneHeldMs', 'firstRetainedFrameMs', 'terminalMs', 'settledFrameMs', 'totalMs', 'startupControlMs', 'importMs', 'runMs',
   'wasmHeapMaxObservedBytes', 'uaAfterBytes', 'uaMemoryBytes', 'browserPeakHwmKiB', 'browserPeakConcurrentPssKiB', 'maxRssKiB', 'processHwmKiB',
-  'maxIndividualWorkerHwmKiB', 'maxObservedConcurrentWorkerRssKiB', 'wallMs'];
-const TOTALS = new Set(['totalMs', 'terminalMs', 'firstRetainedFrameMs', 'runMs', 'wallMs']);
+  'maxIndividualWorkerHwmKiB', 'maxObservedConcurrentWorkerRssKiB', 'executableMaxRssKiB', 'wallMs', 'retainedMs', 'productMs', 'startupAndQualificationMs'];
+const TOTALS = new Set(['totalMs', 'terminalMs', 'firstRetainedFrameMs', 'runMs', 'wallMs', 'retainedMs']);
 
 export function readRows(inputs) {
   const rows = [];

@@ -61,6 +61,8 @@ on:
     branches: [main]
   # Merge-queue batches. Every lane runs (no path filtering - see `changes`),
   # so the queue is the full gate and a bad batch is dequeued, never merged.
+  # With CI_PR_LANE=fast PR runs skip the heavy lanes (scripts/ci-pr-lane.mjs)
+  # and this is where they run, viewer-e2e included.
   merge_group:
     types: [checks_requested]
 
@@ -146,6 +148,10 @@ jobs:
       noop: ${{ steps.noop.outputs.noop || 'false' }}
       replay: ${{ steps.pushreplay.outputs.replay || 'false' }}
       replay_run: ${{ steps.pushreplay.outputs.replay_run || '' }}
+      # `fast` only on a `pull_request` with CI_PR_LANE=fast and no `ci:full`
+      # label (scripts/ci-pr-lane.mjs). Every lane it skips tests `!= 'fast'`,
+      # so a missing or garbled value runs the full lanes.
+      lane: ${{ steps.lane.outputs.lane || 'full' }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -230,9 +236,21 @@ jobs:
       # are judged; the aggregate re-verifies the recorded run. A merge that
       # touches Cargo/toolchain/workflow files never replays: those key caches
       # only a push to main writes.
+      # THE FAST PR LANE SWITCH (scripts/ci-pr-lane.mjs). continue-on-error
+      # because a crash here must not skip every lane via a failed `changes`:
+      # with no output the lanes read `lane != 'fast'` and run in full.
+      - name: Decide the PR lane
+        id: lane
+        continue-on-error: true
+        env:
+          CI_PR_LANE: ${{ vars.CI_PR_LANE }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ci-pr-lane.mjs --decide
+      # A fast run records no tree: the push replay would otherwise skip, on
+      # main, the lanes this run never executed.
       - name: Record the tree this PR run tests
         id: tree
-        if: github.event_name == 'pull_request' && steps.noop.outputs.noop != 'true'
+        if: github.event_name == 'pull_request' && steps.noop.outputs.noop != 'true' && steps.lane.outputs.lane != 'fast'
         run: |
           tree=$(git rev-parse 'HEAD^{tree}')
           mkdir -p "$RUNNER_TEMP/tested-tree"
@@ -804,9 +822,9 @@ jobs:
       # `vite preview` instead of rebuilding it per shard: measured 3.6 min x 4
       # shards of `pnpm build:e2e`, which with no turbo cache on the runner
       # rebuilt every package the viewer depends on before the vite build.
-      # PR-only because viewer-e2e is.
+      # Wherever viewer-e2e runs: PRs, or the merge queue in fast mode.
       - name: Upload viewer app build
-        if: github.event_name == 'pull_request'
+        if: (github.event_name == 'pull_request' && needs.changes.outputs.lane != 'fast') || (github.event_name == 'merge_group' && vars.CI_PR_LANE == 'fast')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: viewer-dist
@@ -1027,6 +1045,10 @@ jobs:
           # Keep the one scan; drop wrappers authored after a styled item.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch --test rust/processing/src/symbolic/color_tests.rs)
+          # #8263 C2-7b (stacked on C2-7a): plan the batch over coaxial-consumed
+          # openings, so a consumed box is cut twice.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-7b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-7b/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c2-7b/behaviour.oracle.patch --test rust/geometry/src/router/voids/stage_order_tests.rs)
           # #8263 C2-7a: the stage move keeps every byte, so whole inversion is
           # unobserved by construction. Swap the frozen ParamRect/Bool2d order.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-7a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-7a/behaviour.oracle.patch'; then
@@ -2119,7 +2141,7 @@ jobs:
   viewer-tests:
     name: Viewer tests (shard ${{ matrix.shard }})
     needs: [changes, build]
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
@@ -2678,7 +2700,7 @@ jobs:
   node-tests:
     name: Node tests (shard ${{ matrix.shard }}/4)
     needs: [changes, build]
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     # #7530: run package and real-WASM/integration suites independently of the
     # guard workload. Both jobs consume the same verified build and fixtures,
     # retain the 25-minute limit, and are judged by the required aggregate.
@@ -2874,7 +2896,7 @@ jobs:
   provenance-tests:
     name: Provenance tests
     needs: [changes, build]
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # 353 s for the one file, ~6.5 min for the package on a hosted runner; 15
     # leaves headroom without hiding a hang for long.
@@ -2907,7 +2929,9 @@ jobs:
     needs: [changes, build]
     # PR-only: see the `push:` trigger comment. The post-merge run repeats the
     # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && github.event_name == 'pull_request'
+    # In fast mode (scripts/ci-pr-lane.mjs) the PR skips it, so the merge
+    # queue runs it instead: otherwise it would run nowhere.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && ((github.event_name == 'pull_request' && needs.changes.outputs.lane != 'fast') || (github.event_name == 'merge_group' && vars.CI_PR_LANE == 'fast'))
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
@@ -3136,10 +3160,14 @@ jobs:
       # full debug info) is the measurement.
       # Panics and backtraces still name file and line; what goes is variable
       # inspection in a debugger, which nobody does on a CI runner.
+      # The fast PR lane (scripts/ci-pr-lane.mjs) stops after clippy and
+      # machete: the test leg below is ~9 of this job's ~13 minutes.
       - name: Install cargo-nextest
+        if: needs.changes.outputs.lane != 'fast'
         uses: taiki-e/install-action@f360235162158ca4526b07999d99c38ade05a414 # cargo-nextest (snapshot pinned 2026-10)
       - name: Rust tests
         id: rust_tests
+        if: needs.changes.outputs.lane != 'fast'
         # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
         # so a missing one here is fixture drift, not a legitimate local skip
         # (rust/export/src/test_support.rs) — make that a hard failure.
@@ -3180,6 +3208,7 @@ jobs:
       # here so the lane's coverage is exactly what it was. Same profile env,
       # so the libraries built above are reused rather than rebuilt.
       - name: Rust doctests
+        if: needs.changes.outputs.lane != 'fast'
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
           CARGO_PROFILE_DEV_OPT_LEVEL: "1"
@@ -3205,7 +3234,7 @@ jobs:
   rust-retained:
     name: Rust tests (retained)
     needs: changes
-    if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
+    if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || ((vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
     steps:
@@ -4099,6 +4128,23 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
           REPLAY_RUN: ${{ needs.changes.outputs.replay_run }}
         run: node scripts/ci-push-replay.mjs --verify --run "$REPLAY_RUN"
+      # FAST PR LANE: the map below passes the lanes it skipped, so first
+      # prove the skip was asked for (scripts/ci-pr-lane.mjs --verify). Runs
+      # only when the lane is `fast` or the switch is on for a PR, so with
+      # CI_PR_LANE unset this job is unchanged.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.lane == 'fast' || (github.event_name == 'pull_request' && (vars.CI_PR_LANE == 'shadow' || vars.CI_PR_LANE == 'fast')))
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Verify the PR lane decision
+        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.lane == 'fast' || (github.event_name == 'pull_request' && (vars.CI_PR_LANE == 'shadow' || vars.CI_PR_LANE == 'fast')))
+        env:
+          CI_PR_LANE: ${{ vars.CI_PR_LANE }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          LANE: ${{ needs.changes.outputs.lane }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci-pr-lane.mjs --verify
       - name: Gate on dependencies
         if: needs.changes.outputs.noop != 'true'
         run: |

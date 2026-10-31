@@ -203,9 +203,18 @@ function finishPixelWithTexture(): string {
   expect(grafted, 'the fixture ends with a single DATA section').not.toBe(source);
   return grafted;
 }
+/** `finishPixel()` with #29's square profile a circle: the kernels tessellate a circle differently, so a GLB's
+ * triangle count identifies the geometry it was built from. */
+function cylinderPixel(): string {
+  const source = finishPixel();
+  const cylinder = source.replace('#18=IFCRECTANGLEPROFILEDEF(.AREA.,$,#17,2.,2.);', '#18=IFCCIRCLEPROFILEDEF(.AREA.,$,#17,1.);');
+  expect(cylinder, 'the first product has a circular profile').not.toBe(source);
+  return cylinder;
+}
 const asFile = (name: string, text: string) => ({ name, mimeType: 'application/ifc', buffer: Buffer.from(text) });
 /** The glTF JSON chunk of a GLB. */
-function glbJson(glb: Buffer): { meshes?: unknown[]; nodes?: { mesh?: number }[]; materials?: { pbrMetallicRoughness?: { metallicFactor?: number; roughnessFactor?: number } }[] } {
+function glbJson(glb: Buffer): { meshes?: unknown[]; nodes?: { mesh?: number }[]; accessors?: { count: number }[];
+  materials?: { pbrMetallicRoughness?: { metallicFactor?: number; roughnessFactor?: number } }[] } {
   expect(glb.readUInt32LE(0), 'glTF magic').toBe(0x46546c67);
   const length = glb.readUInt32LE(12);
   expect(glb.readUInt32LE(16), 'first chunk is JSON').toBe(0x4e4f534a);
@@ -746,60 +755,76 @@ test.describe('retained viewer acceptance', () => {
       retainedShardOccurrences: seen.retained.shard, retainedFlat: seen.retained.flat });
   });
 
-  // Viewer-side export (#7955 item 4c): the retained model exports what the viewer holds, never the exact engine's
-  // re-mesh of its file, and the exact-only formats refuse in words instead of exporting different geometry.
-  test('export: a retained model\'s GLB is its retained geometry (the refused product is absent), the exact control has it', async ({ page }) => {
-    const text = finishPixelWithTexture();
-    const nodesWithMesh = (glb: Buffer) => (glbJson(glb).nodes ?? []).filter(node => node.mesh !== undefined).length;
+  // Viewer-side export (#7955 item 4c). A complete retained model exports what the viewer holds, never the exact
+  // engine's re-mesh of its file; USD and the energy models can only re-mesh the file, so they are refused (disabled with
+  // a reason) on any retained model; an incomplete one keeps the existing shape-only refusal of mesh exports.
+  const glbTriangles = (glb: Buffer) => {
+    const json = glbJson(glb);
+    return (json.meshes as { primitives: { indices?: number }[] }[] ?? [])
+      .flatMap(mesh => mesh.primitives).reduce((sum, primitive) => sum + (primitive.indices === undefined ? 0 : json.accessors![primitive.indices].count / 3), 0);
+  };
+  const heldTriangles = (page: Page) => page.evaluate(() => {
+    const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+    const model = [...state.models.values()][0];
+    return (model?.geometryResult?.meshes ?? []).reduce((sum, m) => sum + m.indices.length / 3, 0);
+  });
+  test('export: a complete retained model\'s GLB is the geometry the viewer holds, not the exact re-mesh of its file', async ({ page }) => {
+    const text = cylinderPixel();
     await setup(page, 'retained');
-    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await page.locator('#file-input-open').setInputFiles(asFile('cylinder-pixel.ifc', text));
     await complete(page, true);
     const loaded = await snapshot(page);
     expect(loaded.error).toBeNull();
-    expect(loaded.summary?.published).toBe(2);
-    expect(loaded.summary?.refused.map(r => ({ id: r.expressId, code: r.code }))).toEqual([{ id: TEXTURED_ID, code: 'appearance_unsupported' }]);
+    expect(loaded.summary?.refused, 'complete: nothing refused').toEqual([]);
+    const retainedHeld = await heldTriangles(page);
     await openExport(page, 'glb');
     const retained = await download(page, 'Export');
-    const retainedJson = glbJson(retained.bytes);
-    const finishes = (retainedJson.materials ?? []).map(m => m.pbrMetallicRoughness ?? {});
-    expect(finishes.some(f => f.metallicFactor === 1 && Math.abs((f.roughnessFactor ?? -1) - 0.125) < 1e-6), 'the metal finish is in the retained GLB').toBe(true);
-    expect(finishes.some(f => f.metallicFactor !== 1 && Math.abs((f.roughnessFactor ?? -1) - 0.25) < 1e-6), 'the matte finish is in the retained GLB').toBe(true);
-    const retainedNodes = nodesWithMesh(retained.bytes);
+    const retainedGlb = glbTriangles(retained.bytes);
+    const finishes = (glbJson(retained.bytes).materials ?? []).map(m => m.pbrMetallicRoughness ?? {});
+    expect(finishes.some(f => f.metallicFactor === 1 && Math.abs((f.roughnessFactor ?? -1) - 0.125) < 1e-6), 'the authored metal finish is in the retained GLB').toBe(true);
 
     await setup(page, 'exact');
-    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await page.locator('#file-input-open').setInputFiles(asFile('cylinder-pixel.ifc', text));
     await complete(page, false);
     await openExport(page, 'glb');
-    const exact = await download(page, 'Export');
-    const exactNodes = nodesWithMesh(exact.bytes);
-    expect(retainedNodes, 'retained GLB: the two published products, not the refused textured one').toBe(2);
-    expect(exactNodes, 'exact control GLB re-meshes the file and includes the textured product').toBe(3);
-    await record('export-glb', { retainedNodes, exactNodes, retainedBytes: retained.bytes.length, exactBytes: exact.bytes.length });
+    const exactGlb = glbTriangles((await download(page, 'Export')).bytes);
+
+    // The two kernels mesh the cylinder differently, so the GLB's triangle count says which geometry it was built from.
+    expect(retainedHeld, 'the kernels differ on this fixture (else the check below could not tell them apart)').not.toBe(exactGlb);
+    expect(retainedGlb, 'the retained GLB is exactly the geometry the viewer holds').toBe(retainedHeld);
+    await record('export-glb', { retainedHeld, retainedGlb, exactGlb });
   });
 
-  test('export: USD and energy models of a retained model refuse in words, and the exact control exports USD', async ({ page }) => {
-    const text = finishPixelWithTexture();
-    const downloads: string[] = [];
-    page.on('download', file => downloads.push(file.suggestedFilename()));
+  test('export: USD and the energy models are refused on a retained model, GLB and IFC5 only while it is incomplete', async ({ page }) => {
+    const command = (id: string) => page.locator(`[data-export-command="${id}"]`);
+    const states = async () => Object.fromEntries(await Promise.all(['glb', 'kmz', 'usd', 'energy', 'ifc', 'json'].map(async id =>
+      [id, await command(id).isDisabled()] as const)));
     await setup(page, 'retained');
-    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-pixel.ifc', finishPixel()));
     await complete(page, true);
-    for (const [id, button, format] of [['usd', /^Export$/, 'USD'], ['energy', /^Export HBJSON$/, 'HBJSON']] as const) {
-      const dialog = await openExport(page, id);
-      await dialog.getByRole('button', { name: button }).click();
-      await expect(dialog).toContainText(`${format} export rebuilds its geometry from the file with the exact engine`);
-      await page.keyboard.press('Escape');
-      await expect(dialog).toBeHidden();
-    }
-    expect(downloads, 'a refused export downloads nothing').toEqual([]);
+    await page.getByRole('tab', { name: 'File', exact: true }).click();
+    const complete_ = await states();
+    expect(complete_, 'complete retained model').toEqual({ glb: false, kmz: false, usd: true, energy: true, ifc: false, json: false });
 
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', finishPixelWithTexture()));
+    await complete(page, true);
+    expect((await snapshot(page)).summary?.refused.map(r => r.expressId)).toEqual([TEXTURED_ID]);
+    await page.getByRole('tab', { name: 'File', exact: true }).click();
+    const incomplete = await states();
+    expect(incomplete, 'incomplete retained model').toEqual({ glb: true, kmz: true, usd: true, energy: true, ifc: false, json: false });
+
+    // Control: the exact kernel keeps every one of them, and USD exports.
     await setup(page, 'exact');
-    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', finishPixelWithTexture()));
     await complete(page, false);
+    await page.getByRole('tab', { name: 'File', exact: true }).click();
+    const exact = await states();
+    expect(exact, 'exact model').toEqual({ glb: false, kmz: false, usd: false, energy: false, ifc: false, json: false });
     await openExport(page, 'usd');
     const usd = await download(page, /^Export$/);
     expect(usd.bytes.subarray(0, 5).toString('utf8'), 'the exact control exports a USD stage').toBe('#usda');
-    await record('export-refusals', { refused: ['usd', 'hbjson'], exactUsdBytes: usd.bytes.length });
+    await record('export-availability', { complete: complete_, incomplete, exact, exactUsdBytes: usd.bytes.length });
   });
 
   test('export: the formats that need no geometry kernel still export from a retained model (IFC, JSON)', async ({ page }) => {

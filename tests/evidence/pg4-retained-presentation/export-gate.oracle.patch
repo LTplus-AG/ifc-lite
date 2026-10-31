@@ -1,38 +1,38 @@
-diff --git a/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx b/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx
-index 4ac25b828b..34fc8843a2 100644
---- a/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx
-+++ b/apps/viewer/src/components/viewer/EnergyModelExportDialog.tsx
-@@ -115,7 +115,7 @@ export function EnergyModelExportDialog({ surface, trigger }: EnergyModelExportD
-     const spec = FORMATS[format];
-     // The energy model is rebuilt from the file's analytic geometry by the exact engine; a retained-kernel
-     // model's geometry is not that geometry.
--    if (false && selectedModel.retained) {
-+    if (selectedModel.retained) {
-       return { success: false, message: t('geometryExport.shared.retainedKernelRefusal', { format: spec.label }) };
-     }
-     try {
+diff --git a/apps/viewer/src/components/viewer/ExportDialog.tsx b/apps/viewer/src/components/viewer/ExportDialog.tsx
+index 8e4c583bd2..2c2a329c5d 100644
+--- a/apps/viewer/src/components/viewer/ExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/ExportDialog.tsx
+@@ -411,7 +411,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
+       if (isIfc5) {
+         // IFC5 carries the meshes the viewer holds; a retained model that is incomplete or shape-only would export
+         // them as if they were the model (the same guard the GLB/KMZ/USD ribbon commands use).
+-        if (false && hasRetainedShapeOnlyModel(models)) return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
++        if (hasRetainedShapeOnlyModel(models)) return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+         const federatedModel = models.get(selectedModelId);
+         const idOffset = federatedModel?.idOffset ?? 0;
+ 
 diff --git a/apps/viewer/src/components/viewer/GLBExportDialog.tsx b/apps/viewer/src/components/viewer/GLBExportDialog.tsx
-index ea63c347cd..5f07814c09 100644
+index bce28120bb..558bd68705 100644
 --- a/apps/viewer/src/components/viewer/GLBExportDialog.tsx
 +++ b/apps/viewer/src/components/viewer/GLBExportDialog.tsx
-@@ -202,6 +202,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
+@@ -201,6 +201,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
        // A retained-kernel model never re-meshes its file: that is the exact engine, so the GLB would not be the
        // geometry on screen (it would carry the products the retained kernel refused). It takes the held meshes.
        const canUseSource =
-+        !isRetainedKernelModel(federatedModel) &&
++        !federatedModel?.retainedGeometry &&
          !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
          colorSource === 'rendering' &&
          !mergeLayers &&
-diff --git a/apps/viewer/src/components/viewer/UsdExportDialog.tsx b/apps/viewer/src/components/viewer/UsdExportDialog.tsx
-index 5c6a93cb40..83c842215c 100644
---- a/apps/viewer/src/components/viewer/UsdExportDialog.tsx
-+++ b/apps/viewer/src/components/viewer/UsdExportDialog.tsx
-@@ -94,7 +94,7 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
-     }
- 
-     // USD is rebuilt from the file by the exact engine; a retained-kernel model's geometry is not that geometry.
--    if (false && selectedModel.retained) {
-+    if (selectedModel.retained) {
-       return { success: false, message: t('geometryExport.shared.retainedKernelRefusal', { format: 'USD' }) };
-     }
- 
+diff --git a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
+index 90193008e2..517743dab2 100644
+--- a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
++++ b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
+@@ -170,7 +170,7 @@ export function useExportCommands(surface: ExportSurface) {
+   const commands = useMemo<ResolvedExportCommand[]>(
+     () => EXPORT_COMMANDS.map((command) => shapeOnly && MESH_DERIVED_EXPORTS.has(command.id)
+       ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
+-      : false && retained && EXACT_ONLY_EXPORTS.has(command.id)
++      : retained && EXACT_ONLY_EXPORTS.has(command.id)
+       ? { command, disabled: true, disabledReasonKey: RETAINED_EXACT_ONLY_REASON }
+       : {
+         command,

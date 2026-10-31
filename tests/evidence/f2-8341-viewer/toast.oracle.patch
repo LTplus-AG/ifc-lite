@@ -1,0 +1,12 @@
+diff --git b/apps/viewer/src/hooks/modelLoadedGeometryProps.ts a/apps/viewer/src/hooks/modelLoadedGeometryProps.ts
+--- b/apps/viewer/src/hooks/modelLoadedGeometryProps.ts
++++ a/apps/viewer/src/hooks/modelLoadedGeometryProps.ts
+@@ -163,7 +163,7 @@ export function reportOmittedTypeRecords(
+   count: number | undefined,
+   notify: (message: string) => void,
+ ): void {
+-  if (count === undefined) return;
++  if (count === undefined || count <= 0) return;
+   notify(resolve('loadReportPanel.omittedTypeRecords', { name: fileName, count }));
+ }
+ 

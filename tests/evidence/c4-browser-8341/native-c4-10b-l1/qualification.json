@@ -1,0 +1,18 @@
+{
+  "commandExitCode": 0,
+  "artifactDrift": false,
+  "observedExternalBuildActivity": false,
+  "manifestSha256": "f88caf39a4125376a9effa2440d1f2617d274f18d043fd52e7f8a464859e1cb8",
+  "cpuPolicyChanged": false,
+  "thermalInvalid": false,
+  "throttled": false,
+  "protocolVerdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": false,
+    "inconclusive": true,
+    "zeroBaselineIncrease": false
+  },
+  "qualified": false,
+  "scope": "Native paired protocol only; sampled visibility, not independent geometry byte-identity proof."
+}

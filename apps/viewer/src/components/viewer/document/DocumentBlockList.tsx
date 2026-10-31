@@ -5,7 +5,16 @@
 import { useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { GripVertical } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { reorderDocumentBlocks } from '@/lib/document/reorder-blocks';
 import type { DocumentBlock, DocumentSpec } from '@/lib/document/types';
+
+/** A block card's jumps to the document's start or end; undefined when already there (#8227). */
+export interface BlockEdgeMoves {
+  toStart?: () => void;
+  toEnd?: () => void;
+  /** The jump carries the whole selection, as dragging a selected handle does. */
+  group: boolean;
+}
 
 interface Props {
   document: DocumentSpec;
@@ -13,7 +22,7 @@ interface Props {
   onToggle: (id: string) => void;
   onSelectOnly: (id: string) => void;
   onMove: (ids: ReadonlySet<string>, beforeId: string | null) => boolean;
-  children: (block: DocumentBlock, index: number) => ReactNode;
+  children: (block: DocumentBlock, index: number, edges: BlockEdgeMoves) => ReactNode;
 }
 
 /** Only handles drag, leaving text fields and source pickers usable. Keyboard
@@ -32,6 +41,17 @@ export function DocumentBlockList({ document, selected, onToggle, onSelectOnly, 
     const text = index < 0 ? t('document.selection.movedBottom')
       : t('document.selection.movedBefore', { block: label(document.blocks[index], index) });
     setAnnouncement(prior => ({ text, sequence: prior.sequence + 1 }));
+  };
+  // Same group rule as a drag: a selected block carries the selection, an unselected one moves alone and becomes it.
+  const edges = (block: DocumentBlock): BlockEdgeMoves => {
+    const ids = selected.has(block.id) ? selected : new Set([block.id]);
+    const jump = (before: string | null) => () => { if (!selected.has(block.id)) onSelectOnly(block.id); move(ids, before); };
+    const first = document.blocks.find(entry => !ids.has(entry.id));
+    return {
+      toStart: first && reorderDocumentBlocks(document.blocks, ids, first.id) !== document.blocks ? jump(first.id) : undefined,
+      toEnd: reorderDocumentBlocks(document.blocks, ids, null) !== document.blocks ? jump(null) : undefined,
+      group: ids.size > 1,
+    };
   };
   const cancel = () => { drag.current = null; setOver(undefined); };
   const dragOver = (event: DragEvent, before: string | null) => {
@@ -74,7 +94,7 @@ export function DocumentBlockList({ document, selected, onToggle, onSelectOnly, 
           <span className="truncate">{label(block, index)}</span>
         </label>
       </div>
-      {children(block, index)}
+      {children(block, index, edges(block))}
     </div>)}
     <div className={`min-h-8 rounded border border-dashed p-2 text-center text-muted-foreground ${over === null ? 'border-sky-500 bg-sky-500/10' : 'border-border'}`}
       data-block-drop-end onDragOver={event => dragOver(event, null)} onDrop={event => drop(event, null)}>

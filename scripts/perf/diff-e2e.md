@@ -4,7 +4,8 @@
 
 # Right-sized diff end-to-end protocol (#8042)
 
-Protocol v3 supersedes the frozen 25-pair protocol. It measures six paired
+Protocol v4 supersedes v3 by measuring the public resident-handle warm path.
+It keeps v3's six paired
 rounds, seed 8042, with exactly three base-first and three branch-first rounds
 in randomized order. There are three cases and two primary endpoints per case:
 **72 timing children plus six untimed proof children**, rather than 1,200 timing
@@ -21,17 +22,36 @@ are data-only; this is not a geometry coverage claim.
 
 Each cold observation is a fresh process: imports, initialization, file reads,
 parse, fingerprint build, public diffModels (including marshaling, restoration
-and handle release), input release and GC are measured continuously. Each warm
-observation is a separate process with retained JS fingerprints, one conditioning
-call and three timed calls. Calls still construct and free handles through the
-public facade. Warm repetitions stay in that process; their median is one
-observation, never three independent samples. Fingerprint construction and final
-release remain in the warm lifecycle report, outside warm call latency.
+and handle release), input release and GC are measured continuously, unchanged
+from v3. Each warm observation is a separate fresh process. The Rust candidate
+prepares two handles once via the public `prepareDiffModel`, performs one untimed
+conditioning `base.compare(head, options)`, then three timed compares on those
+same handles. Preparation and disposal are reported as `prepareHandlesMs` and
+`disposeMs` within the lifecycle, outside call latency. Disposal runs even when
+preparation or comparison fails. The TypeScript baseline keeps v3 semantics:
+retained JS fingerprints, one conditioning `diffModels` and three timed calls.
+Warm repetitions stay in that process; their median is one observation, never
+three independent samples.
+
+The candidate's stateless one-shot `diffModels` warm median is a **report-only
+secondary metric**, never a gate. After the primary calls and handle disposal,
+it performs one conditioning call and the same three timed repeats; raw samples
+are `statelessTimes`, summarized as `statelessWarmProcessMediansMs`. This work is
+included only in the descriptive warm lifecycle; the cold endpoint is unchanged.
+Every child records `handleApiAvailable`, `warmPath` and the executed `callPath`
+(`prepared-handles` or `stateless-diffModels`). The candidate refuses to run
+without public `prepareDiffModel`; internal APIs cannot substitute for it.
 
 Proofs run separately before timing and retain all three original option
-configurations, including disabled versus enabled optional results. Full input/output hashes, Map order,
+configurations, including disabled versus enabled optional results. Candidate
+proofs check resident-handle output against stateless output as well as the TS
+arm. Full input/output hashes, Map order,
 optional-versus-empty/absent values, secondary claims, original row references
-and byKey entry identity remain a **hard gate independent of timing**. Hashing
+and byKey entry identity remain a **hard gate independent of timing**. Handle
+results use owned immutable snapshots by contract: proofs check each snapshot's
+full values and original opaque `ref` identity, then verify consistent snapshot
+reuse throughout entries/claims and hash them in original input order. Stateless
+proofs still require original row object identity. Hashing
 and resolver auditing never enter timing children. Source, binary, runtime,
 fixture and preparation receipt checks remain intact. Missing large fixtures
 make a full cohort incomplete; a smoke run cannot pass performance acceptance.
@@ -43,14 +63,24 @@ as the measured branch.
 
 ## Timing verdict fixed before measurement
 
-Report each endpoint's median paired branch/base ratio and a pointwise 95%
-paired percentile bootstrap CI (10,000 resamples, seed 8042). Resample complete
-process pairs, not repeats. No Holm24 procedure or familywise speedup claim.
+The cold gate keeps the paired median branch/base ratio and pointwise 95%
+percentile bootstrap CI. The warm gate instead uses the candidate's absolute
+per-process median handle latency, with budgets fixed before measurement:
+**demo 1 ms, Haus 1 ms, large 50 ms**. These constants are recorded in the result
+JSON at `protocol.acceptance.warmBudgetMs`, and each warm gate records `budgetMs`.
+Protocol remains `ifc-diff-e2e/4`; no official v4 cohort preceded this decision.
 
-- A lower CI bound above 1.10 means a supported regression.
-- A clean pass requires every upper CI bound at most 1.10.
-- An interval crossing 1.10 is inconclusive, not a pass.
-- Per-arm `(max-min)/median` spread above 20% flags noisy and blocks a clean pass.
+Both gates use 10,000 bootstrap resamples, seed 8042, and whole process summaries,
+never individual warm repeats. Cold resamples paired ratios; warm resamples only
+candidate medians. Warm branch/base ratios (`pairedWarmCallRatio`) and candidate
+stateless medians remain report-only. No familywise speedup claim.
+
+- Regression: any cold lower CI exceeds 1.10 or warm lower CI exceeds its budget.
+- Pass: every cold upper CI is at most 1.10, every warm upper CI is at most its
+  budget, and no noise.
+- Otherwise inconclusive; spread above 20% is flagged `noisy`, blocking a pass.
+  Cold checks both arms; the absolute warm gate checks only candidate spread,
+  using the same `(max-min)/median` rule.
 - Identity failure, failed admission, skipped coverage or child failure blocks
   acceptance. Preserve all samples; do not replace inconvenient observations.
 
@@ -84,8 +114,8 @@ acceptance or fabricated exclusive/preparation receipts:
 
 ```bash
 ~/build-workers/ifc-fleet run --host pop-os --kind ordinary \
-  --storage-task issue8042-rightsized-smoke --cwd /absolute/clean/harness -- \
-  node scripts/perf/diff-e2e.mjs dry-run --base-root /absolute/prepared-ts \
+  --storage-task issue8042-v4-smoke --cwd /absolute/clean/harness -- \
+  env NODE_OPTIONS=--max-old-space-size=8192 node scripts/perf/diff-e2e.mjs dry-run --base-root /absolute/prepared-ts \
   --branch-root /absolute/prepared-public-rust --fixture-root /absolute/fixtures \
   --out /absolute/task-output/smoke \
   --large-base /absolute/frozen/source.ifc \
@@ -110,7 +140,7 @@ it for a materially changed source or fixture plan. A timeout is a failed cohort
 never permission to remove the large case. Do not run the full cohort during harness implementation.
 
 
-Implementation smoke evidence: ordinary Pop job
+Historical **v3** implementation smoke evidence (does not validate v4): ordinary Pop job
 `f6a71d44-90d6-4468-946e-4d17af8d8092`, harness commit `20fd70b2ad`, TS source
 `e59777a81424ef44210b9f093c989d5db2c57e59`, Rust source
 `514a5f21233265118ab7393f357e186bf237d350`. The report preserves real fixture
@@ -123,7 +153,11 @@ for another source pair.
 ## Parent preparation and receipts
 
 Keep separate clean Linux TS-base and Rust-branch checkouts, exact commits,
-pinned toolchains and root pnpm/Turbo dependency builds. Ordinary validation
+pinned toolchains and root pnpm/Turbo dependency builds. Keep the v3 TS arm
+`a3641a732a63beac0f90718d86d33585409faa33` (the main merge-base used by the
+recorded v3 cohort); the parent chooses the candidate tip with the handle API.
+Regenerate v4 bindings and approval against these exact prepared arms and the
+v4 harness source. A v3 protocol hash cannot authorize a v4 run. Ordinary validation
 continues through `~/build-workers/ifc-fleet`. For this proposed custom protocol,
 source-pinned, artifact-producing preparation must stay on the measurement host.
 It may use that host's registered `~/build-workers/run-heavy` directly with
@@ -240,7 +274,7 @@ On Pop, outside any reservation, use one task for preparation and measurement:
 
 ```bash
 ~/build-workers/run-heavy --cwd /absolute/clean/harness --kind benchmark \
-  --storage-task issue8042-rightsized-cohort --cpu 24 --memory 48 --timeout 12240 \
+  --storage-task issue8042-v4-cohort --cpu 24 --memory 48 --timeout 12240 \
   --artifact /absolute/task-output/cohort/result.json \
   --artifact /absolute/task-output/cohort/proofs.jsonl \
   -- node scripts/perf/diff-e2e.mjs run \

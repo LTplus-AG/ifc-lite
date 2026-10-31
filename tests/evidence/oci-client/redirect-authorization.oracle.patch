@@ -1,0 +1,12 @@
+diff --git a/packages/oci/src/transport.ts b/packages/oci/src/transport.ts
+--- a/packages/oci/src/transport.ts
++++ b/packages/oci/src/transport.ts
+@@ -64,7 +64,7 @@ export async function fetchFollowing(startUrl: string, options: FollowOptions):
+   for (let hop = 0; ; hop++) {
+     const current = new URL(url);
+     const headers: Record<string, string> = { ...options.headers };
+-    if (options.authorization !== undefined) {
++    if (options.authorization !== undefined && current.origin === options.registryOrigin) {
+       headers.authorization = options.authorization;
+     }
+     const response = await guardedFetch(options.fetch, url, {

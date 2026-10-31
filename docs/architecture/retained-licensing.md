@@ -15,8 +15,12 @@ are under `licenses/retained/texts/`; they are not paraphrased licence templates
 CI compares semantic inputs: external locked package identities/checksums in each
 production dependency closure, the SMLib and emsdk pins, Emscripten version, Rust
 toolchain channel and supplemental notice records. Workspace versions and unrelated
-workflow text are excluded. Preserved notice hashes and generated outputs are checked.
-The Apache-2.0 election for `wasm_sync` below closes the missing-text gap.
+workflow text are excluded. Preserved notice hashes and generated outputs are checked,
+and `manifest.json` carries a `manifestSha256` digest of its inputs and components that
+`--check` and `--write` verify. It catches accidental damage (a text dropped by a merge
+resolution, hand-edited inputs); it is not a signature, because `--refresh` recomputes it.
+The maintainer's elections for `wasm_sync`, `r-efi` and `wide` are recorded in `supplemental.json`;
+the `wasm_sync` Apache-2.0 election below also closes its missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code
 remaining after link-time dead stripping. The roots are `ifc-lite-wasm` (default
@@ -57,8 +61,8 @@ OpenUSD licence text must never substitute for its complete licence if OpenUSD
 is added to a future artifact. `proposals/NOTICE` belongs to unshipped proposals.
 
 `ifc-lite-geometry-runtime` now has an explicit source-only Cargo include list.
-It remains outside the automatic `CRATES` release list until manual bootstrap;
-explicit package qualification still includes it.
+It is in the automatic `CRATES` release list (last, after wasm) since its manual
+27.1.0 bootstrap; package qualification covers it as a listed crate.
 Its retained feature forwards to `ifc-lite-geometry/retained-runtime`. Processing's
 current retained feature also forwards directly to geometry; it does **not** have
 an optional runtime dependency. The unpublished `ifc-lite-retained-native` harness
@@ -103,9 +107,9 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 
 ## Distribution scope for this release
 
-* **crates.io:** the eight crates in `scripts/lib/crates-io.mjs` (core, clash,
-  geometry, processing, landxml, export, ffi, wasm) and the separately qualified
-  geometry-runtime bootstrap candidate are source packages. `cargo package
+* **crates.io:** the nine crates in `scripts/lib/crates-io.mjs` (core, clash,
+  geometry, processing, landxml, export, ffi, wasm, geometry-runtime) are
+  source packages. `cargo package
   --list` is the archive selection check, not a build or publication. Their
   lists contain source, tests/fixtures, documentation and Cargo metadata, no SDK
   or third-party binaries. Each inherits `license-file = "LICENSE"` from the
@@ -207,11 +211,19 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    record](#review-record) for component obligations and evidence. Final scope,
    release copies and source identity still require the maintainer's check; no
    approval is asserted by this document.
-2. **Resolved: wasm_sync text/election.** Apache-2.0 election, exact attribution
-   and SPDX text are recorded in `supplemental.json` and generated bundles.
-   Its archive and upstream tree `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5`
-   have no LICENSE/NOTICE files. Existing VCS-pinned supplements for i_key_sort,
-   i_overlay, flatbuffers and valuable remain; r-efi's AUTHORS is preserved.
+2. **Resolved by the maintainer (stated 2026-10-30): wasm_sync, r-efi and wide
+   elections.** Each is recorded in `supplemental.json` with its exact attribution
+   and carried into the generated bundles:
+   * wasm_sync 0.1.2: Apache-2.0 from `MIT OR Apache-2.0` (maintainer-approved;
+     the canonical SPDX text is preserved by hash). Its archive and upstream tree
+     `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5` have no LICENSE/NOTICE files.
+   * r-efi 5.3.0: MIT from `MIT OR Apache-2.0 OR LGPL-2.1-or-later`. The preserved
+     `AUTHORS` carries the full MIT permission notice and copyright holders.
+   * wide 1.4.0: Zlib from `Zlib OR Apache-2.0 OR MIT`. The preserved
+     `LICENSE-ZLIB.md` is the complete Zlib text.
+
+   No new text was needed for r-efi or wide. Existing VCS-pinned supplements for
+   i_key_sort, i_overlay, flatbuffers and valuable remain.
 3. **Out of scope: native link map.** No native retained worker binaries ship
    in this release; users build from the pinned SDK. Before any future native
    binary distribution, collect actual link maps/import tables, compiler and
@@ -231,6 +243,19 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
    failures remain visible; this record does not waive publication prerequisites.
 
+7. **Open for the maintainer: remaining unrecorded dual-licence elections.**
+   Components whose declaration offers alternatives but whose manifest entry has no
+   `election` record (`wasm_sync`, `r-efi` and `wide` are resolved above). Each has
+   at least one complete alternative preserved, so no text is missing for an OR
+   election, but the maintainer has not made these choices:
+   * Emscripten runtime (`MIT OR NCSA`): the preserved `LICENSE` reproduces both
+     licences and Node's MIT text; nothing missing. OPEN: its copyright line refers to
+     the Emscripten `AUTHORS` file, which is not preserved.
+   * chrono 0.4.44 (`MIT OR Apache-2.0`): the preserved `LICENSE.txt` reproduces both.
+   * OPEN: no generic check yet flags every OR-licensed component that lacks an
+     `election` record; the script only validates elections that are recorded.
+   * dlmalloc is not an alternative: public-domain dedication, header preserved.
+
 ## Regeneration
 
 The refresh resolves the current locked source closures and reads Cargo archive paths
@@ -242,6 +267,12 @@ node scripts/retained-notices.mjs --refresh --sdk /absolute/pinned-usd-brep \
   --emscripten /absolute/emsdk/upstream/emscripten
 node scripts/retained-notices.mjs --check
 ```
+
+When only Cargo closures changed, `--refresh --cargo-only` reuses the committed SDK
+and toolchain components instead (see the
+[release runbook](../guide/retained-release.md#refreshing-retained-notices-after-a-dependency-change)):
+it fails closed if the manifest digest, the SDK/emsdk/Emscripten/Rust pins or the
+component layout do not match. `--write` cannot bypass the digest.
 
 Refresh reads actual installed licence files and preserves byte hashes, including
 line endings. Review changed pins, missing texts and supplemental sources before

@@ -140,11 +140,19 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
     for record in records.iter().filter(|record| record.kind.is_subtype_of(IfcType::IfcTypeProduct)) {
         let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
         if let Some(attr) = product.attr(slot::IfcTypeProduct::REPRESENTATION_MAPS).filter(|attr| !attr.is_null()) {
-            let maps = attr.as_list().ok_or("type RepresentationMaps is not a list")?;
-            for map in maps {
-                let map = map.as_entity_ref().ok_or("type RepresentationMaps holds a non-reference")?;
-                if !mapped_sources.contains(&map) { type_maps.insert(map); }
-            }
+            // #8341 F4: read the maps with the one reader geometry discovery
+            // and EntityRows use (#8300), so a bare `#n` is the one map every
+            // consumer renders. The writer replaces map records in place and
+            // never this attribute, so its authored shape is preserved. That
+            // reader skips what is not a reference; a writer refuses instead.
+            let authored = match attr {
+                AttributeValue::List(items) => items.len(),
+                AttributeValue::EntityRef(_) => 1,
+                _ => return Err("type RepresentationMaps is neither a list nor a reference".into()),
+            };
+            let maps = ifc_lite_processing::discovery::record_refs_at(record.line.as_bytes(), slot::IfcTypeProduct::REPRESENTATION_MAPS.index());
+            if maps.len() != authored { return Err("type RepresentationMaps holds a non-reference".into()); }
+            type_maps.extend(maps.into_iter().filter(|map| !mapped_sources.contains(map)));
         }
     }
     // Their representations meet the same context, item and wrapper-depth

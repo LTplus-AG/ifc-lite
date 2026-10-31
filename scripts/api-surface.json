@@ -7758,6 +7758,21 @@
     "refreshAccessToken: function",
     "waitForOAuthCallback: function"
   ],
+  "@ifc-lite/oci": [
+    "OciClient: class",
+    "OciClientOptions: interface",
+    "OciCredentials: type",
+    "OciDescriptor: interface",
+    "OciError: class",
+    "OciErrorCode: type",
+    "OciHasher: interface",
+    "OciIndex: interface",
+    "OciManifest: interface",
+    "OciManifestResult: interface",
+    "OciReference: interface",
+    "OciRepositoryRef: type",
+    "parseReference: function"
+  ],
   "@ifc-lite/opencde-foundation": [
     "ApiVersion: interface",
     "AuthorizationCodeGrantOptions: interface",

@@ -7,10 +7,8 @@ import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CRATES } from './lib/crates-io.mjs';
-// Qualification includes the bootstrap candidate without enrolling it in the
-// always-on semver/publish gates before a registry baseline exists.
-const qualificationCrates = [...new Set(CRATES.flatMap(crate => crate === 'ifc-lite-geometry'
-  ? [crate, 'ifc-lite-geometry-runtime'] : [crate]))];
+// The runtime is enrolled in CRATES, so qualification is exactly that list.
+const qualificationCrates = [...CRATES];
 const results = [];
 function run(command, args) {
   console.log(`\nPROOF_COMMAND ${JSON.stringify([command, ...args])}`);

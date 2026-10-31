@@ -4,6 +4,75 @@
 
 # Performance diagnosis kit
 
+## C4-14 independent levers (#8341)
+
+**Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item
+index read the file twice, once per record kind; one scan now records both and
+decodes in the old order. Callgrind puts `extract_symbolic_data` roughly a
+seventh lower on Haus, HouseZ, dental_clinic, duplex and schependomlaan with
+byte-identical symbolic JSON, because entity scans dominate that extractor.
+Counts, sources and receipts: [evidence](../../tests/evidence/c4-14-symbolic-style/README.md).
+Instructions only, no wall-time claim.
+
+**Declined: opening filter allocations (PROCESSING-17).** "Filter after the
+metadata phase" no longer has a home: identity metadata is now resolved per
+chunk inside the streaming pass, with thread-local uncached decoders, while
+the filter must settle skips and the void index before the first chunk. The
+remaining levers (allocation-free `glas` matching, handing back the void index
+instead of cloning it) moved at most 0.05% of the main thread's instructions
+under IgnoreOpaque and 0.015% on the default path, far below the 0.5% bar, with
+identical meshes, while the native geometry phase it does not touch moved
++0.04% to +0.05% from code layout alone. Do not re-spike without a mechanism that removes the
+per-opening representation decode itself.
+
+**Declined: a common reserve-capped index builder (PROCESSING-19).** No
+measurable lever. The browser serial index already carries the 40 M reserve
+cap (#8259/C4-11b); native sources from 32 MiB use the paged compact builder;
+the remaining `len / 50` reservations bind the cap only above a 2 GB source.
+An exact record count would not change the hash table either: Haus (44,249
+records against 50,530 estimated) and HouseZ (81,806 against 101,455) round
+to the same 65,536 and 131,072 buckets. Sharing the builder is DRY work, not
+a performance claim; the browser index must also answer metadata lookups
+mid-scan, which the paged builder cannot.
+
+## C4-7b fallback full-file work (#8341)
+
+Verdict: shipped. Instruction counts only, for the slice that reaches the lazy
+fallbacks; no worker-pool wall-time or browser memory claim. Output hashes are
+identical on six fixtures, merge layers off and on. Counts, fixtures and receipts
+are in `tests/evidence/c4-7b/README.md`.
+
+Two kinds of duplicate work remained. With merge layers on, every geometry worker's
+parts-to-skip rebuilt the material-layer index with an ungated full scan, even
+though the prepass had injected the same index, and then walked the aggregates.
+Passing the per-content index and returning early when nothing is sliceable
+removes both walks on files with no sliceable buildup, and the index walk on the
+rest. `buildPrePassOnce` (remesh, viewer-html, the C4-0 gate) rescanned for type
+jobs, then its first batch scanned again for the type plan and the layer index.
+Building both pre-passes' columns once from scan spans (`PrepassColumns`) and
+installing them on the once path removes all three.
+
+Lesson: an injected column helps only consumers that read the slot. Look for
+drivers that rebuild their own input. The keyword-gated indexed-colour and texture
+fallbacks remain, because the worker wire carries no spans for them.
+
+## C4 default browser worker-pool measurement (#8341)
+
+**Cumulative C4 window neutral within noise; peak memory not strictly at or below base.**
+One fresh-WASM, hardware-GPU browser cohort compared main before C4-10a with the
+last C4-11b merge: five randomized pairs on three fixtures, identical CPU payload roots
+and diagnostic lines. Observed readiness stays inside the base spread on every fixture.
+Peak RSS is lower on the CSG model and marginally higher, within spread, on the two small
+models. One reporter flag remains: later spatial-tree readiness on the CSG model,
+offset by earlier first paint. The window also contains retained and diff commits, so no
+single lane is attributed. Both native C4-10b layers show identical counts and no phase
+outside noise; the reporter stays inconclusive on sub-millisecond phases. Evidence: [c4-browser-8341](../../tests/evidence/c4-browser-8341/README.md).
+
+Lessons: pass `page.evaluate` bodies as source text, because tsx wraps named closures
+in a `__name` helper that is absent in the page. Chrome rewrites process titles, so
+`/proc/*/cmdline` needs a whitespace split to find `--type=`. A fixture with
+sub-millisecond phases makes the native reporter inconclusive by construction.
+
 ## Retained diff boundary A3 (#8042)
 
 **Hold: the tested transport changes do not close the retained gap.** Five
@@ -284,6 +353,66 @@ viewer path. The two run the *same* Rust code (`process_geometry` ->
 that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
+
+## Official resident-handle diff cohort v4 (#8042)
+
+**Unmeasured: the sole official submission failed in admission.** Pop job
+`bbba5197-1036-496f-8e95-344c9a95066f`, storage task
+`issue8042-v4-cohort-3ac58cbc`, exhausted the worker's one-hour admission wait
+while existing ordinary work drained. The project command never started;
+there is no `result.json`, no timing samples, and no cold or warm performance
+verdict. The requested execution timeout was 10,800 seconds; that does not
+extend the admission deadline. At that stage, no rerun or second submission was made.
+
+The frozen cohort used TS base `a3641a732a63beac0f90718d86d33585409faa33`,
+Rust candidate `37d9ff187a38c69d9bafe15f072a76b13f655b13`, and harness
+`d6568fa392d463f1f168c296a78b38bcc0aa858a`. Both preparations passed and their
+publications verified. Untimed preparation identity passed for demo, Haus and
+the frozen large revision across all three option shapes. Those proofs do not
+establish measured-cohort identity or performance acceptance.
+
+Lesson: distinguish the execution timeout from the worker admission deadline.
+An exact-once cohort can consume its only submission while waiting for active
+foreign work; preserve that original failure and report it without fabricating
+a verdict or quietly rerunning. See the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042)
+and the original job receipt in the storage task's verified evidence.
+
+## Authorized resident-handle v4 recovery (#8042)
+
+**Inconclusive: the measured cohort is noisy.** Pop benchmark
+`afe5139a-662a-4e37-9e82-a0ed16cc03ef`, task
+`issue8042-v4-cohort-r3-3ac58cbc`, completed every cold and resident-handle
+endpoint and passed exact output/reference identity for demo, Haus and the
+frozen large revision across every option shape. All cold confidence bounds
+meet noninferiority and all warm confidence bounds meet their absolute budgets.
+Demo's warm candidate spread exceeds the predeclared noise limit, which blocks
+a clean pass. Do not advertise performance acceptance or infer a regression
+from the report-only warm ratio against TS. No further cohort was submitted.
+The table and preserved raw evidence are linked from the [issue result](https://github.com/LTplus-AG/ifc-lite/issues/8042).
+Canonical publication failed at vault ingest, and the bounded free-vault wait
+expired. The original job remains `evidence_pending`; raw results and a compact
+evidence bundle are preserved on Pop and locally. Lifecycle closure is
+requested, but workspace release remains blocked until publication verifies.
+
+The new active task used separate admission and output paths while reading the
+original verified preparation arms and frozen protocol in place. Both original
+lifecycle task locks stayed held through queueing and execution. The original
+failed receipts, admission binding and closing task records remained
+byte-identical. Exclusive benchmark admission followed the natural host drain;
+capacity and idle guards were unchanged.
+
+A preceding authorized recovery (`e9c01af8-b940-4e63-a444-6cec7cd04b4e`)
+failed before registration because its task already had a closure request.
+A fresh ordinary preparation (`e968e69f-521e-47ad-bc82-87a04cf440cd`)
+then failed capacity admission before project execution; its failure evidence
+is verified. Neither produced timing samples. The subsequent read-only recovery
+reverified the original build attestations, source/path bindings, runtime,
+fixtures and untimed identity proofs before its sole submission.
+
+Lesson: an active lifecycle state does not admit a producer after closure is
+requested. Use a new owner and protect reused verified inputs for the entire
+queue and run. A sub-budget interactive endpoint can still violate the declared
+noise rule; preserve that limitation instead of relabelling it as a clean win.
 
 ## HiDPI navigation and synchronous capture (#6709, #8089)
 
@@ -5644,3 +5773,25 @@ Lesson: fault accounting is also a shared resource. Band transport retirements n
 their own bounded allowance so they cannot prevent subsequent ordinary products from
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
+
+## The app-start task: no top-level-await wrapper on the app build
+
+On a production build the app-start task (module evaluation, before a model is
+read) was far longer than on the dev server, because only the build ran
+`vite-plugin-top-level-await`. The plugin wraps every chunk that has a dynamic
+`import()` in one `async` arrow function. Chrome compiles a module's top level
+while the script streams in, off the main thread, but a nested function only
+when it first runs, on the main thread, so each wrapped chunk was parsed whole
+inside the task. The build target is `esnext`, so the app build now emits
+native top-level await; the worker build keeps the plugin.
+`@ifc-lite/flow-nodes`' `xlsx-io.ts` also imported `exceljs` statically through
+the package barrel, which ran all of it at start; it is now loaded on first use.
+
+Lessons:
+- Measure start-up on a production build: the dev server skips build-only
+  plugins and under-reports this task.
+- A CPU profile shows lazy compilation as `(program)` with no script;
+  `--js-flags=--log-function-events` gives each `parse-function` with its
+  script id, offsets and duration.
+- `scripts/check-tla-chunk-await.mjs` now fails if a chunk the page evaluates
+  at start (`index.html`'s module scripts and their static imports) is wrapped.

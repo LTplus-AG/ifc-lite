@@ -218,14 +218,7 @@ pub fn resolve_prepass_with_style_seeds(
     }
 
     crate::prepass_type_material::propagate_type_material(&spans.defines_by_type, decoder, &mut out.element_to_material);
-    // ── Voids + fills + aggregate propagation (#845) ──
-    for &(id, start, end) in &spans.void_rels {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            if let (Some(host), Some(opening)) = (entity.get_ref(4), entity.get_ref(5)) {
-                out.void_index.entry(host).or_default().push(opening);
-            }
-        }
-    }
+    // ── Fills + voids with aggregate propagation (#845) ──
     for &(id, start, end) in &spans.fills_rels {
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
             // attr 4 = RelatingOpeningElement, attr 5 = RelatedBuildingElement.
@@ -234,35 +227,10 @@ pub fn resolve_prepass_with_style_seeds(
             }
         }
     }
-    if !out.void_index.is_empty() && !spans.aggregate_rels.is_empty() {
-        let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-        for &(id, start, end) in &spans.aggregate_rels {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                let Some(parent_id) = entity.get_ref(4) else {
-                    continue;
-                };
-                if let Some(children) = entity.get_refs(5) {
-                    aggregate_children
-                        .entry(parent_id)
-                        .or_default()
-                        .extend(children);
-                }
-            }
-        }
-        ifc_lite_geometry::propagate_voids_via_aggregates(
-            &mut out.void_index,
-            &aggregate_children,
-        );
-    }
-
-    // Canonicalise each host's opening order (#2019). The scan pushes in
-    // statement order, aggregate propagation in hashmap-BFS order; neither
-    // is a property of the model. Sequential void cuts are not associative
-    // (each pass snaps f64->f32), so reordering them moves the world
-    // geometry hash on a re-export that only shuffled statements.
-    for openings in out.void_index.values_mut() {
-        openings.sort_unstable();
-    }
+    // Shared geometry kernel: void fold, bare-tolerant aggregate fold and
+    // canonical opening order (#2019) live in one place.
+    out.void_index =
+        ifc_lite_geometry::resolve_void_index(&spans.void_rels, &spans.aggregate_rels, decoder);
 
     // ── Material chain join (#407): element id → colour list ──
     out.element_material_colors = crate::style::build_element_material_colors(
@@ -330,12 +298,18 @@ pub fn resolve_unit_scales(
 /// path.
 pub use ifc_lite_core::find_project_id as find_ifcproject_id;
 
+pub use crate::prepass_wire::{
+    flat_material_colors, flat_voids, material_colors_from_flat, style_colors_from_flat,
+    voids_from_flat,
+};
+
 /// Flat wire encodings of the resolved styles for the browser's
 /// `styleIds`/`styleColors` arrays: the rich style index flattened to
 /// `(ids, rgba8)`, with IfcIndexedColourMap dominants, flat material colours,
 /// and each element's material fallback colour
 /// ([`crate::style::element_material_fallback_color`], the native rule)
 /// filling the gaps — the layered precedence the browser prepasses ship.
+/// Inverse: [`style_colors_from_flat`].
 pub fn flat_styles_rgba8(resolved: &ResolvedPrepass, decoder: &mut EntityDecoder) -> (Vec<u32>, Vec<u8>) {
     let mut merged: FxHashMap<u32, [f32; 4]> = resolved
         .geometry_style_index
@@ -422,86 +396,6 @@ pub fn finish_from_wire(pair: [f32; 2]) -> Option<SpecularMaterial> {
     let field = |v: f32| v.is_finite().then_some(v);
     let (metallic, roughness) = (field(pair[0]), field(pair[1]));
     (metallic.is_some() || roughness.is_some()).then_some(SpecularMaterial { metallic, roughness })
-}
-
-/// Flat wire encoding of the void index: `(keys, counts, values)` in the
-/// shape `processGeometryBatch` accepts.
-///
-/// Emitted sorted by host id (u32 ascending). FxHashMap iteration order is
-/// seed-free and therefore stable today, but it is an implicit
-/// insertion+hash-order artifact; the sort makes the wire byte order an
-/// explicit contract (pinned by the mesh-output determinism manifest,
-/// `docs/architecture/mesh-determinism.md`). Consumers rebuild a map from the
-/// flat arrays (`processGeometryBatch`), so they are order-insensitive.
-pub fn flat_voids(void_index: &FxHashMap<u32, Vec<u32>>) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
-    let mut hosts: Vec<(&u32, &Vec<u32>)> = void_index.iter().collect();
-    hosts.sort_unstable_by_key(|&(&host_id, _)| host_id);
-    let mut keys: Vec<u32> = Vec::with_capacity(hosts.len());
-    let mut counts: Vec<u32> = Vec::with_capacity(hosts.len());
-    let mut values: Vec<u32> = Vec::new();
-    for (&host_id, openings) in hosts {
-        keys.push(host_id);
-        counts.push(openings.len() as u32);
-        values.extend(openings.iter().copied());
-    }
-    (keys, counts, values)
-}
-
-/// Flat wire encoding of the element material colour lists (#407/#913 §2.3):
-/// `(element_ids, counts, rgba8)` — `counts[i]` colours belong to
-/// `element_ids[i]`, in order, 4 bytes each.
-///
-/// Emitted sorted by element id (u32 ascending) - same explicit-order wire
-/// contract as [`flat_voids`]; the per-element colour list order (file order)
-/// is unchanged. The inverse [`material_colors_from_flat`] rebuilds a map, so
-/// consumers are order-insensitive.
-pub fn flat_material_colors(
-    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
-) -> (Vec<u32>, Vec<u32>, Vec<u8>) {
-    let mut elements: Vec<(&u32, &Vec<[f32; 4]>)> = element_material_colors.iter().collect();
-    elements.sort_unstable_by_key(|&(&element_id, _)| element_id);
-    let mut ids: Vec<u32> = Vec::with_capacity(elements.len());
-    let mut counts: Vec<u32> = Vec::with_capacity(elements.len());
-    let mut rgba: Vec<u8> = Vec::new();
-    for (&element_id, colors) in elements {
-        if colors.is_empty() {
-            continue;
-        }
-        ids.push(element_id);
-        counts.push(colors.len() as u32);
-        for &c in colors {
-            rgba.extend_from_slice(&crate::style::Rgba::from_array(c).to_rgba8());
-        }
-    }
-    (ids, counts, rgba)
-}
-
-/// Decode the flat material-colour wire arrays back into the canonical map —
-/// the inverse of [`flat_material_colors`], used by `processGeometryBatch`.
-pub fn material_colors_from_flat(
-    element_ids: &[u32],
-    counts: &[u32],
-    rgba: &[u8],
-) -> FxHashMap<u32, Vec<[f32; 4]>> {
-    let mut out: FxHashMap<u32, Vec<[f32; 4]>> = FxHashMap::default();
-    let available = rgba.len() / 4;
-    let mut offset = 0usize;
-    for (i, &element_id) in element_ids.iter().enumerate() {
-        let Some(&count) = counts.get(i) else { break };
-        // `count` is wire input: clamp to the colours `rgba` holds instead of
-        // reserving `count` (up to 64 GiB) or wrapping `offset` on wasm32
-        // (#7675). A short buffer keeps the colours it has, as before.
-        let end = offset.saturating_add(count as usize).min(available);
-        let colors: Vec<[f32; 4]> = rgba[offset.min(end) * 4..end * 4]
-            .chunks_exact(4)
-            .map(|c| crate::style::Rgba::from_rgba8([c[0], c[1], c[2], c[3]]).to_array())
-            .collect();
-        offset = offset.saturating_add(count as usize);
-        if !colors.is_empty() {
-            out.insert(element_id, colors);
-        }
-    }
-    out
 }
 
 // ── Styled-item resolution chain (moved from processor.rs — shared) ──

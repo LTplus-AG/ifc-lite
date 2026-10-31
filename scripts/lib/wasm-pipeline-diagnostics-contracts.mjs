@@ -1,12 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/** getPipelineDiagnostics on the real WASM boundary, incl. C4-10a #7782 S6a refusal counters. */
+/** getPipelineDiagnostics on the real WASM boundary, incl. C4-10a #7782 S6a refusal counters and F2 #8341 omitted type records. */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 
-export function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent }) {
+export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent }) {
   // ===== Pipeline diagnostics channel (wasm boundary) =====
   // This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
   // (a #![cfg(target_arch="wasm32")] test no CI lane ran) with an assertion in
@@ -97,7 +98,40 @@ export function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, 
         assert.equal(diag.schemaVersion, 1);
         assert.equal(diag.refusedInputElements, attempts);
         assert.equal(diag.refusedPrepassRecords, 1);
+        assert.equal(diag.omittedTypeRecords, 1, 'F2: the dropped type #500 is counted separately, once');
       }
+    } finally { diagApi.clearPrePassCache(); diagApi.free(); }
+  });
+
+  test('F2 #8341: an undecodable type record is omitted visibly, once per load, on the once and streaming prepasses', () => {
+    const bytes = new TextEncoder().encode(readFileSync(
+      join(ROOT_DIR, 'rust/processing/tests/fixtures/f2_omitted_type_record_8341.ifc'), 'utf8'));
+    const diagApi = new IfcAPI();
+    try {
+      const pre = diagApi.buildPrePassOnce(bytes);
+      const ids = Array.from(pre.jobs).filter((_, i) => i % 3 === 0);
+      assert.ok(!ids.includes(500), 'the malformed type is not scheduled');
+      assert.ok(ids.includes(100), 'the valid orphan neighbour is scheduled');
+      const before = diagApi.getPipelineDiagnostics();
+      assert.ok(before && typeof before === 'object', 'a prepass-only omission is reportable');
+      assert.equal(before.schemaVersion, 1);
+      assert.equal(before.batches, 0);
+      assert.equal(before.omittedTypeRecords, 1, 'one record although it carries two maps');
+      assert.equal(before.refusedInputElements, 0);
+      assert.equal(before.refusedPrepassRecords, 0, 'a plain decode failure is not an admission refusal');
+      const meshes = diagApi.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
+        ...pre.rtcOffset, pre.needsShift, pre.voidKeys, pre.voidCounts, pre.voidValues,
+        pre.styleIds, pre.styleColors, pre.planeAngleToRadians);
+      meshes.free();
+      const after = diagApi.getPipelineDiagnostics();
+      assert.equal(after.batches, 1);
+      assert.equal(after.omittedTypeRecords, 1, 'batches never recount it');
+      diagApi.clearPrePassCache();
+      assert.equal(diagApi.getPipelineDiagnostics().omittedTypeRecords, 1, 'cleanup preserves it');
+      diagApi.buildPrePassStreaming(bytes, () => {}, 1024, null, false);
+      assert.equal(diagApi.getPipelineDiagnostics().omittedTypeRecords, 1, 'streaming: the next load reports it afresh');
+      diagApi.buildPrePassStreaming(bytes, () => {}, 1024, null, true);
+      assert.equal(diagApi.getPipelineDiagnostics(), undefined, 'skipped type geometry plans, and so omits, nothing');
     } finally { diagApi.clearPrePassCache(); diagApi.free(); }
   });
 
@@ -117,5 +151,40 @@ export function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, 
       assert.equal(diag.refusedInputElements, 0);
       assert.equal(diag.refusedPrepassRecords, 1, 'only the refused unit record #801');
     } finally { diagApi.clearPrePassCache(); diagApi.free(); }
+  });
+
+  // F2 #8341 viewer relay: the BUILT helpers the prepass worker and the
+  // main-thread paths run (the package exports map does not expose them).
+  const relayPath = join(ROOT_DIR, 'packages/geometry/dist/omitted-type-records.js');
+  const relay = existsSync(relayPath) ? await import(pathToFileURL(relayPath).href) : null;
+  if (!relay) {
+    console.log('  ⚠️  packages/geometry/dist missing — run `pnpm build`. F2 relay case skipped.');
+    return;
+  }
+  test('F2 #8341 relay: the prepass instance count rides the real complete event and is read before a reset', () => {
+    const bytes = new TextEncoder().encode(readFileSync(
+      join(ROOT_DIR, 'rust/processing/tests/fixtures/f2_omitted_type_record_8341.ifc'), 'utf8'));
+    const relayApi = new IfcAPI();
+    try {
+      const events = [];
+      relayApi.buildPrePassStreaming(bytes, (event) => {
+        relay.annotatePrepassComplete(relayApi, event);
+        events.push(event);
+      }, 1024, null, false);
+      const complete = events.find((event) => event.type === 'complete');
+      assert.equal(complete?.omittedTypeRecords, 1, 'read inside the real callback, from the instance that ran it');
+      assert.ok(events.every((event) => event === complete || !('omittedTypeRecords' in event)));
+      relayApi.buildPrePassOnce(bytes);
+      assert.equal(relay.readOmittedTypeRecords(relayApi), 1, 'one-shot path');
+      relayApi.setSourceBytes(bytes);
+      assert.equal(relay.readOmittedTypeRecords(relayApi), undefined, 'an install resets it: unknown, not 0');
+      const skipped = [];
+      relayApi.buildPrePassStreaming(bytes, (event) => {
+        relay.annotatePrepassComplete(relayApi, event);
+        skipped.push(event);
+      }, 1024, null, true);
+      assert.ok(!('omittedTypeRecords' in skipped.find((event) => event.type === 'complete')),
+        'no type plan, no report: the key stays absent');
+    } finally { relayApi.clearPrePassCache(); relayApi.free(); }
   });
 }

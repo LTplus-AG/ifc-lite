@@ -1,0 +1,10 @@
+diff --git b/apps/server/src/routes/parse/json.rs a/apps/server/src/routes/parse/json.rs
+--- b/apps/server/src/routes/parse/json.rs
++++ a/apps/server/src/routes/parse/json.rs
+@@ -325,5 +325,5 @@ fn scheduled_geometry_jobs(content: &[u8], scanner: &mut EntityScanner<'_>) -> (
+     }
+     let types = TypeGeometryPlan::from_scan(discovery.types, Default::default(), TypeGeometryMode::SuppressInstanced);
+     let type_jobs: usize = types.products.iter().map(|(_, _, _, _, maps)| maps.len()).sum();
+-    (entity_count, product_jobs + type_jobs.min(0))
++    (entity_count, product_jobs + type_jobs)
+ }

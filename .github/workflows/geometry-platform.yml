@@ -181,7 +181,10 @@ jobs:
             [[ -f "$file" ]] || continue
             while IFS= read -r witness; do
               [[ -z "$witness" || "$witness" == \#* ]] && continue
-              grep -Fqx "sdk witness executed: $witness" "$RUNNER_TEMP/native-witnesses.log"
+              # End-anchored only: parallel tests under --nocapture can land this
+              # whole line inside an unbuffered eprintln!, as `Skipping unsupported
+              # sdk witness executed: x`. The end anchor still rejects `x_longer`.
+              grep -Eq "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/native-witnesses.log"
             done < "$file"
           done
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
@@ -195,7 +198,7 @@ jobs:
           export IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime --test m3_native -- --nocapture | tee "$RUNNER_TEMP/m3-native.log"
           for witness in m3_prism_curved m3_synthetic_empty m3_scaled_cutter m3_nonbakeable_cutter m3_unsupported m3_kernel_failure m3_frames m3_lineage m3_reference m3_two_parts_two_openings m3_empty_opening_body; do
-            grep -Fx "sdk witness executed: $witness" "$RUNNER_TEMP/m3-native.log"
+            grep -E "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/m3-native.log"
           done
       - name: Download optional corpus
         if: inputs.corpus == true
@@ -241,6 +244,17 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Rebuilt-worker open tessellation refusal (#7955)
+        id: open-tessellation
+        continue-on-error: true
+        run: |
+          # The same witness the revert oracle runs: it rebuilds the worker from
+          # this checkout, so a native adapter regression cannot hide behind a
+          # stale binary. A skip here is a failure (IFCLITE_REQUIRE_SMLIB).
+          set -o pipefail
+          IFCLITE_REQUIRE_SMLIB=1 IFCLITE_SMLIB_NATIVE_BUILD="$RUNNER_TEMP/smlib-native" \
+            node --test scripts/smlib-open-tessellation.test.mjs | tee "$RUNNER_TEMP/open-tessellation.log"
+          grep -F "sdk witness executed: open_tessellation_rebuilt_worker" "$RUNNER_TEMP/open-tessellation.log"
       - run: pnpm exec playwright install --with-deps chromium
       - name: Actual module Workers over the staged /smlib bundle
         id: browser-workers
@@ -417,9 +431,10 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
           CLI_RETAINED: ${{ steps.cli-retained.outcome }}
           VIEWER_RETAINED: ${{ steps.viewer-retained.outcome }}
+          OPEN_TESSELLATION: ${{ steps.open-tessellation.outcome }}
         run: |
           failed=0
-          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED; do
+          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED OPEN_TESSELLATION; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

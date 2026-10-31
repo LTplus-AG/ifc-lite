@@ -7,7 +7,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { LIMITS, nonempty, resultProof, digest, fixtureInvariant } from './diff-e2e-protocol.mjs';
+import { LIMITS, nonempty, resultProof, handleResultProof, digest, fixtureInvariant } from './diff-e2e-protocol.mjs';
 
 // Injecting a module loader permits behavioral lifecycle tests with tiny inert
 // modules; production execution always imports the built public entry points.
@@ -22,8 +22,18 @@ export async function measure({ root, fixture, options, retained, implementation
   };
   const snapshot = name => { memory[name] = process.memoryUsage(); };
   const load = loadOverride ?? (name => import(pathToFileURL(resolve(root, name)).href));
-  let rows = [];
-  const proofs = [], retainedProofs = [], retainedTimes = [];
+  let rows = [], baseHandle, headHandle;
+  const dispose = () => {
+    const start = performance.now();
+    try {
+      try { baseHandle?.dispose(); }
+      finally { headHandle?.dispose(); }
+    } finally {
+      baseHandle = headHandle = undefined;
+      phases.disposeMs = (phases.disposeMs ?? 0) + performance.now() - start;
+    }
+  };
+  const proofs = [], retainedProofs = [], retainedTimes = [], statelessTimes = [];
   snapshot('start');
   let clockResolutionMs = Infinity, previous = performance.now();
   for (let i = 0; i < 1000; i++) {
@@ -45,12 +55,16 @@ export async function measure({ root, fixture, options, retained, implementation
         // Deliberately fail on pre-cutover sources. Internal adapters are not
         // a substitute for the final production facade or its Node resolver.
         assert.equal(typeof facade.initDiff, 'function', 'final public Rust facade required');
+        assert.equal(typeof facade.prepareDiffModel, 'function', 'candidate public prepareDiffModel handle API required');
         await facade.initDiff();
       } else {
         assert.equal(implementation, 'typescript');
         assert.equal(facade.initDiff, undefined, 'TS baseline must precede facade cutover');
       }
     });
+    const handleApiAvailable = typeof facade.prepareDiffModel === 'function';
+    const warmPath = handleApiAvailable ? 'prepared-handles' : 'stateless-diffModels';
+    const callPath = mode === 'cold' ? 'stateless-diffModels' : warmPath;
     for (const path of fixture.paths) {
       const bytes = await phase('readMs', async () => {
         const info = await stat(path);
@@ -69,8 +83,21 @@ export async function measure({ root, fixture, options, retained, implementation
     const inputHashes = mode === 'proof' ? rows.map(side => digest(side)) : undefined;
     const counts = rows.map(side => side.length);
     const indices = mode === 'proof' ? options.map((_, i) => i) : [optionIndex];
+    const prepare = async () => {
+      await phase('prepareHandlesMs', () => {
+        baseHandle = facade.prepareDiffModel(rows[0]);
+        headHandle = facade.prepareDiffModel(rows[1]);
+      });
+      // Never let a missing handle fall back to one-shot calls under a handle label.
+      assert.equal(typeof baseHandle?.compare, 'function', 'prepareDiffModel must return a base handle');
+      assert.equal(typeof headHandle?.compare, 'function', 'prepareDiffModel must return a head handle');
+    };
+    if (mode === 'warm' && handleApiAvailable) await prepare();
+    const compare = i => baseHandle
+      ? baseHandle.compare(headHandle, options[i])
+      : facade.diffModels(rows[0], rows[1], options[i]);
     for (const i of indices) {
-      let result = await phase('firstCallMs', () => facade.diffModels(rows[0], rows[1], options[i]));
+      let result = await phase('firstCallMs', () => compare(i));
       if (mode === 'proof') {
         fixtureInvariant(fixture, result, rows[0], rows[1]);
         proofs.push(resultProof(result, rows[0], rows[1]));
@@ -78,18 +105,26 @@ export async function measure({ root, fixture, options, retained, implementation
       result = undefined;
     }
     snapshot('firstResultReleased');
-    // Warm mode retains JS fingerprints only. EVERY call goes through the
-    // facade, which owns packing, handle creation, restoration and freeing.
-    // There is no hash, traversal or forced GC between these timed calls.
+    // Proof compares the resident path against the one-shot facade for every
+    // option. Warm prepares once and conditions once, outside call latency.
+    if (mode === 'proof' && handleApiAvailable) {
+      await prepare();
+      for (const i of indices) {
+        const result = compare(i);
+        assert.deepEqual(handleResultProof(result, rows[0], rows[1]), proofs[i],
+          'handle conditioning differs from stateless facade');
+      }
+    }
+    // No hash, traversal, preparation, disposal or forced GC between timed calls.
     if (mode !== 'cold') {
       for (let repeat = 0; repeat < retained; repeat++) {
         for (const i of indices) {
           const start = performance.now();
-          let result = facade.diffModels(rows[0], rows[1], options[i]);
+          let result = compare(i);
           const totalMs = performance.now() - start;
           retainedTimes.push({ repeat, option: i, totalMs });
           if (mode === 'proof') {
-            const proof = resultProof(result, rows[0], rows[1]);
+            const proof = (baseHandle ? handleResultProof : resultProof)(result, rows[0], rows[1]);
             assert.deepEqual(proof, proofs[i], 'repeated facade call changed output');
             retainedProofs.push(proof.sha256);
           }
@@ -97,14 +132,30 @@ export async function measure({ root, fixture, options, retained, implementation
         }
       }
     }
+    if (baseHandle || headHandle) dispose();
+    // Report-only secondary metric follows the primary warm observations and
+    // disposal, so one-shot packing cannot condition the handle endpoint.
+    if (mode === 'warm' && implementation === 'rust-wasm') {
+      await phase('statelessConditioningMs', () => {
+        facade.diffModels(rows[0], rows[1], options[optionIndex]);
+      });
+      for (let repeat = 0; repeat < retained; repeat++) {
+        const start = performance.now();
+        facade.diffModels(rows[0], rows[1], options[optionIndex]);
+        statelessTimes.push({ repeat, option: optionIndex, totalMs: performance.now() - start });
+      }
+    }
     snapshot('beforeRelease');
     await phase('releaseMs', () => { rows = []; global.gc(); });
     const lifecycleTotalMs = performance.now() - started;
     snapshot('releasedAfterGc');
-    return { implementation, mode, optionIndex, clockResolutionMs, rows: counts, inputHashes, proofs, retainedProofs,
-      phases: { ...phases, lifecycleTotalMs }, retainedTimes, memory,
+    return { implementation, mode, optionIndex, handleApiAvailable, callPath, warmPath, clockResolutionMs, rows: counts, inputHashes, proofs, retainedProofs,
+      phases: { ...phases, lifecycleTotalMs }, retainedTimes, statelessTimes, memory,
       maxRssKiB: process.resourceUsage().maxRSS };
-  } finally { rows = []; }
+  } finally {
+    try { if (baseHandle || headHandle) dispose(); }
+    finally { rows = []; }
+  }
 }
 
 if (process.send) {

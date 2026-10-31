@@ -264,3 +264,7 @@ mod sparse_tests;
 #[cfg(test)]
 #[path = "fingerprint_counted_tests.rs"]
 mod counted_tests;
+
+#[cfg(test)]
+#[path = "fingerprint_set_ordinal_tests.rs"]
+mod set_ordinal_tests;

@@ -123,7 +123,8 @@ pub(super) fn emit_scanned(
     discovery.buffered_jobs.clear();
 
     if want_types {
-        type_plan.decode_products(content, &discovery.type_candidate_spans, &mut decoder);
+        let omitted = type_plan.decode_products_reporting(content, &discovery.type_candidate_spans, &mut decoder);
+        api.note_omitted_type_records(&omitted);
         let type_jobs = type_plan.jobs();
         if !type_jobs.is_empty() {
             total_jobs += type_jobs.len() as u32;

@@ -29,7 +29,7 @@ export interface PdfCutPolygon {
   /** Page-space rings that survived (outer first when drawn). */
   rings: Point[][];
   /**
-   * Outer ring (3+ points) and every hole survived: an even-odd fill is safe
+   * Outer ring encloses area and every hole survived: an even-odd fill is safe
    * and the outline stands in for the entity's cut lines.
    */
   fillable: boolean;
@@ -37,10 +37,15 @@ export interface PdfCutPolygon {
 
 const finiteRing = (ring: Point[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
 
+/** Twice the signed area (shoelace); zero for collinear or repeated points. */
+const doubledArea = (ring: Point[]) =>
+  ring.reduce((sum, p, i) => { const q = ring[(i + 1) % ring.length]; return sum + p.x * q.y - q.x * p.y; }, 0);
+
 /**
  * Rings with a non-finite vertex are dropped (jsPDF throws on them). A polygon
- * is fillable only when its outer ring and every hole survived: a lost outer
- * ring or hole would otherwise paint an opening solid.
+ * is fillable (see the field doc: this also decides cut-line coverage) only
+ * when its outer ring encloses area and every hole survived: a lost outer ring
+ * or hole would otherwise paint an opening solid.
  */
 export function prepareCutPolygonsPdf(
   polygons: readonly DrawingPolygon[],
@@ -53,7 +58,7 @@ export function prepareCutPolygonsPdf(
     const drawnHoles = usableHoles.filter(finiteRing);
     return {
       rings: [...(outerDrawn ? [outer] : []), ...drawnHoles].map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-      fillable: outerDrawn && outer.length >= 3 && drawnHoles.length === usableHoles.length,
+      fillable: outerDrawn && doubledArea(outer) !== 0 && drawnHoles.length === usableHoles.length,
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }

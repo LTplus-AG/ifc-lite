@@ -86,6 +86,11 @@ const SETS = opt.set.map((s) => {
 const BUILDS = opt.dist ? [{ id: 'branch', dist: resolve(opt.dist) }] : [];
 if (opt['dist-base']) BUILDS.unshift({ id: 'base', dist: resolve(opt['dist-base']) });
 for (const b of opt.build) { const [id, dir] = nameValue('build', b); BUILDS.push({ id, dist: resolve(dir) }); }
+// Results are keyed by name: a repeat would overwrite samples and merge medians.
+for (const [flag, names] of [['set', SETS.map((x) => x.name)], ['build', BUILDS.map((x) => x.id)]]) {
+  const repeat = names.find((n, i) => names.indexOf(n) !== i);
+  if (repeat) { console.error(`--${flag} name "${repeat}" is used twice`); process.exit(2); }
+}
 const PROFILE = new Set((opt.profile ?? '').split(',').filter(Boolean));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
@@ -137,11 +142,11 @@ function memoryOf(pids) {
 function vramOf(pids) {
   try {
     const text = execFileSync('nvidia-smi', ['-q', '-d', 'PIDS'], { encoding: 'utf8' });
-    let total = 0;
+    let total = null;
     for (const block of text.split(/Process ID\s*:/).slice(1)) {
       const pid = Number(block.trim().split(/\s/)[0]);
       const mib = Number(/Used GPU Memory\s*:\s*(\d+)\s*MiB/.exec(block)?.[1] ?? NaN);
-      if (pids.includes(pid) && Number.isFinite(mib)) total += mib;
+      if (pids.includes(pid) && Number.isFinite(mib)) total = (total ?? 0) + mib;
     }
     return total;
   } catch (err) {
@@ -346,13 +351,15 @@ const fmt = (v, d = 0) => (v === null || v === undefined || !Number.isFinite(v) 
 async function runSample(build, set, round) {
   currentRoot = build.dist;
   const profileDir = mkdtempSync(join(tmpdir(), 'scenoptic-bench-'));
-  const context = await chromium.launchPersistentContext(profileDir, {
+  const launch = () => chromium.launchPersistentContext(profileDir, {
     executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
     args: ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
       '--use-angle=vulkan', '--ignore-gpu-blocklist', '--hide-scrollbars', '--no-first-run', `--window-size=${W},${H}`, '--window-position=0,0'],
   });
   const sample = { build: build.id, set: set.name, round, files: set.files.map((f) => basename(f)), bytes: set.bytes };
+  let context = null;
   try {
+    context = await launch();
     await context.addInitScript(INIT);
     let page = await openPage(context);
     const tag = `${set.name}-${build.id}-r${round}`;
@@ -373,7 +380,7 @@ async function runSample(build, set, round) {
     sample.error = String(err?.stack ?? err);
     log('  sample failed:', String(err?.message ?? err).slice(0, 400));
   } finally {
-    await context.close().catch(() => {});
+    await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
   }
   writeFileSync(join(OUT, `${set.name}-${build.id}-r${round}.json`), JSON.stringify(sample, null, 2));

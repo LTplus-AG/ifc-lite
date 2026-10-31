@@ -77,3 +77,21 @@ fn issue_8291_survey_scale_coordinates_keep_full_precision() {
     assert_eq!(span, 0.125);
     println!("sdk witness executed: face_set_survey_scale");
 }
+
+#[test]
+fn issue_8291_a_row_of_only_slivers_still_publishes_unit_normals() {
+    // Real tessellations carry these: nonzero area, but below the facet-orientation ratio.
+    let text = model("\
+#30=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1000.,0.,0.),(500.,0.00001,0.),(0.,1000.,0.),(1000.,1000.,0.)));
+#33=IFCTRIANGULATEDFACESET(#30,$,.F.,((1,2,3),(1,2,5),(1,5,4)),$);");
+    let Some(outcomes) = support::native(&text) else { return; };
+    let product = support::shape(&outcomes, 20);
+    assert_eq!(product.marker(), "final");
+    let [part] = product.parts.as_slice() else { panic!("parts") };
+    assert_eq!(part.indices.len(), 9);
+    for normal in part.normals.as_ref().unwrap().chunks_exact(3) {
+        let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+        assert!((length - 1.).abs() < 1e-12, "{normal:?}");
+    }
+    println!("sdk witness executed: face_set_sliver_row");
+}

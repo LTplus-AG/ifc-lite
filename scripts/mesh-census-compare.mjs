@@ -12,7 +12,8 @@
  * corpus does not buy a single worse mesh. A mesh is keyed by model, express
  * id and its ordinal among that id's meshes. For a CHANGED mesh:
  *
- * - `regression`: it gained degenerate triangles, lost more than 1% of its
+ * - `regression`: it gained degenerate triangles or triangles with an
+ *   out-of-range index (`badIndices`), lost more than 1% of its
  *   area, or gained open or nonmanifold edges (bit-exact or at the
  *   10 um weld), or more than 1e-6 m2 of thin material or coincident sheet.
  * - `qualityWorse`: not a regression, closed no open edge, and gained slivers
@@ -21,16 +22,20 @@
  *   neither of the above.
  * - `neutral`: anything else that changed.
  *
+ * An empty census file is refused (exit 2). Models that emitted no meshes are
+ * read from the runner's `<file>.empty` sidecar when present: listed, and a
+ * failure when base and branch disagree.
+ *
  * Meshes present on one side only are reported as `missing` / `added`; a
  * missing mesh is a regression. A mesh whose thin-material census hit its
  * candidate cap on either side is `unmeasured`, never unchanged. Exit status
  * 1 when any regression, quality-worse, unmeasured or missing mesh exists.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
-const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'slivers', 'degenerate', 'maxAspect', 'area', 'thinArea', 'coincidentArea', 'thinCapped'];
+const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'slivers', 'degenerate', 'maxAspect', 'area', 'thinArea', 'coincidentArea', 'thinCapped', 'badIndices'];
 /** Thin-material area (m2) a mesh may gain or lose before it counts. */
 const THIN_EPS = 1e-6;
 const SHEETS = ['thinArea', 'coincidentArea'];
@@ -68,7 +73,10 @@ export function classify(base, branch) {
   if (METRICS.every((m) => sameMetric(m, base[m], branch[m]))) return null;
   // Collapsed triangles drop out of the edge census, so a mesh losing its
   // geometry keeps 0 open edges: degenerate triangles and lost area catch it.
-  const collapsed = branch.degenerate > base.degenerate || branch.area < (1 - AREA_LOSS) * base.area;
+  const collapsed =
+    branch.degenerate > base.degenerate ||
+    branch.badIndices > base.badIndices ||
+    branch.area < (1 - AREA_LOSS) * base.area;
   const gained =
     collapsed || EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => branch[m] > base[m] + THIN_EPS);
   if (gained) return 'regression';
@@ -114,7 +122,23 @@ function main(argv) {
     console.error('usage: mesh-census-compare.mjs <base.jsonl> <branch.jsonl> [--json]');
     return 2;
   }
-  const verdicts = compare(parseCensus(readFileSync(basePath, 'utf8')), parseCensus(readFileSync(branchPath, 'utf8')));
+  const baseRows = parseCensus(readFileSync(basePath, 'utf8'));
+  const branchRows = parseCensus(readFileSync(branchPath, 'utf8'));
+  // An empty census measured nothing; comparing two of them proves nothing.
+  for (const [path, rows] of [[basePath, baseRows], [branchPath, branchRows]]) {
+    if (rows.size === 0) {
+      console.error(`${path}: no census rows, nothing was measured`);
+      return 2;
+    }
+  }
+  const verdicts = compare(baseRows, branchRows);
+  // Models that emitted no meshes have no rows to compare, so the runner lists
+  // them beside the output (<out>.empty). Show them, and fail when the two
+  // sides disagree: a model empty on one side only lost or gained everything.
+  const [baseEmpty, branchEmpty] = [basePath, branchPath].map((p) =>
+    existsSync(`${p}.empty`) ? readFileSync(`${p}.empty`, 'utf8').split('\n').filter(Boolean).sort() : null,
+  );
+  const emptyDiffers = baseEmpty && branchEmpty && baseEmpty.join('\n') !== branchEmpty.join('\n');
   if (argv.includes('--json')) {
     console.log(JSON.stringify(verdicts, null, 2));
   } else {
@@ -124,8 +148,12 @@ function main(argv) {
       if (list.length > 50) console.log(`  ... ${list.length - 50} more`);
     }
   }
+  if (baseEmpty || branchEmpty) {
+    console.log(`models with no meshes: base ${baseEmpty?.length ?? '?'}, branch ${branchEmpty?.length ?? '?'}${emptyDiffers ? ' (DIFFERENT)' : ''}`);
+    for (const m of branchEmpty ?? baseEmpty) console.log(`  ${m}`);
+  }
   const failing = ['regression', 'qualityWorse', 'unmeasured', 'missing'];
-  return failing.some((v) => verdicts[v].length > 0) ? 1 : 0;
+  return emptyDiffers || failing.some((v) => verdicts[v].length > 0) ? 1 : 0;
 }
 
 if (isMainEntry(import.meta.url)) {

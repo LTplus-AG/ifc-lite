@@ -85,7 +85,7 @@ fn main() {
                     "maxAspect": row.max_aspect, "area": row.area,
                     "thinFaces": row.thin_faces, "thinArea": row.thin_area,
                     "thinMinGap": row.thin_min_gap, "coincidentArea": row.coincident_area,
-                    "thinCapped": row.thin_capped,
+                    "thinCapped": row.thin_capped, "badIndices": row.bad_indices,
                 })
             )
             .expect("write row");
@@ -113,6 +113,7 @@ struct Row {
     thin_min_gap: Option<f64>,
     coincident_area: f64,
     thin_capped: usize,
+    bad_indices: usize,
 }
 
 fn world(mesh: &MeshData, i: usize) -> [f64; 3] {
@@ -166,7 +167,11 @@ fn census(mesh: &MeshData) -> Row {
         .filter(|t| t.iter().all(|&i| (i as usize) < count))
         .map(|t| [t[0] as usize, t[1] as usize, t[2] as usize])
         .collect();
-    let mut row = Row { tris: tris.len(), ..Row::default() };
+    // Triangles naming a vertex the mesh does not have, and a trailing partial
+    // triangle: left out of every metric above, so counted here instead of
+    // vanishing (a dropped open triangle would otherwise read as closed).
+    let bad_indices = mesh.indices.len() / 3 - tris.len() + usize::from(mesh.indices.len() % 3 != 0);
+    let mut row = Row { tris: tris.len(), bad_indices, ..Row::default() };
     let p: Vec<[f64; 3]> = (0..count).map(|i| world(mesh, i)).collect();
 
     let exact = weld(count, |i| [0, 1, 2].map(|k| mesh.positions[i * 3 + k].to_bits()));

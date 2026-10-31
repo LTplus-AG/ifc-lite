@@ -5,12 +5,12 @@
 //! Decompose one host triangle along the cutter seams with a conforming
 //! CDT and classify its pieces inside or outside the prism.
 
+use super::crossings::resolve_crossings;
 use super::face::{face_coords, Seam};
 use super::frame::{Face, PrismFrame};
 use super::kit::{add, cross, dot, lerp, normalize, scale, sub, V2, V3};
 use super::pool::PointPool;
 use super::ptri::PTri;
-use super::resolve_crossings;
 use crate::cdt::triangulate_pslg;
 
 /// Decompose one host triangle by the cutter-boundary seams via a conforming

@@ -39,7 +39,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import {
-  PROBE_FLAG, RETAINED_PROBE_FLAG, WHEEL_PYTHON_FLAGS, chooseToolchain, parseArgs, retainedEngineFrom, retainedProbe, walkFiles, wasmProbe, wheelProbeArgv,
+  PROBE_FLAG, RETAINED_PROBE_FLAG, WHEEL_PYTHON_FLAGS, chooseToolchain, effectiveSettings, parseArgs, retainedProbe, walkFiles, wasmProbe, wheelProbeArgv,
 } from './lib/released-smoke-support.mjs';
 import {
   EXPECTED_REPO, EXPECTED_WORKFLOW, NPM_REGISTRY, auditProblems, boundaryViolations, cargoLockProblems, contentViolation,
@@ -72,7 +72,7 @@ const tail = (r, n = 600) => (r.error ?? '') + (r.stderr + r.stdout).trim().slic
 
 export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)) {
   const fixture = resolve(options.fixture ?? join(REPO, 'tests/fixtures/cli-retained/layered-wall.ifc'));
-  const retainedEngine = retainedEngineFrom(options);
+  const retainedEngine = effectiveSettings(options).retainedEngine;
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'ifc-lite-released-smoke-')));
   const steps = [];
   const step = async (id, fn) => {
@@ -390,6 +390,7 @@ if (isMainEntry(import.meta.url)) {
       process.stderr.write(`${error.message}\n`);
       process.exit(2);
     }
+    if (options.dryRun) { process.stdout.write(`${JSON.stringify(effectiveSettings(options))}\n`); process.exit(0); }
     const summary = await smoke(options);
     const json = `${JSON.stringify(summary, null, 2)}\n`;
     if (options.out) writeFileSync(options.out, json);

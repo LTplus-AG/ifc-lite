@@ -342,10 +342,16 @@ test('real option parsing reaches the retained engine setting (key normalisation
   assert.equal(retainedEngineFrom(parseArgs(base), {}), undefined);
 });
 
-test('the smoke script never reads a hyphenated option key that parseArgs normalises away', () => {
-  const source = readFileSync(new URL('../smoke-released-retained.mjs', import.meta.url), 'utf8');
-  assert.deepEqual(source.match(/options\[['"][^'"]*-[^'"]*['"]\]/g) ?? [], []);
-  for (const used of source.matchAll(/options\.(\w+)/g)) {
-    assert.ok(['wasm', 'cli', 'crate', 'wheel', 'out', 'fixture', 'retainedEngine', 'toolchain', 'strict', 'keep', 'expectEngineManifestSha256', 'expectSdkRevision'].includes(used[1]), `options.${used[1]} is not an option parseArgs produces`);
-  }
+test('the real entry point parses --retained-engine and the pins (dry run, no network)', () => {
+  const script = new URL('../smoke-released-retained.mjs', import.meta.url);
+  const run = (args, env = {}) => spawnSync(process.execPath, [script.pathname, '--dry-run', '--wasm', '1', '--cli', '2', '--crate', '3', ...args],
+    { encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+  const parsed = run(['--retained-engine', '/abs/engine', '--strict', '--wheel', '4.15.0', '--expect-engine-manifest-sha256', MANIFEST_SHA, '--expect-sdk-revision', SDK_REV]);
+  assert.equal(parsed.status, 0, parsed.stderr);
+  assert.deepEqual(JSON.parse(parsed.stdout), { retainedEngine: '/abs/engine', strict: true, wheel: '4.15.0', expectEngineManifestSha256: MANIFEST_SHA, expectSdkRevision: SDK_REV });
+  assert.equal(JSON.parse(run([], { IFCLITE_SMOKE_RETAINED_ENGINE: '/from/env' }).stdout).retainedEngine, '/from/env');
+  assert.equal(JSON.parse(run(['--retained-engine', '/flag'], { IFCLITE_SMOKE_RETAINED_ENGINE: '/env' }).stdout).retainedEngine, '/flag');
+  const invalid = run(['--strict']);
+  assert.equal(invalid.status, 2);
+  assert.match(invalid.stderr, /--strict requires an explicit --wheel/);
 });

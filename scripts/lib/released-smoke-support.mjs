@@ -26,6 +26,7 @@ export function parseArgs(argv) {
     const a = argv[i];
     if (a === '--keep') out.keep = true;
     else if (a === '--strict') out.strict = true;
+    else if (a === '--dry-run') out.dryRun = true;
     else if (a.startsWith('--') && known.has(a.slice(2))) {
       const value = argv[++i];
       if (value === undefined || value.startsWith('--')) throw new Error(`${a} requires a value`);
@@ -100,4 +101,12 @@ export function wheelProbeArgv(fixture, target) {
 /** The staged engine directory: --retained-engine, else IFCLITE_SMOKE_RETAINED_ENGINE. */
 export function retainedEngineFrom(options, environment = process.env) {
   return options.retainedEngine ?? environment.IFCLITE_SMOKE_RETAINED_ENGINE;
+}
+
+/** The option values the smoke acts on, after normalisation; `--dry-run` prints exactly this. */
+export function effectiveSettings(options, environment = process.env) {
+  return {
+    retainedEngine: retainedEngineFrom(options, environment), strict: Boolean(options.strict), wheel: options.wheel,
+    expectEngineManifestSha256: options.expectEngineManifestSha256, expectSdkRevision: options.expectSdkRevision,
+  };
 }

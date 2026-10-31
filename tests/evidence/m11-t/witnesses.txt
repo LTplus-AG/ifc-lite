@@ -10,3 +10,4 @@ face_set_palette
 face_set_uv
 face_set_reference
 face_set_coloured_cutter
+face_set_sliver_row

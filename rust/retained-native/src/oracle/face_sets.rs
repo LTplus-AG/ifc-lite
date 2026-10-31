@@ -97,6 +97,20 @@ pub fn world_planes(set: &AuthoredFaceSet, world: impl Fn([f64; 3]) -> [f64; 3])
     }).collect()
 }
 
+/// The solid an authored shell bounds, by the divergence theorem over its rows, in the
+/// set's own units cubed. `None` where a row is warped and has no single plane.
+pub fn authored_volume(set: &AuthoredFaceSet) -> Option<f64> {
+    let mut sum = 0.;
+    for row in set.rows.iter().filter(|row| !row.points.is_empty()) {
+        let area = row.area_m2?;
+        let normal = newell(&row.points[..row.outer]);
+        let length = dot(normal, normal).sqrt();
+        if length == 0. { continue; }
+        sum += dot(row.points[0], normal.map(|v| v / length)) * area;
+    }
+    Some(sum.abs() / 3.)
+}
+
 /// An authored `IfcIndexedColourMap` / `IfcIndexedTriangleTextureMap`, read by scanning
 /// the source for the map whose `MappedTo` is this face set.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -189,6 +203,13 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
             continue;
         };
         if area <= 0. { continue; }
+        // Below the facet-orientation ratio the area is round-off, not a measurement:
+        // a sliver's authored corners are what the corner check above already pins.
+        let longest = row.points.iter().flat_map(|a| row.points.iter().map(move |b| {
+            let d: [f64; 3] = std::array::from_fn(|i| a[i] - b[i]);
+            dot(d, d)
+        })).fold(0., f64::max);
+        if area < 1e-6 * longest { continue; }
         if published == 0. { result.missing_rows += 1; continue; }
         result.area_relative = result.area_relative.max((published - area).abs() / area);
     }

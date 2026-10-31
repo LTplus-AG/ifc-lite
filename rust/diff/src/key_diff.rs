@@ -12,8 +12,10 @@ fn normalize_type(value: &JsString) -> JsString {
     value.normalized_class()
 }
 
-fn index<R>(entities: &[EntityFingerprint<R>]) -> (Vec<(JsString, usize)>, HashMap<&JsString, usize>) {
-    let mut lookup = HashMap::with_capacity(entities.len());
+type KeyIndex<'a> = HashMap<&'a JsString, usize, crate::JsHash>;
+
+fn index<R>(entities: &[EntityFingerprint<R>]) -> (Vec<(JsString, usize)>, KeyIndex<'_>) {
+    let mut lookup = HashMap::with_capacity_and_hasher(entities.len(), crate::JsHash);
     let mut order = Vec::with_capacity(entities.len());
     for (i, entity) in entities.iter().enumerate() {
         if let std::collections::hash_map::Entry::Vacant(slot) = lookup.entry(&entity.key) {
@@ -48,13 +50,21 @@ fn resolve_aliases(
     applied
 }
 
-pub(crate) fn changed_components(base: &HashMap<JsString, JsString>, head: &HashMap<JsString, JsString>) -> Vec<JsString> {
+pub(crate) fn changed_components(base: &ComponentMap, head: &ComponentMap) -> Vec<JsString> {
     // #8042: visit each map directly, without allocating and hashing a union.
     // Equal cardinality plus no changed base members proves equality; the
     // overwhelmingly common unchanged case needs only one lookup per member.
-    let mut keys: Vec<_> = base.iter().filter(|(key, value)| head.get(*key) != Some(*value))
-        .map(|(key, _)| key.clone()).collect();
-    if keys.is_empty() && base.len() == head.len() { return keys; }
+    // #8351: when every base member is also a head member, equal cardinality
+    // proves the key sets are equal, so head-only members need no second pass.
+    let mut shared = true;
+    let mut keys: Vec<_> = base.iter().filter(|(key, value)| match head.get(*key) {
+        Some(other) => other != *value,
+        None => { shared = false; true },
+    }).map(|(key, _)| key.clone()).collect();
+    if shared && base.len() == head.len() {
+        keys.sort_by(cmp_code_units);
+        return keys;
+    }
     keys.extend(head.keys().filter(|key| !base.contains_key(*key)).cloned());
     keys.sort_by(cmp_code_units);
     keys
@@ -101,9 +111,12 @@ fn diff_by_key_impl<'a, R>(
     let consider_data = options.scope != DiffScope::Geometry;
     let use_geometry = options.scope != DiffScope::Data && base_has_geometry == head_has_geometry;
     let mut entries = Vec::with_capacity(base_order.len().max(head_order.len()));
+    // Ordered keys are unique on both sides, aliases included, so the base
+    // pass already decides which head rows have a base key (#8351).
+    let mut paired = vec![false; head.len()];
     for (key, i) in &base_order {
         let base_entity = &base[*i];
-        let head_entity = head_index.get(key).map(|j| &head[*j]);
+        let head_entity = head_index.get(key).map(|&j| { paired[j] = true; &head[j] });
         if is_excluded(base_entity) || head_entity.is_some_and(&is_excluded) { continue; }
         let mut entry = DiffEntry {
             key: key.clone(), state: DiffState::Deleted, change_kinds: Vec::new(),
@@ -131,7 +144,7 @@ fn diff_by_key_impl<'a, R>(
         entries.push(entry);
     }
     for (key, i) in &head_order {
-        if base_index.contains_key(key) || is_excluded(&head[*i]) { continue; }
+        if paired[*i] || is_excluded(&head[*i]) { continue; }
         entries.push(DiffEntry {
             key: key.clone(), state: DiffState::Added, change_kinds: Vec::new(),
             base: None, head: Some(&head[*i]), changed_components: None,

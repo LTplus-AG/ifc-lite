@@ -1,0 +1,13 @@
+diff --git a/rust/diff/src/class_families.rs b/rust/diff/src/class_families.rs
+index 18aa13a5cf..6137f65808 100644
+--- a/rust/diff/src/class_families.rs
++++ b/rust/diff/src/class_families.rs
+@@ -29,7 +29,7 @@ impl ClassFamilies {
+                 Self(std::borrow::Cow::Borrowed(DEFAULTS.get_or_init(|| {
+                     let rows: Vec<Vec<JsString>> = DEFAULT_CLASS_FAMILIES.iter()
+                         .map(|row| row.iter().map(|s| (*s).into()).collect()).collect();
+-                    let _ = rows; FamilyMap::default()
++                    family_map(&rows)
+                 })))
+             }
+         }

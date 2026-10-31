@@ -58,8 +58,8 @@ fn geometry_abstention_ignores_excluded_hashes_issue_8042() {
 fn components_use_utf16_order_and_container_requires_two_nonempty_paths_issue_8042() {
     let mut base = vec![entity("a", "same", None)];
     let mut head = vec![entity("a", "same", None)];
-    base[0].components = Some(HashMap::new());
-    head[0].components = Some(HashMap::from([("\u{e000}".into(), "a".into()), ("\u{10000}".into(), "b".into())]));
+    base[0].components = Some(ComponentMap::default());
+    head[0].components = Some([("\u{e000}".into(), "a".into()), ("\u{10000}".into(), "b".into())].into_iter().collect());
     base[0].container = Some(crate::JsString::default());
     head[0].container = Some("Level 2".into());
     let options = KeyDiffOptions::default();
@@ -80,7 +80,7 @@ fn issue_8042_component_walk_keeps_additions_deletions_and_equal_size_replacemen
         for state in &mut states { *state = encoding % 3; encoding /= 3; }
         let map = |states: &[usize]| keys.iter().zip(states).filter_map(|(key, state)| {
             match state { 0 => None, 1 => Some((key.clone(), "a".into())), _ => Some((key.clone(), "b".into())) }
-        }).collect::<HashMap<_, _>>();
+        }).collect::<ComponentMap>();
         let expected: Vec<_> = keys.iter().enumerate().filter(|(i, _)| states[*i] != states[*i + 2])
             .map(|(_, key)| key.clone()).collect();
         assert_eq!(changed_components(&map(&states[..2]), &map(&states[2..])), expected);

@@ -177,6 +177,11 @@ export class AoPass {
     return this.bindGroups;
   }
 
+  /** The occlusion + scratch targets while allocated, for render-target telemetry. */
+  renderTargets(): (GPUTexture | null)[] {
+    return [this.targets?.ao ?? null, this.targets?.scratch ?? null];
+  }
+
   private releaseTargets(): void {
     this.targets?.ao.destroy();
     this.targets?.scratch.destroy();

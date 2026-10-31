@@ -559,7 +559,7 @@ const stampFingerprint = (
 // context-gated (./file-not-found-errors.ts). `invalid_archive` only claims
 // anchored parser content/size refusals (./invalid-archive-errors.ts).
 const BENIGN_ERROR_KINDS = new Set<string>([
-  'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable', 'invalid_archive',
+  'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable', 'invalid_archive', 'invalid_input',
 ]);
 
 const downgradeBenignExceptions = (

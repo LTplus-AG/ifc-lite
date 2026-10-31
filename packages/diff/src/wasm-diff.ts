@@ -40,7 +40,7 @@ export function compareWasmModels<TRef>(
   placementRows?: () => readonly [readonly EntityFingerprint<TRef>[], readonly EntityFingerprint<TRef>[]],
 ): ModelDiff<TRef> {
   const stripPlacementGeometry = options.stripPlacementGeometry === true;
-  const raw = unpackDocument(baseModel.comparePacked(headModel, {
+  const raw = unpackDocument(baseModel.comparePacked(headModel, definedOnly({
     scope: options.scope,
     stripPlacementGeometry,
     moveTolerance: options.moveTolerance,
@@ -58,13 +58,21 @@ export function compareWasmModels<TRef>(
     classFamilies: options.classFamilies,
     ...(options.excludeTypes === undefined ? {} : { excludeTypes: [...options.excludeTypes] }),
     ...(options.keyAliases === undefined ? {} : { keyAliases: [...options.keyAliases] }),
-  })) as IndexedDiff;
+  }))) as IndexedDiff;
   // Classification is Rust-owned; handle owners supply their stable stripped
   // view, while one-shot calls project only for this call.
   const [baseView, headView] = stripPlacementGeometry
     ? placementRows?.() ?? [stripPlacementRows(baseRows), stripPlacementRows(headRows)]
     : [baseRows, headRows];
   return restoreDiffReferences(raw, baseView, headView, keys);
+}
+
+/** Rust reads an absent option exactly like an undefined one. Each key it does
+ * read costs several host crossings, so send only the options a caller set (#8351). */
+function definedOnly(options: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(options)) if (value !== undefined) result[key] = value;
+  return result;
 }
 
 /** Project returned records only; native models always retain original hashes. */

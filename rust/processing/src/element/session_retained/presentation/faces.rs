@@ -84,7 +84,8 @@ pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealizati
                     Err(NoFaces::Malformed) => return unattributed(Some(item)),
                 };
                 let setup: usize = faces.iter().map(|f| match &f.support { Support::Tube { curve, .. } => curve.setup_cost(), _ => 1 }).sum();
-                charge(setup, std::mem::size_of::<Operand>()
+                let pieces: usize = faces.iter().map(|f| match &f.extent { super::face_attribution::Extent::Row { triangles } => triangles.len(), _ => 0 }).sum();
+                charge(setup, std::mem::size_of::<Operand>() + pieces * std::mem::size_of::<[[f64; 3]; 3]>()
                     + faces.len() * std::mem::size_of::<super::face_attribution::SourceFace>())?;
                 let stretch = stretch(&from_part);
                 if !stretch.is_finite() { return unattributed(Some(item)); }

@@ -125,6 +125,8 @@ ifclite_smlib_status ifclite_smlib_mesh_copy(ifclite_smlib_session session,
 #define IFCLITE_SMLIB_CAPABILITY_RIGID_COPY 8u
 #define IFCLITE_SMLIB_CAPABILITY_AFFINE_COPY 16u
 #define IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY 32u
+/* Sweep format 3: one closed solid from authored triangles (bit 6, numeric 64). */
+#define IFCLITE_SMLIB_CAPABILITY_SWEEP_POLYHEDRON 64u
 uint32_t ifclite_smlib_capabilities(void);
 /* Staged authored recipes, local metres. One upload per session; at most
  * 1 MiB, 8192 curves and 128 loops.

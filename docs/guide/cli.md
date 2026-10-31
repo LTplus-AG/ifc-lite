@@ -1879,7 +1879,8 @@ A product whose binding carries a texture or an indexed colour palette refuses w
 `appearance_unsupported` instead of publishing a plain colour. An uncut `IfcTriangulatedFaceSet`
 or `IfcPolygonalFaceSet` publishes its authored triangles in full f64 without a kernel call,
 including an open shell, one persistent face key `row(k)` per authored row. A Boolean, opening
-or affine copy of a face set refuses `operation_unsupported` or `incomplete`. Band parts carry their own
+or affine copy stitches the closed solid first, up to 8,192 triangles; an open shell there refuses
+`kernel_failure` and a larger set refuses `resource_exhausted`. Band parts carry their own
 material ID, colour and material name through exact’s resolver.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°

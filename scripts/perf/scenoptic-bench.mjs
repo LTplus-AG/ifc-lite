@@ -47,6 +47,7 @@ const opt = { set: [], rounds: 3, 'orbit-s': 20, width: 1920, height: 1080 };
 for (let i = 0; i < argv.length; i++) {
   const key = argv[i].replace(/^--/, '');
   if (key === 'no-orbit' || key === 'no-warm') { opt[key] = true; continue; }
+  // --profile cold,warm,orbit: main-thread CPU profile per phase (build with VITE_SOURCEMAP=1 to symbolize).
   const value = argv[++i];
   if (key === 'set') opt.set.push(value); else opt[key] = value;
 }
@@ -69,6 +70,7 @@ const SETS = opt.set.map((s) => {
 });
 const BUILDS = [{ id: 'branch', dist: resolve(opt.dist) }];
 if (opt['dist-base']) BUILDS.unshift({ id: 'base', dist: resolve(opt['dist-base']) });
+const PROFILE = new Set((opt.profile ?? '').split(',').filter(Boolean));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 // ---------------------------------------------------------------- static server
@@ -184,7 +186,9 @@ async function openFiles(page, files, label) {
     const geomDone = loads.map((l) => {
       const stream = end(l, 'geometry.streamComplete');
       if (stream === null || l.spans.some((sp) => DRAIN.test(sp.name) && sp.end === null)) return null;
-      if (!l.spans.some((sp) => sp.name === 'scene.finalize' && sp.end !== null)) return null;
+      // A streamed load finalizes its fragments; a federated add uploads final batches directly.
+      const streamed = l.spans.some((sp) => sp.name === 'stream.queue');
+      if (streamed ? !l.spans.some((sp) => sp.name === 'scene.finalize' && sp.end !== null) : l.end === null) return null;
       return Math.max(stream, ...l.spans.filter((sp) => DRAIN.test(sp.name)).map((sp) => sp.end));
     });
     const meta = loads.map((l) => end(l, 'parser.complete') ?? end(l, 'cache.storeReady'));
@@ -274,6 +278,20 @@ async function orbit(page, profileDir) {
   return res;
 }
 
+/** Run `fn` under a main-thread CDP CPU profile when `phase` is requested; writes `<tag>-<phase>.cpuprofile`. */
+async function profiled(page, phase, tag, fn) {
+  if (!PROFILE.has(phase)) return fn();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Profiler.enable');
+  await cdp.send('Profiler.setSamplingInterval', { interval: 500 });
+  await cdp.send('Profiler.start');
+  try { return await fn(); } finally {
+    const { profile } = await cdp.send('Profiler.stop');
+    writeFileSync(join(OUT, `${tag}-${phase}.cpuprofile`), JSON.stringify(profile));
+    await cdp.detach().catch(() => {});
+  }
+}
+
 const pct = (sorted, p) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] : null);
 const fmt = (v, d = 0) => (v === null || v === undefined || !Number.isFinite(v) ? 'n/a' : v.toFixed(d));
 
@@ -289,7 +307,8 @@ async function runSample(build, set, round) {
   try {
     await context.addInitScript(INIT);
     let page = await openPage(context);
-    sample.cold = await openFiles(page, set.files, `${build.id}/${set.name}#${round} cold`);
+    const tag = `${set.name}-${build.id}-r${round}`;
+    sample.cold = await profiled(page, 'cold', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} cold`));
     sample.cold.memory = await sampleMemory(page, profileDir);
     sample.adapter = sample.cold.memory.adapter;
     log(`    memory: PSS ${fmt(sample.cold.memory.pssMiB)} MiB, RSS ${fmt(sample.cold.memory.rssMiB)} MiB, VRAM ${fmt(sample.cold.memory.vramMiB)} MiB`);
@@ -297,11 +316,11 @@ async function runSample(build, set, round) {
       await waitCacheWrites(page);
       await page.close();
       page = await openPage(context);
-      sample.warm = await openFiles(page, set.files, `${build.id}/${set.name}#${round} warm`);
+      sample.warm = await profiled(page, 'warm', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} warm`));
       sample.warm.memory = await sampleMemory(page, profileDir);
       log(`    memory: PSS ${fmt(sample.warm.memory.pssMiB)} MiB, RSS ${fmt(sample.warm.memory.rssMiB)} MiB, VRAM ${fmt(sample.warm.memory.vramMiB)} MiB`);
     }
-    if (!opt['no-orbit']) sample.orbit = await orbit(page, profileDir);
+    if (!opt['no-orbit']) sample.orbit = await profiled(page, 'orbit', tag, () => orbit(page, profileDir));
   } catch (err) {
     sample.error = String(err?.stack ?? err);
     log('  sample failed:', String(err?.message ?? err).slice(0, 400));

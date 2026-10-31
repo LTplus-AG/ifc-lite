@@ -129,6 +129,7 @@ export function assertMilestones(m) {
     check(problems, m.sceneHeldMs <= m.firstRetainedFrameMs, 'frame precedes the scene holding retained geometry');
     check(problems, m.firstProductMs <= m.terminalMs, 'terminal before the first product');
     if (m.settledFrameMs !== null && m.settledFrameMs !== undefined) {
+      check(problems, Number.isFinite(m.settledFrameMs), 'settled frame is not a finite time');
       check(problems, Math.max(m.terminalMs, m.firstRetainedFrameMs) <= m.settledFrameMs, 'settled frame precedes terminal/first frame');
     }
   }

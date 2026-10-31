@@ -79,6 +79,7 @@ test('milestones must be present and ordered; the settled frame is optional but 
   assert.throws(() => assertMilestones({ ...m, firstRetainedFrameMs: 8 }), /frame precedes the scene/);
   assert.throws(() => assertMilestones({ ...m, firstProductMs: 0 }), /before the load began/);
   assert.throws(() => assertMilestones({ ...m, settledFrameMs: 10 }), /settled frame precedes/);
+  assert.throws(() => assertMilestones({ ...m, settledFrameMs: Infinity }), /not a finite time/);
 });
 
 test('8413: native timing must contain a finite nonnegative numeric duration', () => {

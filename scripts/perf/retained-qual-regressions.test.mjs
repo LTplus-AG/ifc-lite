@@ -252,11 +252,13 @@ test('8413: a reused --out starts with an empty runs.partial.jsonl and no previo
     writeFileSync(join(dir, 'runs.partial.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
     writeFileSync(join(dir, 'runs.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
     writeFileSync(join(dir, 'result.json'), '{"commit":"old"}\n');
+    writeFileSync(join(dir, 'DONE'), 'old\n');
     resetPartial(join(dir, 'fresh'));
     resetPartial(dir);
     assert.equal(readFileSync(join(dir, 'runs.partial.jsonl'), 'utf8'), '');
     assert.equal(existsSync(join(dir, 'runs.jsonl')), false);
     assert.equal(existsSync(join(dir, 'result.json')), false);
+    assert.equal(existsSync(join(dir, 'DONE')), false);
     const { runViewerCohort } = await import('./retained-qual-viewer.mjs');
     writeFileSync(join(dir, 'runs.partial.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
     await runViewerCohort({ arms: [{ side: 'branch' }], fixtures: [{ path: '/a.ifc' }], rounds: 1, options: {}, expectations: {}, out: dir,

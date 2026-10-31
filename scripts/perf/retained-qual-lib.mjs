@@ -174,7 +174,7 @@ export function exclusivity(options, env = process.env) {
 export function resetPartial(out) {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'runs.partial.jsonl'), '');
-  for (const name of ['runs.jsonl', 'result.json']) rmSync(join(out, name), { force: true });
+  for (const name of ['runs.jsonl', 'result.json', 'DONE']) rmSync(join(out, name), { force: true });
 }
 
 /** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */

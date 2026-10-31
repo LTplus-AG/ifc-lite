@@ -103,6 +103,35 @@ test('#6961 context metrics are never judged, and a moved file read warns', asyn
   assert.equal(fieldVerdict(people(8, 2, 'federated_session_loads')).regressed.length, 0);
 });
 
+test('#6961 the control warning is judged on raw values, not rounded ones', async () => {
+  const { fieldVerdict, renderMarkdown } = await load(VERDICT);
+  // The lower bound rounds to 1 but excludes it.
+  const low = [1.0004, 1.0004, 1.2, 1.2, 1.2].flatMap((ratio, i) => paired(`p${i}`, ratio, {}, 'file_read_ms'));
+  assert.equal(fieldVerdict(low).groups[0].low, 1);
+  assert.equal(fieldVerdict(low).controlMoved.length, 1);
+  // The ratio rounds to the threshold but is past it.
+  const speed = people(8, 0.9498, 'file_read_ms');
+  assert.equal(fieldVerdict(speed).groups[0].ratio, 0.95);
+  assert.equal(fieldVerdict(speed).controlMoved.length, 1);
+  assert.match(renderMarkdown(fieldVerdict(low)), /Treat load results as suspect in J1/);
+});
+
+test('#6961 the headline never reads as a pass without one', async () => {
+  const { fieldVerdict, renderMarkdown } = await load(VERDICT);
+  // Only a context metric paired: the table has a group, but nothing was judged.
+  const context = renderMarkdown(fieldVerdict(people(8, 1, 'file_read_ms')));
+  assert.match(context, /No judged metric has paired data/);
+  assert.doesNotMatch(context, /Insufficient paired data/);
+  // A slower median whose interval includes 1 is undecided, not a clean result.
+  const spread = [0.7, 0.8, 1, 1.1, 1.2, 1.4, 1.6].flatMap((ratio, i) => paired(`p${i}`, ratio));
+  const verdict = fieldVerdict(spread);
+  assert.equal(verdict.groups[0].status, 'inconclusive');
+  assert.match(renderMarkdown(verdict), /\*\*Undecided:\*\* no group is confirmed regressed, but 1 group/);
+  assert.doesNotMatch(renderMarkdown(verdict), /No group regressed/);
+  // A clean result still says so.
+  assert.match(renderMarkdown(fieldVerdict(people(5, 1.02))), /No group regressed/);
+});
+
 test('#6961 a group inside the band is flat, and no paired cell says so plainly', async () => {
   const { fieldVerdict, renderMarkdown } = await load(VERDICT);
   const rows = people(5, 1.02);

@@ -151,6 +151,8 @@ function summarize(key, cells, { threshold, minPersons }) {
     high: round(high),
     speed: round(speed),
     status,
+    // Judged on the raw values: rounding can land a bound on 1 or the speed on the threshold.
+    moved: (low > 1 && speed < threshold) || (high < 1 && speed > 1 / threshold),
   };
 }
 
@@ -180,8 +182,7 @@ export function fieldVerdict(rows, { threshold = 0.95, minPersons = 5, baselineA
   const cells = pairCells(rows, { baselineArm });
   const groups = groupBy(cells, (c) => ({ event: c.event, metric: c.metric, journey: c.journey, arm: c.arm }))
     .map((g) => summarize(g.key, g.cells, { threshold, minPersons })).sort(order);
-  const controlMoved = groups.filter((g) => g.metric === 'file_read_ms' && g.persons >= minPersons
-    && ((g.low > 1 && 1 / g.ratio < threshold) || (g.high < 1 && 1 / g.ratio > 1 / threshold)));
+  const controlMoved = groups.filter((g) => g.metric === 'file_read_ms' && g.persons >= minPersons && g.moved);
   return { threshold, minPersons, baselineArm, cells: cells.length, groups, regressed: groups.filter((g) => g.status === 'regressed'), controlMoved };
 }
 
@@ -199,12 +200,17 @@ function table(groups) {
 export function renderMarkdown(verdict, { build } = {}) {
   const title = build ? `Field verdict for build \`${build}\`` : 'Field verdict';
   const judged = verdict.groups.filter((g) => g.status !== 'context');
+  const undecided = judged.filter((g) => g.status === 'inconclusive' && g.speed < verdict.threshold).length;
   const headline = verdict.cells === 0
     ? 'No (person, model) cell has loads in both windows yet, so there is no paired ratio to report.'
+    : judged.length === 0
+      ? '**No judged metric has paired data:** only context metrics paired, so there is no verdict for this build (not a pass).'
     : judged.every((g) => g.status === 'insufficient')
       ? `**Insufficient paired data:** no group reached ${verdict.minPersons} paired people, so there is no verdict for this build (not a pass).`
       : verdict.regressed.length > 0
       ? `**${verdict.regressed.length} group(s) regressed** (speed below ${verdict.threshold}, 99% interval excluding 1).`
+      : undecided > 0
+      ? `**Undecided:** no group is confirmed regressed, but ${undecided} group(s) are slower than the threshold with a 99% interval that includes 1 (not a pass).`
       : `No group regressed (speed threshold ${verdict.threshold}, 99% interval, at least ${verdict.minPersons} paired people).`;
   const control = verdict.controlMoved.length > 0
     ? [`**Treat load results as suspect in ${verdict.controlMoved.map((g) => g.journey).join(', ')}:** \`file_read_ms\` moved, and it barely depends on the app.`, '']

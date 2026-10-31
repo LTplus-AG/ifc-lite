@@ -36,6 +36,7 @@
  *   node scripts/perf/field-verdict.mjs result.json [--threshold 0.95] [--min-persons 5]
  *        [--build <sha>] [--json] [--fail-on-regression]
  *   node scripts/perf/field-verdict.mjs --print-sql --build <12-char sha> [--baseline-days 14]
+ *   node scripts/perf/field-verdict.mjs result.json --rolling    (and --print-sql --rolling)
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -196,13 +197,15 @@ function table(groups) {
 }
 
 /** Markdown for the PR comment / step summary. */
-export function renderMarkdown(verdict, { build } = {}) {
-  const title = build ? `Field verdict for build \`${build}\`` : 'Field verdict';
+export function renderMarkdown(verdict, { build, rolling = false } = {}) {
+  const title = rolling
+    ? `Rolling field verdict: last ${ROLLING_RECENT_DAYS} days vs the prior ${ROLLING_BASELINE_DAYS}`
+    : build ? `Field verdict for build \`${build}\`` : 'Field verdict';
   const judged = verdict.groups.filter((g) => g.status !== 'context');
   const headline = verdict.cells === 0
     ? 'No (person, model) cell has loads in both windows yet, so there is no paired ratio to report.'
     : judged.every((g) => g.status === 'insufficient')
-      ? `**Insufficient paired data:** no group reached ${verdict.minPersons} paired people, so there is no verdict for this build (not a pass).`
+      ? `**Insufficient paired data:** no group reached ${verdict.minPersons} paired people, so there is no verdict (not a pass).`
       : verdict.regressed.length > 0
       ? `**${verdict.regressed.length} group(s) regressed** (speed below ${verdict.threshold}, 99% interval excluding 1).`
       : `No group regressed (speed threshold ${verdict.threshold}, 99% interval, at least ${verdict.minPersons} paired people).`;
@@ -222,16 +225,62 @@ export function renderMarkdown(verdict, { build } = {}) {
   ].join('\n');
 }
 
-/** The HogQL from README.md, with the judged build and baseline length filled in. */
-export function verdictSql({ build, baselineDays = 14, readme = readFileSync(README, 'utf8') }) {
+const JUDGED_EVENTS = "event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')";
+export const ROLLING_RECENT_DAYS = 7;
+export const ROLLING_BASELINE_DAYS = 14;
+
+function buildClauses(build, baselineDays) {
   // Events carry the 12-character `app_build_sha`; a shorter prefix would
   // match nothing (or, worse, be mistaken for a build with no traffic).
   if (!/^[0-9a-f]{12,40}$/.test(build ?? '')) throw new Error('field-verdict: --build must be a hex commit sha of at least 12 characters (the app_build_sha length)');
   if (!Number.isInteger(baselineDays) || baselineDays < 1 || baselineDays > 60) throw new Error('field-verdict: --baseline-days must be 1-60');
+  const sha = build.slice(0, 12);
+  const firstSeen = `(
+      SELECT min(timestamp) FROM events
+      WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
+        AND toString(properties.app_build_sha) = '${sha}'
+    )`;
+  return {
+    window: `if(toString(properties.app_build_sha) = '${sha}', 'recent', 'baseline')`,
+    scope: `timestamp >= now() - INTERVAL 90 DAY
+    -- Baseline: the ${baselineDays} days before the judged build first appeared.
+    AND timestamp >= ${firstSeen} - INTERVAL ${baselineDays} DAY
+    AND (
+      toString(properties.app_build_sha) = '${sha}'
+      OR (
+        timestamp < ${firstSeen}
+        -- Only people who also used the judged build can form a pair.
+        AND person_id IN (
+          SELECT person_id FROM events
+          WHERE ${JUDGED_EVENTS}
+            AND timestamp >= now() - INTERVAL 60 DAY
+            AND toString(properties.app_build_sha) = '${sha}'
+        )
+      )
+    )`,
+  };
+}
+
+function rollingClauses() {
+  const recent = `now() - INTERVAL ${ROLLING_RECENT_DAYS} DAY`;
+  return {
+    window: `if(timestamp >= ${recent}, 'recent', 'baseline')`,
+    scope: `timestamp >= now() - INTERVAL ${ROLLING_RECENT_DAYS + ROLLING_BASELINE_DAYS} DAY
+    -- Only people active in the recent window can form a pair.
+    AND person_id IN (
+      SELECT person_id FROM events
+      WHERE ${JUDGED_EVENTS} AND timestamp >= ${recent}
+    )`,
+  };
+}
+
+/** The HogQL from README.md, filled in for one build or, with `rolling`, the rolling windows. */
+export function verdictSql({ build, baselineDays = 14, rolling = false, readme = readFileSync(README, 'utf8') }) {
+  const { window, scope } = rolling ? rollingClauses() : buildClauses(build, baselineDays);
   const at = readme.indexOf(SQL_MARKER);
   const fence = at === -1 ? null : /```sql\n([\s\S]*?)```/.exec(readme.slice(at));
   if (!fence) throw new Error(`field-verdict: README.md has no sql block after ${SQL_MARKER}`);
-  return fence[1].replaceAll('__BUILD__', build.slice(0, 12)).replaceAll('__BASELINE_DAYS__', String(baselineDays));
+  return fence[1].replaceAll('__WINDOW__', window).replaceAll('__SCOPE__', scope);
 }
 
 function parseArgs(argv) {
@@ -251,6 +300,7 @@ function parseArgs(argv) {
     else if (a === '--out') args.out = value();
     else if (a === '--json') args.json = true;
     else if (a === '--print-sql') args.printSql = true;
+    else if (a === '--rolling') args.rolling = true;
     else if (a === '--fail-on-regression') args.failOnRegression = true;
     else if (a.startsWith('--')) throw new Error(`field-verdict: unknown option ${a}`);
     else rest.push(a);
@@ -264,7 +314,7 @@ function parseArgs(argv) {
 export function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.printSql) {
-    process.stdout.write(verdictSql({ build: args.build, baselineDays: args.baselineDays }));
+    process.stdout.write(verdictSql({ build: args.build, baselineDays: args.baselineDays, rolling: args.rolling }));
     return 0;
   }
   if (!args.input) throw new Error('field-verdict: pass the HogQL result JSON file (or --print-sql)');

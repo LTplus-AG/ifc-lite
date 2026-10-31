@@ -200,6 +200,8 @@ function buildPlanDrawing(): Drawing2D {
 
 interface HarnessProps {
   dxfUnderlays?: readonly DxfUnderlayRenderData[];
+  activePresetId?: string | null;
+  entityColorMap?: Map<number, [number, number, number, number]>;
   activeSheet: DrawingSheet;
   drawing: Drawing2D;
   axis: 'down' | 'front' | 'side';
@@ -208,7 +210,7 @@ interface HarnessProps {
   onReady: (fn: (scaleFactor?: number) => void) => void;
 }
 
-function Harness({ activeSheet, drawing, axis, isPinned, cachedSheetTransformRef, onReady, dxfUnderlays = [] }: HarnessProps): null {
+function Harness({ activeSheet, drawing, axis, isPinned, cachedSheetTransformRef, onReady, dxfUnderlays = [], activePresetId = null, entityColorMap = new Map() }: HarnessProps): null {
   const { handleExportPDF } = useDrawingExport({
     drawing,
     displayOptions: {
@@ -219,8 +221,8 @@ function Harness({ activeSheet, drawing, axis, isPinned, cachedSheetTransformRef
       scanSectionIncludeInExport: false,
     },
     sectionPlane: { axis, position: 50, flipped: false },
-    activePresetId: null,
-    entityColorMap: new Map(),
+    activePresetId,
+    entityColorMap,
     overridesEnabled: false,
     overrideEngine: new GraphicOverrideEngine(),
     measure2DResults: [],
@@ -299,6 +301,8 @@ function stubRasterization(): {
 
 interface ExportOptions {
   dxfUnderlays?: readonly DxfUnderlayRenderData[];
+  activePresetId?: string | null;
+  entityColorMap?: Map<number, [number, number, number, number]>;
   /** Section axis the hook is mounted with. Defaults to 'down' — the axis
    *  every pre-existing case in this file used. */
   axis?: 'down' | 'front' | 'side';
@@ -353,6 +357,8 @@ async function exportPdfForSheet(
         <Harness
           activeSheet={sheet}
           dxfUnderlays={options.dxfUnderlays}
+          activePresetId={options.activePresetId}
+          entityColorMap={options.entityColorMap}
           drawing={drawing}
           axis={axis}
           isPinned={isPinned}
@@ -416,6 +422,20 @@ describe('handleExportPDF — Drawing Sheet mode (#2941/#2942)', () => {
     const { svg } = await exportPdfForSheet(sheet);
     assert.match(svg, /id="drawing-frame"/, 'exported PDF must be built from the sheet svg (frame missing = #2941)');
     assert.match(svg, /id="title-block-scale-bar"/, 'exported PDF must be built from the sheet svg (scale bar missing = #2941)');
+  });
+
+  it('fills a layered cut with its per-layer colour in the sheet SVG, as the canvas does (#8464)', async () => {
+    const wall = {
+      polygon: { outer: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 0.3 }, { x: 0, y: 0.3 }], holes: [] },
+      ifcType: 'IfcWall', entityId: 1, modelIndex: 0, isCut: true, color: [0, 0, 1, 1] as [number, number, number, number],
+    };
+    const drawing = { ...buildDrawing(), cutPolygons: [wall], bounds: { min: { x: 0, y: 0 }, max: { x: 4, y: 0.3 } } };
+    const { svg } = await exportPdfForSheet(buildSheet('A3_LANDSCAPE', 50, '1:50'), drawing, {
+      activePresetId: 'preset-3d-colors',
+      entityColorMap: new Map([[1, [1, 0, 0, 1]]]),
+    });
+    assert.match(svg, /<path [^>]*fill="#0000ff"[^>]*data-entity-id="1"/, 'per-layer blue fills the cut');
+    assert.doesNotMatch(svg, /fill="#ff0000"/, 'the entity red is not used');
   });
 
   it('is laid out at the SHEET scale, not displayOptions.scale, and changes with it (#2942)', async () => {

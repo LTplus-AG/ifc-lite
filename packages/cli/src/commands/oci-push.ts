@@ -16,6 +16,9 @@ import { CREDENTIAL_HINT, credentialsFromEnv, LOOPBACK_HOSTS, ModelInputError, n
 import {
   CREATED_ANNOTATION,
   createdTimestamp,
+  IFC_PROFILE_ANNOTATION,
+  IFC_RELEASE_PROFILE,
+  IFC_SCHEMA_ANNOTATION,
   parseAnnotations,
   parsePushArgs,
   pushTarget,
@@ -59,11 +62,12 @@ export async function ociPushCommand(args: string[]): Promise<void> {
   try {
     const config = await client.pushEmptyConfig(ref);
     const layer = await client.pushBlob(ref, model.bytes);
+    const profile = { [IFC_PROFILE_ANNOTATION]: IFC_RELEASE_PROFILE, [IFC_SCHEMA_ANNOTATION]: model.schema };
     const manifest = await buildImageManifest({
       artifactType: IFC_ARTIFACT_TYPE,
       config,
-      layers: [{ mediaType: IFC_LAYER_MEDIA_TYPE, ...layer, annotations: { [TITLE_ANNOTATION]: model.fileName } }],
-      annotations: { [CREATED_ANNOTATION]: created, ...extra, [TITLE_ANNOTATION]: model.title },
+      layers: [{ mediaType: IFC_LAYER_MEDIA_TYPE, ...layer, annotations: { ...profile, [TITLE_ANNOTATION]: model.fileName } }],
+      annotations: { [CREATED_ANNOTATION]: created, ...extra, ...profile, [TITLE_ANNOTATION]: model.title },
     });
     const pushed = await client.pushManifest(ref, manifest.bytes, manifest.mediaType, { allowOverwrite: options.overwrite });
     if (options.json) {

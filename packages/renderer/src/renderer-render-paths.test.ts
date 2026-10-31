@@ -1138,6 +1138,17 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     }
 
     /**
+     * The picker allocates its id/depth targets and per-mesh slot buffers on
+     * its first pick and keeps them; they are not per-pick transients. Warm it
+     * so an allocation count taken afterwards measures one pick's own buffers.
+     */
+    async function warm(h: Harness, picker: Picker): Promise<Picker> {
+        await picker.pick(0, 0, 64, 64, [], new Float32Array(16));
+        h.stats.mapAsync = 0;
+        return picker;
+    }
+
+    /**
      * Run the pick up to the point where it is parked on `mapAsync`. Boxed in
      * an object because `await` unwraps a promise-of-a-promise — returning the
      * in-flight promise directly would await the very thing we want to keep
@@ -1154,7 +1165,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const kind of ['point', 'rectangle'] as const) {
         it(`suppresses a completed-map result after device loss and releases exactly once: ${kind} (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             const { inflight } = await park(h, () => kind === 'point'
                 ? picker.pick(0, 0, 64, 64, [], new Float32Array(16))
@@ -1267,7 +1278,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     it('point-pick transient allocation stays bounded across viewport sizes (#6881)', async () => {
         for (const [width, height] of [[64, 64], [1292, 1047]]) {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             const { inflight } = await park(h, () => picker.pick(0, 0, width, height, [], new Float32Array(16)));
             const owned = h.stats.createdBuffers.slice(before);
@@ -1283,7 +1294,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const fault of ['id-copy', 'depth-encode', 'depth-copy', 'finish', 'submit', 'mapped-range'] as const) {
         it(`point-pick releases every owned buffer when ${fault} fails (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             if (fault === 'submit') h.knobs.submitThrows = true;
             else h.knobs.pickFault = fault;
@@ -1305,7 +1316,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const fault of ['id-copy', 'finish', 'submit', 'mapped-range'] as const) {
         it(`rectangle-pick releases its staging buffer when ${fault} fails (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             if (fault === 'submit') h.knobs.submitThrows = true;
             else h.knobs.pickFault = fault;
@@ -1343,7 +1354,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         // device. Promise.all rejects the moment ONE map fails, so the other
         // buffer can be mapped and live at that point — both must be freed.
         const h = makeHarness();
-        installPicker(h);
+        await warm(h, installPicker(h));
         const before = h.stats.createdBuffers.length;
         const { inflight } = await park(h, () => h.renderer.pick(10, 10));
         h.settlePendingMaps(new DOMException('Buffer is already mapped', 'OperationError'));

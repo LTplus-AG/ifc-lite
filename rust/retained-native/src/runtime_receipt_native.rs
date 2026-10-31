@@ -34,6 +34,15 @@ impl NumericalReceipt for NativeReceipt {
     }
     fn buffer_bytes(&self) -> Result<u64, RuntimeFault> {
         let capacities = match &self.kind {
+            RealizationKind::SourceFaceSet(value) => {
+                let mesh = &value.completion().tessellation;
+                [
+                    mesh.positions.capacity(),
+                    mesh.flat_corner_normals.capacity(),
+                    mesh.indices.capacity(),
+                    mesh.revision_local_faces.capacity(),
+                ]
+            }
             RealizationKind::Construction(value) => {
                 let mesh = &value.completion().tessellation;
                 [
@@ -69,6 +78,11 @@ impl NumericalReceipt for NativeReceipt {
     }
     fn mesh(&self) -> Option<ReceiptMesh<'_>> {
         match &self.kind {
+            RealizationKind::SourceFaceSet(value) => Some(ReceiptMesh {
+                positions: &value.completion().tessellation.positions,
+                indices: &value.completion().tessellation.indices,
+                faces: &value.completion().tessellation.revision_local_faces,
+            }),
             RealizationKind::Construction(value) => Some(ReceiptMesh {
                 positions: &value.completion().tessellation.positions,
                 indices: &value.completion().tessellation.indices,
@@ -84,6 +98,7 @@ impl NumericalReceipt for NativeReceipt {
     }
     fn validate_live(&self) -> Result<(), Self::Error> {
         match &self.kind {
+            RealizationKind::SourceFaceSet(value) => value.validate_live().map_err(fault),
             RealizationKind::Construction(value) => value.validate_live().map_err(fault),
             RealizationKind::Affine(value) => value.validate_live().map_err(fault),
             RealizationKind::Boolean(value) => value.validate_live().map_err(fault),
@@ -91,6 +106,7 @@ impl NumericalReceipt for NativeReceipt {
     }
     fn object(&self) -> Self::Object {
         match &self.kind {
+            RealizationKind::SourceFaceSet(value) => value.solid(),
             RealizationKind::Construction(value) => value.solid(),
             RealizationKind::Affine(value) => value.solid(),
             RealizationKind::Boolean(value) => value.solid(),
@@ -98,6 +114,9 @@ impl NumericalReceipt for NativeReceipt {
     }
     fn evidence(&self) -> ReceiptEvidence<'_, Self::Object> {
         match &self.kind {
+            RealizationKind::SourceFaceSet(value) => {
+                ReceiptEvidence::Construction(value.completion())
+            }
             RealizationKind::Construction(value) => {
                 ReceiptEvidence::Construction(value.completion())
             }

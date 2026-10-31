@@ -88,7 +88,8 @@ pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealizati
                     + faces.len() * std::mem::size_of::<super::face_attribution::SourceFace>())?;
                 let stretch = stretch(&from_part);
                 if !stretch.is_finite() { return unattributed(Some(item)); }
-                operands.push(Operand { item, via, from_part, sign, stretch, faces, region });
+                let rows_identify_faces = Arc::ptr_eq(node, root) && face_surfaces::is_face_set(request.recipe());
+                operands.push(Operand { item, via, from_part, sign, stretch, faces, region, rows_identify_faces });
             }
             ReceiptEvidence::Boolean { operation, world_from_left, world_from_right, world_from_evaluation, .. } => {
                 let [Some(left), Some(right)] = &node._inputs else { return unattributed(None) };
@@ -145,19 +146,25 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
             while end < order.len() && part.revision_local_faces[order[end]] == id { end += 1; }
             let face = &order[start..end];
             start = end;
-            let mut lists = Vec::with_capacity(face.len());
-            charge(face.len(), face.len() * std::mem::size_of::<super::face_attribution::Candidates>())?;
-            for &t in face {
-                charge(work, 0)?;
-                let corner = |i: u32| -> Option<[f64; 3]> {
-                    let at = (i as usize).checked_mul(3)?;
-                    part.positions.get(at..at + 3).map(|p| [p[0], p[1], p[2]])
-                };
-                let (Some(a), Some(b), Some(c)) = (corner(part.indices[3 * t]), corner(part.indices[3 * t + 1]),
-                    corner(part.indices[3 * t + 2])) else { return Err(refuse(Unproven::Unattributed { entity: None })) };
-                lists.push(candidates(operands, &[a, b, c], chord).map_err(halt)?);
-            }
-            let key = resolve(operands, &lists, chord).map_err(refuse)?;
+            let key = if let [Operand { rows_identify_faces: true, faces, item, .. }] = operands.as_slice() {
+                charge(face.len(), 0)?;
+                if id as usize >= faces.len() { return Err(refuse(Unproven::Unattributed { entity: Some(*item) })); }
+                (0, id as usize)
+            } else {
+                let mut lists = Vec::with_capacity(face.len());
+                charge(face.len(), face.len() * std::mem::size_of::<super::face_attribution::Candidates>())?;
+                for &t in face {
+                    charge(work, 0)?;
+                    let corner = |i: u32| -> Option<[f64; 3]> {
+                        let at = (i as usize).checked_mul(3)?;
+                        part.positions.get(at..at + 3).map(|p| [p[0], p[1], p[2]])
+                    };
+                    let (Some(a), Some(b), Some(c)) = (corner(part.indices[3 * t]), corner(part.indices[3 * t + 1]),
+                        corner(part.indices[3 * t + 2])) else { return Err(refuse(Unproven::Unattributed { entity: None })) };
+                    lists.push(candidates(operands, &[a, b, c], chord).map_err(halt)?);
+                }
+                resolve(operands, &lists, chord).map_err(refuse)?
+            };
             if let Support::Plane { origin, normal } = operands[key.0].faces[key.1].support {
                 *normal_planar_fallbacks += usize::from(super::normals::apply_plane(
                     part,&operands[key.0].from_part,origin,normal,face,context.resources)?);

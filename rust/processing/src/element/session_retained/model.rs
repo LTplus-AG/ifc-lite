@@ -101,11 +101,13 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
     }
     let mut resolved = crate::prepass::resolve_prepass(&spans, &mut decoder, Default::default());
     super::presentation::material_styles::join(&mut resolved, &mut decoder);
+    let texture_index = ifc_lite_geometry::build_texture_index(source.bytes(), &mut decoder);
     let snapshot = ProductionModel::from_source(source.clone()).snapshot(OwnedMeshProductionData {
         void_index: Arc::new(resolved.void_index),
         geometry_style_index: Arc::new(resolved.geometry_style_index),
         indexed_colour_full: Arc::new(resolved.indexed_colour_full),
         element_material_colors: Arc::new(resolved.element_material_colors),
+        texture_index: Arc::new(texture_index),
         ..Default::default()
     });
     let mut router = GeometryRouter::with_units(source.bytes(), &mut decoder);

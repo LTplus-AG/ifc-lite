@@ -2,7 +2,8 @@
 //! Analytic source faces of one retained construction, read from the encoded
 //! request the kernel evaluated (wire formats 1 and 2, evaluation metres).
 //! Roles keep the authored profile order: `side(loop, segment)` indexes the
-//! canonical profile lowering, even where the request reversed a loop.
+//! canonical profile lowering, even where the request reversed a loop;
+//! `row(k)` indexes an authored face-set row (format 3).
 use super::face_attribution::{unit, Extent, Region, Role, Segment, SourceFace, Support};
 use super::face_curve::{Curve, MAX_DEGREE};
 use ifc_lite_geometry::document::{PrismLoop, PrismRole, PrismSegment, RetainedRecipe, SweepPayload};
@@ -44,6 +45,7 @@ pub(crate) fn faces(recipe: &RetainedRecipe, payload: &SweepPayload) -> Result<(
             prism_faces(&mut reader, &reversed)
         }
         RetainedRecipe::SweptDisk(_) => disk(&mut reader).map(|faces| (faces, None)),
+        RetainedRecipe::FaceSet(_) => face_set(&mut reader).map(|faces| (faces, None)),
         RetainedRecipe::Prism(prism) if prism.role == PrismRole::HalfSpace => {
             // CUT-0's cutter frame places z=0 on the authored plane, +Z on
             // its material side. Only that base is an IFC source face: the
@@ -66,6 +68,32 @@ pub(crate) fn faces(recipe: &RetainedRecipe, payload: &SweepPayload) -> Result<(
         other => return Err(NoFaces::Hook(other.solid_id())),
     };
     parsed.filter(|_| reader.at == payload.bytes.len()).ok_or(NoFaces::Malformed)
+}
+
+pub(crate) fn is_face_set(recipe: &RetainedRecipe) -> bool { matches!(recipe, RetainedRecipe::FaceSet(_)) }
+
+/// One plane per authored row, from the Newell normal of the row's triangles. A
+/// row whose triangles all dropped keeps its slot so roles index authored rows;
+/// no published triangle can reach it.
+fn face_set(reader: &mut Reader<'_>) -> Option<Vec<SourceFace>> {
+    let [format, vertices, triangles, row_count] = [reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?];
+    let (vertices, triangles, row_count) = (vertices as usize, triangles as usize, row_count as usize);
+    if format != 3 || row_count > reader.bytes.len() { return None; }
+    let positions = (0..vertices).map(|_| reader.f64s::<3>()).collect::<Option<Vec<_>>>()?;
+    let corners = (0..triangles).map(|_| Some([reader.u32()?, reader.u32()?, reader.u32()?])).collect::<Option<Vec<_>>>()?;
+    let mut sums = vec![([0.; 3], [0.; 3]); row_count];
+    for triangle in &corners {
+        let row = reader.u32()? as usize;
+        let [a, b, c] = [positions.get(triangle[0] as usize)?, positions.get(triangle[1] as usize)?, positions.get(triangle[2] as usize)?];
+        let (sum, origin) = sums.get_mut(row)?;
+        let n = cross3(std::array::from_fn(|i| b[i] - a[i]), std::array::from_fn(|i| c[i] - a[i]));
+        if *sum == [0.; 3] { *origin = *a; }
+        for i in 0..3 { sum[i] += n[i]; }
+    }
+    sums.into_iter().enumerate().map(|(row, (sum, origin))| Some(SourceFace {
+        role: Role::FaceSetRow { row: row as u32 }, extent: Extent::Plane,
+        support: Support::Plane { origin, normal: unit(sum).unwrap_or([0., 0., 1.]) },
+    })).collect()
 }
 
 fn prism_faces(reader: &mut Reader<'_>, reversed: &[(bool, usize)]) -> Option<(Vec<SourceFace>, Option<Region>)> {

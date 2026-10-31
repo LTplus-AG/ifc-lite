@@ -21,6 +21,16 @@ pub(super) enum IssuedRetainedOperation<R: NumericalReceipt> {
     Construction { request: RetainedRequest, definition: LogicalRetainedDefinition, backing: Arc<Storage> },
     Affine { input: Arc<RuntimeRealization<R>>, matrix: [f64; 16], definition: LogicalRetainedDefinition },
 }
+/// A source-exact face set has no kernel object yet: no Boolean or affine copy
+/// may consume it, and that is a typed refusal before any invocation (#8291).
+fn refuse_source_exact_operand<R: NumericalReceipt>(input: &RuntimeRealization<R>) -> Result<(), RetainedExecutionError> {
+    match input.kind.evidence() {
+        runtime::ReceiptEvidence::Construction(completion)
+            if matches!(completion.request().recipe(), RetainedRecipe::FaceSet(_)) =>
+            Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
+        _ => Ok(()),
+    }
+}
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn input(&self, value: ValueRef<'_>) -> Result<Arc<RuntimeRealization<R>>, RetainedExecutionError> {
         for (definition, receipt) in &self.ledger {
@@ -49,6 +59,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                         RetainedRecipe::Extrusion(recipe) => document.add_retained_extrusion(recipe.clone()),
                         RetainedRecipe::SweptDisk(recipe) => document.add_retained_swept_disk(recipe.clone()),
                         RetainedRecipe::Prism(recipe) => document.add_retained_prism(recipe.clone()),
+                        RetainedRecipe::FaceSet(recipe) => document.add_retained_face_set(recipe.clone()),
                         _ => return Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
                     }.map_err(protocol)?;
                     // Classify zero incarnation as retirement before recipe preparation.
@@ -65,6 +76,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     let left = BooleanInput::new(self.input(inputs[0])?, inputs[0])?;
                     let right = BooleanInput::new(self.input(inputs[1])?, inputs[1])?;
                     for input in [&left, &right] {
+                        refuse_source_exact_operand(&input.realization)?;
                         if !input.realization.owner().same_domain(&worker.domain()) {
                             return Err(protocol(ReceiptFailure::ForeignBooleanInputRuntime));
                         }
@@ -75,6 +87,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 }
                 RetainedOperationKind::Affine { input, matrix } => {
                     let input = self.input(input)?;
+                    refuse_source_exact_operand(&input)?;
                     if !input.owner().same_domain(&worker.domain()) { return Err(protocol(ReceiptFailure::ForeignAffineInputRuntime)); }
                     let matrix = *matrix;
                     PendingRetainedOperation::Affine { expected, input, matrix }

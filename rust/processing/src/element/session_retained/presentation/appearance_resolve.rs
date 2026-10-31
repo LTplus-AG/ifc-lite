@@ -89,8 +89,7 @@ pub(super) fn resolve_parts(
     // Frames of one item under one occurrence chain are ONE sub-mesh in exact: one resolution, one cursor step.
     let mut last: Option<Shared> = None;
     for Bound { source, fact, occurrences } in parts {
-        // Texture refusal relies on the walker's texture_pending flag: run_model does not populate
-        // texture_index. Indexed palettes also have the snapshot map check under the same item id.
+        // The walker flags a texture from the model's texture index; palettes also have the snapshot map check.
         if fact.texture_pending || ctx.texture_index.contains_key(&fact.geometry_id) {
             return Err(unsupported(fact.geometry_id, "texture_pending"));
         }

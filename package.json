@@ -174,7 +174,9 @@
       "js-yaml@4": "^4.3.2",
       "read-yaml-file": "^2.1.0",
       "brace-expansion": "^5.0.9",
-      "minimatch": "^10.2.5",
+      "minimatch": "^11.0.3",
+      "glob@7": "^14.0.3",
+      "unzipper@0.10": "^0.12.5",
       "@zip.js/zip.js": "2.8.26",
       "browserslist": "^4.28.9",
       "baseline-browser-mapping": "^2.11.22"
@@ -190,7 +192,8 @@
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
       "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
-      "wkt-parser@1.5.6": "patches/wkt-parser@1.5.6.patch"
+      "wkt-parser@1.5.6": "patches/wkt-parser@1.5.6.patch",
+      "typedoc@0.28.20": "patches/typedoc@0.28.20.patch"
     }
   }
 }

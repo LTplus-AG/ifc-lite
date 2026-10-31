@@ -1,0 +1,123 @@
+C2-8a / #8263: prism_cut kit, plane, triangle, check, frame, profile and detect
+modules. Base main 70c91e8e617402ea2ca8949117fa2acbe61d97b7.
+
+Derivation
+- Re-derived mechanically from main's prism_cut.rs by slice.py. The r3 recovery
+  branch (backup/c2-8-recovery-r3) was a layout reference only; nothing was
+  cherry-picked, so main's #8225 Aabb3 sites (PTri::aabb, partition_consistent,
+  has_measurable_region), #8235 cluster_prism_directions in detect_prism and
+  #8224's shared ray_triangle_param in point_inside are what moved.
+- Range table (1-based base lines; slice.py RANGES is authoritative):
+    kit 234-290 | plane2 291-332 | ptri 333-354 + 503-576 | checks 355-502
+    frame 577-746 | profile 747-944 | detect 945-1242 (with opening_aabb_obb)
+  PR-2 moves 1243-2118 (extension, face, cut, pool, decompose) and PR-3
+  2119-2921 (caps, cap_cdt, crossings, driver).
+- Rewrites, all mechanical: moved top-level items, struct fields and inherent
+  methods gain pub(super) (old file-private scope from the deeper file); items
+  already pub(super) (the kit) become pub(in crate::router::voids), so
+  prism_direction_tests.rs keeps importing prism_cut::normalize; V2 is only
+  pub(super). super::geom:: becomes super::super::geom:: (base :448). One
+  signature (partition_consistent, base :365) went past rustfmt's width with
+  the prefix and is emitted in rustfmt's form (slice.py WRAP). Each new file
+  drops its range's trailing blank line.
+- Facade: keeps base lines 1-233 except the cluster_prism_directions import
+  (detect.rs imports it) and moves the IFC_LITE_PRISM_CUT doc comment from
+  `mod vertex_dedup;` onto enabled(), which it documents. It declares the
+  modules with private `use x::*` globs (kit: pub(super) use kit::*), which
+  opening_prism.rs, planar_correction.rs, prism_cut_tests.rs and
+  aabb_fold_tests.rs reach through `use super::*` / `use super::{..}`.
+  New submodules import siblings explicitly. DAG: detect -> frame, profile,
+  kit; frame -> plane2, kit; checks -> ptri, kit; ptri, profile, plane2 -> kit.
+
+Move checks (commit 93865ea1bf)
+- slice.py --stage a --check 93865ea1bf: every committed file equals the
+  generated one; 0 lines unmatched after normalising visibility/paths/WRAP:
+    kit 70 = 14 preamble + 56 moved (11 rewrites)
+    plane2 54 = 13 + 41 (2) | ptri 106 = 11 + 95 (6)
+    checks 165 = 13 + 152 (6, WRAP :365) | frame 179 = 10 + 169 (22)
+    profile 209 = 12 + 197 (6) | detect 313 = 16 + 297 (4)
+    facade 1926 lines, identical to the generated facade
+- slice.py --concat 93865ea1bf (facade + moved pieces at their base positions,
+  normalised, vs base): +106 -6. Added lines are the 14 mod/use lines, file
+  headers, //! docs and imports, and the WRAP reflow; removed lines are the
+  facade cluster_prism_directions import, the doc-comment move (shown as -2 +2)
+  and trailing blanks.
+- /tmp/c28rev/moved.py (reviewer helper) and color_moved.py (git diff -M
+  --color-moved=plain --color-moved-ws=allow-indentation-change): 968/956
+  lines coloured moved; the remainder (+144 -55) are only the old and new
+  item/field/method signature lines (visibility), the super::super path,
+  headers, docs, imports, mod lines and blank-line bookkeeping.
+- rustfmt: new files add no drift beyond hunks inherited verbatim from base
+  (ptri :91, detect's two multi-line literals and one blank); the base file
+  itself is not rustfmt-clean (188 changed lines), so it is not reformatted.
+
+math::v3 (commit ac4a384d3d, separate)
+- kit.rs takes V3, dot, sub, add, scale, cross, norm from crate::math::v3.
+  v3_parity.py: each deleted body is token-identical to math::v3's (same
+  left-to-right operand order, no mul_add, #[inline] on both sides), hence
+  bit-equal. normalize (refuses strictly below 1e-12 and multiplies by the
+  reciprocal; math::v3::normalize refuses <= min_len and divides), lerp and
+  bits stay local, documented in kit.rs as the F2a prism-kit exception
+  (#7781 §3 row 10). V2 and plane2's pip/seg_cross_param are ROUTER-7 sites
+  moved as-is, no math::v2/geom2d swap.
+
+Ratchets
+- module_size_allowlist: prism_cut.rs 2921 -> 1926; rust/geometry digest
+  re-pinned 12052342407275843233 -> 4843835844353277487 (no other scope moved).
+- function_length_allowlist: detect_prism 185 follows the function into
+  prism_cut/detect.rs (measured 185, unchanged).
+
+Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-14)
+- qualify.sh gates at 2962ea5574 (Rust identical to head; later commits touch
+  only tests/evidence), job 0c9dc072-835c-44ab-acb0-d8c450c734b3: all exit 0:
+  clippy --workspace --all-targets -D warnings; clippy geometry and processing
+  with retained-runtime; cargo test -p ifc-lite-geometry --lib --tests with and
+  without retained-runtime (incl. aabb_fold_tests, prism_cut_tests,
+  prism_direction_tests); module_size_ratchet + function_length_ratchet;
+  cargo check wasm32 -p ifc-lite-wasm; wasm32 clippy retained-browser.
+- qualify.sh all at c8e946158b, job 1cf22d36-61d2-4b3f-be21-531363e39a54:
+  * identity, base vs head, single rayon worker, process_geometry:
+      AC20-FZK-Haus: 285 meshes / 35940 v / 20322 t, FNV 7377db33331a3523
+        output 99630199e92178390cc453ac33032582fb4e804ff3a60672c755e03a7d4022fc
+        diagnostics 1098844c0e4284615639b68e7321ea61dabb184e41937c86a2c082eb965ffc2c
+      duplex: 486 meshes / 51578 v / 30374 t, FNV 3362e22e16f5749a
+        output 626971dfd5de5a977f49cc9016c841004cb048e874ee4c30e6a439e5850dcd40
+        diagnostics 69446f37b6ce6acf9ed29633fd33965238401584b846e46b5f2140e1d74754c1
+      ISSUE_129: 1402 meshes / 218966 v / 136260 t, FNV 7ee6eeb406de7730
+        output e76f29cfd3f780efa43689355b264b6bb02237e3f8d83deddb2928af17b34dbf
+        diagnostics 86b8cfae97ce143fe55225ab72bf81ce05b400d35270c5798402721599f15625
+    every value identical, diagnostics JSON byte-identical.
+  * csg_manifold_gate,csg_topology_gate,opening-perf-trace: this first run
+    fed the base export no fixture corpus, so its census test failed for lack
+    of fixtures (and head's for a partial corpus): not a valid comparison.
+    Re-run with qualify.sh linking the same corpus into both trees (724048404c,
+    job 0b694c33-4391-4a92-8b3c-e3449e0eda67): base 3079 passed / 0 failed /
+    35 ignored, head 3079 / 0 / 35; failing set identical (empty).
+  * instructions.sh per phase, head/base: worst 1.000309 (ISSUE_129 parse /
+    entity scan / preprocess); geometry 0.999962 Haus, 0.999592 duplex,
+    0.997836 ISSUE_129; total 1.000008 / 0.999633 / 0.997858. All <= 1.0005.
+
+Pre-merge harness round (review of #8386), at 9c18ae1550 (Rust identical to
+the earlier heads; only tests/evidence/c2-8a changed)
+- identity_probe.rs now hashes every InstanceRecord field (colour/transform as
+  f32 bits). qualify.sh features: fails on differing exit codes, a nonzero
+  exit with no named failing test, or differing summed totals; fixture linking
+  follows symlinked directories; the base export's tests/models mirrors the
+  head's final tree (manifest.json included) and both trees' path+SHA-256
+  lists must match before any test runs.
+- identity, job 8d5cd585-263d-4d6d-9446-3c8674a01090: Haus, duplex, ISSUE_129
+  IDENTICAL. Counts, FNV and diagnostics SHA-256 as above; instances 0 on all
+  three (default process_geometry emits none). The output SHA-256 changes
+  with the new serialization (instance records instead of a count) on both
+  sides alike:
+    AC20-FZK-Haus 1ef3a899ea90abdec5be21c2ec971a605c9e3b57ad47fd0583ec0378b8b734e1
+    duplex        26d63e1bba65ff4e56dbee55c02983da908e05c1f222f10d0a0c4d3e0f570744
+    ISSUE_129     fc6c61a64bf6c98f37fa424cb6d0772df67cb293395294e64e0d50e87b1f77e6
+- features, job 719cc363-02ff-46ba-9ea2-d1ca895ffba5: fixture trees 185 files
+  on both sides, list SHA-256 474e0297548d1e8729b5663fde3653b8697e2aee92181f165b498471cd1066c2;
+  base and head exit 0, 176 binaries, 3079 passed / 0 failed / 35 ignored,
+  same (empty) failing set.
+- gates, job 3fd6f5e4-000f-4838-8588-a74e5deba063: all eight steps exit 0
+  (a first attempt, job 87894b8b, was refused at disk admission before
+  running anything).
+- Instruction counts not re-run: no production rust/ changed.

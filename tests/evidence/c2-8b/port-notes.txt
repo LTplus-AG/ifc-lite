@@ -62,3 +62,13 @@ Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-1
   * instructions vs main: worst phase 1.000339 (ISSUE_129 parse/entity scan/
     preprocess); geometry 0.999959 / 0.999616 / 0.997836; total 1.000012 /
     0.999656 / 0.997858 (Haus / duplex / ISSUE_129). All <= 1.0005.
+
+Pre-merge harness round (fixed qualify.sh / identity_probe.rs from C2-8a), at
+219af8b5a5 (Rust identical to cf75be4e47)
+- identity, job 9f55f118-56d0-499e-9aea-bc85e7bdf157: all three IDENTICAL;
+  every value equals the C2-8a re-run (instances 0, new output SHA-256s).
+- features, job 0c4a68fb-6475-48bf-857b-b5984cfed2bc: fixture trees identical
+  (185 files, list SHA-256 474e0297..1066c2); base and head exit 0, 176
+  binaries, 3079 passed / 0 failed / 35 ignored, same (empty) failing set.
+- gates, job 4c193410-1fe7-4e7c-ad5a-4e87971a0922: all eight steps exit 0.
+- Instruction counts not re-run: no production rust/ changed.

@@ -96,10 +96,11 @@ function fakeRenderer(state: FakeRendererState): Renderer {
     requestRender: () => { state.renderRequested = true; },
     clearCaches: () => {},
     getModelBounds: () => null,
-    render: (options: RenderOptions) => {
+    renderWithResult: (options: RenderOptions) => {
       state.frames?.push(options);
       state.renderCalls++;
       if (state.renderThrows) throw new Error(SAFARI_LOST);
+      return true;
     },
   } as unknown as Renderer;
 }

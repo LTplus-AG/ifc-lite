@@ -104,6 +104,7 @@ import { readFileSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { isGeneratedReleasePr } from './review/classify-review-target.mjs';
 import { gh, GhError } from './lib/gh.mjs';
 // ONE HOME FOR "which commit did this row see" (#3729), shared with post-review.
 import { ReviewProvenanceError, wroteAtCommit } from './lib/review-provenance.mjs';
@@ -599,7 +600,7 @@ function fetchPayload(repo, pr) {
  * checkout, so a flag passed there would be a flag a fork PR could edit. This
  * asks the API.
  *
- * `headRepo` in a `--state-file` payload overrides the read, and ONLY there.
+ * `headRepo` (plus `headRef`/`title`) in a `--state-file` payload overrides the read, and ONLY there.
  * That is what makes this branch reachable by the harness at all: gating it on
  * `!args.stateFile` would have shipped an enforcement carve-out no test could
  * execute, which is the shape this repository keeps paying for.
@@ -622,7 +623,7 @@ function prExemption(repo, pr, override) {
   const data =
     override === undefined
       ? gh(['api', `repos/${repo}/pulls/${pr}`, '--method', 'GET'], 'the PR head repo', ReviewPostedError)
-      : { head: { repo: { full_name: override.headRepo } }, draft: override.draft === true };
+      : { head: { ref: override.headRef, repo: { full_name: override.headRepo } }, title: override.title, draft: override.draft === true };
   const headRepo = data?.head?.repo?.full_name;
   if (typeof headRepo !== 'string' || headRepo === '') {
     throw new ReviewPostedError(
@@ -639,14 +640,13 @@ function prExemption(repo, pr, override) {
   // TWO EXEMPTIONS, ONE READ. Both are cases where the LANE cannot post, so the
   // gate would be demanding a marker nobody is able to write.
   //
-  // DRAFTS. `claude-review.yml` gates the job on `draft == false`; this workflow
-  // has no `if:` at all and runs on drafts anyway. Under `enforcing` that made
-  // every same-repo DRAFT PR a permanent red -- the lane skips identically on
-  // every re-run, so the printed "re-run the review job" could never clear it.
-  // Third instance of that class after nothing-reviewable and forks, missed
-  // because the first two were about WHO posts and this one is about WHEN.
-  // Found by review of the contributor docs, not by the gate's own tests.
-  if (data?.draft === true) return { exempt: true, why: 'DRAFT' };
+  // DRAFTS. `claude-review.yml` gates the job on `draft == false`, EXCEPT the generated
+  // version-packages PR, which it reviews as a draft; this workflow has no `if:` at all.
+  // Under `enforcing` that made every other same-repo DRAFT PR a permanent red the lane skips
+  // identically on every re-run: the third unclearable-red class, after nothing-reviewable and forks.
+  // The release PR is NOT exempt: its lane runs and posts. The gate reads the LIVE draft
+  // state, so a PR drafted after its lane ran still stands down (a stated residual).
+  if (data?.draft === true && !isGeneratedReleasePr({ headRef: data?.head?.ref, title: data?.title })) return { exempt: true, why: 'DRAFT' };
   return {
     exempt: headRepo.toLowerCase() !== repo.toLowerCase(),
     why: 'FORK',
@@ -757,7 +757,7 @@ function main() {
       : prExemption(
           args.repo,
           args.pr,
-          args.stateFile ? { headRepo: payload?.headRepo, draft: payload?.draft } : undefined,
+          args.stateFile ? { headRepo: payload?.headRepo, draft: payload?.draft, headRef: payload?.headRef, title: payload?.title } : undefined,
         );
 
   for (const l of lines) {
@@ -799,7 +799,7 @@ function main() {
     console.log('');
     console.log(
       exemption.why === 'DRAFT'
-        ? 'DRAFT PR: the finding above does not fail this job. `claude-review.yml` skips drafts, so no ' +
+        ? 'DRAFT PR: the finding above does not fail this job. `claude-review.yml` skips drafts (bar the release PR), so no ' +
           'marker can be written while this PR is a draft and enforcing would be a red no re-run could ' +
           'clear. Mark it ready for review and the lane will review the head.'
         : 'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, ' +

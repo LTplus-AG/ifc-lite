@@ -61,6 +61,34 @@ describe('GpuFramePacer (#5865)', () => {
     assert.equal(pacer.saturated(device, GPU_FRAME_STALE_MS + 1), false);
   });
 
+  it('releases a never-settling backlog entirely: no refilled window, one probe at a time, pacing back once one settles', async () => {
+    let asked = 0;
+    const probes: Array<() => void> = [];
+    const device: PacedDevice = { queue: { onSubmittedWorkDone: () => { asked++; return new Promise<void>((resolve) => probes.push(resolve)); } } };
+    const pacer = new GpuFramePacer(2);
+    pacer.noteSubmit(device, 0);
+    pacer.noteSubmit(device, 1);
+    assert.equal(pacer.saturated(device, 2), true);
+    // Expired: released, and it STAYS released however many frames follow (not maxInFlight per expiry).
+    let t = GPU_FRAME_STALE_MS + 2;
+    for (let i = 0; i < 50; i++, t += 16) {
+      assert.equal(pacer.saturated(device, t), false, `frame ${i} is not held back`);
+      pacer.noteSubmit(device, t);
+    }
+    assert.equal(asked, 3, 'two original frames plus a single probe, not a completion request per frame');
+    // The probe itself expiring is replaced by a fresh one, so a recovered GPU is still noticed.
+    t += GPU_FRAME_STALE_MS + 1;
+    assert.equal(pacer.saturated(device, t), false);
+    pacer.noteSubmit(device, t);
+    assert.equal(asked, 4);
+    // A completion arriving proves the GPU reports again: pacing re-engages.
+    probes[probes.length - 1]();
+    await tick();
+    pacer.noteSubmit(device, t + 1);
+    pacer.noteSubmit(device, t + 2);
+    assert.equal(pacer.saturated(device, t + 3), true);
+  });
+
   it('forgets the frames of a lost device once a recovered one is in use', () => {
     const pacer = new GpuFramePacer(1);
     const before = deviceWith();

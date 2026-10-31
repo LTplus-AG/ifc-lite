@@ -1041,6 +1041,26 @@ test('a draft that IS covered passes on the merits, not as an exemption', () => 
   assert.doesNotMatch(r.out, /DRAFT PR/);
 });
 
+test('ENFORCING: the generated release PR is reviewed as a draft, so a missing marker there FAILS', () => {
+  // `claude-review.yml` runs the lane on `changeset-release/main` / `chore: version packages`
+  // while it is a draft (the classifier posts nothing-to-review). The draft exemption
+  // therefore must not excuse it: a failing verdict there is a real lane failure.
+  const none = { issueComments: [], reviewComments: [], reviews: [] };
+  const release = run({ headRepo: SAME_REPO, draft: true, headRef: 'changeset-release/main', title: 'chore: version packages', ...none });
+  assert.equal(release.code, 1, release.out);
+  assert.match(release.out, /NOT_POSTED/);
+  assert.doesNotMatch(release.out, /DRAFT PR/);
+  // Case-insensitive, as the workflow's `==` is: that PR's lane also ran.
+  const cased = run({ headRepo: SAME_REPO, draft: true, headRef: 'Changeset-Release/Main', title: 'Chore: Version Packages', ...none });
+  assert.equal(cased.code, 1, cased.out);
+  // Anti-vacuity: only BOTH identifiers make it the release PR; a near-match draft still stands down.
+  for (const near of [{ headRef: 'changeset-release/main', title: 'chore: other' }, { headRef: 'feature/x', title: 'chore: version packages' }, {}]) {
+    const r = run({ headRepo: SAME_REPO, draft: true, ...near, ...none });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /DRAFT PR/);
+  }
+});
+
 test('DRAFT wins over FORK in the message, because it is the one the author can change', () => {
   const r = run({ headRepo: 'someone/ifc-lite', draft: true, issueComments: [], reviewComments: [], reviews: [] });
   assert.equal(r.code, 0, r.out);

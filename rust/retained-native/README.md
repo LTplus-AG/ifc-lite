@@ -139,7 +139,11 @@ The decoder-only M10 oracle uses IFC's +Y default for an omitted Axis2 of a 3D
 operator. (A 2D operator derives Y as the counter-clockwise complement of X, as
 IfcBaseAxis 2D and the router both do, so a 2D Axis1 = −X with no Axis2 is a
 rotation, not a mirror.) For 3D, the default router currently derives that axis
-by a cross product; an omitted Axis2 with Axis1 = −X therefore differs. M10 fixtures use explicit axes, and a source-only
+by a cross product; an omitted Axis2 with Axis1 = −X therefore differs. Wherever the two
+rules disagree (`dot(+Y, Z × X) < 0`, e.g. Axis3 = +Z with Axis1 = (−1, 0, 0)) the oracle
+expects the mirror IFC defines and production publishes the rotation, so an asymmetric
+part there reports an `affine source oracle` violation: a real disagreement tracked in
+#8308, not an oracle defect, and the oracle keeps the +Y rule until it is settled. M10 fixtures use explicit axes, and a source-only
 witness pins the omitted-axis semantics against IfcOpenShell. Fixing the default
 router is outside this retained-only slice and would require new default identity
 qualification.

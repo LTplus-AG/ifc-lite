@@ -1,0 +1,20 @@
+--- a/packages/cli/src/loader.ts
++++ b/packages/cli/src/loader.ts
+@@ -6,7 +6,6 @@
+  * IFC file loader — reads and parses IFC files for CLI commands.
+  */
+ 
+-import { readFile } from 'node:fs/promises';
+ import { logger } from './logger.js';
+ import { readModelInput, type ModelInput } from './model-input.js';
+ import { IfcParser, IfcInputError, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
+@@ -19,7 +18,8 @@ import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from '
+  * IfcDataStore. Suppresses parser console output for clean CLI experience.
+  */
+ export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
+-  return loadIfcBytes(await readFile(filePath), filePath);
++  const input = await readModelInput(filePath);
++  return loadIfcBytes(input.bytes, input.label);
+ }
+ 
+ /**

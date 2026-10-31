@@ -27,6 +27,46 @@ with `pnpm fixtures`); express ID 42 is its `External wall total` cost item.
 `bim.cost` reads the loaded IFC source snapshot and returns decimal strings;
 pending generic mutation overlays are not included until reload.
 
+## Opening models from OCI registries
+
+Commands that read an IFC model (all but `view` and the IFCX `layer`/`ref`
+store) also accept an `oci://` reference to an artifact in an OCI registry
+(GHCR, ECR Public, Harbor, `distribution`, ...):
+
+```bash
+ifc-lite info oci://ghcr.io/acme/tower-model:rev-b
+ifc-lite diff --json oci://ghcr.io/acme/tower-model:rev-a oci://ghcr.io/acme/tower-model:rev-b
+ifc-lite query oci://ghcr.io/acme/tower-model@sha256:<64 hex> --type IfcWall --count
+```
+
+- References are `oci://host[:port]/repository[:tag][@sha256:<hex>]`; the host
+  is always named (there is no default registry).
+- `localhost`, `127.0.0.1` and `[::1]` (any port) are reached over plain
+  `http`; every other host over `https`.
+- Credentials come from the environment only, never from Docker config or an
+  implicit `GITHUB_TOKEN`: `IFC_LITE_OCI_USERNAME` with `IFC_LITE_OCI_PASSWORD`,
+  or `IFC_LITE_OCI_TOKEN` (a registry bearer token). Set one form, not both.
+  Without either the pull is anonymous.
+- The model layer is capped at 1 GiB; `IFC_LITE_OCI_MAX_BYTES` (a positive
+  integer number of bytes) changes the cap. The download is verified against
+  its sha256 digest.
+- Layer choice: a manifest with one layer uses it. Otherwise exactly one layer
+  must have media type `application/x-step` or an
+  `org.opencontainers.image.title` ending in `.ifc` / `.ifczip`; anything else
+  fails with the list of layers. An index (multi-manifest) reference fails with
+  its entries; pin one by digest. The artifact type is not checked.
+- JSON output keeps its shape: the field that carries the file path
+  (`info`'s `file`, `diff`'s `file1.path` / `file2.path`) carries the reference.
+
+In GitHub Actions, pulling from GHCR with the workflow token:
+
+```yaml
+- run: ifc-lite info --json oci://ghcr.io/acme/tower-model:rev-b
+  env:
+    IFC_LITE_OCI_USERNAME: ${{ github.actor }}
+    IFC_LITE_OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ## Installation diagnostics
 
 ```bash

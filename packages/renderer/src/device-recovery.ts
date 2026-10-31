@@ -48,6 +48,8 @@ export interface RendererRecoveryHost {
     omissions: Set<DeviceRecoveryOmission>;
     /** Point-cloud presentation captured before the first attempt tore the renderer down. */
     pointCloudOptions: Readonly<ResolvedPointCloudRenderOptions> | null;
+    /** The latest `device.lost` settlement while already latched: the replacement's own loss. */
+    replacementLostInfo: { message: string; reason: string } | null;
   };
   deviceLost: boolean;
   destroyed: boolean;
@@ -73,6 +75,18 @@ export function rendererDeviceLostError(): Error {
   const error = new Error('GPU device was lost before the renderer became ready');
   error.name = 'RendererDeviceLostError';
   return error;
+}
+
+/**
+ * The error for a replacement device that was lost before recovery finished.
+ * It carries the replacement's own `device.lost` text: the browser reports why
+ * it handed back a dead device only there, and without it every such failure
+ * reads the same in telemetry.
+ */
+function replacementLostError(host: RendererRecoveryHost, during: string): Error {
+  const info = host.recovery.replacementLostInfo;
+  const suffix = info ? ` (${info.reason}): ${info.message}` : '';
+  return new Error(`Replacement GPU device was lost during ${during}${suffix}`);
 }
 
 /** Coalesce and serialize recovery with the renderer's ordinary init lifecycle. */
@@ -111,6 +125,7 @@ async function recoverRendererDeviceOnce(
   generation: number,
 ): Promise<DeviceRecoveryResult> {
   const lossSequence = host.deviceLossSequence;
+  host.recovery.replacementLostInfo = null;
   if (generation !== host.initGeneration || host.destroyed) {
     return { ok: false, reason: 'renderer-destroyed' };
   }
@@ -176,7 +191,7 @@ async function recoverRendererDeviceOnce(
       return { ok: false, reason: 'renderer-destroyed' };
     }
     if (host.deviceLossSequence !== lossSequence) {
-      throw new Error('Replacement GPU device was lost during initialization');
+      throw replacementLostError(host, 'initialization');
     }
     if (!sourceValid()) return sourceRefused();
     const initializedPreparation = host.scene.prepareDeviceRecovery();
@@ -196,7 +211,7 @@ async function recoverRendererDeviceOnce(
         return { ok: false, reason: 'renderer-destroyed' };
       }
       if (host.deviceLossSequence !== lossSequence) {
-        throw new Error('Replacement GPU device was lost during quantized pipeline validation');
+        throw replacementLostError(host, 'quantized pipeline validation');
       }
       if (!sourceValid()) return sourceRefused();
       host.scene.setQuantizedBatches(quantized);
@@ -217,7 +232,7 @@ async function recoverRendererDeviceOnce(
       return { ok: false, reason: 'renderer-destroyed' };
     }
     if (host.deviceLossSequence !== lossSequence) {
-      throw new Error('Replacement GPU device was lost during scene restore');
+      throw replacementLostError(host, 'scene restore');
     }
     if (!sourceValid()) return sourceRefused();
     const restoredPreparation = host.scene.prepareDeviceRecovery();

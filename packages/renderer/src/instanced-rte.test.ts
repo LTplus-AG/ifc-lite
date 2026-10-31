@@ -13,7 +13,7 @@ import {
   uploadInstancedRteDeltas,
   type InstancedRteTemplate,
 } from './instanced-rte.js';
-import { rteRelativePositionF32, type WorldPoint } from './relative-to-eye.js';
+import { rteRelativePositionF32, tryPackRteDrawableDelta, type WorldPoint } from './relative-to-eye.js';
 
 // WebGPU enum global used by delta-stream allocation (not defined in node).
 (globalThis as Record<string, unknown>).GPUBufferUsage ??= { COPY_DST: 8, VERTEX: 32 };
@@ -91,6 +91,44 @@ describe('instanced RTE submission deltas (#5049)', () => {
       [0, 0, 4 * 8],
       [2, 0, 2 * 8],
     ]);
+  });
+});
+
+describe('instanced RTE delta packing matches the shared per-point packer bit for bit', () => {
+  it('writes exactly the lanes tryPackRteDrawableDelta writes, and skips exactly what it rejects', () => {
+    // A deterministic spread: building-scale, 5,000 km national grid with
+    // sub-millimetre residues, and occurrences beyond the 1,000 km eye envelope.
+    let seed = 7;
+    const next = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const camera: WorldPoint = [5_000_000.015625, 123.456789, -4_321_000.25];
+    const anchors: number[] = [];
+    for (let i = 0; i < 400; i++) {
+      const scale = [10, 1e4, 9e5, 3e6][i % 4]!;
+      anchors.push(camera[0] + (next() - 0.5) * scale, camera[1] + (next() - 0.5) * 50, camera[2] + (next() - 0.5) * scale);
+    }
+    const { device, writes } = recordingDevice();
+    const t = template(device, anchors);
+    const runs = uploadInstancedRteDeltas(device, [t], camera)[0]!;
+
+    const reference = new Float32Array(t.instanceCount * 8);
+    const drawable = Array.from({ length: t.instanceCount }, (_, i) =>
+      tryPackRteDrawableDelta([anchors[i * 3]!, anchors[i * 3 + 1]!, anchors[i * 3 + 2]!], camera, reference, i * 8));
+    assert.deepEqual(runs, collectInstanceRuns(t.instanceCount, (i) => drawable[i]!));
+    assert.ok(drawable.includes(false) && drawable.includes(true), 'the fixture exercises both sides of the envelope');
+    const first = runs[0]!.first;
+    const written = new Uint32Array(writes[0]!.data.buffer);
+    const expected = new Uint32Array(reference.buffer);
+    for (let i = 0; i < t.instanceCount; i++) {
+      if (!drawable[i]) continue;
+      for (let lane = 0; lane < 8; lane++) {
+        assert.equal(written[(i - first) * 8 + lane], expected[i * 8 + lane], `instance ${i} lane ${lane}`);
+      }
+    }
+  });
+
+  it('rejects a non-finite anchor with the shared error', () => {
+    const { device } = recordingDevice();
+    assert.throws(() => uploadInstancedRteDeltas(device, [template(device, [Number.NaN, 0, 0])], [0, 0, 0]), /finite f64/);
   });
 });
 

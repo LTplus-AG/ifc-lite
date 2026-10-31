@@ -39,10 +39,11 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 3). Bumped on field
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 4). Bumped on field
    * renames/removals and count-semantics changes; also on an additive field
    * whose absence a consumer must tell apart from a real zero, which is why 3
-   * (added `totalUnsupportedItems`) bumped. A purely additive optional field
+   * (added `totalUnsupportedItems`) and 4 (`totalUnsupportedItems` also counts
+   * unmeshable openings) bumped. A purely additive optional field
    * that no consumer gates on does not bump. Kept worded the same as the
    * canonical copy in `@ifc-lite/geometry`: the structural contract test cannot
    * see comments, so a rule stated two ways here is drift nothing catches.
@@ -112,6 +113,10 @@ export interface GeometryDiagnostics {
    * Representation items dropped from the mesh output because no processor is
    * registered for the item's type, or the registered processor errored (#3691).
    * Optional: absent on payloads from producers predating the counter.
+   * From schemaVersion 4 it also counts an opening that cut nothing because
+   * its id did not decode (reason `IfcFeatureElementSubtraction`) or its own
+   * body failed or meshed empty (reason: the opening's type), once per opening
+   * per router (ROUTER-37, #8385).
    */
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */

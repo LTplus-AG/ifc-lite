@@ -142,7 +142,8 @@ pub struct WorstHost {
 ///   `floor_opening_guard_saved` counter were always 0. Field removal, not
 ///   just a rename, hence the bump.
 /// - 3: added `total_unsupported_items` / `unsupported_items_by_type` (previously uncounted drops).
-pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 3;
+/// - 4: total_unsupported_items / unsupported_items_by_type also count openings whose id does not decode or whose body fails/meshes empty (ROUTER-37, #8385).
+pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 4;
 
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public
 /// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
@@ -193,7 +194,7 @@ pub struct GeometryDiagnostics {
     /// Also counts an opening that cut nothing because its own body failed or
     /// meshed empty (keyed by the opening's type) or its id did not decode
     /// (keyed `IfcFeatureElementSubtraction`), once per opening per router
-    /// (ROUTER-37).
+    /// (ROUTER-37, since schema version 4).
     #[serde(default)]
     pub total_unsupported_items: u64,
     /// [`Self::total_unsupported_items`] broken down by IFC type, count-desc.

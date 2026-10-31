@@ -245,12 +245,12 @@ fn schema_version_round_trips_and_defaults() {
     let d = GeometryDiagnostics::default();
     assert_eq!(d.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     let json = serde_json::to_string(&d).unwrap();
-    assert!(json.contains("\"schemaVersion\":3"), "serialized unconditionally: {json}");
+    assert!(json.contains("\"schemaVersion\":4"), "serialized unconditionally: {json}");
     let back: GeometryDiagnostics = serde_json::from_str(&json).unwrap();
     assert_eq!(back.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     // A pre-versioned producer (field absent) deserializes to 0, distinguishable.
     let legacy: GeometryDiagnostics =
-        serde_json::from_str(&json.replace("\"schemaVersion\":3,", "")).unwrap();
+        serde_json::from_str(&json.replace("\"schemaVersion\":4,", "")).unwrap();
     assert_eq!(legacy.schema_version, 0);
 }
 

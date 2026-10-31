@@ -19,13 +19,14 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 3 — that constant carries
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 4 — that constant carries
    * the per-version changelog and is the single source of truth). Bumped on
    * field renames, field removals, and count-semantics changes; also on an
    * additive field whose absence a consumer must tell apart from a real zero,
-   * which is why 2 (removed `guardSaved`) and 3 (added
-   * `totalUnsupportedItems`) both bumped. A purely additive optional field
-   * that no consumer gates on does not bump.
+   * which is why 2 (removed `guardSaved`), 3 (added `totalUnsupportedItems`)
+   * and 4 (`totalUnsupportedItems` also counts unmeshable openings) all
+   * bumped. A purely additive optional field that no consumer gates on does
+   * not bump.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of
@@ -96,6 +97,11 @@ export interface GeometryDiagnostics {
    * geometry). Excludes elements with no Body representation at all — those
    * are correctly absent from the 3D view and never counted here. Absent on
    * a payload produced before this counter existed (schemaVersion < 3).
+   *
+   * From schemaVersion 4 it also counts an opening that cut nothing because
+   * its id did not decode (reason `IfcFeatureElementSubtraction`) or its own
+   * body failed or meshed empty (reason: the opening's type, e.g.
+   * `IfcOpeningElement`), once per opening per router (ROUTER-37, #8385).
    *
    * A lower bound on instances: a drop inside a `RepresentationMap` source is
    * counted once per walking router, not once per `IfcMappedItem` occurrence

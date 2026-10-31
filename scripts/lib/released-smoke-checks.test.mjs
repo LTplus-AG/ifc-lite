@@ -163,7 +163,7 @@ test('audit: both packages must be verified with provenance and nothing invalid 
   assert.equal(auditProblems({ invalid: [{}], missing: [{}], verified }, packages).length, 2);
 });
 
-test('retained probe: only the missing-engine ERR_MODULE_NOT_FOUND counts', () => {
+test('retained probe: only the missing-engine module error counts', () => {
   const message = "Cannot find module '/x/node_modules/@ifc-lite/wasm/pkg-retained/ifc-lite.js' imported from /x/retained.js";
   assert.equal(retainedAbsent({ rejected: true, code: 'ERR_MODULE_NOT_FOUND', message }), true);
   assert.equal(retainedAbsent({ rejected: true, name: 'TypeError', message: 'x is not a function' }), false);

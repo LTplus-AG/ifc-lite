@@ -112,8 +112,11 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
   source packages. `cargo package
   --list` is the archive selection check, not a build or publication. Their
   lists contain source, tests/fixtures, documentation and Cargo metadata, no SDK
-  or third-party binaries. Each inherits `license-file = "LICENSE"` from the
-  workspace, so Cargo includes the repository MPL-2.0 text. Runtime also has an
+  or third-party binaries. Each inherits `license = "MPL-2.0"` from the
+  workspace (the SPDX expression crates.io displays; setting `license-file` too
+  makes `cargo publish` warn) and carries a byte-identical copy of the
+  repository `LICENSE` in its own directory, which Cargo includes by default.
+  `scripts/release-crates-order.test.mjs` fails if a copy drifts. Runtime also has an
   explicit source-only `include` list. Even ffi's `cdylib` declaration does not
   put a compiled library in a source archive.
 * **npm:** `packages/wasm/package.json#files` includes the retained loader/types,

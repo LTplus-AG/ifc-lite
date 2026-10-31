@@ -427,6 +427,37 @@ describe('Renderer.recoverDevice (#4885)', () => {
     }
   });
 
+  it('reports the replacement device\'s own loss text, not the previous attempt\'s', async () => {
+    const renderer = lostRenderer();
+    const lostDuringInit = (message: string) => async () => {
+      renderer['pipeline'] = {} as never;
+      renderer['handleDeviceLost']({ message, reason: 'unknown' }, { fromDevicePromise: true });
+    };
+    const error = mock.method(console, 'error', () => undefined);
+    try {
+      renderer['initOnce'] = lostDuringInit('first replacement text');
+      await renderer.recoverDevice();
+      renderer['initOnce'] = lostDuringInit('second replacement text');
+      const result = await renderer.recoverDevice();
+      assert.strictEqual(result.ok, false);
+      if (!result.ok) {
+        assert.strictEqual(
+          (result.error as Error).message,
+          'Replacement GPU device was lost during initialization (unknown): second replacement text',
+        );
+      }
+
+      // An attempt whose replacement was not lost must not inherit the earlier text.
+      renderer['initOnce'] = async () => { throw new Error('Failed to get GPU adapter'); };
+      const adapterless = await renderer.recoverDevice();
+      assert.strictEqual(adapterless.ok, false);
+      if (!adapterless.ok) assert.strictEqual((adapterless.error as Error).message, 'Failed to get GPU adapter');
+      assert.strictEqual(renderer['recovery'].replacementLostInfo, null);
+    } finally {
+      error.mock.restore();
+    }
+  });
+
   it('revalidates scene blockers after replacement initialization', async () => {
     const renderer = lostRenderer();
     renderer['initOnce'] = async () => {

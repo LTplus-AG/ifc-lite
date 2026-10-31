@@ -6,6 +6,7 @@ import { reportCorrelation } from '@/lib/error-reports/correlation';
 import { offerErrorReport, attachContextCorrelation } from '@/lib/error-reports/context';
 import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
+import { recoveryFailureProperties } from './device-loss-recovery-failure.js';
 import {
   buildDeviceLossContext,
   type DeviceLossContext,
@@ -316,6 +317,9 @@ export function subscribeViewportHealth(
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
     // must describe the moment the device died, not the Viewport mount.
     renderer.onDeviceLost((info) => {
+      // A failed recovery reports the GPU that was lost, not whatever the
+      // replacement attempt left behind (often no adapter at all).
+      const lossContext = buildContextSafely(buildContext, renderer);
       const store = useViewerStore.getState();
       const cancelStream = store.activeStreamCanceller;
       if (cancelStream) {
@@ -329,7 +333,7 @@ export function subscribeViewportHealth(
           console.warn('[Viewport] failed to cancel point-cloud ingest during device loss:', error);
         }
       }
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
+      reportDeviceLost(info, lossContext, Boolean(renderer.recoverDevice));
       if (!recovery && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },
@@ -338,7 +342,9 @@ export function subscribeViewportHealth(
               reportDeviceRecovery(result, () => { reported = false; });
               onRecovered?.();
             },
-            failed: (result) => reportDeviceRecovery(result, () => { reported = false; }),
+            failed: (result, attempts) => reportDeviceRecovery(result, () => { reported = false; }, recoveryFailureProperties(
+              result, attempts, lossContext,
+            )),
           },
         );
         recovery = run;

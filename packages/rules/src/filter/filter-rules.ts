@@ -18,6 +18,7 @@ import { groupRule, type GroupRule } from './filter-group-rule.js';
 import type { PropertyReadOptions, SubjectReadOptions } from './subject-read-options.js';
 import { modelFactRule, type ModelFactRule } from './filter-model-fact.js';
 import { listConditionRule, type ListConditionRule } from './filter-list-condition.js';
+import { customGroupingRule, type CustomGroupingRule } from './filter-custom-grouping.js';
 
 import type {
   SetOp, StringOp, NumericOp, ValueOp, ClassificationOp, Combinator, ValueComparison, TextKind,
@@ -236,7 +237,7 @@ export type FilterRule =
   | ElevationRule
   | TypeNameRule
   | ParentRule
-  | GroupRule | ModelFactRule | ListConditionRule;
+  | GroupRule | ModelFactRule | ListConditionRule | CustomGroupingRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
 /** Combine an array of per-rule booleans according to AND/OR semantics. */
@@ -332,7 +333,7 @@ export const Rule = {
     ({ kind: 'type', op, value, ...(valueKind ? { valueKind } : {}) }),
   parent: (op: StringOp, value: string, valueKind?: TextKind): ParentRule =>
     ({ kind: 'parent', op, value, ...(valueKind ? { valueKind } : {}) }),
-  group: groupRule, modelFact: modelFactRule, listCondition: listConditionRule,
+  group: groupRule, modelFact: modelFactRule, listCondition: listConditionRule, customGrouping: customGroupingRule,
 } as const;
 
 // ── JSON guards (`filter-rule-guards.ts`, re-exported for existing imports) ─
@@ -340,6 +341,7 @@ export { isFilterRule, parseFilterRules } from './filter-rule-guards.js';
 export type { GroupRule } from './filter-group-rule.js';
 export type { ModelFactRule } from './filter-model-fact.js';
 export type { ListConditionRule } from './filter-list-condition.js';
+export type { CustomGroupingRule } from './filter-custom-grouping.js';
 // Re-exported so existing `from './filter-rules.js'` imports (HierarchyPanel,
 // etc.) can pull in the groups helper too without a second import line (#4904).
 export { activeGroupRules } from './filter-groups.js';

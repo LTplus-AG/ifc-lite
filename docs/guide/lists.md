@@ -43,6 +43,7 @@ Each `ColumnDefinition` has a `source` that says where the value comes from:
 | `spatial` | Containing spatial element name; `propertyName` picks the level (`Storey` (default), `Building`, `Site`, `Project`) | `Level 2` |
 | `model` | Source file name | `office.ifc` |
 | `zone` | Location-zone assignment and per-zone volume (user-defined 3D zone boxes, viewer-computed); `psetName` holds the zone-set id, `propertyName` picks the mode — see [Zone columns](#zone-columns) | `Section A` |
+| `customGrouping` | The element's group in a custom grouping (in the viewer, a rule-based Lens): the first enabled rule it matches, as the `customGrouping` filter rule applies it. `propertyName` holds the grouping name, `psetName` its id hint; the provider answers through `getCustomGroup` | `Structure` |
 
 A column looks like:
 

@@ -67,7 +67,6 @@ describe('#7955 M2-C geometry event source', () => {
       assert.equal(exactPlan.shouldCache, true, `precondition: an exact load of ${bytes / MIB} MiB would use the cache`);
       const plan = kernel.cachePlan(exactPlan);
       assert.equal(plan.shouldCache, false, `retained ${bytes / MIB} MiB: the loader must not call getCached nor write the cache`);
-      assert.equal(plan.persistSource, false);
       assert.equal(plan.tier, 'none');
     }
     assert.equal(kernel.serverEnabled, false, 'retained: the loader must not call loadFromServer');

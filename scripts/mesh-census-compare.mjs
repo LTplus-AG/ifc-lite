@@ -88,7 +88,9 @@ export function compare(baseRows, branchRows) {
     if (verdict) verdicts[verdict].push({ key, base, branch });
   }
   for (const [key, branch] of branchRows) {
-    if (!baseRows.has(key)) verdicts.added.push({ key, branch });
+    if (baseRows.has(key)) continue;
+    // A new mesh whose thin census hit its cap was not measured either.
+    verdicts[branch.thinCapped > 0 ? 'unmeasured' : 'added'].push({ key, branch });
   }
   return verdicts;
 }

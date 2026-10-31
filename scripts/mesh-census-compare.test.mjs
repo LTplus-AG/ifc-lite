@@ -79,6 +79,12 @@ test('a capped thin census on either side is unmeasured, even when identical', (
   assert.equal(classify(base, row({ thinCapped: 2 })), 'unmeasured');
 });
 
+test('a capped mesh new to the branch is unmeasured, not added', () => {
+  const v = compare(parseCensus(''), parseCensus(`${JSON.stringify(row({ thinCapped: 1 }))}\n`));
+  assert.equal(v.unmeasured.length, 1);
+  assert.equal(v.added.length, 0);
+});
+
 test('a row missing a metric is refused, not read as neutral', () => {
   const { open, ...partial } = base;
   assert.throws(() => parseCensus(`${JSON.stringify(partial)}\n`), /missing or invalid open/);

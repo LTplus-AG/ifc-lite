@@ -35,8 +35,9 @@ def records(text):
     """(id, type, body, raw) for each DATA record, joining wrapped lines.
 
     A record ends at a ';' outside strings AND block comments, so a comment
-    holding a ';' cannot cut a record in two. Comments ahead of a record are
-    dropped so it still matches `ENTITY`."""
+    holding a ';' cannot cut a record in two. A record is recognised on a
+    comment-free copy (STEP allows comments between any two tokens), and
+    `body` comes from that copy; `raw` keeps the original text."""
     data = text.split("DATA;", 1)[1].rsplit("ENDSEC;", 1)[0]
     out, buf, in_str, in_comment, previous = [], [], False, False, ""
     for ch in data:
@@ -57,11 +58,16 @@ def records(text):
         elif ch == ";":
             raw = LEADING_COMMENTS.sub("", "".join(buf).strip())
             buf = []
-            m = ENTITY.match(raw)
+            m = ENTITY.match(without_comments(raw))
             if m:
                 out.append((int(m.group(1)), m.group(2), m.group(3), raw))
         previous = mark
     return out
+
+
+def without_comments(text):
+    """`text` with its STEP block comments removed, strings untouched."""
+    return STEP_TOKEN.sub(lambda m: "" if m.group(0).startswith("/*") else m.group(0), text)
 
 
 def strip_strings(body):
@@ -141,7 +147,9 @@ def main(argv):
     for rid, typ, body, _ in recs:
         if typ == "IFCRELVOIDSELEMENT":
             r = refs[rid]
-            if len(r) >= 3 and r[-2] in hosts:
+            # RelatingBuildingElement and RelatedOpeningElement are the last
+            # two references; OwnerHistory is optional in IFC4.
+            if len(r) >= 2 and r[-2] in hosts:
                 roots.add(rid)
                 openings.add(r[-1])
         elif typ in ("IFCPROJECT", "IFCSITE"):
@@ -163,7 +171,7 @@ def main(argv):
     applications = {refs[r[0]][0] for r in recs if r[1] == "IFCAPPLICATION" and refs[r[0]]}
     if anonymise:
         schema = re.search(r"FILE_SCHEMA\s*\(.*?\);", header, re.S)
-        schema_text = schema.group(0) if schema else "FILE_SCHEMA(('IFC2X3'));"
+        schema_text = without_comments(schema.group(0)) if schema else "FILE_SCHEMA(('IFC2X3'));"
         name = dst.rsplit("/", 1)[-1]
         header = (
             "ISO-10303-21;\nHEADER;\n"
@@ -184,7 +192,7 @@ def main(argv):
                     raw = drop_site_location(rid, ENTITY.match(raw).group(3))
             elif anonymise:
                 # Comments anywhere can carry text nobody meant to publish.
-                raw = STEP_TOKEN.sub(lambda m: "" if m.group(0).startswith("/*") else m.group(0), raw)
+                raw = without_comments(raw)
             f.write(raw + "\n")
         f.write("ENDSEC;\nEND-ISO-10303-21;\n")
     print(f"{len(keep)} records, {len(openings)} openings -> {dst}", file=sys.stderr)

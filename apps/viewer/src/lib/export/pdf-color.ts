@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-type PdfColor = { color: string; alpha: number };
+export type PdfColor = { color: string; alpha: number };
 
 /** Hex and comma `rgb()`/`rgba()`, the forms a browser canvas also emits. */
 function parseHexOrRgb(css: string): PdfColor | null {

@@ -19,7 +19,7 @@ import {
   type CutPolygonStyle,
   type CutPolygonStyleContext,
 } from '@/components/viewer/drawing/cut-polygon-style';
-import { pdfColor } from '@/lib/export/pdf-color';
+import { pdfColor, type PdfColor } from '@/lib/export/pdf-color';
 
 type Point = { x: number; y: number };
 
@@ -63,7 +63,7 @@ export function prepareCutPolygonsPdf(
 const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 100;
 
 /** Resolved per export: each distinct colour is parsed, and warned about, once. */
-type ColorCache = Map<string, ReturnType<typeof pdfColor>>;
+type ColorCache = Map<string, PdfColor | null>;
 
 /**
  * Set a fill or stroke colour and return its alpha. A colour jsPDF cannot
@@ -71,11 +71,12 @@ type ColorCache = Map<string, ReturnType<typeof pdfColor>>;
  * bad override cannot abort the whole export.
  */
 function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string, cache: ColorCache): number {
-  if (!cache.has(color)) {
-    cache.set(color, pdfColor(color));
-    if (!cache.get(color)) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF; affected elements use their fallback colour`);
+  let parsed = cache.get(color);
+  if (parsed === undefined) { // pdfColor returns null, never undefined
+    parsed = pdfColor(color);
+    cache.set(color, parsed);
+    if (!parsed) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF; affected elements use their fallback colour`);
   }
-  const parsed = cache.get(color);
   const css = parsed?.color ?? fallback;
   if (kind === 'fill') doc.setFillColor(css);
   else doc.setDrawColor(css);
@@ -83,8 +84,9 @@ function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: st
 }
 
 /**
- * Fills first (even-odd, so holes stay open), then outlines on top. Graphics
- * state is saved and restored, so nothing leaks to the caller.
+ * Fills first (even-odd, so holes stay open), then outlines on top. The PDF
+ * graphics state is saved and restored around it; jsPDF's own getters
+ * (getLineWidth, getFillColor) may still report the last polygon's values.
  */
 export function drawCutPolygonsPdf(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
   doc.saveGraphicsState();

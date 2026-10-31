@@ -1,0 +1,11 @@
+--- a/packages/cli/src/oci-input.ts
++++ b/packages/cli/src/oci-input.ts
+@@ -106,7 +106,7 @@ function describeLayer(layer: OciDescriptor): string {
+  */
+ function selectModelLayer(manifest: OciManifest, label: string): OciDescriptor {
+   const { layers } = manifest;
+-  if (layers.length >= 1) return layers[0];
++  if (layers.length === 1) return layers[0];
+   if (layers.length === 0) throw new ModelInputError(`cannot open ${label}: the manifest has no layers`);
+   const candidates = layers.filter(isIfcLayer);
+   if (candidates.length === 1) return candidates[0];

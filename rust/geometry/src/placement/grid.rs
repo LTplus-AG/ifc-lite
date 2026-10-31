@@ -9,7 +9,7 @@ use super::grid_frame::GridPlacementLayout;
 use super::{missing, sampled, unsupported, PlacementResult};
 use crate::profiles::ProfileProcessor;
 use crate::{Point2, Point3, TessellationQuality, Vector2, Vector3};
-use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType, Logical};
 use nalgebra::Matrix4;
 
 /// The grid-local frame of an `IfcGridPlacement`: the grid-axis intersection
@@ -64,8 +64,9 @@ fn try_resolve_grid_intersection(
 
 /// Resolve an `IfcVirtualGridIntersection` to a grid-local point: intersect
 /// its two `IfcGridAxis` curves in the grid plane, shift by the optional
-/// per-axis lateral `OffsetDistances`, and lift by the optional elevation
-/// (third offset → z). `None` when the axes are missing or parallel.
+/// per-axis lateral `OffsetDistances` (measured along each axis' own sense,
+/// see `grid_axis_line`), and lift by the optional elevation (third offset to
+/// z). `None` when the axes are missing or parallel.
 fn grid_intersection_point(
     intersection: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -132,9 +133,17 @@ fn grid_axis_line(
     }
     let start = &pts[0];
     let end = &pts[pts.len() - 1];
-    let dir = Vector2::new(end.x - start.x, end.y - start.y);
+    let mut dir = Vector2::new(end.x - start.x, end.y - start.y);
     if dir.norm() < 1e-9 {
         return Ok(None);
+    }
+    // `IfcGridAxis.SameSense = .F.`: the axis runs against its curve, so its
+    // direction (and the left normal the offsets are measured along) is the
+    // reverse. The line itself, hence the intersection, is unchanged. Mirrors
+    // `readGridAxisEnds` in packages/create/src/in-store/extract-grids.ts,
+    // which swaps the ends for `.F.` only (`.U.`/absent keep curve order).
+    if axis.get_logical(slot::IfcGridAxis::SAME_SENSE.index()) == Some(Logical::False) {
+        dir = -dir;
     }
     Ok(Some((Point2::new(start.x, start.y), dir)))
 }

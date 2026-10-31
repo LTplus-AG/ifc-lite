@@ -17,9 +17,12 @@
 /// Maximum `IfcMappedItem` → `IfcRepresentationMap` → `MappedRepresentation.Items`
 /// nesting any walk in this workspace will follow.
 ///
-/// Shared because three crates walk the SAME chain and their bounds must agree:
-/// `ifc_lite_processing::element`, `ifc_lite_geometry::router::processing` and
-/// `ifc-lite-wasm`'s styling colour resolver.
+/// Shared by geometry's `representation::RepresentationWalk` callers (product
+/// admission, profile extraction and mapped RTC voting), the `program` mapping
+/// controller and `representation::unwrap` probes, processing's element-colour
+/// and opening-style walks, and the WASM styling colour resolver. The generic
+/// representation walk accepts a caller-selected depth; these geometry callers
+/// pass this bound and also bound branching expansion work where applicable.
 ///
 /// Disagreement fails SILENTLY, which is why it is worth making structural. A
 /// mid-review revision of #2864 held 16 against the router's 32: an element
@@ -71,6 +74,12 @@ pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 ///
 /// This bounds one path's LENGTH only. A walk over a chain that can revisit
 /// also needs a cycle guard; see the module docs above.
+///
+/// Consumers migrated in the F3b lane (D27) walk `PlacementRelTo` through
+/// `ifc_lite_geometry::placement`, iteratively with a visited set, without this
+/// depth bound. The recursive symbolic placement walk in
+/// `rust/processing/src/symbolic/transform.rs` remains deferred to P2.
+/// The constant is kept for the L-export retirement.
 pub const MAX_PLACEMENT_DEPTH: usize = 100;
 
 /// Maximum `ParentContext` chain (`IfcGeometricRepresentationSubContext` ->

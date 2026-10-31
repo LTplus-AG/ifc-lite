@@ -1,0 +1,11 @@
+--- a/scripts/retained-compare/browser-metrics.mjs
++++ b/scripts/retained-compare/browser-metrics.mjs
+@@ -7,7 +7,7 @@
+ }
+ 
+ export function vertexDeviation(actual, expected, stored) {
+-  const error = Math.abs(Math.fround(actual) - Math.fround(expected));
++  const error = Math.abs(actual - expected);
+   const ulp = float32Ulp(stored);
+   return { error, ulps: error / ulp, valid: Number.isFinite(error) && Number.isFinite(ulp) && error <= ulp / 2 };
+ }

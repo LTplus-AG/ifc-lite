@@ -95,6 +95,11 @@ fn moderate_degree_with_real_knots_completes_fast() {
 /// with the hole silently filled in) rather than a compile error:
 /// `triangulate_planar_indices` did not exist before this change, so a unit test that named it directly could never survive a
 /// production revert to prove the regression.
+///
+/// #7779 (D14): canonical point admission now refuses the `1.0E400` vertex,
+/// so the hole loop no longer reads and the face is refused (and counted) at
+/// loop resolution, before triangulation. The face is still rejected and the
+/// opening never filled; only the refusal moved earlier.
 #[test]
 fn failed_hole_triangulation_never_falls_back_to_a_filled_outer_fan() {
     let content = "\
@@ -109,13 +114,15 @@ fn failed_hole_triangulation_never_falls_back_to_a_filled_outer_fan() {
     let mut decoder = EntityDecoder::new(content);
     let face = decoder.decode_by_id(14).unwrap();
 
+    let _ = crate::processors::take_face_refused();
     let error =
         process_planar_face_rebased(&face, &mut decoder, TessellationQuality::Medium, None)
             .unwrap_err();
     assert!(
-        error.to_string().contains("triangulation with holes failed"),
+        error.to_string().contains("loop #10 does not resolve; refusing the face"),
         "a failed holed face must be rejected instead of filling the opening: {error}"
     );
+    assert_eq!(crate::processors::take_face_refused(), [ifc_lite_core::IfcType::IfcFaceSurface]);
 }
 
 /// Baseline: a legitimate (degree=2, 9 control points) surface still

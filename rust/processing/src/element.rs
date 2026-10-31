@@ -192,3 +192,25 @@ mod session_publication_tests;
 
 #[cfg(test)]
 mod session_steal_tests;
+
+#[cfg(feature = "retained-runtime")]
+mod session_retained;
+/// Experimental transport seam; it grants no final-product authority.
+#[doc(hidden)]
+#[cfg(feature = "retained-runtime")]
+pub mod retained_runtime {
+    pub use super::session_retained::runtime::{
+        RetainedRuntime, AsyncRetainedExecutor, NumericalReceipt,
+        ReceiptDomain, ReceiptEvidence, Invocation, Operand, NumericalLimits,
+        RuntimeFault, ReceiptMesh,
+    };
+    pub use super::session_retained::refusal::{RetainedProductRefusal, RefusalOrigin};
+    pub use super::session_retained::error::RetainedExecutionError;
+    pub use super::session_retained::publication::{ShapeOnlyProduct, ShapePart, PresentationObligationsUnmet, PartAppearance, PartFaces, FaceKey};
+    pub use super::session_retained::affine_final::{bake_mesh, affine_chord_admissible, affine_sweep_surfaces_certifiable, effective_radius_through_affine};
+    pub use super::session_retained::presentation::resolve_appearances;
+    pub use super::session_retained::witness::RuntimeProductWitness;
+    pub use super::session_retained::model::{run_model, run_model_with_worker, ModelOptions, ModelSummary, ProductOutcome, ProductBudgetSpec};
+    pub use crate::processor::entry_points::{canonical_element_jobs, canonical_type_maps};
+    pub use super::session_retained::admission::{admit_product, RetainedAdmissionError};
+}

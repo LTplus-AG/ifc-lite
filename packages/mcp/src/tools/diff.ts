@@ -9,6 +9,7 @@
  * on-disk file, call `model_load` first.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { EntityNode } from '@ifc-lite/query';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
@@ -111,7 +112,9 @@ const modelDiff: Tool = {
     required: ['a', 'b'],
     additionalProperties: false,
   },
-  handler(input, ctx) {
+  async handler(input, ctx) {
+    // Initialize before capturing mutable session overlays across the await.
+    if (input.by_content === true) await initDiff();
     const { left, right } = resolveTwo(ctx, input.a as string, input.b as string);
     // A model_id names a session, not a file: fold in whatever `entity_create`
     // / `entity_delete` / `entity_set_*` have queued, on every pass. Null (the
@@ -139,7 +142,10 @@ const modelDiff: Tool = {
       const added: string[] = [];
       const removed: string[] = [];
       let common = 0;
-      for (const g of gids1) (gids2.has(g) ? common++ : removed.push(g));
+      for (const g of gids1) {
+        if (gids2.has(g)) common++;
+        else removed.push(g);
+      }
       for (const g of gids2) if (!gids1.has(g)) added.push(g);
       entityDiff = { added, removed, common };
     }

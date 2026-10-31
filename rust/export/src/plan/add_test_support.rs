@@ -3,6 +3,7 @@
 //! shapes, and a run-and-report helper. Synthetic, like every fixture here.
 
 use super::add_types::*;
+use super::attrs::{attribute_index, unset_required};
 use super::execute;
 use super::index::FileIndex;
 use super::types::*;
@@ -38,16 +39,43 @@ pub(super) fn add(obj: NewObject) -> (ObjectRef, Disposition) {
     (ObjectRef::Guid(obj.global_id.encode()), Disposition::Add(Box::new(obj)))
 }
 
+pub(super) fn add_type(t: NewType) -> (ObjectRef, Disposition) {
+    (ObjectRef::Guid(t.global_id.unwrap().encode()), Disposition::AddType(Box::new(t)))
+}
+
 pub(super) fn run(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>) -> (Vec<u8>, WriteReport) {
-    let plan = ExportPlan { dispositions, context: PlanContext::default() };
+    run_with(source, dispositions, PlanContext::attributed())
+}
+
+pub(super) fn run_with(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>, context: PlanContext) -> (Vec<u8>, WriteReport) {
+    let plan = ExportPlan { dispositions, context };
     let mut out = Vec::new();
     let report = execute(source, &plan, &mut out).expect("execute");
     (out, report)
 }
 
+/// Attribute `name` of output record `id`, as STEP text.
+pub(super) fn attr(out: &[u8], schema: &str, id: u32, name: &str) -> String {
+    let index = FileIndex::scan(out, &Default::default());
+    let entity = index.type_of(id).unwrap_or_else(|| panic!("#{id} is not in the output ({schema})"));
+    let idx = attribute_index(schema, &entity, name).unwrap_or_else(|| panic!("{entity} has no {name}"));
+    crate::step_text::attribute_of(&index.raw_line(id).unwrap(), idx).unwrap()
+}
+
 pub(super) fn assert_clean(report: &WriteReport, what: &str) {
     assert!(report.refusals.is_empty(), "{what}: refusals {:?}", report.refusals);
     assert!(report.findings.is_empty(), "{what}: findings {:?}", report.findings);
+}
+
+/// Clean, schema-valid, and no record leaves a required attribute unset.
+pub(super) fn assert_valid(out: &[u8], report: &WriteReport, schema: &str) {
+    assert_clean(report, schema);
+    assert!(super::validate::validate(out, schema).is_empty(), "{schema}: {:?}", super::validate::validate(out, schema));
+    let index = FileIndex::scan(out, &Default::default());
+    for (id, _, _, _) in index.records() {
+        let line = index.raw_line(id).unwrap();
+        assert!(unset_required(schema, &line).is_empty(), "{schema}: #{id} leaves {:?} unset", unset_required(schema, &line));
+    }
 }
 
 /// The express id the output gave the object with GlobalId `g`.
@@ -70,4 +98,26 @@ pub(super) fn count(out: &[u8], entity: &str) -> usize {
 /// UPPERCASE type of record `id` in the output.
 pub(super) fn type_in(out: &[u8], id: u32) -> String {
     FileIndex::scan(out, &Default::default()).type_of(id).unwrap_or_default()
+}
+
+/// `(min, max)` of every axis of the meshes the engine made for `id`.
+pub(super) fn bounds(result: &ifc_lite_processing::ProcessingResult, id: u32) -> [(f64, f64); 3] {
+    let meshes: Vec<_> = result.meshes.iter().filter(|m| m.express_id == id).collect();
+    assert!(!meshes.is_empty(), "#{id} not meshed");
+    let mut b = [(f64::INFINITY, f64::NEG_INFINITY); 3];
+    for m in meshes {
+        for v in m.positions.chunks_exact(3) {
+            for axis in 0..3 {
+                b[axis] = (b[axis].0.min(f64::from(v[axis])), b[axis].1.max(f64::from(v[axis])));
+            }
+        }
+    }
+    b
+}
+
+/// A placement `x` along the x axis.
+pub(super) fn translated(x: f64) -> [[f64; 4]; 4] {
+    let mut m = IDENTITY;
+    m[0][3] = x;
+    m
 }

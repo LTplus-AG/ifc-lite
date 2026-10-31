@@ -136,17 +136,16 @@ fn parse_segment(seg: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Seg
     // IfcCurveSegment: 0 Transition, 1 Placement, 2 SegmentStart,
     //                  3 SegmentLength, 4 ParentCurve.
     let placement = decoder.decode_by_id(seg.get_ref(1)?).ok()?;
-    let location = decoder.decode_by_id(placement.get_ref(0)?).ok()?;
-    let coords = location.get_list(0)?;
-    let start = coords.first()?.as_float()?;
-    let height = coords.get(1)?.as_float()?;
+    // This profile lives in the station/elevation plane. Slot 1 is RefDirection
+    // only for Axis2Placement2D; on Axis2Placement3D it is Axis.
+    if placement.ifc_type != IfcType::IfcAxis2Placement2D {
+        return None;
+    }
+    let [start, height, _] = decoder.point3_at(&placement, 0).ok()??;
 
-    // RefDirection defaults to +X (level) when omitted.
-    let grade = match placement.get_ref(1).and_then(|id| decoder.decode_by_id(id).ok()) {
-        Some(dir) => {
-            let ratios = dir.get_list(0)?;
-            let dx = ratios.first()?.as_float()?;
-            let dz = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+    // Only an absent RefDirection defaults to +X; malformed authored data refuses.
+    let grade = match decoder.direction3_at(&placement, 1).ok()? {
+        Some([dx, dz, _]) => {
             if dx.abs() < 1e-12 {
                 return None; // vertical tangent: not a valid grade
             }
@@ -313,3 +312,7 @@ ENDSEC;
         assert!(GradientProfile::from_curve(&curve, &mut decoder).is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "gradient_leaf_tests.rs"]
+mod leaf_tests;

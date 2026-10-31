@@ -14,8 +14,9 @@ use crate::admission::ResidentBytes;
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::process_streaming;
-use crate::types::{finish_meshes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
-use ifc_lite_processing::style::ModelFinishes;
+use crate::types::{
+    with_finishes, CollectedFinishes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent,
+};
 use crate::AppState;
 use axum::{
     extract::{Multipart, Query, State},
@@ -27,6 +28,9 @@ use axum::{
 use bytes::Bytes;
 use futures::stream::StreamExt;
 use ifc_lite_core::EntityScanner;
+use ifc_lite_processing::discovery::{Discovery, TypeGeometryPlan};
+use ifc_lite_processing::element::TypeGeometryMode;
+use ifc_lite_processing::scan::ScanClass;
 use ifc_lite_processing::{process, ProcessingRequest};
 use std::convert::Infallible;
 
@@ -113,10 +117,12 @@ pub async fn parse_full(
     // detached blocking work keeps running - and keeps its admission slot -
     // until it actually exits, so a replacement cannot be admitted on top.
     let (body, symbolic_data, admission) = tokio::task::spawn_blocking(move || {
+        // #5984: each mesh's IFC-authored finish, joined by the pass itself.
+        let mut finishes = CollectedFinishes::default();
         let result = process(
             &content,
-            &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality),
-            &mut (),
+            &with_finishes(ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing)),
+            &mut finishes,
         );
         // In the frame the meshes above were baked in, not one this re-derives
         // for itself: the two travel in one response, so a site-local model's
@@ -125,9 +131,8 @@ pub async fn parse_full(
         let symbolic = ifc_lite_processing::extract_symbolic_data_with_provenance_in_frame(
             &content,
             result.frame,
-        );
-        // #5984: each mesh's IFC-authored finish, joined before the bytes go.
-        let mut meshes = finish_meshes(&mut ModelFinishes::from_content(&content), result.meshes);
+        )?;
+        let mut meshes = finishes.attach(result.meshes);
         drop(content);
 
         // Emit the SAME Y-up wire frame as the parquet transports (issue #1841).
@@ -139,17 +144,12 @@ pub async fn parse_full(
             mesh_to_yup_in_place(mesh);
         }
 
-        let response = SymbolicParseResponse::new(ParseResponse {
-            cache_key: response_key,
-            meshes: Vec::new(),
-            mesh_coordinate_space: Some(result.mesh_coordinate_space),
-            site_transform: result.site_transform,
-            building_transform: result.building_transform,
-            metadata: result.metadata,
-            stats: result.stats,
-            symbolic_data: Default::default(),
-        }, symbolic)
-        .with_meshes(meshes);
+        // The native mapping the FFI shares (#8341 C4-13b), with this route's
+        // additions explicit: the Y-up meshes carrying their finish above
+        // replace the result's, and the symbolic stream keeps its provenance.
+        let rest = ifc_lite_processing::ProcessingResult { meshes: Vec::new(), ..result };
+        let response = SymbolicParseResponse::new(ParseResponse::from_result(response_key, rest), symbolic)
+            .with_meshes(meshes);
         let body = encode_response(&response)?;
         Ok::<_, ApiError>((body, response.symbolic_data, admission_guard))
     })
@@ -221,6 +221,7 @@ pub async fn parse_stream(
         query.opening_filter,
         tessellation_quality,
         Some(std::sync::Arc::new(admission_guard)),
+        query.layer_slicing,
     )
     .map(|mut event: StreamEvent| {
             // Same Y-up wire frame as every other transport (issue #1841) —
@@ -264,15 +265,7 @@ pub async fn parse_metadata(
     // Fast path - just scan entities, no geometry processing
     let result = tokio::task::spawn_blocking(move || {
         let mut scanner = EntityScanner::new(&content);
-        let mut entity_count = 0usize;
-        let mut geometry_count = 0usize;
-
-        while let Some((_, type_name, _, _)) = scanner.next_entity() {
-            entity_count += 1;
-            if ifc_lite_core::has_geometry_by_name(type_name) {
-                geometry_count += 1;
-            }
-        }
+        let (entity_count, geometry_count) = scheduled_geometry_jobs(&content, &mut scanner);
 
         // The walk above ends on `None`, which does not only mean "the file
         // ended": the scanner skips a record whose instance name does not fit
@@ -304,4 +297,32 @@ pub async fn parse_metadata(
     let (result, _admission) = result;
 
     Ok(Json(result))
+}
+
+/// Walk `scanner` once and return `(entity_count, geometry_count)`, where
+/// `geometry_count` is the number of geometry jobs the native pass schedules
+/// for a default request: the same [`Discovery`] predicate and the same
+/// [`TypeGeometryPlan`] (`SuppressInstanced`) the processor's scan uses, so it
+/// equals `ProcessingResult.metadata.geometry_entity_count` (#8341 C4-13c).
+///
+/// That counts `IfcBuildingStorey`, `IfcFacility` and `IfcFacilityPart` (and
+/// subtypes) only when they carry a Representation (#1910), and one job per type-only `IfcRepresentationMap` (#957), never a map
+/// an occurrence or `IfcMappedItem` already draws. `IfcOpeningElement` stays a
+/// job: the default opening filter skips nothing, and this route takes no
+/// `opening_filter`.
+fn scheduled_geometry_jobs(content: &[u8], scanner: &mut EntityScanner<'_>) -> (usize, usize) {
+    let mut discovery = Discovery::new(false);
+    let (mut entity_count, mut product_jobs) = (0usize, 0usize);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        entity_count += 1;
+        let class = ScanClass::classify(type_name);
+        if discovery.observe(content, class, id, type_name, start, end).is_some() {
+            product_jobs += 1;
+        }
+    }
+    let mut types = TypeGeometryPlan::from_scan(discovery.types, Default::default(), TypeGeometryMode::SuppressInstanced);
+    // The native scan drops type records the full decoder rejects (F2), so must this count.
+    types.retain_decodable_products(&ifc_lite_core::EntityDecoder::new(content));
+    let type_jobs: usize = types.products.iter().map(|(_, _, _, _, maps)| maps.len()).sum();
+    (entity_count, product_jobs + type_jobs)
 }

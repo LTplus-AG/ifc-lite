@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "WebAssembly bindings for IFC-Lite"
 keywords = ["ifc", "bim", "wasm", "webassembly", "aec"]
@@ -41,7 +42,7 @@ console-tracing = ["dep:tracing", "ifc-lite-processing/observability"]
 # engine bundle every viewer load fetches never carries it, nor the
 # authored-source capture it needs. Built as the separate pkg-retained bundle
 # with `BUILD_RETAINED=1 scripts/build-wasm.sh`.
-retained-browser = ["dep:wasm-bindgen-futures", "ifc-lite-geometry/wasm_source_capture"]
+retained-browser = ["dep:wasm-bindgen-futures", "ifc-lite-geometry/retained-runtime", "ifc-lite-processing/retained-runtime"]
 
 [dependencies]
 serde_json.workspace = true
@@ -88,6 +89,7 @@ web-sys = { version = "=0.3.103", features = ["console", "Performance", "Window"
 wasm-bindgen-futures = { version = "=0.4.76", optional = true }
 
 [dev-dependencies]
+ifc-lite-processing = { workspace = true, features = ["parity-test-support"] }
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }
 wasm-bindgen-test = "=0.3.76"

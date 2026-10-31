@@ -2,7 +2,6 @@
 //! The product walk's synchronous driver: every step applied in place.
 use super::{merged, Action, Body, Child, ProductControl, Sink};
 use crate::program::inner::ProgramError;
-use crate::representation::{product_shape, rep_items};
 use crate::GeometryRouter;
 use ifc_lite_core::EntityDecoder;
 
@@ -14,24 +13,42 @@ impl ProductControl<'_> {
     pub(in crate::program) fn run(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> std::result::Result<(), ProgramError> {
         let element = self.element;
+        // Keep validation at the source/publication arms themselves, avoiding
+        // a second action dispatch for every numerical and transfer step.
+        macro_rules! validate_plan {
+            () => {
+                if let Some(plan) = &self.plan {
+                    if let Err(error) = plan.validate(router, decoder) {
+                        self.action = Action::Complete(Err(error));
+                        return Ok(());
+                    }
+                }
+            };
+        }
         loop {
             let next = match &mut self.action {
-                Action::Complete(_) => return Ok(()),
+                Action::Item { .. } => return Err(ProgramError::UnsupportedRetained),
+                Action::Complete(_) => {
+                    validate_plan!();
+                    return Ok(());
+                },
                 Action::Taken => return Err(ProgramError::Outstanding),
-                Action::Shape => match product_shape(element, decoder) {
-                    Ok(shape) => self.shape_done(shape),
-                    Err(error) => Action::Complete(Err(error.into())),
+                Action::Shape => match self.admit(router, decoder) {
+                    Ok(shape) => self.shape_done(shape, router),
+                    Err(error) => Action::Complete(Err(error)),
                 },
                 Action::Items(index) => {
                     let index = *index;
-                    let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(index));
-                    let rep = rep.ok_or(ProgramError::StaleRequest)?;
-                    match rep_items(rep, decoder) {
-                        Ok(items) => self.items_done(index, items),
-                        Err(error) => Action::Complete(Err(error.into())),
-                    }
+                    let (_, items) = self
+                        .plan
+                        .as_mut()
+                        .and_then(|plan| plan.representations.get_mut(index))
+                        .ok_or(ProgramError::StaleRequest)?;
+                    let items = std::mem::take(items);
+                    self.items_done(index, items)
                 }
                 Action::Raw(item) => {
+                    validate_plan!();
                     let offset = router.raw_item_element_offset(item, element, decoder);
                     let Action::Raw(item) = std::mem::replace(&mut self.action, Action::Taken) else {
                         return Err(ProgramError::StaleRequest);
@@ -87,9 +104,12 @@ impl ProductControl<'_> {
                         Err(error) => Action::Complete(Err(error)),
                     }
                 }
-                Action::Placement => match router.resolve_object_placement(element, decoder) {
-                    Ok(placement) => Action::Place(placement),
-                    Err(error) => Action::Complete(Err(error)),
+                Action::Placement => {
+                    validate_plan!();
+                    match router.resolve_object_placement(element, decoder) {
+                        Ok(placement) => Action::Place(placement),
+                        Err(error) => Action::Complete(Err(error)),
+                    }
                 },
                 Action::Place(_) => {
                     let Action::Place(placement) = std::mem::replace(&mut self.action, Action::Taken) else {
@@ -101,7 +121,8 @@ impl ProductControl<'_> {
                     Action::Complete(prepared.place(&placement, router))
                 }
                 // The rare steps (an alignment axis, an annotation fill, a
-                // textured face set) take the protocol's own path.
+                // textured face set) take the protocol's own path, which
+                // validates the same plan before any source work.
                 Action::Alignment | Action::Annotation(_) | Action::AnnotationMesh(..) | Action::Texture(_) => {
                     let reply = self.execute(router, decoder)?;
                     self.accept(reply, router);

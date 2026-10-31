@@ -1,0 +1,22 @@
+{
+  "about": "FNV-1a 64 and byte length of each ffi-parse output, keyed by case. Written by ifc-lite-ffi, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-ffi ffi_parse_buffers_match_their_pins",
+  "cases": {
+    "AC20-FZK-Haus": {
+      "fnv1a64": "a8aac7d700ec4a8f",
+      "bytes": 2015862
+    },
+    "BIMcollab_STR_IFC2X3": {
+      "fnv1a64": "daef5c536bb0214c",
+      "bytes": 723806
+    },
+    "IfcOpenHouse_IFC4": {
+      "fnv1a64": "26643aec97015684",
+      "bytes": 162666
+    },
+    "glossy-synthetic": {
+      "fnv1a64": "38946c4aa721562c",
+      "bytes": 1516
+    }
+  }
+}

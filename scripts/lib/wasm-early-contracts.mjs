@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { runContentInstallContracts, runContentReplacementContracts } from './wasm-content-install-contract.mjs';
 import { runDisabledSiteContracts } from './wasm-disabled-site-contract.mjs';
 import { runAppearanceContracts } from './wasm-appearance-contracts.mjs';
 import { runLandXmlContracts } from './wasm-landxml-contracts.mjs';
@@ -12,11 +13,14 @@ import { runOpeningMissRepairContracts } from './wasm-opening-miss-repair-contra
 import { runMapNormalizationContracts } from './wasm-map-normalization-contracts.mjs';
 import { runProgressHeartbeatContracts } from './wasm-progress-heartbeat-contract.mjs';
 import { runReachablePanicContracts } from './wasm-reachable-panics-contract.mjs';
+import { runSectionExportContracts } from './wasm-section-export-contracts.mjs';
 import { runEmptyExportContracts } from './wasm-empty-export-contracts.mjs';
 import { runPlacementRefusalContracts } from './wasm-placement-refusal-contracts.mjs';
 
 /** These suites have their own inputs and run even when the column fixture is absent. */
 export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
+  runContentInstallContracts(IfcAPI, test);
+  runContentReplacementContracts(IfcAPI, test);
   runDisabledSiteContracts(IfcAPI, test);
   runAppearanceContracts(IfcAPI, test);
   runLandXmlContracts(api, test);
@@ -24,6 +28,7 @@ export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
   runLandXmlUnitContracts(api, test);
   runStepLogContracts(api, test);
   runMapNormalizationContracts(api, test);
+  runSectionExportContracts(api, test);
   runSweptDiskContracts(api, test, root);
   runOpeningMissRepairContracts(IfcAPI, test, skip, root);
   runProgressHeartbeatContracts(IfcAPI, test, skip, root);

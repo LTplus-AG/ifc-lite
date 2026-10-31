@@ -3,6 +3,7 @@
 //! makes to objects the same plan replaces: each is either written validly
 //! or refused whole.
 
+use crate::plan::add_assoc_types::{NewProperty, NewPropertySet, PropertyValue};
 use crate::plan::add_test_support::*;
 use crate::plan::add_types::*;
 use crate::plan::test_fixtures::{gid as fixture_gid, storey_with_headroom, storey_with_typed_wall};
@@ -26,6 +27,8 @@ fn new_type(class: &str, predefined_type: Option<&str>) -> TypeLink {
         global_id: None,
         class: ClassSpec { class: IfcClass::Named(class.into()), predefined_type: predefined_type.map(Into::into) },
         name: Some("T".into()),
+        tag: None,
+        element_type: None,
         psets: Vec::new(),
         representation: Representation::None,
         style: None,
@@ -57,13 +60,6 @@ fn a_new_type_without_a_predefined_type_fills_its_mandatory_enums() {
 fn a_class_with_mandatory_attributes_an_add_does_not_write_is_refused() {
     let source = storey_with_typed_wall("IFC4");
     refused(&source, object(IfcClass::Named("IfcGrid".into()), gid(2), storey(), Representation::None), "requires");
-}
-
-#[test]
-fn a_userdefined_predefined_type_is_refused() {
-    let mut wall = object(IfcClass::Wall, gid(3), storey(), Representation::None);
-    wall.class.predefined_type = Some("userdefined".into());
-    refused(&storey_with_typed_wall("IFC4"), wall, "USERDEFINED");
 }
 
 #[test]
@@ -265,17 +261,33 @@ fn a_property_measure_must_be_a_declared_number() {
 fn an_add_keeps_the_owner_history_a_delete_would_take() {
     for schema in SCHEMAS {
         let source = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
-        let wall_head = format!("#10=IFCWALL('{}',$,", fixture_gid(10));
-        assert!(source.contains(&wall_head), "{schema}: fixture wall");
-        let source = source
-            .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
-            .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO");
-        let wall = object(IfcClass::Wall, gid(26), storey(), Representation::None);
-        let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), add(wall)]);
-        assert_clean(&report, schema);
+        // IFC2X3 fixtures already name the preamble's `#5` everywhere.
+        let source = if schema == "IFC2X3" {
+            source
+        } else {
+            let wall_head = format!("#10=IFCWALL('{}',$,", fixture_gid(10));
+            assert!(source.contains(&wall_head), "{schema}: fixture wall");
+            source
+                .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
+                .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO")
+        };
+        let plan = || vec![(ObjectRef::Id(10), Disposition::Delete), add(object(IfcClass::Wall, gid(26), storey(), Representation::None))];
+        let history = |out: &[u8]| attr(out, schema, id_in(out, gid(26)), "OwnerHistory");
+        // Without an application the new wall reuses the source's history,
+        // which the delete would otherwise take.
+        let (out, report) = run_with(source.as_bytes(), plan(), PlanContext::new());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert!(matches!(&report.findings[..], [only] if only.message.starts_with("no ExportingApplication")), "{schema}: {:?}", report.findings);
+        assert_eq!(type_in(&out, 10), "", "{schema}: the delete took #10");
         assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
-        let line = String::from_utf8_lossy(&out).lines().find(|l| l.starts_with(&format!("#{}=", id_in(&out, gid(26))))).unwrap().to_string();
-        assert!(line.contains(",#5,"), "{schema}: the new wall names it: {line}");
+        assert_eq!(history(&out), "#5", "{schema}: the new wall names it");
+        // With one the wall names its own ADDED history, which is in the
+        // output too.
+        let (out, report) = run(source.as_bytes(), plan());
+        assert_clean(&report, schema);
+        let named = history(&out);
+        let named: u32 = named.trim_start_matches('#').parse().unwrap_or_else(|_| panic!("{schema}: owner history ref {named}"));
+        assert_eq!(attr(&out, schema, named, "ChangeAction"), ".ADDED.", "{schema}: the new wall names a live ADDED history");
     }
 }
 
@@ -303,6 +315,8 @@ fn a_later_add_names_a_type_an_earlier_add_created() {
             global_id: Some(type_id),
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
             name: Some("T".into()),
+            tag: None,
+            element_type: None,
             psets: Vec::new(),
             representation: Representation::None,
             style: None,

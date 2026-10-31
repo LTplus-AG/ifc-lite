@@ -538,17 +538,11 @@ export class IfcAPI {
      *   1. Builds the entity index incrementally from the same scan that
      *      collects geometry jobs (a separate index scan would double
      *      wall-clock).
-     *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
-     *      first ~50 geometry jobs have been collected, resolves
-     *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
-     *      JS host can spin up geometry process workers.
-     *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
-     *      the meta phase already buffered some).
-     *   4. Emits `complete` with the total job count at end of scan.
-     *
-     * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
-     * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
-     * (first 100 K bytes scanned + meta + first chunk).
+     *   2. At the 50th accepted geometry job, resolves unit scale + RTC
+     *      (including a project not yet scanned) and emits `meta`.
+     *   3. After scan completion, emits the complete entity index, styles,
+     *      worker columns and chunked jobs with affinity keys.
+     *   4. Emits `complete` with the total job count.
      *
      * The callback receives a single `JsValue` argument shaped as one of:
      *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
@@ -923,8 +917,11 @@ export class IfcAPI {
     /**
      * Structured pipeline diagnostics accumulated across every
      * `processGeometryBatch*` call since the last load reset
-     * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
-     * `schemaVersion` field — or `undefined` when no batch has run yet.
+     * (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
+     * `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
+     * Returns `undefined` until a batch runs or a prepass refusal or omitted
+     * type record (`omittedTypeRecords`, #8341) is recorded;
+     * `clearPrePassCache` preserves the report for post-load inspection.
      * Includes per-batch summed geometry wall time, mesh/triangle counts,
      * the degenerate-backstop drop count, and the CSG failure aggregates.
      */
@@ -947,7 +944,9 @@ export class IfcAPI {
      * `renderer.setLineOverlay('alignment', ...)`.
      *
      * Returns an empty array when the file has no alignments (or none with a
-     * resolvable Axis curve), so the caller can clear the overlay cheaply.
+     * resolvable Axis curve and placement), so the caller can clear the
+     * overlay cheaply. An alignment whose authored placement cannot be
+     * resolved is omitted (#7779).
      */
     parseAlignmentLines(content: string): Float32Array;
     /**
@@ -971,7 +970,8 @@ export class IfcAPI {
      * straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
      *
      * Returns an empty array when the file has no grids, so the caller can
-     * clear the overlay cheaply.
+     * clear the overlay cheaply. An axis with a malformed endpoint, or a grid
+     * whose authored placement cannot be resolved, is omitted (#7779).
      */
     parseGridLines(content: string): Float32Array;
     /**
@@ -1079,6 +1079,10 @@ export class IfcAPI {
      * `planMeshTransfer`; `transfer.source` records the orientation used.
      */
     planPointTransfer(content: Uint8Array, request_json: string, rgba: Uint8Array, positions: Float64Array, colors: Uint8Array, normals: Float32Array, stations: Uint32Array): Uint8Array;
+    /**
+     * Export-only exact section intersections in IFC world metres.
+     */
+    planSectionExport(content: Uint8Array, planes_json: string, trim: boolean): string;
     /**
      * Prepare bounded ordered PDF vector graphics states and the page fidelity
      * report (convertible paths, omissions with extent, exact/raster-only).
@@ -1302,15 +1306,14 @@ export class IfcAPI {
     /**
      * Install the pre-computed set of type ids that an `IfcRelDefinesByType`
      * instantiates (#957 follow-up), so the worker's first type-product batch
-     * skips the per-worker [`Self::get_or_build_instantiated_type_ids`]
-     * full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
+     * skips the full-file walk once both precomputed sets are installed. Same injection contract as [`Self::set_referenced_repmaps`].
      */
     setInstantiatedTypeIds(ids: Uint32Array): void;
     /**
      * Install the pre-computed #1623 Phase 3 don't-bake plan: the flat list of
      * `IfcRepresentationMap` ids that an `IfcMappedItem` instantiates >= 2 times.
      * The streaming pre-pass tallies it in the SAME scan that builds the referenced-
-     * repmap set (`styling::build_mapped_instance_plan_from_spans`) and ships the id
+     * repmap set and ships the id
      * list here. The batch path arms its router with it (batch-local template mode),
      * so a repeated single-solid mapped source materializes ONCE per batch and the
      * rest ride as instances in the IFNS shard.
@@ -1376,10 +1379,8 @@ export class IfcAPI {
     /**
      * Install the pre-computed set of `IfcRepresentationMap` ids referenced by
      * an `IfcMappedItem` (issue #957), so the worker's first type-product batch
-     * SKIPS the per-worker [`Self::get_or_build_referenced_repmaps`] full-file
-     * walk. The streaming pre-pass built the same set once from the
-     * `IfcMappedItem` spans it already scanned (see
-     * `styling::build_referenced_representation_maps_from_spans`) and ships the
+     * skips the full-file walk once [`Self::set_instantiated_type_ids`] is also installed. The streaming pre-pass built
+     * the same set once from its `IfcMappedItem` spans and ships the
      * id list here — bit-identical to what each worker would compute, since a
      * set's membership is order-invariant and consumers only call `.contains`.
      *
@@ -2722,7 +2723,7 @@ export interface InitOutput {
     readonly ifcapi_parseLandXmlSourceBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseLandXmlSourceBytesWithOptions: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
-    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -2732,6 +2733,7 @@ export interface InitOutput {
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
+    readonly ifcapi_planSectionExport: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtStation: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;

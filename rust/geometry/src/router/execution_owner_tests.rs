@@ -60,10 +60,14 @@ fn one_product_reserves_its_router_while_registered_processors_can_reenter_norma
 
 #[test]
 fn configuration_and_registration_changes_invalidate_work_but_keep_exclusive_admission() {
-    let changes: [fn(&mut GeometryRouter); 5] = [
+    let changes: [fn(&mut GeometryRouter); 8] = [
         |router| router.set_tessellation_quality(TessellationQuality::High),
         |router| router.set_skip_small_cuts(true),
         |router| router.set_rtc_offset((10., 20., 30.)),
+        // #7781: instancing configuration also invalidates an admitted product.
+        |router| router.set_instancing_batch_local(true),
+        |router| router.set_instancing_batch_local(false), // Equal values still invalidate.
+        |router| router.refuse_length_unit(),
         |router| router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache()),
         |router| router.register(Box::new(BlockProcessor::new())),
     ];

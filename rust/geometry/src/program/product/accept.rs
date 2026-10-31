@@ -5,7 +5,7 @@ use super::merged::Prepared;
 use super::{texture, Action, Body, Child, ProductControl, ProductOutput, ProductReply, Role, Sink};
 use crate::program::inner_cache::CacheControl;
 use crate::program::mapping::{MappingControl, MappingOutput, Reached};
-use crate::representation::{ProductShape, Select};
+use crate::representation::product_budget::ProductItems;
 use crate::router::frame_parts::single_frame_source;
 use crate::{Error, GeometryRouter, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, IfcType};
@@ -15,6 +15,7 @@ impl<'a> ProductControl<'a> {
     /// which completes in place; every other reply consumes its action.
     pub(in crate::program) fn accept(&mut self, reply: ProductReply, router: &GeometryRouter) {
         let next = match reply {
+            ProductReply::Item(reply) => { self.accept_retained_item(reply, router); return; }
             ProductReply::Cache(reply) => {
                 let Child::Cache(control) = &mut self.child else { return };
                 match &self.action {
@@ -85,7 +86,7 @@ impl<'a> ProductControl<'a> {
                 Action::Placement
             }
             (Action::Alignment, ProductReply::Alignment(None)) => Action::Shape,
-            (Action::Shape, ProductReply::Shape(Ok(shape))) => self.shape_done(shape),
+            (Action::Shape, ProductReply::Shape(Ok(shape))) => self.shape_done(shape, router),
             (Action::Items(index), ProductReply::Items(Ok(items))) => self.items_done(index, items),
             (Action::Annotation(item), ProductReply::Annotation(reply)) => match reply {
                 Ok(rings) => Action::AnnotationMesh(item.id, rings),
@@ -123,23 +124,34 @@ impl<'a> ProductControl<'a> {
     }
 
     /// The resolved shape: its first item, or an empty product.
-    pub(super) fn shape_done(&mut self, shape: Option<ProductShape>) -> Action {
-        let Some(shape) = shape else {
-            // No geometry: the merged walk is one empty part, the styled walk
-            // an empty collection; neither is placed.
+    pub(super) fn shape_done(&mut self, plan: ProductItems, router: &GeometryRouter) -> Action {
+        if let Err(error) = router.report_product_admission(&plan) {
+            return Action::Complete(Err(error));
+        }
+        if plan
+            .representations
+            .iter()
+            .all(|(_, items)| items.is_empty())
+        {
+            if self.retained.is_some() {
+                return Action::Placement;
+            }
             return Action::Complete(Ok(match self.styled {
                 None => ProductOutput::Parts(vec![Mesh::new()]),
                 Some(_) => ProductOutput::Styled(SubMeshCollection::new()),
             }));
-        };
-        self.direct = shape.direct_geometry(self.element, Select::Meshed);
-        self.shape = Some(shape);
+        }
+        self.plan = Some(plan.into_admitted());
         self.advance()
     }
 
     /// One representation's resolved items.
     pub(super) fn items_done(&mut self, index: usize, items: Vec<DecodedEntity>) -> Action {
-        let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(index));
+        let rep = self
+            .plan
+            .as_ref()
+            .and_then(|plan| plan.representations.get(index))
+            .map(|(rep, _)| rep);
         self.fill_only = rep.is_some_and(|rep| {
             crate::router::annotation::is_fill_only_representation(self.element, rep)
         });
@@ -152,6 +164,7 @@ impl<'a> ProductControl<'a> {
     pub(super) fn advance(&mut self) -> Action {
         let is_annotation = self.element.ifc_type == IfcType::IfcAnnotation;
         for item in self.items.by_ref() {
+            if self.retained.is_some() { return self.retained_item(item); }
             if is_annotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
                 return Action::Annotation(item);
             }
@@ -165,9 +178,10 @@ impl<'a> ProductControl<'a> {
             }
             return Action::Raw(item);
         }
-        let next = self.shape.as_ref().and_then(|shape| {
-            shape.next_selected(self.element, Select::Meshed, self.direct, self.next_rep)
-        });
+        let next = self
+            .plan
+            .as_ref()
+            .and_then(|plan| (self.next_rep < plan.representations.len()).then_some(self.next_rep));
         match next {
             Some(index) => {
                 self.next_rep = index + 1;
@@ -259,6 +273,7 @@ impl<'a> ProductControl<'a> {
 
     fn mapping_done(&mut self, result: Result<MappingOutput>, role: Role) -> Action {
         match (role, result) {
+            (_, Ok(MappingOutput::Retained(values))) if self.retained.is_some() => self.accept_retained_mapping(values),
             (Role::Parts, Ok(MappingOutput::Parts(parts))) => match &self.body {
                 Body::Sink(Sink::Merged(_)) => Action::Merge(parts),
                 _ => Action::Complete(Err(protocol("merged accumulator"))),

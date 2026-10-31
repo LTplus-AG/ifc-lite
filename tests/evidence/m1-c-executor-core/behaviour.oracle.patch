@@ -1,0 +1,10 @@
+diff --git a/rust/processing/src/element/session_retained/refusal.rs b/rust/processing/src/element/session_retained/refusal.rs
+--- a/rust/processing/src/element/session_retained/refusal.rs
++++ b/rust/processing/src/element/session_retained/refusal.rs
+@@ -71,5 +71,5 @@
+             Self::LayerStrategy(cause) => {
+                 origin = Some(RefusalOrigin { site: "layer_band", entity: None, cause });
+-                Refusal::OpeningStrategy
++                Refusal::MaterialLayerStrategy
+             }
+             Self::LayerCaps(cause) => {

@@ -164,7 +164,33 @@ impl TessellationQuality {
             Self::Medium | Self::High | Self::Highest => base,
         }
     }
+
+    /// Ring segment count for an `IfcSweptDiskSolid` of outer radius `radius_m`
+    /// (metres).
+    ///
+    /// Reinforcement bars are swept disks, and on rebar-heavy structural models
+    /// they are most of the triangles: a 12 mm bar gets the same ring as a
+    /// 300 mm pipe. Below `Medium`, rods no thicker than
+    /// [`THIN_SWEPT_DISK_RADIUS_M`] drop to a hexagon (`Low`) or a square
+    /// (`Lowest`) — sub-pixel faceting at any working distance. Thicker sweeps
+    /// keep [`scale_segments`]. `Medium` and above are untouched, keeping
+    /// default output byte-identical.
+    #[inline]
+    pub fn swept_disk_segments(self, radius_m: f64) -> usize {
+        let base = scale_segments(24, 8, 96, self);
+        let thin = radius_m.is_finite() && radius_m > 0.0 && radius_m <= THIN_SWEPT_DISK_RADIUS_M;
+        match self {
+            Self::Lowest if thin => base.min(4),
+            Self::Low if thin => base.min(6),
+            _ => base,
+        }
+    }
 }
+
+/// Outer radius (metres) up to which a swept disk counts as a thin rod for
+/// [`TessellationQuality::swept_disk_segments`]: 40 mm diameter covers the
+/// common reinforcement bar sizes.
+pub const THIN_SWEPT_DISK_RADIUS_M: f64 = 0.02;
 
 /// Scale a tessellator's segment count by the selected quality level.
 ///
@@ -294,6 +320,22 @@ mod tests {
         }
         // An already-sharp corner stays sharp everywhere.
         assert_eq!(Medium.profile_fillet_radius(0.0), 0.0);
+    }
+
+    #[test]
+    fn swept_disk_thins_only_rods_below_medium() {
+        use TessellationQuality::*;
+        let (bar, pipe) = (0.006, 0.15);
+        assert_eq!(Low.swept_disk_segments(bar), 6);
+        assert_eq!(Lowest.swept_disk_segments(bar), 4);
+        assert_eq!(Low.swept_disk_segments(THIN_SWEPT_DISK_RADIUS_M), 6);
+        for q in LEVELS {
+            assert_eq!(q.swept_disk_segments(pipe), scale_segments(24, 8, 96, q), "{q:?} pipe");
+            assert_eq!(q.swept_disk_segments(f64::NAN), scale_segments(24, 8, 96, q), "{q:?} NaN");
+        }
+        for q in [Medium, High, Highest] {
+            assert_eq!(q.swept_disk_segments(bar), scale_segments(24, 8, 96, q), "{q:?} keeps the bar ring");
+        }
     }
 
     #[test]

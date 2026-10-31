@@ -212,3 +212,11 @@ where
 {
     ClosureSink { on_batch, on_color_update, on_bootstrap, baked_basis_out }
 }
+
+#[cfg(feature = "retained-runtime")]
+#[path = "retained_jobs.rs"]
+mod retained_jobs;
+#[cfg(feature = "retained-runtime")]
+pub use retained_jobs::{canonical_element_jobs, canonical_type_maps};
+#[cfg(feature = "retained-runtime")]
+pub(crate) use retained_jobs::canonical_jobs_and_type_maps;

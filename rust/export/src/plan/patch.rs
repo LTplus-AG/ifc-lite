@@ -6,13 +6,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
+use super::attribution::Histories;
 use super::index::FileIndex;
 use super::types::{DroppedRepresentation, ObjectRef, Patch, Refusal};
 use super::{attrs, geometry, placement, props, props_target};
 
-pub(super) struct PatchOutput<'a> {
+pub(super) struct PatchOutput<'a, 'h> {
     pub(super) edits_by_id: &'a mut HashMap<u32, BTreeMap<usize, String>>,
     pub(super) appended: &'a mut Vec<(u32, String)>,
     pub(super) refusals: &'a mut Vec<Refusal>,
@@ -27,6 +28,8 @@ pub(super) struct PatchOutput<'a> {
     /// member change, checked once the deletes settle.
     pub(super) edited: &'a mut HashSet<(u32, u32)>,
     pub(super) object: u32,
+    /// Where the owner history of a record a patch adds comes from.
+    pub(super) history: &'a mut Histories<'h>,
     /// Objects a patch has already given a new body, for the same reason:
     /// a second body would leave the first one's records unreferenced.
     pub(super) reshaped: &'a mut HashSet<u32>,
@@ -35,7 +38,7 @@ pub(super) struct PatchOutput<'a> {
     pub(super) dropped_representations: &'a mut Vec<DroppedRepresentation>,
 }
 
-impl PatchOutput<'_> {
+impl PatchOutput<'_, '_> {
     fn edit(&mut self, edits: Vec<(u32, usize, String)>) {
         for (id, idx, value) in edits {
             self.edits_by_id.entry(id).or_default().insert(idx, value);
@@ -51,19 +54,41 @@ impl PatchOutput<'_> {
     }
 }
 
+/// Apply `patch` to `object_id`, returning whether it wrote anything: a
+/// patch whose every part is refused leaves the object unmodified, and one
+/// that asks for nothing is refused as such rather than dropped silently.
 pub(super) fn apply_patch(
     index: &FileIndex,
     schema: &str,
     object_id: u32,
     patch: &Patch,
     ids: &mut IdAllocator,
-    owner_history: Option<u32>,
-    out: &mut PatchOutput<'_>,
-) {
+    out: &mut PatchOutput<'_, '_>,
+) -> bool {
+    let refused_before = out.refusals.len();
+    let wrote = write_patch(index, schema, object_id, patch, ids, out);
+    if !wrote && out.refusals.len() == refused_before {
+        out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: "patch changes nothing".into() });
+    }
+    wrote
+}
+
+fn write_patch(
+    index: &FileIndex,
+    schema: &str,
+    object_id: u32,
+    patch: &Patch,
+    ids: &mut IdAllocator,
+    out: &mut PatchOutput<'_, '_>,
+) -> bool {
+    let mut wrote = false;
     if let Some(name) = &patch.name {
         let entity_type = index.type_of(object_id).unwrap_or_default();
         match attrs::attribute_index(schema, &entity_type, "Name") {
-            Some(idx) => out.edit(vec![(object_id, idx, format!("'{}'", escape(name)))]),
+            Some(idx) => {
+                out.edit(vec![(object_id, idx, quoted(name))]);
+                wrote = true;
+            }
             None => out.refusals.push(Refusal {
                 object: ObjectRef::Id(object_id),
                 reason: format!("{entity_type} has no Name attribute in {schema}"),
@@ -101,7 +126,7 @@ pub(super) fn apply_patch(
             }
         }
         for group in &groups {
-            apply_set_writes(&target, group, ids, owner_history, out);
+            wrote |= apply_set_writes(&target, group, ids, out);
         }
     }
 
@@ -117,6 +142,7 @@ pub(super) fn apply_patch(
                 out.edit(vec![repoint]);
                 out.removed.extend(orphaned);
                 out.moved.insert(object_id);
+                wrote = true;
             }
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason }),
         }
@@ -130,6 +156,7 @@ pub(super) fn apply_patch(
         };
         match result {
             Ok(geometry::GeometryWrite { new_records, repoint, old_shape, dropped }) => {
+                wrote = true;
                 out.reshaped.insert(object_id);
                 out.appended.extend(new_records);
                 out.edit(vec![repoint]);
@@ -141,17 +168,23 @@ pub(super) fn apply_patch(
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("geometry: {reason}") }),
         }
     }
+    wrote
 }
 
-/// The outcomes of resolving one set's writes, recorded on `out`.
+/// The outcomes of resolving one set's writes, recorded on `out`; whether
+/// any write produced one.
 fn apply_set_writes(
     target: &props_target::WriteTarget<'_>,
     group: &[props_target::ResolvedWrite<'_>],
     ids: &mut IdAllocator,
-    owner_history: Option<u32>,
-    out: &mut PatchOutput<'_>,
-) {
-    let result = props::resolve_set_writes(target, group, ids, owner_history);
+    out: &mut PatchOutput<'_, '_>,
+) -> bool {
+    let (history, removed) = (&*out.history, &*out.removed);
+    let result = props::resolve_set_writes(target, group, ids, &|ids: &mut IdAllocator| history.take(ids, removed));
+    if let Some(settles) = result.history {
+        out.history.commit(settles);
+    }
+    let wrote = !result.outcomes.is_empty();
     for outcome in result.outcomes {
         match outcome {
             props::PropOutcome::InPlace(edits) => out.edit(edits),
@@ -177,4 +210,5 @@ fn apply_set_writes(
     for (write, reason) in result.refused {
         out.refusals.push(Refusal { object: ObjectRef::Id(target.object_id), reason: format!("{}.{}: {reason}", write.pset, write.prop) });
     }
+    wrote
 }

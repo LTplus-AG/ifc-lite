@@ -17,6 +17,8 @@ import { panelModelGateMode, type WorkspacePanelId } from './registry';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
+const InfluxPanel = lazy(() => import('@/components/viewer/influx/InfluxPanel').then(module => ({ default: module.InfluxPanel })));
+
 const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
 import { BCFPanel } from '@/components/viewer/BCFPanel';
 import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel';
@@ -27,7 +29,8 @@ import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
-import { LoadReportPanel } from '@/components/viewer/LoadReportPanel';
+// Opened on demand; kept off the boot path (eager-bundle ratchet, #8341).
+const LoadReportPanel = lazy(() => import('@/components/viewer/LoadReportPanel').then((m) => ({ default: m.LoadReportPanel })));
 import { ChangesPanel } from '@/components/viewer/ChangesPanel';
 import { ChangeSetPanel } from '@/components/viewer/change-sets/ChangeSetPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
@@ -116,6 +119,10 @@ function ChartsPanelBody() {
   return <ChunkErrorBoundary label="Charts panel"><Suspense fallback={null}><ChartsPanel /></Suspense></ChunkErrorBoundary>;
 }
 
+function LoadReportPanelBody({ onClose }: { onClose: () => void }) {
+  return <ChunkErrorBoundary label="Load report panel"><Suspense fallback={null}><LoadReportPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+}
+
 function LayersPanelBody({ onClose }: { onClose: () => void }) {
   return <ChunkErrorBoundary label="Layers panel"><Suspense fallback={null}><LayersPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
 }
@@ -171,6 +178,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
     // Hierarchy's home is the left slot (#1267); it is never routed to the right
     // pane / float / pop-out, but the case keeps the id to body map exhaustive.
+    case 'influx': return <ChunkErrorBoundary key="influx" label="InfluxDB 2"><Suspense fallback={null}><InfluxPanel /></Suspense></ChunkErrorBoundary>;
     case 'assistant': return <ChunkErrorBoundary label="Assistant panel"><Suspense fallback={null}><AssistantPanel /></Suspense></ChunkErrorBoundary>;
     case 'appearance': return <AppearancePanelBody />;
     case 'hierarchy': return <HierarchyPanel />;
@@ -189,7 +197,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'lists': return <ListPanel />;
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
-    case 'loadReport': return <LoadReportPanel onClose={onClose} />;
+    case 'loadReport': return <LoadReportPanelBody onClose={onClose} />;
     case 'changes': return <ChangesPanel onClose={onClose} />;
     case 'layers': return <LayersPanelBody onClose={onClose} />;
     case 'sources': return <SourcesPanelBody onClose={onClose} />;

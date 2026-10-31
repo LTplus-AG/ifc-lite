@@ -1,0 +1,24 @@
+diff --git a/rust/processing/src/symbolic/items.rs b/rust/processing/src/symbolic/items.rs
+--- a/rust/processing/src/symbolic/items.rs
++++ b/rust/processing/src/symbolic/items.rs
+@@ -224,7 +224,7 @@
+             let basis = compose_transforms(transform, &conic.basis);
+             // Only a similarity maps a circle to a circle. A tilted frame can
+             // project to an ellipse or even a nontrivial line (#7779 P2).
++            if item.ifc_type == IfcType::IfcCircle && basis.is_similarity() {
+-            if item.ifc_type == IfcType::IfcCircle {
+                 let radius = conic.semi_a * basis.scale();
+                 if !(radius.is_finite() && radius > 0.0) { return; }
+                 let (px, py) = rebase.plan(basis.tx, basis.ty);
+diff --git a/rust/processing/src/symbolic/transform.rs b/rust/processing/src/symbolic/transform.rs
+--- a/rust/processing/src/symbolic/transform.rs
++++ b/rust/processing/src/symbolic/transform.rs
+@@ -178,7 +178,7 @@
+         m01: a.m00 * b.m01 + a.m01 * b.m11 + a.m02 * b.m21,
+         m02: a.m00 * b.m02 + a.m01 * b.m12 + a.m02 * b.m22,
+         m10: a.m10 * b.m00 + a.m11 * b.m10 + a.m12 * b.m20,
++        m11: a.m10 * b.m01 + a.m11 * b.m11 + a.m12 * b.m21,
+-        m11: a.m10 * b.m01 + a.m11 * b.m11,
+         m12: a.m10 * b.m02 + a.m11 * b.m12 + a.m12 * b.m22,
+         m20: a.m20 * b.m00 + a.m21 * b.m10 + a.m22 * b.m20,
+         m21: a.m20 * b.m01 + a.m21 * b.m11 + a.m22 * b.m21,

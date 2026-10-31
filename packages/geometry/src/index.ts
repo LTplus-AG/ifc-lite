@@ -58,9 +58,6 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
-export { prewarmGeometryWorkers, releaseWarmGeometryWorkers, warmGeometryWorkerPoolStats } from './warm-pool.js'; // #7036
-export { prewarmMainThreadEngine } from './main-engine-init.js';
-export type { GeometryWorkerPoolStats } from './geometry-worker-pool.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
 export { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
@@ -97,7 +94,7 @@ export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
-import { exportMerged, planMapConversionNormalization } from './map-normalization-capability.js';
+import { exportMerged, planMapConversionNormalization, planSectionExport } from './map-normalization-capability.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
@@ -111,11 +108,11 @@ import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotati
 import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel, type ProcessParallelOptions } from './geometry-parallel.js';
-import { getWarmGeometryWorkerPool } from './warm-pool.js';
 import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
 import type { StallPhaseHandle } from './stall-phase.js';
 import type { ByteStreamingPrePassResult, UnitRefusedEvent } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
+import { omittedTypeRecordsField, readOmittedTypeRecords } from './omitted-type-records.js';
 
 /**
  * Default quantization grid (metres) for per-entity geometry hashing,
@@ -238,6 +235,9 @@ export type StreamingGeometryEvent =
       diagnostics?: import('./diagnostics.js').GeometryDiagnostics;
       /** Elements skipped because their geometry never finished (#4884); omitted when none. */
       skippedHungElements?: import('./hung-job-recovery.js').SkippedHungElements;
+      /** Distinct type records whose type geometry the prepass left out because they could not
+       *  be decoded (F2, #8341). Absent when unknown (older wasm, native path), which is not 0. */
+      omittedTypeRecords?: number;
     };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
@@ -429,13 +429,14 @@ export class GeometryProcessor {
   private collectMeshesViaPrePass(
     buffer: Uint8Array,
     sharedRtcOffset?: { x: number; y: number; z: number },
-  ): { meshes: MeshData[]; buildingRotation?: number } {
+  ): { meshes: MeshData[]; buildingRotation?: number; omittedTypeRecords?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
     }
 
     const api = this.bridge.getApi();
     const prePass = buildPrePassWithFinishes(api, buffer);
+    const omittedTypeRecords = readOmittedTypeRecords(api); // F2 #8341: before the next install resets it
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
     try {
       const meshes: MeshData[] = [];
@@ -468,7 +469,7 @@ export class GeometryProcessor {
         for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }
 
-      return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };
+      return { meshes, buildingRotation: prePass.buildingRotation ?? undefined, omittedTypeRecords };
     } finally {
       // Always release the pre-pass cache — even if processGeometryBatch throws.
       api.clearPrePassCache?.();
@@ -499,6 +500,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = buildPrePassWithFinishes(api, buffer);
+    const omitted = omittedTypeRecordsField(readOmittedTypeRecords(api)); // F2 #8341
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
 
     // try/finally releases the pre-pass cache on every exit: the totalJobs===0
@@ -516,7 +518,7 @@ export class GeometryProcessor {
           this.coordinateHandler.getFinalCoordinateInfo(),
           buildingRotation,
         );
-        yield { type: 'complete', totalMeshes: 0, coordinateInfo };
+        yield { type: 'complete', totalMeshes: 0, coordinateInfo, ...omitted };
         return;
       }
 
@@ -575,7 +577,7 @@ export class GeometryProcessor {
         this.coordinateHandler.getFinalCoordinateInfo(),
         buildingRotation,
       );
-      yield { type: 'complete', totalMeshes, coordinateInfo };
+      yield { type: 'complete', totalMeshes, coordinateInfo, ...omitted };
     } finally {
       api.clearPrePassCache?.();
     }
@@ -791,8 +793,6 @@ export class GeometryProcessor {
       skipSmallCuts: this.skipSmallCuts,
       wasmUrls,
       workerCountOverride,
-      // #7036: lease warm workers when the `warmPool` experiment is enabled.
-      workerPool: getWarmGeometryWorkerPool() ?? undefined,
     });
   }
 
@@ -874,6 +874,7 @@ export class GeometryProcessor {
 
       let allMeshes: MeshData[];
       let buildingRotation: number | undefined;
+      let omittedTypeRecords: number | undefined;
 
       if (this.isNative && this.platformBridge) {
         // NATIVE PATH - single batch processing
@@ -883,9 +884,7 @@ export class GeometryProcessor {
         console.timeEnd('[GeometryProcessor] native-adaptive-sync');
       } else {
         // WASM PATH — Family-A pre-pass + job batches (SAB-safe, bytes in).
-        const collected = this.collectMeshesViaPrePass(buffer, options.sharedRtcOffset);
-        allMeshes = collected.meshes;
-        buildingRotation = collected.buildingRotation;
+        ({ meshes: allMeshes, buildingRotation, omittedTypeRecords } = this.collectMeshesViaPrePass(buffer, options.sharedRtcOffset));
       }
 
       // Process coordinate shifts
@@ -903,7 +902,7 @@ export class GeometryProcessor {
         coordinateInfo: coordinateInfo || undefined,
       };
 
-      yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo };
+      yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo, ...omittedTypeRecordsField(omittedTypeRecords) };
     } else {
       // Large files: parallel or streaming
       const useParallel = typeof SharedArrayBuffer !== 'undefined'
@@ -1181,8 +1180,8 @@ export class GeometryProcessor {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
-
-  /** Canonical Rust plan; unsupported platforms refuse explicitly. */
+  /** Canonical Rust export plans; unsupported platforms refuse explicitly. */
+  planSectionExport(buffer: Uint8Array, planes: string, trim: boolean): string { return planSectionExport(this.bridge, this.platformBridge, buffer, planes, trim); }
   planMapConversionNormalization(buffer: Uint8Array): string { return planMapConversionNormalization(this.bridge, this.platformBridge, buffer); }
   exportStep(
     buffer: Uint8Array,

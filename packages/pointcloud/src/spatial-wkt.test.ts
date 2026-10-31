@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { extractWktSpatialMetadata } from './spatial-wkt.js';
+import { extractWktBoundingBox, extractWktHorizontalCrs, extractWktSpatialMetadata } from './spatial-wkt.js';
 
 describe('WKT spatial metadata (#5048)', () => {
   it('retains native projected axes and foot units from WKT2', () => {
@@ -51,5 +51,24 @@ describe('WKT spatial metadata (#5048)', () => {
   it('does not treat a WKT1 geographic angular UNIT as metres (#5048)', () => {
     const geographic = 'GEOGCS["WGS 84",DATUM["WGS_1984"],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]]';
     expect(extractWktSpatialMetadata(geographic)).toEqual({ horizontalId: 'EPSG:4326' });
+  });
+});
+
+describe('WKT horizontal CRS and extent', () => {
+  const compound = 'COMPOUNDCRS["c",PROJCRS["Local TM",BASEGEOGCRS["DB_REF",ID["EPSG",5681]],CONVERSION["x",METHOD["Transverse_Mercator"]]],VERTCRS["h",ID["EPSG",9927]],USAGE[SCOPE["s"],AREA["Example area"],BBOX[51.18,10.30,51.37,10.60]]]';
+
+  it('takes the PROJCRS out of a COMPOUNDCRS and keeps a single CRS as-is', () => {
+    expect(extractWktHorizontalCrs(compound))
+      .toBe('PROJCRS["Local TM",BASEGEOGCRS["DB_REF",ID["EPSG",5681]],CONVERSION["x",METHOD["Transverse_Mercator"]]]');
+    expect(extractWktHorizontalCrs('PROJCS["grid",AUTHORITY["EPSG","2056"]]')).toBe('PROJCS["grid",AUTHORITY["EPSG","2056"]]');
+    expect(extractWktHorizontalCrs('VERTCRS["h"]')).toBeUndefined();
+  });
+
+  it('reads the root USAGE BBOX, not a nested one, and refuses malformed boxes', () => {
+    expect(extractWktBoundingBox(compound)).toEqual({ south: 51.18, west: 10.3, north: 51.37, east: 10.6 });
+    expect(extractWktBoundingBox('PROJCRS["p",BBOX[1,2,3,4]]')).toEqual({ south: 1, west: 2, north: 3, east: 4 });
+    expect(extractWktBoundingBox('COMPOUNDCRS["c",PROJCRS["p",USAGE[BBOX[1,2,3,4]]]]')).toBeUndefined();
+    expect(extractWktBoundingBox('PROJCRS["p",BBOX[3,2,1,4]]')).toBeUndefined();
+    expect(extractWktBoundingBox('PROJCRS["p",BBOX[1,2,3]]')).toBeUndefined();
   });
 });

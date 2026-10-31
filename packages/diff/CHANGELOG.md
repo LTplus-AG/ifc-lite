@@ -1,5 +1,75 @@
 # @ifc-lite/diff
 
+## 0.13.0
+
+### Minor Changes
+
+- [#8266](https://github.com/LTplus-AG/ifc-lite/pull/8266) [`c0acc2d`](https://github.com/LTplus-AG/ifc-lite/commit/c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1) Thanks [@louistrue](https://github.com/louistrue)! - Expose explicitly owned DiffModelHandle snapshots with prepareDiffModel, compare,
+  idempotent dispose and Symbol.dispose. Add stripPlacementGeometry for comparing
+  the same resident models across geometry capability options, preserving exact
+  JS-stripping output. Document diffModels as the per-call one-shot convenience.
+
+- [#8302](https://github.com/LTplus-AG/ifc-lite/pull/8302) [`f2271ec`](https://github.com/LTplus-AG/ifc-lite/commit/f2271ec4fb5b9bd59fedb7802b3438bbdf0b18ba) Thanks [@louistrue](https://github.com/louistrue)! - Add an internal-only batch fingerprint entry point for in-repo adapters and compact lossless WASM transport. The internal subpath has no semver guarantee; existing public APIs retain their behavior.
+
+- [#8111](https://github.com/LTplus-AG/ifc-lite/pull/8111) [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65) Thanks [@louistrue](https://github.com/louistrue)! - Switch all 23 existing public diff operations to the independent Rust/WASM engine while preserving their synchronous signatures after explicit initialization. Add `initDiff` and `initDiffSync`; applications must initialize before comparison, fingerprint, lineage, or sidecar operations. Remove the superseded TypeScript engine from published output and retain it solely as an independent test oracle.
+  
+  While asynchronous initialization is in progress, `initDiffSync` throws; await `initDiff()` instead. Failed initialization remains retryable, and both initializers are no-ops after success.
+
+### Patch Changes
+
+- [#8303](https://github.com/LTplus-AG/ifc-lite/pull/8303) [`b46c759`](https://github.com/LTplus-AG/ifc-lite/commit/b46c759601838b5d91dd54e4355feec2fea047af) Thanks [@louistrue](https://github.com/louistrue)! - Add explicit internal retained model snapshots for repeated comparisons, with deterministic disposal and preserved opaque references.
+  
+  Reduce native fingerprint projection, UTF-16 conversion, sorting and comparison transport allocations without changing canonical hashes or diff outputs.
+  
+  Bound dense fingerprint transport chunks after the full adapter snapshot to reduce full-model live-memory and packing cost. Sparse validation order remains unchanged.
+  
+  Stream private packed result entries, restore keys and original references by row index in one pass, and decode typed string dictionaries without an intermediate document graph. Public calls retain explicit per-call ownership.
+  
+  Avoid building and rebuilding an unused native result lookup index when the destination JavaScript runtime constructs `byKey`. Native callers retain the complete indexed result.
+  
+  Reserve a bounded component-map capacity from validated column partitions to avoid per-row growth during model construction.
+- Updated dependencies [[`e88b3d4`](https://github.com/LTplus-AG/ifc-lite/commit/e88b3d4a082f03482fe75c8ce5b2ef1084a08eec), [`d3eb48a`](https://github.com/LTplus-AG/ifc-lite/commit/d3eb48a12d3b5982603e023961e0709c5933429d), [`2b62959`](https://github.com/LTplus-AG/ifc-lite/commit/2b629592f6c47cfe8958adc128b5309c0bfcf4e0), [`774052a`](https://github.com/LTplus-AG/ifc-lite/commit/774052abc729411e8b9ba8512aeaada61d9e4cb2), [`7d391e2`](https://github.com/LTplus-AG/ifc-lite/commit/7d391e2ad2e449c9713a02113c0a81a8381673af), [`0ace993`](https://github.com/LTplus-AG/ifc-lite/commit/0ace993cc37265019ad3b3241f863caeb8179de9), [`8a7d4ff`](https://github.com/LTplus-AG/ifc-lite/commit/8a7d4ff5bc5d095668d4e9f70cc4e8021176289f), [`ae8a763`](https://github.com/LTplus-AG/ifc-lite/commit/ae8a76355e8cbc167b6c6decc72b4f26a67e6ce9), [`e88b3d4`](https://github.com/LTplus-AG/ifc-lite/commit/e88b3d4a082f03482fe75c8ce5b2ef1084a08eec), [`d6363d7`](https://github.com/LTplus-AG/ifc-lite/commit/d6363d7d5377b2f12620eb7ab9ddfc46a739cb58), [`b46c759`](https://github.com/LTplus-AG/ifc-lite/commit/b46c759601838b5d91dd54e4355feec2fea047af), [`8303762`](https://github.com/LTplus-AG/ifc-lite/commit/83037622abbc521cbce5764036fb33c44cbdb856), [`c0acc2d`](https://github.com/LTplus-AG/ifc-lite/commit/c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1), [`f2271ec`](https://github.com/LTplus-AG/ifc-lite/commit/f2271ec4fb5b9bd59fedb7802b3438bbdf0b18ba), [`2f028bb`](https://github.com/LTplus-AG/ifc-lite/commit/2f028bb080e8e5a1a0fb89539480de404e425400)]:
+  - @ifc-lite/wasm@12.1.0
+
+## 0.12.0
+
+### Minor Changes
+
+- [#8301](https://github.com/LTplus-AG/ifc-lite/pull/8301) [`41f1ed8`](https://github.com/LTplus-AG/ifc-lite/commit/41f1ed8615cf38c37026aebd9dc5b3e924d8f1bc) Thanks [@louistrue](https://github.com/louistrue)! - Released as 0.12.0 rather than 0.11.2, which is already published from the 25.0.x maintenance line. The public API of `@ifc-lite/diff` does not change.
+
+### Patch Changes
+
+- [#8114](https://github.com/LTplus-AG/ifc-lite/pull/8114) [`c7c9b31`](https://github.com/LTplus-AG/ifc-lite/commit/c7c9b3171f8d0281d8a47c4e65f5522abde74400) Thanks [@louistrue](https://github.com/louistrue)! - Preserve sparse fingerprint collections and host observation order across the Rust diff boundary, with catchable raw component errors and same-instance recovery ([#8042](https://github.com/LTplus-AG/ifc-lite/issues/8042)), and reject present null records like the TypeScript oracle ([#8114](https://github.com/LTplus-AG/ifc-lite/issues/8114)).
+
+- [#8110](https://github.com/LTplus-AG/ifc-lite/pull/8110) [`69e151b`](https://github.com/LTplus-AG/ifc-lite/commit/69e151b7c0573402702a9a3ae8f1d54735e24be0) Thanks [@louistrue](https://github.com/louistrue)! - Prepare the internal Rust facade adapters and retryable runtime initialization for fingerprint, lineage, provenance, and sidecar operations. Clean generated output before packaging so removed modules cannot survive a rebuild. Public diff entry points retain their existing initialization contract in this layer.
+
+- [#8109](https://github.com/LTplus-AG/ifc-lite/pull/8109) [`70cbe7d`](https://github.com/LTplus-AG/ifc-lite/commit/70cbe7d2428722fc306356adabfa9c8f899731a2) Thanks [@louistrue](https://github.com/louistrue)! - Add public Rust/WASM bindings for live value normalization, identity-map derivation, lineage assembly, and sidecar creation, validation, serialization, and inspection. Preserve JavaScript observation order and arbitrary UTF-16 code units in lineage inputs. Prepare internal diff projections and iterable adapters without changing the public diff entry points in this layer. Add the raw `diffCheckFingerprintCollections` export, which the diff facade calls after projecting a sparse fingerprint collection so host string-length errors surface where the TypeScript oracle raises them ([#8114](https://github.com/LTplus-AG/ifc-lite/issues/8114)).
+  
+  Breaking: the generated raw `InitOutput.diffRekeyByLineage` export changed from seven numeric ABI parameters to six, and `initSync` exposes that export. Consumers that call the raw `InitOutput` entry directly must be recompiled against the new signature; the wrapped `diffRekeyByLineage(keys, value, deleted, policy)` function keeps its signature.
+- Updated dependencies [[`91664f0`](https://github.com/LTplus-AG/ifc-lite/commit/91664f0d0efbdea31b6c537631431c58a974d512), [`704aa7e`](https://github.com/LTplus-AG/ifc-lite/commit/704aa7e7e108de83e001eeea0e3104ab339c34fe), [`fd67a97`](https://github.com/LTplus-AG/ifc-lite/commit/fd67a97aa9bb4f5019f6430e6795d327fb91b613), [`8d3ffe9`](https://github.com/LTplus-AG/ifc-lite/commit/8d3ffe9d1f6220e1fcf54201a551e94b454c03c0), [`853d7c9`](https://github.com/LTplus-AG/ifc-lite/commit/853d7c9781b34fb41c83425d38de58c39141fc69), [`80b18cb`](https://github.com/LTplus-AG/ifc-lite/commit/80b18cbb72f63c4a0d52b23e4c129b70c6c3e054), [`a74ba25`](https://github.com/LTplus-AG/ifc-lite/commit/a74ba259ba0bdf634e7ea3509a1a0b4891651988), [`f713740`](https://github.com/LTplus-AG/ifc-lite/commit/f713740fb5b20dfef563fe99bac28be41f318998), [`8a268b6`](https://github.com/LTplus-AG/ifc-lite/commit/8a268b6750ed97823654492b708e2d7c801981d5), [`e62a506`](https://github.com/LTplus-AG/ifc-lite/commit/e62a506dd6cacec073c6d4e2f1268141784d3445), [`2b8dd0f`](https://github.com/LTplus-AG/ifc-lite/commit/2b8dd0ff13722c15f19bb720e12df3e5b358ece9), [`1cf390d`](https://github.com/LTplus-AG/ifc-lite/commit/1cf390dc5cdd0b461673693e1f7cbc2734801257), [`0218827`](https://github.com/LTplus-AG/ifc-lite/commit/021882742fba0202a8d4532e7f277f5e7e16db62), [`c7c9b31`](https://github.com/LTplus-AG/ifc-lite/commit/c7c9b3171f8d0281d8a47c4e65f5522abde74400), [`91ca463`](https://github.com/LTplus-AG/ifc-lite/commit/91ca46369e02e60ea304910390235929903725a8), [`a772159`](https://github.com/LTplus-AG/ifc-lite/commit/a772159ec7a0f414c0d056f065ddf90896366051), [`e890f5e`](https://github.com/LTplus-AG/ifc-lite/commit/e890f5e7a018403675e3768d8f78eacb0b046d26), [`a6c07ae`](https://github.com/LTplus-AG/ifc-lite/commit/a6c07ae5defae5016d4df90771db704b9ad03ef1), [`62ae255`](https://github.com/LTplus-AG/ifc-lite/commit/62ae255524a275cf6abc6f931829e1fadc8c6cdf), [`921bceb`](https://github.com/LTplus-AG/ifc-lite/commit/921bceb16a8844f1186355564af894e29c979320), [`70cbe7d`](https://github.com/LTplus-AG/ifc-lite/commit/70cbe7d2428722fc306356adabfa9c8f899731a2), [`8821987`](https://github.com/LTplus-AG/ifc-lite/commit/882198715d5e1a700147c441b0758c174772c217), [`8134e00`](https://github.com/LTplus-AG/ifc-lite/commit/8134e00214d63f4214cb2532f6610666c0859aa8), [`51f4d47`](https://github.com/LTplus-AG/ifc-lite/commit/51f4d4739199347f3bfc83cee7996755f2b520d4)]:
+  - @ifc-lite/wasm@12.0.0
+
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [[`b40187e`](https://github.com/LTplus-AG/ifc-lite/commit/b40187ee85e2a72ed772072b06a22f22594963fe), [`97abc5b`](https://github.com/LTplus-AG/ifc-lite/commit/97abc5bc0124ee3f13b50c3c5ac2d544245d6196), [`ce55b3d`](https://github.com/LTplus-AG/ifc-lite/commit/ce55b3d3df7839acd1986e5d862a39cfa4a1f187), [`1d6aa49`](https://github.com/LTplus-AG/ifc-lite/commit/1d6aa494af31ae62f9ad33611cacdfc1e7483796), [`2d7ccb7`](https://github.com/LTplus-AG/ifc-lite/commit/2d7ccb7a4bd947dd0485c15de4bbbf2a552d892d), [`86d818c`](https://github.com/LTplus-AG/ifc-lite/commit/86d818cbb3d417f541948d0569099b221c330313), [`eaf210f`](https://github.com/LTplus-AG/ifc-lite/commit/eaf210fe63caa9a96f5a2c7869833b6feef78aa7), [`a656bff`](https://github.com/LTplus-AG/ifc-lite/commit/a656bff6863b177d3fe63a43d8faeb480030aae8), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d)]:
+  - @ifc-lite/wasm@11.0.0
+
+## 0.11.0
+
+### Minor Changes
+
+- [#8130](https://github.com/LTplus-AG/ifc-lite/pull/8130) [`97d8add`](https://github.com/LTplus-AG/ifc-lite/commit/97d8add207104d5801c0c8d62e40fa7066e848f8) Thanks [@louistrue](https://github.com/louistrue)! - Preserve distinct identity and lineage sidecar claims containing NUL or U+0001 key code units, and reject conflicts previously hidden by deduplication ([#8088](https://github.com/LTplus-AG/ifc-lite/issues/8088)).
+  
+  Conflicting claims that delimiter collisions previously hid now reach validation and throw.
+
+### Patch Changes
+
+- [#8131](https://github.com/LTplus-AG/ifc-lite/pull/8131) [`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac) Thanks [@louistrue](https://github.com/louistrue)! - Orphan largest-share split migrations with non-finite, negative, missing or mismatched share evidence instead of selecting an arbitrary successor. Match TypeScript and Rust validation; tied maxima also orphan without throwing.
+- Updated dependencies [[`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6), [`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac), [`bc9cc44`](https://github.com/LTplus-AG/ifc-lite/commit/bc9cc44ca449a43b66ea125644f17d362e4b19b2), [`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6)]:
+  - @ifc-lite/wasm@10.6.2
+
 ## 0.10.2
 
 ### Patch Changes

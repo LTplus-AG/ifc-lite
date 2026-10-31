@@ -1,0 +1,15 @@
+{
+  "m8Status": "preregistered; never widen on failure",
+  "retraceAreaRelative": 1e-12,
+  "convexDifferenceVolumeRelative": {
+    "linear": 1e-06
+  },
+  "voidingResultBboxWithinHost": {
+    "absolute": 1e-05,
+    "extentFactor": 2.4e-07
+  },
+  "convexLeafVolumeRelative": {
+    "linear": 1e-06
+  },
+  "voidingExactComparison": "report only"
+}

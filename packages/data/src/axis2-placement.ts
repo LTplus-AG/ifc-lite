@@ -4,7 +4,7 @@
 
 /** `build_axis2_matrix`'s `try_normalize(1e-9)` on the Axis. */
 const AXIS_EPSILON = 1e-9;
-/** `transform::X_PROJECTION_EPSILON`: the projected X shorter than this is numeric noise (#7751). */
+/** Projected X below `rust/geometry/src/axis_projection.rs::X_PROJECTION_EPSILON` is numeric noise (#7751). */
 const PROJECTION_EPSILON = 1e-9;
 
 /**
@@ -12,9 +12,9 @@ const PROJECTION_EPSILON = 1e-9;
  * absent (`$`), as ifc-lite's renderer computes it (#5922).
  *
  * This is the single TypeScript definition. It mirrors `build_axis2_matrix`
- * in `rust/geometry/src/transform.rs`, which the renderer's object and
- * shape-placement parsers (`parse_axis2_placement_3d` and its siblings) feed:
- * each passes world X `(1,0,0)` for a `$` RefDirection, and
+ * in `rust/geometry/src/placement/mod.rs`, fed by the canonical
+ * `Axis2Placement` readers for object and shape placements:
+ * they pass world X `(1,0,0)` for a `$` RefDirection, and
  * `build_axis2_matrix` projects it onto the plane normal to the normalised
  * Axis. (Conic surface parametrisation in `advanced_face/conics.rs` picks its
  * own reference direction; that is a different concern, not this fill.) That

@@ -4,7 +4,8 @@
 
 import { viewerAliases } from './vite-aliases';
 import { legacyManualChunk } from './vite-chunks';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
+import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
 import Icons from 'unplugin-icons/vite';
 import { FileSystemIconLoader } from 'unplugin-icons/loaders';
@@ -18,6 +19,8 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 // Same allowlist the production relay uses, so dev and prod cannot disagree
 // about which Dalux node a request reaches (#2792).
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
+import { bimcollabRelayRoute } from './vite-plugins/bimcollab-relay';
+import { bcfTokenRelayRoute } from './vite-plugins/bcf-token-relay';
 import { deploymentAssetsDir } from '../../scripts/lib/deployment-assets-dir.mjs';
 
 // --- Build-time changelog parser ---
@@ -215,8 +218,12 @@ const appVersion = viewerPkg.version || rootPkg.version;
 // GITHUB_SHA; falls back to 'dev' for local builds.
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev').slice(0, 12);
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL']), ...process.env };
+  const retained = { enabled: env.VITE_RETAINED_GEOMETRY === 'on', directory: env.IFCLITE_RETAINED_ENGINE, vercel: env.VERCEL };
+  return {
   plugins: [
+    retainedEngine(retained),
     react(),
     Icons({
       compiler: 'jsx',
@@ -238,13 +245,22 @@ export default defineConfig({
       },
     }),
     wasm(),
-    topLevelAwait(),
+    // No vite-plugin-top-level-await here: the target is `esnext`, so top-level
+    // await is emitted natively. The plugin wrapped every chunk with a dynamic
+    // import() in one async function, which the browser parses on the main
+    // thread when it runs, inside the app-start task. The worker build below
+    // keeps it; scripts/check-tla-chunk-await.mjs fails if a chunk evaluated
+    // at app start is wrapped again.
     cesiumStaticAssets(),
     oauthCallbackRoutes(),
     // Dalux's API sends no CORS headers, so it must go through a same-origin
     // relay. Dev runs the SAME handler production does (#2792), rather than a
     // second proxy config that can drift from it.
     daluxRelayRoute(),
+    bimcollabRelayRoute(),
+    // Confidential-client token exchange for BIMcollab (#4919): the same
+    // handler as api/bcf/oauth/token.ts, secret from .env.local or the shell.
+    bcfTokenRelayRoute(),
   ],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
@@ -255,7 +271,7 @@ export default defineConfig({
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
   resolve: {
-    alias: viewerAliases,
+    alias: { ...viewerAliases, '@ifc-lite/viewer-retained': path.resolve(__dirname, `src/lib/retained/${retained.enabled ? 'index' : 'off'}.ts`) },
   },
   server: {
     port: 3000,
@@ -363,6 +379,7 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
-    plugins: () => [wasm(), topLevelAwait()],
+    plugins: () => [retainedEngine(retained), wasm(), topLevelAwait()],
   },
+  };
 });

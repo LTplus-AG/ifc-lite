@@ -1,5 +1,22 @@
 # @ifc-lite/renderer
 
+## 6.5.2
+
+### Patch Changes
+
+- [#8241](https://github.com/LTplus-AG/ifc-lite/pull/8241) [`2602e1d`](https://github.com/LTplus-AG/ifc-lite/commit/2602e1dff65c66299ce275ebd458ec8ccae17122) Thanks [@petruconduraru](https://github.com/petruconduraru)! - `Scene.appendToBatches` now computes the f32 triangle-topology verdict once per mesh and frame and reuses it during bucket routing, instead of scanning every triangle again for each new bucket. Batches, vertex data and bounds are unchanged.
+- Updated dependencies [[`87f917e`](https://github.com/LTplus-AG/ifc-lite/commit/87f917e646ee7b9769dfab8b236cfe27432a6196)]:
+  - @ifc-lite/geometry@8.0.1
+
+## 6.5.1
+
+### Patch Changes
+
+- [#8179](https://github.com/LTplus-AG/ifc-lite/pull/8179) [`78cb437`](https://github.com/LTplus-AG/ifc-lite/commit/78cb4378af79b998ed1ac4c373dcf2f7adf9254b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `clippingPlaneToSectionPlane` no longer clamps the section position to 0-100. A clipping-plane location outside the given bounds is a legal BCF cut, and it now comes back as a position below 0 or above 100, so a viewpoint's cut stays where it was written instead of moving onto the nearest bound face. A non-finite location gives the midpoint, 50, as a zero-extent axis already did. Callers that need a 0-100 value must clamp it themselves. The `ViewerSectionPlane.position` and renderer `SectionPlane.position` comments now say that values outside 0-100 are cuts beyond the bounds; the renderer already resolved them linearly.
+- Updated dependencies [[`585c04b`](https://github.com/LTplus-AG/ifc-lite/commit/585c04b8c9f6bb74a88922714a6778989b1a3c76), [`14bcd0c`](https://github.com/LTplus-AG/ifc-lite/commit/14bcd0ce9dffb32b9de7a60044394d258a4d2f9d)]:
+  - @ifc-lite/geometry@8.0.0
+  - @ifc-lite/spatial@1.15.1
+
 ## 6.5.0
 
 ### Minor Changes

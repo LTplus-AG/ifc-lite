@@ -5,7 +5,7 @@
 export function parseRevertOracleArgs(argv, fail) {
   const opts = {
     base: 'upstream/main', head: 'HEAD', only: [], tests: [],
-    mutation: null, json: false, ci: false, help: false,
+    mutation: null, timeoutMs: 600000, verifyRestored: false, json: false, ci: false, help: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -19,6 +19,11 @@ export function parseRevertOracleArgs(argv, fail) {
     else if (arg === '--only') opts.only.push(next());
     else if (arg === '--test') opts.tests.push(next());
     else if (arg === '--mutation') opts.mutation = next();
+    else if (arg === '--timeout-ms') {
+      opts.timeoutMs = Number(next());
+      if (!Number.isSafeInteger(opts.timeoutMs) || opts.timeoutMs <= 0) fail('--timeout-ms must be a positive integer');
+    }
+    else if (arg === '--verify-restored') opts.verifyRestored = true;
     else if (arg === '--root') next(); // consumed before the root is frozen
     else if (arg === '--json') opts.json = true;
     else if (arg === '--ci') opts.ci = true;

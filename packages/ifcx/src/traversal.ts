@@ -80,6 +80,49 @@ export function collectIncomingEdgeNames(composed: Map<string, ComposedNode>): M
   return incomingNames;
 }
 
+/**
+ * For each node, the edge names of every sibling under every parent that holds it (its own included). A
+ * generator that must keep sibling edge names unique appends `_001` to the second `Window`; this is what lets
+ * the name reader tell that suffix from a name that really ends in digits.
+ */
+export function collectSiblingEdgeNames(composed: Map<string, ComposedNode>): Map<string, ReadonlySet<string>> {
+  // One shared set per parent, not a copy per child (O(k) rather than O(k²) for k children); a child held by
+  // several parents gets the union, built only for that child.
+  // A parent that holds one child under many edge names contributes its set once, not once per edge.
+  const byChild = new Map<string, Set<ReadonlySet<string>>>();
+  for (const node of composed.values()) {
+    const names: ReadonlySet<string> = new Set(node.children.keys());
+    for (const child of node.children.values()) {
+      const sets = byChild.get(child.path);
+      if (sets) sets.add(names);
+      else byChild.set(child.path, new Set([names]));
+    }
+  }
+  // Children held by the same parents share one union, so two parents with k shared children build it once.
+  const ids = new Map<ReadonlySet<string>, number>();
+  const unions = new Map<string, ReadonlySet<string>>();
+  const siblings = new Map<string, ReadonlySet<string>>();
+  for (const [path, sets] of byChild) {
+    if (sets.size === 1) {
+      siblings.set(path, sets.values().next().value as ReadonlySet<string>);
+      continue;
+    }
+    const key = [...sets].map((set) => {
+      let id = ids.get(set);
+      if (id === undefined) ids.set(set, (id = ids.size));
+      return id;
+    }).sort((x, y) => x - y).join(',');
+    let union = unions.get(key);
+    if (!union) {
+      const built = new Set<string>();
+      for (const set of sets) for (const name of set) built.add(name);
+      unions.set(key, (union = built));
+    }
+    siblings.set(path, union);
+  }
+  return siblings;
+}
+
 export function buildReachableAttributeIndex(
   composed: Map<string, ComposedNode>,
   attributeKey: string

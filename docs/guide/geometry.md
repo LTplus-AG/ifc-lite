@@ -895,22 +895,95 @@ client.dispose(); // terminates the worker; in-flight requests reject
 
 The meshes come back in the same frame and units as the load, so they can replace the element's load-time meshes directly. `scripts/lib/wasm-remesh-contracts.mjs` pins this. For each wall of several fixtures, including one with an RTC shift, it re-meshes the wall from its subgraph and checks the positions, indices, colours and origins against meshing the whole file.
 
-## Experimental initialization overlap
+## Initialization overlap experiment removed
 
-The warm-up candidate is opt-in with `?perf.warmPool=1`. It starts fresh
-geometry and prepass workers alongside a file read; its end-to-end performance
-verdict remains pending. It does not retain used workers across loads.
+The opt-in `perf.warmPool` experiment was removed after its recorded-build
+comparison failed the acceptance rule in [the performance ledger](https://github.com/LTplus-AG/ifc-lite/blob/main/scripts/perf/README.md#worker-warm-up-candidate-removed-7036).
+Normal loads create their own geometry and prepass workers and terminate them
+when the load ends. Idle compilation of the shared WASM module remains available
+through `prewarmSharedWasmModule()`.
 
-Custom browser hosts can call `prewarmMainThreadEngine()` when a load is
-requested. It starts initialization without waiting; the normal loader joins
-the same in-flight attempt and retries after a failure.
-`prewarmGeometryWorkers({ fileSizeMB, workerCountOverride, wasmUrl })` returns
-the number of fresh workers started, or zero when the flag is disabled, workers
-are unavailable, or compilation fails. It uses the existing memory-capped
-worker-count plan. Parallel processing leases and terminates those workers.
+The experimental `prewarmMainThreadEngine`, `prewarmGeometryWorkers`,
+`releaseWarmGeometryWorkers`, `warmGeometryWorkerPoolStats` and
+`GeometryWorkerPoolStats` exports, and the `ProcessParallelOptions.workerPool`
+option, have been removed. Custom hosts should let the normal loader initialize
+its engine and workers.
 
-`releaseWarmGeometryWorkers(reason)` terminates idle workers and returns their
-count; it does not cancel an active load. Unused workers expire after sixty
-seconds. `warmGeometryWorkerPoolStats()` returns `GeometryWorkerPoolStats`, or
-null before a pool exists. `idleBytes` is booked memory using an estimate per
-fresh worker, rather than a measurement of actual process memory.
+## Experimental retained model output
+
+The separate opt-in WASM `pkg-retained` bundle exposes
+`await api.retainedModel(bytes, ids?)`. Consume the completed run with `next()`
+(one outcome in canonical file order, `undefined` at end) and release it with
+`free()`. Results are buffered for the whole model, so memory includes all
+returned meshes. An empty ID filter selects no jobs. Orphan type products follow
+product occurrences, once per type, with all unreferenced maps processed atomically
+at their MappingOrigin. Instanced types, types with only curve maps that exact does not mesh,
+and jobs without representations are skipped. Published orphan types discharge all applicable obligations.
+
+Published outcomes contain `expressId`, `ifcType`, and atomic `parts` with f64
+object-local metre positions, u32 indices, and column-major `worldFromObject`
+matrices into IFC Z-up world metres. Consumers show `final` for a product with empty
+`obligationsUnmet`, and `PresentationObligationsUnmet` (shape-only) with its nonempty list
+otherwise. M4 completes material layers (including source-proven skips); M11 completes
+appearance, persistent faces and surface normals. Each band resolves its own material’s
+appearance through exact’s resolver. A model may contain final published products alongside
+refused products; its coverage remains explicit. Refused outcomes carry
+an ID, typed code and optional origin, with no partial product or exact fallback.
+See the [WASM package contract](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#experimental-retained-whole-model-engine)
+for lifecycle, transport and result details. The default engine is unchanged.
+
+For streaming display in a dedicated host Worker, create a `RetainedModelSession`
+from that opt-in bundle and call `session.run(bytes, { detail: 'view' }, onEvent)`.
+The callback receives `start` with canonical candidate IDs and the pre-pass RTC
+frame, then atomic `published` mesh collections or typed `refused` events.
+Extract and free each collection and its mesh handles in `finally` blocks.
+Use `detail: 'shape'` for the M1 f64 shape parts. A session reuses its qualified
+worker across runs; free the session when finished, or terminate the host Worker
+to cancel immediately. Consumers show each product’s final or shape-only presentation state.
+
+
+## Pipeline refusal diagnostics
+
+`IfcAPI.getPipelineDiagnostics()` returns a versioned object after a browser
+geometry batch has run or a prepass has recorded a refusal. The additive
+schema version 1 field `refusedInputElements` counts
+attempted jobs whose own input decode or geometry reads refused a record.
+A second attempt counts again; a valid neighbour after a refusal does not.
+`refusedPrepassRecords` counts distinct refused record IDs observed in prepass
+or batch resolution on that worker. Plain syntax/decode failures are excluded,
+matching native admission-refusal semantics. Repeated reads and batches do not add the same
+record twice. These counters are separate from owned-producer refusal warnings
+and CSG failure diagnostics. They do not change which geometry is emitted.
+
+`omittedTypeRecords` (#8341) makes a different loss countable: a type product
+whose RepresentationMaps the scan can read, but whose own record the full
+decoder rejects (a syntax error in another attribute), cannot be meshed, so its
+type geometry is left out of the plan. It counts distinct records whose plan
+had at least one map to draw in that pipeline's type mode, once per load
+however many maps or re-reads. Type records are exempt from input admission,
+so these are plain decode failures and never appear in the refusal counters.
+Native drops the same records before scheduling and reports their ids, once,
+through `ProcessingSink::on_omitted_type_records`; `from_processing_stats`
+cannot see them and leaves the report field at 0.
+
+The counts are per `IfcAPI`, not a deduplicated model-wide sum over workers.
+They survive `clearPrePassCache()` for inspection after a load, and reset on
+load start (`buildPrePassOnce`, streaming prepass, `setEntityIndex`, or
+`setSourceBytes`). Before any batch, refusal or omitted type record, the getter returns `undefined`.
+
+Rust callers can use
+`ifc_lite_processing::pipeline_diagnostics::PipelineDiagnosticsReport` via
+`Default` or `from_processing_stats`. It contains the original counters/timings,
+the two refusal counters and `omitted_type_records`, serialized as one flat object. The published
+`PipelineDiagnostics` v1 struct and its constructor remain available unchanged;
+the new report is non-exhaustive so future counters can be added without
+breaking struct literals. Inspection of the published `ifc-lite-processing`
+27.0.0 crate confirmed that directly adding fields or `#[non_exhaustive]` to
+that existing v1 struct would break Rust callers.
+
+Browser BREP signatures are cached only within one source epoch. Installing an
+index or source, starting a prepass, or clearing derived caches discards them.
+Tessellation, scheduling, template selection and instancing policy still use
+the existing batch decisions. Native material-layer index construction remains
+gated by the explicit `ProcessingRequest.layer_slicing` opt-in; the default
+native pass does not build the index or slice layers.

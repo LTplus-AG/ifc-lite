@@ -46,7 +46,9 @@ pub fn decode_columns(columns: FingerprintColumns) -> Result<Vec<EntityFingerpri
         let component_end = offsets[row+1] as usize * 2;
         if flags & 4 == 0 && component_start != component_end { return Err("absent components carry values".into()); }
         let components = if flags & 4 != 0 {
-            let mut map = HashMap::new();
+            // The validated partition supplies the size. Bound the initial
+            // reservation because raw column callers may repeat the same key.
+            let mut map = HashMap::with_capacity(((component_end - component_start) / 2).min(16));
             for pair in columns.component_pairs[component_start..component_end].chunks_exact(2) {
                 map.insert(string(pair[0])?,string(pair[1])?);
             }

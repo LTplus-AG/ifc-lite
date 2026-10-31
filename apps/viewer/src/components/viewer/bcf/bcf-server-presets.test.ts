@@ -79,7 +79,7 @@ describe('BCF_SERVER_PRESETS invariants', () => {
 });
 
 describe('vendorAppForPreset', () => {
-  const vars = ['CLIENT_ID', 'CLIENT_SECRET', 'REDIRECT_URI'].map(
+  const vars = ['CLIENT_ID', 'CLIENT_SECRET', 'REDIRECT_URI', 'TOKEN_RELAY'].map(
     (suffix) => `VITE_BCF_APP_BIMCOLLAB_${suffix}`,
   );
   afterEach(() => {
@@ -106,7 +106,31 @@ describe('vendorAppForPreset', () => {
     assert.deepEqual(vendorAppForPreset('bimcollab'), {
       clientId: 'PlayGround_Client',
       redirectUri: 'http://localhost:5000/Callback',
+      tokenRelay: '',
     });
+  });
+
+  it('marks the BIMcollab app as relayed when the token relay is configured (#4919)', () => {
+    setEnv('VITE_BCF_APP_BIMCOLLAB_CLIENT_ID', '4e5649c2-6ea1-4736-8abc-8a91bbefcde3');
+    setEnv('VITE_BCF_APP_BIMCOLLAB_TOKEN_RELAY', ' /api/bcf/oauth/token ');
+    assert.deepEqual(vendorAppForPreset('bimcollab'), {
+      clientId: '4e5649c2-6ea1-4736-8abc-8a91bbefcde3',
+      redirectUri: '',
+      tokenRelay: '/api/bcf/oauth/token',
+    });
+  });
+
+  it('ignores a token relay on presets the relay does not serve', () => {
+    // server/bcf/oauth-token-relay.ts only posts to BIMcollab token
+    // endpoints; another vendor routed there would fail every sign-in.
+    setEnv('VITE_BCF_APP_ACONEX_EUROPE_CLIENT_ID', 'aconex-public');
+    setEnv('VITE_BCF_APP_ACONEX_EUROPE_TOKEN_RELAY', '/api/bcf/oauth/token');
+    try {
+      assert.equal(vendorAppForPreset('aconex-europe')?.tokenRelay, '');
+    } finally {
+      setEnv('VITE_BCF_APP_ACONEX_EUROPE_CLIENT_ID', undefined);
+      setEnv('VITE_BCF_APP_ACONEX_EUROPE_TOKEN_RELAY', undefined);
+    }
   });
 
   it('keeps public-client configuration for other named presets', () => {
@@ -116,6 +140,7 @@ describe('vendorAppForPreset', () => {
       assert.deepEqual(vendorAppForPreset('aconex-europe'), {
         clientId: 'aconex-public',
         redirectUri: 'https://viewer.example/aconex',
+        tokenRelay: '',
       });
     } finally {
       setEnv('VITE_BCF_APP_ACONEX_EUROPE_CLIENT_ID', undefined);

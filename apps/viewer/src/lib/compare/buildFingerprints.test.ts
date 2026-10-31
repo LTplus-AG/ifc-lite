@@ -5,14 +5,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { diffModels } from '@ifc-lite/diff';
+import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { buildEntityFingerprints } from './buildFingerprints.js';
 import {
   geometryVolumesSurviveAlignment,
   hasGeometryHashes,
   resolveGeometryChannel,
-  withPlacementFingerprintsStripped,
 } from './geometryCapability.js';
 
 /** Wrap a STEP body in a minimal envelope for the given schema (same helper
@@ -69,6 +68,11 @@ async function fingerprintWall(step: string, modelId: string, geometryHash: bigi
   assert.ok(wall, `expected an IfcWall fingerprint in ${modelId}`);
   return wall;
 }
+
+// Previous viewer path, retained only as a regression oracle (#8042).
+const withPlacementFingerprintsStripped = <T,>(side: readonly EntityFingerprint<T>[]) =>
+  side.map(fp => typeof fp.geometryHash === 'string' && fp.geometryHash.startsWith('p:')
+    ? { ...fp, geometryHash: undefined } : fp);
 
 describe('buildEntityFingerprints - component sub-hashes (#1891)', () => {
   it('populates components, so the content pass has its collision guard', async () => {
@@ -366,8 +370,7 @@ describe('hasGeometryHashes (#924)', () => {
       const resolved = resolveGeometryChannel([fp(1n)], [placement()]);
       assert.strictEqual(resolved.geometryUnavailable, true);
       assert.strictEqual(resolved.placementOnlyGeometry, false);
-      assert.strictEqual(resolved.head[0]!.geometryHash, undefined, 'head placement stripped');
-      assert.strictEqual(resolved.base[0]!.geometryHash, 1n, 'mesh hash survives');
+      assert.strictEqual(resolved.stripPlacementGeometry, true);
     });
 
     it('symmetric mesh-less with placements: keeps them AND flags placement-only', () => {
@@ -377,11 +380,7 @@ describe('hasGeometryHashes (#924)', () => {
       const resolved = resolveGeometryChannel([placement()], [placement()]);
       assert.strictEqual(resolved.geometryUnavailable, true);
       assert.strictEqual(resolved.placementOnlyGeometry, true);
-      assert.strictEqual(
-        resolved.base[0]!.geometryHash,
-        'p:0123456789abcdef',
-        'a symmetric pair keeps placement detection',
-      );
+      assert.strictEqual(resolved.stripPlacementGeometry, false);
     });
 
     it('symmetric mesh-less without placements: warns plainly', () => {
@@ -396,8 +395,7 @@ describe('hasGeometryHashes (#924)', () => {
       const resolved = resolveGeometryChannel(base, head);
       assert.strictEqual(resolved.geometryUnavailable, false);
       assert.strictEqual(resolved.placementOnlyGeometry, false);
-      assert.strictEqual(resolved.base, base, 'symmetric sides pass through by identity');
-      assert.strictEqual(resolved.head, head);
+      assert.strictEqual(resolved.stripPlacementGeometry, false);
     });
   });
 });

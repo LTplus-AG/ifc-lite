@@ -11,6 +11,7 @@ import { Select, Walk, Annotate, Measure, Section, Home, Reposition } from '@/ic
 import { useViewerStore } from '@/store';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -20,6 +21,7 @@ import { RibbonCommandLargeButton } from '../command-button';
 export function HomeTab() {
   const { t } = useTranslation();
   const activeTool = useViewerStore((state) => state.activeTool);
+  const shapeOnly = useViewerStore((state) => hasRetainedShapeOnlyModel(state.models));
 
   return (
     <>
@@ -46,6 +48,8 @@ export function HomeTab() {
           commandId="tool:measure"
           icon={Measure}
           active={activeTool === 'measure'}
+          disabled={shapeOnly}
+          tooltip={shapeOnly ? t(RETAINED_SHAPE_ONLY_REASON) : undefined}
           {...tourAnchor(toolAnchor('measure'))}
         />
         <RibbonCommandLargeButton

@@ -20,8 +20,17 @@ fn retire(indices: impl IntoIterator<Item = usize>, retired: &mut [bool]) {
     for i in indices { retired[i] = true; }
 }
 
-pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: GeometryTolerances) -> ContentDiff<'a, R> {
+pub fn apply_content_matching<'a, R>(core: KeyDiff<'a, R>, tolerances: GeometryTolerances) -> ContentDiff<'a, R> {
+    apply_content_matching_impl(core, tolerances, true)
+}
+
+pub(crate) fn apply_content_matching_for_transport<'a, R>(core: KeyDiff<'a, R>, tolerances: GeometryTolerances) -> ContentDiff<'a, R> {
+    apply_content_matching_impl(core, tolerances, false)
+}
+
+fn apply_content_matching_impl<'a, R>(mut core: KeyDiff<'a, R>, tolerances: GeometryTolerances, build_index: bool) -> ContentDiff<'a, R> {
     let entries = &core.entries;
+    let strip = core.strip_placement_geometry;
     let mut bases = Buckets::default();
     let mut heads = Buckets::default();
     for (i, entry) in entries.iter().enumerate() {
@@ -40,7 +49,7 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
             let Some(base_group) = bases.get(key) else { continue };
             let mut geometry = Buckets::default();
             for i in base_group.iter().chain(head_group) {
-                if let Some(hash) = &fingerprint(entries, *i).geometry_hash { geometry.push(hash.clone(), *i); }
+                if let Some(hash) = fingerprint(entries, *i).geometry_hash(strip) { geometry.push(hash.clone(), *i); }
             }
             for (_, group) in geometry.groups {
                 let (base, head) = split(entries, &group);
@@ -56,14 +65,14 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
         for (_, group) in bases.groups.iter().chain(&heads.groups) {
             for i in live(group, &retired) {
                 let entity = fingerprint(entries, i);
-                let (Some(hash), Some(aabb)) = (&entity.geometry_hash, &entity.aabb) else { continue };
+                let (Some(hash), Some(aabb)) = (entity.geometry_hash(strip), &entity.aabb) else { continue };
                 if usable_aabb(aabb) { geometry.push(JsString::concat(&[&entity.ifc_type, hash], "\0"), i); }
             }
         }
         for (_, group) in geometry.groups {
             let (base, head) = split(entries, &group);
             if base.is_empty() || head.is_empty() { continue; }
-            let geometry_hash = fingerprint(entries, head[0]).geometry_hash.clone();
+            let geometry_hash = fingerprint(entries, head[0]).geometry_hash(strip).cloned();
             if base.len() == 1 && head.len() == 1 {
                 let a = fingerprint(entries, base[0]);
                 let b = fingerprint(entries, head[0]);
@@ -94,14 +103,14 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
         let data_hash = &fingerprint(entries, head_group[0]).data_hash;
         if base.len() == 1 && head.len() == 1 {
             if components_agree(entries, [base[0], head[0]]) {
-                let (kind, distance) = classify_pair(fingerprint(entries, base[0]), fingerprint(entries, head[0]), core.use_geometry, tolerances);
+                let (kind, distance) = classify_pair(fingerprint(entries, base[0]), fingerprint(entries, head[0]), core.use_geometry, strip, tolerances);
                 matches.push(make_match(entries, &base, &head, kind, ContentMatchTier::ResidueOneToOne, data_hash, distance));
                 retire([base[0], head[0]], &mut retired);
             }
             continue;
         }
         for (b, h) in pair_by_position(entries, &base, &head, core.use_geometry, tolerances) {
-            let (kind, distance) = classify_pair(fingerprint(entries, b), fingerprint(entries, h), core.use_geometry, tolerances);
+            let (kind, distance) = classify_pair(fingerprint(entries, b), fingerprint(entries, h), core.use_geometry, strip, tolerances);
             matches.push(make_match(entries, &[b], &[h], kind, ContentMatchTier::Positional, data_hash, distance));
             retire([b, h], &mut retired);
         }
@@ -119,6 +128,9 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
         group.geometry_hash = geometry_hash;
         matches.push(group);
     }
+    if !retired.iter().any(|retired| *retired) {
+        return ContentDiff { core, content_matches: matches };
+    }
     for (i, entry) in entries.iter().enumerate() {
         if retired[i] {
             match entry.state {
@@ -130,6 +142,8 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
     }
     let mut index = 0;
     core.entries.retain(|_| { let keep = !retired[index]; index += 1; keep });
-    core.by_key = core.entries.iter().enumerate().map(|(i, entry)| (entry.key.clone(), i)).collect();
+    if build_index {
+        core.by_key = core.entries.iter().enumerate().map(|(i, entry)| (entry.key.clone(), i)).collect();
+    }
     ContentDiff { core, content_matches: matches }
 }

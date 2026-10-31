@@ -69,11 +69,24 @@ pub fn stable_hash(value: &str) -> String {
 
 /// Hash raw JS code units, including unpaired surrogates without lossy UTF-8 conversion.
 pub fn stable_hash_units(units: impl IntoIterator<Item = u16>) -> String {
-    let mut hash = FNV_OFFSET_BASIS_64;
-    for unit in units {
-        hash = (hash ^ u64::from(unit)).wrapping_mul(FNV_PRIME_64);
+    let mut hash = StableHasher::default();
+    hash.write(units);
+    hash.finish()
+}
+
+/// Incremental [`stable_hash_units`]: feeding a string in chunks gives the same
+/// digest, so a serializer can hash without materializing its output (#8114).
+pub(crate) struct StableHasher(u64);
+impl Default for StableHasher {
+    fn default() -> Self { Self(FNV_OFFSET_BASIS_64) }
+}
+impl StableHasher {
+    pub(crate) fn write(&mut self, units: impl IntoIterator<Item = u16>) {
+        for unit in units {
+            self.0 = (self.0 ^ u64::from(unit)).wrapping_mul(FNV_PRIME_64);
+        }
     }
-    format!("{hash:016x}")
+    pub(crate) fn finish(&self) -> String { format!("{:016x}", self.0) }
 }
 
 #[cfg(test)]

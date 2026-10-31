@@ -26,4 +26,5 @@ export const assistantSourcesEn = {
   'assistantSources.boundaryAssistant': 'The Assistant itself. Saved conversations are reopened, not attached as evidence.',
   'assistantSources.boundaryEnvironment': 'Sky, lighting and sun-time display settings. No solar analysis is recorded, and display settings are not daylight performance.',
   'assistantSources.boundaryIdsStudio': 'IDS authoring. Editing a requirement document produces no analysis result; run it in Validation to discuss what it finds.',
+  'assistantSources.boundaryInflux': 'Experimental InfluxDB telemetry. Readings are fetched with a session-only token and are not shared with the assistant.',
 } as const satisfies Record<string, TranslationValue>;

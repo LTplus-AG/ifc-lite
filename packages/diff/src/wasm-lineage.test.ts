@@ -3,11 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import * as oracle from './lineage.js';
+import * as oracle from '../test/oracle/lineage.js';
 import type { Lineage, RekeyPolicy } from './lineage.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
-test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url)))('WASM lineage facade preserves iterables, Map order, and optional relations (#8042)', async () => {
+test('WASM lineage facade preserves iterables, Map order, and optional relations (#8042)', async (context) => {
+  if (!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url))) {
+    context.skip('Optional diff WASM glue/binary missing; run pnpm build:wasm, then root pnpm test --filter=@ifc-lite/diff');
+    return;
+  }
   const facade = await import('./wasm-lineage.js');
   const { initDiffSync } = await import('./wasm-runtime.js');
   expect(() => facade.lineageConflicts([])).toThrow(/initDiff/);

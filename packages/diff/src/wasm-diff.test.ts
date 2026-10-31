@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { test, expect } from 'vitest';
-import { diffModels } from './diff.js';
+import { diffModels } from '../test/oracle/diff.js';
 import type { DiffOptions, EntityFingerprint } from './types.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
@@ -18,9 +18,14 @@ test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-
   const ref = { callback: () => 42 };
   const base: EntityFingerprint<typeof ref>[] = [
     { key: 'old', ifcType: 'IfcWall', dataHash: 'd', geometryHash: 42n, ref },
-    { key: 'same', ifcType: 'IfcWall', dataHash: 'a', ref },
+    { key: 'same', ifcType: 'IfcWall', dataHash: 'a', ref, components: {}, container: 'before' },
+    { key: '__proto__\ud800', ifcType: 'IfcWall', dataHash: 'a', ref, components: { '\udfff': 'a' } },
+    { key: 'gone', ifcType: 'IfcWall', dataHash: 'gone', ref },
   ];
-  const head = [{ ...base[0], key: 'new', geometryHash: '42' }, { ...base[1], dataHash: 'b' }];
+  const head = [{ ...base[0], key: 'new', geometryHash: '42' },
+    { ...base[1], dataHash: 'b', container: 'after' },
+    { ...base[2], components: { '\udfff': 'b' } },
+    { key: 'added', ifcType: 'IfcWall', dataHash: 'added', ref }];
   const options: DiffOptions[] = [
     {}, { matchUnpairedByContent: true },
     { keyAliases: new Map([['new', 'old']]) },
@@ -28,13 +33,31 @@ test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-
     { matchUnpairedByContent: true, moveTolerance: NaN, reshapeTolerance: Infinity, maxMoveDistance: -Infinity },
     { detectSplitMerge: true, detectSuccessors: true, classFamilies: [] },
   ];
+  function* once(rows: typeof base) { yield* rows; }
   for (const option of options) {
-    const actual = compareWithWasm(base, head, option);
-    expect(actual).toEqual(diffModels(base, head, option));
+    const ignored: Record<string, unknown> = {}; ignored.self = ignored;
+    const extended = { ...option, ignored };
+    const actual = compareWithWasm(once(base), head.values(), extended);
+    const expected = diffModels(base, head, option);
+    expect(actual).toEqual(expected);
+    expect(Object.keys(actual)).toEqual(Object.keys(expected));
+    const json = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => typeof item === 'bigint' ? item.toString() : item);
+    expect(json(actual)).toBe(json(expected));
+    expect(actual.entries.map(Object.keys)).toEqual(expected.entries.map(Object.keys));
     for (const entry of actual.entries) {
       expect(actual.byKey.get(entry.key)).toBe(entry);
       if (entry.base) expect(base.includes(entry.base)).toBe(true);
       if (entry.head) expect(head.includes(entry.head)).toBe(true);
     }
   }
+  // #8042: options are observed after model construction. Keys belong to that
+  // snapshot even when an option getter edits the original referenced object.
+  const mutable = [{ key: 'snapshot', ifcType: 'IfcWall', dataHash: 'd', ref }];
+  const snapshot = compareWithWasm(mutable, [], { get scope() {
+    mutable[0].key = 'edited';
+    return 'data' as const;
+  } });
+  expect(snapshot.entries[0].key).toBe('snapshot');
+  expect(snapshot.entries[0].base).toBe(mutable[0]);
+  expect(snapshot.byKey.get('snapshot')).toBe(snapshot.entries[0]);
 });

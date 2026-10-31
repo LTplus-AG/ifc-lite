@@ -13,7 +13,7 @@
 use serde_json::Value;
 
 use crate::generated::step_log_tables::{DEFINED_TYPE_BASES, SELECT_LEAVES, SELECT_SLOTS};
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::attrs::is_real_slot;
 use super::jsval::{integral_token, js_number_to_string, js_to_number, json_number, json_to_js_string, step_integer, to_step_real};
@@ -23,9 +23,13 @@ use super::jsval::{integral_token, js_number_to_string, js_to_number, json_numbe
 #[derive(Debug)]
 pub(crate) struct Unwritable(pub(crate) String);
 
-/// `resolveExpressBase` for a defined type.
-fn express_base(type_name: &str) -> Option<&'static str> {
-    DEFINED_TYPE_BASES.binary_search_by(|r| r.0.cmp(type_name)).ok().map(|i| DEFINED_TYPE_BASES[i].1)
+/// `resolveExpressBase` for a defined type, keyed by the written `IFC…` token:
+/// `IFCLENGTHMEASURE`, `LengthMeasure` and `IfcLengthMeasure` all write the
+/// same token, so they take the same base. The table is PascalCase-sorted,
+/// which is not case-insensitive order (`IfcPHMeasure` < `IfcParameterValue`),
+/// hence the scan rather than a binary search.
+fn express_base(token: &str) -> Option<&'static str> {
+    DEFINED_TYPE_BASES.iter().find(|r| r.0.eq_ignore_ascii_case(token)).map(|r| r.1)
 }
 
 /// `coerceLogical`.
@@ -46,7 +50,17 @@ fn coerce_logical(value: &Value) -> Option<bool> {
 /// `serializeTypedMarker`: `IFC<TYPE>(<inner>)`, the inner value written for
 /// the type's EXPRESS base.
 pub(crate) fn typed_marker(type_name: &str, value: &Value) -> Result<String, Unwritable> {
-    let inner = match express_base(type_name) {
+    let mut token = type_name.to_uppercase();
+    if !token.starts_with("IFC") {
+        token = format!("IFC{token}");
+    }
+    // The token is written bare, outside any string quotes: a `(`, `;` or
+    // newline in an untrusted `typed.type` would close the attribute list and
+    // inject whole records into DATA (the class-name guard of EXPORT-STEP-26).
+    if !super::entities::is_entity_name(&token) {
+        return Err(Unwritable(format!("Cannot write {type_name:?} as a STEP type name: it is not an IFC identifier")));
+    }
+    let inner = match express_base(&token) {
         Some("REAL") | Some("NUMBER") => to_step_real(js_to_number(value))?,
         Some("INTEGER") => {
             let n = js_to_number(value).trunc();
@@ -60,20 +74,16 @@ pub(crate) fn typed_marker(type_name: &str, value: &Value) -> Result<String, Unw
             Some(false) => ".F.".to_string(),
             None => ".U.".to_string(),
         },
-        Some("STRING") | Some("BINARY") => format!("'{}'", escape(&json_to_js_string(value))),
+        Some("STRING") | Some("BINARY") => quoted(&json_to_js_string(value)),
         _ => match value {
             Value::Bool(b) => if *b { ".T." } else { ".F." }.to_string(),
             _ => match json_number(value) {
                 Some(n) if n.is_finite() && n.fract() == 0.0 => integral_token(n),
                 Some(n) => to_step_real(n)?,
-                None => format!("'{}'", escape(&json_to_js_string(value))),
+                None => quoted(&json_to_js_string(value)),
             },
         },
     };
-    let mut token = type_name.to_uppercase();
-    if !token.starts_with("IFC") {
-        token = format!("IFC{token}");
-    }
     Ok(format!("{token}({inner})"))
 }
 
@@ -149,7 +159,7 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
     {
         return Ok(trimmed.to_uppercase());
     }
-    Ok(format!("'{}'", escape(&text)))
+    Ok(quoted(&text))
 }
 
 /// `serializeQualifiedSelectSlot`: a scalar in a SELECT slot written as the

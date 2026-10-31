@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer-embed",
-  "version": "1.15.22",
+  "version": "1.15.26",
   "private": true,
   "description": "Embeddable IFC-Lite 3D viewer for iframes (Power BI, Superset, etc.)",
   "type": "module",
@@ -54,6 +54,7 @@
     "@ifc-lite/server-client": "workspace:^",
     "@ifc-lite/solar": "workspace:^",
     "@ifc-lite/source-autodesk": "workspace:^",
+    "@ifc-lite/source-bimcollab": "workspace:^",
     "@ifc-lite/source-dalux": "workspace:^",
     "@ifc-lite/source-dropbox": "workspace:^",
     "@ifc-lite/source-msgraph": "workspace:^",

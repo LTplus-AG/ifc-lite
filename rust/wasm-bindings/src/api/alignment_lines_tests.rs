@@ -390,3 +390,21 @@ fn viadotto_acerno_emits_three_placed_centerlines() {
     assert!((min_elevation - 43.85).abs() < 0.1, "lowest centerline: {min_elevation}");
     assert!((max_elevation - 55.8).abs() < 0.1, "highest centerline: {max_elevation}");
 }
+
+#[test]
+fn issue_7779_alignment_bad_placement_does_not_draw_at_identity() {
+    let frame = Some(MeshFrame::ModelRtc { anchor: (0., 0., 0.) });
+    let original = "#10=IFCALIGNMENT('0aBcDeFgHiJkLmNoPqRsT0',$,'Test Alignment',$,$,$,$,#4,$);";
+    let baseline = extract_alignment_line_vertices(CONTENT, frame);
+    assert!(!baseline.is_empty(), "genuinely missing placement remains valid");
+    for placement in ["#20=IFCLOCALPLACEMENT(#20,#21);\n#21=IFCAXIS2PLACEMENT3D(#1,$,$);",
+        "#20=IFCLOCALPLACEMENT($,#999);", "#20=IFCCARTESIANPOINT((0.,0.,0.));",
+        "#20=IFCLOCALPLACEMENT($,$);"] {
+        let placed = original.replace("Alignment',$,$,$,$", "Alignment',$,$,#20,$");
+        assert_ne!(placed, original);
+        let content = CONTENT.replace(original, &format!("{placement}\n{placed}"));
+        assert!(extract_alignment_line_vertices(&content, frame).is_empty(), "{placement}");
+        let both = content.replace(&placed, &format!("{placed}\n{}", original.replace("#10=", "#11=")));
+        assert_eq!(extract_alignment_line_vertices(&both, frame), baseline);
+    }
+}

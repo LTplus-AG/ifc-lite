@@ -133,7 +133,9 @@ function manySpecifications(specificationsOnly?: boolean): IdsReportBlock {
   if (specificationsOnly !== undefined) ids.specificationsOnly = specificationsOnly;
   ids.checks = Array.from({ length: 10 }, (_, s) => ({
     id: `s${s}`, shortDescription: `Spec ${s}`, checked: 63, passed: 55, failed: 8, passRate: 87,
-    rules: Array.from({ length: 20 }, (_, r) => ({ id: `s${s}r${r}`, name: `Req ${s}.${r}`, shortDescription: `Req ${s}.${r}`, checked: 63, passed: 63, failed: 0, passRate: 100 })),
+    // The eight failing entities each fail the first requirement only, so the counts agree with the entity totals.
+    rules: Array.from({ length: 20 }, (_, r) => ({ id: `s${s}r${r}`, name: `Req ${s}.${r}`, shortDescription: `Req ${s}.${r}`, checked: 63,
+      passed: r === 0 ? 55 : 63, failed: r === 0 ? 8 : 0, passRate: r === 0 ? 87 : 100 })),
   }));
   return ids;
 }
@@ -143,7 +145,8 @@ describe('compact IDS report with specifications only (#6560)', () => {
     const { texts, rects } = compose(manySpecifications(true));
     assert.equal(texts.filter((t) => /^Spec \d$/.test(t.text)).length, 10);
     assert.equal(texts.filter((t) => t.text.startsWith('Req ')).length, 0, 'no requirement rows');
-    assert.equal(texts.filter((t) => t.text === '55/63 · 87%').length, 10, 'each specification keeps its own pass rate');
+    // #8204: a specification row counts its requirement checks, 1252 of 1260, as the panel card does.
+    assert.equal(texts.filter((t) => /^(1252\/1260 · )?99%$/.test(t.text)).length, 10, 'each specification keeps its own pass rate');
     assert.equal(rects.length, 20, 'a track and a fill per specification');
   });
 
@@ -339,14 +342,14 @@ it('prints unmatched IDS specifications beside the PDF benchmark (#8065)', () =>
   ids.benchmarks = true;
   ids.summary = { checked: 0, passed: 0, failed: 0, passRate: 0 };
   ids.checks = ids.checks.map((check) => ({ ...check, checked: 0, passed: 0, failed: 0, passRate: 0, rules: [] }));
-  assert.ok(compose(ids).texts.some((item) => item.text === 'Not checked: 1 specification'));
+  assert.ok(compose(ids).texts.some((item) => item.text === '1 specification matched no entities'));
   ids.checks[0].error = 'Evaluation failed';
-  assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
+  assert.ok(!compose(ids).texts.some((item) => item.text.endsWith('matched no entities')));
   assert.ok(compose(ids).texts.some((item) => item.text.includes('Evaluation failed')));
   delete ids.checks[0].error;
   ids.sourceKind = 'rules';
-  assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
+  assert.ok(!compose(ids).texts.some((item) => item.text.endsWith('matched no entities')));
   delete ids.sourceKind;
   ids.benchmarks = false;
-  assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
+  assert.ok(!compose(ids).texts.some((item) => item.text.endsWith('matched no entities')));
 });

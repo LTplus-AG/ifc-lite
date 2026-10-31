@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use ifc_lite_core::entity_info_for_schema;
 
 use crate::step_ids::IdAllocator;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use crate::plan::add_props::build_sets;
 use crate::plan::add_rels::{RelKind, RelRequest};
@@ -28,7 +28,7 @@ use super::mapped::{build_map, MapRef};
 use super::units::build_units;
 use super::{require_filled, AddState};
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     /// Build a type on its own, or refuse it whole.
     pub(super) fn add_type(&mut self, key: &ObjectRef, t: &NewType, ids: &mut IdAllocator) -> Result<(), String> {
         let gid = t.global_id.ok_or("a type added on its own needs its own GlobalId")?;
@@ -39,7 +39,7 @@ impl AddState<'_> {
             .transpose()?;
 
         let mut out = Vec::new();
-        let owner_history = self.owner_history_for(ids, &mut out)?;
+        let owner = self.owner_history_for(ids, &mut out)?;
         let mut shared = Shared { committed: &self.shared, pending: HashMap::new() };
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
         let units = build_units(&mut emit, &mut shared, &units)?;
@@ -50,11 +50,11 @@ impl AddState<'_> {
                 (build_map(&mut emit, context, &t.representation, t.style.as_ref())?, new_context)
             }
         };
-        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &maps, Some(owner_history))?;
+        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &maps, Some(owner.id))?;
         let pending = shared.pending;
         let new_context = self.owned_context(new_context)?;
 
-        self.commit(owner_history, out, pending);
+        self.commit(owner, out, pending);
         if let Some((context, owner)) = new_context {
             self.adopt_context(context, owner);
         }
@@ -89,8 +89,9 @@ pub(super) fn build_new_type(
     let type_gid = format!("'{}'", t.global_id_for(owner).encode());
     let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", ref_or_unset(owner_history))];
     if let Some(name) = &t.name {
-        fields.push(("Name", format!("'{}'", escape(name))));
+        fields.push(("Name", quoted(name)));
     }
+    fields.extend(t.string_attributes().map(|(attr, value)| (attr, quoted(value))));
     if !type_sets.is_empty() {
         fields.push(("HasPropertySets", ref_list(&type_sets)));
     }

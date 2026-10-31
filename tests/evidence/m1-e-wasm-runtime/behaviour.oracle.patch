@@ -1,0 +1,12 @@
+diff --git a/rust/geometry/src/document/retained_wire.rs b/rust/geometry/src/document/retained_wire.rs
+--- a/rust/geometry/src/document/retained_wire.rs
++++ b/rust/geometry/src/document/retained_wire.rs
+@@ -79,7 +79,7 @@
+         }
+         // u32 counts widened before arithmetic: cannot overflow u64.
+         let bytes = u64::from(self.vertices) * 24 + u64::from(self.triangles) * 88;
+-        if bytes > max_bytes.saturating_add(1) {
++        if bytes > max_bytes {
+             return Err("mesh exceeds max_bytes");
+         }
+         Ok(bytes)

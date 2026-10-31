@@ -25,6 +25,34 @@ Each drawing includes:
 | **Architectural symbols** | Door swings, window frames, stair arrows |
 | **Annotations** | Dimensions and labels |
 
+## Construction profiles
+
+Construction projection extracts constant `IfcExtrudedAreaSolid` profiles from
+representations selected by the mesh path, including mapped geometry. It excludes
+mapped duplicates of direct geometry and follows up to 32 mapped levels; a solid
+at level 32 remains eligible. Placement and mapping transforms use the mesh
+router's unit and coordinate services, with world translations kept in f64.
+
+Before extraction or product meshing, a private source pass admits selected
+`Items` lists and mapped occurrences across the whole product. Repeated roots and
+shared DAG occurrences pay again, regardless of mesh caches or instancing. Each
+raw list, including ignored non-reference slots, is charged before its members
+are decoded. The independent default allowances are 65,536 mapped attempts and
+65,536 list members. Exhaustion withholds the entire current root and later
+roots, retaining completed roots and reporting one logical refusal. Existing
+per-controller guards separately bound actual rendering work. The dedicated
+`IfcAlignment` directrix route retains its existing behavior; ordinary
+representation fallback uses product admission.
+
+A later malformed representation retains earlier drawing profiles; strict mesh
+entrypoints return the shape error before rendering any root. A terminal resource
+stop instead ends the entire extraction scan, retaining completed profiles and
+the sticky execution stop. Rust's existing diagnostics tuple has no result-level
+typed stop: a known affected product receives an `execution-stop:` reason, while
+no product ID is invented when the stop precedes a known product. WASM currently
+exposes only skipped product IDs. Neither surface certifies completeness of a
+partial drawing.
+
 ## Drawings After Repositioning
 
 In the viewer, section cuts and construction projection use the model's current

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fingerprintColumns } from '../../diff/src/wasm-columns.ts';
 import { restoreDiffReferences } from '../../diff/src/wasm-result.ts';
@@ -108,6 +108,7 @@ test('actual WASM and JS column/reference transport match the TS oracle (#8042)'
           assert.equal(base.entityCount, vector.base.length);
           const actual = restoreDiffReferences(base.compare(head, vector.options), vector.base, vector.head);
           assert.deepEqual(plain(actual), vector.expected, `${name}: ${vector.name}`);
+          assert.equal(JSON.stringify(plain(actual)), JSON.stringify(vector.expected), `${name}: ${vector.name}: property order`);
         } finally { head.free(); }
       } finally { base.free(); }
     }
@@ -239,12 +240,11 @@ test('actual WASM rejects invalid raw JSON before surrogate normalization (#8081
 });
 
 // #8042/#8081: the raw typed projection preserves every original code unit
-// while ignoring extras; staging's unchanged public TS engine supplies expectations.
+// while ignoring extras; the private pre-cutover oracle supplies expectations.
 test('actual WASM fingerprints preserve every lossless typed boundary (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const boundaries = value => [
     ...['ifcType', 'name', 'description', 'objectType', 'predefinedType', 'tag']
       .map(field => [field, { ifcType: 'IfcWall', [field]: value }]),
@@ -275,11 +275,10 @@ test('actual WASM fingerprints preserve every lossless typed boundary (#8081)', 
   }
 });
 
-test('actual WASM lossless fingerprints equal the public TS engine without observing extras (#8081)', async context => {
+test('actual WASM lossless fingerprints equal the private oracle without observing extras (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oracle = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oracle)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const ts = await import(oracle.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const ts = await loadDiffOracle('fingerprint');
   for (const scalar of ['\ud800', '\udfff', 'a\ud800b', '\udfff\ud800', '\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '']) {
     const input = {
       ifcType: `IfcWall${scalar}`, name: scalar, description: scalar,
@@ -326,9 +325,8 @@ test('actual WASM lossless fingerprints equal the public TS engine without obser
 
 test('actual WASM fingerprints distinguish lone units, replacement and literal escapes (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const values = ['\ud800', '\ud801', '\udfff', '\ufffd', 'literal\\ud800'];
   const hashes = values.map(value => {
     const input = { ifcType: 'IfcWall', name: value,
@@ -346,9 +344,8 @@ test('actual WASM fingerprints distinguish lone units, replacement and literal e
 // Object.keys(Map), so compare their raw entries with an equivalent object.
 test('actual WASM raw fingerprint Map entries preserve original code units (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   for (const key of ['\ud800', '\udfff', '\ufffd', 'literal\\ud800']) {
     const entries = [[key, [key, { [key]: key }]], ['other', 2]];
     const input = value => ({ ifcType: 'IfcWall', propertySets: [
@@ -365,10 +362,9 @@ function losslessInput(options) {
   const { keyAliases, ...rest } = options;
   return { ...rest, ...(keyAliases === undefined ? {} : { keyAliases: [...keyAliases] }) };
 }
-async function comparisonOracle(context) {
-  const path = new URL('../../diff/dist/diff.js', import.meta.url);
-  if (!existsSync(path)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  return import(path.href);
+async function comparisonOracle() {
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  return loadDiffOracle('diff');
 }
 // #8042/#8106: option strings must change live matching, independently of model
 // strings. Keep both revisions fixed while replacing only one option endpoint.
@@ -599,7 +595,7 @@ test('actual raw WASM decodes lossless comparison getters once (#8081)', async c
   } finally { base.free(); head.free(); }
 });
 
-test('actual compareWithWasm preserves lossless options and retains the staged column guard (#8081)', async context => {
+test('actual compareWithWasm preserves lossless constructor and option strings (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
   const oracle = await comparisonOracle(context); if (!oracle) return;
   const outputs = ['wasm-diff', 'wasm-runtime'].map(name => new URL(`../../diff/dist/${name}.js`, import.meta.url));
@@ -621,10 +617,10 @@ test('actual compareWithWasm preserves lossless options and retains the staged c
       if (field === 'component name') row.components = { [lone]: 'hash' };
       else if (field === 'component hash') row.components = { component: lone };
       else row[field] = lone;
-      assert.throws(() => compareWithWasm([row], []), /well-formed UTF-16/, field);
+      assert.deepEqual(compareWithWasm([row], []), diffModels([row], []), field);
     }
   }
-  for (const scalar of ['\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '\\udfff', '']) {
+  for (const scalar of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800', '\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '\\udfff', '']) {
     const row = comparisonRow(scalar);
     // Neither transport should inspect opaque adapter refs.
     Object.defineProperty(row, 'ref', { get() { throw new Error('opaque ref observed'); } });
@@ -647,5 +643,546 @@ test('actual compareWithWasm preserves lossless options and retains the staged c
         assert.deepEqual(restoreDiffReferences(base.compare(head, losslessInput(option)), baseRows, headRows), expected);
       }
     } finally { base.free(); head.free(); }
+  }
+});
+
+
+test('actual raw WASM component holes throw TypeError and preserve the same instance (#8042)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
+  const valid = { ifcType: 'IfcWall', name: '\ud800',
+    propertySets: [{ name: 'P', properties: [{ name: 'value', value: 'after rejection' }] }],
+    quantitySets: [{ name: 'Q', quantities: new Array(1) }],
+    typeAssignments: new Array(2) };
+  const expectedComponents = Object.entries(oracle.buildComponentFingerprints(valid));
+  const expectedData = oracle.buildDataFingerprint(valid);
+  for (const field of ['propertySets', 'quantitySets']) {
+    for (const count of [1, 2]) {
+      const sparse = new Array(count);
+      const members = field === 'propertySets' ? 'properties' : 'quantities';
+      sparse.push({ name: 'present', [members]: [] });
+      assert.throws(() => wasm.diffBuildComponentFingerprints({ ifcType: 'IfcWall', [field]: sparse }),
+        error => error instanceof TypeError && error.message === "Cannot read properties of undefined (reading 'name')",
+        `${field}:${count}: must be a host TypeError, never a WASM panic/trap`);
+      // No reinitialization: both valid operations use the instance that just
+      // rejected the raw input, including successful nested sparse components.
+      assert.deepEqual(Object.entries(wasm.diffBuildComponentFingerprints(valid)), expectedComponents);
+      assert.equal(wasm.diffBuildDataFingerprint(valid), expectedData);
+    }
+  }
+});
+
+// Five locations whose elements the oracle reads `.name` from (#8042, #8114).
+function sparseLocations(slots) {
+  const set = (members, content) => ({ name: 'S', [members]: content });
+  return [
+    ['propertySets', { propertySets: slots }],
+    ['quantitySets', { quantitySets: slots }],
+    ['typeAssignments', { typeAssignments: slots }],
+    ['properties', { propertySets: [set('properties', slots)] }],
+    ['quantities', { quantitySets: [set('quantities', slots)] }],
+  ];
+}
+function thrown(call) {
+  try { call(); } catch (error) { return error; }
+  return undefined;
+}
+
+test('actual raw WASM rejects present null/undefined records like the TS oracle, never as holes (#8042, #8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
+  const valid = { ifcType: 'IfcWall', name: '\ud800',
+    // The literal property-member hole tests sparse recovery (#8042, #8114).
+    // eslint-disable-next-line no-sparse-arrays
+    propertySets: [{ name: 'P', properties: [{ name: 'value', value: 'after rejection' }, ,] }],
+    quantitySets: [{ name: 'Q', quantities: new Array(1) }], typeAssignments: new Array(2) };
+  const expectedData = oracle.buildDataFingerprint(valid);
+  const expectedComponents = Object.entries(oracle.buildComponentFingerprints(valid));
+  const present = { name: 'present', properties: [], quantities: [], type: 'IfcWallType' };
+  for (const missing of [null, undefined]) {
+    const label = String(missing);
+    // Both literal holes distinguish absent slots from present null/undefined (#8042, #8114).
+    // eslint-disable-next-line no-sparse-arrays
+    for (const slots of [[missing], [present, missing], [, missing], [missing, , present]]) {
+      for (const [location, fields] of sparseLocations(slots)) {
+        const input = { ifcType: 'IfcWall', ...fields };
+        const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+          ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];
+        for (const [rawName, oracleName] of pairs) {
+          const expected = thrown(() => oracle[oracleName](input));
+          assert.ok(expected instanceof TypeError, `${location}/${label}: the oracle must reject (${rawName})`);
+          const actual = thrown(() => wasm[rawName](input));
+          assert.ok(actual instanceof TypeError, `${location}/${label}: ${rawName} must throw a host TypeError, got ${String(actual)}`);
+          assert.equal(actual.message, expected.message, `${location}/${label}: ${rawName} message`);
+          // No reinitialization: the instance that rejected the raw input still
+          // serves valid sparse input byte-identically.
+          assert.equal(wasm.diffBuildDataFingerprint(valid), expectedData);
+          assert.deepEqual(Object.entries(wasm.diffBuildComponentFingerprints(valid)), expectedComponents);
+        }
+      }
+    }
+  }
+});
+
+test('actual raw WASM keeps absent, empty, hole and null distinct and matches TS where TS accepts (#8042, #8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
+  // One record valid in every location: set, entry and type assignment.
+  const entry = { name: 'E', value: 1, properties: [], quantities: [], type: 'IfcWallType' };
+  const shapes = {
+    absent: () => [], empty: () => [[]], hole: () => [new Array(1)], two: () => [new Array(2)],
+    // A leading literal hole is a distinct oracle collection shape (#8042, #8114).
+    // eslint-disable-next-line no-sparse-arrays
+    elision: () => [[, entry]], present: () => [[entry]],
+  };
+  for (const [location] of sparseLocations([])) {
+    const hashes = new Map();
+    for (const [shape, make] of Object.entries(shapes)) {
+      const [slots] = make();
+      // A nested set cannot be absent: the oracle requires its member array.
+      if (shape === 'absent' && !['propertySets', 'quantitySets', 'typeAssignments'].includes(location)) continue;
+      const fields = shape === 'absent' ? {} : Object.fromEntries(sparseLocations(slots).filter(([name]) => name === location)
+        .flatMap(([, value]) => Object.entries(value)));
+      const input = { ifcType: 'IfcWall', ...fields };
+      const expected = oracle.buildDataFingerprint(input);
+      assert.equal(wasm.diffBuildDataFingerprint(input), expected, `${location}/${shape}`);
+      hashes.set(shape, expected);
+      // Outer component holes are a documented raw TypeError; nested holes are valid.
+      if (!['propertySets', 'quantitySets'].includes(location) || !['hole', 'two', 'elision'].includes(shape)) {
+        assert.deepEqual(wasm.diffBuildComponentFingerprints(input), oracle.buildComponentFingerprints(input), `${location}/${shape}`);
+      }
+    }
+    if (hashes.has('absent')) assert.equal(hashes.get('absent'), hashes.get('empty'), `${location}: absent and empty are equivalent`);
+    assert.equal(new Set(hashes.values()).size, 5, `${location}: hole cardinality and records stay distinct`);
+    for (const missing of [null, undefined]) {
+      const fields = Object.fromEntries(sparseLocations([missing]).filter(([name]) => name === location)
+        .flatMap(([, value]) => Object.entries(value)));
+      assert.throws(() => wasm.diffBuildDataFingerprint({ ifcType: 'IfcWall', ...fields }), TypeError, `${location}: ${missing} is not a hole`);
+    }
+  }
+  for (const field of ['propertySets', 'quantitySets', 'typeAssignments']) {
+    for (const nullish of [null, undefined]) {
+      const input = { ifcType: 'IfcWall', [field]: nullish };
+      assert.equal(wasm.diffBuildDataFingerprint(input), oracle.buildDataFingerprint(input), `${field}: collection-level ${nullish}`);
+    }
+  }
+});
+
+test('actual raw WASM preserves thrown values at all five fingerprint locations (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const valid = { ifcType: 'IfcWall', propertySets: [{ name: 'P', properties: [{ name: 'a', value: 1 }] }] };
+  const methods = ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints'];
+  const expected = methods.map(method => wasm[method](valid));
+  for (const [location] of sparseLocations([])) {
+    for (const raised of [new Error('original element failure'), Symbol('original failure'), 37,
+      '\u0001host-type-error:spoofed', { toString() { throw new Error('must not stringify the raised value'); } }]) {
+      for (const access of ['element getter', 'has trap', 'record getter']) {
+        let slots = [{ name: 'ok', properties: [], quantities: [], type: 'T' }];
+        if (access === 'element getter') {
+          Object.defineProperty(slots, 0, { get() { throw raised; } });
+        } else if (access === 'has trap') {
+          slots = new Proxy(slots, { has() { throw raised; } });
+        } else {
+          Object.defineProperty(slots[0], 'name', { get() { throw raised; } });
+        }
+        const fields = sparseLocations(slots).find(([name]) => name === location)[1];
+        for (const method of methods) {
+          assert.strictEqual(thrown(() => wasm[method]({ ifcType: 'IfcWall', ...fields })), raised,
+            `${method}/${location}/${access}: preserve the original thrown value`);
+          // Reuse the initialized module after every individual rejection.
+          methods.forEach((recover, index) => assert.deepEqual(wasm[recover](valid), expected[index]));
+        }
+      }
+    }
+  }
+});
+
+test('actual raw WASM checks component holes between whole collection projections (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
+  const valid = { ifcType: 'IfcWall', propertySets: [{ name: 'P', properties: new Array(1) }], typeAssignments: new Array(2) };
+  const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+    ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];
+  const cases = [
+    // The literal outer hole tests component-versus-data rejection order (#8114).
+    // eslint-disable-next-line no-sparse-arrays
+    { propertySets: [,], quantitySets: [null] },
+    // The literal outer hole tests component-versus-data rejection order (#8114).
+    // eslint-disable-next-line no-sparse-arrays
+    { quantitySets: [,], typeAssignments: [null] },
+    // The literal outer hole tests rejection order before nested null (#8114).
+    // eslint-disable-next-line no-sparse-arrays
+    { propertySets: [,], quantitySets: [{ name: 'Q', quantities: [null] }] },
+    // The complete current map runs before its holes are iterated.
+    // The literal hole before null tests collection projection error precedence (#8114).
+    // eslint-disable-next-line no-sparse-arrays
+    { propertySets: [, null], quantitySets: [undefined] },
+    // The literal hole before null tests collection projection error precedence (#8114).
+    // eslint-disable-next-line no-sparse-arrays
+    { quantitySets: [, null], typeAssignments: [undefined] },
+    // The literal hole before a record tests nested null error precedence (#8114).
+    // eslint-disable-next-line no-sparse-arrays
+    { propertySets: [, { name: 'P', properties: [null] }], quantitySets: [undefined] },
+    // The literal hole before a record tests nested null error precedence (#8114).
+    // eslint-disable-next-line no-sparse-arrays
+    { quantitySets: [, { name: 'Q', quantities: [null] }], typeAssignments: [undefined] },
+  ];
+  for (const [index, fields] of cases.entries()) {
+    for (const [rawName, oracleName] of pairs) {
+      const input = { ifcType: 'IfcWall', ...fields };
+      const expected = thrown(() => oracle[oracleName](input));
+      const nullWins = rawName === 'diffBuildDataFingerprint' || index >= 3;
+      assert.ok(expected instanceof TypeError, `${index}/${oracleName}: oracle rejects`);
+      assert.equal(expected.message, `Cannot read properties of ${nullWins ? 'null' : 'undefined'} (reading 'name')`);
+      const actual = thrown(() => wasm[rawName](input));
+      assert.ok(actual instanceof TypeError, `${index}/${rawName}: host TypeError`);
+      assert.equal(actual.message, expected.message, `${index}/${rawName}: precedence`);
+      assert.deepEqual(wasm[rawName](valid), oracle[oracleName](valid), `${index}/${rawName}: same-instance recovery`);
+    }
+  }
+  for (const field of ['propertySets', 'quantitySets']) {
+    const next = field === 'propertySets' ? 'quantitySets' : 'typeAssignments';
+    for (const [rawName, oracleName] of pairs) {
+      const observations = [];
+      // The getter returns a literal hole to test later-field observation order (#8114).
+      // eslint-disable-next-line no-sparse-arrays
+      const input = { ifcType: 'IfcWall', get [field]() { observations.push(field); return [,]; },
+        get [next]() { observations.push(next); return [null]; } };
+      const expected = thrown(() => oracle[oracleName](input));
+      const expectedReads = observations.splice(0);
+      const actual = thrown(() => wasm[rawName](input));
+      assert.equal(actual.message, expected.message);
+      assert.deepEqual(observations, expectedReads, `${rawName}/${field}: do not observe later fields early`);
+    }
+  }
+});
+
+test('actual raw WASM reads one length then HasProperty before Get, without a huge upfront reserve (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const methods = ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints'];
+  const valid = { ifcType: 'IfcWall', name: '\ud800' };
+  const expected = methods.map(method => wasm[method](valid));
+  for (const [location] of sparseLocations([])) {
+    for (const method of methods) {
+      const record = { name: 'E', properties: [], quantities: [], type: 'T' };
+      const observations = [];
+      // Proxy traps must observe the literal missing index between records (#8114).
+      // eslint-disable-next-line no-sparse-arrays
+      const slots = new Proxy([record, , record], {
+        get(target, key, receiver) {
+          observations.push(`get:${String(key)}`);
+          return Reflect.get(target, key, receiver);
+        },
+        has(target, key) { observations.push(`has:${String(key)}`); return Reflect.has(target, key); },
+      });
+      const fields = sparseLocations(slots).find(([name]) => name === location)[1];
+      if (method === 'diffBuildComponentFingerprints' && ['propertySets', 'quantitySets'].includes(location)) {
+        assert.throws(() => wasm[method]({ ifcType: 'IfcWall', ...fields }), TypeError);
+      } else {
+        wasm[method]({ ifcType: 'IfcWall', ...fields });
+      }
+      assert.deepEqual(observations, ['get:length', 'has:0', 'get:0', 'has:1', 'has:2', 'get:2'], `${method}/${location}`);
+      // Array.map's species allocation is outside the raw decoder contract.
+      // Do not invoke the TS oracle on this deliberately enormous array.
+      const huge = new Array(0xffff_ffff);
+      huge[0] = null;
+      const hugeFields = sparseLocations(huge).find(([name]) => name === location)[1];
+      assert.throws(() => wasm[method]({ ifcType: 'IfcWall', ...hugeFields }),
+        error => error instanceof TypeError && error.message === "Cannot read properties of null (reading 'name')",
+        `${method}/${location}: invalid first record must reject before allocation`);
+      methods.forEach((recover, index) => assert.deepEqual(wasm[recover](valid), expected[index]));
+    }
+  }
+});
+
+test('actual raw WASM catches length and revoked-array errors without poisoning later calls (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const methods = ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints'];
+  const valid = { ifcType: 'IfcWall' };
+  const expected = methods.map(method => wasm[method](valid));
+  for (const [location] of sparseLocations([])) {
+    for (const method of methods) {
+      for (const raised of [new Error('length failure'), Symbol('length failure')]) {
+        const slots = new Proxy([], { get(target, key, receiver) {
+          if (key === 'length') throw raised;
+          return Reflect.get(target, key, receiver);
+        } });
+        const fields = sparseLocations(slots).find(([name]) => name === location)[1];
+        assert.strictEqual(thrown(() => wasm[method]({ ifcType: 'IfcWall', ...fields })), raised, `${method}/${location}/length`);
+        methods.forEach((recover, index) => assert.deepEqual(wasm[recover](valid), expected[index]));
+      }
+      const { proxy, revoke } = Proxy.revocable([], {});
+      revoke();
+      const fields = sparseLocations(proxy).find(([name]) => name === location)[1];
+      assert.throws(() => wasm[method]({ ifcType: 'IfcWall', ...fields }), TypeError, `${method}/${location}/Array.isArray`);
+      methods.forEach((recover, index) => assert.deepEqual(wasm[recover](valid), expected[index]));
+    }
+  }
+});
+
+test('actual raw WASM applies Array.map ToLength and ArrayCreate bounds to sparse lengths (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
+  const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+    ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];
+  const valid = { ifcType: 'IfcWall', propertySets: [{ name: 'P', properties: [] }] };
+  const record = { name: 'E', value: 1, properties: [], quantities: [], type: 'T' };
+  // Every proxy throws SENTINEL on its fourth index probe, so a uint32-wrapped
+  // length stops after three holes in either implementation, never a full walk.
+  const SENTINEL = Object.freeze({ sentinel: 'fourth index probe' });
+  const cases = [ // [label, reported length, target slots, expected outcome, index probes]
+    ['-1', () => -1, [], 'empty', 0],
+    ['-1.5', () => -1.5, [], 'empty', 0],
+    ['coercible -1', counts => ({ valueOf() { counts.valueOf++; return -1; } }), [], 'empty', 0],
+    ['-0.5', () => -0.5, [], 'empty', 0],
+    ['NaN', () => NaN, [], 'empty', 0],
+    ['-Infinity', () => -Infinity, [], 'empty', 0],
+    ['2^32', () => 2 ** 32, [], 'range', 0],
+    ['2^32+1', () => 2 ** 32 + 1, [], 'range', 0],
+    ['Infinity', () => Infinity, [], 'range', 0],
+    ['2^32-1', () => 2 ** 32 - 1, [], 'sentinel', 4],
+    ['1.5', () => 1.5, [record], 'parity', 2],
+    ["'3'", () => '3', [], 'parity', 3],
+  ];
+  function outcome(call) {
+    try {
+      const value = call();
+      return { value: typeof value === 'object' ? Object.entries(value) : value };
+    } catch (error) {
+      if (error === SENTINEL) return { error: 'SENTINEL' };
+      return { error: error instanceof Error ? [error.constructor.name, error.message] : ['thrown', String(error)] };
+    }
+  }
+  function observe(call, length, target) {
+    const counts = { probes: 0, valueOf: 0 };
+    const reported = length(counts);
+    // Canonical numeric keys round-trip through Number, covering every array index.
+    const index = key => typeof key === 'string' && String(Number(key)) === key;
+    const probe = () => { if (++counts.probes > 3) throw SENTINEL; };
+    const slots = new Proxy(target.slice(), {
+      get(object, key, receiver) {
+        if (key === 'length') return reported;
+        if (index(key)) probe();
+        return Reflect.get(object, key, receiver);
+      },
+      has(object, key) { if (index(key)) probe(); return Reflect.has(object, key); },
+    });
+    return { outcome: outcome(() => call(slots)), ...counts };
+  }
+  for (const [location] of sparseLocations([])) {
+    const fields = slots => sparseLocations(slots).find(([name]) => name === location)[1];
+    for (const [rawName, oracleName] of pairs) {
+      const empty = outcome(() => wasm[rawName]({ ifcType: 'IfcWall', ...fields([]) }));
+      for (const [label, length, target, kind, probes] of cases) {
+        const id = `${rawName}/${location}/${label}`;
+        const actual = observe(slots => wasm[rawName]({ ifcType: 'IfcWall', ...fields(slots) }), length, target);
+        const expected = observe(slots => oracle[oracleName]({ ifcType: 'IfcWall', ...fields(slots) }), length, target);
+        // The oracle's map also reads `constructor`; that documented non-parity is not counted.
+        assert.deepEqual(actual, expected, id);
+        assert.equal(actual.probes, probes, `${id}: index probes`);
+        assert.equal(actual.valueOf, label === 'coercible -1' ? 1 : 0, `${id}: one length coercion`);
+        if (kind === 'empty') assert.deepEqual(actual.outcome, empty, `${id}: same as an empty collection`);
+        if (kind === 'range') assert.deepEqual(actual.outcome, { error: ['RangeError', 'Invalid array length'] }, id);
+        if (kind === 'sentinel') assert.deepEqual(actual.outcome, { error: 'SENTINEL' }, `${id}: bounded walk parity`);
+        assert.deepEqual(wasm[rawName](valid), oracle[oracleName](valid), `${id}: same-instance recovery`);
+      }
+    }
+  }
+});
+
+function fingerprintOutcome(call) {
+  try {
+    const value = call();
+    return { value: typeof value === 'object' ? Object.entries(value) : value };
+  } catch (error) {
+    return { error: error instanceof Error ? [error.constructor.name, error.message] : ['thrown', String(error)] };
+  }
+}
+
+test('actual raw WASM hashes real 1e3 and 1e5 hole arrays like the oracle in constant WASM memory (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
+  // initSync returns the live instance's exports once initialized.
+  const { memory } = wasm.initSync({ module: readFileSync(binary) });
+  const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+    ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];
+  const record = { name: 'D', value: '\ud800', properties: [], quantities: [], type: 'T' };
+  const holes = (count, before = [], after = []) => {
+    const values = before.slice();
+    values.length += count;
+    values.push(...after);
+    return values;
+  };
+  const shapes = [count => holes(count), count => holes(count, [record]), count => holes(count, [], [record])];
+  function compareAll(count) {
+    let comparisons = 0;
+    const compare = (id, fields) => {
+      for (const [rawName, oracleName] of pairs) {
+        const input = { ifcType: 'IfcWall', name: '\udc00', ...fields };
+        assert.deepEqual(fingerprintOutcome(() => wasm[rawName](input)),
+          fingerprintOutcome(() => oracle[oracleName](input)), `${id}/${count}/${rawName}`);
+        comparisons++;
+      }
+    };
+    for (const [location] of sparseLocations([])) {
+      for (const [shape, make] of shapes.entries()) {
+        compare(`${location}/${shape}`, sparseLocations(make(count)).find(([name]) => name === location)[1]);
+      }
+    }
+    // Same-named sets reach the oracle's stableSerialize tiebreak with hole runs.
+    for (const [field, members] of [['propertySets', 'properties'], ['quantitySets', 'quantities']]) {
+      compare(`${field}/tiebreak`, { [field]: [{ name: 'D', [members]: holes(count, [record]) },
+        { name: 'D', [members]: holes(count) }, { name: 'D', [members]: holes(count - 1, [], [record]) }] });
+    }
+    return comparisons;
+  }
+  assert.equal(compareAll(1_000), 34);
+  // Identical shapes repeat the same O(present) allocations, so a hundredfold
+  // hole count must not grow linear memory. Before #8114 every hole held a
+  // decoder slot and a JSON value (tens of bytes each).
+  const before = memory.buffer.byteLength;
+  assert.equal(compareAll(100_000), 34);
+  assert.equal(memory.buffer.byteLength, before, 'no per-hole WASM memory');
+});
+
+test('actual raw WASM engine-length probe matches this engine without observing String.prototype (#8114)', async context => {
+  const snippets = new URL('../pkg-diff/snippets/', import.meta.url);
+  if (!existsSync(snippets)) { context.skip('WASM bundle missing; run pnpm build:wasm'); return; }
+  let fits;
+  for (const directory of readdirSync(snippets)) {
+    for (const file of readdirSync(new URL(`${directory}/`, snippets))) {
+      const namespace = await import(new URL(`${directory}/${file}`, snippets).href);
+      if (typeof namespace.fpStringFits === 'function') fits = namespace.fpStringFits;
+    }
+  }
+  assert.equal(typeof fits, 'function', 'the built glue ships the length probe');
+  // This engine's own maximum: bisect the lengths String.prototype.repeat
+  // accepts (rope construction, no materialized text).
+  let fitting = 0;
+  let failing = 2 ** 53;
+  while (failing - fitting > 1) {
+    const middle = Math.floor((fitting + failing) / 2);
+    if (thrown(() => ' '.repeat(middle)) === undefined) fitting = middle; else failing = middle;
+  }
+  const observed = [];
+  const hooks = ['repeat', 'concat', 'padEnd', 'padStart', 'toString', 'valueOf', Symbol.toPrimitive, Symbol.iterator];
+  const originals = new Map(hooks.map(key => [key, Object.getOwnPropertyDescriptor(String.prototype, key)]));
+  for (const key of hooks) {
+    Object.defineProperty(String.prototype, key, { configurable: true,
+      get() { observed.push(String(key)); return originals.get(key)?.value; } });
+  }
+  let atMaximum, overMaximum, unrepresentable;
+  try {
+    atMaximum = thrown(() => fits(fitting));
+    overMaximum = thrown(() => fits(failing));
+    unrepresentable = thrown(() => fits(2 ** 64));
+  } finally {
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(String.prototype, key, descriptor); else delete String.prototype[key];
+    }
+  }
+  assert.deepEqual(observed, [], 'no mutable String.prototype lookup');
+  assert.equal(atMaximum, undefined, 'the longest buildable string fits');
+  // The oracle's stableSerialize join over holes overflows with exactly this error.
+  const oracleOverflow = thrown(() => new Array(failing + 1).join(' '));
+  assert.ok(oracleOverflow instanceof RangeError);
+  for (const actual of [overMaximum, unrepresentable]) {
+    assert.ok(actual instanceof RangeError);
+    assert.equal(actual.message, oracleOverflow.message);
+  }
+});
+
+test('actual raw WASM restores mode and exceptions around reentrant fingerprint calls (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const methods = ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints'];
+  const valid = { ifcType: 'IfcWall', propertySets: [{ name: 'P', properties: [] }] };
+  const expected = methods.map(method => wasm[method](valid));
+  for (const outer of methods) {
+    for (const inner of methods) {
+      for (const outcome of ['success', 'null record', 'uncaught getter']) {
+        const sentinel = Symbol('nested getter');
+        let reads = 0;
+        const slots = new Array(2);
+        Object.defineProperty(slots, 0, { get() {
+          reads++;
+          if (outcome === 'success') {
+            assert.deepEqual(wasm[inner](valid), expected[methods.indexOf(inner)]);
+          } else if (outcome === 'null record') {
+            assert.throws(() => wasm[inner]({ ifcType: 'IfcWall', propertySets: [null] }), TypeError);
+          } else {
+            const record = { get name() { throw sentinel; }, properties: [] };
+            assert.strictEqual(thrown(() => wasm[inner]({ ifcType: 'IfcWall', propertySets: [record] })), sentinel);
+          }
+          return { name: 'P', properties: [] };
+        } });
+        const error = thrown(() => wasm[outer]({ ifcType: 'IfcWall', propertySets: slots, quantitySets: [null] }));
+        assert.ok(error instanceof TypeError, `${outer}/${inner}/${outcome}: outer error remains its own TypeError`);
+        assert.equal(error.message, `Cannot read properties of ${outer === 'diffBuildDataFingerprint' ? 'null' : 'undefined'} (reading 'name')`);
+        assert.equal(reads, 1, `${outer}/${inner}/${outcome}: getter observes once`);
+        // With no outer error to hide a stale inner exception, the same
+        // reentrant getter must also permit the outer call to succeed.
+        slots.length = 1;
+        assert.deepEqual(wasm[outer]({ ifcType: 'IfcWall', propertySets: slots }), expected[methods.indexOf(outer)]);
+        assert.equal(reads, 2, `${outer}/${inner}/${outcome}: successful outer reads once`);
+        methods.forEach((recover, index) => assert.deepEqual(wasm[recover](valid), expected[index]));
+      }
+    }
+  }
+});
+
+test('actual raw WASM keeps one Error prefix for non-string record names (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  for (const [location] of sparseLocations([])) {
+    for (const name of [42, false, {}, Symbol('invalid name')]) {
+      const fields = sparseLocations([{ name, properties: [], quantities: [], type: 'T' }]).find(([key]) => key === location)[1];
+      for (const method of ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints']) {
+        assert.strictEqual(thrown(() => wasm[method]({ ifcType: 'IfcWall', ...fields })), 'Error: expected a string', `${method}/${location}`);
+        assert.equal(typeof wasm.diffBuildDataFingerprint({ ifcType: 'IfcWall' }), 'string');
+      }
+    }
+  }
+});
+
+
+test('raw fingerprint iterable completion follows TS truthiness without numeric coercion (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
+  const sentinel = Object.freeze({ unexpected: 'iterator value or numeric coercion' });
+  const truthy = ['true', 0.5, 2 ** 32, {}, [], Symbol('done'), 1n,
+    { valueOf() { throw sentinel; }, [Symbol.toPrimitive]() { throw sentinel; } }];
+  for (const done of truthy) {
+    for (const field of ['materials', 'classifications']) {
+      const make = () => {
+        const trace = [];
+        const values = {
+          // The TS projection invokes filter; Array.from supplies its ordinary
+          // iterator truthiness semantics. Rust consumes the iterable directly.
+          filter(predicate) { return Array.from(this).filter(predicate); },
+          [Symbol.iterator]() {
+            let first = true;
+            return { next() {
+              trace.push('next');
+              if (first) { first = false; return { done: false, value: 'A' }; }
+              return { get done() { trace.push('done'); return done; },
+                get value() { throw sentinel; } };
+            } };
+          },
+        };
+        return { input: { ifcType: 'IfcWall', [field]: values }, trace };
+      };
+      for (const [raw, reference] of [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+        ['diffBuildComponentFingerprints', 'buildComponentFingerprints']]) {
+        const expected = make(), actual = make();
+        assert.deepEqual(wasm[raw](actual.input), oracle[reference](expected.input), field);
+        assert.deepEqual(actual.trace, expected.trace, 'completion neither reads value nor coerces done');
+      }
+    }
   }
 });

@@ -21,7 +21,7 @@
  * verdict either way. Searching the whole chunk for fingerprints can be fooled
  * in both directions; the prologue cannot.
  *
- * Two kinds of code are skipped on the way in because they are not the plugin's
+ * These kinds of code are skipped because they are not the plugin's
  * printing, or are only quotes:
  *   * Vite's `const __vite__mapDeps=...` preload line, prepended after the
  *     plugin ran, always minified;
@@ -29,6 +29,9 @@
  *     specifier is the
  *     only string in them (kept, with the specifier blanked, since SWC prints
  *     the declaration clause too: `import { a as b } from` vs `import{a as b}from`).
+ *   * a leading URL constant (optionally inside the worker's async wrapper),
+ *     whose plain literal URL is blanked too. A retained worker starts with
+ *     this declaration, before it reaches eight punctuation marks (#7955).
  * The prologue then normally runs into the plugin's own wrapper
  * (`let __tla=Promise.all([`, `(async()=>{`), so it is the plugin's output
  * that is being judged.
@@ -49,6 +52,9 @@ const MAP_DEPS = /^const __vite__mapDeps=[^\n]*\n/;
 // comments and string-named exports stay opaque rather than letting
 // their contents contribute punctuation to a minification verdict (#7377).
 const LEADING_MODULE_DECLARATION = /^\s*(?:import\s*(?:[\w$*{}\s,]*?\s*from\s*)?|export\s*(?:\{[\w$\s,]*\}|\*\s*(?:as\s+[\w$]+\s*)?)\s*from\s*)("[^"\\\r\n]*"|'[^'\\\r\n]*')\s*;?/;
+// Only a complete, plain URL declaration is transparent. Escapes, template
+// interpolation and comments remain opaque; quoted punctuation never counts.
+const LEADING_URL = /^\s*(?:\(\s*async\s*\(\s*\)\s*=>\s*\{\s*)?(?:const|let|var)\s+[\w$]+\s*=\s*new\s+URL\s*\(\s*("[^"\\\r\n]*"|'[^'\\\r\n]*'|`[^`\\$\r\n]*`)\s*,\s*(?:self\.location\.origin|import\.meta\.url)\s*\)/;
 const PUNCTUATION = /[=,{}();:[\]]/g;
 const PUNCTUATION_BESIDE_WHITESPACE = /[=,{}();:[\]][ \t\n]|[ \t][=,{}();:[\]]/;
 export const MIN_PUNCTUATION = 8;
@@ -60,6 +66,11 @@ export function prologue(text) {
   for (let m = rest.match(LEADING_MODULE_DECLARATION); m; m = rest.match(LEADING_MODULE_DECLARATION)) {
     code += m[0].replace(m[1], '""');
     rest = rest.slice(m[0].length);
+  }
+  const url = rest.match(LEADING_URL);
+  if (url) {
+    code += url[0].replace(url[1], '""');
+    rest = rest.slice(url[0].length);
   }
   const literal = rest.search(/['"`/]/);
   return code + (literal === -1 ? rest : rest.slice(0, literal));

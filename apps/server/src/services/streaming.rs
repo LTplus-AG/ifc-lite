@@ -21,8 +21,8 @@
 //! pipeline never had.
 
 use crate::admission::AdmissionGuard;
-use crate::types::{finish_meshes, StreamEvent};
-use ifc_lite_processing::style::ModelFinishes;
+use crate::types::{pair, with_finishes, StreamEvent};
+use ifc_lite_processing::style::SpecularMaterial;
 use async_stream::stream;
 use futures::Stream;
 use ifc_lite_processing::{
@@ -54,11 +54,13 @@ use tokio::sync::mpsc;
 pub(crate) const EVENT_BUFFER_EVENTS: usize = 4;
 
 /// What the SSE bridge hears from the pipeline, forwarded as [`StreamEvent`]s.
-struct SseSink<'a> {
+struct SseSink {
     tx: mpsc::Sender<StreamEvent>,
     /// Flipped when the client has gone, so the pipeline stops between chunks.
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    finishes: ModelFinishes<'a>,
+    /// The finishes of the batch about to arrive (`on_finishes` fires just
+    /// before each `on_batch`).
+    finishes: Vec<Option<SpecularMaterial>>,
     /// The basis the batches are baked in, delivered before the first batch (#5407).
     baked_basis: Option<[f64; 16]>,
     started: bool,
@@ -66,9 +68,13 @@ struct SseSink<'a> {
     last_type: String,
 }
 
-impl ProcessingSink for SseSink<'_> {
+impl ProcessingSink for SseSink {
     fn on_frame(&mut self, frame: &FrameEvent) {
         self.baked_basis = Some(frame.baked_basis);
+    }
+
+    fn on_finishes(&mut self, finishes: &[Option<SpecularMaterial>]) {
+        self.finishes = finishes.to_vec();
     }
 
     fn on_batch(&mut self, meshes: &[MeshData], processed: usize, total: usize) {
@@ -91,7 +97,7 @@ impl ProcessingSink for SseSink<'_> {
         if !meshes.is_empty() {
             self.batch_number += 1;
             let _ = self.tx.blocking_send(StreamEvent::Batch {
-                meshes: finish_meshes(&mut self.finishes, meshes.to_vec()),
+                meshes: pair(meshes.iter().cloned(), std::mem::take(&mut self.finishes)),
                 batch_number: self.batch_number,
                 baked_basis: self.baked_basis,
             });
@@ -128,6 +134,7 @@ pub fn process_streaming(
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
     admission: Option<std::sync::Arc<AdmissionGuard>>,
+    layer_slicing: bool,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
     // Zero is a caller bug, not a reason to stall the stream.
     let initial_batch_size = initial_batch_size.max(1);
@@ -156,26 +163,26 @@ pub fn process_streaming(
     let handle = tokio::task::spawn_blocking(move || {
         let _admission = admission_for_task;
 
-        // #5984: every batch's meshes carry their IFC-authored finish. One
-        // styled-item scan up front; a file that authors none joins nothing.
         let mut sink = SseSink {
             tx: tx.clone(),
             cancel: std::sync::Arc::clone(&cancel_for_task),
-            finishes: ModelFinishes::from_content(&content),
+            finishes: Vec::new(),
             baked_basis: None,
             started: false,
             batch_number: 0,
             last_type: String::new(),
         };
 
-        let request = ProcessingRequest::default()
+        // #5984: every batch's meshes carry their IFC-authored finish, which
+        // the pass joins from its own scan (`with_finishes`).
+        let request = with_finishes(ProcessingRequest::default()
             .opening_filter(opening_filter)
-            .quality(tessellation_quality)
+            .quality(tessellation_quality).layer_slicing(layer_slicing)
             .batching(Batching::new(initial_batch_size, max_batch_size))
             // Batches are forwarded as they are emitted - retaining them
             // in the ProcessingResult would double peak memory.
             .retain_meshes(false)
-            .cancel(std::sync::Arc::clone(&cancel_for_task));
+            .cancel(std::sync::Arc::clone(&cancel_for_task)));
         let result = process(&content, &request, &mut sink);
         let started = sink.started;
         drop(sink);
@@ -203,8 +210,13 @@ pub fn process_streaming(
         // In the frame the batches above were meshed in: the `Complete` event
         // carries the symbols and `mesh_coordinate_space` together, so they
         // must agree (#4706).
-        let symbolic_data =
-            extract_symbolic_data_with_provenance_in_frame(&content, result.frame);
+        let symbolic_data = match extract_symbolic_data_with_provenance_in_frame(&content, result.frame) {
+            Ok(data) => data,
+            Err(error) => {
+                let _ = tx.blocking_send(StreamEvent::Error { message: error.to_string() });
+                return;
+            }
+        };
 
         let _ = tx.blocking_send(StreamEvent::Complete {
             stats: result.stats,

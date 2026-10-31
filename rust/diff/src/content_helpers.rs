@@ -67,9 +67,9 @@ pub(crate) fn group_kind(base: usize, head: usize) -> ContentMatchKind {
     else { ContentMatchKind::Ambiguous }
 }
 pub(crate) fn classify_pair<R>(
-    base: &EntityFingerprint<R>, head: &EntityFingerprint<R>, use_geometry: bool, tolerances: GeometryTolerances,
+    base: &EntityFingerprint<R>, head: &EntityFingerprint<R>, use_geometry: bool, strip_placement: bool, tolerances: GeometryTolerances,
 ) -> (ContentMatchKind, Option<f64>) {
-    if !use_geometry || base.geometry_hash == head.geometry_hash { return (ContentMatchKind::Renamed, None); }
+    if !use_geometry || base.geometry_hash(strip_placement) == head.geometry_hash(strip_placement) { return (ContentMatchKind::Renamed, None); }
     let change = classify_geometry_change(base.aabb.as_ref(), head.aabb.as_ref(), tolerances);
     (match change.kind { GeometryChangeKind::Moved => ContentMatchKind::Moved, GeometryChangeKind::Reshaped => ContentMatchKind::Reshaped }, change.distance)
 }

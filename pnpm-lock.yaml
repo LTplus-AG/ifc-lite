@@ -42,6 +42,9 @@ patchedDependencies:
   vite-plugin-top-level-await@1.6.0:
     hash: 623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce
     path: patches/vite-plugin-top-level-await@1.6.0.patch
+  wkt-parser@1.5.6:
+    hash: d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b
+    path: patches/wkt-parser@1.5.6.patch
 
 importers:
 
@@ -339,6 +342,9 @@ importers:
       '@ifc-lite/source-autodesk':
         specifier: workspace:^
         version: link:../../packages/source-autodesk
+      '@ifc-lite/source-bimcollab':
+        specifier: workspace:^
+        version: link:../../packages/source-bimcollab
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -475,8 +481,8 @@ importers:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.3.0)(react@19.3.0)
       react-resizable-panels:
-        specifier: ^4.14.3
-        version: 4.14.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: ^4.14.8
+        version: 4.14.8(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
@@ -492,6 +498,9 @@ importers:
       three:
         specifier: ^0.186.1
         version: 0.186.1
+      wkt-parser:
+        specifier: 1.5.6
+        version: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
       zustand:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
@@ -700,6 +709,9 @@ importers:
       '@ifc-lite/source-autodesk':
         specifier: workspace:^
         version: link:../../packages/source-autodesk
+      '@ifc-lite/source-bimcollab':
+        specifier: workspace:^
+        version: link:../../packages/source-bimcollab
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -802,6 +814,15 @@ importers:
 
   examples/headless-workflows:
     dependencies:
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../../packages/flow
+      '@ifc-lite/flow-nodes':
+        specifier: workspace:^
+        version: link:../../packages/flow-nodes
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -1177,6 +1198,9 @@ importers:
       '@ifc-lite/collab':
         specifier: workspace:^
         version: link:../collab
+      '@ifc-lite/diff':
+        specifier: workspace:^
+        version: link:../diff
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
@@ -1290,6 +1314,9 @@ importers:
         specifier: workspace:*
         version: link:../wasm
     devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.5
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1852,6 +1879,15 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/oci:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/opencde-foundation:
     devDependencies:
       typescript:
@@ -2206,6 +2242,19 @@ importers:
       '@ifc-lite/oauth-pkce':
         specifier: workspace:^
         version: link:../oauth-pkce
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../plugin-api
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/source-bimcollab:
+    dependencies:
       '@ifc-lite/plugin-api':
         specifier: workspace:^
         version: link:../plugin-api
@@ -6445,8 +6494,8 @@ packages:
       '@types/react':
         optional: true
 
-  react-resizable-panels@4.14.3:
-    resolution: {integrity: sha512-t/mJDWKBvc7sHcm/HJxJJKniqyQH6vK7oWyv8QODawYCcDwn0waBlGw0yFEwoMe6xPNKpbOFh2wN0yyina30ow==}
+  react-resizable-panels@4.14.8:
+    resolution: {integrity: sha512-kVot7JCIZct85ZY87vww95R7tI25VSTjHpEAIIy2YcsOtbtwG6l1+vDD6TCYgmgE/JSp0ADqNooHn97Y6dMOFw==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -11299,7 +11348,7 @@ snapshots:
   proj4@2.22.0(geotiff@3.0.5):
     dependencies:
       mgrs: 1.0.0
-      wkt-parser: 1.5.6
+      wkt-parser: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
     optionalDependencies:
       geotiff: 3.0.5
 
@@ -11453,7 +11502,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
 
-  react-resizable-panels@4.14.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  react-resizable-panels@4.14.8(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
@@ -12059,7 +12108,7 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
-  wkt-parser@1.5.6: {}
+  wkt-parser@1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b): {}
 
   wordwrapjs@5.1.1: {}
 

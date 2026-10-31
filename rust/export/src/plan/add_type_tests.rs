@@ -3,36 +3,15 @@
 //! in IFC4 and IFC4X3 and written on its own in IFC2X3, and later Adds typed
 //! by it. Synthetic fixtures only.
 
+use crate::plan::add_assoc_types::{NewProperty, NewPropertySet, PropertyValue};
 use crate::plan::add_test_support::*;
 use crate::plan::add_types::*;
-use crate::plan::attrs::{attribute_index, build_record, unset_required};
-use crate::plan::index::FileIndex;
+use crate::plan::attrs::build_record;
 use crate::plan::test_fixtures::{gid as fixture_gid, storey_with_typed_wall};
 use crate::plan::types::*;
 
 fn wall_type(n: u128) -> NewType {
     NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(gid(n)).with_name(format!("Type {n}"))
-}
-
-fn add_type(t: NewType) -> (ObjectRef, Disposition) {
-    (ObjectRef::Guid(t.global_id.unwrap().encode()), Disposition::AddType(Box::new(t)))
-}
-
-fn attr(out: &[u8], schema: &str, id: u32, attr: &str) -> String {
-    let index = FileIndex::scan(out, &Default::default());
-    let entity = index.type_of(id).unwrap_or_default();
-    let idx = attribute_index(schema, &entity, attr).unwrap_or_else(|| panic!("{entity} has no {attr}"));
-    crate::step_text::attribute_of(&index.raw_line(id).unwrap(), idx).unwrap()
-}
-
-fn assert_valid(out: &[u8], report: &WriteReport, schema: &str) {
-    assert_clean(report, schema);
-    assert!(crate::plan::validate::validate(out, schema).is_empty(), "{schema}: {:?}", crate::plan::validate::validate(out, schema));
-    let index = FileIndex::scan(out, &Default::default());
-    for (id, _, _, _) in index.records() {
-        let line = index.raw_line(id).unwrap();
-        assert!(unset_required(schema, &line).is_empty(), "{schema}: #{id} leaves {:?} unset", unset_required(schema, &line));
-    }
 }
 
 #[test]

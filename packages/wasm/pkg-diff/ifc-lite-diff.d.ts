@@ -5,10 +5,22 @@ export class DiffModel {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Explicit internal batch; no retained input or implicit cache.
+     */
+    static buildFingerprintBatch(bytes: Uint8Array): Uint8Array;
+    /**
      * Compare this base model with a head model, returning row-index records.
      * No JS reference is serialized, cloned, or retained inside WASM.
      */
     compare(head: DiffModel, options: any): any;
+    /**
+     * One result buffer preserves absent fields and every UTF-16 code unit.
+     */
+    comparePacked(head: DiffModel, options: any): Uint8Array;
+    /**
+     * Private facade constructor: one UTF-16 dictionary buffer, no per-string host reads.
+     */
+    static fromPacked(strings: Uint8Array, fields: Uint32Array, flags: Uint8Array, boxes: Float64Array, volumes: Float64Array, component_offsets: Uint32Array, component_pairs: Uint32Array): DiffModel;
     /**
      * Create an owned model from columnar buffers. Call free() when finished;
      * a model may participate in any number of comparisons before that.
@@ -28,14 +40,35 @@ export function diffBuildComponentFingerprints(input: any): any;
 export function diffBuildDataFingerprint(input: any): string;
 
 /**
+ * Facade ordering (#8114): the engine string-length checks of collections the
+ * facade has just projected, run where the oracle sorts and hashes them and so
+ * before the facade reads the adapter's next field. Never a fingerprint.
+ */
+export function diffCheckFingerprintCollections(input: any, components: boolean): void;
+
+/**
  * Normalize, deduplicate and validate an identity or lineage sidecar.
  */
 export function diffCreateSidecar(text: string, lineage: boolean): string;
+
+export function diffCreateSidecarValue(value: any, lineage: boolean): any;
+
+/**
+ * Derive only committed one-to-one content identities, preserving input order.
+ */
+export function diffIdentityMapFromContentMatches(value: any): any;
+
+/**
+ * Derive identities only from explicitly accepted successor suggestions.
+ */
+export function diffIdentityMapFromSuccessors(value: any): any;
 
 /**
  * Return head/base pairs in JavaScript Map insertion order.
  */
 export function diffKeyAliasesFromLineage(value: any): any;
+
+export function diffKeyAliasesFromSidecarValue(value: any): [string, string][];
 
 /**
  * Return ordered conflict diagnostics for caller-supplied lineage entries.
@@ -43,14 +76,32 @@ export function diffKeyAliasesFromLineage(value: any): any;
 export function diffLineageConflicts(value: any): string[];
 
 /**
- * Migrate keys using Rust policies, preserving the absence of orphan relations.
+ * Assemble lineage with the same native logic used for native comparisons.
  */
-export function diffRekeyByLineage(keys: string[], value: any, deleted: string[], policy: string): any;
+export function diffLineageOfDiff(value: any, accepted: any, reasons: any, relations: any): any;
+
+/**
+ * Rust owns normalization; the facade retains host warning/String fallback.
+ */
+export function diffNormalizeValue(value: any): string | number | boolean | null;
+
+/**
+ * Migrate keys while observing only the selected entries and policy fields.
+ */
+export function diffRekeyByLineage(keys: any, value: any, deleted: any, policy: string): any;
 
 /**
  * Emit JSON.stringify-compatible pretty bytes and the trailing newline.
  */
 export function diffSerializeSidecar(text: string): string;
+
+/**
+ * Host JSON observations preserve toJSON, unsupported values, and exceptions;
+ * Rust owns the public operation's spacing and trailing-newline contract.
+ */
+export function diffSerializeSidecarValue(value: any): string;
+
+export function diffSidecarValueMismatches(pinned: any, models: any, lineage: boolean): string[];
 
 /**
  * Raw code units preserve JS strings that cannot be represented as Rust UTF-8.
@@ -62,6 +113,8 @@ export function diffStableHash(units: Uint16Array): string;
  */
 export function diffValidateSidecar(text: string, lineage: boolean): string[];
 
+export function diffValidateSidecarValue(value: any, lineage: boolean): string[];
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -69,21 +122,35 @@ export interface InitOutput {
     readonly __wbg_diffmodel_free: (a: number, b: number) => void;
     readonly diffBuildComponentFingerprints: (a: number, b: number) => void;
     readonly diffBuildDataFingerprint: (a: number, b: number) => void;
+    readonly diffCheckFingerprintCollections: (a: number, b: number, c: number) => void;
     readonly diffCreateSidecar: (a: number, b: number, c: number) => void;
+    readonly diffCreateSidecarValue: (a: number, b: number, c: number) => void;
+    readonly diffIdentityMapFromContentMatches: (a: number, b: number) => void;
+    readonly diffIdentityMapFromSuccessors: (a: number, b: number) => void;
     readonly diffKeyAliasesFromLineage: (a: number, b: number) => void;
+    readonly diffKeyAliasesFromSidecarValue: (a: number, b: number) => void;
     readonly diffLineageConflicts: (a: number, b: number) => void;
-    readonly diffRekeyByLineage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly diffLineageOfDiff: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly diffNormalizeValue: (a: number, b: number) => void;
+    readonly diffRekeyByLineage: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly diffSerializeSidecar: (a: number, b: number) => void;
+    readonly diffSerializeSidecarValue: (a: number, b: number) => void;
+    readonly diffSidecarValueMismatches: (a: number, b: number, c: number, d: number) => void;
     readonly diffStableHash: (a: number, b: number, c: number) => void;
     readonly diffValidateSidecar: (a: number, b: number, c: number) => void;
+    readonly diffValidateSidecarValue: (a: number, b: number, c: number) => void;
+    readonly diffmodel_buildFingerprintBatch: (a: number, b: number, c: number) => void;
     readonly diffmodel_compare: (a: number, b: number, c: number, d: number) => void;
+    readonly diffmodel_comparePacked: (a: number, b: number, c: number, d: number) => void;
     readonly diffmodel_entityCount: (a: number) => number;
+    readonly diffmodel_fromPacked: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
     readonly diffmodel_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
+    readonly __wbindgen_export4: (a: number, b: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
-    readonly __wbindgen_export4: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export5: (a: number, b: number, c: number) => void;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;

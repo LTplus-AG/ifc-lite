@@ -339,3 +339,15 @@ test('END TO END, the failing direction: a test that never names the new member 
   assert.match(stdout, /UNOBSERVED/);
   assert.equal(JSON.parse(stdout.slice(stdout.indexOf('\n{'))).observer, 'typecheck');
 });
+
+test('package typecheck runs once per phase and package, and restored never reuses baseline', () => {
+  let calls = 0;
+  const counting = (...args) => { calls++; return fakeSpawn(0, 'typecheck-tests: packages/renderer OK (110 test files)\n')(...args); };
+  const plan = { ...PLAN, dir: `${PLAN.dir}#cache-witness-${process.pid}` };
+  const opts = (cacheLabel) => ({ spawn: counting, cache: true, cacheLabel, ...included });
+  runTypecheckPlan(plan, REPO_ROOT, 'baseline', opts('baseline'));
+  runTypecheckPlan(plan, REPO_ROOT, 'baseline', opts('baseline'));
+  assert.equal(calls, 1, 'second plan in the same package reuses the phase run');
+  runTypecheckPlan(plan, REPO_ROOT, 'baseline', opts('restored'));
+  assert.equal(calls, 2, 'restored is a fresh run, not the cached baseline');
+});

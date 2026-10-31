@@ -9,6 +9,7 @@ import { bcfWorldOffset } from '../../hooks/bcf/viewpoint-world-frame.js';
 import { toGlobalIdForRef } from '../../store/globalId.js';
 import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, clippingSectionPlanes, revealSectionCut, showSectionCut, showSectionCuts } from '../../store/section-active.js';
 import type { SectionPlane as StoreSectionPlane } from '../../store/types.js';
+import { clampSectionPercent } from '../../lib/section/section-distance.js';
 import {
   resolvePresentationColorMap,
   resolvePresentationIds,
@@ -161,13 +162,13 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
     setSection(section: SectionPlane | null) {
       if (section?.enabled) {
         const flipped = section.flipped ?? cardinalSectionFlipped(store.getState().sectionPlane);
-        showSectionCut(store.getState, { axis: AXIS_TO_STORE[section.axis] ?? 'down', position: section.position, flipped });
+        showSectionCut(store.getState, { axis: AXIS_TO_STORE[section.axis] ?? 'down', position: clampSectionPercent(section.position), flipped });
         return undefined;
       }
       if (section) {
         const state = store.getState();
         state.setSectionPlaneAxis(AXIS_TO_STORE[section.axis] ?? 'down');
-        state.setSectionPlanePosition(section.position);
+        state.setSectionPlanePosition(clampSectionPercent(section.position));
         if (section.flipped !== undefined && store.getState().sectionPlane.flipped !== section.flipped) state.flipSectionPlane();
       }
       clearSectionCut(store.getState);
@@ -184,7 +185,7 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
     },
     setSections(sections: SectionPlane[]) {
       const cuts = sections.filter((s) => s.enabled).map((s) => ({
-        axis: AXIS_TO_STORE[s.axis] ?? 'down', position: s.position, flipped: s.flipped ?? false,
+        axis: AXIS_TO_STORE[s.axis] ?? 'down', position: clampSectionPercent(s.position), flipped: s.flipped ?? false,
       }));
       if (cuts.length === 0) clearSectionCut(store.getState);
       else showSectionCuts(store.getState, cuts);
@@ -195,7 +196,7 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       const id = store.getState().addSectionPlane(AXIS_TO_STORE[section.axis] ?? 'down');
       if (!id) return null;
       const state = store.getState();
-      state.setSectionPlanePosition(section.position);
+      state.setSectionPlanePosition(clampSectionPercent(section.position));
       if (section.flipped !== undefined && store.getState().sectionPlane.flipped !== section.flipped) state.flipSectionPlane();
       revealSectionCut(store.getState);
       return id;

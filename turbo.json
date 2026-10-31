@@ -75,6 +75,9 @@
         "index.html"
       ],
       "env": [
+        "VITE_RETAINED_GEOMETRY",
+        "IFCLITE_RETAINED_ENGINE",
+        "VERCEL",
         "VITE_AUTODESK_CLIENT_ID",
         "VITE_AUTODESK_HOSTED",
         "VITE_CLOUD_HOSTED",
@@ -103,12 +106,19 @@
     },
     "test": {
       "dependsOn": ["build"],
+      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE"],
       "cache": false,
       "env": [
         "TEST_PATTERN",
         "TEST_SHARD",
         "TEST_SHARDS"
       ]
+    },
+    "@ifc-lite/export#test": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "env": ["TEST_PATTERN", "TEST_SHARD", "TEST_SHARDS"],
+      "passThroughEnv": ["IFC_LITE_SECTION_EVIDENCE_DIR"]
     },
     "lint": {
       "dependsOn": ["build"],

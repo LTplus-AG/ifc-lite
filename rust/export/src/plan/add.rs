@@ -17,7 +17,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::step_text::escape;
+use crate::step_text::quoted;
 use crate::step_ids::IdAllocator;
 
 use super::add_geometry::product_shape;
@@ -25,16 +25,19 @@ use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
+use super::attribution::{Histories, Snapshot};
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
 use super::tessellation::{find_body_context, Emit};
-use super::types::{ObjectRef, PlanContext, Refusal, ValidationFinding};
+use super::types::{ObjectRef, Refusal, ValidationFinding};
 
 use assoc::{associate, Shared, SharedKey};
 use mapped::{build_map, mapped_shape, MapPlan, MapRef, TypeMaps};
+use same_as::reused_shape;
 use units::build_units;
 use check::Checked;
+use nest::nest_object;
 
 /// An object this plan added, as later Adds see it.
 struct Added {
@@ -42,12 +45,13 @@ struct Added {
     class: String,
 }
 
-pub(crate) struct AddState<'a> {
+pub(crate) struct AddState<'a, 'h> {
     index: &'a FileIndex<'a>,
     schema: &'a str,
     removed: &'a HashSet<u32>,
-    context: &'a PlanContext,
-    owner_history: Option<u32>,
+    /// Objects a geometry patch of this plan gives a new body.
+    reshaped: &'a HashSet<u32>,
+    history: &'a mut Histories<'h>,
     added: HashMap<String, Added>,
     /// Each added object's placement, by id, for children placed under it.
     placement_of_added: HashMap<u32, Option<u32>>,
@@ -68,27 +72,28 @@ pub(crate) struct AddState<'a> {
     typed: HashSet<u32>,
 }
 
-impl<'a> AddState<'a> {
-    /// `owner_history` is the one the source (or a patch) already provides;
-    /// when there is none, the first Add that builds synthesizes it, so a
-    /// plan whose Adds are all refused writes nothing at all.
+impl<'a, 'h> AddState<'a, 'h> {
+    /// `history` is where new records' owner history comes from: the one the
+    /// source (or a patch) already provides, else one the first Add that
+    /// builds makes, so a plan whose Adds are all refused writes nothing.
     /// `body_context` is the one this plan's geometry patches already wrote
     /// into, if any; otherwise the file's own is looked up, and one is
-    /// synthesized only when there is none.
+    /// synthesized only when there is none. `reshaped` is the objects this
+    /// plan's geometry patches give a new body.
     pub(crate) fn new(
         index: &'a FileIndex<'a>,
         schema: &'a str,
         removed: &'a HashSet<u32>,
-        context: &'a PlanContext,
-        owner_history: Option<u32>,
+        reshaped: &'a HashSet<u32>,
+        history: &'a mut Histories<'h>,
         body_context: Option<u32>,
     ) -> Self {
         Self {
             index,
             schema,
             removed,
-            context,
-            owner_history,
+            reshaped,
+            history,
             added: HashMap::new(),
             placement_of_added: HashMap::new(),
             body_context: body_context.or_else(|| find_body_context(index, schema, removed)),
@@ -105,14 +110,14 @@ impl<'a> AddState<'a> {
     fn add(&mut self, key: &ObjectRef, obj: &NewObject, ids: &mut IdAllocator) -> Result<(), String> {
         let checked = self.check(key, obj)?;
         let mut out = Vec::new();
-        let owner_history = self.owner_history_for(ids, &mut out)?;
+        let owner = self.owner_history_for(ids, &mut out)?;
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
-        let built = self.build(&mut emit, obj, &checked, owner_history, &mut requests)?;
+        let built = self.build(&mut emit, obj, &checked, owner.id, &mut requests)?;
         let new_context = self.owned_context(built.new_context)?;
 
         self.typed.extend(checked.existing_type);
-        self.commit(owner_history, out, built.shared);
+        self.commit(owner, out, built.shared);
         for req in requests {
             self.rels.relate(self.schema, req);
         }
@@ -132,7 +137,8 @@ impl<'a> AddState<'a> {
     /// every Add are written together, all or nothing: when `finish` fails (the
     /// id space runs out, or a list it extends does not scan), it discards every
     /// built object's records along with them (see its doc comment), so each Add
-    /// that had built is refused too.
+    /// that had built is refused too, and `history` goes back to what it had
+    /// committed before the Adds.
     pub(crate) fn build_all(
         mut self,
         adds: &[(&ObjectRef, AddItem)],
@@ -142,6 +148,7 @@ impl<'a> AddState<'a> {
         refusals: &mut Vec<Refusal>,
         findings: &mut Vec<ValidationFinding>,
     ) -> usize {
+        let snapshot = self.history.snapshot();
         let mut built = Vec::new();
         for &(key, item) in adds {
             // A refused Add gives back the ids it took, so it changes no
@@ -162,7 +169,7 @@ impl<'a> AddState<'a> {
         let typed = std::mem::take(&mut self.typed);
         let mut notes = std::mem::take(&mut self.notes);
         notes.retain(|n| n.express_id.is_none_or(|id| !typed.contains(&id)));
-        match self.finish(ids, edits_by_id) {
+        match self.finish(ids, edits_by_id, snapshot) {
             Ok(records) => {
                 appended.extend(records);
                 findings.append(&mut notes);
@@ -178,15 +185,26 @@ impl<'a> AddState<'a> {
         }
     }
 
-    /// Every record and list edit the Adds produced, relationships last.
+    /// Every record and list edit the Adds produced, relationships last. On
+    /// failure nothing they took from `history` stays committed.
     fn finish(
         self,
         ids: &mut IdAllocator,
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
+        snapshot: Snapshot,
     ) -> Result<Vec<(u32, String)>, String> {
+        let owner_history = self.settled_history();
         let mut records = self.records;
-        records.extend(self.rels.finish(self.schema, ids, self.owner_history, edits_by_id)?);
-        Ok(records)
+        match self.rels.finish(self.schema, ids, owner_history, edits_by_id) {
+            Ok(rels) => {
+                records.extend(rels);
+                Ok(records)
+            }
+            Err(reason) => {
+                self.history.restore(snapshot);
+                Err(reason)
+            }
+        }
     }
 
     fn build(
@@ -212,8 +230,9 @@ impl<'a> AddState<'a> {
             _ => None,
         };
         let type_rep = new_type.map(|t| &t.representation).filter(|r| !matches!(r, Representation::None));
-        // A mapped body of an existing type is in its maps' contexts.
-        let own_geometry = !matches!(obj.representation, Representation::None | Representation::Mapped(_));
+        // A mapped body of an existing type is in its maps' contexts,
+        // reused geometry in its source's.
+        let own_geometry = !matches!(obj.representation, Representation::None | Representation::Mapped(_) | Representation::SameAs(_));
         let needs_context = own_geometry || c.host.is_some() || type_rep.is_some();
         let (context, new_context) = match needs_context {
             false => (None, None),
@@ -234,6 +253,7 @@ impl<'a> AddState<'a> {
                 };
                 Some(mapped_shape(emit, &mut shared, maps, &m.transform)?)
             }
+            (Representation::SameAs(_), _) => Some(reused_shape(emit, c.same_as.as_deref().ok_or("reused geometry was not checked")?)?),
             (rep, Some(ctx)) => product_shape(emit, ctx, rep, obj.style.as_ref())?,
             (_, None) => None,
         };
@@ -244,8 +264,9 @@ impl<'a> AddState<'a> {
             ("ObjectPlacement", format!("#{placement}")),
         ];
         if let Some(name) = &obj.name {
-            fields.push(("Name", format!("'{}'", escape(name))));
+            fields.push(("Name", quoted(name)));
         }
+        fields.extend(obj.string_attributes().map(|(attr, value)| (attr, quoted(value))));
         if let Some(shape) = shape {
             fields.push(("Representation", format!("#{shape}")));
         }
@@ -283,6 +304,9 @@ impl<'a> AddState<'a> {
         }
         if let Some((container, kind)) = c.container {
             requests.push(RelRequest { kind, relating: container, related: object, seed: gid });
+        }
+        if let Some(nest) = c.nest {
+            nest_object(emit, nest, object, gid, &owh, requests)?;
         }
         associate(emit, &mut shared, c, object, gid, requests)?;
 
@@ -333,8 +357,14 @@ mod commit;
 #[path = "add_opening.rs"]
 mod opening;
 
+#[path = "add_nest.rs"]
+mod nest;
+
 #[path = "add_mapped.rs"]
 mod mapped;
+
+#[path = "add_same_as.rs"]
+mod same_as;
 
 #[path = "add_type.rs"]
 mod standalone_type;
@@ -351,3 +381,11 @@ mod refusal_tests;
 #[cfg(test)]
 #[path = "add_assoc_tests.rs"]
 mod assoc_tests;
+
+#[cfg(test)]
+#[path = "add_string_attrs_tests.rs"]
+mod string_attrs_tests;
+
+#[cfg(test)]
+#[path = "add_nest_tests.rs"]
+mod nest_tests;

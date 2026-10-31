@@ -1,13 +1,13 @@
 # Agent Guidelines: ifc-lite
 
-Project-specific gotchas and guardrails: the things that bite you *here* and that you can't infer from the code. Generic good practice is assumed, not repeated. This file is the single source of truth; `CLAUDE.md` and `.cursorrules` just point here.
+Project-specific guardrails. This file is the source of truth; `CLAUDE.md` and `.cursorrules` point here.
 
 ## What this is
 Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. No first-party desktop app. Domain logic (decode, geometry, styling, export) lives in Rust crates under `rust/*` and is the source of truth for the server, CLI, SDK, and wasm; TypeScript packages under `packages/*` and apps under `apps/*` consume it (TS mostly does GPU upload and UI). Architecture docs: `docs/architecture/overview.md`.
 
 ## Accountability, and what a PR has to be able to answer
 
-Everything here is agent-written, including the maintainer's own commits, so there is no AI-disclosure rule and no point in one. What matters is not who typed the code, it is whether anyone can answer for it.
+Everything here is agent-written; there is no AI-disclosure rule. Submitters must answer for the code.
 
 **Every PR has an accountable submitter, and the test is answering, not authorship.** When review asks a question, the submitter answers with evidence: a test, a run, a measurement, a model file that reproduces it. "The agent wrote it" is never an answer. "Here is the run that proves it" always is. You do not need to be able to write the code. You do need to be able to demonstrate what it does. Unanswered questions block the merge.
 
@@ -43,6 +43,11 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 **Do not trust any list of CI gates written down in this file.** The authoritative list of gates is `.github/workflows/`; the authoritative list of REQUIRED ones is the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Read them. A gate list is a measurement, and a measurement recorded as prose goes stale by the next merged workflow.
 
+## Before handing work back
+
+Run `node scripts/pre-handoff.mjs` after committing. A delegated task is not done
+until it passes or each failure is explained. Report SKIPPED coverage too.
+
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.
 - STEP type names are stored UPPERCASE; render via `store.entities.getTypeName(id)` to get `IfcPascalCase`.
@@ -59,10 +64,10 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 - Free every WASM handle (`MeshCollection`, `MeshDataJs`, pre-pass cache) deterministically: wrap pre-pass + job batches in `try/finally` so `.free()` / `clearPrePassCache()` run on early return, on throw, **and** when an async generator is abandoned (`.return()` runs `finally`). Getters copy into JS arrays, so `.free()` right after extraction is safe; don't deep-copy already-extracted meshes.
 - Coordinates: IFC is Z-up, the viewer is Y-up (converted during mesh parsing). `/api/create` (the `ifc-lite view` CLI REST endpoint) expects IFC Z-up `[x, y, z]`.
 - CSG: the **pure-Rust exact kernel** (`rust/geometry/src/kernel/`) is the only CSG kernel on every target; Manifold C++ and the BSP port are deleted, and there is no kernel selection, build-time or runtime. Diagnostics: `csg::take_csg_census()`, `GeometryRouter::take_csg_failures()` / `take_host_opening_diagnostics()`.
-- All per-element mesh production converges in `produce_element_meshes` (`rust/processing/src/element.rs`), called by both the native orchestrator and the browser batch (`processGeometryBatch`). Any mesh-shape change (void cut, submesh split, texturing, type geometry) lands there once; a fix applied to only one pipeline silently diverges (the bug class behind #858/#913/#957/#961/#1071). The only sanctioned behavioural fork is `TypeGeometryMode`.
+- Mesh changes land in `produce_element_meshes_owned` (`processing/src/element/owned_session.rs`); native/browser arming is `processing/src/execution.rs`. Discovery uses `scan::ScanClass`, `discovery::Discovery` and `core::is_geometry_job`; add a record-kind arm there, not another scan. Column adapters retain scheduling. `discovery::TypeGeometryPlan` owns type-map policy (`EmitTagged`/`SuppressInstanced`); native default-off layer slicing and browser merge/template policies remain explicit.
 - Workspace `[profile.release]` sets `panic = 'abort'`; harnesses/examples that need `catch_unwind` (per-element panic isolation) must build with `--profile server-release` (panic=unwind).
 - Driving `GeometryRouter` directly in examples/harnesses skips the RTC rebase: georeferenced models (>1 km coords, e.g. ISSUE_098 at ~5,000 km) produce f32-fabricated geometry "failures"; bucket by coordinate magnitude or rebase before blaming the kernel.
-- Colour and coordinate resolution is canonical Rust shared by the server (`process_geometry`) and viewer (`process_geometry_batch`) so they can't drift; don't re-fork it. Single homes: `default_color_for_type`, `resolve_submesh_color`, **`extract_surface_style_colors`** (the IfcSurfaceStyle to Rendering to Colour leaf; SurfaceColour is the apparent colour, a distinct DiffuseColour IfcColourRgb is only `shading_color`, per #859/#871), and the indexed-colour resolvers, all in `ifc_lite_processing::style`; **`rotation_angle_about_z`** (site/building rotation, off `resolve_scaled_placement`) in `ifc_lite_geometry`. `styling_parity` Rust tests fail the build if a duplicate `get_default_color*` table or a per-pipeline `extract_color_from_rendering`/`extract_color_rgb` reappears. New type default: edit `default_color_for_type` and extend the mesh fixture. Sanctioned exceptions: the 2D drafting fill palette (`IFC_TYPE_FILL_COLORS`, `Drawing2DCanvas.tsx`) is a drafting convention rather than 3D appearance, and standalone debug tools under `rust/geometry/examples/` (can't reach the downstream crate). (#913, #996, #997)
+- Colour and coordinate resolution shares Rust resolvers between native `process(content, request, sink)` and browser batches; don't fork it. Single homes: `default_color_for_type`, `resolve_submesh_color`, **`extract_surface_style_colors`** (the IfcSurfaceStyle to Rendering to Colour leaf; SurfaceColour is the apparent colour, a distinct DiffuseColour IfcColourRgb is only `shading_color`, per #859/#871), and the indexed-colour resolvers, all in `ifc_lite_processing::style`; **`rotation_angle_about_z`** (site/building rotation, off `resolve_scaled_placement`) in `ifc_lite_geometry`. `styling_parity` Rust tests fail the build if a duplicate `get_default_color*` table or a per-pipeline `extract_color_from_rendering`/`extract_color_rgb` reappears. New type default: edit `default_color_for_type` and extend the mesh fixture. Sanctioned exceptions: the 2D drafting fill palette (`IFC_TYPE_FILL_COLORS`, `Drawing2DCanvas.tsx`) is a drafting convention rather than 3D appearance, and standalone debug tools under `rust/geometry/examples/` (can't reach the downstream crate). (#913, #996, #997)
 - Cross-platform determinism is enforced weekly by `.github/workflows/determinism.yml` (arm64; dispatch it before kernel-sensitive merges): it re-runs `exact_predicate_determinism`, `geometry_correctness_harness` and `export_golden` against the committed x86_64 pins; a mismatch is a real platform bug. It also pins `rust/processing/tests/manifests/mesh_determinism.json` (x86_64/arm64) and `mesh_determinism.wasm32.json` (equal except the libm-trig gap): a legitimate geometry-output change re-pins **both**, not just the snapshots (#1492, `docs/architecture/mesh-determinism.md`). Byte outputs are hash-pinned in `tests/golden/*.json`; a red pin prints its `IFC_LITE_REPIN_GOLDEN=1` command; re-pin only what you meant to move (#7671).
 - Geometry-affecting PRs also run `.github/workflows/ifcopenshell-parity.yml` (path-gated): a per-PR quick lane diffs ifc-lite against committed reference dumps in `tools/ifcopenshell_reference/`, plus a nightly full lane on the pinned engine. **It IS blocking**: `parity (in-tree fixtures, committed reference)` is a required context in the `main` ruleset, so a legitimate output change means regenerating the committed reference in the same PR (#1519). Being absent from `test.yml`s `needs:` list is a different thing from being non-required.
 
@@ -106,23 +111,15 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 ## Bounding walks over file-supplied references
 
-Entity references come from the file, so their shape is exporter- and
-attacker-controlled. An unbounded recursive walk over one self-referential
-entity dies by `SIGABRT`, which is not a catchable panic: nothing upstream turns
-it into a load error, and in the wasm geometry worker it takes down the
-instance. #2866 found seven such sites.
+File-supplied references can cycle, overflow the stack (uncatchable `SIGABRT`)
+or fan out until the loader hangs. #2866 found seven unbounded sites.
 
-The three mechanisms are not interchangeable, and each alone leaves a hole:
-
-- a **depth cap** bounds one path's LENGTH, not its breadth. `k` items each
-  leading back into a cycle cost `O(k^depth)`, turning an abort into a hang
-  (measured 7.21s at k=3). A hang is worse: nothing reports it.
-- a **visited set** bounds cycles and revisits. While the walk still recurses it
-  does NOT bound a long *acyclic* chain: every insert succeeds, the set never
-  fires, and the stack still overflows.
-- a **work budget** bounds acyclic DAG fan-out, which neither of the others
-  sees. A DAG where every branch succeeds never errors and never repeats an id;
-  it just emits `2^levels` outputs.
+- A **depth cap** bounds path length, not breadth: cycles can still cost
+  `O(k^depth)` (7.21s measured at k=3).
+- A **visited set** bounds revisits, not recursive stack use on a long acyclic
+  chain.
+- A **work budget** bounds acyclic DAG expansion even when no id repeats on
+  the current path.
 
 Choose the visited set's SCOPE by what the walk returns:
 
@@ -135,12 +132,14 @@ Choose the visited set's SCOPE by what the walk returns:
   silently drops the second: **missing geometry, not a cycle guard**, and no
   termination test notices.
 
-Prefer making the walk **iterative** over adding a cap: with no stack to consume
-there is nothing left for a cap to protect, and the visited set becomes
-sufficient alone. A cap tight enough to stop a cycle usually rejects legitimate
-input — #960 records Revit `FirstOperand` chains 42 nodes deep.
-
-Reuse the shared bound where the chain is shared: `ifc_lite_core::limits`.
+Prefer **iterative** walks with visited sets: no stack depth cap is needed.
+Tight caps reject valid input (#960: 42-node Revit `FirstOperand` chains).
+Use `ifc_lite_core::limits` for shared bounds; see
+`ifc_lite_geometry::placement::resolve_chain` for an iterative, visited-set
+`PlacementRelTo` walk without a depth cap. For branching occurrences,
+`representation::RepresentationWalk` uses an explicit stack and path-scoped
+cycle checks, `MAX_MAPPED_ITEM_DEPTH` for geometry callers, and `Expand` work
+budgets for mapped attempts and Items members (default `MAX_WALK_LEVELS`).
 
 A guard that both ACTS and REPORTS has a two-part contract — bound the work, and
 report that you bounded it. Mutate the halves separately; they fail differently

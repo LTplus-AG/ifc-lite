@@ -33,20 +33,33 @@ pub struct RetainedExtrusion {
     pub length_unit_scale: f64,
 }
 
-/// The captured authored source a retained definition owns, unchanged.
+/// The captured authored source or derived cutter a retained definition owns.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum RetainedRecipe {
     Extrusion(RetainedExtrusion),
     SweptDisk(RetainedSweptDisk),
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    Prism(super::RetainedPrism),
 }
 
 impl RetainedRecipe {
-    /// STEP id of the authored solid; a published display is attributed to it.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn lower(&self) -> Result<SweepPayload, RetainedRefusal> {
+        match self {
+            Self::Extrusion(recipe) => retained_sweep::lower(recipe),
+            Self::SweptDisk(recipe) => retained_disk::lower(recipe),
+            Self::Prism(recipe) => recipe.lower(),
+        }
+    }
+
+    /// Attributed STEP source id; a published display retains that attribution.
     pub fn solid_id(&self) -> u32 {
         match self {
             Self::Extrusion(recipe) => recipe.source.solid_id,
             Self::SweptDisk(recipe) => recipe.solid_id,
+            #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+            Self::Prism(recipe) => recipe.source_id,
         }
     }
 }
@@ -124,6 +137,16 @@ pub struct RetainedRequest {
 }
 
 impl RetainedRequest {
+    /// Same immutable admission, including the original source allocation.
+    // Refs #7955: private receipt comparison.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn same_admission(&self, other: &Self) -> bool {
+        self.document == other.document && self.revision == other.revision
+            && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
+            && Arc::ptr_eq(&self.entry, &other.entry)
+    }
+
     pub fn definition(&self) -> RetainedDefinitionHandle {
         self.definition
     }
@@ -212,6 +235,13 @@ impl GeometryDocument {
     ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
         let payload = retained_disk::lower(&recipe)?;
         self.retain(RetainedRecipe::SweptDisk(recipe), payload)
+    }
+
+    /// Retain a derived cutter in its own metre evaluation frame (#7955 CUT-0).
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub fn add_retained_prism(&mut self, recipe: super::RetainedPrism) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
+        let payload = recipe.lower()?;
+        self.retain(RetainedRecipe::Prism(recipe), payload)
     }
 
     fn retain(

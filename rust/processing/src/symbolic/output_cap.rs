@@ -18,6 +18,10 @@ use super::primitives::{
     SymbolicText,
 };
 
+#[cfg(test)]
+#[path = "execution_tests.rs"]
+pub(super) mod execution_tests;
+
 /// Upper bound on the total number of symbolic primitives one extraction may
 /// emit, across every product in the file.
 ///
@@ -101,6 +105,9 @@ const BYTES_PER_COORD: usize = 8;
 pub(super) struct SymbolicAccumulator {
     data: SymbolicData,
     fill_items: Vec<Option<u32>>,
+    /// Source-local, lazy canonical target resolver. Every item in this
+    /// extraction uses the same source length unit.
+    mapping_router: Option<ifc_lite_geometry::GeometryRouter>,
     /// Cap for this extraction. Injectable so a test can use 500 rather than
     /// building a fixture that emits two million primitives.
     pub(super) limit: usize,
@@ -131,6 +138,7 @@ impl SymbolicAccumulator {
         Self {
             data: SymbolicData::default(),
             fill_items: Vec::new(),
+            mapping_router: None,
             limit: MAX_SYMBOLIC_ELEMENTS,
             bytes: 0,
             byte_limit: MAX_SYMBOLIC_BYTES,
@@ -142,11 +150,17 @@ impl SymbolicAccumulator {
         }
     }
 
-    /// Is the accumulator itself full? The walk and the product scan read THIS
-    /// to stop early. A per-item bound marks the result truncated WITHOUT setting
+    /// Allocate the router once per extraction, only if mapped symbols occur.
+    pub(super) fn mapping_router(&mut self, unit_scale: f64) -> &ifc_lite_geometry::GeometryRouter {
+        self.mapping_router
+            .get_or_insert_with(|| ifc_lite_geometry::GeometryRouter::with_scale(unit_scale))
+    }
+
+    /// Is the accumulator full, or its execution terminal? The walk and scan
+    /// read THIS to stop early. A per-item bound marks truncation WITHOUT setting
     /// this, so one deep item does not abandon every later product.
     pub(super) fn is_exhausted(&self) -> bool {
-        self.exhausted
+        self.exhausted || ifc_lite_geometry::resource::is_stopped()
     }
 
     /// Record that a per-item bound dropped content. Called by the walk, which
@@ -188,7 +202,7 @@ impl SymbolicAccumulator {
     }
 
     /// Total primitives emitted so far, across every collection.
-    fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         self.data.len()
     }
 
@@ -228,6 +242,10 @@ impl SymbolicAccumulator {
     where
         F: FnOnce(&mut SymbolicData),
     {
+        // Execution stops are source-owned, not malformed input or truncation.
+        if ifc_lite_geometry::resource::check_current().is_err() {
+            return;
+        }
         if valid {
             if let Some(reason) = self.exceeded_by(payload) {
                 self.record(reason);
@@ -300,23 +318,40 @@ impl SymbolicAccumulator {
 
     pub(super) fn push_fill_with_provenance(&mut self, fill: SymbolicFillArea, item: Option<u32>) {
         let before = self.data.fills.len();
-        let payload = std::mem::size_of::<Option<u32>>() + fill.points.len()
+        let payload = std::mem::size_of::<Option<u32>>()
+            + fill.points.len()
             + fill.holes_offsets.len()
             + fill.ifc_type.len()
             + fill.representation.len();
         self.try_push(payload, all_finite(&fill.points), |data| {
             data.fills.push(fill)
         });
-        if self.data.fills.len() > before { self.fill_items.push(item); }
+        if self.data.fills.len() > before {
+            self.fill_items.push(item);
+        }
     }
 
-    pub(super) fn into_provenance(mut self) -> super::SymbolicDataWithProvenance {
-        let items = std::mem::take(&mut self.fill_items);
-        super::SymbolicDataWithProvenance::new(self.into_data(), items)
+    pub(super) fn into_provenance(
+        self,
+    ) -> Result<super::SymbolicDataWithProvenance, ifc_lite_core::resource_stop::ProgramStop> {
+        let (data, items) = self.finish()?;
+        Ok(super::SymbolicDataWithProvenance::new(data, items))
     }
 
     /// Finish, stamping the diagnostics field iff an append was ever refused.
-    pub(super) fn into_data(mut self) -> SymbolicData {
+    #[cfg(test)]
+    pub(super) fn into_data(
+        self,
+    ) -> Result<SymbolicData, ifc_lite_core::resource_stop::ProgramStop> {
+        self.finish().map(|(data, _)| data)
+    }
+
+    // Publish data and provenance together. A terminal source owns the error;
+    // neither an earlier prefix nor fallback-origin geometry may escape (#7914).
+    fn finish(
+        mut self,
+    ) -> Result<(SymbolicData, Vec<Option<u32>>), ifc_lite_core::resource_stop::ProgramStop> {
+        ifc_lite_geometry::resource::check_current()?;
         if let Some(reason) = self.reason {
             let emitted = self.data.len();
             let limit = match reason {
@@ -335,6 +370,6 @@ impl SymbolicAccumulator {
                 limit,
             });
         }
-        self.data
+        Ok((self.data, self.fill_items))
     }
 }

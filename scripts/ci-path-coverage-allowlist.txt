@@ -90,7 +90,6 @@ scripts/check-icon-button-adoption.test.mjs apps/landing/** # `apps` is a synthe
 #    Recorded rather than fixed so they are visible and attributable, and so
 #    the check goes green on the state it actually found.
 # ---------------------------------------------------------------------------
-scripts/fixtures/fetch-fixtures.mjs scripts/fixtures/* # the fetcher runs in rust-tests/geometry-census/benchmark, whose filters carry tests/models/manifest.json but not scripts/**
 scripts/fixtures/fetch-fixtures.mjs tests/models/README.md # the rust/geometry filters pin tests/models/manifest.json, the corpus input; the README is not one
 
 # #6516's historical bundle is deliberately manual, not an automatic PR gate.
@@ -120,5 +119,4 @@ scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertio
 scripts/check-ci-path-coverage.test.mjs tests/models # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/perf-ratchets # `tests` prefix fragment expanded over the tree, not read (#6959)
 scripts/check-agents-md-size.test.mjs README.md # a temp-fixture FILENAME inside the harness (a repo built in a tmpdir to prove a non-AGENTS.md file is ignored), not a path in this repository.
-scripts/smlib-browser-worker-probe.mjs tests # a subdirectory the probe creates inside its temp /smlib staging root (mkdir(join(root, 'tests'))), not a path in this repository; every file it reads is under native/smlib-adapter/browser, covered by native/**
-scripts/stage-retained-browser-assets.mjs LICENSE # the external SMLib SDK checkout's LICENSE/THIRD_PARTY_NOTICES (verified with git ls-files inside the SDK tree and copied into the staged bundle), not this repository's LICENSE
+scripts/smlib-browser-worker-probe.mjs tests/** # a subdirectory the probe creates inside its temp /smlib staging root (mkdir(join(root, 'tests'))), not a path in this repository; every file it reads is under native/smlib-adapter/browser, covered by native/**

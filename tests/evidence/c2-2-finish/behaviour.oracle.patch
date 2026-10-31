@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/representation/structural.rs
++++ b/rust/geometry/src/representation/structural.rs
+@@ -38,7 +38,7 @@
+         return None;
+     }
+     let representations = pds.get_list(slot::IfcProductDefinitionShape::REPRESENTATIONS.index())?;
+-    if representations.is_empty() || representations.len() > 65 {
++    if representations.is_empty() || representations.len() > 64 {
+         return None;
+     }
+     let mut reference = false;

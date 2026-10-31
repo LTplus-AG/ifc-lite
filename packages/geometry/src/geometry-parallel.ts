@@ -25,12 +25,13 @@
  */
 
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
-import { postGeometryWorkerInit } from './geometry-worker-init.js';
+import { postGeometryWorkerInit, spawnGeometryWorker } from './geometry-worker-init.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
+import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
 import { planLoadWorkerCount } from './worker-count.js';
 import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
@@ -41,8 +42,6 @@ import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from 
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
-import { spawnGeometryWorker } from './geometry-worker-pool.js';
-export { GeometryWorkerPool, DEFAULT_POOL_LIMITS, FRESH_WORKER_HEAP_BYTES } from './geometry-worker-pool.js';
 import { NOOP_LOAD_TRACE, accountWorkerMessages, countCopy, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
@@ -120,8 +119,6 @@ interface PrepassMeta extends Pick<ByteStreamingPrePassResult, 'unitRefused'> {
 export type { ProcessParallelOptions } from './geometry-parallel-options.js';
 
 let nextSourceSessionId = 0;
-/** A load above this size terminates the prewarmed workers it did not lease (#7036). */
-const LARGE_LOAD_POOL_DRAIN_MB = 64;
 
 export async function* processParallel(
   buffer: Uint8Array,
@@ -165,12 +162,8 @@ export async function* processParallel(
   // N independent WASM-instance workers, each running
   // `geometry.worker.ts` (one `@ifc-lite/wasm` instance per worker).
   // #6957: `accountWorkerMessages` counts each pool's messages per direction (identity when counters are off).
-  // #7036: lease the workers a host prewarmed when this load was requested
-  // (spawned beside the file read); spawn the rest. Either way a worker serves
-  // this load only and is terminated by it, exactly as before.
-  const pool = options?.workerPool ?? null, poolKey = options?.wasmUrls?.wasm ?? '';
   const acquireWorker = (role: 'geometry' | 'prepass', thread: string): Worker => enableWorkerTrace(
-    pool ? pool.acquire(role, poolKey).worker : accountWorkerMessages(spawnGeometryWorker(), role), trace, thread);
+    accountWorkerMessages(spawnGeometryWorker(), role), trace, thread);
   const makeGeometryWorker = () => acquireWorker('geometry', `geom-${tracedWorkers++}`);
   const makePrepassWorker = () => acquireWorker('prepass', 'prepass');
 
@@ -194,6 +187,7 @@ export async function* processParallel(
   // Pre-pass worker drives the entire pipeline via streaming events.
   let prepassMeta: PrepassMeta | null = null;
   let prepassJobsTotal = 0;
+  let omittedTypeRecords: number | undefined; // F2 #8341, from the prepass worker's `complete`
   let prepassDone = false;
   let prepassError: Error | null = null;
 
@@ -875,8 +869,10 @@ export async function* processParallel(
     trace.end(shardScanSpan);
     const shards = shardResults as ShardColumns[];
     const stitched = trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
-    if (!stitched) {
-      console.warn('[stream][shard] stitch fallback triggered (handoff not found) — serial pre-pass');
+    // An EMPTY stitch falls back too: workers store an empty index as none, so
+    // the sharded-only finalize-styles always threw "no entity index".
+    if (!stitched || stitched.ids.length === 0) {
+      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : 'handoff not found'}) — serial pre-pass`);
       startPrepass(false);
       return;
     }
@@ -1060,8 +1056,6 @@ export async function* processParallel(
   }
 
   const prepassWorker = makePrepassWorker();
-  // #7036: idle workers this large load did not lease would only add to its peak.
-  if (pool && fileSizeMB > LARGE_LOAD_POOL_DRAIN_MB) pool.drain('large-load');
 
   // Wrap the rest of the pipeline so worker teardown runs not only on
   // normal completion / error / zero-jobs branches, but also when the
@@ -1302,6 +1296,7 @@ export async function* processParallel(
         drainQueuedChunksIfReady();
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
+        omittedTypeRecords = parseOmittedTypeRecords(evt.omittedTypeRecords);
         console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);
         trace.milestone('prepass.complete');
         // Unconditionally drive the prepass-complete handler here.
@@ -1330,7 +1325,11 @@ export async function* processParallel(
       // fields on its `{type:'error'}` message — this handler previously
       // dropped them on the floor.
       restashWasmPanicLocation(globalThis, data.wasmPanicLocation, data.wasmPanicAt, data.message);
-      prepassError = new Error(data.message);
+      // Wrapped like the process-worker pool's `Geometry worker error: …`
+      // (#8246): a bare "unreachable" carries no geometry marker, so the
+      // viewer's classifier filed pre-pass traps on 1.6+ GB files as
+      // `unknown` and showed the raw trap text instead of memory guidance.
+      prepassError = new Error(`Pre-pass worker error: ${data.message}`);
       prepassDone = true;
       prepassWorker.terminate();
       wake();
@@ -1487,7 +1486,7 @@ export async function* processParallel(
         terminateWorkerQuietly(w, 'process worker');
       }
       const coordinateInfo = coordinator.getFinalCoordinateInfo();
-      yield { type: 'complete', totalMeshes: 0, coordinateInfo };
+      yield { type: 'complete', totalMeshes: 0, coordinateInfo, ...omittedTypeRecordsField(omittedTypeRecords) };
       return;
     }
 
@@ -1524,6 +1523,7 @@ export async function* processParallel(
     coordinateInfo,
     ...(loadDiagnostics ? { diagnostics: loadDiagnostics } : {}),
     ...(skippedReport ? { skippedHungElements: skippedReport } : {}),
+    ...omittedTypeRecordsField(omittedTypeRecords),
   };
   } finally {
     trace.end(poolSpan);

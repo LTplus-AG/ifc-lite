@@ -1,0 +1,66 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# Qualification-only inverse on production source 97d8add207.
+
+diff --git a/packages/renderer/src/picker.ts b/packages/renderer/src/picker.ts
+index c122550e05..d285f13266 100644
+--- a/packages/renderer/src/picker.ts
++++ b/packages/renderer/src/picker.ts
+@@ -81,7 +81,7 @@ export class Picker {
+     this.depthTexture = this.device.createTexture({
+       size: { width, height },
+       format: 'depth32float',
+-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
++      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+     });
+ 
+     // One dynamically-offset uniform slot per flat mesh. The buffer carries
+@@ -265,6 +265,7 @@ export class Picker {
+     // buffer. Each pick owns its coordinates and output until mapping finishes.
+     this.readbacks.track(readBuffer);
+     let depthResources: readonly GPUBuffer[] = [];
++    const depthStride = Math.ceil(width * 4 / 256) * 256;
+     let sample: number;
+     let depth: number;
+     try {
+@@ -276,16 +277,25 @@ export class Picker {
+         { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
+         { width: 1, height: 1 },
+       );
+-      depthResources = this.depthSample.encode(
+-        encoder, this.depthTexture, sampleX, sampleY, readBuffer, 4,
+-      );
++      // #6881 qualification-only inverse: the previous full-subresource copy,
++      // with the current render, decode, snapshots and lifecycle repair intact.
++      const fullDepth = this.device.createBuffer({
++        size: depthStride * height,
++        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
++      });
++      depthResources = [fullDepth];
+       this.readbacks.track(...depthResources);
++      encoder.copyTextureToBuffer(
++        { texture: this.depthTexture, aspect: 'depth-only' },
++        { buffer: fullDepth, bytesPerRow: depthStride, rowsPerImage: height },
++        { width, height },
++      );
+       this.device.queue.submit([encoder.finish()]);
+-      await readBuffer.mapAsync(GPUMapMode.READ);
++      await Promise.all([readBuffer.mapAsync(GPUMapMode.READ), fullDepth.mapAsync(GPUMapMode.READ)]);
+       if (this.destroyed || this.readbacks.deviceLost) return null;
+       const bytes = readBuffer.getMappedRange();
+       sample = new Uint32Array(bytes, 0, 1)[0];
+-      depth = new Float32Array(bytes, 4, 1)[0];
++      depth = new Float32Array(fullDepth.getMappedRange(), sampleY * depthStride + sampleX * 4, 1)[0];
+     } catch (err) {
+       if (!this.readbacks.deviceLost && !isReadbackAbort(err)) throw err;
+       return null;
+@@ -444,7 +454,7 @@ export class Picker {
+       this.depthTexture = this.device.createTexture({
+         size: { width, height },
+         format: 'depth32float',
+-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
++        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+       });
+     }
+     // WebGPU texture views can't be reused after submit, so build fresh ones.

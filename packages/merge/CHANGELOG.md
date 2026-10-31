@@ -1,5 +1,33 @@
 # @ifc-lite/merge
 
+## 0.5.0
+
+### Minor Changes
+
+- [#8111](https://github.com/LTplus-AG/ifc-lite/pull/8111) [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65) Thanks [@louistrue](https://github.com/louistrue)! - Initialize the shared diff runtime at async content comparison, table rekey, and layer merge boundaries before invoking the synchronous Rust facade. Initialization failures propagate and subsequent requests can retry through the shared runtime.
+  
+  Library users of synchronous merge planning, rebase, revert, comparison, and snapshot hashing must first initialize the shared runtime from `@ifc-lite/diff`, either with `await initDiff()` or, with preloaded WASM input, `initDiffSync(...)`. The merge package receives a minor release for this new initialization prerequisite.
+
+### Patch Changes
+
+- Updated dependencies [[`b46c759`](https://github.com/LTplus-AG/ifc-lite/commit/b46c759601838b5d91dd54e4355feec2fea047af), [`c0acc2d`](https://github.com/LTplus-AG/ifc-lite/commit/c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1), [`f2271ec`](https://github.com/LTplus-AG/ifc-lite/commit/f2271ec4fb5b9bd59fedb7802b3438bbdf0b18ba), [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65)]:
+  - @ifc-lite/diff@0.13.0
+
+## 0.4.9
+
+### Patch Changes
+
+- Updated dependencies [[`41f1ed8`](https://github.com/LTplus-AG/ifc-lite/commit/41f1ed8615cf38c37026aebd9dc5b3e924d8f1bc), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`934eb31`](https://github.com/LTplus-AG/ifc-lite/commit/934eb3192eaf6fa3ea685f4e7bdac1c5dba3f622), [`c7c9b31`](https://github.com/LTplus-AG/ifc-lite/commit/c7c9b3171f8d0281d8a47c4e65f5522abde74400), [`69e151b`](https://github.com/LTplus-AG/ifc-lite/commit/69e151b7c0573402702a9a3ae8f1d54735e24be0), [`70cbe7d`](https://github.com/LTplus-AG/ifc-lite/commit/70cbe7d2428722fc306356adabfa9c8f899731a2)]:
+  - @ifc-lite/diff@0.12.0
+  - @ifc-lite/ifcx@4.6.0
+
+## 0.4.8
+
+### Patch Changes
+
+- Updated dependencies [[`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac), [`97d8add`](https://github.com/LTplus-AG/ifc-lite/commit/97d8add207104d5801c0c8d62e40fa7066e848f8)]:
+  - @ifc-lite/diff@0.11.0
+
 ## 0.4.7
 
 ### Patch Changes

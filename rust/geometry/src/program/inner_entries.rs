@@ -96,3 +96,24 @@ impl<'a> GeometryProgram<'a> {
         Self::with_control(Control::Cache(item, CacheControl::new(offset_meters)))
     }
 }
+
+#[cfg(test)]
+impl<'a> GeometryProgram<'a> {
+    pub(crate) fn product_with_limit(
+        element: &'a DecodedEntity,
+        hygiene: crate::router::processing::SourceHygiene,
+        allowance: u32,
+        styled: Option<(
+            bool,
+            Option<&'a rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
+        )>,
+    ) -> Self {
+        let control = match styled {
+            None => ProductControl::merged(element, hygiene),
+            Some((instancing, textures)) => {
+                ProductControl::styled(element, instancing, textures, hygiene)
+            }
+        };
+        Self::with_control(Control::Product(control.with_logical_limit(allowance)))
+    }
+}

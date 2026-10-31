@@ -5,7 +5,8 @@
 // The runner bootstrap uses a static worker import so startup messages queue
 // until the actual worker module has installed its handler.
 import http from 'node:http';
-import { spawn, spawnSync } from 'node:child_process';
+import { fork, spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 function listen(server, port = 0) {
@@ -124,7 +125,24 @@ export async function startMimeDriverProxy(driverOrigin, port = 0) {
   };
 }
 
+// wasm-bindgen-test SIGKILLs its driver on failure, then reads its output
+// pipes to EOF. An inherited native stderr keeps that read blocked forever.
+// An IPC supervisor survives the proxy long enough to reap the native driver.
+function superviseNativeDriver([executable, ...args]) {
+  const child = spawn(executable, args, { stdio: ['ignore', 'inherit', 'inherit'] });
+  const stop = () => child.kill('SIGTERM');
+  process.once('disconnect', stop);
+  process.once('SIGTERM', stop);
+  process.once('SIGINT', stop);
+  child.once('error', error => { console.error(error); process.exitCode = 1; if (process.connected) process.disconnect(); });
+  child.once('exit', code => { process.exitCode = code ?? 1; if (process.connected) process.disconnect(); });
+}
+
 async function main(args) {
+  if (args[0] === '--native-driver') {
+    superviseNativeDriver(args.slice(1));
+    return;
+  }
   const executable = process.env.IFCLITE_REAL_CHROMEDRIVER || 'chromedriver';
   if (args.includes('--version') || args.includes('-v')) {
     const result = spawnSync(executable, args, { stdio: 'inherit' });
@@ -140,7 +158,9 @@ async function main(args) {
     else nativeArgs.push(args[index]);
   }
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error('ChromeDriver requires an explicit port');
-  const child = spawn(executable, [...nativeArgs, '--port=0'], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const child = fork(fileURLToPath(import.meta.url), ['--native-driver', executable, ...nativeArgs, '--port=0'], {
+    stdio: ['ignore', 'pipe', 'inherit', 'ipc'],
+  });
   let proxy;
   let stopping = false;
   const stop = async () => {

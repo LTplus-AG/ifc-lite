@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Read-only logical identities. No mutable controller fields cross this seam.
+use super::logical;
+use crate::document::RetainedRecipe;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Definition(logical::LogicalRetainedDefinition);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Slot(logical::LogicalRetainedSlot);
+#[derive(Debug)]
+pub struct Value(logical::LogicalRetainedValue);
+#[derive(Clone, Copy)]
+pub struct ValueRef<'a>(&'a logical::LogicalRetainedValue);
+impl Value {
+    pub fn as_ref(&self) -> ValueRef<'_> { ValueRef(&self.0) }
+}
+impl<'a> ValueRef<'a> {
+    /// M11-I: source-only, single mapped occurrence with existing proper-rigid
+    /// placement authority. Derived Boolean/clip/layer/affine values have no
+    /// source definition and cannot acquire instancing authority here.
+    pub fn instance_representation_map(self) -> Option<u32> {
+        if self.world_from_source().is_none() || !self.0.is_product_placed() {
+            return None;
+        }
+        let placements = self.0.placements();
+        if placements.iter().filter(|p| matches!(p.stage, logical::RetainedPlacementStage::Mapping { .. })).count() != 1
+            || placements.iter().any(|p| logical::proper_rigid(&nalgebra::Matrix4::from_column_slice(&p.matrix)).is_err())
+            || logical::proper_rigid(&self.0.world_from_evaluation()).is_err() {
+            return None;
+        }
+        let bindings = self.0.presentation();
+        if bindings.iter().any(|p| p.texture_pending.is_some() || p.indexed_palette_pending || p.type_product.is_some()) {
+            return None;
+        }
+        let mut maps = bindings.iter().filter_map(|p| p.representation_map);
+        let map = maps.next()?;
+        maps.next().is_none().then_some(map)
+    }
+    /// Source binding facts for diagnostics, not complete appearance authority.
+    pub fn bindings(self) -> impl Iterator<Item = (u32, u32, Option<(u32, u8)>)> + 'a {
+        self.0.presentation().iter().map(|p| (p.geometry_id, p.style_source_id, p.type_product))
+    }
+    /// Complete source bindings for appearance resolution: the same facts
+    /// [`Self::bindings`] reports plus the map, class colour and pending flags.
+    pub fn presentation(self) -> impl Iterator<Item = PresentationFacts> + 'a {
+        self.0.presentation().iter().map(|p| PresentationFacts {
+            geometry_id: p.geometry_id,
+            style_source_id: p.style_source_id,
+            representation_map: p.representation_map,
+            type_product: p.type_product,
+            fallback_color: p.fallback_color,
+            indexed_palette_pending: p.indexed_palette_pending,
+            texture_pending: p.texture_pending.is_some(),
+        })
+    }
+    pub fn definition(self) -> Definition { Definition(self.0.definition().clone()) }
+    pub fn slot(self) -> Slot { Slot(self.0.slot()) }
+    /// Conservative bounds in the runtime object evaluation frame.
+    pub fn evaluation_bounds(self) -> Option<crate::document::EvaluationBounds> { self.0.bounds }
+    pub fn evaluated_empty(self) -> Option<bool> { self.0.evaluated_empty() }
+    pub fn object_frame(self) -> &'a [f64; 16] { self.0.object_frame() }
+    pub fn world_from_source(self) -> Option<&'a [f64; 16]> { self.0.world_from_source() }
+    pub fn source_from_evaluation(self) -> &'a [f64; 16] { self.0.source_from_evaluation() }
+    pub fn evaluation_from_source(self) -> &'a [f64; 16] { self.0.evaluation_from_source() }
+}
+/// One source binding of a logical value. Texture and palette bindings are
+/// reported as pending, never resolved here.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PresentationFacts {
+    pub geometry_id: u32,
+    pub style_source_id: u32,
+    pub representation_map: Option<u32>,
+    pub type_product: Option<(u32, u8)>,
+    pub fallback_color: Option<[f32; 4]>,
+    pub indexed_palette_pending: bool,
+    pub texture_pending: bool,
+}
+pub struct Operation(pub(super) logical::RetainedPlanOperation);
+pub enum OperationKind<'a> {
+    Construction(&'a RetainedRecipe),
+    Affine { input: ValueRef<'a>, matrix: &'a [f64; 16] },
+    Boolean { inputs: [ValueRef<'a>; 2], operation: crate::BoolOp },
+}
+impl Operation {
+    pub fn opening(&self) -> Option<(u32, usize, usize)> { self.0.opening }
+    pub fn value(&self) -> ValueRef<'_> { ValueRef(self.0.value()) }
+    pub fn into_value(self) -> Value { Value(self.0.into_value()) }
+    pub fn kind(&self) -> OperationKind<'_> {
+        match self.0.kind() {
+            logical::RetainedOperationKind::Construction(recipe) => OperationKind::Construction(recipe),
+            logical::RetainedOperationKind::Affine { input, matrix } => OperationKind::Affine { input: ValueRef(input), matrix },
+            logical::RetainedOperationKind::Boolean { inputs, operation } => OperationKind::Boolean {
+                inputs: [ValueRef(&inputs[0]), ValueRef(&inputs[1])], operation: *operation,
+            },
+        }
+    }
+    /// Logical classification only; processing must authenticate every receipt
+    /// in the batch first. This creates no runtime or publication authority.
+    pub fn bind_numerical_outcome(&self, empty: bool) -> crate::Result<()> {
+        self.0.bind_numerical_outcome(empty)
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppearance, PersistentFaces, SurfaceNormals }
+pub struct Plan {
+    pub(super) inner: logical::RetainedProductPlan,
+    _storage: Option<crate::resource::Reservation>,
+    _requirements_storage: Option<crate::resource::Reservation>,
+}
+impl Plan {
+    pub(super) fn new(inner: logical::RetainedProductPlan) -> Self {
+        Self { inner, _storage: None, _requirements_storage: None }
+    }
+    pub fn type_maps(plans: Vec<Self>) -> Result<Self, super::TransactionError> {
+        let resources = super::Resources::capture_current();
+        let count = plans.iter().try_fold(0usize, |n, plan| n.checked_add(plan.inner.values.len()))
+            .ok_or_else(crate::resource::overflow).map_err(super::TransactionError::stopped)?;
+        let mut values = Vec::new();
+        let storage = resources.reserve_headers(&mut values, count).map_err(super::TransactionError::stopped)?;
+        let mut remaining = Vec::new();
+        let requirements_storage = resources.reserve_headers(&mut remaining, 6).map_err(super::TransactionError::stopped)?;
+        remaining.extend([
+            logical::RetainedRequirement::ProductPlacement, logical::RetainedRequirement::OpeningClosure,
+            logical::RetainedRequirement::MaterialLayers, logical::RetainedRequirement::IfcAppearance,
+            logical::RetainedRequirement::PersistentFaces, logical::RetainedRequirement::SurfaceNormals,
+        ]);
+        for plan in plans { values.extend(plan.inner.values); }
+        resources.check().map_err(super::TransactionError::stopped)?;
+        Ok(Self { inner: logical::RetainedProductPlan { values, remaining, opening: None, layers: None },
+            _storage: Some(storage), _requirements_storage: Some(requirements_storage) })
+    }
+}
+impl Plan {
+    pub fn discharge_layers(mut self) -> Self {
+        self.inner.remaining.retain(|r| *r != logical::RetainedRequirement::MaterialLayers);
+        self
+    }
+    pub fn layers(&self) -> Option<&super::LayerCompletion> { self.inner.layers.as_deref() }
+    pub fn discharge_unvoided(mut self) -> Self {
+        self.inner.remaining.retain(|r| *r != logical::RetainedRequirement::OpeningClosure);
+        self
+    }
+    pub fn opening(&self) -> Option<(usize, u64, usize)> {
+        self.inner.opening.as_ref().map(|o| (o.related, o.cuts, o.consumed))
+    }
+    pub fn values(&self) -> impl ExactSizeIterator<Item = ValueRef<'_>> {
+        self.inner.values.iter().map(ValueRef)
+    }
+    pub fn requirements(&self) -> impl Iterator<Item = Requirement> + '_ {
+        self.inner.remaining.iter().map(|requirement| match requirement {
+            logical::RetainedRequirement::ProductPlacement => Requirement::ProductPlacement,
+            logical::RetainedRequirement::OpeningClosure => Requirement::OpeningClosure,
+            logical::RetainedRequirement::MaterialLayers => Requirement::MaterialLayers,
+            logical::RetainedRequirement::IfcAppearance => Requirement::IfcAppearance,
+            logical::RetainedRequirement::PersistentFaces => Requirement::PersistentFaces,
+            logical::RetainedRequirement::SurfaceNormals => Requirement::SurfaceNormals,
+        })
+    }
+}

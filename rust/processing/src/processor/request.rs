@@ -9,7 +9,7 @@
 //! the id allow-list, an injected entity index and a cancel flag. A new pass
 //! input is a field here, never a new `process_geometry_*` function.
 
-use super::{OpeningFilterMode, StreamingOptions};
+use super::OpeningFilterMode;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::TessellationQuality;
 use std::collections::HashSet;
@@ -49,7 +49,8 @@ impl Batching {
     }
 }
 
-/// The optional phases of a pass. All on except the bootstrap, as before.
+/// The optional phases of a pass. All on except the bootstrap and the
+/// finishes, as before.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Features {
@@ -60,6 +61,10 @@ pub struct Features {
     /// Emit [`ProcessingSink::on_bootstrap`](super::ProcessingSink::on_bootstrap)
     /// once the scan is done.
     pub quick_metadata_bootstrap: bool,
+    /// Emit [`ProcessingSink::on_finishes`](super::ProcessingSink::on_finishes)
+    /// before every batch: each mesh's IFC-authored finish (#5984), joined from
+    /// the pass's own scan instead of a second read of the file. Off by default.
+    pub finishes: bool,
 }
 
 impl Features {
@@ -77,11 +82,16 @@ impl Features {
         self.quick_metadata_bootstrap = on;
         self
     }
+
+    pub fn finishes(mut self, on: bool) -> Self {
+        self.finishes = on;
+        self
+    }
 }
 
 impl Default for Features {
     fn default() -> Self {
-        Self { properties: true, presentation_layers: true, quick_metadata_bootstrap: false }
+        Self { properties: true, presentation_layers: true, quick_metadata_bootstrap: false, finishes: false }
     }
 }
 
@@ -98,6 +108,8 @@ pub struct ProcessingRequest {
     pub opening_filter: OpeningFilterMode,
     /// Tessellation detail (#976). `Medium` is the historical output.
     pub quality: TessellationQuality,
+    /// Slice material-layer walls into per-layer submeshes. Default false.
+    pub layer_slicing: bool,
     pub batching: Batching,
     pub features: Features,
     /// Keep the emitted meshes in the returned [`ProcessingResult`](super::ProcessingResult).
@@ -135,6 +147,12 @@ impl ProcessingRequest {
 
     pub fn quality(mut self, quality: TessellationQuality) -> Self {
         self.quality = quality;
+        self
+    }
+
+    /// Opt into the shared browser material-layer slicing path.
+    pub fn layer_slicing(mut self, on: bool) -> Self {
+        self.layer_slicing = on;
         self
     }
 
@@ -181,6 +199,7 @@ impl ProcessingRequest {
         Self {
             opening_filter,
             quality: options.tessellation_quality,
+            layer_slicing: false,
             batching: Batching {
                 initial: options.initial_batch_size,
                 throughput: options.throughput_batch_size,
@@ -190,12 +209,82 @@ impl ProcessingRequest {
                 properties: options.include_properties,
                 presentation_layers: options.include_presentation_layers,
                 quick_metadata_bootstrap: options.emit_quick_metadata_bootstrap,
+                finishes: false,
             },
             retain_meshes: options.retain_emitted_meshes,
             instancing: options.enable_instancing,
             entity_ids: None,
             entity_index: options.entity_index,
             cancel: options.cancel,
+        }
+    }
+}
+
+/// Controls the tradeoff between first-frame latency and richer upfront metadata.
+// Not `Copy`: `entity_index` holds an `Arc`. Every construction either moves the
+// struct into a process call once or `..Default::default()`s it, so `Clone` suffices.
+#[derive(Debug, Clone)]
+pub struct StreamingOptions {
+    /// Batch size used for the very first emitted chunk.
+    pub initial_batch_size: usize,
+    /// Batch size used after the first emitted chunk for higher throughput.
+    pub throughput_batch_size: usize,
+    /// Prioritize cheap/high-yield element classes first.
+    pub fast_first_batch: bool,
+    /// Include expensive property parsing on the first-frame path.
+    pub include_properties: bool,
+    /// Include expensive presentation-layer resolution on the first-frame path.
+    pub include_presentation_layers: bool,
+    /// Emit a lightweight spatial bootstrap during the scan phase.
+    pub emit_quick_metadata_bootstrap: bool,
+    /// Retain emitted meshes in the returned ProcessingResult.
+    pub retain_emitted_meshes: bool,
+    /// Tessellation detail level (#976). `Medium` reproduces the historical
+    /// output byte-for-byte; consumer-selectable on the wasm path via
+    /// `setTessellationQuality`, and on the server via the
+    /// `tessellation_quality` query parameter. 2D symbolic extraction
+    /// (`symbolic.rs`) deliberately ignores the level — symbols are
+    /// resolution-independent line work.
+    pub tessellation_quality: TessellationQuality,
+    /// Pre-built entity index to reuse instead of scanning `content` again. A caller
+    /// that runs both the geometry pass and a second pass over the same bytes (e.g. a
+    /// server emitting GLB *and* extracting properties) can `build_entity_index`
+    /// once and inject it here, skipping the duplicate SIMD scan. `None` builds it
+    /// internally, exactly as before. The index MUST come from
+    /// `build_entity_index(content)` for the *same* `content`, or decoding will read
+    /// the wrong byte ranges.
+    pub entity_index: Option<Arc<EntityIndex>>,
+    /// Cooperative cancellation: when the flag flips true, the streaming core
+    /// stops between job chunks (no further meshing or batch emission). The
+    /// returned `ProcessingResult` is then PARTIAL - the caller set the flag,
+    /// so it must not present the result as a completed parse. Used by the
+    /// server to stop burning a core when an SSE client disconnects.
+    pub cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// #1623 Phase 2 "don't-bake" instancing. When `true` (AND
+    /// `retain_emitted_meshes`), the geometry phase meshes each repeated single-solid
+    /// `IfcRepresentationMap` ONCE (a template occurrence) and emits every OTHER
+    /// occurrence as a lightweight `InstanceRecord` (placement + colour + id) instead
+    /// of materializing a full world-space mesh per occurrence — killing the
+    /// per-occurrence 43M-vertex bake on mapped-item-heavy models. `false` (default)
+    /// reproduces the historical materialized output byte-for-byte, so determinism /
+    /// parity / every exporter are unaffected (none arm this).
+    pub enable_instancing: bool,
+}
+
+impl Default for StreamingOptions {
+    fn default() -> Self {
+        Self {
+            initial_batch_size: 50,
+            throughput_batch_size: 50,
+            fast_first_batch: false,
+            include_properties: true,
+            include_presentation_layers: true,
+            emit_quick_metadata_bootstrap: false,
+            retain_emitted_meshes: true,
+            tessellation_quality: TessellationQuality::default(),
+            entity_index: None,
+            cancel: None,
+            enable_instancing: false,
         }
     }
 }

@@ -60,7 +60,7 @@ impl ProfileProcessor {
     /// the planar `IfcAxis2Placement2D`. Used by both the full-circle sampler
     /// and the trimmed-arc sampler so a 3D-placed arc is never flattened to z=0.
     ///
-    /// Both kinds go through the canonical readers in [`crate::transform`]
+    /// Both kinds go through the canonical reader, [`crate::placement::Axis2Placement`],
     /// (#7687, PROC-13), as the trimmed-circle path (`circle_basis`) already
     /// did. This reader's own copy normalised a zero Axis to NaN and used a
     /// RefDirection not perpendicular to Axis as written, tilting the circle
@@ -129,20 +129,36 @@ impl ProfileProcessor {
             // The source description rejects malformed circle bases; keep the
             // mesh sampler's prior recovery for those files (notably #5566).
             let decoded = match decode_trimmed_primitive(
-                trimmed, basis, decoder, TrimRecovery::BasisDefaults,
+                trimmed,
+                basis,
+                decoder,
+                TrimRecovery::BasisDefaultsStrictPoints,
             ) {
                 Ok(decoded) => decoded,
                 Err(_) => return self.process_trimmed_ellipse_3d(trimmed, basis, decoder),
             };
             let Some(TrimmedPrimitive::Circle {
-                center, normal: _, x_axis, y_axis, radius, start_angle, sweep_angle,
+                center,
+                normal: _,
+                x_axis,
+                y_axis,
+                radius,
+                start_angle,
+                sweep_angle,
             }) = decoded
             else {
                 return Err(Error::geometry("Expected trimmed circle".to_string()));
             };
             return Ok(self.sample_conic_arc_3d(
-                (Point3::from(center), Vector3::from(x_axis), Vector3::from(y_axis)),
-                (radius, radius), start_angle, start_angle + sweep_angle, decoder,
+                (
+                    Point3::from(center),
+                    Vector3::from(x_axis),
+                    Vector3::from(y_axis),
+                ),
+                (radius, radius),
+                start_angle,
+                start_angle + sweep_angle,
+                decoder,
             ));
         }
         self.process_trimmed_ellipse_3d(trimmed, basis, decoder)
@@ -187,7 +203,7 @@ impl ProfileProcessor {
                 radius2,
                 angle_scale,
                 decoder,
-            )
+            )?
             .unwrap_or(0.0);
         let mut end_angle = self
             .trim_to_angle_3d(
@@ -200,7 +216,7 @@ impl ProfileProcessor {
                 radius2,
                 angle_scale,
                 decoder,
-            )
+            )?
             .unwrap_or(2.0 * PI);
 
         // Wrap so a sense-T arc whose end angle dropped below the start (crossed
@@ -238,8 +254,10 @@ impl ProfileProcessor {
         radius2: f64,
         angle_scale: f64,
         decoder: &mut EntityDecoder,
-    ) -> Option<f64> {
-        let list = attr?.as_list()?;
+    ) -> Result<Option<f64>> {
+        let Some(list) = attr.and_then(|a| a.as_list()) else {
+            return Ok(None);
+        };
         let mut param: Option<f64> = None;
         let mut point: Option<Point3<f64>> = None;
 
@@ -249,18 +267,8 @@ impl ProfileProcessor {
                 continue;
             }
             // A reference to an IfcCartesianPoint (kept in full 3D).
-            if item.as_entity_ref().is_some() {
-                if let Ok(Some(pt)) = decoder.resolve_ref(item) {
-                    if pt.ifc_type == IfcType::IfcCartesianPoint {
-                        if let Some(coords) = pt.get(0).and_then(|v| v.as_list()) {
-                            point = Some(Point3::new(
-                                coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                                coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                                coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-                            ));
-                        }
-                    }
-                }
+            if let Some(id) = item.as_entity_ref() {
+                point = Some(Point3::from(decoder.point3(id)?));
                 continue;
             }
             // Bare numeric fallback: a parameter without the IFCPARAMETERVALUE wrapper.
@@ -275,10 +283,10 @@ impl ProfileProcessor {
                 let d = p - center;
                 let lx = d.dot(x_axis);
                 let ly = d.dot(y_axis);
-                return Some((ly / radius2).atan2(lx / radius));
+                return Ok(Some((ly / radius2).atan2(lx / radius)));
             }
         }
-        param.map(|v| v * angle_scale)
+        Ok(param.map(|v| v * angle_scale))
     }
 
     /// Process polyline into 3D points
@@ -296,18 +304,7 @@ impl ProfileProcessor {
         let mut result = Vec::with_capacity(points.len());
 
         for point in points {
-            // IfcCartesianPoint: Coordinates
-            let coords_attr = point
-                .get(0)
-                .ok_or_else(|| Error::geometry("CartesianPoint missing Coordinates".to_string()))?;
-
-            let coords = coords_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Coordinates is not a list".to_string()))?;
-
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let [x, y, z] = decoder.point3_decoded(&point)?;
 
             result.push(Point3::new(x, y, z));
         }
@@ -370,20 +367,27 @@ impl ProfileProcessor {
             .and_then(|a| a.as_list())
             .ok_or_else(|| Error::geometry("CartesianPointList missing CoordList".to_string()))?;
 
-        // IfcCartesianPointList3D has 3-tuples; IfcCartesianPointList2D has
-        // 2-tuples. Read whatever is there and default missing components to 0.
+        // Point-list rows are inline tuples, not CartesianPoint entities.
+        // Preserve row identity: a bad row refuses the curve, never shifts indices.
+        let dimension = match points_list.ifc_type.as_str() {
+            "IFCCARTESIANPOINTLIST2D" => 2,
+            "IFCCARTESIANPOINTLIST3D" => 3,
+            _ => {
+                return Err(Error::geometry(
+                    "Expected CartesianPointList2D or CartesianPointList3D",
+                ))
+            }
+        };
         let all_points: Vec<Point3<f64>> = coord_list
             .iter()
-            .filter_map(|coord| {
-                coord.as_list().map(|coords| {
-                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    Point3::new(x, y, z)
-                })
+            .map(|coord| {
+                let row = coord
+                    .as_list()
+                    .filter(|row| row.len() == dimension)
+                    .ok_or_else(|| Error::geometry("Invalid CartesianPointList row dimensions"))?;
+                crate::curve_source::point_values(row).map(Point3::from)
             })
-            .collect();
-        crate::curve_source::admit_f32_range(all_points.iter().flat_map(|p| [p.x, p.y, p.z]))?;
+            .collect::<Result<_>>()?;
         let segments_attr = curve.get(1);
         if segments_attr.is_none() || segments_attr.map(|a| a.is_null()).unwrap_or(true) {
             return Ok(all_points);
@@ -421,11 +425,12 @@ impl ProfileProcessor {
                     // mid-deviation, same heuristic as the 2D path.
                     let chord = end - start;
                     let chord_len = chord.norm();
-                    let mid_offset = mid - Point3::new(
-                        0.5 * (start.x + end.x),
-                        0.5 * (start.y + end.y),
-                        0.5 * (start.z + end.z),
-                    );
+                    let mid_offset = mid
+                        - Point3::new(
+                            0.5 * (start.x + end.x),
+                            0.5 * (start.y + end.y),
+                            0.5 * (start.z + end.z),
+                        );
                     let mid_dev = mid_offset.norm();
                     // Sweep angle phi = 4*atan(2s/c) (s = sagitta, c = chord);
                     // the old 2*acos(s/c) was inverted. Same fix as the 2D path.

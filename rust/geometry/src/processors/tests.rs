@@ -1362,8 +1362,9 @@ fn unterminated_comment_geometry_and_core_scanner_agree() {
 /// an `IfcFaceBound` hole containing a non-finite vertex — the same
 /// `1.0E400` STEP `REAL` literal used in
 /// `advanced_face::surfaces_tests::failed_hole_triangulation_never_falls_back_to_a_filled_outer_fan`,
-/// which `lexical_core` parses to `f64::INFINITY`, deterministically failing
-/// `triangulate_planar_indices`'s `holes_2d`-non-empty `Err` arm) must be
+/// which canonical point admission refuses, so the hole loop does not read
+/// and the face is refused under D14 (#7779; it used to fail
+/// `triangulate_planar_indices`'s `holes_2d`-non-empty `Err` arm)) must be
 /// skipped, not abort the whole `IfcAdvancedBrep`. The failing face is
 /// listed FIRST in `CfsFaces`, so a bare `?` on it would return `Err` before
 /// the second (good, hole-free) face is ever reached; the fix must still

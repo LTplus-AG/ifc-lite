@@ -95,7 +95,9 @@ export function parseScopeClaim(raw: string): ValidationResult<ScopeClaim> {
     );
   }
 
-  const constraints: Record<string, string> = {};
+  // Prototype-free, so a `__proto__` or `constructor` constraint is an
+  // ordinary key rather than hitting Object.prototype.
+  const constraints: Record<string, string> = Object.create(null);
   for (const piece of pieces.slice(1)) {
     const eqIdx = piece.indexOf('=');
     if (eqIdx === -1) {

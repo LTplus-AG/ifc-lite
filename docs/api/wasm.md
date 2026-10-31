@@ -24,6 +24,24 @@ flowchart LR
     Bindings --> Geo
 ```
 
+## Symbolic extraction errors and raw ABI migration
+
+`IfcAPI.parseSymbolicRepresentations(content)` and
+`IfcAPI.parseSymbolicRepresentationsInFrame(content, frame)` throw when extraction
+is cancelled or a resource admission is refused. They discard staged symbols
+and provenance instead of returning an empty successful collection. A genuinely
+empty collection still means no symbols were found, and ordinary geometric
+truncation remains available on the returned collection.
+
+The high-level method signatures and successful collection format are unchanged.
+The exported `InitOutput.ifcapi_parseSymbolicRepresentations` raw WASM function
+changes from three numeric arguments returning `number` to four numeric arguments
+returning `void`, to support wasm-bindgen error propagation. This is a breaking
+low-level ABI change, released with a major `@ifc-lite/wasm` changeset. Call
+`IfcAPI.parseSymbolicRepresentations(content)` rather than constructing the raw
+out-pointer call. Rust consumers also need to handle the extraction APIs' new
+`Result<_, ProgramStop>` return values; see [the Rust API](./rust.md#symbolic-fill-provenance).
+
 ## Loading the WASM Module
 
 ### Automatic Loading
@@ -254,6 +272,8 @@ parseSymbolicRepresentations(content: string): SymbolicRepresentationCollection;
 diagnoseGeometry(content: Uint8Array): any;                           // CSG / opening diagnostics
 ```
 
+Grid endpoints must be `IfcCartesianPoint` records with two or three finite numeric coordinates; two-dimensional points use zero elevation. A malformed endpoint omits that axis. Grid and alignment overlays omit an item whose authored placement cannot be resolved. A genuinely absent placement keeps the identity transform. Omitted items are not reported; the result simply has fewer entries.
+
 Grid, alignment, and symbolic parsing can instead reuse the exact effective
 mesh-producer RTC frame (after any federation override):
 
@@ -311,6 +331,44 @@ try {
 }
 ```
 
+#### Content installation and cleanup
+
+`buildPrePassOnce`, accepted streaming/sharded prepasses, and `setEntityIndex`
+start a new content lifetime. They drop the previous entity index, derived textures, indexed colours,
+material layers, parts-to-skip, referenced maps, instantiated types, type-geometry
+and mapped-instance plans, style colours/finishes, item/mapped meshes and BRep
+signatures. They also expire previous owned production snapshots and restart
+pipeline diagnostics. A rejected or empty `setEntityIndex` discards the old
+index; the next batch scans its bytes. Sharded column-length validation occurs
+before installation, so a length refusal leaves the current load intact.
+
+Source bytes are a separate input: index/prepass installation preserves them.
+Workers install index and prepass columns before `setSourceBytes`; CLI clients
+may install bytes before prepass. `setSourceBytes` replaces bytes and expires
+production snapshots/BRep signatures, preserving the already-installed index
+and columns. Pair these inputs from the same file before calling `*FromSource`.
+A byte-only swap is not sufficient to reuse an old index for a different file.
+
+Install `setStyleFinishes` after the prepass/index boundary. Lazy batch index
+construction preserves finishes and columns supplied for that batch. The
+`setPrepassGeometryFinishes` stash is separate input for the next finalize call:
+content installation preserves it, successful finalize consumes it, and the
+worker reinstalls it before each SAB/owned-buffer retry.
+
+`clearPrePassCache` drops derived data, source bytes and any unfinished finalize
+stash, and expires production snapshots. It preserves completed diagnostics
+for reading after `finally` cleanup. Tessellation, layer merging, small-cut and
+geometry-hash settings persist across both installation and cleanup.
+
+Internally, C4-11b groups derived caches in `ContentSlots`/`ContentState`
+(`rust/wasm-bindings/src/api/content_caches.rs`); `LazySlot::get_or_init` holds
+one lock across lookup, construction and publication. Slot declarations generate
+the reset walk, including the entity index. Source bytes and pending finishes
+remain separate inputs; the production model keeps its identity while resets
+expire snapshots. `PrepassOptions`/`PrepassMode::{Serial, Sharded}` in
+`gpu_meshes/prepass_mode.rs` make orchestration explicit without changing the
+positional JS ABI; sharded columns supply the full index and workers resolve styles.
+
 #### Diagnostics and Tuning
 
 ```typescript
@@ -329,6 +387,19 @@ setInstantiatedTypeIds(ids: Uint32Array): void;
 setMaterialLayerIndex(/* per-element layer buildup columns, see the .d.ts */): void;
 clearPrePassCache(): void;
 ```
+
+`getPipelineDiagnostics()` returns a plain object with `schemaVersion: 1`.
+Its additive fields `refusedInputElements` count attempted jobs that refused
+input (a retry counts again), while `refusedPrepassRecords` counts distinct
+semantically refused record IDs per `IfcAPI` worker. Syntax/decode failures
+are excluded; these are not model-wide deduplicated totals. A separate additive
+`omittedTypeRecords` counts distinct type records whose type geometry the
+prepass on that worker omitted because the full decoder rejects the record
+(F2, #8341): one per record, not per map, never in the two refusal counters.
+A prepass-only refusal or omission produces a report even before a batch;
+before either, the getter is `undefined`. Prepass/index installation and `setSourceBytes` reset the report, so read prepass-only values (`refusedPrepassRecords`, `omittedTypeRecords`) from the instance that ran the prepass, before installing source bytes on it;
+`clearPrePassCache` preserves it. See [refusal diagnostics](../guide/geometry.md#pipeline-refusal-diagnostics)
+and `rust/wasm-bindings/src/api/pipeline_diagnostics.rs`.
 
 #### Getters
 

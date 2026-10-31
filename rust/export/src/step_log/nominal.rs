@@ -18,7 +18,7 @@ use serde_json::Value;
 use super::base::pvt;
 use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer};
 use crate::generated::step_log_tables::{BaseKind, ValueMember, ValueType, IFC_VALUE_MEMBERS};
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 impl BaseKind {
     /// The EXPRESS spelling.
@@ -260,11 +260,11 @@ pub(crate) fn serialize_property_value(value: &Value, ty: u8) -> String {
     if is_absent(value) {
         return if ty == pvt::LOGICAL { "IFCLOGICAL(.U.)".to_string() } else { "$".to_string() };
     }
-    let label = |v: &Value| format!("IFCLABEL('{}')", escape(&json_to_js_string(v)));
+    let label = |v: &Value| format!("IFCLABEL({})", quoted(&json_to_js_string(v)));
     match ty {
         pvt::STRING | pvt::LABEL | pvt::ENUM => label(value),
-        pvt::TEXT => format!("IFCTEXT('{}')", escape(&json_to_js_string(value))),
-        pvt::IDENTIFIER => format!("IFCIDENTIFIER('{}')", escape(&json_to_js_string(value))),
+        pvt::TEXT => format!("IFCTEXT({})", quoted(&json_to_js_string(value))),
+        pvt::IDENTIFIER => format!("IFCIDENTIFIER({})", quoted(&json_to_js_string(value))),
         pvt::REAL => {
             let n = js_to_number(value);
             if n.is_finite() {

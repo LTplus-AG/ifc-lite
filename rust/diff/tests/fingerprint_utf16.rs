@@ -33,7 +33,29 @@ fn issue_8042_document_dto_preserves_negative_zero_and_nonfinite_property_number
                 ])])),
             ])])),
         ])).unwrap();
-        let PropertyValue::Number(actual) = input.property_sets[0].properties[0].value else { panic!("expected number") };
+        let set = input.property_sets.present().next().expect("present property set");
+        let entry = set.properties.present().next().expect("present property");
+        let PropertyValue::Number(actual) = entry.value else { panic!("expected number") };
         assert_eq!(actual.to_bits(), number.to_bits());
+    }
+}
+
+#[test]
+fn issue_8042_lazy_scalar_view_does_not_change_string_identity() {
+    use std::{collections::{HashMap, BTreeSet}, hash::{DefaultHasher, Hash, Hasher}};
+    use ifc_lite_diff::JsString;
+    for units in [vec![0xd800], vec![0xd800, 0xdc00], vec![65, 0, 66]] {
+        let value = JsString::from_units(units.clone());
+        let clone = value.clone();
+        let independent = JsString::from_units(units);
+        let hash = |s: &JsString| { let mut h = DefaultHasher::new(); s.hash(&mut h); h.finish() };
+        let before = hash(&value);
+        let map = HashMap::from([(value.clone(), 42)]);
+        let order = BTreeSet::from([value.clone()]);
+        let _ = clone.as_str();
+        assert_eq!(hash(&value), before);
+        assert_eq!(value, independent);
+        assert_eq!(map.get(&independent), Some(&42));
+        assert!(order.contains(&independent));
     }
 }

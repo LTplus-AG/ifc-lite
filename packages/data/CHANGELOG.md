@@ -1,5 +1,17 @@
 # @ifc-lite/data
 
+## 6.4.0
+
+### Minor Changes
+
+- [#8195](https://github.com/LTplus-AG/ifc-lite/pull/8195) [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0) Thanks [@petruconduraru](https://github.com/petruconduraru)! - `iterateEffectiveEntities` walks the entity table of an IFCX (`schemaVersion` `'IFC5'`) source that has no STEP type index, so spaces and every other class are enumerable there instead of the walk finding nothing; a filtered call reads classes from buckets built once per table. New type `DerivedEntities` describes the rows an IFCX reader derived (`retyped`, `added`) that the source file does not state, for exporters.
+
+## 6.3.1
+
+### Patch Changes
+
+- [#8185](https://github.com/LTplus-AG/ifc-lite/pull/8185) [`4aff432`](https://github.com/LTplus-AG/ifc-lite/commit/4aff4322c8b789006229103da539f3e311afff46) Thanks [@louistrue](https://github.com/louistrue)! - Resolve deprecated DB_REF compound CRSs offline with the corrected datum operation inherited from their horizontal EPSG component.
+
 ## 6.3.0
 
 ### Minor Changes

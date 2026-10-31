@@ -22,7 +22,7 @@ fn all_preserve_plan_changes_zero_records() {
         let content = wall_with_own_pset(schema);
         let plan = ExportPlan {
             dispositions: vec![(ObjectRef::Id(10), Disposition::Preserve)],
-            context: PlanContext::default(),
+            context: PlanContext::attributed(),
         };
         let mut out = Vec::new();
         let report = execute(&content, &plan, &mut out).expect(schema);
@@ -47,7 +47,7 @@ fn same_plan_produces_byte_identical_output_twice() {
         dispositions: vec![
             (ObjectRef::Id(10), Disposition::Patch(Patch { name: Some("Renamed".into()), ..Default::default() })),
         ],
-        context: PlanContext { author: Some("tester".into()), organization: None, time_stamp: Some("123".into()) },
+        context: PlanContext { author: Some("tester".into()), organization: None, time_stamp: Some("123".into()), ..Default::default() },
     };
     let mut out1 = Vec::new();
     let mut out2 = Vec::new();
@@ -65,7 +65,7 @@ fn name_patch_resolves_by_globalid_and_updates_only_that_slot() {
             ObjectRef::Guid(gid(10)),
             Disposition::Patch(Patch { name: Some("New Wall Name".into()), ..Default::default() }),
         )],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -82,7 +82,7 @@ fn delete_removes_the_object_and_repairs_its_relationships() {
     let content = wall_with_own_pset(schema);
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -99,7 +99,7 @@ fn deleting_one_of_two_sharing_walls_leaves_the_other_and_its_pset_intact() {
     let content = two_walls_sharing_a_pset(schema);
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -126,7 +126,7 @@ fn placement_patch_repoints_the_local_placement_and_output_still_validates() {
                 ..Default::default()
             }),
         )],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -147,7 +147,7 @@ fn unknown_object_ref_is_refused_not_silently_skipped() {
     let content = wall_with_own_pset(schema);
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(999_999), Disposition::Delete)],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -181,7 +181,7 @@ fn shared_occurrence_pset_edit_never_duplicates_the_pset_name() {
                 ..Default::default()
             }),
         )],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -212,7 +212,7 @@ fn duplicate_set_check_is_scoped_to_patched_objects() {
         .into_bytes();
     let rename = |id| ExportPlan {
         dispositions: vec![(ObjectRef::Id(id), Disposition::Patch(Patch { name: Some("x".into()), ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let duplicate = |report: &WriteReport| report.findings.iter().any(|f| f.message.contains("carries two"));
 
@@ -297,7 +297,7 @@ fn fire_rating_psets_of(schema: &str, after: &HashMap<u32, String>, object_id: u
 fn delete_and_patch_on_the_same_shared_pset_group_compose() {
     let schema = "IFC4";
     let content = three_walls_sharing_a_pset(schema);
-    let plan = ExportPlan { dispositions: vec![delete(10), patch_fire_rating(11, "'2HR'")], context: PlanContext::default() };
+    let plan = ExportPlan { dispositions: vec![delete(10), patch_fire_rating(11, "'2HR'")], context: PlanContext::attributed() };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
     assert!(report.findings.is_empty(), "{:?}", report.findings);
@@ -332,7 +332,7 @@ fn delete_and_patch_on_the_same_shared_pset_group_compose() {
 fn patch_then_delete_on_the_same_shared_pset_group_compose() {
     let schema = "IFC4";
     let content = three_walls_sharing_a_pset(schema);
-    let plan = ExportPlan { dispositions: vec![patch_fire_rating(11, "'2HR'"), delete(10)], context: PlanContext::default() };
+    let plan = ExportPlan { dispositions: vec![patch_fire_rating(11, "'2HR'"), delete(10)], context: PlanContext::attributed() };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
     assert!(report.findings.is_empty(), "{:?}", report.findings);
@@ -356,7 +356,7 @@ fn patch_then_delete_on_the_same_shared_pset_group_compose() {
 fn delete_and_patch_together_emptying_the_group_cascades() {
     let schema = "IFC4";
     let content = two_walls_sharing_a_pset(schema);
-    let plan = ExportPlan { dispositions: vec![delete(10), patch_fire_rating(11, "'2HR'")], context: PlanContext::default() };
+    let plan = ExportPlan { dispositions: vec![delete(10), patch_fire_rating(11, "'2HR'")], context: PlanContext::attributed() };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
     assert!(report.findings.is_empty(), "{:?}", report.findings);
@@ -379,7 +379,7 @@ fn two_patches_on_one_shared_pset_group_both_detach() {
     let schema = "IFC4";
     let content = three_walls_sharing_a_pset(schema);
     let plan =
-        ExportPlan { dispositions: vec![patch_fire_rating(11, "'2HR'"), patch_fire_rating(12, "'3HR'")], context: PlanContext::default() };
+        ExportPlan { dispositions: vec![patch_fire_rating(11, "'2HR'"), patch_fire_rating(12, "'3HR'")], context: PlanContext::attributed() };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
     assert!(report.findings.is_empty(), "{:?}", report.findings);
@@ -408,7 +408,7 @@ fn two_patches_on_one_shared_pset_group_both_detach() {
 fn leaf_sharing_composes_with_set_level_copy_on_write() {
     let schema = "IFC4";
     let content = two_walls_sharing_a_pset_plus_a_third_sharing_the_leaf(schema);
-    let plan = ExportPlan { dispositions: vec![patch_fire_rating(10, "'2HR'")], context: PlanContext::default() };
+    let plan = ExportPlan { dispositions: vec![patch_fire_rating(10, "'2HR'")], context: PlanContext::attributed() };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
     assert!(report.findings.is_empty(), "{:?}", report.findings);
@@ -461,7 +461,7 @@ fn patches_of_one_object_compose_but_only_the_first_placement_applies() {
             (ObjectRef::Id(10), Disposition::Patch(Patch { placement: Some(move_to(1.0)), ..Default::default() })),
             (ObjectRef::Guid(gid(10)), Disposition::Patch(Patch { name: Some("Renamed".into()), placement: Some(move_to(2.0)), ..Default::default() })),
         ],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -481,7 +481,7 @@ fn deleting_a_host_writes_its_port_and_type_and_validates() {
     use super::test_fixtures::host_with_port_type_and_body;
     for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
         let content = host_with_port_type_and_body(schema);
-        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)], context: PlanContext::default() };
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)], context: PlanContext::attributed() };
         let mut out = Vec::new();
         let report = execute(&content, &plan, &mut out).expect(schema);
         assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
@@ -511,7 +511,7 @@ fn untouched_non_utf8_records_are_written_byte_identical() {
     let content = latin1_wall_source();
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { name: Some("Renamed".into()), ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     execute(&content, &plan, &mut out).unwrap();
@@ -529,7 +529,7 @@ fn edited_non_utf8_record_keeps_its_other_bytes() {
     content.splice(at..at + needle.len(), b"Wall \xF6".iter().copied());
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { placement: Some(PlacementPatch::new({ let mut m = super::IDENTITY; m[0][3] = 5.0; m })), ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     execute(&content, &plan, &mut out).unwrap();
@@ -556,7 +556,7 @@ fn a_copy_on_write_keeps_latin1_bytes_in_the_original_and_the_edited_relationshi
     let write = PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'3HR'", PsetKind::Property, PropScope::Occurrence);
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&content, &plan, &mut out).unwrap();
@@ -593,7 +593,7 @@ fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
     let run = |id, name: &str| {
         let plan = ExportPlan {
             dispositions: vec![(ObjectRef::Id(id), Disposition::Patch(Patch { name: Some(name.into()), ..Default::default() }))],
-            context: PlanContext::default(),
+            context: PlanContext::attributed(),
         };
         let mut out = Vec::new();
         let report = execute(&content, &plan, &mut out).unwrap();
@@ -611,7 +611,7 @@ fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
 fn deleting_a_storey_reports_the_elements_left_outside_the_spatial_tree() {
     use super::test_fixtures::storey_with_typed_wall;
     for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
-        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(70), Disposition::Delete)], context: PlanContext::default() };
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(70), Disposition::Delete)], context: PlanContext::attributed() };
         let mut out = Vec::new();
         let report = execute(&storey_with_typed_wall(schema), &plan, &mut out).unwrap();
         let orphan = report.findings.iter().find(|f| f.express_id == Some(10));
@@ -635,7 +635,7 @@ fn rate(target: Option<u32>) -> (u32, u32) {
     }
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&wall_with_two_same_named_sets(), &plan, &mut out).unwrap();
@@ -659,7 +659,7 @@ fn a_target_the_object_does_not_hold_is_refused() {
     let write = PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'NEW'", PsetKind::Property, PropScope::Occurrence).with_target(10);
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(&wall_with_two_same_named_sets(), &plan, &mut out).unwrap();
@@ -670,7 +670,7 @@ fn a_target_the_object_does_not_hold_is_refused() {
 fn patch_one(content: &[u8], writes: Vec<PropWrite>) -> (Vec<u8>, WriteReport) {
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: writes, ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     let report = execute(content, &plan, &mut out).unwrap();
@@ -730,13 +730,13 @@ fn caller_text_with_a_byte_escape_character_is_written_as_a_step_escape() {
     wall.name = Some(name.into());
     let mut out = Vec::new();
     let (key, disposition) = add(wall);
-    let plan = ExportPlan { dispositions: vec![(key, disposition)], context: PlanContext::default() };
+    let plan = ExportPlan { dispositions: vec![(key, disposition)], context: PlanContext::attributed() };
     execute(&content, &plan, &mut out).unwrap();
     assert!(has(&out, expect), "an Add's name");
     assert!(!has(&out, &[b'a', 0xE9, b'b']));
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { name: Some(name.into()), ..Default::default() }))],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let mut out = Vec::new();
     execute(&content, &plan, &mut out).unwrap();
@@ -802,7 +802,7 @@ fn deleting_an_assembly_does_not_flag_parts_that_are_still_contained() {
         #91=IFCRELAGGREGATES('0000000000000000000091',$,$,$,#90,(#10));\n";
     let content = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
     let delete = |id| {
-        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(id), Disposition::Delete)], context: PlanContext::default() };
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(id), Disposition::Delete)], context: PlanContext::attributed() };
         execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap()
     };
     let report = delete(90);
@@ -828,7 +828,7 @@ fn only_a_deleted_place_in_the_spatial_tree_reports_its_children() {
             #94=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000094',$,$,$,(#93),#90);\n";
         let content = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
         let delete = |id| {
-            let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(id), Disposition::Delete)], context: PlanContext::default() };
+            let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(id), Disposition::Delete)], context: PlanContext::attributed() };
             execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap()
         };
         let report = delete(90);
@@ -854,7 +854,7 @@ fn a_containment_removed_for_another_reference_is_reported_with_its_cause() {
     let (head, rel) = base.split_at(at);
     let rel = rel.replacen(",$,", ",#96,", 1);
     let content = format!("{head}{rel}").replacen("ENDSEC;\nEND-ISO", "#96=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO", 1);
-    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(96), Disposition::Delete)], context: PlanContext::default() };
+    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(96), Disposition::Delete)], context: PlanContext::attributed() };
     let report = execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap();
     assert!(report.removed.iter().any(|r| r.express_id == 80), "{:?}", report.removed);
     let f = report.findings.iter().find(|f| f.express_id == Some(10)).expect("wall reported");
@@ -868,7 +868,7 @@ fn deleting_a_containment_reports_its_elements() {
     use super::test_fixtures::storey_with_typed_wall;
     for schema in ["IFC4", "IFC4X3"] {
         let content = storey_with_typed_wall(schema);
-        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(80), Disposition::Delete)], context: PlanContext::default() };
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(80), Disposition::Delete)], context: PlanContext::attributed() };
         let report = execute(&content, &plan, &mut Vec::new()).unwrap();
         let f = report.findings.iter().find(|f| f.express_id == Some(10)).expect("wall reported");
         assert!(f.message.contains("#80") && f.message.contains("#70") && f.message.contains("was deleted"), "{schema}: {}", f.message);
@@ -884,7 +884,7 @@ fn a_required_edit_that_cannot_be_written_never_leaves_a_dangling_reference() {
     let at = base.find("#32=").unwrap();
     let (head, rel) = base.split_at(at);
     let content = format!("{head}{}", rel.replacen(",$,", ",'a\u{F7E9}b',", 1));
-    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)], context: PlanContext::default() };
+    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)], context: PlanContext::attributed() };
     let mut out = Vec::new();
     let result = execute(content.as_bytes(), &plan, &mut out);
     let text = String::from_utf8_lossy(&out);
@@ -1083,4 +1083,24 @@ fn two_overrides_of_one_property_write_one_member_8142() {
     let text = String::from_utf8(out).unwrap();
     assert_eq!(text.matches("'AAA'").count(), 0, "{text}");
     assert_eq!(text.matches("'BBB'").count(), 1, "{text}");
+}
+
+/// A built record is held until the export writes the file, so it must not
+/// carry `format!`'s doubling slack (1.98-2.00x the length on records of a
+/// few hundred bytes and up). Allows a few bytes over, since
+/// `String::with_capacity` only promises at least the requested capacity.
+#[test]
+fn built_records_carry_no_growth_slack() {
+    let tight = |record: &String| record.capacity() <= record.len() + 16;
+    let refs: Vec<String> = (0..5_000).map(|i| format!("#{i}")).collect();
+    let fields = [("GlobalId", "'g'".to_string()), ("Name", format!("({})", refs.join(",")))];
+    for id in [0, 7, 10, 99_999, u32::MAX] {
+        let record = super::attrs::build_record("IFC4", id, "IFCWALL", &fields);
+        assert!(record.starts_with(&format!("#{id}=IFCWALL('g',$,(#0,#1,")) && record.ends_with("#4999),$,$,$,$,$,$);"), "{record:.60}");
+        assert!(tight(&record), "#{id}: capacity {} for {} bytes", record.capacity(), record.len());
+    }
+    let long = "1.".repeat(10_000);
+    let value = super::props_synth::build_value_record("IFC4", 9, "IFCPROPERTYSINGLEVALUE", "P", "IFCLABEL", &long, None);
+    assert!(value.starts_with("#9=IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL(1.1."), "{value:.60}");
+    assert!(tight(&value), "capacity {} for {} bytes", value.capacity(), value.len());
 }

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { forgetAppliedFinishes } from './style-finishes.js';
+
 /** Optional 16-byte cell: length low/high, hash, ready. Never reused across loads. */
 export function publishPrepassFingerprint(cell: SharedArrayBuffer | undefined, byteLength: number, event: unknown): void {
   if (!cell || cell.byteLength !== 16 || typeof event !== 'object' || event === null) return;
@@ -30,6 +32,7 @@ interface PrepassApi {
 /** Feature detection preserves old WASM pairs and existing Rust method signatures. */
 export function runPrepassWithFingerprint(api: unknown, args: SerialArgs, cell?: SharedArrayBuffer, columns?: ShardedColumns): unknown {
   const wasm = api as PrepassApi;
+  forgetAppliedFinishes(wasm); // streaming prepass clears Rust finishes too (C4-11a)
   if (columns) {
     const method = cell && typeof wasm.buildPrePassStreamingShardedWithSourceFingerprint === 'function'
       ? wasm.buildPrePassStreamingShardedWithSourceFingerprint : wasm.buildPrePassStreamingSharded;

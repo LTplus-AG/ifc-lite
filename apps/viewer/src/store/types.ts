@@ -405,6 +405,13 @@ export interface CameraCallbacks {
   toggleProjectionMode?: () => void;
   getProjectionMode?: () => ProjectionMode;
   getViewpoint?: () => CameraViewpoint | null;
+  /**
+   * True while a timed camera tween (preset view, frame, home) has started and
+   * its final pose has not been applied yet. Unlike comparing two
+   * `getViewpoint()` reads, it cannot mistake an intermediate pose for the
+   * final one when the render loop is stalled (#5841).
+   */
+  isCameraTweening?: () => boolean;
   applyViewpoint?: (viewpoint: CameraViewpoint, animate?: boolean, durationMs?: number) => void;
 }
 
@@ -527,6 +534,8 @@ export interface FederatedModel extends ModelLoadReportFields {
    * on declared CRSs alone, even if assumptions were enabled.
    */
   landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
+  /** IFC shared-height choice: true for omitted datums, unresolved for an unrecognized authored declaration. */
+  ifcSharedVerticalDatumAssumed?: true | 'unresolved';
   /** Model-level visibility toggle */
   visible: boolean;
   /** UI collapse state in hierarchy panel */
@@ -561,6 +570,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   maxExpressId: number;
   /** Unified ingest lifecycle state. */
   loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error';
+  /** Present only on a retained-kernel load (#7955 M2): shape-only, with every unpublished product listed. */
+  retainedGeometry?: import('./retainedGeometry.js').RetainedGeometrySummary;
   /** Geometry-first readiness for large desktop loads. */
   geometryLoadState?: GeometryLoadState;
   /** Metadata availability state for lazy desktop loads. */

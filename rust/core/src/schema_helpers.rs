@@ -104,6 +104,7 @@ pub fn has_geometry_by_name(type_name: &str) -> bool {
 /// The tuple matches [`has_geometry_by_name`] and
 /// [`is_representationless_spatial_container_by_name`], respectively, while
 /// sharing one lookup of the immutable schema classification (#3987).
+#[inline(always)]
 pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
     let upper = normalise_uppercase(type_name);
     classifications().get(upper.as_ref()).map_or_else(
@@ -117,6 +118,16 @@ pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
         },
         |class| (class.has_geometry, class.representationless_spatial),
     )
+}
+
+/// Whether this scanned record schedules geometry, including spatial containers
+/// carrying an exceptional non-null Representation (#1910). Raw exporter names
+/// retain the same classification as the name-only schema helpers.
+#[inline(always)]
+pub fn is_geometry_job(type_name: &str, entity_bytes: &[u8]) -> bool {
+    let (geometry, spatial) = geometry_flags_by_name(type_name);
+    geometry
+        || (spatial && crate::nth_attribute_is_present(entity_bytes, crate::slot::IfcProduct::REPRESENTATION.index()))
 }
 
 fn compute_has_geometry(upper: &str) -> bool {

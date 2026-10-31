@@ -56,7 +56,9 @@ END-ISO-10303-21;`;
   if (mode === 'properties') {
     const label = [...document.querySelectorAll('label')].find(el => el.textContent?.trim() === 'Include geometry');
     assert.ok(label);
-    click(label);
+    const toggle = label.parentElement?.parentElement?.querySelector('button[role="switch"]');
+    assert.ok(toggle);
+    click(toggle);
     await advance(10);
   }
   const run = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Export');

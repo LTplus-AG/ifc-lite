@@ -1847,6 +1847,17 @@ jobs:
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
           fi
+          # CLI oci:// model input: a whole-file revert deletes model-input.ts /
+          # oci-input.ts and the witnesses die at import. Keep the modules and
+          # break one behaviour each: env credentials never reach the client,
+          # plain http for a non-loopback host, the first layer instead of the
+          # IFC one, and loadIfcFile reading oci:// refs as local paths.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/cli-oci-input/credentials.oracle.patch | grep -Fxq 'tests/evidence/cli-oci-input/credentials.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/cli-oci-input/credentials.oracle.patch --test packages/cli/src/model-input.test.ts)
+            oracle_args+=(--mutation tests/evidence/cli-oci-input/plain-http.oracle.patch --test packages/cli/src/model-input.test.ts)
+            oracle_args+=(--mutation tests/evidence/cli-oci-input/layer-choice.oracle.patch --test packages/cli/src/model-input.test.ts)
+            oracle_args+=(--mutation tests/evidence/cli-oci-input/loader-routing.oracle.patch --test packages/cli/src/commands/oci-model-commands.test.ts)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

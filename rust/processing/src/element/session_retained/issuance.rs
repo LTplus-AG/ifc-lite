@@ -21,6 +21,16 @@ pub(super) enum IssuedRetainedOperation<R: NumericalReceipt> {
     Construction { request: RetainedRequest, definition: LogicalRetainedDefinition, backing: Arc<Storage> },
     Affine { input: Arc<RuntimeRealization<R>>, matrix: [f64; 16], definition: LogicalRetainedDefinition },
 }
+/// A face set no runtime could stitch never reaches one: its Boolean or copy refuses
+/// typed, before invocation, on native and browser alike, and spends no worker.
+fn refuse_unstitchable<R: NumericalReceipt>(input: &RuntimeRealization<R>) -> Result<(), RetainedExecutionError> {
+    match input.kind.evidence() {
+        runtime::ReceiptEvidence::Construction(completion) if matches!(completion.request().recipe(),
+            RetainedRecipe::FaceSet(set) if !set.admits_solid()) =>
+            Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
+        _ => Ok(()),
+    }
+}
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn input(&self, value: ValueRef<'_>) -> Result<Arc<RuntimeRealization<R>>, RetainedExecutionError> {
         for (definition, receipt) in &self.ledger {
@@ -66,6 +76,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     let left = BooleanInput::new(self.input(inputs[0])?, inputs[0])?;
                     let right = BooleanInput::new(self.input(inputs[1])?, inputs[1])?;
                     for input in [&left, &right] {
+                        refuse_unstitchable(&input.realization)?;
                         if !input.realization.owner().same_domain(&worker.domain()) {
                             return Err(protocol(ReceiptFailure::ForeignBooleanInputRuntime));
                         }
@@ -76,6 +87,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 }
                 RetainedOperationKind::Affine { input, matrix } => {
                     let input = self.input(input)?;
+                    refuse_unstitchable(&input)?;
                     if !input.owner().same_domain(&worker.domain()) { return Err(protocol(ReceiptFailure::ForeignAffineInputRuntime)); }
                     let matrix = *matrix;
                     PendingRetainedOperation::Affine { expected, input, matrix }

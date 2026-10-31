@@ -2,6 +2,7 @@
 // A closed polyhedral solid from authored triangles (wire format 3, #8291):
 // one planar face per triangle, stitched. Open or non-manifold shells refuse.
 #include "sweep.hpp"
+#include "copy.hpp"
 #include "ifclite_smlib.h"
 #include <SmApiBrep.h>
 #include <SmApiCurves.h>
@@ -67,8 +68,16 @@ std::unique_ptr<SmBrep> create_authored_polyhedron(const std::vector<uint8_t>& b
         const Point& a=points[i],&b=points[j],&c=points[k];
         six_volume+=a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]);
         auto face=triangle_face(a,b,c);
-        if(!solid) solid=std::move(face);
-        else checked(solid->MergeBrep(*face,nullptr,nullptr,FALSE),"polyhedron face merge failed");
+        if(!solid) { solid=std::move(face); continue; }
+        // MergeBrep can allocate topology before inserting it: as for a checked copy,
+        // nothing proves cleanup after a failure, so keep it untouched and taint the domain.
+        try {
+            require(solid->MergeBrep(*face,nullptr,nullptr,FALSE)==SM_SUCCESS,
+                "polyhedron face merge failed",IFCLITE_SMLIB_KERNEL_ERROR);
+        } catch(...) {
+            solid.release(); face.release();
+            rethrow_tainted_kernel_domain("polyhedron face merge");
+        }
     }
     const double expected=std::abs(six_volume)/6;
     require(expected>0,"polyhedron encloses no volume",IFCLITE_SMLIB_UNSUPPORTED);

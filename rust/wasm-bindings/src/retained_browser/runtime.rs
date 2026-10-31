@@ -97,15 +97,16 @@ impl BrowserWorker {
         Ok(BrowserReceipt::SourceFaceSet {
             domain: self.cancellation(),
             completion,
-            realized: std::cell::OnceCell::new(),
+            realized: Box::default(),
         })
     }
-    /// Build a face set's closed solid when something first consumes it. An open
-    /// shell refuses with the kernel's typed status; this Worker stays live.
+    /// Build a face set's closed solid when something first consumes it. Its kernel mesh
+    /// is dropped: the receipt's budget covers the authored mesh, and only the solid is needed.
     async fn realize(&mut self, input: &BrowserReceipt, limits: NumericalLimits, max_bytes: u32) -> Result<(), RuntimeFault> {
         let BrowserReceipt::SourceFaceSet { completion, realized, .. } = input else { return Ok(()) };
         if realized.get().is_none() {
-            let value = self.evaluate_retained(completion.request().clone(), limits.chord_metres, limits.angle_degrees, max_bytes).await?;
+            let mut value = self.evaluate_retained(completion.request().clone(), limits.chord_metres, limits.angle_degrees, max_bytes).await?;
+            value.completion.tessellation = Default::default();
             realized.set(value).map_err(|_| invalid("face set realized twice"))?;
         }
         Ok(())

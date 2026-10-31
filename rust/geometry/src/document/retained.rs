@@ -175,7 +175,7 @@ impl RetainedRequest {
 /// A worker's owned f64 result. Flat corner normals and revision-local faces
 /// stay distinct from smooth analytic shading and persistent IFC faces.
 /// Positions are in the request's evaluation frame (metres).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RetainedTessellation {
     pub positions: Vec<f64>,
     pub indices: Vec<u32>,

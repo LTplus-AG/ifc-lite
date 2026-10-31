@@ -1,0 +1,21 @@
+diff --git a/scripts/lib/released-smoke-checks.mjs b/scripts/lib/released-smoke-checks.mjs
+--- a/scripts/lib/released-smoke-checks.mjs
++++ b/scripts/lib/released-smoke-checks.mjs
+@@ -121,7 +121,7 @@
+ /** Content-based boundary check of one extracted file (independent of its name). */
+ export function contentViolation(file, buffer, kind) {
+   const native = binaryKind(buffer);
+-  if (false && native) return `${native} binary by content: ${file}`;
++  if (native) return `${native} binary by content: ${file}`;
+   if (isWasm(buffer) && !(kind === 'npm-wasm' && WASM_ALLOWED.has(file))) return `wasm by content: ${file}`;
+   return null;
+ }
+@@ -166,7 +166,7 @@
+   if (!subject) problems.push(`${name}@${version}: attestation subject is not this package version`);
+   else if (subject.digest?.sha512 !== wantDigest) problems.push(`${name}@${version}: attested digest differs from the downloaded tarball`);
+   const workflow = statement.predicate?.buildDefinition?.externalParameters?.workflow;
+-  if (false && workflow?.repository !== EXPECTED_REPO) problems.push(`${name}@${version}: sourceRepository ${workflow?.repository} is not ${EXPECTED_REPO}`);
++  if (workflow?.repository !== EXPECTED_REPO) problems.push(`${name}@${version}: sourceRepository ${workflow?.repository} is not ${EXPECTED_REPO}`);
+   if (workflow?.path !== EXPECTED_WORKFLOW) problems.push(`${name}@${version}: workflow ${workflow?.path} is not ${EXPECTED_WORKFLOW}`);
+   let san = '';
+   try { san = readSan(slsa.bundle.verificationMaterial.certificate.rawBytes); } catch { /* reported below */ }

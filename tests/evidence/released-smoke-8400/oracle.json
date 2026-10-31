@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/lib/released-smoke-checks.mjs",
+  "mutation": "tests/evidence/released-smoke-8400/behaviour.oracle.patch",
+  "test": "scripts/lib/released-smoke-checks.test.mjs",
+  "why": "A smoke that stops comparing the attested source repository or stops detecting native binaries by content must fail the wrong-repo provenance and renamed-binary witnesses."
+}

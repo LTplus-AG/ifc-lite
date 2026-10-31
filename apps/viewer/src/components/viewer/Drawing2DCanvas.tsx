@@ -26,7 +26,6 @@ import { useDrawingElementPropertiesLookup } from '@/hooks/useDrawingElementProp
 import { markActiveDrawingCanvasRendered, registerActiveDrawingCanvas } from '@/lib/drawing/active-canvas-snapshot';
 import { getFillColorForType } from './drawing/ifc-fill-colors';
 import { resolveDrawingPaperTheme, type DrawingPaperTheme } from './drawing/paper-theme';
-export { getFillColorForType } from './drawing/ifc-fill-colors';
 
 // ─── IFC annotation overlay helpers (issue #812) ─────────────────────────────
 
@@ -637,9 +636,6 @@ export function Drawing2DCanvas({
 
         drawReferenceImages(ctx, referenceImages, modelToScreen);
 
-        // Line width in screen pixels (convert mm to screen)
-        const mmLineToScreen = (mmWeight: number) => Math.max(0.5, mmToScreen(mmWeight / drawingTransform.scaleFactor * 0.001));
-
         // DXF reference underlays render first, beneath the cut geometry
         // (issue #1782). Data is pre-mapped drawing space and exists only
         // for plan ('down') sections, where the sheet mapping has no
@@ -1024,7 +1020,7 @@ export function Drawing2DCanvas({
         // Get fill color - priority: IFC materials > override engine > IFC type fallback.
         // Direct mode only (#5496): the dark-paper analogue applies here, never
         // in sheet mode above, which stays on white paper.
-        let fillColor = getFillColorForType(polygon.ifcType, paperTheme.isDark), strokeColor = paperTheme.ink, opacity = 1;
+        let fillColor = getFillColorForType(polygon.ifcType, paperTheme.isDark), opacity = 1;
 
         // Use actual IFC material colors from the mesh data
         if (useIfcMaterials) {
@@ -1048,7 +1044,6 @@ export function Drawing2DCanvas({
           };
           const result = overrideEngine.applyOverrides(elementData);
           fillColor = result.style.fillColor;
-          strokeColor = result.style.strokeColor;
           opacity = result.style.opacity;
         }
 

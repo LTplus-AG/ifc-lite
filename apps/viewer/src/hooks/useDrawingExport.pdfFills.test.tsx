@@ -23,7 +23,7 @@ import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing(polygonColor?: [number, number, number, number], noOuter = false): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, cutLine = false }: ExportOptions = {}): Drawing2D {
   return {
     config: {
       plane: { axis: 'y', position: 0, flipped: false },
@@ -32,7 +32,9 @@ function buildDrawing(polygonColor?: [number, number, number, number], noOuter =
       creaseAngle: 30,
       scale: 50,
     },
-    lines: [],
+    lines: cutLine
+      ? [{ line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
+      : [],
     cutPolygons: [
       {
         polygon: {
@@ -67,6 +69,8 @@ interface ExportOptions {
   polygonColor?: [number, number, number, number];
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
+  /** Also carry the wall's bottom edge as a `cut` line. */
+  cutLine?: boolean;
 }
 
 type Format = 'pdf' | 'svg';
@@ -74,7 +78,7 @@ const MIME: Record<Format, string> = { pdf: 'application/pdf', svg: 'image/svg+x
 
 function Harness({ format, options, onReady }: { format: Format; options: ExportOptions; onReady: (fn: () => void) => void }): null {
   const { handleExportPDF, handleExportSVG } = useDrawingExport({
-    drawing: buildDrawing(options.polygonColor, options.noOuter),
+    drawing: buildDrawing(options),
     displayOptions: {
       showHiddenLines: true,
       scale: 50,
@@ -231,6 +235,16 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     assert.ok(!text.includes('f*'), 'the opening is not painted solid');
     assert.ok(text.includes('h\nS\n'), 'the surviving ring is still stroked');
   });
+
+  it('draws the cut lines of an entity whose polygon lost its outer ring', async () => {
+    const text = await exportPdf({ noOuter: true, cutLine: true });
+    assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'the cut edge reaches the PDF as a line');
+  });
+
+  it('clamps a negative override line weight to a hairline', async () => {
+    const text = await exportPdf({ overrideRules: [wallRule({ lineWeight: -1 })] });
+    assert.doesNotMatch(text, /^-[\d.]+ w$/m);
+  });
 });
 
 describe('handleExportSVG uses the same resolver', () => {
@@ -257,6 +271,8 @@ describe('pdfColor', () => {
     assert.deepEqual(pdfColor('transparent'), { hex: '#000000', alpha: 0 });
     assert.deepEqual(pdfColor('NONE'), { hex: '#000000', alpha: 0 });
     assert.equal(pdfColor('red'), null);
+    assert.equal(pdfColor('rgb(1.2.3,0,0)'), null);
+    assert.equal(pdfColor('rgb(300,0,0)'), null);
     assert.equal(pdfColor('#12'), null);
     assert.equal(pdfColor(''), null);
   });

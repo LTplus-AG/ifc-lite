@@ -48,13 +48,19 @@ export function resolveCutPolygonStyle(
 
   // IFC material colours win for fills, per layer first, as on screen
   // (Drawing2DCanvas): a layered wall paints each layer in its own colour.
-  if (ctx.useIfcMaterials) {
-    const materialColor = polygon.color ?? ctx.entityColorMap.get(polygon.entityId);
-    if (materialColor) return { fillColor: rgbaToHex(materialColor), fillOpacity: materialColor[3], ...stroke };
-    return { fillColor: getFillColorForType(polygon.ifcType), fillOpacity: 1, ...stroke };
-  }
-  if (override) return { fillColor: override.fillColor, fillOpacity: override.opacity, ...stroke };
+  const material = ctx.useIfcMaterials ? (polygon.color ?? ctx.entityColorMap.get(polygon.entityId)) : undefined;
+  if (material) return { fillColor: rgbaToHex(material), fillOpacity: material[3], ...stroke };
+  if (override && !ctx.useIfcMaterials) return { fillColor: override.fillColor, fillOpacity: override.opacity, ...stroke };
   return { fillColor: getFillColorForType(polygon.ifcType), fillOpacity: 1, ...stroke };
+}
+
+/**
+ * Whether a cut polygon can be filled. Loop reconstruction can lose the outer
+ * ring and keep only a hole; filling that would paint the opening solid, so
+ * every writer outlines it instead (the canvas skips it too).
+ */
+export function hasFillableOuter(polygon: Pick<DrawingPolygon, 'polygon'>): boolean {
+  return polygon.polygon.outer.length >= 3;
 }
 
 /** Style every cut polygon once, alongside the writer's own geometry for it. */

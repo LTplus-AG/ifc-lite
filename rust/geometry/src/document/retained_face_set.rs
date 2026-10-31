@@ -2,7 +2,8 @@
 //! Source-exact `IfcTessellatedFaceSet` requests (wire format 3, #8291).
 //!
 //! The authored triangles are the geometry: an uncut item publishes them with
-//! no numerical runtime, and nothing here approximates or repairs them.
+//! no numerical runtime, and nothing here approximates or repairs them. Only a
+//! Boolean or affine copy asks a runtime to build the closed solid they bound.
 //!
 //! Wire format 3 (little-endian, evaluation frame in metres):
 //! - header: `u32` format = 3, vertex count, triangle count, row count.
@@ -76,7 +77,7 @@ impl RetainedFaceSet {
             evaluation_bounds: EvaluationBounds::points(local),
             format: 3,
             bytes,
-            segments: self.row_count,
+            segments: triangle_count,
             loops: 1,
             qualification: RegionQualification::SourceFaceSet,
             source_from_evaluation: array(&source_from_evaluation),

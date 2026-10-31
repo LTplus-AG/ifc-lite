@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Uncut face sets against their authored rows (#8291).
+//! Uncut, uncopied face sets against their authored rows (#8291).
 use super::OracleResult;
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_retained_native::{oracle::face_sets, ShapeOnlyProduct};
@@ -13,10 +13,13 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
     let mut any = false;
     let mut failure = None;
     for part in &product.parts {
-        let Some(faces) = &part.faces else { continue };
+        let Some(faces) = part.faces.as_ref().filter(|_| part.source_exact) else { continue };
         // Any row key opts the part in: the first key's role must not be able to skip it, and
         // a triangle keyed to anything else then fails the corner check.
-        let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else { continue };
+        let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else {
+            failure = Some(format!("part of #{} is source-exact but has no row key", product.product_id));
+            continue;
+        };
         any = true;
         let mut decoder = EntityDecoder::new(bytes);
         let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();

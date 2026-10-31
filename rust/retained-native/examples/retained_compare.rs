@@ -163,6 +163,9 @@ fn compare(
     if let Some(expected) = retraced_opening {
         opening_expectations.insert(72209, Some(expected));
     }
+    for (host, expected) in source::face_set_openings(path)? {
+        opening_expectations.insert(host, Some(expected));
+    }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
     let oracle_source = source.clone();

@@ -13,6 +13,8 @@ pub enum BrowserReceipt {
     SourceFaceSet {
         domain: BrowserCancellation,
         completion: ifc_lite_geometry::document::RetainedCompletion,
+        /// The closed solid, built only when a Boolean or copy first consumes it.
+        realized: std::cell::OnceCell<BrowserRealization>,
     },
     Affine {
         lease: Lease,
@@ -106,7 +108,7 @@ impl NumericalReceipt for BrowserReceipt {
     fn object(&self) -> JsValue {
         match self {
             Self::Construction(value) => value.object.clone(),
-            Self::SourceFaceSet { .. } => JsValue::NULL,
+            Self::SourceFaceSet { realized, .. } => realized.get().map_or(JsValue::NULL, |value| value.object.clone()),
             Self::Affine { lease, .. } | Self::Boolean { lease, .. } => lease.object.clone(),
         }
     }
@@ -119,7 +121,7 @@ impl NumericalReceipt for BrowserReceipt {
     }
     fn validate_live(&self) -> Result<(), BrowserError> {
         self.domain().owner.validate()?;
-        if matches!(self, Self::SourceFaceSet { .. }) {
+        if matches!(self, Self::SourceFaceSet { realized, .. } if realized.get().is_none()) {
             return Ok(());
         }
         if !self.domain().owner.driver.object_live(&self.object()) {

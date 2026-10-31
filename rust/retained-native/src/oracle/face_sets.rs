@@ -5,10 +5,10 @@ use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType}
 
 /// One authored row: its points, and its polygon area when it is planar.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Row { pub points: Vec<[f64; 3]>, pub area_m2: Option<f64> }
+pub struct Row { pub points: Vec<[f64; 3]>, pub outer: usize, pub area_m2: Option<f64> }
 /// Rows in metres, relative to the first authored point; malformed rows are empty.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AuthoredFaceSet { pub rows: Vec<Row> }
+pub struct AuthoredFaceSet { pub first: [f64; 3], pub rows: Vec<Row> }
 
 fn corners(list: &[AttributeValue], pn: Option<&[AttributeValue]>, points: &[[f64; 3]]) -> Option<Vec<[f64; 3]>> {
     list.iter().map(|value| {
@@ -59,11 +59,12 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
     let row = |outer: Option<Vec<[f64; 3]>>, inner: Vec<Vec<[f64; 3]>>| match outer {
         Some(outer) if outer.len() >= 3 => {
             let area_m2 = planar_area(&outer, &inner);
+            let outer_count = outer.len();
             let mut all = outer;
             all.extend(inner.into_iter().flatten());
-            Row { points: all, area_m2 }
+            Row { points: all, outer: outer_count, area_m2 }
         }
-        _ => Row { points: Vec::new(), area_m2: None },
+        _ => Row { points: Vec::new(), outer: 0, area_m2: None },
     };
     let rows = if polygonal {
         let pn = item.attr(slot::IfcPolygonalFaceSet::PN_INDEX).and_then(AttributeValue::as_list);
@@ -80,7 +81,20 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
         item.attr(slot::IfcTriangulatedFaceSet::COORD_INDEX)?.as_list()?.iter()
             .map(|t| Some(row(corners(t.as_list()?, pn, &points), Vec::new()))).collect::<Option<Vec<_>>>()?
     };
-    Some(AuthoredFaceSet { rows })
+    Some(AuthoredFaceSet { first, rows })
+}
+
+/// Each row's plane, mapped through `world` from raw file units: a point and the
+/// unit Newell normal of its outer ring, in authored winding. Rows without area have none.
+pub fn world_planes(set: &AuthoredFaceSet, world: impl Fn([f64; 3]) -> [f64; 3]) -> Vec<([f64; 3], [f64; 3])> {
+    set.rows.iter().filter_map(|row| {
+        let ring: Vec<[f64; 3]> = row.points[..row.outer].iter()
+            .map(|p| world(std::array::from_fn(|i| p[i] + set.first[i]))).collect();
+        let origin = *ring.first()?;
+        let normal = newell(&ring);
+        let length = dot(normal, normal).sqrt();
+        (length > 0.).then(|| (origin, normal.map(|v| v / length)))
+    }).collect()
 }
 
 /// Worst per-row disagreement of one uncut part, or `None` when no key is a row.
@@ -120,9 +134,9 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
 mod tests {
     use super::*;
     fn sheet() -> AuthoredFaceSet {
-        AuthoredFaceSet { rows: vec![
-            Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], area_m2: Some(0.5) },
-            Row { points: vec![[1., 0., 0.], [1., 1., 0.], [0., 1., 0.]], area_m2: Some(0.5) },
+        AuthoredFaceSet { first: [0.; 3], rows: vec![
+            Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) },
+            Row { points: vec![[1., 0., 0.], [1., 1., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) },
         ] }
     }
     const POSITIONS: [f64; 12] = [0., 0., 0., 1., 0., 0., 0., 1., 0., 1., 1., 0.];

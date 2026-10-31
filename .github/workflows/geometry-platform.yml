@@ -2,14 +2,24 @@
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
 # worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
 # this workflow is path-filtered to them and is intentionally NOT a required check.
+# It costs about an hour of hosted runner per commit, so a PR runs it only for
+# changes it can observe; the nightly run catches what the narrow filter misses.
 name: Geometry platform (native adapter)
 
 on:
   pull_request:
     paths:
       - 'native/**'
-      # M2-D builds and drives the real opt-in viewer.
-      - 'apps/viewer/**'
+      # M2-D builds and drives the real opt-in viewer. Only its retained code,
+      # the viewport that hosts it and its build configuration: an ordinary
+      # viewer change must not queue an hour-long native build.
+      - 'apps/viewer/**/*[Rr]etained*'
+      - 'apps/viewer/src/lib/retained/**'
+      - 'apps/viewer/src/components/viewer/Viewport.tsx'
+      - 'apps/viewer/src/components/viewer/ViewportContainer.tsx'
+      - 'apps/viewer/vite.config.ts'
+      - 'apps/viewer/vite-plugins/**'
+      - 'apps/viewer/package.json'
       - 'tests/e2e/retained-viewer.e2e.spec.ts'
       - 'tests/benchmark/frames/**'
       - 'playwright.config.ts'
@@ -52,14 +62,14 @@ on:
       - 'scripts/cli-retained-engine/**'
       - 'scripts/retained-compare/**'
       - 'packages/cli/**'
-      - 'packages/**'
-      - 'shared/**'
-      - 'scripts/**'
-      - 'pnpm-lock.yaml'
+      - 'packages/geometry/**'
+      - 'packages/wasm/**'
+      - 'scripts/*retained*'
+      - 'scripts/smlib-*'
+      - 'scripts/lib/*retained*'
       - 'pnpm-workspace.yaml'
       - 'package.json'
       - 'turbo.json'
-      - 'tsconfig*.json'
       - 'scripts/smlib-node-transport.test.mjs'
       - 'scripts/lib/__fixtures__/smlib-node/**'
       - 'tests/evidence/m1-f1/**'
@@ -88,12 +98,21 @@ on:
       - 'packages/wasm/pkg-retained/**'
       - 'packages/wasm/test/retained-browser.test.mjs'
       - '.github/workflows/geometry-platform.yml'
+  # The backstop for the narrow pull_request filter above.
+  schedule:
+    - cron: '30 2 * * *'
   workflow_dispatch:
     inputs:
       corpus:
         type: boolean
         default: false
         description: Run the downloaded model corpus as well as committed fixtures
+
+# A new commit makes the PR's running qualification worthless; nightly and
+# manual runs are never cancelled.
+concurrency:
+  group: geometry-platform-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

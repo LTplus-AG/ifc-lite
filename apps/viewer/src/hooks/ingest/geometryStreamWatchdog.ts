@@ -18,8 +18,9 @@
  * after its deadline therefore re-arms a full window instead of failing: the
  * pool gets a window of RUNNING time to speak. The window is not lengthened
  * while the page runs, so a hung pool on a visible tab still fails on time.
- * Known limit: a freeze that ends within that margin after the deadline is not
- * told apart from silence, and can still report a stall.
+ * Known limits: a freeze that ends within that margin after the deadline is not
+ * told apart from silence, and can still report a stall; and a load re-arms at
+ * most {@link MAX_SUSPEND_REARMS} times, so a late timer after that fails it.
  */
 
 import type { StallPhaseHandle } from '@ifc-lite/geometry';
@@ -29,6 +30,10 @@ import { geometryProcessingStallPhase } from '../modelLoadedGeometryProps.js';
  *  its main thread blocked, so the elapsed window measured no pool silence.
  *  Far above the 1 s alignment browsers apply to timers in hidden tabs. */
 export const SUSPEND_LATENESS_MS = 5_000;
+
+/** Re-arms allowed per load. A throttled hidden tab can run every timer late for
+ *  as long as it stays hidden, so without a cap a hung pool would never fail. */
+export const MAX_SUSPEND_REARMS = 3;
 
 /** Per-load watchdog record, read by the failure capture. */
 export interface StreamWatchdogState {
@@ -84,7 +89,7 @@ export function pullWithStallWatchdog<T>(
       timer = clock.setTimeout(() => {
         if (settled) return;
         const lateMs = clock.now() - armedAt - watchdogMs;
-        if (lateMs > SUSPEND_LATENESS_MS) {
+        if (lateMs > SUSPEND_LATENESS_MS && state.suspendedRearms < MAX_SUSPEND_REARMS) {
           state.suspendedRearms++;
           console.warn(`[useIfc] geometry watchdog fired ${Math.round(lateMs)}ms late (page suspended); re-arming ${watchdogMs}ms`);
           arm();

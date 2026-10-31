@@ -20,6 +20,7 @@ import { getGeometryStreamWatchdogMs, type StallPhase } from '@ifc-lite/geometry
 import { scrubEvent } from '@/lib/analytics-scrub';
 import { classifyLoadError, errorCaptureProps } from '@/lib/load-errors';
 import {
+  MAX_SUSPEND_REARMS,
   SUSPEND_LATENESS_MS,
   createStreamWatchdogState,
   geometryFailureCaptureProps,
@@ -123,6 +124,23 @@ describe('pullWithStallWatchdog', () => {
     assert.match(pull.error?.message ?? '', /^Geometry stream stalled after/);
     assert.deepEqual(state.stall, { lateMs: 0, hidden: false });
     assert.equal(state.suspendedRearms, 1);
+  });
+
+  it('still fails a silent pool when a throttled hidden tab runs every timer late', async () => {
+    const clock = new FakeClock();
+    clock.hidden = true;
+    const state = createStreamWatchdogState();
+    const pull = outcome(pullWithStallWatchdog(never(), WINDOW, 165, state, clock));
+    for (let wake = 0; wake <= MAX_SUSPEND_REARMS; wake++) {
+      assert.equal(pull.settled, false, `wake-up ${wake} must not have failed the load yet`);
+      clock.suspend(WINDOW + SUSPEND_LATENESS_MS + 1);
+      clock.resume();
+      await settle();
+    }
+    assert.equal(state.suspendedRearms, MAX_SUSPEND_REARMS);
+    assert.match(pull.error?.message ?? '', /Geometry stream stalled/);
+    assert.equal(state.stall?.hidden, true);
+    assert.equal(clock.pending, 0);
   });
 
   it('treats lateness up to the threshold as an ordinary on-time stall', async () => {

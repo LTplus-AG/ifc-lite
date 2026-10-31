@@ -7,7 +7,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { audit, crateClosure, eventPaths } from './check-native-adapter-triggers.mjs';
+import { audit, crateClosure, eventPaths, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -73,4 +73,80 @@ test('a workflow without the red-run reporters is refused', (context) => {
 
 test('an inline paths list is refused rather than read as empty', () => {
   assert.throws(() => eventPaths("on:\n  push:\n    paths:\n      - rust/core/**\n", 'push'), /unparseable/);
+});
+
+test('removing push.paths altogether is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace(/  push:\n    branches: \[main\]\n    paths:\n(?: {6}.*\n)+/, '  push:\n    branches: [main]\n'));
+  assert.ok(audit(root).some((f) => f.includes('on.push.paths is missing')));
+});
+
+test('a non-crate Rust input (Cargo.lock) dropped from both lists is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replaceAll("      - 'Cargo.lock'\n", ''));
+  const failures = audit(root);
+  assert.ok(failures.some((f) => f.includes('Cargo.lock') && f.includes('on.pull_request.paths')));
+  assert.ok(failures.some((f) => f.includes('Cargo.lock') && f.includes('on.push.paths')));
+});
+
+test('a narrowed glob that misses tests/ is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replaceAll("'rust/core/**'", "'rust/core/src/**'"));
+  assert.ok(audit(root).some((f) => f.includes('crate rust/core')));
+});
+
+test('a missing path-dependency manifest is a named failure, not a smaller closure', (context) => {
+  const root = copyTree(context);
+  rmSync(join(root, 'rust/testkit/Cargo.toml'));
+  assert.ok(audit(root).some((f) => f.includes('rust/testkit/Cargo.toml does not exist')));
+  assert.throws(() => crateClosure(root), /rust\/testkit\/Cargo\.toml does not exist/);
+});
+
+test('reverting a single corpus step alone is reported', (context) => {
+  const root = copyTree(context);
+  let hit = 0;
+  mutate(root, (t) => t.replace(/if: inputs\.corpus == true \|\| github\.event_name == 'schedule'/g, (m) => (hit++ === 1 ? 'if: inputs.corpus == true' : m)));
+  assert.ok(audit(root).some((f) => f.includes('gated on inputs.corpus alone')));
+});
+
+test('a corpus step that is not continue-on-error is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace('        id: native-corpus\n        if: inputs.corpus == true || github.event_name == \'schedule\'\n        continue-on-error: true\n', '        id: native-corpus\n        if: inputs.corpus == true || github.event_name == \'schedule\'\n'));
+  assert.ok(audit(root).some((f) => f.includes('native-corpus must be continue-on-error')));
+});
+
+test('unthrottled main pushes or a cancelling main run are reported', (context) => {
+  const noGroup = copyTree(context);
+  mutate(noGroup, (t) => t.replace(/concurrency:\n(?:  .*\n)+/, ''));
+  assert.ok(audit(noGroup).some((f) => f.includes('concurrency')));
+  const cancelsMain = copyTree(context);
+  mutate(cancelsMain, (t) => t.replace("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", 'cancel-in-progress: true'));
+  assert.ok(audit(cancelsMain).some((f) => f.includes('concurrency')));
+});
+
+test('a cancelled run opening an issue, or a missing closer, is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace("needs.native-adapter.result == 'failure'", "needs.native-adapter.result != 'success'").replace('  close-red-on-main:', '  nothing:'));
+  const failures = audit(root);
+  assert.ok(failures.some((f) => f.includes("'failure' only")));
+  assert.ok(failures.some((f) => f.includes('close-red-on-main')));
+});
+
+test('pathDeps reads normal, dev, build, target and workspace-inherited path deps', () => {
+  const ws = workspaceDeps('[workspace.dependencies]\nfoo = { version = "1", path = "rust/foo" }\nbar = { path = "rust/bar" }\n');
+  assert.deepEqual([...ws], [['foo', 'rust/foo'], ['bar', 'rust/bar']]);
+  const manifest = [
+    '[dependencies]', 'foo.workspace = true', 'serde = "1"', 'local = { path = "../local" }',
+    '[dev-dependencies]', 'bar = { workspace = true, features = ["x"] }',
+    '[build-dependencies]', 'b = { path = "../b" } # comment',
+    '[target.\'cfg(unix)\'.dependencies]', 'u = { path = "../u" }',
+    '[features]', 'nope = { path = "../nope" }',
+  ].join('\n');
+  assert.deepEqual([...pathDeps(manifest, 'rust/me', ws)].sort(), ['rust/b', 'rust/bar', 'rust/foo', 'rust/local', 'rust/u']);
+});
+
+test('pathDeps refuses shapes it cannot read instead of shrinking the closure', () => {
+  assert.throws(() => pathDeps('[dependencies.foo]\npath = "../foo"\n', 'rust/me', new Map()), /sub-table/);
+  assert.throws(() => pathDeps('[dev-dependencies.foo]\npath = "../foo"\n', 'rust/me', new Map()), /sub-table/);
+  assert.throws(() => pathDeps('[dependencies]\nfoo = {\n  path = "../foo",\n}\n', 'rust/me', new Map()), /multi-line/);
 });

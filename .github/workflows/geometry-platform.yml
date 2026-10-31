@@ -163,6 +163,12 @@ on:
 permissions:
   contents: read
 
+# main keeps the run in flight plus the newest queued one (older queued runs are
+# dropped, an in-flight main run is never cancelled). A superseded PR run is cancelled.
+concurrency:
+  group: native-adapter-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   native-adapter:
     runs-on: ubuntu-24.04
@@ -267,11 +273,23 @@ jobs:
           for witness in m3_prism_curved m3_synthetic_empty m3_scaled_cutter m3_nonbakeable_cutter m3_unsupported m3_kernel_failure m3_frames m3_lineage m3_reference m3_two_parts_two_openings m3_empty_opening_body; do
             grep -E "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/m3-native.log"
           done
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Download optional corpus
+        id: corpus-download
         if: inputs.corpus == true || github.event_name == 'schedule'
-        run: corepack enable && pnpm fixtures
+        continue-on-error: true
+        run: pnpm fixtures
+      # Gated, but independent: a corpus failure must not skip the Emscripten,
+      # browser and viewer lanes below. The final step fails the job on it.
       - name: Optional retained native corpus
+        id: native-corpus
         if: inputs.corpus == true || github.event_name == 'schedule'
+        continue-on-error: true
         run: |
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json
@@ -305,12 +323,6 @@ jobs:
         id: wasm-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-wasm" --output-on-failure
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
       - name: Rebuilt-worker open tessellation refusal (#7955)
         id: open-tessellation
         continue-on-error: true
@@ -461,6 +473,7 @@ jobs:
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
           node scripts/check-viewer-retained-free.mjs
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default
+      # Report only by design: never part of the verdict below.
       - name: Optional retained browser corpus (report only)
         if: inputs.corpus == true || github.event_name == 'schedule'
         continue-on-error: true
@@ -499,10 +512,14 @@ jobs:
           CLI_RETAINED: ${{ steps.cli-retained.outcome }}
           VIEWER_RETAINED: ${{ steps.viewer-retained.outcome }}
           OPEN_TESSELLATION: ${{ steps.open-tessellation.outcome }}
+          CORPUS_DOWNLOAD: ${{ steps.corpus-download.outcome }}
+          NATIVE_CORPUS: ${{ steps.native-corpus.outcome }}
         run: |
           failed=0
-          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED OPEN_TESSELLATION; do
+          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED OPEN_TESSELLATION CORPUS_DOWNLOAD NATIVE_CORPUS; do
             printf '%s=%s\n' "$lane" "${!lane}"
+            # The corpus lanes are skipped on PRs and pushes; skipped is not a failure there.
+            if [[ "${!lane}" == skipped && ( "$lane" == CORPUS_DOWNLOAD || "$lane" == NATIVE_CORPUS ) ]]; then continue; fi
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done
           exit "$failed"
@@ -523,7 +540,7 @@ jobs:
   report-red-on-main:
     name: Open an issue when main is red
     needs: [native-adapter]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native-adapter.result != 'success'
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native-adapter.result == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -545,4 +562,29 @@ jobs:
             echo "updated #$existing"
           else
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
+
+  # Close the loop: when main goes green again, comment on and close the issue.
+  close-red-on-main:
+    name: Close the red-main issue when main is green
+    needs: [native-adapter]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native-adapter.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close the issue if one is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          title="ci: geometry-platform native adapter is red on main"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\") | .number] | first // empty")
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --repo "$GITHUB_REPOSITORY" --comment "The native-adapter lane passed on main at ${SHA}. Run: ${RUN_URL}"
+            echo "closed #$existing"
           fi

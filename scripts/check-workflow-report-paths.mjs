@@ -242,7 +242,9 @@ export function auditRoot(root) {
       const reporter = jobs['report-red-on-main'];
       const expected = name === 'python-wheels.yml' ? ['build', 'build-cross'] : name === 'geometry-platform.yml' ? ['native-adapter'] : ['validate-server-binaries', 'validate-server-binaries-cross'];
       const condition = normalizeCondition(reporter?.if);
-      const expectedCondition = `always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && ${nonSuccessCondition(expected)}`;
+      // geometry-platform concurrency cancels superseded queued runs; a cancelled run is not red.
+      const failureOnly = name === 'geometry-platform.yml';
+      const expectedCondition = `always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && ${failureOnly ? `needs.${expected[0]}.result == 'failure'` : nonSuccessCondition(expected)}`;
       if (!isRecord(reporter) || condition !== expectedCondition
         || !expected.every((dependency) => needs(reporter, dependency))
         || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write') {

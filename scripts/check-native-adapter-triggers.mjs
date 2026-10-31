@@ -20,7 +20,14 @@
  *   - the push and pull_request path lists differ (they must not drift);
  *   - the workflow has no push-to-main trigger or no nightly `schedule`;
  *   - the nightly run does not carry the corpus, or the main/nightly red
- *     runs have no reporter job.
+ *     runs have no reporter job (or the green-again closer is gone);
+ *   - the concurrency group would run main pushes unthrottled, or cancel an
+ *     in-flight main run;
+ *   - a corpus step is not independent (`continue-on-error`) of the steps after it.
+ *
+ * Manifests are parsed by hand, so a shape this parser cannot read throws
+ * (`[dependencies.foo]` sub-tables, multi-line inline tables) rather than
+ * silently shrinking the closure.
  *
  * `--root <dir>` points it at a mutated copy of the tree (see the test).
  */
@@ -47,11 +54,20 @@ export function pathDeps(manifestText, crateDir, workspace) {
     const line = raw.replace(/\s+#.*$/, '').trim();
     if (line === '') continue;
     const header = line.match(/^\[.*\]$/);
-    if (header) { section = line; continue; }
+    if (header) {
+      if (/^\[(?:target\.[^\]]+\.)?(?:workspace\.|dev-|build-)?dependencies\.[^\]]+\]$/.test(line)) {
+        throw new Error(`${crateDir}/Cargo.toml: dependency sub-table ${line} is not parsed; write it as an inline table`);
+      }
+      section = line;
+      continue;
+    }
     const isDep = DEP_SECTION.test(section) || section === '[workspace.dependencies]';
     const named = line.match(/^([A-Za-z0-9_-]+)(?:\.workspace\s*=\s*true|\s*=\s*(.*))/);
     if (!isDep || !named) continue;
     const spec = named[2] ?? '';
+    if (/^\{/.test(spec.trim()) && !spec.includes('}')) {
+      throw new Error(`${crateDir}/Cargo.toml: multi-line inline table for ${named[1]} is not parsed; keep it on one line`);
+    }
     const path = spec.match(/\bpath\s*=\s*"([^"]+)"/);
     if (path) found.add(posix.normalize(posix.join(crateDir, path[1])));
     else if (section !== '[workspace.dependencies]' && (named[2] === undefined || /\bworkspace\s*=\s*true/.test(spec))) {
@@ -150,7 +166,7 @@ export function audit(root) {
   for (const [name, globs] of [['pull_request', pr], ['push', push]]) {
     if (!globs) continue;
     for (const dir of closure) {
-      if (!matchesAny(`${dir}/Cargo.toml`, globs) || !matchesAny(`${dir}/src/lib.rs`, globs)) {
+      if (!['Cargo.toml', 'src/lib.rs', 'tests/probe.rs'].every((f) => matchesAny(`${dir}/${f}`, globs))) {
         failures.push(`${WORKFLOW}: crate ${dir} (in the retained engine's dependency closure) is not covered by on.${name}.paths -- add '${dir}/**'`);
       }
     }
@@ -166,6 +182,15 @@ export function audit(root) {
   if (/inputs\.corpus == true(?! \|\| github\.event_name == 'schedule')/.test(text)) {
     failures.push(`${WORKFLOW}: a corpus step is gated on inputs.corpus alone, so it never runs nightly`);
   }
+  if (!/^concurrency:\s*\n {2}group: native-adapter-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\s*\n {2}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\s*$/m.test(text)) {
+    failures.push(`${WORKFLOW}: top-level concurrency must group by event and ref and cancel only pull_request runs (main pushes would run unthrottled, or an in-flight main run would be cancelled)`);
+  }
+  for (const id of ['native-corpus', 'corpus-download']) {
+    const step = text.match(new RegExp(`id: ${id}\\n([\\s\\S]*?)\\n      - `));
+    if (!step || !/continue-on-error: true/.test(step[1])) failures.push(`${WORKFLOW}: step ${id} must be continue-on-error so a corpus failure does not skip later lanes`);
+  }
+  if (!/github\.ref == 'refs\/heads\/main' && needs\.native-adapter\.result == 'failure'/.test(text)) failures.push(`${WORKFLOW}: report-red-on-main must fire on 'failure' only; a cancelled (superseded) run is not red`);
+  if (!/^ {2}close-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no close-red-on-main job; the issue would stay open after main is green`);
   if (!/^ {2}report-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no report-red-on-main job for a failing push to main`);
   if (!/^ {2}report-scheduled-failure:/m.test(text)) failures.push(`${WORKFLOW}: no report-scheduled-failure job for a failing nightly run`);
   return failures;

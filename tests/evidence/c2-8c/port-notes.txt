@@ -78,3 +78,14 @@ Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-1
   69ddedd5e7: https://github.com/LTplus-AG/ifc-lite/actions/runs/41133795196
   success (arm64 mesh-stat parity vs x86_64 snapshots; wasm32 mesh manifest vs
   pinned native pair).
+
+Pre-merge harness round (fixed qualify.sh / identity_probe.rs from C2-8a), at
+12c86f38f1 (Rust identical to 69ddedd5e7)
+- identity, job 29262cfa-ffef-4a80-8a14-116e53b6dbf9: all three IDENTICAL;
+  every value equals the C2-8a re-run.
+- features, job c946bff2-3cdd-4b53-92c8-50e3a6185412: fixture trees identical
+  (185 files); base and head exit 0, 176 binaries, 3079 passed / 0 failed /
+  35 ignored, same (empty) failing set.
+- gates, job 1069a6a9-b3db-47de-9b78-5ce82edfd797: all eight steps exit 0.
+- Instruction counts and determinism.yml not re-run: no production rust/
+  changed.

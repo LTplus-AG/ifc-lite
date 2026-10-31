@@ -79,5 +79,34 @@
     }
   ],
   "publishedToRefused": [],
-  "privateCargoTargetRemoved": true
+  "privateCargoTargetRemoved": true,
+  "realFixtures": [
+    {
+      "model": "apps/viewer/public/samples/building-architecture.ifc",
+      "candidates": 14,
+      "previousPublished": 0,
+      "previousRefused": 14,
+      "measuredPublished": 0,
+      "measuredRefused": 14,
+      "productDeltas": []
+    },
+    {
+      "model": "apps/viewer/public/samples/hello-wall.ifc",
+      "candidates": 6,
+      "previousPublished": 3,
+      "previousRefused": 3,
+      "measuredPublished": 3,
+      "measuredRefused": 3,
+      "productDeltas": []
+    },
+    {
+      "model": "rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc",
+      "candidates": 15,
+      "previousPublished": 7,
+      "previousRefused": 8,
+      "measuredPublished": 7,
+      "measuredRefused": 8,
+      "productDeltas": []
+    }
+  ]
 }

@@ -8,8 +8,8 @@ output implementation, fixture bytes or frozen tolerances change in this PR.
 
 ## Fixture provenance and size review
 
-All three registrations reference existing tracked bytes; no IFC payload is
-added or uploaded. Their combined size is 369,609 bytes, each below 1 MiB and
+This PR registers existing tracked files. It adds no IFC bytes and no new
+distribution of model files; no IFC payload is added or uploaded. Their combined size is 369,609 bytes, each below 1 MiB and
 GitHub's 100 MiB blob limit. This is a payload-size check, not a performance claim.
 
 | Fixture | Bytes | SHA-256 | Provenance / terms |
@@ -19,13 +19,24 @@ GitHub's 100 MiB blob limit. This is a payload-size check, not a performance cla
 | Revit `rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc` | 64382 | `b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597` | Existing extracted fixture introduced in `84cd5aa3b5`, from ara3d/web-ifc ISSUE_098, exporter Revit 2022. The [ara3d data manifest](https://github.com/ara3d/3d-format-shootout/blob/6aafe2dc7c26f4f972773cacef9ca81f9f39085e/data/manifest.json) directs users to check per-file rights before redistribution. A model-specific licence grant has not been established by this review. Do not infer one from ara3d's MIT code licence. |
 
 No new completed human privacy/licence approval is asserted. The existing
-SketchUp record explicitly leaves those approvals pending. Revit's unresolved
-model rights remain a review limitation, even though no model bytes are new.
+SketchUp record explicitly leaves those approvals pending. Revit model rights
+remain an open, pre-existing limitation for the maintainer; this PR does not
+resolve or expand that existing distribution.
 
-## Inherited coverage and continuation checks
+## Measured coverage after merging main
 
-The new fragment adds 35 candidates to the universe, without changing the base
-`tests/manifests/cli-retained-coverage.tsv` in the implementation commits:
+The fresh Pop run measured the 35 registered candidates below. Each product's
+identity, publication status and refusal code was compared with the branch's
+previously committed baseline, not just the aggregate counts:
+
+| Fixture | Candidates | Previous published / refused | Fresh published / refused | Product deltas |
+| --- | ---: | ---: | ---: | ---: |
+| SketchUp building-architecture | 14 | 0 / 14 | 0 / 14 | 0 |
+| Bonsai hello-wall | 6 | 3 / 3 | 3 / 3 | 0 |
+| Revit V5C | 15 | 7 / 8 | 7 / 8 | 0 |
+| Total | 35 | 10 / 25 | 10 / 25 | 0 |
+
+Measured refusal causes:
 
 - SketchUp: 14 refused (`operation_unsupported`). These products
   are outside this branch's retained adapter scope; an all-refused CLI export
@@ -34,7 +45,8 @@ The new fragment adds 35 candidates to the universe, without changing the base
 - Revit V5C: 7 published, 7 refused (`operation_unsupported`), and the wall with
   faceted reveal openings refused (`opening_unsupported`).
 
-The fresh Pop re-bless on the merged result confirms these classifications.
+These are measured outcomes from the merged-source re-bless, not unverified
+counts carried over from the previous agent.
 Across all eleven manifest files: **zero changed data rows**, including the
 base manifest (143 candidates, 119 published). Total: 406 candidates,
 247 published, 159 refused. No added/removed candidates, changed refusal codes,
@@ -58,7 +70,12 @@ It targets merged source `14a8e45b55`, builds a fresh native worker and uses a
 private Cargo target that its script deletes afterwards. Exit 0; immutable evidence publication verified. CMake's source directory and
 every Cargo Compiling path name that checkout. Worker SHA-256:
 `b769e9483ba3d2ba33e4ff6917b15358c33e9a09fcf730fee9e865e8c8653460`.
-The private Cargo target is confirmed absent. Native comparison reports no
+The fresh outputs were read from
+`landing-perf/real-fixtures/rebase/14a8e45b55/blessed/` and
+`landing-perf/real-fixtures/rebase/14a8e45b55/coverage-bless/`; the log records
+the actual `retained_compare --committed --bless` invocation. This was not a
+skip or an old-worker reuse. The private Cargo target is confirmed absent.
+Native comparison reports no
 violations, universe mismatch or skipped models.
 
 The separate full engine/browser lane preflight was refused before submission

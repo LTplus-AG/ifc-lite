@@ -418,6 +418,41 @@ fn zero_unsupported_items_stays_empty() {
     assert!(d.is_empty());
 }
 
+/// ROUTER-37 (#8385 X3), end to end through the void gateway: a host whose
+/// openings are an undecodable id and a body-less opening is left uncut, and
+/// both openings reach `GeometryDiagnostics` as dropped items (keyed by the
+/// declared `RelatedOpeningElement` type and by the opening's own type), so the
+/// object is attached and reports issues. No new wire field: the channel is
+/// `unsupported_items_by_type`.
+#[test]
+fn unmeshable_openings_reach_geometry_diagnostics_as_dropped_items() {
+    const SOURCE: &str = "#10=IFCBLOCK($,2.,3.,4.);
+#1=IFCWALL('host',$,$,$,$,$,#2,$);
+#2=IFCPRODUCTDEFINITIONSHAPE($,$,(#3));
+#3=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));
+#22=IFCOPENINGELEMENT('no-body',$,$,$,$,$,$,$);";
+    let router = GeometryRouter::new();
+    let mut decoder = ifc_lite_core::EntityDecoder::new(SOURCE);
+    let host = decoder.decode_by_id(1).unwrap();
+    let voids: FxHashMap<u32, Vec<u32>> = [(1, vec![999, 22, 22])].into_iter().collect();
+    let mesh = router.process_element_with_voids(&host, &mut decoder, &voids).unwrap();
+    assert!(!mesh.is_empty(), "no cutter, so the host is kept uncut");
+    let d = aggregate_diagnostics(
+        router.take_classification_stats(),
+        &router.take_csg_failures(),
+        &router.take_host_opening_diagnostics(),
+        RectFastStats::default(),
+        16,
+        0,
+        &router.take_unsupported_items(),
+    );
+    assert_eq!(d.total_unsupported_items, 2, "once per opening: {:?}", d.unsupported_items_by_type);
+    let by_type: Vec<_> = d.unsupported_items_by_type.iter().map(|r| (r.reason.as_str(), r.count)).collect();
+    assert_eq!(by_type, [("IfcFeatureElementSubtraction", 1), ("IfcOpeningElement", 1)]);
+    assert_eq!(d.classification.total, 0);
+    assert!(d.has_issues() && !d.is_empty(), "the drop must not be skipped as an empty diagnostic");
+}
+
 /// The runtime half of `OpeningDiagnostic`'s field-list guard.
 ///
 /// The compile-time half is the destructuring pattern beside the struct in

@@ -189,6 +189,11 @@ pub struct GeometryDiagnostics {
     /// (empty meshes are never published), so every element that instantiates it
     /// walks it again and contributes its own count. Read the number as a lower
     /// bound on affected types, never as a count of distinct sources or elements.
+    ///
+    /// Also counts an opening that cut nothing because its own body failed or
+    /// meshed empty (keyed by the opening's type) or its id did not decode
+    /// (keyed `IfcFeatureElementSubtraction`), once per opening per router
+    /// (ROUTER-37).
     #[serde(default)]
     pub total_unsupported_items: u64,
     /// [`Self::total_unsupported_items`] broken down by IFC type, count-desc.

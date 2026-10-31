@@ -198,3 +198,5 @@ fn source_option<T>(result: Result<T>) -> Result<Option<T>> {
 mod tests;
 #[cfg(test)]
 mod host_tests;
+#[cfg(test)]
+mod unmeshable_tests;

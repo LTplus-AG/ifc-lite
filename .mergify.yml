@@ -1,0 +1,28 @@
+# Batches PRs for the merge queue: one full `Test` run on a temporary
+# `mergify/merge-queue/*` PR covers up to five PRs, and a failure is split to find
+# the culprit. Ordinary PR pushes keep the fast lane (scripts/ci-pr-lane.mjs).
+queue_rules:
+  - name: default
+    # TRIAL: only labelled PRs. GitHub's own queue stays on until this is proven.
+    queue_conditions:
+      - label=mergify-trial
+      - -draft
+    # Skipped jobs do not satisfy check-success, so a batch that ran only the fast
+    # lane cannot merge even if branch detection in test.yml ever broke.
+    merge_conditions:
+      - check-success=Build + WASM + Rust + Node
+      - check-success=Viewer tests (shard 0)
+      - check-success=Rust tests (feature builds)
+    batch_size: 5
+    batch_max_wait_time: 10 min
+    batch_max_failure_resolution_attempts: 3
+    merge_method: squash
+
+pull_request_rules:
+  - name: queue PRs labelled for the Mergify trial
+    conditions:
+      - label=mergify-trial
+      - -draft
+    actions:
+      queue:
+        name: default

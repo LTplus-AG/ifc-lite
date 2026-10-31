@@ -77,6 +77,7 @@ describe('device_loss_recovery_failed carries what failed', () => {
     const unsubscribe = subscribeViewportHealth(h.renderer);
     try {
       h.lose();
+      h.renderer.getAdapterInfo = () => null; // no replacement adapter: the vendor must come from the loss
       const props = await failureEvent();
       assert.equal(props.reason, 'device-init-failed');
       assert.equal(props.recovery_error_kind, 'Error');
@@ -105,7 +106,6 @@ describe('device_loss_recovery_failed carries what failed', () => {
       assert.equal(second.recovery_episode, Number(first.recovery_episode) + 1);
       assert.equal(first.recovery_attempts, 1, 'a non-retryable reason is not retried');
       assert.equal(first.recovery_first_reason, undefined);
-      assert.equal(first.gpu_vendor, undefined, 'no adapter was granted, so no vendor is claimed');
     } finally {
       unsubscribe();
     }

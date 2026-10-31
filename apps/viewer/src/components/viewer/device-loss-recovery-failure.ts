@@ -22,9 +22,8 @@ import type { DeviceRecoveryAttempts } from './device-loss-recovery.js';
  * `_`-delimited word, so the text travels as `_detail` and the error class as
  * `_kind`. The scrub-path test runs the real `scrubEvent` over these keys.
  *
- * `context` is read when the failure is reported, so its `gpu_vendor` names
- * the adapter the last attempt obtained and is absent when none was granted.
- * The original GPU is on the `device_lost` exception of the same session.
+ * `context` is the one built when the device was lost, so `gpu_vendor` names
+ * the GPU that failed even when no replacement adapter was granted.
  */
 export function recoveryFailureProperties(
   result: Extract<DeviceRecoveryResult, { ok: false }>,

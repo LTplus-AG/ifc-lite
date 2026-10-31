@@ -43,7 +43,7 @@ export function resolveCutPolygonStyle(
     : null;
   const stroke = {
     strokeColor: override?.strokeColor ?? '#000000',
-    lineWeight: override?.lineWeight ?? 0.5,
+    lineWeight: override && Number.isFinite(override.lineWeight) ? override.lineWeight : 0.5,
   };
 
   // IFC material colours win for fills, per layer first, as on screen

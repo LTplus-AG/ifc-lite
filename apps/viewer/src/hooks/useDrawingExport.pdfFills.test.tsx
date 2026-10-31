@@ -24,7 +24,7 @@ import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
 function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false }: ExportOptions = {}): Drawing2D {
-  const nanIn = (ring: 'hole' | 'outer') => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : 4);
+  const at = (ring: 'hole' | 'outer', v: number) => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : v);
   return {
     config: {
       plane: { axis: 'y', position: 0, flipped: false },
@@ -39,8 +39,8 @@ function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = fals
     cutPolygons: [
       {
         polygon: {
-          outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: nanIn('outer'), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-          holes: [[{ x: 1, y: 1 }, { x: nanIn('hole') / 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
+          outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+          holes: [[{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
         },
         ifcType: 'IfcWall',
         entityId: 7,
@@ -255,9 +255,16 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     });
   }
 
-  it('draws the cut lines of an entity whose polygon drew nothing (#2119)', async () => {
-    const text = await exportPdf({ nanVertex: 'all', cutLine: true });
-    assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'the cut edge reaches the PDF as a line');
+  for (const nanVertex of ['outer', 'all'] as const) {
+    it(`draws the cut lines of an entity whose outer ring was not drawn (${nanVertex}, #2119)`, async () => {
+      const text = await exportPdf({ nanVertex, cutLine: true });
+      assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'the cut edge reaches the PDF as a line');
+    });
+  }
+
+  it('still skips cut lines for an entity whose outer ring is drawn', async () => {
+    const text = await exportPdf({ cutLine: true });
+    assert.doesNotMatch(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m);
   });
 });
 

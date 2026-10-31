@@ -9587,6 +9587,7 @@
     "attributesFor: function",
     "combineRuleResults: function",
     "customGroupOf: function",
+    "customGroupOfElement: function",
     "defaultStoreyName: function",
     "elevationOf: function",
     "emptyFilterGroup: function",

@@ -18,7 +18,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { evaluateFilterRules } from './filter-evaluate.js';
-import { evaluateFilterGroupsFederated } from './filter-evaluate-groups.js';
+import { customGroupOfElement, evaluateFilterGroupsFederated } from './filter-evaluate-groups.js';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { isFilterRule, Rule, type FilterRule } from './filter-rules.js';
 import type { FilterGroup } from './filter-groups.js';
 import {
@@ -156,5 +157,18 @@ describe('customGrouping rule (#8425)', () => {
     assert.equal(isFilterRule(JSON.parse(JSON.stringify(rule))), true);
     assert.equal(isFilterRule({ ...rule, grouping: { id: 3, name: 'x' } }), false);
     assert.equal(isFilterRule({ ...rule, op: 'hasAny' }), false);
+  });
+
+  it('customGroupOfElement reads the group the rule matches, live edits included', async () => {
+    const store = await parse();
+    const view = new MutablePropertyView(null, 'm');
+    view.setAttribute(102, 'Name', 'W-Ext-2');
+    const model = { id: 'm', store, mutationView: view, customGroupings: [DISCIPLINES] };
+    const ref = { id: 'stale', name: 'Disciplines' };
+    assert.deepEqual([101, 102, 103, 104, 105].map((id) => customGroupOfElement(model, id, ref)),
+      ['Structure', 'Structure', 'Structure', 'Architecture', undefined]);
+    const rows = await evaluateFilterGroupsFederated([model], [group(Rule.customGrouping(ref, 'in', ['Structure']))], { limit: Number.POSITIVE_INFINITY });
+    assert.deepEqual(rows.map((r) => r.expressId).sort((a, b) => a - b), [101, 102, 103], 'the rule agrees with the element reader');
+    assert.equal(customGroupOfElement(model, 101, { name: 'Nope' }), undefined);
   });
 });

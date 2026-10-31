@@ -32,8 +32,6 @@ import type {
 } from '@ifc-lite/lists';
 import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds } from '@ifc-lite/lists';
 
-/** The `zone` column mode that carries mesh volume. */
-const ZONE_MODE_VOLUME_LABEL = 'Volume (mesh)';
 import { useViewerStore } from '@/store';
 import type { ZoneSet } from '@/lib/zones';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
@@ -63,6 +61,7 @@ import {
 import { previewSetPattern } from './pattern-preview';
 import { useTranslation } from '@/i18n/useTranslation';
 import { storesWithMutationViews } from './list-builder-discovery';
+import { dynamicListColumns } from '@/lib/lists/dynamic-columns';
 
 /** Column descriptor shared by the quick-add grid. */
 interface CommonColumn {
@@ -609,37 +608,14 @@ function ColumnPicker({ discovered, zoneSets, selectedIds, onAdd, onToggle, isDu
     [discovered.quantities],
   );
 
-  // One quick-add column per zone set (issue #1810), appended after the
-  // static first-class columns since zone sets are user-defined + dynamic.
-  const zoneColumns = useMemo<CommonColumn[]>(
-    () => zoneSets.flatMap((zs) => [
-      {
-        id: `col-zone-${zs.id}`,
-        source: 'zone' as const,
-        psetName: zs.id,
-        propertyName: 'Zone',
-        label: `Zone: ${zs.name}`,
-      },
-      // The per-zone quantity #1810 actually asked for (#2508). The BASIS is in
-      // the mode name, so it survives into the column tag and the header rather
-      // than living in a tooltip: a zone volume off a net wall and one off a
-      // gross wall are not comparable numbers.
-      {
-        id: `col-zonevol-${zs.id}`,
-        source: 'zone' as const,
-        psetName: zs.id,
-        propertyName: ZONE_MODE_VOLUME_LABEL,
-        label: `Zone volume: ${zs.name}`,
-      },
-    ]),
-    [zoneSets],
-  );
+  const lenses = useViewerStore((st) => st.savedLenses);
+  const dynamicColumns = useMemo(() => dynamicListColumns(zoneSets, lenses), [zoneSets, lenses]);
 
   return (
     <div className="space-y-2">
       {/* Quick-add grid of the first-class columns */}
       <div className="flex flex-wrap gap-1.5">
-        {[...COMMON_COLUMNS, ...zoneColumns].map(({ id, source, psetName, propertyName, label }) => {
+        {[...COMMON_COLUMNS, ...dynamicColumns].map(({ id, source, psetName, propertyName, label }) => {
           const selected = selectedIds.has(id);
           return (
             <Chip

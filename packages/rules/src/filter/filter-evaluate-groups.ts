@@ -33,7 +33,9 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FilterGroup } from './filter-groups.js';
-import { assertHostRulesAnswerable } from './filter-custom-grouping.js';
+import {
+  assertHostRulesAnswerable, customGroupOf, resolveCustomGrouping, type CustomGroupingRef,
+} from './filter-custom-grouping.js';
 import {
   evaluateFilterRules,
   evaluateFilterRulesFederated,
@@ -165,4 +167,25 @@ export function evaluateOptionsOf(model: EvaluatorModel): EvaluateOptions {
     modelFilterIdentity: model.filterIdentity, modelTagIds: model.tagIds, mutationView: model.mutationView,
     listConditions: model.listConditions, customGroupings: model.customGroupings,
   };
+}
+
+/**
+ * The group `expressId` of `model` belongs to in the grouping `ref` names
+ * (#8425), or `undefined` when it is in none or the grouping does not resolve.
+ * The same first-match the `customGrouping` rule applies, read through the
+ * model's tags, live edits and host readers, so a list column and a filter
+ * never disagree about an element.
+ */
+export function customGroupOfElement(
+  model: EvaluatorModel,
+  expressId: number,
+  ref: CustomGroupingRef,
+  options: Pick<EvaluateOptions, 'definedModelTagIds'> = {},
+): string | undefined {
+  const definition = model.customGroupings && resolveCustomGrouping(ref, model.customGroupings);
+  const store = model.store;
+  if (!definition || !store) return undefined;
+  const elementOptions: EvaluateOptions = { ...evaluateOptionsOf(model), ...options, candidateExpressIds: [expressId], limit: 1 };
+  return customGroupOf(definition, model.id, expressId,
+    (filter) => evaluateFilterGroups(model.id, store, filter, elementOptions).length > 0);
 }

@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The scaled (non-sheet) section PDF drew cut polygons as black outlines
- * only, while the SVG export of the same section was coloured. These tests
- * read the PDF the user would download and check the cut polygon is filled
- * with the colour the SVG export uses, holes included, and that override
- * stroke colours reach the outline.
+ * The scaled (non-sheet) section PDF from #2042 drew cut polygons as black
+ * outlines only, while the SVG export of the same section was coloured.
+ * These tests read the file the user would download and check the cut
+ * polygon is filled with the colour the SVG export uses, holes included,
+ * that override stroke colours reach the outline, and that a bad override
+ * colour degrades one polygon instead of aborting the export.
  */
 
 import '@/test/setup-dom.js';
@@ -21,7 +22,7 @@ import { pdfColor } from '@/lib/export/pdf-color';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing(polygonColor?: [number, number, number, number]): Drawing2D {
+function buildDrawing(polygonColor?: [number, number, number, number], noOuter = false): Drawing2D {
   return {
     config: {
       plane: { axis: 'y', position: 0, flipped: false },
@@ -34,7 +35,7 @@ function buildDrawing(polygonColor?: [number, number, number, number]): Drawing2
     cutPolygons: [
       {
         polygon: {
-          outer: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+          outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
           holes: [[{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
         },
         ifcType: 'IfcWall',
@@ -63,11 +64,16 @@ interface ExportOptions {
   entityColorMap?: Map<number, [number, number, number, number]>;
   overrideRules?: GraphicOverrideRule[];
   polygonColor?: [number, number, number, number];
+  /** Loop reconstruction lost the outer ring; only the hole survives. */
+  noOuter?: boolean;
 }
 
-function Harness({ options, onReady }: { options: ExportOptions; onReady: (fn: () => void) => void }): null {
-  const { handleExportPDF } = useDrawingExport({
-    drawing: buildDrawing(options.polygonColor),
+type Format = 'pdf' | 'svg';
+const MIME: Record<Format, string> = { pdf: 'application/pdf', svg: 'image/svg+xml' };
+
+function Harness({ format, options, onReady }: { format: Format; options: ExportOptions; onReady: (fn: () => void) => void }): null {
+  const { handleExportPDF, handleExportSVG } = useDrawingExport({
+    drawing: buildDrawing(options.polygonColor, options.noOuter),
     displayOptions: {
       showHiddenLines: true,
       scale: 50,
@@ -91,37 +97,50 @@ function Harness({ options, onReady }: { options: ExportOptions; onReady: (fn: (
     coordinateInfo: undefined,
     scanSection: { points: [] },
   });
-  onReady(() => handleExportPDF());
+  onReady(format === 'pdf' ? () => handleExportPDF() : handleExportSVG);
   return null;
 }
 
-/** Run the real export and return the downloaded PDF as latin1 text. */
-async function exportPdf(options: ExportOptions = {}): Promise<string> {
+/** Run the real export and return the downloaded file as latin1 text. A
+ *  failed export rejects with its journal detail instead of hanging. */
+async function exportFile(format: Format, options: ExportOptions = {}): Promise<string> {
   useActivityJournal.setState({ jobs: [] });
   const container = document.createElement('div');
   document.body.appendChild(container);
   let root: Root | null = null;
   let exportFn: (() => void) | null = null;
   const originalCreate = URL.createObjectURL;
-  let resolvePdf!: (blob: Blob) => void;
-  const pdfBlob = new Promise<Blob>((resolve) => { resolvePdf = resolve; });
+  let resolveFile!: (blob: Blob) => void;
+  const file = new Promise<Blob>((resolve) => { resolveFile = resolve; });
   URL.createObjectURL = function (obj: Blob | MediaSource): string {
-    if (obj instanceof Blob && obj.type === 'application/pdf') resolvePdf(obj);
+    if (obj instanceof Blob && obj.type === MIME[format]) resolveFile(obj);
     return originalCreate.call(URL, obj);
   };
+  const failed = (async (): Promise<never> => {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const job = useActivityJournal.getState().jobs.find((j) => j.outcome === 'failed');
+      if (job) throw new Error(`export failed: ${job.detail}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error('export produced no file within 10 s');
+  })();
+  failed.catch(() => {});
   try {
     await act(async () => {
       root = createRoot(container);
-      root.render(<Harness options={options} onReady={(fn) => { exportFn = fn; }} />);
+      root.render(<Harness format={format} options={options} onReady={(fn) => { exportFn = fn; }} />);
     });
-    await act(async () => { exportFn!(); await pdfBlob; });
-    return Buffer.from(await (await pdfBlob).arrayBuffer()).toString('latin1');
+    let blob!: Blob;
+    await act(async () => { exportFn!(); blob = await Promise.race([file, failed]); });
+    return Buffer.from(await blob.arrayBuffer()).toString('latin1');
   } finally {
     URL.createObjectURL = originalCreate;
     if (root) await act(async () => { (root as Root).unmount(); });
     container.remove();
   }
 }
+const exportPdf = (options?: ExportOptions) => exportFile('pdf', options);
 
 /** Whether a fill (`rg`/`g`) or stroke (`RG`/`G`) operator sets `hex`.
  *  jsPDF writes channels to 2 decimals and a grey as one `g`/`G` channel. */
@@ -193,12 +212,46 @@ describe('handleExportPDF (non-sheet) fills cut polygons like the SVG export', (
   });
 });
 
+describe('handleExportPDF (non-sheet) edge cases', () => {
+  it('falls back to the type colour and black for colours jsPDF cannot take', async () => {
+    const text = await exportPdf({ overrideRules: [wallRule({ fillColor: '#12', strokeColor: 'transparent' })] });
+    assert.ok(setsColor(text, 'fill', '#b0b0b0'), 'unfinished #12 fill falls back to the IfcWall colour');
+    assert.ok(text.includes('h\nS\n'), 'the outline is still drawn');
+    assert.ok(!/#12|transparent/.test(text), 'the raw colour never reaches the content stream');
+  });
+
+  it('carries #RRGGBBAA stroke alpha into the stroke opacity', async () => {
+    const text = await exportPdf({ overrideRules: [wallRule({ strokeColor: '#1976D280' })] });
+    assert.ok(setsColor(text, 'stroke', '#1976d2'));
+    assert.match(text, /\/CA 0\.5\b/, 'alpha byte 0x80 becomes the stroke opacity');
+  });
+
+  it('skips a polygon whose outer ring was lost instead of filling its opening', async () => {
+    const text = await exportPdf({ noOuter: true });
+    assert.ok(!text.includes('f*'), 'nothing is filled');
+  });
+});
+
+describe('handleExportSVG uses the same resolver', () => {
+  it('fills a layered cut with its per-layer colour, as the canvas does', async () => {
+    const svg = await exportFile('svg', {
+      activePresetId: 'preset-3d-colors',
+      entityColorMap: new Map([[7, [1, 0, 0, 1]]]),
+      polygonColor: [0, 0, 1, 1],
+    });
+    assert.match(svg, /<path [^>]*fill="#0000ff"[^>]*data-entity-id="7"/);
+    assert.doesNotMatch(svg, /fill="#ff0000"/);
+  });
+});
+
 describe('pdfColor', () => {
-  it('expands short hex, splits alpha, passes other values through', () => {
+  it('expands short hex, splits alpha, rejects anything else', () => {
     assert.deepEqual(pdfColor('#abc'), { hex: '#aabbcc', alpha: 1 });
     assert.deepEqual(pdfColor('#112233'), { hex: '#112233', alpha: 1 });
     assert.deepEqual(pdfColor('#112233ff'), { hex: '#112233', alpha: 1 });
     assert.deepEqual(pdfColor('#11223300'), { hex: '#112233', alpha: 0 });
-    assert.deepEqual(pdfColor('red'), { hex: 'red', alpha: 1 });
+    assert.equal(pdfColor('red'), null);
+    assert.equal(pdfColor('#12'), null);
+    assert.equal(pdfColor(''), null);
   });
 });

@@ -43,6 +43,7 @@ import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportV
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
 import { pdfColor } from '@/lib/export/pdf-color';
+import { getFillColorForType } from '@/components/viewer/drawing/ifc-fill-colors';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
@@ -615,7 +616,7 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection, ifcDataStore, storeModels]);
+  }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection]);
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
@@ -845,7 +846,7 @@ function useDrawingExport({
     // identity when the axis changes, and the canvas rewrote the cache on
     // every fresh draw — neither of which this callback controls.
     // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
-  }, [drawing, activeSheet, displayOptions, cutPolygonStyleContext, dxfUnderlays, scanSection, sectionPlane.axis, isPinned, ifcDataStore, storeModels]);
+  }, [drawing, activeSheet, displayOptions, cutPolygonStyleContext, dxfUnderlays, scanSection, sectionPlane.axis, isPinned]);
   // Export SVG
   const handleExportSVG = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
@@ -1087,11 +1088,15 @@ function useDrawingExport({
 
         // Cut polygons: fills first (even-odd, so holes stay open), then
         // outlines on top, with the same colours as the SVG export.
-        const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (polygon) =>
-          [polygon.polygon.outer, ...polygon.polygon.holes]
+        // A polygon without a usable outer ring is skipped whole, as on the
+        // canvas: promoting a hole to outer would fill the opening.
+        const styledPolygons = styleCutPolygons(
+          drawing.cutPolygons.filter((polygon) => polygon.polygon.outer.length >= 2),
+          styleContext,
+          (polygon) => [polygon.polygon.outer, ...polygon.polygon.holes]
             .filter((ring) => ring.length >= 2)
             .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-        ).filter(({ geometry }) => geometry.length > 0);
+        );
         const tracePath = (rings: { x: number; y: number }[][]) => {
           for (const ring of rings) {
             doc.moveTo(ring[0].x, ring[0].y);
@@ -1099,8 +1104,10 @@ function useDrawingExport({
             doc.close();
           }
         };
-        for (const { geometry: rings, style } of styledPolygons) {
-          const { hex, alpha } = pdfColor(style.fillColor);
+        // Unparseable colours fall back per polygon (type colour, black) so
+        // one bad override cannot abort the whole export.
+        for (const { polygon, geometry: rings, style } of styledPolygons) {
+          const { hex, alpha } = pdfColor(style.fillColor) ?? pdfColor(getFillColorForType(polygon.ifcType))!;
           const opacity = Math.min(1, style.fillOpacity * alpha);
           if (!(opacity > 0)) continue;
           doc.setGState(new GState({ opacity }));
@@ -1108,13 +1115,15 @@ function useDrawingExport({
           tracePath(rings);
           doc.fillEvenOdd();
         }
-        doc.setGState(new GState({ opacity: 1 }));
         for (const { geometry: rings, style } of styledPolygons) {
-          doc.setDrawColor(pdfColor(style.strokeColor).hex);
+          const { hex, alpha } = pdfColor(style.strokeColor) ?? { hex: '#000000', alpha: 1 };
+          doc.setGState(new GState({ 'stroke-opacity': alpha }));
+          doc.setDrawColor(hex);
           doc.setLineWidth(style.lineWeight);
           tracePath(rings);
           doc.stroke();
         }
+        doc.setGState(new GState({ opacity: 1, 'stroke-opacity': 1 }));
         doc.setDrawColor(0, 0, 0);
 
         // Entities actually covered by a cut-polygon outline above. Loop

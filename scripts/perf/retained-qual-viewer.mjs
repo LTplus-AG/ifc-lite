@@ -112,6 +112,36 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
   return row;
 }
 
+/** Run prepared arms; startup failures must remain consumable by the reporter. */
+export async function runViewerCohort({ arms, fixtures, rounds, options, expectations, out, start = startPreviews }) {
+  const base = Number(options['port-base'] ?? 4290);
+  let previews = new Map();
+  const rows = [];
+  let order;
+  try {
+    previews = await start(arms, base);
+    order = await roundSides(arms, rounds, options.seed === undefined ? undefined : Number(options.seed));
+    samples: for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
+      const arm = arms.find(a => a.side === side);
+      console.log(`retained-qual-viewer: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
+      const row = await viewerSample({ arm, preview: previews.get(side), fixture, round, options, distTree: arm.dist,
+        expectation: pinFor(expectations, side, fixture) });
+      rows.push(row);
+      appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
+      if (row.cleanupFailed) break samples;
+      console.log(row.ok ? `  ok first retained frame ${row.firstRetainedFrameMs.toFixed(1)} ms (published ${row.published}/${row.candidates})` : `  FAILED ${row.error}`);
+    }
+  } catch (error) {
+    for (const arm of arms) for (const fixture of fixtures) {
+      const row = { ok: false, side: arm.side, path: fixture.path, fixtureSha256: fixture.sha256,
+        phase: 'preview', error: String(error) };
+      rows.push(row);
+      appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
+    }
+  } finally { await Promise.all([...previews.values()].map(preview => preview.stop())); }
+  return { rows, order };
+}
+
 export async function main(argv) {
   const { options } = parseArgs(argv, { values: ['out', 'rounds', 'seed', 'timeout-ms', 'gpu', 'channel', 'browser-executable', 'expect', 'port-base', 'exclusive-receipt'],
     repeated: ['arm', 'fixture'], flags: ['headed', 'require-ua-memory', 'require-hardware-gpu', 'require-quiet'] });
@@ -135,26 +165,8 @@ export async function main(argv) {
   mkdirSync(out, { recursive: true });
   const result = resultEnvelope({ kind: 'viewer-first-retained-frame', options, arms, identities: arms.map(a => a.identity), fixtures, started });
   result.arms.forEach((entry, i) => { entry.servedDist = arms[i].dist; });
-  const base = Number(options['port-base'] ?? 4290);
-  let previews = new Map();
-  const rows = [];
-  try {
-    previews = await startPreviews(arms, base);
-    const order = await roundSides(arms, rounds, options.seed === undefined ? undefined : Number(options.seed));
-    result.order = order;
-    samples: for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
-      const arm = arms.find(a => a.side === side);
-      console.log(`retained-qual-viewer: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
-      const row = await viewerSample({ arm, preview: previews.get(side), fixture, round, options, distTree: arm.dist,
-        expectation: pinFor(expectations, side, basename(fixture.path)) });
-      rows.push(row);
-      appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
-      if (row.cleanupFailed) break samples;
-      console.log(row.ok ? `  ok first retained frame ${row.firstRetainedFrameMs.toFixed(1)} ms (published ${row.published}/${row.candidates})` : `  FAILED ${row.error}`);
-    }
-  } catch (error) {
-    rows.push({ ok: false, phase: 'preview', error: String(error) });
-  } finally { await Promise.all([...previews.values()].map(preview => preview.stop())); }
+  const { rows, order } = await runViewerCohort({ arms, fixtures, rounds, options, expectations, out });
+  result.order = order;
   Object.assign(result, { finishedAt: new Date().toISOString(), rounds, samples: rows.filter(r => r.ok).length, rows: rows.length,
     failures: rows.filter(r => !r.ok).map(r => ({ side: r.side, path: r.path, round: r.round, error: r.error })),
     summary: summarizeRows(rows, COLUMNS), originNote: 'times are ms from the file input change event (canonical loadFile invocation)' });

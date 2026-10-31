@@ -131,11 +131,12 @@ export function summarizeRows(rows, columns) {
 }
 
 /**
- * Pinned {candidates, published} for a fixture, from a prior correctness run: flat `{name: pin}`, or per side
- * `{base: {name: pin}, branch: {name: pin}}` when the arms legitimately publish different counts.
+ * Pinned {candidates, published} for a fixture, from a prior correctness run: flat `{absolutePath: pin}`, or per side
+ * `{base: {absolutePath: pin}, branch: {absolutePath: pin}}` when the arms legitimately publish different counts.
  */
-export function pinFor(pins, side, name) {
-  return pins?.[side]?.[name] ?? (pins?.base || pins?.branch ? undefined : pins?.[name]);
+export function pinFor(pins, side, fixture) {
+  const key = resolve(fixture.path);
+  return pins?.[side]?.[key] ?? (pins?.base || pins?.branch ? undefined : pins?.[key]);
 }
 
 /**

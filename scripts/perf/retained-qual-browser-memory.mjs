@@ -110,7 +110,7 @@ export async function main(argv) {
   const rows = [];
   samples: for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
     console.log(`retained-qual-browser-memory: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
-    const row = await browserMemorySample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: pinFor(expectations, side, basename(fixture.path)) });
+    const row = await browserMemorySample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: pinFor(expectations, side, fixture) });
     rows.push(row);
     appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
       if (row.cleanupFailed) break samples;

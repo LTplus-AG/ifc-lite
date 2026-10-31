@@ -110,10 +110,21 @@ test('host identity names the machine without leaking its raw id', () => {
 
 test('pins are flat, or per side when the arms publish different counts', () => {
   const pin = { candidates: 4, published: 3 };
-  assert.deepEqual(pinFor({ 'a.ifc': pin }, 'base', 'a.ifc'), pin);
-  assert.equal(pinFor(undefined, 'base', 'a.ifc'), undefined);
-  const sided = { base: { 'a.ifc': pin }, branch: { 'a.ifc': { candidates: 4, published: 4 } } };
-  assert.equal(pinFor(sided, 'base', 'a.ifc').published, 3);
-  assert.equal(pinFor(sided, 'branch', 'a.ifc').published, 4);
-  assert.equal(pinFor(sided, 'branch', 'missing.ifc'), undefined, 'a per-side file never falls back to another side');
+  assert.deepEqual(pinFor({ '/a.ifc': pin }, 'base', { path: '/a.ifc' }), pin);
+  assert.equal(pinFor(undefined, 'base', { path: '/a.ifc' }), undefined);
+  const sided = { base: { '/a.ifc': pin }, branch: { '/a.ifc': { candidates: 4, published: 4 } } };
+  assert.equal(pinFor(sided, 'base', { path: '/a.ifc' }).published, 3);
+  assert.equal(pinFor(sided, 'branch', { path: '/a.ifc' }).published, 4);
+  assert.equal(pinFor(sided, 'branch', { path: '/missing.ifc' }), undefined, 'a per-side file never falls back to another side');
+});
+
+test('8413: same-basename fixture pins are distinct by full path in every arm', () => {
+  const a = { path: '/a/model.ifc' }, b = { path: '/b/model.ifc' };
+  const one = { candidates: 4, published: 3 }, two = { candidates: 8, published: 7 };
+  for (const side of ['base', 'branch']) {
+    for (const pins of [{ [a.path]: one, [b.path]: two }, { [side]: { [a.path]: one, [b.path]: two } }]) {
+      assert.deepEqual(pinFor(pins, side, a), one);
+      assert.deepEqual(pinFor(pins, side, b), two);
+    }
+  }
 });

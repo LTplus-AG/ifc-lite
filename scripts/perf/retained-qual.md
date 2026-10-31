@@ -48,8 +48,9 @@ runner exit 1. There is no soft path.
   was observed.
 - **Browser memory**: the session starts, the page's event tally equals the session
   summary, the served manifest is the staged one.
-- Optional `--expect pins.json` (`{"model.ifc": {"candidates": N, "published": M}}`,
-  taken from a prior correctness run) pins counts; the cohort must pin them. A file may also be
+- Optional `--expect pins.json` (`{"/absolute/path/model.ifc": {"candidates": N, "published": M}}`,
+  taken from a prior correctness run) pins counts by the resolved full fixture path
+  (never its basename, so identically named files remain distinct); the cohort must pin them. A file may also be
   per side for CLI, viewer, and browser-memory, `{"base": {...}, "branch": {...}}`, when the arms legitimately publish different counts
   (a pin never falls back to the other side). Native-memory instead accepts a direct
   count object: `{"candidates": N, "published": M}`. Its `--summary` must name a

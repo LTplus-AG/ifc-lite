@@ -132,3 +132,23 @@ test('8413: the child writes its own summary to the unique --out directory', asy
     assert.equal(row.published, summary.published);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// #8413: preview failure artifacts are inputs to the real report reader.
+test('8413: a preview startup failure preserves every arm and fixture identity for reporting', async () => {
+  const { runViewerCohort } = await import('./retained-qual-viewer.mjs');
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'qual-preview-report-'));
+  try {
+    const arms = [{ side: 'base' }, { side: 'branch' }];
+    const fixtures = [{ path: '/a/model.ifc' }, { path: '/b/model.ifc' }];
+    const { rows } = await runViewerCohort({ arms, fixtures, rounds: 2, options: {}, expectations: {}, out: dir,
+      start: async () => { throw new Error('vite preview port already occupied'); } });
+    writeResult(dir, { kind: 'viewer-first-retained-frame' }, rows);
+    const report = compare(readRows([dir]));
+    assert.equal(report.failures.length, 4);
+    for (const arm of arms) for (const fixture of fixtures) {
+      const failure = report.failures.find(row => row.side === arm.side && row.path === fixture.path);
+      assert.match(failure?.error ?? '', /port already occupied/);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

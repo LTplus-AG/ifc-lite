@@ -208,5 +208,5 @@ it('a pending edit the exporter refuses leaves the material panel open and says 
   const count = () => [...ui.querySelectorAll('span')]
     .find((span) => span.textContent === 'Elements')?.parentElement?.lastElementChild?.textContent;
   await waitForUsage(count, '2');
-  assert.match(ui.querySelector('[role="status"]')?.textContent ?? '', /pending edits could not be included/);
+  assert.match(ui.querySelector('output')?.textContent ?? '', /pending edits could not be included/);
 });

@@ -80,6 +80,24 @@ Available on every command:
 | `--debug` | Verbose plus stack traces on error |
 | `--log-level <level>` | `error`, `warn`, `info`, or `debug` (explicit level wins over the shorthands) |
 
+### Models in OCI registries
+
+Commands that read an IFC model (all but `view` and the IFCX `layer`/`ref`
+store) accept `oci://host[:port]/repository[:tag][@sha256:<hex>]` in place of a
+path, and pull the model layer from the registry:
+
+```bash
+IFC_LITE_OCI_TOKEN=... ifc-lite info --json oci://ghcr.io/acme/tower-model:rev-b
+```
+
+Loopback hosts (`localhost`, `127.0.0.1`, `[::1]`) use plain `http`, all others
+`https`. Credentials come only from `IFC_LITE_OCI_USERNAME` +
+`IFC_LITE_OCI_PASSWORD` or `IFC_LITE_OCI_TOKEN`; the layer is capped at 1 GiB
+(`IFC_LITE_OCI_MAX_BYTES`). A multi-layer artifact must have exactly one layer
+typed `application/x-step` or titled `*.ifc` / `*.ifczip`. The
+[CLI README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#opening-models-from-oci-registries)
+has the full rules and a GitHub Actions example.
+
 ## Installation diagnostics
 
 ```bash

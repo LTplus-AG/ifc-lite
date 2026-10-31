@@ -12,7 +12,7 @@
  */
 
 import type { jsPDF } from 'jspdf';
-import { polygonSignedArea, type DrawingPolygon } from '@ifc-lite/drawing-2d';
+import type { DrawingPolygon } from '@ifc-lite/drawing-2d';
 import { getFillColorForType } from '@/components/viewer/drawing/ifc-fill-colors';
 import {
   styleCutPolygons,
@@ -38,15 +38,24 @@ export interface PdfCutPolygon {
 const finiteRing = (ring: Point[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
 
 /**
- * Whether a ring encloses area. Collinear or repeated points give a signed
- * area of zero only up to float rounding (about 1e-17 for a diagonal line),
- * so the threshold scales with the ring's size.
+ * Whether a ring encloses area. Collinear or repeated points give zero only up
+ * to float rounding, so the threshold scales with the ring's size, and the
+ * area is taken relative to the first point: at survey coordinates (LV95 is
+ * around 2.6e6 m) raw shoelace products lose the small area to rounding.
  */
 function enclosesArea(ring: Point[]): boolean {
-  const xs = ring.map((p) => p.x);
-  const ys = ring.map((p) => p.y);
-  const extent = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-  return Math.abs(polygonSignedArea(ring)) > 1e-9 * extent * extent;
+  const o = ring[0];
+  let twiceArea = 0;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i];
+    const q = ring[(i + 1) % ring.length];
+    twiceArea += (p.x - o.x) * (q.y - o.y) - (q.x - o.x) * (p.y - o.y);
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+  }
+  const extent = Math.max(maxX - minX, maxY - minY);
+  return Math.abs(twiceArea) > 2e-9 * extent * extent;
 }
 
 /**

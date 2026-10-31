@@ -21,14 +21,27 @@ import useDrawingExport from './useDrawingExport.js';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
+/** Outer rings that enclose no area, so they are lines rather than polygons. */
+const LINE_OUTERS = {
+  'two-point': [{ x: 0, y: 3 }, { x: 4, y: 3 }],
+  collinear: [{ x: 0, y: 3 }, { x: 2, y: 3 }, { x: 4, y: 3 }],
+  // Shoelace rounding leaves ~1e-17 here, not 0.
+  diagonal: [{ x: 0.1, y: 0.3 }, { x: 0.2, y: 0.6 }, { x: 0.3, y: 0.9 }],
+  // LV95-scale coordinates: raw shoelace products leave 4.9e-4 here.
+  lv95: [
+    { x: 2602726.986, y: 1210018.744 }, { x: 2602730.686, y: 1210021.054 },
+    { x: 2602734.386, y: 1210023.364 }, { x: 2602738.086, y: 1210025.674 },
+  ],
+};
+
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false, lineOuter }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false, lineOuter, lv95Wall = false }: ExportOptions = {}): Drawing2D {
   const at = (ring: 'hole' | 'outer', v: number) => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : v);
+  const shift = (ring: { x: number; y: number }[]) => (lv95Wall ? ring.map((p) => ({ x: p.x + 2600000, y: p.y + 1200000 })) : ring);
   const wall: Drawing2D['cutPolygons'][number] = {
     polygon: {
-      outer: noOuter ? [] : lineOuter === 'two-point' ? [{ x: 0, y: 3 }, { x: 4, y: 3 }] : lineOuter === 'collinear' ? [{ x: 0, y: 3 }, { x: 2, y: 3 }, { x: 4, y: 3 }]
-        : lineOuter === 'diagonal' ? [{ x: 0.1, y: 0.3 }, { x: 0.2, y: 0.6 }, { x: 0.3, y: 0.9 }] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-      holes: [[{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
+      outer: noOuter ? [] : lineOuter ? LINE_OUTERS[lineOuter] : shift([{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }]),
+      holes: [shift([{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }])],
     },
     ifcType: 'IfcWall',
     entityId: 7,
@@ -70,7 +83,9 @@ interface ExportOptions {
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
   /** The outer ring encloses no area: two points, or three collinear ones. */
-  lineOuter?: 'two-point' | 'collinear' | 'diagonal';
+  lineOuter?: keyof typeof LINE_OUTERS;
+  /** Shift the wall to LV95-scale coordinates. */
+  lv95Wall?: boolean;
   /** A second, identical wall polygon. */
   twoWalls?: boolean;
   /** Corrupt geometry: a NaN vertex in the hole, the outer ring, or both. */
@@ -282,7 +297,7 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     });
   }
 
-  for (const lineOuter of ['two-point', 'collinear', 'diagonal'] as const) {
+  for (const lineOuter of Object.keys(LINE_OUTERS) as (keyof typeof LINE_OUTERS)[]) {
     it(`keeps the cut lines of an entity whose outer ring encloses no area (${lineOuter}, #8464)`, async () => {
       const text = await exportPdf({ lineOuter, cutLine: true });
       assert.match(text, CUT_LINE, 'a ring without area is not a polygon, so its cut edge stays');
@@ -290,6 +305,11 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
       assert.ok(text.includes('h\nS\n'), 'the surviving rings are still outlined');
     });
   }
+
+  it('still fills a real wall at LV95-scale coordinates (#8464)', async () => {
+    const text = await exportPdf({ lv95Wall: true });
+    assert.ok(text.includes('f*'), 'the zero-area check must not reject a real polygon far from the origin');
+  });
 
   it('still skips cut lines for an entity whose outer ring is drawn', async () => {
     const text = await exportPdf({ cutLine: true });

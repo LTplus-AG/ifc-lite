@@ -59,3 +59,15 @@ fn issue_8291_zero_area_triangles_leave_and_a_set_of_only_those_refuses_at_lower
     let only = format!("{TETRA}\n#2=IFCTRIANGULATEDFACESET(#1,$,.F.,((1,1,2)),$);");
     assert!(capture_source(&only, 2).unwrap().lower().is_err());
 }
+
+#[test]
+fn issue_8291_a_sliver_that_collapses_in_metres_leaves_at_capture_not_at_the_seal() {
+    // Nonzero area in file units; exactly zero after the request's scaling to metres.
+    let records = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,1.,0.),(1.9533,1.9533000000000003,0.),(0.,5.,0.)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.F.,((1,2,3),(1,2,4)),$);";
+    let captured = capture_source(records, 2).unwrap();
+    assert_eq!(captured.rows, [1]);
+    let mut document = crate::document::GeometryDocument::new();
+    let handle = document.add_retained_face_set(captured).unwrap();
+    let request = document.prepare_retained(handle, 1).unwrap();
+    assert!(request.source_exact_completion().is_some(), "every kept triangle has a normal");
+}

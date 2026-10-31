@@ -116,6 +116,12 @@ fn source_tessellation(bytes: &[u8]) -> Option<RetainedTessellation> {
 }
 
 impl super::RetainedRequest {
+    /// The byte size of the completion [`Self::source_exact_completion`] seals: the same
+    /// positions, indices, per-corner normals and faces a kernel mesh must fit its budget with.
+    pub fn source_exact_mesh_bytes(&self) -> Option<usize> {
+        let super::RetainedRecipe::FaceSet(set) = self.recipe() else { return None };
+        set.positions.len().checked_mul(8)?.checked_add((set.triangles.len() / 3).checked_mul(88)?)
+    }
     /// The kernel-free completion of a source-exact request, `None` for any other
     /// family. Open shells are valid here: no closed-solid claim is made.
     pub fn source_exact_completion(&self) -> Option<RetainedCompletion> {

@@ -873,13 +873,14 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     const [first] = await identities(page);
     await selectGlobal(page, first.locals[0], { modelId: first.id, expressId: first.locals[0] });
 
-    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
-    await completeModels(page, [baseName(MAPPED)], true);
-    const rows = expected(MAPPED), published = rows.filter(p => p.status === 'published').map(p => p.id);
+    // Bonsai, not the mapped fixture: retained instancing (M11-I) publishes that model as instance shards, not meshes.
+    await page.locator('#file-input-open').setInputFiles(resolve(BONSAI));
+    await completeModels(page, [baseName(BONSAI)], true);
+    const rows = expected(BONSAI), published = rows.filter(p => p.status === 'published').map(p => p.id);
     const models = await identities(page);
     expect(models).toHaveLength(1);
     const [second] = models;
-    expect(second.name).toBe(baseName(MAPPED));
+    expect(second.name).toBe(baseName(BONSAI));
     expect(second.idOffset).toBe(0);
     expectCleanIdentity(second, published);
     expect(second.summary?.candidates).toBe(rows.length);

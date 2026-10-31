@@ -75,9 +75,11 @@ test('#7955 real authoring-tool models: CLI retained OBJ agrees with the CLI exa
     assert.equal(retained.status, 0, retained.stderr);
     assert.equal(retained.stdout, '', 'file export must not leak logs onto stdout');
     const retainedText = await readFile(retainedOut, 'utf8');
-    // @source-text-assertion-ok CLI output contract of the file just exported, not repository source
-    assert.match(retainedText, /# PresentationObligationsUnmet/);
     const parsed = JSON.parse(await readFile(report, 'utf8'));
+    // The OBJ header follows the report: final once every published product discharged its obligations (M11-Z), shape-only otherwise.
+    const unmet = parsed.products.some(p => p.status === 'published' && p.obligationsUnmet.length);
+    // @source-text-assertion-ok CLI output contract of the file just exported, not repository source
+    assert.ok(retainedText.includes(unmet ? '# PresentationObligationsUnmet\n' : '# retained final\n# final\n'), `${tool}: OBJ publication header`);
 
     // Identity: report ids, OBJ objects and the source's GlobalIds agree.
     const published = parsed.products.filter(p => p.status === 'published'), refused = parsed.products.filter(p => p.status === 'refused');
@@ -119,7 +121,7 @@ test('#7955 real authoring-tool models: CLI retained OBJ agrees with the CLI exa
       assert.ok(verdict.ok, `${tool} #${product.id} ${name}: ${JSON.stringify(verdict)}`);
     }
     assert.ok(compared > 0, `${tool}: at least one linear product was compared with exact`);
-    diagnostics.push({ tool, model, candidates: parsed.summary.candidates, published: published.length, byCode: parsed.summary.byCode, compared, curvedReportOnly: curved, notInExactObj: exactMissing.length });
+    diagnostics.push({ tool, model, final: !unmet, candidates: parsed.summary.candidates, published: published.length, byCode: parsed.summary.byCode, compared, curvedReportOnly: curved, notInExactObj: exactMissing.length });
   }
   assert.ok(tools.size >= 2, 'at least two authoring tools');
   t.diagnostic(JSON.stringify(diagnostics));

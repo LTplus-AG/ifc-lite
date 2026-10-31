@@ -9,11 +9,24 @@
 # its callgrind dumps for ir_fndiff.py. X3_BASE overrides the base commit.
 set -euo pipefail
 head_dir=$PWD
-base=$(git rev-parse --verify "${X3_BASE:-6eec58244d01852bae1134c54985a51acc43efa4}^{commit}")
+base=$(git rev-parse --verify "${X3_BASE:-5ccef12333395ac5583e5d5509d9336ff6cd8031}^{commit}")
 fixture=${X3_IR_FIXTURE:-$HOME/build-workers/ifc-lite/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc}
+# Both paths are used from inside each side's tree, so resolve relative ones
+# against the head checkout first.
+[[ $fixture == /* ]] || fixture=$head_dir/$fixture
+[[ -f $fixture ]] || { echo "missing fixture $fixture"; exit 2; }
 for dir in "$HOME"/build-workers/toolchains/valgrind-*/bin; do PATH="$dir:$PATH"; done
-out=${X3_IR_OUT:-/tmp/x3-irdiff}
-rm -rf "$out"; mkdir -p "$out/base-src"
+# Never delete an existing directory: X3_IR_OUT must not exist yet; the
+# default is a fresh mktemp directory.
+if [[ -n ${X3_IR_OUT:-} ]]; then
+  out=$X3_IR_OUT
+  [[ $out == /* ]] || out=$head_dir/$out
+  [[ ! -e $out ]] || { echo "X3_IR_OUT $out already exists; refusing to overwrite"; exit 2; }
+  mkdir -p "$out"
+else
+  out=$(mktemp -d "${TMPDIR:-/tmp}/x3-irdiff.XXXXXX")
+fi
+mkdir "$out/base-src"
 git archive "$base" | tar -x -C "$out/base-src"
 git -C "$out/base-src" init -q
 git -C "$out/base-src" add -A
@@ -35,7 +48,10 @@ for r in (1, 2, 3):
     b = json.load(open(f'{out}/base-{r}.json')); h = json.load(open(f'{out}/head-{r}.json'))
     for k in ('meshes', 'vertices', 'triangles'):
         if b[k] != h[k]: bad = True; print(f'X3_IRDIFF_COUNTS round={r} {k} DIFFERENT')
-    worst = max(h['phases'][p] / b['phases'][p] for p in b['phases'] if b['phases'][p])
+    # A phase the base never ran has no ratio: zero against nonzero fails,
+    # exactly as qualify.sh's instructions mode treats it.
+    worst = max((h['phases'][p] / bv if bv else (1.0 if h['phases'][p] == 0 else float('inf')))
+                for p, bv in b['phases'].items())
     bad |= worst > 1.0005
     print(f'X3_IRDIFF_WORST round={r} {worst:.6f}')
 print('X3_IRDIFF_VERDICT', 'FAIL' if bad else 'PASS (every round, every phase <= base x 1.0005)')

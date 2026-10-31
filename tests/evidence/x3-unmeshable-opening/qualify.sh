@@ -12,13 +12,13 @@
 #   bash tests/evidence/x3-unmeshable-opening/qualify.sh gates         # clippy/tests/ratchets/wasm32
 #   bash tests/evidence/x3-unmeshable-opening/qualify.sh all           # identity + features + instructions
 #
-# X3_BASE overrides the base commit (default: main 6eec58244d, this PR's
+# X3_BASE overrides the base commit (default: main 5ccef12333, this PR's
 # base). The base is exported with `git archive` next to the head checkout and
 # both sides run the same harness. Identity hashes the full serialized output,
 # including every instance record's contents, plus the diagnostics.
 set -euo pipefail
 mode=${1:?usage: qualify.sh identity|instructions|features|gates|all}
-base=$(git rev-parse --verify "${X3_BASE:-6eec58244d01852bae1134c54985a51acc43efa4}^{commit}")
+base=$(git rev-parse --verify "${X3_BASE:-5ccef12333395ac5583e5d5509d9336ff6cd8031}^{commit}")
 head_dir=$PWD
 fixtures=(
   tests/models/ara3d/AC20-FZK-Haus.ifc

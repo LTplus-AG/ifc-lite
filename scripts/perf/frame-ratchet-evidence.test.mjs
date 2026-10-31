@@ -38,17 +38,50 @@ test('#6975 only admitted artifacts carry values; refused ones remain as receipt
   assert.ok(EVIDENCE.artifacts.some((a) => !a.admitted && a.attempts.some((t) => t.contaminated)), 'a contaminated run is retained');
 });
 
-test('#6975 the ratchet gates exactly the supported rows, at the evidence ceilings and tolerances', () => {
+const FROZEN = loadCeilingFile(fileURLToPath(new URL('../../tests/evidence/frame-ratchet-6975/browser-frames.json', import.meta.url)));
+
+// #7955 / #7624: evidence fixes the initial ceiling and tolerance, while
+// daily lowering may change the live ceiling and its provenance.
+function assertLiveCeilings(live) {
+  assert.deepEqual(live.entries.map((e) => e.id).sort(), FROZEN.entries.map((e) => e.id).sort());
+  for (const frozen of FROZEN.entries) {
+    const entry = live.entries.find((e) => e.id === frozen.id);
+    assert.deepEqual(entry.tolerance, frozen.tolerance, entry.id);
+    assert.ok(Number.isFinite(entry.ceiling) && entry.ceiling > 0 && entry.ceiling <= frozen.ceiling,
+      `${entry.id}: live ceiling ${entry.ceiling} must be positive and <= evidence ceiling ${frozen.ceiling}`);
+  }
+}
+
+test('#6975 the ratchet gates exactly the supported rows and tolerances, with ceilings only lowered', () => {
   assert.deepEqual([...RATCHETED_FRAME_METRICS].sort(), [...EVIDENCE.ratchet].sort());
-  assert.deepEqual(CEILINGS.entries.map((e) => e.id).sort(), EVIDENCE.ratchet.map((k) => frameMetricId(...k.split('/'))).sort());
+  assert.deepEqual(FROZEN.entries.map((e) => e.id).sort(), EVIDENCE.ratchet.map((k) => frameMetricId(...k.split('/'))).sort());
   for (const key of EVIDENCE.ratchet) {
     const [fixture, scenario, metric] = key.split('/');
     const { verdict } = EVIDENCE.rows.find((r) => r.fixture === fixture && r.scenario === scenario && r.metric === metric);
-    const entry = CEILINGS.entries.find((e) => e.id === frameMetricId(fixture, scenario, metric));
+    const entry = FROZEN.entries.find((e) => e.id === frameMetricId(fixture, scenario, metric));
     assert.equal(entry.ceiling, verdict.ceiling, key);
     assert.deepEqual(entry.tolerance, verdict.tolerance, key);
     assert.deepEqual(entry.provenance, verdict.provenance, key);
   }
+  assertLiveCeilings(CEILINGS);
+});
+
+test('#7955 lowered live ceilings pass; raised or unusable ceilings and changed tolerances fail', () => {
+  for (const frozen of FROZEN.entries) {
+    const changed = (value) => {
+      const live = structuredClone(FROZEN);
+      live.entries.find((e) => e.id === frozen.id).ceiling = value;
+      return live;
+    };
+    assertLiveCeilings(changed(frozen.ceiling / 2));
+    for (const value of [frozen.ceiling + 1, 0, -1, Infinity, NaN]) {
+      assert.throws(() => assertLiveCeilings(changed(value)), /must be positive and <= evidence ceiling/);
+    }
+    const tolerance = structuredClone(FROZEN);
+    tolerance.entries.find((e) => e.id === frozen.id).tolerance.value *= 2;
+    assert.throws(() => assertLiveCeilings(tolerance), assert.AssertionError);
+  }
+  assert.throws(() => assertLiveCeilings({ ...FROZEN, entries: [] }), assert.AssertionError);
 });
 
 test('#6975 the test fixture is a byte-identical admitted artifact of the seed build', () => {

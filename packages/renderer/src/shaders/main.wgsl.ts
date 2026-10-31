@@ -42,6 +42,14 @@ const TRANSLUCENT_OPACITY_SCALE = 0.7;
  */
 const IRRADIANCE_CALIBRATION = 1.82;
 
+/**
+ * Bracket every `discard` in `fs_main`. `main-opaque-fast.wgsl.ts` cuts the
+ * span to derive the discard-free opaque variant, which keeps early depth
+ * testing for draws that can never discard (no clipping, flat geometry).
+ */
+export const FRAGMENT_DISCARDS_BEGIN = '// <fragment-discards>';
+export const FRAGMENT_DISCARDS_END = '// </fragment-discards>';
+
 export const mainShaderSource = `
         ${meshUniformsWgsl}
         ${depthNudgeWgsl}
@@ -270,6 +278,7 @@ export const mainShaderSource = `
           // section/crop/derivative ingress. Instanced geometry is not yet
           // anchored, so its worldPos remains the authoritative input.
           let fragmentPos = clipSpacePos(input.worldPos, input.eyePos);
+          ${FRAGMENT_DISCARDS_BEGIN}
           // Per-instance hide/isolate: bit 1 of the instance flags lane marks a hidden
           // occurrence. Discard it so it neither draws nor writes depth (and the pick
           // pass applies the same discard, so it isn't pickable). vs_main writes
@@ -294,6 +303,7 @@ export const mainShaderSource = `
           // Section plane / clip box (mesh-uniforms.wgsl.ts, shared with the
           // selection mask so an outline is cut where its surface is).
           if (sectionClipped(fragmentPos, input.sectionEntityId)) { discard; }
+          ${FRAGMENT_DISCARDS_END}
 
           // Compute normal via derivative-based flat shading.
           //

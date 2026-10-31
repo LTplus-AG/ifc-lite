@@ -15,7 +15,10 @@ import { readFileSync } from 'node:fs';
 import { validateIDS, type IDSDocument } from '@ifc-lite/ids';
 import { IfcParser } from '@ifc-lite/parser';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
-import { composeDocument, estimateTextWidth } from '@/lib/document/compose';
+import { composeDocument, estimateTextWidth, truncateToWidth } from '@/lib/document/compose';
+import { layoutIdsReport } from '@/lib/document/compose-ids-report';
+import type { RingDrawnItem } from '@/lib/document/compose-manual-report';
+import type { LayoutCursor } from '@/lib/document/compose-table';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import type { IdsReportBlock } from '@/lib/document/types';
 import { cleanup, render } from '@/test/render.js';
@@ -180,5 +183,19 @@ describe('IDS report requirement-check ring (#8417)', () => {
       cleanup();
     }
     assert.equal(rings({ ...synthetic, benchmarks: false }).length, 0);
+  });
+
+  it('draws one ring when requirement checks equal the entity results, or the block is too narrow for two', () => {
+    const single: IdsReportBlock = { ...synthetic, summary: { checked: 128, passed: 100, failed: 28, passRate: 78 },
+      checks: [{ ...synthetic.checks[0], passed: 100, failed: 28, passRate: 78, rules: [{ ...rules[0], passed: 100, failed: 28, passRate: 78 }] }] };
+    assert.equal(rings(single).length, 1);
+    assert.ok(pdfTexts(single).includes('100/128 checks passed (78%)'), 'the summary line still states the requirement checks');
+    const ui = render(<IdsReportPreview block={single} />);
+    assert.equal(ui.querySelectorAll('[data-validation-benchmark] img').length, 1);
+    const drawn: RingDrawnItem[] = [];
+    const cursor: LayoutCursor = { x: 0, y: 0, top: 0, bottom: 800, newPage() {}, ensure() {}, push() {},
+      truncate: (text, max, size, bold) => truncateToWidth(text, max, size, bold, estimateTextWidth) };
+    layoutIdsReport(synthetic, cursor, 220, 10, undefined, (item) => drawn.push(item));
+    assert.equal(drawn.length, 1, 'a narrow block keeps its summary readable');
   });
 });

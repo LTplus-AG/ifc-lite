@@ -25,7 +25,7 @@ import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
-import { idsBlockRequirementCheckRate, idsCheckBar, idsRequirementCheckRate, isUnmatchedIdsCheck, notCheckedIdsSpecifications, reportBlockSourceKind, reportItemsCountKey, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary, type RequirementCheckRate } from './ids-report-types.js';
+import { idsBlockRequirementCheckRate, idsCheckBar, idsRequirementCheckRate, idsRequirementRing, isUnmatchedIdsCheck, notCheckedIdsSpecifications, reportBlockSourceKind, reportItemsCountKey, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary, type RequirementCheckRate } from './ids-report-types.js';
 import type { LayoutCursor } from './compose-table.js';
 
 export const IDS_REPORT_TITLE_HEIGHT = 18;
@@ -39,6 +39,7 @@ const COMPACT_GROUP_GAP = 6;
 const BAR_HEIGHT = 5;
 const RING_CAPTION_WIDTH = 66;
 const RING_CAPTION_HEIGHT = 20;
+const MIN_WIDTH_FOR_TWO_RINGS = 300;
 const BAR_TRACK_COLOR = '#e1e1e1';
 const BAND_COLOR = { good: '#22c55e', warn: '#eab308', bad: '#ef4444' } as const;
 
@@ -161,10 +162,12 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const keepAfter = firstRowHeight + firstChildHeight + (checksCount ? DATE_HEIGHT : 0);
   const ringSize = 44;
   const blockChecks = idsBlockRequirementCheckRate(block);
-  // Entity and requirement rings need captions to tell them apart; a lone ring keeps its original layout (#8417).
-  const rings: Array<Pick<RingDrawnItem, 'counts' | 'label' | 'passRate'>> = !block.benchmarks ? [] : blockChecks
+  // Entity and requirement rings need captions to tell them apart; a lone ring keeps its
+  // original layout, also where two would crowd out the summary beside them (#8417).
+  const requirementRing = contentW >= MIN_WIDTH_FOR_TWO_RINGS ? idsRequirementRing(block) : undefined;
+  const rings: Array<Pick<RingDrawnItem, 'counts' | 'label' | 'passRate'>> = !block.benchmarks ? [] : requirementRing
     ? [{ counts: reportRingCounts(block.summary), label: t('idsPanel.entityResults'), passRate: block.summary.passRate },
-      { counts: requirementRingCounts(blockChecks), label: t('idsPanel.requirementChecks'), passRate: blockChecks.rate }]
+      { counts: requirementRingCounts(requirementRing), label: t('idsPanel.requirementChecks'), passRate: requirementRing.rate }]
     : [{ counts: reportRingCounts(block.summary) }];
   const ringSlot = rings.length > 1 ? RING_CAPTION_WIDTH : ringSize;
   const ringsWidth = rings.length * (ringSlot + 12);

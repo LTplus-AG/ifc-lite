@@ -62,7 +62,8 @@ function enclosesArea(ring: Point[]): boolean {
 }
 
 /**
- * Rings that cannot be drawn are dropped (jsPDF throws on non-finite points).
+ * Rings that cannot be drawn are dropped: jsPDF throws on NaN and writes
+ * Infinity as a broken operand.
  * See `fillable` for when a polygon is filled and covers its cut lines.
  */
 export function prepareCutPolygonsPdf(
@@ -70,15 +71,15 @@ export function prepareCutPolygonsPdf(
   ctx: CutPolygonStyleContext,
   mapPoint: (x: number, y: number) => Point,
 ): PdfCutPolygon[] {
+  // Everything is checked on page coordinates: that is what jsPDF receives,
+  // and a huge but finite model value can still overflow there.
+  const page = (ring: Point[]) => ring.map((p) => mapPoint(p.x, p.y));
   return styleCutPolygons(polygons, ctx, ({ polygon: { outer, holes } }) => {
-    // Checked on page coordinates: that is what jsPDF receives, and a huge
-    // but finite model value can still overflow there.
-    const page = (ring: Point[]) => ring.map((p) => mapPoint(p.x, p.y));
     const pageOuter = page(outer);
     const pageHoles = holes.map(page);
     return {
       rings: [pageOuter, ...pageHoles].filter(drawableRing),
-      fillable: drawableRing(pageOuter) && enclosesArea(outer)
+      fillable: drawableRing(pageOuter) && enclosesArea(pageOuter)
         && pageHoles.every((ring) => ring.length < 2 || finiteRing(ring)),
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));

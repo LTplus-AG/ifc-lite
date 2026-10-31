@@ -1120,14 +1120,14 @@ function useDrawingExport({
           if (!displayOptions.showHiddenLines && line.visibility === 'hidden') continue;
 
           const { start, end } = line.line;
-          if (!isFinite(start.x) || !isFinite(start.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
+          // Checked on the page: a finite model value can overflow there.
+          const p0 = mapPoint(start.x, start.y);
+          const p1 = mapPoint(end.x, end.y);
+          if (![p0.x, p0.y, p1.x, p1.y].every(Number.isFinite)) continue;
 
           // Shared with the to-scale 3D-view PDF (#2042) so the two writers
           // cannot drift into two different line hierarchies.
           const { lineWidthMm, dash } = pdfLineStyleFor(line.category, line.visibility);
-
-          const p0 = mapPoint(start.x, start.y);
-          const p1 = mapPoint(end.x, end.y);
           doc.setLineWidth(lineWidthMm);
           doc.setLineDashPattern(dash, 0);
           doc.line(p0.x, p0.y, p1.x, p1.y);

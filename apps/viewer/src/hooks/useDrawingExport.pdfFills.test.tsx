@@ -67,7 +67,7 @@ function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = fals
       scale: 50,
     },
     lines: cutLine
-      ? [{ line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
+      ? [{ line: { start: { x: 0, y: 0 }, end: { x: cutLine === 'overflow' ? 1e308 : 4, y: 0 } }, category: 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
       : [],
     cutPolygons: twoWalls ? [wall, { ...wall, entityId: 8 }] : [wall],
     projectionPolygons: [],
@@ -95,7 +95,8 @@ interface ExportOptions {
   lineOuter?: keyof typeof LINE_OUTERS;
   /** Replace the hole with a degenerate one. */
   hole?: keyof typeof HOLES;
-  /** A hole vertex that is finite in the model but overflows to Infinity on the page. */
+  /** A hole vertex that is finite in the model but overflows to Infinity on the
+   *  page (1e308 m x 20 mm/m at the harness's 1:50; finite again from ~1:556). */
   overflowHole?: boolean;
   /** Shift the wall to LV95-scale coordinates. */
   lv95Wall?: boolean;
@@ -103,8 +104,8 @@ interface ExportOptions {
   twoWalls?: boolean;
   /** Corrupt geometry: a NaN vertex in the hole, the outer ring, or both. */
   nanVertex?: 'hole' | 'outer' | 'all';
-  /** Also carry the wall's bottom edge as a `cut` line. */
-  cutLine?: boolean;
+  /** Also carry the wall's bottom edge as a `cut` line; 'overflow' puts its end at 1e308 m. */
+  cutLine?: boolean | 'overflow';
 }
 
 type Format = 'pdf' | 'svg';
@@ -328,8 +329,9 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     });
   }
 
-  it('skips a hole that overflows to Infinity on the page instead of aborting (#8464)', async () => {
-    const text = await exportPdf({ overflowHole: true });
+  it('skips a hole that overflows to Infinity on the page (#8464)', async () => {
+    const text = await exportPdf({ overflowHole: true, cutLine: 'overflow' });
+    assert.ok(!/Infinity|NaN/.test(text), 'no broken operand reaches the content stream');
     assert.ok(!text.includes('f*'), 'the opening jsPDF cannot draw is not painted solid');
     assert.ok(text.includes('h\nS\n'), 'the wall is still outlined');
   });

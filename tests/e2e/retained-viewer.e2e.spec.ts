@@ -690,6 +690,8 @@ function expectCleanIdentity(model: Identity, published: number[]) {
 }
 
 test.describe('retained viewer: real authoring-tool exports and federation identity', () => {
+  // Playwright requires a destructured fixture argument even when no fixture is used.
+  // eslint-disable-next-line no-empty-pattern
   test.beforeEach(({}, testInfo) => {
     if (engine && existsSync(join(engine, 'engine-manifest.json'))) return;
     // The lane that requires the SDK sets IFCLITE_REQUIRE_SMLIB: there a missing engine is a failure, never a skip.
@@ -776,9 +778,14 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     await setup(page, 'exact');
     await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
     await completeModels(page, [baseName(MAPPED)], false);
+    // The authored fixture has 64 occurrences. Use its committed product
+    // universe, not IDs observed through the exact loader under test.
+    const mappedRows = expected(MAPPED);
+    expect(mappedRows).toHaveLength(64);
+    expect(mappedRows.every(row => row.status === 'published')).toBe(true);
+    const mappedIds = mappedRows.map(row => row.id);
     const [first] = await identities(page);
-    expectCleanIdentity(first, first.locals);
-    expect(first.locals.length).toBeGreaterThan(1);
+    expectCleanIdentity(first, mappedIds);
     await selectGlobal(page, first.locals[0], { modelId: first.id, expressId: first.locals[0] });
 
     await chooseRetained(page);
@@ -800,9 +807,9 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     const [a, b, c] = names.map(byName);
     expect(models).toHaveLength(3);
     expect(stable(a)).toEqual(stable(first));
-    expect(c.locals, 'the copy uses the very same express ids').toEqual(a.locals);
+    expectCleanIdentity(c, mappedIds);
     for (const model of models) { expect(model.foreign).toEqual([]); expect(model.unresolved).toEqual([]); expect(model.typeMismatch).toEqual([]); }
-    expect(models.map(model => model.idOffset)).toEqual([...models.map(model => model.idOffset)].sort((x, y) => x - y));
+    expect(models.map(model => model.idOffset)).toEqual(models.map(model => model.idOffset).sort((x, y) => x - y));
     expect(new Set(models.map(model => model.idOffset)).size).toBe(3);
     expect(new Set(models.flatMap(model => model.globals)).size, 'global ids never collide').toBe(models.flatMap(model => model.globals).length);
     // The same local id selects a different model depending on its global id.
@@ -812,7 +819,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     await selectGlobal(page, globalIn(c), { modelId: c.id, expressId: local });
     await selectGlobal(page, b.globals[0], { modelId: b.id, expressId: b.locals[0] });
     expect(requests.filter(url => SDK_REQUEST.test(url))).toEqual([]);
-    await record('federation-retry', { first: stable(first), models: models.map(stable) });
+    await record('federation-retry', { expectedMappedProducts: mappedIds.length, first: stable(first), models: models.map(stable) });
   });
 
   test('a retained primary load replaces an exact federation completely', async ({ page }) => {

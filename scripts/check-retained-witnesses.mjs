@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile, glob } from 'node:fs/promises';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const LANES = new Set(['native', 'cli', 'viewer']);
@@ -40,7 +41,7 @@ export async function checkWitnesses({ root = '.', lane, log }) {
   let text;
   try { text = await readFile(log, 'utf8'); }
   catch (error) { throw new Error(`Cannot read ${lane} witness log ${log}: ${error.message}. Remedy: capture the actual unfiltered lane output at --log and check its read permissions.`, { cause: error }); }
-  const lines = text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+  const lines = stripVTControlCharacters(text)
     .split(/\r?\n/).map(line => line.replace(/^(?:# |ℹ )/, ''));
   const missing = required.filter(({ marker }) => !lines.some((line, index) => {
     // Native --nocapture writes may interleave, so preserve the old end anchor.

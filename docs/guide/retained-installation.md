@@ -123,3 +123,20 @@ silently execute exact. Repeat after downloading/installing the actual release
 artifact rather than serving a developer checkout. Use the existing
 `geometry-platform.yml` real Worker and `viewer-retained` tests as the executable
 smoke recipe; this document is a draft, not a claim that a release was hosted.
+
+## Exports from the retained viewer
+
+A model the viewer holds from the retained kernel (`?kernel=retained`) exports the geometry on screen or refuses.
+
+- **GLB** takes the meshes the viewer holds, GPU-instanced occurrences included; it never re-meshes the file with the
+  exact engine, so products the retained kernel refused are absent from the GLB exactly as they are absent from the
+  viewport. (The GLB writer gives every material the same default metallic/roughness, on both kernels.)
+- **USD, Cesium ion and the energy models (HBJSON, DFJSON)** rebuild their geometry from the file with the exact
+  engine (Cesium ion uploads the model's STEP for Cesium to re-mesh). While any loaded model is retained their commands
+  are disabled with a reason; reload the model with the exact kernel to use them.
+- **KMZ and the IFC5 output** are built from the held meshes and are refused while the retained model is incomplete
+  or shape-only. IFC4 STEP export and IFC5 changes-only and geometry-disabled exports remain available.
+- **Unsectioned IFC (STEP), CSV and JSON** need no geometry kernel and work unchanged. Sectioned STEP export
+  rebuilds exact tessellation, including its outside test, and is refused when an exported model is retained.
+  The IFC ribbon still opens the dialog with section planes visible: keep **Export Visible Only** off for
+  unsectioned STEP, or choose geometry-disabled IFC5. Reload with the exact kernel to export a section.

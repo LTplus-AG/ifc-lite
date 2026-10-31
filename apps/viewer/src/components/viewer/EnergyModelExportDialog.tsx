@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/retainedGeometry';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
@@ -107,6 +108,10 @@ export function EnergyModelExportDialog({ surface, trigger }: EnergyModelExportD
   const spec = FORMATS[format];
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    // #8415: a dialog can stay open while a model switches kernels; recheck the live launch policy.
+    if (hasRetainedGeometryModel(useViewerStore.getState().models)) {
+      return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+    }
     if (!selectedModel) {
       return { success: false, message: t('geometryExport.energy.noModelDescription') };
     }

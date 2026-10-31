@@ -16,7 +16,7 @@ import { act } from 'react';
 import { render, cleanup } from '@/test/render.js';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture.js';
 import { useViewerStore } from '@/store';
-import { RETAINED_SHAPE_ONLY_REASON, type RetainedGeometrySummary } from './retainedGeometry';
+import { RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON, type RetainedGeometrySummary } from './retainedGeometry';
 import { useExportCommands, type ResolvedExportCommand } from '@/components/viewer/toolbar/useExportCommands';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 // The retained module registers the shape-only reason's English text.
@@ -31,6 +31,9 @@ const SUMMARY: RetainedGeometrySummary = {
 
 async function seed(retained: boolean): Promise<void> {
   await seedCoincidentWalls(1);
+  // #8415: ion's pre-existing dataStore requirement is independent of retained gating.
+  // Model seeding alone does not populate the legacy active-model slot.
+  act(() => useViewerStore.setState({ ifcDataStore: useViewerStore.getState().models.get('A')!.ifcDataStore }));
   if (!retained) return;
   const models = new Map(useViewerStore.getState().models);
   for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: SUMMARY });
@@ -61,8 +64,7 @@ describe('#7955 M2 shape-only guard', () => {
       for (const id of ['glb', 'kmz', 'ion', 'usd']) {
         const state = exportState(id);
         assert.equal(state.reason, retained ? RETAINED_SHAPE_ONLY_REASON : undefined, id);
-        // Cesium ion also needs the legacy single-model store, which this fixture leaves empty.
-        if (retained || id !== 'ion') assert.equal(state.disabled, retained, id);
+        assert.equal(state.disabled, retained, id);
       }
       assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined }, 'the source-based IFC export is unaffected');
     });
@@ -100,3 +102,35 @@ it('M11-Z enables mesh exports on a complete final retained model', async () => 
   render(<ExportProbe />);
   assert.equal(exportState('glb').disabled, false);
 });
+
+// #7955: USD, the energy models and Cesium ion (which uploads the STEP for Cesium to re-mesh) re-mesh the FILE with the exact engine, which is not the geometry a retained model
+// shows even when it is complete and final. Refused with their own reason; the exact model keeps them.
+for (const retained of [false, true]) {
+  it(`USD, energy and Cesium ion exports are ${retained ? 'refused with the exact-engine reason' : 'available'} (complete ${retained ? 'retained' : 'exact'} model)`, async () => {
+    await seed(retained);
+    if (retained) {
+      const models = new Map(useViewerStore.getState().models);
+      for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: { ...SUMMARY, obligationsUnmet: [] } });
+      act(() => useViewerStore.setState({ models }));
+    }
+    render(<ExportProbe />);
+    for (const id of ['usd', 'energy', 'ion']) {
+      assert.deepEqual(exportState(id), { disabled: retained, reason: retained ? RETAINED_EXACT_ONLY_REASON : undefined }, id);
+    }
+    // A complete, final retained model still exports what the viewer holds.
+    for (const id of ['glb', 'kmz']) assert.equal(exportState(id).disabled, false, id);
+  });
+}
+
+// #8415: the dialog offers source STEP and property-only IFC5 even with a visible cut.
+// Its live submission guard refuses only sectioned STEP, so launch must stay available.
+for (const retained of [false, true]) {
+  it(`IFC dialog launch stays available with an active section (${retained ? 'retained' : 'exact'})`, async () => {
+    await seed(retained);
+    act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: true } }));
+    render(<ExportProbe />);
+    assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined });
+    act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: false }, inactiveSectionPlanes: [] }));
+    assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined }, 'unsectioned STEP remains available');
+  });
+}

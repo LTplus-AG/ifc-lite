@@ -147,6 +147,13 @@ function fakeCollection(meshes: (FakeMesh | null)[], extra: Record<string, unkno
 const asCollection = (c: unknown) => c as Parameters<typeof convertMeshCollectionToBatch>[0];
 
 describe('convertMeshCollectionToBatch', () => {
+  it('preserves authored finish values when copying the WASM mesh (#8415)', () => {
+    const batch = convertMeshCollectionToBatch(asCollection(fakeCollection([
+      fakeMesh({ expressId: 1, metallic: 1, roughness: 0.125 }),
+    ])));
+    expect(batch[0].material).toMatchObject({ metallic: 1, roughness: 0.125 });
+  });
+
   it('frees every mesh and the collection itself', () => {
     const meshes = [fakeMesh({ expressId: 1 }), fakeMesh({ expressId: 2 })];
     const collection = fakeCollection(meshes);

@@ -1,0 +1,12 @@
+diff --git a/packages/geometry/src/geometry-coordinate.ts b/packages/geometry/src/geometry-coordinate.ts
+index a08c80f82b..4d5bcd23b9 100644
+--- a/packages/geometry/src/geometry-coordinate.ts
++++ b/packages/geometry/src/geometry-coordinate.ts
+@@ -131,6 +131,7 @@ export function convertMeshCollectionToBatch(
+           // bundles lack both getters, so both spread to nothing.
+           ...(sourceGeometryItemId !== undefined ? { geometryItemId: sourceGeometryItemId } : {}),
+           ...(sourceMaterialId !== undefined ? { materialId: sourceMaterialId } : {}),
++          ...(material ? { material } : {}),
+         };
+ 
+         // #961: copy the Rust-decoded surface texture + per-vertex UVs (the

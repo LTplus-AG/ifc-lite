@@ -14,6 +14,7 @@ import type { TranslationValue } from '../types';
  */
 export const retainedGeometryEn = {
   'retainedGeometry.shapeOnlyReason': 'Unavailable while retained geometry or presentation is incomplete. Reload it with the exact kernel to use this.',
+  'retainedGeometry.exactOnlyExportReason': 'This export rebuilds its geometry from the file with the exact engine, so it cannot export the retained geometry of a loaded model. Reload that model with the exact kernel to use it.',
 
   'retainedGeometry.final': 'final',
   'retainedGeometry.shapeOnly': 'shape-only',

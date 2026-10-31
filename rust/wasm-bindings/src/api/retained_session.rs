@@ -6,9 +6,10 @@ use crate::zero_copy::MeshCollection;
 use crate::{retained_browser::model::ModelWorker, retained_view::view_meshes};
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{
-    canonical_element_jobs, run_model_with_worker, ModelOptions, ProductOutcome,
+    canonical_element_jobs_and_styled_items, run_model_with_worker, ModelOptions, ProductOutcome,
 };
 use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
+use ifc_lite_processing::prepass::Span;
 use ifc_lite_processing::style::ModelFinishes;
 use js_sys::{Array, Float64Array, Object, Reflect, Uint32Array};
 use wasm_bindgen::prelude::*;
@@ -69,7 +70,8 @@ impl RetainedModelSession {
     ) -> Result<RetainedRunSummary, JsValue> {
         let (options, view) = parse_options(&options)?;
         let source = SourceBundle::new(content);
-        let candidate_ids: Vec<u32> = canonical_element_jobs(&source)
+        let (jobs, styled_items) = canonical_element_jobs_and_styled_items(&source);
+        let candidate_ids: Vec<u32> = jobs
             .into_iter()
             .map(|(id, _)| id)
             .filter(|id| options.ids.as_ref().is_none_or(|ids| ids.contains(id)))
@@ -98,10 +100,10 @@ impl RetainedModelSession {
         let mut error = None;
         let mut workers_acquired = 0u32;
         // The authored finish is joined once per RUN (one run is one model; the session keeps only the peer), and
-        // lazily, so a run that publishes nothing pays nothing. The run's own prepass cannot be reused here: its
-        // `PrepassSpans` live inside `run_model_with_worker`, and `ModelFinishes<'c>` borrows its source, so handing
-        // either out would change the sink signature the native and wasm callers share. The price is one more
-        // entity scan of the file (spans only; styled items are decoded only if the file authors a finish).
+        // lazily, so a run that publishes nothing pays nothing. It reads no second copy of the file: the styled-item
+        // spans come from the candidate scan above and the decoder shares the source's own entity index
+        // (`ModelFinishes::from_source`). The run's own prepass cannot be handed out instead: its `PrepassSpans` live
+        // inside `run_model_with_worker`, and `ModelFinishes<'c>` borrows its source.
         let finish_source = source.clone();
         let mut finishes = None;
         let summary = run_model_with_worker(
@@ -114,7 +116,7 @@ impl RetainedModelSession {
             },
             |outcome, _| {
                 if error.is_none() {
-                    error = event(outcome, view, rtc, &mut finishes, finish_source.bytes())
+                    error = event(outcome, view, rtc, &mut finishes, &finish_source, &styled_items)
                         .and_then(|value| on_event.call1(&JsValue::UNDEFINED, &value))
                         .err();
                 }
@@ -169,7 +171,7 @@ fn parse_options(options: &RetainedRunOptions) -> Result<(ModelOptions, bool), J
 }
 
 fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut Option<ModelFinishes<'c>>,
-    content: &'c [u8]) -> Result<JsValue, JsValue> {
+    source: &'c std::sync::Arc<SourceBundle>, styled_items: &[Span]) -> Result<JsValue, JsValue> {
     if view {
         if let ProductOutcome::Published(product) = outcome {
             let result = Object::new();
@@ -187,7 +189,7 @@ fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut 
             let mut meshes = MeshCollection::with_capacity(product.parts.len());
             meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
             for mesh in view_meshes(&product, rtc) {
-                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_content(content)).finish_for_mesh(&mesh);
+                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_source(source, styled_items)).finish_for_mesh(&mesh);
                 meshes.add(mesh_js_with_finish(mesh, finish));
             }
             super::retained_presentation::product_fields(&result, &product, true)?;
@@ -209,3 +211,7 @@ fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut 
 #[cfg(test)]
 #[path = "../retained_browser/m9_session_tests.rs"]
 mod m9_session_tests;
+
+#[cfg(test)]
+#[path = "retained_session_scan_tests.rs"]
+mod scan_tests;

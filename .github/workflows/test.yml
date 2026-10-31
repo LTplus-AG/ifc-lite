@@ -922,6 +922,18 @@ jobs:
           else
             echo "frames=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Detect retained session scan oracle
+        id: retained-scan
+        run: |
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch | grep -q .; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "IFC_LITE_RETAINED_SESSION_SCAN=1" >> "$GITHUB_ENV"
+          fi
+      - name: Provision the actual WASM session oracle
+        if: steps.retained-scan.outputs.needed == 'true'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: retained-session-oracle
       - name: Provision optional revert-oracle runner toolchains
         uses: ./.github/actions/setup-revert-oracle
         with:
@@ -1021,7 +1033,13 @@ jobs:
           oracle_args=(--base origin/main --ci --json)
           # #8112: full inversion deletes the new helper and prevents test loading.
           # Keep the API; weaken fingerprint identity to key equality instead.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch | grep -q .; then
+            oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch --test scripts/retained-session-scan.test.mjs)
+            oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/finish-carry.oracle.patch --test packages/geometry/src/geometry-coordinate.test.ts)
+            oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/export-gate.oracle.patch --test apps/viewer/src/components/viewer/GLBExportDialog.retained.test.tsx --test apps/viewer/src/components/viewer/ExportDialog.retained.test.tsx --test apps/viewer/src/store/retainedGeometry.guard.test.tsx --test apps/viewer/src/utils/instancedExport.retained.test.ts --test apps/viewer/src/components/viewer/KmzExportDialog.retained.test.tsx --test apps/viewer/src/components/viewer/exactExport.retained.test.tsx)
+            oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/section-export.oracle.patch --test apps/viewer/src/components/viewer/ExportDialog.section.retained.test.tsx --test apps/viewer/src/store/retainedGeometry.guard.test.tsx)
+            oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/export-scope.oracle.patch --test apps/viewer/src/components/viewer/ExportDialog.section.retained.test.tsx --test apps/viewer/src/store/retainedGeometry.guard.test.tsx --test apps/viewer/src/utils/instancedExport.retained.test.ts)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
           # #8308: whole-file inversion of operator.rs also drops the new test
           # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
@@ -3315,7 +3333,7 @@ jobs:
           cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
           cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
-          cargo test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle
+          cargo test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle --test retained_finishes_from_source
           # Includes M11-0 m11_presentation (SDK-free face-copy mutation witness).
           # Includes M11-F m11_faces (SDK-free face attribution and tie-break mutation witness).
           cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model

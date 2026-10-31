@@ -50,7 +50,9 @@ export interface WatchdogClock {
 }
 
 const BROWSER_CLOCK: WatchdogClock = {
-  now: () => performance.now(),
+  // Wall clock, not performance.now(): that stops during OS sleep on some
+  // browsers, so a timer overdue after a wake would not read as late.
+  now: () => Date.now(),
   setTimeout: (callback, ms) => globalThis.setTimeout(callback, ms),
   clearTimeout: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>),
   isHidden: () => typeof document !== 'undefined' && document.visibilityState === 'hidden',

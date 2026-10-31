@@ -2,19 +2,23 @@
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
 # worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
 # this workflow is path-filtered to them and is intentionally NOT a required check.
-# It costs about an hour of hosted runner per commit, so a PR runs it only for
-# changes it can observe; the nightly run catches what the narrow filter misses.
+# It holds a hosted runner for about an hour per commit, so it runs nightly, on
+# demand, and on a PR only with the `ci:native-adapter` label and a change it can
+# observe. Add the label to a PR whose retained or native change needs this evidence.
 name: Geometry platform (native adapter)
 
 on:
   pull_request:
+    # `labeled` lets the label start the job on the current commit.
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'native/**'
       # M2-D builds and drives the real opt-in viewer. Only its retained code,
       # the viewport that hosts it and its build configuration: an ordinary
       # viewer change must not queue an hour-long native build.
-      - 'apps/viewer/**/*retained*'
+      - 'scripts/fixtures/fetch-fixtures.mjs'
       - 'apps/viewer/**/*Retained*'
+      - 'apps/viewer/**/*retained*'
       - 'apps/viewer/src/lib/retained/**'
       - 'apps/viewer/src/components/viewer/Viewport.tsx'
       - 'apps/viewer/src/components/viewer/ViewportContainer.tsx'
@@ -41,7 +45,6 @@ on:
       - 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc'
       - 'apps/viewer/public/samples/building-architecture.ifc'
       - 'apps/viewer/public/samples/hello-wall.ifc'
-      - 'scripts/fixtures/fetch-fixtures.mjs'
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
       - 'tests/models/manifest.json'
@@ -102,7 +105,7 @@ on:
       - 'packages/wasm/pkg-retained/**'
       - 'packages/wasm/test/retained-browser.test.mjs'
       - '.github/workflows/geometry-platform.yml'
-  # The backstop for the narrow pull_request filter above.
+  # The backstop for PRs that do not opt in.
   schedule:
     - cron: '30 2 * * *'
   workflow_dispatch:
@@ -112,17 +115,22 @@ on:
         default: false
         description: Run the downloaded model corpus as well as committed fixtures
 
-# A new commit makes the PR's running qualification worthless; nightly and
-# manual runs are never cancelled.
-concurrency:
-  group: geometry-platform-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 permissions:
   contents: read
 
 jobs:
   native-adapter:
+    # A bot applying any other label must neither start nor restart this job.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'ci:native-adapter') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ci:native-adapter'))
+    # At job level, because a workflow-level group would let a skipped run cancel
+    # this one. A new commit makes the PR's running job worthless; nightly and
+    # manual runs are never cancelled.
+    concurrency:
+      group: geometry-platform-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:

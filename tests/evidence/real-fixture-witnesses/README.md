@@ -61,8 +61,11 @@ syntax unsupported by the path-coverage gate. Equivalent lowercase/uppercase
 patterns preserve the intended match. The checker reads only witness files;
 fixture inputs are explicitly covered by the narrowed native-adapter trigger.
 Path coverage and test wiring pass. Node setup precedes native witness checks.
-No ruleset was changed: native-adapter enforces these regressions and is required
-by merge-when-green.sh, but is not yet repository-required (#8396).
+No ruleset was changed: native-adapter enforces these regressions nightly,
+on demand, and on PRs carrying `ci:native-adapter`; it does not run on every PR
+(#8460). merge-when-green.sh requires it, but it is not yet repository-required
+(#8396). The final integration merge preserves this label policy and the scoped
+native/CLI/viewer witness checks.
 
 Local pre-handoff passes its available gates. Its TypeScript, YAML and default
 viewer checks are explicitly skipped because dependencies/bundle are absent;

@@ -89,7 +89,7 @@ const FILE_TOKEN = new RegExp(
   'gi',
 );
 
-const redactFileTokens = (value: string): string =>
+export const redactFileTokens = (value: string): string =>
   value.replace(FILE_TOKEN, '[file]');
 
 const stripQueryAndHash = (value: string): string => {

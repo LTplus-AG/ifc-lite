@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { DeviceRecoveryResult } from '@ifc-lite/renderer';
+import { redactFileTokens } from '@/lib/analytics-scrub.js';
 import type { DeviceLossContext } from './device-loss-context.js';
 import type { DeviceRecoveryAttempts } from './device-loss-recovery.js';
 
@@ -42,13 +43,18 @@ export function recoveryFailureProperties(
   };
 }
 
-/** Error text is browser- or driver-supplied: bounded, never a fingerprint. */
+/**
+ * Error text is browser- or driver-supplied: bounded, never a fingerprint. The
+ * scrubber only redacts whole path-like property values, so a file name inside
+ * a sentence is removed here, before the text is cut.
+ */
 const MAX_DETAIL = 300;
+const detailOf = (text: string): string => redactFileTokens(text).slice(0, MAX_DETAIL);
 
 function errorFields(prefix: string, error: unknown): DeviceLossContext {
   if (error === undefined) return {};
   if (error instanceof Error) {
-    return { [`${prefix}_kind`]: error.name.slice(0, 64), [`${prefix}_detail`]: error.message.slice(0, MAX_DETAIL) };
+    return { [`${prefix}_kind`]: error.name.slice(0, 64), [`${prefix}_detail`]: detailOf(error.message) };
   }
-  return { [`${prefix}_kind`]: typeof error, [`${prefix}_detail`]: String(error).slice(0, MAX_DETAIL) };
+  return { [`${prefix}_kind`]: typeof error, [`${prefix}_detail`]: detailOf(String(error)) };
 }

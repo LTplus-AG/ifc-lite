@@ -111,6 +111,18 @@ describe('device_loss_recovery_failed carries what failed', () => {
     }
   });
 
+  it('removes a file name from recovery error text', async () => {
+    const h = source([{ ok: false, reason: 'scene-restore-failed', error: new Error('could not restore Tower.ifc after loss') }]);
+    const unsubscribe = subscribeViewportHealth(h.renderer);
+    try {
+      h.lose();
+      const props = await failureEvent();
+      assert.equal(props.recovery_error_detail, 'could not restore [file] after loss');
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('bounds browser-supplied text and survives a non-Error rejection', async () => {
     let attempts: DeviceRecoveryAttempts | undefined;
     const run = startDeviceLossRecovery(

@@ -51,7 +51,7 @@ import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
-import { computeSourceFingerprint, computeSourceFingerprintFromBlob, type GeometryData } from '@ifc-lite/cache';
+import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,

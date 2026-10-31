@@ -557,6 +557,7 @@ const SOURCE_TAG: Record<ColumnDefinition['source'], string> = {
   model: 'model',
   zone: 'zone',
   geometry: 'world',
+  customGrouping: 'group',
 };
 
 /** `spatial`/`zone` tags reflect level/mode; everything else uses the flat per-source tag. */

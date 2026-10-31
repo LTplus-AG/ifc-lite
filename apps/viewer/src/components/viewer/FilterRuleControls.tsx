@@ -122,5 +122,6 @@ export function blankRuleOfKind(kind: FilterRule['kind']): FilterRule {
     case 'group':          return Rule.group('isSet', '');
     case 'modelFact':      return Rule.modelFact('georef.crs', 'isSet', '');
     case 'listCondition':  return Rule.listCondition({ source: 'spatial', propertyName: 'Building', operator: 'equals', value: '' });
+    case 'customGrouping': return Rule.customGrouping({ name: '' }, 'in', []);
   }
 }

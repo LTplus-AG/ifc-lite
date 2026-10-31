@@ -40,7 +40,8 @@ import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { normalizePropertyValue } from './query-property-value.js';
 import { evaluateFilterGroups } from '@ifc-lite/rules';
 import { totalRuleCount } from '@ifc-lite/rules';
-import { definedModelTagIdsOf } from '../../lib/model-tags/evaluator-models.js';
+import { definedModelTagIdsOf, evaluatorModelsFromState } from '../../lib/model-tags/evaluator-models.js';
+import { customGroupingsFromLenses } from '../../lib/lens/custom-groupings.js';
 
 export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
   function getEntityData(ref: EntityRef): EntityData | null {
@@ -306,6 +307,8 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     if (!filter || totalRuleCount(filter.groups) === 0) return null;
 
     const results: EntityData[] = [];
+    // `customGrouping` rules (#8425) read the same definitions every other evaluator run gets.
+    const customGroupings = customGroupingsFromLenses(state.savedLenses, evaluatorModelsFromState(state));
     for (const [modelId, model] of getAllModelEntries(state)) {
       if (!model?.ifcDataStore) continue;
       const matched = evaluateFilterGroups(
@@ -316,6 +319,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           limit: Number.MAX_SAFE_INTEGER,
           modelTagIds: state.modelTagAssignments.get(modelId),
           definedModelTagIds: definedModelTagIdsOf(state),
+          customGroupings,
         },
       );
       const view = getMutationViewForModel(store, modelId);

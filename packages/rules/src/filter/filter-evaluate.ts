@@ -35,45 +35,22 @@
  */
 
 import {
-  extractPropertiesOnDemand,
-  extractTypePropertiesOnDemand,
-  extractAllMaterialsOnDemand,
-  extractClassificationsOnDemand,
-  mergeInheritedPropertySets,
-  type IfcDataStore,
-  type ClassificationInfo,
+  extractPropertiesOnDemand, extractTypePropertiesOnDemand, extractAllMaterialsOnDemand, extractClassificationsOnDemand,
+  mergeInheritedPropertySets, type IfcDataStore, type ClassificationInfo,
 } from '@ifc-lite/parser';
 import { ownPropertySetsFor, typePropertySetsFor, quantitySetsFor, attributesFor, mutatedAttributeValue } from './filter-evaluate-mutations.js';
 
 import { RelationshipType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 
-import {
-  combineRuleResults,
-  type Combinator,
-  type FilterRule,
-} from './filter-rules.js';
-import {
-  setOpMatches,
-  globalIdOpMatches,
-  stringOpMatches,
-  matchStringAnyNone,
-  numericOpMatches,
-} from './filter-ops.js';
-import {
-  isNumericArrayLike,
-  materialiseNumericIterable,
-  toNumericIterable,
-} from './filter-iteration.js';
+import { combineRuleResults, type Combinator, type FilterRule } from './filter-rules.js';
+import { setOpMatches, globalIdOpMatches, stringOpMatches, matchStringAnyNone, numericOpMatches } from './filter-ops.js';
+import { isNumericArrayLike, materialiseNumericIterable, toNumericIterable } from './filter-iteration.js';
 import { selectIterationSource, orderRulesByCost } from './filter-iteration-source.js';
 import { buildFilterResult, effectiveFilterFields, type EffectiveFilterFields } from './effective-filter-fields.js';
 import { throwAbort, yieldToEventLoop } from './filter-evaluate-yield.js';
 import {
-  modelPrunedUnderAnd,
-  modelScopedRuleMatches,
-  isModelScopedRule,
-  NO_MODEL_TAGS,
-  type ModelScope,
+  modelPrunedUnderAnd, modelScopedRuleMatches, isModelScopedRule, NO_MODEL_TAGS, type ModelScope,
 } from './filter-evaluate-model-tag.js';
 
 import {
@@ -94,7 +71,9 @@ import { defaultStoreyName, storeyMatchesRefs } from './filter-storey.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { matchGroupRule } from './filter-group-rule.js';
 import { matchModelFactRule } from './filter-model-fact.js';
-import { assertListConditionsAnswerable, matchListConditionRule, type ListConditionMatcher } from './filter-list-condition.js';
+import { matchListConditionRule, type ListConditionMatcher } from './filter-list-condition.js';
+import { assertHostRulesAnswerable, matchCustomGroupingRule, type CustomGroupingDefinition } from './filter-custom-grouping.js';
+import type { FilterGroup } from './filter-groups.js';
 import { readsThroughSubject } from './subject-read-options.js';
 import { matchRuleThroughSubject } from './subject-match.js';
 
@@ -128,8 +107,8 @@ export interface EvaluateOptions {
    *  UNRESOLVED and matches nothing — absent means "no tags exist", so every
    *  rule naming a tag is unresolved, never silently broad. */
   definedModelTagIds?: ReadonlySet<string>;
-  /** Answers `listCondition` rules for this model (#6190); see `EvaluatorModel.listConditions`. */
-  listConditions?: ListConditionMatcher;
+  /** Host readers for this model; see `EvaluatorModel`. */
+  listConditions?: ListConditionMatcher; customGroupings?: readonly CustomGroupingDefinition[];
 }
 
 const DEFAULT_LIMIT = 5_000;
@@ -151,7 +130,7 @@ export function evaluateFilterRules(
   options: EvaluateOptions = {},
 ): FilteredElement[] {
   if (rules.length === 0) return [];
-  assertListConditionsAnswerable(rules, [{ id: modelId, store, listConditions: options.listConditions }]);
+  assertHostRulesAnswerable(rules, [{ ...options, id: modelId, store }]);
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const orderedRules = orderRulesByCost(rules);
@@ -163,7 +142,7 @@ export function evaluateFilterRules(
     filterIdentity: options.modelFilterIdentity ?? modelId,
     tagIds: options.modelTagIds,
     definedModelTagIds: options.definedModelTagIds ?? NO_MODEL_TAGS,
-  }, options, orderedRules, undefined, options.listConditions);
+  }, options, orderedRules, undefined, options);
 
   for (const expressId of iterIds) {
     if (out.length >= limit) break;
@@ -213,7 +192,10 @@ export interface EvaluatorModel {
   store: IfcDataStore | null; mutationView?: MutablePropertyView; // #4946
   /** Host reader for `listCondition` rules (#6190): `@ifc-lite/lists`' `listConditionMatcher(provider)`. */
   listConditions?: ListConditionMatcher;
+  /** Grouping definitions `customGrouping` rules resolve against (#8425); absent refuses the run. */
+  customGroupings?: readonly CustomGroupingDefinition[];
 }
+type HostReaders = Pick<EvaluatorModel, 'listConditions' | 'customGroupings'>;
 
 export async function evaluateFilterRulesFederated(
   models: ReadonlyArray<EvaluatorModel>,
@@ -222,7 +204,7 @@ export async function evaluateFilterRulesFederated(
   options: FederatedEvaluateOptions = {},
 ): Promise<FilteredElement[]> {
   if (rules.length === 0) return [];
-  assertListConditionsAnswerable(rules, models);
+  assertHostRulesAnswerable(rules, models);
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -236,8 +218,7 @@ export async function evaluateFilterRulesFederated(
   interface Plan {
     modelId: string;
     scope: ModelScope;
-    store: IfcDataStore; mutationView: MutablePropertyView | undefined; // #4946
-    listConditions: ListConditionMatcher | undefined;
+    store: IfcDataStore; mutationView: MutablePropertyView | undefined; host: HostReaders; // #4946
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
   }
@@ -261,7 +242,7 @@ export async function evaluateFilterRulesFederated(
     plans.push({
       modelId: m.id,
       scope,
-      store: m.store, mutationView: m.mutationView, listConditions: m.listConditions,
+      store: m.store, mutationView: m.mutationView, host: m,
       iter: arr ?? source,
       total: arr ? arr.length : -1,
     });
@@ -274,7 +255,7 @@ export async function evaluateFilterRulesFederated(
     if (out.length >= limit) break;
     if (signal?.aborted) throwAbort(signal);
 
-    const ctx = evalContext(plan.store, plan.modelId, plan.scope, options, orderedRules, plan.mutationView, plan.listConditions);
+    const ctx = evalContext(plan.store, plan.modelId, plan.scope, options, orderedRules, plan.mutationView, plan.host);
 
     // Walk the per-model iter in chunkSize-sized strides, yielding the
     // event loop between chunks. ArrayLike fast-path uses index access;
@@ -349,20 +330,34 @@ interface EvalContext {
    *  one parse per distinct type — see the AGENTS.md §2 large-loop
    *  warning this module already guards against for instance psets. */
   typePsetCache: Map<number, TypePsetList>;
-  listConditions?: ListConditionMatcher;
+  host: HostReaders;
+  /** `customGrouping` (#8425): groupings being evaluated for the current element, and per-member contexts. */
+  activeGroupings: Set<string>; nested: WeakMap<readonly FilterRule[], [FilterRule[], EvalContext]>;
 }
 
 function evalContext(
   store: IfcDataStore, modelId: string, scope: ModelScope, options: EvaluateOptions,
-  rules: readonly FilterRule[], mutationView?: MutablePropertyView, listConditions?: ListConditionMatcher,
+  rules: readonly FilterRule[], mutationView?: MutablePropertyView, host: HostReaders = {}, parent?: EvalContext,
 ): EvalContext {
   const has = (kind: FilterRule['kind']) => rules.some((r) => r.kind === kind);
   return {
-    store, modelId, scope, mutationView, table: store.entities, options,
+    store, modelId, scope, mutationView, table: store.entities, options, host,
     hasPropertyRule: has('property'), hasQuantityRule: has('quantity'), hasMaterialRule: has('material'),
     hasClassificationRule: has('classification'), hasAttributeRule: has('attribute'),
-    typePsetCache: new Map(), listConditions,
+    typePsetCache: parent?.typePsetCache ?? new Map(),
+    activeGroupings: parent?.activeGroupings ?? new Set(), nested: parent?.nested ?? new WeakMap(),
   };
+}
+
+/** One `customGrouping` member group against this element, sharing `ctx`'s model, overlay and caches. */
+function nestedGroupMatches(ctx: EvalContext, expressId: number, group: FilterGroup): boolean {
+  if (group.rules.length === 0) return false;
+  let sub = ctx.nested.get(group.rules);
+  if (!sub) {
+    sub = [orderRulesByCost(group.rules), evalContext(ctx.store, ctx.modelId, ctx.scope, ctx.options, group.rules, ctx.mutationView, ctx.host, ctx)];
+    ctx.nested.set(group.rules, sub);
+  }
+  return evaluateOneEntity(sub[1], expressId, sub[0], group.combinator) !== null;
 }
 
 function evaluateOneEntity(
@@ -548,7 +543,9 @@ function evaluateRule(
     case 'parent': return matchParentRule(rule, ctx.store, expressId);
     case 'group': return matchGroupRule(rule, ctx.store, expressId);
     case 'modelFact': return matchModelFactRule(rule, ctx.store);
-    case 'listCondition': return matchListConditionRule(rule, expressId, ctx.listConditions);
+    case 'listCondition': return matchListConditionRule(rule, expressId, ctx.host.listConditions);
+    case 'customGrouping': return matchCustomGroupingRule(rule, ctx.host.customGroupings, ctx.modelId, expressId,
+      (filter) => filter.some((group) => nestedGroupMatches(ctx, expressId, group)), ctx.activeGroupings);
   }
 }
 

@@ -1,5 +1,23 @@
 # @ifc-lite/viewer
 
+## 5.3.2
+
+### Patch Changes
+
+- [#8356](https://github.com/LTplus-AG/ifc-lite/pull/8356) [`12f0836`](https://github.com/LTplus-AG/ifc-lite/commit/12f0836590ecdd82ece835f216589352b64f3fd2) Thanks [@louistrue](https://github.com/louistrue)! - Keep the render loop from running ahead of the GPU: it now holds a frame back while three submitted frames are still unfinished, so selection picks no longer wait behind a backlog of orbit and inertia frames on slow (software) GPUs. Output on a GPU that keeps up is unchanged.
+
+- [#8365](https://github.com/LTplus-AG/ifc-lite/pull/8365) [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0) Thanks [@louistrue](https://github.com/louistrue)! - The streaming geometry `complete` event gains an optional `omittedTypeRecords` count: the type records whose type geometry the prepass left out because they could not be decoded. It is read from the WASM instance that ran the prepass (on the prepass worker it travels on the prepass `complete` event) and is absent, not 0, when the WASM build cannot report it. The viewer tells the user in a load notice and in the Load report, for example "3 type definitions could not be read, so their type geometry was left out", and shows nothing when the count is 0 or unknown.
+- Updated dependencies [[`f0d5de0`](https://github.com/LTplus-AG/ifc-lite/commit/f0d5de0aabe911dc42461cc43e48c42065ea4a02), [`fc6eceb`](https://github.com/LTplus-AG/ifc-lite/commit/fc6eceba53a538b826bc05073c2b55bb1a2fef73), [`be22560`](https://github.com/LTplus-AG/ifc-lite/commit/be22560cb4c4c260fb08de8a960990b9f106feee), [`1a3d4a8`](https://github.com/LTplus-AG/ifc-lite/commit/1a3d4a83a79bdad791125eebc64a6a69776c7b42), [`32f8544`](https://github.com/LTplus-AG/ifc-lite/commit/32f8544d1de26a0191d75251313c2d860d910f23), [`12f0836`](https://github.com/LTplus-AG/ifc-lite/commit/12f0836590ecdd82ece835f216589352b64f3fd2), [`b85f83d`](https://github.com/LTplus-AG/ifc-lite/commit/b85f83d63b54a8c9c48094f1892e1f4821f0eaf0), [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983), [`83ef670`](https://github.com/LTplus-AG/ifc-lite/commit/83ef670305f048f2a236d447a55291606d18d470), [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243), [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7), [`29f24db`](https://github.com/LTplus-AG/ifc-lite/commit/29f24dbb5d4877bc8d2efaae4fa3b9e618407dba), [`3b86b72`](https://github.com/LTplus-AG/ifc-lite/commit/3b86b727288b4d53851b5dd1588d252009c3abff), [`3457dc5`](https://github.com/LTplus-AG/ifc-lite/commit/3457dc595fd3404086d7b22b9eca24fdeb46f840), [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399), [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13), [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0)]:
+  - @ifc-lite/bcf@5.2.1
+  - @ifc-lite/wasm@12.1.1
+  - @ifc-lite/renderer@6.6.0
+  - @ifc-lite/diff@0.13.1
+  - @ifc-lite/export@4.13.3
+  - @ifc-lite/flow-nodes@0.12.1
+  - @ifc-lite/create@5.1.3
+  - @ifc-lite/server-client@5.1.1
+  - @ifc-lite/geometry@8.1.0
+
 ## 5.3.1
 
 ### Patch Changes

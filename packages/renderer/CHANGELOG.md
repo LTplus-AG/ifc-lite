@@ -1,5 +1,16 @@
 # @ifc-lite/renderer
 
+## 6.6.0
+
+### Minor Changes
+
+- [#8356](https://github.com/LTplus-AG/ifc-lite/pull/8356) [`12f0836`](https://github.com/LTplus-AG/ifc-lite/commit/12f0836590ecdd82ece835f216589352b64f3fd2) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.isTweening()`: true from the moment a timed pose tween (preset view, frame, home) starts until `update()` has applied its final pose, independent of whether a frame has run since. The viewer exposes it as `cameraCallbacks.isCameraTweening` so hosts and tests can wait on the tween instead of guessing from pose reads.
+
+### Patch Changes
+
+- Updated dependencies [[`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0)]:
+  - @ifc-lite/geometry@8.1.0
+
 ## 6.5.2
 
 ### Patch Changes

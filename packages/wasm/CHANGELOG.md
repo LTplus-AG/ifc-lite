@@ -1,5 +1,40 @@
 # @ifc-lite/wasm
 
+## 12.1.1
+
+### Patch Changes
+
+- [#8362](https://github.com/LTplus-AG/ifc-lite/pull/8362) [`fc6eceb`](https://github.com/LTplus-AG/ifc-lite/commit/fc6eceba53a538b826bc05073c2b55bb1a2fef73) Thanks [@louistrue](https://github.com/louistrue)! - Decode the prepass void and style wire arrays, collect full indexed-colour palettes, and group don't-bake occurrences through the same Rust helpers the native pipeline uses. Geometry batch output and the public API are unchanged.
+
+- [#8367](https://github.com/LTplus-AG/ifc-lite/pull/8367) [`be22560`](https://github.com/LTplus-AG/ifc-lite/commit/be22560cb4c4c260fb08de8a960990b9f106feee) Thanks [@louistrue](https://github.com/louistrue)! - Symbolic (2D plan) extraction now finds styled items and their presentation-style-assignment wrappers in one pass over the file instead of two. The extracted lines, fills, texts and their colours are unchanged.
+
+- [#8353](https://github.com/LTplus-AG/ifc-lite/pull/8353) [`1a3d4a8`](https://github.com/LTplus-AG/ifc-lite/commit/1a3d4a83a79bdad791125eebc64a6a69776c7b42) Thanks [@louistrue](https://github.com/louistrue)! - With merge layers on, a building element part whose aggregate relationship lists it as a bare reference instead of a list is now skipped like a listed part. Opening propagation already accepted bare references; the merge-layers part map now uses the same aggregate reading. Well-formed files produce the same geometry as before.
+
+- [#8366](https://github.com/LTplus-AG/ifc-lite/pull/8366) [`32f8544`](https://github.com/LTplus-AG/ifc-lite/commit/32f8544d1de26a0191d75251313c2d860d910f23) Thanks [@louistrue](https://github.com/louistrue)! - `buildPrePassOnce` now builds the type-geometry sets and the material-layer index from its own scan and installs them for `processGeometryBatch`, the way the streaming pre-pass already hands them to workers. With merge layers on, part skipping reuses the same material-layer index, and skips its aggregate scan entirely when nothing is sliceable. First batches no longer re-scan the whole file for these. Geometry is unchanged. With merge layers on, the `[ifc-lite layers]` console diagnostic now prints as it already did with merge layers off.
+
+- [#8347](https://github.com/LTplus-AG/ifc-lite/pull/8347) [`b85f83d`](https://github.com/LTplus-AG/ifc-lite/commit/b85f83d63b54a8c9c48094f1892e1f4821f0eaf0) Thanks [@louistrue](https://github.com/louistrue)! - The browser console summary of CSG and opening diagnostics is now formatted from the same `GeometryDiagnostics` the geometry batch returns, so the console and the typed diagnostics can no longer disagree ([#8341](https://github.com/LTplus-AG/ifc-lite/issues/8341)). The headline, opening classifier, `rect_fast`, refused-reference and dropped-item lines are unchanged. The others change:
+  
+  - **Worst-failing hosts** lists up to 16 hosts (was 10), ordered by failure count and then by ascending product id, so the list is the same on every run. The header reads `Worst-failing hosts (N shown, by failures then id):`. Each host line no longer lists its openings' kinds.
+  - **Breakdown** prints `Reason=count, …` (count descending, ties by reason) instead of a Rust debug list.
+  - **By host type**, the per-type host and opening roll-up, is removed from the failure warning and from the `Opening pipeline: 0 CSG failures. N hosts with openings.` note.
+  - **Silent no-op** reports the diagnostics' `silentNoOps` count, which leaves out a host that also recorded a CSG failure, and no longer lists the hosts.
+  
+  A batch with nothing to report still prints nothing. The returned diagnostics are unchanged.
+
+- [#8369](https://github.com/LTplus-AG/ifc-lite/pull/8369) [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983) Thanks [@louistrue](https://github.com/louistrue)! - `buildComponentFingerprints` now keys every property and quantity set on an entity. When an entity carries two or more sets of the same name, the first keeps `pset:<Name>` and each later one gets an ordinal in the prefix, such as `pset#2:<Name>` or `qset#2:<Name>`. Previously the last set overwrote the others, so an entity could be reported `modified` with an empty `changedComponents` ([#8136](https://github.com/LTplus-AG/ifc-lite/issues/8136)). Keys for entities without repeated set names are unchanged.
+
+- [#8350](https://github.com/LTplus-AG/ifc-lite/pull/8350) [`83ef670`](https://github.com/LTplus-AG/ifc-lite/commit/83ef670305f048f2a236d447a55291606d18d470) Thanks [@louistrue](https://github.com/louistrue)! - Count type records whose geometry is omitted because the full decoder rejects them, as the additive `omittedTypeRecords` field of the version 1 pipeline diagnostics JSON (distinct records per load, never counted as input refusals). The native pipeline now drops the same records before scheduling instead of running jobs that can only fail, leaving mesh output unchanged, and reports them through the new defaulted `ProcessingSink::on_omitted_type_records` event.
+
+- [#8349](https://github.com/LTplus-AG/ifc-lite/pull/8349) [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243) Thanks [@louistrue](https://github.com/louistrue)! - Scaled map-conversion normalization (the Cesium ion compatibility export) now accepts a bare `IfcTypeProduct.RepresentationMaps` reference (`#n`) and wraps that map exactly as the list form `(#n)`, matching how geometry and EntityRows already read it. It used to refuse the whole normalization with "type RepresentationMaps is not a list". Typed wrappers such as `IFCREPRESENTATIONMAP(#n)` and lists with non-reference members are still refused atomically, with no patches.
+
+- [#8357](https://github.com/LTplus-AG/ifc-lite/pull/8357) [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7) Thanks [@louistrue](https://github.com/louistrue)! - The native pass can now report each mesh's IFC-authored finish itself ([#8341](https://github.com/LTplus-AG/ifc-lite/issues/8341)). `ifc-lite-processing` adds `Features::finishes` (off by default) and `ProcessingSink::on_finishes`, which has a no-op default. With the feature on, `on_finishes` fires immediately before every `on_batch` with one entry per mesh, joined by the same rule `ModelFinishes` uses, from the pass's own scan and index. With the feature off, sinks and output are unchanged.
+  
+  The server's JSON, Parquet, optimized-Parquet and streaming routes use the event, so they no longer scan each upload a second time to find finishes. Response bodies are unchanged.
+
+- [#8358](https://github.com/LTplus-AG/ifc-lite/pull/8358) [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite-processing` adds `ParseResponse::from_result`, the single mapping from a `ProcessingResult` to the serialised parse response ([#8341](https://github.com/LTplus-AG/ifc-lite/issues/8341)). The FFI DLL and the server's `POST /api/v1/parse` now both build on it. The server still adds Y-up meshes, IFC-authored finishes and symbolic data with provenance on top. The FFI buffer is unchanged byte for byte: it still carries no finishes, and a pinned test now checks that.
+
+- [#8370](https://github.com/LTplus-AG/ifc-lite/pull/8370) [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13) Thanks [@louistrue](https://github.com/louistrue)! - Record the maintainer's licence elections for `r-efi` (MIT) and `wide` (Zlib) in the shipped `THIRD_PARTY_NOTICES.txt`.
+
 ## 12.1.0
 
 ### Minor Changes

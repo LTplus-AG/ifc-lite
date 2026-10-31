@@ -1,5 +1,13 @@
 # @ifc-lite/diff
 
+## 0.13.1
+
+### Patch Changes
+
+- [#8369](https://github.com/LTplus-AG/ifc-lite/pull/8369) [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983) Thanks [@louistrue](https://github.com/louistrue)! - `buildComponentFingerprints` now keys every property and quantity set on an entity. When an entity carries two or more sets of the same name, the first keeps `pset:<Name>` and each later one gets an ordinal in the prefix, such as `pset#2:<Name>` or `qset#2:<Name>`. Previously the last set overwrote the others, so an entity could be reported `modified` with an empty `changedComponents` ([#8136](https://github.com/LTplus-AG/ifc-lite/issues/8136)). Keys for entities without repeated set names are unchanged.
+- Updated dependencies [[`fc6eceb`](https://github.com/LTplus-AG/ifc-lite/commit/fc6eceba53a538b826bc05073c2b55bb1a2fef73), [`be22560`](https://github.com/LTplus-AG/ifc-lite/commit/be22560cb4c4c260fb08de8a960990b9f106feee), [`1a3d4a8`](https://github.com/LTplus-AG/ifc-lite/commit/1a3d4a83a79bdad791125eebc64a6a69776c7b42), [`32f8544`](https://github.com/LTplus-AG/ifc-lite/commit/32f8544d1de26a0191d75251313c2d860d910f23), [`b85f83d`](https://github.com/LTplus-AG/ifc-lite/commit/b85f83d63b54a8c9c48094f1892e1f4821f0eaf0), [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983), [`83ef670`](https://github.com/LTplus-AG/ifc-lite/commit/83ef670305f048f2a236d447a55291606d18d470), [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243), [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7), [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399), [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13)]:
+  - @ifc-lite/wasm@12.1.1
+
 ## 0.13.0
 
 ### Minor Changes

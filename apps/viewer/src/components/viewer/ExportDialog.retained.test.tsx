@@ -48,7 +48,7 @@ END-ISO-10303-21;`;
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   const model = { ...fixtureModel('model'), ifcDataStore: store, schemaVersion: 'IFC5' as const, ...(retainedGeometry ? { retainedGeometry } : {}) };
   useViewerStore.setState({ ...fixtureModels(model), activeModelId: model.id, dirtyModels: new Set(), mutationVersion: 0 });
-  const exported = mock.method(Ifc5Exporter.prototype, 'export', async () => ({ content: '{}', stats: {} }) as never);
+  const exported = mock.method(Ifc5Exporter.prototype, 'export', () => ({ content: '{}', stats: { skippedCount: 0, propertyCollisions: 0, nodeCount: 0, meshCount: 0, propertyCount: 0 } }) as never);
   const ui = render(<ExportDialog surface="ribbon" />);
   const trigger = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Export IFC'));
   assert.ok(trigger);

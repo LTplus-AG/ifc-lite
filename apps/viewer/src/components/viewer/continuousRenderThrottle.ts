@@ -37,7 +37,7 @@ const REFRESH_WINDOW = 8;
 const ROUND_BIAS = 0.1;
 
 export class ContinuousRenderThrottle {
-  private emaCostMs = 0;
+  private emaCostMs: number | null = null;
   private capMs = 0;
   private readonly deltas: number[] = [];
   private refreshMs = DEFAULT_REFRESH_MS;
@@ -65,14 +65,15 @@ export class ContinuousRenderThrottle {
   noteRenderCost(costMs: number): void {
     if (!Number.isFinite(costMs) || costMs < 0) return;
     this.pendingCostMs = costMs;
-    this.emaCostMs = this.emaCostMs === 0 ? costMs : costMs * 0.2 + this.emaCostMs * 0.8;
+    const ema = this.emaCostMs === null ? costMs : costMs * 0.2 + this.emaCostMs * 0.8;
+    this.emaCostMs = ema;
     // Hysteresis ladder: engage above, release below, hold in between, so
     // the cadence does not flap around a band edge mid-gesture.
-    if (this.emaCostMs >= 26) {
+    if (ema >= 26) {
       this.capMs = 33;
-    } else if (this.emaCostMs >= 14) {
-      if (this.capMs !== 33 || this.emaCostMs < 20) this.capMs = 25;
-    } else if (this.emaCostMs <= 10) {
+    } else if (ema >= 14) {
+      if (this.capMs !== 33 || ema < 20) this.capMs = 25;
+    } else if (ema <= 10) {
       this.capMs = 0;
     }
   }

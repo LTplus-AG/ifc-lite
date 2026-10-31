@@ -64,6 +64,13 @@ describe('ContinuousRenderThrottle', () => {
     assert.ok(Math.abs(throttle.intervalMs() - 4000 / 120) < 1e-9);
   });
 
+  it('averages a zero-cost first sample instead of treating it as no sample', () => {
+    const throttle = new ContinuousRenderThrottle();
+    throttle.noteRenderCost(0);
+    throttle.noteRenderCost(30); // average 6 ms: no cap, where restarting from 30 would engage 33 ms
+    assert.equal(throttle.intervalMs(), 0);
+  });
+
   it('steps down through the hysteresis ladder as frames get cheap again', () => {
     const throttle = new ContinuousRenderThrottle();
     for (let i = 0; i < 8; i++) throttle.noteFrameInterval(1000 / 120);

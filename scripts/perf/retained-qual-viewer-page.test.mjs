@@ -8,7 +8,7 @@ import vm from 'node:vm';
 import { INIT_SCRIPT, PAGE_KEY } from './retained-qual-viewer-page.mjs';
 
 /** The page script run against a hand-driven clock, rAF queue, store and renderer. */
-function harness() {
+function harness(statsCost = 0) {
   const listeners = [], subscribers = [];
   const clock = { now: 0 };
   let queue = [];
@@ -20,7 +20,8 @@ function harness() {
     document: { addEventListener: (type, fn, capture) => listeners.push({ type, fn, capture }) },
     requestAnimationFrame: fn => queue.push(fn),
     __ifc_lite_viewer_store__: store,
-    __ifc_lite_render_stats__: () => ({ frame: renderer.frame, gpu: renderer.gpu }),
+    __ifc_lite_render_frame__: () => renderer.frame,
+    __ifc_lite_render_stats__: () => { clock.now += statsCost; return { frame: renderer.frame, gpu: renderer.gpu }; },
     __ifc_lite_scene_owner__: () => renderer.owner,
   });
   vm.runInContext(INIT_SCRIPT, context);
@@ -97,5 +98,15 @@ test('8413: capture the first draw before a later callback replaces frame stats'
   h.raf(() => { h.renderer.frame = { timestamp: 20, drawCalls: 3 }; });
   h.raf(() => { h.renderer.frame = { timestamp: 21, drawCalls: 0 }; });
   h.tick(22);
+  assert.equal(h.q().firstRetainedFrameMs, 20);
+});
+
+// #8413: earlier observations must not delay a later retained drawing callback.
+test('8413: expensive scene statistics never enter the first-frame interval', () => {
+  const h = harness(100); h.tick(1); h.change(2);
+  h.store$(10, { models: h.model({ published: 1, completeness: 'running' }, 1) });
+  h.raf(() => { h.renderer.frame = { timestamp: h.clock.now, drawCalls: 0 }; });
+  h.raf(() => { h.renderer.frame = { timestamp: h.clock.now, drawCalls: 3 }; });
+  h.tick(20);
   assert.equal(h.q().firstRetainedFrameMs, 20);
 });

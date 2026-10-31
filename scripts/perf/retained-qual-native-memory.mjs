@@ -24,10 +24,10 @@
 // --checkout records the commit; --engine (with --checkout) additionally records the
 // staged engine manifest hash of the same build, so native and browser/CLI rows share one identity.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { engineIdentity, exclusivity, gitIdentity, hostIdentity, parseArgs, SCHEMA, sha256File, unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
@@ -35,9 +35,21 @@ import { assertNativeSummary } from './retained-qual-assert.mjs';
 
 export async function nativeSample({ command, workerName, summaryPath, expectation, intervalMs = 50 }) {
   if (existsSync(summaryPath)) throw new Error('summary already exists; use a fresh unique per-run path');
+  const outAt = command.indexOf('--out');
+  if (outAt < 0 || command.lastIndexOf('--out') !== outAt || !command[outAt + 1] || resolve(summaryPath) !== resolve(command[outAt + 1], 'summary.json')) {
+    return { ok: false, error: 'summary must match the measured child --out DIR/summary.json' };
+  }
+  // retained_compare creates --out itself and writes summary.json there. Never
+  // trust the caller's shared path: give this child a private, unpredictable path.
+  mkdirSync(dirname(summaryPath), { recursive: true });
+  const runDir = mkdtempSync(join(dirname(summaryPath), '.retained-run-'));
+  const childOut = join(runDir, 'child');
+  const measuredCommand = [...command];
+  measuredCommand[outAt + 1] = childOut;
+  summaryPath = join(childOut, 'summary.json');
   const timeFile = join(tmpdir(), `retained-qual-native-${process.pid}-${Date.now()}.time`);
   const started = process.hrtime.bigint();
-  const child = spawn('/usr/bin/time', ['-v', '-o', timeFile, ...command], { stdio: ['ignore', 'inherit', 'inherit'] });
+  const child = spawn('/usr/bin/time', ['-v', '-o', timeFile, ...measuredCommand], { stdio: ['ignore', 'inherit', 'inherit'] });
   const sampler = startSampler(child.pid, { intervalMs, include: info => info.exe === workerName });
   const { code, signal } = await new Promise(done => child.on('close', (code, signal) => done({ code, signal })));
   const wallMs = Number(process.hrtime.bigint() - started) / 1e6;
@@ -63,6 +75,9 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
       harnessProcessMaxRssKiB: summary.models?.[0]?.retained?.processMaxRssKiB ?? null,
       harnessChildrenMaxRssKiB: summary.models?.[0]?.retained?.childrenMaxRssKiB ?? null });
   } catch (error) { row.error = error instanceof Error ? error.message : String(error); }
+  // Keep successful child artifacts for inspection; failed runs remain evidence too.
+  row.childOutput = childOut;
+  row.measuredCommand = measuredCommand;
   return row;
 }
 

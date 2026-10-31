@@ -71,6 +71,7 @@ test('8413: failed and late launches remove profiles and close late contexts', a
       return Promise.resolve(context);
     } };
     await assert.rejects(launchFresh({ chromium, closeMs: 5 }), /bad executable|timed out/);
+    assert.equal(closed, mode === 'reject' ? 0 : 1, 'cleanup completes before rejection');
     assert.equal(existsSync(profile), false);
     await new Promise(resolve => setTimeout(resolve, 35));
     assert.equal(closed, mode === 'reject' ? 0 : 1);
@@ -86,4 +87,29 @@ test('8413: digest uses codepoint ordering for mixed case and punctuation', asyn
     const hash = value => createHash('sha256').update(value).digest('hex');
     assert.equal(treeDigest(dir).sha256, hash(['Z', '_', 'a'].map(name => `${name} 1 ${hash(name)}`).join('\n')));
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('8413: missing preview executable rejects without an unhandled process error', async () => {
+  const { startPreview } = await import('./retained-qual-browser.mjs');
+  await assert.rejects(startPreview({ checkout: '/missing-8413', engine: '/unused' }, 19843, { ready: 1000 }), /ENOENT/);
+});
+
+test('8413: second preview spawn failure tears down the first arm before rejecting', async () => {
+  const { startPreviews, startPreview } = await import('./retained-qual-browser.mjs');
+  let stopped = false;
+  await assert.rejects(startPreviews([{ side: 'base' }, { side: 'branch' }], 19844, async arm => {
+    if (arm.side === 'base') return { stop: async () => { stopped = true; } };
+    return startPreview({ checkout: '/missing-8413', engine: '/unused' }, 19845, { ready: 1000 });
+  }), /ENOENT/);
+  assert.equal(stopped, true);
+});
+
+test('8413: unresolved launch cleanup is bounded and marks the run unsafe to continue', async () => {
+  const { launchFresh } = await import('./retained-qual-browser.mjs');
+  let profile;
+  try {
+    await assert.rejects(launchFresh({ closeMs: 5, cleanupMs: 10, chromium: {
+      launchPersistentContext: path => { profile = path; return new Promise(() => {}); },
+    } }), error => error.cleanupFailed === true && /cleanup/.test(error.message));
+  } finally { rmSync(profile, { recursive: true, force: true }); }
 });

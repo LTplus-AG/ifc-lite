@@ -104,3 +104,31 @@ test('8413: viewer store errors and missing terminal frames end the wait promptl
     launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => null }) });
   assert.equal(checked, true);
 });
+
+test('8413: an unrelated writer cannot supply the measured child summary', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qual-owner-'));
+  try {
+    const path = join(dir, 'summary.json');
+    const writer = setTimeout(() => writeFileSync(path, JSON.stringify(summary)), 20);
+    const row = await nativeSample({ command: [process.execPath, '-e', 'setTimeout(() => {}, 180)', '--', '--out', dir],
+      summaryPath: path, workerName: 'node', intervalMs: 5 });
+    clearTimeout(writer);
+    assert.equal(row.ok, false);
+    assert.match(row.error, /summary|child|output/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('8413: the child writes its own summary to the unique --out directory', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qual-child-'));
+  try {
+    const source = `const fs = require('node:fs'); const out = process.argv[2];
+      fs.mkdirSync(out, {recursive:true}); fs.writeFileSync(out + '/summary.json', ${JSON.stringify(JSON.stringify(summary))});
+      setTimeout(() => {}, 180);`;
+    const row = await nativeSample({ command: [process.execPath, '-e', source, '--', '--out', dir],
+      summaryPath: join(dir, 'summary.json'), workerName: 'node', intervalMs: 5 });
+    assert.equal(row.ok, true, row.error);
+    assert.notEqual(row.childOutput, dir);
+    assert.equal(row.measuredCommand.at(-1), row.childOutput);
+    assert.equal(row.published, summary.published);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

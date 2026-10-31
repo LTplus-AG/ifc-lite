@@ -50,15 +50,16 @@ function install(key) {
     try {
       const store = host.__ifc_lite_viewer_store__;
       if (store && !subscribed) { subscribed = true; store.subscribe(onStore); }
-      const stats = host.__ifc_lite_render_stats__?.();
-      const frame = stats?.frame ?? null;
+      const frame = host.__ifc_lite_render_frame__?.() ?? null;
       if (q.firstProductMs !== null && q.firstRetainedFrameMs === null && frame
           && frame.timestamp >= q.firstProductMs && frame.drawCalls > 0) {
         q.sceneHeldMs = frame.timestamp;
         q.firstRetainedFrameMs = frame.timestamp;
         q.drawCallsAtFirstFrame = frame.drawCalls;
       }
-      const bytes = gpuBytes(stats);
+      // Scene accounting is unbounded in scene size: only read it AFTER capture.
+      if (q.firstRetainedFrameMs === null) return;
+      const bytes = gpuBytes(host.__ifc_lite_render_stats__?.());
       if (q.terminalMs !== null && q.firstRetainedFrameMs !== null && q.settledFrameMs === null && frame
           && frame.timestamp > Math.max(q.terminalMs, q.firstRetainedFrameMs) && frame.drawCalls > 0 && bytes === lastBytes) {
         q.settledFrameMs = frame.timestamp;
@@ -66,7 +67,7 @@ function install(key) {
       lastBytes = bytes;
     } catch (error) { q.errors.push(String(error)); }
   };
-  // No geometry reads/copies. The frame timestamp is fixed before this observation.
+  // Before first-frame capture, only constant-time frame snapshot reads.
   // Wrap before the viewer boots; inspecting only our own tick could lose an earlier
   // drawing frame when another callback completes a newer non-drawing frame.
   const raf = host.requestAnimationFrame.bind(host);

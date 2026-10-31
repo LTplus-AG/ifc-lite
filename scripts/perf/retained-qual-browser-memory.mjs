@@ -77,11 +77,12 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
     Object.assign(row, { ok: true, candidates: run.summary.candidates, published: run.summary.published, refused: run.summary.refused,
       meshes: run.tally.meshes, restarts: run.summary.restarts });
   } catch (error) {
+    row.cleanupFailed = error?.cleanupFailed === true;
     row.error = error instanceof Error ? error.message : String(error);
   } finally {
     sampler?.stop();
     const closeError = browser ? await browser.close() : null;
-    if (closeError) { row.ok = false; row.error = `${row.error ?? 'ok'}; browser cleanup failed: ${closeError}`; }
+    if (closeError) { row.cleanupFailed = true; row.ok = false; row.error = `${row.error ?? 'ok'}; browser cleanup failed: ${closeError}`; }
     if (server) await new Promise(done => server.close(done));
     rmSync(temporary, { recursive: true, force: true });
   }
@@ -107,11 +108,12 @@ export async function main(argv) {
   const order = await roundSides(arms, rounds, options.seed === undefined ? undefined : Number(options.seed));
   result.order = order;
   const rows = [];
-  for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
+  samples: for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
     console.log(`retained-qual-browser-memory: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
     const row = await browserMemorySample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: pinFor(expectations, side, basename(fixture.path)) });
     rows.push(row);
     appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
+      if (row.cleanupFailed) break samples;
     console.log(row.ok ? `  ok wasm max ${row.wasmHeapMaxObservedBytes} B, browser peak HWM ${row.browserPeakHwmKiB} KiB, published ${row.published}/${row.candidates}` : `  FAILED ${row.error}`);
   }
   Object.assign(result, { finishedAt: new Date().toISOString(), rounds, samples: rows.filter(r => r.ok).length, rows: rows.length,

@@ -28,7 +28,7 @@ import { startSampler } from './retained-qual-proc.mjs';
 import { assertMilestones, assertViewerRetained } from './retained-qual-assert.mjs';
 import { INIT_SCRIPT, PAGE_KEY } from './retained-qual-viewer-page.mjs';
 import { deviceLossCount, gpuIdentity, isSoftwareAdapter, launchFresh, raceWithTimeout, servedManifestSha256,
-  startPreview, treeDigest, userAgentMemory } from './retained-qual-browser.mjs';
+  startPreviews, treeDigest, userAgentMemory } from './retained-qual-browser.mjs';
 
 const COLUMNS = ['productMs', 'sceneHeldMs', 'firstRetainedFrameMs', 'terminalMs', 'settledFrameMs', 'uaMemoryBytes',
   'browserPeakHwmKiB', 'browserPeakConcurrentPssKiB', 'longTaskMs'];
@@ -100,13 +100,14 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
       candidates: state.summary.candidates, published: state.summary.published, refused: state.summary.refused.length, meshes: state.meshCount,
       completeness: state.summary.completeness });
   } catch (error) {
+    row.cleanupFailed = error?.cleanupFailed === true;
     row.error = error instanceof Error ? error.message : String(error);
     row.pageErrors = browser?.pageErrors ?? [];
     row.consoleTail = browser?.consoleLines.slice(-15) ?? [];
   } finally {
     sampler?.stop();
     const closeError = browser ? await browser.close() : null;
-    if (closeError) { row.ok = false; row.error = `${row.error ?? 'ok'}; browser cleanup failed: ${closeError}`; }
+    if (closeError) { row.cleanupFailed = true; row.ok = false; row.error = `${row.error ?? 'ok'}; browser cleanup failed: ${closeError}`; }
   }
   return row;
 }
@@ -135,22 +136,25 @@ export async function main(argv) {
   const result = resultEnvelope({ kind: 'viewer-first-retained-frame', options, arms, identities: arms.map(a => a.identity), fixtures, started });
   result.arms.forEach((entry, i) => { entry.servedDist = arms[i].dist; });
   const base = Number(options['port-base'] ?? 4290);
-  const previews = new Map();
+  let previews = new Map();
   const rows = [];
   try {
-    for (const [i, arm] of arms.entries()) previews.set(arm.side, await startPreview(arm, base + i));
+    previews = await startPreviews(arms, base);
     const order = await roundSides(arms, rounds, options.seed === undefined ? undefined : Number(options.seed));
     result.order = order;
-    for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
+    samples: for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
       const arm = arms.find(a => a.side === side);
       console.log(`retained-qual-viewer: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
       const row = await viewerSample({ arm, preview: previews.get(side), fixture, round, options, distTree: arm.dist,
         expectation: pinFor(expectations, side, basename(fixture.path)) });
       rows.push(row);
       appendFileSync(join(out, 'runs.partial.jsonl'), JSON.stringify(row) + '\n');
+      if (row.cleanupFailed) break samples;
       console.log(row.ok ? `  ok first retained frame ${row.firstRetainedFrameMs.toFixed(1)} ms (published ${row.published}/${row.candidates})` : `  FAILED ${row.error}`);
     }
-  } finally { for (const preview of previews.values()) await preview.stop(); }
+  } catch (error) {
+    rows.push({ ok: false, phase: 'preview', error: String(error) });
+  } finally { await Promise.all([...previews.values()].map(preview => preview.stop())); }
   Object.assign(result, { finishedAt: new Date().toISOString(), rounds, samples: rows.filter(r => r.ok).length, rows: rows.length,
     failures: rows.filter(r => !r.ok).map(r => ({ side: r.side, path: r.path, round: r.round, error: r.error })),
     summary: summarizeRows(rows, COLUMNS), originNote: 'times are ms from the file input change event (canonical loadFile invocation)' });

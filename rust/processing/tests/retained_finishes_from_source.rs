@@ -153,3 +153,47 @@ fn the_browser_session_joins_finishes_without_scanning_the_file_again() {
     assert!(!session.contains("from_content"), "the retained session rescans the file for finishes");
     assert!(session.contains("ModelFinishes::from_source"), "the retained session joins finishes from its own scan");
 }
+
+/// Real authoring-tool files, small to a 177 MB tower. The join must agree with the rescan on every mesh of the
+/// ones small enough to mesh here, and on every file hold less heap than the rescan did (the numbers are what
+/// the PR reports). Absent fixtures skip; `pnpm fixtures` provides them.
+#[test]
+fn from_source_on_real_models_agrees_and_holds_less_heap() {
+    const MESHED: &[&str] = &["ara3d/AC20-FZK-Haus.ifc", "ara3d/duplex.ifc", "ara3d/advanced_model.ifc"];
+    const SCANNED: &[&str] = &[
+        "ara3d/AC20-FZK-Haus.ifc",
+        "ara3d/advanced_model.ifc",
+        "ara3d/schependomlaan.ifc",
+        "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+        "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    ];
+    let mut checked = 0;
+    for rel in SCANNED {
+        let Some(content) = ifc_lite_testkit::fixture_bytes(rel) else {
+            eprintln!("skip {rel}: absent (run `pnpm fixtures`)");
+            continue;
+        };
+        let bytes = content.len();
+        let source = SourceBundle::new(content.clone());
+        let (_, styled_items) = canonical_element_jobs_and_styled_items(&source);
+        let (mut rescan, rescan_retained, rescan_peak) = heap(|| ModelFinishes::from_content(&content));
+        let (mut shared, shared_retained, shared_peak) = heap(|| ModelFinishes::from_source(&source, &styled_items));
+        eprintln!(
+            "REAL {rel} ({} MB, {} styled items): from_content retained {rescan_retained} B peak {rescan_peak} B; \
+             from_source retained {shared_retained} B peak {shared_peak} B",
+            bytes / 1_000_000,
+            styled_items.len()
+        );
+        assert!(shared_retained < rescan_retained && shared_peak < rescan_peak, "{rel}: no saving");
+        if MESHED.contains(rel) {
+            let mut sink = Collect::default();
+            process(&content, &ProcessingRequest::full_pass(), &mut sink);
+            for mesh in &sink.0 {
+                assert_eq!(shared.finish_for_mesh(mesh), rescan.finish_for_mesh(mesh), "{rel} #{}", mesh.express_id);
+            }
+            eprintln!("REAL {rel}: {} meshes agree", sink.0.len());
+        }
+        checked += 1;
+    }
+    eprintln!("{checked} real models checked");
+}

@@ -62,6 +62,7 @@ import {
 import { aiNodes, AI_FEATURE, FLOW_AI_BUDGET } from '@ifc-lite/flow-nodes/ai';
 import { createRootBudget, restoreRootBudget } from '@ifc-lite/ai';
 import { createHeadlessContext } from '../loader.js';
+import { readModelInput } from '../model-input.js';
 import { createCliAiService } from './flow-ai.js';
 import { flowAiConfig } from '@ifc-lite/ai/chat-completions';
 import { sourceDigestOf } from '@ifc-lite/flow/checkpoint-file';
@@ -265,7 +266,8 @@ export async function flowCommand(args: string[]): Promise<void> {
   const secretValues = resolveSecretValues(doc, process.env);
   const redaction = buildRedactionMap(secretValues);
   const runDoc = interpolateSecrets(doc, secretValues);
-  const modelBytes = await readFile(modelPath);
+  const modelInput = await readModelInput(modelPath);
+  const modelBytes = modelInput.bytes;
   let tracking: FileTrackingStore | undefined;
   // An existing sidecar is opened even when no node is tracked any more:
   // that is how a set whose node was deleted gets removed from the model.
@@ -286,7 +288,7 @@ export async function flowCommand(args: string[]): Promise<void> {
   // can replace the command-line model mid-run (see `flow-host.ts`).
   const aiConfig = flowAiConfig(process.env);
   const budget = restoreRootBudget(resume?.checkpoint.budget) ?? createRootBudget(requestedBudget);
-  const initialModel = await createHeadlessContext(modelPath);
+  const initialModel = await createHeadlessContext(modelInput);
   const session = createCliFlowSession(initialModel, capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined, {
     secrets: [...secretValues.values(), ...(aiConfig ? [aiConfig.apiKey] : [])],
   });

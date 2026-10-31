@@ -189,3 +189,48 @@ bytes; `buildAttestation: false` remains explicit. Binding hashes to source is
 recommended evidence, not a licence obligation. Then install the
 actual release archives into a clean consumer and run browser/CLI/Python smoke
 checks. Staged fixtures and dry-runs cannot substitute for that final step.
+
+## Released-artifact smoke
+
+`scripts/smoke-released-retained.mjs` is the post-publication check that stands in
+for the "install the actual release archives into a clean consumer" step above. It
+installs only from the public registries and changes no registry state.
+
+```sh
+RUSTUP_TOOLCHAIN=<pinned toolchain> node scripts/smoke-released-retained.mjs \
+  --wasm 12.1.0 --cli 0.44.0 --crate 27.1.0 [--wheel latest|X.Y.Z|skip] \
+  [--retained-engine /abs/staged/engine] [--out summary.json] [--keep]
+```
+
+`--wasm`, `--cli` and `--crate` are required explicit versions (the npm ones also
+accept `latest`, recorded as resolved). The scratch project is created under the
+OS temp directory, never inside the repository, with empty npm configuration and a
+private `CARGO_HOME`. No workspace path, link or patch is used, and the lock files
+are checked to contain only registry sources. Cargo outside the repository does not
+see `rust-toolchain.toml`, so export the pinned `RUSTUP_TOOLCHAIN`; without a usable
+Cargo the crate-build steps are reported `skip`.
+
+| Step | What it proves |
+|---|---|
+| `npm-install`, `npm-installed-versions` | the exact `@ifc-lite/wasm` and `@ifc-lite/cli` install from npm; the lock resolves only from the registry |
+| `wasm-default-engine` | the published default engine loads and processes the committed `tests/fixtures/cli-retained/layered-wall.ifc` (jobs, meshes, triangles) |
+| `cli-default-export` | the published CLI exports that IFC to OBJ with the default (exact) kernel |
+| `wasm-retained-subpath` | `@ifc-lite/wasm/retained` resolves; it ships types only, and `loadRetainedEngine` rejects without a deployed engine |
+| `wasm-archive-boundaries`, `cli-archive-boundaries`, `crate-archive` | registry archives hold no SDK sources, native binaries or unexpected wasm; the crate is source-only with no build script, a registry `ifc-lite-geometry` version and the `retained-runtime` forwarding; npm archives carry `THIRD_PARTY_NOTICES.txt` with no `OPEN:` line |
+| `provenance:*`, `npm-signatures` | each npm tarball carries a SLSA provenance attestation; registry signatures verify |
+| `crate-default-features`, `crate-retained-runtime` | a consumer built from crates.io (`cargo add ifc-lite-geometry-runtime@=<version>`) compiles and runs with default features and with `--features retained-runtime` |
+| `python-wheel` | the published `ifclite-geom` binary wheel (latest, its own release train; sha256 checked against PyPI) imports and tessellates the fixture in an isolated interpreter |
+| `retained-export-e2e` | with a staged engine directory, the **published** CLI runs `export --kernel retained` end to end and the report publishes products |
+
+`retained-export-e2e` runs only when an engine directory is supplied
+(`--retained-engine` or `IFCLITE_SMOKE_RETAINED_ENGINE`; build it with
+`scripts/stage-cli-retained-engine.mjs`). Otherwise it is reported `skip` with
+"not run", never `pass`. The JSON summary lists every step as `pass`, `fail` or
+`skip` with its detail; the overall `status` is `fail`, `pass-with-skips` or `pass`,
+and the process exits 1 when any step failed.
+
+What it does not cover: the Python **wheel build** from release source (the
+`python-wheels.yml` build/import checks on the release commit), the runtime
+crate's Trusted Publisher (only an OIDC `release.yml` run proves it), the licence
+signature, and any hosted browser or deploy smoke. The published `ifclite-geom`
+wheel is a separate release train from the npm and crate versions.

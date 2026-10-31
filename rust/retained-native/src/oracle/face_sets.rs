@@ -122,7 +122,16 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
         if let Some(key) = key { areas[*key as usize] += dot(n, n).sqrt() / 2.; }
     }
     for (row, published) in set.rows.iter().zip(areas) {
-        let Some(area) = row.area_m2 else { continue };
+        let Some(area) = row.area_m2 else {
+            // A warped row has no single area, but no surface over its ring can be smaller
+            // than the ring's projection: a dropped triangle falls below that.
+            if row.outer >= 3 {
+                let n = newell(&row.points[..row.outer]);
+                let projected = dot(n, n).sqrt() / 2.;
+                if published < projected * (1. - 1e-9) { result.missing_rows += 1; }
+            }
+            continue;
+        };
         if area <= 0. { continue; }
         if published == 0. { result.missing_rows += 1; continue; }
         result.area_relative = result.area_relative.max((published - area).abs() / area);
@@ -140,6 +149,16 @@ mod tests {
         ] }
     }
     const POSITIONS: [f64; 12] = [0., 0., 0., 1., 0., 0., 0., 1., 0., 1., 1., 0.];
+    #[test]
+    fn issue_8291_a_dropped_triangle_of_a_warped_row_is_observed() {
+        let warped = AuthoredFaceSet { first: [0.; 3], rows: vec![Row {
+            points: vec![[0., 0., 0.], [1., 0., 0.], [1., 1., 0.5], [0., 1., 0.]], outer: 4, area_m2: None }] };
+        let positions = [0., 0., 0., 1., 0., 0., 1., 1., 0.5, 0., 1., 0.];
+        assert_eq!(deviation(&warped, &positions, &[0, 1, 2, 0, 2, 3], &[Some(0), Some(0)]).missing_rows, 0);
+        assert_eq!(deviation(&warped, &positions, &[0, 1, 2], &[Some(0)]).missing_rows, 1, "one of two triangles dropped");
+        assert_eq!(deviation(&warped, &positions, &[], &[]).missing_rows, 1, "the whole row dropped");
+    }
+
     #[test]
     fn issue_8291_faithful_part_has_no_deviation() {
         let d = deviation(&sheet(), &POSITIONS, &[0, 1, 2, 1, 3, 2], &[Some(0), Some(1)]);

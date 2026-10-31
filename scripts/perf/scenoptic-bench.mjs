@@ -36,8 +36,9 @@ import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rea
 import { execFileSync, spawn } from 'node:child_process';
 import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(new URL('../..', import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 // SCENOPTIC_BENCH_DEPS: a checkout with node_modules, when this one has none installed.
 const require = createRequire(join(process.env.SCENOPTIC_BENCH_DEPS ?? ROOT, 'package.json'));
 const { chromium } = require('@playwright/test');
@@ -50,6 +51,7 @@ for (let i = 0; i < argv.length; i++) {
   if (key === 'no-orbit' || key === 'no-warm') { opt[key] = true; continue; }
   // --profile cold,warm,orbit: main-thread CPU profile per phase (build with VITE_SOURCEMAP=1 to symbolize).
   const value = argv[++i];
+  if (value === undefined) { console.error(`--${key} needs a value`); process.exit(2); }
   if (key === 'set') opt.set.push(value); else if (key === 'build') opt.build.push(value); else opt[key] = value;
 }
 if ((!opt.dist && opt.build.length === 0) || opt.set.length === 0) {
@@ -59,12 +61,23 @@ if ((!opt.dist && opt.build.length === 0) || opt.set.length === 0) {
 const display = process.env.DISPLAY;
 if (!display || display === ':0' || display === ':1') throw new Error('set DISPLAY to a private Xvfb (e.g. :97)');
 const CHROME = process.env.CHROME ?? join(process.env.HOME, '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
-const ROUNDS = Number(opt.rounds), ORBIT_MS = Number(opt['orbit-s']) * 1000;
-const W = Number(opt.width), H = Number(opt.height);
+const positive = (name) => {
+  const n = Number(opt[name]);
+  if (!Number.isFinite(n) || n <= 0) { console.error(`--${name} needs a positive number, got "${opt[name]}"`); process.exit(2); }
+  return n;
+};
+const ROUNDS = Math.ceil(positive('rounds')), ORBIT_MS = positive('orbit-s') * 1000;
+const W = positive('width'), H = positive('height');
 const OUT = resolve(opt.out ?? join(ROOT, 'scripts/perf/.scenoptic-bench-results', new Date().toISOString().replace(/[:.]/g, '-')));
 mkdirSync(OUT, { recursive: true });
+/** Split `name=value` at the first `=`, so a path may contain one. */
+const nameValue = (flag, s) => {
+  const at = s.indexOf('=');
+  if (at <= 0 || at === s.length - 1) { console.error(`--${flag} needs name=value, got "${s}"`); process.exit(2); }
+  return [s.slice(0, at), s.slice(at + 1)];
+};
 const SETS = opt.set.map((s) => {
-  const [name, files] = s.split('=');
+  const [name, files] = nameValue('set', s);
   const list = files.split(',').map((f) => resolve(f));
   for (const f of list) if (!existsSync(f)) throw new Error(`missing fixture ${f}`);
   return { name, files: list, bytes: list.reduce((n, f) => n + statSync(f).size, 0) };
@@ -72,7 +85,7 @@ const SETS = opt.set.map((s) => {
 // The first build is the reference every ratio is taken against.
 const BUILDS = opt.dist ? [{ id: 'branch', dist: resolve(opt.dist) }] : [];
 if (opt['dist-base']) BUILDS.unshift({ id: 'base', dist: resolve(opt['dist-base']) });
-for (const b of opt.build) { const [id, dir] = b.split('='); BUILDS.push({ id, dist: resolve(dir) }); }
+for (const b of opt.build) { const [id, dir] = nameValue('build', b); BUILDS.push({ id, dist: resolve(dir) }); }
 const PROFILE = new Set((opt.profile ?? '').split(',').filter(Boolean));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 

@@ -247,7 +247,8 @@ export function auditRoot(root) {
       const expectedCondition = `always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && ${failureOnly ? `needs.${expected[0]}.result == 'failure'` : nonSuccessCondition(expected)}`;
       if (!isRecord(reporter) || condition !== expectedCondition
         || !expected.every((dependency) => needs(reporter, dependency))
-        || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write') {
+        || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write'
+        || !stepsOf(reporter).some((step) => expression(step.run).includes('gh issue create'))) {
         failures.push(`${displayPath(root, path)}: partial main-only matrix has no active issue reporter disposition`);
       }
     }

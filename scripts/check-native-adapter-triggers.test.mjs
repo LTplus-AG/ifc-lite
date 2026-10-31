@@ -89,6 +89,12 @@ test('a non-crate Rust input (Cargo.lock) dropped from both lists is reported', 
   assert.ok(failures.some((f) => f.includes('Cargo.lock') && f.includes('on.push.paths')));
 });
 
+test('probe-file globs that leave the rest of a crate untriggered are reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replaceAll("      - 'rust/core/**'\n", "      - 'rust/core/Cargo.toml'\n      - 'rust/core/src/lib.rs'\n      - 'rust/core/tests/probe.rs'\n"));
+  assert.ok(audit(root).some((f) => f.includes('crate rust/core') && f.includes("add 'rust/core/**'")));
+});
+
 test('a narrowed glob that misses tests/ is reported', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replaceAll("'rust/core/**'", "'rust/core/src/**'"));
@@ -120,7 +126,7 @@ test('unthrottled main pushes or a cancelling main run are reported', (context) 
   mutate(noGroup, (t) => t.replace(/concurrency:\n(?:  .*\n)+/, ''));
   assert.ok(audit(noGroup).some((f) => f.includes('concurrency')));
   const cancelsMain = copyTree(context);
-  mutate(cancelsMain, (t) => t.replace("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", 'cancel-in-progress: true'));
+  mutate(cancelsMain, (t) => t.replace(`cancel-in-progress: \${{ github.event_name == 'pull_request' }}`, 'cancel-in-progress: true'));
   assert.ok(audit(cancelsMain).some((f) => f.includes('concurrency')));
 });
 
@@ -155,4 +161,31 @@ test('an unbounded native corpus step is reported', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replace(/        # A step budget[^\n]*\n        timeout-minutes: \d+\n/, ''));
   assert.ok(audit(root).some((f) => f.includes('native-corpus needs its own timeout-minutes')));
+});
+
+test('a workspace.dependencies sub-table or multi-line table refuses instead of dropping a crate', () => {
+  assert.throws(() => workspaceDeps('[workspace.dependencies.newcrate]\npath = "rust/newcrate"\n'), /not parsed/);
+  assert.throws(() => workspaceDeps('[workspace.dependencies]\nnewcrate = {\n  path = "rust/newcrate",\n}\n'), /multi-line/);
+});
+
+test('a continue-on-error that only appears in a comment or run block is not accepted', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace("        id: native-corpus\n        if: inputs.corpus == true || github.event_name == 'schedule'\n        continue-on-error: true\n", "        id: native-corpus\n        if: inputs.corpus == true || github.event_name == 'schedule'\n        continue-on-error: false\n        # continue-on-error: true\n"));
+  assert.ok(audit(root).some((f) => f.includes('native-corpus must be continue-on-error')));
+});
+
+test('a local action the job calls must be able to trigger it', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replaceAll("      - '.github/actions/setup-wasm-build/**'\n", ''));
+  const failures = audit(root);
+  assert.ok(failures.some((f) => f.includes('local action .github/actions/setup-wasm-build') && f.includes('on.pull_request.paths')));
+  assert.ok(failures.some((f) => f.includes('local action .github/actions/setup-wasm-build') && f.includes('on.push.paths')));
+});
+
+test('an unjudged corpus step or a reporter without the stale-rerun guard is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace(/ +node scripts\/check-retained-corpus-summary\.mjs[^\n]*\n/, '').replaceAll("is not main's head", 'differs'));
+  const failures = audit(root);
+  assert.ok(failures.some((f) => f.includes('does not judge summary.json')));
+  assert.ok(failures.some((f) => f.includes('stale rerun')));
 });

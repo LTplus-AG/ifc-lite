@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/check-native-adapter-triggers.mjs",
+  "mutation": "tests/evidence/native-adapter-triggers-7955/behaviour.oracle.patch",
+  "test": "scripts/check-native-adapter-triggers.test.mjs",
+  "why": "Reverse-applying this patch stops requiring a directory-wide glob for each crate in the closure, so dropped, narrowed and probe-file-only path lists go unreported."
+}

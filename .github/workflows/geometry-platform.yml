@@ -28,6 +28,8 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.cargo/**'
+      # Local actions the job calls.
+      - '.github/actions/setup-wasm-build/**'
       - 'native/**'
       # M2-D builds and drives the real opt-in viewer.
       - 'apps/viewer/**'
@@ -99,6 +101,8 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.cargo/**'
+      # Local actions the job calls.
+      - '.github/actions/setup-wasm-build/**'
       - 'native/**'
       # M2-D builds and drives the real opt-in viewer.
       - 'apps/viewer/**'
@@ -297,6 +301,8 @@ jobs:
         run: |
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json
+          # Without --gate the comparison exits 0 on violations; judge summary.json.
+          node scripts/check-retained-corpus-summary.mjs "$RUNNER_TEMP/native-corpus/summary.json"
       - name: Upload native comparison evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -558,6 +564,9 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # A rerun of an older push must not touch the issue for a newer one.
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$latest" != "$SHA" ]; then echo "stale run ($SHA is not main's head $latest); leaving the issue alone"; exit 0; fi
           title="ci: geometry-platform native adapter is red on main"
           body="The retained native-adapter lane failed on push to main at ${SHA}. Run: ${RUN_URL}"
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\") | .number] | first // empty")
@@ -586,6 +595,9 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # A rerun of an older push must not touch the issue for a newer one.
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$latest" != "$SHA" ]; then echo "stale run ($SHA is not main's head $latest); leaving the issue alone"; exit 0; fi
           title="ci: geometry-platform native adapter is red on main"
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\") | .number] | first // empty")
           if [ -n "$existing" ]; then

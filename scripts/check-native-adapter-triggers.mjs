@@ -65,7 +65,7 @@ export function pathDeps(manifestText, crateDir, workspace) {
     const named = line.match(/^([A-Za-z0-9_-]+)(?:\.workspace\s*=\s*true|\s*=\s*(.*))/);
     if (!isDep || !named) continue;
     const spec = named[2] ?? '';
-    if (/^\{/.test(spec.trim()) && !spec.includes('}')) {
+    if (spec.trim().startsWith('{') && !spec.includes('}')) {
       throw new Error(`${crateDir}/Cargo.toml: multi-line inline table for ${named[1]} is not parsed; keep it on one line`);
     }
     const path = spec.match(/\bpath\s*=\s*"([^"]+)"/);
@@ -82,8 +82,16 @@ export function workspaceDeps(rootManifestText) {
   const map = new Map();
   let inSection = false;
   for (const raw of rootManifestText.split('\n')) {
-    const line = raw.trim();
-    if (/^\[.*\]$/.test(line)) { inSection = line === '[workspace.dependencies]'; continue; }
+    const line = raw.replace(/\s+#.*$/, '').trim();
+    if (/^\[.*\]$/.test(line)) {
+      if (/^\[workspace\.dependencies\.[^\]]+\]$/.test(line)) {
+        throw new Error(`Cargo.toml: ${line} is not parsed; write it as an inline table under [workspace.dependencies]`);
+      }
+      inSection = line === '[workspace.dependencies]';
+      continue;
+    }
+    const open = inSection && line.match(/^([A-Za-z0-9_-]+)\s*=\s*\{(?!.*\})/);
+    if (open) throw new Error(`Cargo.toml: multi-line inline table for workspace dependency ${open[1]} is not parsed; keep it on one line`);
     const m = inSection && line.match(/^([A-Za-z0-9_-]+)\s*=\s*\{.*\bpath\s*=\s*"([^"]+)"/);
     if (m) map.set(m[1], posix.normalize(m[2]));
   }
@@ -166,7 +174,9 @@ export function audit(root) {
   for (const [name, globs] of [['pull_request', pr], ['push', push]]) {
     if (!globs) continue;
     for (const dir of closure) {
-      if (!['Cargo.toml', 'src/lib.rs', 'tests/probe.rs'].every((f) => matchesAny(`${dir}/${f}`, globs))) {
+      // The literal directory glob, not probe files: `<dir>/Cargo.toml` + `<dir>/src/lib.rs` entries would
+      // satisfy probes and still leave the rest of the crate unable to trigger the lane.
+      if (!globs.includes(`${dir}/**`)) {
         failures.push(`${WORKFLOW}: crate ${dir} (in the retained engine's dependency closure) is not covered by on.${name}.paths -- add '${dir}/**'`);
       }
     }
@@ -176,6 +186,11 @@ export function audit(root) {
     }
   }
 
+  for (const action of new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]))) {
+    for (const [name, globs] of [['pull_request', pr], ['push', push]]) {
+      if (globs && !globs.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.${name}.paths -- add '${action}/**'`);
+    }
+  }
   if (!/inputs\.corpus == true \|\| github\.event_name == 'schedule'/.test(text)) {
     failures.push(`${WORKFLOW}: the corpus steps do not run on the scheduled event`);
   }
@@ -187,10 +202,12 @@ export function audit(root) {
   }
   for (const id of ['native-corpus', 'corpus-download']) {
     const step = text.match(new RegExp(`id: ${id}\\n([\\s\\S]*?)\\n      - `));
-    if (!step || !/continue-on-error: true/.test(step[1])) failures.push(`${WORKFLOW}: step ${id} must be continue-on-error so a corpus failure does not skip later lanes`);
-    if (id === 'native-corpus' && (!step || !/timeout-minutes: \d+/.test(step[1]))) failures.push(`${WORKFLOW}: step native-corpus needs its own timeout-minutes; the job limit would cancel every later lane`);
+    if (!step || !/^ {8}continue-on-error: true[ \t]*(?:#.*)?$/m.test(step[1])) failures.push(`${WORKFLOW}: step ${id} must be continue-on-error so a corpus failure does not skip later lanes`);
+    if (id === 'native-corpus' && (!step || !/^ {8}timeout-minutes: \d+[ \t]*(?:#.*)?$/m.test(step[1]))) failures.push(`${WORKFLOW}: step native-corpus needs its own timeout-minutes; the job limit would cancel every later lane`);
   }
   if (!/github\.ref == 'refs\/heads\/main' && needs\.native-adapter\.result == 'failure'/.test(text)) failures.push(`${WORKFLOW}: report-red-on-main must fire on 'failure' only; a cancelled (superseded) run is not red`);
+  if (!/check-retained-corpus-summary\.mjs "\$RUNNER_TEMP\/native-corpus\/summary\.json"/.test(text)) failures.push(`${WORKFLOW}: the native corpus step does not judge summary.json; retained_compare exits 0 on violations without --gate`);
+  if ((text.match(/is not main's head/g) ?? []).length < 2) failures.push(`${WORKFLOW}: both main reporters must ignore a stale rerun (compare github.sha with main's head before touching the issue)`);
   if (!/^ {2}close-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no close-red-on-main job; the issue would stay open after main is green`);
   if (!/^ {2}report-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no report-red-on-main job for a failing push to main`);
   if (!/^ {2}report-scheduled-failure:/m.test(text)) failures.push(`${WORKFLOW}: no report-scheduled-failure job for a failing nightly run`);

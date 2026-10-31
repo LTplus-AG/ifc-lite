@@ -213,7 +213,8 @@ test('reporters cover every non-success dependency and reject inert conditions',
     timeout-minutes: 1
     permissions:
       issues: write
-    steps: []
+    steps:
+      - run: gh issue create --title red
 `;
   const root = fixture({ 'xmatch-fixture.yml': scheduled, 'server-binaries.yml': main });
   context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -265,4 +266,35 @@ test('runtime reporters consume actual dependency and workflow conclusions', (co
   const observer = join(root, '.github', 'workflows', 'ci-reporting-cancellation-observer.yml');
   writeFileSync(observer, readFileSync(observer, 'utf8').replace(`\${{ github.event.workflow_run.conclusion }}`, 'cancelled'));
   assert.ok(auditRoot(root).some((failure) => failure.includes('actual completed workflow conclusion')));
+});
+
+test('a main reporter whose steps no longer create an issue fails the audit', (context) => {
+  const workflow = (steps, condition) => `name: Geometry
+on:
+  push:
+    branches: [main]
+jobs:
+  native-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps: []
+  report-red-on-main:
+    needs: [native-adapter]
+    if: ${condition}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      issues: write
+    steps:
+${steps}
+`;
+  const failureOnly = "always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native-adapter.result == 'failure'";
+  const good = fixture({ 'geometry-platform.yml': workflow('      - run: gh issue create --title red', failureOnly) });
+  const inert = fixture({ 'geometry-platform.yml': workflow('      - run: echo ok', failureOnly) });
+  const cancelRed = fixture({ 'geometry-platform.yml': workflow('      - run: gh issue create --title red', failureOnly.replace("== 'failure'", "!= 'success'")) });
+  context.after(() => [good, inert, cancelRed].forEach((root) => rmSync(root, { recursive: true, force: true })));
+  const named = (root) => auditRoot(root).filter((f) => f.includes('partial main-only matrix'));
+  assert.deepEqual(named(good), []);
+  assert.equal(named(inert).length, 1);
+  assert.equal(named(cancelRed).length, 1);
 });

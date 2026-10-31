@@ -22,11 +22,11 @@ import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false, twoPointOuter = false }: ExportOptions = {}): Drawing2D {
   const at = (ring: 'hole' | 'outer', v: number) => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : v);
   const wall: Drawing2D['cutPolygons'][number] = {
     polygon: {
-      outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+      outer: noOuter ? [] : twoPointOuter ? [{ x: 0, y: 3 }, { x: 4, y: 3 }] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
       holes: [[{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
     },
     ifcType: 'IfcWall',
@@ -68,6 +68,8 @@ interface ExportOptions {
   polygonColor?: [number, number, number, number];
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
+  /** The outer ring has only two points: a line, not a polygon. */
+  twoPointOuter?: boolean;
   /** A second, identical wall polygon. */
   twoWalls?: boolean;
   /** Corrupt geometry: a NaN vertex in the hole, the outer ring, or both. */
@@ -144,16 +146,22 @@ const exportPdf = (options?: ExportOptions) => exportFile('pdf', options);
 
 /** Whether a fill (`rg`/`g`) or stroke (`RG`/`G`) operator sets `hex`.
  *  jsPDF writes channels to 2 decimals and a grey as one `g`/`G` channel. */
-function setsColor(text: string, kind: 'fill' | 'stroke', hex: string): boolean {
+function colorOps(text: string, kind: 'fill' | 'stroke'): number[][] {
   const [rgb, grey] = kind === 'fill' ? ['rg', 'g'] : ['RG', 'G'];
   const num = '(\\d+\\.?\\d*|\\.\\d+)';
   const ops = new RegExp(`^(?:${num} ${num} ${num} ${rgb}|${num} ${grey})$`, 'gm');
+  return [...text.matchAll(ops)].map((m) => (m[4] !== undefined ? [m[4], m[4], m[4]] : [m[1], m[2], m[3]]).map(parseFloat));
+}
+const isColor = (got: number[], hex: string) => {
   const n = parseInt(hex.slice(1), 16);
-  const want = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
-  return [...text.matchAll(ops)].some((m) => {
-    const got = m[4] !== undefined ? [m[4], m[4], m[4]] : [m[1], m[2], m[3]];
-    return got.every((v, i) => Math.abs(parseFloat(v) - want[i]) <= 0.006);
-  });
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255].every((v, i) => Math.abs(got[i] - v / 255) <= 0.006);
+};
+function setsColor(text: string, kind: 'fill' | 'stroke', hex: string): boolean {
+  return colorOps(text, kind).some((got) => isColor(got, hex));
+}
+/** The stroke colour in force for the first cut-polygon outline. */
+function outlineStrokeColor(text: string): number[] | undefined {
+  return colorOps(text.slice(0, text.indexOf('h\nS\n')), 'stroke').at(-1);
 }
 
 /** A filled path with two closed subpaths (outer ring + hole), even-odd. */
@@ -221,7 +229,9 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
   it('falls back to the type colour and black for colours jsPDF cannot take', async () => {
     const text = await exportPdf({ overrideRules: [wallRule({ fillColor: '#12', strokeColor: 'bogus' })] });
     assert.ok(setsColor(text, 'fill', '#b0b0b0'), 'unfinished #12 fill falls back to the IfcWall colour');
-    assert.ok(setsColor(text, 'stroke', '#000000'), 'unparseable stroke falls back to black');
+    // The colour in force for the outline, not any black elsewhere in the stream.
+    const stroke = outlineStrokeColor(text);
+    assert.ok(stroke && isColor(stroke, '#000000'), 'unparseable stroke falls back to black');
     assert.ok(text.includes('h\nS\n'), 'the outline is still drawn');
     assert.ok(!/#12|bogus/.test(text), 'the raw colour never reaches the content stream');
   });
@@ -266,6 +276,11 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
       assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'the cut edge reaches the PDF as a line');
     });
   }
+
+  it('draws the cut lines of an entity whose outer ring has only two points (#8464)', async () => {
+    const text = await exportPdf({ twoPointOuter: true, cutLine: true });
+    assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'a two-point ring is not a polygon, so its cut edge stays');
+  });
 
   it('still skips cut lines for an entity whose outer ring is drawn', async () => {
     const text = await exportPdf({ cutLine: true });

@@ -28,10 +28,11 @@ export interface PdfCutPolygon {
   style: CutPolygonStyle;
   /** Page-space rings that survived (outer first when drawn). */
   rings: Point[][];
-  /** Outer ring and every hole survived, so an even-odd fill is safe. */
+  /**
+   * Outer ring (3+ points) and every hole survived: an even-odd fill is safe
+   * and the outline stands in for the entity's cut lines.
+   */
   fillable: boolean;
-  /** Every ring was drawn, so the outline covers its entity's cut lines. */
-  coversCutLines: boolean;
 }
 
 const finiteRing = (ring: Point[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -50,11 +51,9 @@ export function prepareCutPolygonsPdf(
     const outerDrawn = outer.length >= 2 && finiteRing(outer);
     const usableHoles = holes.filter((ring) => ring.length >= 2);
     const drawnHoles = usableHoles.filter(finiteRing);
-    const intact = outerDrawn && drawnHoles.length === usableHoles.length;
     return {
       rings: [...(outerDrawn ? [outer] : []), ...drawnHoles].map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-      fillable: intact && outer.length >= 3,
-      coversCutLines: intact,
+      fillable: outerDrawn && outer.length >= 3 && drawnHoles.length === usableHoles.length,
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }

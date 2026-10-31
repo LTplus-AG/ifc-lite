@@ -1106,7 +1106,7 @@ function useDrawingExport({
         // vanishes from the PDF.
         // Per entity: one damaged polygon keeps all of that entity's cut lines.
         const entityKey = ({ polygon: p }: PdfCutPolygon) => makeEntityKey(p.modelIndex, p.entityId);
-        const damaged = new Set(cutPolygons.filter((p) => !p.coversCutLines).map(entityKey));
+        const damaged = new Set(cutPolygons.filter((p) => !p.fillable).map(entityKey));
         const entitiesWithCutPolygon = new Set(cutPolygons.map(entityKey).filter((key) => !damaged.has(key)));
 
         // Drawing lines (projection/hidden/silhouette/crease/boundary).

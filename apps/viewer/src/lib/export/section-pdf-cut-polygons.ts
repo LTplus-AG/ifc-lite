@@ -67,9 +67,9 @@ const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 1
  * take (an unfinished hex, a name) falls back per polygon, so one bad
  * override cannot abort the whole export.
  */
-function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string): number {
+function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string, warned: Set<string>): number {
   const parsed = pdfColor(color);
-  if (!parsed) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
+  if (!parsed && !warned.has(color) && warned.add(color)) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
   const css = parsed?.color ?? fallback;
   if (kind === 'fill') doc.setFillColor(css);
   else doc.setDrawColor(css);
@@ -92,6 +92,7 @@ export function drawCutPolygonsPdf(doc: jsPDF, polygons: readonly PdfCutPolygon[
 function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
   doc.setLineCap('round');
   doc.setLineDashPattern([], 0);
+  const warned = new Set<string>(); // one warning per bad colour, not per polygon
   const tracePath = (rings: Point[][]) => {
     for (const ring of rings) {
       doc.moveTo(ring[0].x, ring[0].y);
@@ -102,7 +103,7 @@ function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
 
   for (const { polygon, rings, fillable, style } of polygons) {
     if (!fillable || !(style.fillOpacity > 0)) continue;
-    const alpha = setColor(doc, 'fill', style.fillColor, getFillColorForType(polygon.ifcType));
+    const alpha = setColor(doc, 'fill', style.fillColor, getFillColorForType(polygon.ifcType), warned);
     const opacity = roundOpacity(style.fillOpacity * alpha);
     if (!(opacity > 0)) continue;
     doc.setGState(doc.GState({ opacity }));
@@ -115,7 +116,7 @@ function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
   // visible line.
   for (const { rings, style } of polygons) {
     if (rings.length === 0 || !(style.lineWeight > 0)) continue;
-    const opacity = roundOpacity(setColor(doc, 'draw', style.strokeColor, '#000000'));
+    const opacity = roundOpacity(setColor(doc, 'draw', style.strokeColor, '#000000', warned));
     if (!(opacity > 0)) continue;
     doc.setGState(doc.GState({ 'stroke-opacity': opacity }));
     doc.setLineWidth(style.lineWeight);

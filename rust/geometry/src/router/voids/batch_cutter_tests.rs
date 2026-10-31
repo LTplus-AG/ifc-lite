@@ -74,7 +74,7 @@ fn a_welded_cutter_still_batches_after_the_host_was_cut() {
     coaxial_union::set_enabled_override(Some(false));
     let router = GeometryRouter::new();
     let bounds = world_host_bounds(&host);
-    let cut = router.apply_void_context_inner(host, &ctx, 1, bounds, false);
+    let cut = router.cut_in_frame(host, &ctx, 1, bounds, false);
     coaxial_union::set_enabled_override(None);
     assert!(!cut.is_empty(), "the host survives three through-cuts");
 
@@ -159,7 +159,7 @@ fn plan_rotated_mitred_wall_tip_strip_is_closed_3977() {
         bool2d: None,
     };
     let bounds = world_host_bounds(&host);
-    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let output = GeometryRouter::new().cut_in_frame(host, &context, 3977, bounds, true);
     assert!(
         mesh_is_closed_exact(&output),
         "wall-local cut must close the rotated mitred-tip strip ({} tris)",
@@ -205,7 +205,7 @@ fn vertical_partial_thickness_slot_keeps_its_authored_axis_3977() {
     };
     let bounds = world_host_bounds(&host);
     let host_volume = mesh_signed_volume(&host).abs();
-    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let output = GeometryRouter::new().cut_in_frame(host, &context, 3977, bounds, true);
     let removed = host_volume - mesh_signed_volume(&output).abs();
     assert!(
         mesh_is_closed_exact(&output),
@@ -260,7 +260,7 @@ fn mixed_horizontal_and_vertical_cutters_keep_each_authored_axis_3977() {
     };
     let bounds = world_host_bounds(&host);
     let host_volume = mesh_signed_volume(&host).abs();
-    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let output = GeometryRouter::new().cut_in_frame(host, &context, 3977, bounds, true);
     let removed = host_volume - mesh_signed_volume(&output).abs();
 
     assert!(
@@ -316,7 +316,7 @@ fn antiparallel_horizontal_cutters_both_extend_through_wall_3977() {
     };
     let bounds = world_host_bounds(&host);
     let host_volume = mesh_signed_volume(&host).abs();
-    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let output = GeometryRouter::new().cut_in_frame(host, &context, 3977, bounds, true);
     let removed = host_volume - mesh_signed_volume(&output).abs();
 
     assert!(mesh_is_closed_exact(&output));
@@ -368,7 +368,7 @@ fn mixed_authored_and_inferred_cutters_use_wall_normal_for_inferred_depth_3977()
     };
     let bounds = world_host_bounds(&host);
     let host_volume = mesh_signed_volume(&host).abs();
-    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let output = GeometryRouter::new().cut_in_frame(host, &context, 3977, bounds, true);
     let removed = host_volume - mesh_signed_volume(&output).abs();
 
     assert!(mesh_is_closed_exact(&output));
@@ -419,7 +419,7 @@ fn inferred_vertical_axis_is_not_an_authored_vertical_depth_3977() {
         bool2d: None,
     };
     let bounds = world_host_bounds(&host);
-    let world_only = GeometryRouter::new().apply_void_context_inner(
+    let world_only = GeometryRouter::new().cut_in_frame(
         host.clone(),
         &context,
         3977,
@@ -431,7 +431,7 @@ fn inferred_vertical_axis_is_not_an_authored_vertical_depth_3977() {
     // the wall normal there, never the inferred vertical: the slot is cut
     // through the wall exactly as the world path cuts it.
     let framed =
-        GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+        GeometryRouter::new().cut_in_frame(host, &context, 3977, bounds, true);
     assert!(mesh_is_closed_exact(&framed));
     let (framed_volume, world_volume) =
         (mesh_signed_volume(&framed).abs(), mesh_signed_volume(&world_only).abs());

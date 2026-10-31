@@ -178,7 +178,7 @@ fn malformed_recut_runs_before_the_flap_clip() {
     recut_malformed_openings(&mut swapped, &ctx.malformed_opening_boxes());
     assert!(!same_mesh(&expected, &swapped), "the fixture must tell the two orders apart");
 
-    let out = GeometryRouter::new().apply_void_context_inner(host.clone(), &ctx, 1, world_host_bounds(&host), false);
+    let out = GeometryRouter::new().cut_in_frame(host.clone(), &ctx, 1, world_host_bounds(&host), false);
     assert!(same_mesh(&out, &expected), "recut must run before the flap clip");
 }
 
@@ -205,7 +205,7 @@ fn exact_tail_output_keeps_no_sliver() {
     let host = box_mesh([-2.0, -0.1, 0.0], [2.0, 0.1, 3.0]);
     assert!(worst_aspect(&host) > 8.0, "the fixture must start with slivers");
     let ctx = context(vec![mesh_cutter([-0.5, -0.3, 1.0], [0.5, 0.3, 2.0], Some(Vector3::y()))]);
-    let out = GeometryRouter::new().apply_void_context_inner(host.clone(), &ctx, 1, world_host_bounds(&host), false);
+    let out = GeometryRouter::new().cut_in_frame(host.clone(), &ctx, 1, world_host_bounds(&host), false);
     assert!(crate::exact_topology::strict_closed_mesh(&out));
     let aspect = worst_aspect(&out);
     assert!(aspect <= 8.0 + 1e-6, "sliver of {aspect}:1 left by the exact tail");
@@ -239,7 +239,7 @@ fn rejected_frame_retry_restores_the_first_runs_diagnostics() {
     let frame = infer_opening_frame(&cutter, Some(&depth)).expect("a box has a frame");
     let ctx = context(vec![CutterKind::DiagonalRectangular(cutter, frame)]);
     let router = GeometryRouter::with_scale_and_local_frame(1.0, false);
-    let out = router.apply_void_context_inner(host.clone(), &ctx, 1, world_host_bounds(&host), true);
+    let out = router.cut_in_frame(host.clone(), &ctx, 1, world_host_bounds(&host), true);
     assert!(!out.is_empty() && !crate::exact_topology::strict_closed_mesh(&out), "the fixture must stay open");
     let diagnostics = router.take_host_opening_diagnostics();
     let host_record = diagnostics.get(&1).expect("the kept run records its cut");
@@ -261,7 +261,7 @@ fn coaxial_union_runs_before_the_batch_plan() {
     coaxial_union::set_enabled_override(Some(true));
     let _reset = ResetOnDrop(|| coaxial_union::set_enabled_override(None));
     let out = census.with_scope(|| {
-        router.apply_void_context_inner(host.clone(), &ctx, 1, world_host_bounds(&host), false)
+        router.cut_in_frame(host.clone(), &ctx, 1, world_host_bounds(&host), false)
     });
     // Every subtract takes one 12-triangle box: the fused union, then the
     // disjoint opening. A batched pair would be one subtract of 24.

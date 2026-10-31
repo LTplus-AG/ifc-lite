@@ -35,7 +35,7 @@ fn prism_and_exact_paths_record_the_same_rect_box_count() {
 
     let exact = GeometryRouter::new();
     let bounds = world_host_bounds(&host);
-    exact.apply_void_context_inner(host, &ctx, 7, bounds, false);
+    exact.cut_in_frame(host, &ctx, 7, bounds, false);
 
     let (on_prism, on_exact) = (recorded_rect_boxes(&prism, 7), recorded_rect_boxes(&exact, 7));
     assert_eq!(

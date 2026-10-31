@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! rvt01 `#10191` as it reaches `try_cut_wall_local_frame`: a 12 mm plan-
+//! rvt01 `#10191` as it reaches `cut_in_wall_frame`: a 12 mm plan-
 //! rotated panel with two authored through-openings, the second of which is
 //! extruded 3.7e-5 rad off the panel normal (Revit placement noise) and sits
 //! flush with the panel's bottom edge. 0e8a42175 handed that near-axis depth
@@ -147,7 +147,7 @@ fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
             bool2d: None,
         };
         let bounds = world_host_bounds(&host);
-        GeometryRouter::new().apply_void_context_inner(host.clone(), &context, 10191, bounds, true)
+        GeometryRouter::new().cut_in_frame(host.clone(), &context, 10191, bounds, true)
     };
     let host_volume = mesh_signed_volume(&host).abs();
     let wide_only = mesh_signed_volume(&cut(vec![openings[0].clone()])).abs();

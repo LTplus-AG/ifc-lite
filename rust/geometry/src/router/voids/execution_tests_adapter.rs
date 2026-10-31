@@ -29,7 +29,7 @@ impl GeometryRouter {
         }
     }
 
-    pub(super) fn apply_void_context_inner(
+    pub(super) fn cut_in_frame(
         &self,
         mesh: Mesh,
         ctx: &VoidContext,
@@ -38,7 +38,7 @@ impl GeometryRouter {
         allow_local_frame: bool,
     ) -> Mesh {
         self.test_execution(|e| {
-            e.apply_void_context_inner(mesh, ctx, id, bounds, allow_local_frame)
+            e.cut_in_frame(mesh, ctx, id, bounds, allow_local_frame)
         })
     }
 

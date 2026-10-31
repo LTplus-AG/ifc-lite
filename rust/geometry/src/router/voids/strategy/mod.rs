@@ -2,22 +2,32 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Whole-host void-cut strategies (stage A) and the frame-local analytic
-//! cut (stage B's RectFast), each statically dispatched.
+//! The void-cut stages after classification, each statically dispatched:
+//! the whole-host strategies of stage A (`HOST_STAGES`), the frame-local
+//! driver (`inner.rs`, `Execution::cut_in_frame`) with stage B's
+//! WallLocalFrame and RectFast, and the exact tail (`exact`).
 //!
 //! A strategy either accepts the host (a [`Cut`]) or returns `None`, leaving
 //! the host untouched for the next one. Each owns its flag gate and the
 //! diagnostics it records on acceptance; nothing is recorded on a miss.
+//!
+//! Adding a strategy is one variant or one call in the place that owns the
+//! order (`HOST_STAGES`, `cut_in_frame`, `ExactTail::run` or `post::finish`)
+//! plus one file. Inserting it anywhere changes some host's geometry, so it
+//! comes with a stage-order guard in `stage_order_tests.rs` and re-pinned
+//! determinism manifests if any output moves.
 
 use super::VoidContext;
 use crate::program::openings::execute::Execution;
 use crate::Mesh;
 
 mod bool2d;
-pub(super) mod exact;
+mod exact;
+mod inner;
 mod param_rect;
 mod prism;
-pub(super) mod rect_fast;
+mod rect_fast;
+mod wall_local_frame;
 
 /// A whole-host strategy, tried on the host as it reached
 /// [`Execution::apply_void_context`], before any frame change.

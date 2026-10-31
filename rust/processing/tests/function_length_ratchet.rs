@@ -5,8 +5,8 @@
 //! Function-length ratchet (G4, charter #7670, #7697): the function-level
 //! counterpart of `module_size_ratchet`. A function of `LIMIT` lines or more
 //! (`fn` line through closing brace, inclusive) is a review burden no one
-//! splits unprompted, so the tree accumulated 50+ of them, the worst
-//! (`apply_void_context_inner`) 781 lines.
+//! splits unprompted, so the tree accumulated 50+ of them, the worst a
+//! 781-line void-cut function since split into stages (#8263).
 //!
 //! Same two teeth as the module ratchet:
 //!  1. A NEW function at or over `LIMIT` that has no row in

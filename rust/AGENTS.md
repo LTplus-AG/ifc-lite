@@ -15,9 +15,10 @@ Supplements [root AGENTS.md](../AGENTS.md).
 - **STEP strings:** `decode_ifc_string` handles `\X\ \X2\ \X4\ \S\ \P\`; malformed `\S\` before a multibyte character must not panic (#1500). Keep `s_escape_before_multibyte_char_does_not_panic` green when changing `decode_ifc_string` (`core/src/step_encoding.rs`).
 - **Diagnostics:** use `diag_warn!`/`diag_debug!` (`geometry/src/diag.rs`), never kernel `eprintln`. `observability = ["dep:tracing"]` routes them through tracing (server: `ifc-lite-processing/observability`); feature-off output stays byte-identical with zero tracing code. `csg_capture`/`debug_geometry` are opt-in.
 - **Toolchain:** use repo-root `/rust-toolchain.toml` (CI pin). Never add `rust/rust-toolchain.toml`: it shadows the pin (#2834).
+- **Void-cut order** lives only in `HOST_STAGES`, `cut_in_frame`, `ExactTail::run`, `post::finish`; extension rule: `docs/architecture/mesh-determinism.md#frozen-void-cut-order`.
 - **Kernel booleans:** `subtract[_many]` / `union[_many]` / `intersection` (`geometry/src/kernel/mesh_bridge.rs`). Group cuts go through `ClippingProcessor::subtract_mesh_many` (`geometry/src/csg/group_cut.rs`).
 
 **G3 (#7779):** CI's `check-leaf-reader-copies.mjs` rejects copied production leaf spellings except canonical readers; it masks comments/literals/tests/simple `cfg(test)`, scans compound cfg, and runs synthetic controls. Zero hits prove spelling, not parity.
 
 - **Pipeline:** call `ifc_lite_processing::process(content, &ProcessingRequest, sink)`, never add `process_geometry_*` variants. Pass inputs are request fields; output streams are sink events.
-- **Discovery:** extend `scan::ScanClass`/`discovery::Discovery` with one record-kind arm; admission is `core::is_geometry_job`. Type maps belong in `discovery::TypeGeometryPlan`; arming in `processing/src/execution.rs`, production in `element/owned_session.rs::produce_element_meshes_owned`. Column adapters retain scheduling.
+- **Discovery, arming, production:** see the root file's Geometry & WASM section (`ScanClass`, `TypeGeometryPlan`, `produce_element_meshes_owned`).

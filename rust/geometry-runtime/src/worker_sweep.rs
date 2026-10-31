@@ -51,12 +51,14 @@ impl RetainedRealization {
 }
 
 /// An uncut source-exact face set (#8291): authored triangles with no SDK object.
+#[cfg(feature = "retained-runtime")]
 #[derive(Debug)]
 pub struct RetainedSourceFaceSet {
     no_solid: BrepHandle,
     completion: RetainedCompletion,
     owner: crate::RuntimeOwner,
 }
+#[cfg(feature = "retained-runtime")]
 impl RetainedSourceFaceSet {
     /// Never a live solid: no Boolean or copy operation can resolve this handle.
     pub fn solid(&self) -> BrepHandle { self.no_solid }
@@ -66,6 +68,7 @@ impl RetainedSourceFaceSet {
     }
 }
 
+#[cfg(feature = "retained-runtime")]
 impl SmlibWorker {
     /// Seal one source-exact request under this incarnation without a kernel
     /// call, at the same byte budget a kernel mesh of that size must meet.

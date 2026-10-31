@@ -1452,13 +1452,20 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     // #32810's triangle counts grew when consolidation stopped filling small
     // openings on its large slab faces (#4698): 1936 -> 3224 and 2005 -> 3207,
     // open and strict unchanged.
+    //
+    // #8190: #12381's remaining defects were a strip of slab between openings
+    // #12659 and #13497, which share a plane in the file but reached the
+    // coaxial footprint union 1 to 7 um apart. Reconciling the footprints
+    // closes it in both triangulators and both prism modes (15/16 -> 0/0 and
+    // 30/31 -> 0/0); the strip faces go and the cut re-tessellates (7571 ->
+    // 7556, and 9400 -> 11118 with the prism route off). #32810 is unchanged.
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
-        [(12381, 30, 31, 9400), (32810, 0, 0, 3224)]
+        [(12381, 0, 0, 11118), (32810, 0, 0, 3224)]
     } else {
         // #7292: retaining supported finite source cells removes ten signed
         // and strict boundary defects in both triangulators (25/26 -> 15/16).
         // DEFAULT retains six additional triangles; the #32810 cut is unchanged.
-        [(12381, 15, 16, 7571), (32810, 3, 3, 3207)]
+        [(12381, 0, 0, 7556), (32810, 3, 3, 3207)]
     };
     for &alt in triangulators {
         set_alt(alt);

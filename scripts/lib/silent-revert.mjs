@@ -84,8 +84,11 @@ function classify(net, commit, olderByPath) {
     const d = net.get(path);
     if (!d || d.old === d.new || d.new !== c.old) continue;
     // C's own change was a return to an older state: undoing C here repairs it.
+    // An all-zero id is "no file", not a state: A creating a file and B deleting it
+    // share zeros for A's pre-image and B's result, which would file a PR that
+    // silently re-adds B's deleted files as "repairing a revert" and pass it.
     const earlier = olderByPath.get(path) ?? [];
-    if (earlier.some((e) => e.old === c.new)) { unreverted.push(path); continue; }
+    if (!isZero(c.new) && earlier.some((e) => e.old === c.new)) { unreverted.push(path); continue; }
     if (isZero(c.old)) lifecycle.push(path);
     else strong.push({ path, kind: isZero(c.new) ? 're-added' : 'restored' });
   }
@@ -177,8 +180,19 @@ export function formatFinding(f) {
   return lines.join('\n');
 }
 
-export function formatFailure(findings) {
+const quote = (p) => `'${p.replace(/'/g, "'\\''")}'`;
+const list = (paths) => `${paths.slice(0, 5).map(quote).join(' ')}${paths.length > 5 ? ' ...' : ''}`;
+
+/** Remedies drawn from what was found: a `re-added` path is absent on the base, so it is `git rm`, not a checkout. */
+export function formatFailure(findings, base = 'origin/main') {
   const names = findings.map((f) => (f.pr === null ? f.sha.slice(0, 10) : `#${f.pr}`)).join(', ');
+  const all = findings.flatMap((f) => [...f.restored, ...f.lifecycle.map((path) => ({ path, kind: 'deleted' }))]);
+  const checkout = all.filter((r) => r.kind !== 're-added').map((r) => r.path);
+  const remove = all.filter((r) => r.kind === 're-added').map((r) => r.path);
+  const prs = [...new Set(findings.filter((f) => f.pr !== null).map((f) => f.pr))];
+  const fix = [`  git diff ${base}...HEAD -- ${quote(all[0].path)}     # see what the PR does to a listed file`];
+  if (checkout.length) fix.push(`  git checkout ${base} -- ${list(checkout)}     # take the base's version back`);
+  if (remove.length) fix.push(`  git rm -- ${list(remove)}     # these are absent on the base; the PR brings them back`);
   return [
     `SILENT REVERT: merging this PR would undo already-merged work (${names}) without saying so.`,
     '',
@@ -186,13 +200,14 @@ export function formatFailure(findings) {
     '',
     'If the revert is a mistake (a stale working tree, a conflict resolved to the old side, a reset --soft',
     'onto a moved main), rebuild the branch from current main and re-apply only your own change:',
-    '  git diff origin/main...HEAD -- <path>     # see what the PR does to a listed file',
-    '  git checkout origin/main -- <path>        # take main\'s version back',
+    ...fix,
     '',
     'If the revert is intended, declare it so it is not silent:',
     '  - title it `revert(scope): ...` or `Revert "..."`, or',
-    '  - put a line `Reverts #<PR>` in the PR title or description, or',
-    `  - have a maintainer apply the \`${EXEMPT_LABEL}\` label.`,
-    '  A declaration is read when a run is created: push, or close and reopen the PR.',
+    prs.length
+      ? `  - put a line \`Reverts ${prs.map((n) => `#${n}`).join(', ')}\` in the PR title or description, or`
+      : '  - (a `Reverts #<PR>` line cannot name these commits: none carries a PR number), or',
+    `  - have a maintainer (triage access or above) apply the \`${EXEMPT_LABEL}\` label.`,
+    '  The declaration is read live when the lane runs: edit the PR, or re-run the failed jobs after labelling.',
   ].join('\n');
 }

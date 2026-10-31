@@ -40,12 +40,27 @@
  * run it always did. The lanes' own check runs from the earlier run stay on
  * the SHA, which is what `PR review signal` reads.
  *
+ * A LANE THAT READS THE EDIT ITSELF (the silent-revert guard). Its input is the
+ * PR's title, body and labels, which is exactly what a no-op edit changes, so
+ * replaying its old verdict is wrong in both directions: a PR that passed under
+ * a `revert(...)` title and is retitled `feat(...)` would replay green, and a PR
+ * that failed and then adds `Reverts #N` would replay red forever. Such a lane
+ * runs on every `edited` event and the aggregate judges its FRESH result in a
+ * step of its own (JUDGE_STEP_NAME). What may then be replayed is the recorded
+ * verdict MINUS that lane: `onlyFailedLane` says whether the recorded failure
+ * was that lane's alone. It reads the recorded run's jobs, so a failure of any
+ * other lane still replays red, and "unknown" is never an excuse.
+ *
  * FAILS CLOSED. An unreadable event, an API error, or a probe that found a
  * verdict which the replay then cannot find again all refuse loudly; none of
  * them is a pass.
  */
 
 export const AGGREGATE_CHECK_NAME = 'Build + WASM + Rust + Node';
+
+/** Step names in test.yml's aggregate job; the wiring test pins them to the YAML. */
+export const REPLAY_STEP_NAME = 'Replay the verdict this head already has';
+export const JUDGE_STEP_NAME = 'Judge the fresh silent-revert result';
 
 /**
  * A `pull_request` `edited` event that changed neither the base branch nor
@@ -114,4 +129,30 @@ export function selectReplayVerdict(checkRuns, { sha, checkName = AGGREGATE_CHEC
     runId: runIdOf(latest),
     completedAt: latest.completed_at,
   };
+}
+
+/**
+ * Was the failure of a recorded aggregate run caused by `lane` alone?
+ *
+ * @param {Array<object>} jobs the recorded run's jobs (`name`, `conclusion`, `steps`)
+ * @param {{lane: string, aggregate?: string}} opts
+ *
+ * A FULL run: the lane's job failed and every other job succeeded or skipped.
+ * A NO-OP run (its aggregate ran the replay step): it failed on its fresh
+ * judgement, i.e. the replay step succeeded and the judge step failed. Its
+ * other lanes are all skipped, so job conclusions say nothing there; asking
+ * "did every other job succeed" would excuse a replayed typecheck failure.
+ */
+export function onlyFailedLane(jobs, { lane, aggregate = AGGREGATE_CHECK_NAME }) {
+  if (!Array.isArray(jobs)) return false;
+  const agg = jobs.find((j) => j?.name === aggregate);
+  if (!agg) return false;
+  const step = (name) => (agg.steps ?? []).find((s) => s?.name === name);
+  const replay = step(REPLAY_STEP_NAME);
+  if (replay && replay.conclusion !== 'skipped') {
+    return replay.conclusion === 'success' && step(JUDGE_STEP_NAME)?.conclusion === 'failure';
+  }
+  const guard = jobs.find((j) => j?.name === lane);
+  if (guard?.conclusion !== 'failure') return false;
+  return jobs.every((j) => j === agg || j === guard || j?.conclusion === 'success' || j?.conclusion === 'skipped');
 }

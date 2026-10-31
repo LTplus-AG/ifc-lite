@@ -35,13 +35,19 @@
  * USAGE
  *   node scripts/check-silent-revert.mjs [--base origin/main] [--head HEAD]
  *        [--window 100] [--min-files 3] [--title T] [--body B] [--label L]...
- *        [--scan <n>] [--json] [--root <dir>]
+ *        [--pr <n> [--repo owner/name]] [--scan <n>] [--json] [--root <dir>]
  *   --scan <n>  replay the n newest first-parent commits ending at --base, each
  *               as if it were a PR (its subject and body are its declaration).
  *               This is how "no false positive over the last 100 commits" is
  *               measured, and it exits 1 if any commit is flagged.
- *   Declarations default to PR_TITLE / PR_BODY / PR_LABELS (a JSON array), then
- *   to the head commit's own message for a local run.
+ *   --pr <n>    read the PR's CURRENT title, body and labels from the API. CI uses
+ *               this and never the event payload, which is frozen when the run is
+ *               created: a re-run would judge the old title, and a `Reverts #N`
+ *               line added to a failed PR would never be seen. An API failure
+ *               exits 2.
+ *   Without --pr, declarations come from --title/--body/--label, then
+ *   PR_TITLE / PR_BODY / PR_LABELS (a JSON array), then the head commit's own
+ *   message for a local run.
  *
  * EXIT  0 clean or declared   1 silent revert   2 could not evaluate
  */
@@ -56,9 +62,11 @@ import {
   applyDeclarations,
   findSilentReverts,
   formatFailure,
+  formatFinding,
   parseDeclarations,
   parseRawDiffZ,
 } from './lib/silent-revert.mjs';
+import { gh } from './lib/gh.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 class Unevaluable extends Error {}
@@ -161,7 +169,7 @@ function scan(git, base, n, window, minFiles) {
 }
 
 function parseArgs(argv) {
-  const o = { base: 'origin/main', head: 'HEAD', window: DEFAULT_WINDOW, minFiles: DEFAULT_MIN_FILES, labels: [], scan: null, json: false, root: null, title: null, body: null };
+  const o = { base: 'origin/main', head: 'HEAD', window: DEFAULT_WINDOW, minFiles: DEFAULT_MIN_FILES, labels: [], scan: null, json: false, root: null, title: null, body: null, pr: null, repo: process.env.GITHUB_REPOSITORY ?? null };
   const need = (i) => { if (i + 1 >= argv.length) throw new Unevaluable(`${argv[i]} needs a value`); return argv[i + 1]; };
   const num = (flag, v) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new Unevaluable(`${flag} must be a positive integer, got ${v}`); return n; };
   for (let i = 0; i < argv.length; i += 1) {
@@ -176,12 +184,24 @@ function parseArgs(argv) {
     else if (a === '--window') o.window = num(a, need(i++));
     else if (a === '--min-files') o.minFiles = num(a, need(i++));
     else if (a === '--scan') o.scan = num(a, need(i++));
+    else if (a === '--pr') o.pr = num(a, need(i++));
+    else if (a === '--repo') o.repo = need(i++);
     else throw new Unevaluable(`unknown argument ${a}`);
   }
   return o;
 }
 
+function livePr(o) {
+  if (!o.repo) throw new Unevaluable('--pr needs --repo owner/name (or GITHUB_REPOSITORY) to read the PR');
+  let pr;
+  try { pr = gh(['api', `repos/${o.repo}/pulls/${o.pr}`], `PR #${o.pr}`); }
+  catch (err) { throw new Unevaluable(`could not read PR #${o.pr} from the API, so its declarations are unknown: ${err.message}`); }
+  if (typeof pr?.title !== 'string' || !Array.isArray(pr.labels)) throw new Unevaluable(`the API's answer for PR #${o.pr} carried no title/labels`);
+  return { title: pr.title, body: pr.body ?? '', labels: pr.labels.map((l) => l.name), source: `PR #${o.pr} as read live from the API` };
+}
+
 function declarationInputs(o, git) {
+  if (o.pr) return livePr(o);
   let labels = o.labels;
   if (!labels.length && process.env.PR_LABELS) {
     try { labels = JSON.parse(process.env.PR_LABELS); } catch { throw new Unevaluable('PR_LABELS is not a JSON array'); }
@@ -225,7 +245,7 @@ function main(argv) {
   if (o.json) { console.log(JSON.stringify({ ...r, findings: undefined, declared: r.declared.map((f) => f.sha), undeclared: r.undeclared })); }
   const scope = `${r.netFiles} file(s) changed by the merge against ${o.base}; ${r.examined} base commit(s) examined (merge base ${r.mergeBase.slice(0, 10)}, base moved ${r.moved} since).`;
   if (r.undeclared.length) {
-    const text = formatFailure(r.undeclared);
+    const text = formatFailure(r.undeclared, o.base);
     console.error(`check-silent-revert: ${scope}\n\n${text}`);
     if (process.env.GITHUB_ACTIONS === 'true') console.error(`::error title=Silent revert::${r.undeclared.map((f) => `${f.restored.length} files of ${f.pr === null ? f.sha.slice(0, 10) : `#${f.pr}`} restored`).join('; ')}. See the job log.`);
     summarize(['### Silent revert', '```', text, '```']);
@@ -233,6 +253,8 @@ function main(argv) {
   }
   const note = r.declared.length ? ` Declared by ${r.reason} (${decl.source}): ${r.declared.map((f) => (f.pr === null ? f.sha.slice(0, 10) : `#${f.pr}`)).join(', ')}.` : '';
   if (!o.json) console.log(`check-silent-revert: OK. ${scope}${note}`);
+  // A declared revert is the one pass a reviewer should SEE: put it on the run summary.
+  if (r.declared.length) summarize(['### Silent revert guard: declared revert', '', `Declared by ${r.reason} (${decl.source}).`, '', '```', r.declared.map(formatFinding).join('\n'), '```']);
   return 0;
 }
 

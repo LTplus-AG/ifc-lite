@@ -23,7 +23,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,7 @@ import {
   EXEMPT_LABEL,
   applyDeclarations,
   findSilentReverts,
+  formatFailure,
   parseDeclarations,
   parseRawDiffZ,
   prNumberOf,
@@ -89,6 +90,33 @@ test('#8377 repair: undoing a commit that itself reverted is not a revert', () =
   assert.equal(findSilentReverts({ net: repair, commits: [x, c1], attributable: 2 }).filter((f) => f.sha === 'x').length, 0);
   // Without the older commit in view, X looks like ordinary work and the guard would cry wolf.
   assert.equal(findSilentReverts({ net: repair, commits: [x], attributable: 1 }).length, 1);
+});
+
+test('re-adding files a commit deleted is flagged even when the commit that CREATED them is in view', () => {
+  // A creates three files, B deletes them (a legitimate cleanup), a PR silently brings them back.
+  // A's pre-image and B's result are both all-zero: that is "no file", not a state to return to.
+  const a = commit('a', 'feat: legacy module (#1)', { x: [ZERO, 'x1'], y: [ZERO, 'y1'], z: [ZERO, 'z1'] });
+  const b = commit('b', 'refactor: remove legacy module (#2)', { x: ['x1', ZERO], y: ['y1', ZERO], z: ['z1', ZERO] });
+  const net = ch({ x: [ZERO, 'x1'], y: [ZERO, 'y1'], z: [ZERO, 'z1'] });
+  const found = findSilentReverts({ net, commits: [b, a], attributable: 2 });
+  assert.deepEqual(found.map((f) => f.sha), ['b']);
+  assert.deepEqual(found[0].restored.map((r) => r.kind), ['re-added', 're-added', 're-added']);
+  assert.equal(found[0].unreverted.length, 0);
+});
+
+test('remedies follow the finding: git rm for re-added paths, a Reverts line only when a PR number exists', () => {
+  const f = (pr, restored, lifecycle = []) => ({ sha: 'a'.repeat(40), subject: 's', pr, distance: 1, touched: 4, restored, lifecycle });
+  const mixed = formatFailure([f(7, [{ path: 'a b.rs', kind: 're-added' }, { path: 'c.rs', kind: 'restored' }], ['d.rs'])]);
+  assert.match(mixed, /git rm -- 'a b\.rs'/);
+  assert.match(mixed, /git checkout origin\/main -- 'c\.rs' 'd\.rs'/);
+  assert.match(mixed, /`Reverts #7`/);
+  const onlyAdded = formatFailure([f(null, [{ path: 'a.rs', kind: 're-added' }])], 'upstream/main');
+  assert.ok(!/git checkout/.test(onlyAdded), 'nothing to check out: every path is absent on the base');
+  assert.ok(!/put a line/.test(onlyAdded), 'a commit with no PR number cannot be named');
+  assert.match(onlyAdded, /none carries a PR number/);
+  const onlyRestored = formatFailure([f(7, [{ path: 'c.rs', kind: 'restored' }])], 'upstream/main');
+  assert.match(onlyRestored, /git checkout upstream\/main -- 'c\.rs'/);
+  assert.ok(!/git rm/.test(onlyRestored));
 });
 
 test('declarations: revert titles, Reverts #N lines, the label; a stray word declares nothing', () => {
@@ -153,6 +181,16 @@ function run(repo, args, env = {}) {
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
+/** A `gh` that answers every call with `answer` (or fails), put first on PATH. */
+function fakeGh(answer) {
+  const dir = mkdtempSync(join(tmpdir(), 'silent-revert-gh-'));
+  cleanup.push(dir);
+  const body = answer === null ? 'echo "HTTP 502" >&2\nexit 1\n' : `cat <<'JSON'\n${JSON.stringify(answer)}\nJSON\n`;
+  writeFileSync(join(dir, 'gh'), `#!/bin/sh\n${body}`);
+  chmodSync(join(dir, 'gh'), 0o755);
+  return { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r' };
+}
+
 /**
  * The incident's shape. #101 (C) rewrites four files and adds one; three
  * unrelated commits follow; the branch is cut AFTER them (so C is below the
@@ -213,6 +251,53 @@ test('declared reverts pass and say why; a wrong or absent declaration does not'
   const viaEnv = run(repo, base, { PR_TITLE: 'feat: x', PR_LABELS: JSON.stringify([EXEMPT_LABEL]) });
   assert.equal(viaEnv.code, 0, viaEnv.err);
   assert.equal(run(repo, base, { PR_TITLE: 'feat: x', PR_LABELS: 'not json' }).code, 2);
+});
+
+test('a branch that silently re-adds files a recent cleanup deleted is flagged (both commits in the window)', () => {
+  const repo = newRepo();
+  const legacy = ['legacy/a.rs', 'legacy/b.rs', 'legacy/c.rs'];
+  save(repo, { 'keep.txt': v('k', 0) }, 'init');
+  save(repo, Object.fromEntries(legacy.map((p) => [p, v(p, 1)])), 'feat: legacy module (#101)');
+  save(repo, Object.fromEntries(legacy.map((p) => [p, null])), 'refactor: remove legacy module (#102)');
+  git(repo, 'switch', '-q', '-c', 'stale-tree');
+  save(repo, { ...Object.fromEntries(legacy.map((p) => [p, v(p, 1)])), 'keep.txt': v('k', 1) }, 'feat: unrelated (#103)');
+  git(repo, 'switch', '-q', 'main');
+  const r = run(repo, ['--base', 'main', '--head', 'stale-tree', '--title', 'feat: unrelated (#103)']);
+  assert.equal(r.code, 1, `${r.out}${r.err}`);
+  assert.match(r.err, /#102/);
+  assert.match(r.err, /re-added\s+legacy\/a\.rs/);
+  assert.match(r.err, /git rm -- 'legacy\/a\.rs'/);
+  assert.ok(!/git checkout origin\/main -- 'legacy/.test(r.err), 'the files are absent on main; a checkout would fail');
+});
+
+test('--pr reads the declaration LIVE: the API wins over a stale env payload, and a failed read exits 2', () => {
+  const repo = incident();
+  const base = ['--base', 'main', '--head', 'feat', '--pr', '105'];
+  // The event payload says "feat" (what a re-run would carry); the PR has since been retitled.
+  const live = run(repo, base, { PR_TITLE: 'feat: x', ...fakeGh({ title: 'revert(retained): back out #101', body: null, labels: [] }) });
+  assert.equal(live.code, 0, live.err);
+  assert.match(live.out, /read live from the API/);
+  // The reverse: the env says revert, the PR now says feat: judged on the live title, so flagged.
+  const retitled = run(repo, base, { PR_TITLE: 'revert(x): y', ...fakeGh({ title: 'feat(viewer): jump (#105)', body: '', labels: [] }) });
+  assert.equal(retitled.code, 1, retitled.err);
+  assert.equal(run(repo, base, fakeGh({ title: 'feat: x', body: 'Reverts #101', labels: [] })).code, 0);
+  assert.equal(run(repo, base, fakeGh({ title: 'feat: x', body: '', labels: [{ name: EXEMPT_LABEL }] })).code, 0);
+  const broken = run(repo, base, fakeGh(null));
+  assert.equal(broken.code, 2, `${broken.out}${broken.err}`);
+  assert.match(broken.err, /could not read PR #105/);
+  assert.equal(run(repo, base, fakeGh({ nonsense: true })).code, 2);
+});
+
+test('a declared revert writes itself to the step summary so a reviewer sees it', () => {
+  const repo = incident();
+  const summary = join(mkdtempSync(join(tmpdir(), 'silent-revert-sum-')), 'summary.md');
+  cleanup.push(dirname(summary));
+  const r = run(repo, ['--base', 'main', '--head', 'feat', '--title', 'revert(retained): back out #101'], { GITHUB_STEP_SUMMARY: summary });
+  assert.equal(r.code, 0, r.err);
+  const text = readFileSync(summary, 'utf8');
+  assert.match(text, /declared revert/);
+  assert.match(text, /#101/);
+  assert.match(text, /a revert title/);
 });
 
 test('a local run with no title reads the head commit message', () => {
@@ -310,13 +395,30 @@ test('a head already merged into the base is a clean no-op', () => {
 
 // ---------- the real history --------------------------------------------------
 
-function haveHistory(shas) {
-  const shallow = spawnSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: REPO, encoding: 'utf8' }).stdout.trim() === 'true';
-  return !shallow && shas.every((s) => spawnSync('git', ['cat-file', '-e', `${s}^{commit}`], { cwd: REPO }).status === 0);
-}
-const NEED_HISTORY = 'full history absent (shallow checkout); the silent-revert lane runs this with fetch-depth: 0';
+const REQUIRE_HISTORY = process.env.SILENT_REVERT_REQUIRE_HISTORY === '1';
+const isShallow = () => spawnSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: REPO, encoding: 'utf8' }).stdout.trim() === 'true';
+const missing = (shas) => shas.filter((s) => spawnSync('git', ['cat-file', '-e', `${s}^{commit}`], { cwd: REPO }).status !== 0);
 
-test('#8377 (705eb56357) is flagged for #8360 (eaddb03505), replayed as the real stale PR', { skip: !haveHistory(['705eb56357', 'eaddb03505', '4b23992d54', '4f8c21e790']) && NEED_HISTORY }, () => {
+/**
+ * A reason to SKIP a real-history test, or false to run it. The #8377 PR head
+ * (4b23992d54) is on no branch, so where the clone is complete but lacks it, it
+ * is fetched from refs/pull/8377/head (CI, or SILENT_REVERT_REQUIRE_HISTORY=1).
+ * In the silent-revert lane SILENT_REVERT_REQUIRE_HISTORY=1 turns every skip
+ * into a failure, so the lane really replays the incident; elsewhere (the
+ * shallow node-tests checkout) the skip names its true cause.
+ */
+function historyGap(shas) {
+  const need = () => (isShallow() ? 'this is a shallow checkout' : `commit(s) ${missing(shas).map((m) => m.slice(0, 10)).join(', ')} are not in this clone`);
+  if (!isShallow() && missing(shas).length && (REQUIRE_HISTORY || process.env.GITHUB_ACTIONS === 'true')) {
+    spawnSync('git', ['fetch', '--no-tags', 'origin', 'refs/pull/8377/head'], { cwd: REPO, encoding: 'utf8' });
+  }
+  if (!isShallow() && !missing(shas).length) return false;
+  const why = `${need()}; the silent-revert lane replays this with fetch-depth: 0 and the PR head ref`;
+  assert.ok(!REQUIRE_HISTORY, `SILENT_REVERT_REQUIRE_HISTORY=1 demands the real replay, but ${why}`);
+  return why;
+}
+
+test('#8377 (705eb56357) is flagged for #8360 (eaddb03505), replayed as the real stale PR', { skip: historyGap(['705eb56357', 'eaddb03505', '4b23992d54', '4f8c21e790']) }, () => {
   // PR head 4b23992d54 was cut on 70c91e8e61; main had moved to 4f8c21e790 by merge time.
   const r = spawnSync(process.execPath, [CLI, '--base', '4f8c21e790', '--head', '4b23992d54', '--title', 'feat(viewer): per-block jump to top/bottom in the Document panel (#8227)', '--body', 'Closes #8227'], { cwd: REPO, encoding: 'utf8', env: ENV });
   assert.equal(r.status, 1, r.stderr);
@@ -325,14 +427,14 @@ test('#8377 (705eb56357) is flagged for #8360 (eaddb03505), replayed as the real
   assert.match(r.stderr, /deleted\s+rust\/retained-native\/src\/oracle\/affine_classify\.rs/);
 });
 
-test('the last 100 commits of main before this guard flag only #8377', { skip: !haveHistory(['87d8fdf359', '705eb56357']) && NEED_HISTORY }, () => {
+test('the last 100 commits of main before this guard flag only #8377', { skip: historyGap(['87d8fdf359', '705eb56357']) }, () => {
   const r = spawnSync(process.execPath, [CLI, '--scan', '100', '--base', '87d8fdf359', '--json'], { cwd: REPO, encoding: 'utf8', env: ENV });
   const result = JSON.parse(r.stdout);
   assert.equal(result.scanned, 100);
   assert.deepEqual(result.flagged.map((f) => f.sha.slice(0, 10)), ['705eb56357']);
 });
 
-test('the PR that repaired #8377 (6b66b109c5) passes as a PR', { skip: !haveHistory(['6b66b109c5', '705eb56357']) && NEED_HISTORY }, () => {
+test('the PR that repaired #8377 (6b66b109c5) passes as a PR', { skip: historyGap(['6b66b109c5', '705eb56357']) }, () => {
   const r = spawnSync(process.execPath, [CLI, '--base', '6b66b109c5^', '--head', '6b66b109c5', '--title', 'fix(retained): M10 classification nits'], { cwd: REPO, encoding: 'utf8', env: ENV });
   assert.equal(r.status, 0, r.stderr);
 });

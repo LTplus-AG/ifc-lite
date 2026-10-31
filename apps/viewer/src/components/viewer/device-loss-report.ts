@@ -11,9 +11,9 @@ import {
   type DeviceLossContext,
   type DeviceLossContextSource,
 } from './device-loss-context.js';
-import { startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
+import { createRecoveryBudget, startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
 import { notifyDeviceHealth } from './device-loss-notification.js';
-import { reportDeviceRecovery } from './device-loss-recovery-report.js';
+import { reportDeviceRecovery, reportRecoveryBudgetExhausted } from './device-loss-recovery-report.js';
 import { useViewerStore } from '@/store';
 export { modelsWithoutOmittedPointCloudHandles } from './device-loss-recovery-report.js';
 
@@ -311,6 +311,7 @@ export function subscribeViewportHealth(
   onRecovered?: () => void,
 ): () => void {
   let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
+  const admitRecovery = createRecoveryBudget();
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
@@ -329,8 +330,11 @@ export function subscribeViewportHealth(
           console.warn('[Viewport] failed to cancel point-cloud ingest during device loss:', error);
         }
       }
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
-      if (!recovery && renderer.recoverDevice) {
+      const attemptRecovery = !recovery && Boolean(renderer.recoverDevice);
+      const admitted = attemptRecovery && admitRecovery();
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice) && (admitted || !attemptRecovery));
+      if (attemptRecovery && !admitted) reportRecoveryBudgetExhausted();
+      if (admitted && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },
           {

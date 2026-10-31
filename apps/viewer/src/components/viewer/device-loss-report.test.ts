@@ -27,6 +27,7 @@ import {
   subscribeViewportHealth,
   type ViewportHealthSource,
 } from './device-loss-report.js';
+import { createRecoveryBudget, RECOVERY_BUDGET_MAX, RECOVERY_BUDGET_WINDOW_MS } from './device-loss-recovery.js';
 
 /** Verbatim Safari 26.5 wording from the #2229 PostHog frames. */
 const SAFARI_LOST = 'The object is in an invalid state.';
@@ -51,6 +52,17 @@ beforeEach(() => {
 afterEach(() => {
   console.warn = realWarn;
   posthog.captureException = realCapture;
+});
+
+describe('createRecoveryBudget', () => {
+  it('admits up to the limit per rolling window, then again once it has passed', () => {
+    let now = 0;
+    const admit = createRecoveryBudget(() => now);
+    for (let i = 0; i < RECOVERY_BUDGET_MAX; i++) assert.equal(admit(), true);
+    assert.equal(admit(), false);
+    now = RECOVERY_BUDGET_WINDOW_MS;
+    assert.equal(admit(), true, 'a GPU that recovers for a minute earns automatic recovery back');
+  });
 });
 
 describe('reportDeviceLost', () => {
@@ -411,6 +423,31 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
 
     assert.equal(recoveries, 2);
     assert.equal(captures.length, 2, 'each recovered device starts a new reportable loss episode');
+  });
+
+  it('stops recovering a device that keeps failing, and says a reload is needed', async () => {
+    const h = makeSource();
+    let recoveries = 0;
+    h.source.recoverDevice = async () => {
+      recoveries++;
+      return { ok: true, omissions: [] };
+    };
+    const events: Array<[string, unknown]> = [];
+    const realEvent = posthog.capture;
+    posthog.capture = ((event: string, props?: unknown) => { events.push([event, props]); }) as typeof posthog.capture;
+    const unsubscribe = subscribeViewportHealth(h.source);
+    try {
+      for (let i = 0; i < RECOVERY_BUDGET_MAX + 2; i++) {
+        h.listeners.deviceLost[0]({ message: 'Device was destroyed.', reason: 'destroyed' });
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      assert.equal(recoveries, RECOVERY_BUDGET_MAX, 'recovery stops at the budget');
+      const refused = events.filter(([event]) => event === 'device_loss_recovery_failed');
+      assert.deepEqual(refused[0][1], { reason: 'recovery-budget-exhausted' });
+    } finally {
+      posthog.capture = realEvent;
+      unsubscribe();
+    }
   });
 
   it('notifies overlay owners only after successful GPU recovery (#5778)', async () => {

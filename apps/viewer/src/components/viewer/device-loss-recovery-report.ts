@@ -66,3 +66,13 @@ export function reportDeviceRecovery(result: DeviceRecoveryResult, onRecovered: 
     notifyDeviceHealth('error', 'The 3D view could not recover automatically. Reload the page to restore rendering.');
   }
 }
+
+/** The recovery budget refused this loss: the view stays stopped until a reload. */
+export function reportRecoveryBudgetExhausted(): void {
+  try {
+    posthog.capture('device_loss_recovery_failed', { reason: 'recovery-budget-exhausted' });
+  } catch (error) {
+    console.warn('[Viewport] device-loss recovery telemetry failed:', error);
+  }
+  notifyDeviceHealth('error', 'The graphics device keeps failing, so automatic recovery has stopped. Reload the page to restore rendering.');
+}

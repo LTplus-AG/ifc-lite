@@ -23,9 +23,9 @@ pub use runtime_owner::RuntimeOwner;
 #[cfg(not(target_arch = "wasm32"))]
 pub use worker::{
     AffineCertificate, AffineCopyIdentity, BrepHandle, MeshLimits, NumericalOutcome, RegionQualificationReport, RetainedDependency,
-    RetainedAffineCopy, RetainedDependencyResult, RetainedLineage, RetainedRealization, RetainedSourceFaceSet,
+    RetainedAffineCopy, RetainedDependencyResult, RetainedLineage, RetainedRealization,
     RetainedTransformInput, SmlibWorker, TessellatedMesh, WorkerError,
 };
 
 #[cfg(all(feature = "retained-runtime", not(target_arch = "wasm32")))]
-pub use worker::RetainedBooleanIdentity;
+pub use worker::{RetainedBooleanIdentity, RetainedSourceFaceSet};

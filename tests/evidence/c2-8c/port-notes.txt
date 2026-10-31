@@ -1,0 +1,80 @@
+C2-8c / #8263: prism_cut caps, cap CDT, crossings and driver; final facade.
+Stacked on C2-8b; qualified against main 70c91e8e617402ea2ca8949117fa2acbe61d97b7
+(cumulative: every number covers the whole C2-8 split).
+
+Derivation
+- tests/evidence/c2-8a/slice.py --stage c, reading main's prism_cut.rs.
+  Range table (1-based base lines):
+    caps 2119-2318 (cap_plane_breakpoints, build_face_cap)
+    cap_cdt 2319-2386 + 2481-2611 (emit_cap, cap_cdt, cap_cdt_xor | cap_cdt_impl)
+    crossings 2387-2480 (resolve_crossings) | driver 2612-2921 (impl Execution)
+- Rewrites: pub(super) on moved items; try_prism_cut was pub(super) in
+  prism_cut.rs (voids-wide) and is pub(in crate::router::voids) in driver.rs,
+  the same effective scope. No path or WRAP rewrites in this stage.
+- Import-only edits to earlier files: cut.rs now imports
+  caps::{build_face_cap, cap_plane_breakpoints} and decompose.rs
+  crossings::resolve_crossings instead of reaching them through the facade.
+- Final facade (262 lines): base lines 1-233 with the module docs gaining a
+  layout paragraph; the IFC_LITE_PRISM_CUT doc on enabled() (from C2-8a); the
+  admission, triangulate_pslg and Execution imports moved to driver.rs /
+  cap_cdt.rs; VoidContext moved to driver.rs and kept #[cfg(test)] for
+  prism_cut_tests.rs; Aabb3 kept #[cfg(test)] for aabb_fold_tests.rs; the
+  module declarations in rustfmt's order, then the globs: kit (pub(super)),
+  ptri, frame, profile, detect, extension, cut, and checks under #[cfg(test)]
+  (prism_cut_tests.rs). plane2, face, pool, decompose, caps, cap_cdt,
+  crossings and driver have no glob: nothing in the facade or its `use
+  super::*` children names them.
+- DAG (no cycles): driver -> cut, detect, extension, checks, frame, ptri, kit,
+  opening_prism, finish, tjunction_close; cut -> caps, decompose, face,
+  checks, frame, plane2, ptri, kit; caps -> cap_cdt, extension, face, frame,
+  plane2, ptri, kit; cap_cdt -> crossings, extension, face, frame, pool, ptri,
+  kit; decompose -> crossings, face, frame, pool, ptri, kit; crossings ->
+  pool, kit; detect -> frame, profile, kit; extension -> frame, plane2,
+  profile, ptri, kit.
+- Every production file is under 400 lines (largest: extension.rs 380,
+  driver.rs 334, detect.rs 313).
+- F2a/ROUTER-7: kit.rs documents the F2a prism-kit exception (#7781 §3 row
+  10) for normalize/lerp/bits; plane2.rs and V2 are ROUTER-7 sites moved
+  as-is. No general geom2d/tolerance unification.
+
+Move checks (commit 69ddedd5e7; the rebased a66ef92c92 has the same Rust tree)
+- slice.py --stage c --check: all four files identical to generated, 0
+  unmatched after normalising:
+    caps 215 = 16 preamble + 199 moved (2 rewrites)
+    cap_cdt 215 = 17 + 198 (4) | crossings 103 = 10 + 93 (1)
+    driver 334 = 24 + 310 (1) | facade 262 lines, identical to generated
+- slice.py --stage c --concat: +254 -12 against base. Removed lines: the seven
+  facade imports above (VoidContext as part of its line), the doc-comment
+  move, the C2-8a WRAP signature and two blank lines.
+- color_moved.py 69ddedd5e7^ 69ddedd5e7: 821/812 lines coloured moved; the
+  rest (+78 -15) are signature visibility, headers, docs, imports and the
+  facade's module block.
+- rustfmt: the new files' preambles and the facade's module block are clean;
+  remaining hunks are inherited from base.
+
+Ratchets
+- module_size_allowlist: the prism_cut.rs row is deleted (facade 262 lines);
+  its history comment ends with a note; rust/geometry digest
+  3907445196249583160 -> 12548491589669219613.
+- function_length_allowlist: build_face_cap 161 -> prism_cut/caps.rs and
+  Execution::try_prism_cut 297 -> prism_cut/driver.rs (both measured
+  unchanged). No ratchet raised.
+
+Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-14)
+- qualify.sh gates at 69ddedd5e7, job 2d786fad-03e6-48a2-bb91-1c807c7b5e6c:
+  all eight steps exit 0.
+- qualify.sh all at 69ddedd5e7, job 53b35344-4dad-4169-a00d-7b972920eb99:
+  * identity vs main: Haus, duplex, ISSUE_129 IDENTICAL; values equal those in
+    c2-8a/port-notes.txt.
+  * instructions vs main: worst phase 1.000190 (ISSUE_129 preprocess);
+    geometry 0.999959 / 0.999583 / 0.997836; total 0.999986 / 0.999625 /
+    0.997856 (Haus / duplex / ISSUE_129). All <= 1.0005.
+  * gated features: superseded (base export had no corpus; see c2-8a notes).
+- gated features re-run after the qualify.sh fix, rebased head a66ef92c92
+  (Rust tree identical to 69ddedd5e7), job 6c9c1475-bb76-41b6-9733-361d5225b128:
+  base 3079 passed / 0 failed / 35 ignored, head 3079 / 0 / 35; failing set
+  identical (empty).
+- determinism.yml dispatched on refactor/c2-8c-prism-caps-driver at
+  69ddedd5e7: https://github.com/LTplus-AG/ifc-lite/actions/runs/41133795196
+  success (arm64 mesh-stat parity vs x86_64 snapshots; wasm32 mesh manifest vs
+  pinned native pair).

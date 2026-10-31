@@ -1,0 +1,12 @@
+diff --git a/packages/oci/src/push.ts b/packages/oci/src/push.ts
+--- a/packages/oci/src/push.ts
++++ b/packages/oci/src/push.ts
+@@ -190,7 +190,7 @@ export async function pushManifest(
+   const t: Target = { session, origin, repository: ref.repository, what, signal: options.signal };
+   const url = `${origin}/v2/${ref.repository}/manifests/${reference}`;
+ 
+-  if (ref.tag !== undefined && options.allowOverwrite === false) {
++  if (ref.tag !== undefined && options.allowOverwrite !== true) {
+     const accept = MANIFEST_ACCEPT.includes(mediaType) ? MANIFEST_ACCEPT : `${mediaType}, ${MANIFEST_ACCEPT}`;
+     const current = await head(t, url, accept);
+     if (current.response.status !== 200 && current.response.status !== 404) throw await pushFailure(current.response, `${what} (tag check)`);

@@ -1055,6 +1055,15 @@ jobs:
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13a/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-13a/behaviour.oracle.patch --test rust/processing/tests/issue_8341_finishes_event.rs)
             oracle_args+=(--mutation tests/evidence/c4-13a/server.oracle.patch --test apps/server/src/routes/parse/finish_tests.rs)
+          # @ifc-lite/oci push: whole-change inversion deletes push.ts and the
+          # push tests die at import. Keep it; break one push rule per patch:
+          # upload Location origin plus Authorization, the existing-tag check,
+          # the registry-reported blob digest, the pull,push token scope.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/oci-push/off-origin-location.oracle.patch | grep -Fxq 'tests/evidence/oci-push/off-origin-location.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/oci-push/off-origin-location.oracle.patch --test packages/oci/test/push-blob.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-push/tag-check.oracle.patch --test packages/oci/test/push-manifest.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-push/blob-digest.oracle.patch --test packages/oci/test/push-blob.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-push/push-scope.oracle.patch --test packages/oci/test/push-auth.test.ts)
           # @ifc-lite/oci: whole-package inversion deletes src/ and the tests
           # die at import. Keep the package; break one security rule per patch:
           # Authorization to redirect targets, credentials to an untrusted

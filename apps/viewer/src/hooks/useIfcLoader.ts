@@ -1922,9 +1922,10 @@ export function useIfcLoader() {
                 // either silently, without the notice, so re-process instead.
                 const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
-                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0;
-                const writeCache = (meshes: MeshData[]) => finalCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
-                  meshes, coordinateInfo: finalCoordinateInfo,
+                const cacheCoordinateInfo = finalCoordinateInfo;
+                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
+                const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
+                  meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                   totalTriangles: meshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                   // Persist the GPU-instancing shards too, else a cache reload would

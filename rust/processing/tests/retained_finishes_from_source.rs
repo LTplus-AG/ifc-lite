@@ -177,11 +177,15 @@ fn from_source_on_real_models_agrees_and_holds_less_heap() {
         let bytes = content.len();
         let source = SourceBundle::new(content.clone());
         let (_, styled_items) = canonical_element_jobs_and_styled_items(&source);
+        let started = std::time::Instant::now();
         let (mut rescan, rescan_retained, rescan_peak) = heap(|| ModelFinishes::from_content(&content));
+        let rescan_ms = started.elapsed().as_secs_f64() * 1e3;
+        let started = std::time::Instant::now();
         let (mut shared, shared_retained, shared_peak) = heap(|| ModelFinishes::from_source(&source, &styled_items));
+        let shared_ms = started.elapsed().as_secs_f64() * 1e3;
         eprintln!(
-            "REAL {rel} ({} MB, {} styled items): from_content retained {rescan_retained} B peak {rescan_peak} B; \
-             from_source retained {shared_retained} B peak {shared_peak} B",
+            "REAL {rel} ({} MB, {} styled items): from_content retained {rescan_retained} B peak {rescan_peak} B {rescan_ms:.1} ms; \
+             from_source retained {shared_retained} B peak {shared_peak} B {shared_ms:.1} ms",
             bytes / 1_000_000,
             styled_items.len()
         );

@@ -10,6 +10,7 @@
  */
 
 import type { TranslationKey } from '@/i18n';
+import { clippingSectionPlanes } from './section-active';
 
 /** A candidate product that has no retained geometry: refused by the kernel, or never reached. */
 export interface RetainedUnpublishedRow {
@@ -79,12 +80,8 @@ export function hasRetainedShapeOnlyModel(models: ReadonlyMap<string, { retained
 }
 
 /** Sectioned STEP rebuilds exact tessellation; reject it for a retained session (#8415). */
-export function hasRetainedSectionExport(state: {
+export function hasRetainedSectionExport(state: Parameters<typeof clippingSectionPlanes>[0] & {
   models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>;
-  sectionPlane: { enabled: boolean };
-  inactiveSectionPlanes: ReadonlyArray<{ enabled: boolean }>;
-  sceneState?: { section?: { visible?: boolean } };
 }): boolean {
-  return hasRetainedGeometryModel(state.models) && (state.sceneState?.section?.visible ?? true)
-    && (state.sectionPlane.enabled || state.inactiveSectionPlanes.some(plane => plane.enabled));
+  return hasRetainedGeometryModel(state.models) && clippingSectionPlanes(state).length > 0;
 }

@@ -6,6 +6,7 @@ import { reportCorrelation } from '@/lib/error-reports/correlation';
 import { offerErrorReport, attachContextCorrelation } from '@/lib/error-reports/context';
 import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
+import { recoveryFailureProperties } from './device-loss-recovery-failure.js';
 import {
   buildDeviceLossContext,
   type DeviceLossContext,
@@ -338,7 +339,9 @@ export function subscribeViewportHealth(
               reportDeviceRecovery(result, () => { reported = false; });
               onRecovered?.();
             },
-            failed: (result) => reportDeviceRecovery(result, () => { reported = false; }),
+            failed: (result, attempts) => reportDeviceRecovery(result, () => { reported = false; }, recoveryFailureProperties(
+              result, attempts, buildContextSafely(buildContext, renderer),
+            )),
           },
         );
         recovery = run;

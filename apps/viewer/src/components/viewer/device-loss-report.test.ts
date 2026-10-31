@@ -426,6 +426,7 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     const events: Array<[string, unknown]> = [];
     const realEvent = posthog.capture;
     posthog.capture = ((event: string, props?: unknown) => { events.push([event, props]); }) as typeof posthog.capture;
+    const errorToast = mock.method(toast, 'error', () => 0);
     const unsubscribe = subscribeViewportHealth(h.source);
     try {
       for (let i = 0; i < RECOVERY_BUDGET_MAX + 2; i++) {
@@ -436,7 +437,11 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
       const refused = events.filter(([event]) => event === 'device_loss_recovery_failed');
       assert.deepEqual(refused[0][1], { reason: 'recovery-budget-exhausted' });
       assert.equal(refused.length, 1, 'further signals for the refused loss capture nothing more');
+      for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+      const messages = errorToast.mock.calls.map((call) => JSON.stringify(call.arguments));
+      assert.ok(messages.some((text) => /keeps failing[^"]*reload/i.test(text)), 'the refusal tells the user to reload');
     } finally {
+      errorToast.mock.restore();
       posthog.capture = realEvent;
       unsubscribe();
     }

@@ -4,15 +4,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRecoveryBudget, RECOVERY_BUDGET_MAX, RECOVERY_BUDGET_WINDOW_MS } from './device-loss-recovery.js';
+import { createRecoveryBudget } from './device-loss-recovery.js';
 
 describe('createRecoveryBudget', () => {
   it('admits up to the limit per rolling window, then again once it has passed', () => {
     let now = 0;
     const admit = createRecoveryBudget(() => now);
-    for (let i = 0; i < RECOVERY_BUDGET_MAX; i++) assert.equal(admit(), true);
+    for (let i = 0; i < 3; i++) assert.equal(admit(), true);
     assert.equal(admit(), false);
-    now = RECOVERY_BUDGET_WINDOW_MS;
+    now = 59_999;
+    assert.equal(admit(), false, 'still inside the minute');
+    now = 60_000;
     assert.equal(admit(), true, 'a GPU that recovers for a minute earns automatic recovery back');
   });
 });

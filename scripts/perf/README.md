@@ -5795,3 +5795,11 @@ Lessons:
   script id, offsets and duration.
 - `scripts/check-tla-chunk-await.mjs` now fails if a chunk the page evaluates
   at start (`index.html`'s module scripts and their static imports) is wrapped.
+
+### Retained finish join shares the candidate scan (#7955, #8415)
+
+The retained browser session now joins styled-item spans against its existing SourceBundle decoder.
+Allocation checks and finish equality checks support removing the duplicate index; the measurements
+are finish-join attribution, not end-to-end worker-pool throughput. No speedup or performance-neutrality
+claim is established. The exact default path does not call the new join. Preserve the shared scan
+rather than rebuilding a whole-file entity index to resolve a small styled subset.

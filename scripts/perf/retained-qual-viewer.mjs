@@ -48,13 +48,13 @@ const readState = key => {
     crossOriginIsolated: globalThis.crossOriginIsolated, userAgent: navigator.userAgent };
 };
 
-export async function viewerSample({ arm, preview, fixture, round, options, expectation, distTree }) {
+export async function viewerSample({ arm, preview, fixture, round, options, expectation, distTree, launcher = launchFresh }) {
   const timeout = Number(options['timeout-ms'] ?? 600000);
   const row = { side: arm.side, path: fixture.path, fixture: basename(fixture.path), round, ok: false, fixtureSha256: fixture.sha256,
     fixtureBytes: fixture.bytes, gpu: options.gpu ?? 'swiftshader', headed: Boolean(options.headed), distSha256: distTree.sha256 };
-  const browser = await launchFresh({ gpu: row.gpu, channel: options.channel ?? 'chrome', executable: options['browser-executable'], headed: row.headed });
-  let sampler;
+  let browser, sampler;
   try {
+    browser = await launcher({ gpu: row.gpu, channel: options.channel ?? 'chrome', executable: options['browser-executable'], headed: row.headed });
     const { page } = browser;
     await page.addInitScript(INIT_SCRIPT);
     await page.goto(`${preview.origin}/?perfTrace=1&kernel=retained`);
@@ -63,7 +63,10 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
     sampler = startSampler(null, { intervalMs: 100, profileDir: browser.profileDir, pss: true });
     await page.locator('#file-input-open').setInputFiles(fixture.path);
     await page.waitForFunction(key => { const q = globalThis[key];
-      return q.errors.length > 0 || (q.terminalMs !== null && q.firstRetainedFrameMs !== null && (q.settledFrameMs !== null || performance.now() - q.terminalMs > 4000)); },
+      if (q.errors.length || globalThis.__ifc_lite_viewer_store__.getState().error) return true;
+      if (q.terminalMs === null) return false;
+      return q.firstRetainedFrameMs === null ? performance.now() - q.terminalMs > 30000
+        : q.settledFrameMs !== null || performance.now() - q.terminalMs > 4000; },
       PAGE_KEY, { timeout, polling: 100 });
     const memory = sampler.stop(); sampler = null;
     const m = await page.evaluate(key => ({ ...globalThis[key] }), PAGE_KEY);
@@ -76,7 +79,7 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
       userAgent: state.userAgent, hardwareConcurrency: state.hardwareConcurrency, crossOriginIsolated: state.crossOriginIsolated, loadTraceMilestonesMs: state.milestones,
       uaMemory: ua, uaMemoryBytes: ua.bytes, longTaskMs: m.longTaskMs, drawCallsAtFirstFrame: m.drawCallsAtFirstFrame,
       browserPeakHwmKiB: memory.maxIndividualHwmKiB, browserPeakConcurrentRssKiB: memory.maxObservedConcurrentRssKiB,
-      browserPeakConcurrentPssKiB: memory.maxObservedConcurrentPssKiB, browserMemorySamples: memory.samples,
+      browserPeakConcurrentPssKiB: memory.maxObservedConcurrentPssKiB, browserMemorySamples: memory.samples, pssCoverage: memory.pssCoverage,
       browserProcesses: Object.values(memory.byPid).map(p => ({ type: p.type ?? 'browser', hwmKiB: p.hwmKiB, peakPssKiB: p.peakPssKiB })),
       browserMemoryCaveat: memory.caveat, pageErrors: browser.pageErrors });
     if (losses > 0) throw new Error(`WebGPU device lost ${losses} time(s) during the sample; contaminated`);
@@ -98,11 +101,11 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
       completeness: state.summary.completeness });
   } catch (error) {
     row.error = error instanceof Error ? error.message : String(error);
-    row.pageErrors = browser.pageErrors;
-    try { row.consoleTail = browser.consoleLines.slice(-15); } catch { /* best effort */ }
+    row.pageErrors = browser?.pageErrors ?? [];
+    row.consoleTail = browser?.consoleLines.slice(-15) ?? [];
   } finally {
     sampler?.stop();
-    const closeError = await browser.close();
+    const closeError = browser ? await browser.close() : null;
     if (closeError) { row.ok = false; row.error = `${row.error ?? 'ok'}; browser cleanup failed: ${closeError}`; }
   }
   return row;
@@ -111,6 +114,7 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
 export async function main(argv) {
   const { options } = parseArgs(argv, { values: ['out', 'rounds', 'seed', 'timeout-ms', 'gpu', 'channel', 'browser-executable', 'expect', 'port-base', 'exclusive-receipt'],
     repeated: ['arm', 'fixture'], flags: ['headed', 'require-ua-memory', 'require-hardware-gpu', 'require-quiet'] });
+  if (options.seed !== undefined && !Number.isFinite(Number(options.seed))) throw new Error('--seed must be finite');
   if (!options.out || !options.fixture.length) throw new Error('--out DIR and at least one --fixture are required');
   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error(`Unreleased quiet window blocks Pop work: ${unreleasedQuietWindows().join(', ')}`);
   const rounds = Number(options.rounds ?? 7);

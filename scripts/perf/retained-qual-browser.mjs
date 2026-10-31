@@ -35,13 +35,25 @@ export function deviceLossCount(consoleLines) {
   return Math.max(0, ...DEVICE_LOSS_PATTERNS.map(pattern => consoleLines.filter(line => pattern.test(line)).length));
 }
 
-export async function launchFresh({ gpu, channel, executable, headed, closeMs = 30000 }) {
-  const { chromium } = await import('@playwright/test'); // lazy: the pure helpers need no browser install
+export async function launchFresh({ gpu, channel, executable, headed, closeMs = 30000, chromium: suppliedChromium }) {
+  const chromium = suppliedChromium ?? (await import('@playwright/test')).chromium; // lazy: the pure helpers need no browser install
   const profileDir = mkdtempSync(join(tmpdir(), 'retained-qual-profile-'));
-  const context = await raceWithTimeout(chromium.launchPersistentContext(profileDir, {
+  const launching = Promise.resolve().then(() => chromium.launchPersistentContext(profileDir, {
     headless: !headed, ...(executable ? { executablePath: executable } : { channel }), viewport: { width: 1440, height: 900 },
-    args: GPU_ARGS[gpu] ?? GPU_ARGS.swiftshader }), closeMs, 'launch');
-  const page = context.pages()[0] ?? await raceWithTimeout(context.newPage(), closeMs, 'newPage');
+    args: GPU_ARGS[gpu] ?? GPU_ARGS.swiftshader }));
+  let context, page;
+  try {
+    context = await raceWithTimeout(launching, closeMs, 'launch');
+    page = context.pages()[0] ?? await raceWithTimeout(context.newPage(), closeMs, 'newPage');
+  } catch (error) {
+    // Retain ownership of a late launch; remove the profile now and after closure.
+    rmSync(profileDir, { recursive: true, force: true });
+    void launching.then(async late => {
+      try { await late.close(); } catch (closeError) { console.error('late browser cleanup:', closeError); }
+      finally { rmSync(profileDir, { recursive: true, force: true }); }
+    }, () => rmSync(profileDir, { recursive: true, force: true }));
+    throw error;
+  }
   const consoleLines = [], requests = [], pageErrors = [];
   page.on('console', message => consoleLines.push(message.text()));
   page.on('pageerror', error => pageErrors.push(String(error)));
@@ -84,7 +96,7 @@ export function userAgentMemory(page) {
 /** Deterministic digest of a built tree (sorted `path size sha256`), the served-artifact identity. */
 export function treeDigest(root) {
   const lines = [];
-  const walk = dir => { for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  const walk = dir => { for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) walk(path);
     else if (entry.isFile()) lines.push(`${relative(root, path)} ${statSync(path).size} ${createHash('sha256').update(readFileSync(path)).digest('hex')}`);

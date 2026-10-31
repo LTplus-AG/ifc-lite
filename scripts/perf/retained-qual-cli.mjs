@@ -84,6 +84,7 @@ export async function cliSample({ arm, fixture, round, options, expectation }) {
 
 export async function main(argv) {
   const { options } = parseArgs(argv, { values: ['out', 'rounds', 'seed', 'expect', 'exclusive-receipt'], repeated: ['arm', 'fixture'], flags: ['require-quiet'] });
+  if (options.seed !== undefined && !Number.isFinite(Number(options.seed))) throw new Error('--seed must be finite');
   if (!options.out || !options.fixture.length) throw new Error('--out DIR and at least one --fixture are required');
   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error(`Unreleased quiet window blocks Pop work: ${unreleasedQuietWindows().join(', ')}`);
   const rounds = Number(options.rounds ?? 7);

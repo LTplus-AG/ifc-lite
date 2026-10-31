@@ -50,8 +50,10 @@ runner exit 1. There is no soft path.
   summary, the served manifest is the staged one.
 - Optional `--expect pins.json` (`{"model.ifc": {"candidates": N, "published": M}}`,
   taken from a prior correctness run) pins counts; the cohort must pin them. A file may also be
-  per side, `{"base": {...}, "branch": {...}}`, when the arms legitimately publish different counts
-  (a pin never falls back to the other side).
+  per side for CLI, viewer, and browser-memory, `{"base": {...}, "branch": {...}}`, when the arms legitimately publish different counts
+  (a pin never falls back to the other side). Native-memory instead accepts a direct
+  count object: `{"candidates": N, "published": M}`. Its `--summary` must name a
+  fresh per-run path; an existing file is rejected before the command starts.
 
 ## The first retained frame
 
@@ -63,13 +65,14 @@ which is the `loadFile` invocation; the load trace's own start rides along as
 | Column | Meaning |
 |---|---|
 | `productMs` | the store first holds a retained model with `published > 0` and a mesh. **Not a frame.** |
-| `sceneHeldMs` | the renderer's scene holds the first published product (`__ifc_lite_scene_owner__`) |
-| `firstRetainedFrameMs` | `FrameStats.timestamp` of the first completed frame that began after `sceneHeldMs` and drew. Under `kernel=retained` every mesh is retained, so a draw call is a retained draw |
+| `sceneHeldMs` | upper bound on scene ownership: the first retained drawing frame's timestamp |
+| `firstRetainedFrameMs` | `FrameStats.timestamp` of the first completed drawing frame after retained publication in the fresh scene. Under `kernel=retained` every mesh is retained, so a draw call is a retained draw |
 | `terminalMs` | not loading, `loadState: 'complete'`, completeness not `running` |
 | `settledFrameMs` | first completed frame after `terminalMs` and the first frame that drew with resident GPU bytes unchanged since the previous tick. The renderer draws on demand, so it may not exist; the row then holds `null` and `settledNote`, never a guess |
 
-Detection runs on `requestAnimationFrame` ticks, so a milestone derived from a tick
-(`sceneHeldMs`) can be one frame late; the frame time itself is the renderer's own.
+Observe completed frames after each animation callback, using the renderer's own
+timestamp. No scene geometry is copied. Scene ownership is bounded by the drawn
+frame, rather than timestamped at a later polling tick.
 
 ## Memory, and what it cannot say
 
@@ -101,9 +104,11 @@ fixtures [{path, bytes, sha256}], order, rounds, samples, rows, failures, summar
 {<side>/<path>: {columns: {col: {n, median, min, max, spreadPct}}}}
 ```
 
-Per-row GPU adapter, browser version, `softwareAdapter`, `webgpuDeviceLosses`, worker
+The viewer runner records per-row GPU adapter, browser version, `softwareAdapter`, `webgpuDeviceLosses`, worker
 count (`hardwareConcurrency`), fixture hash and served-dist digest are recorded. A
-software adapter (SwiftShader) is named; `--require-hardware-gpu` refuses it.
+software adapter (SwiftShader) is named; viewer `--require-hardware-gpu` refuses it.
+Browser-memory does not record adapter/software/device-loss fields and does not
+support `--require-hardware-gpu`.
 
 `exclusivity.exclusive` is **true** only inside an `ifc-fleet --kind benchmark` job
 (`IFC_WORKER_KIND=benchmark`, the job id becomes the receipt) or when the submitter passes
@@ -132,3 +137,10 @@ Headless Chrome returns the NVIDIA adapter but loses the device on the first can
 present. Use `--gpu hardware --headed` on a **private** Xvfb (never `:0`/`:1`), with
 `DISPLAY` set to it, and `--require-hardware-gpu`. `--gpu swiftshader` (default, the
 `viewer-retained` e2e flags) is a software adapter and is labelled so in every row.
+
+Reports preserve runner kind, host, commits, engine/binary identities and exclusivity.
+Only unique successful samples from the same invocation and round are paired;
+different workflows stay separate. Each column reports base, branch and matched n;
+nullable coverage is marked incomplete and medians use matched finite rounds only.
+Unavailable PSS stays null; coverage records readable/attempted process samples and
+complete/partial tree samples. Partial trees never count as a measured total.

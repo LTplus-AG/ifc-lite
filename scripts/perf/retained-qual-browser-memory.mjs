@@ -91,6 +91,7 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
 export async function main(argv) {
   const { options } = parseArgs(argv, { values: ['out', 'rounds', 'seed', 'timeout-ms', 'gpu', 'channel', 'browser-executable', 'expect', 'exclusive-receipt'],
     repeated: ['arm', 'fixture'], flags: ['headed', 'require-ua-memory', 'require-quiet'] });
+  if (options.seed !== undefined && !Number.isFinite(Number(options.seed))) throw new Error('--seed must be finite');
   if (!options.out || !options.fixture.length) throw new Error('--out DIR and at least one --fixture are required');
   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error(`Unreleased quiet window blocks Pop work: ${unreleasedQuietWindows().join(', ')}`);
   const rounds = Number(options.rounds ?? 7);

@@ -57,3 +57,33 @@ test('served-tree digest is deterministic and changes with any byte', () => {
     assert.notEqual(treeDigest(dir).sha256, first.sha256);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('8413: failed and late launches remove profiles and close late contexts', async () => {
+  const { launchFresh } = await import('./retained-qual-browser.mjs');
+  const { existsSync } = await import('node:fs');
+  for (const mode of ['reject', 'late', 'page']) {
+    let profile, closed = 0;
+    const context = { pages: () => [], newPage: () => new Promise(() => {}), close: async () => { closed++; } };
+    const chromium = { launchPersistentContext: path => {
+      profile = path;
+      if (mode === 'reject') return Promise.reject(new Error('bad executable'));
+      if (mode === 'late') return new Promise(resolve => setTimeout(() => resolve(context), 20));
+      return Promise.resolve(context);
+    } };
+    await assert.rejects(launchFresh({ chromium, closeMs: 5 }), /bad executable|timed out/);
+    assert.equal(existsSync(profile), false);
+    await new Promise(resolve => setTimeout(resolve, 35));
+    assert.equal(closed, mode === 'reject' ? 0 : 1);
+    assert.equal(existsSync(profile), false);
+  }
+});
+
+test('8413: digest uses codepoint ordering for mixed case and punctuation', async () => {
+  const { createHash } = await import('node:crypto');
+  const dir = mkdtempSync(join(tmpdir(), 'qual-digest-'));
+  try {
+    for (const name of ['a', 'Z', '_']) writeFileSync(join(dir, name), name);
+    const hash = value => createHash('sha256').update(value).digest('hex');
+    assert.equal(treeDigest(dir).sha256, hash(['Z', '_', 'a'].map(name => `${name} 1 ${hash(name)}`).join('\n')));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

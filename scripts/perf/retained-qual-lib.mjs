@@ -158,22 +158,24 @@ export function exclusivity(options, env = process.env) {
 /** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */
 export function writeResult(out, result, rows) {
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''));
+  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt } })).join('\n') + (rows.length ? '\n' : ''));
   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }
 
 export function resultEnvelope({ kind, options, arms, identities, fixtures, started }) {
+  const head = identities[Math.max(0, arms.findIndex(a => a.side === 'branch'))];
   return { schema: SCHEMA, kind, reportOnly: true, performanceVerdict: 'report-only: no retained performance or memory threshold is registered',
     exclusivity: exclusivity(options), startedAt: new Date(started).toISOString(), finishedAt: null,
     host: hostIdentity(), source: identities.map(i => i.git), arms: arms.map((arm, i) => ({ side: arm.side, commit: identities[i].git.commit,
       dirty: identities[i].git.dirty, engineManifestSha256: identities[i].engine.manifestSha256, sdkRevision: identities[i].engine.sdkRevision,
-      engineAssets: identities[i].engine.assets })), commit: identities[identities.length - 1].git.commit,
-    engineManifestSha256: identities[identities.length - 1].engine.manifestSha256, fixtures, rounds: null, samples: 0, failures: [], rows: 0 };
+      engineAssets: identities[i].engine.assets })), commit: head.git.commit,
+    engineManifestSha256: head.engine.manifestSha256, fixtures, rounds: null, samples: 0, failures: [], rows: 0 };
 }
 
 /** One shared order for a round: balanced and randomised for a pair (scripts/perf/ab-order.mjs). */
 export async function roundSides(arms, rounds, seed) {
+  if (seed !== undefined && !Number.isFinite(seed)) throw new Error('--seed must be finite');
   const { roundOrder, seededRand } = await import('./ab-order.mjs');
   if (arms.length === 1) return Array.from({ length: rounds }, () => [arms[0].side]);
   return roundOrder(rounds, seed === undefined ? Math.random : seededRand(seed));

@@ -25,7 +25,7 @@ test('the reporter classifies exactly as scripts/perf/ab-report.mjs does on the 
     noisy: [[100, 150, 80], [100, 100, 100]], zero: [[0, 0, 0], [5, 5, 5]], faster: [[200, 201, 199], [150, 151, 149]] };
   try {
     for (const [name, [base, branch]] of Object.entries(scenarios)) {
-      const rows = [...base.map(v => ['base', v]), ...branch.map(v => ['branch', v])].map(([side, v]) => ({ side, path: '/m/a.ifc', ok: true,
+      const rows = [...base.map(v => ['base', v]), ...branch.map(v => ['branch', v])].map(([side, v], i) => ({ side, round: i % base.length + 1, path: '/m/a.ifc', ok: true,
         parseMs: v, geometryMs: v, totalMs: v, meshes: 1, vertices: 1, triangles: 1 }));
       const jsonl = join(dir, `${name}.jsonl`), out = join(dir, `${name}.json`);
       writeFileSync(jsonl, rows.map(r => JSON.stringify(r)).join('\n'));

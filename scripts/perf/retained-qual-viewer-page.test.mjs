@@ -44,29 +44,13 @@ test('the origin is the capture-phase file input change; other inputs do not sta
   assert.equal(h.q().loadChangeMs, 10, 'the first change is the load invocation');
 });
 
-test('a product event alone is NOT a frame: the first retained frame needs the scene to hold it and a later drawing frame', () => {
-  const h = harness();
-  h.tick(1);
-  h.change(2);
-  h.store$(5, { models: h.model({ published: 0, completeness: 'running' }) });
-  assert.equal(h.q().firstProductMs, null, 'no product before one is published');
-  h.store$(20, { models: h.model({ published: 3, completeness: 'running' }, 3) });
-  assert.equal(h.q().firstProductMs, 20);
-  h.renderer.frame = { timestamp: 21, drawCalls: 4 };      // a frame that finished BEFORE the scene held the product
-  h.tick(22);
-  assert.equal(h.q().sceneHeldMs, null);
-  assert.equal(h.q().firstRetainedFrameMs, null, 'a frame without the scene holding the product is not a retained frame');
-  h.renderer.owner = { flat: [{}], instance: false };
-  h.tick(30);
-  assert.equal(h.q().sceneHeldMs, 30);
-  assert.equal(h.q().firstRetainedFrameMs, null, 'the frame at 21 predates sceneHeld; still no retained frame');
-  h.renderer.frame = { timestamp: 31, drawCalls: 0 };      // a frame that drew nothing
-  h.tick(32);
-  assert.equal(h.q().firstRetainedFrameMs, null, 'an empty frame is not a retained frame');
-  h.renderer.frame = { timestamp: 40, drawCalls: 5 };
-  h.tick(41);
-  assert.equal(h.q().firstRetainedFrameMs, 40, 'the frame\'s own timestamp, not the detection tick');
-  assert.equal(h.q().drawCallsAtFirstFrame, 5);
+test('8413: a retained draw at 20 observed at 21 is the first frame, without copying scene geometry', () => {
+  const h = harness(); h.tick(1); h.change(2);
+  h.store$(10, { models: h.model({ published: 1, completeness: 'running' }, 1) });
+  h.renderer.frame = { timestamp: 20, drawCalls: 4 }; h.tick(21);
+  assert.equal(h.q().firstRetainedFrameMs, 20);
+  h.renderer.frame = { timestamp: 30, drawCalls: 4 }; h.tick(31);
+  assert.equal(h.q().firstRetainedFrameMs, 20);
 });
 
 test('an instanced owner counts as held; terminal then settled needs a later drawing frame with unchanged GPU bytes', () => {
@@ -76,7 +60,7 @@ test('an instanced owner counts as held; terminal then settled needs a later dra
   h.renderer.owner = { flat: null, instance: true };
   h.renderer.frame = { timestamp: 5, drawCalls: 1 };
   h.tick(11);
-  assert.equal(h.q().sceneHeldMs, 11);
+  assert.equal(h.q().sceneHeldMs, null);
   h.renderer.frame = { timestamp: 15, drawCalls: 2 };
   h.tick(16);
   assert.equal(h.q().firstRetainedFrameMs, 15);

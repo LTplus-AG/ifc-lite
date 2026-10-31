@@ -78,6 +78,10 @@ export function assertNativeSummary({ exitCode, summary, expectation }) {
   check(problems, summary?.complete === true, `complete=${summary?.complete}`);
   check(problems, Array.isArray(summary?.violations) && summary.violations.length === 0, `violations=${summary?.violations?.length}`);
   check(problems, summary?.retained && typeof summary.retained === 'object', 'no retained timing block');
+  const mismatch = summary?.universeMismatch;
+  check(problems, mismatch === undefined || mismatch === false || (Array.isArray(mismatch) && mismatch.length === 0), `universeMismatch=${JSON.stringify(mismatch)}`);
+  const skipped = summary?.skipped;
+  check(problems, skipped === undefined || skipped === 0 || (Array.isArray(skipped) && skipped.length === 0), `skipped=${JSON.stringify(skipped)}`);
   if (summary) counts(problems, summary, expectation);
   finish(problems, 'native');
 }

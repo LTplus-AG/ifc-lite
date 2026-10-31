@@ -70,27 +70,33 @@ export function readProcess(pid, withPss) {
  * command line names `profileDir`). `include(info)` selects which processes count (e.g. the SMLib
  * worker executable only). `stop()` takes a final sample, then returns the summary.
  */
-export function startSampler(root, { intervalMs = 50, profileDir, include = () => true, pss = false } = {}) {
+export function startSampler(root, { intervalMs = 50, profileDir, include = () => true, pss = false, readInfo = readProcess } = {}) {
   const peaks = new Map();
   let rootPid = root ?? null;
-  let samples = 0, maxConcurrentRssKiB = 0, maxConcurrentPssKiB = 0, running = true, timer;
+  let samples = 0, maxConcurrentRssKiB = 0, maxConcurrentPssKiB = null, running = true, timer;
+  const pssCoverage = { attempts: 0, reads: 0, completeSamples: 0, partialSamples: 0 };
   const sample = () => {
-    let rss = 0, pssSum = 0, anyPss = false;
+    let rss = 0, pssSum = 0, selected = 0, readable = 0;
     if (rootPid === null && profileDir) rootPid = findProfileRoot(profileDir);
     for (const pid of rootPid === null ? [] : processSet(rootPid)) {
-      const info = readProcess(pid, pss);
+      const info = readInfo(pid, pss);
       if (!info || !include(info)) continue;
+      selected++;
       const peak = peaks.get(pid) ?? { exe: info.exe, type: info.type, hwmKiB: 0, peakRssKiB: 0, peakPssKiB: null };
       peak.hwmKiB = Math.max(peak.hwmKiB, info.hwmKiB ?? 0);
       peak.peakRssKiB = Math.max(peak.peakRssKiB, info.rssKiB ?? 0);
       if (info.pssKiB !== null) peak.peakPssKiB = Math.max(peak.peakPssKiB ?? 0, info.pssKiB);
       peaks.set(pid, peak);
       rss += info.rssKiB ?? 0;
-      if (info.pssKiB !== null) { pssSum += info.pssKiB; anyPss = true; }
+      if (info.pssKiB !== null) { pssSum += info.pssKiB; readable++; }
     }
     samples++;
     maxConcurrentRssKiB = Math.max(maxConcurrentRssKiB, rss);
-    if (anyPss) maxConcurrentPssKiB = Math.max(maxConcurrentPssKiB, pssSum);
+    if (pss) {
+      pssCoverage.attempts += selected; pssCoverage.reads += readable;
+      if (selected > 0 && readable === selected) { pssCoverage.completeSamples++; maxConcurrentPssKiB = Math.max(maxConcurrentPssKiB ?? 0, pssSum); }
+      else if (selected > 0) pssCoverage.partialSamples++;
+    }
   };
   const tick = () => { if (!running) return; sample(); timer = setTimeout(tick, intervalMs); };
   tick();
@@ -104,7 +110,7 @@ export function startSampler(root, { intervalMs = 50, profileDir, include = () =
       return { samples, intervalMs, processes: peaks.size, byPid: Object.fromEntries(peaks),
         maxIndividualHwmKiB: hwm.length ? Math.max(...hwm) : null,
         maxObservedConcurrentRssKiB: peaks.size ? maxConcurrentRssKiB : null,
-        maxObservedConcurrentPssKiB: pss && peaks.size ? maxConcurrentPssKiB : null,
+        maxObservedConcurrentPssKiB: pss ? maxConcurrentPssKiB : null, pssCoverage,
         caveat: 'sampled descendants only; short-lived processes may be missed; concurrent RSS double-counts shared pages' };
     },
   };

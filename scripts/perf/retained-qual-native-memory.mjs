@@ -34,6 +34,7 @@ import { startSampler } from './retained-qual-proc.mjs';
 import { assertNativeSummary } from './retained-qual-assert.mjs';
 
 export async function nativeSample({ command, workerName, summaryPath, expectation, intervalMs = 50 }) {
+  if (existsSync(summaryPath)) throw new Error('summary already exists; use a fresh unique per-run path');
   const timeFile = join(tmpdir(), `retained-qual-native-${process.pid}-${Date.now()}.time`);
   const started = process.hrtime.bigint();
   const child = spawn('/usr/bin/time', ['-v', '-o', timeFile, ...command], { stdio: ['ignore', 'inherit', 'inherit'] });
@@ -70,18 +71,20 @@ export async function main(argv) {
   if (!options.out || !options.summary || !rest.length) throw new Error('--out DIR, --summary FILE and a command after `--` are required');
   if (!existsSync('/usr/bin/time')) throw new Error('/usr/bin/time -v is required');
   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error('Unreleased quiet window blocks Pop work');
+  if (options.side && !['base', 'branch'].includes(options.side)) throw new Error('--side must be base or branch');
+  const admission = exclusivity(options);
   const started = Date.now(), out = resolve(options.out);
   const expectation = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : undefined;
   const git = options.checkout ? gitIdentity(options.checkout) : null;
   const engine = options.checkout && options.engine ? await engineIdentity(options.checkout, options.engine) : null;
   // The executable and worker are what is measured: hash them, not just the source commit.
   const hashes = {};
-  for (const [name, path] of [['executable', rest[0]], ['worker', rest[rest.indexOf('--worker') + 1]]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
+  const workerAt = rest.indexOf('--worker');
+  for (const [name, path] of [['executable', rest[0]], ['worker', workerAt >= 0 ? rest[workerAt + 1] : undefined]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
   mkdirSync(out, { recursive: true });
   const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation });
-  if (options.side && options.side !== 'base' && options.side !== 'branch') throw new Error('--side must be base or branch');
   Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest });
-  const result = { schema: SCHEMA, kind: 'native-retained-memory', reportOnly: true, exclusivity: exclusivity(options), startedAt: new Date(started).toISOString(),
+  const result = { schema: SCHEMA, kind: 'native-retained-memory', reportOnly: true, exclusivity: admission, startedAt: new Date(started).toISOString(),
     finishedAt: new Date().toISOString(), host: hostIdentity(), source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
     engineNote: 'native executable: the SDK build is identified by the worker/executable SHA-256; the manifest hash is that of --engine when given', binaries: hashes,
     samples: row.ok ? 1 : 0, rows: 1, failures: row.ok ? [] : [{ path: row.path, error: row.error }] };

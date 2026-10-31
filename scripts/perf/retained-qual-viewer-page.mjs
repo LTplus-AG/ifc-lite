@@ -11,13 +11,10 @@
 //                        the canonical `loadFile` invocation (the origin).
 //   firstProductMs       the store first holds a retained model with published > 0 and
 //                        at least one mesh (store subscription; not a frame).
-//   sceneHeldMs          the renderer's scene holds the first published product
-//                        (`__ifc_lite_scene_owner__`, installed by the viewport).
-//   firstRetainedFrameMs `FrameStats.timestamp` (end of the render call) of the first
-//                        COMPLETED frame that began after sceneHeldMs and issued draw
-//                        calls. Under `kernel=retained` every mesh is retained geometry,
-//                        so a draw call is a retained draw. A product event alone is not
-//                        a frame (the #7955 qualification plan).
+//   sceneHeldMs          upper bound on scene ownership: the first retained draw's end.
+//   firstRetainedFrameMs first completed drawing frame after retained publication in
+//                        this fresh, single-model scene. Inspect after every animation
+//                        callback so on-demand and continuous rendering cannot lose it.
 //   terminalMs           loadState 'complete', not loading, completeness != 'running'.
 //   settledFrameMs       the first completed frame after terminalMs and firstRetainedFrameMs
 //                        that drew, with resident GPU bytes unchanged since the previous tick
@@ -48,19 +45,16 @@ function install(key) {
     if (q.firstProductMs === null && q.loadChangeMs !== null && rg && rg.published > 0 && (m.geometryResult?.meshes?.length ?? 0) > 0) q.firstProductMs = now;
     if (q.terminalMs === null && q.firstProductMs !== null && !state.loading && m.loadState === 'complete' && rg && rg.completeness !== 'running') q.terminalMs = now;
   };
-  const tick = () => {
+  const observe = () => {
     q.ticks++;
     try {
       const store = host.__ifc_lite_viewer_store__;
       if (store && !subscribed) { subscribed = true; store.subscribe(onStore); }
       const stats = host.__ifc_lite_render_stats__?.();
       const frame = stats?.frame ?? null;
-      if (store && q.firstProductMs !== null && q.sceneHeldMs === null && typeof host.__ifc_lite_scene_owner__ === 'function') {
-        const meshes = model(store.getState())?.geometryResult?.meshes;
-        const owner = meshes?.length ? host.__ifc_lite_scene_owner__(meshes[0].expressId) : null;
-        if (owner && (owner.flat?.length || owner.instance)) q.sceneHeldMs = performance.now();
-      }
-      if (q.sceneHeldMs !== null && q.firstRetainedFrameMs === null && frame && frame.timestamp > q.sceneHeldMs && frame.drawCalls > 0) {
+      if (q.firstProductMs !== null && q.firstRetainedFrameMs === null && frame
+          && frame.timestamp >= q.firstProductMs && frame.drawCalls > 0) {
+        q.sceneHeldMs = frame.timestamp;
         q.firstRetainedFrameMs = frame.timestamp;
         q.drawCallsAtFirstFrame = frame.drawCalls;
       }
@@ -71,9 +65,14 @@ function install(key) {
       }
       lastBytes = bytes;
     } catch (error) { q.errors.push(String(error)); }
-    if (q.settledFrameMs === null) requestAnimationFrame(tick);
   };
-  requestAnimationFrame(tick);
+  // No geometry reads/copies. The frame timestamp is fixed before this observation.
+  // Wrap before the viewer boots; inspecting only our own tick could lose an earlier
+  // drawing frame when another callback completes a newer non-drawing frame.
+  const raf = host.requestAnimationFrame.bind(host);
+  host.requestAnimationFrame = callback => raf(time => { try { callback(time); } finally { observe(); } });
+  const tick = () => { observe(); if (q.settledFrameMs === null) raf(tick); };
+  raf(tick);
 }
 
 /** Source text for `page.addInitScript`: tsx-free, so no helper wrapper reaches the page. */

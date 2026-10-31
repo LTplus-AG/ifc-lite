@@ -11,9 +11,9 @@ import {
   type DeviceLossContext,
   type DeviceLossContextSource,
 } from './device-loss-context.js';
-import { startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
+import { createRecoveryBudget, startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
 import { notifyDeviceHealth } from './device-loss-notification.js';
-import { reportDeviceRecovery } from './device-loss-recovery-report.js';
+import { reportDeviceRecovery, reportRecoveryBudgetExhausted } from './device-loss-recovery-report.js';
 import { useViewerStore } from '@/store';
 export { modelsWithoutOmittedPointCloudHandles } from './device-loss-recovery-report.js';
 
@@ -81,11 +81,15 @@ let reported = false;
 // separate latch: the two are different failures and one must not mute the
 // other (a session can degrade for a while and THEN lose the device).
 let degradationReported = false;
+// Per document, like the latches above: `Viewport` subscribes again on remount,
+// and a fresh budget per subscription would let a remount skip the limit.
+let admitRecovery = createRecoveryBudget();
 
 /** Reset the once-per-session latches. Test seam — not used in production. */
 export function resetDeviceLossReportForTests(): void {
   reported = false;
   degradationReported = false;
+  admitRecovery = createRecoveryBudget();
 }
 
 /**
@@ -311,6 +315,7 @@ export function subscribeViewportHealth(
   onRecovered?: () => void,
 ): () => void {
   let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
+  let refusalCaptured = false;
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
@@ -329,8 +334,18 @@ export function subscribeViewportHealth(
           console.warn('[Viewport] failed to cancel point-cloud ingest during device loss:', error);
         }
       }
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
-      if (!recovery && renderer.recoverDevice) {
+      const attemptRecovery = !recovery && Boolean(renderer.recoverDevice);
+      const admitted = attemptRecovery && admitRecovery();
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice) && (admitted || !attemptRecovery));
+      // Once per subscription: a second signal for the same lost device
+      // (synchronous, then `device.lost`) must not capture a second refusal, but
+      // a remounted viewport's new renderer still reports its own.
+      if (attemptRecovery && !admitted && !refusalCaptured) {
+        refusalCaptured = true;
+        reportRecoveryBudgetExhausted();
+      }
+      if (admitted) refusalCaptured = false;
+      if (admitted && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },
           {

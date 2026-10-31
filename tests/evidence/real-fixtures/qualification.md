@@ -34,9 +34,13 @@ The new fragment adds 35 candidates to the universe, without changing the base
 - Revit V5C: 7 published, 7 refused (`operation_unsupported`), and the wall with
   faceted reveal openings refused (`opening_unsupported`).
 
-These are inherited classifications, not a new measured acceptance verdict.
-No published-to-refused transition has been accepted by this continuation.
-Final re-bless deltas must be reviewed before this PR is ready.
+The fresh Pop re-bless on the merged result confirms these classifications.
+Across all eleven manifest files: **zero changed data rows**, including the
+base manifest (143 candidates, 119 published). Total: 406 candidates,
+247 published, 159 refused. No added/removed candidates, changed refusal codes,
+or published-to-refused transitions. The generator removed comments from
+m10/m11-i/m11-n only; those comment removals were discarded.
+`rebless.json` records the per-manifest results. No tolerance was changed.
 
 Verified locally on merged source: 15 helper/metrics/tolerance tests pass with
 zero skips; explicit-base pre-handoff reports **OBSERVED**, with restored
@@ -44,18 +48,27 @@ witnesses green. Available gates pass. Skipped: source-text assertions
 (TypeScript absent), workflow report paths (YAML absent), default viewer
 (bundle absent). These skips do not establish engine or browser acceptance.
 
-## Pending Pop receipts
+## Pop receipts
 
 Fresh native re-bless: automatic request
 `auto-4ebff5cd14e04c56991fd68edb231656`, worker job
 `9dc22272-baf0-421a-ba85-80c98c4c6e15`; original receipt under
 `/home/louistrue/build-workers/worker-state/jobs/9dc22272-baf0-421a-ba85-80c98c4c6e15/receipt.json`.
 It targets merged source `14a8e45b55`, builds a fresh native worker and uses a
-private Cargo target that its script deletes afterwards. The result has not
-been observed yet; Compiling paths and manifest deltas are still pending.
+private Cargo target that its script deletes afterwards. Exit 0; immutable evidence publication verified. CMake's source directory and
+every Cargo Compiling path name that checkout. Worker SHA-256:
+`b769e9483ba3d2ba33e4ff6917b15358c33e9a09fcf730fee9e865e8c8653460`.
+The private Cargo target is confirmed absent. Native comparison reports no
+violations, universe mismatch or skipped models.
 
 The separate full engine/browser lane preflight was refused before submission
 (request `auto-affdd5bc9dd942e397c784784137579e`, capacity guard exit 78,
 fleet wrapper exit 69). It is not an active or successful execution receipt.
 Earlier successful lane logs at `1fc097466c` are inherited and do not qualify
 the merged head.
+
+The subsequent full engine/browser lane is now admitted on Pop, request
+`auto-d1d350c55ca2493aacf9855e10cab768`, job
+`2f28bf24-5a6e-4e72-88d7-2f55d665d640`, source `c9b69f3a01`.
+Its source differs from the re-bless only by these documentation notes. Results
+will be recorded after its original receipt completes.

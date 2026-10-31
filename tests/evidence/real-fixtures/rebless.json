@@ -1,0 +1,83 @@
+{
+  "sourceCommit": "14a8e45b55392eb49d23bfb3f29bb88a1ce6d4fe",
+  "host": "pop-os",
+  "workerSha256": "b769e9483ba3d2ba33e4ff6917b15358c33e9a09fcf730fee9e865e8c8653460",
+  "request": "auto-4ebff5cd14e04c56991fd68edb231656",
+  "job": "9dc22272-baf0-421a-ba85-80c98c4c6e15",
+  "candidates": 406,
+  "published": 247,
+  "refused": 159,
+  "violations": [],
+  "universeMismatch": [],
+  "skipped": [],
+  "manifests": [
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.tsv",
+      "candidates": 143,
+      "published": 119,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/cut-0.tsv",
+      "candidates": 123,
+      "published": 36,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m10.tsv",
+      "candidates": 29,
+      "published": 21,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m11-a.tsv",
+      "candidates": 21,
+      "published": 21,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m11-i.tsv",
+      "candidates": 0,
+      "published": 0,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m11-n.tsv",
+      "candidates": 0,
+      "published": 0,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m4.tsv",
+      "candidates": 13,
+      "published": 11,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m5.tsv",
+      "candidates": 14,
+      "published": 10,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m6.tsv",
+      "candidates": 16,
+      "published": 12,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/m9.tsv",
+      "candidates": 12,
+      "published": 7,
+      "rowChanges": 0
+    },
+    {
+      "manifest": "tests/manifests/cli-retained-coverage.d/real-fixtures.tsv",
+      "candidates": 35,
+      "published": 10,
+      "rowChanges": 0
+    }
+  ],
+  "publishedToRefused": [],
+  "privateCargoTargetRemoved": true
+}

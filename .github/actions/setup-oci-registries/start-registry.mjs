@@ -6,9 +6,9 @@
  * Loopback zot registry with htpasswd auth, for the `oci://` integration lane
  * (.github/workflows/oci-integration.yml).
  *
- *   node scripts/oci-integration/start-registry.mjs start --state-dir <dir> [--user <name>]
- *   node scripts/oci-integration/start-registry.mjs logs  --state-dir <dir>
- *   node scripts/oci-integration/start-registry.mjs stop  --state-dir <dir>
+ *   node .github/actions/setup-oci-registries/start-registry.mjs start --state-dir <dir> [--user <name>]
+ *   node .github/actions/setup-oci-registries/start-registry.mjs logs  --state-dir <dir>
+ *   node .github/actions/setup-oci-registries/start-registry.mjs stop  --state-dir <dir>
  *
  * `start` reads the password from OCI_REGISTRY_PASSWORD (never argv, so it
  * cannot leak through `ps` or a logged command line), writes a bcrypt

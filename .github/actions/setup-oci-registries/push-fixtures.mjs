@@ -5,7 +5,7 @@
 /**
  * Push IFC fixtures to a loopback registry with ORAS, then prove what landed.
  *
- *   node scripts/oci-integration/push-fixtures.mjs --registry 127.0.0.1:<port> \
+ *   node .github/actions/setup-oci-registries/push-fixtures.mjs --registry 127.0.0.1:<port> \
  *     [--user <name>] [--repository fixtures/model] --tag v1=<file.ifc> --tag v2=<file.ifc>
  *
  * The password comes from OCI_REGISTRY_PASSWORD and reaches ORAS on stdin

@@ -30,7 +30,6 @@ on:
       - 'packages/cli/src/loader.ts'
       - '.github/actions/setup-oci-registries/**'
       - '.github/workflows/oci-integration.yml'
-      - 'scripts/oci-integration/**'
       - 'apps/viewer/public/samples/building-architecture.ifc'
       - 'apps/viewer/public/samples/building-architecture-rev-b.ifc'
       - 'pnpm-lock.yaml'
@@ -106,13 +105,13 @@ jobs:
 
       - name: Start zot on loopback (htpasswd auth)
         id: registry
-        run: node scripts/oci-integration/start-registry.mjs start --state-dir "$RUNNER_TEMP/oci-registry" --user "$OCI_REGISTRY_USER"
+        run: node .github/actions/setup-oci-registries/start-registry.mjs start --state-dir "$RUNNER_TEMP/oci-registry" --user "$OCI_REGISTRY_USER"
 
       - name: Push fixtures with ORAS
         env:
           REGISTRY: ${{ steps.registry.outputs.address }}
         run: |
-          node scripts/oci-integration/push-fixtures.mjs --registry "$REGISTRY" --user "$OCI_REGISTRY_USER" \
+          node .github/actions/setup-oci-registries/push-fixtures.mjs --registry "$REGISTRY" --user "$OCI_REGISTRY_USER" \
             --repository fixtures/model --tag "v1=$FIXTURE_V1" --tag "v2=$FIXTURE_V2"
 
       - name: ifc-lite info over oci:// matches the local file
@@ -191,11 +190,11 @@ jobs:
 
       - name: Dump zot logs
         if: failure() && steps.registry.outcome != 'skipped'
-        run: node scripts/oci-integration/start-registry.mjs logs --state-dir "$RUNNER_TEMP/oci-registry"
+        run: node .github/actions/setup-oci-registries/start-registry.mjs logs --state-dir "$RUNNER_TEMP/oci-registry"
 
       - name: Stop zot
         if: always() && steps.registry.outcome != 'skipped'
-        run: node scripts/oci-integration/start-registry.mjs stop --state-dir "$RUNNER_TEMP/oci-registry"
+        run: node .github/actions/setup-oci-registries/start-registry.mjs stop --state-dir "$RUNNER_TEMP/oci-registry"
 
   ghcr-exit-test:
     name: oci:// diff across public GHCR fixture packages

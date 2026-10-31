@@ -16,7 +16,7 @@ import { act } from 'react';
 import { render, cleanup } from '@/test/render.js';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture.js';
 import { useViewerStore } from '@/store';
-import { RETAINED_SHAPE_ONLY_REASON, type RetainedGeometrySummary } from './retainedGeometry';
+import { RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON, type RetainedGeometrySummary } from './retainedGeometry';
 import { useExportCommands, type ResolvedExportCommand } from '@/components/viewer/toolbar/useExportCommands';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 // The retained module registers the shape-only reason's English text.
@@ -100,3 +100,22 @@ it('M11-Z enables mesh exports on a complete final retained model', async () => 
   render(<ExportProbe />);
   assert.equal(exportState('glb').disabled, false);
 });
+
+// #7955: USD and the energy models re-mesh the FILE with the exact engine, which is not the geometry a retained model
+// shows even when it is complete and final. Refused with their own reason; the exact model keeps them.
+for (const retained of [false, true]) {
+  it(`USD and energy exports are ${retained ? 'refused with the exact-engine reason' : 'available'} (complete ${retained ? 'retained' : 'exact'} model)`, async () => {
+    await seed(retained);
+    if (retained) {
+      const models = new Map(useViewerStore.getState().models);
+      for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: { ...SUMMARY, obligationsUnmet: [] } });
+      act(() => useViewerStore.setState({ models }));
+    }
+    render(<ExportProbe />);
+    for (const id of ['usd', 'energy']) {
+      assert.deepEqual(exportState(id), { disabled: retained, reason: retained ? RETAINED_EXACT_ONLY_REASON : undefined }, id);
+    }
+    // A complete, final retained model still exports what the viewer holds.
+    for (const id of ['glb', 'kmz']) assert.equal(exportState(id).disabled, false, id);
+  });
+}

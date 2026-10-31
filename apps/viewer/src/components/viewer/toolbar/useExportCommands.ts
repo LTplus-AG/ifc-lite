@@ -30,7 +30,9 @@ import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 import type { TranslationKey } from '@/i18n';
-import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
+import {
+  hasRetainedGeometryModel, hasRetainedShapeOnlyModel, RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON,
+} from '@/store/retainedGeometry';
 
 export type { CsvExportType };
 
@@ -44,6 +46,12 @@ export interface ResolvedExportCommand {
 
 /** 3D exports built from the loaded meshes: refused on a retained, shape-only model (#7955 M2). */
 const MESH_DERIVED_EXPORTS: ReadonlySet<string> = new Set(['glb', 'kmz', 'ion', 'usd']);
+
+/**
+ * Exports that re-mesh the FILE with the exact engine (USD, the energy models): for a retained model that is a
+ * different geometry from the one on screen, so they are refused on any retained model, complete or not (#7955).
+ */
+const EXACT_ONLY_EXPORTS: ReadonlySet<string> = new Set(['usd', 'energy']);
 
 /** `spatial` is the one table whose type id does not say what the file holds. */
 const CSV_SUFFIX: Record<CsvExportType, string> = {
@@ -77,6 +85,7 @@ export function useExportCommands(surface: ExportSurface) {
   // The same live change set the amber Export modified IFC button counts.
   const hasChanges = totalChangeCount(useChangedModels()) > 0;
   const shapeOnly = useViewerStore((s) => hasRetainedShapeOnlyModel(s.models));
+  const retained = useViewerStore((s) => hasRetainedGeometryModel(s.models));
   const { exporters: extensionExporters, extensionExportRunning, runExtensionExporter } = useExtensionExporters(surface);
 
   /**
@@ -161,13 +170,15 @@ export function useExportCommands(surface: ExportSurface) {
   const commands = useMemo<ResolvedExportCommand[]>(
     () => EXPORT_COMMANDS.map((command) => shapeOnly && MESH_DERIVED_EXPORTS.has(command.id)
       ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
+      : retained && EXACT_ONLY_EXPORTS.has(command.id)
+      ? { command, disabled: true, disabledReasonKey: RETAINED_EXACT_ONLY_REASON }
       : {
         command,
         disabled: command.requires === 'dataStore' ? !ifcDataStore
           : command.requires === 'changes' ? !hasChanges
           : !canExport,
       }),
-    [ifcDataStore, canExport, hasChanges, shapeOnly],
+    [ifcDataStore, canExport, hasChanges, shapeOnly, retained],
   );
 
   return {

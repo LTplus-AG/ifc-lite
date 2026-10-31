@@ -225,22 +225,4 @@ describe('UsdExportDialog open guard (#5605)', () => {
       disposeMock.mock.restore();
     }
   });
-
-  it('refuses a retained-kernel model: the exact engine would rebuild different geometry from its file (#7955)', async () => {
-    useViewerStore.setState({ models: new Map([['model-1', {
-      ...makeModel(),
-      retainedGeometry: { kernel: 'retained', candidates: 1, started: true, published: 1, refused: [], cancelled: 0,
-        obligationsUnmet: [], completeness: 'complete' },
-    }]]) });
-    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
-    const exportMock = mock.method(GeometryProcessor.prototype, 'exportUsd', () => new TextEncoder().encode('#usda 1.0\n'));
-    try {
-      await clickExport(renderDialog());
-      assert.equal(exportMock.mock.callCount(), 0, 'the exact USD exporter must not run');
-      assert.match(document.body.textContent ?? '', /USD export rebuilds its geometry from the file with the exact engine/);
-    } finally {
-      initMock.mock.restore();
-      exportMock.mock.restore();
-    }
-  });
 });

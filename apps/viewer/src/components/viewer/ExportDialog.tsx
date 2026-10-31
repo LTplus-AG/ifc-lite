@@ -56,6 +56,7 @@ import { listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 import { ExportDialogScopeOptions } from './export-dialog-scope-options';
 import { ExportDialogSchemaOptions } from './export-dialog-schema-options';
@@ -408,6 +409,9 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
       // ── IFC5 → always IFCX ──────────────────────────────────────────
       if (isIfc5) {
+        // IFC5 carries the meshes the viewer holds; a retained model that is incomplete or shape-only would export
+        // them as if they were the model (the same guard the GLB/KMZ/USD ribbon commands use).
+        if (hasRetainedShapeOnlyModel(models)) return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
         const federatedModel = models.get(selectedModelId);
         const idOffset = federatedModel?.idOffset ?? 0;
 

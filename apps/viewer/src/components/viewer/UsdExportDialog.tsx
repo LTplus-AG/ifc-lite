@@ -43,7 +43,6 @@ import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
-import { isRetainedKernelModel } from '@/lib/export/retained-export-gate';
 import { useTranslation } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
@@ -72,7 +71,6 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
           sourceFile: m.sourceFile,
           ifcDataStore: m.ifcDataStore,
           schemaVersion: m.schemaVersion,
-          retained: isRetainedKernelModel(m),
         })),
     [models],
   );
@@ -91,11 +89,6 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
     if (!selectedModel?.sourceFile) {
       return { success: false, message: t('geometryExport.usd.noSourceDescription') };
-    }
-
-    // USD is rebuilt from the file by the exact engine; a retained-kernel model's geometry is not that geometry.
-    if (selectedModel.retained) {
-      return { success: false, message: t('geometryExport.shared.retainedKernelRefusal', { format: 'USD' }) };
     }
 
     try {

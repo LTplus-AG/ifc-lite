@@ -64,6 +64,9 @@ export function hasRetainedGeometryModel(models: ReadonlyMap<string, { retainedG
 /** Tooltip/reason for every mesh-derived export and tool refused on a retained model. */
 export const RETAINED_SHAPE_ONLY_REASON: TranslationKey = 'retainedGeometry.shapeOnlyReason';
 
+/** Tooltip/reason for the exports that rebuild their geometry from the file with the exact engine, refused on any retained model. */
+export const RETAINED_EXACT_ONLY_REASON: TranslationKey = 'retainedGeometry.exactOnlyExportReason';
+
 /**
  * The one guard for mesh-derived exports and tools (GLB/USD/KMZ export,
  * measure, clash): their output would present shape-only meshes as the model.

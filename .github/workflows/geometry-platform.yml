@@ -89,8 +89,13 @@ on:
       - 'packages/wasm/**'
       - 'scripts/*retained*'
       - 'scripts/smlib-*'
-      # The halfspace witness fetch step runs this gate.
-      - 'scripts/fixtures/fetch-fixtures.mjs'
+      # The fixture fetch steps run this gate and import its siblings.
+      - 'scripts/fixtures/*.mjs'
+      # Scripts the job itself runs (the guard in its first step, with what it imports; the corpus judge).
+      - 'scripts/check-native-adapter-triggers.mjs'
+      - 'scripts/check-retained-corpus-summary.mjs'
+      - 'scripts/lib/ci-path-coverage.mjs'
+      - 'scripts/lib/is-main-entry.mjs'
       - 'scripts/lib/*retained*'
       - 'pnpm-workspace.yaml'
       - 'package.json'
@@ -609,6 +614,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      # The models the product table names come from the fetch, not the checkout.
+      - name: Download the corpus
+        run: pnpm fixtures
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-corpus-products

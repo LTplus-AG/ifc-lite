@@ -16,7 +16,7 @@ const WORKFLOW = '.github/workflows/geometry-platform.yml';
 function copyTree(context) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-triggers-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['Cargo.toml', WORKFLOW, ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  const files = ['Cargo.toml', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/is-main-entry.mjs', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
   for (const f of files) {
     mkdirSync(join(root, dirname(f)), { recursive: true });
     cpSync(join(REPO, f), join(root, f));
@@ -164,7 +164,7 @@ test('a corpus job that runs on every PR, or has no literal budget, is reported'
 
 test('a shard count that disagrees between matrix, selection and aggregate is reported', (context) => {
   const root = copyTree(context);
-  mutate(root, (t) => t.replace('check-retained-corpus-summary.mjs --shards 8 ', 'check-retained-corpus-summary.mjs --shards 7 ').replace('--index ${{ matrix.shard }}', '--index ${{ matrix.shard }}').replace('--shards 8 --index', '--shards 4 --index'));
+  mutate(root, (t) => t.replace('check-retained-corpus-summary.mjs --shards 8 ', 'check-retained-corpus-summary.mjs --shards 7 ').replace('--shards 8 --index', '--shards 4 --index'));
   const failures = audit(root);
   assert.ok(failures.some((f) => f.includes('--shards must equal the matrix size')));
   assert.ok(failures.some((f) => f.includes('exactly the matrix')));
@@ -194,3 +194,18 @@ test('a browser corpus that can fail the run is reported', (context) => {
   assert.ok(audit(root).some((f) => f.includes('browser-corpus must exist and stay report-only')));
 });
 
+
+test('a script the lane runs, or one it imports, must be able to trigger it', (context) => {
+  const direct = copyTree(context);
+  mutate(direct, (t) => t.replaceAll("      - 'scripts/check-native-adapter-triggers.mjs'\n", ''));
+  assert.ok(audit(direct).some((f) => f.includes('scripts/check-native-adapter-triggers.mjs is run by')));
+  const imported = copyTree(context);
+  mutate(imported, (t) => t.replaceAll("      - 'scripts/lib/ci-path-coverage.mjs'\n", ''));
+  assert.ok(audit(imported).some((f) => f.includes('scripts/lib/ci-path-coverage.mjs is run by')));
+});
+
+test('a browser corpus job that does not fetch the corpus is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace(/      # The models the product table names come from the fetch, not the checkout.\n      - name: Download the corpus\n        run: pnpm fixtures\n/, ''));
+  assert.ok(audit(root).some((f) => f.includes('browser-corpus must download the corpus')));
+});

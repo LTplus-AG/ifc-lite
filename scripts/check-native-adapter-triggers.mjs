@@ -241,6 +241,24 @@ export function audit(root) {
     }
   }
 
+  if (pr) {
+    // Every script the lane runs, and what those scripts import, must be able to trigger it.
+    const queue = [...new Set([...text.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))];
+    const seen = new Set();
+    while (queue.length > 0) {
+      const script = queue.pop();
+      if (seen.has(script)) continue;
+      seen.add(script);
+      if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
+      if (!existsSync(join(root, script))) continue;
+      for (const m of readFileSync(join(root, script), 'utf8').matchAll(/from '(\.{1,2}\/[^']+\.mjs)'/g)) {
+        const next = posix.normalize(posix.join(posix.dirname(script), m[1]));
+        if (next.startsWith('scripts/')) queue.push(next);
+      }
+    }
+  }
+  const browser = jobBlock(text, 'browser-corpus');
+  if (browser !== null && !/pnpm fixtures[\s\S]*browser\.mjs/.test(browser)) failures.push(`${WORKFLOW}: browser-corpus must download the corpus (pnpm fixtures) before comparing; the checkout does not hold the models`);
   failures.push(...corpusJobProblems(text));
   if (!/^ {2}report-scheduled-failure:/m.test(text)) failures.push(`${WORKFLOW}: no report-scheduled-failure job for a failing nightly run`);
   return failures;

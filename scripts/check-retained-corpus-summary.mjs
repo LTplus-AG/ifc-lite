@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export function corpusFindings(summary, { reportViolations = false } = {}) {
-  if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return { problems: ['INCOMPLETE: summary.json is not an object'], warnings: [] };
+  if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return { problems: ['INCOMPLETE: summary.json is not an object -- the shard wrote a malformed summary; re-run that shard'], warnings: [] };
   const problems = [];
   const warnings = [];
   if (summary.complete !== true) problems.push('INCOMPLETE: the run is not marked complete (timeout or crash; not a parity result) -- read the comparison step log of the shard, then re-run the failed shard; if it timed out again, the shard needs a larger budget or fewer/lighter models');
@@ -36,7 +36,7 @@ export function corpusFindings(summary, { reportViolations = false } = {}) {
     else if (summary[key].length > 0) {
       const remedy = {
         violations: 'open the named model in products.tsv and compare its retained and exact rows; report-only until a baseline exists',
-        universeMismatch: 'the named model\'s exact and retained product sets differ; check the candidate/outcome rows for that model before trusting its parity',
+        universeMismatch: 'inspect the named model: an exact product with no retained candidate, a duplicate outcome, or products the scheduler never covered; do not trust that model\'s parity until resolved',
         skipped: 'a corpus model is absent from the checkout; re-run the download step (pnpm fixtures) and check the manifest',
       }[key];
       const line = `PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')} -- ${remedy}`;
@@ -61,11 +61,11 @@ if (isMainEntry(import.meta.url)) {
   if (args.length === 0 || (expected !== null && !Number.isInteger(expected))) { console.error('Usage: check-retained-corpus-summary.mjs [--shards N] [--report-violations] <summary.json>...'); process.exit(2); }
   const problems = [];
   const warnings = [];
-  if (expected !== null && args.length !== expected) problems.push(`INCOMPLETE: expected ${expected} shard summaries, got ${args.length}`);
+  if (expected !== null && args.length !== expected) problems.push(`INCOMPLETE: expected ${expected} shard summaries, got ${args.length} -- find the shard whose artifact is missing (it failed before writing a summary, usually a timeout) and re-run it`);
   for (const file of args) {
     let found;
     try { found = corpusFindings(JSON.parse(readFileSync(file, 'utf8')), { reportViolations }); }
-    catch (error) { found = { problems: [`INCOMPLETE: cannot read ${file}: ${error.message}`], warnings: [] }; }
+    catch (error) { found = { problems: [`INCOMPLETE: cannot read ${file}: ${error.message} -- check that the shard uploaded its artifact and that the download path matches, then re-run the shard`], warnings: [] }; }
     const label = (p) => (args.length > 1 ? `${file}: ${p}` : p);
     problems.push(...found.problems.map(label));
     warnings.push(...found.warnings.map(label));

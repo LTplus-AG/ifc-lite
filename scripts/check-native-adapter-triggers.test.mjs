@@ -144,7 +144,7 @@ const realWorkflow = () => readFileSync(join(REPO, WORKFLOW), 'utf8');
 test('the real corpus job is its own sharded, bounded, judged job', () => {
   const text = realWorkflow();
   assert.deepEqual(corpusJobProblems(text), []);
-  assert.ok(jobBlock(text, 'native-corpus-result').includes('--shards 8'));
+  assert.notEqual(jobBlock(text, 'native-corpus-result'), null);
 });
 
 test('running the corpus inside native-adapter again is reported', (context) => {
@@ -224,4 +224,12 @@ test('an if: always() on an earlier step does not satisfy the judge-step check',
     .replace('      - name: Download the corpus\n        run: pnpm fixtures\n      - name: Select', '      - name: Download the corpus\n        if: always()\n        run: pnpm fixtures\n      - name: Select')
     .replace('      - name: Judge this shard\n        if: always()\n', '      - name: Judge this shard\n'));
   assert.ok(audit(root).some((f) => f.includes('if: always() step')));
+});
+
+test('an unreadable matrix reports the real cause once, without a size-0 remedy', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace(/        shard: \[[0-9, ]+\]\n/, `        shard: \${{ fromJSON('[0,1]') }}\n`));
+  const failures = audit(root);
+  assert.ok(failures.some((f) => f.includes('matrix shard must list 0..N-1')));
+  assert.ok(!failures.some((f) => f.includes('(0)') || f.includes('exactly the matrix\'s 0')), failures.join('\n'));
 });

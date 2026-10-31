@@ -171,7 +171,7 @@ export function corpusJobProblems(text) {
   const shards = matrix ? matrix[1].split(',').map((s) => Number(s.trim())) : [];
   if (shards.length === 0 || shards.some((s, i) => s !== i)) out.push(`${WORKFLOW}: native-corpus matrix shard must list 0..N-1 in order`);
   const select = corpus.match(/corpus-shards\.mjs shard [^\n]*--shards (\d+)/);
-  if (!select || Number(select[1]) !== shards.length) out.push(`${WORKFLOW}: the shard selection step's --shards must equal the matrix size (${shards.length})`);
+  if (shards.length > 0 && (!select || Number(select[1]) !== shards.length)) out.push(`${WORKFLOW}: the shard selection step's --shards must equal the matrix size (${shards.length})`);
   const compare = corpus.match(/id: compare\n([\s\S]*?)\n {6}(?:# |- )/);
   if (!compare || !/^ {8}continue-on-error: true[ \t]*$/m.test(compare[1]) || !/^ {8}timeout-minutes: \d+[ \t]*$/m.test(compare[1])) {
     out.push(`${WORKFLOW}: the corpus comparison step needs continue-on-error and its own timeout-minutes so a timeout is judged, not fatal`);
@@ -184,7 +184,7 @@ export function corpusJobProblems(text) {
     if (!/^ {4}needs: \[native-corpus\]\s*$/m.test(result)) out.push(`${WORKFLOW}: native-corpus-result must need native-corpus`);
     if (!/^ {4}if: always\(\) && /m.test(result)) out.push(`${WORKFLOW}: native-corpus-result must run if: always() so a failed shard still reports`);
     const agg = result.match(/check-retained-corpus-summary\.mjs --shards (\d+) --report-violations /);
-    if (!agg || Number(agg[1]) !== shards.length) out.push(`${WORKFLOW}: native-corpus-result must require exactly the matrix's ${shards.length} shard summaries`);
+    if (shards.length > 0 && (!agg || Number(agg[1]) !== shards.length)) out.push(`${WORKFLOW}: native-corpus-result must require exactly the matrix's ${shards.length} shard summaries`);
     if (!/\[\[ "\$SHARDS_RESULT" == success \]\]/.test(result)) out.push(`${WORKFLOW}: native-corpus-result must fail when the matrix result is not success`);
   }
   const reporter = jobBlock(text, 'report-scheduled-failure');

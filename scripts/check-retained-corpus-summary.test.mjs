@@ -79,8 +79,21 @@ test('the CLI flag makes a complete run with violations pass with a warning, an 
 
 test('each failure class names a remedy that matches its finding', () => {
   assert.match(corpusProblems({ ...ok, complete: false }).join(), /INCOMPLETE.*re-run the failed shard/);
-  assert.match(corpusProblems({ ...ok, universeMismatch: ['m'] }).join(), /exact and retained product sets differ/);
+  assert.match(corpusProblems({ ...ok, universeMismatch: ['m'] }).join(), /duplicate outcome/);
+  assert.match(corpusProblems([]).join(), /re-run that shard/);
   assert.match(corpusProblems({ ...ok, skipped: ['m'] }).join(), /pnpm fixtures/);
   assert.match(corpusProblems({ ...ok, violations: ['m'] }).join(), /products\.tsv/);
   assert.match(corpusProblems({ complete: true }).join(), /truncated or from a different tool version/);
+});
+
+test('count and read failures name their remedy in the CLI output', (context) => {
+  const dir = mkdtempSync(join(tmpdir(), 'corpus-summary-remedy-'));
+  context.after(() => rmSync(dir, { recursive: true, force: true }));
+  const script = join(import.meta.dirname, 'check-retained-corpus-summary.mjs');
+  const a = join(dir, 'a.json');
+  writeFileSync(a, JSON.stringify(ok));
+  const missing = spawnSync(process.execPath, [script, '--shards', '2', a], { encoding: 'utf8' });
+  assert.match(missing.stderr, /shard whose artifact is missing/);
+  const unreadable = spawnSync(process.execPath, [script, join(dir, 'nope.json')], { encoding: 'utf8' });
+  assert.match(unreadable.stderr, /uploaded its artifact/);
 });

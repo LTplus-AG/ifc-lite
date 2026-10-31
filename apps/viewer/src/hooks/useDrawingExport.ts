@@ -1093,8 +1093,7 @@ function useDrawingExport({
         const styledPolygons = styleCutPolygons(
           drawing.cutPolygons.filter((polygon) => polygon.polygon.outer.length >= 2),
           styleContext,
-          (polygon) => [polygon.polygon.outer, ...polygon.polygon.holes]
-            .filter((ring) => ring.length >= 2)
+          (polygon) => [polygon.polygon.outer, ...polygon.polygon.holes.filter((ring) => ring.length >= 2)]
             .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
         );
         const tracePath = (rings: { x: number; y: number }[][]) => {

@@ -20,6 +20,7 @@ import { GraphicOverrideEngine, type Drawing2D, type GraphicOverrideRule } from 
 import useDrawingExport from './useDrawingExport.js';
 import { pdfColor } from '@/lib/export/pdf-color';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
+import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
 function buildDrawing(polygonColor?: [number, number, number, number], noOuter = false): Drawing2D {
@@ -102,7 +103,7 @@ function Harness({ format, options, onReady }: { format: Format; options: Export
 }
 
 /** Run the real export and return the downloaded file as latin1 text. A
- *  failed export rejects with its journal detail instead of hanging. */
+ *  failed export throws its journal detail instead of hanging. */
 async function exportFile(format: Format, options: ExportOptions = {}): Promise<string> {
   useActivityJournal.setState({ jobs: [] });
   const container = document.createElement('div');
@@ -110,30 +111,22 @@ async function exportFile(format: Format, options: ExportOptions = {}): Promise<
   let root: Root | null = null;
   let exportFn: (() => void) | null = null;
   const originalCreate = URL.createObjectURL;
-  let resolveFile!: (blob: Blob) => void;
-  const file = new Promise<Blob>((resolve) => { resolveFile = resolve; });
+  let blob: Blob | null = null;
   URL.createObjectURL = function (obj: Blob | MediaSource): string {
-    if (obj instanceof Blob && obj.type === MIME[format]) resolveFile(obj);
+    if (obj instanceof Blob && obj.type === MIME[format]) blob = obj;
     return originalCreate.call(URL, obj);
   };
-  const failed = (async (): Promise<never> => {
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      const job = useActivityJournal.getState().jobs.find((j) => j.outcome === 'failed');
-      if (job) throw new Error(`export failed: ${job.detail}`);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    throw new Error('export produced no file within 10 s');
-  })();
-  failed.catch(() => {});
+  const failedJob = () => useActivityJournal.getState().jobs.find((j) => j.outcome === 'failed');
   try {
     await act(async () => {
       root = createRoot(container);
       root.render(<Harness format={format} options={options} onReady={(fn) => { exportFn = fn; }} />);
     });
-    let blob!: Blob;
-    await act(async () => { exportFn!(); blob = await Promise.race([file, failed]); });
-    return Buffer.from(await blob.arrayBuffer()).toString('latin1');
+    await act(async () => { exportFn!(); });
+    await waitFor(() => blob !== null || failedJob() !== undefined, `the ${format} export finished`);
+    const job = failedJob();
+    if (job) throw new Error(`export failed: ${job.detail}`);
+    return Buffer.from(await (blob as unknown as Blob).arrayBuffer()).toString('latin1');
   } finally {
     URL.createObjectURL = originalCreate;
     if (root) await act(async () => { (root as Root).unmount(); });

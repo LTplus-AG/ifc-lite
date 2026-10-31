@@ -83,6 +83,8 @@ test('native binaries are detected by content, not name', () => {
   assert.equal(binaryKind(Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1])), 'ELF');
   assert.equal(binaryKind(Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 7, 0])), 'Mach-O');
   assert.equal(binaryKind(Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0])), 'Mach-O');
+  assert.equal(binaryKind(Buffer.from([0xbe, 0xba, 0xfe, 0xca, 0, 0])), 'Mach-O', 'FAT_CIGAM universal binary');
+  assert.equal(binaryKind(Buffer.from([0xbf, 0xba, 0xfe, 0xca, 0, 0])), 'Mach-O', 'FAT_CIGAM_64');
   const pe = Buffer.alloc(0x100); pe.write('MZ'); pe.writeUInt32LE(0x80, 0x3c); pe.write('PE\0\0', 0x80, 'latin1');
   assert.equal(binaryKind(pe), 'PE');
   assert.equal(binaryKind(Buffer.from('MZ is not a PE header and neither is this text, padded to be long enough........')), null);
@@ -104,6 +106,9 @@ test('wheel selection matches the local CPython tag and arch', () => {
   assert.match(selectWheel(files, { python: [3, 12], arch: 'x86_64' }), /x86_64/);
   assert.match(selectWheel(files, { python: [3, 9], arch: 'aarch64' }), /aarch64/);
   assert.equal(selectWheel(files, { python: [3, 8], arch: 'x86_64' }), null, 'abi3 floor is 3.9');
+  const mixed = ['p-1-cp310-cp310-manylinux_2_17_x86_64.whl', 'p-1-cp311-cp311-manylinux_2_17_x86_64.whl'];
+  assert.equal(selectWheel(mixed, { python: [3, 11], arch: 'x86_64' }), mixed[1], 'cp310 listed first must not be chosen on 3.11');
+  assert.equal(selectWheel(mixed.slice(0, 1), { python: [3, 11], arch: 'x86_64' }), null, 'no compatible wheel is null, never a mismatched one');
   const exact = ['p-1-cp311-cp311-manylinux_2_17_x86_64.whl'];
   assert.equal(selectWheel(exact, { python: [3, 12], arch: 'x86_64' }), null);
   assert.equal(selectWheel(exact, { python: [3, 11], arch: 'x86_64' }), exact[0]);

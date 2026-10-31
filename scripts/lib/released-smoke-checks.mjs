@@ -105,8 +105,9 @@ export function binaryKind(buffer) {
   if (buffer.length >= 4) {
     const magic = buffer.readUInt32BE(0);
     if (magic === 0x7f454c46) return 'ELF';
-    // Mach-O thin (both endians) and fat/universal (0xcafebabe also prefixes Java classes: flag, none expected here).
-    if ([0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe].includes(magic)) return 'Mach-O';
+    // Mach-O thin (both endians) and fat/universal in both byte orders, 32- and 64-bit offsets
+    // (FAT_MAGIC 0xcafebabe also prefixes Java classes: flag it, none are expected here).
+    if ([0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe, 0xbebafeca, 0xcafebabf, 0xbfbafeca].includes(magic)) return 'Mach-O';
   }
   if (buffer.length >= 0x40 && buffer[0] === 0x4d && buffer[1] === 0x5a) {
     const offset = buffer.readUInt32LE(0x3c);

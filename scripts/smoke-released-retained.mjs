@@ -294,13 +294,15 @@ fn main() {
     // ---- Python wheel ----------------------------------------------------------------------
     await step('python-wheel', async () => {
       if (options.wheel === 'skip') return { skip: '--wheel skip' };
-      if (process.platform !== 'linux') return { skip: `wheel import check is linux-only (host ${process.platform})` };
+      // An explicitly requested wheel version that cannot be checked here is a failure, never a skip.
+      const unavailable = (reason) => (options.wheel === 'latest' ? { skip: reason } : { fail: `requested wheel ${options.wheel} not checked: ${reason}` });
+      if (process.platform !== 'linux') return unavailable(`wheel import check is linux-only (host ${process.platform})`);
       const response = await fetch(options.wheel === 'latest' ? 'https://pypi.org/pypi/ifclite-geom/json' : `https://pypi.org/pypi/ifclite-geom/${options.wheel}/json`);
       if (!response.ok) return { fail: `PyPI lookup HTTP ${response.status}` };
       const release = await response.json();
       const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
       const py = run('python3', ['-I', '-c', 'import sys; print(sys.version_info[0], sys.version_info[1])'], { cwd: work, env });
-      if (!py.ok) return { skip: `python3 unavailable: ${tail(py, 200)}` };
+      if (!py.ok) return unavailable(`python3 unavailable: ${tail(py, 200)}`);
       const python = py.stdout.trim().split(' ').map(Number);
       const wanted = selectWheel(release.urls.filter((u) => u.packagetype === 'bdist_wheel').map((u) => u.filename), { python, arch });
       const file = release.urls.find((u) => u.filename === wanted);

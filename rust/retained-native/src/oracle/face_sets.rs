@@ -237,8 +237,6 @@ mod tests {
         assert_eq!(deviation(&warped, &positions, &[], &[]).missing_rows, 1, "the whole row dropped");
     }
 
-    }
-
     #[test]
     fn issue_8291_uv_oracle_observes_a_wrong_corner_and_a_mirrored_map() {
         let row = Row { points: vec![[0., 0., 0.], [2., 0., 0.], [0., 4., 0.]], outer: 3, area_m2: Some(4.) };

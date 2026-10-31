@@ -17,7 +17,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GraphicOverrideEngine, type Drawing2D, type GraphicOverrideRule } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
-import { pdfColor } from './cutPolygonStyle.js';
+import { pdfColor } from '@/lib/export/pdf-color';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
@@ -114,15 +114,8 @@ async function exportPdf(options: ExportOptions = {}): Promise<string> {
       root = createRoot(container);
       root.render(<Harness options={options} onReady={(fn) => { exportFn = fn; }} />);
     });
-    let blob: Blob | null = null;
-    await act(async () => {
-      exportFn!();
-      blob = await pdfBlob;
-    });
-    const bytes = new Uint8Array(await (blob as unknown as Blob).arrayBuffer());
-    let text = '';
-    for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
-    return text;
+    await act(async () => { exportFn!(); await pdfBlob; });
+    return Buffer.from(await (await pdfBlob).arrayBuffer()).toString('latin1');
   } finally {
     URL.createObjectURL = originalCreate;
     if (root) await act(async () => { (root as Root).unmount(); });

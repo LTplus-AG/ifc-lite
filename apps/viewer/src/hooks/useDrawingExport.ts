@@ -41,7 +41,8 @@ import { downloadDxf } from '@/hooks/dxfDownload';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
-import { pdfColor, resolveCutPolygonStyle, type CutPolygonStyleContext } from '@/hooks/cutPolygonStyle';
+import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
+import { pdfColor } from '@/lib/export/pdf-color';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
@@ -303,13 +304,13 @@ function useDrawingExport({
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // One properties cache per export, shared by every cut polygon it styles.
-  const cutPolygonStyleContext = (): CutPolygonStyleContext => ({
-    activePresetId,
+  const cutPolygonStyleContext = useCallback((): CutPolygonStyleContext => ({
+    useIfcMaterials: activePresetId === 'preset-3d-colors',
     entityColorMap,
     overridesEnabled,
     overrideEngine,
     getElementProperties: makePropertiesGetter(storeModels, ifcDataStore),
-  });
+  }), [activePresetId, entityColorMap, overridesEnabled, overrideEngine, storeModels, ifcDataStore]);
 
   // Generate SVG that matches the canvas rendering exactly
   const generateExportSVG = useCallback((): string | null => {
@@ -396,20 +397,16 @@ function useDrawingExport({
     );
 
     // 1. FILL CUT POLYGONS (with color from IFC materials or override engine)
-    const styledPolygons = drawing.cutPolygons.map((polygon) => ({
-      polygon,
-      style: resolveCutPolygonStyle(polygon, styleContext),
-      pathData: polygonToPath(polygon.polygon),
-    }));
+    const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
     svg += '  <g id="polygon-fills">\n';
-    for (const { polygon, style: { fillColor, fillOpacity }, pathData } of styledPolygons) {
+    for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       svg += `    <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
     }
     svg += '  </g>\n';
 
     // 2. STROKE CUT POLYGON OUTLINES (with color from override engine)
     svg += '  <g id="polygon-outlines">\n';
-    for (const { polygon, style: { strokeColor, lineWeight }, pathData } of styledPolygons) {
+    for (const { polygon, style: { strokeColor, lineWeight }, geometry: pathData } of styledPolygons) {
       // Convert line weight (mm on paper) to model units
       const svgLineWeight = mmToModel(lineWeight);
       svg += `    <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" data-entity-id="${polygon.entityId}"/>\n`;
@@ -618,7 +615,7 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection, ifcDataStore, storeModels]);
+  }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection, ifcDataStore, storeModels]);
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
@@ -734,13 +731,9 @@ function useDrawingExport({
     );
 
     // Render polygon fills
-    const styledPolygons = drawing.cutPolygons.map((polygon) => ({
-      polygon,
-      style: resolveCutPolygonStyle(polygon, styleContext),
-      pathData: polygonToPath(polygon.polygon),
-    }));
+    const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
     svg += '    <g id="polygon-fills">\n';
-    for (const { polygon, style: { fillColor, fillOpacity }, pathData } of styledPolygons) {
+    for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (pathData) {
         svg += `      <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
       }
@@ -749,7 +742,7 @@ function useDrawingExport({
 
     // Render polygon outlines
     svg += '    <g id="polygon-outlines">\n';
-    for (const { polygon, style: { strokeColor, lineWeight }, pathData } of styledPolygons) {
+    for (const { polygon, style: { strokeColor, lineWeight }, geometry: pathData } of styledPolygons) {
       if (pathData) {
         // lineWeight is in mm on paper
         const svgLineWeight = lineWeight * 0.3; // Scale down for better appearance
@@ -852,7 +845,7 @@ function useDrawingExport({
     // identity when the axis changes, and the canvas rewrote the cache on
     // every fresh draw — neither of which this callback controls.
     // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
-  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection, sectionPlane.axis, isPinned, ifcDataStore, storeModels]);
+  }, [drawing, activeSheet, displayOptions, cutPolygonStyleContext, dxfUnderlays, scanSection, sectionPlane.axis, isPinned, ifcDataStore, storeModels]);
   // Export SVG
   const handleExportSVG = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
@@ -1094,12 +1087,11 @@ function useDrawingExport({
 
         // Cut polygons: fills first (even-odd, so holes stay open), then
         // outlines on top, with the same colours as the SVG export.
-        const styledPolygons = drawing.cutPolygons.map((polygon) => ({
-          rings: [polygon.polygon.outer, ...polygon.polygon.holes]
+        const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (polygon) =>
+          [polygon.polygon.outer, ...polygon.polygon.holes]
             .filter((ring) => ring.length >= 2)
             .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-          style: resolveCutPolygonStyle(polygon, styleContext),
-        }));
+        ).filter(({ geometry }) => geometry.length > 0);
         const tracePath = (rings: { x: number; y: number }[][]) => {
           for (const ring of rings) {
             doc.moveTo(ring[0].x, ring[0].y);
@@ -1107,18 +1099,17 @@ function useDrawingExport({
             doc.close();
           }
         };
-        for (const { rings, style } of styledPolygons) {
+        for (const { geometry: rings, style } of styledPolygons) {
           const { hex, alpha } = pdfColor(style.fillColor);
           const opacity = Math.min(1, style.fillOpacity * alpha);
-          if (rings.length === 0 || !(opacity > 0)) continue;
+          if (!(opacity > 0)) continue;
           doc.setGState(new GState({ opacity }));
           doc.setFillColor(hex);
           tracePath(rings);
           doc.fillEvenOdd();
         }
         doc.setGState(new GState({ opacity: 1 }));
-        for (const { rings, style } of styledPolygons) {
-          if (rings.length === 0) continue;
+        for (const { geometry: rings, style } of styledPolygons) {
           doc.setDrawColor(pdfColor(style.strokeColor).hex);
           doc.setLineWidth(style.lineWeight);
           tracePath(rings);
@@ -1183,8 +1174,7 @@ function useDrawingExport({
     }).catch((err: unknown) => {
       toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
     });
-  }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, t,
-    activePresetId, entityColorMap, overridesEnabled, overrideEngine, storeModels, ifcDataStore]);
+  }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, cutPolygonStyleContext, t]);
 
   // Print handler
   const handlePrint = useCallback(() => {

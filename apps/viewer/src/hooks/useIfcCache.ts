@@ -342,15 +342,15 @@ export function useIfcCache() {
     cacheKey: string,
     dataStore: IfcDataStore,
     geometry: GeometryData,
-    sourceBuffer: ArrayBuffer,
+    sourceBuffer: ArrayBuffer | SharedArrayBuffer,
     fileName: string,
-    options: { persistSource?: boolean; lastModified?: number; fullSourceHash?: Promise<string | undefined> } = {}
+    options: { lastModified?: number; fullSourceHash?: Promise<string | undefined> } = {}
   ): Promise<void> => {
-    // `persistSource` (default true) is the classic <=150MB tier: the raw source
-    // is stored alongside the cache so lazy property/quantity accessors + re-export
-    // read it from IndexedDB. The mesh-only tier (150-400MB) passes false: the
-    // source is too big to persist, so it is omitted from IndexedDB and rehydrated
-    // from the freshly read buffer on re-open.
+    // The raw source is never persisted (cacheTier.ts `planCacheWrite`): on
+    // re-open the freshly read file buffer rehydrates the lazy accessors, so a
+    // stored copy would only be deserialized next to it. `sourceBuffer` is read
+    // for its length alone, which also lets it stay a SharedArrayBuffer (an
+    // IndexedDB value cannot be one).
     //
     // The header's full-file `xxhash64` is OMITTED (`omitSourceHash`) so a 400MB
     // cold-load write pays no full-file main-thread hash. The source-decoupled hit
@@ -359,9 +359,9 @@ export function useIfcCache() {
     // #7022, so the write never hashes the source a second time), both stored in
     // the IndexedDB record — distinct from the header hash and the key's spread
     // fingerprint. The loader re-validates a served hit against it (#4269).
-    const { persistSource = true, lastModified } = options;
+    const { lastModified } = options;
     try {
-      console.log(`[useIfcCache] Starting cache write for: ${fileName} (persistSource=${persistSource})`);
+      console.log(`[useIfcCache] Starting cache write for: ${fileName}`);
       const writer = new BinaryCacheWriter();
 
       // Adapt dataStore to cache format. `toCacheDataStore` is the package's
@@ -372,7 +372,7 @@ export function useIfcCache() {
       const cacheDataStore: CacheDataStore = toCacheDataStore(dataStore);
 
       console.log('[useIfcCache] Writing cache buffer...');
-      const cacheBuffer = await writer.write(cacheDataStore, geometry, sourceBuffer, {
+      const cacheBuffer = await writer.write(cacheDataStore, geometry, new Uint8Array(sourceBuffer), {
         includeGeometry: true, compressGeometryChunksInWorker: true,
         omitSourceHash: true,
       });
@@ -387,10 +387,10 @@ export function useIfcCache() {
         cacheBuffer,
         fileName,
         sourceBuffer.byteLength,
-        persistSource ? sourceBuffer : undefined,
+        undefined,
         { lastModified, fullSourceHash, sourceContentKey: dataStore.source.contentKey },
       );
-      console.log(`[useIfcCache] ✓ Cache saved successfully (${persistSource ? 'with' : 'without'} source, mtime=${lastModified ?? 'n/a'}, fullHash=${fullSourceHash ? 'yes' : 'no'})`);
+      console.log(`[useIfcCache] ✓ Cache saved successfully (mtime=${lastModified ?? 'n/a'}, fullHash=${fullSourceHash ? 'yes' : 'no'})`);
     } catch (err) {
       console.error('[useIfcCache] Failed to cache model:', err);
       console.error('[useIfcCache] Error stack:', err instanceof Error ? err.stack : 'No stack trace');

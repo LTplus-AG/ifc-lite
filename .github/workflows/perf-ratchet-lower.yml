@@ -114,7 +114,7 @@ jobs:
         run: rustup show
 
       - name: Cargo cache (native instructions)
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           prefix-key: perf-ratchet-native-ir
           shared-key: main
@@ -177,6 +177,11 @@ jobs:
             --measured-dir "$RUNNER_TEMP/perf-ratchet" \
             --changelog "$RUNNER_TEMP/perf-ratchet-changelog.md"
           cat "$RUNNER_TEMP/perf-ratchet-changelog.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # #7955: ceiling-only PRs skip Node guards' frontend/rust path filter.
+      # Exercise the post-lowering files before publishing the bot's proposal.
+      - name: Test lowered ceilings against evidence and ratchet mechanics
+        run: node --test scripts/perf-ratchet/*.test.mjs scripts/perf/frame-ratchet-evidence.test.mjs
 
       # The ceiling files as `lower` left them (lowered or not), so a run
       # without PERF_RATCHET_PAT still hands a maintainer the exact files to

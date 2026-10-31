@@ -4,6 +4,11 @@
 
 # Performance diagnosis kit
 
+## Retained qualification runners (#7955)
+
+Viewer first retained frame, built-CLI retained export, browser and native memory
+runners, report-only: [retained-qual.md](retained-qual.md).
+
 ## C4-14 independent levers (#8341)
 
 **Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item

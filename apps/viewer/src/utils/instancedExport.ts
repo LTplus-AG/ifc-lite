@@ -116,6 +116,6 @@ export function resolveInstancedExportGate(
     ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }
     : null;
   // An incomplete or shape-only retained model would export its partial meshes as the model (#7955).
-  const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(models);
+  const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(model && modelId ? new Map([[modelId, model]]) : models);
   return { instancedModelRange, canExport };
 }

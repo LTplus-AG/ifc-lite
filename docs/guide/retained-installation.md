@@ -137,5 +137,6 @@ A model the viewer holds from the retained kernel (`?kernel=retained`) exports t
 - **KMZ and the IFC5 output** are built from the held meshes and are refused while the retained model is incomplete
   or shape-only. IFC4 STEP export and IFC5 changes-only and geometry-disabled exports remain available.
 - **Unsectioned IFC (STEP), CSV and JSON** need no geometry kernel and work unchanged. Sectioned STEP export
-  rebuilds exact tessellation, including its outside test, and is refused for retained models. Turn off the
-  section planes to export unsectioned STEP, or reload with the exact kernel to export a section.
+  rebuilds exact tessellation, including its outside test, and is refused when an exported model is retained.
+  The IFC ribbon still opens the dialog with section planes visible: keep **Export Visible Only** off for
+  unsectioned STEP, or choose geometry-disabled IFC5. Reload with the exact kernel to export a section.

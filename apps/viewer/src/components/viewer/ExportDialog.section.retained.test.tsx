@@ -13,7 +13,7 @@ import { initSync } from '@ifc-lite/wasm';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { render, cleanup, click, advance } from '@/test/render';
+import { render, cleanup, click, advance, press } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import type { RetainedGeometrySummary } from '@/store/retainedGeometry';
 import { ExportDialog } from './ExportDialog';
@@ -72,3 +72,40 @@ it('control: retained unsectioned IFC4 still downloads with the section disabled
   for (let i = 0; i < 100 && !downloadedNames().length; i++) await advance(20);
   assert.equal(downloadedNames().length, 1, document.body.textContent ?? 'no download');
 });
+
+it('#8415: retained source STEP remains available with the section visible', async () => {
+  await setup(complete);
+  toggle('Export Visible Only');
+  click(button('Export'));
+  for (let i = 0; i < 100 && !downloadedNames().length; i++) await advance(20);
+  assert.equal(downloadedNames().length, 1, document.body.textContent ?? 'no download');
+});
+
+for (const merged of [false, true]) {
+  it(`#8415: a retained peer ${merged ? 'refuses merged section export' : 'does not block the selected exact section export'}`, async () => {
+    const exact = await setup(undefined);
+    const peer = { ...exact, ...fixtureModel('retained', { idOffset: 1_000_000 }), ifcDataStore: exact.ifcDataStore,
+      schemaVersion: 'IFC4' as const, retainedGeometry: { ...complete, completeness: 'incomplete' as const, published: 0 } };
+    act(() => useViewerStore.setState({ models: new Map([['m', exact], ['retained', peer]]),
+      sectionPlane: { ...useViewerStore.getState().sectionPlane, custom: { ...useViewerStore.getState().sectionPlane.custom!, distance: 4 } } }));
+    if (merged) {
+      const scope = [...document.querySelectorAll('[role="combobox"]')].find(el => el.textContent?.includes('Single Model'));
+      assert.ok(scope);
+      press(scope, 'ArrowDown'); await advance(10);
+      const option = [...document.querySelectorAll('[role="option"]')].find(el => el.textContent?.includes('Merged (All Models)'));
+      assert.ok(option);
+      click(option); await advance(10);
+    }
+    const planner = mock.method(GeometryProcessor.prototype, 'planSectionExport');
+    click(button('Export'));
+    for (let i = 0; i < 100 && !downloadedNames().length && !/Reload that model with the exact kernel/.test(document.body.textContent ?? ''); i++) await advance(20);
+    if (merged) {
+      assert.equal(planner.mock.callCount(), 0);
+      assert.deepEqual(downloadedNames(), []);
+      assert.match(document.body.textContent ?? '', /Reload that model with the exact kernel/);
+    } else {
+      assert.ok(planner.mock.callCount() > 0, 'the selected exact model reaches the real section planner');
+      assert.equal(downloadedNames().length, 1, document.body.textContent ?? 'no download');
+    }
+  });
+}

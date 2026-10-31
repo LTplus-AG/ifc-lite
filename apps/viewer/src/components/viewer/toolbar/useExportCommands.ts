@@ -31,7 +31,7 @@ import type { ExportSurface } from '@/lib/analytics-export-events';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 import type { TranslationKey } from '@/i18n';
 import {
-  hasRetainedSectionExport, hasRetainedGeometryModel, hasRetainedShapeOnlyModel, RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON,
+  hasRetainedGeometryModel, hasRetainedShapeOnlyModel, RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON,
 } from '@/store/retainedGeometry';
 
 export type { CsvExportType };
@@ -87,7 +87,6 @@ export function useExportCommands(surface: ExportSurface) {
   const hasChanges = totalChangeCount(useChangedModels()) > 0;
   const shapeOnly = useViewerStore((s) => hasRetainedShapeOnlyModel(s.models));
   const retained = useViewerStore((s) => hasRetainedGeometryModel(s.models));
-  const retainedSection = useViewerStore(hasRetainedSectionExport);
   const { exporters: extensionExporters, extensionExportRunning, runExtensionExporter } = useExtensionExporters(surface);
 
   /**
@@ -172,7 +171,7 @@ export function useExportCommands(surface: ExportSurface) {
   const commands = useMemo<ResolvedExportCommand[]>(
     () => EXPORT_COMMANDS.map((command) => shapeOnly && MESH_DERIVED_EXPORTS.has(command.id)
       ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
-      : (retained && EXACT_ONLY_EXPORTS.has(command.id)) || (retainedSection && command.id === 'ifc')
+      : retained && EXACT_ONLY_EXPORTS.has(command.id)
       ? { command, disabled: true, disabledReasonKey: RETAINED_EXACT_ONLY_REASON }
       : {
         command,
@@ -180,7 +179,7 @@ export function useExportCommands(surface: ExportSurface) {
           : command.requires === 'changes' ? !hasChanges
           : !canExport,
       }),
-    [ifcDataStore, canExport, hasChanges, shapeOnly, retained, retainedSection],
+    [ifcDataStore, canExport, hasChanges, shapeOnly, retained],
   );
 
   return {

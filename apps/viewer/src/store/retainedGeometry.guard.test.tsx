@@ -122,13 +122,14 @@ for (const retained of [false, true]) {
   });
 }
 
-// #8415: sectioned STEP re-meshes exactly, unlike ordinary source-based STEP export.
+// #8415: the dialog offers source STEP and property-only IFC5 even with a visible cut.
+// Its live submission guard refuses only sectioned STEP, so launch must stay available.
 for (const retained of [false, true]) {
-  it(`sectioned IFC launch ${retained ? 'refuses retained geometry' : 'keeps exact geometry available'}`, async () => {
+  it(`IFC dialog launch stays available with an active section (${retained ? 'retained' : 'exact'})`, async () => {
     await seed(retained);
     act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: true } }));
     render(<ExportProbe />);
-    assert.deepEqual(exportState('ifc'), { disabled: retained, reason: retained ? RETAINED_EXACT_ONLY_REASON : undefined });
+    assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined });
     act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: false }, inactiveSectionPlanes: [] }));
     assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined }, 'unsectioned STEP remains available');
   });

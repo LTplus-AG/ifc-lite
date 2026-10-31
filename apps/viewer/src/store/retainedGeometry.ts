@@ -79,9 +79,11 @@ export function hasRetainedShapeOnlyModel(models: ReadonlyMap<string, { retained
   return false;
 }
 
-/** Sectioned STEP rebuilds exact tessellation; reject it for a retained session (#8415). */
+/** Sectioned STEP rebuilds exact tessellation; reject retained models included in this export (#8415). */
 export function hasRetainedSectionExport(state: Parameters<typeof clippingSectionPlanes>[0] & {
   models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>;
-}): boolean {
-  return hasRetainedGeometryModel(state.models) && clippingSectionPlanes(state).length > 0;
+}, modelIds: Iterable<string>): boolean {
+  if (clippingSectionPlanes(state).length === 0) return false;
+  for (const id of modelIds) if (state.models.get(id)?.retainedGeometry) return true;
+  return false;
 }

@@ -28,3 +28,15 @@ it('control: a complete final retained model and a model without a retained summ
   assert.equal(gate(FINAL), true);
   assert.equal(gate(undefined), true);
 });
+
+// #8415: an unrelated retained model must not withhold the selected exact model's KMZ.
+it('scopes the KMZ refusal to the selected model in a mixed session', () => {
+  const models = new Map([
+    ['exact', { idOffset: 0, maxExpressId: 10 }],
+    ['retained', { idOffset: 1_000_000, maxExpressId: 10,
+      retainedGeometry: { ...FINAL, completeness: 'incomplete' as const, published: 0 } }],
+  ]);
+  assert.equal(resolveInstancedExportGate('exact', models).canExport, true);
+  assert.equal(resolveInstancedExportGate('retained', models).canExport, false);
+  assert.equal(resolveInstancedExportGate(undefined, models).canExport, false, 'an unresolved federated owner still refuses');
+});

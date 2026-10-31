@@ -682,6 +682,21 @@ const selection = (page: Page) => page.evaluate(() => {
   const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
   return { global: state.selectedEntityId, ref: state.selectedEntity };
 });
+/**
+ * A selection that survives a primary replacement must be this model's. `global` is the canonical id
+ * and `ref` is derived from it, so both are checked: a stale `global` whose ref resolved to null would
+ * pass a ref-only check.
+ */
+function expectNoStaleSelection(sel: { global: number | null; ref: { modelId: string; expressId: number } | null },
+  model: Identity, message: string) {
+  if (sel.global === null) {
+    expect(sel.ref, message).toBeNull();
+    return;
+  }
+  expect(model.globals, message).toContain(sel.global);
+  expect(sel.ref, message).toMatchObject({ modelId: model.id });
+  expect(model.locals, message).toContain(sel.ref?.expressId);
+}
 function expectCleanIdentity(model: Identity, published: number[]) {
   expect(model.foreign).toEqual([]);
   expect(model.unresolved).toEqual([]);
@@ -843,8 +858,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     expect(model.globals).toEqual(model.locals);
     expectCleanIdentity(model, published);
     expect(model.summary?.refused.map(p => p.expressId).sort((a, b) => a - b)).toEqual(rows.filter(p => p.status === 'refused').map(p => p.id));
-    const { ref } = await selection(page);
-    expect(ref === null || ref.modelId === model.id, 'no selection survives into a model that replaced its model').toBe(true);
+    expectNoStaleSelection(await selection(page), model, 'no selection survives into a model that replaced its model');
     await selectGlobal(page, published[0], { modelId: model.id, expressId: published[0] });
     await record('federation-replaced', { model: stable(model) });
   });
@@ -896,8 +910,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     expect(second.summary?.candidates).toBe(rows.length);
     expect(second.summary?.refused.map(p => p.expressId).sort((a, b) => a - b)).toEqual(rows.filter(p => p.status === 'refused').map(p => p.id));
     expect(second.globals, 'no mesh of the first model remains').toEqual(second.locals);
-    const { ref } = await selection(page);
-    expect(ref === null || ref.modelId === second.id).toBe(true);
+    expectNoStaleSelection(await selection(page), second, 'no selection survives into a model that replaced its model');
     await page.locator('[data-retained-chip]').click();
     await expect(page.locator('[data-retained-row]')).toHaveCount(second.summary!.refused.length);
     await record('primary-replaced', { first: stable(first), second: stable(second) });

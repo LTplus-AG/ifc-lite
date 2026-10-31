@@ -77,3 +77,38 @@ fn the_first_contour_never_moves() {
     snap_onto_earlier(&mut contours, 1e-3);
     assert_eq!(contours[0], first);
 }
+
+/// The ISSUE_129 #12381 shape the forward pass alone misses: the LATER
+/// footprint's flush edge runs past both ends of the earlier one, so none of
+/// its vertices is near; the earlier footprint's corners lie on it instead.
+fn overhung(gap: f64) -> Vec<Vec<Point2<f64>>> {
+    vec![rect(6.825, 16.0, 8.825, 16.57), rect(6.0, 16.57 + gap, 9.5, 17.08)]
+}
+
+#[test]
+fn the_forward_pass_alone_misses_an_overhanging_later_edge() {
+    let mut contours = overhung(1.2e-5);
+    let tau = noise_radius(&contours);
+    assert_eq!(snap_onto_earlier(&mut contours, tau), 0, "no later vertex is near");
+    assert_eq!(union_contours_to_shapes(&contours).len(), 2, "the strip stands");
+}
+
+#[test]
+fn reconcile_moves_the_earlier_corners_onto_an_overhanging_later_edge() {
+    let mut contours = overhung(1.2e-5);
+    assert_eq!(reconcile(&mut contours), 2, "the two near corners move");
+    assert_eq!(contours[1], overhung(1.2e-5)[1], "the later footprint stays");
+    let shapes = union_contours_to_shapes(&contours);
+    assert_eq!(shapes.len(), 1);
+    assert!(shapes[0].holes.is_empty());
+}
+
+#[test]
+fn the_reverse_pass_keeps_a_vertex_another_was_snapped_onto() {
+    // Forward: the later footprint's corner lands exactly on the earlier one's.
+    // Reverse: that earlier corner finds the copy at distance 0 and stays.
+    let mut contours = stacked(5e-6);
+    let first = contours[0].clone();
+    reconcile(&mut contours);
+    assert_eq!(contours[0], first);
+}

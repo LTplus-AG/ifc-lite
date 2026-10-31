@@ -84,11 +84,20 @@ pub(super) fn snap_onto_earlier(contours: &mut [Vec<Point2<f64>>], tau: f64) -> 
 /// interior (and farther than `tau` from both its ends), in order along the
 /// edge. Candidates are read from the contours as they stand on entry, so the
 /// result does not depend on which contour is split first. Returns how many
-/// vertices were added.
+/// vertices were added. Only contours whose bounds come within `tau` of each
+/// other are compared, so a cluster of many small footprints stays cheap.
 pub(super) fn close_t_junctions(contours: &mut [Vec<Point2<f64>>], tau: f64) -> usize {
     let before: Vec<Vec<Point2<f64>>> = contours.to_vec();
+    let bounds: Vec<[f64; 4]> = before.iter().map(|c| padded_bounds(c, tau)).collect();
     let mut added = 0;
     for (i, c) in contours.iter_mut().enumerate() {
+        let near: Vec<&Point2<f64>> = (0..before.len())
+            .filter(|&j| j != i && overlap(&bounds[i], &bounds[j]))
+            .flat_map(|j| &before[j])
+            .collect();
+        if near.is_empty() {
+            continue;
+        }
         let mut out = Vec::with_capacity(c.len());
         for k in 0..c.len() {
             let (a, b) = (c[k], c[(k + 1) % c.len()]);
@@ -99,7 +108,7 @@ pub(super) fn close_t_junctions(contours: &mut [Vec<Point2<f64>>], tau: f64) -> 
                 continue;
             }
             let mut hits: Vec<(f64, Point2<f64>)> = Vec::new();
-            for q in before.iter().enumerate().filter(|&(j, _)| j != i).flat_map(|(_, o)| o) {
+            for &q in &near {
                 if (q - a).norm() <= tau || (q - b).norm() <= tau {
                     continue;
                 }
@@ -116,6 +125,18 @@ pub(super) fn close_t_junctions(contours: &mut [Vec<Point2<f64>>], tau: f64) -> 
         *c = out;
     }
     added
+}
+
+/// `[min x, min y, max x, max y]` of `c`, grown by `pad` on every side.
+fn padded_bounds(c: &[Point2<f64>], pad: f64) -> [f64; 4] {
+    c.iter().fold(
+        [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY],
+        |b, p| [b[0].min(p.x - pad), b[1].min(p.y - pad), b[2].max(p.x + pad), b[3].max(p.y + pad)],
+    )
+}
+
+fn overlap(a: &[f64; 4], b: &[f64; 4]) -> bool {
+    a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
 }
 
 /// The nearest vertex of `contours` within `tau` of `p`, else the nearest edge

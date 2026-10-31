@@ -12,8 +12,9 @@
  *          properties (load-trace milestones), RAM + VRAM after opening
  *   warm   reload the page and open the same files again (IndexedDB cache
  *          filled): the same timings and memory
- *   orbit  a 20 s left-drag orbit after the warm open: rendered frames/s,
- *          per-pass GPU time (timestamp queries), CPU of every Chrome process
+ *   orbit  a 20 s left-drag orbit after the warm open and after post-load CPU
+ *          settles: rendered frames/s, per-pass GPU time (timestamp queries,
+ *          also in clock-normalized Mcycles), CPU of every Chrome process
  *
  * Builds are compared base/branch, interleaved per round (ABBA), never
  * against a recorded number. Not a CI gate; run it under exclusive benchmark
@@ -32,7 +33,7 @@
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -238,7 +239,34 @@ async function sampleMemory(page, profileDir) {
   return { ...memoryOf(pids), vramMiB: vramOf(pids), rendererGpu: stats?.gpu ?? null, rendererCpu: stats?.cpuBytes ?? null, adapter: stats?.adapter ?? null };
 }
 
+/** Wait for post-load background work (cache writes, source compaction) to end; returns its CPU seconds. */
+async function settleCpu(profileDir, quietCores = 0.5, timeoutMs = 60_000) {
+  const pids = chromePids(profileDir);
+  const start = Date.now(), ticks0 = cpuTicks(pids);
+  let last = ticks0, quiet = 0;
+  while (quiet < 3 && Date.now() - start < timeoutMs) {
+    await new Promise((res) => setTimeout(res, 500));
+    const now = cpuTicks(pids);
+    quiet = (now - last) / TICK / 0.5 < quietCores ? quiet + 1 : 0;
+    last = now;
+  }
+  return { cpuSeconds: (last - ticks0) / TICK, wallMs: Date.now() - start };
+}
+
+/** Sample the graphics clock during `fn`. Timer queries move with DVFS, so ms alone do not compare across runs. */
+async function withGpuClock(fn) {
+  const child = spawn('nvidia-smi', ['--query-gpu=clocks.gr', '--format=csv,noheader,nounits', '-lms', '250'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let text = '';
+  child.stdout.on('data', (d) => { text += d; });
+  child.on('error', () => {});
+  try { return { result: await fn(), mhz: () => {
+    const v = text.split('\n').map(Number).filter((n) => n > 0);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  } }; } finally { child.kill(); }
+}
+
 async function orbit(page, profileDir) {
+  const settle = await settleCpu(profileDir);
   const box = await page.locator('canvas').first().boundingBox();
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2, r = Math.min(box.width, box.height) * 0.2;
   await page.mouse.move(cx + r, cy);
@@ -247,14 +275,16 @@ async function orbit(page, profileDir) {
   const before = await page.evaluate(() => ({ frames: globalThis.__benchFrames ?? 0, now: performance.now(),
     gpu: globalThis.__ifc_lite_render_stats__?.().gpuTiming?.sampled ?? 0 }));
   const ticks0 = cpuTicks(pids), wall0 = Date.now();
-  await page.mouse.down();
-  // Continuous drag: one move per ~8 ms; a full horizontal sweep plus a gentle vertical wobble.
-  while (Date.now() - wall0 < ORBIT_MS) {
-    const p = (Date.now() - wall0) / ORBIT_MS;
-    await page.mouse.move(cx + r * Math.cos(p * 6 * Math.PI), cy + r * 0.3 * Math.sin(p * 4 * Math.PI));
-    await new Promise((res) => setTimeout(res, 8));
-  }
-  await page.mouse.up();
+  const clock = await withGpuClock(async () => {
+    await page.mouse.down();
+    // Continuous drag: one move per ~8 ms; a full horizontal sweep plus a gentle vertical wobble.
+    while (Date.now() - wall0 < ORBIT_MS) {
+      const p = (Date.now() - wall0) / ORBIT_MS;
+      await page.mouse.move(cx + r * Math.cos(p * 6 * Math.PI), cy + r * 0.3 * Math.sin(p * 4 * Math.PI));
+      await new Promise((res) => setTimeout(res, 8));
+    }
+    await page.mouse.up();
+  });
   const wallMs = Date.now() - wall0, ticks1 = cpuTicks(pids);
   const after = await page.evaluate((startNow) => {
     const timing = globalThis.__ifc_lite_render_stats__?.().gpuTiming ?? null;
@@ -274,9 +304,12 @@ async function orbit(page, profileDir) {
     gpuMsP50: pct(totals, 50), gpuMsP95: pct(totals, 95),
     gpuPassMsMean: Object.fromEntries(Object.entries(perPass).map(([k, v]) => [k, v.reduce((a, b) => a + b, 0) / v.length])),
     cpuCores: (ticks1 - ticks0) / TICK / (wallMs / 1000),
+    settleCpuSeconds: settle.cpuSeconds,
+    gpuClockMHz: clock.mhz(),
   };
+  res.gpuMcyclesMean = res.gpuMsMean !== null && res.gpuClockMHz ? (res.gpuMsMean * res.gpuClockMHz) / 1000 : null;
   res.cpuMsPerFrame = res.fps > 0 ? (res.cpuCores * 1000) / res.fps : null;
-  log(`  orbit: ${res.fps.toFixed(1)} fps, GPU mean ${fmt(res.gpuMsMean, 2)} ms (p95 ${fmt(res.gpuMsP95, 2)}), CPU ${res.cpuCores.toFixed(2)} cores (${fmt(res.cpuMsPerFrame, 1)} ms/frame)`);
+  log(`  orbit: ${res.fps.toFixed(1)} fps, GPU mean ${fmt(res.gpuMsMean, 2)} ms (p95 ${fmt(res.gpuMsP95, 2)}) at ${fmt(res.gpuClockMHz)} MHz = ${fmt(res.gpuMcyclesMean, 2)} Mcycles, settle ${fmt(res.settleCpuSeconds, 1)} CPU-s, CPU ${res.cpuCores.toFixed(2)} cores (${fmt(res.cpuMsPerFrame, 1)} ms/frame)`);
   return res;
 }
 
@@ -352,7 +385,7 @@ const METRICS = [
   ['cold PSS MiB', (s) => s.cold?.memory?.pssMiB], ['cold VRAM MiB', (s) => s.cold?.memory?.vramMiB],
   ['warm first frame ms', (s) => s.warm?.firstFrameMs], ['warm geometry ms', (s) => s.warm?.geometryMs], ['warm props ms', (s) => s.warm?.propsMs],
   ['warm PSS MiB', (s) => s.warm?.memory?.pssMiB], ['warm VRAM MiB', (s) => s.warm?.memory?.vramMiB],
-  ['orbit fps', (s) => s.orbit?.fps], ['orbit GPU ms mean', (s) => s.orbit?.gpuMsMean], ['orbit CPU cores', (s) => s.orbit?.cpuCores],
+  ['orbit fps', (s) => s.orbit?.fps], ['orbit GPU ms mean', (s) => s.orbit?.gpuMsMean], ['orbit GPU Mcycles', (s) => s.orbit?.gpuMcyclesMean], ['post-load CPU-s', (s) => s.orbit?.settleCpuSeconds], ['orbit CPU cores', (s) => s.orbit?.cpuCores],
   ['orbit CPU ms/frame', (s) => s.orbit?.cpuMsPerFrame],
 ];
 const summary = {};
@@ -363,7 +396,7 @@ for (const set of SETS) {
     const vals = BUILDS.map((b) => median(samples.filter((s) => s.build === b.id && s.set === set.name && !s.error).map(get)));
     if (vals.every((v) => v === null)) continue;
     (summary[set.name] ??= {})[name] = Object.fromEntries(BUILDS.map((b, i) => [b.id, vals[i]]));
-    const digits = name.includes('GPU') || name.includes('cores') ? 2 : 0;
+    const digits = name.includes('GPU') || name.includes('cores') || name.includes('CPU-s') ? 2 : 0;
     const cells = vals.map((v, i) => i ? `${fmt(v, digits)} | ${vals[0] && v !== null ? (v / vals[0]).toFixed(2) : 'n/a'}` : fmt(v, digits));
     lines.push(`| ${set.name} | ${name} | ${cells.join(' | ')} |`);
   }

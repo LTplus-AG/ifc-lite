@@ -24,14 +24,28 @@ and restored witnesses green. The original real-fixtures helper oracle also
 remains OBSERVED. Post-commit pre-handoff uses explicit main SHA
 `92a277622e397c130b83cc15d509bb24a64d66d4`.
 
-An additional actual-run validation request is queued on Pop:
+Actual Pop validation ran on source `51934e40da`, request
 `auto-724446bdd4c54d428175efdf95605ee0`, job
-`195eba8d-5546-43bf-874a-01bdf2aa4dfc`, tested source `51934e40da`.
-It will check full CLI/viewer logs, then require successful Playwright grep and
-partial-shard runs and a successful filtered CLI run to FAIL the witness gate.
-These runtime results are pending, not claimed as observed. Runtime source is
-checked against the previously qualified `c9b69f3a01` engine; only tests, CI and
-evidence changed. The supplied private Cargo target is deleted on exit.
+`195eba8d-5546-43bf-874a-01bdf2aa4dfc`:
+
+- Three CLI tests pass with no skips; the gate observes all five CLI records.
+- All eighteen viewer tests pass; the gate observes all seven viewer records.
+- A successful Playwright `--grep 'a real ArchiCAD export'` run emits one
+  record, and the gate exits 1 naming the six missing viewer records.
+- The first shard experiment was incorrectly constructed: with the repository's
+  `fullyParallel: false`, Playwright shards by file and shard 1 ran all seven
+  scenarios together. The gate correctly accepted all seven witnesses. The
+  external wrapper exited 1 because it wrongly expected that complete log to
+  fail; this is not a missing-witness escape. Original logs are preserved.
+
+A corrected negative-control request uses `--fully-parallel --workers=1` to
+shard tests within the file and also checks CLI test-name filtering. Request
+`auto-6172fdfc14394faaab712ab88907d17b`, job
+`916389a3-fddd-4f39-a3b5-33bd45ff5105`, source `7b7217b4c0`, is queued;
+its results are not claimed yet. Checker, scenario tests and registry are
+identical between those two tested sources. Runtime source is checked against
+the previously qualified `c9b69f3a01` engine, without relabeling that engine's
+provenance. The private Cargo target is deleted on exit.
 
 The main merge brought a retained-file trigger using character-class glob
 syntax unsupported by the path-coverage gate. Equivalent lowercase/uppercase

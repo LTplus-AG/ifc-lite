@@ -132,5 +132,5 @@ scenario, a scoped witness registry, and checks captured CLI/viewer logs in the
 native-adapter lane. Five gate regression tests pass; the missing-witness
 mutation and the original helper oracle both report OBSERVED. See
 `../real-fixture-witnesses/README.md` for the filtering invariant, explicit skips
-and pending actual grep/shard validation receipt. This follow-up changes no
+actual full-log/grep validation and pending test-level shard receipt. This follow-up changes no
 fixture bytes, counts, tolerances or runtime production source.

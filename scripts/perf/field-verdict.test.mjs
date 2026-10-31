@@ -128,6 +128,10 @@ test('#6961 the headline never reads as a pass without one', async () => {
   assert.equal(verdict.groups[0].status, 'inconclusive');
   assert.match(renderMarkdown(verdict), /\*\*Undecided:\*\* no group is confirmed regressed, but 1 group/);
   assert.doesNotMatch(renderMarkdown(verdict), /No group regressed/);
+  // Its reported speed rounds onto the threshold, but the raw speed is below it.
+  const edge = [0.5, 0.6, 0.7, 0.9, 1 / 0.9498, 1.3, 1.5, 1.8, 2.2].flatMap((ratio, i) => paired(`p${i}`, ratio));
+  assert.equal(fieldVerdict(edge).groups[0].speed, 0.95);
+  assert.match(renderMarkdown(fieldVerdict(edge)), /\*\*Undecided:\*\*/);
   // A clean result still says so.
   assert.match(renderMarkdown(fieldVerdict(people(5, 1.02))), /No group regressed/);
   // Nor does a clean group hide one too thin to judge.

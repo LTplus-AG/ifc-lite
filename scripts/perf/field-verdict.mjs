@@ -152,6 +152,7 @@ function summarize(key, cells, { threshold, minPersons }) {
     speed: round(speed),
     status,
     // Judged on the raw values: rounding can land a bound on 1 or the speed on the threshold.
+    slower: speed < threshold,
     moved: (low > 1 && speed < threshold) || (high < 1 && speed > 1 / threshold),
   };
 }
@@ -200,7 +201,7 @@ function table(groups) {
 export function renderMarkdown(verdict, { build } = {}) {
   const title = build ? `Field verdict for build \`${build}\`` : 'Field verdict';
   const judged = verdict.groups.filter((g) => g.status !== 'context');
-  const undecided = judged.filter((g) => g.status === 'inconclusive' && g.speed < verdict.threshold).length;
+  const undecided = judged.filter((g) => g.status === 'inconclusive' && g.slower).length;
   const headline = verdict.cells === 0
     ? 'No (person, model) cell has loads in both windows yet, so there is no paired ratio to report.'
     : judged.length === 0

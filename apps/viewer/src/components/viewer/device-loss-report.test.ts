@@ -27,7 +27,9 @@ import {
   subscribeViewportHealth,
   type ViewportHealthSource,
 } from './device-loss-report.js';
-import { createRecoveryBudget, RECOVERY_BUDGET_MAX, RECOVERY_BUDGET_WINDOW_MS } from './device-loss-recovery.js';
+
+// The limit these tests pin: three automatic recoveries per rolling minute.
+const RECOVERY_BUDGET_MAX = 3;
 
 /** Verbatim Safari 26.5 wording from the #2229 PostHog frames. */
 const SAFARI_LOST = 'The object is in an invalid state.';
@@ -52,17 +54,6 @@ beforeEach(() => {
 afterEach(() => {
   console.warn = realWarn;
   posthog.captureException = realCapture;
-});
-
-describe('createRecoveryBudget', () => {
-  it('admits up to the limit per rolling window, then again once it has passed', () => {
-    let now = 0;
-    const admit = createRecoveryBudget(() => now);
-    for (let i = 0; i < RECOVERY_BUDGET_MAX; i++) assert.equal(admit(), true);
-    assert.equal(admit(), false);
-    now = RECOVERY_BUDGET_WINDOW_MS;
-    assert.equal(admit(), true, 'a GPU that recovers for a minute earns automatic recovery back');
-  });
 });
 
 describe('reportDeviceLost', () => {

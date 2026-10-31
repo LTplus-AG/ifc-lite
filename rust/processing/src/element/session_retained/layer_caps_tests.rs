@@ -22,7 +22,7 @@ fn cube(x: f64, split_edge: bool) -> ShapePart {
     }
     ShapePart { positions,indices, world_from_object:[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.],
         halfspace_clipped:false,layer:None,capped_volume_m3:None,curved:false, revision_local_faces,
-        normals:None,appearance:None,faces:None,instance_key:None, source_exact: false }
+        normals:None,appearance:None,faces:None,instance_key:None, source_exact: false, surface: None }
 }
 fn layers() -> LayerCompletion { LayerCompletion {
     tags: vec![ShapeLayer{index:0,material_id:1},ShapeLayer{index:1,material_id:2}],

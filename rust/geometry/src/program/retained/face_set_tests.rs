@@ -99,3 +99,12 @@ fn issue_8291_a_small_inward_shell_at_survey_scale_still_turns_outward() {
     let records = "#1=IFCCARTESIANPOINTLIST3D(((6000000.,0.,0.),(6000000.125,0.,0.),(6000000.,0.125,0.),(6000000.,0.,0.125)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((1,2,3),(1,4,2),(2,4,3),(3,4,1)),$);";
     assert_eq!(capture_source(records, 2).unwrap().triangles[..3], [0, 2, 1], "the same flip as the same shell at the origin");
 }
+
+#[test]
+fn issue_8291_flipped_shell_keeps_each_corners_authored_slot_for_uvs() {
+    let inward = format!("{TETRA}\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((1,2,3),(1,4,2),(2,4,3),(3,4,1)),(1,2,3,4));");
+    let set = capture_source(&inward, 2).unwrap();
+    assert_eq!(set.triangles[..3], [0, 2, 1]);
+    assert_eq!(set.source_slots[..3], [0, 2, 1], "published corner 1 is authored corner 2");
+    assert_eq!(set.source_corners[..3], [0, 2, 1]);
+}

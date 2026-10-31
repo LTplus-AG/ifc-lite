@@ -86,10 +86,14 @@ impl TriangulatedFaceSetPlan {
     /// `CoordIndex` row. Corners outside the list drop as the mesher drops them.
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     pub(crate) fn source_triangles(self) -> super::SourceTriangles {
-        let (positions, indices, _, _) = self.oriented();
+        let authored = self.coord_index.clone();
+        let (positions, indices, flipped, _) = self.oriented();
         let row_count = indices.len() as u32 / 3;
         let rows = (0..row_count).collect();
-        super::SourceTriangles { positions, indices, rows, row_count }.keep_emitted()
+        let (mut authored, slot) = (authored, if flipped { [0u8, 2, 1] } else { [0, 1, 2] });
+        if flipped { for corners in authored.chunks_exact_mut(3) { corners.swap(1, 2); } }
+        let slots = std::iter::repeat_n(slot, indices.len() / 3).flatten().collect();
+        super::SourceTriangles { positions, indices, rows, row_count, authored, slots }.keep_emitted()
     }
 
     fn oriented(self) -> OrientedTriangles {

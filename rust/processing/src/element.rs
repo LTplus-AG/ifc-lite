@@ -206,7 +206,7 @@ pub mod retained_runtime {
     };
     pub use super::session_retained::refusal::{RetainedProductRefusal, RefusalOrigin};
     pub use super::session_retained::error::RetainedExecutionError;
-    pub use super::session_retained::publication::{ShapeOnlyProduct, ShapePart, PresentationObligationsUnmet, PartAppearance, PartFaces, FaceKey};
+    pub use super::session_retained::publication::{NO_PALETTE_ENTRY, PartPalette, PartSurface, PartTexture, ShapeOnlyProduct, ShapePart, PresentationObligationsUnmet, PartAppearance, PartFaces, FaceKey};
     pub use super::session_retained::affine_final::{bake_mesh, affine_chord_admissible, affine_sweep_surfaces_certifiable, effective_radius_through_affine};
     pub use super::session_retained::presentation::resolve_appearances;
     pub use super::session_retained::witness::RuntimeProductWitness;

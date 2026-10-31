@@ -9,6 +9,8 @@ fn sheet() -> RetainedFaceSet {
         triangles: vec![0, 1, 2, 0, 2, 3],
         rows: vec![0, 0],
         row_count: 1,
+        source_corners: Vec::new(),
+        source_slots: Vec::new(),
         length_unit_scale: 0.001,
     }
 }

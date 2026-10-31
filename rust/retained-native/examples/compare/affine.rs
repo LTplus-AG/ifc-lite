@@ -108,7 +108,7 @@ mod tests {
         for p in positions.chunks_exact_mut(3) {p[0]=-p[0];}
         ShapePart {layer:None,capped_volume_m3:None,positions,indices,
             world_from_object:[1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 2.,3.,4.,1.],curved:false,halfspace_clipped:false,
-            revision_local_faces:vec![],normals:None,appearance:None,faces:None,instance_key:None, source_exact: false}
+            revision_local_faces:vec![],normals:None,appearance:None,faces:None,instance_key:None, source_exact: false, surface: None}
     }
     /// `record` on product `id` of `text`; `cuts` != 0 skips the analytic source comparison.
     fn recorded(text:&str,id:u32,reversed:bool)->(Report,Vec<Value>) {

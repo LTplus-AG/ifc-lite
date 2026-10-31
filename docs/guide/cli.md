@@ -1875,8 +1875,12 @@ Every part reports persistent source face keys (`#item[>#opening]:role`) with tr
 and areas; unproven faces refuse `face_provenance_unproven`. Every published part also carries its
 resolved appearance (`color`, `materialName`, `geometryItemId`): the IFC source decides, through the same
 colour resolver the exact engine uses, so the retained and exact colours of a part are bitwise equal.
-A product whose binding carries a texture or an indexed colour palette refuses with
-`appearance_unsupported` instead of publishing a plain colour. An uncut `IfcTriangulatedFaceSet`
+A face set's `IfcIndexedColourMap` and `IfcIndexedTriangleTextureMap` publish per source row, also
+through a cut: the JSON report's `parts[].palette` lists one entry per triangle and `parts[].texture`
+six source UV values per triangle, not V-flipped. A new vertex's UV interpolates its row's authored
+triangle; reveals take the part colour and no UV. A map exact had to repair, an unreadable row, or a
+texture on an `IfcPolygonalFaceSet` refuses `appearance_unsupported` instead of publishing a plain
+colour. Retained OBJ carries neither palette nor UVs. An uncut `IfcTriangulatedFaceSet`
 or `IfcPolygonalFaceSet` publishes its authored triangles in full f64 without a kernel call,
 including an open shell, one persistent face key `row(k)` per authored row. A Boolean, opening
 or affine copy stitches the closed solid first; an open shell or a set over 8,192 triangles refuses

@@ -28,14 +28,16 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     if positions.len() != triangles.positions.len() {
         return Err(Error::geometry("face set point list reads differently in f64".to_string()));
     }
-    let SourceTriangles { indices, rows, row_count, .. } = outward(triangles, scale);
-    let (triangles, rows) = without_zero_area(&positions, scale, indices, rows);
+    let SourceTriangles { indices, rows, row_count, authored, slots, .. } = outward(triangles, scale);
+    let keep = positive_area(&positions, scale, &indices);
+    let (triangles, rows) = (kept(&indices, &keep, 3), kept(&rows, &keep, 1));
+    let (source_corners, source_slots) = (kept(&authored, &keep, 3), kept(&slots, &keep, 3));
     crate::resource::charge(crate::resource::Cost {
         work: (positions.len() / 3 + rows.len()) as u64,
-        live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4) as u64,
+        live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4 + source_corners.len() * 4 + source_slots.len()) as u64,
         ..Default::default()
     })?.retain();
-    Ok(RetainedFaceSet { source_id: item.id, positions, triangles, rows, row_count, length_unit_scale: scale })
+    Ok(RetainedFaceSet { source_id: item.id, positions, triangles, rows, row_count, source_corners, source_slots, length_unit_scale: scale })
 }
 
 /// Whether two distinct authored points become one in f32.
@@ -56,8 +58,14 @@ fn outward(mut triangles: SourceTriangles, scale: f64) -> SourceTriangles {
     let metres: Vec<f32> = triangles.positions.iter().map(|&v| (f64::from(v) * scale) as f32).collect();
     let mut mesh = PolygonalFaces::build_flat_shaded_mesh(&metres, &triangles.indices);
     if orient_mesh_outward_verdict(&mut mesh).flipped {
-        for (t, corners) in triangles.indices.chunks_exact_mut(3).enumerate() {
-            if mesh.indices[3 * t + 1] != 3 * t as u32 + 1 { corners.swap(1, 2); }
+        for t in 0..triangles.indices.len() / 3 {
+            if mesh.indices[3 * t + 1] != 3 * t as u32 + 1 {
+                triangles.indices.swap(3 * t + 1, 3 * t + 2);
+                if !triangles.slots.is_empty() {
+                    triangles.slots.swap(3 * t + 1, 3 * t + 2);
+                    triangles.authored.swap(3 * t + 1, 3 * t + 2);
+                }
+            }
         }
     }
     triangles
@@ -66,18 +74,15 @@ fn outward(mut triangles: SourceTriangles, scale: f64) -> SourceTriangles {
 /// A triangle with no area has no facet: nothing to display and no normal. Judged in
 /// the request's own arithmetic (metres from the first point), so an authored sliver
 /// that only collapses there cannot reach the sealed mesh without a normal.
-fn without_zero_area(positions: &[f64], scale: f64, indices: Vec<u32>, rows: Vec<u32>) -> (Vec<u32>, Vec<u32>) {
-    let mut kept = Vec::with_capacity(indices.len());
-    let mut kept_rows = Vec::with_capacity(rows.len());
-    for (corners, row) in indices.chunks_exact(3).zip(rows) {
+fn positive_area(positions: &[f64], scale: f64, indices: &[u32]) -> Vec<bool> {
+    indices.chunks_exact(3).map(|corners| {
         let point = |i: u32| nalgebra::Vector3::from(std::array::from_fn::<f64, 3, _>(|axis| (positions[i as usize * 3 + axis] - positions[axis]) * scale));
-        let area = (point(corners[1]) - point(corners[0])).cross(&(point(corners[2]) - point(corners[0])));
-        if area.norm() > 0. {
-            kept.extend_from_slice(corners);
-            kept_rows.push(row);
-        }
-    }
-    (kept, kept_rows)
+        (point(corners[1]) - point(corners[0])).cross(&(point(corners[2]) - point(corners[0]))).norm() > 0.
+    }).collect()
+}
+/// `values` holds `width` entries per triangle; an empty channel stays empty.
+fn kept<T: Copy>(values: &[T], keep: &[bool], width: usize) -> Vec<T> {
+    values.chunks_exact(width).zip(keep).filter(|(_, keep)| **keep).flat_map(|(chunk, _)| chunk.iter().copied()).collect()
 }
 
 #[cfg(test)]

@@ -48,6 +48,30 @@ pub struct ShapePart {
     pub instance_key: Option<[u8; 32]>,
     /// An uncut, uncopied face set: positions and winding are its authored triangles.
     pub source_exact: bool,
+    /// Authored per-triangle palette and per-corner UVs of a face-set part.
+    pub surface: Option<PartSurface>,
+}
+/// A triangle on a surface the palette does not colour: a reveal keeps the part's colour.
+pub const NO_PALETTE_ENTRY: u32 = u32::MAX;
+#[derive(Debug)]
+pub struct PartPalette {
+    pub map_id: u32,
+    pub colours: Vec<[f32; 4]>,
+    /// One 0-based entry of `colours` per triangle, or [`NO_PALETTE_ENTRY`].
+    pub triangles: Vec<u32>,
+}
+#[derive(Debug)]
+pub struct PartTexture {
+    pub attachment: ifc_lite_geometry::TextureAttachment,
+    /// Source `(u, v)` per triangle corner, six per triangle, not V-flipped.
+    pub uvs: Vec<f64>,
+    /// False on a triangle no authored row textures, such as an opening's reveal.
+    pub textured: Vec<bool>,
+}
+#[derive(Debug)]
+pub struct PartSurface {
+    pub palette: Option<PartPalette>,
+    pub texture: Option<PartTexture>,
 }
 #[derive(Debug)]
 pub struct PartAppearance {
@@ -57,6 +81,9 @@ pub struct PartAppearance {
     pub material_name: Option<String>,
     pub geometry_item_id: Option<u32>,
     pub material_id: Option<u32>,
+    /// A texture or palette binding the surface slice must answer for, or the product refuses.
+    pub texture_pending: bool,
+    pub palette_pending: bool,
 }
 /// Source-derived key: item + optional cutter + canonical source role, never a kernel face index.
 #[derive(Debug, Clone, PartialEq, Eq)]

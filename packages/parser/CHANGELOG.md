@@ -1,5 +1,24 @@
 # @ifc-lite/parser
 
+## 9.9.0
+
+### Minor Changes
+
+- [#8441](https://github.com/LTplus-AG/ifc-lite/pull/8441) [`f7330db`](https://github.com/LTplus-AG/ifc-lite/commit/f7330db71ccf3b3bce6cf690fe17b2660827c650) Thanks [@louistrue](https://github.com/louistrue)! - The viewer keeps one copy of each model's IFC source instead of up to three, and stores it compressed once the load has finished ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+  
+  - **Compressed source after load.** When a model has finished loading (fresh parse, federated add or cache hit), the viewer deflates its source into 64 KiB blocks in a short-lived worker and swaps the model's `IfcDataStore.source` to block storage in place (`compressSourceInPlace`). On a 343 MB model the resident source drops to about 67 MB. Property, attribute, search and export reads work as before through the source accessor. Whole-file operations (IFC export, remesh, clash, overlay parses) now inflate the source first, which adds a few milliseconds per MB to each run.
+  - **`COMPRESSION_MIN_BYTES` is now 32 MiB (was 150 MiB)**, so `shouldCompressSource` accepts typical federation members, not only very large single models.
+  - **No second copy for files streamed into a SharedArrayBuffer.** The loader no longer copies a file of 256 MB or more into an ArrayBuffer for the zip check and format detection. Only an `.ifczip`, IFCX or GLB source, which needs an `ArrayBuffer`, is copied. When a smaller file is copied into a SharedArrayBuffer for the parser worker, the original ArrayBuffer is no longer kept for the session.
+  - **The geometry cache no longer stores the raw source.** On a cache hit, a source stored in IndexedDB (up to 150 MB) used to be read back in addition to the freshly read file. New entries hydrate from the fresh file and are validated by the file's mtime and full-content hash, as entries for 150-400 MB files already were. Entries written by earlier versions still load.
+  - **Recent files store the `File` itself** in IndexedDB instead of reading up to five files of 150 MB or less into ArrayBuffers on the main thread. Records written by earlier versions still load.
+  
+  `BinaryCacheWriter.write` now also accepts a `Uint8Array` for `sourceBuffer`, which it reads only when `omitSourceHash` is not set.
+
+### Patch Changes
+
+- Updated dependencies [[`fc6eceb`](https://github.com/LTplus-AG/ifc-lite/commit/fc6eceba53a538b826bc05073c2b55bb1a2fef73), [`be22560`](https://github.com/LTplus-AG/ifc-lite/commit/be22560cb4c4c260fb08de8a960990b9f106feee), [`1a3d4a8`](https://github.com/LTplus-AG/ifc-lite/commit/1a3d4a83a79bdad791125eebc64a6a69776c7b42), [`32f8544`](https://github.com/LTplus-AG/ifc-lite/commit/32f8544d1de26a0191d75251313c2d860d910f23), [`b85f83d`](https://github.com/LTplus-AG/ifc-lite/commit/b85f83d63b54a8c9c48094f1892e1f4821f0eaf0), [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983), [`5585ccc`](https://github.com/LTplus-AG/ifc-lite/commit/5585ccc95bcc9289ae8be4c3355323e926366f79), [`83ef670`](https://github.com/LTplus-AG/ifc-lite/commit/83ef670305f048f2a236d447a55291606d18d470), [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243), [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7), [`c7ddb2b`](https://github.com/LTplus-AG/ifc-lite/commit/c7ddb2b9a0aa071d6c67048dfbdf3ba32035e87c), [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399), [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13), [`d8f3e69`](https://github.com/LTplus-AG/ifc-lite/commit/d8f3e69228ea51820938f540baf26db9789adbc6)]:
+  - @ifc-lite/wasm@12.1.1
+
 ## 9.8.0
 
 ### Minor Changes

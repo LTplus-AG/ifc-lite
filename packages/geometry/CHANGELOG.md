@@ -1,5 +1,16 @@
 # @ifc-lite/geometry
 
+## 8.1.0
+
+### Minor Changes
+
+- [#8365](https://github.com/LTplus-AG/ifc-lite/pull/8365) [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0) Thanks [@louistrue](https://github.com/louistrue)! - The streaming geometry `complete` event gains an optional `omittedTypeRecords` count: the type records whose type geometry the prepass left out because they could not be decoded. It is read from the WASM instance that ran the prepass (on the prepass worker it travels on the prepass `complete` event) and is absent, not 0, when the WASM build cannot report it. The viewer tells the user in a load notice and in the Load report, for example "3 type definitions could not be read, so their type geometry was left out", and shows nothing when the count is 0 or unknown.
+
+### Patch Changes
+
+- Updated dependencies [[`fc6eceb`](https://github.com/LTplus-AG/ifc-lite/commit/fc6eceba53a538b826bc05073c2b55bb1a2fef73), [`be22560`](https://github.com/LTplus-AG/ifc-lite/commit/be22560cb4c4c260fb08de8a960990b9f106feee), [`1a3d4a8`](https://github.com/LTplus-AG/ifc-lite/commit/1a3d4a83a79bdad791125eebc64a6a69776c7b42), [`32f8544`](https://github.com/LTplus-AG/ifc-lite/commit/32f8544d1de26a0191d75251313c2d860d910f23), [`b85f83d`](https://github.com/LTplus-AG/ifc-lite/commit/b85f83d63b54a8c9c48094f1892e1f4821f0eaf0), [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983), [`5585ccc`](https://github.com/LTplus-AG/ifc-lite/commit/5585ccc95bcc9289ae8be4c3355323e926366f79), [`83ef670`](https://github.com/LTplus-AG/ifc-lite/commit/83ef670305f048f2a236d447a55291606d18d470), [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243), [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7), [`c7ddb2b`](https://github.com/LTplus-AG/ifc-lite/commit/c7ddb2b9a0aa071d6c67048dfbdf3ba32035e87c), [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399), [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13), [`d8f3e69`](https://github.com/LTplus-AG/ifc-lite/commit/d8f3e69228ea51820938f540baf26db9789adbc6)]:
+  - @ifc-lite/wasm@12.1.1
+
 ## 8.0.2
 
 ### Patch Changes

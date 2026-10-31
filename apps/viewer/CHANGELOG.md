@@ -1,5 +1,53 @@
 # @ifc-lite/viewer
 
+## 5.4.0
+
+### Minor Changes
+
+- [#8457](https://github.com/LTplus-AG/ifc-lite/pull/8457) [`36c3379`](https://github.com/LTplus-AG/ifc-lite/commit/36c3379514db92ff58a73cf66bdb7b6399e9bf87) Thanks [@louistrue](https://github.com/louistrue)! - Lists can show each element's custom grouping ([#8425](https://github.com/LTplus-AG/ifc-lite/issues/8425)). The list builder offers a "Grouping: <Lens>" column for every rule-based Lens, and each row shows the group the element belongs to (the same first match the `customGrouping` filter rule applies, live edits included). `@ifc-lite/lists` adds the `customGrouping` column source and the optional `ListDataProvider.getCustomGroup` hook. `@ifc-lite/rules` adds `customGroupOfElement`.
+
+- [#8456](https://github.com/LTplus-AG/ifc-lite/pull/8456) [`2b80af1`](https://github.com/LTplus-AG/ifc-lite/commit/2b80af152da896757b773483275cda569008ef80) Thanks [@louistrue](https://github.com/louistrue)! - A new `customGrouping` filter rule selects elements by their group in a user-authored grouping ([#8425](https://github.com/LTplus-AG/ifc-lite/issues/8425)). A grouping is an ordered list of named filter groups, and each element belongs to the first one it matches, so groups never overlap. In the viewer, every saved rule-based Lens is a grouping: pick "Custom grouping" in the search filter, a clash set, a list scope, a validation rule or another Lens to reuse its rule names. A reference stores the Lens id and name: an existing id wins, otherwise the name must match exactly one Lens, so a Lens file imported into another project still works. An unknown grouping or group matches nothing and is flagged in the editor, and a grouping that refers to itself is refused.
+  
+  `@ifc-lite/rules` also adds `evaluateOptionsOf(model)`, the single-model options that give an `EvaluatorModel` its federated meaning, and the synchronous evaluator now reads a model's live edits through `EvaluateOptions.mutationView`. The viewer's SDK filtered export uses it, so a saved `model` rule keyed by the source fingerprint matches there, and live edits count.
+
+### Patch Changes
+
+- [#8356](https://github.com/LTplus-AG/ifc-lite/pull/8356) [`12f0836`](https://github.com/LTplus-AG/ifc-lite/commit/12f0836590ecdd82ece835f216589352b64f3fd2) Thanks [@louistrue](https://github.com/louistrue)! - Keep the render loop from running ahead of the GPU: it now holds a frame back while three submitted frames are still unfinished, so selection picks no longer wait behind a backlog of orbit and inertia frames on slow (software) GPUs. Output on a GPU that keeps up is unchanged.
+
+- [#8464](https://github.com/LTplus-AG/ifc-lite/pull/8464) [`9e3e8cf`](https://github.com/LTplus-AG/ifc-lite/commit/9e3e8cf089d871483cbb314518934a199c11fcbe) Thanks [@louistrue](https://github.com/louistrue)! - The scaled section PDF now fills cut elements with the same colours as the screen and the SVG export (IFC type colours, 3D material colours including per-layer colours, or graphic overrides) and takes outline colour and weight from the same settings. It used to draw black 0.5 mm outlines only; with default settings (graphic overrides on) outlines are now 0.25 mm, as in the non-sheet SVG export. Override colours the PDF cannot use (an unfinished hex value, an invalid name) fall back to the type colour or black for that element instead of breaking the export. A cut polygon whose outline cannot stand in for the element (an outer ring with no area, or a ring of two or more points the PDF cannot draw, such as non-finite coordinates) is not filled, its remaining rings are outlined, and the element's cut lines are kept. Both SVG exports now also use per-layer material colours.
+
+- [#8365](https://github.com/LTplus-AG/ifc-lite/pull/8365) [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0) Thanks [@louistrue](https://github.com/louistrue)! - The streaming geometry `complete` event gains an optional `omittedTypeRecords` count: the type records whose type geometry the prepass left out because they could not be decoded. It is read from the WASM instance that ran the prepass (on the prepass worker it travels on the prepass `complete` event) and is absent, not 0, when the WASM build cannot report it. The viewer tells the user in a load notice and in the Load report, for example "3 type definitions could not be read, so their type geometry was left out", and shows nothing when the count is 0 or unknown.
+
+- [#8441](https://github.com/LTplus-AG/ifc-lite/pull/8441) [`f7330db`](https://github.com/LTplus-AG/ifc-lite/commit/f7330db71ccf3b3bce6cf690fe17b2660827c650) Thanks [@louistrue](https://github.com/louistrue)! - The viewer keeps one copy of each model's IFC source instead of up to three, and stores it compressed once the load has finished ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+  
+  - **Compressed source after load.** When a model has finished loading (fresh parse, federated add or cache hit), the viewer deflates its source into 64 KiB blocks in a short-lived worker and swaps the model's `IfcDataStore.source` to block storage in place (`compressSourceInPlace`). On a 343 MB model the resident source drops to about 67 MB. Property, attribute, search and export reads work as before through the source accessor. Whole-file operations (IFC export, remesh, clash, overlay parses) now inflate the source first, which adds a few milliseconds per MB to each run.
+  - **`COMPRESSION_MIN_BYTES` is now 32 MiB (was 150 MiB)**, so `shouldCompressSource` accepts typical federation members, not only very large single models.
+  - **No second copy for files streamed into a SharedArrayBuffer.** The loader no longer copies a file of 256 MB or more into an ArrayBuffer for the zip check and format detection. Only an `.ifczip`, IFCX or GLB source, which needs an `ArrayBuffer`, is copied. When a smaller file is copied into a SharedArrayBuffer for the parser worker, the original ArrayBuffer is no longer kept for the session.
+  - **The geometry cache no longer stores the raw source.** On a cache hit, a source stored in IndexedDB (up to 150 MB) used to be read back in addition to the freshly read file. New entries hydrate from the fresh file and are validated by the file's mtime and full-content hash, as entries for 150-400 MB files already were. Entries written by earlier versions still load.
+  - **Recent files store the `File` itself** in IndexedDB instead of reading up to five files of 150 MB or less into ArrayBuffers on the main thread. Records written by earlier versions still load.
+  
+  `BinaryCacheWriter.write` now also accepts a `Uint8Array` for `sourceBuffer`, which it reads only when `omitSourceHash` is not set.
+- Updated dependencies [[`f0d5de0`](https://github.com/LTplus-AG/ifc-lite/commit/f0d5de0aabe911dc42461cc43e48c42065ea4a02), [`fc6eceb`](https://github.com/LTplus-AG/ifc-lite/commit/fc6eceba53a538b826bc05073c2b55bb1a2fef73), [`be22560`](https://github.com/LTplus-AG/ifc-lite/commit/be22560cb4c4c260fb08de8a960990b9f106feee), [`1a3d4a8`](https://github.com/LTplus-AG/ifc-lite/commit/1a3d4a83a79bdad791125eebc64a6a69776c7b42), [`32f8544`](https://github.com/LTplus-AG/ifc-lite/commit/32f8544d1de26a0191d75251313c2d860d910f23), [`12f0836`](https://github.com/LTplus-AG/ifc-lite/commit/12f0836590ecdd82ece835f216589352b64f3fd2), [`b85f83d`](https://github.com/LTplus-AG/ifc-lite/commit/b85f83d63b54a8c9c48094f1892e1f4821f0eaf0), [`36c3379`](https://github.com/LTplus-AG/ifc-lite/commit/36c3379514db92ff58a73cf66bdb7b6399e9bf87), [`2b80af1`](https://github.com/LTplus-AG/ifc-lite/commit/2b80af152da896757b773483275cda569008ef80), [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983), [`5585ccc`](https://github.com/LTplus-AG/ifc-lite/commit/5585ccc95bcc9289ae8be4c3355323e926366f79), [`83ef670`](https://github.com/LTplus-AG/ifc-lite/commit/83ef670305f048f2a236d447a55291606d18d470), [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243), [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7), [`29f24db`](https://github.com/LTplus-AG/ifc-lite/commit/29f24dbb5d4877bc8d2efaae4fa3b9e618407dba), [`d530caf`](https://github.com/LTplus-AG/ifc-lite/commit/d530caf1f06122727051b7b2ff12754a70b3f4fd), [`3b86b72`](https://github.com/LTplus-AG/ifc-lite/commit/3b86b727288b4d53851b5dd1588d252009c3abff), [`3457dc5`](https://github.com/LTplus-AG/ifc-lite/commit/3457dc595fd3404086d7b22b9eca24fdeb46f840), [`c7ddb2b`](https://github.com/LTplus-AG/ifc-lite/commit/c7ddb2b9a0aa071d6c67048dfbdf3ba32035e87c), [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399), [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13), [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0), [`f7330db`](https://github.com/LTplus-AG/ifc-lite/commit/f7330db71ccf3b3bce6cf690fe17b2660827c650), [`d8f3e69`](https://github.com/LTplus-AG/ifc-lite/commit/d8f3e69228ea51820938f540baf26db9789adbc6)]:
+  - @ifc-lite/bcf@5.2.1
+  - @ifc-lite/wasm@12.1.1
+  - @ifc-lite/renderer@6.6.0
+  - @ifc-lite/rules@0.8.0
+  - @ifc-lite/lists@3.2.0
+  - @ifc-lite/diff@0.13.1
+  - @ifc-lite/export@4.13.3
+  - @ifc-lite/flow-nodes@0.12.1
+  - @ifc-lite/create@5.1.3
+  - @ifc-lite/server-client@5.1.1
+  - @ifc-lite/geometry@8.1.0
+  - @ifc-lite/parser@9.9.0
+  - @ifc-lite/cache@3.7.4
+  - @ifc-lite/charts@0.9.1
+  - @ifc-lite/lens@2.2.1
+  - @ifc-lite/mcp@0.28.2
+  - @ifc-lite/ids@3.4.4
+  - @ifc-lite/ids-authoring@0.3.4
+  - @ifc-lite/ids-agent@0.2.11
+
 ## 5.3.1
 
 ### Patch Changes

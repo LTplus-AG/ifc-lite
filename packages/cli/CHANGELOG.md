@@ -1,5 +1,34 @@
 # @ifc-lite/cli
 
+## 0.45.0
+
+### Minor Changes
+
+- [#8382](https://github.com/LTplus-AG/ifc-lite/pull/8382) [`1a8bc00`](https://github.com/LTplus-AG/ifc-lite/commit/1a8bc00ad0d97f053520562a0b86e8961094ffb4) Thanks [@louistrue](https://github.com/louistrue)! - Commands that read an IFC model accept `oci://host/repository[:tag][@sha256:...]` references and pull the model layer from an OCI registry through `@ifc-lite/oci`. Loopback hosts use plain http, every other host https. Credentials come only from `IFC_LITE_OCI_USERNAME`/`IFC_LITE_OCI_PASSWORD` or `IFC_LITE_OCI_TOKEN`; the layer is capped at 1 GiB (`IFC_LITE_OCI_MAX_BYTES`) and verified against its digest. `clash`, `export` and the retained export no longer fall back to re-reading the model path when the parsed store holds no source bytes.
+
+- [#8467](https://github.com/LTplus-AG/ifc-lite/pull/8467) [`b8f45f7`](https://github.com/LTplus-AG/ifc-lite/commit/b8f45f711be0b372427c99dd4616c5547004b4c4) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite oci push` now writes the provisional IFC release profile annotations on the manifest and the layer: `org.buildingsmart.ifc.profile` (`ifc-release/0`) and `org.buildingsmart.ifc.schema` (from the file's `FILE_SCHEMA`). subsoil writes the same keys. They are a working convention, not a buildingSMART standard, and may change. `--annotation` cannot set them.
+
+- [#8414](https://github.com/LTplus-AG/ifc-lite/pull/8414) [`3b063a1`](https://github.com/LTplus-AG/ifc-lite/commit/3b063a106c61c7ebdd4d39a0c2d2976ebf9da94f) Thanks [@louistrue](https://github.com/louistrue)! - New `ifc-lite oci push <oci://host/repository:tag> <model.ifc>` publishes an IFC file to an OCI registry in the layout the ifc-lite viewer publishes: artifact type `application/vnd.ifc-lite.ifc.v1`, the OCI empty config, and one `application/x-step` layer titled with the file name. The file is checked as IFC before any request, an existing tag is refused unless `--overwrite` is passed, `--annotation key=value` adds manifest annotations, and `SOURCE_DATE_EPOCH` makes the manifest reproducible. Credentials come from the same environment variables as `oci://` input. `--json` prints the manifest and layer digests. IFCZIP files are not supported for publishing yet.
+
+### Patch Changes
+
+- [#8370](https://github.com/LTplus-AG/ifc-lite/pull/8370) [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13) Thanks [@louistrue](https://github.com/louistrue)! - Record the maintainer's licence elections for `r-efi` (MIT) and `wide` (Zlib) in the shipped `THIRD_PARTY_NOTICES.txt`.
+- Updated dependencies [[`f0d5de0`](https://github.com/LTplus-AG/ifc-lite/commit/f0d5de0aabe911dc42461cc43e48c42065ea4a02), [`fc6eceb`](https://github.com/LTplus-AG/ifc-lite/commit/fc6eceba53a538b826bc05073c2b55bb1a2fef73), [`be22560`](https://github.com/LTplus-AG/ifc-lite/commit/be22560cb4c4c260fb08de8a960990b9f106feee), [`1a3d4a8`](https://github.com/LTplus-AG/ifc-lite/commit/1a3d4a83a79bdad791125eebc64a6a69776c7b42), [`32f8544`](https://github.com/LTplus-AG/ifc-lite/commit/32f8544d1de26a0191d75251313c2d860d910f23), [`b85f83d`](https://github.com/LTplus-AG/ifc-lite/commit/b85f83d63b54a8c9c48094f1892e1f4821f0eaf0), [`36c3379`](https://github.com/LTplus-AG/ifc-lite/commit/36c3379514db92ff58a73cf66bdb7b6399e9bf87), [`2b80af1`](https://github.com/LTplus-AG/ifc-lite/commit/2b80af152da896757b773483275cda569008ef80), [`0684ccc`](https://github.com/LTplus-AG/ifc-lite/commit/0684ccc3fa758b75ef6d8fe9deb8b24e825b5983), [`5585ccc`](https://github.com/LTplus-AG/ifc-lite/commit/5585ccc95bcc9289ae8be4c3355323e926366f79), [`83ef670`](https://github.com/LTplus-AG/ifc-lite/commit/83ef670305f048f2a236d447a55291606d18d470), [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243), [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7), [`29f24db`](https://github.com/LTplus-AG/ifc-lite/commit/29f24dbb5d4877bc8d2efaae4fa3b9e618407dba), [`3b86b72`](https://github.com/LTplus-AG/ifc-lite/commit/3b86b727288b4d53851b5dd1588d252009c3abff), [`87d8fdf`](https://github.com/LTplus-AG/ifc-lite/commit/87d8fdf35987b4e8b1f28df297fc2f43aa39dd53), [`417877f`](https://github.com/LTplus-AG/ifc-lite/commit/417877fe65f881f9c501799d0fb56ff46dee1ed2), [`c7ddb2b`](https://github.com/LTplus-AG/ifc-lite/commit/c7ddb2b9a0aa071d6c67048dfbdf3ba32035e87c), [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399), [`e4c796e`](https://github.com/LTplus-AG/ifc-lite/commit/e4c796e9435c8b67dfb720338eabbce6a6d57e13), [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0), [`f7330db`](https://github.com/LTplus-AG/ifc-lite/commit/f7330db71ccf3b3bce6cf690fe17b2660827c650), [`d8f3e69`](https://github.com/LTplus-AG/ifc-lite/commit/d8f3e69228ea51820938f540baf26db9789adbc6)]:
+  - @ifc-lite/bcf@5.2.1
+  - @ifc-lite/wasm@12.1.1
+  - @ifc-lite/rules@0.8.0
+  - @ifc-lite/diff@0.13.1
+  - @ifc-lite/export@4.13.3
+  - @ifc-lite/flow-nodes@0.12.1
+  - @ifc-lite/create@5.1.3
+  - @ifc-lite/oci@0.2.0
+  - @ifc-lite/geometry@8.1.0
+  - @ifc-lite/parser@9.9.0
+  - @ifc-lite/cache@3.7.4
+  - @ifc-lite/mcp@0.28.2
+  - @ifc-lite/ids@3.4.4
+  - @ifc-lite/ids-authoring@0.3.4
+
 ## 0.44.0
 
 ### Minor Changes

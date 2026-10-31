@@ -15,17 +15,20 @@ GitHub's 100 MiB blob limit. This is a payload-size check, not a performance cla
 | Fixture | Bytes | SHA-256 | Provenance / terms |
 | --- | ---: | --- | --- |
 | SketchUp `apps/viewer/public/samples/building-architecture.ifc` | 225635 | `3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5` | buildingSMART Certification-datasets; CC-BY-4.0, credit buildingSMART International Ltd. Existing pinned evidence: `tests/ai-eval/native/sketchup-licence-provenance.json`. |
-| Bonsai `apps/viewer/public/samples/hello-wall.ifc` | 79592 | `0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014` | Byte-identical to [IFC5 example](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/examples/Hello%20Wall/hello-wall.ifc). The [README](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/README.md) permits educational/testing use and asks not to create derivatives. No SPDX model licence is declared; the viewer MIT licence is not applied to the model. The tests generate exact/retained OBJ and viewer-derived artifacts. Permission for those derivatives has not been established; maintainer decision remains open. |
+| Bonsai `apps/viewer/public/samples/hello-wall.ifc` | 79592 | `0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014` | Byte-identical to [IFC5 example](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/examples/Hello%20Wall/hello-wall.ifc). The [README](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/README.md) permits educational/testing use and asks not to create derivatives. No SPDX model licence is declared; the viewer MIT licence is not applied to the model. The tests generate exact/retained OBJ and viewer-derived artifacts. On 2026-10-31, the maintainer decided to keep these scenarios, treating generated CI test output as covered by the README's educational/testing use and not redistributed. This records the maintainer's interpretation, not an upstream permission grant. |
 | Revit `rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc` | 64382 | `b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597` | Existing extracted fixture introduced in `84cd5aa3b5`, from ara3d/web-ifc ISSUE_098, exporter Revit 2022. The [ara3d data manifest](https://github.com/ara3d/3d-format-shootout/blob/6aafe2dc7c26f4f972773cacef9ca81f9f39085e/data/manifest.json) directs users to check per-file rights before redistribution. A model-specific licence grant has not been established by this review. Do not infer one from ara3d's MIT code licence. |
 
-No new completed human privacy/licence approval is asserted. The existing
-SketchUp record explicitly leaves those approvals pending. Revit model rights
-remain an open, pre-existing limitation for the maintainer; this PR does not
-resolve that existing distribution. Existing tracked IFC bytes do not establish
-permission for generated derivatives. **Maintainer decision required:** confirm
-whether the Bonsai terms cover generated OBJ/viewer artifacts (with recorded
-permission), or remove/replace derivative-producing Bonsai scenarios. No such
-permission or human privacy/licence approval is claimed by this agent.
+No upstream permission grant or completed privacy/licence review is asserted
+by this agent. The existing SketchUp record explicitly leaves its human approvals
+pending. Revit model rights remain an open, pre-existing limitation for the
+maintainer; this PR does not resolve that existing distribution.
+
+**Maintainer decision, 2026-10-31:** keep the Bonsai scenarios, treating generated
+CI test output (including OBJ/viewer artifacts) as covered by the README's
+educational and testing use and not redistributed. The maintainer closed the
+review thread on that basis. This records the maintainer's decision; it does not
+claim upstream permission, a licence change, or a broader right to redistribute
+derived artifacts.
 
 ## Measured coverage after merging main
 

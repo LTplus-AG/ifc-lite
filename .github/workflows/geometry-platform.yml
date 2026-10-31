@@ -372,7 +372,7 @@ jobs:
             IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
           # Real authoring-tool exports through the built CLI: exact vs retained per product (#7955 item 4).
-          IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
+          IFCLITE_REQUIRE_SMLIB=1 IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
             IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
             node --test scripts/retained-compare/real-authoring.test.mjs
       - name: Browser parity and real retained viewer
@@ -393,7 +393,7 @@ jobs:
           # Turbo cache restoration does not remove outputs from another build mode.
           rm -rf apps/viewer/dist
           pnpm build:e2e --concurrency=1
-          pnpm exec playwright test --project=viewer-retained
+          IFCLITE_REQUIRE_SMLIB=1 pnpm exec playwright test --project=viewer-retained
           rm -rf apps/viewer/dist
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
           node scripts/check-viewer-retained-free.mjs

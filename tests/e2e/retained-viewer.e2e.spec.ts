@@ -690,7 +690,12 @@ function expectCleanIdentity(model: Identity, published: number[]) {
 }
 
 test.describe('retained viewer: real authoring-tool exports and federation identity', () => {
-  test.skip(!(engine && existsSync(join(engine, 'engine-manifest.json'))), SKIP);
+  test.beforeEach(({}, testInfo) => {
+    if (engine && existsSync(join(engine, 'engine-manifest.json'))) return;
+    // The lane that requires the SDK sets IFCLITE_REQUIRE_SMLIB: there a missing engine is a failure, never a skip.
+    if (process.env.IFCLITE_REQUIRE_SMLIB && testInfo.project.name === 'viewer-retained') throw new Error('IFCLITE_RETAINED_ENGINE must name a staged engine; a skip is not evidence');
+    test.skip(true, SKIP);
+  });
 
   for (const { tool, file, header } of REAL_MODELS) {
     test(`a real ${tool} export keeps model, entity and refusal identity under the retained kernel`, async ({ page }) => {

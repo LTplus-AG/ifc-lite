@@ -16,6 +16,8 @@ import { coverageRows } from './coverage.mjs';
 import { parseObj, productMeasures, compareProduct, sourceIdentity } from './real-authoring-support.mjs';
 
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
+// The lane that requires the SDK (geometry-platform cli-retained) sets IFCLITE_REQUIRE_SMLIB: there a missing engine fails the file.
+if (process.env.IFCLITE_REQUIRE_SMLIB && !(engine && existsSync(engine))) throw new Error('IFCLITE_RETAINED_ENGINE must name a staged engine; a skip is not parity evidence');
 const SKIP = !(engine && existsSync(engine)) && 'SKIP: no staged SMLib engine; this is NOT parity evidence';
 const tolerances = JSON.parse(await readFile('tests/fixtures/cli-retained/tolerances.json', 'utf8'));
 

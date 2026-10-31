@@ -1,0 +1,99 @@
+{
+  "sourceCommit": "c9b69f3a01918fd4dca1e1044c43843ea81aa990",
+  "host": "pop-os",
+  "request": "auto-d1d350c55ca2493aacf9855e10cab768",
+  "job": "2f28bf24-5a6e-4e72-88d7-2f55d665d640",
+  "receiptExit": 1,
+  "steps": {
+    "install": 0,
+    "native-configure": 0,
+    "native-build": 0,
+    "native-ctest": 0,
+    "native-gate": 0,
+    "wasm-build": 0,
+    "build-wasm-retained": 0,
+    "cli-build": 0,
+    "stage": 0,
+    "real-kernel": 0,
+    "real-engine-cli-vs-native": 0,
+    "real-authoring": 0,
+    "real-authoring-support": 0,
+    "browser-parity": 0,
+    "viewer-build": 0,
+    "viewer-e2e": 0,
+    "pre-handoff": 1
+  },
+  "receiptFailureExplanation": "pre-handoff retained-free viewer check correctly rejects the opt-in bundle; all other gates and test steps pass. Separate default-build receipt below passes every gate.",
+  "tests": {
+    "nativeCtest": 5,
+    "realKernel": 1,
+    "cliVsNative": 1,
+    "realAuthoring": 3,
+    "realAuthoringSupport": 5,
+    "browserParity": 1,
+    "viewerE2e": 18
+  },
+  "testSkips": 0,
+  "cliWitnesses": [
+    {
+      "tool": "Revit",
+      "model": "rust/geometry/tests/fixtures/issue_098_wall_W.ifc",
+      "final": true,
+      "candidates": 15,
+      "published": 7,
+      "byCode": {
+        "opening_unsupported": 1,
+        "operation_unsupported": 7
+      },
+      "compared": 7,
+      "curvedReportOnly": 0,
+      "notInExactObj": 0
+    },
+    {
+      "tool": "ArchiCAD",
+      "model": "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc",
+      "final": true,
+      "candidates": 121,
+      "published": 35,
+      "byCode": {
+        "operation_unsupported": 86
+      },
+      "compared": 24,
+      "curvedReportOnly": 11,
+      "notInExactObj": 0
+    },
+    {
+      "tool": "Bonsai",
+      "model": "apps/viewer/public/samples/hello-wall.ifc",
+      "final": true,
+      "candidates": 6,
+      "published": 3,
+      "byCode": {
+        "operation_unsupported": 3
+      },
+      "compared": 2,
+      "curvedReportOnly": 1,
+      "notInExactObj": 0
+    }
+  ],
+  "privateCargoTargetRemoved": true,
+  "defaultBuild": {
+    "sourceCommit": "f60a0717520dfea743b15d5f7221b721575cbd3c",
+    "request": "auto-a1bf304b7e724ebd9b87dae4466ec23e",
+    "job": "60013c10-d095-485b-b7f9-19010e1d626b",
+    "exit": 0,
+    "retainedFreeFiles": 986,
+    "preHandoff": "all 12 gates PASS, no skips; oracle OBSERVED, restored witnesses green",
+    "base": "417877fe65f881f9c501799d0fb56ff46dee1ed2"
+  },
+  "sublogSha256": {
+    "native-ctest.log": "4d976b07a29857b29b42af439c66620813c6b563ffd7a26a9f457aeb56595596",
+    "real-kernel.log": "7fb5aedf6fc8528322798903ebf8dcb79e4de37d81c9b3edfe91ade3b77225b3",
+    "real-engine-cli-vs-native.log": "e6beb46ed44ea4c69c9b52e18fc3390644bf287822e1eec92f6d3238ad69fea7",
+    "real-authoring.log": "3be1925be228148145c955ce42950fc51ea4b7f4af93b118a580134622227583",
+    "real-authoring-support.log": "f9f900e67e1ce64b3f8593d84a4e778569b82d050ba6079b40d5a29e0a24f419",
+    "browser-parity.log": "57ab85006200532d7af00d5c062f931ea40b310f7463462df4103b0df1308a51",
+    "viewer-e2e.log": "d9279fcf38ebc40e13c9d39374843a47b91c9f15792e18ab2e2208633246a18a",
+    "pre-handoff.log": "78b57a51a35c85591a7c975c3e3fcdd18759784527993624f266ed9cef6e13b1"
+  }
+}

@@ -16,7 +16,7 @@ GitHub's 100 MiB blob limit. This is a payload-size check, not a performance cla
 | --- | ---: | --- | --- |
 | SketchUp `apps/viewer/public/samples/building-architecture.ifc` | 225635 | `3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5` | buildingSMART Certification-datasets; CC-BY-4.0, credit buildingSMART International Ltd. Existing pinned evidence: `tests/ai-eval/native/sketchup-licence-provenance.json`. |
 | Bonsai `apps/viewer/public/samples/hello-wall.ifc` | 79592 | `0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014` | Byte-identical to [IFC5 example](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/examples/Hello%20Wall/hello-wall.ifc). The [README](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/README.md) permits educational/testing use and asks not to create derivatives. No SPDX model licence is declared; the viewer MIT licence is not applied to the model. This PR uses unmodified bytes. |
-| Revit `rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc` | 64382 | `b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597` | Existing extracted fixture introduced in `84cd5aa3b5`, from ara3d/web-ifc ISSUE_098, exporter Revit 2022. The current ara3d data manifest directs users to check per-file rights before redistribution. A model-specific licence grant has not been established by this review. Do not infer one from ara3d's MIT code licence. |
+| Revit `rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc` | 64382 | `b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597` | Existing extracted fixture introduced in `84cd5aa3b5`, from ara3d/web-ifc ISSUE_098, exporter Revit 2022. The [ara3d data manifest](https://github.com/ara3d/3d-format-shootout/blob/6aafe2dc7c26f4f972773cacef9ca81f9f39085e/data/manifest.json) directs users to check per-file rights before redistribution. A model-specific licence grant has not been established by this review. Do not infer one from ara3d's MIT code licence. |
 
 No new completed human privacy/licence approval is asserted. The existing
 SketchUp record explicitly leaves those approvals pending. Revit's unresolved
@@ -27,7 +27,7 @@ model rights remain a review limitation, even though no model bytes are new.
 The new fragment adds 35 candidates to the universe, without changing the base
 `tests/manifests/cli-retained-coverage.tsv` in the implementation commits:
 
-- SketchUp: 14 refused (`operation_unsupported`). These surface representations
+- SketchUp: 14 refused (`operation_unsupported`). These products
   are outside this branch's retained adapter scope; an all-refused CLI export
   must fail without writing OBJ, and the viewer must retain identities/refusals.
 - Bonsai: 3 published, 3 refused (`operation_unsupported`).
@@ -67,8 +67,32 @@ fleet wrapper exit 69). It is not an active or successful execution receipt.
 Earlier successful lane logs at `1fc097466c` are inherited and do not qualify
 the merged head.
 
-The subsequent full engine/browser lane is now admitted on Pop, request
+The subsequent full engine/browser lane ran on Pop, request
 `auto-d1d350c55ca2493aacf9855e10cab768`, job
 `2f28bf24-5a6e-4e72-88d7-2f55d665d640`, source `c9b69f3a01`.
-Its source differs from the re-bless only by these documentation notes. Results
-will be recorded after its original receipt completes.
+Its source differs from the re-bless only by these documentation notes.
+Fresh native and Emscripten builds, all 5 native CTests, native gate, real-kernel,
+CLI/native comparison, all 3 real-authoring tests, all 5 helper tests, Chromium
+corpus parity and all 18 viewer e2e tests pass. No test skips. The private Cargo
+target and both CMake build trees are deleted. `validation.json` records steps,
+CLI witnesses and sublog hashes.
+
+That combined receipt exits 1 solely because the final pre-handoff correctly
+rejects its opt-in viewer bundle as not retained-free. All other gates pass,
+including OBSERVED with restored witnesses green. This wrapper result is not
+reported as an overall green run.
+
+A separate **default** viewer build and post-commit pre-handoff on `f60a071752`
+pass **all 12 gates, with no skips** (986 output files checked retained-free).
+Request `auto-a1bf304b7e724ebd9b87dae4466ec23e`, receipt
+`worker-state/jobs/60013c10-d095-485b-b7f9-19010e1d626b/receipt.json`, exit 0,
+source unchanged, evidence publication verified. This supersedes the local
+missing-dependency/bundle skips above. The first default wrapper omitted
+installation and failed before compilation (`turbo: not found`), original
+receipt `worker-state/jobs/60a7f812-4921-4e2d-a05e-82b3bd573ddc/receipt.json`.
+It was corrected by installing dependencies explicitly, not by weakening gates.
+
+All changes after the tested source are qualification documentation/evidence
+only. The seven implementation commits were inherited; this continuation
+independently verified the merged native coverage, actual CLI exports, actual
+browser parity/viewer behavior, and default retained-free build described here.

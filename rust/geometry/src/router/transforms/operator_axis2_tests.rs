@@ -13,7 +13,7 @@ fn operator(record: &str) -> Matrix4<f64> {
         "#1=IFCDIRECTION((-1.,0.,0.));\n#2=IFCDIRECTION((0.,1.,0.));\n#3=IFCDIRECTION((0.,0.,-1.));\n\
          #4=IFCCARTESIANPOINT((0.,0.,0.));\n#5=IFCDIRECTION((1.,0.,0.));\n#6=IFCDIRECTION((0.6,0.8,0.));\n\
          #7=IFCDIRECTION((-0.8,0.6,0.));\n#8=IFCCARTESIANPOINT((0.,0.));\n#9=IFCDIRECTION((-1.,0.));\n\
-         #11=IFCDIRECTION((0.,0.,1.));\n#10={record};\n"
+         #11=IFCDIRECTION((0.,0.,1.));\n#12=IFCDIRECTION((0.,0.6,0.8));\n#10={record};\n"
     );
     let mut decoder = EntityDecoder::new(&content);
     let entity = decoder.decode_by_id(10).unwrap();
@@ -69,6 +69,18 @@ fn omitted_axis2_with_reversed_axis3_is_a_mirror() {
         "IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#4,2.,#3,3.,4.)",
         [[2., 0., 0.], [0., 3., 0.], [0., 0., -4.]],
         -24.0,
+    );
+}
+
+#[test]
+fn omitted_axis2_in_an_oblique_frame_projects_plus_y() {
+    // D3 = +X, D1 = (0, 0.6, 0.8). Axis3 × Axis1 = (0, -0.8, 0.6), but
+    // IfcSecondProjAxis projects +Y: (0,1,0) - 0.6·D1 = (0, 0.64, -0.48), which
+    // normalises to (0, 0.8, -0.6). That is a mirror: det = -1.
+    assert_columns(
+        "IFCCARTESIANTRANSFORMATIONOPERATOR3D(#12,$,#4,$,#5)",
+        [[0., 0.6, 0.8], [0., 0.8, -0.6], [1., 0., 0.]],
+        -1.0,
     );
 }
 

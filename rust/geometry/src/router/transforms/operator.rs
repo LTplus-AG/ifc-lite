@@ -264,19 +264,21 @@ mod tests {
 
     // The same frame WITHOUT the mirror (Axis2 agreeing with Axis3 × Axis1) must
     // stay bit-identical to the plain cross product, so the frozen output corpus
-    // is unperturbed by the Axis2 support above.
+    // is unperturbed by the Axis2 support above. Axis3 = -X keeps the omitted
+    // twin right-handed too: its +Y default projects onto Axis3 × Axis1. With
+    // Axis3 = +X it would be a mirror (#8308, `operator_axis2_tests.rs`).
     #[test]
     fn consistent_axis2_keeps_the_cross_product_bits() {
         let with_axis2 = "\
 #1=IFCDIRECTION((0.,0.6,0.8));
-#2=IFCDIRECTION((0.,-0.8,0.6));
-#3=IFCDIRECTION((1.,0.,0.));
+#2=IFCDIRECTION((0.,0.8,-0.6));
+#3=IFCDIRECTION((-1.,0.,0.));
 #4=IFCCARTESIANPOINT((0.,0.,0.));
 #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,#2,#4,$,#3);
 ";
         let without_axis2 = "\
 #1=IFCDIRECTION((0.,0.6,0.8));
-#3=IFCDIRECTION((1.,0.,0.));
+#3=IFCDIRECTION((-1.,0.,0.));
 #4=IFCCARTESIANPOINT((0.,0.,0.));
 #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,$,#4,$,#3);
 ";

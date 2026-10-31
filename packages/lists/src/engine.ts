@@ -526,9 +526,7 @@ function extractColumnValues(
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i];
     switch (col.source) {
-      case 'attribute':
-        values[i] = getAttributeValue(entityId, col.propertyName, provider);
-        break;
+      case 'attribute': values[i] = getAttributeValue(entityId, col.propertyName, provider); break;
       case 'property': {
         // Automatic Type fallback (issue #1745): instance psets win; only when
         // the instance has no matching property do we consult the type's.
@@ -567,6 +565,7 @@ function extractColumnValues(
       case 'geometry':
         values[i] = extractGeometryColumnValue(entityId, col.propertyName, provider, columnMeta[i]);
         break;
+      case 'customGrouping': values[i] = provider.getCustomGroup?.(entityId, { id: col.psetName, name: col.propertyName }) ?? null; break;
       default:
         values[i] = null;
     }

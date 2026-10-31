@@ -5,6 +5,16 @@
 import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { INSTANCED_RTE_DELTA_STRIDE_BYTES } from './instanced-rte.js';
 
+/** The flat (non-instanced) 28-byte mesh vertex `vs_main` reads: position, normal, entityId. */
+export const MESH_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
+  arrayStride: 28,
+  attributes: [
+    { shaderLocation: 0, offset: 0, format: 'float32x3' },
+    { shaderLocation: 1, offset: 12, format: 'float32x3' },
+    { shaderLocation: 2, offset: 24, format: 'uint32' },
+  ],
+}];
+
 /**
  * Vertex buffers every instanced pipeline reads:
  *

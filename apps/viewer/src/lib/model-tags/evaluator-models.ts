@@ -20,6 +20,8 @@ import type { FederatedModel } from '../../store/types.js';
 import type { ModelTagAssignments } from '../../store/slices/modelTagsSlice.js';
 import type { EvaluatorModel } from '@ifc-lite/rules';
 import type { ModelTag } from '@ifc-lite/rules';
+import type { Lens } from '@ifc-lite/lens';
+import { customGroupingsFromLenses } from '../lens/custom-groupings.js';
 
 /** The slice of store state this reads. Structural so tests need no store. */
 export interface ModelTagState {
@@ -32,6 +34,10 @@ export interface ModelTagState {
    *  narrow test fixture with no mutation slice keeps working — omitting it
    *  is exactly today's base-store-only behaviour, never a silent widen. */
   mutationViews?: ReadonlyMap<string, MutablePropertyView>;
+  /** Saved Lenses: the rule-based ones are the `customGrouping` definitions (#8425).
+   *  Optional for narrow fixtures; absent means "no groupings exist", so a
+   *  `customGrouping` rule is unresolved and matches nothing. */
+  savedLenses?: readonly Lens[];
 }
 
 /** Every loaded model with a store, as evaluator input, in federation order. */
@@ -46,6 +52,9 @@ export function evaluatorModelsFromState(state: ModelTagState): EvaluatorModel[]
       mutationView: state.mutationViews?.get(id),
     });
   }
+  // One definition list for the whole federation, attached to every model.
+  const customGroupings = customGroupingsFromLenses(state.savedLenses ?? [], out);
+  for (const model of out) model.customGroupings = customGroupings;
   return out;
 }
 

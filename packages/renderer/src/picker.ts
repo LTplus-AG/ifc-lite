@@ -35,6 +35,9 @@ export interface PointPickSizing {
   clickTolerancePx?: number;
 }
 
+/** Smallest per-mesh slot allocation (64 KB of uniforms), so small models never regrow. */
+const MIN_PICK_MESH_SLOTS = 256;
+
 export class Picker {
   private device: GPUDevice;
   private webgpuDevice: WebGPUDevice;
@@ -45,13 +48,16 @@ export class Picker {
   /** Extra cutting planes (#7545), one block shared by every pick draw; rewritten per pass. */
   private extraClipBuffer: GPUBuffer;
   private readonly extraClipScratch = new Float32Array(EXTRA_CLIP_FLOATS);
-  private depthTexture: GPUTexture;
   private depthSample: PickDepthSample;
-  private colorTexture: GPUTexture;
-  private uniformBuffer: GPUBuffer;
-  private expressIdBuffer: GPUBuffer;
-  private bindGroup: GPUBindGroup;
-  private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
+  /**
+   * The id/depth targets and the per-mesh slots are allocated on the first GPU
+   * pick and sized to it, not at init: a session that never GPU-picks (large
+   * models pick on the CPU) holds none of the canvas-sized pair, and the slot
+   * buffers grow with the meshes actually drawn instead of reserving 100K
+   * 256-byte slots (25.6 MB) up front.
+   */
+  private targets: { color: GPUTexture; depth: GPUTexture } | null = null;
+  private meshSlots: { uniform: GPUBuffer; expressIds: GPUBuffer; bindGroup: GPUBindGroup; capacity: number } | null = null;
   /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
   private destroyed = false;
   private readonly readbacks: PickerReadbackOwner;
@@ -64,33 +70,14 @@ export class Picker {
   private readonly instancedUniformScratch = new Float32Array(40);
   private readonly instancedClipFlags = new Uint32Array(this.instancedUniformScratch.buffer, 112, 4);
 
-  constructor(device: WebGPUDevice, width: number = 1, height: number = 1) {
+  /** `width`/`height` are accepted for compatibility; targets follow the first pick's size. */
+  constructor(device: WebGPUDevice, _width: number = 1, _height: number = 1) {
     this.webgpuDevice = device;
     this.device = device.getDevice();
     this.readbacks = new PickerReadbackOwner(this.device);
     this.depthSample = new PickDepthSample(this.device);
     sectionExclusions(this.device).retain();
 
-    // Create textures for picking
-    this.colorTexture = this.device.createTexture({
-      size: { width, height },
-      format: 'r32uint',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
-    });
-
-    this.depthTexture = this.device.createTexture({
-      size: { width, height },
-      format: 'depth32float',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-    });
-
-    // One dynamically-offset uniform slot per flat mesh. The buffer carries
-    // `maxMeshes` slots so the command encoder can bind the immutable payload
-    // for each draw after all queue writes have completed.
-    this.uniformBuffer = this.device.createBuffer({
-      size: this.maxMeshes * 256,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
     this.extraClipBuffer = this.device.createBuffer({
       size: EXTRA_CLIP_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -98,13 +85,6 @@ export class Picker {
     this.instancedUniformBuffer = this.device.createBuffer({
       size: 160,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    // Create storage buffer for expressIds (one u32 per mesh, +1 encoding)
-    // We'll upload all expressIds at once, then use instance_index to look them up
-    this.expressIdBuffer = this.device.createBuffer({
-      size: this.maxMeshes * 4, // 4 bytes per u32
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
     // Create picker shader that uses storage buffer for per-object expressId
@@ -150,25 +130,6 @@ export class Picker {
         depthWriteEnabled: true,
         depthCompare: 'greater',  // Reverse-Z: greater instead of less
       },
-    });
-
-    // Dynamic uniform offset selects the mesh-specific RTE origin/transform.
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [
-        {
-          binding: 0,
-          resource: { buffer: this.uniformBuffer, size: 224 },
-        },
-        {
-          binding: 1,
-          resource: { buffer: this.expressIdBuffer },
-        },
-        {
-          binding: 2,
-          resource: { buffer: this.extraClipBuffer },
-        },
-      ],
     });
 
     // ── Instanced pick pipeline ──
@@ -245,7 +206,7 @@ export class Picker {
     pointRteSnapshot?: RelativeToEyeSnapshot,
   ): Promise<PickResult | null> {
     if (this.destroyed || this.readbacks.deviceLost) return null;
-    const encoder = this.renderPickPass(
+    const { encoder, targets } = this.renderPickPass(
       width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
     );
 
@@ -270,14 +231,14 @@ export class Picker {
     try {
       encoder.copyTextureToBuffer(
         {
-          texture: this.colorTexture,
+          texture: targets.color,
           origin: { x: sampleX, y: sampleY, z: 0 },
         },
         { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
         { width: 1, height: 1 },
       );
       depthResources = this.depthSample.encode(
-        encoder, this.depthTexture, sampleX, sampleY, readBuffer, 4,
+        encoder, targets.depth, sampleX, sampleY, readBuffer, 4,
       );
       this.readbacks.track(...depthResources);
       this.device.queue.submit([encoder.finish()]);
@@ -316,7 +277,7 @@ export class Picker {
   }
 
   updateUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
-    writePickUniforms(this.device, this.uniformBuffer, this.uniformScratch, this.clipFlags, viewProj, clip);
+    writePickUniforms(this.device, this.ensureMeshSlots(1).uniform, this.uniformScratch, this.clipFlags, viewProj, clip);
   }
 
   /**
@@ -357,7 +318,7 @@ export class Picker {
     const rectH = hy - ly + 1;
     if (rectW <= 0 || rectH <= 0) return new Set();
 
-    const encoder = this.renderPickPass(
+    const { encoder, targets } = this.renderPickPass(
       width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
     );
 
@@ -373,7 +334,7 @@ export class Picker {
     try {
       encoder.copyTextureToBuffer(
         {
-          texture: this.colorTexture,
+          texture: targets.color,
           origin: { x: lx, y: ly, z: 0 },
         },
         { buffer: readBuffer, bytesPerRow: rowStride, rowsPerImage: rectH },
@@ -417,7 +378,7 @@ export class Picker {
   }
 
   /**
-   * Render the picker pass into `colorTexture` + `depthTexture` and
+   * Render the picker pass into the lazily allocated id + depth targets and
    * return the still-open command encoder so the caller can append a
    * `copyTextureToBuffer` for either a single texel (`pick`) or a
    * whole rect (`pickRect`) before submitting.
@@ -432,24 +393,11 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
     pointRteSnapshot?: RelativeToEyeSnapshot,
-  ): GPUCommandEncoder {
-    if (this.colorTexture.width !== width || this.colorTexture.height !== height) {
-      this.colorTexture.destroy();
-      this.depthTexture.destroy();
-      this.colorTexture = this.device.createTexture({
-        size: { width, height },
-        format: 'r32uint',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
-      });
-      this.depthTexture = this.device.createTexture({
-        size: { width, height },
-        format: 'depth32float',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-      });
-    }
+  ): { encoder: GPUCommandEncoder; targets: { color: GPUTexture; depth: GPUTexture } } {
+    const targets = this.ensureTargets(width, height);
     // WebGPU texture views can't be reused after submit, so build fresh ones.
-    const colorView = this.colorTexture.createView();
-    const depthView = this.depthTexture.createView();
+    const colorView = targets.color.createView();
+    const depthView = targets.depth.createView();
 
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
@@ -467,14 +415,12 @@ export class Picker {
       },
     });
 
-    if (meshes.length > this.maxMeshes) {
-      this.resizeExpressIdBuffer(meshes.length);
-    }
+    const slots = this.ensureMeshSlots(meshes.length);
     const meshIndexArray = new Uint32Array(meshes.length);
     for (let i = 0; i < meshes.length; i++) {
       if (meshes[i]) meshIndexArray[i] = i + 1;  // +1 so 0 means no hit
     }
-    this.device.queue.writeBuffer(this.expressIdBuffer, 0, meshIndexArray);
+    this.device.queue.writeBuffer(slots.expressIds, 0, meshIndexArray);
 
     // One block for every draw of this pass: the cutting planes beyond the first,
     // in the frame the pass rasterises (eye-relative when an RTE snapshot drives it).
@@ -490,7 +436,7 @@ export class Picker {
       if (pointRteSnapshot) {
         const drawable = writeFlatPickUniform(
           this.device,
-          this.uniformBuffer,
+          slots.uniform,
           this.uniformScratch,
           this.clipFlags,
           mesh,
@@ -503,9 +449,9 @@ export class Picker {
         // Compatibility for direct Picker callers that predate RTE snapshots.
         // Renderer/PickingManager always supplies one so production draws use
         // the per-mesh immutable RTE slots above.
-        writePickUniforms(this.device, this.uniformBuffer, this.uniformScratch, this.clipFlags, viewProj, clip, mesh.expressId, i);
+        writePickUniforms(this.device, slots.uniform, this.uniformScratch, this.clipFlags, viewProj, clip, mesh.expressId, i);
       }
-      pass.setBindGroup(0, this.bindGroup, [i * 256]);
+      pass.setBindGroup(0, slots.bindGroup, [i * 256]);
       pass.setVertexBuffer(0, mesh.vertexBuffer);
       pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
       pass.drawIndexed(mesh.indexCount, 1, 0, 0, i);
@@ -550,48 +496,50 @@ export class Picker {
       }, clip?.sectionPlane ?? null, pointRteSnapshot, clip?.clipBox ?? null, clip?.extraPlanes ?? null);
     }
     pass.end();
-    return encoder;
+    return { encoder, targets };
+  }
+
+  /** The id/depth pair at the pick's size, (re)allocated on first use or resize. */
+  private ensureTargets(width: number, height: number): { color: GPUTexture; depth: GPUTexture } {
+    const current = this.targets;
+    if (current && current.color.width === width && current.color.height === height) return current;
+    current?.color.destroy();
+    current?.depth.destroy();
+    this.targets = {
+      color: this.device.createTexture({ label: 'pick-id', size: { width, height }, format: 'r32uint', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }),
+      depth: this.device.createTexture({ label: 'pick-depth', size: { width, height }, format: 'depth32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING }),
+    };
+    return this.targets;
+  }
+
+  /** The id/depth targets while allocated, for render-target telemetry. */
+  renderTargets(): (GPUTexture | null)[] {
+    return [this.targets?.color ?? null, this.targets?.depth ?? null];
   }
 
   /**
-   * Resize expressId buffer to accommodate more meshes
+   * One dynamically-offset 256-byte uniform slot and one expressId lane per
+   * flat mesh, so the encoder binds each draw's immutable payload after every
+   * queue write. Grown with 50% headroom when a pick draws more meshes.
    */
-  private resizeExpressIdBuffer(newSize: number): void {
-    // Destroy old buffer
-    this.expressIdBuffer.destroy();
-    this.uniformBuffer.destroy();
-
-    // Increase maxMeshes with 50% headroom for future growth
-    this.maxMeshes = Math.ceil(newSize * 1.5);
-
-    // Create new buffer
-    this.expressIdBuffer = this.device.createBuffer({
-      size: this.maxMeshes * 4, // 4 bytes per u32
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-    this.uniformBuffer = this.device.createBuffer({
-      size: this.maxMeshes * 256,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    // Recreate bind group with new buffer
-    this.bindGroup = this.device.createBindGroup({
+  private ensureMeshSlots(count: number): { uniform: GPUBuffer; expressIds: GPUBuffer; bindGroup: GPUBindGroup } {
+    const current = this.meshSlots;
+    if (current && count <= current.capacity) return current;
+    current?.uniform.destroy();
+    current?.expressIds.destroy();
+    const capacity = Math.max(MIN_PICK_MESH_SLOTS, Math.ceil(count * 1.5));
+    const uniform = this.device.createBuffer({ label: 'pick-mesh-uniforms', size: capacity * 256, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const expressIds = this.device.createBuffer({ label: 'pick-mesh-ids', size: capacity * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    const bindGroup = this.device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
-        {
-          binding: 0,
-          resource: { buffer: this.uniformBuffer, size: 224 },
-        },
-        {
-          binding: 1,
-          resource: { buffer: this.expressIdBuffer },
-        },
-        {
-          binding: 2,
-          resource: { buffer: this.extraClipBuffer },
-        },
+        { binding: 0, resource: { buffer: uniform, size: 224 } },
+        { binding: 1, resource: { buffer: expressIds } },
+        { binding: 2, resource: { buffer: this.extraClipBuffer } },
       ],
     });
+    this.meshSlots = { uniform, expressIds, bindGroup, capacity };
+    return this.meshSlots;
   }
 
   /**
@@ -604,12 +552,14 @@ export class Picker {
     this.destroyed = true;
     this.readbacks.destroy();
     sectionExclusions(this.device).release();
-    this.colorTexture.destroy();
-    this.depthTexture.destroy();
-    this.uniformBuffer.destroy();
+    this.targets?.color.destroy();
+    this.targets?.depth.destroy();
+    this.targets = null;
+    this.meshSlots?.uniform.destroy();
+    this.meshSlots?.expressIds.destroy();
+    this.meshSlots = null;
     this.instancedUniformBuffer.destroy();
     this.extraClipBuffer.destroy();
-    this.expressIdBuffer.destroy();
     this.pointPicker?.destroy();
     this.pointPicker = null;
   }

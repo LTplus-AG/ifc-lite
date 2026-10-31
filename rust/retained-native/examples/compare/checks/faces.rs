@@ -86,6 +86,8 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
     // Cut hosts need their source cut set; the native M11-F witnesses gate those through face_bands.
     let (Some(expected), Some(actual)) = (if product.cuts == 0 { faces::uncut(sources, product.product_id) } else { None }, actual)
         else { return results };
+    // Face-set rows have no analytic quantity: the authored-row oracles (checks/face_sets.rs) gate them.
+    let actual: BTreeMap<_, _> = actual.into_iter().filter(|(key, _)| !key.contains(":row(")).collect();
     let limit = |kind: &str| tolerances["faceAreaRelative"][kind].as_f64().unwrap_or(f64::NAN);
     let mismatched = expected.keys().filter(|k| !actual.contains_key(*k)).count() + actual.keys().filter(|k| !expected.contains_key(*k)).count();
     results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, ..Default::default() });

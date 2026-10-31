@@ -102,10 +102,11 @@ pub fn world_planes(set: &AuthoredFaceSet, world: impl Fn([f64; 3]) -> [f64; 3])
 pub fn authored_volume(set: &AuthoredFaceSet) -> Option<f64> {
     let mut sum = 0.;
     for row in set.rows.iter().filter(|row| !row.points.is_empty()) {
-        let area = row.area_m2?;
         let normal = newell(&row.points[..row.outer]);
         let length = dot(normal, normal).sqrt();
+        // A row with no area bounds nothing; one with area but no single plane has no answer here.
         if length == 0. { continue; }
+        let area = row.area_m2?;
         sum += dot(row.points[0], normal.map(|v| v / length)) * area;
     }
     Some(sum.abs() / 3.)

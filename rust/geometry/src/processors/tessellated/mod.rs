@@ -54,7 +54,7 @@ pub(crate) struct SourceTriangles {
     pub(crate) positions: Vec<f32>,
     pub(crate) indices: Vec<u32>,
     pub(crate) rows: Vec<u32>,
-    /// Authored row count; `0` until set from the emitted rows.
+    /// Authored row count, including rows no triangle came from.
     pub(crate) row_count: u32,
 }
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
@@ -62,7 +62,6 @@ impl SourceTriangles {
     /// The mesher's own out-of-range rule, row by row.
     fn keep_emitted(mut self) -> Self {
         let vertices = self.positions.len() / 3;
-        self.row_count = self.row_count.max(self.rows.len() as u32);
         let keep: Vec<bool> = self.indices.chunks_exact(3)
             .map(|t| mesh_build::emits_triangle([t[0] as usize, t[1] as usize, t[2] as usize], vertices)).collect();
         let mut flags = keep.iter();

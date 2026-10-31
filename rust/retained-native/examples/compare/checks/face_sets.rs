@@ -14,7 +14,9 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
     let mut failure = None;
     for part in &product.parts {
         let Some(faces) = &part.faces else { continue };
-        let Some(first) = faces.table.first().filter(|key| row_key(&key.role).is_some()) else { continue };
+        // Any row key opts the part in: the first key's role must not be able to skip it, and
+        // a triangle keyed to anything else then fails the corner check.
+        let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else { continue };
         any = true;
         let mut decoder = EntityDecoder::new(bytes);
         let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();

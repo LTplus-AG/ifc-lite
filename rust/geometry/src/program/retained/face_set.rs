@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Capture authored `IfcTessellatedFaceSet` triangles for retained publication
 //! (#8291). Topology comes from exact's own plans over the f32 point list, so
-//! the triangulation and winding decisions are exact's; the published
-//! coordinates are the same records read in full f64.
+//! the triangulation and winding decisions are exact's, made relative to the first
+//! point; the published coordinates are the same records read in full f64.
 use crate::document::RetainedFaceSet;
 use crate::processors::{polygonal_plan, read_point_list_f64, triangulated_plan, SourceTriangles, PolygonalFaces};
 use crate::{orient_mesh_outward_verdict, Error, Result};
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: f64) -> Result<RetainedFaceSet> {
-    let (triangles, coordinates) = if item.ifc_type != IfcType::IfcPolygonalFaceSet {
-        (triangulated_plan::lower(item, decoder, None)?.source_triangles(),
-            item.attr(slot::IfcTriangulatedFaceSet::COORDINATES))
-    } else {
-        let faces = item.attr(slot::IfcPolygonalFaceSet::FACES)
-            .and_then(AttributeValue::as_list).map_or(0, <[AttributeValue]>::len) as u32;
-        (polygonal_plan::lower(item, decoder, None)?.source_triangles(faces),
-            item.attr(slot::IfcPolygonalFaceSet::COORDINATES))
-    };
+    let polygonal = item.ifc_type == IfcType::IfcPolygonalFaceSet;
+    let coordinates = if polygonal { item.attr(slot::IfcPolygonalFaceSet::COORDINATES) } else { item.attr(slot::IfcTriangulatedFaceSet::COORDINATES) };
     let coordinates = coordinates.and_then(AttributeValue::as_entity_ref)
         .ok_or_else(|| Error::geometry("face set missing Coordinates".to_string()))?;
     let positions = read_point_list_f64(decoder, coordinates)?;
+    // Exact's plans narrow to f32. Relative to the first point, as the request itself is, so corners
+    // that f32 would merge at survey scale stay distinct for its triangulation and winding decisions.
+    let anchor = positions.get(0..3).map(|p| (p[0], p[1], p[2]));
+    let triangles = if polygonal {
+        let faces = item.attr(slot::IfcPolygonalFaceSet::FACES)
+            .and_then(AttributeValue::as_list).map_or(0, <[AttributeValue]>::len) as u32;
+        polygonal_plan::lower(item, decoder, anchor)?.source_triangles(faces)
+    } else {
+        triangulated_plan::lower(item, decoder, anchor)?.source_triangles()
+    };
     if positions.len() != triangles.positions.len() {
         return Err(Error::geometry("face set point list reads differently in f64".to_string()));
     }

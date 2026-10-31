@@ -87,8 +87,9 @@ impl TriangulatedFaceSetPlan {
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     pub(crate) fn source_triangles(self) -> super::SourceTriangles {
         let (positions, indices, _, _) = self.oriented();
-        let rows = (0..indices.len() as u32 / 3).collect();
-        super::SourceTriangles { positions, indices, rows, row_count: 0 }.keep_emitted()
+        let row_count = indices.len() as u32 / 3;
+        let rows = (0..row_count).collect();
+        super::SourceTriangles { positions, indices, rows, row_count }.keep_emitted()
     }
 
     fn oriented(self) -> OrientedTriangles {

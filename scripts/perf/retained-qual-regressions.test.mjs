@@ -244,15 +244,19 @@ test('8413: a CLI command that cannot spawn is a failed row, not a process crash
   assert.equal(row.ok, false); assert.match(row.error, /ENOENT/);
 });
 
-test('8413: a reused --out starts with an empty runs.partial.jsonl', async () => {
+test('8413: a reused --out starts with an empty runs.partial.jsonl and no previous final outputs', async () => {
   const { resetPartial } = await import('./retained-qual-lib.mjs');
-  const { readFileSync } = await import('node:fs');
+  const { existsSync, readFileSync } = await import('node:fs');
   const dir = mkdtempSync(join(tmpdir(), 'qual-partial-'));
   try {
     writeFileSync(join(dir, 'runs.partial.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
+    writeFileSync(join(dir, 'runs.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
+    writeFileSync(join(dir, 'result.json'), '{"commit":"old"}\n');
     resetPartial(join(dir, 'fresh'));
     resetPartial(dir);
     assert.equal(readFileSync(join(dir, 'runs.partial.jsonl'), 'utf8'), '');
+    assert.equal(existsSync(join(dir, 'runs.jsonl')), false);
+    assert.equal(existsSync(join(dir, 'result.json')), false);
     const { runViewerCohort } = await import('./retained-qual-viewer.mjs');
     writeFileSync(join(dir, 'runs.partial.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
     await runViewerCohort({ arms: [{ side: 'branch' }], fixtures: [{ path: '/a.ifc' }], rounds: 1, options: {}, expectations: {}, out: dir,
@@ -318,4 +322,13 @@ test('8413: a browser sample whose process tree was never observed is a failed r
       sample: () => startSampler(null, { intervalMs: 5, profileDir: '/no/such profile', pss: true }) });
     assert.equal(row.ok, false); assert.match(row.error, /no Chrome process/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('8413: a compared metric appears once in the report', async () => {
+  const { compare } = await import('./retained-qual-report.mjs');
+  const row = (side, round) => ({ side, round, ok: true, path: '/a.ifc', productMs: 10, longTaskMs: 2 });
+  const { fixtures: [fixture] } = compare([row('base', 1), row('branch', 1)]);
+  const names = fixture.columns.map(c => c.column);
+  assert.equal(names.filter(n => n === 'productMs').length, 1);
+  assert.equal(names.filter(n => n === 'longTaskMs').length, 1);
 });

@@ -25,7 +25,7 @@ export const NOISE_FLOOR_PCT = 3, ABSOLUTE_FLOOR = 1, TOO_NOISY_PCT = 15;
 const FINGERPRINT = ['candidates', 'published', 'refused', 'meshes'];
 const PHASES = ['productMs', 'sceneHeldMs', 'firstRetainedFrameMs', 'terminalMs', 'settledFrameMs', 'totalMs', 'startupControlMs', 'importMs', 'runMs',
   'wasmHeapMaxObservedBytes', 'uaAfterBytes', 'uaMemoryBytes', 'browserPeakHwmKiB', 'browserPeakConcurrentPssKiB', 'maxRssKiB', 'processHwmKiB',
-  'maxIndividualWorkerHwmKiB', 'maxObservedConcurrentWorkerRssKiB', 'executableMaxRssKiB', 'wallMs', 'retainedMs', 'productMs', 'startupAndQualificationMs', 'longTaskMs'];
+  'maxIndividualWorkerHwmKiB', 'maxObservedConcurrentWorkerRssKiB', 'executableMaxRssKiB', 'wallMs', 'retainedMs', 'startupAndQualificationMs', 'longTaskMs'];
 const TOTALS = new Set(['totalMs', 'terminalMs', 'firstRetainedFrameMs', 'runMs', 'wallMs', 'retainedMs']);
 
 export function readRows(inputs) {

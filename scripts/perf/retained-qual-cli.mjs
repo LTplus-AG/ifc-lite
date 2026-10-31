@@ -42,16 +42,15 @@ function timedRun(argv, cwd, scratch, name) {
     const command = TIME ? [TIME, '-v', '-o', timeFile, ...argv] : argv;
     const started = process.hrtime.bigint();
     const child = spawn(command[0], command.slice(1), { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '';
-    child.stdout.on('data', c => { stdout += c; });
-    child.stderr.on('data', c => { stderr += c; });
-    const sampler = startSampler(child.pid, { intervalMs: 50 });
-    let settled = false;
-    // A command that cannot be spawned emits `error` (and may still emit `close`): reject once so cliSample records a failed row.
+    let stdout = '', stderr = '', settled = false, sampler = null;
+    // A command that cannot be spawned emits `error` (and may still emit `close`) and may have no streams: reject once so cliSample records a failed row.
     child.on('error', error => {
       if (settled) return;
-      settled = true; sampler.stop(); rejectRun(error);
+      settled = true; sampler?.stop(); rejectRun(error);
     });
+    child.stdout?.on('data', c => { stdout += c; });
+    child.stderr?.on('data', c => { stderr += c; });
+    sampler = startSampler(child.pid, { intervalMs: 50 });
     child.on('close', (exitCode, signal) => {
       if (settled) return;
       settled = true;

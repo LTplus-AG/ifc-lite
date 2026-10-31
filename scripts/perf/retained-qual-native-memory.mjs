@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } fr
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { engineIdentity, exclusivity, gitIdentity, hostIdentity, parseArgs, SCHEMA, sha256File, unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
+import { engineIdentity, exclusivity, gitIdentity, hostIdentity, parseArgs, resetPartial, SCHEMA, sha256File, unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertNativeSummary } from './retained-qual-assert.mjs';
 
@@ -100,7 +100,7 @@ export async function main(argv) {
   const hashes = {};
   const workerAt = rest.indexOf('--worker');
   for (const [name, path] of [['executable', rest[0]], ['worker', workerAt >= 0 ? rest[workerAt + 1] : undefined]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
-  mkdirSync(out, { recursive: true });
+  resetPartial(out);
   const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation });
   Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest });
   const result = { schema: SCHEMA, kind: 'native-retained-memory', reportOnly: true, exclusivity: admission, startedAt: new Date(started).toISOString(),

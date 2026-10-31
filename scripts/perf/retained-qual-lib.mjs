@@ -10,7 +10,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { cpus, homedir, hostname, loadavg, platform, arch, release, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -167,13 +167,17 @@ export function exclusivity(options, env = process.env) {
   return { exclusive: false, workerKind: kind, jobId: job, note: 'non-exclusive observation; not benchmark evidence' };
 }
 
-/** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */
-/** Start `runs.partial.jsonl` empty: a reused --out must not carry a previous run's rows into this one. */
+/**
+ * Start `runs.partial.jsonl` empty and remove the final outputs: if this run stops early, a reused
+ * --out must not report the previous run's rows or metadata as this one's.
+ */
 export function resetPartial(out) {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'runs.partial.jsonl'), '');
+  for (const name of ['runs.jsonl', 'result.json']) rmSync(join(out, name), { force: true });
 }
 
+/** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */
 export function writeResult(out, result, rows) {
   if (Number.isInteger(result.rounds) && result.rounds > 0 && result.arms && result.fixtures) {
     const expected = result.rounds * result.arms.length * result.fixtures.length;

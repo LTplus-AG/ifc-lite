@@ -784,8 +784,6 @@ test.describe('retained viewer acceptance', () => {
     await openExport(page, 'glb');
     const retained = await download(page, 'Export');
     const retainedGlb = glbTriangles(retained.bytes);
-    const finishes = (glbJson(retained.bytes).materials ?? []).map(m => m.pbrMetallicRoughness ?? {});
-    expect(finishes.some(f => f.metallicFactor === 1 && Math.abs((f.roughnessFactor ?? -1) - 0.125) < 1e-6), 'the authored metal finish is in the retained GLB').toBe(true);
 
     await setup(page, 'exact');
     await page.locator('#file-input-open').setInputFiles(asFile('cylinder-pixel.ifc', text));

@@ -13,7 +13,9 @@ on:
       # M2-D builds and drives the real opt-in viewer. Only its retained code,
       # the viewport that hosts it and its build configuration: an ordinary
       # viewer change must not queue an hour-long native build.
-      - 'apps/viewer/**/*[Rr]etained*'
+      - 'scripts/fixtures/fetch-fixtures.mjs'
+      - 'apps/viewer/**/*Retained*'
+      - 'apps/viewer/**/*retained*'
       - 'apps/viewer/src/lib/retained/**'
       - 'apps/viewer/src/components/viewer/Viewport.tsx'
       - 'apps/viewer/src/components/viewer/ViewportContainer.tsx'

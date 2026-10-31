@@ -95,9 +95,11 @@ export function cargoLockProblems(lockText, consumerName) {
 export function summarize(steps) {
   const count = (status) => steps.filter((s) => s.status === status).length;
   const failed = count('fail');
+  const local = count('pass-local-engine');
   return {
-    status: failed ? 'fail' : count('skip') ? 'pass-with-skips' : 'pass',
-    counts: { pass: count('pass'), fail: failed, skip: count('skip') },
+    // pass-local-engine: everything held, but an unqualified locally staged engine is not release sign-off.
+    status: failed ? 'fail' : count('skip') ? 'pass-with-skips' : local ? 'pass-local-engine' : 'pass',
+    counts: { pass: count('pass'), fail: failed, skip: count('skip'), 'pass-local-engine': local },
   };
 }
 
@@ -219,4 +221,35 @@ export function auditProblems(report, packages) {
 /** The only acceptable `loadRetainedEngine()` failure with no engine installed: the engine module is not found. */
 export function retainedAbsent(probe) {
   return probe.rejected === true && probe.code === 'ERR_MODULE_NOT_FOUND' && /pkg-retained[\\/]+ifc-lite\.js/.test(probe.message ?? '');
+}
+
+/**
+ * Classify the retained-export evidence. The staged engine manifest says `qualified:false,
+ * buildAttestation:false` and carries no ifc-lite commit, so an engine alone proves nothing about
+ * the release: `pass` needs an explicit expected manifest sha256 or SDK revision that matches;
+ * under --strict one is required; otherwise the step is the distinct `pass-local-engine`.
+ */
+export function engineEvidence({ report, manifest, manifestFileSha256, strict, expected = {} }) {
+  const engine = report?.engine;
+  const problems = [];
+  if (!/^[a-f0-9]{64}$/.test(engine?.manifestSha256 ?? '')) problems.push('report has no engine.manifestSha256');
+  if (!/^[a-f0-9]{40}$/.test(engine?.sdk?.revision ?? '')) problems.push('report has no engine.sdk.revision');
+  if (typeof manifest?.qualified !== 'boolean' || typeof manifest?.buildAttestation !== 'boolean') problems.push('engine manifest does not record qualified/buildAttestation');
+  if (engine?.manifestSha256 && manifestFileSha256 !== engine.manifestSha256) problems.push(`report's manifest hash ${engine.manifestSha256} differs from the engine directory's manifest ${manifestFileSha256}`);
+  if (expected.manifestSha256 && expected.manifestSha256 !== engine?.manifestSha256) problems.push(`engine manifest sha256 ${engine?.manifestSha256} is not the expected ${expected.manifestSha256}`);
+  if (expected.sdkRevision && expected.sdkRevision !== engine?.sdk?.revision) problems.push(`engine SDK revision ${engine?.sdk?.revision} is not the expected ${expected.sdkRevision}`);
+  const expectation = Boolean(expected.manifestSha256 || expected.sdkRevision);
+  if (strict && !expectation) problems.push('--strict needs --expect-engine-manifest-sha256 or --expect-sdk-revision to accept a locally staged engine');
+  const evidence = { sdk: engine?.sdk, manifestSha256: engine?.manifestSha256, qualified: manifest?.qualified, buildAttestation: manifest?.buildAttestation };
+  const detail = `locally staged engine; not a released artifact; provenance unverified (qualified:${manifest?.qualified}, buildAttestation:${manifest?.buildAttestation}, sdk ${engine?.sdk?.revision?.slice(0, 12)}, manifest ${engine?.manifestSha256?.slice(0, 12)})${expectation ? '; matches the expected identity' : '; no expected identity supplied'}`;
+  if (problems.length) return { status: 'fail', problems, detail, evidence };
+  return { status: expectation ? 'pass' : 'pass-local-engine', problems, detail, evidence };
+}
+
+/** `checksum` Cargo.lock records for a registry package, or undefined. */
+export function lockChecksum(lockText, name, version) {
+  for (const block of lockText.split('[[package]]').slice(1)) {
+    if (block.match(/name = "([^"]+)"/)?.[1] === name && block.match(/version = "([^"]+)"/)?.[1] === version) return block.match(/checksum = "([a-f0-9]+)"/)?.[1];
+  }
+  return undefined;
 }

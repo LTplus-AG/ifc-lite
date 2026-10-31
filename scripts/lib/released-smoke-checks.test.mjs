@@ -9,7 +9,7 @@ import path from 'node:path';
 import {
   EXPECTED_REPO, EXPECTED_WORKFLOW, auditProblems, binaryKind, boundaryViolations, cargoLockProblems, contentViolation,
   crateManifestProblems, isInside, isInsideResolved, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent,
-  selectWheel, stripArchiveRoot, summarize, verifiedAttestations,
+  selectWheel, stripArchiveRoot, summarize, verifiedAttestations, engineEvidence, lockChecksum,
 } from './released-smoke-checks.mjs';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -65,7 +65,7 @@ test('summary: failures dominate, skips are explicit, never silently pass', () =
   assert.equal(summarize([{ status: 'pass' }, { status: 'skip' }]).status, 'pass-with-skips');
   const failed = summarize([{ status: 'skip' }, { status: 'fail' }]);
   assert.equal(failed.status, 'fail');
-  assert.deepEqual(failed.counts, { pass: 0, fail: 1, skip: 1 });
+  assert.deepEqual(failed.counts, { pass: 0, fail: 1, skip: 1, 'pass-local-engine': 0 });
 });
 
 test('isInside distinguishes a parent from its sibling directories', () => {
@@ -189,7 +189,7 @@ test('toolchain precedence and --strict parsing', () => {
   assert.deepEqual(chooseToolchain({}, '/nope', { RUSTUP_TOOLCHAIN: 'b' }), { name: 'b', source: 'RUSTUP_TOOLCHAIN' });
   assert.deepEqual(chooseToolchain({}, '/nope', {}), { name: undefined, source: 'rustup default' });
   assert.equal(chooseToolchain({}, process.cwd(), {}).source, 'rust-toolchain.toml');
-  assert.equal(parseArgs(['--wasm', '1', '--cli', '2', '--crate', '3', '--strict']).strict, true);
+  assert.equal(parseArgs(['--wasm', '1', '--cli', '2', '--crate', '3', '--strict', '--wheel', '4.15.0']).strict, true);
   assert.throws(() => parseArgs(['--wasm', '1', '--cli', '2']), /--crate/);
 });
 
@@ -257,4 +257,70 @@ test('wheel probe: isolated interpreter without site-packages, module must come 
     assert.notEqual(bad.status, 0, 'PYTHONPATH/system modules must not stand in for the wheel');
     assert.equal(bad.stdout.trim(), '');
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+const SDK_REV = 'c9c5979f04cea8c38213004d4f04df0dcfb40d05';
+const MANIFEST_SHA = 'ab'.repeat(32);
+const engineReport = (over = {}) => ({ engine: { sdk: { revision: SDK_REV }, manifestSha256: MANIFEST_SHA }, ...over });
+const stagedManifest = (over = {}) => ({ format: 'ifc-lite.retained-engine/1', qualified: false, buildAttestation: false, sdk: { revision: SDK_REV }, ...over });
+const evidence = (over = {}) => engineEvidence({ report: engineReport(), manifest: stagedManifest(), manifestFileSha256: MANIFEST_SHA, strict: false, expected: {}, ...over });
+
+test('engine evidence: an unexpected engine is a distinct local status, never sign-off', () => {
+  const result = evidence();
+  assert.equal(result.status, 'pass-local-engine');
+  assert.match(result.detail, /locally staged engine; not a released artifact; provenance unverified/);
+  assert.deepEqual(result.evidence, { sdk: { revision: SDK_REV }, manifestSha256: MANIFEST_SHA, qualified: false, buildAttestation: false });
+});
+
+test('engine evidence: --strict needs an explicit expected manifest sha or SDK commit', () => {
+  assert.equal(evidence({ strict: true }).status, 'fail');
+  assert.match(evidence({ strict: true }).problems.join(' '), /--expect-engine-manifest-sha256|--expect-sdk-revision/);
+  assert.equal(evidence({ strict: true, expected: { manifestSha256: MANIFEST_SHA } }).status, 'pass');
+  assert.equal(evidence({ strict: true, expected: { sdkRevision: SDK_REV } }).status, 'pass');
+  assert.equal(evidence({ strict: true, expected: { sdkRevision: SDK_REV, manifestSha256: MANIFEST_SHA } }).status, 'pass');
+});
+
+test('engine evidence: a mismatching expectation or a report that does not match the manifest fails', () => {
+  assert.match(evidence({ expected: { manifestSha256: 'cd'.repeat(32) } }).problems.join(' '), /manifest sha256/);
+  assert.match(evidence({ expected: { sdkRevision: 'f'.repeat(40) } }).problems.join(' '), /SDK revision/);
+  assert.match(evidence({ manifestFileSha256: 'cd'.repeat(32) }).problems.join(' '), /report's manifest hash/);
+  assert.equal(evidence({ report: { engine: {} } }).status, 'fail');
+  assert.equal(evidence({ report: engineReport({ engine: { sdk: { revision: 'short' }, manifestSha256: MANIFEST_SHA } }) }).status, 'fail');
+  assert.equal(evidence({ manifest: stagedManifest({ qualified: undefined }) }).status, 'fail', 'qualified/buildAttestation must be recorded, not assumed');
+});
+
+test('engine evidence keeps qualified/buildAttestation as observed even when expected values match', () => {
+  const result = evidence({ manifest: stagedManifest({ qualified: true, buildAttestation: true }), expected: { sdkRevision: SDK_REV } });
+  assert.equal(result.status, 'pass');
+  assert.equal(result.evidence.qualified, true);
+  assert.match(result.detail, /provenance unverified/, 'a manifest flag is the engine owner\'s claim, not a verified attestation');
+});
+
+test('summary: a local engine is its own overall status below pass, above nothing', () => {
+  const local = summarize([{ status: 'pass' }, { status: 'pass-local-engine' }]);
+  assert.equal(local.status, 'pass-local-engine');
+  assert.equal(local.counts['pass-local-engine'], 1);
+  assert.equal(summarize([{ status: 'pass-local-engine' }, { status: 'skip' }]).status, 'pass-with-skips');
+  assert.equal(summarize([{ status: 'pass-local-engine' }, { status: 'fail' }]).status, 'fail');
+});
+
+test('--wheel is latest, skip or a version; --strict needs an explicit version', () => {
+  const base = ['--wasm', '1', '--cli', '2', '--crate', '3'];
+  for (const ok of ['latest', 'skip', '4.15.0', '4.15.0rc1', '4.15.0.post1']) assert.equal(parseArgs([...base, '--wheel', ok]).wheel, ok);
+  for (const bad of ['lates', 'v4.15.0', '4', '4.15.0; rm', 'SKIP', '']) assert.throws(() => parseArgs([...base, '--wheel', bad]), /--wheel/, bad);
+  assert.throws(() => parseArgs([...base, '--strict']), /--strict requires an explicit --wheel/);
+  assert.throws(() => parseArgs([...base, '--strict', '--wheel', 'latest']), /--strict requires an explicit --wheel/);
+  assert.equal(parseArgs([...base, '--strict', '--wheel', '4.15.0']).strict, true);
+  assert.equal(parseArgs([...base, '--strict', '--wheel', 'skip']).strict, true, 'skip is allowed to parse; the step then fails under --strict');
+  assert.throws(() => parseArgs([...base, '--expect-engine-manifest-sha256', 'xyz']), /64 hex/);
+  assert.throws(() => parseArgs([...base, '--expect-sdk-revision', 'abc']), /40 hex/);
+  assert.equal(parseArgs([...base, '--expect-sdk-revision', SDK_REV]).expectSdkRevision, SDK_REV);
+  assert.equal(parseArgs([...base, '--retained-engine', '/abs/engine']).retainedEngine, '/abs/engine', 'the smoke reads options.retainedEngine');
+});
+
+test('the fetched .crate checksum must equal the Cargo.lock checksum', () => {
+  const lock = '[[package]]\nname = "other"\nversion = "1.0.0"\nchecksum = "' + '11'.repeat(32) + '"\n\n[[package]]\nname = "ifc-lite-geometry-runtime"\nversion = "27.1.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\nchecksum = "' + 'ab'.repeat(32) + '"\n';
+  assert.equal(lockChecksum(lock, 'ifc-lite-geometry-runtime', '27.1.0'), 'ab'.repeat(32));
+  assert.equal(lockChecksum(lock, 'ifc-lite-geometry-runtime', '27.1.1'), undefined);
+  assert.equal(lockChecksum(lock, 'missing', '1.0.0'), undefined);
 });

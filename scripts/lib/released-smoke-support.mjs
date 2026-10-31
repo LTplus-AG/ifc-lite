@@ -21,7 +21,7 @@ export function* walkFiles(dir) {
 
 export function parseArgs(argv) {
   const out = { wheel: 'latest' };
-  const known = new Set(['wasm', 'cli', 'crate', 'wheel', 'out', 'fixture', 'retained-engine', 'toolchain']);
+  const known = new Set(['wasm', 'cli', 'crate', 'wheel', 'out', 'fixture', 'retained-engine', 'toolchain', 'expect-engine-manifest-sha256', 'expect-sdk-revision']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--keep') out.keep = true;
@@ -29,10 +29,14 @@ export function parseArgs(argv) {
     else if (a.startsWith('--') && known.has(a.slice(2))) {
       const value = argv[++i];
       if (value === undefined || value.startsWith('--')) throw new Error(`${a} requires a value`);
-      out[a.slice(2)] = value;
+      out[a.slice(2).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
     } else throw new Error(`Unknown argument ${a}`);
   }
   for (const k of ['wasm', 'cli', 'crate']) if (!out[k]) throw new Error(`--${k} VERSION is required (explicit version)`);
+  if (!/^(latest|skip|\d+(\.\d+)+((a|b|rc)\d+)?(\.post\d+)?)$/.test(out.wheel)) throw new Error(`--wheel must be latest, skip or a version such as 4.15.0 (got '${out.wheel}')`);
+  if (out.strict && out.wheel === 'latest') throw new Error('--strict requires an explicit --wheel X.Y.Z (a moving "latest" is not release evidence)');
+  if (out.expectEngineManifestSha256 !== undefined && !/^[a-f0-9]{64}$/.test(out.expectEngineManifestSha256)) throw new Error('--expect-engine-manifest-sha256 must be 64 hex characters');
+  if (out.expectSdkRevision !== undefined && !/^[a-f0-9]{40}$/.test(out.expectSdkRevision)) throw new Error('--expect-sdk-revision must be 40 hex characters');
   return out;
 }
 

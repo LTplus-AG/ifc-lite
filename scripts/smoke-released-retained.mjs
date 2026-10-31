@@ -43,7 +43,7 @@ import {
 } from './lib/released-smoke-support.mjs';
 import {
   EXPECTED_REPO, EXPECTED_WORKFLOW, NPM_REGISTRY, auditProblems, boundaryViolations, cargoLockProblems, contentViolation,
-  crateManifestProblems, isInside, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent, selectWheel, verifiedAttestations,
+  crateManifestProblems, engineEvidence, isInside, lockChecksum, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent, selectWheel, verifiedAttestations,
   stripArchiveRoot, summarize,
 } from './lib/released-smoke-checks.mjs';
 
@@ -72,7 +72,7 @@ const tail = (r, n = 600) => (r.error ?? '') + (r.stderr + r.stdout).trim().slic
 
 export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)) {
   const fixture = resolve(options.fixture ?? join(REPO, 'tests/fixtures/cli-retained/layered-wall.ifc'));
-  const retainedEngine = options['retained-engine'] ?? process.env.IFCLITE_SMOKE_RETAINED_ENGINE;
+  const retainedEngine = options.retainedEngine ?? process.env.IFCLITE_SMOKE_RETAINED_ENGINE;
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'ifc-lite-released-smoke-')));
   const steps = [];
   const step = async (id, fn) => {
@@ -80,7 +80,7 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
     let record;
     try {
       const r = await fn();
-      record = r.skip ? { id, status: 'skip', detail: r.skip } : { id, status: r.fail ? 'fail' : 'pass', detail: r.fail ?? r.detail, evidence: r.evidence };
+      record = r.skip ? { id, status: 'skip', detail: r.skip } : { id, status: r.fail ? 'fail' : (r.status ?? 'pass'), detail: r.fail ?? r.detail, evidence: r.evidence };
     } catch (error) {
       record = { id, status: 'fail', detail: error?.message ?? String(error) };
     }
@@ -250,12 +250,15 @@ export async function smoke(options, log = (m) => process.stderr.write(`${m}\n`)
     }
 
     // ---- crates.io: archive and consumer builds -----------------------------------------
+    let crateSha256;
     await step('crate-archive', async () => {
       const url = `${CRATES_STATIC}/${CRATE}/${CRATE}-${resolved.crate}.crate`;
       const response = await fetch(url);
       if (!response.ok) return { fail: `${url} -> HTTP ${response.status}` };
       const archive = join(tarballs, `${CRATE}-${resolved.crate}.crate`);
-      writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
+      const crateBytes = Buffer.from(await response.arrayBuffer());
+      crateSha256 = createHash('sha256').update(crateBytes).digest('hex');
+      writeFileSync(archive, crateBytes);
       const list = run('tar', ['-tzf', archive]);
       if (!list.ok) return { fail: tail(list) };
       const files = list.stdout.split('\n').filter(Boolean).map(stripArchiveRoot);
@@ -299,6 +302,14 @@ fn main() {
     await cargoStep('crate-default-features', ['run', '--quiet'], 'MeshLimits=');
     await cargoStep('crate-retained-runtime', ['run', '--quiet', '--features', 'retained-runtime'], 'RetainedBooleanIdentity=');
 
+    await step('crate-checksum', () => {
+      if (!crateSha256) return { fail: 'no downloaded .crate to compare' };
+      if (cargoSetup.status !== 'pass') return { skip: 'consumer setup did not pass, so there is no Cargo.lock' };
+      const locked = lockChecksum(readFileSync(join(consumer, 'Cargo.lock'), 'utf8'), CRATE, resolved.crate);
+      return locked === crateSha256 ? { detail: `the fetched .crate sha256 ${crateSha256.slice(0, 16)}… equals the Cargo.lock checksum`, evidence: { sha256: crateSha256 } }
+        : { fail: `fetched .crate sha256 ${crateSha256} differs from the Cargo.lock checksum ${locked}` };
+    });
+
     // ---- Python wheel ----------------------------------------------------------------------
     await step('python-wheel', async () => {
       if (options.wheel === 'skip') return { skip: '--wheel skip' };
@@ -308,6 +319,7 @@ fn main() {
       const response = await fetch(options.wheel === 'latest' ? 'https://pypi.org/pypi/ifclite-geom/json' : `https://pypi.org/pypi/ifclite-geom/${options.wheel}/json`);
       if (!response.ok) return { fail: `PyPI lookup HTTP ${response.status}` };
       const release = await response.json();
+      resolved.wheel = release.info.version;
       const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
       const py = run('python3', [...WHEEL_PYTHON_FLAGS, '-c', 'import sys; print(sys.version_info[0], sys.version_info[1])'], { cwd: work, env });
       if (!py.ok) return unavailable(`python3 unavailable: ${tail(py, 200)}`);
@@ -345,7 +357,12 @@ fn main() {
       if (!String(summary.format ?? '').startsWith('ifc-lite.retained-report/') || !(summary.summary?.published > 0) || !(vertices > 0)) {
         return { fail: `retained export produced no published products (published=${summary.summary?.published}, vertices=${vertices})` };
       }
-      return { detail: `published ${summary.summary.published}/${summary.summary.candidates} products, ${vertices} vertices, report ${summary.format}`, evidence: { engine: resolve(retainedEngine) } };
+      const bytes = readFileSync(join(resolve(retainedEngine), 'engine-manifest.json'));
+      const identity = engineEvidence({ report: summary, manifest: JSON.parse(bytes.toString('utf8')), manifestFileSha256: createHash('sha256').update(bytes).digest('hex'),
+        strict: options.strict, expected: { manifestSha256: options.expectEngineManifestSha256, sdkRevision: options.expectSdkRevision } });
+      const published = `published ${summary.summary.published}/${summary.summary.candidates} products, ${vertices} vertices, report ${summary.format}`;
+      const evidence = { engine: resolve(retainedEngine), ...identity.evidence };
+      return identity.status === 'fail' ? { fail: `${published}; ${identity.problems.join('; ')}`, evidence } : { status: identity.status, detail: `${published}; ${identity.detail}`, evidence };
     });
   } finally {
     if (!options.keep) rmSync(work, { recursive: true, force: true });

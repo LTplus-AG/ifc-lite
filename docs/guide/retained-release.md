@@ -225,19 +225,27 @@ processes with a cleaned environment (no `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`,
 | `provenance:*` | per package, the SLSA attestation bundle **that `npm audit signatures` verified** (taken from the audit report, never from a second fetch of the registry, whose signature nothing would check): the subject digest equals the sha512 of the tarball just downloaded, the statement's workflow repository is `https://github.com/LTplus-AG/ifc-lite` and path `.github/workflows/release.yml`, and the Fulcio signing certificate's identity is that workflow in that repository. A token publish, or an attestation from a fork's workflow, fails here; a forged copy of the attestations cannot reach the policy. The git ref/tag and the specific run are recorded by the registry but not constrained |
 | `crate-default-features`, `crate-retained-runtime` | a consumer built from crates.io (`cargo add ifc-lite-geometry-runtime@=<version>`) compiles and runs with default features and with `--features retained-runtime` |
 | `python-wheel` | the published `ifclite-geom` binary wheel (latest, its own release train; manylinux for this arch with a `cpXY`/`abi3` tag that fits the local CPython; sha256 checked against PyPI) imports and tessellates the fixture in an isolated interpreter |
-| `retained-export-e2e` | with a staged engine directory, the **published** CLI runs `export --kernel retained` end to end and the report publishes products |
+| `retained-export-e2e` | with a staged engine directory, the **published** CLI runs `export --kernel retained` end to end and the report publishes products. The evidence records the report's `engine.sdk` and `engine.manifestSha256` and the manifest's `qualified` and `buildAttestation`. A staged engine is a **locally staged engine, not a released artifact, with provenance unverified** (`qualified:false`, `buildAttestation:false`, no ifc-lite commit): the step is `pass` only when it matches an explicit `--expect-engine-manifest-sha256` or `--expect-sdk-revision`, and otherwise the distinct `pass-local-engine`, which is not release sign-off |
+| `crate-checksum` | the sha256 of the `.crate` fetched from `static.crates.io` equals the `checksum` Cargo resolved into the consumer's `Cargo.lock` |
 
 `retained-export-e2e` runs only when an engine directory is supplied
 (`--retained-engine` or `IFCLITE_SMOKE_RETAINED_ENGINE`; build it with
 `scripts/stage-cli-retained-engine.mjs`). Otherwise it is reported `skip` with
-"not run", never `pass`. The JSON summary lists every step as `pass`, `fail` or
-`skip` with its detail; the overall `status` is `fail`, `pass-with-skips` or `pass`,
-and the process exits 1 when any step failed.
+"not run", never `pass`. An engine that is supplied but not pinned to an expected
+manifest hash or SDK commit is `pass-local-engine`: the export worked, but nothing
+ties that engine to the release. The JSON summary lists every step as `pass`,
+`pass-local-engine`, `fail` or `skip` with its detail; the overall `status` is `fail`,
+`pass-with-skips`, `pass-local-engine` or `pass`, and the process exits 1 when any step
+failed.
 
 `--strict` is the release sign-off mode: a step that would be skipped (crate builds
 without a usable toolchain, `--wheel skip`, no engine directory) is recorded as a
-failure (`skipped under --strict`) and the exit code is 1. Use it for the run whose
-evidence goes into the release handoff. The pure checks live in
+failure (`skipped under --strict`) and the exit code is 1. `--strict` also requires an
+explicit `--wheel X.Y.Z` (a moving `latest` is not release evidence; the resolved wheel
+version is recorded in `resolved`) and, when an engine is supplied, an explicit
+`--expect-engine-manifest-sha256` or `--expect-sdk-revision`. `--wheel` accepts only
+`latest`, `skip` or a version. Use it for the run whose evidence goes into the release
+handoff. The pure checks live in
 `scripts/lib/released-smoke-checks.mjs` and run offline in the `scripts/lib/*.test.mjs`
 `node --test` lane.
 

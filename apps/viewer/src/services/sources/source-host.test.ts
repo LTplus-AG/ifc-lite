@@ -14,6 +14,7 @@ import {
 import { SourceHost } from './source-host';
 import { MAX_FETCH_ATTEMPTS } from './host-fetch';
 import { createRegisteredProviders } from './registered-providers';
+import { BuildagilProvider } from '@ifc-lite/source-buildagil';
 
 // ----------------------------------------------------------------------------
 // Test doubles for the browser globals this module touches. Following the
@@ -443,6 +444,31 @@ describe('relay rewrite', () => {
     );
 
     assert.equal(capturedUrl, 'https://viewer.example.com/api/dalux/files/42');
+  });
+
+  it('registers buildagil and relays both its API reads and its token grants through /api/buildagil', async () => {
+    const provider = new BuildagilProvider({ clientId: 'client-1' });
+    const host = new SourceHost();
+    assert.equal(host.register(provider), true);
+    const ctx = host.createContext(provider.manifest, {});
+
+    const captured: { url: string; method: string; body: string }[] = [];
+    await withFetch(
+      async (input, init) => {
+        captured.push({ url: String(input instanceof Request ? input.url : input), method: init?.method ?? 'GET', body: String(init?.body ?? '') });
+        return new Response('{}');
+      },
+      async () => {
+        await ctx.fetch('https://openapi.buildagil.com/1.0/projects');
+        await ctx.fetch('https://openapi.buildagil.com/oauth2/token', { method: 'POST', body: 'grant_type=refresh_token' });
+      },
+    );
+
+    assert.deepEqual(captured, [
+      { url: 'https://viewer.example.com/api/buildagil/1.0/projects', method: 'GET', body: '' },
+      { url: 'https://viewer.example.com/api/buildagil/oauth2/token', method: 'POST', body: 'grant_type=refresh_token' },
+    ]);
+    await assert.rejects(() => ctx.fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token'));
   });
 
   it('still rejects a relay-mapped upstream host that permissions.network does not allow', async () => {

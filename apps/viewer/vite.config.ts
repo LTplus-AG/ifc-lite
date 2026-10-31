@@ -21,6 +21,7 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
 import { bimcollabRelayRoute } from './vite-plugins/bimcollab-relay';
 import { bcfTokenRelayRoute } from './vite-plugins/bcf-token-relay';
+import { buildagilRelayRoute } from './vite-plugins/buildagil-relay';
 import { deploymentAssetsDir } from '../../scripts/lib/deployment-assets-dir.mjs';
 
 // --- Build-time changelog parser ---
@@ -258,6 +259,9 @@ export default defineConfig(({ mode }) => {
     // second proxy config that can drift from it.
     daluxRelayRoute(),
     bimcollabRelayRoute(),
+    // buildagil's API and token endpoint send no CORS headers either; the
+    // token route adds the confidential client's secret server-side.
+    buildagilRelayRoute(),
     // Confidential-client token exchange for BIMcollab (#4919): the same
     // handler as api/bcf/oauth/token.ts, secret from .env.local or the shell.
     bcfTokenRelayRoute(),

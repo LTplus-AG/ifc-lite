@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
+import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/retainedGeometry';
 import { useTranslation } from '@/i18n';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { exportModelStep } from '@/lib/export/model-step-export';
@@ -63,6 +64,9 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
     try {
       // Resolve again at invocation: never export a removed model or stale view.
       const state = useViewerStore.getState();
+      if (hasRetainedGeometryModel(state.models)) {
+        return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+      }
       const model = resolveExportModel(state.models, selectedId, state.ifcDataStore, state.geometryResult);
       if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.sourceSchema) {
         return { success: false, message: t('ionUpload.noModel') };

@@ -135,5 +135,5 @@ A model the viewer holds from the retained kernel (`?kernel=retained`) exports t
   engine (Cesium ion uploads the model's STEP for Cesium to re-mesh). While any loaded model is retained their commands
   are disabled with a reason; reload the model with the exact kernel to use them.
 - **KMZ and the IFC5 output** are built from the held meshes and are refused while the retained model is incomplete
-  or shape-only. IFC5 changes-only and geometry-disabled exports remain available.
+  or shape-only. IFC4 STEP export and IFC5 changes-only and geometry-disabled exports remain available.
 - **IFC (STEP), CSV and JSON** need no geometry kernel and work unchanged.

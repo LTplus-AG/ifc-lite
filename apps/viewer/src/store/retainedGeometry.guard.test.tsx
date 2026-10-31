@@ -31,6 +31,9 @@ const SUMMARY: RetainedGeometrySummary = {
 
 async function seed(retained: boolean): Promise<void> {
   await seedCoincidentWalls(1);
+  // #8415: ion's pre-existing dataStore requirement is independent of retained gating.
+  // Model seeding alone does not populate the legacy active-model slot.
+  act(() => useViewerStore.setState({ ifcDataStore: useViewerStore.getState().models.get('A')!.ifcDataStore }));
   if (!retained) return;
   const models = new Map(useViewerStore.getState().models);
   for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: SUMMARY });
@@ -61,8 +64,7 @@ describe('#7955 M2 shape-only guard', () => {
       for (const id of ['glb', 'kmz', 'ion', 'usd']) {
         const state = exportState(id);
         assert.equal(state.reason, retained ? RETAINED_SHAPE_ONLY_REASON : undefined, id);
-        // Cesium ion also needs the legacy single-model store, which this fixture leaves empty.
-        if (retained || id !== 'ion') assert.equal(state.disabled, retained, id);
+        assert.equal(state.disabled, retained, id);
       }
       assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined }, 'the source-based IFC export is unaffected');
     });

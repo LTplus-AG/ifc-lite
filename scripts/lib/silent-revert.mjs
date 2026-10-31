@@ -137,11 +137,14 @@ export function findSilentReverts({ net, commits, attributable, minFiles = DEFAU
 
 /**
  * How a PR declares that it means to undo merged work.
- *   - a title that IS a revert (`revert(scope): ...`, `Revert "..."`) exempts all,
+ *   - a title that IS a revert exempts all. Only the shapes reverts are titled in:
+ *     `revert(scope): ...`, `revert: ...` and `Revert "..."`. Prose that merely starts
+ *     with the word (`Revert button is broken`) declares nothing,
  *   - a line `Reverts #N` / `Undoes #N` in the title or body exempts commits of PR #N,
  *   - the maintainer label `silent-revert-exempt` exempts all.
- * The label, like `revert-oracle-exempt`, is read when a run is CREATED: apply it
- * and push or close/reopen. A bare mention of `revert` anywhere else declares nothing.
+ * The CLI reads these LIVE from the PR (`--pr`) when the lane runs, not from the frozen
+ * event payload: editing the PR re-judges it, and re-running the failed jobs after
+ * labelling picks the label up. A bare mention of `revert` anywhere else declares nothing.
  */
 export function parseDeclarations({ title = '', body = '', labels = [] } = {}) {
   const prs = new Set();

@@ -290,14 +290,26 @@ test('--pr reads the declaration LIVE: the API wins over a stale env payload, an
 
 test('a declared revert writes itself to the step summary so a reviewer sees it', () => {
   const repo = incident();
-  const summary = join(mkdtempSync(join(tmpdir(), 'silent-revert-sum-')), 'summary.md');
-  cleanup.push(dirname(summary));
-  const r = run(repo, ['--base', 'main', '--head', 'feat', '--title', 'revert(retained): back out #101'], { GITHUB_STEP_SUMMARY: summary });
+  const dir = mkdtempSync(join(tmpdir(), 'silent-revert-sum-'));
+  cleanup.push(dir);
+  const file = join(dir, 'summary.md');
+  const r = run(repo, ['--base', 'main', '--head', 'feat', '--title', 'revert(retained): back out #101'], { GITHUB_STEP_SUMMARY: file });
   assert.equal(r.code, 0, r.err);
-  const text = readFileSync(summary, 'utf8');
-  assert.match(text, /declared revert/);
-  assert.match(text, /#101/);
-  assert.match(text, /a revert title/);
+  // The exact lines the CLI wrote, not a search of them: header, who declared, then the finding.
+  const lines = readFileSync(file, 'utf8').split('\n');
+  assert.deepEqual(lines.slice(0, 4), [
+    '### Silent revert guard: declared revert',
+    '',
+    'Declared by a revert title (the PR).',
+    '',
+  ]);
+  const sha = git(repo, 'log', '-1', '--format=%H', '--grep=follow-ups', 'main').slice(0, 10);
+  assert.deepEqual(lines.slice(4, 6), ['```', `  #101  ${sha}  fix(retained): follow-ups (#101)`], 'the declared commit is listed by PR number, sha and subject');
+
+  // An undeclared revert is a failure and writes the failure, never a declaration.
+  const bad = join(dir, 'bad.md');
+  assert.equal(run(repo, ['--base', 'main', '--head', 'feat', '--title', 'feat: x'], { GITHUB_STEP_SUMMARY: bad }).code, 1);
+  assert.equal(readFileSync(bad, 'utf8').split('\n')[0], '### Silent revert');
 });
 
 test('a local run with no title reads the head commit message', () => {

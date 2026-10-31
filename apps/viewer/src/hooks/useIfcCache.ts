@@ -388,7 +388,7 @@ export function useIfcCache() {
         fileName,
         sourceBuffer.byteLength,
         undefined,
-        { lastModified, fullSourceHash, sourceContentKey: dataStore.source.contentKey },
+        { lastModified, fullSourceHash, sourceContentKey: dataStore.source.contentKey ?? undefined },
       );
       console.log(`[useIfcCache] ✓ Cache saved successfully (mtime=${lastModified ?? 'n/a'}, fullHash=${fullSourceHash ? 'yes' : 'no'})`);
     } catch (err) {

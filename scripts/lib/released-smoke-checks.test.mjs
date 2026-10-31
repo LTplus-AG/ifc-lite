@@ -12,8 +12,8 @@ import {
   selectWheel, stripArchiveRoot, summarize, verifiedAttestations, engineEvidence, lockChecksum,
 } from './released-smoke-checks.mjs';
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
-import { WHEEL_PYTHON_FLAGS, chooseToolchain, parseArgs, wheelProbeArgv } from './released-smoke-support.mjs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { WHEEL_PYTHON_FLAGS, chooseToolchain, parseArgs, retainedEngineFrom, wheelProbeArgv } from './released-smoke-support.mjs';
 
 test('archive roots are stripped', () => {
   assert.equal(stripArchiveRoot('package/pkg/a.js'), 'pkg/a.js');
@@ -272,12 +272,21 @@ test('engine evidence: an unexpected engine is a distinct local status, never si
   assert.deepEqual(result.evidence, { sdk: { revision: SDK_REV }, manifestSha256: MANIFEST_SHA, qualified: false, buildAttestation: false });
 });
 
-test('engine evidence: --strict needs an explicit expected manifest sha or SDK commit', () => {
+test('engine evidence: --strict needs the expected MANIFEST sha256; an SDK-only match is not sign-off', () => {
   assert.equal(evidence({ strict: true }).status, 'fail');
-  assert.match(evidence({ strict: true }).problems.join(' '), /--expect-engine-manifest-sha256|--expect-sdk-revision/);
+  assert.match(evidence({ strict: true }).problems.join(' '), /--expect-engine-manifest-sha256/);
+  const sdkOnly = evidence({ strict: true, expected: { sdkRevision: SDK_REV } });
+  assert.equal(sdkOnly.status, 'fail');
+  assert.match(sdkOnly.problems.join(' '), /SDK revision alone cannot distinguish an old engine from a current one/);
+  assert.match(sdkOnly.problems.join(' '), /asset hashes cover the adapter files/);
   assert.equal(evidence({ strict: true, expected: { manifestSha256: MANIFEST_SHA } }).status, 'pass');
-  assert.equal(evidence({ strict: true, expected: { sdkRevision: SDK_REV } }).status, 'pass');
   assert.equal(evidence({ strict: true, expected: { sdkRevision: SDK_REV, manifestSha256: MANIFEST_SHA } }).status, 'pass');
+  assert.equal(evidence({ strict: true, expected: { sdkRevision: 'f'.repeat(40), manifestSha256: MANIFEST_SHA } }).status, 'fail', 'the SDK check is an extra, not a substitute');
+});
+
+test('engine evidence: outside --strict an SDK-only match stays pass-local-engine', () => {
+  assert.equal(evidence({ expected: { sdkRevision: SDK_REV } }).status, 'pass-local-engine');
+  assert.equal(evidence({ expected: { manifestSha256: MANIFEST_SHA } }).status, 'pass');
 });
 
 test('engine evidence: a mismatching expectation or a report that does not match the manifest fails', () => {
@@ -290,7 +299,7 @@ test('engine evidence: a mismatching expectation or a report that does not match
 });
 
 test('engine evidence keeps qualified/buildAttestation as observed even when expected values match', () => {
-  const result = evidence({ manifest: stagedManifest({ qualified: true, buildAttestation: true }), expected: { sdkRevision: SDK_REV } });
+  const result = evidence({ manifest: stagedManifest({ qualified: true, buildAttestation: true }), expected: { manifestSha256: MANIFEST_SHA } });
   assert.equal(result.status, 'pass');
   assert.equal(result.evidence.qualified, true);
   assert.match(result.detail, /provenance unverified/, 'a manifest flag is the engine owner\'s claim, not a verified attestation');
@@ -323,4 +332,20 @@ test('the fetched .crate checksum must equal the Cargo.lock checksum', () => {
   assert.equal(lockChecksum(lock, 'ifc-lite-geometry-runtime', '27.1.0'), 'ab'.repeat(32));
   assert.equal(lockChecksum(lock, 'ifc-lite-geometry-runtime', '27.1.1'), undefined);
   assert.equal(lockChecksum(lock, 'missing', '1.0.0'), undefined);
+});
+
+test('real option parsing reaches the retained engine setting (key normalisation must not hide it)', () => {
+  const base = ['--wasm', '1', '--cli', '2', '--crate', '3'];
+  assert.equal(retainedEngineFrom(parseArgs([...base, '--retained-engine', '/abs/engine']), {}), '/abs/engine');
+  assert.equal(retainedEngineFrom(parseArgs(base), { IFCLITE_SMOKE_RETAINED_ENGINE: '/from/env' }), '/from/env');
+  assert.equal(retainedEngineFrom(parseArgs([...base, '--retained-engine', '/flag']), { IFCLITE_SMOKE_RETAINED_ENGINE: '/env' }), '/flag');
+  assert.equal(retainedEngineFrom(parseArgs(base), {}), undefined);
+});
+
+test('the smoke script never reads a hyphenated option key that parseArgs normalises away', () => {
+  const source = readFileSync(new URL('../smoke-released-retained.mjs', import.meta.url), 'utf8');
+  assert.deepEqual(source.match(/options\[['"][^'"]*-[^'"]*['"]\]/g) ?? [], []);
+  for (const used of source.matchAll(/options\.(\w+)/g)) {
+    assert.ok(['wasm', 'cli', 'crate', 'wheel', 'out', 'fixture', 'retainedEngine', 'toolchain', 'strict', 'keep', 'expectEngineManifestSha256', 'expectSdkRevision'].includes(used[1]), `options.${used[1]} is not an option parseArgs produces`);
+  }
 });

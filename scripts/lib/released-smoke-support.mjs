@@ -96,3 +96,8 @@ export function wheelProbeArgv(fixture, target) {
   ].join('\n');
   return [...WHEEL_PYTHON_FLAGS, '-c', code, fixture, target];
 }
+
+/** The staged engine directory: --retained-engine, else IFCLITE_SMOKE_RETAINED_ENGINE. */
+export function retainedEngineFrom(options, environment = process.env) {
+  return options.retainedEngine ?? environment.IFCLITE_SMOKE_RETAINED_ENGINE;
+}

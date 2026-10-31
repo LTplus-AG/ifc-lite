@@ -226,8 +226,8 @@ export function retainedAbsent(probe) {
 /**
  * Classify the retained-export evidence. The staged engine manifest says `qualified:false,
  * buildAttestation:false` and carries no ifc-lite commit, so an engine alone proves nothing about
- * the release: `pass` needs an explicit expected manifest sha256 or SDK revision that matches;
- * under --strict one is required; otherwise the step is the distinct `pass-local-engine`.
+ * the release: `pass` needs an explicit expected manifest sha256 that matches (an SDK revision is an extra
+ * check only); under --strict it is required; otherwise the step is the distinct `pass-local-engine`.
  */
 export function engineEvidence({ report, manifest, manifestFileSha256, strict, expected = {} }) {
   const engine = report?.engine;
@@ -238,12 +238,18 @@ export function engineEvidence({ report, manifest, manifestFileSha256, strict, e
   if (engine?.manifestSha256 && manifestFileSha256 !== engine.manifestSha256) problems.push(`report's manifest hash ${engine.manifestSha256} differs from the engine directory's manifest ${manifestFileSha256}`);
   if (expected.manifestSha256 && expected.manifestSha256 !== engine?.manifestSha256) problems.push(`engine manifest sha256 ${engine?.manifestSha256} is not the expected ${expected.manifestSha256}`);
   if (expected.sdkRevision && expected.sdkRevision !== engine?.sdk?.revision) problems.push(`engine SDK revision ${engine?.sdk?.revision} is not the expected ${expected.sdkRevision}`);
-  const expectation = Boolean(expected.manifestSha256 || expected.sdkRevision);
-  if (strict && !expectation) problems.push('--strict needs --expect-engine-manifest-sha256 or --expect-sdk-revision to accept a locally staged engine');
+  // Only the manifest hash (its asset hashes cover the adapter files) identifies a particular engine build. The SDK pin does not move
+  // across adapter fixes, so an SDK-only match cannot tell an old engine from a current one: an extra check, never sign-off.
+  const pinned = Boolean(expected.manifestSha256);
+  if (strict && !pinned) {
+    problems.push(expected.sdkRevision
+      ? 'under --strict an SDK revision alone cannot distinguish an old engine from a current one (the SDK pin did not change across adapter fixes); pass --expect-engine-manifest-sha256, whose asset hashes cover the adapter files (and smlib/asset-manifest.json with its adapterSources)'
+      : '--strict needs --expect-engine-manifest-sha256 to accept a locally staged engine');
+  }
   const evidence = { sdk: engine?.sdk, manifestSha256: engine?.manifestSha256, qualified: manifest?.qualified, buildAttestation: manifest?.buildAttestation };
-  const detail = `locally staged engine; not a released artifact; provenance unverified (qualified:${manifest?.qualified}, buildAttestation:${manifest?.buildAttestation}, sdk ${engine?.sdk?.revision?.slice(0, 12)}, manifest ${engine?.manifestSha256?.slice(0, 12)})${expectation ? '; matches the expected identity' : '; no expected identity supplied'}`;
+  const detail = `locally staged engine; not a released artifact; provenance unverified (qualified:${manifest?.qualified}, buildAttestation:${manifest?.buildAttestation}, sdk ${engine?.sdk?.revision?.slice(0, 12)}, manifest ${engine?.manifestSha256?.slice(0, 12)})${pinned ? '; matches the expected manifest sha256' : expected.sdkRevision ? '; SDK revision matched, but only a manifest sha256 identifies the engine build' : '; no expected identity supplied'}`;
   if (problems.length) return { status: 'fail', problems, detail, evidence };
-  return { status: expectation ? 'pass' : 'pass-local-engine', problems, detail, evidence };
+  return { status: pinned ? 'pass' : 'pass-local-engine', problems, detail, evidence };
 }
 
 /** `checksum` Cargo.lock records for a registry package, or undefined. */

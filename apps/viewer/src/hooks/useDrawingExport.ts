@@ -1104,7 +1104,7 @@ function useDrawingExport({
         // vanishes from the PDF.
         const entitiesWithCutPolygon = new Set(
           cutPolygons
-            .filter(({ outerDrawn }) => outerDrawn)
+            .filter(({ coversCutLines }) => coversCutLines)
             .map(({ polygon: p }) => `${p.modelIndex}:${p.entityId}`)
         );
 

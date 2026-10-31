@@ -30,8 +30,8 @@ export interface PdfCutPolygon {
   rings: Point[][];
   /** Outer ring and every hole survived, so an even-odd fill is safe. */
   fillable: boolean;
-  /** Whether the outer ring is drawn, i.e. the polygon covers its entity's cut lines. */
-  outerDrawn: boolean;
+  /** Every ring was drawn, so the outline covers its entity's cut lines. */
+  coversCutLines: boolean;
 }
 
 const finiteRing = (ring: Point[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -50,10 +50,11 @@ export function prepareCutPolygonsPdf(
     const outerDrawn = outer.length >= 2 && finiteRing(outer);
     const usableHoles = holes.filter((ring) => ring.length >= 2);
     const drawnHoles = usableHoles.filter(finiteRing);
+    const intact = outerDrawn && drawnHoles.length === usableHoles.length;
     return {
       rings: [...(outerDrawn ? [outer] : []), ...drawnHoles].map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-      fillable: outerDrawn && outer.length >= 3 && drawnHoles.length === usableHoles.length,
-      outerDrawn,
+      fillable: intact && outer.length >= 3,
+      coversCutLines: intact,
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }
@@ -70,7 +71,11 @@ function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: st
   const set = (hex: string) => (kind === 'fill' ? doc.setFillColor(hex) : doc.setDrawColor(hex));
   const parsed = pdfColor(color);
   if (parsed) {
-    try { set(parsed.hex); return parsed.alpha; } catch { /* unknown name: use the fallback */ }
+    try { set(parsed.hex); return parsed.alpha; } catch (error) {
+      console.warn(`[section PDF] colour ${JSON.stringify(color)} rejected by jsPDF, using ${fallback}`, error);
+    }
+  } else {
+    console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
   }
   set(fallback);
   return 1;

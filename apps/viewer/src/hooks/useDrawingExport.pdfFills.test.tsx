@@ -271,8 +271,8 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     });
   }
 
-  for (const nanVertex of ['outer', 'all'] as const) {
-    it(`draws the cut lines of an entity whose outer ring was not drawn (${nanVertex}, #2119)`, async () => {
+  for (const nanVertex of ['outer', 'hole', 'all'] as const) {
+    it(`draws the cut lines of an entity whose rings were not all drawn (${nanVertex}, #2119)`, async () => {
       const text = await exportPdf({ nanVertex, cutLine: true });
       assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'the cut edge reaches the PDF as a line');
     });

@@ -74,6 +74,7 @@ fn without_faces_facing(mesh: &Mesh, axis: usize) -> Mesh {
     open
 }
 
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 fn same_mesh(a: &Mesh, b: &Mesh) -> bool {
     a.positions == b.positions && a.indices == b.indices
 }

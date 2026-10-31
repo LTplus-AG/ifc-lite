@@ -1,0 +1,12 @@
+--- a/rust/geometry/src/router/voids/strategy/exact/batch_plan.rs
++++ b/rust/geometry/src/router/voids/strategy/exact/batch_plan.rs
+@@ -43,6 +43,9 @@
+             let mut cands: Vec<Cand> = Vec::new();
+             for (idx, opening) in all_openings.iter().enumerate() {
+                 // Already cut by the coaxial/overlap-union prepass above.
++                if self.consumed[idx] {
++                    continue;
++                }
+                 let Some((opening_mesh, extrusion_dir)) = opening.cutter().mesh_cutter() else { continue };
+                 // Same admission guards as the sequential loop.
+                 if admit_cutter(

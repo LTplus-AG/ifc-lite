@@ -60,3 +60,35 @@ test('CLI: unreadable input exits 2; a good pair exits 0', () => {
     assert.throws(() => readRows([join(dir, 'missing.jsonl')]));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('8413: an aborted cohort reports expected versus observed and exits nonzero', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-incomplete-'));
+  try {
+    const sample = { side: 'branch', path: '/m/a.ifc', round: 1, ok: false, cleanupFailed: true, error: 'cleanup failed' };
+    writeResult(dir, { kind: 'viewer', rounds: 3, arms: [{ side: 'branch' }], fixtures: [{ path: sample.path }], startedAt: 'aborted-run' }, [sample]);
+    // Both directory input and the portable JSONL carry cohort completeness.
+    for (const input of [dir, join(dir, 'runs.jsonl')]) {
+      if (input !== dir) rmSync(join(dir, 'result.json'));
+      const report = compare(readRows([input]));
+      assert.equal(report.flags.incompleteCohort, true);
+      assert.match(format(report), /expected 3, got 1/);
+      const cli = spawnSync(process.execPath, [new URL('./retained-qual-report.mjs', import.meta.url).pathname, input], { encoding: 'utf8' });
+      assert.equal(cli.status, 1);
+      assert.match(cli.stdout, /expected 3, got 1/);
+      assert.doesNotMatch(cli.stdout, /NOTE: numbers only/);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('8413: a complete one-arm cohort remains a valid report-only observation', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-complete-'));
+  try {
+    const sample = { side: 'branch', path: '/m/a.ifc', round: 1, ok: true, totalMs: 12 };
+    writeResult(dir, { kind: 'cli-retained-export', rounds: 1, arms: [{ side: 'branch' }], fixtures: [{ path: sample.path }] }, [sample]);
+    assert.equal(compare(readRows([dir])).flags.incompleteCohort, false);
+    const cli = spawnSync(process.execPath, [new URL('./retained-qual-report.mjs', import.meta.url).pathname, dir], { encoding: 'utf8' });
+    assert.equal(cli.status, 0, cli.stderr);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

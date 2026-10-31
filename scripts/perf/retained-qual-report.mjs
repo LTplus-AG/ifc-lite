@@ -14,7 +14,7 @@
 //
 // Rows from several runner invocations may be mixed (base from one, branch from another is
 // NOT paired or order-balanced; the runners' own two-arm mode is). Failed rows are listed
-// and excluded, never averaged in. Exit 2 = unreadable input; otherwise 0.
+// and excluded, never averaged in. Exit 2 = unreadable input; 1 = incomplete cohort; otherwise 0.
 
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -48,7 +48,12 @@ export function readRows(inputs) {
 export function compare(rows) {
   const failed = rows.filter(r => !r.ok), ok = rows.filter(r => r.ok);
   const report = { reportOnly: true, failures: failed.map(r => ({ side: r.side, path: r.path, round: r.round, error: r.error })), fixtures: [], flags: {
-    countDrift: false, tooNoisy: false, zeroBaselineIncrease: false, belowResolution: false, realMovement: false, unpaired: false, incompleteCoverage: false } };
+    countDrift: false, tooNoisy: false, zeroBaselineIncrease: false, belowResolution: false, realMovement: false, unpaired: false, incompleteCoverage: false, incompleteCohort: false } };
+  report.cohorts = [...new Map(rows.filter(row => row.provenance?.cohort).map(row => {
+    const p = row.provenance;
+    return [JSON.stringify([p.kind, p.host, p.commit, p.startedAt, p.cohort]), p.cohort];
+  })).values()];
+  report.flags.incompleteCohort = report.cohorts.some(c => c.observed !== c.expected);
   const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
   const roundKey = r => JSON.stringify([r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
   for (const id of new Set(rows.map(group))) {
@@ -101,6 +106,7 @@ export function compare(rows) {
 
 export function format(report) {
   const lines = ['retained qualification (REPORT-ONLY: no retained performance or memory threshold is registered)'];
+  for (const c of report.cohorts ?? []) if (c.observed !== c.expected) lines.push(`  INCOMPLETE cohort: expected ${c.expected}, got ${c.observed}`);
   if (report.failures.length) lines.push(`  ${report.failures.length} FAILED sample(s) excluded, never averaged in:`, ...report.failures.map(f => `    ${f.side} ${f.path.split('/').pop()} r${f.round}: ${f.error}`));
   for (const f of report.fixtures) {
     lines.push(`\n  ${f.kind} ${f.path.split('/').pop()}  (base n=${f.base}, branch n=${f.branch})`);
@@ -116,7 +122,7 @@ export function format(report) {
   }
   const flags = report.flags;
   if (flags.incompleteCoverage) lines.push('NOTE: incomplete per-column coverage; medians use only matching finite rounds.');
-  lines.push('', flags.countDrift ? 'NOTE: output counts differ across sides/rounds; timing and memory deltas are NOT like-for-like.'
+  lines.push('', flags.incompleteCohort ? 'NOTE: incomplete cohort; omitted samples invalidate this run.' : flags.countDrift ? 'NOTE: output counts differ across sides/rounds; timing and memory deltas are NOT like-for-like.'
     : flags.unpaired ? 'NOTE: sides are unpaired or unequal in sample count; this is not a paired comparison.'
       : flags.tooNoisy ? 'NOTE: base spread > 15% on a total; too noisy to read any delta.'
         : 'NOTE: numbers only. Movements are listed against the base spread and are not a regression verdict either way.');
@@ -131,6 +137,7 @@ if (isMainEntry(import.meta.url)) {
     if (!inputs.length) throw new Error('pass runs JSONL files or result directories');
     const report = compare(readRows(inputs));
     console.log(format(report));
+    if (report.flags.incompleteCohort) process.exitCode = 1;
     if (jsonOut) writeFileSync(jsonOut, JSON.stringify(report, null, 2) + '\n');
   } catch (error) {
     console.error(`retained-qual-report: invalid input: ${error.message}`);

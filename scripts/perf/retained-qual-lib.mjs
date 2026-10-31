@@ -139,6 +139,17 @@ export function pinFor(pins, side, fixture) {
   return pins?.[side]?.[key] ?? (pins?.base || pins?.branch ? undefined : pins?.[key]);
 }
 
+/** --expect is an all-pairs correctness contract, checked before any engine work. */
+export function assertPinCoverage(pins, arms, fixtures) {
+  for (const arm of arms) for (const fixture of fixtures) {
+    const pin = pinFor(pins, arm.side, fixture);
+    if (!pin || !Number.isInteger(pin.candidates) || pin.candidates < 0
+        || !Number.isInteger(pin.published) || pin.published < 0 || pin.published > pin.candidates) {
+      throw new Error(`--expect: missing or invalid {candidates, published} pin for ${arm.side} ${resolve(fixture.path)}; use full absolute fixture paths and include every arm/fixture pair`);
+    }
+  }
+}
+
 /**
  * Exclusive only when the admission environment (`IFC_WORKER_KIND=benchmark`, set by ifc-fleet for
  * `--kind benchmark` jobs) or the submitter (`--exclusive-receipt`) says so; never inferred from the
@@ -158,8 +169,13 @@ export function exclusivity(options, env = process.env) {
 
 /** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */
 export function writeResult(out, result, rows) {
+  if (Number.isInteger(result.rounds) && result.rounds > 0 && result.arms && result.fixtures) {
+    const expected = result.rounds * result.arms.length * result.fixtures.length;
+    const observed = rows.filter(row => Number.isInteger(row.round) && row.round > 0).length;
+    result.cohort = { expected, observed, complete: observed === expected };
+  }
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt } })).join('\n') + (rows.length ? '\n' : ''));
+  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt, cohort: result.cohort } })).join('\n') + (rows.length ? '\n' : ''));
   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }

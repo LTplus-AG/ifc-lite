@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertCliRetained } from './retained-qual-assert.mjs';
@@ -91,6 +91,7 @@ export async function main(argv) {
   if (!Number.isInteger(rounds) || rounds < 1) throw new Error('--rounds must be a positive integer');
   const arms = parseArms(options.arm);
   const expectations = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : {};
+  if (options.expect !== undefined) assertPinCoverage(expectations, arms, options.fixture.map(path => ({ path: resolve(path) })));
   for (const arm of arms) {
     arm.identity = { git: gitIdentity(arm.checkout), engine: await engineIdentity(arm.checkout, arm.engine) };
     const cli = join(arm.checkout, 'packages/cli/dist/index.js');
@@ -117,7 +118,8 @@ export async function main(argv) {
     failures: rows.filter(r => !r.ok).map(r => ({ side: r.side, path: r.path, round: r.round, error: r.error })), summary: summarizeRows(rows, COLUMNS) });
   writeResult(out, result, rows);
   console.log(`retained-qual-cli: ${result.samples}/${rows.length} samples ok; ${out}/result.json`);
-  return result.failures.length ? 1 : 0;
+  if (result.cohort?.complete === false) console.error(`incomplete cohort: expected ${result.cohort.expected}, got ${result.cohort.observed}`);
+  return result.failures.length || result.cohort?.complete === false ? 1 : 0;
 }
 
 if (isMainEntry(import.meta.url)) process.exitCode = await main(process.argv.slice(2));

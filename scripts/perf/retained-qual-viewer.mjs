@@ -22,7 +22,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertMilestones, assertViewerRetained } from './retained-qual-assert.mjs';
@@ -152,6 +152,7 @@ export async function main(argv) {
   if (!Number.isInteger(rounds) || rounds < 1) throw new Error('--rounds must be a positive integer');
   const arms = parseArms(options.arm);
   const expectations = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : {};
+  if (options.expect !== undefined) assertPinCoverage(expectations, arms, options.fixture.map(path => ({ path: resolve(path) })));
   for (const arm of arms) {
     arm.identity = { git: gitIdentity(arm.checkout), engine: await engineIdentity(arm.checkout, arm.engine) };
     if (!existsSync(join(arm.checkout, 'apps/viewer/dist/index.html'))) {
@@ -173,7 +174,8 @@ export async function main(argv) {
   writeResult(out, result, rows);
   writeFileSync(join(out, 'DONE'), result.finishedAt);
   console.log(`retained-qual-viewer: ${result.samples}/${rows.length} samples ok; ${out}/result.json`);
-  return result.failures.length ? 1 : 0;
+  if (result.cohort?.complete === false) console.error(`incomplete cohort: expected ${result.cohort.expected}, got ${result.cohort.observed}`);
+  return result.failures.length || result.cohort?.complete === false ? 1 : 0;
 }
 
 if (isMainEntry(import.meta.url)) process.exitCode = await main(process.argv.slice(2));

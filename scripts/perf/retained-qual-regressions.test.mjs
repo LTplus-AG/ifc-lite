@@ -152,3 +152,34 @@ test('8413: a preview startup failure preserves every arm and fixture identity f
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+for (const runner of ['viewer', 'cli', 'browser-memory']) {
+  test(`8413: ${runner} rejects incomplete --expect pins before preparing any arm`, async () => {
+    const { main } = await import(`./retained-qual-${runner}.mjs`);
+    const dir = mkdtempSync(join(tmpdir(), 'qual-pin-coverage-'));
+    const pin = { candidates: 4, published: 3 };
+    try {
+      const fixture = '/a/model.ifc', pinsPath = join(dir, 'pins.json');
+      for (const pins of [{ '/other/model.ifc': pin }, { 'model.ifc': pin }, { base: { [fixture]: pin } }, { [fixture]: null }]) {
+        writeFileSync(pinsPath, JSON.stringify(pins));
+        await assert.rejects(main(['--out', join(dir, 'out'), '--expect', pinsPath,
+          '--arm', 'branch:/unprepared-checkout:/unprepared-engine', '--fixture', fixture]),
+        error => /--expect/.test(error.message) && /branch/.test(error.message) && error.message.includes(fixture));
+      }
+      // A matching first fixture must not hide an unpinned later fixture.
+      writeFileSync(pinsPath, JSON.stringify({ [fixture]: pin }));
+      await assert.rejects(main(['--out', join(dir, 'out'), '--expect', pinsPath,
+        '--arm', 'branch:/unprepared-checkout:/unprepared-engine', '--fixture', fixture, '--fixture', '/b/model.ifc']),
+      error => /--expect/.test(error.message) && /branch/.test(error.message) && error.message.includes('/b/model.ifc'));
+      // A complete pin file passes preflight and reaches engine preparation.
+      await assert.rejects(main(['--out', join(dir, 'out'), '--expect', pinsPath,
+        '--arm', 'branch:/unprepared-checkout:/unprepared-engine', '--fixture', fixture]),
+      error => !/--expect/.test(error.message));
+      // Even if the first arm has a pin, startup must inspect the second arm.
+      writeFileSync(pinsPath, JSON.stringify({ base: { [fixture]: pin } }));
+      await assert.rejects(main(['--out', join(dir, 'out'), '--expect', pinsPath,
+        '--arm', 'base:/unprepared-checkout:/unprepared-engine', '--arm', 'branch:/unprepared-checkout:/unprepared-engine', '--fixture', fixture]),
+      error => /--expect/.test(error.message) && /branch/.test(error.message) && error.message.includes(fixture));
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}

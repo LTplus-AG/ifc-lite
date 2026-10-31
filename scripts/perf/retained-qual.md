@@ -52,7 +52,8 @@ runner exit 1. There is no soft path.
   taken from a prior correctness run) pins counts by the resolved full fixture path
   (never its basename, so identically named files remain distinct); the cohort must pin them. A file may also be
   per side for CLI, viewer, and browser-memory, `{"base": {...}, "branch": {...}}`, when the arms legitimately publish different counts
-  (a pin never falls back to the other side). Native-memory instead accepts a direct
+  (a pin never falls back to the other side). With `--expect`, missing or invalid
+  pins for any arm/fixture pair fail at startup, before engines or samples start. Native-memory instead accepts a direct
   count object: `{"candidates": N, "published": M}`. Its `--summary` must name a
   fresh per-run path; an existing file is rejected before the command starts.
 
@@ -145,3 +146,7 @@ different workflows stay separate. Each column reports base, branch and matched 
 nullable coverage is marked incomplete and medians use matched finite rounds only.
 Unavailable PSS stays null; coverage records readable/attempted process samples and
 complete/partial tree samples. Partial trees never count as a measured total.
+
+Cohort completeness is recorded in the result and portable JSONL provenance. An early
+stop reports `expected N, got M`; an incomplete cohort makes both the runner and
+reporter exit nonzero. Performance thresholds remain report-only.

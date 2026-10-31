@@ -132,4 +132,5 @@ metallic/roughness; it never re-meshes the file with the exact engine, so produc
 absent from the GLB exactly as they are absent from the viewport. USD and the energy models (HBJSON, DFJSON) rebuild
 their geometry from the file with the exact engine; for a retained model they refuse with a message instead of
 exporting geometry that differs from what is shown, and the model must be reloaded with the exact kernel to export
-them. IFC (STEP), the data formats (CSV, JSON) and every format built from the held meshes work unchanged.
+them. IFC (STEP) and the data formats (CSV, JSON) need no geometry kernel. KMZ, Cesium ion and PDF views are built
+from the held meshes, like GLB.

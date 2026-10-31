@@ -211,3 +211,7 @@ fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut 
 #[cfg(test)]
 #[path = "../retained_browser/m9_session_tests.rs"]
 mod m9_session_tests;
+
+#[cfg(test)]
+#[path = "retained_session_scan_tests.rs"]
+mod scan_tests;

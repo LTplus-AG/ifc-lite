@@ -170,6 +170,8 @@ pub struct ModelFinishes<'c> {
 
 impl<'c> ModelFinishes<'c> {
     pub fn from_content(content: &'c [u8]) -> Self {
+        #[cfg(feature = "parity-test-support")]
+        crate::parity_test_support::record_finish_rescan();
         let mut spans = PrepassSpans::default();
         let mut index = EntityIndex::default();
         let mut scanner = EntityScanner::new(content);

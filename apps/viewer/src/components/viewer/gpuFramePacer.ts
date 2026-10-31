@@ -20,11 +20,16 @@ export const GPU_FRAMES_IN_FLIGHT = 3;
 
 /**
  * A frame whose completion was never reported (a lost device may settle
- * nothing) must not stop rendering for good. Once an entry is older than this
- * the pacer stops trusting completions and RELEASES the loop (no pacing at all)
- * until a completion is seen again, rather than refilling the window and
- * holding the loop to `maxInFlight` frames per expiry (about 0.6 fps at the
- * defaults). Far above any frame a working GPU takes.
+ * nothing) must not stop rendering for good, so an entry older than this no
+ * longer counts. Far above any frame a working GPU takes.
+ *
+ * The window is REFILLED on expiry, not abandoned, and that is deliberate: a
+ * GPU that reports nothing for this long renders about `GPU_FRAMES_IN_FLIGHT`
+ * frames per expiry (about 0.6 fps at the defaults). Expiry cannot tell a dead
+ * device from a slow one (a stall, a software GPU at seconds per frame), and
+ * dropping pacing for the slow one lets the queue grow without bound, which is
+ * the #5865 failure: a bounded backlog matters more than frame rate on a device
+ * that is not reporting.
  */
 export const GPU_FRAME_STALE_MS = 5000;
 
@@ -36,8 +41,6 @@ export class GpuFramePacer {
   private serial = 0;
   private device: PacedDevice | null = null;
   private warned = false;
-  /** Completions stopped being reported: not paced until the probe frame settles. */
-  private released = false;
 
   constructor(
     private readonly maxInFlight = GPU_FRAMES_IN_FLIGHT,
@@ -50,14 +53,11 @@ export class GpuFramePacer {
    * encoded, and that must never escape into the render loop: a throw there
    * skips the tail `requestAnimationFrame` and the viewer freezes (#2229). A
    * frame whose completion cannot be asked for is simply not counted. Both a
-   * resolved and a rejected completion free the slot. While released, only one
-   * probe frame is tracked at a time, so a device that never reports back holds
-   * at most one pending completion per expiry instead of one per frame.
+   * resolved and a rejected completion free the slot.
    */
   noteSubmit(device: PacedDevice | null, now: number): void {
     this.adopt(device);
     if (!device) return;
-    if (this.released && this.submitted.size > 0) return;
     let done: Promise<unknown>;
     try {
       done = device.queue.onSubmittedWorkDone();
@@ -70,37 +70,26 @@ export class GpuFramePacer {
     }
     const id = this.serial++;
     this.submitted.set(id, now);
-    const settle = () => {
-      this.submitted.delete(id);
-      // The GPU reports again, so pacing is meaningful again. A frame from before a
-      // device switch settling late must not re-arm the new device's pacing.
-      if (this.device === device) this.released = false;
-    };
+    const settle = () => { this.submitted.delete(id); };
     done.then(settle, settle);
   }
 
   /**
    * True while `maxInFlight` frames are still outstanding: do not submit
    * another. Frames owed by a different (lost, then recovered) device are
-   * forgotten: nothing they were queued on will ever report back. A frame older
-   * than `staleMs` means completions cannot be relied on: it is forgotten and the
-   * loop is released (never saturated) until a completion settles again.
+   * forgotten: nothing they were queued on will ever report back.
    */
   saturated(device: PacedDevice | null, now: number): boolean {
     this.adopt(device);
     for (const [id, at] of this.submitted) {
-      if (now - at > this.staleMs) {
-        this.submitted.delete(id);
-        this.released = true;
-      }
+      if (now - at > this.staleMs) this.submitted.delete(id);
     }
-    return !this.released && this.submitted.size >= this.maxInFlight;
+    return this.submitted.size >= this.maxInFlight;
   }
 
   private adopt(device: PacedDevice | null): void {
     if (device === this.device) return;
     this.device = device;
     this.submitted.clear();
-    this.released = false;
   }
 }

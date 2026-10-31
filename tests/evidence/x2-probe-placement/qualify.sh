@@ -190,8 +190,13 @@ features)
     rc=$?
     set -e
     grep -E '^test result:' "$log" | sed "s/^/X2_FEATURES_RESULT $side /"
+    # The compared set also carries the cargo exit status and the number of
+    # test binaries that reported, so an abort that names no failing test
+    # (a crashed binary, a build error) still differs from the base.
     { grep -E '^test .* \.\.\. FAILED$' "$log" || true; } | sed -E 's/^test (.*) \.\.\. FAILED$/\1/' | sort > "$scratch/$side-failing.txt"
-    echo "X2_FEATURES $side exit=$rc failing=$(wc -l < "$scratch/$side-failing.txt")"
+    echo "~cargo-exit=$rc" >> "$scratch/$side-failing.txt"
+    echo "~binaries-reported=$(grep -cE '^test result:' "$log" || true)" >> "$scratch/$side-failing.txt"
+    echo "X2_FEATURES $side exit=$rc failing=$(grep -vc "^~" "$scratch/$side-failing.txt" || true)"
     sed "s/^/X2_FEATURES_FAILED $side /" "$scratch/$side-failing.txt"
     if grep -q 'error\[E' "$log"; then
       echo "X2_FEATURES $side did not compile"; grep -A5 'error\[E' "$log" | head -40; exit 1

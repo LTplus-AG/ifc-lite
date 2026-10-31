@@ -68,10 +68,10 @@ const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 1
  * bad override cannot abort the whole export.
  */
 function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string): number {
-  const set = (hex: string) => (kind === 'fill' ? doc.setFillColor(hex) : doc.setDrawColor(hex));
+  const set = (css: string) => (kind === 'fill' ? doc.setFillColor(css) : doc.setDrawColor(css));
   const parsed = pdfColor(color);
   if (parsed) {
-    try { set(parsed.hex); return parsed.alpha; } catch (error) {
+    try { set(parsed.color); return parsed.alpha; } catch (error) {
       console.warn(`[section PDF] colour ${JSON.stringify(color)} rejected by jsPDF, using ${fallback}`, error);
     }
   } else {

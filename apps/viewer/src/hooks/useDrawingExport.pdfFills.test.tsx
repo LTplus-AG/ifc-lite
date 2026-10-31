@@ -298,16 +298,16 @@ describe('handleExportSVG uses the same resolver', () => {
 
 describe('pdfColor', () => {
   it('expands short hex, splits alpha, reads rgb()/rgba(), rejects the rest', () => {
-    assert.deepEqual(pdfColor('#abc'), { hex: '#aabbcc', alpha: 1 });
-    assert.deepEqual(pdfColor('#112233'), { hex: '#112233', alpha: 1 });
-    assert.deepEqual(pdfColor('#112233ff'), { hex: '#112233', alpha: 1 });
-    assert.deepEqual(pdfColor('#11223300'), { hex: '#112233', alpha: 0 });
-    assert.deepEqual(pdfColor('#f008'), { hex: '#ff0000', alpha: 136 / 255 });
-    assert.deepEqual(pdfColor(' rgba(255, 0, 0, 0.5) '), { hex: '#ff0000', alpha: 0.5 });
-    assert.deepEqual(pdfColor('rgb(0,128,255)'), { hex: '#0080ff', alpha: 1 });
-    assert.deepEqual(pdfColor('transparent'), { hex: '#000000', alpha: 0 });
-    assert.deepEqual(pdfColor('NONE'), { hex: '#000000', alpha: 0 });
-    assert.deepEqual(pdfColor('Red'), { hex: 'red', alpha: 1 }, 'names pass through for jsPDF to resolve');
+    assert.deepEqual(pdfColor('#abc'), { color: '#aabbcc', alpha: 1 });
+    assert.deepEqual(pdfColor('#112233'), { color: '#112233', alpha: 1 });
+    assert.deepEqual(pdfColor('#112233ff'), { color: '#112233', alpha: 1 });
+    assert.deepEqual(pdfColor('#11223300'), { color: '#112233', alpha: 0 });
+    assert.deepEqual(pdfColor('#f008'), { color: '#ff0000', alpha: 136 / 255 });
+    assert.deepEqual(pdfColor(' rgba(255, 0, 0, 0.5) '), { color: '#ff0000', alpha: 0.5 });
+    assert.deepEqual(pdfColor('rgb(0,128,255)'), { color: '#0080ff', alpha: 1 });
+    assert.deepEqual(pdfColor('transparent'), { color: '#000000', alpha: 0 });
+    assert.deepEqual(pdfColor('NONE'), { color: '#000000', alpha: 0 });
+    assert.deepEqual(pdfColor('Red'), { color: 'red', alpha: 1 }, 'names pass through for jsPDF to resolve');
     assert.equal(pdfColor('rgb(1.2.3,0,0)'), null);
     assert.equal(pdfColor('rgb(300,0,0)'), null);
     assert.equal(pdfColor('#12'), null);

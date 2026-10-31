@@ -39,6 +39,7 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { createLensDataProvider } from '@/lib/lens';
 import { evaluateLensGroups } from '@/lib/lens/evaluate-lens-groups';
+import { customGroupingsFromLenses } from '@/lib/lens/custom-groupings';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { toast } from '@/components/ui/toast';
 import { planLensHiddenSync, ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
@@ -65,6 +66,13 @@ export function useLens(): void {
   const activeLens = useMemo(
     () => savedLenses.find(l => l.id === activeLensId) ?? null,
     [activeLensId, savedLenses],
+  );
+  // A rule reading another lens as a custom grouping (#8425) re-evaluates when
+  // any lens changes; a lens without one ignores edits to the others.
+  const groupingSource = useMemo(
+    () => activeLens?.rules.some((rule) => rule.groups?.some((g) => g.rules.some((r) => r.kind === 'customGrouping')))
+      ? savedLenses : null,
+    [activeLens, savedLenses],
   );
 
   // Track the previously active lens to detect deactivation
@@ -191,7 +199,7 @@ export function useLens(): void {
     const controller = new AbortController();
     const evaluatorModels = models.size > 0
       ? evaluatorModelsFromState(state)
-      : [{ id: 'legacy', store: ifcDataStore, mutationView: mutationViews.get('legacy') }];
+      : [{ id: 'legacy', store: ifcDataStore, mutationView: mutationViews.get('legacy'), customGroupings: customGroupingsFromLenses(state.savedLenses, []) }];
     void evaluateLensGroups(
       activeLens, evaluatorModels, models, definedModelTagIdsOf(state), controller.signal,
     ).then((matched) => {
@@ -203,7 +211,7 @@ export function useLens(): void {
       toast.error(error instanceof Error ? error.message : 'Could not apply this lens.');
     });
     return () => controller.abort();
-  }, [activeLensId, activeLens, modelSetKey, mutationVersion]);
+  }, [activeLensId, activeLens, groupingSource, modelSetKey, mutationVersion]);
 
   // Identity, not `.size`: the evaluation above replaces the Set on every
   // recompute, and a same-size content swap must still resync (#5206).

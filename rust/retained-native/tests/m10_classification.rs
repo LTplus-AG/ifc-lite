@@ -187,7 +187,7 @@ mod frames {
     fn part(indices: Vec<u32>, frame: [f64; 16]) -> ShapePart {
         ShapePart { layer: None, capped_volume_m3: None, positions: CUBE.to_vec(), indices, world_from_object: frame,
             curved: false, halfspace_clipped: false, revision_local_faces: vec![], normals: None, appearance: None,
-            faces: None, instance_key: None, source_exact: false }
+            faces: None, instance_key: None, source_exact: false, surface: None }
     }
     const RIGID: [f64; 16] = [0.,1.,0.,0., -1.,0.,0.,0., 0.,0.,1.,0., 5.,6.,7.,1.]; // quarter turn about Z + translation
     const MIRROR: [f64; 16] = [-1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 2.,3.,4.,1.];

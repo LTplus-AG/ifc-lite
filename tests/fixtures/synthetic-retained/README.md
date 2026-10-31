@@ -77,6 +77,11 @@ face-area bound missing; `face-area-tolerance.json` separately preregisters
   and includes an MPL notice. Its rows are red/green, blue/white. All assets
   and generators here are MPL-2.0, with no external source/sidecar licence claim.
 
+- **F-T**: four 2 x 1 x 3 m face-set boxes authored inward, so the shell flips: palette and texture,
+  uncut and through a 0.5 x 2 x 2 opening. `TexCoordIndex` permutes `CoordIndex` and the UVs are
+  non-periodic. Generate with `generate-face-set-presentation.py`, which also writes its hand cut
+  volumes to `f-t-face-set-presentation.oracle.json` (#8291).
+
 The Rust integration target `issue_7955_synthetic` runs canonical
 `ifc_lite_processing::process` with exact geometry, default medium quality and
 instancing off; a separate test expands instance records with affine transforms.

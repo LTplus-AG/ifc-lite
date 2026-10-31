@@ -1,0 +1,32 @@
+{
+  "cases": {
+    "f-t-face-set-presentation.ifc": {
+      "products": [
+        {
+          "id": 38,
+          "role": "palette-cut",
+          "volume": 5,
+          "opening_volume": 2,
+          "opening_id": 45,
+          "local_centroid": [
+            1.1,
+            0.5,
+            1.6
+          ]
+        },
+        {
+          "id": 57,
+          "role": "texture-cut",
+          "volume": 5,
+          "opening_volume": 2,
+          "opening_id": 64,
+          "local_centroid": [
+            1.1,
+            0.5,
+            1.6
+          ]
+        }
+      ]
+    }
+  }
+}

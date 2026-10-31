@@ -29,7 +29,9 @@ export function retainedReport(engine: RetainedEngine, instanceMinOccurrences: n
       ...(part.materialId === undefined ? {} : { materialId: part.materialId }),
       // JSON has no negative zero; canonicalise so the written report round-trips exactly.
       ...(part.normals ? { normals: Array.from(part.normals, v => v + 0) } : {}),
-      ...(part.faces ? { faces: faceReport(part) } : {}) }));
+      ...(part.faces ? { faces: faceReport(part) } : {}),
+      ...(part.palette ? { palette: { mapId: part.palette.mapId, colors: Array.from(part.palette.colors), triangles: Array.from(part.palette.triangles) } } : {}),
+      ...(part.texture ? { texture: { textureId: part.texture.textureId, uvs: Array.from(part.texture.uvs, v => v + 0), textured: Array.from(part.texture.textured) } } : {}) }));
     return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: productVolume(p.parts),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
       ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= instanceMinOccurrences

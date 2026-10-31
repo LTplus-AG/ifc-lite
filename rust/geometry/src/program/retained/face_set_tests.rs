@@ -92,3 +92,12 @@ fn issue_8291_survey_scale_polygon_corners_survive_triangulation() {
     }).sum();
     assert_eq!(area, 0.25 * 0.25 - 0.125 * 0.125, "the authored L, exactly");
 }
+
+#[test]
+fn issue_8291_flipped_shell_keeps_each_corners_authored_slot_for_uvs() {
+    let inward = format!("{TETRA}\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((1,2,3),(1,4,2),(2,4,3),(3,4,1)),(1,2,3,4));");
+    let set = capture_source(&inward, 2).unwrap();
+    assert_eq!(set.triangles[..3], [0, 2, 1]);
+    assert_eq!(set.source_slots[..3], [0, 2, 1], "published corner 1 is authored corner 2");
+    assert_eq!(set.source_corners[..3], [0, 2, 1]);
+}

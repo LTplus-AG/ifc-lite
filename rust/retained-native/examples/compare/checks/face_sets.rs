@@ -8,7 +8,54 @@ fn row_key(role: &str) -> Option<u32> {
     role.strip_prefix("row(")?.strip_suffix(')')?.parse().ok()
 }
 
+/// Every published UV and palette entry against the row its face key names. Affine
+/// copies move a part out of the source's frame and keep only the exact comparison.
+fn surface(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+    let (mut uv, mut palette, mut coverage, mut any) = (0f64, 0f64, 0f64, false);
+    for part in &product.parts {
+        let (Some(surface), Some(faces)) = (&part.surface, &part.faces) else { continue };
+        if !part.source_exact && product.cuts == 0 { continue; }
+        any = true;
+        let mut decoder = EntityDecoder::new(bytes);
+        let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
+        for (t, &key) in faces.triangles.iter().enumerate() {
+            let key = &faces.table[key as usize];
+            let Some(row) = row_key(&key.role) else {
+                coverage += f64::from(surface.texture.as_ref().is_some_and(|x| x.textured[t]));
+                coverage += f64::from(surface.palette.as_ref().is_some_and(|x| x.triangles[t] != ifc_lite_processing::element::retained_runtime::NO_PALETTE_ENTRY));
+                continue;
+            };
+            let Ok(item) = decoder.decode_by_id(key.item) else { coverage += 1.; continue };
+            let Some(set) = face_sets::authored(&item, &mut decoder, units) else { coverage += 1.; continue };
+            let authored = face_sets::authored_surface(bytes, &item, &mut decoder);
+            if let (Some(published), Some(source)) = (&surface.palette, &authored.palette) {
+                palette += f64::from(source.get(row as usize) != Some(&published.triangles[t]));
+            }
+            let (Some(published), Some(source)) = (&surface.texture, &authored.uvs) else { continue };
+            coverage += f64::from(!published.textured[t]);
+            for corner in 0..3 {
+                let at = part.indices[t * 3 + corner] as usize * 3;
+                let p = [part.positions[at], part.positions[at + 1], part.positions[at + 2]];
+                let published_uv = [published.uvs[(t * 3 + corner) * 2], published.uvs[(t * 3 + corner) * 2 + 1]];
+                uv = uv.max(set.rows.get(row as usize).zip(source.get(row as usize))
+                    .and_then(|(authored_row, uvs)| face_sets::uv_deviation(authored_row, uvs, p, published_uv))
+                    .unwrap_or(f64::INFINITY));
+            }
+        }
+    }
+    if !any { return Vec::new(); }
+    let result = |family, value: f64, limit: f64| OracleResult { family, value, limit, pass: value.is_finite() && value <= limit, gated: true, ..Default::default() };
+    vec![result("faceSetUvAffine", uv, tolerances["faceSetUvAffineAbsolute"].as_f64().unwrap_or(f64::NAN)),
+        result("faceSetPaletteRow", palette, 0.), result("faceSetSurfaceCoverage", coverage, 0.)]
+}
+
 pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+    let mut results = surface(product, bytes, tolerances);
+    results.extend(rows(product, bytes, tolerances));
+    results
+}
+
+fn rows(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
     let mut worst = face_sets::RowDeviation::default();
     let mut any = false;
     let mut failure = None;

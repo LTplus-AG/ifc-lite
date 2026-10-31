@@ -28,6 +28,10 @@ pub struct RetainedFaceSet {
     /// One authored row per triangle, below `row_count`.
     pub rows: Vec<u32>,
     pub row_count: u32,
+    /// Per published corner: its `CoordIndex` value before `PnIndex`. Empty for polygons.
+    pub source_corners: Vec<u32>,
+    /// Per published corner: its position (0..3) in the authored row. Empty for polygons.
+    pub source_slots: Vec<u8>,
     /// Raw IFC file length unit -> metres.
     pub length_unit_scale: f64,
 }

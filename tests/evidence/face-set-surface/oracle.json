@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/presentation/surface_rows.rs",
+  "mutation": "tests/evidence/face-set-surface/behaviour.oracle.patch",
+  "test": "rust/processing/tests/face_set_surface.rs",
+  "why": "Rotating the barycentric weights must fail the affine UV witness at a new cut vertex, without an SDK or kernel."
+}

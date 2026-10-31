@@ -22,7 +22,7 @@ fn model(records: &str) -> String { SCAFFOLD.replace("/*BODY*/", records) }
 #[test]
 fn issue_8291_f_b_mapped_uncut_boxes_are_final_and_keyed_per_row() {
     let Some(outcomes) = support::native(F_B_MAPPED) else { return; };
-    for id in [53, 68, 113] {
+    for id in [53, 68, 113, 172, 183] {
         let product = support::shape(&outcomes, id);
         assert_eq!(product.marker(), "final", "#{id}");
         let [part] = product.parts.as_slice() else { panic!("#{id} parts") };
@@ -31,9 +31,6 @@ fn issue_8291_f_b_mapped_uncut_boxes_are_final_and_keyed_per_row() {
         assert_eq!(faces.table.len(), 12, "#{id}: one key per authored row, even coplanar ones");
         assert!(faces.table.iter().all(|key| key.role.starts_with("row(")));
         assert!(!part.curved && part.normals.is_some() && part.appearance.is_some());
-    }
-    for (id, code) in [(172, "appearance_unsupported"), (183, "appearance_unsupported")] {
-        assert_eq!(support::refusal(&outcomes, id).code(), code, "#{id}");
     }
     println!("sdk witness executed: face_set_f_b_mapped");
 }
@@ -174,4 +171,116 @@ fn issue_8291_open_shell_operands_refuse_typed_and_spend_no_worker() {
     }
     assert_eq!(support::shape(&outcomes, 20).marker(), "final", "the closed face set still publishes");
     println!("sdk witness executed: face_set_open_operand");
+}
+
+const F_T: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc");
+const NO_ENTRY: u32 = ifc_lite_processing::element::retained_runtime::NO_PALETTE_ENTRY;
+
+/// (palette product, textured product) in the generator's order: uncut, then cut.
+const F_T_PALETTE: [u32; 2] = [17, 38];
+const F_T_TEXTURE: [u32; 2] = [28, 57];
+
+#[test]
+fn issue_8291_palette_index_is_the_source_rows_uncut_and_through_a_cut() {
+    let Some(outcomes) = support::native(F_T) else { return; };
+    let colour_index = [0u32, 1, 2, 0, 1, 2, 1, 2, 0, 2, 0, 1];
+    for id in F_T_PALETTE {
+        let product = support::shape(&outcomes, id);
+        assert_eq!(product.marker(), "final", "#{id}");
+        let [part] = product.parts.as_slice() else { panic!("#{id} parts") };
+        let palette = part.surface.as_ref().and_then(|s| s.palette.as_ref()).expect("palette");
+        assert_eq!(palette.colours.len(), 3);
+        let faces = part.faces.as_ref().unwrap();
+        let mut reveals = 0;
+        for (t, &key) in faces.triangles.iter().enumerate() {
+            match faces.table[key as usize].role.strip_prefix("row(").and_then(|r| r.strip_suffix(')')) {
+                Some(row) => assert_eq!(palette.triangles[t], colour_index[row.parse::<usize>().unwrap()], "#{id} triangle {t}"),
+                None => { reveals += 1; assert_eq!(palette.triangles[t], NO_ENTRY, "#{id}: a reveal has no palette row"); }
+            }
+        }
+        assert_eq!(reveals > 0, product.cuts == 1, "#{id}: only the cut product has reveals");
+    }
+    println!("sdk witness executed: face_set_palette");
+}
+
+#[test]
+fn issue_8291_every_corner_uv_is_the_rows_affine_map_uncut_and_through_a_cut() {
+    let Some(outcomes) = support::native(F_T) else { return; };
+    for id in F_T_TEXTURE {
+        let product = support::shape(&outcomes, id);
+        assert_eq!(product.marker(), "final", "#{id}");
+        let [part] = product.parts.as_slice() else { panic!("#{id} parts") };
+        let texture = part.surface.as_ref().and_then(|s| s.texture.as_ref()).expect("texture");
+        let faces = part.faces.as_ref().unwrap();
+        let mut decoder = ifc_lite_core::EntityDecoder::new(F_T.as_bytes());
+        let item = decoder.decode_by_id(faces.table.iter().find(|k| k.role.starts_with("row(")).unwrap().item).unwrap();
+        let set = face_sets::authored(&item, &mut decoder, 1.).unwrap();
+        let authored = face_sets::authored_surface(F_T.as_bytes(), &item, &mut decoder);
+        let source = authored.uvs.expect("authored UVs");
+        let (mut compared, mut new_corners) = (0, 0);
+        for (t, &key) in faces.triangles.iter().enumerate() {
+            let Some(row) = faces.table[key as usize].role.strip_prefix("row(").and_then(|r| r.strip_suffix(')')) else {
+                assert!(!texture.textured[t], "#{id}: a reveal has no authored UV");
+                continue;
+            };
+            let row: usize = row.parse().unwrap();
+            assert!(texture.textured[t]);
+            for corner in 0..3 {
+                let at = part.indices[t * 3 + corner] as usize * 3;
+                let p = [part.positions[at], part.positions[at + 1], part.positions[at + 2]];
+                let uv = [texture.uvs[(t * 3 + corner) * 2], texture.uvs[(t * 3 + corner) * 2 + 1]];
+                let deviation = face_sets::uv_deviation(&set.rows[row], &source[row], p, uv).expect("row plane");
+                assert!(deviation <= 1e-9, "#{id} row {row}: {deviation}");
+                compared += 1;
+                new_corners += usize::from(!set.rows[row].points.iter().any(|q| (0..3).all(|i| (q[i] - p[i]).abs() < 1e-12)));
+            }
+        }
+        assert!(compared >= 36);
+        assert_eq!(new_corners > 0, product.cuts == 1, "#{id}: a cut must have interpolated new corners");
+    }
+    println!("sdk witness executed: face_set_uv");
+}
+
+#[test]
+fn issue_8291_stage_native_browser_reference() {
+    let Some(outcomes) = support::native(F_T) else { return; };
+    let bits = |values: &[f64]| values.iter().map(|v| v.to_bits().to_string()).collect::<Vec<_>>();
+    let rows: Vec<_> = F_T_PALETTE.iter().chain(&F_T_TEXTURE).map(|&id| {
+        let product = support::shape(&outcomes, id);
+        let parts: Vec<_> = product.parts.iter().map(|part| {
+            let surface = part.surface.as_ref().unwrap();
+            serde_json::json!({
+                "palette": surface.palette.as_ref().map(|p| &p.triangles),
+                "uvBits": surface.texture.as_ref().map(|x| bits(&x.uvs)),
+                "faces": part.faces.as_ref().map(|f| f.table.iter().map(|k| k.to_string()).collect::<Vec<_>>()),
+            })
+        }).collect();
+        serde_json::json!({"id": id, "parts": parts})
+    }).collect();
+    if let Ok(path) = std::env::var("IFCLITE_M11T_REFERENCE") {
+        std::fs::write(path, serde_json::to_vec(&rows).unwrap()).unwrap();
+    }
+    println!("sdk witness executed: face_set_reference");
+}
+
+#[test]
+fn issue_8291_a_coloured_cutter_never_colours_the_host_or_its_reveals() {
+    // An extruded wall whose opening's body is a face set with its own palette.
+    let text = model("\
+#33=IFCEXTRUDEDAREASOLID(#34,#5,#35,3000.);#34=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4000.,1000.);#35=IFCDIRECTION((0.,0.,1.));
+#60=IFCCARTESIANPOINTLIST3D(((-500.,-1000.,500.),(500.,-1000.,500.),(500.,1000.,500.),(-500.,1000.,500.),(-500.,-1000.,1500.),(500.,-1000.,1500.),(500.,1000.,1500.),(-500.,1000.,1500.)));
+#61=IFCTRIANGULATEDFACESET(#60,$,.T.,((1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)),$);
+#62=IFCCOLOURRGBLIST(((1.,0.,0.),(0.,1.,0.)));#63=IFCINDEXEDCOLOURMAP(#61,1.,#62,(1,2,1,2,1,2,1,2,1,2,1,2));
+#64=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#61));#65=IFCPRODUCTDEFINITIONSHAPE($,$,(#64));
+#66=IFCOPENINGELEMENT('op',$,'o',$,$,#9,#65,$,.OPENING.);#67=IFCRELVOIDSELEMENT('r',$,$,$,#20,#66);");
+    let Some(outcomes) = support::native(&text) else { return; };
+    let host = support::shape(&outcomes, 20);
+    assert_eq!((host.marker(), host.cuts), ("final", 1));
+    let [part] = host.parts.as_slice() else { panic!("parts") };
+    assert!(part.surface.is_none(), "the wall has no authored surface");
+    let faces = part.faces.as_ref().unwrap();
+    assert!(faces.table.iter().any(|key| key.via == 66), "the cut really has reveals");
+    let colour = part.appearance.as_ref().unwrap().rgba;
+    assert_ne!(colour[..3], [1., 0., 0.], "not the cutter's dominant entry");
+    println!("sdk witness executed: face_set_coloured_cutter");
 }

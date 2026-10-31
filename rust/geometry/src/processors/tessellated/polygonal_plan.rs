@@ -246,7 +246,7 @@ impl PolygonalFaceSetPlan {
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     pub(crate) fn source_triangles(self, face_count: u32) -> super::SourceTriangles {
         let Self::Faces { positions, parsed, index_capacity, orient_outward, .. } = self else {
-            return super::SourceTriangles { positions: Vec::new(), indices: Vec::new(), rows: Vec::new(), row_count: face_count };
+            return super::SourceTriangles { positions: Vec::new(), indices: Vec::new(), rows: Vec::new(), row_count: face_count, authored: Vec::new(), slots: Vec::new() };
         };
         let mut rows = Vec::new();
         let mut indices = triangulate_faces(&positions, &parsed, index_capacity, |face, corners| {
@@ -255,7 +255,7 @@ impl PolygonalFaceSetPlan {
         if orient_outward {
             PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
         }
-        super::SourceTriangles { positions, indices, rows, row_count: face_count }.keep_emitted()
+        super::SourceTriangles { positions, indices, rows, row_count: face_count, authored: Vec::new(), slots: Vec::new() }.keep_emitted()
     }
 }
 

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+model	id	status	code
+tests/fixtures/synthetic-retained/f-d-texture.ifc	28	published	
+tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc	17	published	
+tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc	28	published	
+tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc	38	published	
+tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc	45	published	
+tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc	57	published	
+tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc	64	published	

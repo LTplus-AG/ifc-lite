@@ -60,10 +60,10 @@ pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealizati
     -> Result<FaceSources, RetainedExecutionError> {
     let unattributed = |entity| Ok(Err(Unproven::Unattributed { entity }));
     let mut operands = Vec::new();
-    // (node, node evaluation <- part, orientation, via)
-    let mut stack = vec![(root, IDENTITY, 1., 0)];
+    // (node, node evaluation <- part, orientation, via, removed material)
+    let mut stack = vec![(root, IDENTITY, 1., 0, false)];
     let mut visits = 0;
-    while let Some((node, from_part, sign, via)) = stack.pop() {
+    while let Some((node, from_part, sign, via, subtracted)) = stack.pop() {
         // Shared operands (`A ∪ A`) expand a DAG into a tree: bound the expansion.
         visits += 1;
         if visits > MAX_LINEAGE_NODES { return unattributed(None); }
@@ -84,13 +84,14 @@ pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealizati
                     Err(NoFaces::Malformed) => return unattributed(Some(item)),
                 };
                 let setup: usize = faces.iter().map(|f| match &f.support { Support::Tube { curve, .. } => curve.setup_cost(), _ => 1 }).sum();
-                let pieces: usize = faces.iter().map(|f| match &f.extent { super::face_attribution::Extent::Row { triangles } => triangles.len(), _ => 0 }).sum();
+                let pieces: usize = faces.iter().map(|f| match &f.extent { super::face_attribution::Extent::Row { triangles, .. } => triangles.len(), _ => 0 }).sum();
                 charge(setup, std::mem::size_of::<Operand>() + pieces * std::mem::size_of::<[[f64; 3]; 3]>()
                     + faces.len() * std::mem::size_of::<super::face_attribution::SourceFace>())?;
                 let stretch = stretch(&from_part);
                 if !stretch.is_finite() { return unattributed(Some(item)); }
                 let rows_identify_faces = Arc::ptr_eq(node, root) && face_surfaces::is_face_set(request.recipe());
-                operands.push(Operand { item, via, from_part, sign, stretch, faces, region, rows_identify_faces });
+                let request = face_surfaces::is_face_set(request.recipe()).then(|| request.clone());
+                operands.push(Operand { item, via, from_part, sign, stretch, faces, region, rows_identify_faces, request, subtracted });
             }
             ReceiptEvidence::Boolean { operation, world_from_left, world_from_right, world_from_evaluation, .. } => {
                 let [Some(left), Some(right)] = &node._inputs else { return unattributed(None) };
@@ -98,13 +99,13 @@ pub(in super::super) fn sources<R: NumericalReceipt>(root: &Arc<RuntimeRealizati
                 let (Ok(left_frame), Ok(right_frame)) = (place(world_from_left), place(world_from_right))
                     else { return unattributed(None) };
                 let flip = if operation == BoolOp::Difference { -sign } else { sign };
-                stack.push((right, right_frame, flip, node.opening.unwrap_or(via)));
-                stack.push((left, left_frame, sign, via));
+                stack.push((right, right_frame, flip, node.opening.unwrap_or(via), subtracted || operation == BoolOp::Difference));
+                stack.push((left, left_frame, sign, via, subtracted));
             }
             // A sealed affine copy keeps its input's surfaces, mapped by its matrix (mirrors reverse them).
             ReceiptEvidence::Affine { column_major, .. } => {
                 let ([Some(input), None], Some(back)) = (&node._inputs, inverse(column_major)) else { return unattributed(None) };
-                stack.push((input, compose(&back, &from_part), sign * determinant(column_major).signum(), via));
+                stack.push((input, compose(&back, &from_part), sign * determinant(column_major).signum(), via, subtracted));
             }
         }
     }

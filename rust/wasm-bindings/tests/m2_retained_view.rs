@@ -59,7 +59,7 @@ fn cube() -> ShapePart {
         ],
         halfspace_clipped: false,
         curved: false,
-        revision_local_faces: vec![], normals: None, appearance: None, faces: None, instance_key: None, source_exact: false,
+        revision_local_faces: vec![], normals: None, appearance: None, faces: None, instance_key: None, source_exact: false, surface: None,
     }
 }
 
@@ -146,4 +146,20 @@ fn m11_corner_normals_are_world_axes_and_none_keeps_the_existing_mesh_bytes() {
     };
     assert_eq!(bits(&old), bits(&new),
         "the retained constructor migration preserves every position/normal/index/origin bit");
+}
+
+// #8291: one mesh per palette colour, and the GPU's V-flipped UVs, as exact's mesher writes them.
+#[test]
+fn issue_8291_surface_groups_split_by_palette_entry_and_textured_state() {
+    use ifc_lite_processing::element::retained_runtime::{PartPalette, PartSurface, NO_PALETTE_ENTRY};
+    let mut part = cube();
+    let triangles = part.indices.len() / 3;
+    assert_eq!(retained_view::surface_groups(&part).len(), 1, "an unbound part stays one mesh");
+    let mut entries = vec![0; triangles];
+    entries[1] = NO_PALETTE_ENTRY;
+    entries[2] = 1;
+    part.surface = Some(PartSurface { palette: Some(PartPalette { map_id: 9, colours: vec![[1., 0., 0., 1.], [0., 0., 1., 1.]], triangles: entries }), texture: None });
+    let groups = retained_view::surface_groups(&part);
+    assert_eq!(groups.iter().map(|g| g.0.as_ref().unwrap().len()).sum::<usize>(), triangles, "every triangle once");
+    assert_eq!(groups.iter().map(|g| g.1).collect::<Vec<_>>(), [Some(0), Some(1), None]);
 }

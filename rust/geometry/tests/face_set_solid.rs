@@ -11,6 +11,8 @@ fn set(triangles: Vec<u32>) -> RetainedFaceSet {
         row_count: triangles.len() as u32 / 3,
         triangles,
         rows,
+        source_corners: Vec::new(),
+        source_slots: Vec::new(),
         length_unit_scale: 1.,
     }
 }

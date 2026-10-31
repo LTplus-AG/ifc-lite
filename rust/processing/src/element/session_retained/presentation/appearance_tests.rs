@@ -66,7 +66,7 @@ fn product_plan(source: &Arc<SourceBundle>, id: u32) -> RetainedProductPlan {
 }
 fn hand_part() -> ShapePart {
     ShapePart { layer: None, capped_volume_m3: None, positions: Vec::new(), indices: Vec::new(), world_from_object: [0.; 16], curved: false, halfspace_clipped: false,
-        revision_local_faces: Vec::new(), normals: None, appearance: None, faces: None, instance_key: None, source_exact: false }
+        revision_local_faces: Vec::new(), normals: None, appearance: None, faces: None, instance_key: None, source_exact: false, surface: None }
 }
 const WALL: &str = "#14=IFCWALL('w',$,'Wall',$,$,#7,#13,$,$);";
 /// Two unstyled items, materials [glass(alpha .35), frame(opaque)].
@@ -113,15 +113,15 @@ fn assert_unsupported(error: RetainedExecutionError, entity: u32, cause: &str) {
     assert_eq!((origin.site, origin.entity, origin.cause), ("appearance", Some(entity), cause));
 }
 #[test]
-fn m11_a_textures_and_indexed_palettes_refuse_as_explicit_absence() {
-    // Both arise only on IfcTessellatedFaceSet, which retained refuses upstream (census: 0/131
-    // committed, 0/94,567 heavy-eligible). A binding that still carries one never gets plain colour.
+fn issue_8291_texture_and_palette_bindings_stay_flagged_for_the_surface_slice() {
     let mut texture = fact(7);
     texture.texture_pending = true;
-    assert_unsupported(resolve(&[bound(texture)]).unwrap_err(), 7, "texture_pending");
+    let parts = resolve(&[bound(texture)]).unwrap();
+    assert!(parts[0].texture_pending && !parts[0].palette_pending);
     let mut palette = fact(8);
     palette.indexed_palette_pending = true;
-    assert_unsupported(resolve(&[bound(fact(7)), bound(palette)]).unwrap_err(), 8, "indexed_palette_pending");
+    let parts = resolve(&[bound(fact(7)), bound(palette)]).unwrap();
+    assert!(!parts[0].palette_pending && parts[1].palette_pending);
 }
 #[test]
 fn m4_band_without_a_material_style_uses_exact_fallback_and_material_identity() {
@@ -151,7 +151,7 @@ fn m11_a_binding_selection_prefers_the_type_binding_and_keeps_every_pending_flag
     let typed = PresentationFacts { type_product: Some((60, 1)), representation_map: Some(61), ..fact(60) };
     let Bound { source, fact: chosen, .. } = bind(&[item, typed]).unwrap();
     assert_eq!((source, chosen.type_product, chosen.texture_pending), (PartSource::Item(60), Some((60, 1)), true));
-    assert_unsupported(resolve(&[Bound { source, fact: chosen, occurrences: Vec::new() }]).unwrap_err(), 60, "texture_pending");
+    assert!(resolve(&[Bound { source, fact: chosen, occurrences: Vec::new() }]).unwrap()[0].texture_pending);
     assert_eq!(bind(&[]).unwrap().source, PartSource::Unbound);
 }
 #[test]

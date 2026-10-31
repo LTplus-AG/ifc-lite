@@ -96,7 +96,19 @@ fn exact_violations(model: &str, product: &ShapeOnlyProduct, exact: &BTreeMap<Ke
     if product.parts.iter().any(|part| part.layer.is_some()) { return Vec::new(); }
     let mut ours: BTreeMap<Option<u32>, Looks> = BTreeMap::new();
     for part in &product.parts {
-        looks::add(ours.entry(part.appearance.as_ref().unwrap().geometry_item_id).or_default(), look(part));
+        let key = part.appearance.as_ref().unwrap().geometry_item_id;
+        // #8291: exact splits an uncut palette into one mesh per used colour, as the retained view does.
+        // A cut keeps retained's rows where exact has only the dominant entry, which is the part colour.
+        match part.surface.as_ref().and_then(|s| s.palette.as_ref()).filter(|_| product.cuts == 0) {
+            Some(palette) => {
+                let used: BTreeSet<u32> = palette.triangles.iter().copied().collect();
+                for entry in used {
+                    let colour = palette.colours[entry as usize];
+                    looks::add(ours.entry(key).or_default(), (colour.map(f32::to_bits), part.appearance.as_ref().unwrap().material_name.clone()));
+                }
+            }
+            None => looks::add(ours.entry(key).or_default(), look(part)),
+        }
     }
     looks::violations(model, product.product_id, &ours, exact, SPLITS)
 }
@@ -126,9 +138,7 @@ fn m11_a_every_committed_published_row_resolves_and_matches_exact_per_product_an
                 ProductOutcome::Refused { refusal, .. } => {
                     assert!(!is_published, "{model} #{id} refused {} but the coverage row says published", refusal.code());
                     assert_eq!(refusal.code(), code, "{model} #{id}");
-                    if refusal.code() == "appearance_unsupported" {
-                        assert!(model == F_B_MAPPED && [172, 183].contains(id), "{model} #{id}: only the palette and texture witnesses pend");
-                    }
+                    assert_ne!(refusal.code(), "appearance_unsupported", "{model} #{id}: every committed binding has a surface");
                 }
             }
         }
@@ -221,18 +231,18 @@ fn m11_a_shared_f_i_fixture_meets_its_hand_derived_colours() {
 }
 
 #[test]
-fn m11_a_palette_and_texture_products_stay_refused_not_published_as_plain_colour() {
-    // f-b-mapped #172 (IfcIndexedColourMap) and #183 (IfcIndexedTriangleTextureMap): their tessellated bodies
-    // are admitted (#8291), so appearance is what refuses them: never a plain-colour publication.
+fn issue_8291_palette_and_texture_products_publish_their_authored_surface_never_plain_colour() {
     let Some(outcomes) = retained(F_B_MAPPED, None) else { return; };
-    for id in [172, 183] {
-        assert_eq!(support::refusal(&outcomes, id).code(), "appearance_unsupported", "#{id}");
-    }
-    assert!(published(&outcomes).all(|p| p.product_id != 172 && p.product_id != 183));
+    let palette = published(&outcomes).find(|p| p.product_id == 172).expect("#172 published");
+    let surface = palette.parts[0].surface.as_ref().expect("palette surface");
+    assert_eq!(surface.palette.as_ref().unwrap().triangles, [0, 1, 2, 0, 1, 2, 1, 2, 0, 2, 0, 1]);
+    let textured = published(&outcomes).find(|p| p.product_id == 183).expect("#183 published");
+    let surface = textured.parts[0].surface.as_ref().expect("texture surface");
+    assert!(surface.texture.as_ref().unwrap().textured.iter().all(|&flag| flag));
     for product in published(&outcomes) {
         assert!(product.parts.iter().all(|part| part.appearance.is_some()));
     }
-    println!("sdk witness executed: m11_a_palette_texture_absence");
+    println!("sdk witness executed: m11_t_palette_texture");
 }
 
 #[test]

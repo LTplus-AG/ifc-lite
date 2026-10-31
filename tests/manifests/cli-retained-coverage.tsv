@@ -119,8 +119,8 @@ tests/fixtures/synthetic-retained/f-b-mapped.ifc	128	published
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	135	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	153	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	160	published	
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	172	refused	appearance_unsupported
-tests/fixtures/synthetic-retained/f-b-mapped.ifc	183	refused	appearance_unsupported
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	172	published	
+tests/fixtures/synthetic-retained/f-b-mapped.ifc	183	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	53	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	68	published	
 tests/fixtures/synthetic-retained/f-b-mapped.ifc	83	published	

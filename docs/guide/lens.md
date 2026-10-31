@@ -74,7 +74,9 @@ Lens, then pick the groups (rule names) to keep or exclude. The rule is
 `customGrouping` from `@ifc-lite/rules`; hosts pass the definitions on
 `EvaluatorModel.customGroupings`.
 
-References resolve by Lens name, with the Lens id as a hint, so a Lens file
+A reference stores the Lens id and name. An existing Lens with that id wins,
+even if it was renamed; only when no Lens has the id does the name decide, and
+then it must match exactly one Lens (trimmed, case-insensitive). So a Lens file
 imported into another project still resolves. A disabled rule keeps its name
 but has no members, and its action (colour, hide, transparent) does not change
 membership. An unknown Lens or group matches nothing and the chip says so; a

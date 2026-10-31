@@ -154,3 +154,15 @@ export async function evaluateFilterGroupsFederated(
   }
   return out;
 }
+
+/**
+ * The single-model evaluator options that give `model` the meaning it has in a
+ * federated run: its durable identity, tags, live edits and host readers. Sync
+ * callers holding an `EvaluatorModel` use this rather than picking fields.
+ */
+export function evaluateOptionsOf(model: EvaluatorModel): EvaluateOptions {
+  return {
+    modelFilterIdentity: model.filterIdentity, modelTagIds: model.tagIds, mutationView: model.mutationView,
+    listConditions: model.listConditions, customGroupings: model.customGroupings,
+  };
+}

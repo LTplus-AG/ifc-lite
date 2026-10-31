@@ -17,10 +17,10 @@
  * action (colour, hide, transparent) is display-only and ignored here.
  *
  * Definitions are host data (`EvaluatorModel.customGroupings`), never read by
- * this package from storage. A rule references its grouping by name with the
- * id as a hint: the id wins when it exists here, otherwise the trimmed,
- * case-folded name must match exactly one definition, so a grouping file
- * imported into another project still resolves. A rule naming a grouping or
+ * this package from storage. A rule stores its grouping's id and name: a
+ * definition with that id wins, even under another name; only when no id
+ * matches must the trimmed, case-folded name match exactly one definition, so
+ * a grouping file imported into another project still resolves. A rule naming a grouping or
  * group that does not exist is UNRESOLVED and matches nothing under either
  * op; `unresolvedCustomGrouping` says which part is missing.
  *

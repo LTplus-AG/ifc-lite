@@ -107,8 +107,8 @@ export interface EvaluateOptions {
    *  UNRESOLVED and matches nothing — absent means "no tags exist", so every
    *  rule naming a tag is unresolved, never silently broad. */
   definedModelTagIds?: ReadonlySet<string>;
-  /** Host readers for this model; see `EvaluatorModel`. */
-  listConditions?: ListConditionMatcher; customGroupings?: readonly CustomGroupingDefinition[];
+  /** Host readers and live edits for this model; see `EvaluatorModel` and `evaluateOptionsOf`. */
+  listConditions?: ListConditionMatcher; customGroupings?: readonly CustomGroupingDefinition[]; mutationView?: MutablePropertyView;
 }
 
 const DEFAULT_LIMIT = 5_000;
@@ -135,14 +135,14 @@ export function evaluateFilterRules(
   const limit = options.limit ?? DEFAULT_LIMIT;
   const orderedRules = orderRulesByCost(rules);
   const iterIds = toNumericIterable(
-    selectIterationSource(store, rules, combinator, options.candidateExpressIds, modelId),
+    selectIterationSource(store, rules, combinator, options.candidateExpressIds, modelId, options.mutationView),
   );
   const out: FilteredElement[] = [];
   const ctx = evalContext(store, modelId, {
     filterIdentity: options.modelFilterIdentity ?? modelId,
     tagIds: options.modelTagIds,
     definedModelTagIds: options.definedModelTagIds ?? NO_MODEL_TAGS,
-  }, options, orderedRules, undefined, options);
+  }, options, orderedRules, options.mutationView, options);
 
   for (const expressId of iterIds) {
     if (out.length >= limit) break;

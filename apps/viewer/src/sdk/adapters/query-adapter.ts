@@ -38,7 +38,7 @@ import { foldRelationshipData } from './query-relationship-fold.js';
 import { isProductType } from './query-entity-filter.js';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { normalizePropertyValue } from './query-property-value.js';
-import { evaluateFilterGroups } from '@ifc-lite/rules';
+import { evaluateFilterGroups, evaluateOptionsOf } from '@ifc-lite/rules';
 import { totalRuleCount } from '@ifc-lite/rules';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '../../lib/model-tags/evaluator-models.js';
 import { customGroupingsFromLenses } from '../../lib/lens/custom-groupings.js';
@@ -307,34 +307,30 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     if (!filter || totalRuleCount(filter.groups) === 0) return null;
 
     const results: EntityData[] = [];
-    // `customGrouping` rules (#8425) read the same definitions every other evaluator run gets.
-    const customGroupings = customGroupingsFromLenses(state.savedLenses, evaluatorModelsFromState(state));
+    // The models every other evaluator run gets (durable identity, tags, live
+    // edits, custom groupings #8425); the legacy single model is built alike.
+    const evaluatorModels = new Map(evaluatorModelsFromState(state).map((m) => [m.id, m] as const));
     for (const [modelId, model] of getAllModelEntries(state)) {
       if (!model?.ifcDataStore) continue;
-      const matched = evaluateFilterGroups(
-        modelId,
-        model.ifcDataStore,
-        filter.groups,
-        {
-          limit: Number.MAX_SAFE_INTEGER,
-          modelTagIds: state.modelTagAssignments.get(modelId),
-          definedModelTagIds: definedModelTagIdsOf(state),
-          customGroupings,
-        },
-      );
       const view = getMutationViewForModel(store, modelId);
+      const evaluatorModel = evaluatorModels.get(modelId) ?? {
+        id: modelId, store: model.ifcDataStore, mutationView: view ?? undefined,
+        tagIds: state.modelTagAssignments.get(modelId), customGroupings: customGroupingsFromLenses(state.savedLenses, []),
+      };
+      const matched = evaluateFilterGroups(modelId, model.ifcDataStore, filter.groups, {
+        ...evaluateOptionsOf(evaluatorModel),
+        limit: Number.MAX_SAFE_INTEGER,
+        definedModelTagIds: definedModelTagIdsOf(state),
+      });
       for (const m of matched) {
         if (m.expressId === 0) continue;
-        // Tombstoned this session — `evaluateFilterGroups` matches straight
-        // off `ifcDataStore` and has no notion of the overlay, so a wall the
-        // user deleted still comes back as a match here unless excluded.
-        // Deliberately NOT folding overlay-created entities here (unlike
-        // `queryEntities()`): matches come from `evaluateFilterGroups`
-        // running rules against `ifcDataStore`, and there is no mechanism to
-        // evaluate those rules against a synthetic created entity. The CLI's
-        // own implementation is `entitiesMatchingActiveFilter: () => null`
-        // for the same reason — no reference to fold against exists.
-        if (view?.isDeleted(m.expressId)) continue;
+        // The evaluator reads live edits and skips tombstones; keep the
+        // explicit tombstone check as a guard. Deliberately NOT returning
+        // overlay-created entities here (unlike `queryEntities()`): the row
+        // below is built from `ifcDataStore`, which has no record for them.
+        // The CLI's own implementation is `entitiesMatchingActiveFilter: () =>
+        // null` for the same reason.
+        if (view?.isDeleted(m.expressId) || view?.getNewEntity(m.expressId)) continue;
         const node = new EntityNode(model.ifcDataStore, m.expressId);
         results.push(applyAttributeMutationsToEntityData(store, modelId, m.expressId, {
           ref: { modelId, expressId: m.expressId },

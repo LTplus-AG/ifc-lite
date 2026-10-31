@@ -9594,6 +9594,7 @@
     "evaluateFilterGroupsFederated: function",
     "evaluateFilterRules: function",
     "evaluateFilterRulesFederated: function",
+    "evaluateOptionsOf: function",
     "filterRuleToLegacyLensOperator: function",
     "filterRuleToLegacyListOperator: function",
     "flattenPsets: function",

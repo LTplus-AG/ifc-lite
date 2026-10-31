@@ -114,7 +114,15 @@ describe('GpuFramePacer (#5865)', () => {
     assert.ok(depth <= 2 * GPU_FRAMES_IN_FLIGHT, `queue grew to ${depth} frames`);
   });
 
-  it('keeps the GPU queue bounded on a GPU that takes seconds per frame', async () => {
+  it('keeps the queue at the allowed depth for 10 minutes on a GPU that completes faster than the refill (1.5 s per frame)', async () => {
+    const depth = await maxQueueDepth(() => 1500, 600_000);
+    assert.equal(depth, GPU_FRAMES_IN_FLIGHT);
+  });
+
+  it('bounds the queue over ONE MINUTE at 2 s per frame, but that window hides slow growth: slower than about 1.7 s per frame the refill outruns completions (see the pacer comment)', async () => {
+    // Not a steady-state bound. Over ten minutes the same GPU queues about 60 frames and over an hour
+    // about 360; this window only shows the first minute (depth 9). The 0.1 frame per second growth is
+    // inherent in the per-expiry refill and is recorded as a known limit, not asserted away.
     const depth = await maxQueueDepth(() => 2000, 60_000);
     assert.ok(depth <= 3 * GPU_FRAMES_IN_FLIGHT, `queue grew to ${depth} frames`);
   });

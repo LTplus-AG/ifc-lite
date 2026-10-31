@@ -4,10 +4,11 @@ use ifc_lite_core::SourceBundle;
 use ifc_lite_retained_native::{run_model_native, ModelOptions, ProductOutcome};
 use ifc_lite_retained_native::oracle::bounded;
 
-fn publish(text:&str, worker:&std::ffi::OsStr)->ifc_lite_retained_native::ShapeOnlyProduct {
+fn publish(text:&str, worker:&std::ffi::OsStr)->ifc_lite_retained_native::ShapeOnlyProduct { publish_id(text,worker,1062) }
+fn publish_id(text:&str, worker:&std::ffi::OsStr, id:u32)->ifc_lite_retained_native::ShapeOnlyProduct {
     let mut products=Vec::new();
     run_model_native(SourceBundle::new(text.as_bytes().to_vec()),worker,
-        &ModelOptions{ids:Some([1062].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
+        &ModelOptions{ids:Some([id].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
     match products.pop().unwrap() {
         ProductOutcome::Published(p)=>p,
         o=>panic!("expected published shape: {o:?}"),
@@ -222,4 +223,40 @@ fn m6_7955_mapped_pbhs_keeps_full_checks_and_plain_extrusion_is_not_m6() {
     let base=include_str!("../../../../../tests/fixtures/synthetic-retained/m6-equivalent-boundaries-no-opening.ifc");
     let plain=base.replace("'Clipping',(#125)","'SweptSolid',(#19)");
     assert!(!bounded::applies(plain.as_bytes(),1062));
+}
+
+// #7955: a layered bounded product publishes open bands whose union is the closed
+// skin. Measuring each band as its own solid reported every layered bounded wall in
+// the corpus as unclosed, with a meaningless section volume.
+#[test]
+fn m6_7955_layered_bounded_bands_close_only_as_an_assembly() {
+    let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");return;
+    };
+    // M6 a (a 2 m pocket through a 4 m box) gains two 2 m bands across the pocket.
+    let text=include_str!("../../../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc").replace("ENDSEC;\nEND-ISO-10303-21;",
+        "#5000=IFCMATERIAL('Band A',$,$);\n#5001=IFCMATERIAL('Band B',$,$);\n\
+#5002=IFCMATERIALLAYER(#5000,2.,.F.,'Band A',$,$,$);\n#5003=IFCMATERIALLAYER(#5001,2.,.F.,'Band B',$,$,$);\n\
+#5004=IFCMATERIALLAYERSET((#5002,#5003),'Two bands',$);\n#5005=IFCMATERIALLAYERSETUSAGE(#5004,.AXIS2.,.POSITIVE.,0.,$);\n\
+#5006=IFCRELASSOCIATESMATERIAL('0000000000000000005006',$,$,$,(#1000),#5005);\nENDSEC;\nEND-ISO-10303-21;");
+    assert!(text.contains("#5006="),"layer usage appended");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,1000).expect("bounded source expectation");
+    assert!(e.section_volume.is_some(),"the pocket has an independent section volume");
+    let t:serde_json::Value=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
+    let shape=publish_id(&text,&worker,1000);
+    assert_eq!(shape.parts.iter().filter(|p|p.layer.is_some()).count(),2,"both bands published");
+    // Each band alone is open, so a per-part closure count must be nonzero.
+    let mut separate=crate::metrics::Metrics::default();
+    for part in &shape.parts {
+        let points=part.positions.chunks_exact(3).map(|p|crate::metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();
+        separate.add_mesh(&points,&part.indices).unwrap();
+    }
+    assert!(separate.defects>0,"individual bands are open");
+    let rows=check(&shape,Some(&e),&t,None,text.as_bytes());
+    for family in ["bounded_closure","bounded_section_volume","bounded_volume_bounds","bounded_outside_material"] {
+        assert!(rows.iter().any(|r|r.family==family&&r.gated&&r.pass),"{family} must pass for the assembled bands: {:?}",
+            rows.iter().map(|r|(r.family,r.value,r.limit)).collect::<Vec<_>>());
+    }
+    println!("sdk witness executed: m6_layered_bounded_assembly");
 }

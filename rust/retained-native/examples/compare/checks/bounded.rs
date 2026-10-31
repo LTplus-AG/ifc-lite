@@ -11,7 +11,9 @@ pub(crate) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&s
             .unwrap_or_else(||"unsupported source node or unavailable host/clip expectation".into()));
         return vec![unavailable];
     };
-    let mut m=crate::metrics::Metrics::default();let mut outside=0f64;
+    // Layer bands are open; only their union is the closed skin (#7955, as for exact in #8324).
+    let layered=product.parts.iter().any(|p|p.layer.is_some());
+    let mut m=if layered {crate::metrics::Metrics::assembly()} else {crate::metrics::Metrics::default()};let mut outside=0f64;
     for part in &product.parts {
         let points=part.positions.chunks_exact(3).map(|p|crate::metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();
         for &p in &points {outside=outside.max(e.removed_clearance(p));}

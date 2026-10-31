@@ -908,7 +908,12 @@ test.describe('retained viewer acceptance', () => {
       expect(node.corners.length, `#${id} triangle corners`).toBe(mine.length);
       extents(node.corners).forEach((e, k) => expect(Math.abs(e - extents(mine)[k]), `#${id} extent ${k} (metres)`).toBeLessThan(1e-4));
       // Positions up to the one rigid frame change between the viewport and the GLB root: the offset of each occurrence from the first.
-      const gap = Math.abs(distance(centroid(node.corners), glbFirst) - distance(centroid(mine), heldFirst));
+      // Both snapshots are Y-up metres. The GLB root restores the render-frame translation;
+      // compare signed offsets too, so a reflected or swapped occurrence matrix cannot pass.
+      const glbCentre = centroid(node.corners), heldCentre = centroid(mine);
+      [0, 1, 2].forEach(axis => expect(Math.abs((glbCentre[axis] - glbFirst[axis])
+        - (heldCentre[axis] - heldFirst[axis])), `#${id} signed position axis ${axis}`).toBeLessThan(1e-3));
+      const gap = Math.abs(distance(glbCentre, glbFirst) - distance(heldCentre, heldFirst));
       worst = Math.max(worst, gap);
       expect(gap, `#${id} offset from #${ids[0]}`).toBeLessThan(1e-3);
       const colour = held.find(h => h.id === id)!.colour;

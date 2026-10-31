@@ -54,7 +54,7 @@ END-ISO-10303-21;`;
   assert.ok(trigger);
   click(trigger);
   if (mode === 'properties') {
-    const label = [...document.querySelectorAll('label')].find(el => el.textContent?.trim() === 'Include geometry');
+    const label = [...document.querySelectorAll('label')].find(el => el.textContent?.trim() === 'Include Geometry');
     assert.ok(label);
     const toggle = label.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle);

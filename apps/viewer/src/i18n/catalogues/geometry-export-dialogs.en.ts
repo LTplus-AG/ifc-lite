@@ -27,6 +27,7 @@ export const geometryExportDialogsEn = {
   'geometryExport.shared.currentModelFallbackName': 'Current Model',
   'geometryExport.shared.unknownError': 'Unknown error',
   'geometryExport.shared.geometryEngineUnavailableError': 'Geometry engine unavailable',
+  'geometryExport.shared.retainedKernelRefusal': '{format} export rebuilds its geometry from the file with the exact engine, so it would not match the retained geometry on screen. Reload the model with the exact kernel to export it.',
 
   // --- ExportDialogShell.tsx (#5848) ---
   'geometryExport.shell.filenamePreviewLabel': 'Will save as:',

@@ -40,6 +40,7 @@ import { GEOM_CLASS_INSTANCED_TYPE } from '@ifc-lite/geometry/geometry-class';
 import { classifyLoadError } from '@/lib/load-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { isRetainedKernelModel } from '@/lib/export/retained-export-gate';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { displayedTranslation } from '@/lib/model-placement/state';
@@ -198,7 +199,10 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
       // from-meshes assembler over the meshes the viewer already holds.
       // Re-meshing uses full fidelity; merged layers and manual workspace
       // placement require the current meshes to preserve their content/frame.
+      // A retained-kernel model never re-meshes its file: that is the exact engine, so the GLB would not be the
+      // geometry on screen (it would carry the products the retained kernel refused). It takes the held meshes.
       const canUseSource =
+        !isRetainedKernelModel(federatedModel) &&
         !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
         colorSource === 'rendering' &&
         !mergeLayers &&

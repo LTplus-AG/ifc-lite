@@ -43,6 +43,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { resolveEnergyExportMutationSource } from './energy-export-source';
+import { isRetainedKernelModel } from '@/lib/export/retained-export-gate';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
@@ -89,7 +90,7 @@ export function EnergyModelExportDialog({ surface, trigger }: EnergyModelExportD
     () =>
       Array.from(models.values())
         .filter((m) => m.ifcDataStore && (!m.sourceFile || /\.(ifc|ifcx|ifczip)$/i.test(m.sourceFile.name)))
-        .map((m) => ({ id: m.id, name: m.name, schemaVersion: m.schemaVersion })),
+        .map((m) => ({ id: m.id, name: m.name, schemaVersion: m.schemaVersion, retained: isRetainedKernelModel(m) })),
     [models],
   );
 
@@ -112,6 +113,11 @@ export function EnergyModelExportDialog({ surface, trigger }: EnergyModelExportD
     }
 
     const spec = FORMATS[format];
+    // The energy model is rebuilt from the file's analytic geometry by the exact engine; a retained-kernel
+    // model's geometry is not that geometry.
+    if (selectedModel.retained) {
+      return { success: false, message: t('geometryExport.shared.retainedKernelRefusal', { format: spec.label }) };
+    }
     try {
       const modelId = selectedModel.id;
       const exportDataStore = await ensureModelExportReady(modelId);

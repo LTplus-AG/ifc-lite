@@ -1,0 +1,11 @@
+--- a/scripts/check-retained-witnesses.mjs
++++ b/scripts/check-retained-witnesses.mjs
+@@ -42,7 +42,7 @@
+     const payload = JSON.parse(line.slice(marker.length + 1));
+     return payload !== null && typeof payload === 'object';
+   }));
+-  if (false) throw new Error(`Missing ${lane} witnesses in ${log}:\n${missing.map(w => `${w.marker} (${w.path})`).join('\n')}`);
++  if (missing.length) throw new Error(`Missing ${lane} witnesses in ${log}:\n${missing.map(w => `${w.marker} (${w.path})`).join('\n')}`);
+   return required.length;
+ }
+ 

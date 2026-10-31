@@ -13,7 +13,8 @@ on:
       # M2-D builds and drives the real opt-in viewer. Only its retained code,
       # the viewport that hosts it and its build configuration: an ordinary
       # viewer change must not queue an hour-long native build.
-      - 'apps/viewer/**/*[Rr]etained*'
+      - 'apps/viewer/**/*retained*'
+      - 'apps/viewer/**/*Retained*'
       - 'apps/viewer/src/lib/retained/**'
       - 'apps/viewer/src/components/viewer/Viewport.tsx'
       - 'apps/viewer/src/components/viewer/ViewportContainer.tsx'
@@ -196,16 +197,7 @@ jobs:
           export IFCLITE_M5_LINEAGE_REFERENCE="$RUNNER_TEMP/native-references/m5-native-lineage.json"
           export IFCLITE_M6_REFERENCE="$RUNNER_TEMP/native-references/m6-native.json"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime --all-targets -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
-          for file in tests/evidence/*/witnesses.txt; do
-            [[ -f "$file" ]] || continue
-            while IFS= read -r witness; do
-              [[ -z "$witness" || "$witness" == \#* ]] && continue
-              # End-anchored only: parallel tests under --nocapture can land this
-              # whole line inside an unbuffered eprintln!, as `Skipping unsupported
-              # sdk witness executed: x`. The end anchor still rejects `x_longer`.
-              grep -Eq "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/native-witnesses.log"
-            done < "$file"
-          done
+          node scripts/check-retained-witnesses.mjs --lane native --log "$RUNNER_TEMP/native-witnesses.log"
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$IFCLITE_SMLIB_WORKER" --out "$RUNNER_TEMP/native-compare" --committed --gate
       - name: M3 native opening witnesses
@@ -377,6 +369,7 @@ jobs:
         id: cli-retained
         continue-on-error: true
         run: |
+          set -o pipefail
           node scripts/stage-cli-retained-engine.mjs --build "$RUNNER_TEMP/smlib-wasm" \
             --sdk "$GITHUB_WORKSPACE/upstream-smlib" \
             --pkg-retained "$GITHUB_WORKSPACE/packages/wasm/pkg-retained" \
@@ -393,7 +386,8 @@ jobs:
           # Real authoring-tool exports through the built CLI: exact vs retained per product (#7955 item 4).
           IFCLITE_REQUIRE_SMLIB=1 IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
             IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
-            node --test scripts/retained-compare/real-authoring.test.mjs
+            node --test scripts/retained-compare/real-authoring.test.mjs 2>&1 | tee "$RUNNER_TEMP/cli-real-authoring.log"
+          node scripts/check-retained-witnesses.mjs --lane cli --log "$RUNNER_TEMP/cli-real-authoring.log"
       - name: Browser parity and real retained viewer
         id: viewer-retained
         continue-on-error: true
@@ -405,6 +399,7 @@ jobs:
           VITE_RETAINED_GEOMETRY: 'on'
           NODE_OPTIONS: --max-old-space-size=8192
         run: |
+          set -o pipefail
           # A skip is not parity evidence: missing upstream products fail this lane.
           test -s "$IFCLITE_RETAINED_ENGINE/engine-manifest.json"
           test -s "$IFCLITE_NATIVE_PRODUCTS"
@@ -412,7 +407,8 @@ jobs:
           # Turbo cache restoration does not remove outputs from another build mode.
           rm -rf apps/viewer/dist
           pnpm build:e2e --concurrency=1
-          IFCLITE_REQUIRE_SMLIB=1 pnpm exec playwright test --project=viewer-retained
+          IFCLITE_REQUIRE_SMLIB=1 pnpm exec playwright test --project=viewer-retained --reporter=list 2>&1 | tee "$RUNNER_TEMP/retained-viewer-witnesses.log"
+          node scripts/check-retained-witnesses.mjs --lane viewer --log "$RUNNER_TEMP/retained-viewer-witnesses.log"
           rm -rf apps/viewer/dist
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
           node scripts/check-viewer-retained-free.mjs
@@ -429,6 +425,8 @@ jobs:
         with:
           name: retained-viewer-comparison
           path: |
+            ${{ runner.temp }}/cli-real-authoring.log
+            ${{ runner.temp }}/retained-viewer-witnesses.log
             ${{ runner.temp }}/retained-native-link-inventory.json
             ${{ runner.temp }}/viewer-retained/
             ${{ runner.temp }}/viewer-retained-corpus/

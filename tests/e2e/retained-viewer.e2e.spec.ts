@@ -767,6 +767,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     await expect(page.locator('[data-retained-row]')).toHaveCount(rows.length);
     await page.getByRole('button', { name: `Select #${rows[0].id}`, exact: true }).click();
     expect(await selection(page)).toMatchObject({ ref: { modelId: model.id, expressId: rows[0].id } });
+    await record('real-sketchup', { model: stable(model), refused: rows.length });
   });
 
   test('a refused retained federated add leaves the exact primary intact; Retry builds a correct federation with colliding ids', async ({ page }) => {
@@ -864,6 +865,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     // The refusal rows are still this model's.
     await page.locator('[data-retained-chip]').click();
     await expect(page.locator(`[data-retained-row="${refusedId}"]`)).toHaveAttribute('data-code', before.summary!.refused[0].code);
+    await record('federation-reverse-add', { before: stable(before), after: stable(after), refusedId });
   });
 
   test('a second retained primary load replaces the first: no stale rows, meshes or selection', async ({ page }) => {
@@ -890,6 +892,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     expect(ref === null || ref.modelId === second.id).toBe(true);
     await page.locator('[data-retained-chip]').click();
     await expect(page.locator('[data-retained-row]')).toHaveCount(second.summary!.refused.length);
+    await record('primary-replaced', { first: stable(first), second: stable(second) });
   });
 });
 

@@ -125,6 +125,7 @@ test('#7955 real authoring-tool models: CLI retained OBJ agrees with the CLI exa
   }
   assert.ok(tools.size >= 2, 'at least two authoring tools');
   t.diagnostic(JSON.stringify(diagnostics));
+  for (const result of diagnostics) t.diagnostic(`M2-D cli-real-${result.tool.toLowerCase()}: ${JSON.stringify(result)}`);
 });
 
 for (const { tool, model, header } of ALL_REFUSED) {
@@ -147,5 +148,6 @@ for (const { tool, model, header } of ALL_REFUSED) {
     const exact = exportObj(model, exactOut);
     assert.equal(exact.status, 0, 'the exact kernel still exports the same file');
     assert.doesNotMatch(await readFile(exactOut, 'utf8'), /kernel: retained|PresentationObligationsUnmet/);
+    t.diagnostic(`M2-D cli-refused-${tool.toLowerCase().replaceAll(' ', '-')}: ${JSON.stringify({ model, refused: pinned.length })}`);
   });
 }

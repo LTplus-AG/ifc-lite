@@ -78,6 +78,8 @@ export function assertNativeSummary({ exitCode, summary, expectation }) {
   check(problems, summary?.complete === true, `complete=${summary?.complete}`);
   check(problems, Array.isArray(summary?.violations) && summary.violations.length === 0, `violations=${summary?.violations?.length}`);
   check(problems, summary?.retained && typeof summary.retained === 'object', 'no retained timing block');
+  const milliseconds = summary?.retained?.milliseconds;
+  check(problems, Number.isFinite(milliseconds) && milliseconds >= 0, 'retained.milliseconds must be a finite nonnegative number');
   const mismatch = summary?.universeMismatch;
   check(problems, mismatch === undefined || mismatch === false || (Array.isArray(mismatch) && mismatch.length === 0), `universeMismatch=${JSON.stringify(mismatch)}`);
   const skipped = summary?.skipped;

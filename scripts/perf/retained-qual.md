@@ -44,7 +44,7 @@ runner exit 1. There is no soft path.
   stderr summary matches the report, the OBJ header says `# kernel: retained` with a
   final or shape-only marker.
 - **Native**: `summary.json` of the executable is complete, violation-free, has a
-  retained timing block and published products, and at least one SMLib worker process
+  finite nonnegative numeric `retained.milliseconds` duration and published products, and at least one SMLib worker process
   was observed.
 - **Browser memory**: the session starts, the page's event tally equals the session
   summary, the served manifest is the staged one.

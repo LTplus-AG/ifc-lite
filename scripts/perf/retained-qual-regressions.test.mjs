@@ -13,7 +13,7 @@ import { compare, format, readRows } from './retained-qual-report.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 
 // PR #8413: each witness exercises the runner's public behaviour.
-const summary = { schema: 'ifc-lite.native-retained-comparison/1', complete: true, violations: [], retained: {}, candidates: 4, published: 3 };
+const summary = { schema: 'ifc-lite.native-retained-comparison/1', complete: true, violations: [], retained: { milliseconds: 12 }, candidates: 4, published: 3 };
 test('8413: incomplete native corpus cannot pass', () => {
   assertNativeSummary({ exitCode: 0, summary: { ...summary, skipped: [], universeMismatch: [] } });
   for (const patch of [{ skipped: ['missing.ifc'] }, { universeMismatch: true }, { universeMismatch: ['unexpected.ifc'] }])
@@ -130,6 +130,7 @@ test('8413: the child writes its own summary to the unique --out directory', asy
     assert.notEqual(row.childOutput, dir);
     assert.equal(row.measuredCommand.at(-1), row.childOutput);
     assert.equal(row.published, summary.published);
+    assert.equal(row.retainedMs, 12);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -183,3 +184,17 @@ for (const runner of ['viewer', 'cli', 'browser-memory']) {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 }
+
+test('8413: a measured native child with no retained duration is a failed timing row', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qual-child-no-time-'));
+  try {
+    const invalid = { ...summary, retained: {} };
+    const source = `const fs = require('node:fs'); const out = process.argv[2];
+      fs.mkdirSync(out, {recursive:true}); fs.writeFileSync(out + '/summary.json', ${JSON.stringify(JSON.stringify(invalid))});
+      setTimeout(() => {}, 180);`;
+    const row = await nativeSample({ command: [process.execPath, '-e', source, '--', '--out', dir],
+      summaryPath: join(dir, 'summary.json'), workerName: 'node', intervalMs: 5 });
+    assert.equal(row.ok, false);
+    assert.match(row.error, /retained.*milliseconds/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

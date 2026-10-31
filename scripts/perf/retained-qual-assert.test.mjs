@@ -80,3 +80,13 @@ test('milestones must be present and ordered; the settled frame is optional but 
   assert.throws(() => assertMilestones({ ...m, firstProductMs: 0 }), /before the load began/);
   assert.throws(() => assertMilestones({ ...m, settledFrameMs: 10 }), /settled frame precedes/);
 });
+
+test('8413: native timing must contain a finite nonnegative numeric duration', () => {
+  const summary = { schema: 'ifc-lite.native-retained-comparison/1', complete: true, violations: [], candidates: 4, published: 3 };
+  for (const retained of [{}, { milliseconds: null }, { milliseconds: '12' }, { milliseconds: NaN },
+    { milliseconds: Infinity }, { milliseconds: -Infinity }, { milliseconds: -1 }]) {
+    assert.throws(() => assertNativeSummary({ exitCode: 0, summary: { ...summary, retained } }), /retained.*milliseconds/);
+  }
+  // Zero is a measured value at the clock's resolution, unlike an absent duration.
+  for (const milliseconds of [0, 0.5, 10]) assertNativeSummary({ exitCode: 0, summary: { ...summary, retained: { milliseconds } } });
+});

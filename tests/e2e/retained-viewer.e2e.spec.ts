@@ -236,6 +236,8 @@ async function openExport(page: Page, id: string) {
 /** Press Export in an open dialog and return the downloaded bytes. */
 async function download(page: Page, button: string | RegExp): Promise<{ name: string; bytes: Buffer }> {
   const dialog = page.locator('[data-export-dialog-shell]');
+  // The privacy toast can arrive after the dialog opened and then covers its footer.
+  for (const dismiss of await page.getByRole('button', { name: 'Dismiss notification' }).all()) await dismiss.click();
   const [file] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), dialog.getByRole('button', { name: button, exact: typeof button === 'string' }).click()]);
   const path = await file.path();
   expect(path, 'the downloaded file exists').toBeTruthy();

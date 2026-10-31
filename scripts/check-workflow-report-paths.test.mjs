@@ -269,18 +269,22 @@ test('runtime reporters consume actual dependency and workflow conclusions', (co
 });
 
 test('a main reporter whose steps no longer create an issue fails the audit', (context) => {
-  const workflow = (steps, condition) => `name: Geometry
+  const workflow = (steps) => `name: Server binaries
 on:
   push:
     branches: [main]
 jobs:
-  native-adapter:
+  validate-server-binaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps: []
+  validate-server-binaries-cross:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps: []
   report-red-on-main:
-    needs: [native-adapter]
-    if: ${condition}
+    needs: [validate-server-binaries, validate-server-binaries-cross]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.validate-server-binaries.result != 'success' || needs.validate-server-binaries-cross.result != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:
@@ -288,13 +292,10 @@ jobs:
     steps:
 ${steps}
 `;
-  const failureOnly = "always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native-adapter.result == 'failure'";
-  const good = fixture({ 'geometry-platform.yml': workflow('      - run: gh issue create --title red', failureOnly) });
-  const inert = fixture({ 'geometry-platform.yml': workflow('      - run: echo ok', failureOnly) });
-  const cancelRed = fixture({ 'geometry-platform.yml': workflow('      - run: gh issue create --title red', failureOnly.replace("== 'failure'", "!= 'success'")) });
-  context.after(() => [good, inert, cancelRed].forEach((root) => rmSync(root, { recursive: true, force: true })));
+  const good = fixture({ 'server-binaries.yml': workflow('      - run: gh issue create --title red') });
+  const inert = fixture({ 'server-binaries.yml': workflow('      - run: echo ok') });
+  context.after(() => [good, inert].forEach((root) => rmSync(root, { recursive: true, force: true })));
   const named = (root) => auditRoot(root).filter((f) => f.includes('partial main-only matrix'));
   assert.deepEqual(named(good), []);
   assert.equal(named(inert).length, 1);
-  assert.equal(named(cancelRed).length, 1);
 });

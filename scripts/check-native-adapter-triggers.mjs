@@ -4,26 +4,27 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Guard: the SMLib `native-adapter` lane must trigger on everything the
- * retained engine compiles from, and must guard `main` (#7955).
+ * Guard: the SMLib `native-adapter` lane triggers on everything the retained
+ * engine compiles from, and keeps its cost controls (#7955, #8460).
  *
  * The lane (`.github/workflows/geometry-platform.yml`) qualifies retained
- * parity. A hand-maintained exact-path filter missed shared code the retained
- * engine consumes (`rust/geometry/src/processors`, `rust/core`,
- * `rust/processing/src/style`), so an exact-engine refactor could break
- * retained parity unseen. This derives the required crate directories from the
- * Cargo manifests -- the transitive path-dependency closure (normal, dev and
- * build dependencies) of the lane's root crates -- and fails when:
+ * parity. It holds a hosted runner for about an hour, so it does NOT run on
+ * every push or PR: nightly (main's guard, with the corpus), on demand, and on
+ * a PR only with the `ci:native-adapter` label. A hand-maintained exact-path
+ * filter missed shared code the retained engine consumes
+ * (`rust/geometry/src/processors`, `rust/core`, `rust/processing/src/style`),
+ * so a labelled PR could pass without observing a change that breaks retained
+ * parity. This derives the required crate directories from the Cargo manifests
+ * -- the transitive path-dependency closure (normal, dev and build
+ * dependencies) of the lane's root crates -- and fails when:
  *
- *   - a crate directory in that closure is not covered by
- *     `on.pull_request.paths` or `on.push.paths`;
- *   - the push and pull_request path lists differ (they must not drift);
- *   - the workflow has no push-to-main trigger or no nightly `schedule`;
- *   - the nightly run does not carry the corpus, or the main/nightly red
- *     runs have no reporter job (or the green-again closer is gone);
- *   - the concurrency group would run main pushes unthrottled, or cancel an
- *     in-flight main run;
- *   - a corpus step is not independent (`continue-on-error`) of the steps after it.
+ *   - a crate directory in that closure, a non-crate Rust input, or a local
+ *     action the job calls is not covered by `on.pull_request.paths`;
+ *   - the workflow triggers on push, has no nightly `schedule`, or loses the
+ *     opt-in label `if`, the `labeled` type or the job-level per-PR concurrency;
+ *   - the corpus is not its own scheduled/dispatch-only, sharded, bounded,
+ *     judged job with a required aggregate, or the nightly failure reporter
+ *     does not cover it.
  *
  * Manifests are parsed by hand, so a shape this parser cannot read throws
  * (`[dependencies.foo]` sub-tables, multi-line inline tables) rather than
@@ -193,23 +194,28 @@ export function audit(root) {
   const text = readFileSync(wfPath, 'utf8');
 
   let pr;
-  let push;
   try {
     pr = eventPaths(text, 'pull_request');
-    push = eventPaths(text, 'push');
   } catch (err) {
     return [`${WORKFLOW}: ${err.message}`];
   }
   if (!pr || pr.length === 0) failures.push(`${WORKFLOW}: on.pull_request.paths is missing`);
-  if (!push || push.length === 0) failures.push(`${WORKFLOW}: on.push.paths is missing (the lane must guard main)`);
-  if (!/^ {2}push:\s*\n\s+branches:\s*\[main\]/m.test(text)) failures.push(`${WORKFLOW}: on.push must be limited to branches: [main]`);
-  if (!/^ {2}schedule:\s*\n\s+- cron: '/m.test(text)) failures.push(`${WORKFLOW}: on.schedule (nightly corpus run) is missing`);
+  // #8460: the lane is too costly per push; nightly is main's guard, labelled PRs are the opt-in.
+  if (/^ {2}push:/m.test(text.slice(0, text.indexOf('\njobs:')))) failures.push(`${WORKFLOW}: must not trigger on push; the nightly schedule guards main (#8460)`);
+  if (!/^ {2}schedule:\s*\n\s+- cron: '/m.test(text)) failures.push(`${WORKFLOW}: on.schedule (the nightly guard for main, with the corpus) is missing`);
 
-  if (pr && push) {
-    const missing = pr.filter((p) => !push.includes(p));
-    const extra = push.filter((p) => !pr.includes(p));
-    for (const p of missing) failures.push(`${WORKFLOW}: path ${p} is in pull_request.paths but not push.paths`);
-    for (const p of extra) failures.push(`${WORKFLOW}: path ${p} is in push.paths but not pull_request.paths`);
+  // The opt-in label gate must not silently vanish (it would put the lane back on every PR).
+  const mainJob = jobBlock(text, 'native-adapter') ?? '';
+  if (!/^ {4}if: >-\s*\n\s+github\.event_name != 'pull_request' \|\|\s*\n\s+\(contains\(github\.event\.pull_request\.labels\.\*\.name, 'ci:native-adapter'\) &&\s*\n\s+\(github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'ci:native-adapter'\)\)\s*$/m.test(mainJob)) {
+    failures.push(`${WORKFLOW}: the native-adapter job must keep its opt-in gate: non-PR events run, a PR only with the ci:native-adapter label (and only that label's event restarts it)`);
+  }
+  if (!/^ {4}types: \[[^\]]*\blabeled\b[^\]]*\]\s*$/m.test(text.slice(text.indexOf('  pull_request:'), text.indexOf('  schedule:')))) {
+    failures.push(`${WORKFLOW}: on.pull_request.types must include labeled so applying the label starts the job`);
+  }
+  // Job level (#8460): a workflow-level group lets a skipped run cancel the running qualification.
+  if (/^concurrency:/m.test(text)) failures.push(`${WORKFLOW}: concurrency must be set on the native-adapter job, not the workflow (a skipped run would cancel a running one)`);
+  if (!/^ {4}concurrency:\s*\n {6}group: geometry-platform-\$\{\{ github\.event\.pull_request\.number \|\| github\.run_id \}\}\s*\n {6}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\s*$/m.test(mainJob)) {
+    failures.push(`${WORKFLOW}: the native-adapter job's concurrency must be per-PR with cancel-in-progress only for pull_request runs; nightly and manual runs are never cancelled`);
   }
 
   let closure;
@@ -218,37 +224,24 @@ export function audit(root) {
   } catch (err) {
     return [...failures, `${err.message}`];
   }
-  for (const [name, globs] of [['pull_request', pr], ['push', push]]) {
-    if (!globs) continue;
+  if (pr) {
     for (const dir of closure) {
       // The literal directory glob, not probe files: `<dir>/Cargo.toml` + `<dir>/src/lib.rs` entries would
       // satisfy probes and still leave the rest of the crate unable to trigger the lane.
-      if (!globs.includes(`${dir}/**`)) {
-        failures.push(`${WORKFLOW}: crate ${dir} (in the retained engine's dependency closure) is not covered by on.${name}.paths -- add '${dir}/**'`);
+      if (!pr.includes(`${dir}/**`)) {
+        failures.push(`${WORKFLOW}: crate ${dir} (in the retained engine's dependency closure) is not covered by on.pull_request.paths -- add '${dir}/**'`);
       }
     }
     for (const extra of EXTRA_GLOBS) {
       const probe = extra.replace('/**', '/probe');
-      if (!matchesAny(probe, globs)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.${name}.paths`);
+      if (!matchesAny(probe, pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
+    }
+    for (const action of new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]))) {
+      if (!pr.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.pull_request.paths -- add '${action}/**'`);
     }
   }
 
-  for (const action of new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]))) {
-    for (const [name, globs] of [['pull_request', pr], ['push', push]]) {
-      if (globs && !globs.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.${name}.paths -- add '${action}/**'`);
-    }
-  }
   failures.push(...corpusJobProblems(text));
-  // Job level (#8460): a workflow-level group lets a skipped run cancel the running qualification.
-  if (/^concurrency:/m.test(text)) failures.push(`${WORKFLOW}: concurrency must be set on the native-adapter job, not the workflow (a skipped run would cancel a running one)`);
-  const mainJob = jobBlock(text, 'native-adapter') ?? '';
-  if (!/^ {4}concurrency:\s*\n {6}group: native-adapter-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\s*\n {6}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\s*$/m.test(mainJob)) {
-    failures.push(`${WORKFLOW}: the native-adapter job's concurrency must group by event and ref and cancel only pull_request runs (main pushes would run unthrottled, or an in-flight main run would be cancelled)`);
-  }
-  if (!/github\.ref == 'refs\/heads\/main' && needs\.native-adapter\.result == 'failure'/.test(text)) failures.push(`${WORKFLOW}: report-red-on-main must fire on 'failure' only; a cancelled (superseded) run is not red`);
-  if ((text.match(/is not main's head/g) ?? []).length < 2) failures.push(`${WORKFLOW}: both main reporters must ignore a stale rerun (compare github.sha with main's head before touching the issue)`);
-  if (!/^ {2}close-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no close-red-on-main job; the issue would stay open after main is green`);
-  if (!/^ {2}report-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no report-red-on-main job for a failing push to main`);
   if (!/^ {2}report-scheduled-failure:/m.test(text)) failures.push(`${WORKFLOW}: no report-scheduled-failure job for a failing nightly run`);
   return failures;
 }
@@ -261,5 +254,5 @@ if (isMainEntry(import.meta.url)) {
     console.error(`❌ check-native-adapter-triggers: ${failures.length} problem(s)\n  - ${failures.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log(`✅ check-native-adapter-triggers: ${crateClosure(root).length} crates covered; main and nightly guarded`);
+  console.log(`✅ check-native-adapter-triggers: ${crateClosure(root).length} crates covered; opt-in PR lane and nightly guard intact`);
 }

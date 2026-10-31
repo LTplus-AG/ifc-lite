@@ -28,7 +28,7 @@ const mutate = (root, fn) => {
   writeFileSync(path, fn(readFileSync(path, 'utf8')));
 };
 
-test('the real workflow covers its whole dependency closure, on main and nightly', () => {
+test('the real workflow covers its whole dependency closure and keeps its opt-in and nightly', () => {
   assert.deepEqual(audit(REPO), []);
 });
 
@@ -39,53 +39,30 @@ test('the closure includes the shared crates the exact route also uses', () => {
   }
 });
 
-test('dropping a crate from both path lists is reported by name', (context) => {
+test('dropping a crate from the path list is reported by name', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replaceAll("      - 'rust/core/**'\n", ''));
   const failures = audit(root);
   assert.ok(failures.some((f) => f.includes('crate rust/core') && f.includes('on.pull_request.paths')), failures.join('\n'));
-  assert.ok(failures.some((f) => f.includes('crate rust/core') && f.includes('on.push.paths')), failures.join('\n'));
 });
 
-test('pull_request and push path lists may not drift', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace("      - 'rust/testkit/**'\n", ''));
-  const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes("rust/testkit/**") && f.includes('not')), failures.join('\n'));
-});
-
-test('a workflow without a push, schedule or corpus-on-schedule is refused', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace("    branches: [main]\n", '').replace(/  schedule:\n    - cron: '[^']+'\n/, ''));
-  const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes('branches: [main]')));
-  assert.ok(failures.some((f) => f.includes('on.schedule')));
-});
-
-test('a workflow without the red-run reporters is refused', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace('  report-red-on-main:', '  quiet-on-main:').replace('  report-scheduled-failure:', '  quiet-nightly:'));
-  const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes('report-red-on-main')));
-  assert.ok(failures.some((f) => f.includes('report-scheduled-failure')));
+test('a push trigger or a missing nightly schedule is refused', (context) => {
+  const pushed = copyTree(context);
+  mutate(pushed, (t) => t.replace('on:\n', 'on:\n  push:\n    branches: [main]\n'));
+  assert.ok(audit(pushed).some((f) => f.includes('must not trigger on push')));
+  const noNightly = copyTree(context);
+  mutate(noNightly, (t) => t.replace(/  schedule:\n    - cron: '[^']+'\n/, ''));
+  assert.ok(audit(noNightly).some((f) => f.includes('on.schedule')));
 });
 
 test('an inline paths list is refused rather than read as empty', () => {
   assert.throws(() => eventPaths("on:\n  push:\n    paths:\n      - rust/core/**\n", 'push'), /unparseable/);
 });
 
-test('removing push.paths altogether is reported', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace(/  push:\n    branches: \[main\]\n    paths:\n(?: {6}.*\n)+/, '  push:\n    branches: [main]\n'));
-  assert.ok(audit(root).some((f) => f.includes('on.push.paths is missing')));
-});
-
-test('a non-crate Rust input (Cargo.lock) dropped from both lists is reported', (context) => {
+test('a non-crate Rust input (Cargo.lock) dropped from the list is reported', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replaceAll("      - 'Cargo.lock'\n", ''));
-  const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes('Cargo.lock') && f.includes('on.pull_request.paths')));
-  assert.ok(failures.some((f) => f.includes('Cargo.lock') && f.includes('on.push.paths')));
+  assert.ok(audit(root).some((f) => f.includes('Cargo.lock') && f.includes('on.pull_request.paths')));
 });
 
 test('probe-file globs that leave the rest of a crate untriggered are reported', (context) => {
@@ -107,27 +84,16 @@ test('a missing path-dependency manifest is a named failure, not a smaller closu
   assert.throws(() => crateClosure(root), /rust\/testkit\/Cargo\.toml does not exist/);
 });
 
-test('unthrottled main pushes, a cancelling main run or a workflow-level group are reported', (context) => {
+test('a lost per-PR group, a cancelling nightly or a workflow-level group are reported', (context) => {
   const noGroup = copyTree(context);
   mutate(noGroup, (t) => t.replace(/    concurrency:\n(?: {6}.*\n)+/, ''));
-  assert.ok(audit(noGroup).some((f) => f.includes('concurrency must group by event and ref')));
-  const runIdGroup = copyTree(context);
-  mutate(runIdGroup, (t) => t.replace('group: native-adapter-${{ github.event_name }}-${{ github.ref }}', 'group: native-adapter-${{ github.run_id }}'));
-  assert.ok(audit(runIdGroup).some((f) => f.includes('concurrency must group by event and ref')));
-  const cancelsMain = copyTree(context);
-  mutate(cancelsMain, (t) => t.replace(`cancel-in-progress: \${{ github.event_name == 'pull_request' }}`, 'cancel-in-progress: true'));
-  assert.ok(audit(cancelsMain).some((f) => f.includes('concurrency must group by event and ref')));
+  assert.ok(audit(noGroup).some((f) => f.includes('concurrency must be per-PR')));
+  const cancelsNightly = copyTree(context);
+  mutate(cancelsNightly, (t) => t.replace(`cancel-in-progress: \${{ github.event_name == 'pull_request' }}`, 'cancel-in-progress: true'));
+  assert.ok(audit(cancelsNightly).some((f) => f.includes('concurrency must be per-PR')));
   const workflowLevel = copyTree(context);
   mutate(workflowLevel, (t) => t.replace('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n\nconcurrency:\n  group: x\n'));
   assert.ok(audit(workflowLevel).some((f) => f.includes('not the workflow')));
-});
-
-test('a cancelled run opening an issue, or a missing closer, is reported', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace("needs.native-adapter.result == 'failure'", "needs.native-adapter.result != 'success'").replace('  close-red-on-main:', '  nothing:'));
-  const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes("'failure' only")));
-  assert.ok(failures.some((f) => f.includes('close-red-on-main')));
 });
 
 test('pathDeps reads normal, dev, build, target and workspace-inherited path deps', () => {
@@ -157,9 +123,19 @@ test('a workspace.dependencies sub-table or multi-line table refuses instead of 
 test('a local action the job calls must be able to trigger it', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replaceAll("      - '.github/actions/setup-wasm-build/**'\n", ''));
-  const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes('local action .github/actions/setup-wasm-build') && f.includes('on.pull_request.paths')));
-  assert.ok(failures.some((f) => f.includes('local action .github/actions/setup-wasm-build') && f.includes('on.push.paths')));
+  assert.ok(audit(root).some((f) => f.includes('local action .github/actions/setup-wasm-build') && f.includes('on.pull_request.paths')));
+});
+
+test('losing the opt-in label gate or the labeled type is reported', (context) => {
+  const ungated = copyTree(context);
+  mutate(ungated, (t) => t.replace(/    if: >-\n(?: {6}.*\n)+/, ''));
+  assert.ok(audit(ungated).some((f) => f.includes('must keep its opt-in gate')));
+  const looser = copyTree(context);
+  mutate(looser, (t) => t.replace("(github.event.action != 'labeled' || github.event.label.name == 'ci:native-adapter')", 'true'));
+  assert.ok(audit(looser).some((f) => f.includes('must keep its opt-in gate')));
+  const noLabeled = copyTree(context);
+  mutate(noLabeled, (t) => t.replace('types: [opened, synchronize, reopened, labeled]', 'types: [opened, synchronize, reopened]'));
+  assert.ok(audit(noLabeled).some((f) => f.includes('types must include labeled')));
 });
 
 
@@ -218,8 +194,3 @@ test('a browser corpus that can fail the run is reported', (context) => {
   assert.ok(audit(root).some((f) => f.includes('browser-corpus must exist and stay report-only')));
 });
 
-test('a reporter that loses its stale-rerun guard is reported', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replaceAll("is not main's head", 'differs'));
-  assert.ok(audit(root).some((f) => f.includes('stale rerun')));
-});

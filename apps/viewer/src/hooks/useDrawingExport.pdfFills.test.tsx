@@ -176,6 +176,16 @@ describe('handleExportPDF (non-sheet) fills cut polygons like the SVG export', (
     assert.ok(text.includes('h\nS\n'), 'the outline is still stroked');
   });
 
+  it('matches the SVG export under default settings (3D colours preset, overrides on, no rules)', async () => {
+    const text = await exportPdf({
+      activePresetId: 'preset-3d-colors',
+      entityColorMap: new Map([[7, [0, 0.5, 0, 1]]]),
+      overrideRules: [],
+    });
+    assert.ok(setsColor(text, 'fill', '#008000'), 'material fill');
+    assert.match(text, /^0\.70\d* w$/m, 'the engine default 0.25 mm outline (0.71 pt), as in the SVG export');
+  });
+
   it('uses mesh material colours and their opacity with the 3D colours preset', async () => {
     const text = await exportPdf({
       activePresetId: 'preset-3d-colors',

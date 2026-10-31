@@ -6,9 +6,9 @@
  * Split a CSS colour into what jsPDF accepts (`#RRGGBB`) and an alpha factor.
  * jsPDF rejects alpha hex (`#RGBA`, `#RRGGBBAA`) and `rgba()`, which
  * overrides may carry. `transparent` and `none` are fully transparent.
- * Returns null for anything else (an unfinished `#12` typed into the
- * override panel, a named colour): jsPDF writes those as broken operators or
- * throws, so the caller substitutes a fallback.
+ * Returns null for anything else, and the caller substitutes a fallback:
+ * jsPDF writes an unfinished `#12` as a broken operator and throws on
+ * unknown names. Named colours and other CSS forms are not mapped.
  */
 export function pdfColor(input: string): { hex: string; alpha: number } | null {
   const color = input.trim().toLowerCase();

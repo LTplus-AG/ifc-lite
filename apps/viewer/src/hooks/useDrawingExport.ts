@@ -1113,14 +1113,10 @@ function useDrawingExport({
         // Cut polygons: fills first (even-odd, so holes stay open), then
         // outlines on top, with the same colours as the SVG export.
         // Two decimals is what jsPDF prints; rounding keeps one ExtGState per
-        // printed value, and unchanged values are not re-sent per polygon.
-        const lastOpacity = { opacity: 1, 'stroke-opacity': 1 };
+        // printed value (jsPDF dedupes equal states and skips unchanged ones).
         const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 100;
-        const setOpacity = (key: keyof typeof lastOpacity, value: number) => {
-          if (value === lastOpacity[key]) return;
-          lastOpacity[key] = value;
+        const setOpacity = (key: 'opacity' | 'stroke-opacity', value: number) =>
           doc.setGState(new GState({ [key]: value }));
-        };
         const tracePath = (rings: { x: number; y: number }[][]) => {
           for (const ring of rings) {
             doc.moveTo(ring[0].x, ring[0].y);

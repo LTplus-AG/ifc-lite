@@ -93,6 +93,7 @@ fn issue_8291_a_row_of_only_slivers_still_publishes_unit_normals() {
         assert!((length - 1.).abs() < 1e-12, "{normal:?}");
     }
     println!("sdk witness executed: face_set_sliver_row");
+}
 
 /// World volume and centroid, by the divergence theorem over published triangles.
 fn world_moments(product: &ifc_lite_retained_native::ShapeOnlyProduct) -> (f64, [f64; 3]) {

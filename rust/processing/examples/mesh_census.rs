@@ -47,7 +47,7 @@ const NORMAL_BUCKET: f64 = 1.0e-3;
 /// so a large coplanar face cannot make one mesh quadratic. A face that hits
 /// the cap is counted in `thinCapped`: its thin material was not fully
 /// measured, and the compare script refuses to read that as a clean result.
-const MAX_CANDIDATES: usize = 256;
+const MAX_CANDIDATES: usize = 2048;
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();

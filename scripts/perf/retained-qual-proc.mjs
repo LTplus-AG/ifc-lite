@@ -14,10 +14,12 @@ import { basename } from 'node:path';
 const read = path => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
 const kib = (text, key) => { const m = text?.match(new RegExp(`^${key}:\\s+(\\d+) kB`, 'm')); return m ? Number(m[1]) : null; };
 
-/** Chrome rewrites its process title, so match on the NUL-separated command line. */
+/** Split a raw /proc cmdline on NULs AND whitespace: Chrome rewrites its title into one space-joined string. */
+export const splitCommandLine = raw => raw.split(/[\0\s]+/).filter(Boolean);
+
 export function commandLine(pid) {
   const raw = read(`/proc/${pid}/cmdline`);
-  return raw === null ? null : raw.split('\0').filter(Boolean);
+  return raw === null ? null : splitCommandLine(raw);
 }
 
 export function children(pid) {

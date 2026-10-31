@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
-import { startSampler } from './retained-qual-proc.mjs';
+import { splitCommandLine, startSampler } from './retained-qual-proc.mjs';
 
 const linux = process.platform === 'linux';
 // A child that holds ~120 MB, spawns a grandchild holding ~60 MB, and waits to be told to exit.
@@ -48,4 +48,10 @@ test('the include filter keeps only the named executable (the SMLib worker case)
 test('a process that already exited samples to nothing without throwing', { skip: !linux && 'Linux /proc only' }, () => {
   const summary = startSampler(2 ** 22 - 1, { intervalMs: 20 }).stop();
   assert.equal(summary.processes, 0);
+});
+
+test('a Chrome-style rewritten title (one space-joined string) and a NUL-separated cmdline both tokenise', () => {
+  assert.deepEqual(splitCommandLine('/opt/chrome --type=renderer --user-data-dir=/tmp/p1 --foo\0'), ['/opt/chrome', '--type=renderer', '--user-data-dir=/tmp/p1', '--foo']);
+  assert.deepEqual(splitCommandLine('/opt/chrome\0--user-data-dir=/tmp/p1\0--no-sandbox\0'), ['/opt/chrome', '--user-data-dir=/tmp/p1', '--no-sandbox']);
+  assert.deepEqual(splitCommandLine(''), []);
 });

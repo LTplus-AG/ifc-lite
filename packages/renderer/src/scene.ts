@@ -3320,6 +3320,17 @@ export class Scene {
   }
 
   /**
+   * True when the opaque instanced pass's fragment discards can fire: an
+   * occurrence carries the hidden bit (hide/isolate or an appearance
+   * suppression) or is translucent (the opacity routing). While false the
+   * renderer may draw that pass with the discard-free shader
+   * (opaque-draw-variants.ts). Conservative: any retained suppression counts.
+   */
+  instancedMayDiscard(): boolean {
+    return this.instancedHidden.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
+  }
+
+  /**
    * Per-instance X-RAY GHOSTING: fade every instanced occurrence outside
    * `ghostExceptIds` to `ghostAlpha`, leaving the excepted set and the current
    * selection solid.

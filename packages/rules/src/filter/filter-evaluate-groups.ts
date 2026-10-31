@@ -33,7 +33,9 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FilterGroup } from './filter-groups.js';
-import { assertListConditionsAnswerable } from './filter-list-condition.js';
+import {
+  assertHostRulesAnswerable, customGroupOf, resolveCustomGrouping, type CustomGroupingRef,
+} from './filter-custom-grouping.js';
 import {
   evaluateFilterRules,
   evaluateFilterRulesFederated,
@@ -58,7 +60,7 @@ export function evaluateFilterGroups(
 ): FilteredElement[] {
   if (groups.length === 0) return [];
   // Every group, before any group runs: a later group's rule must not fail after earlier ones returned rows.
-  assertListConditionsAnswerable(groups.flatMap((g) => g.rules), [{ id: modelId, store, listConditions: options.listConditions }]);
+  assertHostRulesAnswerable(groups.flatMap((g) => g.rules), [{ ...options, id: modelId, store }]);
   if (groups.length === 1) {
     return evaluateFilterRules(modelId, store, groups[0].rules, groups[0].combinator, options);
   }
@@ -100,7 +102,7 @@ export async function evaluateFilterGroupsFederated(
   options: FederatedEvaluateOptions = {},
 ): Promise<FilteredElement[]> {
   if (groups.length === 0) return [];
-  assertListConditionsAnswerable(groups.flatMap((g) => g.rules), models);
+  assertHostRulesAnswerable(groups.flatMap((g) => g.rules), models);
   if (groups.length === 1) {
     return evaluateFilterRulesFederated(models, groups[0].rules, groups[0].combinator, options);
   }
@@ -153,4 +155,37 @@ export async function evaluateFilterGroupsFederated(
     }
   }
   return out;
+}
+
+/**
+ * The single-model evaluator options that give `model` the meaning it has in a
+ * federated run: its durable identity, tags, live edits and host readers. Sync
+ * callers holding an `EvaluatorModel` use this rather than picking fields.
+ */
+export function evaluateOptionsOf(model: EvaluatorModel): EvaluateOptions {
+  return {
+    modelFilterIdentity: model.filterIdentity, modelTagIds: model.tagIds, mutationView: model.mutationView,
+    listConditions: model.listConditions, customGroupings: model.customGroupings,
+  };
+}
+
+/**
+ * The group `expressId` of `model` belongs to in the grouping `ref` names
+ * (#8425), or `undefined` when it is in none or the grouping does not resolve.
+ * The same first-match the `customGrouping` rule applies, read through the
+ * model's tags, live edits and host readers, so a list column and a filter
+ * never disagree about an element.
+ */
+export function customGroupOfElement(
+  model: EvaluatorModel,
+  expressId: number,
+  ref: CustomGroupingRef,
+  options: Pick<EvaluateOptions, 'definedModelTagIds'> = {},
+): string | undefined {
+  const definition = model.customGroupings && resolveCustomGrouping(ref, model.customGroupings);
+  const store = model.store;
+  if (!definition || !store) return undefined;
+  const elementOptions: EvaluateOptions = { ...evaluateOptionsOf(model), ...options, candidateExpressIds: [expressId], limit: 1 };
+  return customGroupOf(definition, model.id, expressId,
+    (filter) => evaluateFilterGroups(model.id, store, filter, elementOptions).length > 0);
 }

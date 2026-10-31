@@ -12,7 +12,8 @@
  * corpus does not buy a single worse mesh. A mesh is keyed by model, express
  * id and its ordinal among that id's meshes. For a CHANGED mesh:
  *
- * - `regression`: it gained open or nonmanifold edges (bit-exact or at the
+ * - `regression`: it gained degenerate triangles, lost more than 1% of its
+ *   area, or gained open or nonmanifold edges (bit-exact or at the
  *   10 um weld), or more than 1e-6 m2 of thin material or coincident sheet.
  * - `qualityWorse`: not a regression, closed no open edge, and gained slivers
  *   or raised its max aspect above 1.5x the base.
@@ -33,6 +34,9 @@ const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'sliv
 /** Thin-material area (m2) a mesh may gain or lose before it counts. */
 const THIN_EPS = 1e-6;
 const SHEETS = ['thinArea', 'coincidentArea'];
+/** Relative surface area a mesh may lose before it counts as collapsing (a
+ * removed strip of host loses well under this; #12381 loses 0.33%). */
+const AREA_LOSS = 0.01;
 const EDGES = ['open', 'nonmanifold', 'open10', 'nonmanifold10'];
 
 export function parseCensus(text) {
@@ -59,7 +63,11 @@ export function classify(base, branch) {
   // "no thin material" there means nothing: never read it as unchanged.
   if (base.thinCapped > 0 || branch.thinCapped > 0) return 'unmeasured';
   if (METRICS.every((m) => same(base[m], branch[m]))) return null;
-  const gained = EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => branch[m] > base[m] + THIN_EPS);
+  // Collapsed triangles drop out of the edge census, so a mesh losing its
+  // geometry keeps 0 open edges: degenerate triangles and lost area catch it.
+  const collapsed = branch.degenerate > base.degenerate || branch.area < (1 - AREA_LOSS) * base.area;
+  const gained =
+    collapsed || EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => branch[m] > base[m] + THIN_EPS);
   if (gained) return 'regression';
   const closed = base.open10 > branch.open10 || base.open > branch.open;
   const worse = branch.slivers > base.slivers || branch.maxAspect > 1.5 * base.maxAspect;

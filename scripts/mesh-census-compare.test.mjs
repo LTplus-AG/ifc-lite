@@ -33,6 +33,13 @@ test('thin material counts past 1e-6 m2 and not below', () => {
   assert.equal(classify(base, row({ coincidentArea: 2e-6 })), 'regression');
 });
 
+test('a mesh collapsing with no open edges is a regression', () => {
+  assert.equal(classify(base, row({ degenerate: 4, area: 0 })), 'regression');
+  assert.equal(classify(base, row({ degenerate: 1 })), 'regression');
+  assert.equal(classify(base, row({ area: 5 * 0.98 })), 'regression');
+  assert.equal(classify(base, row({ area: 5 * 0.995 })), 'neutral');
+});
+
 test('more slivers without closing an edge is quality-worse', () => {
   assert.equal(classify(base, row({ slivers: 11 })), 'qualityWorse');
 });

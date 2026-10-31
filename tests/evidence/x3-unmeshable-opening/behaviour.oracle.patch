@@ -1,0 +1,13 @@
+diff --git b/rust/geometry/src/program/openings/classify.rs a/rust/geometry/src/program/openings/classify.rs
+index 700e0b0937..2314121f8f 100644
+--- b/rust/geometry/src/program/openings/classify.rs
++++ a/rust/geometry/src/program/openings/classify.rs
+@@ -296,7 +296,7 @@ impl<'a> Classifier<'a> {
+                 Some(current) => current.entity.ifc_type.clone(),
+                 None => IfcType::IfcFeatureElementSubtraction,
+             };
+-            let _ = (router, ifc_type);
++            router.record_unmeshable_opening(self.requested, ifc_type);
+         }
+         self.skip();
+     }

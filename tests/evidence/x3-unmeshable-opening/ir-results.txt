@@ -1,0 +1,29 @@
+X3 (#8385) instruction-count evidence. Base main 6eec58244d, head Rust == 129e2bf37d.
+
+1. Harness (qualify.sh instructions, Pop, receipt a2778bbb, head 740592a, same Rust):
+   Haus max 1.000008, duplex max 1.000150,
+   ISSUE_129 geometryIr 28217016581 -> 28243689354 = 1.000945 OVER,
+             totalIr    28474281662 -> 28500960810 = 1.000937 OVER,
+   all other ISSUE_129 phases <= 1.000025.
+   The base here is built from a git-archive export under the head checkout and
+   the head in the worker checkout; the earlier run at 3977f32 (receipt 34506870)
+   read 1.000946 with base 28217008275.
+
+2. Same-host interleaved (ir_interleaved.sh, Pop, receipt 0cd7923d, head 129e2bf):
+   round geometryIr base -> head                 worst phase
+   1     28214967292 -> 28206255305 (0.999691)    1.000308 (preprocessIr)
+   2     28214975533 -> 28206258087 (0.999691)    1.000311 (preprocessIr)
+   3     28214966910 -> 28206251191 (0.999691)    1.000289 (preprocessIr)
+   Every round, every phase <= 1.0005; mesh/vertex/triangle counts identical.
+
+3. Per-function self Ir, geometry phase, round 1 (ir_fndiff.py):
+   total delta -8,711,987 (0.999691). Functions present on only one side at
+   >= 0.01% of the phase: 0 head-only, 0 base-only. Largest deltas are libc
+   (memcpy/malloc-family addresses, -6.1M, -3.1M, +1.8M, -1.0M) and allocator
+   layout. Code attributable to the change: classify.rs Decoded arm +6,480 and
+   -9,072/+8,640 (the match rewrite), GeometryRouter::new +5,328 (the new
+   FxHashSet in UnsupportedItemState, 4 Ir x 1,332 routers). No new hot function.
+
+Reading: the harness over-read is build-layout sensitivity (the two sides are
+compiled at different paths, which moves libc/allocator-bound code), not cost
+added by this change, which only runs where an opening yields no cutter.

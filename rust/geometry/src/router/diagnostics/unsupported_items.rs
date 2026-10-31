@@ -24,14 +24,19 @@ pub(crate) struct UnsupportedItemState {
     /// `IfcRepresentationMap` source ids already counted, so a source is
     /// counted ONCE however many `IfcMappedItem` occurrences walk it.
     sources_recorded: FxHashSet<u32>,
+    /// Opening ids already counted by [`GeometryRouter::record_unmeshable_opening`],
+    /// so an opening is counted ONCE per router however often its host is cut.
+    openings_recorded: FxHashSet<u32>,
     /// One "record drops beneath this source?" decision per open scope.
     scope: Vec<bool>,
 }
 
 impl UnsupportedItemState {
-    /// Forget which sources have been counted, so a re-walk counts them again.
+    /// Forget which sources and openings have been counted, so a re-walk
+    /// counts them again.
     pub(crate) fn forget_sources(&mut self) {
         self.sources_recorded.clear();
+        self.openings_recorded.clear();
     }
 }
 
@@ -133,6 +138,29 @@ impl GeometryRouter {
                 state.counts.insert(name.to_string(), 1);
             }
         }
+    }
+
+    /// Record an opening whose own body yields no cutter (ROUTER-37): its id
+    /// does not decode, or its body fails or meshes empty, so its host is not
+    /// cut by it. Counted as one dropped item keyed by the opening's `IfcType`
+    /// (`ifc_type`), through the same map as [`Self::record_unsupported_item`],
+    /// so it reaches `GeometryDiagnostics::unsupported_items_by_type` with no
+    /// new wire field.
+    ///
+    /// Counted ONCE per opening id per router, like a source in
+    /// [`Self::claim_unsupported_source`]: a host cut twice by one router (a
+    /// re-run void context, a repeated requested id) does not count it twice.
+    /// The same per-router caveat applies: a native pool sums one router per
+    /// element. A declining policy scope suppresses the record without claiming
+    /// the opening, matching `claim_unsupported_source`'s non-Body rule.
+    pub(crate) fn record_unmeshable_opening(&self, opening_id: u32, ifc_type: ifc_lite_core::IfcType) {
+        {
+            let mut state = self.unsupported.borrow_mut();
+            if state.scope.last() == Some(&false) || !state.openings_recorded.insert(opening_id) {
+                return;
+            }
+        }
+        self.record_unsupported_item(ifc_type);
     }
 
     /// Drain the dropped-item counts gathered since the last call.

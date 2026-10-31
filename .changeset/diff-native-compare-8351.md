@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/wasm": patch
+"@ifc-lite/diff": patch
 ---
 
-The diff engine's native comparison is faster. `DiffModelHandle.compare` and `diffModels` spend less time matching entities and component hashes: about 60% less native work on a 17,000-object revision and about 45% less on AC20-FZK-Haus. Results are unchanged (#8351).
+Diff comparisons are faster. `DiffModelHandle.compare` and `diffModels` spend less time matching entities and component hashes, no longer rebuild the default class families on every call, and pass only the options a caller set across the WASM boundary. In native timing the comparison work drops by about 60% on a 17,000-object revision and by about 70% on AC20-FZK-Haus. Results are unchanged (#8351).

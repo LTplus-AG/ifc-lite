@@ -49,7 +49,10 @@ export function recoveryFailureProperties(
  * a sentence is removed here, before the text is cut.
  */
 const MAX_DETAIL = 300;
-const detailOf = (text: string): string => redactFileTokens(text).slice(0, MAX_DETAIL);
+const detailOf = (text: string): string => redactFileTokens(text.slice(0, 2_000))
+  // The file token stops at a separator: the folders before it name things too.
+  .replace(/\S*[\\/](?:[^\n]*[\\/])?\[file\]/g, '[file]')
+  .slice(0, MAX_DETAIL);
 
 function errorFields(prefix: string, error: unknown): DeviceLossContext {
   if (error === undefined) return {};

@@ -333,7 +333,7 @@ export function subscribeViewportHealth(
           console.warn('[Viewport] failed to cancel point-cloud ingest during device loss:', error);
         }
       }
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
+      reportDeviceLost(info, lossContext, Boolean(renderer.recoverDevice));
       if (!recovery && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },

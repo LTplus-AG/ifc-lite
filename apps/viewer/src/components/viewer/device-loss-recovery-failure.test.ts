@@ -124,6 +124,33 @@ describe('device_loss_recovery_failed carries what failed', () => {
     }
   });
 
+  it('removes the folders of a file path from recovery error text', () => {
+    const attempts = { episode: 1, attempts: 1, elapsedMs: 0 };
+    for (const path of ['/clients/acme/Tower.ifc', '/clients/acme corp/Tower.ifc', 'C:\\clients\\acme\\Tower.ifc', 'clients/acme/Tower.ifc']) {
+      const props = recoveryFailureProperties(
+        { ok: false, reason: 'scene-restore-failed', error: new Error(`could not restore ${path} after loss`) },
+        attempts,
+      );
+      const detail = String(props.recovery_error_detail);
+      assert.equal(/acme|clients|Tower/.test(detail), false, detail);
+      assert.match(detail, /\[file\]/);
+    }
+  });
+
+  it('reports one context snapshot for the loss and the failed recovery', async () => {
+    const h = source([{ ok: false, reason: 'cold-restore-failed', error: new Error('scene') }]);
+    let builds = 0;
+    const unsubscribe = subscribeViewportHealth(h.renderer, () => ({ gpu_vendor: `vendor-${++builds}` }));
+    try {
+      h.lose();
+      const props = await failureEvent();
+      assert.equal(builds, 1);
+      assert.equal(props.gpu_vendor, 'vendor-1');
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('reads the message of a GPU error, which is not a JavaScript Error', () => {
     class GPUValidationError { message = 'Invalid pipeline'; }
     const props = recoveryFailureProperties(

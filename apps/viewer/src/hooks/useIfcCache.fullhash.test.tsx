@@ -3,12 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `saveToCache` must store a TRUE full-file content hash for BOTH cache tiers
- * (#4269). Before that fix, the write path computed `fullSourceHash` only when
- * `persistSource` was false (the mesh-only tier), so a source-persisting entry
- * could never be background-revalidated — an mtime-preserved,
- * byte-length-preserving in-place edit (invisible to the spread-sampled cache
- * key by design, see `@ifc-lite/cache`'s `source-fingerprint.ts`) was served stale forever.
+ * `saveToCache` must store a TRUE full-file content hash on every entry
+ * (#4269). Before that fix, the write path computed `fullSourceHash` only for
+ * the mesh-only tier, so a source-persisting entry could never be
+ * background-revalidated — an mtime-preserved, byte-length-preserving in-place
+ * edit (invisible to the spread-sampled cache key by design, see
+ * `@ifc-lite/cache`'s `source-fingerprint.ts`) was served stale forever.
+ *
+ * No entry persists the source any more: a hit hydrates against the fresh file
+ * buffer, and a stored copy was deserialized beside it (two resident sources).
  *
  * Since #7022 that hash is the load's own placement identity, handed in by the
  * loader: the write stores it and hashes nothing itself, so a cold load digests
@@ -101,7 +104,7 @@ function referenceIdentity(buffer: ArrayBuffer): string {
   return `placement-sha256-1m-v1:${sha256(parts.join(':'))}`;
 }
 
-async function saveAndRead(key: string, persistSource: boolean) {
+async function saveAndRead(key: string) {
   const sourceBuffer = new TextEncoder()
     .encode(`ISO-10303-21; /* ${key} */ END-ISO-10303-21;`).buffer as ArrayBuffer;
   const identity = referenceIdentity(sourceBuffer);
@@ -113,7 +116,6 @@ async function saveAndRead(key: string, persistSource: boolean) {
   try {
     await act(async () => {
       await saveToCache!(key, buildDataStore(), GEOMETRY, sourceBuffer, `${key}.ifc`, {
-        persistSource,
         lastModified: 1_700_000_000_000,
         fullSourceHash: Promise.resolve(identity),
       });
@@ -126,24 +128,21 @@ async function saveAndRead(key: string, persistSource: boolean) {
   return { entry, identity, digests };
 }
 
-describe('saveToCache stores the load\'s full-content hash for BOTH tiers (#4269, #7022)', () => {
-  it('a SOURCE-PERSISTING write stores fullSourceHash without hashing the source again', async () => {
-    const { entry, identity, digests } = await saveAndRead('fullhash-source-tier', true);
-    assert.ok(entry.sourceBuffer, 'the source tier must persist the source buffer');
+describe('saveToCache stores the load\'s full-content hash (#4269, #7022)', () => {
+  it('stores fullSourceHash and the mtime without hashing the source again', async () => {
+    const { entry, identity, digests } = await saveAndRead('fullhash-entry');
     assert.equal(
       entry.fullSourceHash,
       identity,
-      'a source-persisting entry must carry the full-content hash so a served hit '
-      + 'can be background-revalidated (#4269), and it is the load\'s identity (#7022)',
+      'every entry must carry the full-content hash so a served hit can be '
+      + 'background-revalidated (#4269), and it is the load\'s identity (#7022)',
     );
     assert.equal(digests, 0, 'the write reuses the load\'s hash instead of digesting the source a second time');
     assert.equal(entry.lastModified, 1_700_000_000_000, 'the mtime guard field must be stored too');
   });
 
-  it('a MESH-ONLY write stores the same hash, also without hashing', async () => {
-    const { entry, identity, digests } = await saveAndRead('fullhash-mesh-only-tier', false);
-    assert.equal(entry.sourceBuffer, undefined, 'the mesh-only tier must not persist the source');
-    assert.equal(entry.fullSourceHash, identity);
-    assert.equal(digests, 0);
+  it('never persists the source, so a hit cannot deserialize a second copy', async () => {
+    const { entry } = await saveAndRead('fullhash-no-source');
+    assert.equal(entry.sourceBuffer, undefined, 'the raw source must not be written to IndexedDB');
   });
 });

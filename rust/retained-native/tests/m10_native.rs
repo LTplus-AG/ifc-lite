@@ -43,8 +43,8 @@ fn m10_source_oracle_matches_hand_arithmetic_and_mirror_centroids() {
 #[test]
 fn m10_omitted_axis2_source_mirror_matches_ifcopenshell() {
     // IFC IfcSecondProjAxis defaults Axis2 to +Y. Independent IfcOpenShell
-    // matrix is recorded in schema.json; do not copy the default router's
-    // cross(z,x) convention into the source oracle (Refs #7955).
+    // matrix is recorded in schema.json; the default router follows it since
+    // #8308, but the source oracle stays independent of it (Refs #7955).
     let text=SOURCE.replace("#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,#36,#37,1.,#3);",
         "#38=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#35,$,#37,1.,#3);");
     let e=affine::expected(text.as_bytes(),42).unwrap();

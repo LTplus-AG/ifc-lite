@@ -106,7 +106,7 @@ export { isEntityVisible } from './entity-visibility.js';
 export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 export { DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 export { VisibilityEpochTracker } from './visibility-epoch.js';
-export type { FrameStats, ResidentGpuBytes } from './render-stats.js'; // GPU timing is opt-in (#6975).
+export type { FrameStats, ResidentGpuBytes } from './render-stats.js'; export type { RenderTargetBytes } from './render-target-bytes.js'; // GPU timing is opt-in (#6975).
 export { decideTimingMode, passDurationsMs, frameTotalMs, aggregateFrameTimings } from './frame-timing.js';
 export type { TimingMode, TimingModeRequest, PassTimingSample, FrameTimingReport } from './frame-timing.js';
 export { computeDurationStats, nsToMs, isNegativeDelta } from './frame-timing-stats.js';
@@ -187,6 +187,7 @@ import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
+import { resolveOpaqueDrawMode } from './opaque-draw-variants.js'; import { sortOpaqueFrontToBack } from './opaque-draw-order.js'; import { renderTargetBytes, type RenderTargetBytes } from './render-target-bytes.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
@@ -1520,6 +1521,9 @@ export class Renderer {
      * load-complete telemetry snapshot (issue #1682 observability).
      */
     getFrameStats(): FrameStats | null { return this._lastFrameStats; }
+    /** Screen-sized render targets currently allocated, by owner (render-target-bytes.ts). */
+    getRenderTargetBytes(): RenderTargetBytes { return renderTargetBytes({ main: this.pipeline?.renderTargets(), picker: this.picker?.renderTargets(),
+        post: this.postPasses?.renderTargets(), shadowResolution: this.shadowPass?.getResolution() ?? null }); }
 
     /**
      * Vendor/architecture identity of the GPU adapter, snapshotted during
@@ -2190,11 +2194,11 @@ export class Renderer {
                     depthClearValue: 0.0,  // Reverse-Z: clear to 0.0 (far plane)
                     depthLoadOp: 'clear',
                     depthStoreOp: 'store',
-                    // Stencil is cleared here and preserved for the cap pass
-                    // that runs right after in the same frame.
+                    // No pipeline tests or writes stencil since the 2D-polygon cap
+                    // replaced the parity cap; never store it (saves the write-back).
                     stencilClearValue: 0,
                     stencilLoadOp: 'clear',
-                    stencilStoreOp: 'store',
+                    stencilStoreOp: 'discard',
                 },
             }, this.camera.getProjectionMode() === 'orthographic', this.canvas.width, this.canvas.height);
 
@@ -2564,31 +2568,25 @@ export class Renderer {
                     frameBatchesDrawn++;
                 };
 
-                // Quantized batches (issue #1682 phase 6) draw through the
-                // quantized pipeline variants; scene only quantizes after the
-                // probe (enableQuantizedBatches) verified they exist, so the
-                // base fallback here is type-safety, never taken.
-                const pipeFor = (
-                    batch: typeof allBatchedMeshes[0],
-                    kind: 'opaque' | 'transparent',
-                ): GPURenderPipeline => {
-                    const ghost = kind === 'transparent' && xray.isGhostBatch(batch)
-                        ? this.pipeline!.getGhostPipeline(!!batch.quantized, () => this.requestRender()) : null;
-                    if (ghost) return ghost;
-                    const base = kind === 'opaque' ? this.pipeline!.getPipeline() : this.pipeline!.getTransparentPipeline();
-                    if (!batch.quantized) return base;
-                    return this.pipeline!.getQuantizedPipelineVariant(kind) ?? base;
+                // Quantized batches (issue #1682 phase 6) draw through the quantized
+                // variants; scene only quantizes once the probe verified they exist, so
+                // the f32 fallback is type-safety. Opaque draws take the discard-free /
+                // no-object-id twins when nothing can clip them (opaque-draw-variants.ts).
+                const opaqueMode = (instancedDiscards?: boolean) => resolveOpaqueDrawMode({ perspective: this.camera.getProjectionMode() !== 'orthographic',
+                    clipping: sectionPlaneData?.enabled === true || tplClipBit !== 0 || extraClipPlanes.length > 0, edges: needsObjectIdPass, instancedDiscards });
+                const flatMode = opaqueMode();
+                const pipeFor = (batch: typeof allBatchedMeshes[0], kind: 'opaque' | 'transparent'): GPURenderPipeline => {
+                    if (kind === 'opaque') return this.pipeline!.opaquePipeline(batch.quantized ? 'quantized' : 'flat', flatMode);
+                    const ghost = xray.isGhostBatch(batch) ? this.pipeline!.getGhostPipeline(!!batch.quantized, () => this.requestRender()) : null;
+                    return ghost ?? (batch.quantized ? this.pipeline!.getQuantizedPipelineVariant('transparent') : null) ?? this.pipeline!.getTransparentPipeline();
                 };
 
-                // Render opaque batches with the opaque (double-sided) pipeline.
-                // Material-layer slices render double-sided like all other IFC
-                // geometry. They USED to be backface-culled to hide the coincident
-                // interface caps of the old CLOSED per-layer slabs; since #1311 the
-                // slabs are open bands whose UNION is the wall's watertight outer
-                // skin (no caps ⇒ no coincident faces to z-fight). IFC winding is
-                // not reliably outward, so culling those bands dropped inward-wound
-                // faces and punched holes — the wall read HOLLOW even uncut.
-                // Double-siding draws every face of the watertight skin ⇒ solid.
+                // Render opaque batches with the opaque (double-sided) pipeline,
+                // nearest first so early depth rejects the overdraw (opaque-draw-order.ts).
+                // Material-layer slices are NOT backface-culled: since #1311 they are
+                // open bands whose UNION is the wall's watertight skin, and IFC winding
+                // is not reliably outward, so culling them punched holes (wall read hollow).
+                sortOpaqueFrontToBack(opaqueBatches, this.camera.getPosition());
                 for (const batch of opaqueBatches) {
                     usePipeline(pipeFor(batch, 'opaque'));
                     renderBatch(batch, true);
@@ -2649,7 +2647,7 @@ export class Renderer {
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
                     // discarded and drawn in the transparent sub-pass below.
                     this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4);
-                    usePipeline(this.pipeline.getInstancedPipeline());
+                    usePipeline(this.pipeline.opaquePipeline('instanced', opaqueMode(this.scene.instancedMayDiscard())));
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
                     pass.setBindGroup(3, sectionExclusions(device).bindGroup);

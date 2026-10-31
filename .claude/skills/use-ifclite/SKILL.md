@@ -54,6 +54,10 @@ ifc-lite merge arch.ifc struct.ifc mep.ifc --out federated.ifc
 ifc-lite convert model.ifc --schema IFC4 --out v4.ifc
 ifc-lite diff v1.ifc v2.ifc --by-entity --json
 
+# Models in an OCI registry: any model argument may be oci://host/repo:tag
+# (creds via IFC_LITE_OCI_USERNAME+IFC_LITE_OCI_PASSWORD or IFC_LITE_OCI_TOKEN)
+ifc-lite info oci://ghcr.io/acme/tower-model:rev-b --json
+
 # Structural sanity check
 ifc-lite validate model.ifc --json
 ```

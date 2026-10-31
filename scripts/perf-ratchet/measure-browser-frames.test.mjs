@@ -16,11 +16,14 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { loadCeilingFile, validateMeasuredFile } from './ceilings.mjs';
 import { allowedMax, compareFamily, REGRESSION } from './compare.mjs';
+import { lowerFamily } from './lower.mjs';
 import { buildMeasured, frameMetricId, RATCHETED_FRAME_METRICS } from './measure-browser-frames.mjs';
 
 const HERE = fileURLToPath(new URL('./', import.meta.url));
 const FIXTURES = fileURLToPath(new URL('../../tests/evidence/frame-ratchet-6975/', import.meta.url));
-const CEILINGS = loadCeilingFile(fileURLToPath(new URL('../../tests/perf-ratchets/browser-frames.json', import.meta.url)));
+// Snapshot from ac31b157a9, bound to the raw repeatability verdicts by
+// frame-ratchet-evidence.test.mjs. Mechanics must survive live lowering.
+const CEILINGS = loadCeilingFile(join(FIXTURES, 'browser-frames.json'));
 const MEASURER = join(HERE, 'measure-browser-frames.mjs');
 const CLI = join(HERE, 'perf-ratchet.mjs');
 
@@ -38,14 +41,14 @@ function measureAndCheck(evidence) {
     writeFileSync(frames, JSON.stringify(evidence));
     const measure = spawnSync(process.execPath, [MEASURER, '--frames', frames, '--out', out, '--commit', 'abc1234'], { encoding: 'utf8' });
     const written = existsSync(out);
-    const check = measure.status === 0 ? spawnSync(process.execPath, [CLI, 'check', '--measured', out], { encoding: 'utf8' }) : null;
+    const check = measure.status === 0 ? spawnSync(process.execPath, [CLI, 'check', '--measured', out, '--ceilings-dir', FIXTURES], { encoding: 'utf8' }) : null;
     return { measure, written, check };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-test('#6975 an admitted main artifact passes the committed browser-frames ceilings', () => {
+test('#6975 an admitted main artifact passes its frozen evidence ceilings', () => {
   const measured = buildMeasured({ evidence: admitted(), commit: 'abc1234' });
   assert.deepEqual(validateMeasuredFile(measured), []);
   assert.deepEqual(measured.metrics.map((m) => m.id).sort(), CEILINGS.entries.map((e) => e.id).sort());
@@ -53,6 +56,18 @@ test('#6975 an admitted main artifact passes the committed browser-frames ceilin
   assert.equal(result.failed, false, JSON.stringify(result.rows));
   const run = measureAndCheck(admitted());
   assert.equal(run.measure.status, 0, run.measure.stderr);
+  assert.equal(run.check.status, 0, run.check.stdout + run.check.stderr);
+});
+
+test('#7955 a legitimate lowering can reject old evidence without breaking its mechanics tests', () => {
+  const measured = buildMeasured({ evidence: admitted(), commit: 'abc1234' });
+  const improved = structuredClone(measured);
+  for (const metric of improved.metrics) metric.value /= 2;
+  const { next, changes } = lowerFamily(CEILINGS, improved);
+  assert.equal(changes.length, CEILINGS.entries.length);
+  assert.equal(compareFamily(next, measured).failed, true, 'the live gate still rejects stale, higher measurements');
+  assert.equal(compareFamily(CEILINGS, measured).failed, false);
+  const run = measureAndCheck(admitted());
   assert.equal(run.check.status, 0, run.check.stdout + run.check.stderr);
 });
 

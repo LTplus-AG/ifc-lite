@@ -92,6 +92,7 @@ function fakeRenderer(state: FakeRendererState): Renderer {
     requestRender: () => { state.renderRequested = true; },
     clearCaches: () => {},
     getModelBounds: () => null,
+    getFrameStats: () => null,
     render: (options: RenderOptions) => {
       state.frames?.push(options);
       state.renderCalls++;

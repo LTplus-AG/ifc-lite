@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Capture authored `IfcTessellatedFaceSet` triangles for retained publication
 //! (#8291). Topology comes from exact's own plans over the f32 point list, so
-//! the triangulation and winding decisions are exact's, made relative to the first
-//! point; the published coordinates are the same records read in full f64.
+//! the triangulation and winding decisions are exact's; the published
+//! coordinates are the same records read in full f64.
 use crate::document::RetainedFaceSet;
 use crate::processors::{polygonal_plan, read_point_list_f64, triangulated_plan, SourceTriangles, PolygonalFaces};
 use crate::{orient_mesh_outward_verdict, Error, Result};
@@ -14,15 +14,16 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     let coordinates = coordinates.and_then(AttributeValue::as_entity_ref)
         .ok_or_else(|| Error::geometry("face set missing Coordinates".to_string()))?;
     let positions = read_point_list_f64(decoder, coordinates)?;
-    // Exact's plans narrow to f32. Relative to the first point, as the request itself is, so corners
-    // that f32 would merge at survey scale stay distinct for its triangulation and winding decisions.
-    let anchor = positions.get(0..3).map(|p| (p[0], p[1], p[2]));
     let triangles = if polygonal {
         let faces = item.attr(slot::IfcPolygonalFaceSet::FACES)
             .and_then(AttributeValue::as_list).map_or(0, <[AttributeValue]>::len) as u32;
-        polygonal_plan::lower(item, decoder, anchor)?.source_triangles(faces)
+        // Exact's plan is the authority for triangulation, so it keeps exact's frame, except where
+        // narrowing to f32 merges distinct authored corners: the ring it would clip is then not
+        // the authored ring. Triangle topology needs no such exception: it is authored.
+        polygonal_plan::lower(item, decoder, narrowing_merges(&positions).then(|| (positions[0], positions[1], positions[2])))?
+            .source_triangles(faces)
     } else {
-        triangulated_plan::lower(item, decoder, anchor)?.source_triangles()
+        triangulated_plan::lower(item, decoder, None)?.source_triangles()
     };
     if positions.len() != triangles.positions.len() {
         return Err(Error::geometry("face set point list reads differently in f64".to_string()));
@@ -35,6 +36,17 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
         ..Default::default()
     })?.retain();
     Ok(RetainedFaceSet { source_id: item.id, positions, triangles, rows, row_count, length_unit_scale: scale })
+}
+
+/// Whether two distinct authored points become one in f32.
+fn narrowing_merges(positions: &[f64]) -> bool {
+    let mut exact: Vec<[u64; 3]> = positions.chunks_exact(3).map(|p| [(p[0] + 0.).to_bits(), (p[1] + 0.).to_bits(), (p[2] + 0.).to_bits()]).collect();
+    exact.sort_unstable();
+    exact.dedup();
+    let mut narrow: Vec<[u32; 3]> = positions.chunks_exact(3).map(|p| [(p[0] as f32 + 0.).to_bits(), (p[1] as f32 + 0.).to_bits(), (p[2] as f32 + 0.).to_bits()]).collect();
+    narrow.sort_unstable();
+    narrow.dedup();
+    narrow.len() < exact.len()
 }
 
 /// Exact's per-element pass faces each closed component outward, including a

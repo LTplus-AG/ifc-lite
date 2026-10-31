@@ -3910,6 +3910,79 @@ jobs:
       - name: Check every source file declares MPL-2.0
         run: node scripts/add-license-headers.mjs --check
 
+  # SILENT REVERT GUARD (follow-up to #8377, which merged as 705eb56357 and put
+  # 14 files of #8360 back to their exact pre-#8360 bytes, deleting
+  # affine_classify.rs, with neither title saying so). Every lane judges the
+  # tree, and the reverted tree was a consistent earlier tree, so all of them
+  # were green. This lane judges the DIFF instead: it fails when the tree the
+  # merge will produce restores three or more files of one commit already on
+  # the base to the bytes they had before it, unless the PR declares the revert
+  # (a `revert` title, a `Reverts #N` line, or the `silent-revert-exempt`
+  # label, which needs triage access to apply).
+  #
+  # git only: no pnpm install, no build artifact, a free runner. The depth is
+  # `fetch-depth: 0` and not a guess: the guard reads the merge base and the
+  # last 100 base commits, #8360 sat BELOW #8377's merge base, and a shallow
+  # checkout is refused by the script (exit 2) rather than judged. It evaluates
+  # `merge-tree <base> <head sha>` against the CURRENT base tip rather than the
+  # checked-out merge ref, which GitHub recomputes lazily when the base moves.
+  #
+  # THIS LANE READS THE EDIT, so it must not be replayed. Its input is the PR's
+  # title, body and labels, which is what a no-op `edited` changes. It therefore
+  # runs on EVERY `pull_request` event, `edited` included (no `noop` gate), and
+  # reads the PR LIVE from the API (`--pr`), never from the event payload, which
+  # is frozen when the run is created and is reused by a re-run. The aggregate
+  # judges this lane's fresh result even when it replays the other lanes' old
+  # verdict (see its `Judge the fresh silent-revert result` step), and the
+  # replay excuses a recorded failure only when this lane alone caused it.
+  # Without that: pass under `revert(x): ...`, retitle to `feat(...)`, and the
+  # green verdict replays and squashes under the feat title; or fail, add
+  # `Reverts #N`, and the red verdict replays for ever.
+  #
+  # `pull_request` only. On push and merge_group the lane is skipped and
+  # `skipped` passes the aggregate. That is deliberate and not a gap: a
+  # merge_group run tests the queue's own synthetic merge of already-approved
+  # PRs, each of which passed this lane against its base; a revert that only
+  # appears in the queue's composition is the stale-base class the queue exists
+  # for, and re-judging it here would need a PR title and declaration that a
+  # queue entry does not have. (A post-merge sweep over `main` is
+  # `check-silent-revert.mjs --scan`.) It has no path filter, since a silent
+  # revert can hit any file.
+  silent-revert:
+    name: Silent revert guard
+    needs: changes
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # The guard's own tests run FIRST: a broken detector must fail here rather
+      # than report agreement. They include a replay of the real #8377 history,
+      # which must RUN here: SILENT_REVERT_REQUIRE_HISTORY turns a missing
+      # history into a failure instead of a skip, and the test fetches the merged
+      # PR's head ref (refs/pull/8377/head), which is on no fetched branch.
+      - name: Check the guard's own regressions
+        env:
+          SILENT_REVERT_REQUIRE_HISTORY: '1'
+        run: node --test scripts/check-silent-revert.test.mjs
+      # `--pr` reads the title, body and labels as they are NOW, never the event
+      # payload (frozen at run creation, reused by a re-run). `pull-requests: read`
+      # is already in the workflow permissions.
+      - name: Refuse a PR that silently reverts merged work
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-silent-revert.mjs --base "origin/${PR_BASE_REF}" --head "${PR_HEAD_SHA}" --pr "${PR_NUMBER}"
+
   # NATIVE INSTRUCTION CEILINGS (#6982, charter #6954): the `native-instructions`
   # family. perf_probe runs single-threaded under callgrind on AC20-FZK-Haus
   # (~6 s of callgrind; the rest of this job is the cargo build and valgrind
@@ -4043,7 +4116,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -4067,7 +4140,18 @@ jobs:
         if: needs.changes.outputs.noop == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci-verdict-replay.mjs --replay
+        run: node scripts/ci-verdict-replay.mjs --replay --excuse-lane "Silent revert guard"
+      # The silent-revert lane reads the PR's title, body and labels, so a no-op
+      # edit is exactly what changes its verdict and it is never replayed: it ran
+      # on this `edited` event, and its fresh result is judged here. `success`
+      # only: a skipped or missing lane on a pull_request is not a pass.
+      - name: Judge the fresh silent-revert result
+        if: needs.changes.outputs.noop == 'true'
+        env:
+          SILENT_REVERT_RESULT: ${{ needs.silent-revert.result }}
+        run: |
+          echo "silent-revert: ${SILENT_REVERT_RESULT}"
+          test "${SILENT_REVERT_RESULT}" = success
       # PUSH REPLAY: the lanes a green PR run of this exact tree already ran
       # skipped, and `skipped` passes the map below, so first re-read that run
       # and refuse unless it is still green for this tree. The map then judges
@@ -4115,6 +4199,7 @@ jobs:
             [docs-site]="${{ needs.docs-site.result }}"
             [agents-md]="${{ needs.agents-md.result }}"
             [license-headers]="${{ needs.license-headers.result }}"
+            [silent-revert]="${{ needs.silent-revert.result }}"
             [native-instructions]="${{ needs.native-instructions.result }}"
             [perf-ratchet]="${{ needs.perf-ratchet.result }}"
           )

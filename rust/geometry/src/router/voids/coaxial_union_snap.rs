@@ -17,8 +17,10 @@
 //!
 //! [`snap_onto_earlier`] moves each vertex onto a vertex, or else an edge, of
 //! an EARLIER contour when one is within `tau`, so flush edges coincide before
-//! the union and the slit never forms. Earlier contours are never moved, so the
-//! result is deterministic in contour order and no vertex moves twice.
+//! the union and the slit never forms. [`reconcile`] runs it forward and then
+//! in reverse contour order, so whichever of two flush contours has its
+//! corners on the other's edge is the one that moves. The result is
+//! deterministic in contour order and every move is at most `tau`.
 //!
 //! `tau` is [`noise_radius`]: one [`SNAP_GRID`] cell at any magnitude, the rule
 //! the kernel's abutting prepass uses (`kernel::abutting`), and what keeps an
@@ -30,10 +32,18 @@
 use crate::kernel::mesh_bridge::SNAP_GRID;
 use nalgebra::Point2;
 
-/// [`snap_onto_earlier`] at the contours' own [`noise_radius`].
+/// [`snap_onto_earlier`] at the contours' own [`noise_radius`], then the same
+/// in reverse contour order. The second pass catches a flush edge whose LATER
+/// contour has no vertex near the earlier one (its edge runs past both ends)
+/// while the earlier contour's corners lie on it. It cannot undo the first:
+/// a vertex another was snapped onto finds that copy at distance 0 first.
 pub(super) fn reconcile(contours: &mut [Vec<Point2<f64>>]) -> usize {
     let tau = noise_radius(contours);
-    snap_onto_earlier(contours, tau)
+    let mut moved = snap_onto_earlier(contours, tau);
+    contours.reverse();
+    moved += snap_onto_earlier(contours, tau);
+    contours.reverse();
+    moved
 }
 
 /// Distance within which two footprint features are one authored feature:

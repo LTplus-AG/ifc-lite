@@ -33,7 +33,7 @@ const needs = (job, id) => {
 /** An active step that runs `gh issue create` as a command: not echoed or quoted, not `if: false`, not failure-tolerant. */
 const createsIssue = (step) => /(^|\n)[ \t]*gh issue create\b/.test(expression(step.run))
   && step.if !== false && !/^\s*(?:\$\{\{\s*)?false(?:\s*\}\})?\s*$/.test(String(step.if ?? ''))
-  && !(step['continue-on-error'] === true || /^\$\{\{/.test(String(step['continue-on-error'] ?? '')));
+  && !(step['continue-on-error'] === true || String(step['continue-on-error'] ?? '').startsWith('${{'));
 
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
 

@@ -61,7 +61,8 @@ jobs:
         (github.event.pull_request.head.ref == 'changeset-release/main' &&
          github.event.pull_request.title == 'chore: version packages')) &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      vars.CLAUDE_REVIEW_ENABLED == 'true'
+      vars.CLAUDE_REVIEW_ENABLED == 'true' &&
+      !startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

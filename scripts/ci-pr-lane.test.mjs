@@ -132,7 +132,7 @@ test('VERIFY: a fast lane the inputs do not justify fails, on every event and ov
   for (const c of cases) {
     const v = verify(c);
     assert.equal(v.ok, false, JSON.stringify(c));
-    assert.match(v.lines.join('\n'), /UNJUSTIFIED_FAST_LANE/);
+    assert.match(v.lines.join('\n'), /UNJUSTIFIED_FAST_LANE/); // @source-text-assertion-ok subject is the decision's returned text
   }
 });
 
@@ -141,16 +141,16 @@ test('VERIFY: a decision step that failed (no lane output) ran the full lanes an
     const v = verify({ lane });
     assert.equal(v.ok, true);
   }
-  assert.match(verify({ lane: '' }).lines.join('\n'), /decision step failed or is missing/);
+  assert.match(verify({ lane: '' }).lines.join('\n'), /decision step failed or is missing/); // @source-text-assertion-ok subject is the decision's returned text
 });
 
 test('VERIFY: shadow mode reports the lanes and flags a failure the fast lane would have deferred', () => {
   const clean = verify({ mode: 'shadow', lane: 'full' });
   assert.equal(clean.ok, true);
-  assert.match(clean.lines.join('\n'), /would have reached the same verdict/);
+  assert.match(clean.lines.join('\n'), /would have reached the same verdict/); // @source-text-assertion-ok subject is the decision's returned text
   const missed = verify({ mode: 'shadow', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'failure' }) });
   assert.equal(missed.ok, true, 'shadow reports; the map judges the failure');
-  assert.match(missed.lines.join('\n'), /would have deferred a failure to the merge queue: viewer-tests/);
+  assert.match(missed.lines.join('\n'), /would have deferred a failure to the merge queue: viewer-tests/); // @source-text-assertion-ok subject is the decision's returned text
 });
 
 test('VERIFY: unreadable NEEDS and a stale job list both fail', () => {
@@ -159,7 +159,7 @@ test('VERIFY: unreadable NEEDS and a stale job list both fail', () => {
   delete stale['viewer-e2e'];
   const v = verify({ needs: JSON.stringify(stale) });
   assert.equal(v.ok, false);
-  assert.match(v.lines.join('\n'), /viewer-e2e/);
+  assert.match(v.lines.join('\n'), /viewer-e2e/); // @source-text-assertion-ok subject is the decision's returned text
 });
 
 // ---------------------------------------------------------------- the CLI
@@ -179,7 +179,9 @@ function cli(args, env) {
 test('CLI --decide writes lane and mode outputs', () => {
   const fast = cli(['--decide'], { GITHUB_EVENT_NAME: 'pull_request', CI_PR_LANE: 'fast', PR_LABELS: labels() });
   assert.equal(fast.code, 0, fast.stderr);
-  assert.deepEqual(fast.outputs, { lane: 'fast', mode: 'fast' });
+  assert.deepEqual(fast.outputs, { lane: 'fast', mode: 'fast', batch: 'false' });
+  const batch = cli(['--decide'], { GITHUB_EVENT_NAME: 'pull_request', CI_PR_LANE: 'fast', PR_LABELS: labels(), HEAD_REF: 'mergify/merge-queue/abc' });
+  assert.deepEqual(batch.outputs, { lane: 'full', mode: 'fast', batch: 'true' });
   const mq = cli(['--decide'], { GITHUB_EVENT_NAME: 'merge_group', CI_PR_LANE: 'fast', PR_LABELS: 'null' });
   assert.equal(mq.outputs.lane, 'full');
   const typo = cli(['--decide'], { GITHUB_EVENT_NAME: 'pull_request', CI_PR_LANE: 'fsat', PR_LABELS: labels() });
@@ -293,4 +295,51 @@ test('REVIEW SIGNAL: a silent run (test.yml never fired) still fails', () => {
   const r = gate([{ name: 'Issue queue', state: 'success' }]);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NOT ONE lane from test\.yml appeared/); // @source-text-assertion-ok subject is the gate's printed verdict; the exit code is asserted above
+});
+
+test('a Mergify batch PR is the full gate: no switch or label can put it on the fast lane', () => {
+  const headRef = 'mergify/merge-queue/abc123';
+  for (const mode of [undefined, '', 'full', 'shadow', 'fast', 'FAST', 'garbled']) {
+    for (const prLabels of ['[]', '["unqueued"]', 'not json']) {
+      const d = decideLane({ event: 'pull_request', mode, labels: prLabels, headRef });
+      assert.equal(d.lane, 'full', `mode=${mode} labels=${prLabels}`);
+      assert.equal(d.wouldBeFast, false);
+    }
+  }
+  assert.equal(decideLane({ event: 'pull_request', mode: 'fast', labels: '[]', headRef: 'fix/mergify/merge-queue/x' }).lane, 'fast', 'only the real prefix counts');
+  assert.equal(decideLane({ event: 'pull_request', mode: 'fast', labels: '[]' }).lane, 'fast', 'an ordinary PR keeps the fast lane');
+});
+
+test('the aggregate rejects a fast lane on a batch PR', () => {
+  const needs = JSON.stringify(Object.fromEntries([...FAST_SKIPPED_JOBS, ...Object.keys(FAST_REDUCED_JOBS)].map((j) => [j, { result: 'skipped' }])));
+  const v = verifyLane({ event: 'pull_request', mode: 'fast', labels: '[]', headRef: 'mergify/merge-queue/abc', lane: 'fast', needs });
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join('\n'), /UNJUSTIFIED_FAST_LANE/); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+});
+
+test('test.yml hands the batch signal to the decision and to the queue-only lanes', () => {
+  const wf = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
+  const decide = wf.jobs.changes.steps.find((s) => s.id === 'lane');
+  assert.equal(decide.env.HEAD_REF, '${{ github.head_ref }}');
+  assert.match(wf.jobs.changes.outputs.batch, /steps\.lane\.outputs\.batch/); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  for (const job of ['rust-full', 'geometry-census', 'csg-accept-gates']) {
+    assert.match(wf.jobs[job].if, /needs\.changes\.outputs\.batch == 'true'/, job); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  }
+  const all = wf.jobs.changes.steps.find((s) => s.id === 'all');
+  assert.match(all.if, /steps\.lane\.outputs\.batch == 'true'/, 'a batch declares every area changed'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  const filter = wf.jobs.changes.steps.find((s) => s.id === 'filter');
+  assert.match(filter.if, /steps\.lane\.outputs\.batch != 'true'/, 'a batch does not narrow lanes by path'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+});
+
+test('Mergify cannot merge a batch unless full-lane jobs succeeded, and is label-scoped', () => {
+  const cfg = parse(readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8'));
+  const rule = cfg.queue_rules[0];
+  for (const check of ['Build + WASM + Rust + Node', 'Viewer tests (shard 0)', 'Rust tests (feature builds)']) {
+    assert.ok(rule.merge_conditions.includes(`check-success=${check}`), check); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  }
+  assert.ok(rule.queue_conditions.includes('label=mergify-trial')); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  const names = Object.values(parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8')).jobs).map((j) => j.name);
+  assert.ok(names.includes('Rust tests (feature builds)'), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  assert.ok(names.includes('Build + WASM + Rust + Node'), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  assert.ok(names.some((n) => String(n).startsWith('Viewer tests (shard')), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
 });

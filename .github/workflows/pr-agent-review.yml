@@ -85,7 +85,7 @@ jobs:
     # Fork PRs get no secrets and a read-only token, so the lane could neither
     # call the model nor post. Drafts are skipped to save credits.
     if: >-
-      github.event.pull_request.draft == false &&
+      github.event.pull_request.draft == false && !startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/') &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.PR_AGENT_OPENROUTER_ENABLED == 'true'
     runs-on: ubuntu-latest
@@ -168,7 +168,7 @@ jobs:
   local-run:
     name: PR-Agent local model run
     if: >-
-      github.event.pull_request.draft == false &&
+      github.event.pull_request.draft == false && !startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/') &&
       github.event.pull_request.head.repo.full_name == github.repository
     # On the self-hosted runner only when it is declared up, an endpoint is
     # configured and the PR is not labelled `ci:hosted`. Otherwise a hosted

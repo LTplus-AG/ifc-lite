@@ -154,6 +154,9 @@ jobs:
       # label (scripts/ci-pr-lane.mjs). Every lane it skips tests `!= 'fast'`,
       # so a missing or garbled value runs the full lanes.
       lane: ${{ steps.lane.outputs.lane || 'full' }}
+      # `true` on a Mergify batch PR, which is the queue's full gate: it arrives as
+      # `pull_request`, so the queue-only lanes below test this output as well.
+      batch: ${{ steps.lane.outputs.batch || 'false' }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -247,6 +250,7 @@ jobs:
         env:
           CI_PR_LANE: ${{ vars.CI_PR_LANE }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          HEAD_REF: ${{ github.head_ref }}
         run: node scripts/ci-pr-lane.mjs --decide
       # A fast run records no tree: the push replay would otherwise skip, on
       # main, the lanes this run never executed.
@@ -276,11 +280,11 @@ jobs:
       # A merge-queue batch is validated as a whole: declare every area changed
       # so all lanes run. paths-filter is a pull_request/push tool and has no
       # PR to diff on merge_group.
-      - if: github.event_name == 'merge_group'
+      - if: github.event_name == 'merge_group' || steps.lane.outputs.batch == 'true'
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        if: github.event_name != 'merge_group' && steps.noop.outputs.noop != 'true'
+        if: github.event_name != 'merge_group' && steps.lane.outputs.batch != 'true' && steps.noop.outputs.noop != 'true'
         id: filter
         with:
           filters: |
@@ -847,7 +851,8 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
-      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
+      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt') &&
+      needs.changes.outputs.batch != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # Python extension tests build separate wheels before and after the revert.
     # A changed Playwright spec may add two viewer builds and two scoped
@@ -3344,7 +3349,7 @@ jobs:
   rust-full:
     name: Rust tests (feature builds)
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event_name != 'pull_request'
+    if: needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
@@ -3519,7 +3524,7 @@ jobs:
     # aggregate's `needs:`, so in the queue a moved baseline fails the required
     # check and dequeues the batch. The heavy-fixture variant is weekly
     # (geometry-census-heavy.yml).
-    if: needs.changes.outputs.geometry == 'true' && github.event_name != 'pull_request'
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
     # This lane must not consume metered runner minutes.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -3621,7 +3626,7 @@ jobs:
   csg-accept-gates:
     name: CSG accept gates (feature builds)
     needs: changes
-    if: needs.changes.outputs.geometry == 'true' && github.event_name != 'pull_request'
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
     # This lane must not consume metered runner minutes.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -4142,6 +4147,7 @@ jobs:
         env:
           CI_PR_LANE: ${{ vars.CI_PR_LANE }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          HEAD_REF: ${{ github.head_ref }}
           LANE: ${{ needs.changes.outputs.lane }}
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/ci-pr-lane.mjs --verify

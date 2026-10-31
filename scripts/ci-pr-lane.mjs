@@ -21,7 +21,8 @@
  *   `fast`          `pull_request` runs skip FAST_SKIPPED_JOBS and the test leg
  *                   of `rust-tests`. A PR labelled `ci:full` gets the full run.
  * Any other value is a typo and selects `full`. `merge_group` and `push` are
- * `full` in every mode.
+ * `full` in every mode, and so is a Mergify batch PR (`mergify/merge-queue/*`):
+ * it arrives as `pull_request` but is the queue's full gate.
  *
  * FAIL CLOSED, BY POLARITY. Every skipped lane in test.yml is gated on
  * `needs.changes.outputs.lane != 'fast'`, never on `== 'full'`, so an absent,
@@ -38,7 +39,7 @@
  *   node scripts/ci-pr-lane.mjs --decide   `changes` job; writes lane/mode outputs
  *   node scripts/ci-pr-lane.mjs --verify   aggregate job; exit 1 on an unjustified `fast`
  *
- * Inputs: GITHUB_EVENT_NAME, CI_PR_LANE, PR_LABELS (JSON array of names),
+ * Inputs: GITHUB_EVENT_NAME, CI_PR_LANE, HEAD_REF, PR_LABELS (JSON array of names),
  * and for --verify LANE (the `changes` output) and NEEDS (`toJSON(needs)`).
  */
 
@@ -48,6 +49,10 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export const FULL_LABEL = 'ci:full';
 export const MODES = ['full', 'shadow', 'fast'];
+export const BATCH_BRANCH_PREFIX = 'mergify/merge-queue/';
+
+/** A Mergify batch PR is the merge queue's full gate, whatever the switch says. */
+export const isBatchBranch = (headRef) => String(headRef ?? '').startsWith(BATCH_BRANCH_PREFIX);
 
 /**
  * Jobs a fast `pull_request` run skips whole. Measured mean job-minutes per
@@ -75,7 +80,7 @@ function parseLabels(raw) {
  * @param {{ event?: string, mode?: string, labels?: string }} input  raw env values
  * @returns {{ lane: 'full'|'fast', mode: 'full'|'shadow'|'fast', wouldBeFast: boolean, reason: string, warning?: string }}
  */
-export function decideLane({ event, mode, labels }) {
+export function decideLane({ event, mode, labels, headRef }) {
   // Lowercased because Actions' `==` is case-insensitive and test.yml compares
   // `vars.CI_PR_LANE == 'fast'` directly; NOT trimmed, for the same reason.
   const raw = String(mode ?? '').toLowerCase();
@@ -84,6 +89,7 @@ export function decideLane({ event, mode, labels }) {
     return { lane: 'full', mode: 'full', wouldBeFast: false, reason: `unknown CI_PR_LANE value, full lanes`, warning: `CI_PR_LANE=${JSON.stringify(String(mode))} is not one of ${MODES.join(', ')}; running the full lanes` };
   }
   if (event !== 'pull_request') return { lane: 'full', mode: m, wouldBeFast: false, reason: `${event || 'unknown event'} always runs the full lanes` };
+  if (isBatchBranch(headRef)) return { lane: 'full', mode: m, wouldBeFast: false, reason: 'a Mergify batch PR always runs the full lanes' };
   if (m === 'full') return { lane: 'full', mode: m, wouldBeFast: false, reason: 'CI_PR_LANE is unset or full' };
   let names;
   try {
@@ -110,8 +116,8 @@ export function laneFromOutput(raw) {
  * @param {{ event?: string, mode?: string, labels?: string, lane?: string, needs?: string }} input
  * @returns {{ ok: boolean, lines: string[] }}
  */
-export function verifyLane({ event, mode, labels, lane, needs }) {
-  const d = decideLane({ event, mode, labels });
+export function verifyLane({ event, mode, labels, headRef, lane, needs }) {
+  const d = decideLane({ event, mode, labels, headRef });
   const lines = [];
   let results;
   try {
@@ -155,14 +161,14 @@ function summary(lines) {
 
 export function run(argv, env = process.env) {
   const cmd = argv[0];
-  const input = { event: env.GITHUB_EVENT_NAME, mode: env.CI_PR_LANE, labels: env.PR_LABELS };
+  const input = { event: env.GITHUB_EVENT_NAME, mode: env.CI_PR_LANE, labels: env.PR_LABELS, headRef: env.HEAD_REF };
   if (cmd === '--decide') {
     const d = decideLane(input);
     if (d.warning) console.log(`::warning::${d.warning}`);
     console.log(`[ci-pr-lane] lane=${d.lane} mode=${d.mode}: ${d.reason}`);
     const out = env.GITHUB_OUTPUT;
     if (!out) throw new Error('GITHUB_OUTPUT is not set; refusing to decide into nowhere');
-    appendFileSync(out, `lane=${d.lane}\nmode=${d.mode}\n`);
+    appendFileSync(out, `lane=${d.lane}\nmode=${d.mode}\nbatch=${isBatchBranch(input.headRef)}\n`);
     return 0;
   }
   if (cmd === '--verify') {

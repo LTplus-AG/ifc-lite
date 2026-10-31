@@ -29,13 +29,16 @@ export interface PdfCutPolygon {
   /** Page-space rings that survived (outer first when drawn). */
   rings: Point[][];
   /**
-   * Outer ring encloses area and every hole survived: an even-odd fill is safe
-   * and the outline stands in for the entity's cut lines.
+   * The outer ring is drawable and encloses area, and no hole was lost (a hole
+   * with vertices that cannot be drawn: one point, or non-finite). Then an
+   * even-odd fill is safe and the outline stands in for the entity's cut
+   * lines. An empty or zero-area hole opens nothing, so it does not block this.
    */
   fillable: boolean;
 }
 
 const finiteRing = (ring: Point[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+const drawableRing = (ring: Point[]) => ring.length >= 2 && finiteRing(ring);
 
 /**
  * Whether a ring encloses area. Collinear or repeated points give zero only up
@@ -59,10 +62,8 @@ function enclosesArea(ring: Point[]): boolean {
 }
 
 /**
- * Rings with a non-finite vertex are dropped (jsPDF throws on them). A polygon
- * is fillable (see the field doc: this also decides cut-line coverage) only
- * when its outer ring encloses area and every hole survived: a lost outer ring
- * or hole would otherwise paint an opening solid.
+ * Rings that cannot be drawn are dropped (jsPDF throws on non-finite points).
+ * See `fillable` for when a polygon is filled and covers its cut lines.
  */
 export function prepareCutPolygonsPdf(
   polygons: readonly DrawingPolygon[],
@@ -70,13 +71,9 @@ export function prepareCutPolygonsPdf(
   mapPoint: (x: number, y: number) => Point,
 ): PdfCutPolygon[] {
   return styleCutPolygons(polygons, ctx, ({ polygon: { outer, holes } }) => {
-    const drawable = (ring: Point[]) => ring.length >= 2 && finiteRing(ring);
-    // A ring is a real boundary only if it is drawable and encloses area; a
-    // hole that is not counts as a lost opening, not as no opening.
-    const closed = (ring: Point[]) => drawable(ring) && enclosesArea(ring);
     return {
-      rings: [outer, ...holes].filter(drawable).map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-      fillable: closed(outer) && holes.every(closed),
+      rings: [outer, ...holes].filter(drawableRing).map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
+      fillable: drawableRing(outer) && enclosesArea(outer) && !holes.some((h) => h.length > 0 && !drawableRing(h)),
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }

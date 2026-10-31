@@ -207,10 +207,17 @@ describe('handleExportPDF (non-sheet) fills cut polygons like the SVG export', (
 
 describe('handleExportPDF (non-sheet) edge cases', () => {
   it('falls back to the type colour and black for colours jsPDF cannot take', async () => {
-    const text = await exportPdf({ overrideRules: [wallRule({ fillColor: '#12', strokeColor: 'transparent' })] });
+    const text = await exportPdf({ overrideRules: [wallRule({ fillColor: '#12', strokeColor: 'bogus' })] });
     assert.ok(setsColor(text, 'fill', '#b0b0b0'), 'unfinished #12 fill falls back to the IfcWall colour');
+    assert.ok(setsColor(text, 'stroke', '#000000'), 'unparseable stroke falls back to black');
     assert.ok(text.includes('h\nS\n'), 'the outline is still drawn');
-    assert.ok(!/#12|transparent/.test(text), 'the raw colour never reaches the content stream');
+    assert.ok(!/#12|bogus/.test(text), 'the raw colour never reaches the content stream');
+  });
+
+  it('draws nothing for transparent / none, as the canvas and SVG do', async () => {
+    const text = await exportPdf({ overrideRules: [wallRule({ fillColor: 'none', strokeColor: 'transparent' })] });
+    assert.ok(!text.includes('f*'), 'no fill');
+    assert.ok(!text.includes('h\nS\n'), 'no outline');
   });
 
   it('carries #RRGGBBAA stroke alpha into the stroke opacity', async () => {
@@ -219,9 +226,10 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     assert.match(text, /\/CA 0\.5\b/, 'alpha byte 0x80 becomes the stroke opacity');
   });
 
-  it('skips a polygon whose outer ring was lost instead of filling its opening', async () => {
+  it('outlines but does not fill a polygon whose outer ring was lost (#2119: cut geometry must not vanish)', async () => {
     const text = await exportPdf({ noOuter: true });
-    assert.ok(!text.includes('f*'), 'nothing is filled');
+    assert.ok(!text.includes('f*'), 'the opening is not painted solid');
+    assert.ok(text.includes('h\nS\n'), 'the surviving ring is still stroked');
   });
 });
 
@@ -238,11 +246,16 @@ describe('handleExportSVG uses the same resolver', () => {
 });
 
 describe('pdfColor', () => {
-  it('expands short hex, splits alpha, rejects anything else', () => {
+  it('expands short hex, splits alpha, reads rgb()/rgba(), rejects the rest', () => {
     assert.deepEqual(pdfColor('#abc'), { hex: '#aabbcc', alpha: 1 });
     assert.deepEqual(pdfColor('#112233'), { hex: '#112233', alpha: 1 });
     assert.deepEqual(pdfColor('#112233ff'), { hex: '#112233', alpha: 1 });
     assert.deepEqual(pdfColor('#11223300'), { hex: '#112233', alpha: 0 });
+    assert.deepEqual(pdfColor('#f008'), { hex: '#ff0000', alpha: 136 / 255 });
+    assert.deepEqual(pdfColor(' rgba(255, 0, 0, 0.5) '), { hex: '#ff0000', alpha: 0.5 });
+    assert.deepEqual(pdfColor('rgb(0,128,255)'), { hex: '#0080ff', alpha: 1 });
+    assert.deepEqual(pdfColor('transparent'), { hex: '#000000', alpha: 0 });
+    assert.deepEqual(pdfColor('NONE'), { hex: '#000000', alpha: 0 });
     assert.equal(pdfColor('red'), null);
     assert.equal(pdfColor('#12'), null);
     assert.equal(pdfColor(''), null);

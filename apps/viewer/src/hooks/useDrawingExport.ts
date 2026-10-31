@@ -1088,14 +1088,15 @@ function useDrawingExport({
 
         // Cut polygons: fills first (even-odd, so holes stay open), then
         // outlines on top, with the same colours as the SVG export.
-        // A polygon without a usable outer ring is skipped whole, as on the
-        // canvas: promoting a hole to outer would fill the opening.
-        const styledPolygons = styleCutPolygons(
-          drawing.cutPolygons.filter((polygon) => polygon.polygon.outer.length >= 2),
-          styleContext,
-          (polygon) => [polygon.polygon.outer, ...polygon.polygon.holes.filter((ring) => ring.length >= 2)]
+        const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (polygon) =>
+          [polygon.polygon.outer, ...polygon.polygon.holes]
+            .filter((ring) => ring.length >= 2)
             .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
         );
+        // Two decimals is what jsPDF prints; rounding keeps one ExtGState per
+        // printed value.
+        const setOpacity = (key: 'opacity' | 'stroke-opacity', value: number) =>
+          doc.setGState(new GState({ [key]: Math.round(Math.min(1, value) * 100) / 100 }));
         const tracePath = (rings: { x: number; y: number }[][]) => {
           for (const ring of rings) {
             doc.moveTo(ring[0].x, ring[0].y);
@@ -1105,18 +1106,23 @@ function useDrawingExport({
         };
         // Unparseable colours fall back per polygon (type colour, black) so
         // one bad override cannot abort the whole export.
+        // A polygon whose outer ring was lost is outlined but not filled, as
+        // the canvas skips it: filling the surviving hole would paint the
+        // opening solid.
         for (const { polygon, geometry: rings, style } of styledPolygons) {
+          if (polygon.polygon.outer.length < 2) continue;
           const { hex, alpha } = pdfColor(style.fillColor) ?? pdfColor(getFillColorForType(polygon.ifcType))!;
-          const opacity = Math.min(1, style.fillOpacity * alpha);
+          const opacity = style.fillOpacity * alpha;
           if (!(opacity > 0)) continue;
-          doc.setGState(new GState({ opacity }));
+          setOpacity('opacity', opacity);
           doc.setFillColor(hex);
           tracePath(rings);
           doc.fillEvenOdd();
         }
         for (const { geometry: rings, style } of styledPolygons) {
           const { hex, alpha } = pdfColor(style.strokeColor) ?? { hex: '#000000', alpha: 1 };
-          doc.setGState(new GState({ 'stroke-opacity': alpha }));
+          if (rings.length === 0 || !(alpha > 0)) continue;
+          setOpacity('stroke-opacity', alpha);
           doc.setDrawColor(hex);
           doc.setLineWidth(style.lineWeight);
           tracePath(rings);

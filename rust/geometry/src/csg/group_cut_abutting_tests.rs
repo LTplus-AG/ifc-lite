@@ -36,12 +36,15 @@ fn cutters(gap: f64, others: usize) -> Vec<Mesh> {
     v
 }
 
-/// Triangles inside the opening on the seam plane: a sheet of host left
-/// standing between the pair.
+/// Triangles on the seam plane within the opening (sill to head inclusive,
+/// through the wall's thickness): a sheet of host left standing between the
+/// pair. A sheet spans the whole opening, so its corners sit ON z = +-0.6.
 fn seam_faces(cut: &Mesh) -> usize {
     mesh_to_tris(cut)
         .iter()
-        .filter(|t| t.iter().all(|v| (v[0] - 0.2).abs() < 1e-3 && v[2].abs() < 0.59))
+        .filter(|t| {
+            t.iter().all(|v| (v[0] - 0.2).abs() < 1e-3 && v[2].abs() <= 0.6 + 1e-4 && v[1].abs() <= 0.15 + 1e-4)
+        })
         .count()
 }
 
@@ -77,5 +80,16 @@ fn an_abutting_pair_split_across_chunks_cuts_like_one_chunk() {
             "gap {gap}: split removed {removed}, expected {expected}"
         );
         assert_eq!(split, 0, "gap {gap}: split across chunks, a sheet stands on the seam");
+    }
+}
+
+/// The control that makes the zero above mean something: a 160 um pier, ten
+/// cells wide, is authored geometry, and its two faces are counted on the seam
+/// in both arms.
+#[test]
+fn a_pier_between_the_pair_is_seen_in_both_arms() {
+    for others in [14, 15] {
+        let (pier, _) = cut(160e-6, others);
+        assert!(pier >= 4, "{} cutters: both pier faces stand, {pier} seam triangles", others + 2);
     }
 }

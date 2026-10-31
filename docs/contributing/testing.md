@@ -398,6 +398,9 @@ few minutes:
 ```bash
 # 1. Build the census once per commit and copy it out of target/ before
 #    switching commits, so base and branch binaries can sit side by side.
+#    For a base commit older than the census, copy this checkout's
+#    rust/processing/examples/mesh_census.rs into the base checkout first,
+#    so both sides measure with the same census and differ only in geometry.
 cargo build --release -p ifc-lite-processing --example mesh_census
 cp target/release/examples/mesh_census /tmp/mesh_census_branch
 

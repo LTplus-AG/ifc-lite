@@ -15,8 +15,8 @@
 # before switching commits, so base and branch can run side by side. Compare
 # two outputs with scripts/mesh-census-compare.mjs. Per-model stderr (timing,
 # panics) lands next to the output as <out>.d/<n>.err; a model that fails is
-# listed in <out>.failed and its rows are absent, which the compare script
-# then reports as missing meshes.
+# listed in <out>.failed and the script exits 1, since a model failing on BOTH
+# sides would otherwise be absent from both outputs and compare as unchanged.
 set -euo pipefail
 
 bin=$(realpath "$1")
@@ -53,3 +53,8 @@ cat "$work"/*.jsonl > "$out"
 # different checkouts key the same mesh identically.
 sed -i "s#\"model\":\"$models/#\"model\":\"#" "$out"
 echo "$(wc -l < "$out") meshes, $(wc -l < "$out.failed") failed models" >&2
+if [ -s "$out.failed" ]; then
+  echo "failed models (see $work/*.err):" >&2
+  cat "$out.failed" >&2
+  exit 1
+fi

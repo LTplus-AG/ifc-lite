@@ -39,7 +39,11 @@ export function parseCensus(text) {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     const row = JSON.parse(line);
-    rows.set(`${row.model}\t${row.id}\t${row.ord}`, row);
+    const key = `${row.model}\t${row.id}\t${row.ord}`;
+    const bad = METRICS.filter((m) => typeof row[m] !== 'number' || !Number.isFinite(row[m]));
+    if (bad.length) throw new Error(`census row ${key}: missing or invalid ${bad.join(', ')}`);
+    if (rows.has(key)) throw new Error(`census row ${key} appears twice`);
+    rows.set(key, row);
   }
   return rows;
 }
@@ -50,13 +54,13 @@ const same = (a, b) => a === b || (typeof a === 'number' && typeof b === 'number
 
 /** The verdict for one mesh present on both sides, or null when unchanged. */
 export function classify(base, branch) {
-  if (METRICS.every((m) => same(base[m] ?? 0, branch[m] ?? 0))) return null;
-  const gained = EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => (branch[m] ?? 0) > (base[m] ?? 0) + THIN_EPS);
+  if (METRICS.every((m) => same(base[m], branch[m]))) return null;
+  const gained = EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => branch[m] > base[m] + THIN_EPS);
   if (gained) return 'regression';
   const closed = base.open10 > branch.open10 || base.open > branch.open;
   const worse = branch.slivers > base.slivers || branch.maxAspect > 1.5 * base.maxAspect;
   if (worse && !closed) return 'qualityWorse';
-  const lost = EDGES.some((m) => branch[m] < base[m]) || SHEETS.some((m) => (branch[m] ?? 0) < (base[m] ?? 0) - THIN_EPS);
+  const lost = EDGES.some((m) => branch[m] < base[m]) || SHEETS.some((m) => branch[m] < base[m] - THIN_EPS);
   return lost ? 'improved' : 'neutral';
 }
 
@@ -79,7 +83,7 @@ export function compare(baseRows, branchRows) {
 
 function describe({ key, base, branch }) {
   const [model, id, ord] = key.split('\t');
-  const parts = METRICS.filter((m) => base && branch && !same(base[m] ?? 0, branch[m] ?? 0)).map(
+  const parts = METRICS.filter((m) => base && branch && !same(base[m], branch[m])).map(
     (m) => `${m} ${fmt(base[m])}->${fmt(branch[m])}`,
   );
   return `${model} #${id}[${ord}] ${(base ?? branch).type}: ${parts.join(', ')}`;

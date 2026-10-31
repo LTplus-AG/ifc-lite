@@ -12,9 +12,10 @@ IfcRelFillsElement of those openings, the IfcProject (units and contexts),
 every IfcSite (its placement sets the RTC offset), and
 the transitive closure of #references from all of them. Nothing else, so the
 spatial structure and every other product drop out. `--anonymise` writes a
-minimal header and blanks every string of IfcPerson and of any
-IfcOrganization that is not an application's, and the project's names
-(GlobalIds stay): what a committed fixture should carry.
+minimal header, blanks every string of IfcPerson, its addresses and roles,
+and of any IfcOrganization that is not an application's, and blanks the
+project's and site's names (GlobalIds stay): what a committed fixture should
+carry. Product names and type names are kept; check them before committing.
 The extract is meant to give the same host mesh as the full model through
 `process_geometry`; check that with `mesh_census --ids` before relying on it.
 """
@@ -49,6 +50,10 @@ def strip_strings(body):
 
 
 QUOTED = re.compile(r"'(?:[^']|'')*'")
+# Every string blanked: people and their contact details.
+CONTACT = {"IFCPERSON", "IFCTELECOMADDRESS", "IFCPOSTALADDRESS", "IFCADDRESS", "IFCACTORROLE"}
+# Every string but the GlobalId blanked: names of the project and the site.
+NAMED_ROOTS = {"IFCPROJECT", "IFCSITE"}
 
 
 def blank(raw, keep_first):
@@ -102,21 +107,22 @@ def main(argv):
     applications = {refs[r[0]][0] for r in recs if r[1] == "IFCAPPLICATION" and refs[r[0]]}
     if anonymise:
         schema = re.search(r"FILE_SCHEMA\s*\(.*?\);", header, re.S)
+        schema_text = schema.group(0) if schema else "FILE_SCHEMA(('IFC2X3'));"
         name = dst.rsplit("/", 1)[-1]
         header = (
             "ISO-10303-21;\nHEADER;\n"
             "FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');\n"
             f"FILE_NAME('{name}','',(''),(''),'','','');\n"
-            f"{schema.group(0) if schema else 'FILE_SCHEMA((\'IFC2X3\'));'}\nENDSEC;\n"
+            f"{schema_text}\nENDSEC;\n"
         )
     with open(dst, "w", encoding="utf-8", errors="surrogateescape") as f:
         f.write(header)
         f.write("DATA;\n")
         for rid in sorted(keep):
             _, typ, _, raw = by_id[rid]
-            if anonymise and (typ == "IFCPERSON" or (typ == "IFCORGANIZATION" and rid not in applications)):
+            if anonymise and (typ in CONTACT or (typ == "IFCORGANIZATION" and rid not in applications)):
                 raw = blank(raw, keep_first=False)
-            elif anonymise and typ == "IFCPROJECT":
+            elif anonymise and typ in NAMED_ROOTS:
                 raw = blank(raw, keep_first=True)
             f.write(raw + "\n")
         f.write("ENDSEC;\nEND-ISO-10303-21;\n")

@@ -20,11 +20,13 @@
 //! the union and the slit never forms. Earlier contours are never moved, so the
 //! result is deterministic in contour order and no vertex moves twice.
 //!
-//! `tau` is [`noise_radius`]: one [`SNAP_GRID`] cell, or four f32 steps at the
+//! `tau` is [`noise_radius`]: one [`SNAP_GRID`] cell, or one f32 step at the
 //! footprint's magnitude where that is larger. One cell is the rule the
 //! kernel's abutting prepass already uses near the origin, and it is what keeps
 //! an authored pier (the 68 um one on ISSUE_068 #144568) standing. Past 128 m a
-//! cell is under one f32 step, so the radius follows the quantisation instead.
+//! cell is under one f32 step: two roundings of one shared coordinate land at
+//! most a step apart, and a pier two steps wide, the narrowest f32 can carry
+//! as distinct from that noise, stays.
 //! The magnitude is the coordinates these contours carry; a cutter re-expressed
 //! in a host frame after a world-magnitude f32 cast (the plan-rotated wall path)
 //! carries the coarser world noise at a smaller magnitude, and is not covered.
@@ -45,7 +47,7 @@ pub(super) fn noise_radius(contours: &[Vec<Point2<f64>>]) -> f64 {
         .flatten()
         .map(|p| p.x.abs().max(p.y.abs()))
         .fold(0.0, f64::max);
-    SNAP_GRID.max(4.0 * f32_step(magnitude))
+    SNAP_GRID.max(f32_step(magnitude))
 }
 
 /// The spacing of f32 values at `magnitude`.

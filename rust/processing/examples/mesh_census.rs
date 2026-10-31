@@ -267,9 +267,12 @@ fn thin_material(tris: &[[usize; 3]], p: &[[f64; 3]], row: &mut Row) {
             continue;
         }
         let n = e.map(|v| v / len);
-        let flip = n.iter().find(|v| v.abs() > 1.0e-6).is_some_and(|v| *v < 0.0);
-        let canon = if flip { n.map(|v| -v) } else { n };
-        let key = canon.map(|v| (v / NORMAL_BUCKET).round() as i64);
+        // The sign comes from the ROUNDED key: rounding is symmetric, so the key
+        // of -n is exactly the negated key of n and anti-parallel faces always
+        // share a bucket, whatever noise sits in a near-zero component.
+        let raw = n.map(|v| (v / NORMAL_BUCKET).round() as i64);
+        let flip = raw.iter().find(|k| **k != 0).is_some_and(|k| *k < 0);
+        let key = if flip { raw.map(|k| -k) } else { raw };
         let q = key.map(|k| k as f64 * NORMAL_BUCKET);
         let centroid = [0, 1, 2].map(|k| (a[k] + b[k] + c[k]) / 3.0);
         let face = Face {

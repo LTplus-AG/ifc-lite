@@ -66,3 +66,13 @@ test('a mesh missing from the branch and one added are both reported', () => {
   assert.equal(v.missing.length, 1);
   assert.equal(v.added.length, 1);
 });
+
+test('a row missing a metric is refused, not read as neutral', () => {
+  const { open, ...partial } = base;
+  assert.throws(() => parseCensus(`${JSON.stringify(partial)}\n`), /missing or invalid open/);
+});
+
+test('a mesh key appearing twice is refused', () => {
+  const line = JSON.stringify(base);
+  assert.throws(() => parseCensus(`${line}\n${line}\n`), /appears twice/);
+});

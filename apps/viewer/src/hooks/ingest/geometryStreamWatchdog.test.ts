@@ -152,7 +152,7 @@ describe('pullWithStallWatchdog', () => {
 describe('geometry_processing capture props', () => {
   const stallError = new Error(`Geometry stream stalled after ${WINDOW}ms. Last rendered meshes: 165.`);
 
-  function scrubbedCapture(extra: Record<string, unknown>, isRetry: boolean, phase: StallPhase) {
+  function scrubbedCapture(extra: Record<string, unknown>, isRetry: boolean, phase: StallPhase): Record<string, unknown> {
     const props = geometryFailureCaptureProps({
       fileSizeMB: 16.8712,
       stallPhaseHandle: { getStallPhase: () => phase },

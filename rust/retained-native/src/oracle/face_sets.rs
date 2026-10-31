@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Authored `IfcTessellatedFaceSet` rows read directly from their source records
 //! (#8291). Plans, retained requests and published meshes are never inputs.
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 /// One authored row: its points, and its polygon area when it is planar.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,12 +45,14 @@ fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
 }
 
 pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_unit: f64) -> Option<AuthoredFaceSet> {
-    let list = decoder.decode_by_id(item.get_ref(0)?).ok()?;
-    let rows = list.get(0)?.as_list()?;
+    let polygonal = item.ifc_type == IfcType::IfcPolygonalFaceSet;
+    let coordinates = if polygonal { item.ref_at(slot::IfcPolygonalFaceSet::COORDINATES) } else { item.ref_at(slot::IfcTriangulatedFaceSet::COORDINATES) };
+    let list = decoder.decode_by_id(coordinates?).ok()?;
+    let rows = list.attr(slot::IfcCartesianPointList3D::COORD_LIST)?.as_list()?;
     let mut points: Vec<[f64; 3]> = Vec::with_capacity(rows.len());
     for row in rows {
-        let row = row.as_list()?;
-        points.push([row.first()?.as_float()?, row.get(1)?.as_float()?, row.get(2)?.as_float()?]);
+        let [x, y, z] = row.as_list()? else { return None };
+        points.push([x.as_float()?, y.as_float()?, z.as_float()?]);
     }
     let first = *points.first()?;
     let points: Vec<[f64; 3]> = points.iter().map(|p| std::array::from_fn(|i| (p[i] - first[i]) * metres_per_unit)).collect();
@@ -63,18 +65,19 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
         }
         _ => Row { points: Vec::new(), area_m2: None },
     };
-    let rows = if item.ifc_type == IfcType::IfcPolygonalFaceSet {
-        let pn = item.get(3).and_then(AttributeValue::as_list);
-        item.get(2)?.as_list()?.iter().map(|face| {
+    let rows = if polygonal {
+        let pn = item.attr(slot::IfcPolygonalFaceSet::PN_INDEX).and_then(AttributeValue::as_list);
+        item.attr(slot::IfcPolygonalFaceSet::FACES)?.as_list()?.iter().map(|face| {
             let face = decoder.decode_by_id(face.as_entity_ref()?).ok()?;
-            let outer = corners(face.get(0)?.as_list()?, pn, &points);
-            let inner = face.get(1).and_then(AttributeValue::as_list).map_or(Some(Vec::new()), |loops|
-                loops.iter().map(|l| corners(l.as_list()?, pn, &points)).collect())?;
+            let outer = corners(face.attr(slot::IfcIndexedPolygonalFace::COORD_INDEX)?.as_list()?, pn, &points);
+            let inner = (face.ifc_type == IfcType::IfcIndexedPolygonalFaceWithVoids)
+                .then(|| face.attr(slot::IfcIndexedPolygonalFaceWithVoids::INNER_COORD_INDICES)?.as_list()).flatten()
+                .map_or(Some(Vec::new()), |loops| loops.iter().map(|l| corners(l.as_list()?, pn, &points)).collect())?;
             Some(row(outer, inner))
         }).collect::<Option<Vec<_>>>()?
     } else {
-        let pn = item.get(4).and_then(AttributeValue::as_list).filter(|l| l.iter().all(|v| v.as_list().is_none()));
-        item.get(3)?.as_list()?.iter()
+        let pn = item.attr(slot::IfcTriangulatedFaceSet::PN_INDEX).and_then(AttributeValue::as_list).filter(|l| l.iter().all(|v| v.as_list().is_none()));
+        item.attr(slot::IfcTriangulatedFaceSet::COORD_INDEX)?.as_list()?.iter()
             .map(|t| Some(row(corners(t.as_list()?, pn, &points), Vec::new()))).collect::<Option<Vec<_>>>()?
     };
     Some(AuthoredFaceSet { rows })

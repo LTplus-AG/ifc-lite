@@ -76,6 +76,8 @@ export interface SceneContents {
   ): Promise<void>;
   isFinalizeInProgress(): boolean;
   setEphemeralStreamingMode(enabled: boolean): void;
+  /** Cap the current stream's transient fragment pass; the rest is first drawn by finalize (a cache hit). */
+  limitStreamingFragments(maxIndices: number): void;
   isEphemeralStreaming(): boolean;
   finishEphemeralStreaming(): void;
 

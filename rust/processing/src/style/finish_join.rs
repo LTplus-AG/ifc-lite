@@ -180,6 +180,15 @@ impl<'c> ModelFinishes<'c> {
         Self::from_spans(&spans.styled_items, EntityDecoder::with_index(content, index))
     }
 
+    /// The join over a scan the caller already did: the file's styled-item spans (from
+    /// `canonical_element_jobs_and_styled_items`)
+    /// and `source`'s own entity index, which its decoder shares instead of rebuilding.
+    /// Equal to [`Self::from_content`] over `source.bytes()`, without that scan or its second index
+    /// (about 16 bytes per entity of heap, ~100-200 MB on a large model).
+    pub fn from_source(source: &'c std::sync::Arc<ifc_lite_core::SourceBundle>, styled_items: &[Span]) -> Self {
+        Self::from_spans(styled_items, source.decoder())
+    }
+
     /// The same join over a scan already done: the file's styled-item spans
     /// and a lossless decoder with the file's whole index installed. The
     /// native pass builds it this way for `Features::finishes`, so the server

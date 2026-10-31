@@ -6,21 +6,20 @@
  * IFC file loader — reads and parses IFC files for CLI commands.
  */
 
-import { readFile } from 'node:fs/promises';
 import { logger } from './logger.js';
-import { basename } from 'node:path';
+import { readModelInput, type ModelInput } from './model-input.js';
 import { IfcParser, IfcInputError, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import { HeadlessBackend } from './headless-backend.js';
 import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from './streaming-viewer.js';
 
 /**
- * Parse an IFC file from disk into an IfcDataStore.
- * Suppresses parser console output for clean CLI experience.
+ * Parse an IFC model (a local path or an `oci://` reference) into an
+ * IfcDataStore. Suppresses parser console output for clean CLI experience.
  */
 export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
-  const buffer = await readFile(filePath);
-  return loadIfcBytes(buffer, filePath);
+  const input = await readModelInput(filePath);
+  return loadIfcBytes(input.bytes, input.label);
 }
 
 /**
@@ -128,11 +127,13 @@ export async function parseIfcBytes(
 }
 
 /**
- * Create a BimContext backed by a headless backend from an IFC file.
+ * Create a BimContext backed by a headless backend from an IFC model: a path
+ * or `oci://` reference, or a {@link ModelInput} the caller already read.
  */
-export async function createHeadlessContext(filePath: string): Promise<{ bim: BimContext; store: IfcDataStore; backend: HeadlessBackend }> {
-  const store = await loadIfcFile(filePath);
-  const backend = new HeadlessBackend(store, basename(filePath));
+export async function createHeadlessContext(source: string | ModelInput): Promise<{ bim: BimContext; store: IfcDataStore; backend: HeadlessBackend }> {
+  const input = typeof source === 'string' ? await readModelInput(source) : source;
+  const store = await loadIfcBytes(input.bytes, input.label);
+  const backend = new HeadlessBackend(store, input.name);
   const bim = createBimContext({ backend });
   return { bim, store, backend };
 }
@@ -147,8 +148,9 @@ export async function createStreamingContext(
   filePath: string,
   viewerPort: number,
 ): Promise<{ bim: BimContext; store: IfcDataStore }> {
-  const store = await loadIfcFile(filePath);
-  const backend = new HeadlessBackend(store, basename(filePath));
+  const input = await readModelInput(filePath);
+  const store = await loadIfcBytes(input.bytes, input.label);
+  const backend = new HeadlessBackend(store, input.name);
 
   backend.attachStreamingAdapters(createStreamingViewerAdapter(viewerPort), createStreamingVisibilityAdapter(viewerPort));
 

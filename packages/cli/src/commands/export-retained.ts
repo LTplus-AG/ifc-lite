@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { getFlag, writeOutput } from '../output.js';
@@ -39,10 +39,11 @@ export function retainedArtifacts(engine: RetainedEngine, instanceMinOccurrences
   return { obj, report, json: reportJson(report) };
 }
 
-export async function exportRetained(args: string[], engine: RetainedEngine, store: IfcDataStore, filePath: string,
+export async function exportRetained(args: string[], engine: RetainedEngine, store: IfcDataStore,
   refs: Array<{ expressId: number }>, filtered: boolean): Promise<void> {
   const ids = filtered ? Uint32Array.from(refs, r => r.expressId) : undefined;
-  const bytes = store.source.byteLength ? store.source.materialize() : await readFile(filePath);
+  if (!store.source.byteLength) throw new Error('Retained export: the parsed model kept no source bytes');
+  const bytes = store.source.materialize();
   const { outcomes, instanceMinOccurrences } = await runRetained(engine, bytes, ids);
   const { obj, report, json } = retainedArtifacts(engine, instanceMinOccurrences, outcomes, id => store.entities.getGlobalId(id) || null, ids);
   const reportPath = getFlag(args, '--retained-report');

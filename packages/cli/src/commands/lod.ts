@@ -8,10 +8,11 @@
  * Generate lightweight LOD artifacts from an IFC file.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { generateLod0, generateLod1 } from '@ifc-lite/export';
 import { getFlag, hasFlag, fatal, printJson, writeOutput, routeConsoleDiagnosticsToStderr } from '../output.js';
+import { readModelInput } from '../model-input.js';
 
 type LodLevel = '0' | '1';
 
@@ -43,7 +44,7 @@ export async function lodCommand(args: string[]): Promise<void> {
   const metaPath = getFlag(args, '--meta');
   const jsonOutput = hasFlag(args, '--json');
 
-  const input = await readFile(filePath);
+  const input = (await readModelInput(filePath)).bytes;
   const bytes = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength) as ArrayBuffer;
 
   if (level === '0') {

@@ -9,9 +9,10 @@
 //! One rayon worker runs the canonical `process_geometry` entry point. It
 //! prints mesh/vertex/triangle counts, the ordered geometry-payload FNV of
 //! `perf_probe --fingerprint`, the SHA-256 of the serialized result (meshes,
-//! metadata, frame and transforms), and the SHA-256 of the `GeometryDiagnostics`
-//! and the non-timing `ProcessingStats` counters, which it also writes to
-//! `<out>.diagnostics.json` for diffing. Timings are excluded.
+//! metadata, frame, transforms and every instance record field), and the
+//! SHA-256 of the `GeometryDiagnostics` and the non-timing `ProcessingStats`
+//! counters, which it also writes to `<out>.diagnostics.json` for diffing.
+//! Timings are excluded. It also prints the instance count.
 //!
 //! Usage: c2_8_identity_probe <input.ifc> <out-prefix>
 
@@ -39,11 +40,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let triangles: usize = result.meshes.iter().map(|m| m.indices.len() / 3).sum();
     let meshes: Vec<Value> =
         result.meshes.iter().map(serde_json::to_value).collect::<Result<_, _>>()?;
+    // `InstanceRecord` is not `Serialize`: every field goes in explicitly, the
+    // f32 colour and transform as exact IEEE bits, the u128 identity as text.
+    let instances: Vec<Value> = result
+        .instances
+        .iter()
+        .map(|r| {
+            json!({
+                "expressId": r.express_id,
+                "ifcType": r.ifc_type,
+                "globalId": r.global_id,
+                "name": r.name,
+                "presentationLayer": r.presentation_layer,
+                "colorBits": r.color.iter().map(|c| c.to_bits()).collect::<Vec<_>>(),
+                "templateExpressId": r.template_express_id,
+                "repIdentity": r.rep_identity.to_string(),
+                "transformBits": r.transform.iter().map(|m| m.to_bits()).collect::<Vec<_>>(),
+                "geometryItemId": r.geometry_item_id,
+            })
+        })
+        .collect();
     let output = serde_json::to_vec(&json!({
         "buildingTransform": result.building_transform,
         "coordinateSpace": result.mesh_coordinate_space,
         "frame": format!("{:?}", result.frame),
-        "instances": result.instances.len(),
+        "instances": instances,
         "meshes": meshes,
         "metadata": result.metadata,
         "siteTransform": result.site_transform,
@@ -59,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "C28_IDENTITY {}",
         json!({
             "meshes": result.meshes.len(),
+            "instances": result.instances.len(),
             "vertices": vertices,
             "triangles": triangles,
             "geometryPayloadFnv1a64": fingerprint::mesh_fingerprint(&result.meshes),

@@ -67,8 +67,9 @@ if [[ $mode == gates ]]; then
 fi
 
 export IFC_C28_FIXTURE_CACHE="${IFC_C28_FIXTURE_CACHE:-$HOME/build-workers/ifc-lite/tests/models}"
-# Link the fixture cache into a tree's tests/models (head now, the base export
-# below), so both sides of the gated-feature run see the same corpus.
+# Link the fixture cache into the head's tests/models. os.walk(followlinks=True)
+# descends into symlinked directories (e.g. tests/models/ara3d), which
+# Path.rglob does not.
 link_fixtures() {
   python3 -I - "$1" <<'PYFIX'
 import os, sys
@@ -76,12 +77,57 @@ from pathlib import Path
 cache = Path(os.environ['IFC_C28_FIXTURE_CACHE'])
 root = Path(sys.argv[1])
 if cache.is_dir():
-    for source in cache.rglob('*'):
-        dest = root / 'tests/models' / source.relative_to(cache)
-        if source.is_file() and not dest.exists() and not dest.is_symlink():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.symlink_to(source.resolve())
+    for dirpath, _dirs, files in os.walk(cache, followlinks=True):
+        for name in files:
+            source = Path(dirpath) / name
+            dest = root / 'tests/models' / source.relative_to(cache)
+            if source.is_file() and not dest.exists() and not dest.is_symlink():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.symlink_to(source.resolve())
 PYFIX
+}
+
+# Make DST's tests/models a mirror of SRC's final tree: manifest.json and other
+# small files copied, every fixture a symlink to the file SRC resolves to.
+mirror_models() {
+  python3 -I - "$1" "$2" <<'PYMIRROR'
+import os, shutil, sys
+from pathlib import Path
+src, dst = Path(sys.argv[1]) / 'tests/models', Path(sys.argv[2]) / 'tests/models'
+shutil.rmtree(dst, ignore_errors=True)
+for dirpath, _dirs, files in os.walk(src, followlinks=True):
+    for name in files:
+        source = Path(dirpath) / name
+        if not source.exists():
+            continue  # dangling link: neither side can read it
+        dest = dst / source.relative_to(src)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if source.suffix.lower() == '.json' and source.stat().st_size < (1 << 22):
+            shutil.copyfile(source, dest)
+        else:
+            dest.symlink_to(source.resolve())
+PYMIRROR
+}
+
+# Sorted `relpath sha256` of every file under a tree's tests/models.
+models_digest() {
+  python3 -I - "$1" <<'PYDIGEST'
+import hashlib, os, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / 'tests/models'
+rows = []
+for dirpath, _dirs, files in os.walk(root, followlinks=True):
+    for name in files:
+        path = Path(dirpath) / name
+        if not path.exists():
+            continue
+        h = hashlib.sha256()
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(1 << 20), b''):
+                h.update(chunk)
+        rows.append(f'{path.relative_to(root)} {h.hexdigest()}')
+print('\n'.join(sorted(rows)))
+PYDIGEST
 }
 link_fixtures "$head_dir"
 for fixture in "${fixtures[@]}"; do
@@ -104,7 +150,9 @@ git archive "$base" | tar -x -C "$scratch/base"
 git -C "$scratch/base" init -q
 git -C "$scratch/base" add -A
 git -C "$scratch/base" -c user.name=c28 -c user.email=c28@invalid commit -qm "base $base"
-link_fixtures "$scratch/base"
+# The base sees exactly the head's final fixture tree (cache links, fetched
+# fixtures and the head's manifest.json).
+mirror_models "$head_dir" "$scratch/base"
 
 side_dir() { [[ $1 == base ]] && echo "$scratch/base" || echo "$head_dir"; }
 
@@ -177,6 +225,16 @@ sys.exit(1 if bad else 0)
 PY
   ;;
 features)
+  models_digest "$head_dir" > "$scratch/head-models.txt"
+  models_digest "$scratch/base" > "$scratch/base-models.txt"
+  echo "C28_MODELS head files=$(wc -l < "$scratch/head-models.txt") sha256=$(sha256sum < "$scratch/head-models.txt" | cut -c1-64)"
+  echo "C28_MODELS base files=$(wc -l < "$scratch/base-models.txt") sha256=$(sha256sum < "$scratch/base-models.txt" | cut -c1-64)"
+  if ! cmp -s "$scratch/base-models.txt" "$scratch/head-models.txt"; then
+    echo 'C28_MODELS fixture trees DIFFER; refusing to compare feature runs'
+    diff "$scratch/base-models.txt" "$scratch/head-models.txt" | head -40 || true
+    exit 1
+  fi
+  declare -A rcs totals
   for side in base head; do
     src=$(side_dir "$side")
     log="$scratch/$side-features.log"
@@ -185,7 +243,21 @@ features)
       --no-fail-fast -- --test-threads=4) > "$log" 2>&1
     rc=$?
     set -e
+    rcs[$side]=$rc
     grep -E '^test result:' "$log" | sed "s/^/C28_FEATURES_RESULT $side /"
+    totals[$side]=$(python3 -I - "$log" <<'PYSUM'
+import re, sys
+t = [0, 0, 0, 0]
+for line in open(sys.argv[1], errors='replace'):
+    m = re.match(r'test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored', line)
+    if m:
+        t[0] += 1
+        for i in range(3):
+            t[i + 1] += int(m.group(i + 1))
+print(f'binaries={t[0]} passed={t[1]} failed={t[2]} ignored={t[3]}')
+PYSUM
+)
+    echo "C28_FEATURES_TOTALS $side ${totals[$side]}"
     { grep -E '^test .* \.\.\. FAILED$' "$log" || true; } | sed -E 's/^test (.*) \.\.\. FAILED$/\1/' | sort > "$scratch/$side-failing.txt"
     echo "C28_FEATURES $side exit=$rc failing=$(wc -l < "$scratch/$side-failing.txt")"
     sed "s/^/C28_FEATURES_FAILED $side /" "$scratch/$side-failing.txt"
@@ -193,13 +265,32 @@ features)
       echo "C28_FEATURES $side did not compile"; grep -A5 'error\[E' "$log" | head -40; exit 1
     fi
   done
-  if cmp -s "$scratch/base-failing.txt" "$scratch/head-failing.txt"; then
-    echo 'C28_FEATURES_VERDICT failing set identical to base'
-  else
+  status=0
+  for side in base head; do
+    # A nonzero exit with no named failing test is an abort (a crashed or
+    # unbuilt test binary), not a comparable result.
+    if [[ ${rcs[$side]} != 0 && ! -s $scratch/$side-failing.txt ]]; then
+      echo "C28_FEATURES_VERDICT $side exited ${rcs[$side]} with no failing test named: INCONCLUSIVE"
+      status=1
+    fi
+  done
+  if [[ ${rcs[base]} != "${rcs[head]}" ]]; then
+    echo "C28_FEATURES_VERDICT exit codes differ: base=${rcs[base]} head=${rcs[head]}"
+    status=1
+  fi
+  if [[ ${totals[base]} != "${totals[head]}" ]]; then
+    echo "C28_FEATURES_VERDICT totals differ: base ${totals[base]} / head ${totals[head]}"
+    status=1
+  fi
+  if ! cmp -s "$scratch/base-failing.txt" "$scratch/head-failing.txt"; then
     echo 'C28_FEATURES_VERDICT failing set DIFFERS'
     diff "$scratch/base-failing.txt" "$scratch/head-failing.txt" || true
-    exit 1
+    status=1
   fi
+  if [[ $status == 0 ]]; then
+    echo "C28_FEATURES_VERDICT identical to base: exit ${rcs[head]}, ${totals[head]}, same failing set"
+  fi
+  exit $status
   ;;
 *) echo "unknown mode $mode"; exit 2;;
 esac

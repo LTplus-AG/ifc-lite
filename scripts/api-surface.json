@@ -9411,6 +9411,7 @@
     "RenderDegradationInfo: interface",
     "RenderOptions: interface",
     "RenderPipeline: class",
+    "RenderTargetBytes: interface",
     "Renderer: class",
     "RendererColorFrame: interface",
     "ResidencyShell: interface",

@@ -613,7 +613,7 @@ const REAL_MODELS = [
 const baseName = (path: string) => path.split('/').at(-1)!;
 const SDK_REQUEST = /\/smlib\/|pkg-retained|\/retained-engine\//;
 
-/** Per model: which meshes resolve to it, and whether its data store agrees about their types. */
+/** Flat-mesh identity checks; shard-only retained publication is exercised by the M11-I tests above. */
 async function identities(page: Page) {
   return page.evaluate(() => {
     const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
@@ -882,7 +882,8 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     const [first] = await identities(page);
     await selectGlobal(page, first.locals[0], { modelId: first.id, expressId: first.locals[0] });
 
-    // Bonsai, not the mapped fixture: retained instancing (M11-I) publishes that model as instance shards, not meshes.
+    // Use Bonsai's flat meshes for replacement identity checks. The separate
+    // MAPPED fixture emits instance shards instead, covered by M11-I above.
     await page.locator('#file-input-open').setInputFiles(resolve(BONSAI));
     await completeModels(page, [baseName(BONSAI)], true);
     const rows = expected(BONSAI), published = rows.filter(p => p.status === 'published').map(p => p.id);

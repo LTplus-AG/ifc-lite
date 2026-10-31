@@ -113,8 +113,15 @@ identity)
   for side in base head; do
     src=$(side_dir "$side")
     cp "$head_dir/tests/evidence/x2-probe-placement/identity_probe.rs" "$src/$probe"
-    (cd "$src" && cargo build --profile profiling -p ifc-lite-processing --example x2_identity_probe >&2)
-    bin="${CARGO_TARGET_DIR:-$src/target}/profiling/examples/x2_identity_probe"
+    # Each side builds into its own target dir. A shared one is unsafe: Cargo
+    # keys workspace members by their workspace-relative path, so the head
+    # build can treat the base export's artifacts as fresh and link base code
+    # into the head binary. Copy the binary out so each side runs only what
+    # it just built.
+    target="$scratch/target-$side"
+    (cd "$src" && CARGO_TARGET_DIR="$target" cargo build --profile profiling -p ifc-lite-processing --example x2_identity_probe >&2)
+    bin="$scratch/$side-x2_identity_probe"
+    cp "$target/profiling/examples/x2_identity_probe" "$bin"
     for fixture in "${fixtures[@]}"; do
       name=$(basename "$fixture" .ifc)
       out="$scratch/$side-$name"

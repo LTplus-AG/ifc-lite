@@ -1883,6 +1883,16 @@ jobs:
             oracle_args+=(--mutation tests/evidence/cli-oci-input/layer-choice.oracle.patch --test packages/cli/src/model-input.test.ts)
             oracle_args+=(--mutation tests/evidence/cli-oci-input/loader-routing.oracle.patch --test packages/cli/src/commands/oci-model-commands.test.ts)
           fi
+          # CLI `oci push`: a whole-file revert deletes the command modules and
+          # the witnesses die at import. Keep them and break one rule each:
+          # --overwrite always on, --overwrite ignored, the IFC content check
+          # skipped before upload, and a layer without the x-step type and title.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/cli-oci-push/overwrite-always.oracle.patch | grep -Fxq 'tests/evidence/cli-oci-push/overwrite-always.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/cli-oci-push/overwrite-always.oracle.patch --test packages/cli/src/commands/oci-push.test.ts)
+            oracle_args+=(--mutation tests/evidence/cli-oci-push/overwrite-ignored.oracle.patch --test packages/cli/src/commands/oci-push.test.ts)
+            oracle_args+=(--mutation tests/evidence/cli-oci-push/ifc-validation.oracle.patch --test packages/cli/src/commands/oci-push-refusals.test.ts)
+            oracle_args+=(--mutation tests/evidence/cli-oci-push/layer-descriptor.oracle.patch --test packages/cli/src/commands/oci-push.test.ts)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

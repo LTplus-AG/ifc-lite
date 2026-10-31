@@ -48,6 +48,10 @@ export function noticeProblems(text) {
 /** The normalized crate manifest must keep a registry version and the feature forwarding. */
 export function crateManifestProblems(toml) {
   const problems = [];
+  // A `build = "..."` key (any path) runs in the consumer's build even if no file is named build.rs; only `false` is safe.
+  const packageSection = toml.match(/^\[package\]([\s\S]*?)(?=^\[|(?![\s\S]))/m)?.[1] ?? '';
+  const build = packageSection.match(/^\s*build\s*=\s*(.+)$/m)?.[1]?.trim();
+  if (build !== undefined && build !== 'false') problems.push(`manifest names a build script (build = ${build}); it would run during the consumer build`);
   const dependency = toml.match(/\[dependencies\.ifc-lite-geometry\]([\s\S]*?)(?=\n\[|$)/)?.[1] ?? '';
   if (!/version\s*=\s*"/.test(dependency)) problems.push('ifc-lite-geometry has no registry version');
   if (/\bpath\s*=/.test(dependency)) problems.push('ifc-lite-geometry carries a path');
@@ -58,12 +62,21 @@ export function crateManifestProblems(toml) {
 }
 
 /** Every locked entry must come from a public registry: no path/git/link/file source. */
+/** Exactly https://registry.npmjs.org/…: parsed host (no look-alike, userinfo or port) AND the raw string's own prefix. */
+export function isRegistryUrl(value) {
+  if (typeof value !== 'string' || !value.startsWith(NPM_REGISTRY)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'registry.npmjs.org' && url.port === '' && url.username === '' && url.password === '';
+  } catch { return false; }
+}
+
 export function npmLockProblems(lock) {
   const problems = [];
   for (const [path, entry] of Object.entries(lock.packages ?? {})) {
     if (!path) continue;
     if (entry.link) problems.push(`link: ${path}`);
-    else if (!entry.resolved?.startsWith(NPM_REGISTRY)) problems.push(`non-registry source: ${path} -> ${entry.resolved}`);
+    else if (!isRegistryUrl(entry.resolved)) problems.push(`non-registry source: ${path} -> ${entry.resolved}`);
   }
   return problems;
 }
@@ -190,10 +203,13 @@ export function provenanceProblems(doc, { name, version, integrity }, readSan = 
 /** `npm audit signatures --json --include-attestations` must list every package as verified with provenance and report nothing invalid or missing. */
 export function auditProblems(report, packages) {
   const problems = [];
-  if (report.invalid?.length) problems.push(`${report.invalid.length} invalid signature/attestation`);
-  if (report.missing?.length) problems.push(`${report.missing.length} missing signature/attestation`);
+  // An absent or malformed list is not "nothing invalid": both must be present as arrays.
+  for (const key of ['invalid', 'missing']) {
+    if (!Array.isArray(report?.[key])) problems.push(`audit report field '${key}' is absent or not an array`);
+    else if (report[key].length) problems.push(`${report[key].length} ${key} signature/attestation`);
+  }
   for (const [name, version] of packages) {
-    const entry = (report.verified ?? []).find((v) => v.name === name && v.version === version);
+    const entry = (report?.verified ?? []).find((v) => v.name === name && v.version === version);
     if (!entry) problems.push(`${name}@${version} not in the verified list`);
     else if (!entry.attestations?.provenance) problems.push(`${name}@${version} verified without a provenance attestation`);
   }

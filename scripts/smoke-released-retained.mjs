@@ -39,7 +39,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import {
-  PROBE_FLAG, RETAINED_PROBE_FLAG, chooseToolchain, parseArgs, retainedProbe, walkFiles, wasmProbe,
+  PROBE_FLAG, RETAINED_PROBE_FLAG, WHEEL_PYTHON_FLAGS, chooseToolchain, parseArgs, retainedProbe, walkFiles, wasmProbe, wheelProbeArgv,
 } from './lib/released-smoke-support.mjs';
 import {
   EXPECTED_REPO, EXPECTED_WORKFLOW, NPM_REGISTRY, auditProblems, boundaryViolations, cargoLockProblems, contentViolation,
@@ -309,7 +309,7 @@ fn main() {
       if (!response.ok) return { fail: `PyPI lookup HTTP ${response.status}` };
       const release = await response.json();
       const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
-      const py = run('python3', ['-I', '-c', 'import sys; print(sys.version_info[0], sys.version_info[1])'], { cwd: work, env });
+      const py = run('python3', [...WHEEL_PYTHON_FLAGS, '-c', 'import sys; print(sys.version_info[0], sys.version_info[1])'], { cwd: work, env });
       if (!py.ok) return unavailable(`python3 unavailable: ${tail(py, 200)}`);
       const python = py.stdout.trim().split(' ').map(Number);
       const wanted = selectWheel(release.urls.filter((u) => u.packagetype === 'bdist_wheel').map((u) => u.filename), { python, arch });
@@ -324,10 +324,9 @@ fn main() {
       mkdirSync(target);
       writeFileSync(join(work, file.filename), bytes);
       // Isolated interpreter (-I): the wheel is unpacked into an empty directory and added to sys.path explicitly.
-      const unpack = run('python3', ['-I', '-c', 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])', join(work, file.filename), target], { cwd: work, env });
+      const unpack = run('python3', [...WHEEL_PYTHON_FLAGS, '-c', 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])', join(work, file.filename), target], { cwd: work, env });
       if (!unpack.ok) return { fail: tail(unpack) };
-      const code = 'import sys, json; sys.path.insert(0, sys.argv[2]); import ifclite_geom; d = json.loads(ifclite_geom.geometry_data_json(open(sys.argv[1], "rb").read())); print(d["element_count"])';
-      const probe = run('python3', ['-I', '-c', code, fixture, target], { cwd: work, env });
+      const probe = run('python3', wheelProbeArgv(fixture, target), { cwd: work, env });
       if (!probe.ok || !(Number(probe.stdout.trim()) > 0)) return { fail: tail(probe) };
       return { detail: `ifclite-geom ${release.info.version} (${file.filename}, sha256 verified; published binary wheel on its own release train) tessellated ${probe.stdout.trim()} elements. A wheel build from the release source is not covered.`, evidence: { sha256: digest } };
     });

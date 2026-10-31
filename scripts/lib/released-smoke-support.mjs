@@ -75,3 +75,20 @@ export async function retainedProbe(project) {
   }
   console.log(JSON.stringify(result));
 }
+
+/** Isolated, site-less interpreter: no system or user site-packages can stand in for the wheel. */
+export const WHEEL_PYTHON_FLAGS = ['-I', '-S'];
+
+/** argv for the wheel import probe: the module must be loaded from inside the extracted wheel directory. */
+export function wheelProbeArgv(fixture, target) {
+  const code = [
+    'import os, sys, json',
+    'sys.path.insert(0, sys.argv[2])',
+    'import ifclite_geom',
+    'root = os.path.realpath(sys.argv[2]) + os.sep',
+    'assert os.path.realpath(ifclite_geom.__file__).startswith(root), "ifclite_geom was not loaded from the wheel: " + ifclite_geom.__file__',
+    'd = json.loads(ifclite_geom.geometry_data_json(open(sys.argv[1], "rb").read()))',
+    'print(d["element_count"])',
+  ].join('\n');
+  return [...WHEEL_PYTHON_FLAGS, '-c', code, fixture, target];
+}

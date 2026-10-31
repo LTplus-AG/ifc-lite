@@ -11,7 +11,9 @@ import {
   crateManifestProblems, isInside, isInsideResolved, noticeProblems, npmLockProblems, provenanceProblems, retainedAbsent,
   selectWheel, stripArchiveRoot, summarize, verifiedAttestations,
 } from './released-smoke-checks.mjs';
-import { chooseToolchain, parseArgs } from './released-smoke-support.mjs';
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { WHEEL_PYTHON_FLAGS, chooseToolchain, parseArgs, wheelProbeArgv } from './released-smoke-support.mjs';
 
 test('archive roots are stripped', () => {
   assert.equal(stripArchiveRoot('package/pkg/a.js'), 'pkg/a.js');
@@ -205,4 +207,54 @@ test('identity policy runs only on the bundles npm verified; a forged second cop
   // If npm had verified a forged identity, the policy rejects it.
   const forgedReport = { verified: [{ name: NAME, version: VERSION, attestationBundles: forged }] };
   assert.ok(provenanceProblems(verifiedAttestations(forgedReport, NAME, VERSION), { name: NAME, version: VERSION, integrity: INTEGRITY }, () => `URI:${forgedRepo}/${EXPECTED_WORKFLOW}@refs/heads/main`).length >= 2);
+});
+
+test('lock sources must be exactly registry.npmjs.org (https, no userinfo, no look-alike host)', () => {
+  const lock = (resolved) => ({ packages: { 'node_modules/a': { resolved } } });
+  assert.deepEqual(npmLockProblems(lock('https://registry.npmjs.org/a/-/a-1.0.0.tgz')), []);
+  for (const resolved of ['https://registry.npmjs.org.evil/a.tgz', 'https://registry.npmjs.org@evil.example/a.tgz',
+    'http://registry.npmjs.org/a.tgz', 'https://registry.npmjs.org:8443/a.tgz', 'https://user:pw@registry.npmjs.org/a.tgz',
+    'https://registry.npmjs.org\\@evil.example/a.tgz', 'not a url', undefined]) {
+    assert.equal(npmLockProblems(lock(resolved)).length, 1, String(resolved));
+  }
+});
+
+test('audit report must carry invalid and missing as arrays', () => {
+  const packages = [[NAME, VERSION]];
+  const verified = [{ name: NAME, version: VERSION, attestations: { provenance: {} } }];
+  assert.deepEqual(auditProblems({ invalid: [], missing: [], verified }, packages), []);
+  assert.match(auditProblems({ verified }, packages).join(' '), /invalid.*not an array/);
+  assert.match(auditProblems({ invalid: [], verified }, packages).join(' '), /missing.*not an array/);
+  assert.match(auditProblems({ invalid: null, missing: 'none', verified }, packages).join(' '), /not an array/);
+  assert.ok(auditProblems(undefined, packages).length >= 1);
+});
+
+test('crate manifest must not name a build script (build = "src/build.rs" would run in the consumer build)', () => {
+  const base = '[package]\nname = "x"\n';
+  const rest = '[features]\nretained-runtime = ["ifc-lite-geometry/retained-runtime"]\n[dependencies.ifc-lite-geometry]\nversion = "27.1.0"\n';
+  assert.deepEqual(crateManifestProblems(`${base}${rest}`), []);
+  assert.deepEqual(crateManifestProblems(`${base}build = false\n${rest}`), []);
+  assert.match(crateManifestProblems(`${base}build = "src/build.rs"\n${rest}`).join(' '), /build script/);
+  assert.match(crateManifestProblems(`${base}build="build.rs"\n${rest}`).join(' '), /build script/);
+  assert.deepEqual(crateManifestProblems(`${base}${rest}[dependencies.build]\nversion = "1"\n`), [], 'a dependency named build is not a build key');
+});
+
+test('wheel probe: isolated interpreter without site-packages, module must come from the extracted wheel', (context) => {
+  assert.deepEqual(WHEEL_PYTHON_FLAGS, ['-I', '-S']);
+  if (spawnSync('python3', ['-c', '0']).status !== 0) return context.skip('python3 unavailable');
+  const root = mkdtempSync(path.join(tmpdir(), 'wheel-probe-'));
+  try {
+    const fixture = path.join(root, 'm.ifc'); writeFileSync(fixture, 'ISO-10303-21;');
+    const withModule = path.join(root, 'with'); mkdirSync(withModule);
+    writeFileSync(path.join(withModule, 'ifclite_geom.py'), 'def geometry_data_json(b):\n    return \'{"element_count": 3}\'\n');
+    const ok = spawnSync('python3', wheelProbeArgv(fixture, withModule), { encoding: 'utf8' });
+    assert.equal(ok.stdout.trim(), '3', ok.stderr);
+    // Not in the wheel directory: a system-site install must not satisfy the import, and the path is verified anyway.
+    const empty = path.join(root, 'empty'); mkdirSync(empty);
+    const decoy = path.join(root, 'decoy'); mkdirSync(decoy);
+    writeFileSync(path.join(decoy, 'ifclite_geom.py'), 'def geometry_data_json(b):\n    return \'{"element_count": 9}\'\n');
+    const bad = spawnSync('python3', wheelProbeArgv(fixture, empty), { encoding: 'utf8', env: { ...process.env, PYTHONPATH: decoy } });
+    assert.notEqual(bad.status, 0, 'PYTHONPATH/system modules must not stand in for the wheel');
+    assert.equal(bad.stdout.trim(), '');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

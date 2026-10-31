@@ -14,7 +14,7 @@ pub enum BrowserReceipt {
         domain: BrowserCancellation,
         completion: ifc_lite_geometry::document::RetainedCompletion,
         /// The closed solid, built only when a Boolean or copy first consumes it.
-        realized: std::cell::OnceCell<BrowserRealization>,
+        realized: Box<std::cell::OnceCell<BrowserRealization>>,
     },
     Affine {
         lease: Lease,

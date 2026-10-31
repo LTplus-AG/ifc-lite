@@ -407,7 +407,8 @@ cp target/release/examples/mesh_census /tmp/mesh_census_branch
 # 2. One JSON line per mesh for every manifest .ifc up to 200 MiB, 6 at a time.
 scripts/mesh-census-corpus.sh /tmp/mesh_census_branch tests/models /tmp/branch.jsonl 200 6
 
-# 3. The per-mesh verdict (exit 1 on any regression, quality-worse or missing mesh).
+# 3. The per-mesh verdict (exit 1 on any regression, quality-worse, unmeasured
+#    or missing mesh; unmeasured means the thin census hit its candidate cap).
 node scripts/mesh-census-compare.mjs /tmp/base.jsonl /tmp/branch.jsonl
 ```
 

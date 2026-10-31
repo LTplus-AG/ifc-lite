@@ -21,14 +21,15 @@
  * - `neutral`: anything else that changed.
  *
  * Meshes present on one side only are reported as `missing` / `added`; a
- * missing mesh is a regression. Exit status 1 when any regression or
- * quality-worse mesh exists, 0 otherwise.
+ * missing mesh is a regression. A mesh whose thin-material census hit its
+ * candidate cap on either side is `unmeasured`, never unchanged. Exit status
+ * 1 when any regression, quality-worse, unmeasured or missing mesh exists.
  */
 
 import { readFileSync } from 'node:fs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
-const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'slivers', 'degenerate', 'maxAspect', 'area', 'thinArea', 'coincidentArea'];
+const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'slivers', 'degenerate', 'maxAspect', 'area', 'thinArea', 'coincidentArea', 'thinCapped'];
 /** Thin-material area (m2) a mesh may gain or lose before it counts. */
 const THIN_EPS = 1e-6;
 const SHEETS = ['thinArea', 'coincidentArea'];
@@ -54,6 +55,9 @@ const same = (a, b) => a === b || (typeof a === 'number' && typeof b === 'number
 
 /** The verdict for one mesh present on both sides, or null when unchanged. */
 export function classify(base, branch) {
+  // A face that hit the candidate cap was not fully measured on that side, so
+  // "no thin material" there means nothing: never read it as unchanged.
+  if (base.thinCapped > 0 || branch.thinCapped > 0) return 'unmeasured';
   if (METRICS.every((m) => same(base[m], branch[m]))) return null;
   const gained = EDGES.some((m) => branch[m] > base[m]) || SHEETS.some((m) => branch[m] > base[m] + THIN_EPS);
   if (gained) return 'regression';
@@ -65,7 +69,7 @@ export function classify(base, branch) {
 }
 
 export function compare(baseRows, branchRows) {
-  const verdicts = { regression: [], qualityWorse: [], improved: [], neutral: [], missing: [], added: [] };
+  const verdicts = { regression: [], qualityWorse: [], unmeasured: [], improved: [], neutral: [], missing: [], added: [] };
   for (const [key, base] of baseRows) {
     const branch = branchRows.get(key);
     if (!branch) {
@@ -107,7 +111,8 @@ function main(argv) {
       if (list.length > 50) console.log(`  ... ${list.length - 50} more`);
     }
   }
-  return verdicts.regression.length + verdicts.qualityWorse.length + verdicts.missing.length > 0 ? 1 : 0;
+  const failing = ['regression', 'qualityWorse', 'unmeasured', 'missing'];
+  return failing.some((v) => verdicts[v].length > 0) ? 1 : 0;
 }
 
 if (isMainEntry(import.meta.url)) {

@@ -42,8 +42,10 @@ const THIN: f64 = 2.0e-4;
 const COINCIDENT: f64 = 1.0e-9;
 /// Normals agree to about 0.06 degrees inside one bucket.
 const NORMAL_BUCKET: f64 = 1.0e-3;
-/// Opposite-facing candidates examined per triangle, so a large coplanar
-/// face cannot make one mesh quadratic.
+/// Opposite-facing candidates with overlapping bounds examined per triangle,
+/// so a large coplanar face cannot make one mesh quadratic. A face that hits
+/// the cap is counted in `thinCapped`: its thin material was not fully
+/// measured, and the compare script refuses to read that as a clean result.
 const MAX_CANDIDATES: usize = 256;
 
 fn main() {
@@ -83,6 +85,7 @@ fn main() {
                     "maxAspect": row.max_aspect, "area": row.area,
                     "thinFaces": row.thin_faces, "thinArea": row.thin_area,
                     "thinMinGap": row.thin_min_gap, "coincidentArea": row.coincident_area,
+                    "thinCapped": row.thin_capped,
                 })
             )
             .expect("write row");
@@ -109,6 +112,7 @@ struct Row {
     thin_area: f64,
     thin_min_gap: Option<f64>,
     coincident_area: f64,
+    thin_capped: usize,
 }
 
 fn world(mesh: &MeshData, i: usize) -> [f64; 3] {
@@ -298,16 +302,22 @@ fn thin_material(tris: &[[usize; 3]], p: &[[f64; 3]], row: &mut Row) {
             let mut seen = 0;
             for j in (i + 1)..faces.len() {
                 let (f, g) = (&faces[i], &faces[j]);
-                if g.s - f.s > window || seen >= MAX_CANDIDATES {
+                if g.s - f.s > window {
                     break;
                 }
-                if f.side == g.side {
+                if f.side == g.side
+                    || !(0..3).all(|k| f.lo[k] - THIN < g.hi[k] && g.lo[k] - THIN < f.hi[k])
+                {
                     continue;
                 }
+                // Only candidates whose bounds overlap spend the cap, so
+                // disjoint faces on the partner plane cannot exhaust it first.
+                if seen == MAX_CANDIDATES {
+                    row.thin_capped += 1;
+                    break;
+                }
                 seen += 1;
-                if !(0..3).all(|k| f.lo[k] - THIN < g.hi[k] && g.lo[k] - THIN < f.hi[k])
-                    || !projections_overlap(f.n, &f.corners, &g.corners)
-                {
+                if !projections_overlap(f.n, &f.corners, &g.corners) {
                     continue;
                 }
                 // Each centroid's height above the OTHER face's own plane:

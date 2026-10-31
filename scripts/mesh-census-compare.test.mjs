@@ -13,7 +13,7 @@ import { classify, compare, parseCensus } from './mesh-census-compare.mjs';
 
 const base = {
   model: 'm.ifc', id: 7, ord: 0, type: 'IfcWall', tris: 100, open: 2, nonmanifold: 0,
-  open10: 2, nonmanifold10: 0, slivers: 10, degenerate: 0, maxAspect: 100, area: 5, thinArea: 0, coincidentArea: 0,
+  open10: 2, nonmanifold10: 0, slivers: 10, degenerate: 0, maxAspect: 100, area: 5, thinArea: 0, coincidentArea: 0, thinCapped: 0,
 };
 const row = (patch) => ({ ...base, ...patch });
 
@@ -65,6 +65,11 @@ test('a mesh missing from the branch and one added are both reported', () => {
   const v = compare(a, b);
   assert.equal(v.missing.length, 1);
   assert.equal(v.added.length, 1);
+});
+
+test('a capped thin census on either side is unmeasured, even when identical', () => {
+  assert.equal(classify(row({ thinCapped: 1 }), row({ thinCapped: 1 })), 'unmeasured');
+  assert.equal(classify(base, row({ thinCapped: 2 })), 'unmeasured');
 });
 
 test('a row missing a metric is refused, not read as neutral', () => {

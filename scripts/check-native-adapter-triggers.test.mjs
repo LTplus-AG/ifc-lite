@@ -188,6 +188,12 @@ test('an aggregate that does not need the matrix or ignores its result, and a re
   assert.ok(failures.some((f) => f.includes('report-scheduled-failure must need native-corpus-result')));
 });
 
+test('an aggregate that stops reporting the models left out of the corpus is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace(/      - name: Report models that were not checked\n        if: always\(\)\n        run: [^\n]*\n/, ''));
+  assert.ok(audit(root).some((f) => f.includes('must report the models excluded from the corpus')));
+});
+
 test('a browser corpus that can fail the run is reported', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replace('    continue-on-error: true\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4\n        with:\n          persist-credentials: false\n      - uses: pnpm', '    runs-on: ubuntu-24.04\n    timeout-minutes: 120\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4\n        with:\n          persist-credentials: false\n      - uses: pnpm'));

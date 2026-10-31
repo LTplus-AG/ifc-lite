@@ -597,6 +597,12 @@ jobs:
         with:
           pattern: native-corpus-shard-*
           path: shards
+      # Models left out on purpose (scripts/retained-compare/corpus-exclusions.json) are not
+      # in any shard: say so as a warning and in the job summary, so green never reads as
+      # covering them.
+      - name: Report models that were not checked
+        if: always()
+        run: node scripts/retained-compare/corpus-shards.mjs excluded --manifest tests/models/manifest.json
       - name: Every shard finished, with no parity violations
         env:
           SHARDS_RESULT: ${{ needs.native-corpus.result }}

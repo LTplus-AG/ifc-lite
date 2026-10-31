@@ -1,0 +1,9 @@
+{
+  "excluded": [
+    {
+      "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "reason": "retained_compare did not finish this 177 MB model within the 100-minute shard step budget, alone in its shard, and left no evidence. The shard design already isolated it, so a larger budget would only move the failure; it is not checked until the comparison cost is understood.",
+      "evidence": "Actions run 41190945805, job 124507453864 (shard 1/8): step 'Compare this shard natively' timed out after 100 minutes. In the same run the 342 MB O-S1-BWK model, alone in shard 0, finished in about 57 minutes."
+    }
+  ]
+}

@@ -206,7 +206,18 @@ fn compare(
                     // An authored face set claims no closed solid: an open shell is its source, and
                     // the authored-row oracles prove the published triangles are exactly that.
                     let closed_shell = actual.defects == 0;
-                    if shape.parts.iter().all(|part| part.source_exact) { actual.defects = 0; }
+                    if shape.parts.iter().any(|part| part.source_exact) {
+                        // Measure closure over what the kernel built: authored parts claim none.
+                        let mut built = metrics::Metrics::default();
+                        for part in shape.parts.iter().filter(|part| !part.source_exact) {
+                            let points: Vec<_> = part.positions.chunks_exact(3)
+                                .map(|p| transform(&part.world_from_object, [p[0], p[1], p[2]])).collect();
+                            if let Err(e) = built.add_mesh(&points, &part.indices) {
+                                report.violations.push(format!("{model}:{id}: {e}"));
+                            }
+                        }
+                        actual.defects = built.defects;
+                    }
                     let rounded = exact_origins.get(&id).and_then(|origins| {
                         match precision::measure(&shape, exact.frame, origins) {
                             Ok(metrics) => Some(metrics),

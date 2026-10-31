@@ -91,12 +91,14 @@ export class MeshUniformArena {
   }
 
   allocate(): MeshUniformSlot {
-    let slot = this.free.pop();
-    if (!slot) {
+    let freed = this.free.pop();
+    if (!freed) {
       this.addPage();
-      slot = this.free.pop()!;
+      freed = this.free.pop()!;
     }
-    slot.released = false;
+    // A new handle per allocation: an evicted batch still holding the previous
+    // handle stays released, and cannot free this owner's block.
+    const slot = new Slot(this, freed.page, freed.index, freed.offset, freed.size);
     slot.page.live++;
     return slot;
   }

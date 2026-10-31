@@ -76,7 +76,6 @@ export function ViewportOverlays({
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
-  const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
   const { t } = useTranslation();
 
   // The storey pill and the hidden/ghosted count moved into `StatusBar` for
@@ -95,7 +94,6 @@ export function ViewportOverlays({
   const lastCubeGestureEmitRef = useRef(0);
 
   // Local state for the scale readout - updated via callback, no global re-renders
-  const [scaleLabel, setScaleLabel] = useState(() => formatScale(10));
 
   // Register callback for real-time rotation updates - updates ViewCube directly
   useEffect(() => {
@@ -127,15 +125,6 @@ export function ViewportOverlays({
       pointCloudPanelIntroducedRef.current = false;
     }
   }, [pointCloudAssetCount]);
-
-  // Register callback for real-time scale updates. State holds the formatted
-  // label, so React bails out of the re-render unless the visible text changes
-  // (a wheel zoom used to re-render the overlay tree on every 1% step).
-  useEffect(() => {
-    const handleScaleChange = (newScale: number) => setScaleLabel(formatScale(newScale));
-    setOnScaleChange(handleScaleChange);
-    return () => setOnScaleChange(null);
-  }, [setOnScaleChange]);
 
   // Initial rotation values (ViewCube will update itself via ref)
   const initialRotationX = -cameraRotationRef.current.elevation;
@@ -293,10 +282,7 @@ export function ViewportOverlays({
       {!isMobile && (
         <div className="absolute bottom-4 left-4 flex flex-col-reverse items-start gap-3">
           {!hideScale && (
-            <div className="flex flex-col items-start gap-1" data-testid="viewport-scale-readout">
-              <div className="h-1 w-24 bg-foreground/80 rounded-full" />
-              <span className="text-xs text-foreground/80">{scaleLabel}</span>
-            </div>
+            <ScaleReadout />
           )}
           {!hideAxis && (
             <div data-testid="viewport-axis-helper">
@@ -324,6 +310,26 @@ export function ViewportOverlays({
  * Toggle for the per-model IFC-origin overlay. Sits next to the AxisHelper so
  * it's discoverable in the same "scene reference" cluster.
  */
+/**
+ * The scale label owns its state, so a zoom re-renders this readout and not the
+ * overlay tree, and a hidden readout leaves the camera's scale callback unset.
+ * React bails out unless the formatted text changes.
+ */
+function ScaleReadout() {
+  const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
+  const [scaleLabel, setScaleLabel] = useState(() => formatScale(10));
+  useEffect(() => {
+    setOnScaleChange((newScale: number) => setScaleLabel(formatScale(newScale)));
+    return () => setOnScaleChange(null);
+  }, [setOnScaleChange]);
+  return (
+    <div className="flex flex-col items-start gap-1" data-testid="viewport-scale-readout">
+      <div className="h-1 w-24 bg-foreground/80 rounded-full" />
+      <span className="text-xs text-foreground/80">{scaleLabel}</span>
+    </div>
+  );
+}
+
 function BasepointToggleButton() {
   const showModelBasepoints = useViewerStore((s) => s.showModelBasepoints);
   const toggleShowModelBasepoints = useViewerStore((s) => s.toggleShowModelBasepoints);

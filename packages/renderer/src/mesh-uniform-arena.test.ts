@@ -80,6 +80,21 @@ describe('MeshUniformArena', () => {
     assert.equal(readMeshUniforms(slot)[0], 42);
   });
 
+  it('a stale handle to a recycled block cannot free its new owner', () => {
+    const { device } = fakeDevice();
+    const arena = new MeshUniformArena(device, MESH_UNIFORM_BYTES, 4);
+    const evicted = arena.allocate();
+    evicted.release();
+    arena.flush(device.queue); // recycles the block
+    const owner = arena.allocate();
+    assert.equal(owner.offset, evicted.offset);
+    const others = Array.from({ length: 3 }, () => arena.allocate());
+    evicted.release(); // a second destroy of the evicted batch
+    arena.flush(device.queue);
+    const next = arena.allocate();
+    assert.ok(![owner, ...others].some((s) => s.offset === next.offset && s.buffer === next.buffer));
+  });
+
   it('spans one write per page that changed, covering only the dirty slot range', () => {
     const { device, writes } = fakeDevice();
     const arena = new MeshUniformArena(device, MESH_UNIFORM_BYTES, 4);

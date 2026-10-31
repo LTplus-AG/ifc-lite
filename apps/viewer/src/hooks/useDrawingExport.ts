@@ -1071,7 +1071,7 @@ function useDrawingExport({
     // jsPDF loads cannot leak into this export.
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, cutPolygonStyleContext(), (polygon) =>
       [polygon.polygon.outer, ...polygon.polygon.holes]
-        .filter((ring) => ring.length >= 2)
+        .filter((ring) => ring.length >= 2 && ring.every((p) => isFinite(p.x) && isFinite(p.y)))
         .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
     );
 
@@ -1127,10 +1127,13 @@ function useDrawingExport({
         }
         for (const { geometry: rings, style } of styledPolygons) {
           const { hex, alpha } = pdfColor(style.strokeColor) ?? { hex: '#000000', alpha: 1 };
-          if (rings.length === 0 || !(alpha > 0)) continue;
+          // Zero width hides the outline, as in the SVG; PDF would draw "0 w"
+          // as the thinnest visible line.
+          const width = Number.isFinite(style.lineWeight) ? style.lineWeight : 0.5;
+          if (rings.length === 0 || !(alpha > 0) || !(width > 0)) continue;
           setOpacity('stroke-opacity', alpha);
           doc.setDrawColor(hex);
-          doc.setLineWidth(Number.isFinite(style.lineWeight) ? Math.max(0, style.lineWeight) : 0.5);
+          doc.setLineWidth(width);
           tracePath(rings);
           doc.stroke();
         }

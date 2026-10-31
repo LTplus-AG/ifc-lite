@@ -23,7 +23,7 @@ import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, nanVertex = false }: ExportOptions = {}): Drawing2D {
   return {
     config: {
       plane: { axis: 'y', position: 0, flipped: false },
@@ -37,7 +37,7 @@ function buildDrawing({ polygonColor, noOuter = false }: ExportOptions = {}): Dr
       {
         polygon: {
           outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-          holes: [[{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
+          holes: [[{ x: 1, y: 1 }, { x: nanVertex ? Number.NaN : 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
         },
         ifcType: 'IfcWall',
         entityId: 7,
@@ -67,6 +67,8 @@ interface ExportOptions {
   polygonColor?: [number, number, number, number];
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
+  /** One hole vertex is NaN (corrupt geometry). */
+  nanVertex?: boolean;
 }
 
 type Format = 'pdf' | 'svg';
@@ -232,11 +234,17 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     assert.ok(text.includes('h\nS\n'), 'the surviving ring is still stroked, as before fills existed');
   });
 
-  it('never writes a negative or NaN line width', async () => {
-    for (const lineWeight of [-1, Number.NaN]) {
+  it('never writes a negative or NaN line width; zero hides the outline', async () => {
+    for (const lineWeight of [-1, 0, Number.NaN]) {
       const text = await exportPdf({ overrideRules: [wallRule({ lineWeight })] });
       assert.doesNotMatch(text, /^(?:-[\d.]+|NaN) w$/m, `lineWeight ${lineWeight}`);
+      if (lineWeight <= 0) assert.ok(!text.includes('h\nS\n'), `lineWeight ${lineWeight} draws no outline`);
     }
+  });
+
+  it('skips a ring with a non-finite vertex instead of aborting the export', async () => {
+    const text = await exportPdf({ nanVertex: true });
+    assert.ok(text.includes('f*'), 'the valid polygon data still exports');
   });
 });
 

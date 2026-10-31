@@ -12,7 +12,7 @@
  */
 
 import type { jsPDF } from 'jspdf';
-import type { DrawingPolygon } from '@ifc-lite/drawing-2d';
+import { polygonSignedArea, type DrawingPolygon } from '@ifc-lite/drawing-2d';
 import { getFillColorForType } from '@/components/viewer/drawing/ifc-fill-colors';
 import {
   styleCutPolygons,
@@ -37,9 +37,17 @@ export interface PdfCutPolygon {
 
 const finiteRing = (ring: Point[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
 
-/** Twice the signed area (shoelace); zero for collinear or repeated points. */
-const doubledArea = (ring: Point[]) =>
-  ring.reduce((sum, p, i) => { const q = ring[(i + 1) % ring.length]; return sum + p.x * q.y - q.x * p.y; }, 0);
+/**
+ * Whether a ring encloses area. Collinear or repeated points give a signed
+ * area of zero only up to float rounding (about 1e-17 for a diagonal line),
+ * so the threshold scales with the ring's size.
+ */
+function enclosesArea(ring: Point[]): boolean {
+  const xs = ring.map((p) => p.x);
+  const ys = ring.map((p) => p.y);
+  const extent = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  return Math.abs(polygonSignedArea(ring)) > 1e-9 * extent * extent;
+}
 
 /**
  * Rings with a non-finite vertex are dropped (jsPDF throws on them). A polygon
@@ -58,7 +66,7 @@ export function prepareCutPolygonsPdf(
     const drawnHoles = usableHoles.filter(finiteRing);
     return {
       rings: [...(outerDrawn ? [outer] : []), ...drawnHoles].map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-      fillable: outerDrawn && doubledArea(outer) !== 0 && drawnHoles.length === usableHoles.length,
+      fillable: outerDrawn && enclosesArea(outer) && drawnHoles.length === usableHoles.length,
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }

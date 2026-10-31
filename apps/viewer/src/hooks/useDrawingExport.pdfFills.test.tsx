@@ -26,7 +26,8 @@ function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = fals
   const at = (ring: 'hole' | 'outer', v: number) => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : v);
   const wall: Drawing2D['cutPolygons'][number] = {
     polygon: {
-      outer: noOuter ? [] : lineOuter === 'two-point' ? [{ x: 0, y: 3 }, { x: 4, y: 3 }] : lineOuter === 'collinear' ? [{ x: 0, y: 3 }, { x: 2, y: 3 }, { x: 4, y: 3 }] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+      outer: noOuter ? [] : lineOuter === 'two-point' ? [{ x: 0, y: 3 }, { x: 4, y: 3 }] : lineOuter === 'collinear' ? [{ x: 0, y: 3 }, { x: 2, y: 3 }, { x: 4, y: 3 }]
+        : lineOuter === 'diagonal' ? [{ x: 0.1, y: 0.3 }, { x: 0.2, y: 0.6 }, { x: 0.3, y: 0.9 }] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
       holes: [[{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
     },
     ifcType: 'IfcWall',
@@ -69,7 +70,7 @@ interface ExportOptions {
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
   /** The outer ring encloses no area: two points, or three collinear ones. */
-  lineOuter?: 'two-point' | 'collinear';
+  lineOuter?: 'two-point' | 'collinear' | 'diagonal';
   /** A second, identical wall polygon. */
   twoWalls?: boolean;
   /** Corrupt geometry: a NaN vertex in the hole, the outer ring, or both. */
@@ -281,7 +282,7 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     });
   }
 
-  for (const lineOuter of ['two-point', 'collinear'] as const) {
+  for (const lineOuter of ['two-point', 'collinear', 'diagonal'] as const) {
     it(`keeps the cut lines of an entity whose outer ring encloses no area (${lineOuter}, #8464)`, async () => {
       const text = await exportPdf({ lineOuter, cutLine: true });
       assert.match(text, CUT_LINE, 'a ring without area is not a polygon, so its cut edge stays');

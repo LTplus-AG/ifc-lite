@@ -62,18 +62,20 @@ export function prepareCutPolygonsPdf(
 /** Two decimals is what jsPDF prints; rounding keeps one ExtGState per printed value. */
 const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 100;
 
+/** Resolved per export: each distinct colour is parsed, and warned about, once. */
+type ColorCache = Map<string, ReturnType<typeof pdfColor>>;
+
 /**
  * Set a fill or stroke colour and return its alpha. A colour jsPDF cannot
- * take (an unfinished hex, an invalid name) falls back per polygon, so one bad
- * override cannot abort the whole export.
+ * take (an unfinished hex, an invalid name) falls back per polygon, so one
+ * bad override cannot abort the whole export.
  */
-function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string, warned: Set<string>): number {
-  const parsed = pdfColor(color);
-  const key = `${kind}:${color}:${fallback}`;
-  if (!parsed && !warned.has(key)) {
-    warned.add(key);
-    console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
+function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string, cache: ColorCache): number {
+  if (!cache.has(color)) {
+    cache.set(color, pdfColor(color));
+    if (!cache.get(color)) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF; affected elements use their fallback colour`);
   }
+  const parsed = cache.get(color);
   const css = parsed?.color ?? fallback;
   if (kind === 'fill') doc.setFillColor(css);
   else doc.setDrawColor(css);
@@ -96,7 +98,7 @@ export function drawCutPolygonsPdf(doc: jsPDF, polygons: readonly PdfCutPolygon[
 function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
   doc.setLineCap('round');
   doc.setLineDashPattern([], 0);
-  const warned = new Set<string>(); // one warning per bad colour and fallback, not per polygon
+  const colors: ColorCache = new Map();
   const tracePath = (rings: Point[][]) => {
     for (const ring of rings) {
       doc.moveTo(ring[0].x, ring[0].y);
@@ -107,7 +109,7 @@ function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
 
   for (const { polygon, rings, fillable, style } of polygons) {
     if (!fillable || !(style.fillOpacity > 0)) continue;
-    const alpha = setColor(doc, 'fill', style.fillColor, getFillColorForType(polygon.ifcType), warned);
+    const alpha = setColor(doc, 'fill', style.fillColor, getFillColorForType(polygon.ifcType), colors);
     const opacity = roundOpacity(style.fillOpacity * alpha);
     if (!(opacity > 0)) continue;
     doc.setGState(doc.GState({ opacity }));
@@ -120,7 +122,7 @@ function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
   // visible line.
   for (const { rings, style } of polygons) {
     if (rings.length === 0 || !(style.lineWeight > 0)) continue;
-    const opacity = roundOpacity(setColor(doc, 'draw', style.strokeColor, '#000000', warned));
+    const opacity = roundOpacity(setColor(doc, 'draw', style.strokeColor, '#000000', colors));
     if (!(opacity > 0)) continue;
     doc.setGState(doc.GState({ 'stroke-opacity': opacity }));
     doc.setLineWidth(style.lineWeight);

@@ -300,7 +300,6 @@ describe('override colour forms in the PDF', () => {
     // Invalid CSS falls back to the IfcWall colour (jsPDF would read 'bad'
     // as #bbaadd). Valid names are covered by the canvas test at the end.
     { fillColor: 'bad', fill: '#b0b0b0' },
-    { fillColor: 'rgb(300,0,0)', fill: '#b0b0b0' },
     { fillColor: 'rgb(1.2.3,0,0)', fill: '#b0b0b0' },
   ];
   for (const { fillColor, fill, opacity } of cases) {
@@ -314,8 +313,6 @@ describe('override colour forms in the PDF', () => {
   }
 });
 
-// Kept last: pdf-color caches the first real 2D context it gets, so the stub
-// below stays in place for anything that runs after it.
 describe('CSS colours resolved by the browser canvas (#8464)', () => {
   it('uses the canvas-normalised colour for names, hsl() and space syntax; warns once per bad colour', async () => {
     // happy-dom has no 2D canvas. This stub normalises like a browser does

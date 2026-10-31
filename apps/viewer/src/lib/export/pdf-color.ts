@@ -16,8 +16,6 @@ function parseHexOrRgb(css: string): PdfColor | null {
   return { color: `#${byte(rgb[1])}${byte(rgb[2])}${byte(rgb[3])}`, alpha: rgb[4] === undefined ? 1 : Math.min(1, +rgb[4]) };
 }
 
-let canvasContext: CanvasRenderingContext2D | null = null;
-
 /**
  * Let the browser resolve any other CSS colour (names, hsl(), space syntax,
  * percentages) exactly as the canvas and SVG do: a 2D context normalises a
@@ -25,9 +23,7 @@ let canvasContext: CanvasRenderingContext2D | null = null;
  * which two different sentinels detect. Null where no canvas exists.
  */
 function resolveWithCanvas(css: string): PdfColor | null {
-  // Only a real context is cached; where there is none, each call retries.
-  canvasContext ??= typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
-  const ctx = canvasContext;
+  const ctx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
   if (!ctx) return null;
   const tryWith = (sentinel: string) => {
     ctx.fillStyle = sentinel;
@@ -36,7 +32,7 @@ function resolveWithCanvas(css: string): PdfColor | null {
   };
   const first = tryWith('#010203');
   if (first === '#010203' && tryWith('#040506') === '#040506') return null;
-  return parseHexOrRgb(first.replace(/\s+/g, ' ').trim());
+  return parseHexOrRgb(first);
 }
 
 /**

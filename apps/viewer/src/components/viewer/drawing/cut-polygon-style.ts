@@ -43,7 +43,8 @@ export function resolveCutPolygonStyle(
     : null;
   const stroke = {
     strokeColor: override?.strokeColor ?? '#000000',
-    lineWeight: override && Number.isFinite(override.lineWeight) ? override.lineWeight : 0.5,
+    // Negative weights clamp to 0 (no outline) so SVG and PDF agree.
+    lineWeight: override && Number.isFinite(override.lineWeight) ? Math.max(0, override.lineWeight) : 0.5,
   };
 
   // IFC material colours win for fills, per layer first, as on screen

@@ -236,6 +236,7 @@ test('Refs #7955 cargo-only refresh refuses reused entries that the pins do not 
   const cases = [
     ['SDK entry from another SMLib revision', /SMLib revision/, m => { m.components[0].version = 'e'.repeat(40); }],
     ['Emscripten entry from another release', /Emscripten/, m => { m.components[1].version = '4.0.14'; }],
+    ['Emscripten entry whose version only contains the pin (4.0.150)', /Emscripten/, m => { m.components[1].version = '4.0.150'; }],
     ['Rust std entry from another toolchain', /Rust standard library/, m => { m.components[3].version = 'rustc other'; }],
     ['extra reused toolchain entry', /Rust standard library/, m => { m.components.push({ ...m.components[3], name: 'extra' }); }],
   ];

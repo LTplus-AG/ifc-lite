@@ -191,6 +191,8 @@ function writeManifest(root, manifest) {
 // manifest, but only while that manifest is intact and every SDK/toolchain pin is unchanged;
 // otherwise it fails closed and the full refresh with the pinned checkouts is required.
 const PINNED_INPUTS = ['smlibRevision', 'emsdkRef', 'emscriptenVersion', 'rustChannel'];
+// The pinned version as a whole token: 4.0.150 and 14.0.15 are not 4.0.15.
+const versionToken = (text, version) => new RegExp(`(^|[^0-9A-Za-z.])${version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^0-9A-Za-z.-])`).test(text);
 export function splitReusableComponents(previous, inputs, rustVersion = () => rustcVersion(ROOT)) {
   verifyManifestIntegrity(previous);
   const changed = PINNED_INPUTS.filter(key => previous.inputs?.[key] !== inputs[key]);
@@ -218,7 +220,7 @@ export function splitReusableComponents(previous, inputs, rustVersion = () => ru
   if (head[0].version !== inputs.smlibRevision) {
     throw new Error('--cargo-only refused: committed SDK components do not carry the pinned SMLib revision; run the full --refresh');
   }
-  if (head.length < 2 || head.slice(1).some(c => !c.version.includes(inputs.emscriptenVersion))) {
+  if (head.length < 2 || head.slice(1).some(c => !versionToken(c.version, inputs.emscriptenVersion))) {
     throw new Error('--cargo-only refused: committed Emscripten components do not all carry the pinned Emscripten version; run the full --refresh');
   }
   if (tail.length !== 1 || tail[0].version !== rustVersion()) {

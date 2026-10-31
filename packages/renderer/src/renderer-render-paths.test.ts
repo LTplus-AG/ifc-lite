@@ -15,7 +15,7 @@ import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
 import { MESH_UNIFORM_BYTES, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
-import { readMeshUniforms, type MeshUniformSlot } from './mesh-uniform-arena.js';
+import type { MeshUniformSlot } from './mesh-uniform-arena.js';
 
 async function requireColorTable() {
     const module = await import('./entity-color-table.js').catch(() => null);
@@ -79,6 +79,8 @@ interface Harness {
         mapAsync: number;
         /** every `queue.writeBuffer` payload, copied at call time */
         writes: { buffer: unknown; offset: number; floats: Float32Array }[];
+        /** what each buffer holds after every write, kept when a test clears `writes` */
+        gpuBytes: Map<unknown, Uint8Array>;
         /**
          * Ordered log of `setPipeline` / `setBindGroup` / `drawIndexed` calls on
          * the render pass, so a test can assert command ORDER (e.g. that the
@@ -139,7 +141,7 @@ const TRANSPARENT_PIPELINE = { label: 'transparent' };
 const GHOST_PIPELINE = { label: 'ghost' };
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, submissions: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, submissions: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], gpuBytes: new Map(), commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', visibilityCompilation: null, encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false, pickFault: null,
@@ -243,6 +245,12 @@ function makeHarness(): Harness {
                 ? new Float32Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength))
                 : new Float32Array(data.slice(0));
             stats.writes.push({ buffer, offset, floats });
+            const written = new Uint8Array(floats.buffer, floats.byteOffset, floats.byteLength);
+            const previous = stats.gpuBytes.get(buffer);
+            const held = new Uint8Array(Math.max(previous?.length ?? 0, offset + written.length));
+            if (previous) held.set(previous);
+            held.set(written, offset);
+            stats.gpuBytes.set(buffer, held);
         },
         writeTexture() { /* no-op */ },
         copyExternalImageToTexture() { /* no-op */ },
@@ -1449,11 +1457,16 @@ function isArenaSlot(target: unknown): target is MeshUniformSlot {
 
 /**
  * The uniform blocks `target` received, oldest first. A colour batch's arena
- * slot reports the bytes its page holds after the frame's single flush
- * (mesh-uniform-arena.ts); a standalone uniform buffer reports each write.
+ * slot reports what the frame's flush queued for it on the GPU, not its CPU
+ * mirror, so a stale flush fails here (mesh-uniform-arena.ts); a standalone
+ * uniform buffer reports each write.
  */
 function uniformBlocks(h: Harness, target: unknown): Float32Array[] {
-    if (isArenaSlot(target)) return [readMeshUniforms(target)];
+    if (isArenaSlot(target)) {
+        const held = h.stats.gpuBytes.get(target.buffer);
+        if (!held || held.length < target.offset + target.size) return [];
+        return [new Float32Array(held.slice(target.offset, target.offset + target.size).buffer)];
+    }
     return h.stats.writes.filter((w) => w.buffer === target).map((w) => w.floats);
 }
 

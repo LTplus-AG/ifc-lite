@@ -10,6 +10,10 @@
  */
 
 import '@/test/setup-dom.js';
+import { installLayout } from '@/test/dom-layout.js';
+import { act } from 'react';
+
+installLayout();
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -44,10 +48,9 @@ function mount(rule: FilterRule) {
   return { container, commits };
 }
 
-/** Radix opens its menus on pointerdown, then portals the items to `document.body`. */
+/** Radix opens its menus on pointerdown (a following click would toggle it shut) and portals the items to `document.body`. */
 function openMenu(trigger: Element): HTMLElement[] {
-  trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' }));
-  click(trigger);
+  act(() => { trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })); });
   return [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 }
 

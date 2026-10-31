@@ -150,3 +150,9 @@ test('pathDeps refuses shapes it cannot read instead of shrinking the closure', 
   assert.throws(() => pathDeps('[dev-dependencies.foo]\npath = "../foo"\n', 'rust/me', new Map()), /sub-table/);
   assert.throws(() => pathDeps('[dependencies]\nfoo = {\n  path = "../foo",\n}\n', 'rust/me', new Map()), /multi-line/);
 });
+
+test('an unbounded native corpus step is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace(/        # A step budget[^\n]*\n        timeout-minutes: \d+\n/, ''));
+  assert.ok(audit(root).some((f) => f.includes('native-corpus needs its own timeout-minutes')));
+});

@@ -188,6 +188,7 @@ export function audit(root) {
   for (const id of ['native-corpus', 'corpus-download']) {
     const step = text.match(new RegExp(`id: ${id}\\n([\\s\\S]*?)\\n      - `));
     if (!step || !/continue-on-error: true/.test(step[1])) failures.push(`${WORKFLOW}: step ${id} must be continue-on-error so a corpus failure does not skip later lanes`);
+    if (id === 'native-corpus' && (!step || !/timeout-minutes: \d+/.test(step[1]))) failures.push(`${WORKFLOW}: step native-corpus needs its own timeout-minutes; the job limit would cancel every later lane`);
   }
   if (!/github\.ref == 'refs\/heads\/main' && needs\.native-adapter\.result == 'failure'/.test(text)) failures.push(`${WORKFLOW}: report-red-on-main must fire on 'failure' only; a cancelled (superseded) run is not red`);
   if (!/^ {2}close-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no close-red-on-main job; the issue would stay open after main is green`);

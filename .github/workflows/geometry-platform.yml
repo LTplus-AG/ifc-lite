@@ -172,7 +172,9 @@ concurrency:
 jobs:
   native-adapter:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # Committed lanes take ~40-60 min; nightly/dispatch also carries the corpus step
+    # (itself bounded below), so it needs headroom for the lanes after it.
+    timeout-minutes: ${{ github.event_name != 'pull_request' && github.event_name != 'push' && 180 || 90 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -290,6 +292,8 @@ jobs:
         id: native-corpus
         if: inputs.corpus == true || github.event_name == 'schedule'
         continue-on-error: true
+        # A step budget, not the job's: hitting the job limit cancels every later lane.
+        timeout-minutes: 75
         run: |
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json

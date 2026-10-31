@@ -1,22 +1,17 @@
-diff --git a/scripts/retained-compare/real-authoring-support.mjs b/scripts/retained-compare/real-authoring-support.mjs
-index ccabf41..61d564e 100644
 --- a/scripts/retained-compare/real-authoring-support.mjs
 +++ b/scripts/retained-compare/real-authoring-support.mjs
-@@ -13,7 +13,7 @@ export function parseObj(text) {
-       all.push([x, y, z]);
-     } else if (line.startsWith('o ')) {
+@@ -15,3 +15,3 @@
        const name = line.slice(2).trim();
 -      current = { vertices: all, triangles: [] };
 +      current = objects.get(name) ?? { vertices: all, triangles: [] };
        objects.set(name, current);
-     } else if (line.startsWith('f ')) {
-       if (!current) throw new Error('OBJ face before any object');
-@@ -58,7 +58,7 @@ export function compareProduct(retained, exact, nativeRow, { volumeRelative, bbo
-   const allowed = (Number.isFinite(measured) ? measured : 0) + volumeRelative + 1e-6 * exact.area / exact.volume;
-   const bboxDeviation = Math.max(...retained.min.map((v, k) => Math.abs(v - exact.min[k])), ...retained.max.map((v, k) => Math.abs(v - exact.max[k])));
+@@ -49,3 +49,3 @@
+   const product = objects.get(name);
+-  if (!product) return undefined;
++  if (!product) throw new Error(`Published ${name} is missing from exact OBJ; comparison cannot be skipped`);
+   return product;
+@@ -73,3 +73,3 @@
    const allowedBbox = (Number.isFinite(measuredBbox) ? measuredBbox : 0) + bboxMetres + 1e-6;
--  return { ok: true, relative, allowed, bboxDeviation, allowedBbox };
-+  return { ok: relative <= allowed && bboxDeviation <= allowedBbox, relative, allowed, bboxDeviation, allowedBbox };
+-  return { ok: true, nativeRelative, nativeAllowed, relative, allowed, bboxDeviation, allowedBbox };
++  return { ok: nativeRelative <= nativeAllowed && relative <= allowed && bboxDeviation <= allowedBbox, nativeRelative, nativeAllowed, relative, allowed, bboxDeviation, allowedBbox };
  }
- 
- /** `#id=IFCTYPE('GlobalId',…` for every rooted entity of a STEP file → Map<id, {type, globalId}>. */

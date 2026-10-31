@@ -70,3 +70,10 @@ native/CLI/viewer witness checks.
 Local pre-handoff passes its available gates. Its TypeScript, YAML and default
 viewer checks are explicitly skipped because dependencies/bundle are absent;
 the earlier Pop default-build receipt remains distinct from this follow-up.
+
+Review follow-up: `cli-real-revit-v5c` now names the registered V5C comparison;
+the prior `cli-real-revit` wall-W record cannot satisfy it. Historical actual-run
+receipts above retain their original meaning and do not qualify the new V5C
+scenario. Missing counterparts now fail; numeric comparisons are explicitly
+CLI/native transport consistency, not an independent geometry authority. New
+regressions cover both distinctions and failure-specific gate remedies.

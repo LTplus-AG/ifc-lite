@@ -44,21 +44,34 @@ export function productMeasures({ vertices, triangles }) {
   return { volume: Math.abs(volume), area, min, max, triangles: triangles.length };
 }
 
+/** A retained publication cannot silently lose its exact comparison counterpart. */
+export function requireExactProduct(objects, name) {
+  const product = objects.get(name);
+  if (!product) throw new Error(`Published ${name} is missing from exact OBJ; comparison cannot be skipped`);
+  return product;
+}
+
 /**
- * Retained against exact for one product. The allowance is the deviation the native
- * comparison already measured for this product, plus the preregistered `exactLinear`
- * tolerances, plus what six-decimal OBJ coordinates can cost (5e-7 m per vertex).
- * Curved products are report only, as in tolerances.json (`exactCurved`).
+ * CLI/native transport consistency, NOT independent geometry correctness.
+ * Linear CLI volume must match native retained volume within the frozen linear
+ * tolerance and six-decimal OBJ quantisation. The exact-side volume/bbox check
+ * additionally preserves the envelope already measured by native; it cannot
+ * detect a geometry defect shared by both retained paths. Curved products remain
+ * report-only per exactCurved. Native/source correctness belongs to its own gate.
  */
 export function compareProduct(retained, exact, nativeRow, { volumeRelative, bboxMetres }) {
   if (nativeRow.curved === 'true') return { skipped: 'curved', ok: true };
-  if (!(exact.volume > 0)) return { skipped: 'degenerate exact volume', ok: true };
+  if (!Number.isFinite(exact.volume) || exact.volume <= 0) throw new Error('Published linear product needs a positive finite exact OBJ volume');
+  const nativeVolume = Number(nativeRow.volume_m3);
+  if (!Number.isFinite(nativeVolume) || nativeVolume <= 0) throw new Error('Published linear product needs a positive finite native volume');
+  const nativeRelative = Math.abs(retained.volume - nativeVolume) / nativeVolume;
+  const nativeAllowed = volumeRelative + 1e-6 * retained.area / nativeVolume;
   const measured = Number(nativeRow.exact_vol_rel), measuredBbox = Number(nativeRow.exact_bbox_dev_m);
   const relative = Math.abs(retained.volume - exact.volume) / exact.volume;
   const allowed = (Number.isFinite(measured) ? measured : 0) + volumeRelative + 1e-6 * exact.area / exact.volume;
   const bboxDeviation = Math.max(...retained.min.map((v, k) => Math.abs(v - exact.min[k])), ...retained.max.map((v, k) => Math.abs(v - exact.max[k])));
   const allowedBbox = (Number.isFinite(measuredBbox) ? measuredBbox : 0) + bboxMetres + 1e-6;
-  return { ok: relative <= allowed && bboxDeviation <= allowedBbox, relative, allowed, bboxDeviation, allowedBbox };
+  return { ok: nativeRelative <= nativeAllowed && relative <= allowed && bboxDeviation <= allowedBbox, nativeRelative, nativeAllowed, relative, allowed, bboxDeviation, allowedBbox };
 }
 
 /** `#id=IFCTYPE('GlobalId',…` for every rooted entity of a STEP file → Map<id, {type, globalId}>. */

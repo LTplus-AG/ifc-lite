@@ -51,12 +51,14 @@ test('#8435 native legacy markers keep end matching; scoped lanes cannot satisfy
 test('#8435 output needs an exact record and JSON payload, not a test title or marker prefix', async t => {
   const { root, registry, log } = await fixture(t);
   await writeFile(registry, 'viewer\tM2-D viewer:\n');
-  for (const output of ['test title M2-D viewer: {}', 'M2-D viewer:longer {}', 'M2-D viewer: null']) {
+  for (const output of ['test title M2-D viewer: {}', 'M2-D viewer:longer {}']) {
     await writeFile(log, output);
     await assert.rejects(checkWitnesses({ root, lane: 'viewer', log }), /Missing viewer/);
   }
-  await writeFile(log, 'M2-D viewer: malformed');
-  await assert.rejects(checkWitnesses({ root, lane: 'viewer', log }), SyntaxError);
+  for (const payload of ['malformed', 'null', '1']) {
+    await writeFile(log, `M2-D viewer: ${payload}`);
+    await assert.rejects(checkWitnesses({ root, lane: 'viewer', log }), /Malformed viewer witness M2-D viewer:.*Remedy:.*(?:valid JSON|JSON object)/);
+  }
   await writeFile(log, '\u001b[32mM2-D viewer: {"ok":true}\u001b[0m\n');
   assert.equal(await checkWitnesses({ root, lane: 'viewer', log }), 1);
 });
@@ -68,4 +70,33 @@ test('#8435 missing logs, missing registrations and unknown scope fail closed', 
   await assert.rejects(requiredWitnesses(root, 'cli'), /No registered/);
   await writeFile(registry, 'vewer\tM2-D viewer:\n');
   await assert.rejects(requiredWitnesses(root, 'viewer'), /Invalid witness/);
+});
+
+test('#8435 gate failures name actionable remedies, including malformed records', async t => {
+  const { root, registry, log } = await fixture(t);
+  const run = (...args) => spawnSync(process.execPath, [script, '--root', root, ...args], { encoding: 'utf8' });
+  for (const args of [[], ['--wrong', 'flag'], ['--lane', 'typo', '--log', log], ['--lane', 'viewer', '--log', log]]) {
+    const result = run(...args);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Remedy:/);
+  }
+  await writeFile(registry, 'viewer\tM2-D viewer:\n');
+  for (const output of ['', 'M2-D viewer: broken']) {
+    await writeFile(log, output);
+    const result = run('--lane', 'viewer', '--log', log);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /M2-D viewer:/);
+    assert.match(result.stderr, /Remedy:/);
+  }
+  const unreadable = run('--lane', 'viewer', '--log', root);
+  assert.equal(unreadable.status, 1);
+  assert.match(unreadable.stderr, /Cannot read viewer witness log.*Remedy:/);
+});
+
+test('#8435 the old Revit wall witness cannot satisfy registered V5C coverage', async t => {
+  const { log } = await fixture(t);
+  const required = await requiredWitnesses('.', 'cli');
+  assert.ok(required.some(r => r.marker === 'M2-D cli-real-revit-v5c:'));
+  await writeFile(log, required.map(r => `${r.marker.replace('revit-v5c:', 'revit:')} {}`).join('\n'));
+  await assert.rejects(checkWitnesses({ lane: 'cli', log }), /cli-real-revit-v5c:/);
 });

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 # Scope<TAB>literal marker. Required independently of test grep/shard selectors.
-cli	M2-D cli-real-revit:
+cli	M2-D cli-real-revit-v5c:
 cli	M2-D cli-real-archicad:
 cli	M2-D cli-real-bonsai:
 cli	M2-D cli-refused-tekla-structures:

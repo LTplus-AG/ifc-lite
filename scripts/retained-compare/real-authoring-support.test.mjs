@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseObj, productMeasures, compareProduct, sourceIdentity } from './real-authoring-support.mjs';
+import { parseObj, productMeasures, compareProduct, requireExactProduct, sourceIdentity } from './real-authoring-support.mjs';
 
 const cube = (name, size, shift = 0) => {
   const v = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]]
@@ -28,18 +28,18 @@ test('repeated object blocks of one name concatenate and faces keep global indic
   assert.equal(wall.triangles, 24);
 });
 
-test('compareProduct accepts the measured deviation and rejects a larger one; curved products are report only', () => {
+test('#8435 compareProduct proves native transport consistency; curved products are report only', () => {
   const tolerance = { volumeRelative: 1e-5, bboxMetres: 1e-4 };
   const exact = productMeasures(parseObj(obj(cube('a', 1))).get('a'));
   const near = { ...exact, volume: exact.volume * (1 + 5e-6) };
-  assert.equal(compareProduct(near, exact, { curved: 'false', exact_vol_rel: '0', exact_bbox_dev_m: '0' }, tolerance).ok, true);
+  assert.equal(compareProduct(near, exact, { curved: 'false', volume_m3: '1', exact_vol_rel: '0', exact_bbox_dev_m: '0' }, tolerance).ok, true);
   const far = { ...exact, volume: exact.volume * (1 + 1e-3) };
-  assert.equal(compareProduct(far, exact, { curved: 'false', exact_vol_rel: '0', exact_bbox_dev_m: '0' }, tolerance).ok, false);
-  assert.equal(compareProduct(far, exact, { curved: 'false', exact_vol_rel: '0.002', exact_bbox_dev_m: '0' }, tolerance).ok, true,
-    'the native comparison already measured this deviation');
+  assert.equal(compareProduct(far, exact, { curved: 'false', volume_m3: '1', exact_vol_rel: '0', exact_bbox_dev_m: '0' }, tolerance).ok, false);
+  assert.equal(compareProduct(far, exact, { curved: 'false', volume_m3: '1', exact_vol_rel: '0.002', exact_bbox_dev_m: '0' }, tolerance).ok, false,
+    'a wide native/exact envelope must not hide CLI transport drift');
   assert.equal(compareProduct(far, exact, { curved: 'true', exact_vol_rel: '0' }, tolerance).skipped, 'curved');
   const shifted = { ...exact, min: exact.min.map(v => v + 1e-3), max: exact.max };
-  assert.equal(compareProduct(shifted, exact, { curved: 'false', exact_vol_rel: '0', exact_bbox_dev_m: '0' }, tolerance).ok, false);
+  assert.equal(compareProduct(shifted, exact, { curved: 'false', volume_m3: '1', exact_vol_rel: '0', exact_bbox_dev_m: '0' }, tolerance).ok, false);
 });
 
 test('malformed OBJ is refused rather than measured', () => {
@@ -53,4 +53,21 @@ test('sourceIdentity maps ids to the type and GlobalId in the STEP source', () =
   assert.deepEqual(rows.get(12), { type: 'IFCWALL', globalId: "3k$ab'c" });
   assert.equal(rows.get(14).globalId, 'gid');
   assert.equal(rows.get(13), undefined, 'non-rooted entities have no GlobalId');
+});
+
+// #8435: a shared native/CLI retained defect is outside a transport check's proof.
+test('#8435 native parity is explicitly not an independent geometry authority', () => {
+  const exact = productMeasures(parseObj(obj(cube('a', 1))).get('a'));
+  const half = { ...exact, volume: 0.5 };
+  const native = { curved: 'false', volume_m3: '0.5', exact_vol_rel: '0.5', exact_bbox_dev_m: '0' };
+  const tolerance = { volumeRelative: 1e-5, bboxMetres: 1e-4 };
+  assert.equal(compareProduct(half, exact, native, tolerance).ok, true, 'shared error is not independently qualified');
+  assert.equal(compareProduct(exact, exact, native, tolerance).ok, false, 'divergence from native still fails');
+  assert.throws(() => compareProduct(half, { ...exact, volume: 0 }, native, tolerance), /positive finite exact/);
+});
+
+test('#8435 every published product requires an exact OBJ counterpart', () => {
+  const exact = parseObj(obj(cube('IfcWall_1', 1)));
+  assert.ok(Math.abs(productMeasures(requireExactProduct(exact, 'IfcWall_1')).volume - 1) < 1e-12);
+  assert.throws(() => requireExactProduct(exact, 'IfcWall_2'), /Published IfcWall_2 is missing from exact OBJ/);
 });

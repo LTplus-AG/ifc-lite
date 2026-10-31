@@ -633,7 +633,7 @@ async function identities(page: Page) {
       return { id: model.id, name: model.name, idOffset: model.idOffset, maxExpressId: model.maxExpressId, loadState: model.loadState,
         summary: model.retainedGeometry, locals: sorted(locals), globals: sorted(meshes.map(mesh => mesh.expressId)),
         foreign, unresolved, typeMismatch,
-        refusedKnown: (model.retainedGeometry?.refused ?? []).every(row => Boolean(entities?.getTypeName(row.expressId))) };
+        refusedKnown: (model.retainedGeometry?.refused ?? []).every(row => entities?.expressId.includes(row.expressId) === true) };
     });
   });
 }

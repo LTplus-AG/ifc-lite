@@ -2,7 +2,7 @@
 // #7955 release scope item 4: the BUILT CLI, run end to end as a child process
 // with the real staged SMLib engine, on models exported by real authoring tools.
 // The retained OBJ is compared with the exact OBJ of the same file, product by
-// product, against the native retained_compare reference. The exact default
+// product, as a CLI/native transport-consistency check (not an independent geometry oracle). The exact default
 // output is asserted unchanged by the retained flag's presence.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { tsv } from './metrics.mjs';
 import { coverageRows } from './coverage.mjs';
-import { parseObj, productMeasures, compareProduct, sourceIdentity } from './real-authoring-support.mjs';
+import { parseObj, productMeasures, compareProduct, requireExactProduct, sourceIdentity } from './real-authoring-support.mjs';
 
 const engine = process.env.IFCLITE_RETAINED_ENGINE;
 // The lane that requires the SDK (geometry-platform cli-retained) sets IFCLITE_REQUIRE_SMLIB: there a missing engine fails the file.
@@ -24,7 +24,7 @@ const tolerances = JSON.parse(await readFile('tests/fixtures/cli-retained/tolera
 // `tool` is asserted against the file itself (IFCAPPLICATION / FILE_NAME), so a
 // fixture that stopped being an authoring-tool export fails here, not silently.
 const AUTHORING_MODELS = [
-  { tool: 'Revit', model: 'rust/geometry/tests/fixtures/issue_098_wall_W.ifc', header: /Autodesk Revit 2022/ },
+  { tool: 'Revit', witness: 'revit-v5c', model: 'rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc', header: /Autodesk Revit 2022/ },
   { tool: 'ArchiCAD', model: 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc', header: /ARCHICAD-64/ },
   { tool: 'Bonsai', model: 'apps/viewer/public/samples/hello-wall.ifc', header: /Bonsai/ },
 ];
@@ -41,7 +41,7 @@ function cli(args, options = {}) {
 }
 const exportObj = (model, out, extra = []) => cli(['export', model, '--format', 'obj', ...extra, '--out', out]);
 
-test('#7955 real authoring-tool models: CLI retained OBJ agrees with the CLI exact OBJ, product by product', {
+test('#7955 real authoring-tool models: CLI retained OBJ preserves native output and its exact-comparison envelope', {
   timeout: 1800000, skip: SKIP,
 }, async t => {
   assert.ok(process.env.IFCLITE_NATIVE_PRODUCTS, 'native products.tsv is required');
@@ -52,7 +52,7 @@ test('#7955 real authoring-tool models: CLI retained OBJ agrees with the CLI exa
   const tools = new Set(), diagnostics = [];
   t.after(() => rm(scratch, { recursive: true, force: true }));
   for (const [index, fixture] of AUTHORING_MODELS.entries()) {
-    const { tool, model } = fixture;
+    const { tool, model, witness = tool.toLowerCase() } = fixture;
     const source = await readFile(model, 'latin1');
     // @source-text-assertion-ok fixture provenance guard (the file must stay an authoring-tool export), not a subject assertion
     assert.match(source.slice(0, 20000) + (source.match(/IFCAPPLICATION\([^;]*;/)?.[0] ?? ''), fixture.header, `${model} is a ${tool} export`);
@@ -106,13 +106,12 @@ test('#7955 real authoring-tool models: CLI retained OBJ agrees with the CLI exa
     assert.deepEqual(parsed.products.map(p => [p.id, p.status === 'published' ? '' : p.code]).sort((a, b) => a[0] - b[0]),
       pinned.map(r => [Number(r.id), r.code ?? '']).sort((a, b) => a[0] - b[0]), `${tool}: CLI outcomes equal the blessed manifest`);
 
-    // Exact vs retained, per product published by both. The bound is the deviation
-    // the native comparison already measured plus the preregistered exactLinear
-    // tolerance and the OBJ's six-decimal quantisation. Curved products are report only.
-    let compared = 0, curved = 0, exactMissing = [];
+    // Every published product must exist in exact OBJ. Native volume is a
+    // transport reference; its exact envelope is NOT an independent geometry oracle.
+    // A defect shared by native and CLI retained output is outside this check's proof.
+    let compared = 0, curved = 0;
     for (const product of published) {
-      const name = `${product.ifcType}_${product.id}`, ours = productMeasures(retainedObjects.get(name)), theirs = exactObjects.get(name);
-      if (!theirs) { exactMissing.push(product.id); continue; }
+      const name = `${product.ifcType}_${product.id}`, ours = productMeasures(retainedObjects.get(name)), theirs = requireExactProduct(exactObjects, name);
       const row = nativeRows.get(product.id);
       assert.ok(row, `${tool}: native reference row for #${product.id}`);
       const verdict = compareProduct(ours, productMeasures(theirs), row, { volumeRelative, bboxMetres });
@@ -121,11 +120,11 @@ test('#7955 real authoring-tool models: CLI retained OBJ agrees with the CLI exa
       assert.ok(verdict.ok, `${tool} #${product.id} ${name}: ${JSON.stringify(verdict)}`);
     }
     assert.ok(compared > 0, `${tool}: at least one linear product was compared with exact`);
-    diagnostics.push({ tool, model, final: !unmet, candidates: parsed.summary.candidates, published: published.length, byCode: parsed.summary.byCode, compared, curvedReportOnly: curved, notInExactObj: exactMissing.length });
+    diagnostics.push({ tool, witness, model, authority: 'native retained transport consistency; not independent geometry correctness', final: !unmet, candidates: parsed.summary.candidates, published: published.length, byCode: parsed.summary.byCode, compared, curvedReportOnly: curved, exactCounterparts: published.length });
   }
   assert.ok(tools.size >= 2, 'at least two authoring tools');
   t.diagnostic(JSON.stringify(diagnostics));
-  for (const result of diagnostics) t.diagnostic(`M2-D cli-real-${result.tool.toLowerCase()}: ${JSON.stringify(result)}`);
+  for (const result of diagnostics) t.diagnostic(`M2-D cli-real-${result.witness}: ${JSON.stringify(result)}`);
 });
 
 for (const { tool, model, header } of ALL_REFUSED) {

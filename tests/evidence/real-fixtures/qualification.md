@@ -15,13 +15,17 @@ GitHub's 100 MiB blob limit. This is a payload-size check, not a performance cla
 | Fixture | Bytes | SHA-256 | Provenance / terms |
 | --- | ---: | --- | --- |
 | SketchUp `apps/viewer/public/samples/building-architecture.ifc` | 225635 | `3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5` | buildingSMART Certification-datasets; CC-BY-4.0, credit buildingSMART International Ltd. Existing pinned evidence: `tests/ai-eval/native/sketchup-licence-provenance.json`. |
-| Bonsai `apps/viewer/public/samples/hello-wall.ifc` | 79592 | `0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014` | Byte-identical to [IFC5 example](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/examples/Hello%20Wall/hello-wall.ifc). The [README](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/README.md) permits educational/testing use and asks not to create derivatives. No SPDX model licence is declared; the viewer MIT licence is not applied to the model. This PR uses unmodified bytes. |
+| Bonsai `apps/viewer/public/samples/hello-wall.ifc` | 79592 | `0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014` | Byte-identical to [IFC5 example](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/examples/Hello%20Wall/hello-wall.ifc). The [README](https://github.com/buildingSMART/IFC5-development/blob/1a63082ada967c683cfacee2005f8f749c8e1b79/README.md) permits educational/testing use and asks not to create derivatives. No SPDX model licence is declared; the viewer MIT licence is not applied to the model. The tests generate exact/retained OBJ and viewer-derived artifacts. Permission for those derivatives has not been established; maintainer decision remains open. |
 | Revit `rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc` | 64382 | `b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597` | Existing extracted fixture introduced in `84cd5aa3b5`, from ara3d/web-ifc ISSUE_098, exporter Revit 2022. The [ara3d data manifest](https://github.com/ara3d/3d-format-shootout/blob/6aafe2dc7c26f4f972773cacef9ca81f9f39085e/data/manifest.json) directs users to check per-file rights before redistribution. A model-specific licence grant has not been established by this review. Do not infer one from ara3d's MIT code licence. |
 
 No new completed human privacy/licence approval is asserted. The existing
 SketchUp record explicitly leaves those approvals pending. Revit model rights
 remain an open, pre-existing limitation for the maintainer; this PR does not
-resolve or expand that existing distribution.
+resolve that existing distribution. Existing tracked IFC bytes do not establish
+permission for generated derivatives. **Maintainer decision required:** confirm
+whether the Bonsai terms cover generated OBJ/viewer artifacts (with recorded
+permission), or remove/replace derivative-producing Bonsai scenarios. No such
+permission or human privacy/licence approval is claimed by this agent.
 
 ## Measured coverage after merging main
 
@@ -65,7 +69,7 @@ witnesses green. Available gates pass. Skipped: source-text assertions
 Fresh native re-bless: automatic request
 `auto-4ebff5cd14e04c56991fd68edb231656`, worker job
 `9dc22272-baf0-421a-ba85-80c98c4c6e15`; original receipt under
-`/home/louistrue/build-workers/worker-state/jobs/9dc22272-baf0-421a-ba85-80c98c4c6e15/receipt.json`.
+`worker-state/jobs/9dc22272-baf0-421a-ba85-80c98c4c6e15/receipt.json`.
 It targets merged source `14a8e45b55`, builds a fresh native worker and uses a
 private Cargo target that its script deletes afterwards. Exit 0; immutable evidence publication verified. CMake's source directory and
 every Cargo Compiling path name that checkout. Worker SHA-256:
@@ -134,3 +138,18 @@ mutation and the original helper oracle both report OBSERVED. See
 `../real-fixture-witnesses/README.md` for the filtering invariant, explicit skips
 actual full-log, grep, test-level shard and CLI-filter validation receipts. This follow-up changes no
 fixture bytes, counts, tolerances or runtime production source.
+
+## Comparison proof after review
+
+The Revit built-CLI scenario now selects the registered V5C fixture and requires
+`cli-real-revit-v5c`; the old wall-W witness cannot satisfy it. Every retained
+publication must have an exact OBJ counterpart, including curved products;
+absence is an assertion failure, not a diagnostic skip.
+
+The geometric metrics are explicitly a CLI/native transport-consistency check.
+Linear CLI volume must match native retained volume under the frozen linear
+allowance plus OBJ quantisation; its additional exact-side volume/bbox envelope
+is native-derived. This cannot detect a defect shared by native and CLI retained
+geometry, and is not independent proof of geometric correctness. Earlier
+validation.json results are historical runs on the named source (including the
+old wall-W selection); final labelled native-adapter CI must qualify V5C.

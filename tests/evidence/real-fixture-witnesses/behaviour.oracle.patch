@@ -1,11 +1,7 @@
 --- a/scripts/check-retained-witnesses.mjs
 +++ b/scripts/check-retained-witnesses.mjs
-@@ -39,7 +39,7 @@
-     const payload = JSON.parse(line.slice(marker.length + 1));
-     return payload !== null && typeof payload === 'object';
+@@ -54,3 +54,3 @@
    }));
--  if (false) throw new Error(`Missing ${lane} witnesses in ${log}:\n${missing.map(w => `${w.marker} (${w.path})`).join('\n')}`);
-+  if (missing.length) throw new Error(`Missing ${lane} witnesses in ${log}:\n${missing.map(w => `${w.marker} (${w.path})`).join('\n')}`);
+-  if (false) throw new Error(`Missing ${lane} witnesses in ${log}:\n${missing.map(w => `${w.marker} (${w.path})`).join('\n')}\nRemedy: run the full ${lane} lane without grep/shard filtering; fix failed or skipped scenarios and capture their post-assertion records. Keep the registrations.`);
++  if (missing.length) throw new Error(`Missing ${lane} witnesses in ${log}:\n${missing.map(w => `${w.marker} (${w.path})`).join('\n')}\nRemedy: run the full ${lane} lane without grep/shard filtering; fix failed or skipped scenarios and capture their post-assertion records. Keep the registrations.`);
    return required.length;
- }
- 

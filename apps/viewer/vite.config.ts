@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { viewerAliases } from './vite-aliases';
-import { legacyManualChunk } from './vite-chunks';
+import { legacyManualChunk, tslibChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
@@ -346,6 +346,7 @@ export default defineConfig(({ mode }) => {
               includeDependenciesRecursively: false,
               test: /\/packages\/ifcx\/src\/(index|imported-[^/]*|geometry-extractor|pointcloud-extractor|generated\/[^/]*)\.(ts|js)$/,
             },
+            tslibChunkGroup,
             {
               name: legacyManualChunk,
               priority: 0,

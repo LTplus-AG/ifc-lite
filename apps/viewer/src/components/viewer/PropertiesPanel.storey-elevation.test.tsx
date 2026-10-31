@@ -34,6 +34,10 @@ import { buildTreeData, buildUnifiedStoreys, elevationKey } from './hierarchy/tr
 // HierarchyPanel.federation.test.tsx).
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 400 });
+// @tanstack/virtual-core 3.19+ reads the scroll viewport from clientWidth/clientHeight
+// (rows are still measured with offsetHeight), so stub both channels.
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 400 });
 
 const STOREY_ID = 41;
 const GROUND_ID = 71;

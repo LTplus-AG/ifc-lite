@@ -21,6 +21,10 @@ import { click, render, type, waitFor } from './render.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
+// @tanstack/virtual-core 3.19+ reads the scroll viewport from clientWidth/clientHeight
+// (rows are still measured with offsetHeight), so stub both channels.
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { get: () => 800, configurable: true });
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { get: () => 600, configurable: true });
 
 const bodyButton = (name: string): HTMLButtonElement | undefined =>
   [...document.body.querySelectorAll('button')].find((button) => button.textContent?.trim() === name || button.getAttribute('aria-label') === name);

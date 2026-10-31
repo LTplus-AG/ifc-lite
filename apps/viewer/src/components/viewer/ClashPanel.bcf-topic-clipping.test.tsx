@@ -39,6 +39,10 @@ import { Toaster } from '@/components/ui/toast.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 400 });
+// @tanstack/virtual-core 3.19+ reads the scroll viewport from clientWidth/clientHeight
+// (rows are still measured with offsetHeight), so stub both channels.
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 400 });
 
 const BOUNDS = { min: { x: -10, y: 0, z: -8 }, max: { x: 10, y: 12, z: 8 } };
 

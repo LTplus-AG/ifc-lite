@@ -1,5 +1,14 @@
 # @ifc-lite/export
 
+## 4.13.3
+
+### Patch Changes
+
+- [#8349](https://github.com/LTplus-AG/ifc-lite/pull/8349) [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243) Thanks [@louistrue](https://github.com/louistrue)! - Scaled map-conversion normalization (the Cesium ion compatibility export) now accepts a bare `IfcTypeProduct.RepresentationMaps` reference (`#n`) and wraps that map exactly as the list form `(#n)`, matching how geometry and EntityRows already read it. It used to refuse the whole normalization with "type RepresentationMaps is not a list". Typed wrappers such as `IFCREPRESENTATIONMAP(#n)` and lists with non-reference members are still refused atomically, with no patches.
+- Updated dependencies [[`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0), [`f7330db`](https://github.com/LTplus-AG/ifc-lite/commit/f7330db71ccf3b3bce6cf690fe17b2660827c650)]:
+  - @ifc-lite/geometry@8.1.0
+  - @ifc-lite/parser@9.9.0
+
 ## 4.13.2
 
 ### Patch Changes

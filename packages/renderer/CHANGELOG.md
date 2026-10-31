@@ -1,5 +1,18 @@
 # @ifc-lite/renderer
 
+## 6.6.0
+
+### Minor Changes
+
+- [#8356](https://github.com/LTplus-AG/ifc-lite/pull/8356) [`12f0836`](https://github.com/LTplus-AG/ifc-lite/commit/12f0836590ecdd82ece835f216589352b64f3fd2) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.isTweening()`: true from the moment a timed pose tween (preset view, frame, home) starts until `update()` has applied its final pose, independent of whether a frame has run since. The viewer exposes it as `cameraCallbacks.isCameraTweening` so hosts and tests can wait on the tween instead of guessing from pose reads.
+
+- [#8440](https://github.com/LTplus-AG/ifc-lite/pull/8440) [`d530caf`](https://github.com/LTplus-AG/ifc-lite/commit/d530caf1f06122727051b7b2ff12754a70b3f4fd) Thanks [@louistrue](https://github.com/louistrue)! - Opaque draws that nothing can clip or hide now use a fragment shader without `discard`, so the GPU can reject hidden fragments before shading them. Opaque batches draw nearest first, and the object-id target is not written on frames where edges are off. The GPU picker allocates its targets on the first GPU pick instead of at startup, and selection-outline targets are freed after a run of frames with nothing selected or hovered. New `Renderer.getRenderTargetBytes()` reports the render-target memory the renderer holds.
+
+### Patch Changes
+
+- Updated dependencies [[`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0)]:
+  - @ifc-lite/geometry@8.1.0
+
 ## 6.5.2
 
 ### Patch Changes

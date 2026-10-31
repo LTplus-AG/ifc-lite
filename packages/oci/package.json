@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/oci",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OCI distribution client (tags, manifests, digest-verified blobs, blob and manifest push) with an injected fetch, for Node and browsers",
   "type": "module",
   "main": "./dist/index.js",

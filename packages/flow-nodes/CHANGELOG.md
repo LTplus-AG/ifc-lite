@@ -1,5 +1,15 @@
 # @ifc-lite/flow-nodes
 
+## 0.12.1
+
+### Patch Changes
+
+- [#8373](https://github.com/LTplus-AG/ifc-lite/pull/8373) [`29f24db`](https://github.com/LTplus-AG/ifc-lite/commit/29f24dbb5d4877bc8d2efaae4fa3b9e618407dba) Thanks [@petruconduraru](https://github.com/petruconduraru)! - `readXlsxTable` and `writeXlsxTable` load `exceljs` when they are called instead of when the package is imported, so importing `@ifc-lite/flow-nodes` no longer runs all of `exceljs`.
+- Updated dependencies [[`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243)]:
+  - @ifc-lite/export@4.13.3
+  - @ifc-lite/ids@3.4.4
+  - @ifc-lite/ids-authoring@0.3.4
+
 ## 0.12.0
 
 ### Minor Changes

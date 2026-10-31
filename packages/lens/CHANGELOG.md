@@ -1,5 +1,12 @@
 # @ifc-lite/lens
 
+## 2.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`36c3379`](https://github.com/LTplus-AG/ifc-lite/commit/36c3379514db92ff58a73cf66bdb7b6399e9bf87), [`2b80af1`](https://github.com/LTplus-AG/ifc-lite/commit/2b80af152da896757b773483275cda569008ef80)]:
+  - @ifc-lite/rules@0.8.0
+
 ## 2.2.0
 
 ### Minor Changes

@@ -998,6 +998,11 @@ jobs:
           # Keep the API; weaken fingerprint identity to key equality instead.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8190: the footprint snap module is new against main until #8394
+          # lands, so a whole-change revert deletes it with its tests. Keep it;
+          # drop only the T-junction pass: the slab #12381 seam must turn RED.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8190/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8190/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/8190/behaviour.oracle.patch --test rust/processing/tests/issue_8190_slab_flush_openings.rs)
           # #8308: whole-file inversion of operator.rs also drops the new test
           # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8308/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8308/behaviour.oracle.patch'; then

@@ -162,6 +162,7 @@ fn from_source_on_real_models_agrees_and_holds_less_heap() {
     const MESHED: &[&str] = &["ara3d/AC20-FZK-Haus.ifc", "ara3d/duplex.ifc", "ara3d/advanced_model.ifc"];
     const SCANNED: &[&str] = &[
         "ara3d/AC20-FZK-Haus.ifc",
+        "ara3d/duplex.ifc",
         "ara3d/advanced_model.ifc",
         "ara3d/schependomlaan.ifc",
         "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",

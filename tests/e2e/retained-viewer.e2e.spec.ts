@@ -168,6 +168,66 @@ async function keepFrame(name: string, frame: FrameWitness) {
   }
 }
 
+// ---- #7955 item 4: authored metallic/roughness parity and viewer export, in memory so no fixture file changes ----
+/** The pixel scene with two authored finishes, hand-derived from IfcSurfaceStyleRendering's attributes (never read back
+ * from the code under test): #29 SpecularHighlight = IfcSpecularRoughness(0.125) wins and ReflectanceMethod METAL gives
+ * metallic 1; #39 (a material-defined style) SpecularColour 0.75 gives roughness 1 - 0.75 = 0.25 and no metal evidence. */
+const FINISHES: Record<number, { metallic?: number; roughness: number }> = { 29: { metallic: 1, roughness: 0.125 }, 39: { roughness: 0.25 } };
+function finishPixel(): string {
+  const source = readFileSync(PIXEL, 'utf8');
+  const metal = '#21=IFCSURFACESTYLERENDERING(#20,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.5),IFCSPECULARROUGHNESS(0.125),.METAL.);';
+  const matte = '#42=IFCSURFACESTYLERENDERING(#41,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);';
+  const finished = source.replace('#21=IFCSURFACESTYLERENDERING(#20,0.,$,$,$,$,$,$,.NOTDEFINED.);', metal)
+    .replace('#42=IFCSURFACESTYLERENDERING(#41,0.,$,$,$,$,$,$,.NOTDEFINED.);', matte);
+  expect(finished.includes(metal) && finished.includes(matte), 'both authored finishes are in the fixture').toBe(true);
+  return finished;
+}
+/** `finishPixel()` plus a third product the retained kernel refuses (an image texture, `appearance_unsupported` by user
+ * ruling) and the exact engine meshes: the product that tells an export of retained geometry from a re-mesh of the file. */
+const TEXTURED_ID = 1028;
+function finishPixelWithTexture(): string {
+  const texture = [
+    '#1016=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));',
+    '#1017=IFCTRIANGULATEDFACESET(#1016,$,.T.,((1,3,2),(1,2,4),(1,4,3),(2,3,4)),$);',
+    "#1018=IFCIMAGETEXTURE(.T.,.F.,$,$,$,'checker.png');",
+    '#1019=IFCTEXTUREVERTEXLIST(((0.,0.),(1.,0.),(0.,1.),(1.,1.)));',
+    '#1020=IFCINDEXEDTRIANGLETEXTUREMAP((#1018),#1017,#1019,((2,1,4),(2,4,3),(2,3,1),(4,1,3)));',
+    '#1021=IFCCOLOURRGB($,1.,1.,1.);', '#1022=IFCSURFACESTYLESHADING(#1021,0.);', '#1023=IFCSURFACESTYLEWITHTEXTURES((#1018));',
+    "#1024=IFCSURFACESTYLE('SYNTHETIC',.BOTH.,(#1022,#1023));", '#1025=IFCSTYLEDITEM(#1017,(#1024),$);',
+    "#1026=IFCSHAPEREPRESENTATION(#4,'Body','Tessellation',(#1017));", '#1027=IFCPRODUCTDEFINITIONSHAPE($,$,(#1026));',
+    "#1028=IFCBUILDINGELEMENTPROXY('3M$UnHTcrSNe_nAyqDWrRK',$,'image-tetrahedron',$,$,#9,#1027,$,.NOTDEFINED.);",
+    "#1029=IFCRELCONTAINEDINSPATIALSTRUCTURE('0IJRzxlLzRFeHqx65H1CtX',$,$,$,(#1028),#12);",
+  ].join('\n') + '\n';
+  const source = finishPixel();
+  const grafted = source.replace('ENDSEC;\nEND-ISO', `${texture}ENDSEC;\nEND-ISO`);
+  expect(grafted, 'the fixture ends with a single DATA section').not.toBe(source);
+  return grafted;
+}
+const asFile = (name: string, text: string) => ({ name, mimeType: 'application/ifc', buffer: Buffer.from(text) });
+/** The glTF JSON chunk of a GLB. */
+function glbJson(glb: Buffer): { meshes?: unknown[]; nodes?: { mesh?: number }[]; materials?: { pbrMetallicRoughness?: { metallicFactor?: number; roughnessFactor?: number } }[] } {
+  expect(glb.readUInt32LE(0), 'glTF magic').toBe(0x46546c67);
+  const length = glb.readUInt32LE(12);
+  expect(glb.readUInt32LE(16), 'first chunk is JSON').toBe(0x4e4f534a);
+  return JSON.parse(glb.subarray(20, 20 + length).toString('utf8'));
+}
+/** Open a ribbon export dialog the way a user does, and return it. */
+async function openExport(page: Page, id: string) {
+  await page.getByRole('tab', { name: 'File', exact: true }).click();
+  await page.locator(`[data-export-command="${id}"]`).click();
+  const dialog = page.locator('[data-export-dialog-shell]');
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+/** Press Export in an open dialog and return the downloaded bytes. */
+async function download(page: Page, button: string | RegExp): Promise<{ name: string; bytes: Buffer }> {
+  const dialog = page.locator('[data-export-dialog-shell]');
+  const [file] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), dialog.getByRole('button', { name: button, exact: typeof button === 'string' }).click()]);
+  const path = await file.path();
+  expect(path, 'the downloaded file exists').toBeTruthy();
+  return { name: file.suggestedFilename(), bytes: readFileSync(path!) };
+}
+
 test.describe('retained viewer acceptance', () => {
   test.skip(!(engine && existsSync(join(engine, 'engine-manifest.json'))), SKIP);
 
@@ -590,6 +650,171 @@ test.describe('retained viewer acceptance', () => {
     expect(result.output).toContain('Retained export requires --retained-engine DIR or IFCLITE_RETAINED_ENGINE');
     expect(result.output).not.toMatch(/Local:\s+http/);
     await record('missing-engine', result);
+  });
+
+  // M11-A follow-up (#7955 item 4): the same authored metallic/roughness through both kernels. The oracle is the IFC
+  // attribute semantics written in `FINISHES`; neither kernel's own output is the reference for the other.
+  const storedMaterials = (page: Page) => page.evaluate(() => {
+    const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+    const model = [...state.models.values()][0];
+    return (model?.geometryResult?.meshes ?? []).map(m => ({ id: state.resolveGlobalIdFromModels(m.expressId)?.expressId as number,
+      metallic: m.material?.metallic, roughness: m.material?.roughness }));
+  });
+  test('M11-A: retained and exact carry the same authored metallic/roughness on flat products', async ({ page }) => {
+    const observed: Record<string, { id: number; metallic?: number; roughness?: number }[]> = {};
+    for (const kernel of ['exact', 'retained'] as const) {
+      await setup(page, kernel);
+      await page.locator('#file-input-open').setInputFiles(asFile('finish-pixel.ifc', finishPixel()));
+      await complete(page, kernel === 'retained');
+      const result = await snapshot(page);
+      expect(result.error, `${kernel} load`).toBeNull();
+      if (kernel === 'retained') expect(result.summary?.refused).toEqual([]);
+      observed[kernel] = (await storedMaterials(page)).sort((a, b) => a.id - b.id);
+      expect(observed[kernel].map(m => m.id), `${kernel} products`).toEqual([29, 39]);
+      for (const mesh of observed[kernel]) {
+        const authoredFinish = FINISHES[mesh.id];
+        expect(mesh.roughness, `${kernel} #${mesh.id} roughness`).toBeCloseTo(authoredFinish.roughness, 6);
+        expect(mesh.metallic, `${kernel} #${mesh.id} metallic`).toBe(authoredFinish.metallic);
+      }
+    }
+    expect(observed.retained, 'retained and exact agree product by product').toEqual(observed.exact);
+    await record('finish-flat', observed);
+  });
+
+  test('M11-A x M11-I: every instanced occurrence carries its own authored metallic/roughness in both kernels', async ({ page }) => {
+    // Even occurrences: metal with roughness 0.125; odd: SpecularColour 0.75 -> roughness 0.25, no metal evidence.
+    const source = readFileSync(MAPPED, 'utf8');
+    const styles = '#20001=IFCCOLOURRGB($,0.9,0.1,0.1);#20002=IFCSURFACESTYLERENDERING(#20001,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.5),IFCSPECULARROUGHNESS(0.125),.METAL.);'
+      + '#20003=IFCSURFACESTYLE($,.BOTH.,(#20002));#20004=IFCCOLOURRGB($,0.1,0.1,0.9);'
+      + '#20005=IFCSURFACESTYLERENDERING(#20004,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);#20006=IFCSURFACESTYLE($,.BOTH.,(#20005));\n'
+      + Array.from({ length: 64 }, (_, i) => `#${20010 + i}=IFCSTYLEDITEM(#${25 + 7 * i},(#${i % 2 === 0 ? 20003 : 20006}),$);`).join('\n') + '\n';
+    const styled = source.replace('ENDSEC;\nEND-ISO', `${styles}ENDSEC;\nEND-ISO`);
+    expect(styled, 'the fixture ends with a single DATA section').not.toBe(source);
+    const seen: Record<string, { shard: number; flat: number; materials: Record<number, { metallic?: number; roughness?: number }> }> = {};
+    for (const kernel of ['exact', 'retained'] as const) {
+      await setup(page, kernel);
+      await page.evaluate(() => {
+        const globals = globalThis as typeof globalThis & ViewerGlobals & { __m11Finish?: Record<number, { metallic?: number; roughness?: number }>; __m11Shards?: number };
+        const done = new Set<ArrayBuffer>();
+        globals.__m11Finish = {}; globals.__m11Shards = 0;
+        globals.__ifc_lite_viewer_store__.subscribe(state => {
+          for (const { bytes } of state.pendingInstancedShards ?? []) {
+            if (done.has(bytes)) continue;
+            done.add(bytes);
+            globals.__m11Shards!++;
+            const wire = new DataView(bytes), templates = wire.getUint32(8, true), instances = wire.getUint32(12, true);
+            const stride = wire.getUint32(4, true) >= 2 ? wire.getUint32(28, true) || 88 : 88;
+            for (let i = 0; i < instances; i++) {
+              const record = 32 + templates * 48 + i * stride;
+              // Trailing field 2 (stride >= 100): metallic, roughness at +92, +96; NaN where unauthored.
+              const metallic = stride >= 100 ? wire.getFloat32(record + 92, true) : NaN, roughness = stride >= 100 ? wire.getFloat32(record + 96, true) : NaN;
+              globals.__m11Finish![wire.getUint32(record + 4, true)] = {
+                ...(Number.isFinite(metallic) ? { metallic } : {}), ...(Number.isFinite(roughness) ? { roughness } : {}) };
+            }
+          }
+        });
+      });
+      await page.locator('#file-input-open').setInputFiles(asFile('mapped-finishes.ifc', styled));
+      await complete(page, kernel === 'retained');
+      const result = await snapshot(page);
+      expect(result.error, `${kernel} load`).toBeNull();
+      const { shards, shard, flat } = await page.evaluate(() => {
+        const globals = globalThis as typeof globalThis & ViewerGlobals & { __m11Finish: Record<number, { metallic?: number; roughness?: number }>; __m11Shards: number };
+        const state = globals.__ifc_lite_viewer_store__.getState();
+        const model = [...state.models.values()][0];
+        const flatMaterials: Record<number, { metallic?: number; roughness?: number }> = {};
+        for (const m of model?.geometryResult?.meshes ?? []) {
+          const id = state.resolveGlobalIdFromModels(m.expressId)?.expressId as number;
+          flatMaterials[id] = { ...(m.material?.metallic !== undefined ? { metallic: m.material.metallic } : {}),
+            ...(m.material?.roughness !== undefined ? { roughness: m.material.roughness } : {}) };
+        }
+        return { shards: globals.__m11Shards, shard: globals.__m11Finish, flat: flatMaterials };
+      });
+      // A product is carried by a shard or by a flat mesh; either way it must carry the finish it was authored with.
+      const materials = { ...flat, ...shard };
+      seen[kernel] = { shard: Object.keys(shard).length, flat: Object.keys(flat).length, materials };
+      for (let i = 0; i < 64; i++) {
+        const id = 31 + 7 * i;
+        const authoredFinish = i % 2 === 0 ? { metallic: 1, roughness: 0.125 } : { roughness: 0.25 };
+        expect(materials[id], `${kernel} occurrence #${id} carries a finish (${shards} shards)`).toBeDefined();
+        expect(materials[id].roughness, `${kernel} #${id} roughness`).toBeCloseTo(authoredFinish.roughness, 6);
+        expect(materials[id].metallic, `${kernel} #${id} metallic`).toBe(authoredFinish.metallic);
+      }
+    }
+    expect(seen.retained.shard, 'the retained run instanced these occurrences').toBeGreaterThan(0);
+    await record('finish-instanced', { exactShardOccurrences: seen.exact.shard, exactFlat: seen.exact.flat,
+      retainedShardOccurrences: seen.retained.shard, retainedFlat: seen.retained.flat });
+  });
+
+  // Viewer-side export (#7955 item 4c): the retained model exports what the viewer holds, never the exact engine's
+  // re-mesh of its file, and the exact-only formats refuse in words instead of exporting different geometry.
+  test('export: a retained model\'s GLB is its retained geometry (the refused product is absent), the exact control has it', async ({ page }) => {
+    const text = finishPixelWithTexture();
+    const nodesWithMesh = (glb: Buffer) => (glbJson(glb).nodes ?? []).filter(node => node.mesh !== undefined).length;
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await complete(page, true);
+    const loaded = await snapshot(page);
+    expect(loaded.error).toBeNull();
+    expect(loaded.summary?.published).toBe(2);
+    expect(loaded.summary?.refused.map(r => ({ id: r.expressId, code: r.code }))).toEqual([{ id: TEXTURED_ID, code: 'appearance_unsupported' }]);
+    await openExport(page, 'glb');
+    const retained = await download(page, 'Export');
+    const retainedJson = glbJson(retained.bytes);
+    const finishes = (retainedJson.materials ?? []).map(m => m.pbrMetallicRoughness ?? {});
+    expect(finishes.some(f => f.metallicFactor === 1 && Math.abs((f.roughnessFactor ?? -1) - 0.125) < 1e-6), 'the metal finish is in the retained GLB').toBe(true);
+    expect(finishes.some(f => f.metallicFactor !== 1 && Math.abs((f.roughnessFactor ?? -1) - 0.25) < 1e-6), 'the matte finish is in the retained GLB').toBe(true);
+    const retainedNodes = nodesWithMesh(retained.bytes);
+
+    await setup(page, 'exact');
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await complete(page, false);
+    await openExport(page, 'glb');
+    const exact = await download(page, 'Export');
+    const exactNodes = nodesWithMesh(exact.bytes);
+    expect(retainedNodes, 'retained GLB: the two published products, not the refused textured one').toBe(2);
+    expect(exactNodes, 'exact control GLB re-meshes the file and includes the textured product').toBe(3);
+    await record('export-glb', { retainedNodes, exactNodes, retainedBytes: retained.bytes.length, exactBytes: exact.bytes.length });
+  });
+
+  test('export: USD and energy models of a retained model refuse in words, and the exact control exports USD', async ({ page }) => {
+    const text = finishPixelWithTexture();
+    const downloads: string[] = [];
+    page.on('download', file => downloads.push(file.suggestedFilename()));
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await complete(page, true);
+    for (const [id, button, format] of [['usd', /^Export$/, 'USD'], ['energy', /^Export HBJSON$/, 'HBJSON']] as const) {
+      const dialog = await openExport(page, id);
+      await dialog.getByRole('button', { name: button }).click();
+      await expect(dialog).toContainText(`${format} export rebuilds its geometry from the file with the exact engine`);
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+    }
+    expect(downloads, 'a refused export downloads nothing').toEqual([]);
+
+    await setup(page, 'exact');
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', text));
+    await complete(page, false);
+    await openExport(page, 'usd');
+    const usd = await download(page, /^Export$/);
+    expect(usd.bytes.subarray(0, 5).toString('utf8'), 'the exact control exports a USD stage').toBe('#usda');
+    await record('export-refusals', { refused: ['usd', 'hbjson'], exactUsdBytes: usd.bytes.length });
+  });
+
+  test('export: the formats that need no geometry kernel still export from a retained model (IFC, JSON)', async ({ page }) => {
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(asFile('finish-pixel.ifc', finishPixel()));
+    await complete(page, true);
+    await openExport(page, 'ifc');
+    const ifc = await download(page, /^Export$/);
+    expect(ifc.bytes.subarray(0, 13).toString('utf8')).toBe('ISO-10303-21;');
+    expect(ifc.bytes.toString('utf8')).toContain('IFCSPECULARROUGHNESS');
+    await page.keyboard.press('Escape');
+    const [json] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.locator('[data-export-command="json"]').click()]);
+    const parsed = JSON.parse(readFileSync((await json.path())!, 'utf8'));
+    expect(JSON.stringify(parsed)).toContain('pixel-red');
+    await record('export-data-formats', { ifcBytes: ifc.bytes.length, json: json.suggestedFilename() });
   });
 });
 

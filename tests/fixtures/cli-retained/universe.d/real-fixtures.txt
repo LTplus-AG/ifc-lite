@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MPL-2.0
+# Models from real authoring tools beyond the base Revit/ArchiCAD/Tekla set (#7955 release scope item 4).
+# SketchUp 2024 (IFC-manager for SketchUp 5.3.3)
+apps/viewer/public/samples/building-architecture.ifc
+# Revit 2022 exporter 22.0.2.392 (sibling of issue_098_wall_W)
+rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc
+# Bonsai 0.8.0 / IfcOpenShell 0.8.0
+apps/viewer/public/samples/hello-wall.ifc

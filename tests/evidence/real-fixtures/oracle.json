@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/retained-compare/real-authoring-support.mjs",
+  "mutation": "tests/evidence/real-fixtures/behaviour.oracle.patch",
+  "test": "scripts/retained-compare/real-authoring-support.test.mjs",
+  "why": "Permissive native-consistency verdicts, missing exact OBJ counterparts and replacement of repeated OBJ blocks must fail numeric, absence and concatenation witnesses."
+}

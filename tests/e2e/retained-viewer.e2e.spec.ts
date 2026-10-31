@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // #7955 M2-D: real built viewer, real host Worker and real staged SDK.
 import { test, expect, type Page } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -37,8 +37,12 @@ interface ViewerGlobals {
   __m11Fi?: { shards: number; occurrenceIds: number[] };
   __m11I?: { draws: number; shards: { templates: number; instances: number; triangles: number }[] };
 }
-const expected = (model: string) => readFileSync('tests/manifests/cli-retained-coverage.tsv', 'utf8')
-  .split(/\r?\n/).map(line => line.split('\t')).filter(row => row[0] === model)
+// The base manifest plus every per-slice fragment: a model belongs to exactly one of them.
+const COVERAGE_FRAGMENTS = 'tests/manifests/cli-retained-coverage.d';
+const coverageFiles = () => ['tests/manifests/cli-retained-coverage.tsv',
+  ...readdirSync(COVERAGE_FRAGMENTS).filter(name => name.endsWith('.tsv')).sort().map(name => `${COVERAGE_FRAGMENTS}/${name}`)];
+const expected = (model: string) => coverageFiles().flatMap(path => readFileSync(path, 'utf8').split(/\r?\n/))
+  .map(line => line.split('\t')).filter(row => row[0] === model)
   .map(([, id, status, code]) => ({ id: Number(id), status, code })).sort((a, b) => a.id - b.id);
 
 async function setup(page: Page, kernel?: 'retained' | 'exact') {
@@ -590,6 +594,313 @@ test.describe('retained viewer acceptance', () => {
     expect(result.output).toContain('Retained export requires --retained-engine DIR or IFCLITE_RETAINED_ENGINE');
     expect(result.output).not.toMatch(/Local:\s+http/);
     await record('missing-engine', result);
+  });
+});
+
+// #7955 release scope item 4: real authoring-tool exports, and model/entity identity
+// where the retained kernel meets the federation registry. Retained geometry is one
+// model at a time by design (M2 §2.1): a federated add is refused in BOTH directions,
+// so these tests assert that refusal leaves the open model's identity intact, that a
+// Retry builds a correct exact federation, and that a retained primary load replaces
+// a federation completely.
+const ARCHICAD = 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc';
+const SKETCHUP = 'apps/viewer/public/samples/building-architecture.ifc';
+const BONSAI = 'apps/viewer/public/samples/hello-wall.ifc';
+const REAL_MODELS = [
+  { tool: 'ArchiCAD', file: ARCHICAD, header: /ARCHICAD-64/ },
+  { tool: 'Bonsai', file: BONSAI, header: /Bonsai/ },
+];
+const baseName = (path: string) => path.split('/').at(-1)!;
+const SDK_REQUEST = /\/smlib\/|pkg-retained|\/retained-engine\//;
+
+/** Flat-mesh identity checks; shard-only retained publication is exercised by the M11-I tests above. */
+async function identities(page: Page) {
+  return page.evaluate(() => {
+    const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+    return [...state.models.values()].map(model => {
+      const entities = model.ifcDataStore?.entities;
+      const meshes = model.geometryResult?.meshes ?? [];
+      const locals = new Set<number>(), foreign: number[] = [], unresolved: number[] = [], typeMismatch: number[] = [];
+      for (const mesh of meshes) {
+        const hit = state.resolveGlobalIdFromModels(mesh.expressId);
+        if (!hit) { unresolved.push(mesh.expressId); continue; }
+        if (hit.modelId !== model.id) { foreign.push(mesh.expressId); continue; }
+        locals.add(hit.expressId);
+        const type = entities?.getTypeName(hit.expressId);
+        if (mesh.ifcType && type && mesh.ifcType.toLowerCase() !== type.toLowerCase()) typeMismatch.push(hit.expressId);
+      }
+      const sorted = (values: Iterable<number>) => [...new Set(values)].sort((a, b) => a - b);
+      return { id: model.id, name: model.name, idOffset: model.idOffset, maxExpressId: model.maxExpressId, loadState: model.loadState,
+        summary: model.retainedGeometry, locals: sorted(locals), globals: sorted(meshes.map(mesh => mesh.expressId)),
+        foreign, unresolved, typeMismatch,
+        refusedKnown: (model.retainedGeometry?.refused ?? []).every(row => entities?.expressId.includes(row.expressId) === true) };
+    });
+  });
+}
+type Identity = Awaited<ReturnType<typeof identities>>[number];
+/** What must not move when a refused load leaves a model open. */
+const stable = ({ id, name, idOffset, maxExpressId, locals, globals }: Identity) => ({ id, name, idOffset, maxExpressId, locals, globals });
+
+async function completeModels(page: Page, names: string[], retained: boolean) {
+  try {
+    await page.waitForFunction(({ names, retained }) => {
+      const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+      const models = [...state.models.values()];
+      // Same settle rule as the other multi-model specs: an exact model's loadState is not the signal.
+      return !state.loading && !state.geometryStreamingActive && models.length === names.length && names.every(name => {
+        const model = models.find(candidate => candidate.name === name);
+        return model && model.loadState !== 'error' && (model.geometryResult?.meshes.length ?? 0) + (model.retainedGeometry?.refused.length ?? 0) > 0
+          && (!retained || (model.retainedGeometry && model.retainedGeometry.completeness !== 'running'));
+      });
+    }, { names, retained }, { timeout: 90_000 });
+  } catch (error) {
+    const state = await page.evaluate(() => {
+      const store = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+      return { loading: store.loading, streaming: store.geometryStreamingActive, error: store.error,
+        models: [...store.models.values()].map(m => ({ name: m.name, loadState: m.loadState, meshes: m.geometryResult?.meshes.length ?? null,
+          completeness: m.retainedGeometry?.completeness })) };
+    });
+    throw new Error(`models ${JSON.stringify(names)} did not settle: ${JSON.stringify(state)}`, { cause: error });
+  }
+}
+async function chooseRetained(page: Page) {
+  await page.evaluate(() => {
+    sessionStorage.setItem('ifc-lite:geometry-kernel', 'retained');
+    history.replaceState(null, '', '/?kernel=retained&perfTrace=1');
+  });
+}
+/** Select through the canonical global id; useModelSelection derives the model-aware ref. */
+async function selectGlobal(page: Page, globalId: number, expectedRef: { modelId: string; expressId: number }) {
+  await page.evaluate(id => (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState().setSelectedEntityId(id), globalId);
+  await page.waitForFunction(({ globalId, expectedRef }) => {
+    const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+    return state.selectedEntityId === globalId && state.selectedEntity?.modelId === expectedRef.modelId
+      && state.selectedEntity?.expressId === expectedRef.expressId;
+  }, { globalId, expectedRef });
+}
+const selection = (page: Page) => page.evaluate(() => {
+  const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+  return { global: state.selectedEntityId, ref: state.selectedEntity };
+});
+function expectCleanIdentity(model: Identity, published: number[]) {
+  expect(model.foreign).toEqual([]);
+  expect(model.unresolved).toEqual([]);
+  expect(model.typeMismatch).toEqual([]);
+  expect(model.locals).toEqual(published);
+}
+
+test.describe('retained viewer: real authoring-tool exports and federation identity', () => {
+  // Playwright requires a destructured fixture argument even when no fixture is used.
+  // eslint-disable-next-line no-empty-pattern
+  test.beforeEach(({}, testInfo) => {
+    if (engine && existsSync(join(engine, 'engine-manifest.json'))) return;
+    // The lane that requires the SDK sets IFCLITE_REQUIRE_SMLIB: there a missing engine is a failure, never a skip.
+    if (process.env.IFCLITE_REQUIRE_SMLIB && testInfo.project.name === 'viewer-retained') throw new Error('IFCLITE_RETAINED_ENGINE must name a staged engine; a skip is not evidence');
+    test.skip(true, SKIP);
+  });
+
+  for (const { tool, file, header } of REAL_MODELS) {
+    test(`a real ${tool} export keeps model, entity and refusal identity under the retained kernel`, async ({ page }) => {
+      expect(readFileSync(file, 'latin1').slice(0, 60000)).toMatch(header);
+      const requests: string[] = [], workers: string[] = [];
+      page.context().on('request', req => requests.push(req.url()));
+      page.on('worker', worker => workers.push(worker.url()));
+      await setup(page, 'retained');
+      await page.locator('#file-input-open').setInputFiles(resolve(file));
+      await completeModels(page, [baseName(file)], true);
+      const rows = expected(file), published = rows.filter(p => p.status === 'published').map(p => p.id);
+      const refused = rows.filter(p => p.status === 'refused');
+      expect(rows.length).toBeGreaterThan(0);
+      const [model, ...others] = await identities(page);
+      expect(others).toEqual([]);
+      expect((await snapshot(page)).error).toBeNull();
+      // One model: the registry's single-model fallback, globalId === expressId.
+      expect(model.idOffset).toBe(0);
+      expect(model.globals).toEqual(model.locals);
+      expectCleanIdentity(model, published);
+      expect(model.summary?.candidates).toBe(rows.length);
+      expect(model.summary?.published).toBe(published.length);
+      expect(model.summary?.refused.map(p => ({ id: p.expressId, code: p.code })).sort((a, b) => a.id - b.id))
+        .toEqual(refused.map(({ id, code }) => ({ id, code })));
+      expect(model.refusedKnown, 'a refused product keeps its entity data').toBe(true);
+      for (const row of model.summary!.refused) expect(model.locals).not.toContain(row.expressId);
+      expect(workers.some(url => /retained\.worker/.test(url)), 'the retained host runs in a real browser Worker').toBe(true);
+      expect(requests.some(url => url.includes('/smlib/'))).toBe(true);
+
+      // Panel: one row per refused product, with its own code.
+      const chip = page.locator('[data-retained-chip="incomplete"]');
+      await expect(chip).toContainText(`${published.length}/${rows.length}`);
+      await chip.click();
+      await expect(page.locator('[data-retained-row]')).toHaveCount(refused.length);
+      for (const row of refused) await expect(page.locator(`[data-retained-row="${row.id}"]`)).toHaveAttribute('data-code', row.code);
+
+      // Selection resolves to this model and the product's own express id.
+      await selectGlobal(page, published[0], { modelId: model.id, expressId: published[0] });
+      await selectGlobal(page, published.at(-1)!, { modelId: model.id, expressId: published.at(-1)! });
+      await page.getByRole('button', { name: `Select #${refused[0].id}`, exact: true }).click();
+      expect(await selection(page)).toMatchObject({ ref: { modelId: model.id, expressId: refused[0].id } });
+      await record(`real-${tool.toLowerCase()}`, { file, tool, rows: rows.length, published: published.length, refused: refused.length, model: stable(model) });
+    });
+  }
+
+  test('a real SketchUp export refused product by product loads as an incomplete, mesh-free model with its identity intact', async ({ page }) => {
+    expect(readFileSync(SKETCHUP, 'latin1').slice(0, 60000)).toMatch(/IFC manager for sketchup/i);
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(resolve(SKETCHUP));
+    await page.waitForFunction(() => {
+      const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
+      const model = [...state.models.values()][0];
+      return !state.loading && model?.retainedGeometry && model.retainedGeometry.completeness !== 'running';
+    });
+    const rows = expected(SKETCHUP);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every(row => row.status === 'refused'), 'the manifest pins every SketchUp product as refused').toBe(true);
+    const [model, ...others] = await identities(page);
+    expect(others).toEqual([]);
+    expect((await snapshot(page)).error).toBeNull();
+    expect(model.idOffset).toBe(0);
+    expect(model.globals).toEqual([]);
+    expect(model.summary?.published).toBe(0);
+    expect(model.summary?.completeness).toBe('incomplete');
+    expect(model.summary?.refused.map(p => ({ id: p.expressId, code: p.code })).sort((a, b) => a.id - b.id))
+      .toEqual(rows.map(({ id, code }) => ({ id, code })));
+    expect(model.refusedKnown, 'refused products keep their entity data').toBe(true);
+    await page.locator('[data-retained-chip="incomplete"]').click();
+    await expect(page.locator('[data-retained-row]')).toHaveCount(rows.length);
+    await page.getByRole('button', { name: `Select #${rows[0].id}`, exact: true }).click();
+    expect(await selection(page)).toMatchObject({ ref: { modelId: model.id, expressId: rows[0].id } });
+    await record('real-sketchup', { model: stable(model), refused: rows.length });
+  });
+
+  test('a refused retained federated add leaves the exact primary intact; Retry builds a correct federation with colliding ids', async ({ page }) => {
+    const requests: string[] = [];
+    page.context().on('request', req => requests.push(req.url()));
+    await setup(page, 'exact');
+    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+    await completeModels(page, [baseName(MAPPED)], false);
+    // The authored fixture has 64 occurrences. Use its committed product
+    // universe, not IDs observed through the exact loader under test.
+    const mappedRows = expected(MAPPED);
+    expect(mappedRows).toHaveLength(64);
+    expect(mappedRows.every(row => row.status === 'published')).toBe(true);
+    const mappedIds = mappedRows.map(row => row.id);
+    const [first] = await identities(page);
+    expectCleanIdentity(first, mappedIds);
+    await selectGlobal(page, first.locals[0], { modelId: first.id, expressId: first.locals[0] });
+
+    await chooseRetained(page);
+    await page.locator('#file-input-add').setInputFiles(resolve(WALL));
+    await expect.poll(async () => (await snapshot(page)).error).toMatch(/Retained geometry loads one model at a time/);
+    const afterRefusal = await identities(page);
+    expect(afterRefusal.map(stable)).toEqual([stable(first)]);
+    expect((await selection(page)).ref).toMatchObject({ modelId: first.id, expressId: first.locals[0] });
+    expect(requests.filter(url => SDK_REQUEST.test(url))).toEqual([]);
+
+    // Retry switches the next load to exact and federates; a copy collides on every express id.
+    await page.getByRole('button', { name: /^retry/i }).click();
+    await completeModels(page, [baseName(MAPPED), baseName(WALL)], false);
+    await page.locator('#file-input-add').setInputFiles({ name: 'mapped-copy.ifc', mimeType: 'application/octet-stream', buffer: readFileSync(MAPPED) });
+    const names = [baseName(MAPPED), baseName(WALL), 'mapped-copy.ifc'];
+    await completeModels(page, names, false);
+    const models = await identities(page);
+    const byName = (name: string) => models.find(model => model.name === name)!;
+    const [a, b, c] = names.map(byName);
+    expect(models).toHaveLength(3);
+    expect(stable(a)).toEqual(stable(first));
+    expectCleanIdentity(c, mappedIds);
+    for (const model of models) { expect(model.foreign).toEqual([]); expect(model.unresolved).toEqual([]); expect(model.typeMismatch).toEqual([]); }
+    expect(models.map(model => model.idOffset)).toEqual(models.map(model => model.idOffset).sort((x, y) => x - y));
+    expect(new Set(models.map(model => model.idOffset)).size).toBe(3);
+    expect(new Set(models.flatMap(model => model.globals)).size, 'global ids never collide').toBe(models.flatMap(model => model.globals).length);
+    // The same local id selects a different model depending on its global id.
+    const local = a.locals[0];
+    const globalIn = (model: Identity) => model.globals[model.locals.indexOf(local)];
+    await selectGlobal(page, globalIn(a), { modelId: a.id, expressId: local });
+    await selectGlobal(page, globalIn(c), { modelId: c.id, expressId: local });
+    await selectGlobal(page, b.globals[0], { modelId: b.id, expressId: b.locals[0] });
+    expect(requests.filter(url => SDK_REQUEST.test(url))).toEqual([]);
+    await record('federation-retry', { expectedMappedProducts: mappedIds.length, first: stable(first), models: models.map(stable) });
+  });
+
+  test('a retained primary load replaces an exact federation completely', async ({ page }) => {
+    await setup(page, 'exact');
+    await page.locator('#file-input-open').setInputFiles(resolve(MAPPED));
+    await completeModels(page, [baseName(MAPPED)], false);
+    await page.locator('#file-input-add').setInputFiles({ name: 'mapped-copy.ifc', mimeType: 'application/octet-stream', buffer: readFileSync(MAPPED) });
+    await completeModels(page, [baseName(MAPPED), 'mapped-copy.ifc'], false);
+    const [, copy] = await identities(page);
+    expect(copy.idOffset).toBeGreaterThan(0);
+    await selectGlobal(page, copy.globals[0], { modelId: copy.id, expressId: copy.locals[0] });
+
+    await chooseRetained(page);
+    await page.locator('#file-input-open').setInputFiles(resolve(WALL));
+    await completeModels(page, [baseName(WALL)], true);
+    const rows = expected(WALL), published = rows.filter(p => p.status === 'published').map(p => p.id);
+    const models = await identities(page);
+    expect(models).toHaveLength(1);
+    const [model] = models;
+    expect(model.idOffset, 'a primary load restarts the id space').toBe(0);
+    expect(model.globals).toEqual(model.locals);
+    expectCleanIdentity(model, published);
+    expect(model.summary?.refused.map(p => p.expressId).sort((a, b) => a - b)).toEqual(rows.filter(p => p.status === 'refused').map(p => p.id));
+    const { ref } = await selection(page);
+    expect(ref === null || ref.modelId === model.id, 'no selection survives into a model that replaced its model').toBe(true);
+    await selectGlobal(page, published[0], { modelId: model.id, expressId: published[0] });
+    await record('federation-replaced', { model: stable(model) });
+  });
+
+  test('an exact add onto an open retained model is refused with identity, selection and refusal rows intact', async ({ page }) => {
+    const requests: string[] = [];
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(resolve(WALL));
+    await completeModels(page, [baseName(WALL)], true);
+    const [before] = await identities(page);
+    const published = before.locals, refusedId = before.summary!.refused[0].expressId;
+    await selectGlobal(page, published[0], { modelId: before.id, expressId: published[0] });
+    page.context().on('request', req => requests.push(req.url()));
+
+    await page.locator('#file-input-add').setInputFiles(resolve(MAPPED));
+    await expect.poll(async () => (await snapshot(page)).error).toMatch(/Reload it with the exact kernel/);
+    const retry = await page.evaluate(() => (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState().lastLoadRetry);
+    expect(retry, 'no Retry: an exact add would mix kernels in one view').toBeNull();
+    const [after, ...others] = await identities(page);
+    expect(others).toEqual([]);
+    expect(stable(after)).toEqual(stable(before));
+    expect(after.summary).toEqual(before.summary);
+    expect((await selection(page)).ref).toMatchObject({ modelId: before.id, expressId: published[0] });
+    expect(requests.filter(url => SDK_REQUEST.test(url)), 'a refused add starts no retained work').toEqual([]);
+    // The refusal rows are still this model's.
+    await page.locator('[data-retained-chip]').click();
+    await expect(page.locator(`[data-retained-row="${refusedId}"]`)).toHaveAttribute('data-code', before.summary!.refused[0].code);
+    await record('federation-reverse-add', { before: stable(before), after: stable(after), refusedId });
+  });
+
+  test('a second retained primary load replaces the first: no stale rows, meshes or selection', async ({ page }) => {
+    await setup(page, 'retained');
+    await page.locator('#file-input-open').setInputFiles(resolve(WALL));
+    await completeModels(page, [baseName(WALL)], true);
+    const [first] = await identities(page);
+    await selectGlobal(page, first.locals[0], { modelId: first.id, expressId: first.locals[0] });
+
+    // Use Bonsai's flat meshes for replacement identity checks. The separate
+    // MAPPED fixture emits instance shards instead, covered by M11-I above.
+    await page.locator('#file-input-open').setInputFiles(resolve(BONSAI));
+    await completeModels(page, [baseName(BONSAI)], true);
+    const rows = expected(BONSAI), published = rows.filter(p => p.status === 'published').map(p => p.id);
+    const models = await identities(page);
+    expect(models).toHaveLength(1);
+    const [second] = models;
+    expect(second.name).toBe(baseName(BONSAI));
+    expect(second.idOffset).toBe(0);
+    expectCleanIdentity(second, published);
+    expect(second.summary?.candidates).toBe(rows.length);
+    expect(second.summary?.refused.map(p => p.expressId).sort((a, b) => a - b)).toEqual(rows.filter(p => p.status === 'refused').map(p => p.id));
+    expect(second.globals, 'no mesh of the first model remains').toEqual(second.locals);
+    const { ref } = await selection(page);
+    expect(ref === null || ref.modelId === second.id).toBe(true);
+    await page.locator('[data-retained-chip]').click();
+    await expect(page.locator('[data-retained-row]')).toHaveCount(second.summary!.refused.length);
+    await record('primary-replaced', { first: stable(first), second: stable(second) });
   });
 });
 

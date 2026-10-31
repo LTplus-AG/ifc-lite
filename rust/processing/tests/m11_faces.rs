@@ -31,7 +31,7 @@ fn operand(text: &str, disk: bool, sign: f64, from_part: [f64; 16]) -> Operand {
     assert_eq!(sources.admitted.len(), 1, "{:?} {:?}", sources.refused, sources.diagnostics);
     let request = sources.admitted[0].prepare(1).unwrap();
     let (faces, region) = face_surfaces::faces(request.recipe(), request.payload()).unwrap();
-    Operand { item: request.recipe().solid_id(), via: 0, from_part, sign, stretch: 1., faces, region }
+    Operand { item: request.recipe().solid_id(), via: 0, from_part, sign, stretch: 1., faces, region, rows_identify_faces: false }
 }
 /// One extruded wall #10 (solid #13) placed at `origin`, polyline profile in authored order.
 fn wall(points: &[[f64; 2]], depth: f64, origin: [f64; 3]) -> String {
@@ -138,7 +138,7 @@ fn m11_f_7955_disjoint_coplanar_union_faces_keep_their_own_operand() {
 #[test]
 fn m11_f_7955_non_coincident_candidates_refuse_as_ambiguous() {
     let source = |role, support| SourceFace { role, support, extent: Extent::Wall };
-    let lone = |item, faces| Operand { item, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces, region: None };
+    let lone = |item, faces| Operand { item, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces, region: None , rows_identify_faces: false };
     // x = 1 is tangent to the r = 1 cylinder along y = 0: a sliver there lies on both.
     let operands = [lone(1, vec![source(Role::Cap { end: true }, Support::Plane { origin: [1., 0., 0.], normal: [1., 0., 0.] })]),
         lone(2, vec![source(Role::Side { boundary: 0, segment: 0 },
@@ -222,7 +222,7 @@ fn m11_f_7955_rounding_skewed_sliver_carries_no_normal() {
 #[test]
 fn m11_f_7955_kind_ambiguity_is_decided_per_kernel_face() {
     let source = |role, support| SourceFace { role, support, extent: Extent::Wall };
-    let lone = |item, faces| Operand { item, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces, region: None };
+    let lone = |item, faces| Operand { item, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces, region: None , rows_identify_faces: false };
     let operands = [lone(1, vec![source(Role::Cap { end: true }, Support::Plane { origin: [1., 0., 0.], normal: [1., 0., 0.] })]),
         lone(2, vec![source(Role::Side { boundary: 0, segment: 0 },
             Support::Cylinder { center: [0., 0.], radius: 1., generator: [0., 0., 1.], outward: 1. })])];
@@ -264,7 +264,7 @@ fn m11_f_7955_long_directrix_refuses_on_the_work_budget() {
     knots.extend([8189.; 4]);
     let curve = face_curve::Curve::new(3, points, knots, [0., 8189.]).unwrap();
     let tube = SourceFace { role: Role::DiskWall, extent: Extent::Wall, support: Support::Tube { curve, radius: 0.01 } };
-    let bar = [Operand { item: 5, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces: vec![tube], region: None }];
+    let bar = [Operand { item: 5, via: 0, from_part: IDENTITY, sign: 1., stretch: 1., faces: vec![tube], region: None , rows_identify_faces: false }];
     let wall = tri([0.4, 0.01, 0.], [0.6, 0.01, 0.], [0.5, 0.01, 0.001], [0., 1., 0.]);
     let run = || {
         let account = resource::ExecutionAccount::new(resource::ExecutionPolicy::Bounded(Default::default()));

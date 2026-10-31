@@ -3598,12 +3598,18 @@ loaded, `file_size_mb`/`mesh_count` from the last load (the same model key as
 deployed build: per (event, metric, journey, person, model) cell,
 `median(recent) / median(baseline)`, where recent is the judged build's rows
 and the divisor comes from the baseline window (the 14 days before that build
-first appeared) and from the `default` arm only. A group's pooled ratio is the
-median of its cell ratios, reported per journey and pooled across journeys,
-each per `perf_flags` arm. The threshold is on speed (1 / ratio): pooled speed
-below 0.95 with at least 5 paired cells is `regressed`; fewer cells is
-`insufficient`, which is the common case at current volume and is not a
-pass. `was_hidden = true` rows and bot traffic are excluded in the query.
+first appeared) and from the `default` arm only. A group is one (event, metric,
+journey, arm); its ratio is each person's median cell ratio, then the median
+across people. Cells are not the unit because one federated batch is dozens of
+them: on build `8d3ffe9d1f62` two people owned 28 of 42 cells, so the cell
+median read 1.86 while the median person read 0.96. `regressed` needs speed
+(1 / ratio) below 0.95 and a 99% person bootstrap interval excluding 1; past the
+threshold without that is `inconclusive`. Fewer than 5 paired people is
+`insufficient`, the common case at current volume, and is not a pass.
+`file_read_ms` and `federated_session_loads` are reported, never judged: the
+first barely depends on the app, so the output warns when it moves, and the
+second shows when a J4 change comes with bigger batches. `was_hidden = true`
+rows and bot traffic are excluded in the query.
 
 ```bash
 node scripts/perf/field-verdict.mjs --print-sql --build <sha> > verdict.sql   # the HogQL below, filled in
@@ -3622,9 +3628,9 @@ pooled group regresses is the next step and is not wired yet.
 The HogQL the script expects (`__BUILD__` is the 12-character
 `app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
 from this block). It already aggregates to one row per (person, model,
-journey, arm, metric, window) cell, not per load; `field-verdict-fetch.mjs`
-appends `LIMIT`/`OFFSET` and pages over the fully ordered result until it is
-complete, and fails rather than judge a partial one:
+journey, arm, metric, window) cell, not per load. `field-verdict-fetch.mjs`
+appends one `LIMIT` and fails rather than judge a result that reaches it.
+PostHog answers 400 to `OFFSET` on a personal API key, so it cannot page:
 
 <!-- field-verdict-hogql -->
 ```sql
@@ -3662,6 +3668,9 @@ FROM (
     if(toString(properties.app_build_sha) = '__BUILD__', 'recent', 'baseline') AS window,
     arrayJoin(arrayFilter(m -> isNotNull(m.2), [
       tuple('total_elapsed_ms', toFloat(properties.total_elapsed_ms)),
+      tuple('file_read_ms', toFloat(properties.file_read_ms)),
+      -- Bigger batches lengthen J4 timings without any code change.
+      tuple('federated_session_loads', if(event = 'ifc_model_loaded' AND properties.load_target = 'federated', toFloat(countIf(event = 'ifc_model_loaded' AND properties.load_target = 'federated') OVER (PARTITION BY properties.$session_id)), NULL)),
       tuple('first_visible_geometry_ms', toFloat(properties.first_visible_geometry_ms)),
       tuple('spatial_ready_ms', toFloat(properties.spatial_ready_ms)),
       tuple('metadata_complete_ms', toFloat(properties.metadata_complete_ms)),

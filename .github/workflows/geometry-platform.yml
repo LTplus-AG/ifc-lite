@@ -509,7 +509,7 @@ jobs:
   # longer than that lane, and as a step inside it a timeout was indistinguishable
   # from (and starved) every other lane. Scheduled and dispatch-only. Sharded by
   # model bytes (scripts/retained-compare/corpus-shards.mjs); the shard count
-  # below must equal `--shards` in native-corpus-result.
+  # below must equal every `--shards` in native-corpus-result.
   native-corpus:
     name: Native corpus (shard ${{ matrix.shard }}/8)
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)
@@ -611,7 +611,7 @@ jobs:
           node scripts/check-retained-corpus-summary.mjs --shards 8 --report-violations shards/native-corpus-shard-*/summary.json
           [[ "$SHARDS_RESULT" == success ]]
       - name: Merge the shards' product tables for the browser corpus
-        run: node scripts/retained-compare/corpus-shards.mjs merge --out products.tsv shards/native-corpus-shard-*/products.tsv
+        run: node scripts/retained-compare/corpus-shards.mjs merge --shards 8 --out products.tsv shards/native-corpus-shard-*/products.tsv
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-corpus-products

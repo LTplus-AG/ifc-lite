@@ -48,6 +48,18 @@ test('shard and merge round-trip through the CLI entry', (context) => {
   assert.throws(() => main(['shard', '--manifest', manifest, '--shards', '40', '--index', '39', '--out', join(dir, 'x'), '--exclusions', none]), /empty/);
 });
 
+test('merge refuses fewer tables than shards', (context) => {
+  const dir = mkdtempSync(join(tmpdir(), 'corpus-shards-'));
+  context.after(() => rmSync(dir, { recursive: true, force: true }));
+  const a = join(dir, 'a.tsv'), b = join(dir, 'b.tsv'), out = join(dir, 'out.tsv');
+  writeFileSync(a, 'model\tid\na\t1\n');
+  writeFileSync(b, 'model\tid\nb\t2\n');
+  assert.throws(() => main(['merge', '--shards', '3', '--out', out, a, b]), /expected 3 products\.tsv files, got 2/);
+  assert.throws(() => main(['merge', '--out', out, a, b]), /--shards is required/);
+  main(['merge', '--shards', '2', '--out', out, a, b]);
+  assert.equal(readFileSync(out, 'utf8'), 'model\tid\na\t1\nb\t2\n');
+});
+
 test('merge keeps one header and refuses a mismatched one', () => {
   assert.equal(mergeProducts(['model\tid\na\t1\n', 'model\tid\nb\t2\n']), 'model\tid\na\t1\nb\t2\n');
   assert.throws(() => mergeProducts(['model\tid\na\t1\n', 'model\tother\nb\t2\n']), /different header/);

@@ -162,6 +162,12 @@ test('a corpus job that runs on every PR, or has no literal budget, is reported'
   assert.ok(audit(unbounded).some((f) => f.includes('360-minute')));
 });
 
+test('a product-table merge without the shard count is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace('corpus-shards.mjs merge --shards 8 ', 'corpus-shards.mjs merge '));
+  assert.ok(audit(root).some((f) => f.includes('product-table merge')));
+});
+
 test('a shard count that disagrees between matrix, selection and aggregate is reported', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replace('check-retained-corpus-summary.mjs --shards 8 ', 'check-retained-corpus-summary.mjs --shards 7 ').replace('--shards 8 --index', '--shards 4 --index'));

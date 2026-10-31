@@ -7,7 +7,7 @@
  * Shard the downloaded model corpus for the nightly native comparison (#7955).
  *
  *   corpus-shards.mjs shard  --manifest M --shards N --index I --out FILE [--exclusions FILE]
- *   corpus-shards.mjs merge  --out products.tsv  shard-0/products.tsv shard-1/products.tsv ...
+ *   corpus-shards.mjs merge  --shards N --out products.tsv  shard-0/products.tsv shard-1/products.tsv ...
  *
  * `shard` writes a manifest (same shape, `.ifc` files only) for shard I of N,
  * to be read by `retained_compare --manifest`. Assignment is deterministic:
@@ -126,8 +126,10 @@ export function main(argv) {
     return excluded.length ? `${excluded.length} model${excluded.length === 1 ? '' : 's'} NOT CHECKED: ${excluded.map((e) => e.path).join(', ')}` : 'no models excluded';
   }
   if (command === 'merge') {
-    const o = flags(rest, ['out']);
-    if (!o.out) throw new Error('--out is required');
+    const o = flags(rest, ['out', 'shards']);
+    for (const k of ['out', 'shards']) if (!o[k]) throw new Error(`--${k} is required`);
+    // A shard with a summary but no table would otherwise merge away silently.
+    if (o.rest.length !== Number(o.shards)) throw new Error(`expected ${o.shards} products.tsv files, got ${o.rest.length}`);
     writeFileSync(o.out, mergeProducts(o.rest.map((f) => readFileSync(f, 'utf8'))));
     return `merged ${o.rest.length} products.tsv files`;
   }

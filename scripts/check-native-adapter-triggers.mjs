@@ -185,6 +185,7 @@ export function corpusJobProblems(text) {
     if (!/^ {4}if: always\(\) && /m.test(result)) out.push(`${WORKFLOW}: native-corpus-result must run if: always() so a failed shard still reports`);
     const agg = result.match(/check-retained-corpus-summary\.mjs --shards (\d+) --report-violations /);
     if (shards.length > 0 && (!agg || Number(agg[1]) !== shards.length)) out.push(`${WORKFLOW}: native-corpus-result must require exactly the matrix's ${shards.length} shard summaries`);
+    if (shards.length > 0 && !new RegExp(`corpus-shards\\.mjs merge --shards ${shards.length} `).test(result)) out.push(`${WORKFLOW}: the product-table merge must pass --shards ${shards.length} so a shard without products.tsv cannot merge away`);
     if (!/^ {8}if: always\(\)\s*\n {8}run: node scripts\/retained-compare\/corpus-shards\.mjs excluded --manifest tests\/models\/manifest\.json\s*$/m.test(result)) {
       out.push(`${WORKFLOW}: native-corpus-result must report the models excluded from the corpus (corpus-shards.mjs excluded, if: always()) so an unchecked model is never read as covered`);
     }

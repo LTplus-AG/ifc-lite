@@ -34,7 +34,7 @@ const LINE_OUTERS = {
   ],
 };
 
-/** Holes that are lost (one vertex) or open nothing (empty, zero area). */
+/** Degenerate holes the SVG still draws: the PDF must fill like it. */
 const HOLES = {
   point: [{ x: 1, y: 1 }],
   empty: [],
@@ -92,8 +92,8 @@ interface ExportOptions {
   noOuter?: boolean;
   /** The outer ring encloses no area: two points, or three collinear ones. */
   lineOuter?: keyof typeof LINE_OUTERS;
-  /** Replace the hole: one vertex (a lost opening), or ones that open nothing. */
-  hole?: 'point' | 'empty' | 'line' | 'collinear';
+  /** Replace the hole with a degenerate one. */
+  hole?: keyof typeof HOLES;
   /** Shift the wall to LV95-scale coordinates. */
   lv95Wall?: boolean;
   /** A second, identical wall polygon. */
@@ -316,16 +316,10 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     });
   }
 
-  it('treats a one-vertex hole as a lost opening: no fill, cut lines kept (#8464)', async () => {
-    const text = await exportPdf({ hole: 'point', cutLine: true });
-    assert.ok(!text.includes('f*'), 'the opening is not painted solid');
-    assert.match(text, CUT_LINE, 'the entity keeps its cut lines');
-  });
-
-  for (const hole of ['empty', 'line', 'collinear'] as const) {
-    it(`still fills a wall whose hole opens nothing (${hole}, #8464)`, async () => {
+  for (const hole of Object.keys(HOLES) as (keyof typeof HOLES)[]) {
+    it(`fills a wall with a degenerate hole like the SVG does (${hole}, #8464)`, async () => {
       const text = await exportPdf({ hole, cutLine: true });
-      assert.ok(text.includes('f*'), 'a hole without area does not stop the fill');
+      assert.ok(text.includes('f*'), 'a hole the SVG draws does not stop the fill');
       assert.doesNotMatch(text, CUT_LINE, 'and the outline still covers the cut lines');
     });
   }

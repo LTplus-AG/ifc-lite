@@ -38,6 +38,14 @@ jobs:
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
+          # Runs can finish out of order: only the newest finished run speaks for
+          # main, so an older run cannot close or reopen a newer run's verdict.
+          newest=$(gh api "repos/$REPO/actions/workflows/test.yml/runs?branch=main&event=push&status=completed&per_page=30" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure" or .conclusion == "timed_out")][0].id')
+          if [ "$newest" != "$RUN_ID" ]; then
+            echo "run $RUN_ID is not the newest finished main run ($newest); leaving the issue alone"
+            exit 0
+          fi
           title="ci: Test is red on main"
           existing=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title \
             --jq "map(select(.title == \"$title\")) | .[0].number // empty")

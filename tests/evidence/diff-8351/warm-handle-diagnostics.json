@@ -1,0 +1,472 @@
+{
+ "issue": 8351,
+ "timingClass": "ordinary diagnostics on pop-os under shared load; not an official protocol v4 cohort or acceptance pass",
+ "method": {
+  "harness": "5 fresh Node processes; per process, base/candidate/TS-oracle arms interleaved with alternating order; median of per-call warm handle compare (prepareDiffModel once, then compare)",
+  "warmup": {
+   "demo": 500,
+   "Haus": 500,
+   "LARGE": 80
+  },
+  "samples": {
+   "demo": 300,
+   "Haus": 300,
+   "LARGE": 60
+  },
+  "options": {
+   "matchUnpairedByContent": true,
+   "detectSplitMerge": true,
+   "detectSuccessors": true
+  },
+  "identityGate": "before timing, for {}, {matchUnpairedByContent} and all three options: candidate handle result deep-equal and byte-identical (JSON with Map order) to the TS oracle, to the base handle, and candidate stateless diffModels identical too",
+  "inputs": "demo: building-architecture.ifc vs rev-b fingerprints (40/40 rows); Haus and LARGE: A3 V8-serialized CLI fingerprints (146/146, 17010/17010)",
+  "oracle": "compiled TS @ifc-lite/diff from storage task issue8042-boundary-465f-pop-r5"
+ },
+ "base": {
+  "source": "87d8fdf35987b4e8b1f28df297fc2f43aa39dd53",
+  "wasmSha256": "dc64b177bc0e20b34a50582242d2a31c896cc286dd1be346fa5756f6d15d17d8"
+ },
+ "cohorts": [
+  {
+   "candidate": "6d8632123df44301fee9842e634dc843b086f6e0",
+   "job": "0e20cb2b-1103-4b51-b376-d5f5582a4fa9",
+   "wasmSha256": "70fa6240589e59eb8947c657f8f4b538c0049f68666ee1700004d6a3f97c942b",
+   "note": "cached JsString digests, JsHash maps, key-pass lookups; base arm is main TS + main WASM",
+   "runs": [
+    {
+     "run": "1",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.11169799999998986,
+        "candidate": 0.10371900000001233,
+        "ts": 0.040653000000020256
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.24789099999998143,
+        "candidate": 0.1816599999999653,
+        "ts": 0.12145999999995638
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 37.01860800000031,
+        "candidate": 20.452579000000696,
+        "ts": 26.323543000000427
+       }
+      }
+     ]
+    },
+    {
+     "run": "2",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.11839800000001333,
+        "candidate": 0.11032699999998385,
+        "ts": 0.04442799999998215
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.24888399999997546,
+        "candidate": 0.18502200000000357,
+        "ts": 0.12559399999997822
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 37.7773930000003,
+        "candidate": 20.944723999997223,
+        "ts": 29.132261000000653
+       }
+      }
+     ]
+    },
+    {
+     "run": "3",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.2323709999999437,
+        "candidate": 0.21767399999998815,
+        "ts": 0.08560299999999188
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.2527740000000449,
+        "candidate": 0.1831600000000435,
+        "ts": 0.12691099999983635
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 37.342884999998205,
+        "candidate": 20.856857000000673,
+        "ts": 30.917874999999185
+       }
+      }
+     ]
+    },
+    {
+     "run": "4",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.11326300000001766,
+        "candidate": 0.10428499999994756,
+        "ts": 0.04131799999998975
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.2430940000000419,
+        "candidate": 0.17862400000001344,
+        "ts": 0.12205200000005334
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 36.861127000000124,
+        "candidate": 20.53990899999917,
+        "ts": 25.549009999998816
+       }
+      }
+     ]
+    },
+    {
+     "run": "5",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.11560200000002396,
+        "candidate": 0.10595699999998942,
+        "ts": 0.0428890000000024
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.25245600000005197,
+        "candidate": 0.1833400000000438,
+        "ts": 0.12414400000000114
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 37.05611399999907,
+        "candidate": 20.551198000001023,
+        "ts": 28.30040800000279
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "candidate": "279fcd5cffa62dc2f9a16196779816de82433aed",
+   "job": "16a3e9af-4d27-4543-a081-5b057b645ac8",
+   "wasmSha256": "46a766df4661ac329dff231e66faa622174f95d5309c916c85606bcc649c7653",
+   "note": "adds once-built default class families and defined-only options; base arm here is main WASM with the candidate TS facade, so its ratio isolates the WASM change",
+   "runs": [
+    {
+     "run": "1",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.09981099999998833,
+        "candidate": 0.04944299999999657,
+        "ts": 0.03966900000000351
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.23000899999999547,
+        "candidate": 0.12503700000002027,
+        "ts": 0.11943299999995816
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 36.56657799999812,
+        "candidate": 20.195973999998387,
+        "ts": 26.585024000001795
+       }
+      }
+     ]
+    },
+    {
+     "run": "2",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.10298099999999977,
+        "candidate": 0.04823399999997946,
+        "ts": 0.040154000000029555
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.23789399999998295,
+        "candidate": 0.12297499999999673,
+        "ts": 0.12074700000005123
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 36.91197099999954,
+        "candidate": 20.365874999999505,
+        "ts": 26.81280699999843
+       }
+      }
+     ]
+    },
+    {
+     "run": "3",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.09939900000000534,
+        "candidate": 0.050759999999968386,
+        "ts": 0.04054500000000871
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.23812699999996312,
+        "candidate": 0.1286249999999427,
+        "ts": 0.12844199999994999
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 37.145864999998594,
+        "candidate": 21.51915200000076,
+        "ts": 29.351464999999735
+       }
+      }
+     ]
+    },
+    {
+     "run": "4",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.09923700000001645,
+        "candidate": 0.049103999999999814,
+        "ts": 0.04041899999998577
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.24199099999998452,
+        "candidate": 0.12822299999993447,
+        "ts": 0.12473599999998441
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 37.192104999998264,
+        "candidate": 20.631898999999976,
+        "ts": 26.632744000002276
+       }
+      }
+     ]
+    },
+    {
+     "run": "5",
+     "results": [
+      {
+       "name": "demo",
+       "rows": [
+        40,
+        40
+       ],
+       "medianMs": {
+        "base": 0.10128199999996923,
+        "candidate": 0.05169599999999264,
+        "ts": 0.04155399999996234
+       }
+      },
+      {
+       "name": "Haus",
+       "rows": [
+        146,
+        146
+       ],
+       "medianMs": {
+        "base": 0.23147199999993973,
+        "candidate": 0.12564900000006674,
+        "ts": 0.11773699999992004
+       }
+      },
+      {
+       "name": "LARGE",
+       "rows": [
+        17010,
+        17010
+       ],
+       "medianMs": {
+        "base": 37.46566900000107,
+        "candidate": 20.509271999999328,
+        "ts": 28.263531000000512
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "native": {
+  "harness": "scratch Rust example timing diff_models_for_transport on rows decoded via decode_columns; min of N calls, pinned core, variants interleaved",
+  "minMs": {
+   "base": {
+    "demo": 0.042,
+    "Haus": 0.094,
+    "LARGE": 18.25
+   },
+   "279fcd5": {
+    "demo": 0.007,
+    "Haus": 0.026,
+    "LARGE": 6.77
+   }
+  }
+ }
+}

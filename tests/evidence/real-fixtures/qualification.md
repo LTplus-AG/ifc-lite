@@ -124,3 +124,13 @@ default-build evidence publication are verified. Final local post-evidence
 pre-handoff again reports OBSERVED with restored witnesses green; its three
 missing dependency/bundle skips remain explicitly separate from the successful
 Pop default-build pre-handoff.
+
+## Scenario witness enforcement follow-up
+
+The review follow-up adds post-assertion records for every new CLI/viewer
+scenario, a scoped witness registry, and checks captured CLI/viewer logs in the
+native-adapter lane. Five gate regression tests pass; the missing-witness
+mutation and the original helper oracle both report OBSERVED. See
+`../real-fixture-witnesses/README.md` for the filtering invariant, explicit skips
+and pending actual grep/shard validation receipt. This follow-up changes no
+fixture bytes, counts, tolerances or runtime production source.

@@ -98,5 +98,7 @@ test('8413: a browser sample with no observed process memory fails instead of re
   assert.throws(() => assertBrowserTree({ processes: 0, maxObservedConcurrentRssKiB: null, maxIndividualHwmKiB: null }), /no Chrome process/);
   assert.throws(() => assertBrowserTree({ ...tree, maxObservedConcurrentRssKiB: null }), /concurrent RSS/);
   assert.throws(() => assertBrowserTree({ ...tree, maxIndividualHwmKiB: null }), /VmHWM/);
+  assert.throws(() => assertBrowserTree({ ...tree, maxObservedConcurrentRssKiB: 0 }), /concurrent RSS/);
+  assert.throws(() => assertBrowserTree({ ...tree, maxIndividualHwmKiB: 0 }), /VmHWM/);
   assert.throws(() => assertBrowserTree(null), /browser memory/);
 });

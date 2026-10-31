@@ -31,7 +31,7 @@ export const raceWithTimeout = (promise, ms, what) => new Promise((resolve, reje
   promise.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
 });
 
-/** Largest per-site count, never the sum: one loss is printed by up to three log sites. */
+/** Largest per-site count, never the sum: one loss is printed by up to three log sites. A lower bound on distinct losses; any nonzero count fails the sample. */
 export function deviceLossCount(consoleLines) {
   return Math.max(0, ...DEVICE_LOSS_PATTERNS.map(pattern => consoleLines.filter(line => pattern.test(line)).length));
 }

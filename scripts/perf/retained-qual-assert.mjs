@@ -30,8 +30,9 @@ function counts(problems, summary, expectation) {
 export function assertBrowserTree(tree) {
   const problems = [];
   check(problems, tree && tree.processes > 0, `no Chrome process for the sample profile was observed (processes=${tree?.processes})`);
-  check(problems, Number.isFinite(tree?.maxObservedConcurrentRssKiB), 'no concurrent RSS was read from the browser process tree');
-  check(problems, Number.isFinite(tree?.maxIndividualHwmKiB), 'no VmHWM was read from the browser process tree');
+  // Greater than zero: the sampler folds unreadable fields into 0, and a live browser never uses no memory.
+  check(problems, tree?.maxObservedConcurrentRssKiB > 0, 'no concurrent RSS was read from the browser process tree');
+  check(problems, tree?.maxIndividualHwmKiB > 0, 'no VmHWM was read from the browser process tree');
   if (problems.length) throw new Error(`browser memory: ${problems.join('; ')}`);
 }
 

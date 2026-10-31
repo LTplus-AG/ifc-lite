@@ -124,6 +124,16 @@ describe('device_loss_recovery_failed carries what failed', () => {
     }
   });
 
+  it('reads the message of a GPU error, which is not a JavaScript Error', () => {
+    class GPUValidationError { message = 'Invalid pipeline'; }
+    const props = recoveryFailureProperties(
+      { ok: false, reason: 'device-init-failed', error: new GPUValidationError() },
+      { episode: 1, attempts: 1, elapsedMs: 0 },
+    );
+    assert.equal(props.recovery_error_kind, 'GPUValidationError');
+    assert.equal(props.recovery_error_detail, 'Invalid pipeline');
+  });
+
   it('bounds browser-supplied text and survives a non-Error rejection', async () => {
     let attempts: DeviceRecoveryAttempts | undefined;
     const run = startDeviceLossRecovery(

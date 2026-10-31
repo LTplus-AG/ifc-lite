@@ -56,5 +56,9 @@ function errorFields(prefix: string, error: unknown): DeviceLossContext {
   if (error instanceof Error) {
     return { [`${prefix}_kind`]: error.name.slice(0, 64), [`${prefix}_detail`]: detailOf(error.message) };
   }
+  // A WebGPU `GPUError` carries `.message` but is not a JavaScript `Error`.
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return { [`${prefix}_kind`]: error.constructor.name.slice(0, 64), [`${prefix}_detail`]: detailOf(error.message) };
+  }
   return { [`${prefix}_kind`]: typeof error, [`${prefix}_detail`]: detailOf(String(error)) };
 }

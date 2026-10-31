@@ -29,7 +29,7 @@ function harness() {
   const store$ = (at, patch) => { clock.now = at; Object.assign(world, patch); subscribers.forEach(fn => fn(world)); };
   const model = (rg, meshes = 0, loadState = 'loading') => new Map([['m', { retainedGeometry: rg, geometryResult: { meshes: new Array(meshes).fill({ expressId: 1 }) }, loadState }]]);
   const listener = () => listeners.find(l => l.type === 'change' && l.capture === true).fn;
-  return { q, tick, store$, renderer, model, listener, change: at => { clock.now = at; listener()({ target: { type: 'file' } }); }, clock };
+  return { q, tick, store$, renderer, model, listener, change: at => { clock.now = at; listener()({ target: { type: 'file' } }); }, clock, raf: fn => context.requestAnimationFrame(fn) };
 }
 
 test('the origin is the capture-phase file input change; other inputs do not start it', () => {
@@ -53,7 +53,7 @@ test('8413: a retained draw at 20 observed at 21 is the first frame, without cop
   assert.equal(h.q().firstRetainedFrameMs, 20);
 });
 
-test('an instanced owner counts as held; terminal then settled needs a later drawing frame with unchanged GPU bytes', () => {
+test('terminal then settled needs a later drawing frame with unchanged GPU bytes', () => {
   const h = harness();
   h.tick(1); h.change(2);
   h.store$(10, { models: h.model({ published: 2, completeness: 'running' }, 2) });
@@ -87,4 +87,15 @@ test('no first retained frame and no settle without a renderer hook or frames (n
   assert.equal(h.q().firstRetainedFrameMs, null);
   assert.equal(h.q().settledFrameMs, null);
   assert.equal(h.q().terminalMs, 10);
+});
+
+// PR #8413: multiple viewer callbacks in one animation tick cannot overwrite the
+// first retained draw before the instrumentation observes it.
+test('8413: capture the first draw before a later callback replaces frame stats', () => {
+  const h = harness(); h.tick(1); h.change(2);
+  h.store$(10, { models: h.model({ published: 1, completeness: 'running' }, 1) });
+  h.raf(() => { h.renderer.frame = { timestamp: 20, drawCalls: 3 }; });
+  h.raf(() => { h.renderer.frame = { timestamp: 21, drawCalls: 0 }; });
+  h.tick(22);
+  assert.equal(h.q().firstRetainedFrameMs, 20);
 });

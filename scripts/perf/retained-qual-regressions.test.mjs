@@ -80,3 +80,27 @@ test('8413: native provenance never invents a worker binary without --worker', a
     assert.equal(result.exclusivity.exclusive, false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+test('8413: all multi-arm CLIs reject non-finite seeds before preparation', async () => {
+  for (const file of ['cli', 'viewer', 'browser-memory']) {
+    const { main } = await import(`./retained-qual-${file}.mjs`);
+    for (const seed of ['abc', 'Infinity']) await assert.rejects(main(['--out', '/unused', '--seed', seed]), /finite/);
+  }
+});
+test('8413: viewer store errors and missing terminal frames end the wait promptly', async () => {
+  const { viewerSample } = await import('./retained-qual-viewer.mjs');
+  const vm = await import('node:vm');
+  let checked = false;
+  const page = { addInitScript: async () => {}, goto: async () => {}, locator: () => ({ waitFor: async () => {}, setInputFiles: async () => {} }),
+    waitForFunction: async (fn, key) => {
+      if (!key) return;
+      for (const [error, now, first, expected] of [['load failed', 1, null, true], [null, 31001, null, true], [null, 101, null, false], [null, 5001, 20, true]]) {
+        const context = { [key]: { errors: [], terminalMs: 0, firstRetainedFrameMs: first, settledFrameMs: null },
+          __ifc_lite_viewer_store__: { getState: () => ({ error }) }, performance: { now: () => now } };
+        assert.equal(vm.runInNewContext(`(${fn.toString()})(${JSON.stringify(key)})`, context), expected);
+      }
+      checked = true; throw new Error('predicate checked');
+    } };
+  await viewerSample({ arm: { side: 'branch' }, preview: { origin: 'http://test' }, fixture: { path: '/a.ifc' }, round: 1, options: {}, distTree: {},
+    launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => null }) });
+  assert.equal(checked, true);
+});

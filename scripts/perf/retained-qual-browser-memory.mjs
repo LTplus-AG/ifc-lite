@@ -23,7 +23,6 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { serveRoots } from '../smlib-browser-worker-probe.mjs';
 import { engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
@@ -39,6 +38,7 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
   try {
     writeFileSync(join(temporary, 'index.html'), '<!doctype html><title>Retained browser memory</title>');
     const engine = arm.identity.engine.directory;
+    const { serveRoots } = await import('../smlib-browser-worker-probe.mjs');
     server = serveRoots({ '/smlib/': join(engine, 'smlib'), '/pkg/': join(engine, 'pkg-retained'), '/harness/': import.meta.dirname,
       '/model/': dirname(fixture.path), '/engine/': engine, '/page/': temporary });
     server.prependListener('request', (_request, response) => {
@@ -69,7 +69,7 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
       sourceBufferDuplication: null, sourceBufferDuplicationReason: 'not exposed to the page; the SDK Worker holds its own copy privately',
       browserPeakHwmKiB: tree.maxIndividualHwmKiB, browserPeakConcurrentRssKiB: tree.maxObservedConcurrentRssKiB,
       browserPeakConcurrentPssKiB: tree.maxObservedConcurrentPssKiB, browserProcesses: Object.values(tree.byPid).map(p => ({ type: p.type ?? 'browser', hwmKiB: p.hwmKiB, peakPssKiB: p.peakPssKiB })),
-      browserMemorySamples: tree.samples, browserMemoryCaveat: tree.caveat, sessionSummary: run.summary, pageErrors: browser.pageErrors });
+      browserMemorySamples: tree.samples, pssCoverage: tree.pssCoverage, browserMemoryCaveat: tree.caveat, sessionSummary: run.summary, pageErrors: browser.pageErrors });
     if (options['require-ua-memory'] && (run.uaAfter.bytes === null || run.uaBefore.bytes === null)) {
       throw new Error(`measureUserAgentSpecificMemory unavailable: ${run.uaAfter.reason ?? run.uaBefore.reason}`);
     }

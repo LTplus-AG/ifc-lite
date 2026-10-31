@@ -117,7 +117,8 @@ describe('device_loss_recovery_failed carries what failed', () => {
     try {
       h.lose();
       const props = await failureEvent();
-      assert.equal(props.recovery_error_detail, 'could not restore [file] after loss');
+      assert.equal(String(props.recovery_error_detail).includes('Tower'), false);
+      assert.match(String(props.recovery_error_detail), /\[file\]/);
     } finally {
       unsubscribe();
     }

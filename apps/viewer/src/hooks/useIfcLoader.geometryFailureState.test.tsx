@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { GeometryProcessor, getGeometryStreamWatchdogMs } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { hook, skip, blankFile } from '@/test/blank-ifc-loader-harness.js';
 import { __resetStaleDeploymentForTests } from '@/lib/stale-deployment';
 import { markLocalModelFiles, resumableFiles } from '@/lib/reload-resume';
@@ -58,6 +59,21 @@ describe('geometry-stream failure leaves the model in a terminal state', () => {
     assert.equal(useViewerStore.getState().models.get(modelId)?.loadState, 'error');
     assert.equal(useViewerStore.getState().error, null, 'the reload notice, not a generic error');
     assert.deepEqual(resumableFiles(useViewerStore.getState().models.values()).map((f) => f.name), [file.name]);
+  });
+
+  it('reports phase and file size on the first stalled attempt, the one that triggers the retry', { skip }, async () => {
+    assert.ok(hook);
+    failGeometryWith(new Error('Geometry stream stalled after 40000ms. Last rendered meshes: 165.'));
+    const capture = mock.method(posthog, 'captureException', () => undefined);
+
+    await act(async () => hook!.loadFile(blankFile('METRE'), { kind: 'primary', modelId: crypto.randomUUID() }));
+
+    const first = capture.mock.calls.map((call) => call.arguments[1] as Record<string, unknown>)
+      .find((props) => props?.resource_retry !== undefined);
+    assert.ok(first, 'the stall took the lower-detail retry path');
+    assert.equal(typeof first.file_size_mb, 'number');
+    assert.ok('stall_phase' in first);
+    assert.equal(first.was_hidden, false);
   });
 
   it('disarms the stall watchdog when the stream fails outright', { skip }, async () => {

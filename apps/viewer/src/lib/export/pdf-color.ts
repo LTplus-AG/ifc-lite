@@ -48,7 +48,5 @@ function resolveWithCanvas(css: string): PdfColor | null {
 export function pdfColor(input: string): PdfColor | null {
   const css = input.trim().toLowerCase();
   if (css === 'transparent' || css === 'none') return { color: '#000000', alpha: 0 };
-  // A detached canvas would resolve currentcolor to black, unlike the SVG.
-  if (css === 'currentcolor') return null;
   return parseHexOrRgb(css) ?? resolveWithCanvas(css);
 }

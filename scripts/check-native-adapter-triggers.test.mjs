@@ -7,7 +7,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { audit, crateClosure, eventPaths, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
+import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -56,11 +56,10 @@ test('pull_request and push path lists may not drift', (context) => {
 
 test('a workflow without a push, schedule or corpus-on-schedule is refused', (context) => {
   const root = copyTree(context);
-  mutate(root, (t) => t.replace("    branches: [main]\n", '').replace(/  schedule:\n    - cron: '[^']+'\n/, '').replaceAll(" || github.event_name == 'schedule'", ''));
+  mutate(root, (t) => t.replace("    branches: [main]\n", '').replace(/  schedule:\n    - cron: '[^']+'\n/, ''));
   const failures = audit(root);
   assert.ok(failures.some((f) => f.includes('branches: [main]')));
   assert.ok(failures.some((f) => f.includes('on.schedule')));
-  assert.ok(failures.some((f) => f.includes('corpus')));
 });
 
 test('a workflow without the red-run reporters is refused', (context) => {
@@ -108,19 +107,6 @@ test('a missing path-dependency manifest is a named failure, not a smaller closu
   assert.throws(() => crateClosure(root), /rust\/testkit\/Cargo\.toml does not exist/);
 });
 
-test('reverting a single corpus step alone is reported', (context) => {
-  const root = copyTree(context);
-  let hit = 0;
-  mutate(root, (t) => t.replace(/if: inputs\.corpus == true \|\| github\.event_name == 'schedule'/g, (m) => (hit++ === 1 ? 'if: inputs.corpus == true' : m)));
-  assert.ok(audit(root).some((f) => f.includes('gated on inputs.corpus alone')));
-});
-
-test('a corpus step that is not continue-on-error is reported', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace('        id: native-corpus\n        if: inputs.corpus == true || github.event_name == \'schedule\'\n        continue-on-error: true\n', '        id: native-corpus\n        if: inputs.corpus == true || github.event_name == \'schedule\'\n'));
-  assert.ok(audit(root).some((f) => f.includes('native-corpus must be continue-on-error')));
-});
-
 test('unthrottled main pushes or a cancelling main run are reported', (context) => {
   const noGroup = copyTree(context);
   mutate(noGroup, (t) => t.replace(/concurrency:\n(?:  .*\n)+/, ''));
@@ -157,21 +143,9 @@ test('pathDeps refuses shapes it cannot read instead of shrinking the closure', 
   assert.throws(() => pathDeps('[dependencies]\nfoo = {\n  path = "../foo",\n}\n', 'rust/me', new Map()), /multi-line/);
 });
 
-test('an unbounded native corpus step is reported', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace(/        # A step budget[^\n]*\n        timeout-minutes: \d+\n/, ''));
-  assert.ok(audit(root).some((f) => f.includes('native-corpus needs its own timeout-minutes')));
-});
-
 test('a workspace.dependencies sub-table or multi-line table refuses instead of dropping a crate', () => {
   assert.throws(() => workspaceDeps('[workspace.dependencies.newcrate]\npath = "rust/newcrate"\n'), /not parsed/);
   assert.throws(() => workspaceDeps('[workspace.dependencies]\nnewcrate = {\n  path = "rust/newcrate",\n}\n'), /multi-line/);
-});
-
-test('a continue-on-error that only appears in a comment or run block is not accepted', (context) => {
-  const root = copyTree(context);
-  mutate(root, (t) => t.replace("        id: native-corpus\n        if: inputs.corpus == true || github.event_name == 'schedule'\n        continue-on-error: true\n", "        id: native-corpus\n        if: inputs.corpus == true || github.event_name == 'schedule'\n        continue-on-error: false\n        # continue-on-error: true\n"));
-  assert.ok(audit(root).some((f) => f.includes('native-corpus must be continue-on-error')));
 });
 
 test('a local action the job calls must be able to trigger it', (context) => {
@@ -182,10 +156,64 @@ test('a local action the job calls must be able to trigger it', (context) => {
   assert.ok(failures.some((f) => f.includes('local action .github/actions/setup-wasm-build') && f.includes('on.push.paths')));
 });
 
-test('an unjudged corpus step or a reporter without the stale-rerun guard is reported', (context) => {
+
+const realWorkflow = () => readFileSync(join(REPO, WORKFLOW), 'utf8');
+
+test('the real corpus job is its own sharded, bounded, judged job', () => {
+  const text = realWorkflow();
+  assert.deepEqual(corpusJobProblems(text), []);
+  assert.ok(jobBlock(text, 'native-corpus-result').includes('--shards 8'));
+});
+
+test('running the corpus inside native-adapter again is reported', (context) => {
   const root = copyTree(context);
-  mutate(root, (t) => t.replace(/ +node scripts\/check-retained-corpus-summary\.mjs[^\n]*\n/, '').replaceAll("is not main's head", 'differs'));
+  mutate(root, (t) => t.replace('      - name: Upload native comparison evidence', '      - run: cargo run --example retained_compare -- --manifest tests/models/manifest.json\n      - name: Upload native comparison evidence'));
+  assert.ok(audit(root).some((f) => f.includes('belongs in the native-corpus job')));
+});
+
+test('a corpus job that runs on every PR, or has no literal budget, is reported', (context) => {
+  const ungated = copyTree(context);
+  mutate(ungated, (t) => t.replace("    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "    runs-on: ubuntu-24.04\n    timeout-minutes: 120"));
+  assert.ok(audit(ungated).some((f) => f.includes('native-corpus must be gated')));
+  const unbounded = copyTree(context);
+  mutate(unbounded, (t) => t.replace('    timeout-minutes: 120\n    strategy:', '    timeout-minutes: 400\n    strategy:'));
+  assert.ok(audit(unbounded).some((f) => f.includes('360-minute')));
+});
+
+test('a shard count that disagrees between matrix, selection and aggregate is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace('check-retained-corpus-summary.mjs --shards 8 ', 'check-retained-corpus-summary.mjs --shards 7 ').replace('--index ${{ matrix.shard }}', '--index ${{ matrix.shard }}').replace('--shards 8 --index', '--shards 4 --index'));
   const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes('does not judge summary.json')));
-  assert.ok(failures.some((f) => f.includes('stale rerun')));
+  assert.ok(failures.some((f) => f.includes('--shards must equal the matrix size')));
+  assert.ok(failures.some((f) => f.includes('exactly the matrix')));
+});
+
+test('a compare step that is fatal or unbounded, or an unjudged shard, is reported', (context) => {
+  const fatal = copyTree(context);
+  mutate(fatal, (t) => t.replace('        id: compare\n        continue-on-error: true\n', '        id: compare\n        continue-on-error: false\n        # continue-on-error: true\n'));
+  assert.ok(audit(fatal).some((f) => f.includes('comparison step needs continue-on-error')));
+  const unjudged = copyTree(context);
+  mutate(unjudged, (t) => t.replace('        if: always()\n        env:\n          COMPARE_OUTCOME', '        env:\n          COMPARE_OUTCOME'));
+  assert.ok(audit(unjudged).some((f) => f.includes('if: always() step')));
+});
+
+test('an aggregate that does not need the matrix or ignores its result, and a reporter that ignores the corpus, are reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace('    needs: [native-corpus]\n', '    needs: []\n').replace('          [[ "$SHARDS_RESULT" == success ]]\n', '').replace('needs: [native-adapter, native-corpus-result]\n    if: always() && github.event_name', 'needs: [native-adapter]\n    if: always() && github.event_name'));
+  const failures = audit(root);
+  assert.ok(failures.some((f) => f.includes('must need native-corpus')));
+  assert.ok(failures.some((f) => f.includes('matrix result is not success')));
+  assert.ok(failures.some((f) => f.includes('report-scheduled-failure must need native-corpus-result')));
+});
+
+test('a browser corpus that can fail the run is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace('    continue-on-error: true\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4\n        with:\n          persist-credentials: false\n      - uses: pnpm', '    runs-on: ubuntu-24.04\n    timeout-minutes: 120\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4\n        with:\n          persist-credentials: false\n      - uses: pnpm'));
+  assert.ok(audit(root).some((f) => f.includes('browser-corpus must exist and stay report-only')));
+});
+
+test('a reporter that loses its stale-rerun guard is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replaceAll("is not main's head", 'differs'));
+  assert.ok(audit(root).some((f) => f.includes('stale rerun')));
 });

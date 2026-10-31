@@ -1,12 +1,12 @@
 diff --git a/scripts/check-retained-corpus-summary.mjs b/scripts/check-retained-corpus-summary.mjs
 --- a/scripts/check-retained-corpus-summary.mjs
 +++ b/scripts/check-retained-corpus-summary.mjs
-@@ -22,7 +22,7 @@ export function corpusProblems(summary) {
-   if (summary.complete !== true) problems.push('the run is not marked complete');
+@@ -26,7 +26,7 @@ export function corpusProblems(summary) {
+   if (summary.complete !== true) problems.push('INCOMPLETE: the run is not marked complete (timeout or crash; not a parity result)');
    for (const key of ['violations', 'universeMismatch', 'skipped']) {
-     if (!Array.isArray(summary[key])) problems.push(`${key} is missing or not an array`);
--    else if (false) problems.push(`${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`);
-+    else if (summary[key].length > 0) problems.push(`${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`);
+     if (!Array.isArray(summary[key])) problems.push(`INCOMPLETE: ${key} is missing or not an array`);
+-    else if (false) problems.push(`PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`);
++    else if (summary[key].length > 0) problems.push(`PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`);
    }
    return problems;
  }

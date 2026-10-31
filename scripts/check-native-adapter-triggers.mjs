@@ -139,6 +139,53 @@ export function eventPaths(text, event) {
   return paths;
 }
 
+const CORPUS_IF = "github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)";
+
+/** Text of one top-level job (from `  id:` to the next two-space key). */
+export function jobBlock(text, id) {
+  const m = text.match(new RegExp(`^ {2}${id}:\\n([\\s\\S]*?)(?=^ {2}[A-Za-z0-9_-]+:\\n|(?![\\s\\S]))`, 'm'));
+  return m ? m[1] : null;
+}
+
+/** The downloaded corpus lives in its own scheduled/dispatch job, sharded, with a required aggregate. */
+export function corpusJobProblems(text) {
+  const out = [];
+  const corpus = jobBlock(text, 'native-corpus');
+  const result = jobBlock(text, 'native-corpus-result');
+  const main = jobBlock(text, 'native-adapter');
+  if (corpus === null) return [`${WORKFLOW}: no native-corpus job; the nightly corpus must not run inside native-adapter`];
+  if (result === null) out.push(`${WORKFLOW}: no native-corpus-result aggregate job over the shards`);
+  if (main !== null && /--manifest tests\/models\/manifest/.test(main)) out.push(`${WORKFLOW}: native-adapter runs the corpus itself; it belongs in the native-corpus job`);
+  if (new RegExp(`^ {4}if: ${CORPUS_IF.replace(/[().|=&']/g, '\\$&')}\\s*$`, 'm').test(corpus) === false) out.push(`${WORKFLOW}: native-corpus must be gated on exactly: ${CORPUS_IF}`);
+  const budget = corpus.match(/^ {4}timeout-minutes: (\d+)\s*$/m);
+  if (!budget || Number(budget[1]) > 360) out.push(`${WORKFLOW}: native-corpus needs a literal timeout-minutes within GitHub's 360-minute limit`);
+  if (!/^ {6}fail-fast: false\s*$/m.test(corpus)) out.push(`${WORKFLOW}: native-corpus matrix must set fail-fast: false so one slow shard does not hide the others`);
+  const matrix = corpus.match(/^ {8}shard: \[([0-9, ]+)\]\s*$/m);
+  const shards = matrix ? matrix[1].split(',').map((s) => Number(s.trim())) : [];
+  if (shards.length === 0 || shards.some((s, i) => s !== i)) out.push(`${WORKFLOW}: native-corpus matrix shard must list 0..N-1 in order`);
+  const select = corpus.match(/corpus-shards\.mjs shard [^\n]*--shards (\d+)/);
+  if (!select || Number(select[1]) !== shards.length) out.push(`${WORKFLOW}: the shard selection step's --shards must equal the matrix size (${shards.length})`);
+  const compare = corpus.match(/id: compare\n([\s\S]*?)\n {6}(?:# |- )/);
+  if (!compare || !/^ {8}continue-on-error: true[ \t]*$/m.test(compare[1]) || !/^ {8}timeout-minutes: \d+[ \t]*$/m.test(compare[1])) {
+    out.push(`${WORKFLOW}: the corpus comparison step needs continue-on-error and its own timeout-minutes so a timeout is judged, not fatal`);
+  }
+  if (!/^ {8}if: always\(\)\s*\n(?:[\s\S]*?)check-retained-corpus-summary\.mjs "\$RUNNER_TEMP\/native-corpus\/summary\.json"/m.test(corpus)) {
+    out.push(`${WORKFLOW}: every shard must judge its summary.json in an if: always() step`);
+  }
+  if (result !== null) {
+    if (!/^ {4}needs: \[native-corpus\]\s*$/m.test(result)) out.push(`${WORKFLOW}: native-corpus-result must need native-corpus`);
+    if (!/^ {4}if: always\(\) && /m.test(result)) out.push(`${WORKFLOW}: native-corpus-result must run if: always() so a failed shard still reports`);
+    const agg = result.match(/check-retained-corpus-summary\.mjs --shards (\d+) /);
+    if (!agg || Number(agg[1]) !== shards.length) out.push(`${WORKFLOW}: native-corpus-result must require exactly the matrix's ${shards.length} shard summaries`);
+    if (!/\[\[ "\$SHARDS_RESULT" == success \]\]/.test(result)) out.push(`${WORKFLOW}: native-corpus-result must fail when the matrix result is not success`);
+  }
+  const reporter = jobBlock(text, 'report-scheduled-failure');
+  if (reporter !== null && !/^ {4}needs: \[native-adapter, native-corpus-result\]\s*$/m.test(reporter)) out.push(`${WORKFLOW}: report-scheduled-failure must need native-corpus-result so a corpus failure is reported`);
+  const browser = jobBlock(text, 'browser-corpus');
+  if (browser === null || !/^ {4}continue-on-error: true\s*$/m.test(browser)) out.push(`${WORKFLOW}: browser-corpus must exist and stay report-only (job-level continue-on-error)`);
+  return out;
+}
+
 export function audit(root) {
   const failures = [];
   const wfPath = join(root, WORKFLOW);
@@ -191,22 +238,11 @@ export function audit(root) {
       if (globs && !globs.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.${name}.paths -- add '${action}/**'`);
     }
   }
-  if (!/inputs\.corpus == true \|\| github\.event_name == 'schedule'/.test(text)) {
-    failures.push(`${WORKFLOW}: the corpus steps do not run on the scheduled event`);
-  }
-  if (/inputs\.corpus == true(?! \|\| github\.event_name == 'schedule')/.test(text)) {
-    failures.push(`${WORKFLOW}: a corpus step is gated on inputs.corpus alone, so it never runs nightly`);
-  }
+  failures.push(...corpusJobProblems(text));
   if (!/^concurrency:\s*\n {2}group: native-adapter-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\s*\n {2}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\s*$/m.test(text)) {
     failures.push(`${WORKFLOW}: top-level concurrency must group by event and ref and cancel only pull_request runs (main pushes would run unthrottled, or an in-flight main run would be cancelled)`);
   }
-  for (const id of ['native-corpus', 'corpus-download']) {
-    const step = text.match(new RegExp(`id: ${id}\\n([\\s\\S]*?)\\n      - `));
-    if (!step || !/^ {8}continue-on-error: true[ \t]*(?:#.*)?$/m.test(step[1])) failures.push(`${WORKFLOW}: step ${id} must be continue-on-error so a corpus failure does not skip later lanes`);
-    if (id === 'native-corpus' && (!step || !/^ {8}timeout-minutes: \d+[ \t]*(?:#.*)?$/m.test(step[1]))) failures.push(`${WORKFLOW}: step native-corpus needs its own timeout-minutes; the job limit would cancel every later lane`);
-  }
   if (!/github\.ref == 'refs\/heads\/main' && needs\.native-adapter\.result == 'failure'/.test(text)) failures.push(`${WORKFLOW}: report-red-on-main must fire on 'failure' only; a cancelled (superseded) run is not red`);
-  if (!/check-retained-corpus-summary\.mjs "\$RUNNER_TEMP\/native-corpus\/summary\.json"/.test(text)) failures.push(`${WORKFLOW}: the native corpus step does not judge summary.json; retained_compare exits 0 on violations without --gate`);
   if ((text.match(/is not main's head/g) ?? []).length < 2) failures.push(`${WORKFLOW}: both main reporters must ignore a stale rerun (compare github.sha with main's head before touching the issue)`);
   if (!/^ {2}close-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no close-red-on-main job; the issue would stay open after main is green`);
   if (!/^ {2}report-red-on-main:/m.test(text)) failures.push(`${WORKFLOW}: no report-red-on-main job for a failing push to main`);

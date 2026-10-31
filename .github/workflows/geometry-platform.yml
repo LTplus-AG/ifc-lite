@@ -256,9 +256,7 @@ concurrency:
 jobs:
   native-adapter:
     runs-on: ubuntu-24.04
-    # Committed lanes take ~40-60 min; nightly/dispatch also carries the corpus step
-    # (itself bounded below), so it needs headroom for the lanes after it.
-    timeout-minutes: ${{ github.event_name != 'pull_request' && github.event_name != 'push' && 180 || 90 }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -365,24 +363,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Download optional corpus
-        id: corpus-download
-        if: inputs.corpus == true || github.event_name == 'schedule'
-        continue-on-error: true
-        run: pnpm fixtures
-      # Gated, but independent: a corpus failure must not skip the Emscripten,
-      # browser and viewer lanes below. The final step fails the job on it.
-      - name: Optional retained native corpus
-        id: native-corpus
-        if: inputs.corpus == true || github.event_name == 'schedule'
-        continue-on-error: true
-        # A step budget, not the job's: hitting the job limit cancels every later lane.
-        timeout-minutes: 75
-        run: |
-          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
-            --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json
-          # Without --gate the comparison exits 0 on violations; judge summary.json.
-          node scripts/check-retained-corpus-summary.mjs "$RUNNER_TEMP/native-corpus/summary.json"
       - name: Upload native comparison evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -391,8 +371,6 @@ jobs:
           path: |
             ${{ runner.temp }}/native-compare/*.json
             ${{ runner.temp }}/native-compare/*.tsv
-            ${{ runner.temp }}/native-corpus/*.json
-            ${{ runner.temp }}/native-corpus/*.tsv
           if-no-files-found: error
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -540,6 +518,15 @@ jobs:
             IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
             IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
+      # The report-only browser corpus job reads the staged engine from here.
+      - name: Keep the staged retained engine for the browser corpus
+        if: inputs.corpus == true || github.event_name == 'schedule'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cli-retained-engine
+          path: ${{ runner.temp }}/cli-retained-engine
+          if-no-files-found: error
+          retention-days: 3
       - name: Browser parity and real retained viewer
         id: viewer-retained
         continue-on-error: true
@@ -563,13 +550,6 @@ jobs:
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
           node scripts/check-viewer-retained-free.mjs
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default
-      # Report only by design: never part of the verdict below.
-      - name: Optional retained browser corpus (report only)
-        if: inputs.corpus == true || github.event_name == 'schedule'
-        continue-on-error: true
-        run: |
-          node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
-            --native "$RUNNER_TEMP/native-corpus/products.tsv" --out "$RUNNER_TEMP/viewer-retained-corpus" --corpus
       - name: Upload retained viewer evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -578,7 +558,6 @@ jobs:
           path: |
             ${{ runner.temp }}/retained-native-link-inventory.json
             ${{ runner.temp }}/viewer-retained/
-            ${{ runner.temp }}/viewer-retained-corpus/
             test-results/
           if-no-files-found: error
       # Gather independent failures, then preserve a failing overall verdict.
@@ -602,27 +581,165 @@ jobs:
           CLI_RETAINED: ${{ steps.cli-retained.outcome }}
           VIEWER_RETAINED: ${{ steps.viewer-retained.outcome }}
           OPEN_TESSELLATION: ${{ steps.open-tessellation.outcome }}
-          CORPUS_DOWNLOAD: ${{ steps.corpus-download.outcome }}
-          NATIVE_CORPUS: ${{ steps.native-corpus.outcome }}
         run: |
           failed=0
-          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED OPEN_TESSELLATION CORPUS_DOWNLOAD NATIVE_CORPUS; do
+          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED OPEN_TESSELLATION; do
             printf '%s=%s\n' "$lane" "${!lane}"
-            # The corpus lanes are skipped on PRs and pushes; skipped is not a failure there.
-            if [[ "${!lane}" == skipped && ( "$lane" == CORPUS_DOWNLOAD || "$lane" == NATIVE_CORPUS ) ]]; then continue; fi
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done
           exit "$failed"
 
+  # The downloaded corpus, apart from the committed-fixture lane above: it is far
+  # longer than that lane, and as a step inside it a timeout was indistinguishable
+  # from (and starved) every other lane. Scheduled and dispatch-only. Sharded by
+  # model bytes (scripts/retained-compare/corpus-shards.mjs); the shard count
+  # below must equal `--shards` in native-corpus-result.
+  native-corpus:
+    name: Native corpus (shard ${{ matrix.shard }}/8)
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned upstream SDK (fetched, never vendored)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: NVIDIA-Omniverse/usd-brep
+          ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
+          path: upstream-smlib
+          persist-credentials: false
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Build native owned boundary and worker
+        run: |
+          cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
+          cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: geometry-platform
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download the corpus
+        run: pnpm fixtures
+      - name: Select this shard's models
+        run: node scripts/retained-compare/corpus-shards.mjs shard --manifest tests/models/manifest.json --shards 8 --index ${{ matrix.shard }} --out tests/models/manifest.shard.json
+      # Own budget and continue-on-error so the verdict step below can tell a timeout
+      # (INCOMPLETE) from a finished run with parity violations (PARITY).
+      - name: Compare this shard natively
+        id: compare
+        continue-on-error: true
+        timeout-minutes: 100
+        run: |
+          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
+            --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.shard.json
+      # Without --gate the comparison exits 0 on violations; judge summary.json.
+      - name: Judge this shard
+        if: always()
+        env:
+          COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+        run: |
+          echo "comparison step outcome: $COMPARE_OUTCOME"
+          node scripts/check-retained-corpus-summary.mjs "$RUNNER_TEMP/native-corpus/summary.json"
+          [[ "$COMPARE_OUTCOME" == success ]]
+      - name: Upload shard evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-corpus-shard-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/native-corpus/*.json
+            ${{ runner.temp }}/native-corpus/*.tsv
+          if-no-files-found: error
+
+  # The required aggregate over every shard: red when any shard timed out or
+  # failed, or when a shard's evidence is missing.
+  native-corpus-result:
+    name: Native corpus result
+    needs: [native-corpus]
+    if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-corpus-shard-*
+          path: shards
+      - name: Every shard finished, with no parity violations
+        env:
+          SHARDS_RESULT: ${{ needs.native-corpus.result }}
+        run: |
+          echo "native-corpus matrix result: $SHARDS_RESULT"
+          node scripts/check-retained-corpus-summary.mjs --shards 8 shards/native-corpus-shard-*/summary.json
+          [[ "$SHARDS_RESULT" == success ]]
+      - name: Merge the shards' product tables for the browser corpus
+        run: node scripts/retained-compare/corpus-shards.mjs merge --out products.tsv shards/native-corpus-shard-*/products.tsv
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-corpus-products
+          path: products.tsv
+          if-no-files-found: error
+
+  # Report only by design: never part of any verdict (job-level continue-on-error).
+  browser-corpus:
+    name: Browser corpus (report only)
+    needs: [native-adapter, native-corpus-result]
+    if: always() && needs.native-corpus-result.result == 'success'
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-corpus-products
+          path: native-corpus
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cli-retained-engine
+          path: ${{ runner.temp }}/cli-retained-engine
+      - name: Compare the corpus in the browser
+        run: |
+          node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
+            --native native-corpus/products.tsv --out "$RUNNER_TEMP/viewer-retained-corpus" --corpus
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: retained-browser-corpus
+          path: ${{ runner.temp }}/viewer-retained-corpus/
+          if-no-files-found: error
+
   # A red nightly or main run must not scroll by: open or update one issue.
   report-scheduled-failure:
-    needs: [native-adapter]
-    if: always() && github.event_name == 'schedule' && needs.native-adapter.result != 'success'
+    needs: [native-adapter, native-corpus-result]
+    if: always() && github.event_name == 'schedule' && (needs.native-adapter.result != 'success' || needs.native-corpus-result.result != 'success')
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
       workflow_name: Geometry platform (native adapter)
-      jobs: native-adapter
-      result: native-adapter=${{ needs.native-adapter.result }}
+      jobs: native-adapter, native-corpus-result
+      result: native-adapter=${{ needs.native-adapter.result }}, native-corpus=${{ needs.native-corpus-result.result }}
     permissions:
       contents: read
       issues: write

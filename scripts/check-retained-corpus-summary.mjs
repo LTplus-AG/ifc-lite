@@ -11,31 +11,42 @@
  * the committed coverage manifests, which a downloaded corpus does not carry.
  * So the nightly reads `summary.json` instead: the run must be complete and
  * `violations`, `universeMismatch` and `skipped` must be present and empty.
+ *
+ * An INCOMPLETE run (timeout or crash: `complete` is not true) is reported
+ * apart from a PARITY failure (a finished run with violations), so a red
+ * nightly says which it is. With `--shards N` exactly N summaries must be given.
  */
 
 import { readFileSync } from 'node:fs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export function corpusProblems(summary) {
-  if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return ['summary.json is not an object'];
+  if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return ['INCOMPLETE: summary.json is not an object'];
   const problems = [];
-  if (summary.complete !== true) problems.push('the run is not marked complete');
+  if (summary.complete !== true) problems.push('INCOMPLETE: the run is not marked complete (timeout or crash; not a parity result)');
   for (const key of ['violations', 'universeMismatch', 'skipped']) {
-    if (!Array.isArray(summary[key])) problems.push(`${key} is missing or not an array`);
-    else if (summary[key].length > 0) problems.push(`${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`);
+    if (!Array.isArray(summary[key])) problems.push(`INCOMPLETE: ${key} is missing or not an array`);
+    else if (summary[key].length > 0) problems.push(`PARITY: ${key} has ${summary[key].length} entr${summary[key].length === 1 ? 'y' : 'ies'}: ${summary[key].slice(0, 3).join(' | ')}`);
   }
   return problems;
 }
 
 if (isMainEntry(import.meta.url)) {
-  const file = process.argv[2];
-  if (!file) { console.error('Usage: check-retained-corpus-summary.mjs <summary.json>'); process.exit(2); }
-  let problems;
-  try { problems = corpusProblems(JSON.parse(readFileSync(file, 'utf8'))); }
-  catch (error) { problems = [`cannot read ${file}: ${error.message}`]; }
+  const args = process.argv.slice(2);
+  let expected = null;
+  if (args[0] === '--shards') { expected = Number(args[1]); args.splice(0, 2); }
+  if (args.length === 0 || (expected !== null && !Number.isInteger(expected))) { console.error('Usage: check-retained-corpus-summary.mjs [--shards N] <summary.json>...'); process.exit(2); }
+  const problems = [];
+  if (expected !== null && args.length !== expected) problems.push(`INCOMPLETE: expected ${expected} shard summaries, got ${args.length}`);
+  for (const file of args) {
+    let found;
+    try { found = corpusProblems(JSON.parse(readFileSync(file, 'utf8'))); }
+    catch (error) { found = [`INCOMPLETE: cannot read ${file}: ${error.message}`]; }
+    problems.push(...found.map((p) => (args.length > 1 ? `${file}: ${p}` : p)));
+  }
   if (problems.length > 0) {
     console.error(`❌ native corpus failed:\n  - ${problems.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log('✅ native corpus summary: complete, no violations, universe mismatches or skipped models');
+  console.log(`✅ native corpus: ${args.length} summar${args.length === 1 ? 'y' : 'ies'} complete, no violations, universe mismatches or skipped models`);
 }

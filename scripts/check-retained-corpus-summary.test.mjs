@@ -15,15 +15,15 @@ const ok = { complete: true, violations: [], universeMismatch: [], skipped: [] }
 test('a complete, empty summary passes', () => assert.deepEqual(corpusProblems(ok), []));
 
 test('violations, universe mismatches and absent fixtures each fail by name', () => {
-  assert.match(corpusProblems({ ...ok, violations: ['m:1 bad'] }).join(), /violations has 1 entry: m:1 bad/);
+  assert.match(corpusProblems({ ...ok, violations: ['m:1 bad'] }).join(), /PARITY: violations has 1 entry: m:1 bad/);
   assert.match(corpusProblems({ ...ok, universeMismatch: ['a', 'b'] }).join(), /universeMismatch has 2 entries/);
   assert.match(corpusProblems({ ...ok, skipped: ['x.ifc: absent; run pnpm fixtures'] }).join(), /skipped has 1 entry/);
 });
 
 test('an incomplete or malformed summary fails closed', () => {
-  assert.match(corpusProblems({ ...ok, complete: false }).join(), /not marked complete/);
+  assert.match(corpusProblems({ ...ok, complete: false }).join(), /INCOMPLETE: the run is not marked complete/);
   assert.match(corpusProblems({ complete: true }).join(), /violations is missing/);
-  assert.match(corpusProblems([]).join(), /not an object/);
+  assert.match(corpusProblems([]).join(), /INCOMPLETE: summary.json is not an object/);
 });
 
 test('the CLI exits non-zero on a failing summary and on an unreadable one', (context) => {
@@ -35,4 +35,19 @@ test('the CLI exits non-zero on a failing summary and on an unreadable one', (co
   execFileSync(process.execPath, [script, join(dir, 'good.json')]);
   assert.equal(spawnSync(process.execPath, [script, join(dir, 'bad.json')]).status, 1);
   assert.equal(spawnSync(process.execPath, [script, join(dir, 'missing.json')]).status, 1);
+});
+
+test('the CLI requires exactly the expected number of shard summaries and names the failing one', (context) => {
+  const dir = mkdtempSync(join(tmpdir(), 'corpus-summary-shards-'));
+  context.after(() => rmSync(dir, { recursive: true, force: true }));
+  const script = join(import.meta.dirname, 'check-retained-corpus-summary.mjs');
+  const a = join(dir, 'a.json');
+  const b = join(dir, 'b.json');
+  writeFileSync(a, JSON.stringify(ok));
+  writeFileSync(b, JSON.stringify({ ...ok, complete: false }));
+  execFileSync(process.execPath, [script, '--shards', '1', a]);
+  assert.equal(spawnSync(process.execPath, [script, '--shards', '2', a]).status, 1);
+  const bad = spawnSync(process.execPath, [script, '--shards', '2', a, b], { encoding: 'utf8' });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /b\.json: INCOMPLETE/);
 });

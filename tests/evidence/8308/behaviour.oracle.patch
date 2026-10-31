@@ -1,0 +1,15 @@
+diff --git a/rust/geometry/src/router/transforms/operator.rs b/rust/geometry/src/router/transforms/operator.rs
+--- a/rust/geometry/src/router/transforms/operator.rs
++++ b/rust/geometry/src/router/transforms/operator.rs
+@@ -125,7 +125,10 @@ pub(crate) fn parse_transformation_operator(
+     // leaves undefined) keeps Z × X. The 2D form differs: IfcBaseAxis takes an
+     // omitted 2D Axis2 as IfcOrthogonalComplement(Axis1), which is Z × X.
+     let cross_y = z_axis.cross(&x_axis).normalize();
+-    let y_arg = y_axis_raw;
++    let y_arg = match y_axis_raw {
++        None if !is_2d => Some(Vector3::new(0.0, 1.0, 0.0)),
++        authored => authored,
++    };
+     let y_axis = match y_arg {
+         Some(raw) => {
+             let projected = raw - z_axis * raw.dot(&z_axis);

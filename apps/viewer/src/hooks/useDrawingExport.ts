@@ -1069,11 +1069,18 @@ function useDrawingExport({
     const vectorSnapshot = structuredClone(dxfUnderlays);
     // Styles resolve at click time too, so a colour or override change while
     // jsPDF loads cannot leak into this export.
-    const styledPolygons = styleCutPolygons(drawing.cutPolygons, cutPolygonStyleContext(), (polygon) =>
-      [polygon.polygon.outer, ...polygon.polygon.holes]
-        .filter((ring) => ring.length >= 2 && ring.every((p) => isFinite(p.x) && isFinite(p.y)))
-        .map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-    );
+    // Rings with a non-finite vertex are dropped (jsPDF throws on them). A
+    // polygon is filled only when its outer ring and every hole survived:
+    // otherwise a lost outer ring or hole would paint an opening solid.
+    const styledPolygons = styleCutPolygons(drawing.cutPolygons, cutPolygonStyleContext(), (polygon) => {
+      const finite = (ring: { x: number; y: number }[]) => ring.every((p) => isFinite(p.x) && isFinite(p.y));
+      const all = [polygon.polygon.outer, ...polygon.polygon.holes].filter((ring) => ring.length >= 2);
+      const rings = all.filter(finite);
+      return {
+        rings: rings.map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
+        fillable: polygon.polygon.outer.length >= 3 && rings.length === all.length,
+      };
+    });
 
     void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
       subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
@@ -1112,11 +1119,9 @@ function useDrawingExport({
         };
         // Unparseable colours fall back per polygon (type colour, black) so
         // one bad override cannot abort the whole export.
-        // Outlines cover every ring, as before fills existed. A polygon whose
-        // outer ring was lost is not filled: its surviving hole would paint
-        // the opening solid.
-        for (const { polygon, geometry: rings, style } of styledPolygons) {
-          if (polygon.polygon.outer.length < 3) continue;
+        // Outlines cover every surviving ring, as before fills existed.
+        for (const { polygon, geometry: { rings, fillable }, style } of styledPolygons) {
+          if (!fillable) continue;
           const { hex, alpha } = pdfColor(style.fillColor) ?? pdfColor(getFillColorForType(polygon.ifcType))!;
           const opacity = style.fillOpacity * alpha;
           if (!(opacity > 0)) continue;
@@ -1125,7 +1130,7 @@ function useDrawingExport({
           tracePath(rings);
           doc.fillEvenOdd();
         }
-        for (const { geometry: rings, style } of styledPolygons) {
+        for (const { geometry: { rings }, style } of styledPolygons) {
           const { hex, alpha } = pdfColor(style.strokeColor) ?? { hex: '#000000', alpha: 1 };
           // Zero width hides the outline, as in the SVG; PDF would draw "0 w"
           // as the thinnest visible line.
@@ -1153,7 +1158,9 @@ function useDrawingExport({
         // that cut and must still be drawn, or the geometry silently
         // vanishes from the PDF.
         const entitiesWithCutPolygon = new Set(
-          drawing.cutPolygons.map((p) => `${p.modelIndex}:${p.entityId}`)
+          styledPolygons
+            .filter(({ geometry }) => geometry.rings.length > 0)
+            .map(({ polygon: p }) => `${p.modelIndex}:${p.entityId}`)
         );
 
         // Drawing lines (projection/hidden/silhouette/crease/boundary).

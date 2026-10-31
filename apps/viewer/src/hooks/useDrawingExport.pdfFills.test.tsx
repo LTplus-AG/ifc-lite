@@ -23,7 +23,8 @@ import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false, nanVertex = false }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false }: ExportOptions = {}): Drawing2D {
+  const nanIn = (ring: 'hole' | 'outer') => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : 4);
   return {
     config: {
       plane: { axis: 'y', position: 0, flipped: false },
@@ -32,12 +33,14 @@ function buildDrawing({ polygonColor, noOuter = false, nanVertex = false }: Expo
       creaseAngle: 30,
       scale: 50,
     },
-    lines: [],
+    lines: cutLine
+      ? [{ line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
+      : [],
     cutPolygons: [
       {
         polygon: {
-          outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-          holes: [[{ x: 1, y: 1 }, { x: nanVertex ? Number.NaN : 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
+          outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: nanIn('outer'), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+          holes: [[{ x: 1, y: 1 }, { x: nanIn('hole') / 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
         },
         ifcType: 'IfcWall',
         entityId: 7,
@@ -67,8 +70,10 @@ interface ExportOptions {
   polygonColor?: [number, number, number, number];
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
-  /** One hole vertex is NaN (corrupt geometry). */
-  nanVertex?: boolean;
+  /** Corrupt geometry: a NaN vertex in the hole, the outer ring, or both. */
+  nanVertex?: 'hole' | 'outer' | 'all';
+  /** Also carry the wall's bottom edge as a `cut` line. */
+  cutLine?: boolean;
 }
 
 type Format = 'pdf' | 'svg';
@@ -242,9 +247,17 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     }
   });
 
-  it('skips a ring with a non-finite vertex instead of aborting the export', async () => {
-    const text = await exportPdf({ nanVertex: true });
-    assert.ok(text.includes('f*'), 'the valid polygon data still exports');
+  for (const nanVertex of ['hole', 'outer'] as const) {
+    it(`outlines what survives a non-finite ${nanVertex} vertex, unfilled, instead of aborting`, async () => {
+      const text = await exportPdf({ nanVertex });
+      assert.ok(!text.includes('f*'), 'no fill: it would paint the opening or the wall wrongly');
+      assert.ok(text.includes('h\nS\n'), 'the surviving ring is stroked');
+    });
+  }
+
+  it('draws the cut lines of an entity whose polygon drew nothing (#2119)', async () => {
+    const text = await exportPdf({ nanVertex: 'all', cutLine: true });
+    assert.match(text, /^[-\d. ]+ m\n[-\d. ]+ l\nS$/m, 'the cut edge reaches the PDF as a line');
   });
 });
 

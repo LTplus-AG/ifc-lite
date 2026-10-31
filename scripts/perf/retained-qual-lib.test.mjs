@@ -4,9 +4,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { compare } from './retained-qual-report.mjs';
 import { exclusivity, hostIdentity, median, parseArgs, parseArms, pinFor, roundSides, spreadPct, summarizeRows, unreleasedQuietWindows } from './retained-qual-lib.mjs';
 
 test('statistics are the ab-report.mjs definitions (median, spread percent of the median)', () => {
@@ -15,11 +17,28 @@ test('statistics are the ab-report.mjs definitions (median, spread percent of th
   assert.equal(spreadPct([90, 100, 110]), 20);
   assert.equal(spreadPct([5]), 0);
   assert.equal(spreadPct([0, 0, 0]), 0);
-  // Pin the reporter criteria this family mirrors: if ab-report.mjs changes them, review retained-qual-report.mjs.
-  const source = readFileSync(new URL('./ab-report.mjs', import.meta.url), 'utf8');
-  for (const needle of ['Math.abs(d) > Math.max(noise, 3)', 'Math.abs(brMed - bMed) >= 1', 'noise > 15', 'bMed === 0 && brMed > 0']) {
-    assert.ok(source.includes(needle), `ab-report.mjs no longer contains ${needle}`);
-  }
+});
+
+test('the reporter classifies exactly as scripts/perf/ab-report.mjs does on the same rows', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'abp-'));
+  const scenarios = { moved: [[100, 101, 99], [120, 121, 119]], quiet: [[100, 110, 90], [101, 111, 91]], subMs: [[0.2, 0.2, 0.2], [0.6, 0.6, 0.6]],
+    noisy: [[100, 150, 80], [100, 100, 100]], zero: [[0, 0, 0], [5, 5, 5]], faster: [[200, 201, 199], [150, 151, 149]] };
+  try {
+    for (const [name, [base, branch]] of Object.entries(scenarios)) {
+      const rows = [...base.map(v => ['base', v]), ...branch.map(v => ['branch', v])].map(([side, v]) => ({ side, path: '/m/a.ifc', ok: true,
+        parseMs: v, geometryMs: v, totalMs: v, meshes: 1, vertices: 1, triangles: 1 }));
+      const jsonl = join(dir, `${name}.jsonl`), out = join(dir, `${name}.json`);
+      writeFileSync(jsonl, rows.map(r => JSON.stringify(r)).join('\n'));
+      const ab = spawnSync(process.execPath, [new URL('./ab-report.mjs', import.meta.url).pathname, jsonl, '--json', out], { encoding: 'utf8' });
+      assert.equal(ab.status, 0, ab.stderr);
+      const expected = JSON.parse(readFileSync(out, 'utf8')).fixtures[0].phases.find(p => p.phase === 'TOTAL');
+      const mine = compare(rows).fixtures[0].columns.find(c => c.column === 'totalMs');
+      assert.equal(mine.real, expected.real, `${name}: real`);
+      assert.equal(mine.direction === 'lower' ? 'faster' : mine.direction === 'higher' ? 'slower' : mine.direction, expected.direction ?? null, `${name}: direction`);
+      assert.equal(mine.noisePct, expected.noisePct, `${name}: noise`);
+      assert.equal(mine.deltaPct, expected.deltaPct, `${name}: delta`);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('parseArgs accepts values, repeats, flags and a command after --, and rejects unknown options', () => {

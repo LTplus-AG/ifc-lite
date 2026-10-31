@@ -77,6 +77,7 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
       uaMemory: ua, uaMemoryBytes: ua.bytes, longTaskMs: m.longTaskMs, drawCallsAtFirstFrame: m.drawCallsAtFirstFrame,
       browserPeakHwmKiB: memory.maxIndividualHwmKiB, browserPeakConcurrentRssKiB: memory.maxObservedConcurrentRssKiB,
       browserPeakConcurrentPssKiB: memory.maxObservedConcurrentPssKiB, browserMemorySamples: memory.samples,
+      browserProcesses: Object.values(memory.byPid).map(p => ({ type: p.type ?? 'browser', hwmKiB: p.hwmKiB, peakPssKiB: p.peakPssKiB })),
       browserMemoryCaveat: memory.caveat, pageErrors: browser.pageErrors });
     if (losses > 0) throw new Error(`WebGPU device lost ${losses} time(s) during the sample; contaminated`);
     if (options['require-hardware-gpu'] && row.softwareAdapter) throw new Error(`software WebGPU adapter ${JSON.stringify(adapter)} under --require-hardware-gpu`);

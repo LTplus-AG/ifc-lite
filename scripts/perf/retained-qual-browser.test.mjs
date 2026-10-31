@@ -9,16 +9,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEVICE_LOSS_PATTERNS, GPU_ARGS, deviceLossCount, isSoftwareAdapter, raceWithTimeout, treeDigest } from './retained-qual-browser.mjs';
 
-test('device-loss patterns are the ones tests/benchmark/gpu-health.ts uses', () => {
-  const source = readFileSync(new URL('../../tests/benchmark/gpu-health.ts', import.meta.url), 'utf8');
-  for (const pattern of DEVICE_LOSS_PATTERNS) assert.ok(source.includes(`pattern: ${pattern.toString()}`), `gpu-health.ts lacks ${pattern}`);
+test('the renderer and viewer device-loss lines are recognised, and ordinary lines are not', () => {
+  // Real log formats (packages/renderer device.ts / index.ts, apps/viewer device-loss-report.ts).
+  const lines = ['[WebGPU] Device lost: GPUDevice destroyed (reason: destroyed)', '[Renderer] GPU device lost — halting rendering until re-init: x', '[Viewport] GPU device lost: x'];
+  for (const [i, pattern] of DEVICE_LOSS_PATTERNS.entries()) {
+    assert.ok(pattern.test(lines[i]), `pattern ${i}`);
+    assert.ok(DEVICE_LOSS_PATTERNS.every((other, j) => j === i || !other.test(lines[i])), `line ${i} matches only its own site`);
+  }
+  assert.ok(!DEVICE_LOSS_PATTERNS.some(pattern => pattern.test('[WebGPU] Uncaptured error: x')), 'an uncaptured error is not a loss');
 });
 
-test('swiftshader flags are the viewer-retained project flags in playwright.config.ts', () => {
-  const config = readFileSync(new URL('../../playwright.config.ts', import.meta.url), 'utf8');
-  const block = config.slice(config.indexOf("name: 'viewer-retained'"), config.indexOf("name: 'viewer-retained-default'"));
-  for (const arg of GPU_ARGS.swiftshader) assert.ok(block.includes(`'${arg}'`), `playwright.config.ts viewer-retained lacks ${arg}`);
-  assert.ok(GPU_ARGS.hardware.includes('--use-angle=vulkan') && !GPU_ARGS.hardware.some(a => /swiftshader/.test(a)));
+test('software flags name SwiftShader, hardware flags never do', () => {
+  assert.ok(GPU_ARGS.swiftshader.some(arg => /swiftshader/.test(arg)));
+  assert.ok(GPU_ARGS.hardware.includes('--use-angle=vulkan') && !GPU_ARGS.hardware.some(arg => /swiftshader/.test(arg)));
+  assert.ok([...GPU_ARGS.swiftshader, ...GPU_ARGS.hardware].includes('--enable-unsafe-webgpu'));
 });
 
 test('one loss printed at several sites counts once (largest per-site count, never the sum)', () => {

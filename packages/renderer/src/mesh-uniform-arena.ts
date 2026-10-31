@@ -159,6 +159,13 @@ export class MeshUniformArena {
   /** Pages currently allocated (diagnostics and tests). */
   get pageCount(): number { return this.pages.length; }
 
+  /** Slots allocated and not yet recycled by a flush (diagnostics and leak tests). */
+  get liveSlots(): number {
+    let live = 0;
+    for (const page of this.pages) live += page.live;
+    return live;
+  }
+
   private addPage(): void {
     const buffer = this.device.createBuffer({
       label: 'mesh-uniform-arena',

@@ -95,10 +95,12 @@ export function measureDrawingBuffer(
  * the caller, so moving between displays needs no notification. Without
  * `ResizeObserver` (non-browser hosts) every read measures, as before.
  *
- * Scope: a resize reaches the drawing buffer on the frame after the
- * observer reports it (observations run after animation callbacks), and an
- * ancestor CSS transform that changes the element's rendered box without
- * resizing it is not observed.
+ * The renderer reads the cache only for continuous (interaction) frames and
+ * re-measures every idle or capture frame, so a settled frame and a capture
+ * always see the current layout. Within a gesture, a resize reaches the
+ * drawing buffer on the frame after the observer reports it (observations
+ * run after animation callbacks), and an ancestor CSS transform that changes
+ * the element's rendered box without resizing it is not observed.
  */
 export class CanvasCssSize {
   private cached: { width: number; height: number } | null = null;
@@ -110,8 +112,9 @@ export class CanvasCssSize {
     this.observer.observe(canvas);
   }
 
-  read(): { width: number; height: number } {
-    if (this.cached) return this.cached;
+  /** The cached size; `fresh` re-measures (and re-caches) regardless. */
+  read(fresh = false): { width: number; height: number } {
+    if (this.cached && !fresh) return this.cached;
     const rect = this.canvas.getBoundingClientRect();
     const size = { width: rect.width, height: rect.height };
     if (this.observer) this.cached = size;

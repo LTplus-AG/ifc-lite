@@ -42,7 +42,9 @@ function gpu() {
         getMappedRange: () => data,
         unmap() {},
       };
-      buffers.push(buffer);
+      // The shared mesh uniform arena page is not a per-batch allocation;
+      // batches hold slots in it, released through destroyGpuResources.
+      if (descriptor.label !== 'mesh-uniform-arena') buffers.push(buffer);
       return buffer;
     },
     createBindGroup: () => {

@@ -14,7 +14,7 @@ import { mainShaderSource } from './shaders/main.wgsl.js';
 import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
-import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { MESH_UNIFORM_BYTES, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import { readMeshUniforms, type MeshUniformSlot } from './mesh-uniform-arena.js';
 
 async function requireColorTable() {
@@ -329,7 +329,7 @@ function makeHarness(): Harness {
                     case 'needsResize': return () => false;
                     case 'getSampleCount': return () => 1;
                     case 'getMultisampleTextureView': return () => null;
-                    case 'getUniformBufferSize': return () => 336;
+                    case 'getUniformBufferSize': return () => MESH_UNIFORM_BYTES; // the real block size: arena slots stage exactly this many bytes
                     case 'getQuantizedPipelineVariant': return () => null;
                     // Stable identities so a test can tell which pipeline drew what.
                     case 'getPipeline': return () => OPAQUE_PIPELINE;

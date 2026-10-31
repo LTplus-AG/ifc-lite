@@ -1617,7 +1617,7 @@ export class Renderer {
 
         // Drawing buffer = the element's device-pixel size (capped ratio, clamped
         // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
-        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio, options.maxPixelRatio, this.canvasCssSize.read());
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio, options.maxPixelRatio, this.canvasCssSize.read(options.isInteracting !== true));
         // Skip rendering while the canvas is collapsed or too small.
         if (!measured || measured.height < 10) { this._renderSkipCount++; return false; }
         const { width, height } = measured;

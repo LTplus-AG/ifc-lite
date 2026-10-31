@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/router/voids/strategy/mod.rs
++++ b/rust/geometry/src/router/voids/strategy/mod.rs
+@@ -32,7 +32,7 @@
+ /// Reordering this list changes which cut a host gets, and so its geometry
+ /// and diagnostics: it is a determinism-contract change, not a refactor
+ /// (`docs/architecture/mesh-determinism.md`).
+-pub(super) const HOST_STAGES: [HostStage; 3] = [HostStage::Bool2d, HostStage::ParamRect, HostStage::Prism];
++pub(super) const HOST_STAGES: [HostStage; 3] = [HostStage::ParamRect, HostStage::Bool2d, HostStage::Prism];
+ 
+ /// An accepted whole-host cut. `residual` holds the openings the strategy
+ /// left for the exact chain, recursed only after the strategy accepted.

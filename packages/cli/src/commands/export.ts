@@ -223,7 +223,7 @@ export async function exportCommand(args: string[]): Promise<void> {
 
   const refs = entities.map((e: any) => e.ref);
   if (retainedEngine) {
-    await exportRetained(args, retainedEngine, store, filePath, refs, filterRequested);
+    await exportRetained(args, retainedEngine, store, refs, filterRequested);
     return;
   }
 
@@ -333,7 +333,7 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'ifcx':
     case 'usd':
     case 'step': {
-      await exportRustFormat(format, args, store, filePath, refs, filterRequested, wholeModelFormat);
+      await exportRustFormat(format, args, store, refs, filterRequested, wholeModelFormat);
       break;
     }
     case 'hbjson': {

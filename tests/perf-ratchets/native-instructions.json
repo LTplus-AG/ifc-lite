@@ -8,14 +8,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "parse: entity scan + lookup + preprocess + untimed glue phase, callgrind Ir, single thread",
-      "ceiling": 106614976,
+      "ceiling": 90489705,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "1b9ae9cf82b42135e78e7343e307873546b2e30d",
-        "measuredAt": "2026-10-06T04:30:57.812Z"
+        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
+        "measuredAt": "2026-10-30T09:12:25.476Z"
       }
     },
     {
@@ -24,14 +24,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "entity scan phase, callgrind Ir, single thread",
-      "ceiling": 63930011,
+      "ceiling": 55407885,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "1b9ae9cf82b42135e78e7343e307873546b2e30d",
-        "measuredAt": "2026-10-06T04:30:57.812Z"
+        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
+        "measuredAt": "2026-10-30T09:12:25.476Z"
       }
     },
     {
@@ -40,14 +40,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "by-id lookup build phase, callgrind Ir, single thread",
-      "ceiling": 13492617,
+      "ceiling": 11765104,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "1b9ae9cf82b42135e78e7343e307873546b2e30d",
-        "measuredAt": "2026-10-06T04:30:57.812Z"
+        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
+        "measuredAt": "2026-10-30T09:12:25.476Z"
       }
     },
     {
@@ -56,14 +56,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "preprocess phase, callgrind Ir, single thread",
-      "ceiling": 27367345,
+      "ceiling": 23228799,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "1b9ae9cf82b42135e78e7343e307873546b2e30d",
-        "measuredAt": "2026-10-06T04:30:57.812Z"
+        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
+        "measuredAt": "2026-10-30T09:12:25.476Z"
       }
     },
     {
@@ -72,14 +72,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "geometry phase, callgrind Ir, single thread",
-      "ceiling": 377372170,
+      "ceiling": 375102981,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "83103d93bd68b1e60dd1bcca93d5d994a8d0a0fe",
-        "measuredAt": "2026-10-23T16:22:21.498Z"
+        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
+        "measuredAt": "2026-10-30T09:12:25.476Z"
       }
     },
     {
@@ -88,14 +88,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "whole pipeline (like total_time_ms) phase, callgrind Ir, single thread",
-      "ceiling": 481299066,
+      "ceiling": 465597838,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "1b9ae9cf82b42135e78e7343e307873546b2e30d",
-        "measuredAt": "2026-10-06T04:30:57.812Z"
+        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
+        "measuredAt": "2026-10-30T09:12:25.476Z"
       }
     }
   ]

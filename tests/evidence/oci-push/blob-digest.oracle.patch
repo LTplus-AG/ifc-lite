@@ -1,0 +1,11 @@
+diff --git a/packages/oci/src/push.ts b/packages/oci/src/push.ts
+--- a/packages/oci/src/push.ts
++++ b/packages/oci/src/push.ts
+@@ -139,6 +139,7 @@ export async function pushBlob(
+   const stored = await upload(t, 'PUT', putUrl, bytes, 'application/octet-stream');
+   if (stored.response.status !== 201) throw await pushFailure(stored.response, t.what);
+   await stored.response.body?.cancel();
++  checkDigestHeader(stored.response, digest, t.what);
+   return { digest, size };
+ }
+ 

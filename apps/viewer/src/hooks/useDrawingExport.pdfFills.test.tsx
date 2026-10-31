@@ -22,8 +22,19 @@ import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false }: ExportOptions = {}): Drawing2D {
   const at = (ring: 'hole' | 'outer', v: number) => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : v);
+  const wall: Drawing2D['cutPolygons'][number] = {
+    polygon: {
+      outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+      holes: [[{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
+    },
+    ifcType: 'IfcWall',
+    entityId: 7,
+    modelIndex: 0,
+    isCut: true,
+    ...(polygonColor ? { color: polygonColor } : {}),
+  };
   return {
     config: {
       plane: { axis: 'y', position: 0, flipped: false },
@@ -35,19 +46,7 @@ function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = fals
     lines: cutLine
       ? [{ line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
       : [],
-    cutPolygons: [
-      {
-        polygon: {
-          outer: noOuter ? [] : [{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-          holes: [[{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]],
-        },
-        ifcType: 'IfcWall',
-        entityId: 7,
-        modelIndex: 0,
-        isCut: true,
-        ...(polygonColor ? { color: polygonColor } : {}),
-      },
-    ],
+    cutPolygons: twoWalls ? [wall, { ...wall, entityId: 8 }] : [wall],
     projectionPolygons: [],
     bounds: { min: { x: 0, y: 0 }, max: { x: 4, y: 3 } },
     stats: {
@@ -69,6 +68,8 @@ interface ExportOptions {
   polygonColor?: [number, number, number, number];
   /** Loop reconstruction lost the outer ring; only the hole survives. */
   noOuter?: boolean;
+  /** A second, identical wall polygon. */
+  twoWalls?: boolean;
   /** Corrupt geometry: a NaN vertex in the hole, the outer ring, or both. */
   nanVertex?: 'hole' | 'outer' | 'all';
   /** Also carry the wall's bottom edge as a `cut` line. */
@@ -284,7 +285,7 @@ describe('handleExportSVG uses the same resolver', () => {
   });
 });
 
-// Tested through the export rather than by importing pdf-color: CI's revert
+// #8464. Tested through the export rather than by importing pdf-color: CI's revert
 // check deletes files the PR adds, and this test must still load. Every rule
 // also sets a stroke colour, so a fallback fill is told apart from an
 // override that was never applied.
@@ -296,9 +297,9 @@ describe('override colour forms in the PDF', () => {
     { fillColor: ' RGBA(255, 0, 0, 0.5) ', fill: '#ff0000', opacity: /\/ca 0\.5\b/ },
     { fillColor: 'rgb(0,128,255)', fill: '#0080ff' },
     { fillColor: '#11223300', fill: null },
-    // Fall back to the IfcWall colour: jsPDF would read 'bad' as #bbaadd.
+    // Invalid CSS falls back to the IfcWall colour (jsPDF would read 'bad'
+    // as #bbaadd). Valid names are covered by the canvas test at the end.
     { fillColor: 'bad', fill: '#b0b0b0' },
-    { fillColor: 'Red', fill: '#b0b0b0' },
     { fillColor: 'rgb(300,0,0)', fill: '#b0b0b0' },
     { fillColor: 'rgb(1.2.3,0,0)', fill: '#b0b0b0' },
   ];
@@ -311,4 +312,50 @@ describe('override colour forms in the PDF', () => {
       if (opacity) assert.match(text, opacity);
     });
   }
+});
+
+// Kept last: pdf-color caches the first real 2D context it gets, so the stub
+// below stays in place for anything that runs after it.
+describe('CSS colours resolved by the browser canvas (#8464)', () => {
+  it('uses the canvas-normalised colour for names, hsl() and space syntax; warns once per bad colour', async () => {
+    // happy-dom has no 2D canvas. This stub normalises like a browser does
+    // and ignores invalid values, so it checks the wiring and the
+    // invalid-value detection, not a real browser's colour parser.
+    const known: Record<string, string> = {
+      navy: '#000080',
+      'hsl(120, 100%, 25%)': '#008000',
+      'rgb(255 0 0 / 50%)': 'rgba(255, 0, 0, 0.5)',
+    };
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    // @ts-expect-error -- test stub, narrower than the DOM lib's overloads
+    HTMLCanvasElement.prototype.getContext = function (type: string) {
+      if (type !== '2d') return null;
+      let style = '#000000';
+      return {
+        get fillStyle() { return style; },
+        set fillStyle(v: string) { if (/^#[0-9a-f]{6}$/.test(v)) style = v; else if (known[v]) style = known[v]; },
+      };
+    };
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+      for (const [fillColor, fill, opacity] of [
+        ['hsl(120, 100%, 25%)', '#008000', null],
+        ['rgb(255 0 0 / 50%)', '#ff0000', /\/ca 0\.5\b/],
+      ] as const) {
+        const text = await exportPdf({ overrideRules: [wallRule({ fillColor, strokeColor: 'navy' })] });
+        assert.ok(setsColor(text, 'fill', fill), fillColor);
+        assert.ok(setsColor(text, 'stroke', '#000080'), 'named stroke');
+        if (opacity) assert.match(text, opacity);
+      }
+      warnings.length = 0;
+      const text = await exportPdf({ twoWalls: true, overrideRules: [wallRule({ fillColor: 'bogus' })] });
+      assert.ok(setsColor(text, 'fill', '#b0b0b0'), 'an invalid name still falls back');
+      assert.equal(warnings.length, 1, 'two polygons with the same bad colour warn once');
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+      console.warn = originalWarn;
+    }
+  });
 });

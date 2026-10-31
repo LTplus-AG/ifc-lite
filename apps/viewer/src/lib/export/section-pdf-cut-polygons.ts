@@ -64,12 +64,16 @@ const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 1
 
 /**
  * Set a fill or stroke colour and return its alpha. A colour jsPDF cannot
- * take (an unfinished hex, a name) falls back per polygon, so one bad
+ * take (an unfinished hex, an invalid name) falls back per polygon, so one bad
  * override cannot abort the whole export.
  */
 function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string, warned: Set<string>): number {
   const parsed = pdfColor(color);
-  if (!parsed && !warned.has(color) && warned.add(color)) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
+  const key = `${kind}:${color}:${fallback}`;
+  if (!parsed && !warned.has(key)) {
+    warned.add(key);
+    console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
+  }
   const css = parsed?.color ?? fallback;
   if (kind === 'fill') doc.setFillColor(css);
   else doc.setDrawColor(css);
@@ -92,7 +96,7 @@ export function drawCutPolygonsPdf(doc: jsPDF, polygons: readonly PdfCutPolygon[
 function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
   doc.setLineCap('round');
   doc.setLineDashPattern([], 0);
-  const warned = new Set<string>(); // one warning per bad colour, not per polygon
+  const warned = new Set<string>(); // one warning per bad colour and fallback, not per polygon
   const tracePath = (rings: Point[][]) => {
     for (const ring of rings) {
       doc.moveTo(ring[0].x, ring[0].y);

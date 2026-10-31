@@ -18,6 +18,8 @@
  * after its deadline therefore re-arms a full window instead of failing: the
  * pool gets a window of RUNNING time to speak. The window is not lengthened
  * while the page runs, so a hung pool on a visible tab still fails on time.
+ * Known limit: a freeze that ends within that margin after the deadline is not
+ * told apart from silence, and can still report a stall.
  */
 
 import type { StallPhaseHandle } from '@ifc-lite/geometry';

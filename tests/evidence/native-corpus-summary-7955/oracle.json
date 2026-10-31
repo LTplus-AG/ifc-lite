@@ -3,5 +3,5 @@
   "key": "scripts/check-retained-corpus-summary.mjs",
   "mutation": "tests/evidence/native-corpus-summary-7955/behaviour.oracle.patch",
   "test": "scripts/check-retained-corpus-summary.test.mjs",
-  "why": "Reverse-applying this patch ignores non-empty violations, universeMismatch and skipped, so a nightly corpus with comparison violations or absent fixtures passes."
+  "why": "Reverse-applying this patch downgrades every non-empty violations/universeMismatch/skipped list to a warning, so a nightly corpus with a universe mismatch or absent fixtures passes."
 }

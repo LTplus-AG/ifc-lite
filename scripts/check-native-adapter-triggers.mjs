@@ -169,13 +169,13 @@ export function corpusJobProblems(text) {
   if (!compare || !/^ {8}continue-on-error: true[ \t]*$/m.test(compare[1]) || !/^ {8}timeout-minutes: \d+[ \t]*$/m.test(compare[1])) {
     out.push(`${WORKFLOW}: the corpus comparison step needs continue-on-error and its own timeout-minutes so a timeout is judged, not fatal`);
   }
-  if (!/^ {8}if: always\(\)\s*\n(?:[\s\S]*?)check-retained-corpus-summary\.mjs "\$RUNNER_TEMP\/native-corpus\/summary\.json"/m.test(corpus)) {
+  if (!/^ {8}if: always\(\)\s*\n(?:[\s\S]*?)check-retained-corpus-summary\.mjs --report-violations "\$RUNNER_TEMP\/native-corpus\/summary\.json"/m.test(corpus)) {
     out.push(`${WORKFLOW}: every shard must judge its summary.json in an if: always() step`);
   }
   if (result !== null) {
     if (!/^ {4}needs: \[native-corpus\]\s*$/m.test(result)) out.push(`${WORKFLOW}: native-corpus-result must need native-corpus`);
     if (!/^ {4}if: always\(\) && /m.test(result)) out.push(`${WORKFLOW}: native-corpus-result must run if: always() so a failed shard still reports`);
-    const agg = result.match(/check-retained-corpus-summary\.mjs --shards (\d+) /);
+    const agg = result.match(/check-retained-corpus-summary\.mjs --shards (\d+) --report-violations /);
     if (!agg || Number(agg[1]) !== shards.length) out.push(`${WORKFLOW}: native-corpus-result must require exactly the matrix's ${shards.length} shard summaries`);
     if (!/\[\[ "\$SHARDS_RESULT" == success \]\]/.test(result)) out.push(`${WORKFLOW}: native-corpus-result must fail when the matrix result is not success`);
   }

@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { corpusProblems } from './check-retained-corpus-summary.mjs';
+import { corpusFindings, corpusProblems } from './check-retained-corpus-summary.mjs';
 
 const ok = { complete: true, violations: [], universeMismatch: [], skipped: [] };
 
@@ -50,4 +50,29 @@ test('the CLI requires exactly the expected number of shard summaries and names 
   const bad = spawnSync(process.execPath, [script, '--shards', '2', a, b], { encoding: 'utf8' });
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /b\.json: INCOMPLETE/);
+});
+
+test('report-violations downgrades only violations; incomplete, mismatch and skipped still fail', () => {
+  const opts = { reportViolations: true };
+  assert.deepEqual(corpusFindings({ ...ok, violations: ['v'] }, opts).problems, []);
+  assert.match(corpusFindings({ ...ok, violations: ['v'] }, opts).warnings.join(), /PARITY: violations has 1 entry/);
+  assert.match(corpusProblems({ ...ok, complete: false, violations: ['v'] }, opts).join(), /INCOMPLETE/);
+  assert.match(corpusProblems({ ...ok, universeMismatch: ['u'] }, opts).join(), /universeMismatch/);
+  assert.match(corpusProblems({ ...ok, skipped: ['s'] }, opts).join(), /skipped/);
+  assert.match(corpusProblems({ ...ok, violations: ['v'] }).join(), /PARITY: violations/);
+});
+
+test('the CLI flag makes a complete run with violations pass with a warning, an incomplete one still fails', (context) => {
+  const dir = mkdtempSync(join(tmpdir(), 'corpus-summary-report-'));
+  context.after(() => rmSync(dir, { recursive: true, force: true }));
+  const script = join(import.meta.dirname, 'check-retained-corpus-summary.mjs');
+  const v = join(dir, 'v.json');
+  const i = join(dir, 'i.json');
+  writeFileSync(v, JSON.stringify({ ...ok, violations: ['x'] }));
+  writeFileSync(i, JSON.stringify({ ...ok, complete: false, violations: ['x'] }));
+  const pass = spawnSync(process.execPath, [script, '--report-violations', v], { encoding: 'utf8' });
+  assert.equal(pass.status, 0);
+  assert.match(pass.stdout, /::warning title=native corpus parity \(report only\)::/);
+  assert.equal(spawnSync(process.execPath, [script, '--report-violations', i]).status, 1);
+  assert.equal(spawnSync(process.execPath, [script, v]).status, 1);
 });

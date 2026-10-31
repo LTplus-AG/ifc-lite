@@ -3,17 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { pullScope, RegistryAuth } from './auth.js';
+import { EMPTY_CONFIG_DIGEST, EMPTY_CONFIG_MEDIA_TYPE, emptyConfigBytes } from './build-manifest.js';
 import { finishDigest, readBody } from './digest.js';
 import { OciError, statusError } from './errors.js';
 import { checkBlobRequest, readVerifiedBlob } from './fetch-blob.js';
 import { MANIFEST_ACCEPT, parseManifestDocument } from './manifest-shape.js';
+import { pushBlob, pushManifest } from './push.js';
 import { checkRepositoryRef, manifestReference } from './reference.js';
+import { authorizedRequest, type Session } from './session.js';
 import { fetchFollowing, type FollowResult } from './transport.js';
 import type {
   OciClientOptions,
   OciDescriptor,
-  OciHasher,
   OciManifestResult,
+  OciPushedBlob,
+  OciPushedManifest,
+  OciPushManifestOptions,
   OciReference,
   OciRepositoryRef,
 } from './types.js';
@@ -41,25 +46,21 @@ function positiveInteger(value: number, name: string): number {
 }
 
 /**
- * Pull-only OCI distribution client: list tags, fetch a manifest, fetch a
- * digest-verified blob. Every request starts anonymous and authenticates
- * only when the registry answers 401 (see `RegistryAuth` for where
- * credentials may and may not go).
+ * OCI distribution client: list tags, fetch a manifest, fetch a
+ * digest-verified blob, and push blobs and manifests. Every request starts
+ * anonymous and authenticates only when the registry answers 401 (see
+ * `RegistryAuth` for where credentials may and may not go). Pulls ask for
+ * `repository:<repo>:pull`, pushes for `repository:<repo>:pull,push`; tokens
+ * are cached per scope, so the two never share one.
  */
 export class OciClient {
-  private readonly fetchFn: typeof fetch;
-  private readonly auth: RegistryAuth;
-  private readonly insecureHosts: readonly string[] | undefined;
-  private readonly createHasher: (() => OciHasher) | undefined;
+  private readonly session: Session;
   private readonly maxManifestBytes: number;
-  private readonly baseHeaders: Record<string, string>;
 
   constructor(options: OciClientOptions = {}) {
-    this.fetchFn = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
-    this.insecureHosts = options.insecureHosts;
-    this.createHasher = options.createHasher;
+    const fetchFn: typeof fetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.maxManifestBytes = positiveInteger(options.maxManifestBytes ?? DEFAULT_MAX_MANIFEST_BYTES, 'maxManifestBytes');
-    this.baseHeaders = options.userAgent ? { 'user-agent': options.userAgent } : {};
+    const baseHeaders: Record<string, string> = options.userAgent ? { 'user-agent': options.userAgent } : {};
     const trusted = new Set<string>();
     for (const realm of options.trustedRealms ?? []) {
       let url: URL;
@@ -70,47 +71,41 @@ export class OciClient {
       }
       trusted.add(url.origin);
     }
-    this.auth = new RegistryAuth({
-      fetch: this.fetchFn,
+    const auth = new RegistryAuth({
+      fetch: fetchFn,
       credentials: options.credentials,
       trustedRealms: trusted,
       insecureHosts: options.insecureHosts,
-      baseHeaders: this.baseHeaders,
+      baseHeaders,
     });
+    this.session = { fetch: fetchFn, auth, insecureHosts: options.insecureHosts, baseHeaders, createHasher: options.createHasher };
   }
 
   /**
-   * GET against the registry with the auth dance: anonymous (or a cached
-   * token) first, then on 401 one authentication and one retry. A second 401
-   * is `UNAUTHORIZED`; every other non-2xx is mapped by `statusError`.
+   * GET against the registry with the auth dance (`authorizedRequest`); every
+   * non-2xx other than the handled 401 is mapped by `statusError`.
    */
   private async get(origin: string, repository: string, url: string, accept: string, signal: AbortSignal | undefined, what: string): Promise<FollowResult> {
-    const scope = pullScope(repository);
-    let authorization = this.auth.cached(origin, scope);
-    for (let attempt = 0; ; attempt++) {
-      const result = await fetchFollowing(url, {
-        fetch: this.fetchFn,
-        registryOrigin: origin,
-        authorization,
-        headers: { ...this.baseHeaders, accept },
-        signal,
-        insecureHosts: this.insecureHosts,
-        what,
-      });
-      const { response } = result;
-      if (response.ok) return result;
-      await response.body?.cancel();
-      if (response.status !== 401) throw statusError(response.status, what);
-      if (attempt > 0) {
-        this.auth.invalidate(origin, scope);
-        throw new OciError('UNAUTHORIZED', `${what}: still 401 after authenticating`, { status: 401 });
-      }
-      if (new URL(result.url).origin !== origin) {
-        throw new OciError('UNAUTHORIZED', `${what}: redirect target ${new URL(result.url).origin} answered 401`, { status: 401 });
-      }
-      if (authorization !== undefined) this.auth.invalidate(origin, scope);
-      authorization = await this.auth.authorize(origin, scope, response.headers.get('www-authenticate'), signal);
-    }
+    const { session } = this;
+    const result = await authorizedRequest(session, {
+      origin,
+      scope: pullScope(repository),
+      what,
+      signal,
+      send: (authorization) =>
+        fetchFollowing(url, {
+          fetch: session.fetch,
+          registryOrigin: origin,
+          authorization,
+          headers: { ...session.baseHeaders, accept },
+          signal,
+          insecureHosts: session.insecureHosts,
+          what,
+        }),
+    });
+    if (result.response.ok) return result;
+    await result.response.body?.cancel();
+    throw statusError(result.response.status, what);
   }
 
   /**
@@ -120,7 +115,7 @@ export class OciClient {
    * `PROTOCOL`, as is a link that revisits a page.
    */
   async tags(ref: OciRepositoryRef, options: { signal?: AbortSignal; maxPages?: number } = {}): Promise<string[]> {
-    const origin = checkRepositoryRef(ref, this.insecureHosts);
+    const origin = checkRepositoryRef(ref, this.session.insecureHosts);
     const maxPages = positiveInteger(options.maxPages ?? DEFAULT_MAX_TAG_PAGES, 'maxPages');
     const what = `tags of ${ref.repository}`;
     const out: string[] = [];
@@ -166,12 +161,12 @@ export class OciClient {
    * as well (its absence is fine: some registries omit it).
    */
   async manifest(ref: OciReference, options: { signal?: AbortSignal } = {}): Promise<OciManifestResult> {
-    const origin = checkRepositoryRef(ref, this.insecureHosts);
+    const origin = checkRepositoryRef(ref, this.session.insecureHosts);
     const reference = manifestReference(ref);
     const what = `manifest ${ref.repository}${ref.digest ? `@${ref.digest}` : `:${reference}`}`;
     const url = `${origin}/v2/${ref.repository}/manifests/${reference}`;
     const { response } = await this.get(origin, ref.repository, url, MANIFEST_ACCEPT, options.signal, what);
-    const hasher = this.createHasher?.();
+    const hasher = this.session.createHasher?.();
     const bytes = await readBody(response, {
       cap: this.maxManifestBytes,
       what,
@@ -196,11 +191,43 @@ export class OciClient {
    * followed without `Authorization`.
    */
   async blob(ref: OciReference, descriptor: OciDescriptor, options: { signal?: AbortSignal; maxBytes: number }): Promise<Uint8Array> {
-    const origin = checkRepositoryRef(ref, this.insecureHosts);
+    const origin = checkRepositoryRef(ref, this.session.insecureHosts);
     checkBlobRequest(descriptor, options.maxBytes);
     const what = `blob ${descriptor.digest}`;
     const url = `${origin}/v2/${ref.repository}/blobs/${descriptor.digest}`;
     const { response } = await this.get(origin, ref.repository, url, '*/*', options.signal, what);
-    return readVerifiedBlob(response, descriptor, this.createHasher);
+    return readVerifiedBlob(response, descriptor, this.session.createHasher);
+  }
+
+  /**
+   * Uploads `bytes` as a blob and returns its digest and size. When the
+   * registry already holds a blob with that digest and size, nothing is
+   * uploaded. Otherwise a monolithic upload: `POST /blobs/uploads/`, then
+   * one `PUT` of the whole buffer to the returned `Location` (same origin
+   * only) with `?digest=`. A `Docker-Content-Digest` reply must match.
+   */
+  pushBlob(ref: OciRepositoryRef, bytes: Uint8Array, options: { signal?: AbortSignal } = {}): Promise<OciPushedBlob> {
+    return pushBlob(this.session, ref, bytes, options);
+  }
+
+  /**
+   * Uploads the OCI empty config blob (`{}`, 2 bytes) that
+   * `buildImageManifest` references by default, and returns its descriptor.
+   */
+  async pushEmptyConfig(ref: OciRepositoryRef, options: { signal?: AbortSignal } = {}): Promise<OciDescriptor> {
+    const { digest, size } = await pushBlob(this.session, ref, emptyConfigBytes(), options);
+    if (digest !== EMPTY_CONFIG_DIGEST) throw new OciError('DIGEST_MISMATCH', `empty config hashed to ${digest}`);
+    return { mediaType: EMPTY_CONFIG_MEDIA_TYPE, digest, size };
+  }
+
+  /**
+   * Pushes a manifest or index whose own `mediaType` field equals
+   * `mediaType`, by `ref.tag` when present, else by its digest (a pinned
+   * `ref.digest` must match). Without `allowOverwrite`, an existing tag is
+   * `TAG_EXISTS`; that check runs before the `PUT` and is not atomic.
+   * Every blob the manifest names must already be in the repository.
+   */
+  pushManifest(ref: OciReference, manifest: Uint8Array, mediaType: string, options: OciPushManifestOptions = {}): Promise<OciPushedManifest> {
+    return pushManifest(this.session, ref, manifest, mediaType, options);
   }
 }

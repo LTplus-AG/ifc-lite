@@ -998,6 +998,10 @@ jobs:
           # Keep the API; weaken fingerprint identity to key equality instead.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8308: whole-file inversion of operator.rs also drops the new test
+          # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8308/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8308/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/8308/behaviour.oracle.patch --test rust/geometry/src/router/transforms/operator_axis2_tests.rs --test rust/processing/tests/issue_8308_omitted_axis2.rs)
           # #8341 F2 viewer: inverting the whole change deletes the relay module its
           # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.
@@ -1051,6 +1055,15 @@ jobs:
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13a/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-13a/behaviour.oracle.patch --test rust/processing/tests/issue_8341_finishes_event.rs)
             oracle_args+=(--mutation tests/evidence/c4-13a/server.oracle.patch --test apps/server/src/routes/parse/finish_tests.rs)
+          # @ifc-lite/oci push: whole-change inversion deletes push.ts and the
+          # push tests die at import. Keep it; break one push rule per patch:
+          # upload Location origin plus Authorization, the existing-tag check,
+          # the registry-reported blob digest, the pull,push token scope.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/oci-push/off-origin-location.oracle.patch | grep -Fxq 'tests/evidence/oci-push/off-origin-location.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/oci-push/off-origin-location.oracle.patch --test packages/oci/test/push-blob.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-push/tag-check.oracle.patch --test packages/oci/test/push-manifest.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-push/blob-digest.oracle.patch --test packages/oci/test/push-blob.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-push/push-scope.oracle.patch --test packages/oci/test/push-auth.test.ts)
           # @ifc-lite/oci: whole-package inversion deletes src/ and the tests
           # die at import. Keep the package; break one security rule per patch:
           # Authorization to redirect targets, credentials to an untrusted

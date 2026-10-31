@@ -4,6 +4,35 @@
 
 # Performance diagnosis kit
 
+## Native diff compare (#8351)
+
+**Shipped: the key pass and per-call setup, not the transport.** The warm
+handle gap after #8042 was neither the boundary nor content matching. On the
+large revision the GlobalId key pass took nearly all native time, hashing and
+comparing `JsString` keys and component values through SipHash and two pointer
+hops per string. On small models, about 30 µs per call went to rebuilding the
+default class families twice, even with no split or successor candidates.
+Each JS option key also cost several host crossings, including undefined ones.
+
+What won: a keyed per-process digest cached in each `JsString`, reused by a
+pass-through `JsHash` for component maps and the key index; skipping the
+head-only component pass when equal cardinality already proves equal key sets;
+recording paired head rows instead of re-probing; one process-wide default
+family map; sending only set options. Warm handle compare is now at TS parity on
+Haus, ahead of TS on large, and about 1.2× TS on demo, where the remaining cost
+is boundary encode/decode and reference restore.
+
+What lost: inline small-string storage beside the digest (no measurable gain once
+hashing was cheap) and a linear scan for small component maps (faster on Haus,
+slower on large). Both were dropped.
+
+Lesson: on this engine, time the passes separately before touching transport.
+The cost sat in one pass and one per-call constructor, and both were invisible
+in boundary-level splits. Output identity was gated before timing in every run.
+These are ordinary interleaved diagnostics, not a protocol v4 cohort; the
+[sources, WASM hashes, receipts and per-run medians](../../tests/evidence/diff-8351/warm-handle-diagnostics.json)
+record the limits.
+
 ## Scenoptic-axes viewer levers (`scenoptic-bench.mjs`, 2026-10-31)
 
 Measured on Pop's RTX 4000 Ada with an identical WASM hash per cohort, on the

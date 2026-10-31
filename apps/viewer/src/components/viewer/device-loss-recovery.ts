@@ -22,7 +22,7 @@ export const RECOVERY_BUDGET_WINDOW_MS = 60_000;
  * Limits automatic recoveries across loss episodes. Each episode is bounded by
  * `startDeviceLossRecovery`, but a success re-arms the next one, so a GPU that
  * keeps failing replaces the device and re-uploads the scene without end: one
- * field session recovered 209 times within an hour.
+ * field session recovered 209 times in about four minutes.
  */
 export function createRecoveryBudget(
   now: () => number = () => performance.now(),

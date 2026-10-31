@@ -444,10 +444,27 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
       assert.equal(recoveries, RECOVERY_BUDGET_MAX, 'recovery stops at the budget');
       const refused = events.filter(([event]) => event === 'device_loss_recovery_failed');
       assert.deepEqual(refused[0][1], { reason: 'recovery-budget-exhausted' });
+      assert.equal(refused.length, 1, 'further signals for the refused loss capture nothing more');
     } finally {
       posthog.capture = realEvent;
       unsubscribe();
     }
+  });
+
+  it('keeps the recovery budget across a viewport remount', async () => {
+    const h = makeSource();
+    let recoveries = 0;
+    h.source.recoverDevice = async () => {
+      recoveries++;
+      return { ok: true, omissions: [] };
+    };
+    for (let i = 0; i < RECOVERY_BUDGET_MAX + 1; i++) {
+      const unsubscribe = subscribeViewportHealth(h.source);
+      h.listeners.deviceLost.at(-1)!({ message: 'Device was destroyed.', reason: 'destroyed' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      unsubscribe();
+    }
+    assert.equal(recoveries, RECOVERY_BUDGET_MAX, 'a remount does not refill the budget');
   });
 
   it('notifies overlay owners only after successful GPU recovery (#5778)', async () => {

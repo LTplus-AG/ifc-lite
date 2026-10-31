@@ -81,11 +81,15 @@ let reported = false;
 // separate latch: the two are different failures and one must not mute the
 // other (a session can degrade for a while and THEN lose the device).
 let degradationReported = false;
+// Per document, like the latches above: `Viewport` subscribes again on remount,
+// and a fresh budget per subscription would let a remount skip the limit.
+let admitRecovery = createRecoveryBudget();
 
 /** Reset the once-per-session latches. Test seam — not used in production. */
 export function resetDeviceLossReportForTests(): void {
   reported = false;
   degradationReported = false;
+  admitRecovery = createRecoveryBudget();
 }
 
 /**
@@ -311,7 +315,6 @@ export function subscribeViewportHealth(
   onRecovered?: () => void,
 ): () => void {
   let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
-  const admitRecovery = createRecoveryBudget();
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
@@ -332,8 +335,11 @@ export function subscribeViewportHealth(
       }
       const attemptRecovery = !recovery && Boolean(renderer.recoverDevice);
       const admitted = attemptRecovery && admitRecovery();
+      // A second signal for an already reported loss (synchronous, then
+      // `device.lost`) must not capture a second refusal.
+      const newLoss = !reported;
       reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice) && (admitted || !attemptRecovery));
-      if (attemptRecovery && !admitted) reportRecoveryBudgetExhausted();
+      if (attemptRecovery && !admitted && newLoss) reportRecoveryBudgetExhausted();
       if (admitted && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },

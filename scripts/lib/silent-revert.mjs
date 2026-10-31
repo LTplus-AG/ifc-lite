@@ -150,7 +150,10 @@ export function parseDeclarations({ title = '', body = '', labels = [] } = {}) {
     if (m) for (const n of m[1].matchAll(/#(\d+)/g)) prs.add(Number(n[1]));
   }
   const byLabel = labels.includes(EXEMPT_LABEL);
-  const byTitle = /^revert(\([^)]*\))?!?(:|\s)/i.test(title.trim());
+  // Only the two shapes a revert is actually titled in: conventional `revert(scope): ...` /
+  // `revert: ...`, and the `Revert "..."` GitHub and `git revert` write. A prose title that merely
+  // starts with the word (`Revert button is broken`) is a UI fix and declares nothing.
+  const byTitle = /^revert(\([^)]*\))?!?:/i.test(title.trim()) || /^revert "/i.test(title.trim());
   return { all: byLabel || byTitle, reason: byLabel ? `label ${EXEMPT_LABEL}` : byTitle ? 'a revert title' : null, prs };
 }
 

@@ -123,7 +123,7 @@ test('declarations: revert titles, Reverts #N lines, the label; a stray word dec
   for (const title of ['revert(geometry): back out the snap (#5733)', 'Revert "Fix Section Plane tool (#98)" (#100)', 'revert: x', 'revert!: x']) {
     assert.equal(parseDeclarations({ title }).all, true, title);
   }
-  for (const title of ['feat(viewer): handle the revert button', 'fix: reverted state is shown', 'feat(revert-ui): new']) {
+  for (const title of ['feat(viewer): handle the revert button', 'fix: reverted state is shown', 'feat(revert-ui): new', 'Revert button is broken', 'revert the viewer change', 'Reverting is slow']) {
     assert.equal(parseDeclarations({ title }).all, false, title);
   }
   assert.deepEqual([...parseDeclarations({ body: 'Why\n\nReverts #8360, #8361 and #8362\n' }).prs], [8360, 8361, 8362]);

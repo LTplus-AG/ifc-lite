@@ -126,43 +126,36 @@ test('#6961 the HogQL comes from the README block, filled in, with a validated b
   assert.throws(() => verdictSql({ build: 'abcdef123456', readme: 'no block here' }), /no sql block/);
   // Events carry the 12-character app_build_sha; a short prefix would match nothing.
   assert.throws(() => verdictSql({ build: '3c3cb1f' }), /at least 12 characters/);
-  assert.ok(!/\bLIMIT\b/.test(sql), 'paging adds the LIMIT, the README block has none');
+  assert.ok(!/\bLIMIT\b/.test(sql), 'the fetch adds the LIMIT, the README block has none');
 });
 
-test('#6961 the fetch is a read-only query POST, paged until complete, never partial', async () => {
-  const { fetchVerdictRows } = await load(FETCH);
+test('#6961 the fetch is one read-only query POST under a row cap, never partial', async () => {
+  const { fetchVerdictRows, MAX_ROWS } = await load(FETCH);
   const calls = [];
-  const replies = (...bodies) => async (url, init) => {
+  const replies = (status, body) => async (url, init) => {
     calls.push({ url, init });
-    const [status, body] = bodies[Math.min(calls.length - 1, bodies.length - 1)];
     return { ok: status < 400, status, text: async () => JSON.stringify(body) };
   };
-  const rows = await fetchVerdictRows({ sql: 'SELECT 1', apiKey: 'k', fetchImpl: replies([200, { columns: ['a'], results: [[1]] }]) });
+  const rows = await fetchVerdictRows({ sql: 'SELECT 1', apiKey: 'k', fetchImpl: replies(200, { columns: ['a'], results: [[1]] }) });
   assert.deepEqual(rows, { columns: ['a'], results: [[1]] });
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'https://eu.posthog.com/api/projects/199147/query/');
   assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[0].init.headers.Authorization, 'Bearer k');
-  assert.deepEqual(JSON.parse(calls[0].init.body).query, { kind: 'HogQLQuery', query: 'SELECT 1\nLIMIT 10000 OFFSET 0' });
+  assert.deepEqual(JSON.parse(calls[0].init.body).query, { kind: 'HogQLQuery', query: `SELECT 1\nLIMIT ${MAX_ROWS}` });
+  // PostHog answers 400 to OFFSET on a personal API key, so it can never be sent.
+  assert.doesNotMatch(calls[0].init.body, /OFFSET/);
 
-  // Paged: full pages and hasMore keep it fetching; the short last page ends it.
-  calls.length = 0;
-  const paged = await fetchVerdictRows({
-    sql: 'SELECT a', apiKey: 'k', pageSize: 2,
-    fetchImpl: replies(
-      [200, { columns: ['a'], results: [[1], [2]], hasMore: true }],
-      [200, { columns: ['a'], results: [[3], [4]], hasMore: true }],
-      [200, { columns: ['a'], results: [[5]], hasMore: false }],
-    ),
-  });
-  assert.deepEqual(paged.results, [[1], [2], [3], [4], [5]]);
-  assert.deepEqual(calls.map((c) => JSON.parse(c.init.body).query.query.split('\n').pop()), ['LIMIT 2 OFFSET 0', 'LIMIT 2 OFFSET 2', 'LIMIT 2 OFFSET 4']);
-
-  // Past the hard cap it fails loudly instead of judging a partial result.
+  // A result at the cap, or one PostHog says continues, fails instead of judging a partial result.
   await assert.rejects(
-    fetchVerdictRows({ sql: 'SELECT a', apiKey: 'k', pageSize: 1, maxPages: 3, fetchImpl: replies([200, { columns: ['a'], results: [[1]], hasMore: true }]) }),
-    /still incomplete after 3 pages/,
+    fetchVerdictRows({ sql: 'SELECT a', apiKey: 'k', maxRows: 2, fetchImpl: replies(200, { columns: ['a'], results: [[1], [2]] }) }),
+    /reached the 2 cell row cap/,
   );
-  await assert.rejects(fetchVerdictRows({ sql: 'SELECT a LIMIT 5', apiKey: 'k', fetchImpl: replies([200, {}]) }), /must not carry its own LIMIT/);
-  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: '', fetchImpl: replies([200, {}]) }), /POSTHOG_PERSONAL_API_KEY/);
-  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: 'k', fetchImpl: replies([403, { detail: 'no' }]) }), /answered 403/);
+  await assert.rejects(
+    fetchVerdictRows({ sql: 'SELECT a', apiKey: 'k', fetchImpl: replies(200, { columns: ['a'], results: [[1]], hasMore: true }) }),
+    /row cap/,
+  );
+  await assert.rejects(fetchVerdictRows({ sql: 'SELECT a LIMIT 5', apiKey: 'k', fetchImpl: replies(200, {}) }), /must not carry its own LIMIT/);
+  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: '', fetchImpl: replies(200, {}) }), /POSTHOG_PERSONAL_API_KEY/);
+  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: 'k', fetchImpl: replies(403, { detail: 'no' }) }), /answered 403/);
 });

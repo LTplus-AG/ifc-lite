@@ -3566,9 +3566,9 @@ pooled group regresses is the next step and is not wired yet.
 The HogQL the script expects (`__BUILD__` is the 12-character
 `app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
 from this block). It already aggregates to one row per (person, model,
-journey, arm, metric, window) cell, not per load; `field-verdict-fetch.mjs`
-appends `LIMIT`/`OFFSET` and pages over the fully ordered result until it is
-complete, and fails rather than judge a partial one:
+journey, arm, metric, window) cell, not per load. `field-verdict-fetch.mjs`
+appends one `LIMIT` and fails rather than judge a result that reaches it.
+PostHog answers 400 to `OFFSET` on a personal API key, so it cannot page:
 
 <!-- field-verdict-hogql -->
 ```sql

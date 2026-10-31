@@ -12,13 +12,13 @@
 #   bash tests/evidence/x3-unmeshable-opening/qualify.sh gates         # clippy/tests/ratchets/wasm32
 #   bash tests/evidence/x3-unmeshable-opening/qualify.sh all           # identity + features + instructions
 #
-# X3_BASE overrides the base commit (default: main 87d8fdf359, this PR's
+# X3_BASE overrides the base commit (default: main 6eec58244d, this PR's
 # base). The base is exported with `git archive` next to the head checkout and
 # both sides run the same harness. Identity hashes the full serialized output,
 # including every instance record's contents, plus the diagnostics.
 set -euo pipefail
 mode=${1:?usage: qualify.sh identity|instructions|features|gates|all}
-base=$(git rev-parse --verify "${X3_BASE:-87d8fdf35987b4e8b1f28df297fc2f43aa39dd53}^{commit}")
+base=$(git rev-parse --verify "${X3_BASE:-6eec58244d01852bae1134c54985a51acc43efa4}^{commit}")
 head_dir=$PWD
 fixtures=(
   tests/models/ara3d/AC20-FZK-Haus.ifc
@@ -132,10 +132,36 @@ identity)
     name=$(basename "$fixture" .ifc)
     b=$(grep "^X3_IDENTITY base $name " "$scratch/identity.txt" | cut -d' ' -f4-)
     h=$(grep "^X3_IDENTITY head $name " "$scratch/identity.txt" | cut -d' ' -f4-)
-    if [[ $b == "$h" ]] && cmp -s "$scratch/base-$name.diagnostics.json" "$scratch/head-$name.diagnostics.json"; then
-      echo "X3_IDENTITY_VERDICT $name IDENTICAL"
-    else
-      echo "X3_IDENTITY_VERDICT $name DIFFERENT"
+    # Mesh payload, instances and every other output hash must be identical;
+    # only diagnosticsSha256 may move, and only because of schemaVersion 3 -> 4
+    # (#8385 X3), which the normalised comparison below proves.
+    verdict=$(python3 -I - "$b" "$h" "$scratch/base-$name.diagnostics.json" "$scratch/head-$name.diagnostics.json" <<'PYID'
+import json, sys
+b, h = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+bd, hd = json.load(open(sys.argv[3])), json.load(open(sys.argv[4]))
+out = []
+for key in sorted(set(b) | set(h)):
+    if key != 'diagnosticsSha256' and b.get(key) != h.get(key):
+        out.append(f'output field {key} base={b.get(key)} head={h.get(key)}')
+def versions(stats):
+    g = stats.get('geometry_diagnostics') or stats.get('geometryDiagnostics')
+    return g.get('schemaVersion') if isinstance(g, dict) else None
+bv, hv = versions(bd), versions(hd)
+def normalise(stats):
+    stats = json.loads(json.dumps(stats))
+    for key in ('geometry_diagnostics', 'geometryDiagnostics'):
+        if isinstance(stats.get(key), dict):
+            stats[key]['schemaVersion'] = 'NORMALISED'
+    return stats
+if normalise(bd) != normalise(hd):
+    out.append('diagnostics differ beyond schemaVersion')
+if (bv, hv) not in ((3, 4), (None, None)):
+    out.append(f'schemaVersion base={bv} head={hv}, expected 3 -> 4')
+print('IDENTICAL_EXCEPT_SCHEMA_VERSION %s->%s' % (bv, hv) if not out else 'DIFFERENT: ' + '; '.join(out))
+PYID
+)
+    echo "X3_IDENTITY_VERDICT $name $verdict"
+    if [[ $verdict != IDENTICAL_EXCEPT_SCHEMA_VERSION* ]]; then
       diff "$scratch/base-$name.diagnostics.json" "$scratch/head-$name.diagnostics.json" | head -40 || true
       status=1
     fi
@@ -197,9 +223,45 @@ features)
     if grep -q 'error\[E' "$log"; then
       echo "X3_FEATURES $side did not compile"; grep -A5 'error\[E' "$log" | head -40; exit 1
     fi
+    echo "$rc" > "$scratch/$side-rc.txt"
+    grep -E '^test result:' "$log" | python3 -I -c '
+import re, sys
+t = [0, 0, 0]
+for line in sys.stdin:
+    for i, k in enumerate(("passed", "failed", "ignored")):
+        m = re.search(r"(\d+) " + k, line)
+        t[i] += int(m.group(1)) if m else 0
+print(*t)' > "$scratch/$side-totals.txt"
+    { grep -E '^test .* \.\.\. (ok|FAILED|ignored)$' "$log" || true; } | sort > "$scratch/$side-outcomes.txt"
+    echo "X3_FEATURES_TOTALS $side passed/failed/ignored=$(cat "$scratch/$side-totals.txt")"
   done
+  # A binary that aborts before printing FAILED leaves an empty failing set, so
+  # also require equal exit codes, equal failed/ignored totals, no base test
+  # missing from head, and the passed delta to be exactly head's new ok tests.
+  python3 -I - "$scratch" <<'PYFEAT'
+import sys
+s = sys.argv[1]
+read = lambda f: open(f'{s}/{f}').read().split()
+brc, hrc = read('base-rc.txt'), read('head-rc.txt')
+bp, bf, bi = map(int, read('base-totals.txt'))
+hp, hf, hi = map(int, read('head-totals.txt'))
+from collections import Counter
+bo = Counter(open(f'{s}/base-outcomes.txt').read().splitlines())
+ho = Counter(open(f'{s}/head-outcomes.txt').read().splitlines())
+missing, added = bo - ho, ho - bo
+added_ok = sum(n for line, n in added.items() if line.endswith('... ok'))
+bad = []
+if brc != hrc: bad.append(f'exit codes base={brc} head={hrc}')
+if (bf, bi) != (hf, hi): bad.append(f'failed/ignored base={bf}/{bi} head={hf}/{hi}')
+if missing: bad.append(f'{sum(missing.values())} base test outcome(s) missing or changed in head: {sorted(missing)[:10]}')
+if added and added_ok != sum(added.values()): bad.append(f'new head outcomes not all ok: {sorted(added)[:10]}')
+if hp - bp != added_ok: bad.append(f'passed delta {hp - bp} != new ok tests {added_ok}')
+print(f'X3_FEATURES_NEW_TESTS {added_ok}')
+for b in bad: print(f'X3_FEATURES_MISMATCH {b}')
+sys.exit(1 if bad else 0)
+PYFEAT
   if cmp -s "$scratch/base-failing.txt" "$scratch/head-failing.txt"; then
-    echo 'X3_FEATURES_VERDICT failing set identical to base'
+    echo 'X3_FEATURES_VERDICT failing set identical to base (exit codes and totals checked)'
   else
     echo 'X3_FEATURES_VERDICT failing set DIFFERS'
     diff "$scratch/base-failing.txt" "$scratch/head-failing.txt" || true

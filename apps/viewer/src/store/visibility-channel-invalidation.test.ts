@@ -434,3 +434,23 @@ describe('both channels can legitimately be non-null at once', () => {
     assert.deepEqual(ghosted(), [9], 'a captured view the user actually had must come back as that view');
   });
 });
+
+// An action that returns the current state (zustand's no-op idiom) used to be
+// rebuilt by the middleware into a new object with a bumped
+// `visibilityRevision`, so every subscriber re-ran on every orbit pointermove
+// that called an "already clear" `clearHover` (frame-CPU profile).
+describe('a no-op write stays a no-op through the invalidation middleware', () => {
+  it('set((s) => s) and clearHover on a clear hover notify nobody and keep visibilityRevision', () => {
+    store().clearHover();
+    const before = useViewerStore.getState();
+    let notified = 0;
+    const unsubscribe = useViewerStore.subscribe(() => { notified += 1; });
+    try {
+      useViewerStore.setState((s) => s);
+      store().clearHover();
+      assert.equal(notified, 0);
+      assert.equal(useViewerStore.getState(), before);
+      assert.equal(useViewerStore.getState().visibilityRevision, before.visibilityRevision);
+    } finally { unsubscribe(); }
+  });
+});

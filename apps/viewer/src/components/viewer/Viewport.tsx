@@ -521,14 +521,6 @@ export function Viewport({
   // Skip visualization updates if raycast was slow (prevents UI freezes)
   const SLOW_RAYCAST_THRESHOLD_MS = 50;
 
-  // Render throttling during orbit/pan
-  // Adaptive: 16ms (60fps) for small models, up to 33ms (30fps) for very large models
-  const lastRenderTimeRef = useRef<number>(0);
-  const renderPendingRef = useRef<boolean>(false);
-  const RENDER_THROTTLE_MS_SMALL = 16;  // ~60fps for models < 10K meshes
-  const RENDER_THROTTLE_MS_LARGE = 25;  // ~40fps for models 10K-50K meshes
-  const RENDER_THROTTLE_MS_HUGE = 33;   // ~30fps for models > 50K meshes
-
   // Camera state tracking for measurement updates (only update when camera actually moved)
   const lastCameraStateRef = useRef<{
     position: { x: number; y: number; z: number };
@@ -702,7 +694,8 @@ export function Viewport({
       };
       const applyViewpoint = (viewpoint: CameraViewpoint, animate = true, durationMs = 300) => {
         camera.setProjectionMode(viewpoint.projectionMode);
-        useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
+        // Unchanged mode: skip the store write, which notifies every subscriber.
+        if (useViewerStore.getState().projectionMode !== viewpoint.projectionMode) useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
         camera.setFOV(viewpoint.fov);
         if (
           viewpoint.projectionMode === 'orthographic' &&
@@ -1302,8 +1295,6 @@ export function Viewport({
     lastHoverSnapTimeRef,
     lastHoverCheckRef,
     hoverTooltipsEnabledRef,
-    lastRenderTimeRef,
-    renderPendingRef,
     isInteractingRef,
     lastClickTimeRef,
     lastClickPosRef,
@@ -1336,9 +1327,6 @@ export function Viewport({
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,
-    RENDER_THROTTLE_MS_SMALL,
-    RENDER_THROTTLE_MS_LARGE,
-    RENDER_THROTTLE_MS_HUGE,
     fastZoomRef,
   });
 

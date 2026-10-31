@@ -82,6 +82,10 @@ export function withVisibilityOwnershipInvalidation<
         const patch = typeof partial === 'function'
           ? (partial as (s: T) => T | Partial<T>)(state)
           : partial;
+        // `set((s) => s)` is zustand's no-op idiom (an unchanged action returns
+        // the current state). The full state names both channels, so passing it
+        // on would bump `visibilityRevision` and notify every subscriber.
+        if (patch === state) return state;
         return applyOwnershipInvalidation(state, patch);
       }, replace);
     };

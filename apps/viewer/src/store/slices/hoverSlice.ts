@@ -52,7 +52,7 @@ export interface HoverSlice {
   closeContextMenu: () => void;
 }
 
-export const createHoverSlice: StateCreator<HoverSlice, [], [], HoverSlice> = (set) => ({
+export const createHoverSlice: StateCreator<HoverSlice, [], [], HoverSlice> = (set, get) => ({
   // Initial state
   hoverState: emptyHoverState(),
   contextMenu: closedContextMenu(),
@@ -60,9 +60,9 @@ export const createHoverSlice: StateCreator<HoverSlice, [], [], HoverSlice> = (s
 
   // Actions
   setHoverState: (hoverState) => set({ hoverState }),
-  // Called on every orbit/pan pointermove: an already-clear hover keeps its
-  // object, so subscribers are not notified 60 times a second for nothing.
-  clearHover: () => set((state) => (state.hoverState.entityId === null ? state : { hoverState: emptyHoverState() })),
+  // Called on every orbit/pan pointermove: an already-clear hover does not
+  // reach `set` (and the store middleware) at all.
+  clearHover: () => { if (get().hoverState.entityId !== null) set({ hoverState: emptyHoverState() }); },
   setHoverHighlightEnabled: (hoverHighlightEnabled) => set({ hoverHighlightEnabled }),
   toggleHoverHighlight: () => set((state) => ({ hoverHighlightEnabled: !state.hoverHighlightEnabled })),
 

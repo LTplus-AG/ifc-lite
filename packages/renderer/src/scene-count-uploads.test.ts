@@ -24,6 +24,8 @@ function cohort(arrivals: number[], cost: number, countMode: boolean, indicesPer
   const device = {
     limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
     createBuffer(descriptor: GPUBufferDescriptor) {
+      // The shared mesh uniform arena page is not a per-batch allocation.
+      if (descriptor.label === 'mesh-uniform-arena') return { size: descriptor.size, usage: descriptor.usage, destroy() {} };
       buffers++;
       bytes += descriptor.size;
       clock += cost;
@@ -55,7 +57,7 @@ function cohort(arrivals: number[], cost: number, countMode: boolean, indicesPer
   scene.clear();
   const counters = diffCounters(perfCounters.read(), before);
   assert.equal(counters['gpu.staticUpload.bytes'], uploads, 'the shared meter reports the bytes actually submitted');
-  assert.equal(counters['gpu.staticUpload.count'], buffers / 3 * 2, 'each real batch has a static vertex and index upload');
+  assert.equal(counters['gpu.staticUpload.count'], buffers, 'each real batch has a static vertex and index upload (its uniform block is an arena slot)');
   return { buffers, bytes, uploads, calls };
 }
 
@@ -64,14 +66,14 @@ describe('count-based streaming uploads (#6993)', () => {
   it('keeps GPU allocation/upload totals identical across different arrivals and clocks', () => {
     const a = cohort([20], 0, true);
     const b = cohort([7, 13], 100, true);
-    assert.equal(a.buffers, 60);
+    assert.equal(a.buffers, 40, 'vertex + index per batch; uniforms are arena slots');
     assert.deepEqual({ buffers: a.buffers, bytes: a.bytes, uploads: a.uploads }, { buffers: b.buffers, bytes: b.bytes, uploads: b.uploads });
   });
 
   it('bounds count slices even when the clock never advances', () => {
     const result = cohort([1025], 0, true);
     assert.equal(result.calls, 3, 'at most 512 meshes per count slice');
-    assert.equal(result.buffers, 3075);
+    assert.equal(result.buffers, 2050);
   });
 
   it('bounds aggregate triangle work per count slice while preserving oversize progress', () => {
@@ -84,7 +86,7 @@ describe('count-based streaming uploads (#6993)', () => {
   it('retains the original grouped upload workload when count mode is off', () => {
     const grouped = cohort([20], 100, false);
     const separated = cohort([7, 13], 100, false);
-    assert.equal(grouped.buffers, 3);
-    assert.equal(separated.buffers, 6);
+    assert.equal(grouped.buffers, 2);
+    assert.equal(separated.buffers, 4);
   });
 });

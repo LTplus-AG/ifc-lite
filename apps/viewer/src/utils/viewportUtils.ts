@@ -412,27 +412,6 @@ export function buildRenderOptionsWithSelection(
 }
 
 // ============================================================================
-// Throttling Utilities
-// ============================================================================
-
-/**
- * Get render throttle interval based on mesh count
- * Adaptive throttling: faster for small models, slower for large models
- *
- * @param meshCount - Number of meshes in the scene
- * @returns Throttle interval in milliseconds
- */
-export function getRenderThrottleMs(meshCount: number): number {
-  if (meshCount < 10000) {
-    return 16; // ~60fps for small models
-  } else if (meshCount < 50000) {
-    return 25; // ~40fps for medium models
-  } else {
-    return 33; // ~30fps for large models
-  }
-}
-
-// ============================================================================
 // Theme Utilities
 // ============================================================================
 

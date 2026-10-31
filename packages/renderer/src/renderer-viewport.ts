@@ -71,17 +71,62 @@ export function computeDrawingBufferSize(
 
 /**
  * {@link computeDrawingBufferSize} for `canvas`'s current layout on the
- * current display. Null while the element has no layout.
+ * current display. Null while the element has no layout. `cssSize` defaults to
+ * a fresh `getBoundingClientRect()`; the frame loop passes
+ * {@link CanvasCssSize.read} instead.
  */
 export function measureDrawingBuffer(
   canvas: HTMLCanvasElement,
   maxTextureDimension: number,
   maxPixelRatio?: number,
   frameMaxPixelRatio?: number,
+  cssSize: { width: number; height: number } = canvas.getBoundingClientRect(),
 ): DrawingBufferSize | null {
-  const rect = canvas.getBoundingClientRect();
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
-  return computeDrawingBufferSize(rect.width, rect.height, dpr, maxTextureDimension, maxPixelRatio, frameMaxPixelRatio);
+  return computeDrawingBufferSize(cssSize.width, cssSize.height, dpr, maxTextureDimension, maxPixelRatio, frameMaxPixelRatio);
+}
+
+/**
+ * The canvas's CSS layout size, re-measured only after a ResizeObserver
+ * report. `getBoundingClientRect()` forces a synchronous style and layout
+ * pass whenever the DOM is dirty, and the frame loop called it on every
+ * rendered frame while the HUD (ViewCube, scale bar, measurements) mutates
+ * the DOM during navigation. The device-pixel ratio is still read live by
+ * the caller, so moving between displays needs no notification. Without
+ * `ResizeObserver` (non-browser hosts) every read measures, as before.
+ *
+ * The renderer reads the cache only for continuous (interaction) frames and
+ * re-measures every idle or capture frame, so a settled frame and a capture
+ * always see the current layout. Within a gesture, a resize reaches the
+ * drawing buffer on the frame after the observer reports it (observations
+ * run after animation callbacks), and an ancestor CSS transform that changes
+ * the element's rendered box without resizing it is not observed.
+ */
+export class CanvasCssSize {
+  private cached: { width: number; height: number } | null = null;
+  private observer: ResizeObserver | null = null;
+
+  constructor(private readonly canvas: HTMLCanvasElement) {
+    if (typeof ResizeObserver !== 'function') return;
+    this.observer = new ResizeObserver(() => { this.cached = null; });
+    this.observer.observe(canvas);
+  }
+
+  /** The cached size; `fresh` re-measures (and re-caches) regardless. */
+  read(fresh = false): { width: number; height: number } {
+    if (this.cached && !fresh) return this.cached;
+    const rect = this.canvas.getBoundingClientRect();
+    const size = { width: rect.width, height: rect.height };
+    if (this.observer) this.cached = size;
+    return size;
+  }
+
+  /** Stop observing; later reads measure every time. */
+  disconnect(): void {
+    this.observer?.disconnect();
+    this.observer = null;
+    this.cached = null;
+  }
 }
 
 export function resizeRendererViewport(

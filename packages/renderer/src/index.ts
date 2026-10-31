@@ -20,7 +20,8 @@ import { deferOpaqueVisibilityFrame } from './opaque-visibility-pass.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
-import { MAX_DRAWING_BUFFER_PIXEL_RATIO, measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
+import { CanvasCssSize, MAX_DRAWING_BUFFER_PIXEL_RATIO, measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
+import { flushMeshUniforms, stageMeshUniforms } from './mesh-uniform-arena.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -251,7 +252,7 @@ export class Renderer {
     private camera: Camera;
     private scene: Scene;
     private picker: Picker | null = null;
-    private canvas: HTMLCanvasElement;
+    private canvas: HTMLCanvasElement; private readonly canvasCssSize: CanvasCssSize; // frame-loop layout reads (renderer-viewport.ts)
     // The overlay theme (#5484), kept so a pre-init `setOverlayTheme` call
     // (and a later re-init) still lands — `init()` re-applies it to `pipeline`.
     private overlayTheme: OverlayTheme = DEFAULT_OVERLAY_THEME;
@@ -544,7 +545,7 @@ export class Renderer {
     private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
 
     constructor(canvas: HTMLCanvasElement) {
-        this.canvas = canvas;
+        this.canvas = canvas; this.canvasCssSize = new CanvasCssSize(canvas);
         this.device = new WebGPUDevice();
         this.camera = new Camera();
         this.scene = new Scene();
@@ -1612,6 +1613,7 @@ export class Renderer {
      * `renderWithResult()` owns containment for both public render methods.
      */
     private renderFrame(options: RenderOptions): boolean {
+        const frameStart = performance.now(); let textureWaitMs = 0; // FrameStats.cpuMs
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
             return false;
@@ -1619,7 +1621,7 @@ export class Renderer {
 
         // Drawing buffer = the element's device-pixel size (capped ratio, clamped
         // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
-        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio, options.maxPixelRatio);
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio, options.maxPixelRatio, this.canvasCssSize.read(options.isInteracting !== true));
         // Skip rendering while the canvas is collapsed or too small.
         if (!measured || measured.height < 10) { this._renderSkipCount++; return false; }
         const { width, height } = measured;
@@ -1832,7 +1834,7 @@ export class Renderer {
         // Tracked with a flag (not just captureGpuError) so EVERY exit path below
         // pops it exactly once — an unpopped scope silently swallows all later
         // validation errors and blinds getDiagnostics().gpuErrors.
-        const captureGpuError = this._renderCallCount <= 5;
+        const captureGpuError = this._renderCallCount <= 5; const textureWaitStart = performance.now();
         let errorScopePushed = false;
         if (captureGpuError) {
             device.pushErrorScope('validation');
@@ -1840,7 +1842,7 @@ export class Renderer {
         }
 
         // Get current texture safely - may return null if context needs reconfiguration
-        const currentTexture = this.device.getCurrentTexture();
+        const currentTexture = this.device.getCurrentTexture(); textureWaitMs = performance.now() - textureWaitStart;
         if (!currentTexture) {
             // Balance the pushed scope before bailing so it doesn't leak into
             // the next frame; drainErrorScope logs a rejection (device loss)
@@ -2248,7 +2250,10 @@ export class Renderer {
                 }, environment);
             }
 
-            pass.setPipeline(this.pipeline.getPipeline());
+            // Redundant setPipeline calls are skipped: every draw site below binds through usePipeline.
+            let boundPipeline = this.pipeline.getPipeline();
+            pass.setPipeline(boundPipeline);
+            const usePipeline = (next: GPURenderPipeline): void => { if (next !== boundPipeline) { pass.setPipeline(next); boundPipeline = next; } };
 
             // Bind the global lighting environment at group(1) AFTER any sky
             // draw. The sky pipeline's layout (its own group(0), no group(1))
@@ -2375,8 +2380,7 @@ export class Renderer {
                 for (const batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
-                        const batchAABB = { min: batch.bounds.min, max: batch.bounds.max };
-                        if (!isRteAabbVisible(frustum, batchAABB, rteCullCamera)) {
+                        if (!isRteAabbVisible(frustum, batch.bounds, rteCullCamera)) {
                             frameBatchesFrustumCulled++;
                             continue; // Entire batch is off-screen
                         }
@@ -2512,7 +2516,7 @@ export class Renderer {
                 // `paint` = a depth-writing opaque draw: colour overrides shade it from the
                 // entity colour table (#6076); transparent draws keep their own colour.
                 const renderBatch = (batch: typeof allBatchedMeshes[0], paint = false) => {
-                    if (!batch.bindGroup || !batch.uniformBuffer) return;
+                    if (!batch.bindGroup || !batch.uniformSlot) return;
 
                     // Patch the per-batch colour, and the material its AUTHORED
                     // alpha implies: an X-Ray fade is not glass (#5386).
@@ -2544,7 +2548,7 @@ export class Renderer {
                     const painted = paint && batchHasColorOverride(batch, colorOverrides, colorOverrideGen);
                     packOverrideParams(this.uniformOverrideU32, batchEntityIdAnchor(batch), painted, options.emphasizeOverrides === true);
                     this.uniformOverrideU32[0] = batchEntityIdAnchor(batch) ?? 0xFFFFFFFF;
-                    device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
+                    stageMeshUniforms(batch.uniformSlot, tpl); // uploaded by flushMeshUniforms before submit
                     this.uniformOverrideU32.fill(0);
 
                     // Single draw call for entire batch! LOD1-selected batches
@@ -2584,10 +2588,9 @@ export class Renderer {
                 // is not reliably outward, so culling them punched holes (wall read hollow).
                 sortOpaqueFrontToBack(opaqueBatches, this.camera.getPosition());
                 for (const batch of opaqueBatches) {
-                    pass.setPipeline(pipeFor(batch, 'opaque'));
+                    usePipeline(pipeFor(batch, 'opaque'));
                     renderBatch(batch, true);
                 }
-                pass.setPipeline(this.pipeline.getPipeline());
 
                 // GPU-instancing pass — repeated geometry collated by the producer
                 // into one template + a per-occurrence instance buffer (mat4 +
@@ -2644,7 +2647,7 @@ export class Renderer {
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
                     // discarded and drawn in the transparent sub-pass below.
                     this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4);
-                    pass.setPipeline(this.pipeline.opaquePipeline('instanced', opaqueMode(this.scene.instancedMayDiscard())));
+                    usePipeline(this.pipeline.opaquePipeline('instanced', opaqueMode(this.scene.instancedMayDiscard())));
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
                     pass.setBindGroup(3, sectionExclusions(device).bindGroup);
@@ -2657,7 +2660,6 @@ export class Renderer {
                         frameDrawCalls += drawInstanceRuns(pass, it.indexCount, runs);
                         if (runs.length > 0) frameInstancedDrawn++;
                     }
-                    pass.setPipeline(this.pipeline.getPipeline());
                     // The TRANSPARENT instanced sub-pass is drawn later, alongside the
                     // flat transparent batches, so it blends after ALL opaque geometry
                     // (incl. the textured sub-pass below) has written depth.
@@ -2669,7 +2671,7 @@ export class Renderer {
                 // vertex buffer (with a UV lane), texture, sampler and bindGroup.
                 const texturedMeshes = this.scene.getTexturedMeshes();
                 if (texturedMeshes.length > 0) {
-                    pass.setPipeline(this.pipeline.getTexturedPipeline());
+                    usePipeline(this.pipeline.getTexturedPipeline());
                     for (const tm of texturedMeshes) {
                         // Honour hide/isolate — textured meshes bypass the batch
                         // visibility filtering above, so apply it per-mesh here or
@@ -2728,8 +2730,6 @@ export class Renderer {
                         pass.drawIndexed(tm.indexCount);
                         frameDrawCalls++;
                     }
-                    // Restore the opaque pipeline for the passes that follow.
-                    pass.setPipeline(this.pipeline.getPipeline());
                 }
 
                 // PERFORMANCE FIX: Render partially visible batches as sub-batches (not individual meshes!)
@@ -2775,18 +2775,16 @@ export class Renderer {
                             // open watertight-skin bands with unreliable winding,
                             // so culling punched holes (wall read hollow). See the
                             // full-batch path above.
-                            pass.setPipeline(pipeFor(subBatch, 'opaque'));
+                            usePipeline(pipeFor(subBatch, 'opaque'));
                             opaqueSubBatches.push(subBatch);
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch, true);
                         }
                     }
                     for (const subBatch of transparentSubBatches) {
-                        pass.setPipeline(pipeFor(subBatch, 'transparent'));
+                        usePipeline(pipeFor(subBatch, 'transparent'));
                         renderBatch(subBatch);
                     }
-                    // Reset to opaque pipeline for subsequent rendering
-                    pass.setPipeline(this.pipeline.getPipeline());
                 }
 
                 // Filled, hatched 3D cut surfaces are now rendered by
@@ -2858,7 +2856,7 @@ export class Renderer {
                     instancedTransparentPipeline !== null
                 ) {
                     this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4 | 0x8);
-                    pass.setPipeline(instancedTransparentPipeline);
+                    usePipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
                     pass.setBindGroup(3, sectionExclusions(device).bindGroup);
@@ -2869,21 +2867,19 @@ export class Renderer {
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         frameDrawCalls += drawInstanceRuns(pass, it.indexCount, visibleInstancedRuns[i]!);
                     }
-                    pass.setPipeline(this.pipeline.getPipeline());
                 }
 
                 // Render transparent BATCHED meshes with transparent pipeline (after opaque batches and selections)
                 if (transparentBatches.length > 0) {
-                    pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const batch of transparentBatches) {
-                        pass.setPipeline(pipeFor(batch, 'transparent'));
+                        usePipeline(pipeFor(batch, 'transparent'));
                         renderBatch(batch);
                     }
                 }
 
                 // Render transparent individual meshes with transparent pipeline
                 if (transparentMeshes.length > 0) {
-                    pass.setPipeline(this.pipeline.getTransparentPipeline());
+                    usePipeline(this.pipeline.getTransparentPipeline());
                     for (const mesh of transparentMeshes) {
                         if (!mesh.bindGroup || !mesh.uniformBuffer) {
                             continue;
@@ -2964,7 +2960,7 @@ export class Renderer {
                     this.uniformOverrideU32[0] = mesh.expressId;
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
-                    pass.setPipeline(this.pipeline.getSelectionPipeline());
+                    usePipeline(this.pipeline.getSelectionPipeline());
                     pass.setBindGroup(0, mesh.bindGroup);
                     pass.setVertexBuffer(0, mesh.vertexBuffer);
                     pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
@@ -3085,6 +3081,7 @@ export class Renderer {
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
+            flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
@@ -3100,7 +3097,7 @@ export class Renderer {
                 instancedDrawn: frameInstancedDrawn,
                 instancedFrustumCulled: frameInstancedFrustumCulled,
                 instancedContributionCulled: frameInstancedContributionCulled,
-                timestamp: performance.now(),
+                timestamp: performance.now(), cpuMs: performance.now() - frameStart - textureWaitMs,
             };
 
             // GPU residency budget (issue #1682 phase 3a): evict least-recently
@@ -3615,7 +3612,7 @@ export class Renderer {
      */
     destroy(): void {
         this.initGeneration++;
-        this.destroyed = true; cancelRendererColorFrame(this);
+        this.destroyed = true; cancelRendererColorFrame(this); this.canvasCssSize.disconnect();
         this.teardown();
         this.rejectReadyWaiters(rendererDestroyedError());
     }

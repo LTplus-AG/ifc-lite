@@ -107,8 +107,6 @@ function makeParams(
     lastHoverSnapTimeRef: ref(0),
     lastHoverCheckRef: ref(0),
     hoverTooltipsEnabledRef: ref(false),
-    lastRenderTimeRef: ref(0),
-    renderPendingRef: ref(false),
     isInteractingRef: ref(false),
     lastClickTimeRef: ref(0),
     lastClickPosRef: ref(null),
@@ -140,9 +138,6 @@ function makeParams(
     HOVER_SNAP_THROTTLE_MS: 50,
     SLOW_RAYCAST_THRESHOLD_MS: 50,
     hoverThrottleMs: 50,
-    RENDER_THROTTLE_MS_SMALL: 16,
-    RENDER_THROTTLE_MS_LARGE: 33,
-    RENDER_THROTTLE_MS_HUGE: 66,
     fastZoomRef: ref(false),
   };
 }

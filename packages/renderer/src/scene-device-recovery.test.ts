@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { flushMeshUniforms, meshUniformArena } from './mesh-uniform-arena.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
@@ -24,6 +25,12 @@ function buffer(size = 16): FakeBuffer {
   return { size, destroyed: 0, destroy() { this.destroyed++; } };
 }
 
+/** Uniform slots still held in the device's mesh arena once released slots are recycled. */
+function liveArenaSlots(gpu: GPUDevice): number {
+  flushMeshUniforms(gpu);
+  return meshUniformArena(gpu, 256).liveSlots;
+}
+
 function device() {
   const created: FakeBuffer[] = [], writes: Array<{ offset: number; data: Uint8Array }> = [];
   return {
@@ -31,7 +38,8 @@ function device() {
     writes,
     gpu: {
       limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
-      createBuffer(desc: { size: number }) { const value = buffer(desc.size); created.push(value); return value; },
+      // Arena pages are shared, not per-batch: `liveArenaSlots` covers them.
+      createBuffer(desc: { size: number; label?: string }) { const value = buffer(desc.size); if (desc.label !== 'mesh-uniform-arena') created.push(value); return value; },
       createBindGroup() { return {}; },
       queue: {
         writeBuffer(_target: unknown, offset: number, source: ArrayBufferView) {
@@ -257,6 +265,7 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene.getMeshData(23), undefined);
     prepared.dispose();
     assert.deepStrictEqual(first.created.map(value => value.destroyed), first.created.map(() => 1));
+    assert.strictEqual(liveArenaSlots(first.gpu), 0, 'the staged batch uniform slot is released too');
   });
 
   it('invalidates and releases a detached authored transaction on an ordinary scene reload', () => {
@@ -270,6 +279,7 @@ describe('Scene device recovery (#4885)', () => {
     scene.clearFlatGeometry();
 
     assert.deepStrictEqual(first.created.map(value => value.destroyed), first.created.map(() => 1));
+    assert.strictEqual(liveArenaSlots(first.gpu), 0, 'the staged batch uniform slot is released too');
     assert.throws(() => prepared.commit(), /released/);
   });
 

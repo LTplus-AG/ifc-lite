@@ -179,6 +179,7 @@
       "markdown-it@14": "^14.3.3",
       "undici@6": "^6.29.1",
       "fast-uri@3": "^3.1.9",
+      "zod@<4.6.6": "^4.6.6",
       "minimatch": "^10.2.5",
       "@zip.js/zip.js": "2.8.26",
       "browserslist": "^4.28.9",

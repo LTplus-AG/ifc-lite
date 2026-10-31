@@ -1,0 +1,83 @@
+C2-7a / #8263, base main 70c91e8e61
+
+Port, not a cherry-pick. Layout source: backup/c2-7-recovery-r3 7d31c4c102
+(ordered strategies) and the context half of 021f88697d. Both are merge
+commits on 84f82f034a; every moved body below is sliced from MAIN's
+voids/mod.rs, never from r3, and r3 supplied only file layout and wrappers.
+
+Commits
+1. test: stage-order guards on unchanged main code (stage_order_tests.rs,
+   declared from execution_tests_adapter.rs because mod.rs was at budget).
+2. move: VoidContext / RectParam / ParamRectCut -> voids/context.rs. Bodies
+   unchanged; is_noop, rect_opening_count, all_cutters_world_framed,
+   relativized_by and malformed_opening_boxes become pub(super). Intra-doc
+   links re-pointed (Execution::apply_void_context, crate::GeometryRouter).
+3. stages: A (ParamRect, Bool2d, Prism) -> strategy/{param_rect,bool2d,prism}.rs
+   behind `HostStage` + `HOST_STAGES`; RectFast -> strategy/rect_fast.rs; the
+   post passes (stage D) -> post.rs. apply_void_context_inner keeps the exact
+   tail (stage C) inline until C2-7b/c.
+
+Conflict / port decisions
+- S2: try_param_rect_cut is main's body (Aabb3::from_f32_positions, #8225;
+  rect_fast stats recorded only after the strict_closed_mesh self-check,
+  #8153). try_rect_fast is main's body (consolidate_keeping_closed). r3's
+  stale bodies (hand-rolled bounds loop, record-before-check,
+  param_cut_watertight, consolidate_coplanar) are NOT ported.
+- S3: no positional destructuring. Stage A's order lives only in
+  `strategy::HOST_STAGES`, iterated with a `match` in `HostStage::try_cut`.
+  Stage B (WallLocalFrame -> kernel capture -> FacetWeld -> RectFast) and
+  stage D stay straight-line statement sequences: the clipper and its
+  FailureCapture must be created after WallLocalFrame declines and before the
+  weld, which an iterated enum cannot express without an Option dance.
+- The doc block main attached to try_param_rect_cut was two docs run
+  together; the apply_void_context half now sits on apply_void_context.
+- Diagnostics timing kept: prism bounds/triangles are read before the prism
+  attempt; RectFast records its cut effect only on acceptance; the post
+  passes drain kernel failures first and record the cut effect last.
+- mod.rs keeps main's mod list; frame_rotate/opening_frame/parity stay
+  declared through geom.rs (#8224). OpeningBox / recut_malformed_openings are
+  imported under cfg(test) only, for the existing test modules.
+- Ratchets measured, never copied from r3: apply_void_context_inner 715 -> 650,
+  voids/mod.rs 1514 -> 1135, geometry digest recomputed.
+
+Mutation evidence (each applied to unchanged main mod.rs; stage_order_tests)
+- bool2d before param            -> param_rect_is_tried_before_bool2d RED
+- clip before recut              -> malformed_recut_runs_before_the_flap_clip RED
+- sliver refinement dropped      -> exact_tail_output_keeps_no_sliver RED
+- rejected retry not restored    -> rejected_frame_retry_restores_the_first_runs_diagnostics RED
+- batch plan before coaxial      -> coaxial_union_runs_before_the_batch_plan RED
+- shard-sweep gate forced on/off -> NOT observable. Both directions keep all
+  238 router::voids lib tests and all ifc-lite-geometry integration tests
+  green, and an instrumented scan of every local ara3d / issues / geometry
+  fixture found no host where the sweep would drop a face, mutated or not.
+  The non-mutating post passes only remove material inside the host or move
+  vertices <= 0.2 mm (facet weld), under the sweep's 1 mm clearance, so no
+  constructible fixture separates the gate. It is preserved by moving the
+  statement verbatim.
+Feature-set note: malformed_recut_runs_before_the_flap_clip needs an open
+host, which csg_topology_gate / csg_manifold_gate refuse to cut, so it is
+cfg-excluded under them exactly like csg_tests.rs's open-box tests (#3440).
+Without that it was the only extra red in the special feature run.
+
+Qualification tooling: validate.sh pins CARGO_TARGET_DIR inside the task
+checkout. On the worker's shared cache lane a mutation run reused a test
+binary built before the patch (cargo trusted a newer fingerprint written from
+another checkout), so earlier shared-cache receipts were discarded and rerun.
+
+Committed oracle: behaviour.oracle.patch swaps HOST_STAGES' ParamRect/Bool2d
+(reverse-applied by the revert oracle; test.yml elif with --test
+stage_order_tests.rs).
+
+Pre-merge fix round (review and bot findings)
+- stage_order_tests: param_rect_is_tried_before_bool2d forces
+  rect_fast::param_set_enabled_override(Some(true)) instead of returning
+  green when IFC_LITE_RECT_PARAM/IFC_LITE_RECT_FAST disable it; that override
+  and coaxial_union's are reset by a Drop guard, so a panic cannot leak them.
+  No other stage-order test returns early on an env flag.
+- validate.sh: features accepts an empty failing set, links the host fixture
+  corpus into base and head (C2-8 qualify.sh approach) and refuses a run with
+  no test result or a nonzero exit without failures; instructions fails a
+  zero-instruction base phase against a nonzero head; one EXIT trap removes
+  the injected probe and scratch even after a failed build.
+- identity_probe: also hashes every instance record (all fields, floats as
+  bits, destructured exhaustively).

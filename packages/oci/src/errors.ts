@@ -12,14 +12,19 @@
  * - `NOT_FOUND`: the registry answered 404.
  * - `UNAUTHORIZED`: no usable credentials, or the registry still answered 401
  *   after the client authenticated once.
- * - `DENIED`: the registry (or its token service) answered 403.
- * - `DIGEST_MISMATCH`: the received bytes do not hash to the expected digest.
+ * - `DENIED`: the registry (or its token service) answered 403, or a push
+ *   was refused with 401 `DENIED` / `insufficient_scope` after the client
+ *   authenticated.
+ * - `DIGEST_MISMATCH`: the received bytes do not hash to the expected digest,
+ *   or on push the registry reports (or rejects) a different digest.
  * - `SIZE_EXCEEDED`: a body grew past its cap; the transfer was aborted.
  * - `UNSUPPORTED_MANIFEST`: the manifest media type is not one of the four
  *   this client understands.
  * - `PROTOCOL`: the server broke the protocol (bad JSON, bad redirect, bad
  *   `Link`, wrong size, ...).
  * - `NETWORK`: `fetch` itself rejected.
+ * - `TAG_EXISTS`: a push would replace an existing tag and the caller did
+ *   not pass `allowOverwrite`.
  */
 export type OciErrorCode =
   | 'INVALID_REFERENCE'
@@ -30,7 +35,8 @@ export type OciErrorCode =
   | 'SIZE_EXCEEDED'
   | 'UNSUPPORTED_MANIFEST'
   | 'PROTOCOL'
-  | 'NETWORK';
+  | 'NETWORK'
+  | 'TAG_EXISTS';
 
 /**
  * The single error type this package throws for registry and data failures.

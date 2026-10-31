@@ -4,6 +4,11 @@
 
 # Performance diagnosis kit
 
+## Retained qualification runners (#7955)
+
+Viewer first retained frame, built-CLI retained export, browser and native memory
+runners, report-only: [retained-qual.md](retained-qual.md).
+
 ## Native diff compare (#8351)
 
 **Shipped: the key pass and per-call setup, not the transport.** The warm

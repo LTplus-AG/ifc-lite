@@ -24,3 +24,16 @@ it('#5895 exposes live annotation overlay vertices to the browser witness and cl
   clearViewportDebugHooks();
   assert.equal(host.__ifc_lite_annotation_line_vertices__, undefined);
 });
+
+it('#8413 frame observation reads only the renderer snapshot and clears on teardown', () => {
+  const frame = { timestamp: 20, drawCalls: 3 };
+  const renderer = {
+    getFrameStats: () => frame,
+    getScene: () => { throw new Error('frame observation must not walk the scene'); },
+  } as unknown as Renderer;
+  installViewportDebugHooks(renderer, () => ({ hiddenIds: new Set(), isolatedIds: null }), () => 0);
+  const host = globalThis as Record<string, unknown>;
+  assert.equal((host.__ifc_lite_render_frame__ as () => unknown)(), frame);
+  clearViewportDebugHooks();
+  assert.equal(host.__ifc_lite_render_frame__, undefined);
+});

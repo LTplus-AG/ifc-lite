@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/perf/retained-qual-assert.mjs",
+  "mutation": "tests/evidence/retained-qual-8413/behaviour.oracle.patch",
+  "test": "scripts/perf/retained-qual-assert.test.mjs",
+  "why": "Keep all new runner modules loadable, but disable native qualification; invalid retained summaries must be rejected by real assertions."
+}

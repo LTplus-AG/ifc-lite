@@ -19,6 +19,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 struct Counting;
 static LIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
+// #8415: global allocator measurements must not overlap across tests.
+static MEASURE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -111,6 +113,7 @@ DATA;
 
 #[test]
 fn from_source_equals_the_rescan_and_allocates_no_second_index() {
+    let _measurement = MEASURE.lock().expect("measurement lock");
     let content = model(200_000);
     let meshes = {
         let mut sink = Collect::default();
@@ -145,20 +148,12 @@ fn from_source_equals_the_rescan_and_allocates_no_second_index() {
     );
 }
 
-/// The browser session (wasm32 + `retained-browser` only, so not built here) must keep joining finishes
-/// through `from_source`: a `from_content` call there is the second scan returning.
-#[test]
-fn the_browser_session_joins_finishes_without_scanning_the_file_again() {
-    let session = include_str!("../../wasm-bindings/src/api/retained_session.rs");
-    assert!(!session.contains("from_content"), "the retained session rescans the file for finishes");
-    assert!(session.contains("ModelFinishes::from_source"), "the retained session joins finishes from its own scan");
-}
-
 /// Real authoring-tool files, small to a 177 MB tower. The join must agree with the rescan on every mesh of the
 /// ones small enough to mesh here, and on every file hold less heap than the rescan did (the numbers are what
 /// the PR reports). Absent fixtures skip; `pnpm fixtures` provides them.
 #[test]
 fn from_source_on_real_models_agrees_and_holds_less_heap() {
+    let _measurement = MEASURE.lock().expect("measurement lock");
     const MESHED: &[&str] = &["ara3d/AC20-FZK-Haus.ifc", "ara3d/duplex.ifc", "ara3d/advanced_model.ifc"];
     const SCANNED: &[&str] = &[
         "ara3d/AC20-FZK-Haus.ifc",

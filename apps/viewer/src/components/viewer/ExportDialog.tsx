@@ -412,7 +412,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         // IFC5 carries the meshes the viewer holds; a retained model that is incomplete or shape-only would export
         // them as if they were the model (the same guard the GLB/KMZ/USD ribbon commands use).
         const federatedModel = models.get(selectedModelId);
-        if (federatedModel && hasRetainedShapeOnlyModel(new Map([[selectedModelId, federatedModel]]))) {
+        if (includeGeometry && !changesOnly && federatedModel && hasRetainedShapeOnlyModel(new Map([[selectedModelId, federatedModel]]))) {
           return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
         }
         const idOffset = federatedModel?.idOffset ?? 0;

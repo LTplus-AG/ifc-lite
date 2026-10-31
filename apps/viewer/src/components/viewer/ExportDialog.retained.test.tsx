@@ -33,7 +33,7 @@ const INCOMPLETE: RetainedGeometrySummary = {
   cancelled: 0, obligationsUnmet: [], completeness: 'incomplete',
 };
 
-async function exportIfc5(retainedGeometry: RetainedGeometrySummary | undefined) {
+async function exportIfc5(retainedGeometry: RetainedGeometrySummary | undefined, mode?: 'properties' | 'changes') {
   const source = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -49,10 +49,16 @@ END-ISO-10303-21;`;
   const model = { ...fixtureModel('model'), ifcDataStore: store, schemaVersion: 'IFC5' as const, ...(retainedGeometry ? { retainedGeometry } : {}) };
   useViewerStore.setState({ ...fixtureModels(model), activeModelId: model.id, dirtyModels: new Set(), mutationVersion: 0 });
   const exported = mock.method(Ifc5Exporter.prototype, 'export', () => ({ content: '{}', stats: { skippedCount: 0, propertyCollisions: 0, nodeCount: 0, meshCount: 0, propertyCount: 0 } }) as never);
-  const ui = render(<ExportDialog surface="ribbon" />);
+  const ui = render(<ExportDialog surface="ribbon" initialChangesOnly={mode === 'changes'} />);
   const trigger = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Export IFC'));
   assert.ok(trigger);
   click(trigger);
+  if (mode === 'properties') {
+    const label = [...document.querySelectorAll('label')].find(el => el.textContent?.trim() === 'Include geometry');
+    assert.ok(label);
+    click(label);
+    await advance(10);
+  }
   const run = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Export');
   assert.ok(run);
   click(run);
@@ -67,4 +73,12 @@ it('refuses the IFC5 export of an incomplete retained model with the shape-only 
 
 it('control: the same IFC5 export without a retained summary runs', async () => {
   assert.equal(await exportIfc5(undefined), 1);
+});
+
+// #8415: property-only IFCX must survive a geometry refusal.
+it('exports IFC5 properties without geometry from an incomplete retained model', async () => {
+  assert.equal(await exportIfc5(INCOMPLETE, 'properties'), 1);
+});
+it('exports IFC5 changes only from an incomplete retained model', async () => {
+  assert.equal(await exportIfc5(INCOMPLETE, 'changes'), 1);
 });

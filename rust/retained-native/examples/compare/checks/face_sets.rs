@@ -17,6 +17,7 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
         // Any row key opts the part in: the first key's role must not be able to skip it, and
         // a triangle keyed to anything else then fails the corner check.
         let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else {
+            any = true;
             failure = Some(format!("part of #{} is source-exact but has no row key", product.product_id));
             continue;
         };

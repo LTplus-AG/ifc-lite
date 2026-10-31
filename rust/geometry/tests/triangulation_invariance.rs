@@ -1459,13 +1459,18 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     // closes it in both triangulators and both prism modes (15/16 -> 0/0 and
     // 30/31 -> 0/0); the strip faces go and the cut re-tessellates (7571 ->
     // 7556, and 9400 -> 11118 with the prism route off). #32810 is unchanged.
+    //
+    // #8190, second seam: rectangle #12681 and pentagon #13475 overlap for
+    // 1.32 m along one plane, and their footprints met at a T-junction the
+    // snap alone left open. Closing it fuses the two prisms and removes the
+    // strip between them: 7556 -> 7552, open and strict unchanged at 0/0.
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
         [(12381, 0, 0, 11118), (32810, 0, 0, 3224)]
     } else {
         // #7292: retaining supported finite source cells removes ten signed
         // and strict boundary defects in both triangulators (25/26 -> 15/16).
         // DEFAULT retains six additional triangles; the #32810 cut is unchanged.
-        [(12381, 0, 0, 7556), (32810, 3, 3, 3207)]
+        [(12381, 0, 0, 7552), (32810, 3, 3, 3207)]
     };
     for &alt in triangulators {
         set_alt(alt);

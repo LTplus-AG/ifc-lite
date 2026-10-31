@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
@@ -160,6 +161,11 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   );
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    // #8415: the dialog can stay open while the selected model changes kernels.
+    const live = useViewerStore.getState().models.get(selectedModelId);
+    if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
+      return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+    }
     if (!selectedModel?.geometryResult) {
       return { success: false, message: t('geometryExport.glb.failedMessage', { reason: t('geometryExport.shared.unknownError') }) };
     }
@@ -176,13 +182,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
       // the Rust path emits exactly the meshes it is handed — this mirrors the
       // previous GLTFExporter `isMeshVisible` / `pickColor` semantics.
       //
-      // Fold in GPU-instanced occurrences (absent from geometryResult.meshes — they
-      // live in shards) for the primary model so the GLB isn't missing repeated
-      // geometry; the same visibility/colour filter below applies to them.
-      // Instancing is the PRIMARY model only (idOffset 0). Detect that by offset,
-      // not by the `__legacy__` id — a federated primary also has idOffset 0 but
-      // carries a real model id, and would otherwise lose its instanced
-      // occurrences from the export. Mirrors ExportDialog.tsx. (#1238 review)
+      // Include this model's GPU-instanced occurrences, which are absent from its flat mesh list.
       const federatedModel = models.get(selectedModelId);
       const idOffset = federatedModel?.idOffset ?? 0;
       const sourceFile = federatedModel?.sourceFile;

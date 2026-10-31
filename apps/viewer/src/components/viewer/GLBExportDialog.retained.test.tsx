@@ -11,6 +11,8 @@
 import '@/test/setup-dom.js';
 import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
+import '@/lib/retained/retainedLoad';
 import { GeometryProcessor, type MeshData, type GeometryResult } from '@ifc-lite/geometry';
 import { render, cleanup, click, advance } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -21,13 +23,13 @@ import { GLBExportDialog } from './GLBExportDialog';
 
 afterEach(() => { cleanup(); mock.restoreAll(); setGlobalRendererRef({ current: null }); });
 
-const RETAINED: RetainedGeometrySummary = {
+const INCOMPLETE: RetainedGeometrySummary = {
   kernel: 'retained', candidates: 2, started: true, published: 1,
   refused: [{ expressId: 2, ifcType: 'IfcBuildingElementProxy', code: 'appearance_unsupported' }],
   cancelled: 0, obligationsUnmet: [], completeness: 'incomplete',
 };
 
-async function exportWith(retainedGeometry: RetainedGeometrySummary | undefined) {
+async function exportWith(retainedGeometry: RetainedGeometrySummary | undefined, afterOpen?: RetainedGeometrySummary) {
   const zero = { x: 0, y: 0, z: 0 };
   const mesh: MeshData = { expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] };
@@ -44,12 +46,17 @@ async function exportWith(retainedGeometry: RetainedGeometrySummary | undefined)
   render(<GLBExportDialog surface="ribbon" />);
   const button = (label: string) => { const el = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === label); assert.ok(el); return el; };
   click(button('Export GLB')); await advance(1);
+  if (afterOpen) {
+    const models = new Map(useViewerStore.getState().models);
+    for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: afterOpen });
+    act(() => useViewerStore.setState({ models }));
+  }
   click(button('Export')); await advance(20);
-  return { fromBytes: fromBytes.mock.callCount(), held, mesh };
+  return { fromBytes: fromBytes.mock.callCount(), held, mesh, text: document.body.textContent ?? '' };
 }
 
 it('a retained-kernel model exports the meshes the viewer holds, never the exact engine\'s re-mesh of its file', async () => {
-  const { fromBytes, held, mesh } = await exportWith(RETAINED);
+  const { fromBytes, held, mesh } = await exportWith({ ...INCOMPLETE, published: 2, refused: [], completeness: 'complete' });
   assert.equal(fromBytes, 0, 'the exact from-bytes assembler must not run for a retained model');
   assert.deepEqual(held, [mesh], 'the held (retained) mesh is what is exported');
 });
@@ -59,3 +66,14 @@ it('control: the same model without a retained summary still takes the from-byte
   assert.equal(fromBytes, 1, 'the default exact path is unchanged');
   assert.equal(held, undefined);
 });
+
+// #8415: an already-open dialog must not download partial meshes after a kernel switch.
+for (const summary of [INCOMPLETE, { ...INCOMPLETE, completeness: 'complete' as const,
+  published: 2, refused: [], obligationsUnmet: ['IfcAppearance'] }]) {
+  it(`refuses open-dialog GLB submission after the exact model becomes ${summary.completeness} retained`, async () => {
+    const { fromBytes, held, text } = await exportWith(undefined, summary);
+    assert.equal(fromBytes, 0, 'the source assembler must not run');
+    assert.equal(held, undefined, 'the held-mesh assembler must not run');
+    assert.match(text, /Unavailable while retained geometry or presentation is incomplete/);
+  });
+}

@@ -541,8 +541,8 @@ impl GeometryRouter {
     /// Set the tessellation quality level.
     ///
     /// A quality change invalidates `mapped_item_cache` (keyed by RepresentationMap
-    /// id, not by quality) and the record of which sources' drops are already
-    /// counted, since every source is re-walked; both are cleared here. The
+    /// id, not by quality) and the record of which sources' and openings' drops
+    /// are already counted, since every one is re-walked; all are cleared. The
     /// content-hash-keyed caches stay correct.
     pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
         if self.config.tessellation_quality == quality {

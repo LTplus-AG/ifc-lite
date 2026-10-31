@@ -170,8 +170,9 @@ def main(argv):
 
     applications = {refs[r[0]][0] for r in recs if r[1] == "IFCAPPLICATION" and refs[r[0]]}
     if anonymise:
-        schema = re.search(r"FILE_SCHEMA\s*\(.*?\);", header, re.S)
-        schema_text = without_comments(schema.group(0)) if schema else "FILE_SCHEMA(('IFC2X3'));"
+        # Comments go first: a ');' inside one would end the match early.
+        schema = re.search(r"FILE_SCHEMA\s*\(.*?\);", without_comments(header), re.S)
+        schema_text = schema.group(0) if schema else "FILE_SCHEMA(('IFC2X3'));"
         name = dst.rsplit("/", 1)[-1]
         header = (
             "ISO-10303-21;\nHEADER;\n"

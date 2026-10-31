@@ -14,8 +14,10 @@ the transitive closure of #references from all of them. Nothing else, so the
 spatial structure and every other product drop out. `--anonymise` writes a
 minimal header, blanks every string of IfcPerson, its addresses and roles,
 and of any IfcOrganization that is not an application's, and blanks the
-project's and site's names (GlobalIds stay): what a committed fixture should
-carry. Product names and type names are kept; check them before committing.
+project's and site's names (GlobalIds stay), and unsets the site's reference
+latitude, longitude and elevation: what a committed fixture should carry. The
+site placement stays (it sets the RTC offset), so the extract is only as
+anonymous as that placement; use it on models that are already public. Product names and type names are kept; check them before committing.
 The extract is meant to give the same host mesh as the full model through
 `process_geometry`; check that with `mesh_census --ids` before relying on it.
 """
@@ -65,6 +67,36 @@ def blank(raw, keep_first):
         return m.group(0) if keep_first and seen[0] == 1 else "''"
 
     return QUOTED.sub(sub, raw)
+
+
+def top_level_args(body):
+    """The comma-separated attributes of a record body, nesting and strings kept."""
+    out, cur, depth, in_str = [], [], 0, False
+    for ch in body:
+        if ch == "'":
+            in_str = not in_str
+        elif not in_str and ch == "(":
+            depth += 1
+        elif not in_str and ch == ")":
+            depth -= 1
+        elif not in_str and ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+            continue
+        cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+def drop_site_location(rid, body):
+    """IfcSite with RefLatitude, RefLongitude and RefElevation (attributes 10
+    to 12) unset. They are metadata only; the site PLACEMENT stays, because it
+    sets the RTC offset the extract has to reproduce."""
+    args = top_level_args(body)
+    for i in (9, 10, 11):
+        if i < len(args):
+            args[i] = "$"
+    return f"#{rid}= IFCSITE({','.join(args)});"
 
 
 def main(argv):
@@ -124,6 +156,8 @@ def main(argv):
                 raw = blank(raw, keep_first=False)
             elif anonymise and typ in NAMED_ROOTS:
                 raw = blank(raw, keep_first=True)
+                if typ == "IFCSITE":
+                    raw = drop_site_location(rid, ENTITY.match(raw).group(3))
             f.write(raw + "\n")
         f.write("ENDSEC;\nEND-ISO-10303-21;\n")
     print(f"{len(keep)} records, {len(openings)} openings -> {dst}", file=sys.stderr)

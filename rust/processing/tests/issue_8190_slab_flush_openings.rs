@@ -16,8 +16,12 @@
 //! `tests/fixtures/issue_8190_slab_12381.ifc` is the slab, its 47 openings,
 //! the project and the site (whose placement sets the RTC offset), cut out of
 //! `tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc`
-//! by `scripts/ifc-extract-hosts.py --anonymise`. Through `process_geometry`
-//! it gives the same slab mesh as the full model, before the fix and after.
+//! by `scripts/ifc-extract-hosts.py --anonymise`: names, contacts and the
+//! site's latitude, longitude and elevation are blanked. The site placement is
+//! kept because it sets the RTC offset, and with it every f32 rounding this
+//! test is about; the source model is public in the fixture release. Through
+//! `process_geometry` it gives the same slab mesh as the full model, before
+//! the fix and after.
 
 use ifc_lite_processing::{process_geometry, MeshData};
 use std::collections::HashMap;

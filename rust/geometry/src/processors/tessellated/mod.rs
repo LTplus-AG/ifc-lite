@@ -27,7 +27,7 @@ pub use triangulated::TriangulatedFaceSetProcessor;
 
 use crate::{Error, Result};
 use ifc_lite_core::{
-    extract_coordinate_list_from_entity, extract_coordinate_list_from_entity_f64, slot, AttributeValue,
+    extract_coordinate_list_from_entity, extract_coordinate_list_from_entity_f64, AttributeValue,
     EntityDecoder,
 };
 
@@ -80,7 +80,7 @@ pub(crate) fn read_point_list_f64(decoder: &mut EntityDecoder, id: u32) -> Resul
         return Ok(values);
     }
     let list = decoder.decode_by_id(id)?;
-    let rows = list.attr(slot::IfcCartesianPointList3D::COORD_LIST).and_then(AttributeValue::as_list)
+    let rows = list.attr(ifc_lite_core::slot::IfcCartesianPointList3D::COORD_LIST).and_then(AttributeValue::as_list)
         .ok_or_else(|| Error::geometry("CartesianPointList3D missing CoordList".to_string()))?;
     Ok(AttributeValue::parse_coordinate_list_3d_f64(rows).into_iter().flat_map(|(x, y, z)| [x, y, z]).collect())
 }

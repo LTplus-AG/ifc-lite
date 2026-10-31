@@ -24,8 +24,8 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     if positions.len() != triangles.positions.len() {
         return Err(Error::geometry("face set point list reads differently in f64".to_string()));
     }
-    let SourceTriangles { indices, rows, row_count, .. } = outward(triangles);
-    let (triangles, rows) = without_zero_area(&positions, indices, rows);
+    let SourceTriangles { indices, rows, row_count, .. } = outward(triangles, scale);
+    let (triangles, rows) = without_zero_area(&positions, scale, indices, rows);
     crate::resource::charge(crate::resource::Cost {
         work: (positions.len() / 3 + rows.len()) as u64,
         live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4) as u64,
@@ -36,8 +36,10 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
 
 /// Exact's per-element pass faces each closed component outward, including a
 /// shell authored `Closed=$`. Open components keep the authored winding.
-fn outward(mut triangles: SourceTriangles) -> SourceTriangles {
-    let mut mesh = PolygonalFaces::build_flat_shaded_mesh(&triangles.positions, &triangles.indices);
+fn outward(mut triangles: SourceTriangles, scale: f64) -> SourceTriangles {
+    // Exact orients metres: its vertex weld is a fixed distance, not a file-unit one.
+    let metres: Vec<f32> = triangles.positions.iter().map(|&v| (f64::from(v) * scale) as f32).collect();
+    let mut mesh = PolygonalFaces::build_flat_shaded_mesh(&metres, &triangles.indices);
     if orient_mesh_outward_verdict(&mut mesh).flipped {
         for (t, corners) in triangles.indices.chunks_exact_mut(3).enumerate() {
             if mesh.indices[3 * t + 1] != 3 * t as u32 + 1 { corners.swap(1, 2); }
@@ -46,12 +48,14 @@ fn outward(mut triangles: SourceTriangles) -> SourceTriangles {
     triangles
 }
 
-/// A triangle with no area has no facet: nothing to display and no normal.
-fn without_zero_area(positions: &[f64], indices: Vec<u32>, rows: Vec<u32>) -> (Vec<u32>, Vec<u32>) {
+/// A triangle with no area has no facet: nothing to display and no normal. Judged in
+/// the request's own arithmetic (metres from the first point), so an authored sliver
+/// that only collapses there cannot reach the sealed mesh without a normal.
+fn without_zero_area(positions: &[f64], scale: f64, indices: Vec<u32>, rows: Vec<u32>) -> (Vec<u32>, Vec<u32>) {
     let mut kept = Vec::with_capacity(indices.len());
     let mut kept_rows = Vec::with_capacity(rows.len());
     for (corners, row) in indices.chunks_exact(3).zip(rows) {
-        let point = |i: u32| nalgebra::Vector3::new(positions[i as usize * 3], positions[i as usize * 3 + 1], positions[i as usize * 3 + 2]);
+        let point = |i: u32| nalgebra::Vector3::from(std::array::from_fn::<f64, 3, _>(|axis| (positions[i as usize * 3 + axis] - positions[axis]) * scale));
         let area = (point(corners[1]) - point(corners[0])).cross(&(point(corners[2]) - point(corners[0])));
         if area.norm() > 0. {
             kept.extend_from_slice(corners);

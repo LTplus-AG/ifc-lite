@@ -81,12 +81,12 @@ impl BrowserWorker {
         if request.worker_incarnation() != self.incarnation() {
             return Err(BrowserError::WrongWorker.into());
         }
-        if request.payload().bytes.len() > max_bytes as usize {
+        if request.source_exact_mesh_bytes().is_none_or(|bytes| bytes > max_bytes as usize) {
             return Err(BrowserError::ResourceLimit("mesh exceeds max_bytes".to_owned()).into());
         }
         let completion = request
             .source_exact_completion()
-            .ok_or_else(|| invalid("request is not a decodable source-exact face set"))?;
+            .ok_or_else(|| RuntimeFault::contract("request is not a decodable source-exact face set"))?;
         Ok(BrowserReceipt::SourceFaceSet {
             domain: self.cancellation(),
             completion,

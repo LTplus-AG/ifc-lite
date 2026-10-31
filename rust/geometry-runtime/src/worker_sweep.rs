@@ -76,7 +76,7 @@ impl SmlibWorker {
         if !self.is_live() || request.worker_incarnation() != self.incarnation() {
             return Err(WorkerError::WrongWorker);
         }
-        if request.payload().bytes.len() > limits.max_bytes {
+        if request.source_exact_mesh_bytes().is_none_or(|bytes| bytes > limits.max_bytes) {
             return Err(WorkerError::ResourceLimit("mesh exceeds max_bytes"));
         }
         let completion = request.source_exact_completion()

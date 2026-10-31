@@ -1046,6 +1046,15 @@ jobs:
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13a/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-13a/behaviour.oracle.patch --test rust/processing/tests/issue_8341_finishes_event.rs)
             oracle_args+=(--mutation tests/evidence/c4-13a/server.oracle.patch --test apps/server/src/routes/parse/finish_tests.rs)
+          # @ifc-lite/oci: whole-package inversion deletes src/ and the tests
+          # die at import. Keep the package; break one security rule per patch:
+          # Authorization to redirect targets, credentials to an untrusted
+          # realm, the streaming size cap, digest verification.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/oci-client/redirect-authorization.oracle.patch | grep -Fxq 'tests/evidence/oci-client/redirect-authorization.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/oci-client/redirect-authorization.oracle.patch --test packages/oci/test/blob.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-client/untrusted-realm.oracle.patch --test packages/oci/test/auth.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-client/size-cap.oracle.patch --test packages/oci/test/blob.test.ts --test packages/oci/test/manifest.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-client/digest-verification.oracle.patch --test packages/oci/test/blob.test.ts --test packages/oci/test/manifest.test.ts)
           # #8113: retain the new harness modules; remove only admission validation.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-8113/admission.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-8113/admission.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/diff-e2e-8113/admission.oracle.patch --test scripts/perf/diff-e2e.test.mjs)

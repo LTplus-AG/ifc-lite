@@ -2,9 +2,10 @@
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
 # worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
 # this workflow is path-filtered to them and is intentionally NOT a required check.
-# It holds a hosted runner for about an hour per commit, so it runs nightly, on
-# demand, and on a PR only with the `ci:native-adapter` label and a change it can
-# observe. Add the label to a PR whose retained or native change needs this evidence.
+# It holds a hosted runner for about an hour per commit, so it runs nightly (the guard
+# for main, with the corpus), on demand, and on a PR only with the `ci:native-adapter`
+# label and a change it can observe. Add the label to a PR whose retained or native
+# change needs this evidence. It does not run on every push to main.
 name: Geometry platform (native adapter)
 
 on:
@@ -12,11 +13,30 @@ on:
     # `labeled` lets the label start the job on the current commit.
     types: [opened, synchronize, reopened, labeled]
     paths:
+      # Every crate in the retained engine's path-dependency closure, derived from
+      # the Cargo manifests and held by scripts/check-native-adapter-triggers.mjs.
+      # Directory-wide, not exact paths: shared exact-engine code (geometry/src/processors,
+      # core, processing/src/style) feeds retained parity too (#7955).
+      - 'rust/clash/**'
+      - 'rust/core/**'
+      - 'rust/export/**'
+      - 'rust/geometry/**'
+      - 'rust/geometry-runtime/**'
+      - 'rust/landxml/**'
+      - 'rust/processing/**'
+      - 'rust/retained-native/**'
+      - 'rust/testkit/**'
+      - 'rust/wasm-bindings/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      # Local actions the job calls.
+      - '.github/actions/setup-wasm-build/**'
       - 'native/**'
       # M2-D builds and drives the real opt-in viewer. Only its retained code,
       # the viewport that hosts it and its build configuration: an ordinary
       # viewer change must not queue an hour-long native build.
-      - 'scripts/fixtures/fetch-fixtures.mjs'
       - 'apps/viewer/**/*Retained*'
       - 'apps/viewer/**/*retained*'
       - 'apps/viewer/src/lib/retained/**'
@@ -46,8 +66,6 @@ on:
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
       - 'tests/models/manifest.json'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
       # Retained requests the worker executes are lowered here.
       - 'rust/geometry/src/document/**'
       - 'rust/geometry/src/program/**'
@@ -88,6 +106,13 @@ on:
       - 'packages/wasm/**'
       - 'scripts/*retained*'
       - 'scripts/smlib-*'
+      # The fixture fetch steps run this gate and import its siblings.
+      - 'scripts/fixtures/*.mjs'
+      # Scripts the job itself runs (the guard in its first step, with what it imports; the corpus judge).
+      - 'scripts/check-native-adapter-triggers.mjs'
+      - 'scripts/check-retained-corpus-summary.mjs'
+      - 'scripts/lib/ci-path-coverage.mjs'
+      - 'scripts/lib/is-main-entry.mjs'
       - 'scripts/lib/*retained*'
       - 'pnpm-workspace.yaml'
       - 'package.json'
@@ -120,7 +145,7 @@ on:
       - 'packages/wasm/pkg-retained/**'
       - 'packages/wasm/test/retained-browser.test.mjs'
       - '.github/workflows/geometry-platform.yml'
-  # The backstop for PRs that do not opt in.
+  # The backstop for PRs that do not opt in, and the only run that carries the corpus.
   schedule:
     - cron: '30 2 * * *'
   workflow_dispatch:
@@ -152,6 +177,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
+      - name: Guard the lane's own triggers
+        run: node scripts/check-native-adapter-triggers.mjs
       - name: Checkout pinned upstream SDK (fetched, never vendored)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -246,14 +273,12 @@ jobs:
           for witness in m3_prism_curved m3_synthetic_empty m3_scaled_cutter m3_nonbakeable_cutter m3_unsupported m3_kernel_failure m3_frames m3_lineage m3_reference m3_two_parts_two_openings m3_empty_opening_body; do
             grep -E "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/m3-native.log"
           done
-      - name: Download optional corpus
-        if: inputs.corpus == true
-        run: corepack enable && pnpm fixtures
-      - name: Optional retained native corpus
-        if: inputs.corpus == true
-        run: |
-          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
-            --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Upload native comparison evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -262,8 +287,6 @@ jobs:
           path: |
             ${{ runner.temp }}/native-compare/*.json
             ${{ runner.temp }}/native-compare/*.tsv
-            ${{ runner.temp }}/native-corpus/*.json
-            ${{ runner.temp }}/native-corpus/*.tsv
           if-no-files-found: error
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -284,12 +307,6 @@ jobs:
         id: wasm-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-wasm" --output-on-failure
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
       - name: Rebuilt-worker open tessellation refusal (#7955)
         id: open-tessellation
         continue-on-error: true
@@ -417,6 +434,15 @@ jobs:
             IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
             IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
+      # The report-only browser corpus job reads the staged engine from here.
+      - name: Keep the staged retained engine for the browser corpus
+        if: inputs.corpus == true || github.event_name == 'schedule'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cli-retained-engine
+          path: ${{ runner.temp }}/cli-retained-engine
+          if-no-files-found: error
+          retention-days: 3
       - name: Browser parity and real retained viewer
         id: viewer-retained
         continue-on-error: true
@@ -440,12 +466,6 @@ jobs:
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm build:e2e --concurrency=1
           node scripts/check-viewer-retained-free.mjs
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default
-      - name: Optional retained browser corpus (report only)
-        if: inputs.corpus == true
-        continue-on-error: true
-        run: |
-          node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
-            --native "$RUNNER_TEMP/native-corpus/products.tsv" --out "$RUNNER_TEMP/viewer-retained-corpus" --corpus
       - name: Upload retained viewer evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -454,7 +474,6 @@ jobs:
           path: |
             ${{ runner.temp }}/retained-native-link-inventory.json
             ${{ runner.temp }}/viewer-retained/
-            ${{ runner.temp }}/viewer-retained-corpus/
             test-results/
           if-no-files-found: error
       # Gather independent failures, then preserve a failing overall verdict.
@@ -485,3 +504,164 @@ jobs:
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done
           exit "$failed"
+
+  # The downloaded corpus, apart from the committed-fixture lane above: it is far
+  # longer than that lane, and as a step inside it a timeout was indistinguishable
+  # from (and starved) every other lane. Scheduled and dispatch-only. Sharded by
+  # model bytes (scripts/retained-compare/corpus-shards.mjs); the shard count
+  # below must equal `--shards` in native-corpus-result.
+  native-corpus:
+    name: Native corpus (shard ${{ matrix.shard }}/8)
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned upstream SDK (fetched, never vendored)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: NVIDIA-Omniverse/usd-brep
+          ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
+          path: upstream-smlib
+          persist-credentials: false
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Build native owned boundary and worker
+        run: |
+          cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
+          cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: geometry-platform
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download the corpus
+        run: pnpm fixtures
+      - name: Select this shard's models
+        run: node scripts/retained-compare/corpus-shards.mjs shard --manifest tests/models/manifest.json --shards 8 --index ${{ matrix.shard }} --out tests/models/manifest.shard.json
+      # Own budget and continue-on-error so the verdict step below can tell a timeout
+      # (INCOMPLETE) from a finished run with parity violations (PARITY).
+      - name: Compare this shard natively
+        id: compare
+        continue-on-error: true
+        timeout-minutes: 100
+        run: |
+          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
+            --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.shard.json
+      # Without --gate the comparison exits 0 on violations; judge summary.json. Parity
+      # violations are report-only (warnings) until the corpus has a baseline: the first
+      # complete sharded run held thousands. Incomplete runs, universe mismatches and
+      # absent fixtures fail.
+      - name: Judge this shard
+        if: always()
+        env:
+          COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+        run: |
+          echo "comparison step outcome: $COMPARE_OUTCOME"
+          node scripts/check-retained-corpus-summary.mjs --report-violations "$RUNNER_TEMP/native-corpus/summary.json"
+          [[ "$COMPARE_OUTCOME" == success ]]
+      - name: Upload shard evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-corpus-shard-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/native-corpus/*.json
+            ${{ runner.temp }}/native-corpus/*.tsv
+          if-no-files-found: error
+
+  # The required aggregate over every shard: red when any shard timed out or
+  # failed, or when a shard's evidence is missing.
+  native-corpus-result:
+    name: Native corpus result
+    needs: [native-corpus]
+    if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-corpus-shard-*
+          path: shards
+      - name: Every shard finished, with no parity violations
+        env:
+          SHARDS_RESULT: ${{ needs.native-corpus.result }}
+        run: |
+          echo "native-corpus matrix result: $SHARDS_RESULT"
+          node scripts/check-retained-corpus-summary.mjs --shards 8 --report-violations shards/native-corpus-shard-*/summary.json
+          [[ "$SHARDS_RESULT" == success ]]
+      - name: Merge the shards' product tables for the browser corpus
+        run: node scripts/retained-compare/corpus-shards.mjs merge --out products.tsv shards/native-corpus-shard-*/products.tsv
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-corpus-products
+          path: products.tsv
+          if-no-files-found: error
+
+  # Report only by design: never part of any verdict (job-level continue-on-error).
+  browser-corpus:
+    name: Browser corpus (report only)
+    needs: [native-adapter, native-corpus-result]
+    if: always() && needs.native-corpus-result.result == 'success'
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      # The models the product table names come from the fetch, not the checkout.
+      - name: Download the corpus
+        run: pnpm fixtures
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-corpus-products
+          path: native-corpus
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cli-retained-engine
+          path: ${{ runner.temp }}/cli-retained-engine
+      - name: Compare the corpus in the browser
+        run: |
+          node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
+            --native native-corpus/products.tsv --out "$RUNNER_TEMP/viewer-retained-corpus" --corpus
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: retained-browser-corpus
+          path: ${{ runner.temp }}/viewer-retained-corpus/
+          if-no-files-found: error
+
+  # A red nightly or main run must not scroll by: open or update one issue.
+  report-scheduled-failure:
+    needs: [native-adapter, native-corpus-result]
+    if: always() && github.event_name == 'schedule' && (needs.native-adapter.result != 'success' || needs.native-corpus-result.result != 'success')
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Geometry platform (native adapter)
+      jobs: native-adapter, native-corpus-result
+      result: native-adapter=${{ needs.native-adapter.result }}, native-corpus=${{ needs.native-corpus-result.result }}
+    permissions:
+      contents: read
+      issues: write

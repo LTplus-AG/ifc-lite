@@ -30,6 +30,11 @@ const needs = (job, id) => {
   return job.needs === id || (Array.isArray(job.needs) && job.needs.includes(id));
 };
 
+/** An active step that runs `gh issue create` as a command: not echoed or quoted, not `if: false`, not failure-tolerant. */
+const createsIssue = (step) => /(^|\n)[ \t]*gh issue create\b/.test(expression(step.run))
+  && step.if !== false && !/^\s*(?:\$\{\{\s*)?false(?:\s*\}\})?\s*$/.test(String(step.if ?? ''))
+  && !(step['continue-on-error'] === true || String(step['continue-on-error'] ?? '').startsWith('${{'));
+
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
 
 /** Split on `operator` where it sits at paren depth 0 and outside a quoted
@@ -139,6 +144,7 @@ const REPORTER_NEEDS = new Map([
   ['determinism.yml', ['arm64-determinism', 'wasm32-mesh-determinism']],
   ['export-schema-conformance.yml', ['validate', 'terrain-imagery']],
   ['field-verdict.yml', ['verdict']],
+  ['geometry-platform.yml', ['native-adapter', 'native-corpus-result']],
   ['ifcopenshell-parity.yml', ['full', 'cost-full']],
   ['perf-ratchet-lower.yml', ['lower']],
   ['wide-arithmetic.yml', ['wide-arithmetic-tripwire']],
@@ -244,7 +250,8 @@ export function auditRoot(root) {
       const expectedCondition = `always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && ${nonSuccessCondition(expected)}`;
       if (!isRecord(reporter) || condition !== expectedCondition
         || !expected.every((dependency) => needs(reporter, dependency))
-        || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write') {
+        || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write'
+        || !stepsOf(reporter).some(createsIssue)) {
         failures.push(`${displayPath(root, path)}: partial main-only matrix has no active issue reporter disposition`);
       }
     }

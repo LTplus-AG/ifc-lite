@@ -2468,6 +2468,8 @@ jobs:
         run: node scripts/retained-notices.mjs --check
       - name: Check CI path coverage
         run: node scripts/check-ci-path-coverage.mjs
+      - name: Check native-adapter lane triggers cover the retained crate graph
+        run: node scripts/check-native-adapter-triggers.mjs
       # The neighbouring class, and the one the comment above names in passing:
       # a skipped job counts as success in the aggregate `test` gate, so a job
       # that is in its `needs:` but MISSING from its results map is unjudged --
@@ -3298,7 +3300,7 @@ jobs:
         run: |
           BUILD_RETAINED=1 bash scripts/build-wasm.sh
           pnpm build --filter=@ifc-lite/cli
-          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs
+          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/corpus-shards.test.mjs
 
       - name: Rust tests and Clippy (retained controller and executor)
         # #7955 M1: the opt-in `retained-runtime` feature is outside the

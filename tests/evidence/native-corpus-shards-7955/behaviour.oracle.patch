@@ -1,0 +1,12 @@
+diff --git a/scripts/retained-compare/corpus-shards.mjs b/scripts/retained-compare/corpus-shards.mjs
+--- a/scripts/retained-compare/corpus-shards.mjs
++++ b/scripts/retained-compare/corpus-shards.mjs
+@@ -29,7 +29,7 @@ export function shardFiles(files, count) {
+   const ordered = [...ifc].sort((a, b) => (b.size ?? 0) - (a.size ?? 0) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+   const shards = Array.from({ length: count }, () => ({ bytes: 0, files: [] }));
+   for (const file of ordered) {
+-    const lightest = shards.reduce((best, s, i) => best, 0);
++    const lightest = shards.reduce((best, s, i) => (s.bytes < shards[best].bytes ? i : best), 0);
+     shards[lightest].files.push(file);
+     shards[lightest].bytes += file.size ?? 0;
+   }

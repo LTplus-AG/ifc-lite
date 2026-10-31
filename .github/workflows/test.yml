@@ -3871,6 +3871,55 @@ jobs:
       - name: Check every source file declares MPL-2.0
         run: node scripts/add-license-headers.mjs --check
 
+  # SILENT REVERT GUARD (follow-up to #8377, which merged as 705eb56357 and put
+  # 14 files of #8360 back to their exact pre-#8360 bytes, deleting
+  # affine_classify.rs, with neither title saying so). Every lane judges the
+  # tree, and the reverted tree was a consistent earlier tree, so all of them
+  # were green. This lane judges the DIFF instead: it fails when the tree the
+  # merge will produce restores three or more files of one commit already on
+  # the base to the bytes they had before it, unless the PR declares the revert
+  # (a `revert` title, a `Reverts #N` line, or the `silent-revert-exempt`
+  # label; read when a run is created, like `revert-oracle-exempt`).
+  #
+  # git only: no pnpm install, no build artifact, a free runner. The depth is
+  # `fetch-depth: 0` and not a guess: the guard reads the merge base and the
+  # last 100 base commits, #8360 sat BELOW #8377's merge base, and a shallow
+  # checkout is refused by the script (exit 2) rather than judged. It evaluates
+  # `merge-tree <base> <head sha>` against the CURRENT base tip rather than the
+  # checked-out merge ref, which GitHub recomputes lazily when the base moves.
+  #
+  # `pull_request` only: on push and merge_group the lane is skipped and
+  # `skipped` passes the aggregate, which is right, there is no PR to judge.
+  # It has no path filter (a silent revert can hit any file), so it gates on
+  # `noop` like `rust-semver`; scripts/lib/ci-path-coverage.mjs reads that as none.
+  silent-revert:
+    name: Silent revert guard
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.noop != 'true'
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # The guard's own tests run FIRST: a broken detector must fail here rather
+      # than report agreement. They include a replay of the real #8377 history.
+      - name: Check the guard's own regressions
+        run: node --test scripts/check-silent-revert.test.mjs
+      - name: Refuse a PR that silently reverts merged work
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-silent-revert.mjs --base "origin/${PR_BASE_REF}" --head "${PR_HEAD_SHA}"
+
   # NATIVE INSTRUCTION CEILINGS (#6982, charter #6954): the `native-instructions`
   # family. perf_probe runs single-threaded under callgrind on AC20-FZK-Haus
   # (~6 s of callgrind; the rest of this job is the cargo build and valgrind
@@ -4004,7 +4053,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -4076,6 +4125,7 @@ jobs:
             [docs-site]="${{ needs.docs-site.result }}"
             [agents-md]="${{ needs.agents-md.result }}"
             [license-headers]="${{ needs.license-headers.result }}"
+            [silent-revert]="${{ needs.silent-revert.result }}"
             [native-instructions]="${{ needs.native-instructions.result }}"
             [perf-ratchet]="${{ needs.perf-ratchet.result }}"
           )

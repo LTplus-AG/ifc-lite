@@ -89,6 +89,10 @@ ifc-lite oci push oci://localhost:5000/demo/model:v1 model.ifc \
   (the file name without its extension), and every `--annotation key=value`.
   The key must be non-empty and on one line; a later duplicate wins;
   `org.opencontainers.image.title` cannot be set this way (rename the file).
+- The manifest and the layer carry `org.buildingsmart.ifc.profile`
+  (`ifc-release/0`) and `org.buildingsmart.ifc.schema` (from `FILE_SCHEMA`).
+  These keys are a provisional convention shared with subsoil, not a
+  buildingSMART standard, and may change. They cannot be set with `--annotation`.
 - The file is checked before any request with the same content check the
   loader uses (STEP envelope, terminator, DATA section), and its `FILE_SCHEMA`
   must name an IFC schema. `.ifczip` (by name or zip content) is refused:
@@ -103,9 +107,6 @@ ifc-lite oci push oci://localhost:5000/demo/model:v1 model.ifc \
 - `--json` prints only
   `{ "reference", "digest", "layer": { "digest", "size", "mediaType" }, "artifactType" }`
   on stdout; errors go to stderr.
-- No profile marker annotation is written yet: the annotation namespace for
-  an IFC-on-OCI profile is still being decided, and one will be added once it
-  is settled.
 
 ## Installation diagnostics
 

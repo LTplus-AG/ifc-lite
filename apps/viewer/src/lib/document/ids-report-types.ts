@@ -57,6 +57,12 @@ export function idsBlockRequirementCheckRate(block: Pick<IdsReportBlock, 'source
   return total > 0 ? { passed, total, rate: boundedPassRate(passed, total) } : undefined;
 }
 
+/** The requirement checks worth a second ring: identical totals, as when every specification has one requirement, add nothing (#8417). */
+export function idsRequirementRing(block: Pick<IdsReportBlock, 'sourceKind' | 'checks' | 'summary'>): RequirementCheckRate | undefined {
+  const rate = idsBlockRequirementCheckRate(block);
+  return rate && (rate.passed !== block.summary.passed || rate.total !== block.summary.checked) ? rate : undefined;
+}
+
 /** An IDS block lists specifications; only a rule set's entries are checks (#8204). */
 export function reportItemsCountKey(block: Pick<IdsReportBlock, 'sourceKind'>): 'idsPanel.specifications' | 'document.preview.idsReportChecksCount' {
   return reportBlockSourceKind(block) === 'ids' ? 'idsPanel.specifications' : 'document.preview.idsReportChecksCount';

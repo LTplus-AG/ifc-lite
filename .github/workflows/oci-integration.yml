@@ -11,7 +11,8 @@
 #                      `oci://` refs. Each answer is compared with the same
 #                      command over the local file, so "it printed something"
 #                      is not the bar. A wrong password must fail with an auth
-#                      error, and no output may contain the password.
+#                      error, and no output may contain the password. Then
+#                      `ifc-lite oci push`, read back with ORAS byte for byte.
 #   ghcr-exit-test     workflow_dispatch only: `ifc-lite diff` across the public
 #                      ghcr.io/ltplus-ag/ifc-lite-oci-fixtures:v1/:v2 packages,
 #                      authenticating as the workflow token (packages: read).
@@ -28,6 +29,10 @@ on:
       - 'packages/oci/**'
       - 'packages/cli/src/model-input.ts'
       - 'packages/cli/src/loader.ts'
+      - 'packages/cli/src/oci-input.ts'
+      - 'packages/cli/src/commands/oci.ts'
+      - 'packages/cli/src/commands/oci-push.ts'
+      - 'packages/cli/src/commands/oci-push-input.ts'
       - '.github/actions/setup-oci-registries/**'
       - '.github/workflows/oci-integration.yml'
       - 'apps/viewer/public/samples/building-architecture.ifc'
@@ -187,6 +192,42 @@ jobs:
             exit 1
           fi
           echo "refused as expected (exit ${status})"
+
+      - name: ifc-lite oci push reads back byte-identical with ORAS
+        env:
+          REGISTRY: ${{ steps.registry.outputs.address }}
+          IFC_LITE_OCI_USERNAME: ${{ env.OCI_REGISTRY_USER }}
+          IFC_LITE_OCI_PASSWORD: ${{ env.OCI_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/oci-push"
+          mkdir -p "$out/pulled"
+          target="$REGISTRY/published/model:v1"
+          node packages/cli/dist/index.js oci push "oci://$target" "$FIXTURE_V1" --json > "$out/push.json" 2> "$out/push.stderr"
+          if grep -rFq -- "$IFC_LITE_OCI_PASSWORD" "$out"; then
+            echo "::error::the registry password appears in ifc-lite oci push output" >&2
+            exit 1
+          fi
+          printf '%s' "$IFC_LITE_OCI_PASSWORD" | oras login --plain-http --username "$IFC_LITE_OCI_USERNAME" --password-stdin --registry-config "$out/oras-auth.json" "$REGISTRY"
+          oras pull --plain-http --registry-config "$out/oras-auth.json" --output "$out/pulled" "$target"
+          cmp "$FIXTURE_V1" "$out/pulled/$(basename "$FIXTURE_V1")"
+          oras manifest fetch --plain-http --registry-config "$out/oras-auth.json" "$target" > "$out/manifest.json"
+          jq -e --arg digest "$(jq -r '.layer.digest' "$out/push.json")" '
+            .artifactType == "application/vnd.ifc-lite.ifc.v1"
+            and (.layers | length) == 1
+            and .layers[0].digest == $digest
+            and .annotations["org.buildingsmart.ifc.profile"] == "ifc-release/0"
+            and .annotations["org.buildingsmart.ifc.schema"] == "IFC4"
+            and .layers[0].annotations["org.buildingsmart.ifc.profile"] == "ifc-release/0"
+          ' "$out/manifest.json" > /dev/null
+          # An existing tag must be refused, and the tag must not move.
+          status=0
+          node packages/cli/dist/index.js oci push "oci://$target" "$FIXTURE_V2" > "$out/again.log" 2>&1 || status=$?
+          if [ "$status" -eq 0 ] || ! grep -Fq 'already exists' "$out/again.log"; then
+            echo "::error::a second push to an existing tag was not refused (exit ${status})" >&2
+            exit 1
+          fi
+          oras manifest fetch --plain-http --registry-config "$out/oras-auth.json" "$target" | cmp - "$out/manifest.json"
 
       - name: Dump zot logs
         if: failure() && steps.registry.outcome != 'skipped'

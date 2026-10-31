@@ -16,6 +16,7 @@
 import { isModelTagOp } from './model-tag.js';
 import { isModelFact } from './filter-model-fact.js';
 import { isListConditionRule } from './filter-list-condition.js';
+import { isCustomGroupingRule } from './filter-custom-grouping.js';
 import { isMemberPath } from './subject-read-options.js';
 import type { ClassificationOp, FilterRule, NumericOp, SetOp, StringOp, ValueOp } from './filter-rules.js';
 
@@ -98,6 +99,8 @@ export function isFilterRule(value: unknown): value is FilterRule {
       return NUMERIC_OPS.has(r.op) && finiteNumber(r.value);
     case 'listCondition':
       return isListConditionRule(value);
+    case 'customGrouping':
+      return isCustomGroupingRule(value);
     case 'modelFact':
       return isModelFact(r.fact) && VALUE_OPS.has(r.op) && typeof r.value === 'string';
     default:

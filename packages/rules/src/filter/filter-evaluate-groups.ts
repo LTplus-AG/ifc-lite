@@ -33,7 +33,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FilterGroup } from './filter-groups.js';
-import { assertListConditionsAnswerable } from './filter-list-condition.js';
+import { assertHostRulesAnswerable } from './filter-custom-grouping.js';
 import {
   evaluateFilterRules,
   evaluateFilterRulesFederated,
@@ -58,7 +58,7 @@ export function evaluateFilterGroups(
 ): FilteredElement[] {
   if (groups.length === 0) return [];
   // Every group, before any group runs: a later group's rule must not fail after earlier ones returned rows.
-  assertListConditionsAnswerable(groups.flatMap((g) => g.rules), [{ id: modelId, store, listConditions: options.listConditions }]);
+  assertHostRulesAnswerable(groups.flatMap((g) => g.rules), [{ ...options, id: modelId, store }]);
   if (groups.length === 1) {
     return evaluateFilterRules(modelId, store, groups[0].rules, groups[0].combinator, options);
   }
@@ -100,7 +100,7 @@ export async function evaluateFilterGroupsFederated(
   options: FederatedEvaluateOptions = {},
 ): Promise<FilteredElement[]> {
   if (groups.length === 0) return [];
-  assertListConditionsAnswerable(groups.flatMap((g) => g.rules), models);
+  assertHostRulesAnswerable(groups.flatMap((g) => g.rules), models);
   if (groups.length === 1) {
     return evaluateFilterRulesFederated(models, groups[0].rules, groups[0].combinator, options);
   }
@@ -153,4 +153,16 @@ export async function evaluateFilterGroupsFederated(
     }
   }
   return out;
+}
+
+/**
+ * The single-model evaluator options that give `model` the meaning it has in a
+ * federated run: its durable identity, tags, live edits and host readers. Sync
+ * callers holding an `EvaluatorModel` use this rather than picking fields.
+ */
+export function evaluateOptionsOf(model: EvaluatorModel): EvaluateOptions {
+  return {
+    modelFilterIdentity: model.filterIdentity, modelTagIds: model.tagIds, mutationView: model.mutationView,
+    listConditions: model.listConditions, customGroupings: model.customGroupings,
+  };
 }

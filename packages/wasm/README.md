@@ -449,7 +449,8 @@ indexed colour palette (origin `{site: 'appearance', entity, cause}`). An uncut
 `IfcTriangulatedFaceSet` or `IfcPolygonalFaceSet` publishes its authored triangles in full f64
 with no Worker call, including an open shell, with one face key `row(k)` per authored row. A
 Boolean, opening or affine copy stitches the closed solid first; an open shell or a set over
-8,192 triangles refuses `operation_unsupported` there.
+8,192 triangles refuses `operation_unsupported` there. A cut the kernel itself refuses is
+`kernel_failure` for that product and keeps the worker.
 A fully presented product carries `marker: 'final'` and an empty `obligationsUnmet` list.
 A product with remaining obligations carries `marker: 'PresentationObligationsUnmet'`
 and its nonempty list; consumers show shape-only for those products. Final describes published

@@ -1880,7 +1880,8 @@ A product whose binding carries a texture or an indexed colour palette refuses w
 or `IfcPolygonalFaceSet` publishes its authored triangles in full f64 without a kernel call,
 including an open shell, one persistent face key `row(k)` per authored row. A Boolean, opening
 or affine copy stitches the closed solid first; an open shell or a set over 8,192 triangles refuses
-`operation_unsupported` there. A mirrored or non-uniform copy of a shell a cut could not use refuses the same way. Band parts carry their own
+`operation_unsupported` there, and so does a mirrored or non-uniform copy of one. A cut the kernel
+itself refuses is `kernel_failure` for that product and keeps the worker. Band parts carry their own
 material ID, colour and material name through exact’s resolver.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°

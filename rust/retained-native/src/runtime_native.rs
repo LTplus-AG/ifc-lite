@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Lifted from the native diagnostic stack; policy stays in processing.
 use crate::native_types::{NativeDomain, NativeReceipt, NativeWorker, RealizationKind};
+use ifc_lite_geometry::document::RegionQualification;
 use ifc_lite_geometry_runtime::{
     protocol::BooleanOperation, MeshLimits, RetainedDependency, RetainedTransformInput,
     SmlibWorker, WorkerError,
@@ -68,11 +69,12 @@ fn dependency(operand: Operand<'_, NativeReceipt>) -> Result<RetainedDependency<
         },
     }
 }
-fn transform_input(receipt: &NativeReceipt) -> RetainedTransformInput<'_> {
+fn transform_input(receipt: &NativeReceipt) -> Result<RetainedTransformInput<'_>, RuntimeFault> {
     match &receipt.kind {
-        RealizationKind::Construction(value) => RetainedTransformInput::Source(value),
-        RealizationKind::Affine(value) => RetainedTransformInput::Affine(value),
-        RealizationKind::Boolean(value) => RetainedTransformInput::Result(value),
+        RealizationKind::Construction(value) => Ok(RetainedTransformInput::Source(value)),
+        RealizationKind::Affine(value) => Ok(RetainedTransformInput::Affine(value)),
+        RealizationKind::Boolean(value) => Ok(RetainedTransformInput::Result(value)),
+        RealizationKind::SourceFaceSet(_) => Err(RuntimeFault::contract("a source-exact face set has no kernel object")),
     }
 }
 impl RetainedRuntime for NativeWorker {
@@ -94,6 +96,11 @@ impl AsyncRetainedExecutor for NativeWorker {
             max_bytes: limits.max_bytes,
         };
         let kind = match call {
+            Invocation::Construction(request)
+                if request.payload().qualification == RegionQualification::SourceFaceSet => self
+                .0
+                .seal_source_face_set(request, mesh)
+                .map(|value| RealizationKind::SourceFaceSet(Box::new(value))),
             Invocation::Construction(request) => self
                 .0
                 .evaluate_retained(
@@ -108,7 +115,7 @@ impl AsyncRetainedExecutor for NativeWorker {
                 column_major,
             } => self
                 .0
-                .copy_retained_affine(transform_input(input), column_major)
+                .copy_retained_affine(transform_input(input)?, column_major)
                 .map(|value| RealizationKind::Affine(Box::new(value))),
             Invocation::Boolean {
                 left,

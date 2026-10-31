@@ -126,7 +126,9 @@ fn m11_a_every_committed_published_row_resolves_and_matches_exact_per_product_an
                 ProductOutcome::Refused { refusal, .. } => {
                     assert!(!is_published, "{model} #{id} refused {} but the coverage row says published", refusal.code());
                     assert_eq!(refusal.code(), code, "{model} #{id}");
-                    assert_ne!(refusal.code(), "appearance_unsupported", "{model} #{id}: census says 0 pending");
+                    if refusal.code() == "appearance_unsupported" {
+                        assert!(model == F_B_MAPPED && [172, 183].contains(id), "{model} #{id}: only the palette and texture witnesses pend");
+                    }
                 }
             }
         }
@@ -220,12 +222,11 @@ fn m11_a_shared_f_i_fixture_meets_its_hand_derived_colours() {
 
 #[test]
 fn m11_a_palette_and_texture_products_stay_refused_not_published_as_plain_colour() {
-    // f-b-mapped #172 (IfcIndexedColourMap) and #183 (IfcIndexedTriangleTextureMap) have tessellated bodies,
-    // which retained refuses upstream. The only product that could reach appearance with one of them
-    // is therefore absent: explicit absence, never a plain-colour publication.
+    // f-b-mapped #172 (IfcIndexedColourMap) and #183 (IfcIndexedTriangleTextureMap): their tessellated bodies
+    // are admitted (#8291), so appearance is what refuses them: never a plain-colour publication.
     let Some(outcomes) = retained(F_B_MAPPED, None) else { return; };
     for id in [172, 183] {
-        assert_eq!(support::refusal(&outcomes, id).code(), "operation_unsupported", "#{id}");
+        assert_eq!(support::refusal(&outcomes, id).code(), "appearance_unsupported", "#{id}");
     }
     assert!(published(&outcomes).all(|p| p.product_id != 172 && p.product_id != 183));
     for product in published(&outcomes) {

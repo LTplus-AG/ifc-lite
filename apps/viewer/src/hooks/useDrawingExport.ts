@@ -1090,6 +1090,7 @@ function useDrawingExport({
         doc.setLineCap('round');
 
         drawCutPolygonsPdf(doc, cutPolygons);
+        doc.setDrawColor(0, 0, 0);
 
         // Entities actually covered by a cut-polygon outline above. Loop
         // reconstruction (`PolygonBuilder.buildLoops`) can fail for short,

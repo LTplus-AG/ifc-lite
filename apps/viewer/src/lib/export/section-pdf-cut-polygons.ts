@@ -127,5 +127,4 @@ function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
     tracePath(rings);
     doc.stroke();
   }
-
 }

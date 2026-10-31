@@ -20,16 +20,12 @@
 //! the union and the slit never forms. Earlier contours are never moved, so the
 //! result is deterministic in contour order and no vertex moves twice.
 //!
-//! `tau` is [`noise_radius`]: one [`SNAP_GRID`] cell, or one f32 step at the
-//! footprint's magnitude where that is larger. One cell is the rule the
-//! kernel's abutting prepass already uses near the origin, and it is what keeps
-//! an authored pier (the 68 um one on ISSUE_068 #144568) standing. Past 128 m a
-//! cell is under one f32 step: two roundings of one shared coordinate land at
-//! most a step apart, and a pier two steps wide, the narrowest f32 can carry
-//! as distinct from that noise, stays.
-//! The magnitude is the coordinates these contours carry; a cutter re-expressed
-//! in a host frame after a world-magnitude f32 cast (the plan-rotated wall path)
-//! carries the coarser world noise at a smaller magnitude, and is not covered.
+//! `tau` is [`noise_radius`]: one [`SNAP_GRID`] cell at any magnitude, the rule
+//! the kernel's abutting prepass uses (`kernel::abutting`), and what keeps an
+//! authored pier (the 68 um one on ISSUE_068 #144568) standing. Past 128 m an
+//! f32 step exceeds the cell, so a gap the world cast made there can be as wide
+//! as a narrow authored pier and is deliberately NOT welded: the same
+//! conservative far-field limit as the prepass (#8190 item 2d).
 
 use crate::kernel::mesh_bridge::SNAP_GRID;
 use nalgebra::Point2;
@@ -40,20 +36,10 @@ pub(super) fn reconcile(contours: &mut [Vec<Point2<f64>>]) -> usize {
     snap_onto_earlier(contours, tau)
 }
 
-/// Distance within which two footprint features are one authored feature.
-pub(super) fn noise_radius(contours: &[Vec<Point2<f64>>]) -> f64 {
-    let magnitude = contours
-        .iter()
-        .flatten()
-        .map(|p| p.x.abs().max(p.y.abs()))
-        .fold(0.0, f64::max);
-    SNAP_GRID.max(f32_step(magnitude))
-}
-
-/// The spacing of f32 values at `magnitude`.
-fn f32_step(magnitude: f64) -> f64 {
-    let x = (magnitude as f32).max(f32::MIN_POSITIVE);
-    (f32::from_bits(x.to_bits() + 1) - x) as f64
+/// Distance within which two footprint features are one authored feature:
+/// one snap cell, whatever the contours' magnitude (see the module doc).
+pub(super) fn noise_radius(_contours: &[Vec<Point2<f64>>]) -> f64 {
+    SNAP_GRID
 }
 
 /// Snap every vertex of every contour onto the nearest vertex of an earlier

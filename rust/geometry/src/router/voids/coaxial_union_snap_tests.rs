@@ -54,28 +54,20 @@ fn a_gap_wider_than_the_noise_radius_is_kept() {
 }
 
 #[test]
-fn the_radius_follows_the_f32_step_past_128_m() {
-    let near = noise_radius(&[rect(0.0, 0.0, 30.0, 1.0)]);
-    assert_eq!(near, SNAP_GRID);
-    let far = noise_radius(&[rect(1_300.0, 0.0, 1_301.0, 1.0)]);
-    // 1.3 km: f32 steps are 2^-13 m, 122 um.
-    assert_eq!(far, 2f64.powi(-13));
+fn the_radius_is_one_cell_at_any_magnitude() {
+    assert_eq!(noise_radius(&[rect(0.0, 0.0, 30.0, 1.0)]), SNAP_GRID);
+    assert_eq!(noise_radius(&[rect(1_300.0, 0.0, 1_301.0, 1.0)]), SNAP_GRID);
 }
 
 #[test]
-fn a_two_step_pier_survives_at_1_3_km() {
-    // The narrowest pier f32 carries apart from rounding noise out there.
+fn a_one_step_gap_at_1_3_km_is_not_welded() {
+    // 2^-13 m is one f32 step at 1.3 km, eight cells: as wide as a narrow
+    // authored pier, so it is left alone, like the kernel prepass leaves it.
     let step = 2f64.powi(-13);
-    let flush = || {
-        vec![rect(1_300.0, 0.0, 1_301.0, 3.0), rect(1_300.0, 3.0 + 2.0 * step, 1_300.5, 4.0)]
-    };
-    let mut contours = flush();
+    let gapped = || vec![rect(1_300.0, 0.0, 1_301.0, 3.0), rect(1_300.0, 3.0 + step, 1_300.5, 4.0)];
+    let mut contours = gapped();
     assert_eq!(reconcile(&mut contours), 0);
-    assert_eq!(contours, flush());
-    // One step is rounding noise and closes.
-    let mut noisy = vec![rect(1_300.0, 0.0, 1_301.0, 3.0), rect(1_300.0, 3.0 + step, 1_300.5, 4.0)];
-    assert!(reconcile(&mut noisy) >= 2);
-    assert_eq!(union_contours_to_shapes(&noisy).len(), 1);
+    assert_eq!(contours, gapped());
 }
 
 #[test]

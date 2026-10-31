@@ -51,7 +51,9 @@ def strip_strings(body):
     return re.sub(r"'(?:[^']|'')*'", "''", body)
 
 
-QUOTED = re.compile(r"'(?:[^']|'')*'")
+# A string, or a STEP block comment (dropped from anonymised records: it can
+# carry identifying text, and a comma inside it would split attributes).
+STEP_TOKEN = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/", re.S)
 # Every string blanked: people and their contact details.
 CONTACT = {"IFCPERSON", "IFCTELECOMADDRESS", "IFCPOSTALADDRESS", "IFCADDRESS", "IFCACTORROLE"}
 # Every string but the GlobalId blanked: names of the project and the site.
@@ -59,14 +61,17 @@ NAMED_ROOTS = {"IFCPROJECT", "IFCSITE"}
 
 
 def blank(raw, keep_first):
-    """`raw` with its quoted strings emptied, the first one kept if asked."""
+    """`raw` with comments removed and quoted strings emptied, the first
+    string kept if asked."""
     seen = [0]
 
     def sub(m):
+        if m.group(0).startswith("/*"):
+            return ""
         seen[0] += 1
         return m.group(0) if keep_first and seen[0] == 1 else "''"
 
-    return QUOTED.sub(sub, raw)
+    return STEP_TOKEN.sub(sub, raw)
 
 
 def top_level_args(body):

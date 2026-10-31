@@ -26,7 +26,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const METRICS = ['tris', 'open', 'nonmanifold', 'open10', 'nonmanifold10', 'slivers', 'degenerate', 'maxAspect', 'area', 'thinArea', 'coincidentArea'];
 /** Thin-material area (m2) a mesh may gain or lose before it counts. */
@@ -106,6 +106,6 @@ function main(argv) {
   return verdicts.regression.length + verdicts.qualityWorse.length + verdicts.missing.length > 0 ? 1 : 0;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   process.exitCode = main(process.argv.slice(2));
 }

@@ -129,6 +129,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
+      # Native witness enforcement also uses the repository's supported Node.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
       - name: Checkout pinned upstream SDK (fetched, never vendored)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -252,11 +258,6 @@ jobs:
         id: wasm-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-wasm" --output-on-failure
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Rebuilt-worker open tessellation refusal (#7955)
         id: open-tessellation

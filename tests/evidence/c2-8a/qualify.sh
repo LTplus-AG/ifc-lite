@@ -155,14 +155,50 @@ git -C "$scratch/base" -c user.name=c28 -c user.email=c28@invalid commit -qm "ba
 mirror_models "$head_dir" "$scratch/base"
 
 side_dir() { [[ $1 == base ]] && echo "$scratch/base" || echo "$head_dir"; }
+# Each side builds into its OWN target dir. A shared CARGO_TARGET_DIR (the
+# fleet worker's cache lane) let one side's build be satisfied by artifacts the
+# other left behind, which makes a base-vs-head comparison vacuous.
+side_target() { [[ $1 == base ]] && echo "$scratch/target" || echo "$head_dir/target/c2-8-cargo"; }
+
+# Print, from a cargo JSON message stream, the ifc-lite-geometry library
+# artifact (its manifest path proves which tree it came from, `fresh` whether it
+# was compiled now) and the executable selected by $3 (target name or kind).
+build_report() {
+  python3 -I - "$1" "$2" "$3" <<'PYART'
+import hashlib, json, sys
+path, side, want = sys.argv[1:4]
+exe = ''
+for line in open(path, errors='replace'):
+    try:
+        m = json.loads(line)
+    except ValueError:
+        continue
+    if m.get('reason') != 'compiler-artifact':
+        continue
+    t = m['target']
+    if t['name'] == 'ifc_lite_geometry' and 'lib' in t['kind'] and not m['profile']['test']:
+        print(f"C28_BUILD {side} geometry-lib manifest={m['manifest_path']} fresh={m['fresh']} "
+              f"rlib={next((f for f in m['filenames'] if f.endswith('.rlib')), '?')}", file=sys.stderr)
+    if m.get('executable') and (t['name'] == want or (want == 'geometry-lib-test' and t['name'] == 'ifc_lite_geometry' and m['profile']['test'] and 'lib' in t['kind'])):
+        exe = m['executable']
+if exe:
+    h = hashlib.sha256(open(exe, 'rb').read()).hexdigest()
+    print(f'C28_BUILD {side} executable={exe} sha256={h}', file=sys.stderr)
+print(exe)
+PYART
+}
 
 case $mode in
 identity)
   for side in base head; do
     src=$(side_dir "$side")
     cp "$head_dir/tests/evidence/c2-8a/identity_probe.rs" "$src/$probe"
-    (cd "$src" && cargo build --profile profiling -p ifc-lite-processing --example c2_8_identity_probe >&2)
-    bin="${CARGO_TARGET_DIR:-$src/target}/profiling/examples/c2_8_identity_probe"
+    (cd "$src" && CARGO_TARGET_DIR="$(side_target "$side")" cargo build --profile profiling \
+      -p ifc-lite-processing --example c2_8_identity_probe --message-format=json-render-diagnostics) \
+      > "$scratch/$side-build.jsonl"
+    bin=$(build_report "$scratch/$side-build.jsonl" "$side" c2_8_identity_probe 2>&1 >/dev/null | tee /dev/stderr | sed -n 's/^C28_BUILD .* executable=\([^ ]*\) .*/\1/p')
+    [[ -x $bin && $bin == "$(side_target "$side")"/* ]] || { echo "C28_BUILD $side: no probe binary in its own target dir"; exit 1; }
+    sha256sum "$bin" | cut -c1-64 > "$scratch/$side-bin.sha256"
     for fixture in "${fixtures[@]}"; do
       name=$(basename "$fixture" .ifc)
       out="$scratch/$side-$name"
@@ -170,6 +206,11 @@ identity)
       echo "C28_IDENTITY $side $name ${line#C28_IDENTITY }" | tee -a "$scratch/identity.txt"
     done
   done
+  if cmp -s "$scratch/base-bin.sha256" "$scratch/head-bin.sha256"; then
+    echo 'C28_BUILD base and head probe binaries are byte-identical: the comparison would be vacuous'
+    exit 1
+  fi
+  echo "C28_BUILD probe binaries differ: base $(cat "$scratch/base-bin.sha256") head $(cat "$scratch/head-bin.sha256")"
   status=0
   for fixture in "${fixtures[@]}"; do
     name=$(basename "$fixture" .ifc)
@@ -238,8 +279,15 @@ features)
   for side in base head; do
     src=$(side_dir "$side")
     log="$scratch/$side-features.log"
+    target=$(side_target "$side")
+    feats=csg_manifold_gate,csg_topology_gate,opening-perf-trace
+    (cd "$src" && CARGO_TARGET_DIR="$target" cargo test -p ifc-lite-geometry --features "$feats" \
+      --no-run --message-format=json-render-diagnostics) > "$scratch/$side-features-build.jsonl"
+    exe=$(build_report "$scratch/$side-features-build.jsonl" "$side" geometry-lib-test 2>&1 >/dev/null | tee /dev/stderr | sed -n 's/^C28_BUILD .* executable=\([^ ]*\) .*/\1/p')
+    [[ -x $exe && $exe == "$target"/* ]] || { echo "C28_BUILD $side: no geometry lib test binary in its own target dir"; exit 1; }
+    sha256sum "$exe" | cut -c1-64 > "$scratch/$side-libtest.sha256"
     set +e
-    (cd "$src" && cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate,opening-perf-trace \
+    (cd "$src" && CARGO_TARGET_DIR="$target" cargo test -p ifc-lite-geometry --features "$feats" \
       --no-fail-fast -- --test-threads=4) > "$log" 2>&1
     rc=$?
     set -e
@@ -266,6 +314,12 @@ PYSUM
     fi
   done
   status=0
+  if cmp -s "$scratch/base-libtest.sha256" "$scratch/head-libtest.sha256"; then
+    echo 'C28_BUILD base and head geometry lib test binaries are byte-identical: vacuous'
+    status=1
+  else
+    echo "C28_BUILD geometry lib test binaries differ: base $(cat "$scratch/base-libtest.sha256") head $(cat "$scratch/head-libtest.sha256")"
+  fi
   for side in base head; do
     # A nonzero exit with no named failing test is an abort (a crashed or
     # unbuilt test binary), not a comparable result.

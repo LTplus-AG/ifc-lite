@@ -124,6 +124,8 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Docs site build (mkdocs --strict)',
     'AGENTS.md ratchet',
     'MPL license headers',
+    // The silent-revert guard (#8377): git only, judged by the required aggregate.
+    'Silent revert guard',
     'Build + WASM + Rust + Node',
     // #3878: the two CSG accept gates are feature builds nothing else compiles.
     'CSG accept gates (feature builds)',
@@ -134,7 +136,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 49);
+  assert.equal(names.length, 50);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

@@ -59,7 +59,9 @@ pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Optio
     let clips=chain.clips.into_iter().map(|(id,frame)| {
         Clip::read(id,&relative(&multiply(&product_world,&frame)),&mut decoder)
     }).collect::<Option<Vec<_>>>()?;
-    let curved=clips.iter().any(|c|c.edges.as_ref().is_some_and(|e|e.iter().any(|s|matches!(s,super::clipping::Edge::Arc{..}))));
+    // An arc in the host profile is chordal once tessellated, like one in a boundary.
+    let curved=host.loops.iter().flat_map(|(_,edges)|edges).any(|e|matches!(e,super::clipping::Edge::Arc{..}))
+        || clips.iter().any(|c|c.edges.as_ref().is_some_and(|e|e.iter().any(|s|matches!(s,super::clipping::Edge::Arc{..}))));
     let host_volume=section_volume(&host,&[])?;
     let mut scanner=ifc_lite_core::EntityScanner::new(bytes);let mut opening_ids=Vec::new();
     while let Some((id,name,_,_))=scanner.next_entity() {

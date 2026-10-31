@@ -24,7 +24,8 @@
  *
  * Slot reuse waits for a flush: a released slot may still be referenced by
  * draws encoded earlier in the current frame, and those must read the bytes
- * staged for them, not a new owner's.
+ * staged for them, not a new owner's. An emptied page's buffer lasts until the
+ * next flush for the same reason, because the current frame has not submitted.
  */
 
 /** WebGPU guarantees `minUniformBufferOffsetAlignment <= 256`. */
@@ -76,6 +77,8 @@ export class MeshUniformArena {
   private readonly pages: Page[] = [];
   private readonly free: Slot[] = [];
   private retired: Slot[] = [];
+  /** Emptied page buffers: this frame's draws may still bind them, so they outlive its submit. */
+  private emptiedBuffers: GPUBuffer[] = [];
   private lastSource: Float32Array | null = null;
   private lastSourceWords: Uint32Array | null = null;
 
@@ -140,6 +143,8 @@ export class MeshUniformArena {
    */
   flush(queue: GPUQueue): number {
     let writes = 0;
+    for (const buffer of this.emptiedBuffers) buffer.destroy();
+    this.emptiedBuffers = [];
     for (const page of this.pages) {
       if (page.dirtyHi < page.dirtyLo) continue;
       const start = page.dirtyLo * this.strideWords;
@@ -205,7 +210,7 @@ export class MeshUniformArena {
     for (const page of emptied) {
       if (page.live !== 0 || this.pages.length <= 1) continue;
       this.pages.splice(this.pages.indexOf(page), 1);
-      page.buffer.destroy();
+      this.emptiedBuffers.push(page.buffer);
       for (let i = this.free.length - 1; i >= 0; i--) if (this.free[i]!.page === page) this.free.splice(i, 1);
     }
   }

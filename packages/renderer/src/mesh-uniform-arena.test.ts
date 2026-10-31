@@ -135,6 +135,9 @@ describe('MeshUniformArena', () => {
     for (const slot of slots) slot.release();
     arena.flush(device.queue);
     assert.equal(arena.pageCount, 1);
+    // This frame's encoded draws may still bind them: destroyed only at the next flush.
+    assert.equal(buffers.filter((b) => b.destroyed).length, 0);
+    arena.flush(device.queue);
     assert.equal(buffers.filter((b) => b.destroyed).length, 2);
     // The survivor still serves allocations; new pages appear on demand.
     const again = Array.from({ length: 3 }, () => arena.allocate());

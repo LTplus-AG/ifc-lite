@@ -992,6 +992,12 @@ building, mapped items, property records, ...). The native scan, `PrepassSpans::
 and the sharded scan's `classify_type_name` all match on it; `u8::from(class)`
 is the shard wire code.
 
+`ParseResponse::from_result(cache_key, result)` is the one mapping from a
+`ProcessingResult` to the serialised response. The FFI buffer is exactly that
+response: meshes in Z-up with metadata and stats, without symbolic data or IFC-authored finishes. The server's `POST /api/v1/parse`
+builds on it and adds Y-up meshes carrying their IFC-authored finish and
+symbolic data with provenance.
+
 `process_geometry(content)` stays as the convenience for the default full pass.
 The other ten `process_geometry_*` functions are `#[deprecated]` delegates onto
 `process` and are deleted in the next major release.

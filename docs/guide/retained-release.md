@@ -17,12 +17,11 @@ node scripts/retained-package-proof.mjs npm
 ```
 
 `cargo` invokes `cargo package --list` and `cargo publish --dry-run --locked`
-for every entry in `scripts/lib/crates-io.mjs` **plus the unbootstrapped runtime
-candidate**, followed by a feature-on runtime dry-run. The qualification list
-is separate from the automatic release list. Runtime stays out of `CRATES`
-until its first registry release exists: the always-on semver gate correctly
-rejects a listed crate without a baseline. Both crate-count floors remain eight.
-`cargo-graph` runs a combined dry-run of those same nine crates, first default
+for every entry in `scripts/lib/crates-io.mjs` (the runtime is enrolled there
+since its 27.1.0 bootstrap), followed by a feature-on runtime dry-run. The
+always-on semver gate rejects a listed crate without a baseline, which is why
+enrolment waited for the first registry release. Both crate-count floors are
+nine. `cargo-graph` runs a combined dry-run of those same nine crates, first default
 and then with runtime/processing/browser retained features. Cargo's multi-package
 mode can stage their real normalized archives together before the prerequisite
 versions exist in the registry; it does not use path patches or remove edges.
@@ -59,8 +58,7 @@ normalized archives before their prerequisites have been published.
 
 Before release, run `node scripts/check-rust-semver.mjs` and
 `node scripts/check-rust-api-surface.mjs`, plus release-order/version-sync checks.
-`publish = false` is removed for explicit runtime bootstrap qualification; the
-automatic list and both crate floors remain at their original eight crates.
+The runtime is in the automatic list and both crate floors are nine.
 
 ## Refreshing retained notices after a dependency change
 
@@ -121,7 +119,8 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
 2. Let `release.yml` publish the eight existing crates, confirm their approved
    versions appear in the sparse index, and bootstrap **only the runtime by
    hand**. Do not hand-publish those eight crates with a personal token. Runtime
-   stays outside the automatic list until bootstrap. Its first upload cannot
+   stayed outside the automatic list until bootstrap (history; it is now
+   enrolled per step 7). Its first upload cannot
    resolve the required geometry version until that version is indexed.
 3. Before uploading runtime, repeat `cargo package -p ifc-lite-geometry-runtime`
    and both dry-runs (default and `--features retained-runtime`). Retain the
@@ -147,8 +146,14 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
    private release evidence; absence of a public API result is not a verified
    setting. Revoke the bootstrap token after registry confirmation.
 7. **Only after bootstrap and publisher verification, add
-   `ifc-lite-geometry-runtime` to `CRATES` in `scripts/lib/crates-io.mjs`, after
-   geometry.** In that same reviewed change, run `pnpm rust-api-surface:update`
+   `ifc-lite-geometry-runtime` to `CRATES` in `scripts/lib/crates-io.mjs`, at the
+   END of the list (after `ifc-lite-wasm`; it only has to follow geometry).**
+   The release stops at the first failed `cargo publish`, so until one release
+   has proven the runtime's OIDC Trusted Publisher, a refusal must strand only
+   the runtime, not the crates after it; it may move next to geometry later.
+   The runtime's 27.1.0 baseline came from commit f113d9c7fd, not a tag, so
+   semver-baseline's tag-rebuild fallback could raise `BASELINE_SOURCE_MISMATCH`
+   if that baseline ever stops resolving from the registry. In that same reviewed change, run `pnpm rust-api-surface:update`
    and commit the newly enrolled API snapshot; run the semver and API-surface
    gates plus release-order and version-sync checks. Do not lower `CRATE_FLOOR`
    or exempt `NO_BASELINE`. The crate already inherits `version.workspace` and

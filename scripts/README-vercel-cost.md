@@ -183,7 +183,7 @@ once a day at 05:45 UTC. That is one push a day, so one build per project per
 day: **~1,500 builds/month → ~90**, roughly a 94% cut.
 
 ```text
-main       ──●──●──●──●──●──●──●──●──  41/day, now PREVIEWS → skipped, $0
+main       ──●──●──●──●──●──●──●──●──  41/day, no deployment at all, $0
                 ╲
 production ──────●──────────────────●  1/day, fast-forward → 3 builds
             05:45 UTC          05:45 UTC
@@ -239,21 +239,23 @@ Consequences to know about:
     as-is and says so with a warning. Scheduled runs always gate.
 - **A bad commit that IS green is still live for up to 24h.** The cron fires
   just before the Zurich workday for exactly this reason.
-- **`ifc-lite-git-main-ltplus.vercel.app` goes stale** — `main` is a preview
-  branch now and previews are skipped. Use the production domains.
-- The dashboard **Ignored Build Step is unchanged** on all three projects. It
-  still reads `VERCEL_ENV`, and it is now what makes `main` pushes free.
-  Landing is the one real behaviour change: `apps/landing/vercel.json` used to
-  set `ignoreCommand`, which overrides the dashboard step, so landing was the
-  only project running a path-scoped check (45 production builds against
-  viewer/embed's 751/702) and the only one still building previews (190 of
-  them). That override is deleted, so landing now rebuilds on every nightly
-  whether or not `apps/landing` changed, and skips previews like the other two.
-  At 0.5 min a build that is a few cents a month for one less special case.
+- **`ifc-lite-git-main-ltplus.vercel.app` goes stale** — `main` no longer
+  deploys. Use the production domains.
+- **Only `production` deploys from Git.** Each project's `vercel.json` sets
+  `git.deploymentEnabled` to `{"**": false, "production": true}` (a branch
+  matching any `true` rule deploys). Pushes to `main` and PR heads, forks
+  included, create no Vercel deployment and no `Vercel – …` check, so PRs no
+  longer show three skipped or "Authorization required" checks. Before this,
+  Vercel created and then cancelled ~4,700 preview deployments a month.
+- The dashboard **Ignored Build Step is unchanged** on all three projects
+  (`if [ "$VERCEL_ENV" == "production" ]; then exit 1; else exit 0; fi`). It
+  is now a backstop: it would only matter if `git.deploymentEnabled` were
+  removed. Landing rebuilds on every nightly whether or not `apps/landing`
+  changed; at 0.5 min a build that is a few cents a month.
 - **The ref moving is not the deploy.** If a project's Production Branch is
   ever set back to `main`, it silently resumes building 41×/day and the saving
-  quietly stops; if its Ignored Build Step is edited, it silently stops
-  deploying. Both look like a green nightly, because the branch advances either
+  quietly stops; if its Ignored Build Step or `git.deploymentEnabled` is
+  edited, it can silently stop deploying. Both look like a green nightly, because the branch advances either
   way. So the workflow asks Vercel whether a deployment for the pushed commit
   actually exists, per project, and fails when one does not. That check needs a
   `VERCEL_TOKEN` repo secret; without it the run says so as a warning rather
@@ -274,57 +276,24 @@ All three are on **standard**. Two notes worth keeping:
   `standard` / `fixed` so elastic cannot re-upgrade it. If embed builds start
   timing out or OOM-ing, that pin is the first thing to reconsider.
 
-### 3c. Prebuilt-WASM fast path — IMPLEMENTED (option A) ✅
+### 3c. Prebuilt-WASM fast path
 
-> Since §3a-fix this barely fires on Vercel: a nightly build batches ~40 merges,
-> so it will almost always contain a Rust change and fall through to the
-> from-source path. The fast path still earns its keep in CI (§1a), where it is
-> per-PR, and on CLI previews. The paragraphs below describe the per-commit
-> world it was built for.
-Every viewer/embed build was re-provisioning the WASM toolchain from scratch —
-re-cloning emsdk and **re-downloading ~270 MB of wasm-binaries** + the Rust
-toolchain — *despite* "Restored build cache from previous deployment". The
-`/vercel/cache/emsdk` dir does not reliably survive between builds. That was
-~40–60 s of wasted bootstrap on every viewer/embed build, on every commit.
-
-*(Historical: `rust/wasm-bindings/Cargo.toml` enabled `manifold-csg-wasm-uu`
-at the time, so emsdk was genuinely required to compile from source. Since M9
-the kernel is pure Rust and the emsdk/cmake provisioning has been deleted from
-`vercel-install.sh`/`vercel-build.sh` entirely — the fast path below now skips
-only the Rust toolchain bootstrap.)*
-
-**What was implemented:** `scripts/vercel-install.sh` now has an early fast path.
-It computes `@ifc-lite/wasm@<version>` from `packages/wasm/package.json`, makes
-the tag reachable (best-effort `git fetch`), and only when `git diff` proves
-`rust/** + Cargo.{toml,lock} + rust-toolchain.toml + scripts/build-wasm.sh` are
-**byte-identical to that release tag**, it runs `scripts/fetch-prebuilt-wasm.mjs`
-to drop the published bundle into `packages/wasm/pkg/` and skips the entire
-Rust/emsdk bootstrap. The from-source build phase then no-ops via the existing
-soft-skip in `build-wasm.sh` (no wasm-pack on PATH + artifact present → success).
-
-**Why it's safe:** any uncertainty — version unreadable, tag not reachable in
-Vercel's shallow clone, npm 404, fetch failure, or *any* Rust change since the
-release — falls through to the unchanged from-source build. It can never ship a
-stale WASM bundle. On Rust-changing PR previews it compiles from source exactly
-as before; on the ~2/3 of deploys that don't touch Rust it skips minutes of work.
-
-**Needs one real-deploy check:** confirm Vercel's shallow clone lets the
-`git fetch` of the release tag succeed (logs will print `🅰 … using prebuilt`
-vs `🛠 … building from source`). If tags are unreachable, set the project's
-Git "fetch tags"/depth or switch to the alternative below.
-
-**Alternative (B), not used:** make `/vercel/cache/emsdk` persist (pin emsdk,
-shrink the cached prefix, verify survival). Keeps from-source on every preview;
-needs cache-size investigation. Kept here in case (A)'s tag fetch proves flaky.
+`scripts/vercel-install.sh` skips the Rust toolchain and fetches the published
+`@ifc-lite/wasm` bundle (`scripts/fetch-prebuilt-wasm.mjs`) only when `git diff`
+proves `rust/** + Cargo.{toml,lock} + rust-toolchain.toml +
+scripts/build-wasm.sh` are byte-identical to the `@ifc-lite/wasm@<version>`
+release tag. Any doubt (version unreadable, tag unreachable, fetch failure,
+any Rust change) falls through to the from-source build, so it can never ship a
+stale bundle. A nightly batches ~40 merges and usually contains a Rust change,
+so on Vercel it mostly helps CLI previews; its CI twin is
+`scripts/ci-wasm-prebuilt-eligible.sh` (§1a), and the two path lists must stay
+in lock-step. Logs print `🅰 … using prebuilt` or `🛠 … building from source`.
 
 ### 3d. On-demand previews via CLI
 
-Preview builds are turned off on all three projects through each project's
-**Ignored Build Step** (dashboard `Settings > Git`), not the
-`previewDeploymentsDisabled` flag. So a PR-branch push does not spin up the
-~several-minute viewer/embed WASM preview. Since §3a-fix this also covers
-`main`, which is a preview branch now — production moves only when
-`.github/workflows/deploy-nightly.yml` advances the `production` branch.
+Git-triggered previews are off (`git.deploymentEnabled`, §3a-fix), so nothing
+deploys a PR branch automatically. `production` moves only when
+`.github/workflows/deploy-nightly.yml` advances it.
 
 When a branch does need a preview, trigger one from the CLI:
 
@@ -343,8 +312,10 @@ ifc-lite-dev (landing)    root dir: apps/landing
 ```
 
 The surest path, and the way to skip the remote Rust+WASM compile, is to build
-locally and upload the output: the Ignored Build Step gates only remote builds,
-so a prebuilt upload is never skipped by it. You already have a built
+locally and upload the output. `git.deploymentEnabled` gates only Git pushes,
+and the Ignored Build Step only remote builds, so a CLI preview built remotely
+can still be cancelled by the Ignored Build Step while a prebuilt upload never
+is. You already have a built
 `@ifc-lite/wasm` from `pnpm build` / `pnpm dev`. Run `vercel pull` first so the
 build uses the project's current settings and env vars:
 

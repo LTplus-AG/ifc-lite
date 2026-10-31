@@ -85,8 +85,8 @@ pub(crate) fn parse_transformation_operator(
         .direction3_at(entity, slot::IfcCartesianTransformationOperator::AXIS1.index())?
         .map_or_else(|| Vector3::new(1.0, 0.0, 0.0), Vector3::from);
 
-    // Get Axis2 (raw local Y, attribute 1), used below only when it is
-    // INCONSISTENT with Axis3 × Axis1 (see the y_axis derivation).
+    // Get Axis2 (raw local Y, attribute 1), used below only when its
+    // projection is INCONSISTENT with Axis3 × Axis1 (see the y_axis derivation).
     let y_axis_raw = decoder.direction3_at(entity, slot::IfcCartesianTransformationOperator::AXIS2.index())?.map(Vector3::from);
 
     let x_axis_raw = base_axis_2d_x(entity, is_2d, x_axis_raw, y_axis_raw);
@@ -110,14 +110,23 @@ pub(crate) fn parse_transformation_operator(
     // the truly degenerate operator reorients, and it always stays finite.
     let [x_axis, z_axis] = crate::axis_projection::operator_xz_axes(z_axis_raw, x_axis_raw);
     // Y = Z × X (IfcSecondProjAxis' result whenever Axis2 agrees with the
-    // right-handed frame, which is every well-formed operator). A supplied
-    // Axis2 that DISAGREES — the mirroring/left-handed frames some exporters
-    // write — is honoured by projecting it perpendicular to Z and X, matching
-    // IfcSecondProjAxis; ignoring it silently un-mirrored those items. The
-    // agreeing case keeps the exact cross-product bits, so the frozen output
-    // corpus is bit-identical. #1985
+    // right-handed frame). A supplied Axis2 that DISAGREES — the
+    // mirroring/left-handed frames some exporters write — is honoured by
+    // projecting it perpendicular to Z and X, matching IfcSecondProjAxis;
+    // ignoring it silently un-mirrored those items. The agreeing case keeps
+    // the exact cross-product bits, so the frozen output corpus is
+    // bit-identical. #1985
+    // An OMITTED 3D Axis2 is IfcSecondProjAxis' constant +Y, projected: with
+    // Axis1 = -X (or Axis3 = -Z) it is a mirror, as in IfcOpenShell (#8308).
+    // Taking the authored branch keeps `$` and (0,1,0) bit-identical; a +Y in
+    // the Z-X plane (undefined) keeps Z × X. An omitted 2D Axis2 is
+    // IfcOrthogonalComplement(Axis1), i.e. Z × X.
     let cross_y = z_axis.cross(&x_axis).normalize();
-    let y_axis = match y_axis_raw {
+    let y_arg = match y_axis_raw {
+        None if !is_2d => Some(Vector3::new(0.0, 1.0, 0.0)),
+        authored => authored,
+    };
+    let y_axis = match y_arg {
         Some(raw) => {
             let projected = raw - z_axis * raw.dot(&z_axis);
             let projected = projected - x_axis * projected.dot(&x_axis);
@@ -177,6 +186,10 @@ fn finite_scale(value: Option<f64>, default: f64) -> f64 {
         _ => default,
     }
 }
+
+#[cfg(test)]
+#[path = "operator_axis2_tests.rs"]
+mod axis2_tests;
 
 #[cfg(test)]
 mod tests {
@@ -248,19 +261,21 @@ mod tests {
 
     // The same frame WITHOUT the mirror (Axis2 agreeing with Axis3 × Axis1) must
     // stay bit-identical to the plain cross product, so the frozen output corpus
-    // is unperturbed by the Axis2 support above.
+    // is unperturbed by the Axis2 support above. Axis3 = -X keeps the omitted
+    // twin right-handed too: its +Y default projects onto Axis3 × Axis1. With
+    // Axis3 = +X it would be a mirror (#8308, `operator_axis2_tests.rs`).
     #[test]
     fn consistent_axis2_keeps_the_cross_product_bits() {
         let with_axis2 = "\
 #1=IFCDIRECTION((0.,0.6,0.8));
-#2=IFCDIRECTION((0.,-0.8,0.6));
-#3=IFCDIRECTION((1.,0.,0.));
+#2=IFCDIRECTION((0.,0.8,-0.6));
+#3=IFCDIRECTION((-1.,0.,0.));
 #4=IFCCARTESIANPOINT((0.,0.,0.));
 #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,#2,#4,$,#3);
 ";
         let without_axis2 = "\
 #1=IFCDIRECTION((0.,0.6,0.8));
-#3=IFCDIRECTION((1.,0.,0.));
+#3=IFCDIRECTION((-1.,0.,0.));
 #4=IFCCARTESIANPOINT((0.,0.,0.));
 #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,$,#4,$,#3);
 ";

@@ -144,17 +144,12 @@ pub async fn parse_full(
             mesh_to_yup_in_place(mesh);
         }
 
-        let response = SymbolicParseResponse::new(ParseResponse {
-            cache_key: response_key,
-            meshes: Vec::new(),
-            mesh_coordinate_space: Some(result.mesh_coordinate_space),
-            site_transform: result.site_transform,
-            building_transform: result.building_transform,
-            metadata: result.metadata,
-            stats: result.stats,
-            symbolic_data: Default::default(),
-        }, symbolic)
-        .with_meshes(meshes);
+        // The native mapping the FFI shares (#8341 C4-13b), with this route's
+        // additions explicit: the Y-up meshes carrying their finish above
+        // replace the result's, and the symbolic stream keeps its provenance.
+        let rest = ifc_lite_processing::ProcessingResult { meshes: Vec::new(), ..result };
+        let response = SymbolicParseResponse::new(ParseResponse::from_result(response_key, rest), symbolic)
+            .with_meshes(meshes);
         let body = encode_response(&response)?;
         Ok::<_, ApiError>((body, response.symbolic_data, admission_guard))
     })

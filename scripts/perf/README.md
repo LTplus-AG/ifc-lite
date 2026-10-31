@@ -4,6 +4,33 @@
 
 # Performance diagnosis kit
 
+## Scenoptic-axes viewer levers (`scenoptic-bench.mjs`, 2026-10-31)
+
+Measured on Pop's RTX 4000 Ada with an identical WASM hash per cohort, on the
+343 MB Sixty5 model and a 7-file federation. Numbers are in each PR.
+
+**Won: cache reopen (#8438).** Federated models had no cache at all, so a warm
+open equalled a cold one. Single-file reopens gain from uploading once on a hit
+and from taking two whole-source hashes off the main thread. Adding a federated
+model was O(N^2) in copies and GPU batches.
+
+**Won: frame CPU (#8439).** One uniform write per arena page, rather than one per
+batch, is why a CPU change also cut GPU time.
+
+**Won, with a cost: one compressed source (#8441).** Memory falls by about a
+quarter on a warm open, paid for by a one-off worker deflate after each load. It
+leaves settled orbit CPU alone.
+
+**Not the warm-open gap.** Even with all of these, warm geometry takes seconds.
+The profile is flat, so more trimming will not close it: the time is the rebuild
+itself (streaming, drain, regroup). The next lever is storing the finished batches.
+
+**Measurement traps.** Timer queries move with DVFS on this GPU and the clock
+cannot be locked without root, so compare Mcycles. A cold `scene.finalize` is
+bimodal in every build including base, so one slow round says nothing. Wait for
+post-load CPU to settle before an orbit, or source compaction reads as a
+frame-CPU regression.
+
 ## C4-14 independent levers (#8341)
 
 **Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item
@@ -5773,3 +5800,25 @@ Lesson: fault accounting is also a shared resource. Band transport retirements n
 their own bounded allowance so they cannot prevent subsequent ordinary products from
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
+
+## The app-start task: no top-level-await wrapper on the app build
+
+On a production build the app-start task (module evaluation, before a model is
+read) was far longer than on the dev server, because only the build ran
+`vite-plugin-top-level-await`. The plugin wraps every chunk that has a dynamic
+`import()` in one `async` arrow function. Chrome compiles a module's top level
+while the script streams in, off the main thread, but a nested function only
+when it first runs, on the main thread, so each wrapped chunk was parsed whole
+inside the task. The build target is `esnext`, so the app build now emits
+native top-level await; the worker build keeps the plugin.
+`@ifc-lite/flow-nodes`' `xlsx-io.ts` also imported `exceljs` statically through
+the package barrel, which ran all of it at start; it is now loaded on first use.
+
+Lessons:
+- Measure start-up on a production build: the dev server skips build-only
+  plugins and under-reports this task.
+- A CPU profile shows lazy compilation as `(program)` with no script;
+  `--js-flags=--log-function-events` gives each `parse-function` with its
+  script id, offsets and duration.
+- `scripts/check-tla-chunk-await.mjs` now fails if a chunk the page evaluates
+  at start (`index.html`'s module scripts and their static imports) is wrapped.

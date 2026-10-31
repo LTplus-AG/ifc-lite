@@ -70,12 +70,13 @@ export function prepareCutPolygonsPdf(
   mapPoint: (x: number, y: number) => Point,
 ): PdfCutPolygon[] {
   return styleCutPolygons(polygons, ctx, ({ polygon: { outer, holes } }) => {
-    const outerDrawn = outer.length >= 2 && finiteRing(outer);
-    const usableHoles = holes.filter((ring) => ring.length >= 2);
-    const drawnHoles = usableHoles.filter(finiteRing);
+    const drawable = (ring: Point[]) => ring.length >= 2 && finiteRing(ring);
+    // A ring is a real boundary only if it is drawable and encloses area; a
+    // hole that is not counts as a lost opening, not as no opening.
+    const closed = (ring: Point[]) => drawable(ring) && enclosesArea(ring);
     return {
-      rings: [...(outerDrawn ? [outer] : []), ...drawnHoles].map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-      fillable: outerDrawn && enclosesArea(outer) && drawnHoles.length === usableHoles.length,
+      rings: [outer, ...holes].filter(drawable).map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
+      fillable: closed(outer) && holes.every(closed),
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }

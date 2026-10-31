@@ -35,13 +35,13 @@ const LINE_OUTERS = {
 };
 
 /** A 4x3 m wall cut with a 1x1 m opening. */
-function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false, lineOuter, lv95Wall = false }: ExportOptions = {}): Drawing2D {
+function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = false, twoWalls = false, lineOuter, lv95Wall = false, pointHole = false }: ExportOptions = {}): Drawing2D {
   const at = (ring: 'hole' | 'outer', v: number) => (nanVertex === ring || nanVertex === 'all' ? Number.NaN : v);
   const shift = (ring: { x: number; y: number }[]) => (lv95Wall ? ring.map((p) => ({ x: p.x + 2600000, y: p.y + 1200000 })) : ring);
   const wall: Drawing2D['cutPolygons'][number] = {
     polygon: {
       outer: noOuter ? [] : lineOuter ? LINE_OUTERS[lineOuter] : shift([{ x: 0, y: 0 }, { x: at('outer', 4), y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }]),
-      holes: [shift([{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }])],
+      holes: [pointHole ? [{ x: 1, y: 1 }] : shift([{ x: 1, y: 1 }, { x: at('hole', 2), y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }])],
     },
     ifcType: 'IfcWall',
     entityId: 7,
@@ -84,6 +84,8 @@ interface ExportOptions {
   noOuter?: boolean;
   /** The outer ring encloses no area: two points, or three collinear ones. */
   lineOuter?: keyof typeof LINE_OUTERS;
+  /** The hole comes back with one vertex: an opening lost to reconstruction. */
+  pointHole?: boolean;
   /** Shift the wall to LV95-scale coordinates. */
   lv95Wall?: boolean;
   /** A second, identical wall polygon. */
@@ -305,6 +307,12 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
       assert.ok(text.includes('h\nS\n'), 'the surviving rings are still outlined');
     });
   }
+
+  it('treats a one-vertex hole as a lost opening: no fill, cut lines kept (#8464)', async () => {
+    const text = await exportPdf({ pointHole: true, cutLine: true });
+    assert.ok(!text.includes('f*'), 'the opening is not painted solid');
+    assert.match(text, CUT_LINE, 'the entity keeps its cut lines');
+  });
 
   it('still fills a real wall at LV95-scale coordinates (#8464)', async () => {
     const text = await exportPdf({ lv95Wall: true });

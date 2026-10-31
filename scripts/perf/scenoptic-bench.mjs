@@ -32,12 +32,13 @@
 
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { execFileSync, spawn } from 'node:child_process';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { TICK, chromePids, cpuTicks, memoryOf, settleCpu, vramOf, withGpuClock } from './scenoptic-bench-sampling.mjs';
 
-const ROOT = resolve(new URL('../..', import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 // SCENOPTIC_BENCH_DEPS: a checkout with node_modules, when this one has none installed.
 const require = createRequire(join(process.env.SCENOPTIC_BENCH_DEPS ?? ROOT, 'package.json'));
 const { chromium } = require('@playwright/test');
@@ -50,6 +51,7 @@ for (let i = 0; i < argv.length; i++) {
   if (key === 'no-orbit' || key === 'no-warm') { opt[key] = true; continue; }
   // --profile cold,warm,orbit: main-thread CPU profile per phase (build with VITE_SOURCEMAP=1 to symbolize).
   const value = argv[++i];
+  if (value === undefined) { console.error(`--${key} needs a value`); process.exit(2); }
   if (key === 'set') opt.set.push(value); else if (key === 'build') opt.build.push(value); else opt[key] = value;
 }
 if ((!opt.dist && opt.build.length === 0) || opt.set.length === 0) {
@@ -59,12 +61,23 @@ if ((!opt.dist && opt.build.length === 0) || opt.set.length === 0) {
 const display = process.env.DISPLAY;
 if (!display || display === ':0' || display === ':1') throw new Error('set DISPLAY to a private Xvfb (e.g. :97)');
 const CHROME = process.env.CHROME ?? join(process.env.HOME, '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
-const ROUNDS = Number(opt.rounds), ORBIT_MS = Number(opt['orbit-s']) * 1000;
-const W = Number(opt.width), H = Number(opt.height);
+const positive = (name) => {
+  const n = Number(opt[name]);
+  if (!Number.isFinite(n) || n <= 0) { console.error(`--${name} needs a positive number, got "${opt[name]}"`); process.exit(2); }
+  return n;
+};
+const ROUNDS = Math.ceil(positive('rounds')), ORBIT_MS = positive('orbit-s') * 1000;
+const W = positive('width'), H = positive('height');
 const OUT = resolve(opt.out ?? join(ROOT, 'scripts/perf/.scenoptic-bench-results', new Date().toISOString().replace(/[:.]/g, '-')));
 mkdirSync(OUT, { recursive: true });
+/** Split `name=value` at the first `=`, so a path may contain one. */
+const nameValue = (flag, s) => {
+  const at = s.indexOf('=');
+  if (at <= 0 || at === s.length - 1) { console.error(`--${flag} needs name=value, got "${s}"`); process.exit(2); }
+  return [s.slice(0, at), s.slice(at + 1)];
+};
 const SETS = opt.set.map((s) => {
-  const [name, files] = s.split('=');
+  const [name, files] = nameValue('set', s);
   const list = files.split(',').map((f) => resolve(f));
   for (const f of list) if (!existsSync(f)) throw new Error(`missing fixture ${f}`);
   return { name, files: list, bytes: list.reduce((n, f) => n + statSync(f).size, 0) };
@@ -72,7 +85,12 @@ const SETS = opt.set.map((s) => {
 // The first build is the reference every ratio is taken against.
 const BUILDS = opt.dist ? [{ id: 'branch', dist: resolve(opt.dist) }] : [];
 if (opt['dist-base']) BUILDS.unshift({ id: 'base', dist: resolve(opt['dist-base']) });
-for (const b of opt.build) { const [id, dir] = b.split('='); BUILDS.push({ id, dist: resolve(dir) }); }
+for (const b of opt.build) { const [id, dir] = nameValue('build', b); BUILDS.push({ id, dist: resolve(dir) }); }
+// Results are keyed by name: a repeat would overwrite samples and merge medians.
+for (const [flag, names] of [['set', SETS.map((x) => x.name)], ['build', BUILDS.map((x) => x.id)]]) {
+  const repeat = names.find((n, i) => names.indexOf(n) !== i);
+  if (repeat) { console.error(`--${flag} name "${repeat}" is used twice`); process.exit(2); }
+}
 const PROFILE = new Set((opt.profile ?? '').split(',').filter(Boolean));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
@@ -97,56 +115,6 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const BASE_URL = `http://127.0.0.1:${server.address().port}`;
 const QUERY = '?perfTrace=1&perf.gpuFrameTiming=1';
-
-// ---------------------------------------------------------------- process sampling
-function chromePids(profileDir) {
-  const pids = [];
-  for (const entry of readdirSync('/proc')) {
-    if (!/^\d+$/.test(entry)) continue;
-    try {
-      const cmd = readFileSync(`/proc/${entry}/cmdline`, 'utf8');
-      if (cmd.includes(profileDir)) pids.push(Number(entry));
-    } catch { /* process exited between readdir and read */ }
-  }
-  return pids;
-}
-function memoryOf(pids) {
-  let rss = 0, pss = 0;
-  for (const pid of pids) {
-    try {
-      const text = readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8');
-      rss += Number(/^Rss:\s+(\d+)/m.exec(text)?.[1] ?? 0) * 1024;
-      pss += Number(/^Pss:\s+(\d+)/m.exec(text)?.[1] ?? 0) * 1024;
-    } catch { /* exited */ }
-  }
-  return { rssMiB: rss / 2 ** 20, pssMiB: pss / 2 ** 20 };
-}
-function vramOf(pids) {
-  try {
-    const text = execFileSync('nvidia-smi', ['-q', '-d', 'PIDS'], { encoding: 'utf8' });
-    let total = 0;
-    for (const block of text.split(/Process ID\s*:/).slice(1)) {
-      const pid = Number(block.trim().split(/\s/)[0]);
-      const mib = Number(/Used GPU Memory\s*:\s*(\d+)\s*MiB/.exec(block)?.[1] ?? NaN);
-      if (pids.includes(pid) && Number.isFinite(mib)) total += mib;
-    }
-    return total;
-  } catch (err) {
-    log('nvidia-smi failed', err.message);
-    return null;
-  }
-}
-const TICK = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8' }).trim());
-function cpuTicks(pids) {
-  let ticks = 0;
-  for (const pid of pids) {
-    try {
-      const fields = readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1].split(' ');
-      ticks += Number(fields[11]) + Number(fields[12]); // utime + stime
-    } catch { /* exited */ }
-  }
-  return ticks;
-}
 
 // ---------------------------------------------------------------- page helpers
 const INIT = () => {
@@ -239,32 +207,6 @@ async function sampleMemory(page, profileDir) {
   return { ...memoryOf(pids), vramMiB: vramOf(pids), rendererGpu: stats?.gpu ?? null, rendererCpu: stats?.cpuBytes ?? null, adapter: stats?.adapter ?? null };
 }
 
-/** Wait for post-load background work (cache writes, source compaction) to end; returns its CPU seconds. */
-async function settleCpu(profileDir, quietCores = 0.5, timeoutMs = 60_000) {
-  const pids = chromePids(profileDir);
-  const start = Date.now(), ticks0 = cpuTicks(pids);
-  let last = ticks0, quiet = 0;
-  while (quiet < 3 && Date.now() - start < timeoutMs) {
-    await new Promise((res) => setTimeout(res, 500));
-    const now = cpuTicks(pids);
-    quiet = (now - last) / TICK / 0.5 < quietCores ? quiet + 1 : 0;
-    last = now;
-  }
-  return { cpuSeconds: (last - ticks0) / TICK, wallMs: Date.now() - start };
-}
-
-/** Sample the graphics clock during `fn`. Timer queries move with DVFS, so ms alone do not compare across runs. */
-async function withGpuClock(fn) {
-  const child = spawn('nvidia-smi', ['--query-gpu=clocks.gr', '--format=csv,noheader,nounits', '-lms', '250'], { stdio: ['ignore', 'pipe', 'ignore'] });
-  let text = '';
-  child.stdout.on('data', (d) => { text += d; });
-  child.on('error', () => {});
-  try { return { result: await fn(), mhz: () => {
-    const v = text.split('\n').map(Number).filter((n) => n > 0);
-    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-  } }; } finally { child.kill(); }
-}
-
 async function orbit(page, profileDir) {
   const settle = await settleCpu(profileDir);
   const box = await page.locator('canvas').first().boundingBox();
@@ -333,13 +275,15 @@ const fmt = (v, d = 0) => (v === null || v === undefined || !Number.isFinite(v) 
 async function runSample(build, set, round) {
   currentRoot = build.dist;
   const profileDir = mkdtempSync(join(tmpdir(), 'scenoptic-bench-'));
-  const context = await chromium.launchPersistentContext(profileDir, {
+  const launch = () => chromium.launchPersistentContext(profileDir, {
     executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
     args: ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
       '--use-angle=vulkan', '--ignore-gpu-blocklist', '--hide-scrollbars', '--no-first-run', `--window-size=${W},${H}`, '--window-position=0,0'],
   });
   const sample = { build: build.id, set: set.name, round, files: set.files.map((f) => basename(f)), bytes: set.bytes };
+  let context = null;
   try {
+    context = await launch();
     await context.addInitScript(INIT);
     let page = await openPage(context);
     const tag = `${set.name}-${build.id}-r${round}`;
@@ -360,7 +304,7 @@ async function runSample(build, set, round) {
     sample.error = String(err?.stack ?? err);
     log('  sample failed:', String(err?.message ?? err).slice(0, 400));
   } finally {
-    await context.close().catch(() => {});
+    await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
   }
   writeFileSync(join(OUT, `${set.name}-${build.id}-r${round}.json`), JSON.stringify(sample, null, 2));

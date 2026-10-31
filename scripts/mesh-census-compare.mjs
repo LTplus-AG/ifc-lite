@@ -27,7 +27,8 @@
  * base and branch disagree. A sidecar on one side only is refused (exit 2).
  *
  * Meshes present on one side only are reported as `missing` / `added`; a
- * missing mesh is a regression. A mesh whose thin-material census hit its
+ * missing mesh is a regression, and so is an added one carrying open or
+ * nonmanifold edges, bad indices, or thin or coincident sheet. A mesh whose thin-material census hit its
  * candidate cap on either side is `unmeasured`, never unchanged. Exit status
  * 1 when any regression, quality-worse, unmeasured or missing mesh exists.
  */
@@ -87,6 +88,11 @@ export function classify(base, branch) {
   return lost ? 'improved' : 'neutral';
 }
 
+/** Whether a mesh carries any defect the gate counts, on its own. */
+export function hasDefects(row) {
+  return EDGES.some((m) => row[m] > 0) || row.badIndices > 0 || SHEETS.some((m) => row[m] > THIN_EPS);
+}
+
 export function compare(baseRows, branchRows) {
   const verdicts = { regression: [], qualityWorse: [], unmeasured: [], improved: [], neutral: [], missing: [], added: [] };
   for (const [key, base] of baseRows) {
@@ -100,8 +106,10 @@ export function compare(baseRows, branchRows) {
   }
   for (const [key, branch] of branchRows) {
     if (baseRows.has(key)) continue;
-    // A new mesh whose thin census hit its cap was not measured either.
-    verdicts[branch.thinCapped > 0 ? 'unmeasured' : 'added'].push({ key, branch });
+    // A new mesh whose thin census hit its cap was not measured either, and a
+    // new mesh arriving with defects is a regression with no base to excuse it.
+    const verdict = branch.thinCapped > 0 ? 'unmeasured' : hasDefects(branch) ? 'regression' : 'added';
+    verdicts[verdict].push({ key, branch });
   }
   return verdicts;
 }

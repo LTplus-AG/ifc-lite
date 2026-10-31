@@ -77,7 +77,7 @@ test('a tessellation-only change is neutral', () => {
 
 test('a mesh missing from the branch and one added are both reported', () => {
   const a = parseCensus(`${JSON.stringify(base)}\n`);
-  const b = parseCensus(`${JSON.stringify(row({ ord: 1 }))}\n`);
+  const b = parseCensus(`${JSON.stringify(row({ ord: 1, open: 0, open10: 0 }))}\n`);
   const v = compare(a, b);
   assert.equal(v.missing.length, 1);
   assert.equal(v.added.length, 1);
@@ -86,6 +86,13 @@ test('a mesh missing from the branch and one added are both reported', () => {
 test('a capped thin census on either side is unmeasured, even when identical', () => {
   assert.equal(classify(row({ thinCapped: 1 }), row({ thinCapped: 1 })), 'unmeasured');
   assert.equal(classify(base, row({ thinCapped: 2 })), 'unmeasured');
+});
+
+test('a new mesh with defects is a regression, a clean one is added', () => {
+  const clean = row({ open: 0, open10: 0, ord: 9 });
+  const v = compare(parseCensus(''), parseCensus(`${JSON.stringify(row({ open: 12, open10: 12 }))}\n${JSON.stringify(clean)}\n`));
+  assert.equal(v.regression.length, 1);
+  assert.equal(v.added.length, 1);
 });
 
 test('a capped mesh new to the branch is unmeasured, not added', () => {

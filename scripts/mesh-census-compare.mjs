@@ -23,8 +23,8 @@
  * - `neutral`: anything else that changed.
  *
  * An empty census file is refused (exit 2). Models that emitted no meshes are
- * read from the runner's `<file>.empty` sidecar when present: listed, and a
- * failure when base and branch disagree.
+ * read from the runner's `<file>.empty` sidecars: listed, and a failure when
+ * base and branch disagree. A sidecar on one side only is refused (exit 2).
  *
  * Meshes present on one side only are reported as `missing` / `added`; a
  * missing mesh is a regression. A mesh whose thin-material census hit its
@@ -138,6 +138,12 @@ function main(argv) {
   const [baseEmpty, branchEmpty] = [basePath, branchPath].map((p) =>
     existsSync(`${p}.empty`) ? readFileSync(`${p}.empty`, 'utf8').split('\n').filter(Boolean).sort() : null,
   );
+  // Both sides or neither: a sidecar on one side only would let a model that
+  // was empty on one side and not the other pass unseen.
+  if (Boolean(baseEmpty) !== Boolean(branchEmpty)) {
+    console.error(`${baseEmpty ? branchPath : basePath}.empty is missing; run both sides with mesh-census-corpus.sh`);
+    return 2;
+  }
   const emptyDiffers = baseEmpty && branchEmpty && baseEmpty.join('\n') !== branchEmpty.join('\n');
   if (argv.includes('--json')) {
     console.log(JSON.stringify(verdicts, null, 2));

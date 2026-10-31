@@ -112,6 +112,45 @@ DOCS = {
         'extrusion, merge two prisms across a coincident interface, and give an',
         'opening that did not yield a prism its identity-frame blocker OBB.',
     ],
+    'extension': [
+        'Cap and profile-edge extension: push a flush cap or profile edge past',
+        'the host surface when the swept region is provably empty of host',
+        'material, with the ray-parity point-in-solid test it relies on.',
+    ],
+    'face': [
+        'Per-face geometry of the stepped solid: the canonical-order crossing',
+        'cache, seam segments, face planes and face-local coordinates.',
+    ],
+    'cut': [
+        'The prism cut: subtract a stepped solid from the host triangle list, or',
+        'return the defer reason that sends the opening to the exact kernel.',
+    ],
+    'pool': [
+        'Tolerance-merging 2D point pool shared by the triangle and cap CDTs.',
+    ],
+    'decompose': [
+        'Decompose one host triangle along the cutter seams with a conforming',
+        'CDT and classify its pieces inside or outside the prism.',
+    ],
+    'caps': [
+        'Reveal caps: the canonical breakpoints of a cap plane and the cap built',
+        'for each cutter face from its seams, kept where it lies in the exposed',
+        'region and inside the pre-cut host.',
+    ],
+    'cap_cdt': [
+        'The cap CDT: pool the face ring, auxiliary rings and seams, run the',
+        'conforming CDT, and emit each kept sub-triangle with the result',
+        'orientation.',
+    ],
+    'crossings': [
+        'Make a cap constraint soup CDT-admissible by splitting crossing',
+        'constraints and constraints through pooled points.',
+    ],
+    'driver': [
+        'The driver: `Execution::try_prism_cut` admits, detects, extends and cuts',
+        'each merged opening in order, self-checks the result and returns the',
+        'residual context for the exact kernel.',
+    ],
 }
 # Explicit imports per module, keyed by the first stage they apply from (a
 # later stage may repoint an import at a module that stage creates).
@@ -147,6 +186,106 @@ IMPORTS = {
         '    basis_from_depth, ccw_area, cross_section_ring, ring_interior, simplify_collinear, MAX_SLABS,',
         '};',
     ]},
+    'extension': {'b': [
+        'use super::super::geom::parity::PARITY_RAY_DIR as RAY_DIR;',
+        'use super::frame::PrismFrame;',
+        'use super::kit::{dot, lerp, V2, V3};',
+        'use super::plane2::{pip, seg_cross_param};',
+        'use super::profile::ccw_area;',
+        'use super::ptri::PTri;',
+    ]},
+    'face': {'b': [
+        'use super::frame::{Face, PrismFrame};',
+        'use super::kit::{add, bits, dot, lerp, scale, V2, V3};',
+        'use rustc_hash::FxHashMap;',
+    ]},
+    'cut': {
+        'b': [
+            'use super::checks::{has_measurable_region, partition_consistent};',
+            'use super::decompose::decompose_tri;',
+            'use super::face::{cached_crossing, face_plane, CrossCache, Seam};',
+            'use super::frame::{cap_xor, stack_faces, Face, PrismFrame};',
+            'use super::kit::{add, dot, lerp, scale, V2, V3};',
+            'use super::plane2::seg_cross_param;',
+            'use super::ptri::PTri;',
+            'use super::{build_face_cap, cap_plane_breakpoints};',
+        ],
+        'c': [
+            'use super::caps::{build_face_cap, cap_plane_breakpoints};',
+            'use super::checks::{has_measurable_region, partition_consistent};',
+            'use super::decompose::decompose_tri;',
+            'use super::face::{cached_crossing, face_plane, CrossCache, Seam};',
+            'use super::frame::{cap_xor, stack_faces, Face, PrismFrame};',
+            'use super::kit::{add, dot, lerp, scale, V2, V3};',
+            'use super::plane2::seg_cross_param;',
+            'use super::ptri::PTri;',
+        ],
+    },
+    'pool': {'b': [
+        'use super::kit::{V2, V3};',
+        'use nalgebra::Point2;',
+        'use rustc_hash::FxHashMap;',
+    ]},
+    'decompose': {
+        'b': [
+            'use super::face::{face_coords, Seam};',
+            'use super::frame::{Face, PrismFrame};',
+            'use super::kit::{add, cross, dot, lerp, normalize, scale, sub, V2, V3};',
+            'use super::pool::PointPool;',
+            'use super::ptri::PTri;',
+            'use super::resolve_crossings;',
+            'use crate::cdt::triangulate_pslg;',
+        ],
+        'c': [
+            'use super::crossings::resolve_crossings;',
+            'use super::face::{face_coords, Seam};',
+            'use super::frame::{Face, PrismFrame};',
+            'use super::kit::{add, cross, dot, lerp, normalize, scale, sub, V2, V3};',
+            'use super::pool::PointPool;',
+            'use super::ptri::PTri;',
+            'use crate::cdt::triangulate_pslg;',
+        ],
+    },
+    'caps': {'c': [
+        'use super::cap_cdt::{cap_cdt, cap_cdt_xor, emit_cap};',
+        'use super::extension::point_inside;',
+        'use super::face::Seam;',
+        'use super::frame::{Face, PrismFrame};',
+        'use super::kit::{add, scale, V2, V3};',
+        'use super::plane2::{pip, seg_cross_param};',
+        'use super::ptri::PTri;',
+    ]},
+    'cap_cdt': {'c': [
+        'use super::crossings::resolve_crossings;',
+        'use super::extension::point_inside;',
+        'use super::face::Seam;',
+        'use super::frame::PrismFrame;',
+        'use super::kit::{add, dot, scale, V2, V3};',
+        'use super::pool::PointPool;',
+        'use super::ptri::PTri;',
+        'use crate::cdt::triangulate_pslg;',
+    ]},
+    'crossings': {'c': [
+        'use super::kit::{V2, V3};',
+        'use super::pool::PointPool;',
+    ]},
+    'driver': {'c': [
+        'use super::super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};',
+        'use super::super::{CutterKind, VoidContext};',
+        'use super::checks::{consolidated_change_is_measurable, result_volume_within_bounds};',
+        'use super::cut::cut_prism;',
+        'use super::detect::{opening_aabb_obb, try_merge_prisms};',
+        'use super::extension::{extend_prism_caps, extend_profile_edges};',
+        'use super::frame::{obb_overlaps, PrismFrame};',
+        'use super::kit::{dot, V3};',
+        'use super::opening_prism::prepare_prism;',
+        'use super::ptri::{mesh_from_ptris, ptris_from_mesh, PTri};',
+        'use super::{defer, finish, finish_cut_verdict, record_cut, tjunction_close};',
+        'use crate::math::aabb::Aabb3;',
+        'use crate::mesh::Mesh;',
+        'use crate::mesh_check::{closed_enough_to_emit, ClosureVerdict};',
+        'use crate::program::openings::execute::Execution;',
+    ]},
 }
 
 
@@ -159,7 +298,18 @@ VOIDS_WIDE = {'kit', 'driver'}
 # How the facade imports each module (the facade's private globs are what
 # opening_prism.rs, planar_correction.rs, prism_cut_tests.rs and
 # aabb_fold_tests.rs reach through `use super::*` / `use super::{..}`).
-FACADE_USE = {'kit': 'pub(super) use kit::*;'}
+# `driver` holds only an `impl Execution` block, so there is nothing to import.
+# `decompose_tri` has no caller outside cut.rs, which imports it itself.
+FACADE_USE = {'kit': 'pub(super) use kit::*;', 'decompose': None, 'driver': None}
+# The final facade's docs gain a module map after base line 60 (stage c).
+LAYOUT = [
+    '//!',
+    '//! Layout: `detect` (with `frame`, `profile`) finds the prism, `extension`',
+    '//! pushes flush caps and edges, `cut` subtracts it (`face`, `decompose`,',
+    '//! `pool`, `crossings`), `caps` and `cap_cdt` build the reveal, `checks`',
+    '//! holds the self-checks and `driver` runs `try_prism_cut`. `kit`, `plane2`',
+    '//! and `ptri` are the shared f64 vocabulary.',
+]
 
 
 def lines_of(path):
@@ -288,7 +438,7 @@ def modules_through(stage):
 #   stage (cumulative: a later stage drops its own and every earlier entry).
 FACADE_DROP = {
     'a': {70},  # cluster_prism_directions: detect.rs imports it itself
-    'b': set(),
+    'b': {72, 77},  # RAY_DIR (extension.rs), Point2 (profile.rs, pool.rs)
     'c': set(),
 }
 
@@ -309,9 +459,13 @@ def facade(base, stage):
         if n == 98:
             out.extend(doc)
         out.append(line)
+        if n == 60 and stage == 'c':
+            out.extend(LAYOUT)
     for name in modules_through(stage):
         out.append(f'mod {name};')
-        out.append(FACADE_USE.get(name, f'use {name}::*;'))
+        use = FACADE_USE.get(name, f'use {name}::*;')
+        if use:
+            out.append(use)
     last = REGION[stage][1]
     if last < len(base):
         out.append('')

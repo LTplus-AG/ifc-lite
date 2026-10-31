@@ -77,6 +77,21 @@ fn seam_faces(mesh: &MeshData, y: f64, x: [f64; 2]) -> usize {
         .count()
 }
 
+/// Area of the triangles lying on the plane y = `y` (same 100 um band as
+/// [`seam_faces`]) within `x`.
+fn plane_area(mesh: &MeshData, y: f64, x: [f64; 2]) -> f64 {
+    mesh.indices
+        .chunks_exact(3)
+        .map(|t| [t[0], t[1], t[2]].map(|i| world(mesh, i)))
+        .filter(|p| p.iter().all(|q| (q[1] - y).abs() < 1e-4 && q[0] > x[0] && q[0] < x[1]))
+        .map(|[a, b, c]| {
+            let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt() / 2.0
+        })
+        .sum()
+}
+
 #[test]
 fn issue_8190_flush_openings_leave_no_strip_in_slab_12381() {
     let mesh = slab();
@@ -85,4 +100,20 @@ fn issue_8190_flush_openings_leave_no_strip_in_slab_12381() {
     }
     // #12659 against #13497: 4 strip faces here on `main`.
     assert_eq!(seam_faces(&mesh, 3.100046, [21.23, 25.23]), 0, "strip faces at y = 3.100046");
+}
+
+/// Rectangle #12681 (x 6.825 to 8.825) and pentagon #13475 (top edge x 5.384
+/// to 8.144) share y = 16.570046 in the file, overlapping for 1.32 m, and the
+/// seam runs at 23 degrees in the frame the cut happens in. Their footprints
+/// met at a T-junction the snap alone left open, so they were cut as two
+/// prisms with 1.32 m by 1.2 m of host standing between them (#8190).
+#[test]
+fn issue_8190_partly_overlapping_flush_openings_fuse_in_slab_12381() {
+    let mesh = slab();
+    // What the plane may carry: the two jambs past the overlap, the
+    // pentagon's from x = 5.384 to 6.825 and the rectangle's from 8.144 to
+    // 8.825, each 1.2 m deep. Both faces of the strip would add 3.16 m2.
+    let jambs = (6.8250055 - 5.3835656 + 8.8250055 - 8.1435656) * 1.2;
+    let on_plane = plane_area(&mesh, 16.570046, [5.3, 8.9]);
+    assert!((on_plane - jambs).abs() < 5e-3, "y = 16.570046 carries {on_plane} m2, the jambs {jambs} m2");
 }

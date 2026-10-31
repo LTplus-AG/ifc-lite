@@ -52,6 +52,7 @@ function buildDataStore(): IfcDataStore {
     properties: new PropertyTableBuilder(strings).build(),
     quantities: new QuantityTableBuilder(strings).build(),
     relationships: new RelationshipGraphBuilder().build(),
+    source: { contentKey: 'content-key-from-the-parser' },
   } as unknown as IfcDataStore;
 }
 
@@ -139,6 +140,7 @@ describe('saveToCache stores the load\'s full-content hash (#4269, #7022)', () =
     );
     assert.equal(digests, 0, 'the write reuses the load\'s hash instead of digesting the source a second time');
     assert.equal(entry.lastModified, 1_700_000_000_000, 'the mtime guard field must be stored too');
+    assert.equal(entry.sourceContentKey, 'content-key-from-the-parser', 'a hit must not re-hash the source for its key');
   });
 
   it('never persists the source, so a hit cannot deserialize a second copy', async () => {

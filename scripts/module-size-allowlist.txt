@@ -113,7 +113,7 @@
   1334 apps/viewer/src/hooks/useClash.ts
   1290 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
-   586 apps/viewer/src/hooks/useIfcCache.ts
+   407 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
   2234 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts

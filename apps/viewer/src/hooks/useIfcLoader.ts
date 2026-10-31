@@ -51,7 +51,7 @@ import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
-import { computeSourceFingerprint, computeSourceFingerprintFromBlob, type GeometryData } from '@ifc-lite/cache';
+import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
@@ -219,7 +219,7 @@ export function useIfcLoader() {
   })));
 
   // Cache operations from extracted hook
-  const { loadFromCache, saveToCache } = useIfcCache();
+  const { loadFromCache, loadFederatedFromCache, saveToCache } = useIfcCache();
 
   // Server operations from extracted hook
   const { loadFromServer } = useIfcServer();
@@ -1125,13 +1125,13 @@ export function useIfcLoader() {
         maxMeshOnlySize: CACHE_MESH_ONLY_MAX_SIZE,
       }));
 
-      // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
-      // cache/server round-trip (matches the former parseStepBufferViewerModel).
+      // Server is PRIMARY-ONLY; the cache serves both roles (a federated hit
+      // registers through finalizeModel like a fresh federated parse).
       // Texture-carrying .ifcZIPs also bypass the cache READ (#1781): the format
       // cannot persist UVs/textures, so any existing entry — including one
       // written before texture support shipped — would serve the model
       // permanently untextured. Mirrors the cache-write skip below.
-      if (target.kind === 'primary' && cachePlan.shouldCache && !textureBitmaps) {
+      if (cachePlan.shouldCache && !textureBitmaps) {
         setProgress({ phase: 'Checking cache', percent: 5 });
         loadStage = 'cache-lookup';
         const cacheResult = await trace.span('cache.lookup', () => getCached(cacheKey));
@@ -1160,14 +1160,14 @@ export function useIfcLoader() {
             // (see its `isStale` param): `getCached` above is an awaited
             // IndexedDB read, so a second primary load can own the active
             // slot by the time this resolves.
-            const cacheLoadResult = await loadFromCache(
-              cacheResult,
-              file.name,
-              modelId,
-              cacheKey,
-              buffer,
-              () => isStale(), trace,
-            );
+            let federatedHitStore: IfcDataStore | null = null;
+            const cacheLoadResult = target.kind === 'federated'
+              ? await loadFederatedFromCache(cacheResult, cacheKey, buffer, () => isStale(), trace, (hit) => {
+                federatedHitStore = hit.dataStore;
+                return finalizeModel(hit.dataStore, hit.geometry, getViewerSchemaVersion(hit.dataStore), { loadState: 'complete', cacheState: 'hit',
+                  loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad }, hit.instancedShards);
+              })
+              : await loadFromCache(cacheResult, file.name, modelId, cacheKey, buffer, () => isStale(), trace);
             // `loadFromCache` returns the SAME `{ success: false }` for a
             // superseded load as for an ordinary miss, so branching on
             // `success` alone would send a superseded load on to a full
@@ -1186,10 +1186,11 @@ export function useIfcLoader() {
             }
             if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
-              await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
+              if (target.kind === 'primary') await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
                 loadState: 'complete', cacheState: 'hit',
                 loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
               });
+              const servedGeometry = target.kind === 'primary' ? state.geometryResult : useViewerStore.getState().models.get(modelId)?.geometryResult ?? null;
               if (isStale()) return; // finalize awaited the identity pass (#7022)
               const cacheTotalMs = trace.finish({ journey: 'J2', loadPath: 'cache', cacheTier: cachePlan.tier });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${cacheTotalMs.toFixed(0)}ms`);
@@ -1203,7 +1204,7 @@ export function useIfcLoader() {
               // reporting `loadDiagnostics` here would attribute a PRIOR load's
               // counters (or a fabricated 0) to this one. The builder already
               // turns an undefined/null diagnostics into absent CSG fields.
-              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad, isResourceRetry: isResourceRetryLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
+              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad, isResourceRetry: isResourceRetryLoad }) }, snapshotFromGeometry(fileSizeMB, servedGeometry), trace);
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({
@@ -1212,8 +1213,10 @@ export function useIfcLoader() {
                 isStale: () => isStale(),
               });
               setLoading(false);
+              if (target.kind === 'federated') setProgress({ phase: 'Complete', percent: 100 }); // #1570, as the fresh path
               // #2183: compact the restored source, then drop this scope's binding to the raw file.
-              if (state.ifcDataStore) void compactSource(state.ifcDataStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
+              const restoredStore = target.kind === 'federated' ? federatedHitStore : state.ifcDataStore;
+              if (restoredStore) void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
               // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
               // full-content hash (this load's identity pass) and, if the source
               // changed with its mtime preserved, purge + auto-reload.
@@ -1926,14 +1929,36 @@ export function useIfcLoader() {
                 }
                 console.log(`[useIfc] finalizing: session=${currentSession} meshes=${useViewerStore.getState().geometryResult?.meshes?.length ?? 0} dataStore=${!!dataStore}`);
 
+                // Textured models are NOT cached (#1781): the binary cache format
+                // doesn't persist UVs/textures yet, so a hit would silently strip
+                // every texture. A recovered load is missing elements (#4884) and
+                // omitted type records (#8341) keep no count: a hit would serve
+                // either silently, without the notice, so re-process instead.
+                const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
+                if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
+                const cacheCoordinateInfo = finalCoordinateInfo;
+                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
+                const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
+                  meshes, coordinateInfo: cacheCoordinateInfo,
+                  totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
+                  totalTriangles: meshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+                  // Persist the GPU-instancing shards too, else a cache reload would
+                  // restore the flat meshes only and drop all instanced occurrences.
+                  ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
+                }, buffer, file.name, {
+                  // mtime guard plus the load's identity as the full-content
+                  // validation hash (#7022: no second pass in the write).
+                  lastModified: file.lastModified, fullSourceHash: placementIdentity,
+                }));
                 if (target.kind === 'federated') {
                   // Build the model's geometryResult from the accumulated meshes —
                   // federated never streamed into the active slot — and hand it to
                   // finalizeModel, which aligns, offsets ids, builds the spatial
-                  // index, and registers the model via addModel. NOT cached (the
-                  // former federated path never cached); allMeshes stays alive as
-                  // the model's geometryResult.meshes, so it is NOT cleared.
+                  // index, and registers the model via addModel. allMeshes stays
+                  // alive as the model's geometryResult.meshes, so it is NOT cleared.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
+                  // finalizeModel re-homes ids on the mesh objects in place; the cache keeps raw ids.
+                  const cacheMeshes = cacheable ? allMeshes.map((m) => ({ ...m })) : null;
                   const federatedGeometry: GeometryResult = {
                     meshes: allMeshes,
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
@@ -1955,7 +1980,9 @@ export function useIfcLoader() {
                   await trace.span('load.finalize', () => finalizeModel(dataStore, federatedGeometry, getViewerSchemaVersion(dataStore), {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards));
-                  compactSourceAfterLoad(dataStore);
+                  // Background, like the primary write; compaction waits so the write keeps the raw length.
+                  if (cacheMeshes && !isStale()) void Promise.resolve(writeCache(cacheMeshes)).finally(() => compactSourceAfterLoad(dataStore));
+                  else compactSourceAfterLoad(dataStore);
                   return;
                 }
 
@@ -1973,42 +2000,10 @@ export function useIfcLoader() {
                 // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
                 // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
                 // Files above 400MB (or with the mesh-only kill switch set) are not cached.
-                // Textured models are NOT cached (#1781): the binary cache
-                // format doesn't persist UVs/textures yet, so a cache hit would
-                // silently strip every texture on the second open. Re-processing
-                // each load keeps the render correct until the cache format
-                // learns texture sections.
-                const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
-                if (hasTexturedMeshes) {
-                  console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
-                }
-                if (
-                  cachePlan.shouldCache &&
-                  !hasTexturedMeshes &&
-                  // A recovered load is missing elements (#4884); a cache hit would
-                  // serve it silently, without the notice, so re-process instead.
-                  !skippedHungElements &&
-                  // Same for omitted type records (#8341): the cache keeps no count.
-                  !omittedTypeRecords &&
-                  allMeshes.length > 0 &&
-                  finalCoordinateInfo
-                ) {
+                if (cacheable) {
                   // Final safety pass so cache always contains post-style colors.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  const geometryData: GeometryData = {
-                    meshes: allMeshes,
-                    totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
-                    totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
-                    coordinateInfo: finalCoordinateInfo,
-                    // Persist the GPU-instancing shards too, else a cache reload would
-                    // restore the flat meshes only and drop all instanced occurrences.
-                    ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
-                  };
-                  await trace.span('cache.write', () => saveToCache(cacheKey, dataStore, geometryData, buffer, file.name, {
-                    // mtime guard plus the load's identity as the full-content
-                    // validation hash (#7022: no second pass in the write).
-                    lastModified: file.lastModified, fullSourceHash: placementIdentity,
-                  }));
+                  await writeCache(allMeshes);
                 }
 
                 compactSourceAfterLoad(dataStore);

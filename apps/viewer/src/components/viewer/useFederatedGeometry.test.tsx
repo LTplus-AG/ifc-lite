@@ -55,3 +55,36 @@ it('retains cached wrappers for same-array streaming append (#4451)', () => {
   assert.equal(after.meshes[1], original);
   assert.equal(f.node.textContent, '1,20,3');
 });
+it('appends an added model without re-spreading the earlier ones', () => {
+  let models = new Map([['a', { ...fixtureModel('a'), geometryResult: geometry([mesh(1)]) }],
+    ['b', { ...fixtureModel('b'), geometryResult: geometry([mesh(2, 20)]) }]]);
+  let indices = new Map([['a', 0], ['b', 1]]);
+  let current: GeometryResult | null = null;
+  function Probe() { current = useFederatedGeometry(models, null, indices, 0); return null; }
+  const node = document.createElement('div'); document.body.appendChild(node); const root = createRoot(node);
+  cleanups.push(() => { act(() => root.unmount()); node.remove(); });
+  act(() => root.render(<Probe />));
+  const before = current!, wrappers = [...before.meshes];
+
+  // A new allocator map, as an add produces, with the earlier indices unchanged.
+  models = new Map(models).set('c', { ...fixtureModel('c'), geometryResult: geometry([mesh(3, 30)]) });
+  indices = new Map([['a', 0], ['b', 1], ['c', 2]]);
+  act(() => root.render(<Probe />));
+  const after = current!;
+  assert.equal(after.meshes, before.meshes, 'same merged array');
+  wrappers.forEach((wrapper, i) => assert.strictEqual(after.meshes[i], wrapper, 'earlier wrapper kept by identity'));
+  assert.equal(after.meshes[2].modelIndex, 2);
+
+  // An earlier model re-indexed (removed and re-added) still rebuilds.
+  indices = new Map([['a', 0], ['b', 3], ['c', 2]]);
+  act(() => root.render(<Probe />));
+  assert.notEqual(current!.meshes, before.meshes);
+  assert.equal(current!.meshes.find((m) => m.expressId === 2)?.modelIndex, 3);
+
+  // A removed model rebuilds without its meshes.
+  const rebuilt = current!.meshes;
+  models = new Map([...models].filter(([id]) => id !== 'b'));
+  act(() => root.render(<Probe />));
+  assert.notEqual(current!.meshes, rebuilt);
+  assert.deepEqual(current!.meshes.map((m) => m.expressId), [1, 3]);
+});

@@ -329,8 +329,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
     const unchangedLength = !isReplacement && currentLength === lastLength;
 
-    // Visibility toggle while NOT streaming — array rebuilt from scratch
-    if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
+    // Visibility toggle while NOT streaming — array rebuilt from scratch. A
+    // federated add appends to the SAME merged array (useFederatedGeometry),
+    // so earlier models' meshes are already uploaded; only a new array is
+    // rebuilt. Re-uploading everything on each add made N files O(N^2).
+    if (isIncremental && !isStreaming && !prevIsStreamingRef.current && geometry !== lastGeometryRef.current) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
       invalidateLandXmlGpuOwnershipAfterSceneClear();
       processedMeshIdsRef.current.clear();

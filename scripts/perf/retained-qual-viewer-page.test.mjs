@@ -127,3 +127,31 @@ test('8413: repeated observations of the upload frame cannot become a settled dr
   h.renderer.frame = { timestamp: 25, drawCalls: 2 }; h.tick(30);
   assert.equal(h.q().settledFrameMs, 25);
 });
+
+test('8413: a store update with no model cannot throw out of the viewer setState', () => {
+  const h = harness(); h.tick(1); h.change(2);
+  h.store$(10, { models: h.model({ published: 1, completeness: 'running' }, 1) });
+  assert.notEqual(h.q().firstProductMs, null);
+  assert.doesNotThrow(() => h.store$(20, { loading: false, models: new Map() }));
+  assert.equal(h.q().terminalMs, null);
+});
+
+test('8413: scene accounting waits for terminal, and the terminal baseline still gates settling', () => {
+  let reads = 0;
+  const h = harness(); h.tick(1); h.change(2);
+  const stats = h.renderer; const original = Object.getOwnPropertyDescriptor(stats, 'gpu');
+  let gpu = { batches: 100 };
+  Object.defineProperty(stats, 'gpu', { get: () => { reads++; return gpu; }, set: v => { gpu = v; }, configurable: true, enumerable: original.enumerable });
+  h.store$(10, { models: h.model({ published: 1, completeness: 'running' }, 1) });
+  h.renderer.frame = { timestamp: 15, drawCalls: 2 }; h.tick(16);
+  h.renderer.frame = { timestamp: 17, drawCalls: 2 }; h.tick(18);
+  assert.equal(h.q().firstRetainedFrameMs, 15);
+  assert.equal(reads, 0, 'no scene walk before terminal');
+  h.store$(20, { loading: false, models: h.model({ published: 1, completeness: 'complete' }, 1, 'complete') });
+  assert.equal(reads, 1, 'one baseline read at the terminal stamp');
+  gpu = { batches: 200 };                                   // an upload lands after the baseline
+  h.renderer.frame = { timestamp: 25, drawCalls: 2 }; h.tick(26);
+  assert.equal(h.q().settledFrameMs, null, 'bytes differ from the terminal baseline');
+  h.renderer.frame = { timestamp: 30, drawCalls: 2 }; h.tick(31);
+  assert.equal(h.q().settledFrameMs, 30);
+});

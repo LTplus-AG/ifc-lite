@@ -9,7 +9,8 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -115,9 +116,40 @@ export function treeDigest(root) {
   return { files: lines.length, sha256: createHash('sha256').update(lines.join('\n')).digest('hex') };
 }
 
+/** Refuse a port something already listens on: a healthy foreign preview there would answer the readiness probe. */
+export function assertPortFree(port, host = '127.0.0.1') {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', error => reject(error.code === 'EADDRINUSE'
+      ? new Error(`port ${port} on ${host} is already in use; refusing to measure a server this runner did not start`) : error));
+    probe.listen(port, host, () => probe.close(() => resolve()));
+  });
+}
+
+/** Linux: does process `pid` hold a LISTEN socket on `port`? (Matches /proc/net/tcp{,6} inodes to the pid's fds.) */
+export function ownsListeningPort(pid, port) {
+  const inodes = new Set();
+  for (const file of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    let text;
+    try { text = readFileSync(file, 'utf8'); } catch { continue; }
+    for (const line of text.split('\n').slice(1)) {
+      const field = line.trim().split(/\s+/);
+      if (field.length > 9 && field[3] === '0A' && parseInt(field[1].split(':')[1], 16) === port) inodes.add(field[9]);
+    }
+  }
+  if (!inodes.size) return false;
+  try {
+    for (const fd of readdirSync(`/proc/${pid}/fd`)) {
+      try { const inode = readlinkSync(`/proc/${pid}/fd/${fd}`).match(/^socket:\[(\d+)\]$/)?.[1]; if (inode && inodes.has(inode)) return true; } catch { /* fd closed */ }
+    }
+  } catch { return false; }
+  return false;
+}
+
 /** `vite preview` of an arm's e2e build with the staged engine, as playwright.config.ts starts it. */
 export async function startPreview(arm, port, { ready = 90000 } = {}) {
   const cwd = join(arm.checkout, 'apps/viewer');
+  await assertPortFree(port);
   const child = spawn(join(cwd, 'node_modules/.bin/vite'), ['preview', '--port', String(port), '--strictPort', '--host', '127.0.0.1'], {
     cwd, env: { ...process.env, BROWSER: 'none', VITE_RETAINED_GEOMETRY: 'on', IFCLITE_RETAINED_ENGINE: arm.engine }, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
@@ -140,7 +172,12 @@ export async function startPreview(arm, port, { ready = 90000 } = {}) {
     for (;;) {
       if (spawnError) throw spawnError;
       if (child.exitCode !== null) throw new Error(`vite preview exited (${child.exitCode}): ${log.slice(-800)}`);
-      try { if ((await fetch(`${origin}/`, { signal: AbortSignal.timeout(1000) })).ok) break; } catch { /* not listening yet */ }
+      try {
+        // Ready only when OUR child holds the port (where /proc can say so) and is still alive: the pre-spawn
+        // check cannot see a listener that appears between it and the spawn, and a strict-port failure exits.
+        if ((await fetch(`${origin}/`, { signal: AbortSignal.timeout(1000) })).ok && child.exitCode === null && child.signalCode === null
+            && (!existsSync('/proc/net/tcp') || (child.pid !== undefined && ownsListeningPort(child.pid, port)))) break;
+      } catch { /* not listening yet */ }
       if (spawnError) throw spawnError;
       if (Date.now() > deadline) throw new Error(`vite preview not ready: ${log.slice(-800)}`);
       await new Promise(r => setTimeout(r, 25));

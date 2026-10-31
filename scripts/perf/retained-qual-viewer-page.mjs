@@ -43,7 +43,13 @@ function install(key) {
     const m = model(state), now = performance.now();
     const rg = m?.retainedGeometry;
     if (q.firstProductMs === null && q.loadChangeMs !== null && rg && rg.published > 0 && (m.geometryResult?.meshes?.length ?? 0) > 0) q.firstProductMs = now;
-    if (q.terminalMs === null && q.firstProductMs !== null && !state.loading && m.loadState === 'complete' && rg && rg.completeness !== 'running') q.terminalMs = now;
+    if (q.terminalMs === null && q.firstProductMs !== null && !state.loading && m?.loadState === 'complete' && rg && rg.completeness !== 'running') {
+      q.terminalMs = now;
+      // The pre-terminal byte baseline, taken once here so the per-tick scene walk can wait for terminal.
+      if (q.firstRetainedFrameMs !== null) {
+        try { lastBytes = gpuBytes(host.__ifc_lite_render_stats__?.()); } catch (error) { lastBytes = -2; q.errors.push(String(error)); }
+      }
+    }
   };
   const observe = () => {
     q.ticks++;
@@ -57,8 +63,10 @@ function install(key) {
         q.firstRetainedFrameMs = frame.timestamp;
         q.drawCallsAtFirstFrame = frame.drawCalls;
       }
-      // Scene accounting is unbounded in scene size: only read it AFTER capture.
+      // Scene accounting is unbounded in scene size: only read it AFTER capture, and not before
+      // terminal (onStore takes the baseline then), so it cannot add long tasks to the load interval.
       if (q.firstRetainedFrameMs === null) return;
+      if (q.terminalMs === null) { lastFrame = frame; return; }
       const bytes = gpuBytes(host.__ifc_lite_render_stats__?.());
       if (q.terminalMs !== null && q.firstRetainedFrameMs !== null && q.settledFrameMs === null && frame
           && frame !== lastFrame && frame.timestamp > Math.max(q.terminalMs, q.firstRetainedFrameMs) && frame.drawCalls > 0 && bytes === lastBytes) {

@@ -113,3 +113,29 @@ test('8413: unresolved launch cleanup is bounded and marks the run unsafe to con
     } }), error => error.cleanupFailed === true && /cleanup/.test(error.message));
   } finally { rmSync(profile, { recursive: true, force: true }); }
 });
+
+test('8413: a port something already listens on is refused before any preview is spawned', async () => {
+  const { startPreview, assertPortFree } = await import('./retained-qual-browser.mjs');
+  const { createServer } = await import('node:net');
+  const squatter = createServer();
+  await new Promise(resolve => squatter.listen(0, '127.0.0.1', resolve));
+  const { port } = squatter.address();
+  try {
+    await assert.rejects(assertPortFree(port), /already in use/);
+    // The checkout is missing: reaching spawn would be ENOENT, so a "in use" error proves nothing was spawned.
+    await assert.rejects(startPreview({ checkout: '/missing-8413', engine: '/unused' }, port, { ready: 1000 }), /already in use/);
+  } finally { await new Promise(resolve => squatter.close(resolve)); }
+});
+
+test('8413: ownsListeningPort tells a listener from a bystander', { skip: process.platform !== 'linux' && 'Linux /proc only' }, async () => {
+  const { ownsListeningPort } = await import('./retained-qual-browser.mjs');
+  const { spawn } = await import('node:child_process');
+  const child = spawn(process.execPath, ['-e', `const s = require('node:net').createServer().listen(0, '127.0.0.1', () => console.log(s.address().port)); setInterval(() => {}, 1000)`],
+    { stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const port = Number(await new Promise(resolve => child.stdout.once('data', chunk => resolve(String(chunk).trim()))));
+    assert.equal(ownsListeningPort(child.pid, port), true);
+    assert.equal(ownsListeningPort(process.pid, port), false, 'another process does not own it');
+    assert.equal(ownsListeningPort(child.pid, port === 1 ? 2 : 1), false);
+  } finally { child.kill(); }
+});

@@ -92,3 +92,10 @@ test('8413: a complete one-arm cohort remains a valid report-only observation', 
     assert.equal(cli.status, 0, cli.stderr);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('8413: a change confined to longTaskMs is a column and a real movement', () => {
+  const only = (side, v) => rows(side, [v, v, v], { totalMs: 10, longTaskMs: v });
+  const report = compare([...only('base', 100), ...only('branch', 160)]);
+  assert.equal(column(report, 'longTaskMs').real, true);
+  assert.equal(column(report, 'longTaskMs').direction, 'higher');
+});

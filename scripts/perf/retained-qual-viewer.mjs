@@ -22,10 +22,10 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, resetPartial, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
-import { assertMilestones, assertViewerRetained } from './retained-qual-assert.mjs';
+import { assertBrowserTree, assertMilestones, assertViewerRetained } from './retained-qual-assert.mjs';
 import { INIT_SCRIPT, PAGE_KEY } from './retained-qual-viewer-page.mjs';
 import { deviceLossCount, gpuIdentity, isSoftwareAdapter, launchFresh, raceWithTimeout, servedManifestSha256,
   startPreviews, treeDigest, userAgentMemory } from './retained-qual-browser.mjs';
@@ -85,6 +85,7 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
     if (losses > 0) throw new Error(`WebGPU device lost ${losses} time(s) during the sample; contaminated`);
     if (options['require-hardware-gpu'] && row.softwareAdapter) throw new Error(`software WebGPU adapter ${JSON.stringify(adapter)} under --require-hardware-gpu`);
     if (options['require-ua-memory'] && ua.bytes === null) throw new Error(`measureUserAgentSpecificMemory unavailable: ${ua.reason}`);
+    assertBrowserTree(memory);
     assertViewerRetained({ state, requests: browser.requests, spans: state.spans, expectation,
       servedManifestSha256: await servedManifestSha256(preview.origin), expectedManifestSha256: arm.identity.engine.manifestSha256 });
     // The origin is the file input's `change` (canonical loadFile invocation); the trace start rides along as a cross-check.
@@ -118,6 +119,7 @@ export async function runViewerCohort({ arms, fixtures, rounds, options, expecta
   let previews = new Map();
   const rows = [];
   let order;
+  resetPartial(out);
   try {
     previews = await start(arms, base);
     order = await roundSides(arms, rounds, options.seed === undefined ? undefined : Number(options.seed));

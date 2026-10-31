@@ -236,3 +236,86 @@ test('8413: browser process sampling includes a transient initialization RSS/PSS
     assert.equal(stopped && closed, true, 'sampler and browser are cleaned up');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('8413: a CLI command that cannot spawn is a failed row, not a process crash', async () => {
+  const { cliSample } = await import('./retained-qual-cli.mjs');
+  const row = await cliSample({ arm: { side: 'branch', checkout: '/missing-8413-checkout', engine: '/unused', identity: { engine: { manifestSha256: 'x' } } },
+    fixture: { path: '/a.ifc' }, round: 1, options: {} });
+  assert.equal(row.ok, false); assert.match(row.error, /ENOENT/);
+});
+
+test('8413: a reused --out starts with an empty runs.partial.jsonl', async () => {
+  const { resetPartial } = await import('./retained-qual-lib.mjs');
+  const { readFileSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'qual-partial-'));
+  try {
+    writeFileSync(join(dir, 'runs.partial.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
+    resetPartial(join(dir, 'fresh'));
+    resetPartial(dir);
+    assert.equal(readFileSync(join(dir, 'runs.partial.jsonl'), 'utf8'), '');
+    const { runViewerCohort } = await import('./retained-qual-viewer.mjs');
+    writeFileSync(join(dir, 'runs.partial.jsonl'), '{"side":"base","path":"/old.ifc"}\n');
+    await runViewerCohort({ arms: [{ side: 'branch' }], fixtures: [{ path: '/a.ifc' }], rounds: 1, options: {}, expectations: {}, out: dir,
+      start: async () => { throw new Error('no preview'); } });
+    assert.doesNotMatch(readFileSync(join(dir, 'runs.partial.jsonl'), 'utf8'), /old\.ifc/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('8413: native time files are per-sample, and memory peaks aggregate across every model', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qual-native-models-'));
+  try {
+    const multi = { ...summary, models: [{ retained: { processMaxRssKiB: 100, childrenMaxRssKiB: 10, restarts: 1 } },
+      { retained: { processMaxRssKiB: 300, childrenMaxRssKiB: null, restarts: 2 } }] };
+    const source = `const fs = require('node:fs'); const out = process.argv[2];
+      fs.mkdirSync(out, {recursive:true}); fs.writeFileSync(out + '/summary.json', ${JSON.stringify(JSON.stringify(multi))});
+      setTimeout(() => {}, 120);`;
+    const run = name => nativeSample({ command: [process.execPath, '-e', source, '--', '--out', join(dir, name)],
+      summaryPath: join(dir, name, 'summary.json'), workerName: 'node', intervalMs: 5 });
+    const [a, b] = await Promise.all([run('a'), run('b')]); // same millisecond, same pid
+    for (const row of [a, b]) {
+      assert.equal(row.ok, true, row.error);
+      assert.equal(row.harnessProcessMaxRssKiB, 300);
+      assert.equal(row.harnessChildrenMaxRssKiB, 10);
+      assert.equal(row.harnessRestarts, 3);
+      assert.ok(Number.isFinite(row.executableMaxRssKiB), 'each sample read its own /usr/bin/time output');
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('8413: browser initialization that never settles ends at --timeout-ms and still cleans up', async () => {
+  const { browserMemorySample } = await import('./retained-qual-browser-memory.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'qual-init-hang-'));
+  let evaluations = 0, stopped = 0, closed = false;
+  const page = { goto: async () => {}, evaluate: () => (++evaluations === 1 ? Promise.resolve('test browser') : new Promise(() => {})) };
+  try {
+    writeFileSync(join(dir, 'engine-manifest.json'), '{}');
+    const row = await browserMemorySample({ arm: { side: 'branch', identity: { engine: { directory: dir, manifestSha256: 'x' } } },
+      fixture: { path: join(dir, 'model.ifc') }, round: 1, options: { 'timeout-ms': 40 },
+      launcher: async () => ({ page, profileDir: dir, pageErrors: [], close: async () => { closed = true; return null; } }),
+      sample: () => ({ stop: () => { stopped++; return null; } }) });
+    assert.equal(row.ok, false); assert.match(row.error, /initialization timed out after 40 ms/);
+    assert.ok(stopped >= 1 && closed, 'sampler stopped and browser closed');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('8413: a browser sample whose process tree was never observed is a failed row', async () => {
+  const { browserMemorySample } = await import('./retained-qual-browser-memory.mjs');
+  const { createHash } = await import('node:crypto');
+  const dir = mkdtempSync(join(tmpdir(), 'qual-no-tree-'));
+  const manifest = '{}';
+  let evaluations = 0;
+  const page = { goto: async () => {}, evaluate: async () => {
+    if (++evaluations === 1) return 'test browser';
+    if (evaluations === 2) return;
+    return { importMs: 1, runMs: 1, started: true, startCandidates: 1, errors: [], tally: { published: 1, refused: 0, meshes: 1 },
+      summary: { candidates: 1, published: 1, refused: 0 }, uaBefore: { bytes: null }, uaAfter: { bytes: null } };
+  } };
+  try {
+    writeFileSync(join(dir, 'engine-manifest.json'), manifest);
+    const row = await browserMemorySample({ arm: { side: 'branch', identity: { engine: { directory: dir, manifestSha256: createHash('sha256').update(manifest).digest('hex') } } },
+      fixture: { path: join(dir, 'model.ifc') }, round: 1, options: {},
+      launcher: async () => ({ page, profileDir: dir, pageErrors: [], close: async () => null }),
+      sample: () => startSampler(null, { intervalMs: 5, profileDir: '/no/such profile', pss: true }) });
+    assert.equal(row.ok, false); assert.match(row.error, /no Chrome process/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

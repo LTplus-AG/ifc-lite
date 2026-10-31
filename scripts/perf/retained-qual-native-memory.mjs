@@ -26,7 +26,6 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { engineIdentity, exclusivity, gitIdentity, hostIdentity, parseArgs, SCHEMA, sha256File, unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
@@ -47,7 +46,7 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
   const measuredCommand = [...command];
   measuredCommand[outAt + 1] = childOut;
   summaryPath = join(childOut, 'summary.json');
-  const timeFile = join(tmpdir(), `retained-qual-native-${process.pid}-${Date.now()}.time`);
+  const timeFile = join(runDir, 'time.txt'); // runDir is unique per sample (mkdtemp)
   const started = process.hrtime.bigint();
   const child = spawn('/usr/bin/time', ['-v', '-o', timeFile, ...measuredCommand], { stdio: ['ignore', 'inherit', 'inherit'] });
   const sampler = startSampler(child.pid, { intervalMs, include: info => info.exe === workerName });
@@ -66,14 +65,19 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
     const summary = existsSync(summaryPath) ? JSON.parse(readFileSync(summaryPath, 'utf8')) : null;
     assertNativeSummary({ exitCode: row.exitCode, summary, expectation });
     if (workers.processes === 0) throw new Error('native: no SMLib worker process was observed; the retained worker was not demonstrably used (sampling can miss short runs)');
+    // retained_compare writes one `models` entry per requested model in this one process; getrusage
+    // figures are process-lifetime high waters, so the row takes the largest entry (restarts are summed).
+    const models = Array.isArray(summary.models) ? summary.models : [];
+    const maxKiB = key => { const values = models.map(m => m.retained?.[key]).filter(Number.isFinite); return values.length ? Math.max(...values) : null; };
+    const restarts = models.map(m => m.retained?.restarts).filter(Number.isFinite);
     Object.assign(row, { ok: true, summarySha256: await sha256File(summaryPath), summaryBytes: statSync(summaryPath).size,
       candidates: summary.candidates, published: summary.published, byCode: summary.byCode, modelsRequested: summary.modelsRequested,
       retainedMs: summary.retained.milliseconds ?? null, productMs: summary.retained.productMilliseconds ?? null,
       startupAndQualificationMs: summary.retained.startupAndQualificationMilliseconds ?? null, exactMs: summary.exact?.milliseconds ?? null,
-      harnessRestarts: summary.models?.[0]?.retained?.restarts ?? null,
+      harnessRestarts: restarts.length ? restarts.reduce((a, b) => a + b, 0) : null,
       // getrusage process-lifetime high water; children = reaped workers only, so null/zero is not "no worker use".
-      harnessProcessMaxRssKiB: summary.models?.[0]?.retained?.processMaxRssKiB ?? null,
-      harnessChildrenMaxRssKiB: summary.models?.[0]?.retained?.childrenMaxRssKiB ?? null });
+      harnessProcessMaxRssKiB: maxKiB('processMaxRssKiB'),
+      harnessChildrenMaxRssKiB: maxKiB('childrenMaxRssKiB') });
   } catch (error) { row.error = error instanceof Error ? error.message : String(error); }
   // Keep successful child artifacts for inspection; failed runs remain evidence too.
   row.childOutput = childOut;

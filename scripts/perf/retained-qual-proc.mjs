@@ -22,6 +22,20 @@ export function commandLine(pid) {
   return raw === null ? null : splitCommandLine(raw);
 }
 
+/**
+ * Does a raw cmdline carry `--user-data-dir=<profileDir>`? Matched on the raw text, not on
+ * split tokens: a profile under a TMPDIR containing a space is one NUL-delimited argument,
+ * and splitting on whitespace would cut it in half and never match.
+ */
+export function namesProfile(raw, profileDir) {
+  const needle = `--user-data-dir=${profileDir}`;
+  for (let at = raw.indexOf(needle); at >= 0; at = raw.indexOf(needle, at + 1)) {
+    const next = raw[at + needle.length];
+    if (next === undefined || /[\0\s]/.test(next)) return true;
+  }
+  return false;
+}
+
 export function children(pid) {
   let out = [];
   try {
@@ -49,8 +63,8 @@ export function processSet(root) {
 export function findProfileRoot(profileDir) {
   for (const entry of readdirSync('/proc')) {
     if (!/^\d+$/.test(entry)) continue;
-    const argv = commandLine(entry);
-    if (argv?.includes(`--user-data-dir=${profileDir}`) && !argv.some(a => a.startsWith('--type='))) return Number(entry);
+    const raw = read(`/proc/${entry}/cmdline`);
+    if (raw !== null && namesProfile(raw, profileDir) && !splitCommandLine(raw).some(a => a.startsWith('--type='))) return Number(entry);
   }
   return null;
 }

@@ -90,3 +90,13 @@ test('8413: native timing must contain a finite nonnegative numeric duration', (
   // Zero is a measured value at the clock's resolution, unlike an absent duration.
   for (const milliseconds of [0, 0.5, 10]) assertNativeSummary({ exitCode: 0, summary: { ...summary, retained: { milliseconds } } });
 });
+
+test('8413: a browser sample with no observed process memory fails instead of recording nulls', async () => {
+  const { assertBrowserTree } = await import('./retained-qual-assert.mjs');
+  const tree = { processes: 2, maxObservedConcurrentRssKiB: 100, maxIndividualHwmKiB: 80, maxObservedConcurrentPssKiB: null };
+  assertBrowserTree(tree); // PSS may stay null: reads can be unavailable
+  assert.throws(() => assertBrowserTree({ processes: 0, maxObservedConcurrentRssKiB: null, maxIndividualHwmKiB: null }), /no Chrome process/);
+  assert.throws(() => assertBrowserTree({ ...tree, maxObservedConcurrentRssKiB: null }), /concurrent RSS/);
+  assert.throws(() => assertBrowserTree({ ...tree, maxIndividualHwmKiB: null }), /VmHWM/);
+  assert.throws(() => assertBrowserTree(null), /browser memory/);
+});

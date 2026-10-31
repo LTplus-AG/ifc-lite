@@ -23,6 +23,18 @@ function counts(problems, summary, expectation) {
   }
 }
 
+/**
+ * A browser sample must have observed its Chrome process tree. No process found (or no RSS/HWM
+ * read from it) means no process-memory measurement, which is a failed sample, never a null success.
+ */
+export function assertBrowserTree(tree) {
+  const problems = [];
+  check(problems, tree && tree.processes > 0, `no Chrome process for the sample profile was observed (processes=${tree?.processes})`);
+  check(problems, Number.isFinite(tree?.maxObservedConcurrentRssKiB), 'no concurrent RSS was read from the browser process tree');
+  check(problems, Number.isFinite(tree?.maxIndividualHwmKiB), 'no VmHWM was read from the browser process tree');
+  if (problems.length) throw new Error(`browser memory: ${problems.join('; ')}`);
+}
+
 /** The viewer store's published count and kernel, plus the network and trace evidence. */
 export function assertViewerRetained({ state, requests, spans, servedManifestSha256, expectedManifestSha256, expectation }) {
   const problems = [], summary = state?.summary;

@@ -106,8 +106,8 @@ fixtures [{path, bytes, sha256}], order, rounds, samples, rows, failures, summar
 {<side>/<path>: {columns: {col: {n, median, min, max, spreadPct}}}}
 ```
 
-The viewer runner records per-row GPU adapter, browser version, `softwareAdapter`, `webgpuDeviceLosses`, worker
-count (`hardwareConcurrency`), fixture hash and served-dist digest are recorded. A
+The viewer runner records per-row GPU adapter, browser version, `softwareAdapter`, `webgpuDeviceLosses`, the
+browser-reported logical processor count (`hardwareConcurrency`; not an observed worker count), fixture hash and served-dist digest are recorded. A
 software adapter (SwiftShader) is named; viewer `--require-hardware-gpu` refuses it.
 Browser-memory does not record adapter/software/device-loss fields and does not
 support `--require-hardware-gpu`.

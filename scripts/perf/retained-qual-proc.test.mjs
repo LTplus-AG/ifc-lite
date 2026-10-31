@@ -55,3 +55,23 @@ test('a Chrome-style rewritten title (one space-joined string) and a NUL-separat
   assert.deepEqual(splitCommandLine('/opt/chrome\0--user-data-dir=/tmp/p1\0--no-sandbox\0'), ['/opt/chrome', '--user-data-dir=/tmp/p1', '--no-sandbox']);
   assert.deepEqual(splitCommandLine(''), []);
 });
+
+test('8413: a profile under a TMPDIR with a space still names its browser (NUL-delimited and space-joined)', async () => {
+  const { namesProfile } = await import('./retained-qual-proc.mjs');
+  const dir = '/tmp/perf runs/retained-qual-profile-abc';
+  assert.equal(namesProfile(`/opt/chrome\0--user-data-dir=${dir}\0--no-sandbox\0`, dir), true);
+  assert.equal(namesProfile(`/opt/chrome --user-data-dir=${dir} --no-sandbox`, dir), true);
+  assert.equal(namesProfile(`/opt/chrome\0--user-data-dir=${dir}`, dir), true);
+  assert.equal(namesProfile(`/opt/chrome\0--user-data-dir=${dir}0\0`, dir), false, 'a longer sibling path is a different profile');
+  assert.equal(namesProfile('/opt/chrome\0--user-data-dir=/tmp/perf\0runs\0', dir), false);
+});
+
+test('8413: findProfileRoot matches a live process whose profile path contains a space', { skip: !linux && 'Linux /proc only' }, async () => {
+  const { findProfileRoot } = await import('./retained-qual-proc.mjs');
+  const dir = `/tmp/perf runs ${process.pid}-${Date.now()}`;
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', '--', `--user-data-dir=${dir}`], { stdio: 'ignore' });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.equal(findProfileRoot(dir), child.pid);
+  } finally { child.kill(); }
+});

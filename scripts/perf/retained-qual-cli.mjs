@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, resetPartial, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertCliRetained } from './retained-qual-assert.mjs';
@@ -37,7 +37,7 @@ function head(path, bytes = 4096) {
 
 /** Run one command to completion under /usr/bin/time -v with the process-tree sampler; times with hrtime. */
 function timedRun(argv, cwd, scratch, name) {
-  return new Promise(resolveRun => {
+  return new Promise((resolveRun, rejectRun) => {
     const timeFile = join(scratch, `${name}.time`);
     const command = TIME ? [TIME, '-v', '-o', timeFile, ...argv] : argv;
     const started = process.hrtime.bigint();
@@ -46,7 +46,15 @@ function timedRun(argv, cwd, scratch, name) {
     child.stdout.on('data', c => { stdout += c; });
     child.stderr.on('data', c => { stderr += c; });
     const sampler = startSampler(child.pid, { intervalMs: 50 });
+    let settled = false;
+    // A command that cannot be spawned emits `error` (and may still emit `close`): reject once so cliSample records a failed row.
+    child.on('error', error => {
+      if (settled) return;
+      settled = true; sampler.stop(); rejectRun(error);
+    });
     child.on('close', (exitCode, signal) => {
+      if (settled) return;
+      settled = true;
       const totalMs = Number(process.hrtime.bigint() - started) / 1e6;
       const memory = sampler.stop();
       let maxRssKiB = null;
@@ -107,6 +115,7 @@ export async function main(argv) {
   const order = await roundSides(arms, rounds, options.seed === undefined ? undefined : Number(options.seed));
   result.order = order;
   const rows = [];
+  resetPartial(out);
   for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
     console.log(`retained-qual-cli: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
     const row = await cliSample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: pinFor(expectations, side, fixture) });

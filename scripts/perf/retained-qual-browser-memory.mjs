@@ -23,10 +23,10 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, roundSides, sha256File, summarizeRows,
+import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, resetPartial, roundSides, sha256File, summarizeRows,
   unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
-import { assertBrowserSession } from './retained-qual-assert.mjs';
+import { assertBrowserSession, assertBrowserTree } from './retained-qual-assert.mjs';
 import { launchFresh, raceWithTimeout } from './retained-qual-browser.mjs';
 
 const COLUMNS = ['importMs', 'runMs', 'wasmHeapMaxObservedBytes', 'uaAfterBytes', 'browserPeakHwmKiB', 'browserPeakConcurrentPssKiB'];
@@ -54,12 +54,14 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
     // Import/instantiate is included in importMs, so its process peaks belong
     // to this sample too. finally stops the sampler if initialization fails.
     sampler = sample(null, { intervalMs: 100, profileDir: browser.profileDir, pss: true });
-    await page.evaluate(async () => {
+    // Bounded by the same --timeout-ms as the run: a pending import or wasm init must reach cleanup.
+    const timeoutMs = Number(options['timeout-ms'] ?? 900000);
+    await raceWithTimeout(page.evaluate(async () => {
       window.harness = await import('/harness/retained-qual-browser-memory-page.mjs');
       await window.harness.initialize();
-    });
+    }), timeoutMs, 'retained module initialization');
     const run = await raceWithTimeout(page.evaluate(url => window.harness.runModel(url), `/model/${encodeURIComponent(basename(fixture.path))}`),
-      Number(options['timeout-ms'] ?? 900000), 'retained session');
+      timeoutMs, 'retained session');
     const tree = sampler.stop(); sampler = null;
     const served = await (await fetch(`${origin}/engine/engine-manifest.json`)).arrayBuffer();
     const servedManifestSha256 = createHash('sha256').update(Buffer.from(served)).digest('hex');
@@ -75,6 +77,7 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
     if (options['require-ua-memory'] && (run.uaAfter.bytes === null || run.uaBefore.bytes === null)) {
       throw new Error(`measureUserAgentSpecificMemory unavailable: ${run.uaAfter.reason ?? run.uaBefore.reason}`);
     }
+    assertBrowserTree(tree);
     assertBrowserSession({ run, expectation, servedManifestSha256, expectedManifestSha256: arm.identity.engine.manifestSha256 });
     Object.assign(row, { ok: true, candidates: run.summary.candidates, published: run.summary.published, refused: run.summary.refused,
       meshes: run.tally.meshes, restarts: run.summary.restarts });
@@ -111,6 +114,7 @@ export async function main(argv) {
   const order = await roundSides(arms, rounds, options.seed === undefined ? undefined : Number(options.seed));
   result.order = order;
   const rows = [];
+  resetPartial(out);
   samples: for (let round = 1; round <= rounds; round++) for (const side of order[round - 1]) for (const fixture of fixtures) {
     console.log(`retained-qual-browser-memory: ${side} ${basename(fixture.path)} round ${round}/${rounds}`);
     const row = await browserMemorySample({ arm: arms.find(a => a.side === side), fixture, round, options, expectation: pinFor(expectations, side, fixture) });

@@ -168,6 +168,12 @@ export function exclusivity(options, env = process.env) {
 }
 
 /** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */
+/** Start `runs.partial.jsonl` empty: a reused --out must not carry a previous run's rows into this one. */
+export function resetPartial(out) {
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, 'runs.partial.jsonl'), '');
+}
+
 export function writeResult(out, result, rows) {
   if (Number.isInteger(result.rounds) && result.rounds > 0 && result.arms && result.fixtures) {
     const expected = result.rounds * result.arms.length * result.fixtures.length;

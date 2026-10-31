@@ -130,6 +130,9 @@ test('#6961 the headline never reads as a pass without one', async () => {
   assert.doesNotMatch(renderMarkdown(verdict), /No group regressed/);
   // A clean result still says so.
   assert.match(renderMarkdown(fieldVerdict(people(5, 1.02))), /No group regressed/);
+  // Nor does a clean group hide one too thin to judge.
+  const partial = renderMarkdown(fieldVerdict([...people(5, 1.02), ...paired('thin', 2, { journey: 'J4' })]));
+  assert.match(partial, /No group regressed .* 1 group\(s\) had too few paired people to judge\./);
 });
 
 test('#6961 a group inside the band is flat, and no paired cell says so plainly', async () => {

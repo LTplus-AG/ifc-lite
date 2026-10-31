@@ -212,13 +212,15 @@ export function renderMarkdown(verdict, { build } = {}) {
       : undecided > 0
       ? `**Undecided:** no group is confirmed regressed, but ${undecided} group(s) are slower than the threshold with a 99% interval that includes 1 (not a pass).`
       : `No group regressed (speed threshold ${verdict.threshold}, 99% interval, at least ${verdict.minPersons} paired people).`;
+  const thin = judged.filter((g) => g.status === 'insufficient').length;
+  const coverage = thin > 0 && thin < judged.length ? ` ${thin} group(s) had too few paired people to judge.` : '';
   const control = verdict.controlMoved.length > 0
     ? [`**Treat load results as suspect in ${verdict.controlMoved.map((g) => g.journey).join(', ')}:** \`file_read_ms\` moved, and it barely depends on the app.`, '']
     : [];
   return [
     `### ${title}`,
     '',
-    headline,
+    `${headline}${coverage}`,
     '',
     ...control,
     `Paired ratio = median(recent) / median(baseline) per (person, model) cell, baseline window and \`${verdict.baselineArm}\` arm only; each person's median, then the median across people; speed = 1 / ratio. Method: \`scripts/perf/README.md\`, "Reading the FIELD telemetry".`,

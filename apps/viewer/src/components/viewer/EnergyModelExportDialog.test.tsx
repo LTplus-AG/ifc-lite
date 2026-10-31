@@ -315,3 +315,31 @@ describe('EnergyModelExportDialog dismissal during an active export', () => {
     assert.equal(dialogIsOpen(), false, 'Escape must still close an idle dialog');
   });
 });
+
+describe('EnergyModelExportDialog retained-kernel models (#7955)', () => {
+  beforeEach(() => {
+    unmountAll();
+    useViewerStore.setState({ models: new Map([['model-1', {
+      ...makeModel(),
+      retainedGeometry: { kernel: 'retained', candidates: 1, started: true, published: 1, refused: [], cancelled: 0,
+        obligationsUnmet: [], completeness: 'complete' },
+    }]]) });
+  });
+
+  for (const format of ['HBJSON', 'DFJSON'] as const) {
+    it(`refuses ${format}: the exact engine would rebuild different geometry from the file`, async () => {
+      const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+      const hbjson = mock.method(GeometryProcessor.prototype, 'exportHbjsonWithStats', () => null);
+      const dfjson = mock.method(GeometryProcessor.prototype, 'exportDfjson', () => null);
+      try {
+        await clickExport(renderDialog(), format);
+        assert.equal(hbjson.mock.callCount() + dfjson.mock.callCount(), 0, 'no exact energy exporter may run');
+        assert.match(document.body.textContent ?? '', new RegExp(`${format} export rebuilds its geometry from the file with the exact engine`));
+      } finally {
+        initMock.mock.restore();
+        hbjson.mock.restore();
+        dfjson.mock.restore();
+      }
+    });
+  }
+});

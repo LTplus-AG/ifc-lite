@@ -8,7 +8,6 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-license-file.workspace = true
 repository.workspace = true
 description = "Bounded pull-parser ingestion for LandXML terrain sources"
 keywords = ["landxml", "terrain", "tin", "xml", "aec"]

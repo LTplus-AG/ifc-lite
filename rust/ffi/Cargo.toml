@@ -8,7 +8,6 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-license-file.workspace = true
 repository.workspace = true
 description = "C FFI bindings for ifc-lite — native DLL for in-process IFC parsing"
 

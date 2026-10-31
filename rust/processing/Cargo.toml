@@ -8,7 +8,6 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-license-file.workspace = true
 repository.workspace = true
 description = "Shared IFC processing pipeline and types used by server and FFI"
 keywords = ["ifc", "bim", "geometry", "pipeline", "aec"]

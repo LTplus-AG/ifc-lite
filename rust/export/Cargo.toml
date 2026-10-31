@@ -5,7 +5,6 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-license-file.workspace = true
 repository.workspace = true
 description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos)."
 

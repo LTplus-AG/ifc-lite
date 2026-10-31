@@ -178,3 +178,25 @@ test('the ordering check can actually see a violation', () => {
       `deleting it leaves the ordering test unable to fail.`
   );
 });
+
+test('every published crate shows the SPDX licence and packs a byte-identical LICENSE (no license-file)', () => {
+  // `license` and `license-file` together make `cargo publish` warn. crates.io shows
+  // the SPDX expression, and the MPL text travels as a LICENSE file in the crate dir.
+  const dirs = crateDirs();
+  const rootLicense = readFileSync(join(ROOT, 'LICENSE'));
+  const workspace = readFileSync(join(ROOT, 'Cargo.toml'), 'utf8');
+  assert.match(workspace, /^license = "MPL-2\.0"$/m, 'workspace must declare the SPDX licence');
+  assert.doesNotMatch(workspace, /^license-file\b/m, 'workspace must not set license-file next to license');
+
+  const problems = [];
+  for (const crate of publishOrder()) {
+    const dir = join(ROOT, 'rust', dirs.get(crate));
+    const manifest = readFileSync(join(dir, 'Cargo.toml'), 'utf8');
+    if (!/^license\.workspace = true$/m.test(manifest)) problems.push(`${crate}: must inherit license.workspace`);
+    if (/^license-file\b/m.test(manifest)) problems.push(`${crate}: sets license-file (cargo publish warns)`);
+    const copy = join(dir, 'LICENSE');
+    if (!existsSync(copy)) problems.push(`${crate}: missing LICENSE copy`);
+    else if (!readFileSync(copy).equals(rootLicense)) problems.push(`${crate}: LICENSE differs from the repository LICENSE`);
+  }
+  assert.deepEqual(problems, []);
+});

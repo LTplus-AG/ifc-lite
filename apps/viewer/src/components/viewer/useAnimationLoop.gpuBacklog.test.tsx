@@ -60,6 +60,8 @@ interface FakeRendererState {
   renderRequested: boolean;
   animating?: boolean;
   frames?: RenderOptions[];
+  /** the renderer skipped the frame (device lost, contained failure): nothing reached the queue */
+  skipsFrames?: boolean;
 }
 
 function fakeRenderer(state: FakeRendererState): Renderer {
@@ -92,9 +94,12 @@ function fakeRenderer(state: FakeRendererState): Renderer {
     requestRender: () => { state.renderRequested = true; },
     clearCaches: () => {},
     getModelBounds: () => null,
-    render: (options: RenderOptions) => {
+    renderWithResult: (options: RenderOptions) => {
       state.frames?.push(options);
       state.renderCalls++;
+      if (state.skipsFrames) return false;
+      // A submitted frame owes the page a completion, as the real queue.submit does.
+      return true;
     },
   } as unknown as Renderer;
 }
@@ -247,7 +252,15 @@ describe('useAnimationLoop — GPU frame backlog (#5865)', () => {
     assert.equal(state.renderCalls, GPU_FRAMES_IN_FLIGHT + 1);
   });
 
-  it('releases a loop whose completions never settle once the expiry has passed (hidden tab, lost device)', async () => {
+  it('does not count a frame the renderer skipped as one the GPU owes', async () => {
+    const state: FakeRendererState = { renderCalls: 0, renderRequested: false, animating: true, gpuDone: [], gpuFail: [], skipsFrames: true };
+    await mount(baseParams(fakeRenderer(state)));
+    for (let i = 0; i < 10; i++) step();
+    assert.equal(state.renderCalls, 10, 'a skipped frame never saturates the pacer, so the loop keeps being offered frames');
+    assert.equal(state.gpuDone.length, 0, 'and no completion was requested for a frame that was never submitted');
+  });
+
+  it('refills one window per expiry when completions never settle: about 0.6 fps by design, queue stays bounded (hidden tab, lost device)', async () => {
     // rAF does not run in a hidden tab, so nothing is submitted meanwhile; what
     // is outstanding on return is either settled by then or expires.
     const state: FakeRendererState = { renderCalls: 0, renderRequested: false, animating: true, gpuDone: [], gpuFail: [] };

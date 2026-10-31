@@ -110,3 +110,20 @@ test('8413: expensive scene statistics never enter the first-frame interval', ()
   h.tick(20);
   assert.equal(h.q().firstRetainedFrameMs, 20);
 });
+
+test('8413: repeated observations of the upload frame cannot become a settled draw', () => {
+  const h = harness(); h.tick(1); h.change(2);
+  h.store$(10, { models: h.model({ published: 1, completeness: 'running' }, 1) });
+  h.renderer.frame = { timestamp: 15, drawCalls: 2 }; h.tick(16);
+  h.store$(20, { loading: false, models: h.model({ published: 1, completeness: 'complete' }, 1, 'complete') });
+  h.renderer.gpu = { batches: 200 };
+  h.renderer.frame = { timestamp: 25, drawCalls: 2 }; h.tick(26);
+  // On-demand rendering stops after the upload draw. Repeated ticks see its snapshot.
+  for (const at of [27, 28, 29]) {
+    h.tick(at);
+    assert.equal(h.q().settledFrameMs, null, 'no new completed renderer submission');
+  }
+  // A real completed submission produces a fresh snapshot, even at equal clock precision.
+  h.renderer.frame = { timestamp: 25, drawCalls: 2 }; h.tick(30);
+  assert.equal(h.q().settledFrameMs, 25);
+});

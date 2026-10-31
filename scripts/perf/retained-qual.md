@@ -70,7 +70,7 @@ which is the `loadFile` invocation; the load trace's own start rides along as
 | `sceneHeldMs` | upper bound on scene ownership: the first retained drawing frame's timestamp |
 | `firstRetainedFrameMs` | `FrameStats.timestamp` of the first completed drawing frame after retained publication in the fresh scene. Under `kernel=retained` every mesh is retained, so a draw call is a retained draw |
 | `terminalMs` | not loading, `loadState: 'complete'`, completeness not `running` |
-| `settledFrameMs` | first completed frame after `terminalMs` and the first frame that drew with resident GPU bytes unchanged since the previous tick. The renderer draws on demand, so it may not exist; the row then holds `null` and `settledNote`, never a guess |
+| `settledFrameMs` | first newly completed submission after `terminalMs` and the first frame, with resident GPU bytes unchanged since the previous tick; repeated reads of a cached frame do not qualify. The renderer draws on demand, so it may not exist; the row then holds `null` and `settledNote`, never a guess |
 
 Observe completed frames after each animation callback, using the renderer's own
 timestamp. No scene geometry is copied. Scene ownership is bounded by the drawn
@@ -150,3 +150,7 @@ complete/partial tree samples. Partial trees never count as a measured total.
 Cohort completeness is recorded in the result and portable JSONL provenance. An early
 stop reports `expected N, got M`; an incomplete cohort makes both the runner and
 reporter exit nonzero. Performance thresholds remain report-only.
+
+Browser process-tree sampling starts before retained WASM import/initialization and
+continues through model execution, so observed initialization peaks share the same
+measurement interval as `importMs` (shorter-than-interval peaks may still be missed).

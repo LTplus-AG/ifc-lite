@@ -17,7 +17,7 @@
 //                        callback so on-demand and continuous rendering cannot lose it.
 //   terminalMs           loadState 'complete', not loading, completeness != 'running'.
 //   settledFrameMs       the first completed frame after terminalMs and firstRetainedFrameMs
-//                        that drew, with resident GPU bytes unchanged since the previous tick
+//                        that drew a new submission, with resident GPU bytes unchanged since the previous tick
 //                        (no upload in flight): rendered complete geometry. The renderer
 //                        draws on demand, so a load whose last frame precedes terminalMs has
 //                        none; the driver then records null with a reason, never a guess.
@@ -38,7 +38,7 @@ function install(key) {
   } catch (error) { q.errors.push(`longtask: ${error}`); }
   const model = state => [...state.models.values()][0];
   const gpuBytes = stats => { const g = stats?.gpu; return g ? Object.values(g).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0) : -1; };
-  let subscribed = false, lastBytes = -2;
+  let subscribed = false, lastBytes = -2, lastFrame = null;
   const onStore = state => {
     const m = model(state), now = performance.now();
     const rg = m?.retainedGeometry;
@@ -61,9 +61,12 @@ function install(key) {
       if (q.firstRetainedFrameMs === null) return;
       const bytes = gpuBytes(host.__ifc_lite_render_stats__?.());
       if (q.terminalMs !== null && q.firstRetainedFrameMs !== null && q.settledFrameMs === null && frame
-          && frame.timestamp > Math.max(q.terminalMs, q.firstRetainedFrameMs) && frame.drawCalls > 0 && bytes === lastBytes) {
+          && frame !== lastFrame && frame.timestamp > Math.max(q.terminalMs, q.firstRetainedFrameMs) && frame.drawCalls > 0 && bytes === lastBytes) {
         q.settledFrameMs = frame.timestamp;
       }
+      // Renderer replaces this snapshot once per completed submission. A cached
+      // upload frame cannot become a stable draw merely by observing it again.
+      lastFrame = frame;
       lastBytes = bytes;
     } catch (error) { q.errors.push(String(error)); }
   };

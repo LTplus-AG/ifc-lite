@@ -31,7 +31,7 @@ import { launchFresh, raceWithTimeout } from './retained-qual-browser.mjs';
 
 const COLUMNS = ['importMs', 'runMs', 'wasmHeapMaxObservedBytes', 'uaAfterBytes', 'browserPeakHwmKiB', 'browserPeakConcurrentPssKiB'];
 
-export async function browserMemorySample({ arm, fixture, round, options, expectation }) {
+export async function browserMemorySample({ arm, fixture, round, options, expectation, launcher = launchFresh, sample = startSampler }) {
   const row = { side: arm.side, path: fixture.path, fixture: basename(fixture.path), round, ok: false, fixtureSha256: fixture.sha256, fixtureBytes: fixture.bytes };
   const temporary = mkdtempSync(join(tmpdir(), 'retained-qual-bm-'));
   let server, browser, sampler;
@@ -47,15 +47,17 @@ export async function browserMemorySample({ arm, fixture, round, options, expect
     });
     await new Promise(done => server.listen(0, '127.0.0.1', done));
     const origin = `http://127.0.0.1:${server.address().port}`;
-    browser = await launchFresh({ gpu: options.gpu ?? 'swiftshader', channel: options.channel ?? 'chrome', executable: options['browser-executable'], headed: Boolean(options.headed) });
+    browser = await launcher({ gpu: options.gpu ?? 'swiftshader', channel: options.channel ?? 'chrome', executable: options['browser-executable'], headed: Boolean(options.headed) });
     const { page } = browser;
     await page.goto(`${origin}/page/index.html`);
     row.userAgent = await page.evaluate(() => navigator.userAgent);
+    // Import/instantiate is included in importMs, so its process peaks belong
+    // to this sample too. finally stops the sampler if initialization fails.
+    sampler = sample(null, { intervalMs: 100, profileDir: browser.profileDir, pss: true });
     await page.evaluate(async () => {
       window.harness = await import('/harness/retained-qual-browser-memory-page.mjs');
       await window.harness.initialize();
     });
-    sampler = startSampler(null, { intervalMs: 100, profileDir: browser.profileDir, pss: true });
     const run = await raceWithTimeout(page.evaluate(url => window.harness.runModel(url), `/model/${encodeURIComponent(basename(fixture.path))}`),
       Number(options['timeout-ms'] ?? 900000), 'retained session');
     const tree = sampler.stop(); sampler = null;

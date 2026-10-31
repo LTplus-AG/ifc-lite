@@ -198,3 +198,41 @@ test('8413: a measured native child with no retained duration is a failed timing
     assert.match(row.error, /retained.*milliseconds/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('8413: browser process sampling includes a transient initialization RSS/PSS peak', async () => {
+  const { browserMemorySample } = await import('./retained-qual-browser-memory.mjs');
+  const { createHash } = await import('node:crypto');
+  const dir = mkdtempSync(join(tmpdir(), 'qual-init-memory-'));
+  const manifest = '{}';
+  let rss = 10, pss = 5, evaluations = 0, stopped = false, closed = false;
+  const page = { goto: async () => {}, evaluate: async () => {
+    evaluations++;
+    if (evaluations === 1) return 'test browser';
+    if (evaluations === 2) {
+      // Deterministic memory source: an init-only allocation is gone before runModel.
+      rss = 1000; pss = 500;
+      await new Promise(resolve => setTimeout(resolve, 40));
+      rss = 10; pss = 5;
+      return;
+    }
+    return { importMs: 40, runMs: 1, started: true, startCandidates: 1, errors: [],
+      tally: { published: 1, refused: 0, meshes: 1 }, summary: { candidates: 1, published: 1, refused: 0 },
+      uaBefore: { bytes: null }, uaAfter: { bytes: null } };
+  } };
+  try {
+    writeFileSync(join(dir, 'engine-manifest.json'), manifest);
+    const row = await browserMemorySample({ arm: { side: 'branch', identity: { engine: { directory: dir,
+      manifestSha256: createHash('sha256').update(manifest).digest('hex') } } },
+      fixture: { path: join(dir, 'model.ifc') }, round: 1, options: {},
+      launcher: async () => ({ page, profileDir: dir, pageErrors: [], close: async () => { closed = true; return null; } }),
+      sample: () => {
+        const sampler = startSampler(process.pid, { intervalMs: 2, pss: true,
+          readInfo: pid => pid === process.pid ? { pid, exe: 'test-browser', rssKiB: rss, hwmKiB: rss, pssKiB: pss } : null });
+        return { stop: () => { stopped = true; return sampler.stop(); } };
+      } });
+    assert.equal(row.ok, true, row.error);
+    assert.equal(row.browserPeakConcurrentRssKiB, 1000);
+    assert.equal(row.browserPeakConcurrentPssKiB, 500);
+    assert.equal(stopped && closed, true, 'sampler and browser are cleaned up');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

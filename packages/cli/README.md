@@ -67,6 +67,47 @@ In GitHub Actions, pulling from GHCR with the workflow token:
     IFC_LITE_OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### Publishing a model: `ifc-lite oci push`
+
+```bash
+ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
+# Pushed oci://ghcr.io/acme/tower-model:rev-c → sha256:… (layer sha256:…, 225635 bytes)
+ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc --overwrite --json
+ifc-lite oci push oci://localhost:5000/demo/model:v1 model.ifc \
+  --annotation org.opencontainers.image.revision=abc123 \
+  --annotation org.opencontainers.image.source=https://example.com/repo
+```
+
+- The artifact uses the layout the ifc-lite viewer publishes: `artifactType`
+  `application/vnd.ifc-lite.ifc.v1`, the OCI empty config (`{}`), and exactly
+  one layer of media type `application/x-step` whose
+  `org.opencontainers.image.title` is the file name. Blobs are pushed first
+  (config, then the layer), then the manifest under the tag.
+- Manifest annotations: `org.opencontainers.image.created` (RFC 3339, UTC,
+  whole seconds; taken from `SOURCE_DATE_EPOCH` when set, so pushing the same
+  file twice gives the same manifest digest), `org.opencontainers.image.title`
+  (the file name without its extension), and every `--annotation key=value`.
+  The key must be non-empty and on one line; a later duplicate wins;
+  `org.opencontainers.image.title` cannot be set this way (rename the file).
+- The manifest and the layer carry `org.buildingsmart.ifc.profile`
+  (`ifc-release/0`) and `org.buildingsmart.ifc.schema` (from `FILE_SCHEMA`).
+  These keys are a provisional convention shared with subsoil, not a
+  buildingSMART standard, and may change. They cannot be set with `--annotation`.
+- The file is checked before any request with the same content check the
+  loader uses (STEP envelope, terminator, DATA section), and its `FILE_SCHEMA`
+  must name an IFC schema. `.ifczip` (by name or zip content) is refused:
+  only plain IFC-SPF is supported for publishing for now.
+- The reference must carry a tag; a digest reference is refused, since the
+  digest is computed from the manifest. An existing tag is refused with
+  `tag <tag> already exists; pass --overwrite to replace it` (exit 1) unless
+  `--overwrite` is given. That check is a request before the write, so it is
+  not atomic against another client pushing the same tag at the same moment.
+- Credentials and the http/https rule are the same as for `oci://` input;
+  push asks the registry for `pull,push` scope. Credentials are never printed.
+- `--json` prints only
+  `{ "reference", "digest", "layer": { "digest", "size", "mediaType" }, "artifactType" }`
+  on stdout; errors go to stderr.
+
 ## Installation diagnostics
 
 ```bash

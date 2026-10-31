@@ -926,7 +926,7 @@ export function useIfcLoader() {
               err,
             );
             updateModel(modelId, { loadState: 'error', loadError: message });
-            showLoadError(`${format.toUpperCase()} parsing failed: ${message}`, `${format}_parse_failed`);
+            showLoadError(classifyLoadError(err) === 'invalid_input' ? formatLoadError(err) : `${format.toUpperCase()} parsing failed: ${message}`, `${format}_parse_failed`);
           }
           clearOwnedCanceller();
           setLoading(false);
@@ -1022,7 +1022,7 @@ export function useIfcLoader() {
           console.error('[useIfc] IFCX parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
           updateModel(modelId, { loadState: 'error', loadError: message });
-          showLoadError(`IFCX parsing failed: ${message}`, 'ifcx_parse_failed');
+          showLoadError(classifyLoadError(err) === 'invalid_input' ? formatLoadError(err) : `IFCX parsing failed: ${message}`, 'ifcx_parse_failed');
           setLoading(false);
           return;
         }

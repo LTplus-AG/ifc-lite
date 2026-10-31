@@ -13189,7 +13189,7 @@ Full text reproduced above under this SHA-256.
 --- LICENSE-MIT (sha256 1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df) ---
 Full text reproduced above under this SHA-256.
 
-=== zip 9.0.4 ===
+=== zip 9.0.5 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)

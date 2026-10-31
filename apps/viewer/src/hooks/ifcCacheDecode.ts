@@ -20,7 +20,7 @@ import {
   type CacheDataStore,
 } from '@ifc-lite/cache';
 import {
-  asSourceBytes,
+  contiguousSourceBytes,
   SpatialHierarchyBuilder,
   StepTokenizer,
   CompactEntityIndex,
@@ -87,6 +87,7 @@ function hydrateCacheStore(
   cacheStore: CacheDataStore,
   extras: {
     source: Uint8Array;
+    contentKey?: string;
     fileSize: number;
     entityIndex: IfcDataStore['entityIndex'];
     onDemandPropertyMap?: Map<number, number[]>;
@@ -99,7 +100,10 @@ function hydrateCacheStore(
     entityCount: cacheStore.entityCount,
     fileSize: extras.fileSize,
     parseTime: 0,
-    source: asSourceBytes(extras.source),
+    // Seeded with the key stored at write: the lazy fallback FNV-hashes the
+    // whole source on the main thread (~0.6 s at 343 MB) the first time a
+    // symbolic-annotation lookup asks for it.
+    source: contiguousSourceBytes(extras.source, extras.contentKey),
     strings: cacheStore.strings,
     entities: cacheStore.entities,
     properties: cacheStore.properties,
@@ -220,6 +224,7 @@ export async function decodeCachedMetadata(
   // and wires the lazy accessors via attachDataStoreAccessors.
   const dataStore = trace.span('cache.hydrate', () => hydrateCacheStore(cacheStore, {
     source,
+    contentKey: cacheResult.sourceContentKey,
     fileSize: sourceBuffer?.byteLength ?? 0,
     entityIndex,
     onDemandPropertyMap,

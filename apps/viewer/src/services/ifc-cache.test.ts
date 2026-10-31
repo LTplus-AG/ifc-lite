@@ -92,6 +92,11 @@ describe('ifc-cache quota + robustness (blocker #2)', () => {
     assert.equal(got!.sourceBuffer, undefined, 'mesh-only entries persist no source');
   });
 
+  it('round-trips the source content key so a hit does not re-hash the source', async () => {
+    await setCached('key', patterned(8 * KB, 9), 'key.ifc', 8 * KB, undefined, { sourceContentKey: '2000-1a2b3c4d' });
+    assert.equal((await getCached('key'))!.sourceContentKey, '2000-1a2b3c4d');
+  });
+
   it('round-trips a large single record (buffer + source) byte-identical', async () => {
     // Proves a single large IndexedDB record writes AND reads back intact, so
     // the mesh-only geometry blob does not need chunking: the per-entry ceiling

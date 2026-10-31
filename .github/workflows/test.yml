@@ -1035,6 +1035,11 @@ jobs:
           # and the test module's wiring. Keep both; drop only reuse and install.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7b/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-7b/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_7b_tests.rs)
+          # #8385 X2: keep the read_2d reader and its test wiring; restore the
+          # identity-frame default for a refused Position, so the defer
+          # witnesses must observe an invented frame.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/x2-probe-placement/behaviour.oracle.patch | grep -Fxq 'tests/evidence/x2-probe-placement/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/x2-probe-placement/behaviour.oracle.patch --test rust/geometry/src/router/voids/probe/placement_tests.rs)
           # #5865: whole-file inversion deletes gpuFramePacer.ts and the tests that
           # import it. Keep the module; stop the pacer ever reporting a backlog.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch | grep -Fxq 'tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch'; then

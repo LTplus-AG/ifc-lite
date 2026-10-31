@@ -28,7 +28,8 @@
  *
  * Meshes present on one side only are reported as `missing` / `added`; a
  * missing mesh is a regression, and so is an added one carrying open or
- * nonmanifold edges, bad indices, or thin or coincident sheet. A mesh whose thin-material census hit its
+ * nonmanifold edges, bad indices, degenerate triangles, or thin or coincident
+ * sheet. A mesh whose thin-material census hit its
  * candidate cap on either side is `unmeasured`, never unchanged. Exit status
  * 1 when any regression, quality-worse, unmeasured or missing mesh exists.
  */
@@ -90,7 +91,12 @@ export function classify(base, branch) {
 
 /** Whether a mesh carries any defect the gate counts, on its own. */
 export function hasDefects(row) {
-  return EDGES.some((m) => row[m] > 0) || row.badIndices > 0 || SHEETS.some((m) => row[m] > THIN_EPS);
+  return (
+    EDGES.some((m) => row[m] > 0) ||
+    row.badIndices > 0 ||
+    row.degenerate > 0 ||
+    SHEETS.some((m) => row[m] > THIN_EPS)
+  );
 }
 
 export function compare(baseRows, branchRows) {

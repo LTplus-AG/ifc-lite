@@ -93,6 +93,8 @@ test('a new mesh with defects is a regression, a clean one is added', () => {
   const v = compare(parseCensus(''), parseCensus(`${JSON.stringify(row({ open: 12, open10: 12 }))}\n${JSON.stringify(clean)}\n`));
   assert.equal(v.regression.length, 1);
   assert.equal(v.added.length, 1);
+  const collapsed = compare(parseCensus(''), parseCensus(`${JSON.stringify(row({ open: 0, open10: 0, degenerate: 1 }))}\n`));
+  assert.equal(collapsed.regression.length, 1, 'a new mesh with a collapsed triangle');
 });
 
 test('a capped mesh new to the branch is unmeasured, not added', () => {

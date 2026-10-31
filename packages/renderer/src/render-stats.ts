@@ -47,6 +47,13 @@ export interface FrameStats {
   instancedContributionCulled: number;
   /** `performance.now()` timestamp taken at the end of the render call. */
   timestamp: number;
+  /**
+   * Main-thread milliseconds this frame spent preparing, encoding and
+   * submitting, excluding the wait inside `getCurrentTexture()` (swap-chain
+   * backpressure is GPU pacing, not encode cost). Input to the viewer's
+   * interaction throttle.
+   */
+  cpuMs: number;
 }
 
 /** Minimal structural slice of a GPU buffer (real `GPUBuffer` satisfies it). */
@@ -58,6 +65,8 @@ interface BatchLike {
   vertexBuffer: SizedBuffer;
   indexBuffer: SizedBuffer;
   uniformBuffer?: SizedBuffer;
+  /** A colour batch's slice of the shared mesh uniform arena. */
+  uniformSlot?: SizedBuffer;
   /** LOD1 second index range (issue #1682 phase 5), when built. */
   lod1IndexBuffer?: SizedBuffer;
 }
@@ -87,8 +96,9 @@ export interface ResidentGpuBytes {
   total: number;
 }
 
-const sumBatch = (b: BatchLike): number =>
-  b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0) + (b.lod1IndexBuffer?.size ?? 0);
+/** GPU bytes one batch, mesh or textured mesh holds (vertex, index, uniform, LOD1). */
+export const residentBatchBytes = (b: BatchLike): number =>
+  b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0) + (b.uniformSlot?.size ?? 0) + (b.lod1IndexBuffer?.size ?? 0);
 
 /**
  * Sum the GPU bytes held by the scene's mesh collections.
@@ -104,15 +114,15 @@ export function sumResidentGpuBytes(input: {
   instanced: Iterable<InstancedLike>;
 }): ResidentGpuBytes {
   let batches = 0;
-  for (const b of input.batches) batches += sumBatch(b);
-  for (const b of input.partialBatches) batches += sumBatch(b);
+  for (const b of input.batches) batches += residentBatchBytes(b);
+  for (const b of input.partialBatches) batches += residentBatchBytes(b);
 
   let meshes = 0;
-  for (const m of input.meshes) meshes += sumBatch(m);
+  for (const m of input.meshes) meshes += residentBatchBytes(m);
 
   let textured = 0;
   for (const t of input.textured) {
-    textured += sumBatch(t);
+    textured += residentBatchBytes(t);
     textured += t.texture.width * t.texture.height * t.texture.depthOrArrayLayers * 4;
   }
 

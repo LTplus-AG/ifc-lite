@@ -15,6 +15,7 @@ import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
 import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { readMeshUniforms, type MeshUniformSlot } from './mesh-uniform-arena.js';
 
 async function requireColorTable() {
     const module = await import('./entity-color-table.js').catch(() => null);
@@ -77,7 +78,7 @@ interface Harness {
         /** how many times a readback buffer was actually mapped */
         mapAsync: number;
         /** every `queue.writeBuffer` payload, copied at call time */
-        writes: { buffer: unknown; floats: Float32Array }[];
+        writes: { buffer: unknown; offset: number; floats: Float32Array }[];
         /**
          * Ordered log of `setPipeline` / `setBindGroup` / `drawIndexed` calls on
          * the render pass, so a test can assert command ORDER (e.g. that the
@@ -237,11 +238,11 @@ function makeHarness(): Harness {
         // Copied eagerly: the renderer reuses one scratch array for every
         // per-mesh uniform, so holding the reference would read back only the
         // LAST value written in the frame.
-        writeBuffer(buffer: unknown, _offset: number, data: ArrayBufferView | ArrayBuffer) {
+        writeBuffer(buffer: unknown, offset: number, data: ArrayBufferView | ArrayBuffer) {
             const floats = ArrayBuffer.isView(data)
                 ? new Float32Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength))
                 : new Float32Array(data.slice(0));
-            stats.writes.push({ buffer, floats });
+            stats.writes.push({ buffer, offset, floats });
         },
         writeTexture() { /* no-op */ },
         copyExternalImageToTexture() { /* no-op */ },
@@ -1442,26 +1443,34 @@ function texturedTriangle(expressId: number, origin?: [number, number, number]):
     };
 }
 
+function isArenaSlot(target: unknown): target is MeshUniformSlot {
+    return typeof target === 'object' && target !== null && 'release' in target && 'offset' in target;
+}
+
+/**
+ * The uniform blocks `target` received, oldest first. A colour batch's arena
+ * slot reports the bytes its page holds after the frame's single flush
+ * (mesh-uniform-arena.ts); a standalone uniform buffer reports each write.
+ */
+function uniformBlocks(h: Harness, target: unknown): Float32Array[] {
+    if (isArenaSlot(target)) return [readMeshUniforms(target)];
+    return h.stats.writes.filter((w) => w.buffer === target).map((w) => w.floats);
+}
+
+/** The last uniform block `target` received with at least `minFloats` floats. */
+function lastBlock(h: Harness, target: unknown, minFloats: number): Float32Array | null {
+    return uniformBlocks(h, target).filter((b) => b.length >= minFloats).at(-1) ?? null;
+}
+
 /** The model-matrix translation column of the uniform written for `tm`. */
-function translationFor(h: Harness, uniformBuffer: unknown): number[] | null {
-    for (let i = h.stats.writes.length - 1; i >= 0; i--) {
-        const w = h.stats.writes[i];
-        if (w.buffer === uniformBuffer && w.floats.length > 30) {
-            return [w.floats[28], w.floats[29], w.floats[30]];
-        }
-    }
-    return null;
+function translationFor(h: Harness, target: unknown): number[] | null {
+    const block = lastBlock(h, target, 31);
+    return block ? [block[28], block[29], block[30]] : null;
 }
 
 /** RTE drawable delta lanes appended after the legacy + quantized uniform ABI. */
-function rteDeltaFor(h: Harness, uniformBuffer: unknown): Float32Array | null {
-    for (let i = h.stats.writes.length - 1; i >= 0; i--) {
-        const w = h.stats.writes[i];
-        if (w.buffer === uniformBuffer && w.floats.length >= 84) {
-            return w.floats.slice(76, 84);
-        }
-    }
-    return null;
+function rteDeltaFor(h: Harness, target: unknown): Float32Array | null {
+    return lastBlock(h, target, 84)?.slice(76, 84) ?? null;
 }
 
 describe('textured sub-pass carries the per-element origin (#1973)', () => {
@@ -1545,16 +1554,51 @@ describe('batched RTE draw uniforms (#5049)', () => {
         h.stats.writes.length = 0;
         h.render();
 
-        const packed = rteDeltaFor(h, batch.uniformBuffer);
+        const slot = batch.uniformSlot!;
+        const packed = rteDeltaFor(h, slot);
         assert.ok(packed, 'flat batch must receive the appended RTE lanes');
         assert.equal(rteRelativePositionF32([0, 0, 0], packed)[0], 0.015625);
-        let write: { buffer: unknown; floats: Float32Array } | undefined;
-        for (const candidate of h.stats.writes) {
-            if (candidate.buffer === batch.uniformBuffer) write = candidate;
+        const write = h.stats.writes.find((w) => w.buffer === slot.buffer
+            && w.offset <= slot.offset && slot.offset + slot.size <= w.offset + w.floats.byteLength);
+        assert.ok(write, 'the frame flush must upload the batch uniform block');
+        const block = write.floats.slice((slot.offset - write.offset) / 4, (slot.offset - write.offset + slot.size) / 4);
+        assert.equal(new Uint32Array(block.buffer)[44] & 0x10000, 0x10000);
+        assert.deepStrictEqual(Array.from(block.slice(56, 60)), [1, 2, 3, Math.fround(0.001)]);
+    });
+});
+
+describe('batch uniforms reach the GPU in one write per arena page', () => {
+    /** Queue writes aimed at the arena pages the batches share. */
+    function arenaWrites(h: Harness, batches: BatchedMesh[]): number {
+        const pages = new Set(batches.map((b) => b.uniformSlot!.buffer));
+        return h.stats.writes.filter((w) => pages.has(w.buffer as GPUBuffer)).length;
+    }
+
+    it('a moving camera rewrites every drawn batch with ONE queue write; a still one writes none', () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        assert.strictEqual(grey.uniformSlot!.buffer, red.uniformSlot!.buffer, 'batches share one arena page');
+        h.render();
+        h.stats.writes.length = 0;
+        h.renderer['camera'].setPosition(3, 4, 12);
+        h.render();
+        assert.strictEqual(arenaWrites(h, [grey, red]), 1, 'two drawn batches, one queue operation');
+        assert.strictEqual(lastBlock(h, grey.uniformSlot, 36)?.[32], Math.fround(GREY[0]));
+        assert.strictEqual(lastBlock(h, red.uniformSlot, 36)?.[32], Math.fround(RED[0]));
+        h.stats.writes.length = 0;
+        h.render();
+        assert.strictEqual(arenaWrites(h, [grey, red]), 0, 'unchanged camera and state: nothing to upload');
+    });
+
+    it('binds each redundant pipeline once across consecutive batches', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.stats.commands.length = 0;
+        h.render();
+        const sets = h.stats.commands.filter((c) => c.op === 'setPipeline');
+        for (let i = 1; i < sets.length; i++) {
+            assert.notStrictEqual(sets[i]!.pipeline, sets[i - 1]!.pipeline, `setPipeline #${i} re-binds the bound pipeline`);
         }
-        assert.ok(write, 'batch draw must upload its uniform block');
-        assert.equal(new Uint32Array(write.floats.buffer)[44] & 0x10000, 0x10000);
-        assert.deepStrictEqual(Array.from(write.floats.slice(56, 60)), [1, 2, 3, Math.fround(0.001)]);
     });
 });
 
@@ -1580,15 +1624,11 @@ describe('individual mesh RTE fallback (#5049)', () => {
 
 describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
     /**
-     * The alpha (uniform float 35) of the LAST write aimed at `uniformBuffer`,
+     * The alpha (uniform float 35) of the LAST block `target` received,
      * compared against the f32 the GPU actually receives.
      */
-    function assertAlpha(h: Harness, uniformBuffer: unknown, expected: number, message?: string): void {
-        let actual: number | null = null;
-        for (let i = h.stats.writes.length - 1; i >= 0 && actual === null; i--) {
-            const w = h.stats.writes[i];
-            if (w.buffer === uniformBuffer && w.floats.length > 35) actual = w.floats[35];
-        }
+    function assertAlpha(h: Harness, target: unknown, expected: number, message?: string): void {
+        const actual = lastBlock(h, target, 36)?.[35] ?? null;
         assert.strictEqual(actual, Math.fround(expected), message ?? `expected alpha ${expected}`);
     }
 
@@ -1615,8 +1655,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         const solid = subBatchFor(h, [2]);
         assert.ok(h.stats.draws.includes(faded.vertexBuffer), 'the X-Rayed entity draws');
         assert.ok(h.stats.draws.includes(solid.vertexBuffer), 'so does the entity nobody asked to fade');
-        assertAlpha(h, faded.uniformBuffer, 0.18);
-        assertAlpha(h, solid.uniformBuffer, 1, 'batchmate keeps the batch colour alpha');
+        assertAlpha(h, faded.uniformSlot, 0.18);
+        assertAlpha(h, solid.uniformSlot, 1, 'batchmate keeps the batch colour alpha');
         assert.ok(h.stats.draws.includes(red.vertexBuffer), 'an untouched batch still draws whole');
     });
 
@@ -1628,7 +1668,7 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         assert.strictEqual(sceneOf(h)['partialBatchCache'].size, 0, 'no sub-batch worth building');
         assert.ok(h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, grey.uniformBuffer, 0.18);
+        assertAlpha(h, grey.uniformSlot, 0.18);
     });
 
     it('keeps a ghost-excepted entity solid without co-selecting it', () => {
@@ -1638,8 +1678,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         h.render({ ghostExceptIds: new Set([2]) });
 
         assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, DEFAULT_GHOST_ALPHA);
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 1);
     });
 
     it('draws context ghosts with the ghost pipeline, and an X-Ray override with the transparent one', () => {
@@ -1684,8 +1724,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         // Move the X-Ray to the other entity: both slots re-key by content.
         h.stats.draws.length = 0;
         h.render({ transparencyOverrides: new Map([[2, 0.18]]) });
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, 1);
         assert.strictEqual(firstVb.destroyed, 1, 'the superseded clone is freed exactly once');
 
         // X-Ray off: the batch draws whole again and the clones are released.
@@ -1693,7 +1733,7 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         h.render({});
         assert.strictEqual(scene['partialBatchCache'].size, 0, 'X-Ray clones leaked past the last X-Ray frame');
         assert.ok(h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, grey.uniformBuffer, 1);
+        assertAlpha(h, grey.uniformSlot, 1);
         for (const buf of h.stats.createdBuffers) {
             assert.ok(buf.destroyed <= 1, 'a VRAM-tracked buffer was destroyed more than once');
         }
@@ -1709,8 +1749,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         h.render({ hiddenIds: new Set([3]), transparencyOverrides: new Map([[1, 0.18]]) });
 
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 1);
         assert.strictEqual(scene['partialBatchCache'].size, 2, 'the hidden id must not reach either sub-batch');
     });
 
@@ -1759,8 +1799,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         h.render({ ghostExceptIds: new Set([1]) });
         assert.notStrictEqual(h.renderer['_xrayAlpha'], first, 'a changed X-Ray kept the old resolution');
         assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, DEFAULT_GHOST_ALPHA);
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, 1);
     });
 
     it('holds the X-Ray it resolved when the caller later mutates a set it has replaced', () => {
@@ -1785,8 +1825,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
         h.render({ ghostExceptIds: new Set([2]), selectedIds: new Set<number>() });
 
-        assertAlpha(h, subBatchFor(h, [1, 3]).uniformBuffer, DEFAULT_GHOST_ALPHA);
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1, 3]).uniformSlot, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 1);
     });
 
     it('re-splits when SELECTION changes, since selection exempts an entity from fading', () => {
@@ -1807,13 +1847,13 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         // Entity 1 selected → exempt → it belongs to the SOLID group.
         h.render({ transparencyOverrides: overrides(), selectedIds: new Set([1]) });
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [1, 3]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [1, 3]).uniformSlot, 1);
 
         // Deselect: entity 1 is X-Rayed again and must rejoin the faded group.
         h.render({ transparencyOverrides: overrides() });
-        assertAlpha(h, subBatchFor(h, [1, 2]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [3]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1, 2]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [3]).uniformSlot, 1);
     });
 
     it('frees the sub-batch slots of a batch that stops splitting while X-Ray stays on', () => {
@@ -1893,7 +1933,7 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         assert.strictEqual(scene['partialBatchCache'].size, 0);
         assert.ok(h.stats.draws.includes(batch.vertexBuffer), 'geometry must not go missing');
-        assertAlpha(h, batch.uniformBuffer, 0.18, 'batch-wide minimum, as documented');
+        assertAlpha(h, batch.uniformSlot, 0.18, 'batch-wide minimum, as documented');
     });
 });
 
@@ -2076,15 +2116,10 @@ describe('the textured draw path passes authored alpha and material to packMeshM
     }
 
     /** The material row (metallic, roughness, transmission flag) of the uniform written for `tm`. */
-    function materialRowFor(h: Harness, uniformBuffer: unknown): number[] | null {
+    function materialRowFor(h: Harness, target: unknown): number[] | null {
         const at = MESH_UNIFORM_OFFSET.metallicRoughness;
-        for (let i = h.stats.writes.length - 1; i >= 0; i--) {
-            const w = h.stats.writes[i];
-            if (w.buffer === uniformBuffer && w.floats.length > at + 3) {
-                return [w.floats[at], w.floats[at + 1], w.floats[at + 2]];
-            }
-        }
-        return null;
+        const block = lastBlock(h, target, at + 4);
+        return block ? [block[at], block[at + 1], block[at + 2]] : null;
     }
 
     it('gives an opaque textured mesh the default dielectric', () => {
@@ -2142,10 +2177,10 @@ describe('colour overrides shade from the entity colour table, not overlay copie
     const GREEN: [number, number, number, number] = [0.125, 0.875, 0.25, 1];
 
     /** overrideParams (x = anchor, y = mode bits) of the LAST uniform write into `buffer`. */
-    function overrideLanes(h: Harness, buffer: GPUBuffer | undefined): number[] | null {
-        const write = h.stats.writes.filter((w) => w.buffer === buffer).at(-1);
-        if (!write) return null;
-        return [...new Uint32Array(write.floats.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4)];
+    function overrideLanes(h: Harness, target: unknown): number[] | null {
+        const block = uniformBlocks(h, target).at(-1);
+        if (!block) return null;
+        return [...new Uint32Array(block.buffer, block.byteOffset + MESH_UNIFORM_OFFSET.overrideParams * 4, 4)];
     }
 
     /** The pipeline bound when the draw that used `vertexBuffer` fired. */
@@ -2186,11 +2221,11 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         const table = sceneOf(h).getEntityColorTable().getBuffer();
         assert.equal(created[0], table, 'the one allocation is the colour table');
         assert.equal(h.stats.boundColorTables.at(-1), table, 'the frame binds the scene table at group(1)');
-        assert.deepEqual(overrideLanes(h, red.uniformBuffer), [3, OVERRIDE_PARAM_PAINT, 0, 0], 'red batch paints from its anchor');
-        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0], 'grey batch paints from its anchor');
+        assert.deepEqual(overrideLanes(h, red.uniformSlot), [3, OVERRIDE_PARAM_PAINT, 0, 0], 'red batch paints from its anchor');
+        assert.deepEqual(overrideLanes(h, grey.uniformSlot), [1, OVERRIDE_PARAM_PAINT, 0, 0], 'grey batch paints from its anchor');
 
         h.render({ emphasizeOverrides: true });
-        assert.deepEqual(overrideLanes(h, red.uniformBuffer), [3, OVERRIDE_PARAM_PAINT | OVERRIDE_PARAM_EMPHASIZE, 0, 0], 'emphasizeOverrides reaches the draw');
+        assert.deepEqual(overrideLanes(h, red.uniformSlot), [3, OVERRIDE_PARAM_PAINT | OVERRIDE_PARAM_EMPHASIZE, 0, 0], 'emphasizeOverrides reaches the draw');
     });
 
     it('holds the colour at the entity slot, and clearing empties the table without touching a batch', async () => {
@@ -2214,7 +2249,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
 
         h.stats.writes.length = 0;
         h.render();
-        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, 0, 0, 0], 'the entity anchor remains, with painting disabled after clearing');
+        assert.deepEqual(overrideLanes(h, grey.uniformSlot), [1, 0, 0, 0], 'the entity anchor remains, with painting disabled after clearing');
     });
 
     it('keeps colour overrides available after CPU geometry is released (#6148 review)', async () => {
@@ -2228,7 +2263,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         setOverrides(h, new Map([[2, GREEN]]));
         assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 2), GREEN);
         h.render();
-        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.deepEqual(overrideLanes(h, grey.uniformSlot), [1, OVERRIDE_PARAM_PAINT, 0, 0]);
     });
 
     it('paints a mesh that streams in AFTER the override without another setColorOverrides call', async () => {
@@ -2250,7 +2285,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
 
         h.stats.writes.length = 0;
         h.render();
-        assert.deepEqual(overrideLanes(h, late.uniformBuffer), [9, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.deepEqual(overrideLanes(h, late.uniformSlot), [9, OVERRIDE_PARAM_PAINT, 0, 0]);
         assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 9), GREEN);
     });
 
@@ -2272,7 +2307,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         for (const id of [low, high]) {
             const batch = batches.find((b) => b.expressIds.includes(id));
             assert.ok(batch, `batch for ${id}`);
-            assert.deepEqual(overrideLanes(h, batch.uniformBuffer), [Math.min(...batch.expressIds), OVERRIDE_PARAM_PAINT, 0, 0], `${id} paints`);
+            assert.deepEqual(overrideLanes(h, batch.uniformSlot), [Math.min(...batch.expressIds), OVERRIDE_PARAM_PAINT, 0, 0], `${id} paints`);
             assert.equal(resolveLaneEntityId(Math.min(...batch.expressIds), id & 0xFFFFFF), id, `${id} resolves to itself`);
             assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), id), [1, 0, 0, 1]);
             assert.equal(pipelineOfDraw(h, batch.vertexBuffer), OPAQUE_PIPELINE, `${id} is promoted to opaque`);
@@ -2299,7 +2334,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
             assert.equal(scene.getEntityColorTable().getBuffer(), table, 'finalize does not touch the table');
             h.stats.writes.length = 0;
             h.render();
-            assert.deepEqual(overrideLanes(h, finalBatch.uniformBuffer), [11, OVERRIDE_PARAM_PAINT, 0, 0]);
+            assert.deepEqual(overrideLanes(h, finalBatch.uniformSlot), [11, OVERRIDE_PARAM_PAINT, 0, 0]);
         });
     }
 
@@ -2320,9 +2355,9 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         setOverrides(h, new Map([[4, [1, 0, 0, 0.5]], [5, [1, 0, 0, 0.15]]]));
         h.render();
         assert.equal(pipelineOfDraw(h, promoted.vertexBuffer), OPAQUE_PIPELINE, 'alpha >= 0.2 override promotes to opaque');
-        assert.deepEqual(overrideLanes(h, promoted.uniformBuffer), [4, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.deepEqual(overrideLanes(h, promoted.uniformSlot), [4, OVERRIDE_PARAM_PAINT, 0, 0]);
         assert.equal(pipelineOfDraw(h, ghost.vertexBuffer), TRANSPARENT_PIPELINE, 'ghost-tier override stays transparent');
-        assert.deepEqual(overrideLanes(h, ghost.uniformBuffer), [5, 0, 0, 0], 'a transparent draw keeps its entity anchor with painting disabled');
+        assert.deepEqual(overrideLanes(h, ghost.uniformSlot), [5, 0, 0, 0], 'a transparent draw keeps its entity anchor with painting disabled');
     });
 });
 
@@ -2337,10 +2372,10 @@ describe('mesh uniforms leave the freed edge lanes zero (#5746)', () => {
     const FLAGS = MESH_UNIFORM_OFFSET.flags;
 
     /** flags as u32 for every write that landed on one of `buffers`. */
-    function flagsWrittenTo(h: Harness, buffers: Set<unknown>): Uint32Array[] {
-        return h.stats.writes
-            .filter((w) => buffers.has(w.buffer) && w.floats.length >= FLAGS + 4)
-            .map((w) => new Uint32Array(w.floats.buffer, w.floats.byteOffset + FLAGS * 4, 4));
+    function flagsWrittenTo(h: Harness, targets: Set<unknown>): Uint32Array[] {
+        return [...targets].flatMap((t) => uniformBlocks(h, t))
+            .filter((b) => b.length >= FLAGS + 4)
+            .map((b) => new Uint32Array(b.buffer, b.byteOffset + FLAGS * 4, 4));
     }
 
     it('batched, selected-individual and textured draws write 0 to flags.z and flags.w with edgeContrast on', () => {
@@ -2368,7 +2403,7 @@ describe('mesh uniforms leave the freed edge lanes zero (#5746)', () => {
         const selected = scene.getMeshes().filter((m) => m.hydrated && m.expressId === 1);
         assert.strictEqual(selected.length, 1, 'selection hydrates an individual mesh');
         const buffers = new Set<unknown>([
-            grey.uniformBuffer, red.uniformBuffer, textured[0].uniformBuffer, selected[0].uniformBuffer,
+            grey.uniformSlot, red.uniformSlot, textured[0].uniformBuffer, selected[0].uniformBuffer,
         ]);
         const flags = flagsWrittenTo(h, buffers);
         assert.ok(flags.length >= 4, `expected a uniform write per draw, got ${flags.length}`);

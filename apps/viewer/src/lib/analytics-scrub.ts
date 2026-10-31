@@ -76,8 +76,7 @@ const NAME_STOPWORDS = [
   'is', 'was', 'be', 'by', 'as', 'it', 'this', 'that',
 ].join('|');
 
-// The leading boundary is load-bearing, and Unicode-aware because `\b` only
-// knows ASCII and would skip a name like 東京塔.ifc: without it the run can start in the MIDDLE
+// The Unicode-aware leading boundary (`\b` skips 東京塔.ifc) stops a run starting in the MIDDLE
 // of a stop-word ("loading" -> "oading"), which sails straight past the
 // lookahead and defeats the whole stop-list.
 //

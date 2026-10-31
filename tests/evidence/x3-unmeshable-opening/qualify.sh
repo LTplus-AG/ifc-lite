@@ -112,14 +112,20 @@ git -C "$scratch/base" -c user.name=x3 -c user.email=x3@invalid commit -qm "base
 link_fixtures "$scratch/base"
 
 side_dir() { [[ $1 == base ]] && echo "$scratch/base" || echo "$head_dir"; }
+# One cargo target dir PER SIDE. Cargo hashes workspace path packages relative
+# to the workspace root, so base and head share artifact names, and with one
+# shared CARGO_TARGET_DIR (the fleet sets one) the second side reused the first
+# side's binaries: "head" silently ran base code in identity and features.
+side_target() { echo "$scratch/target-$1"; }
 
 case $mode in
 identity)
   for side in base head; do
     src=$(side_dir "$side")
+    target=$(side_target "$side")
     cp "$head_dir/tests/evidence/x3-unmeshable-opening/identity_probe.rs" "$src/$probe"
-    (cd "$src" && cargo build --profile profiling -p ifc-lite-processing --example x3_identity_probe >&2)
-    bin="${CARGO_TARGET_DIR:-$src/target}/profiling/examples/x3_identity_probe"
+    (cd "$src" && CARGO_TARGET_DIR="$target" cargo build --profile profiling -p ifc-lite-processing --example x3_identity_probe >&2)
+    bin="$target/profiling/examples/x3_identity_probe"
     for fixture in "${fixtures[@]}"; do
       name=$(basename "$fixture" .ifc)
       out="$scratch/$side-$name"
@@ -212,7 +218,7 @@ features)
     src=$(side_dir "$side")
     log="$scratch/$side-features.log"
     set +e
-    (cd "$src" && cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate,opening-perf-trace \
+    (cd "$src" && CARGO_TARGET_DIR="$(side_target "$side")" cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate,opening-perf-trace \
       --no-fail-fast -- --test-threads=4) > "$log" 2>&1
     rc=$?
     set -e
@@ -256,6 +262,11 @@ if (bf, bi) != (hf, hi): bad.append(f'failed/ignored base={bf}/{bi} head={hf}/{h
 if missing: bad.append(f'{sum(missing.values())} base test outcome(s) missing or changed in head: {sorted(missing)[:10]}')
 if added and added_ok != sum(added.values()): bad.append(f'new head outcomes not all ok: {sorted(added)[:10]}')
 if hp - bp != added_ok: bad.append(f'passed delta {hp - bp} != new ok tests {added_ok}')
+import os
+expected = int(os.environ.get('X3_EXPECT_NEW_TESTS', '5'))
+# Head must actually run this PR's tests (4 in unmeshable_tests.rs, 1 contract
+# test); zero means both sides ran the same binaries.
+if added_ok != expected: bad.append(f'head ran {added_ok} new ok tests, expected {expected}')
 print(f'X3_FEATURES_NEW_TESTS {added_ok}')
 for b in bad: print(f'X3_FEATURES_MISMATCH {b}')
 sys.exit(1 if bad else 0)

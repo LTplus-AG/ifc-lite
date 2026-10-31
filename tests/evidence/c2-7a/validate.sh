@@ -23,6 +23,7 @@ PROCESSING_VOID_TESTS=(
 # Scratch lives under the ignored target/, so the task checkout stays clean
 # for the worker's --require-clean admission of the next job.
 SCRATCH_ROOT="$PWD/target/c2-7-scratch"
+mkdir -p "$SCRATCH_ROOT"
 # A checkout-private target dir. The worker's shared cache lane is reused
 # across checkouts, and cargo's mtime freshness then trusts a fingerprint
 # another checkout wrote after this one was created: a mutation run there
@@ -30,22 +31,54 @@ SCRATCH_ROOT="$PWD/target/c2-7-scratch"
 export CARGO_TARGET_DIR="$PWD/target/c2-7-cargo"
 PROBE=tests/evidence/c2-7a/identity_probe.rs
 PROBE_AT=rust/processing/examples/c27_identity_probe.rs
+echo "C27 mode=${1:-native} head=$(git rev-parse HEAD) base=$BASE host=$(hostname)"
 
-# Export BASE into a scratch tree (removed on exit).
+# Everything a mode creates is registered here before it is created, and one
+# EXIT trap removes it on success, on failure and after a failed build.
+CLEAN=()
+cleanup() { for path in "${CLEAN[@]}"; do rm -rf -- "$path"; done; }
+trap cleanup EXIT
+
+# Export BASE into a scratch tree.
 with_base() {
-  mkdir -p "$SCRATCH_ROOT"
   scratch=$(mktemp -d "$SCRATCH_ROOT/base.XXXXXX")
-  trap 'rm -rf -- "$scratch"' EXIT
+  CLEAN+=("$scratch")
   git archive "$BASE" | tar -x -C "$scratch"
 }
 
-fixtures() {
-  pnpm fixtures "${FIXTURES[@]#tests/models/}" >&2
-  for f in "${FIXTURES[@]}"; do test -s "$f"; done
+# Link the host's fixture cache into a tree's tests/models, as C2-8's
+# qualify.sh does, so base and head see the same corpus. Prints the count.
+FIXTURE_CACHE=${C27_FIXTURE_CACHE:-$HOME/build-workers/ifc-lite/tests/models}
+link_fixtures() {
+  python3 -I - "$1" "$FIXTURE_CACHE" <<'PY'
+import sys
+from pathlib import Path
+root, cache = Path(sys.argv[1]), Path(sys.argv[2])
+linked = 0
+if cache.is_dir() and cache.resolve() != (root / 'tests/models').resolve():
+    for source in cache.rglob('*'):
+        dest = root / 'tests/models' / source.relative_to(cache)
+        if source.is_file() and not dest.exists() and not dest.is_symlink():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.symlink_to(source.resolve())
+            linked += 1
+print(linked)
+PY
 }
 
-# Build the injected identity probe in tree $1 with target dir $2.
+fixtures() {
+  link_fixtures "$PWD" >/dev/null
+  for f in "${FIXTURES[@]}"; do
+    [[ -s $f ]] || pnpm fixtures "${f#tests/models/}" >&2
+    test -s "$f"
+    echo "fixture $(sha256sum "$f")"
+  done
+}
+
+# Build the injected identity probe in tree $1 with target dir $2. The probe
+# is registered for removal before it is copied, so a failed build cleans up.
 build_probe() {
+  CLEAN+=("$1/$PROBE_AT")
   cp "$PROBE" "$1/$PROBE_AT"
   (cd "$1" && CARGO_TARGET_DIR="$2" cargo build --release -p ifc-lite-processing --example c27_identity_probe)
   rm "$1/$PROBE_AT"
@@ -64,27 +97,44 @@ case "${1:-native}" in
     echo 'C27_NATIVE_GREEN'
     ;;
   features)
-    # The special feature set's failing tests on head and on BASE.
+    # The special feature set's failing tests on head and on BASE, both with the
+    # same linked fixture corpus. An empty failing set is a valid, green result.
     with_base
-    run() { (cd "$1" && cargo test -p ifc-lite-geometry --no-fail-fast \
-      --features csg_manifold_gate,csg_topology_gate,opening-perf-trace 2>&1 || true) \
-      | grep -E '^test .* FAILED$' | sed 's/ \.\.\. FAILED$//' | sort -u; }
-    head_set=$(run .)
-    base_set=$(CARGO_TARGET_DIR="$scratch/target" run "$scratch")
-    echo "head failing: ${head_set:-<none>}"
-    echo "base failing: ${base_set:-<none>}"
-    test "$head_set" = "$base_set"
+    echo "corpus files linked: head $(link_fixtures "$PWD"), base $(link_fixtures "$scratch")"
+    status=0
+    for side in head base; do
+      if [[ $side == head ]]; then dir=$PWD target=$CARGO_TARGET_DIR; else dir=$scratch target=$scratch/target; fi
+      log="$SCRATCH_ROOT/features-$side.log"
+      set +e
+      (cd "$dir" && CARGO_TARGET_DIR="$target" cargo test -p ifc-lite-geometry --no-fail-fast \
+        --features csg_manifold_gate,csg_topology_gate,opening-perf-trace) > "$log" 2>&1
+      rc=$?
+      set -e
+      { grep -E '^test result:' "$log" || true; } | sed "s/^/$side /"
+      { grep -E '^test .* \.\.\. FAILED$' "$log" || true; } | sed 's/ \.\.\. FAILED$//' | sort -u > "$log.failing"
+      echo "$side cargo exit $rc, failing $(wc -l < "$log.failing")"
+      # Neither a build failure nor a nonzero exit without a failing test is a
+      # failing set; both make the comparison meaningless.
+      if ! grep -q '^test result:' "$log"; then
+        echo "$side produced no test result"; { grep -E -A5 '^error' "$log" || true; } | head -40; status=1
+      elif [[ $rc != 0 && ! -s $log.failing ]]; then
+        echo "$side exited $rc without a failing test"; status=1
+      fi
+    done
+    echo "head failing: $(tr '\n' ' ' < "$SCRATCH_ROOT/features-head.log.failing")"
+    echo "base failing: $(tr '\n' ' ' < "$SCRATCH_ROOT/features-base.log.failing")"
+    cmp -s "$SCRATCH_ROOT/features-head.log.failing" "$SCRATCH_ROOT/features-base.log.failing" || status=1
+    test "$status" -eq 0
     echo 'C27_FEATURE_SET_EQUAL'
     ;;
   identity)
     fixtures
     with_base
-    head_target="${CARGO_TARGET_DIR:-$PWD/target}"
-    build_probe "$PWD" "$head_target"
+    build_probe "$PWD" "$CARGO_TARGET_DIR"
     build_probe "$scratch" "$scratch/target"
     status=0
     for f in "${FIXTURES[@]}"; do
-      h=$("$head_target/release/examples/c27_identity_probe" "$f")
+      h=$("$CARGO_TARGET_DIR/release/examples/c27_identity_probe" "$f")
       b=$("$scratch/target/release/examples/c27_identity_probe" "$f")
       echo "head $h"
       echo "base $b"
@@ -109,9 +159,11 @@ import json, sys
 h, b = json.loads(sys.argv[1]), json.loads(sys.argv[2])
 worst = 0.0
 for k, v in b['phases'].items():
-    r = h['phases'][k] / v if v else 1.0
+    hv = h['phases'][k]
+    # A phase the base never ran has no ratio: zero against nonzero fails.
+    r = hv / v if v else (1.0 if hv == 0 else float('inf'))
     worst = max(worst, r)
-    print(f"{h['fixture']} {k}: base {v} head {h['phases'][k]} ratio {r:.6f}")
+    print(f"{h['fixture']} {k}: base {v} head {hv} ratio {r:.6f}{' BASE-ZERO' if v == 0 else ''}")
 same = all(h[k] == b[k] for k in ('meshes', 'vertices', 'triangles'))
 print(f"{h['fixture']} worst {worst:.6f} counts-identical {same}")
 sys.exit(0 if worst <= 1.0005 and same else 1)
@@ -123,7 +175,6 @@ PY
   mutation)
     patch="$EVIDENCE/behaviour.oracle.patch"
     tests=${C27_MUTATION_FILTER:-stage_order_tests}
-    mkdir -p "$SCRATCH_ROOT"
     log="$SCRATCH_ROOT/mutation.log"
     git apply --reverse --check "$patch"
     if git apply --check "$patch" 2>/dev/null; then
@@ -131,14 +182,14 @@ PY
       exit 1
     fi
     git apply --reverse "$patch"
-    trap 'git apply "$patch"' EXIT
+    trap 'git apply "$patch"; cleanup' EXIT
     set +e
     cargo test -p ifc-lite-geometry --lib "$tests" > "$log" 2>&1
     result=$?
     set -e
     cat "$log"
     git apply "$patch"
-    trap - EXIT
+    trap cleanup EXIT
     # A compile failure is not observation: the witnesses must FAIL.
     test "$result" -eq 101
     grep -q '^test result: FAILED' "$log"

@@ -25,6 +25,16 @@ use crate::csg::CsgCensus;
 use crate::profile::Profile2D;
 use nalgebra::{Matrix4, Point2};
 
+/// Runs its reset when dropped, so a test override never outlives the test,
+/// even when an assertion panics.
+struct ResetOnDrop(fn());
+
+impl Drop for ResetOnDrop {
+    fn drop(&mut self) {
+        (self.0)()
+    }
+}
+
 fn box_mesh(mn: [f64; 3], mx: [f64; 3]) -> Mesh {
     GeometryRouter::make_box_mesh(Point3::new(mn[0], mn[1], mn[2]), Point3::new(mx[0], mx[1], mx[2]))
 }
@@ -106,15 +116,16 @@ fn plate_with_both_fast_paths() -> (Mesh, VoidContext) {
 /// cut is the one emitted (it is the only stage that records rect_fast stats).
 #[test]
 fn param_rect_is_tried_before_bool2d() {
+    // Force the parametric stage on, whatever IFC_LITE_RECT_PARAM or
+    // IFC_LITE_RECT_FAST say, so this test can never pass by skipping.
+    crate::rect_fast::param_set_enabled_override(Some(true));
+    let _reset = ResetOnDrop(|| crate::rect_fast::param_set_enabled_override(None));
     let (host, ctx) = plate_with_both_fast_paths();
     let router = GeometryRouter::new();
     // The fixture is sensitive: on its own, the 2D route accepts this host.
     let bool2d = router.try_staged_bool2d(&host, ctx.bool2d.as_ref().unwrap(), 1);
     assert!(bool2d.is_some(), "the 2D route must accept the fixture on its own");
     router.take_rect_fast_stats();
-    if !crate::rect_fast::param_enabled() {
-        return; // IFC_LITE_RECT_PARAM=0: the parametric stage is off by request
-    }
     let out = router.apply_void_context(host, &ctx, 1);
     assert_eq!(router.take_rect_fast_stats().fired, 1, "the parametric stage must cut first");
     assert!(crate::exact_topology::strict_closed_mesh(&out));
@@ -247,10 +258,10 @@ fn coaxial_union_runs_before_the_batch_plan() {
     let census = CsgCensus::new();
     let router = GeometryRouter::new();
     coaxial_union::set_enabled_override(Some(true));
+    let _reset = ResetOnDrop(|| coaxial_union::set_enabled_override(None));
     let out = census.with_scope(|| {
         router.apply_void_context_inner(host.clone(), &ctx, 1, world_host_bounds(&host), false)
     });
-    coaxial_union::set_enabled_override(None);
     // Every subtract takes one 12-triangle box: the fused union, then the
     // disjoint opening. A batched pair would be one subtract of 24.
     let cutter_tris: Vec<(u8, u32)> = census.take().iter().map(|r| (r.op, r.b_tris)).collect();

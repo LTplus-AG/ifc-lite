@@ -67,3 +67,17 @@ another checkout), so earlier shared-cache receipts were discarded and rerun.
 Committed oracle: behaviour.oracle.patch swaps HOST_STAGES' ParamRect/Bool2d
 (reverse-applied by the revert oracle; test.yml elif with --test
 stage_order_tests.rs).
+
+Pre-merge fix round (review and bot findings)
+- stage_order_tests: param_rect_is_tried_before_bool2d forces
+  rect_fast::param_set_enabled_override(Some(true)) instead of returning
+  green when IFC_LITE_RECT_PARAM/IFC_LITE_RECT_FAST disable it; that override
+  and coaxial_union's are reset by a Drop guard, so a panic cannot leak them.
+  No other stage-order test returns early on an env flag.
+- validate.sh: features accepts an empty failing set, links the host fixture
+  corpus into base and head (C2-8 qualify.sh approach) and refuses a run with
+  no test result or a nonzero exit without failures; instructions fails a
+  zero-instruction base phase against a nonzero head; one EXIT trap removes
+  the injected probe and scratch even after a failed build.
+- identity_probe: also hashes every instance record (all fields, floats as
+  bits, destructured exhaustively).

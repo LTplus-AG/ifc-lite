@@ -80,13 +80,16 @@ function bridgeAbutmentResult(): ClashResult {
   };
 }
 
-// `@tanstack/react-virtual` measures the scroll container's real
-// `offsetHeight` to decide which rows are in the visible range; happy-dom
-// (no real layout engine) always reports 0, so with no stub every virtualized
-// row silently fails to render — the panel would look empty regardless of
-// what's under test. Give it a plausible viewport once, globally.
+// `@tanstack/react-virtual` reads the scroll container's `clientHeight`
+// (`offsetHeight` before virtual-core 3.19) to decide which rows are in the
+// visible range, and measures each row's `offsetHeight`; happy-dom (no real
+// layout engine) always reports 0, so with no stub every virtualized row
+// silently fails to render — the panel would look empty regardless of what's
+// under test. Give it a plausible viewport once, globally.
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 400 });
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 400 });
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 

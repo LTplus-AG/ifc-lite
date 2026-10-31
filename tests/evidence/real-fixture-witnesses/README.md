@@ -38,13 +38,22 @@ Actual Pop validation ran on source `51934e40da`, request
   external wrapper exited 1 because it wrongly expected that complete log to
   fail; this is not a missing-witness escape. Original logs are preserved.
 
-A corrected negative-control request uses `--fully-parallel --workers=1` to
-shard tests within the file and also checks CLI test-name filtering. Request
-`auto-6172fdfc14394faaab712ab88907d17b`, job
-`916389a3-fddd-4f39-a3b5-33bd45ff5105`, source `7b7217b4c0`, is queued;
-its results are not claimed yet. Checker, scenario tests and registry are
-identical between those two tested sources. Runtime source is checked against
-the previously qualified `c9b69f3a01` engine, without relabeling that engine's
+The corrected negative control completed with exit 0 on Pop:
+request `auto-6172fdfc14394faaab712ab88907d17b`, receipt
+`worker-state/jobs/916389a3-fddd-4f39-a3b5-33bd45ff5105/receipt.json`,
+source `7b7217b4c0d9c7e73209000209363b3656560bd1`, source unchanged and
+immutable evidence publication verified.
+
+- `--fully-parallel --workers=1 --shard=1/2` ran four of the seven viewer
+  scenarios successfully. The witness gate exited 1 naming the three missing
+  records: federation-replaced, federation-reverse-add, and primary-replaced.
+- CLI `--test-name-pattern='a SketchUp model'` ran one test successfully with
+  no skips. The witness gate exited 1 naming the other four CLI records.
+
+Together with the actual grep control above, these are measured filtering
+failures, not just constructed log fixtures. Checker, scenario tests and
+registry are identical between the two tested sources. Runtime source was
+checked against the qualified `c9b69f3a01` engine without relabeling that engine's
 provenance. The private Cargo target is deleted on exit.
 
 The main merge brought a retained-file trigger using character-class glob

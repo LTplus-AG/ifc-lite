@@ -81,17 +81,18 @@ fn face_set(reader: &mut Reader<'_>) -> Option<Vec<SourceFace>> {
     if format != 3 || row_count > reader.bytes.len() { return None; }
     let positions = (0..vertices).map(|_| reader.f64s::<3>()).collect::<Option<Vec<_>>>()?;
     let corners = (0..triangles).map(|_| Some([reader.u32()?, reader.u32()?, reader.u32()?])).collect::<Option<Vec<_>>>()?;
-    let mut sums = vec![([0.; 3], [0.; 3]); row_count];
+    let mut sums = vec![([0.; 3], [0.; 3], Vec::new()); row_count];
     for triangle in &corners {
         let row = reader.u32()? as usize;
         let [a, b, c] = [positions.get(triangle[0] as usize)?, positions.get(triangle[1] as usize)?, positions.get(triangle[2] as usize)?];
-        let (sum, origin) = sums.get_mut(row)?;
+        let (sum, origin, pieces) = sums.get_mut(row)?;
+        pieces.push([*a, *b, *c]);
         let n = cross3(std::array::from_fn(|i| b[i] - a[i]), std::array::from_fn(|i| c[i] - a[i]));
         if *sum == [0.; 3] { *origin = *a; }
         for i in 0..3 { sum[i] += n[i]; }
     }
-    sums.into_iter().enumerate().map(|(row, (sum, origin))| Some(SourceFace {
-        role: Role::FaceSetRow { row: row as u32 }, extent: Extent::Plane,
+    sums.into_iter().enumerate().map(|(row, (sum, origin, triangles))| Some(SourceFace {
+        role: Role::FaceSetRow { row: row as u32 }, extent: Extent::Row { triangles },
         support: Support::Plane { origin, normal: unit(sum).unwrap_or([0., 0., 1.]) },
     })).collect()
 }

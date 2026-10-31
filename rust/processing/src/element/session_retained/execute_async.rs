@@ -40,12 +40,14 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
                 // transactional refusal must not consume the host model's
                 // restart budget. Native and browser executors preserve their
                 // domain only for known pre-copy statuses 1..7. Unknown status,
-                // transport loss, and non-layer faults retain fault recovery.
-                let layer_refusal = self.layer_phase
+                // transport loss, and other faults retain fault recovery. #8291: a
+                // face-set operation gets the same treatment, because real coverings
+                // refuse cuts routinely and each must not cost later products a restart.
+                let synchronized_refusal = (self.layer_phase || self.touches_face_set())
                     && self.cancellation.owner.incarnation().is_some()
                     && matches!(&reason, RetainedExecutionError::Runtime(fault)
                         if matches!(fault.kind, RuntimeFaultKind::Kernel { status: 1..=7 }));
-                if !reason.controller_cancelled() && !contract && !layer_refusal {
+                if !reason.controller_cancelled() && !contract && !synchronized_refusal {
                     // Fault recovery, never a controller-owned cancellation.
                     self.cancellation.owner.retire();
                 }
@@ -54,6 +56,14 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
         };
         self.armed = false;
         Ok(completed)
+    }
+
+    fn touches_face_set(&self) -> bool {
+        self.operations.iter().any(|operation| match operation {
+            IssuedRetainedOperation::Boolean { inputs, .. } => inputs.iter().any(|input| input.realization.has_face_set()),
+            IssuedRetainedOperation::Affine { input, .. } => input.has_face_set(),
+            IssuedRetainedOperation::Construction { .. } => false,
+        })
     }
 
     async fn execute_started_async(

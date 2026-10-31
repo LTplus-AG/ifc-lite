@@ -51,12 +51,19 @@ impl AsyncRetainedExecutor for BrowserWorker {
             Invocation::Affine {
                 input,
                 column_major,
-            } => self.affine(input, column_major).await,
+            } => {
+                self.realize(input, limits, max_bytes).await?;
+                self.affine(input, column_major).await
+            }
             Invocation::Boolean {
                 left,
                 right,
                 operation,
             } => {
+                for operand in [&left, &right] {
+                    let (Operand::Source { receipt, .. } | Operand::Placed { receipt, .. }) = operand;
+                    self.realize(receipt, limits, max_bytes).await?;
+                }
                 self.boolean(left, right, operation, limits, max_bytes)
                     .await
             }
@@ -90,7 +97,19 @@ impl BrowserWorker {
         Ok(BrowserReceipt::SourceFaceSet {
             domain: self.cancellation(),
             completion,
+            realized: Box::default(),
         })
+    }
+    /// Build a face set's closed solid when something first consumes it. Its kernel mesh
+    /// is dropped: the receipt's budget covers the authored mesh, and only the solid is needed.
+    async fn realize(&mut self, input: &BrowserReceipt, limits: NumericalLimits, max_bytes: u32) -> Result<(), RuntimeFault> {
+        let BrowserReceipt::SourceFaceSet { completion, realized, .. } = input else { return Ok(()) };
+        if realized.get().is_none() {
+            let mut value = self.evaluate_retained(completion.request().clone(), limits.chord_metres, limits.angle_degrees, max_bytes).await?;
+            value.completion.tessellation = Default::default();
+            realized.set(value).map_err(|_| invalid("face set realized twice"))?;
+        }
+        Ok(())
     }
     fn validate_input(&self, input: &BrowserReceipt) -> Result<(), RuntimeFault> {
         input.validate_live()?;
@@ -238,14 +257,16 @@ fn operand(
             receipt,
             world_from_source,
         } => {
-            let BrowserReceipt::Construction(value) = receipt else {
-                return Err(invalid("source operand is not a construction receipt"));
+            let completion = match receipt {
+                BrowserReceipt::Construction(value) => &value.completion,
+                BrowserReceipt::SourceFaceSet { completion, .. } => completion,
+                _ => return Err(invalid("source operand is not a construction receipt")),
             };
             // Source frame is in raw file units; the sealed request supplies the
             // conversion into evaluation metres. The evaluator never sees a survey origin.
             (
                 receipt,
-                wire::multiply(world_from_source, value.completion.source_from_evaluation),
+                wire::multiply(world_from_source, completion.source_from_evaluation),
             )
         }
         Operand::Placed {

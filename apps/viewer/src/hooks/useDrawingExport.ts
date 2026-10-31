@@ -18,6 +18,7 @@ import {
   renderTitleBlock,
   exportToDXF,
   formatScaleFactorLabel,
+  makeEntityKey,
   fitRasterPixels,
   type RasterFit,
   type Drawing2D,
@@ -1104,7 +1105,7 @@ function useDrawingExport({
         // that cut and must still be drawn, or the geometry silently
         // vanishes from the PDF.
         // Per entity: one damaged polygon keeps all of that entity's cut lines.
-        const entityKey = ({ polygon: p }: PdfCutPolygon) => `${p.modelIndex}:${p.entityId}`;
+        const entityKey = ({ polygon: p }: PdfCutPolygon) => makeEntityKey(p.modelIndex, p.entityId);
         const damaged = new Set(cutPolygons.filter((p) => !p.coversCutLines).map(entityKey));
         const entitiesWithCutPolygon = new Set(cutPolygons.map(entityKey).filter((key) => !damaged.has(key)));
 
@@ -1112,7 +1113,7 @@ function useDrawingExport({
         for (const line of drawing.lines) {
           if (
             line.category === 'cut' &&
-            entitiesWithCutPolygon.has(`${line.modelIndex}:${line.entityId}`)
+            entitiesWithCutPolygon.has(makeEntityKey(line.modelIndex, line.entityId))
           ) {
             continue;
           }

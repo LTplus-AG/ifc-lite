@@ -64,21 +64,16 @@ const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 1
 
 /**
  * Set a fill or stroke colour and return its alpha. A colour jsPDF cannot
- * take (an unfinished hex, an unknown name) falls back per polygon, so one
- * bad override cannot abort the whole export.
+ * take (an unfinished hex, a name) falls back per polygon, so one bad
+ * override cannot abort the whole export.
  */
 function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: string): number {
-  const set = (css: string) => (kind === 'fill' ? doc.setFillColor(css) : doc.setDrawColor(css));
   const parsed = pdfColor(color);
-  if (parsed) {
-    try { set(parsed.color); return parsed.alpha; } catch (error) {
-      console.warn(`[section PDF] colour ${JSON.stringify(color)} rejected by jsPDF, using ${fallback}`, error);
-    }
-  } else {
-    console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
-  }
-  set(fallback);
-  return 1;
+  if (!parsed) console.warn(`[section PDF] colour ${JSON.stringify(color)} is not usable in a PDF, using ${fallback}`);
+  const css = parsed?.color ?? fallback;
+  if (kind === 'fill') doc.setFillColor(css);
+  else doc.setDrawColor(css);
+  return parsed?.alpha ?? 1;
 }
 
 /**

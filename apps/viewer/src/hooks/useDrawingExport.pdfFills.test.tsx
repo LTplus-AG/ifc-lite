@@ -214,11 +214,6 @@ describe('handleExportPDF (non-sheet) fills cut polygons like the SVG export', (
     assert.match(text, /^1\.98\d* w$/m, '0.7 mm override line weight (1.98 pt)');
   });
 
-  it('turns an #RRGGBBAA override into a colour jsPDF accepts plus opacity', async () => {
-    const text = await exportPdf({ overrideRules: [wallRule({ fillColor: '#00FF0080' })] });
-    assert.ok(setsColor(text, 'fill', '#00ff00'), 'alpha byte is stripped from the colour');
-    assert.match(text, /\/ca 0\.5\b/, 'alpha byte 0x80 becomes the fill opacity');
-  });
 });
 
 describe('handleExportPDF (non-sheet) edge cases', () => {
@@ -228,12 +223,6 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     assert.ok(setsColor(text, 'stroke', '#000000'), 'unparseable stroke falls back to black');
     assert.ok(text.includes('h\nS\n'), 'the outline is still drawn');
     assert.ok(!/#12|bogus/.test(text), 'the raw colour never reaches the content stream');
-  });
-
-  it('resolves named override colours like the SVG does', async () => {
-    const text = await exportPdf({ overrideRules: [wallRule({ fillColor: 'red', strokeColor: 'navy' })] });
-    assert.ok(setsColor(text, 'fill', '#ff0000'), 'named fill');
-    assert.ok(setsColor(text, 'stroke', '#000080'), 'named stroke');
   });
 
   it('draws nothing for transparent / none, as the canvas and SVG do', async () => {
@@ -295,24 +284,30 @@ describe('handleExportSVG uses the same resolver', () => {
   });
 });
 
-// Through the export, not the parser module directly: the revert oracle
-// (Changed tests observe production) reverts production files, and a test
-// importing a file the PR adds would fail to load instead of going red.
+// Tested through the export rather than by importing pdf-color: CI's revert
+// check deletes files the PR adds, and this test must still load. Every rule
+// also sets a stroke colour, so a fallback fill is told apart from an
+// override that was never applied.
 describe('override colour forms in the PDF', () => {
-  const cases: { fillColor: string; fill: string; opacity?: RegExp }[] = [
+  const cases: { fillColor: string; fill: string | null; opacity?: RegExp }[] = [
     { fillColor: '#abc', fill: '#aabbcc' },
+    { fillColor: '#00FF0080', fill: '#00ff00', opacity: /\/ca 0\.5\b/ },
     { fillColor: '#f008', fill: '#ff0000', opacity: /\/ca 0\.53\b/ },
     { fillColor: ' RGBA(255, 0, 0, 0.5) ', fill: '#ff0000', opacity: /\/ca 0\.5\b/ },
     { fillColor: 'rgb(0,128,255)', fill: '#0080ff' },
-    { fillColor: 'Red', fill: '#ff0000' },
+    { fillColor: '#11223300', fill: null },
+    // Fall back to the IfcWall colour: jsPDF would read 'bad' as #bbaadd.
+    { fillColor: 'bad', fill: '#b0b0b0' },
+    { fillColor: 'Red', fill: '#b0b0b0' },
     { fillColor: 'rgb(300,0,0)', fill: '#b0b0b0' },
     { fillColor: 'rgb(1.2.3,0,0)', fill: '#b0b0b0' },
-    { fillColor: '', fill: '#b0b0b0' },
   ];
   for (const { fillColor, fill, opacity } of cases) {
-    it(`${JSON.stringify(fillColor)} fills ${fill}`, async () => {
-      const text = await exportPdf({ overrideRules: [wallRule({ fillColor })] });
-      assert.ok(setsColor(text, 'fill', fill));
+    it(`${JSON.stringify(fillColor)} ${fill ? `fills ${fill}` : 'is not filled'}`, async () => {
+      const text = await exportPdf({ overrideRules: [wallRule({ fillColor, strokeColor: '#1976D2' })] });
+      assert.ok(setsColor(text, 'stroke', '#1976d2'), 'the override was applied');
+      if (fill) assert.ok(setsColor(text, 'fill', fill));
+      else assert.ok(!text.includes('f*'), 'zero alpha draws no fill');
       if (opacity) assert.match(text, opacity);
     });
   }

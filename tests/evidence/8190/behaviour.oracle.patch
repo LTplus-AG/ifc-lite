@@ -1,6 +1,6 @@
 --- a/rust/geometry/src/router/voids/coaxial_union_snap.rs
 +++ b/rust/geometry/src/router/voids/coaxial_union_snap.rs
-@@ -56,7 +56,7 @@
+@@ -52,7 +52,7 @@
  /// [`noise_radius`]. Returns how many vertices moved or were added.
  pub(super) fn reconcile(contours: &mut [Vec<Point2<f64>>]) -> usize {
      let tau = noise_radius(contours);
@@ -8,4 +8,4 @@
 +    snap_onto_earlier(contours, tau) + close_t_junctions(contours, tau)
  }
  
- /// Distance within which two footprint features are one authored feature.
+ /// Distance within which two footprint features are one authored feature:

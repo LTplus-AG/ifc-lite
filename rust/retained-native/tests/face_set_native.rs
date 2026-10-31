@@ -146,16 +146,31 @@ fn issue_8291_mirrored_and_nonuniform_copies_publish_outward() {
 }
 
 #[test]
-fn issue_8291_open_shell_operand_refuses_typed_and_keeps_the_worker() {
-    // Authored triangles of a sheet, cut by a half-space: no closed solid exists.
-    let text = model("\
-#30=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(4000.,0.,0.),(4000.,4000.,0.),(0.,4000.,0.)));
-#31=IFCTRIANGULATEDFACESET(#30,$,.F.,((1,2,3),(1,3,4)),$);
+fn issue_8291_open_shell_operands_refuse_typed_and_spend_no_worker() {
+    // More cut open sheets than the restart budget: no closed solid exists for any of them.
+    let Some(worker) = support::worker_path() else { return; };
+    let mut records = String::new();
+    for i in 0..6 {
+        let base = 100 + i * 10;
+        records.push_str(&format!("#{a}=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(4000.,0.,0.),(4000.,4000.,0.),(0.,4000.,0.)));
+#{b}=IFCTRIANGULATEDFACESET(#{a},$,.F.,((1,2,3),(1,3,4)),$);
+#{c}=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#{b},#44);
+#{d}=IFCSHAPEREPRESENTATION(#2,'Body','Clipping',(#{c}));#{e}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{d}));
+#{f}=IFCBUILDINGELEMENTPROXY('o{i}',$,'Open',$,$,#9,#{e},$,.NOTDEFINED.);\n",
+            a = base, b = base + 1, c = base + 2, d = base + 3, e = base + 4, f = base + 5));
+    }
+    let text = model(&format!("#30=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1000.,0.,0.),(0.,1000.,0.),(0.,0.,1000.)));
+#33=IFCTRIANGULATEDFACESET(#30,$,.T.,((1,3,2),(1,2,4),(2,3,4),(3,1,4)),$);
 #40=IFCCARTESIANPOINT((2000.,0.,0.));#41=IFCDIRECTION((1.,0.,0.));#42=IFCAXIS2PLACEMENT3D(#40,#41,$);
 #43=IFCPLANE(#42);#44=IFCHALFSPACESOLID(#43,.F.);
-#33=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#31,#44);");
-    let Some(outcomes) = support::native(&text) else { return; };
-    let refusal = support::refusal(&outcomes, 20);
-    assert!(matches!(refusal.code(), "kernel_failure" | "operation_unsupported"), "{}", refusal.code());
+{records}"));
+    let mut outcomes = Vec::new();
+    let summary = ifc_lite_retained_native::run_model_native(ifc_lite_core::SourceBundle::new(text.into_bytes()), &worker,
+        &Default::default(), |outcome| outcomes.push(outcome)).unwrap();
+    assert_eq!(summary.restarts, 0, "a source-decided refusal spends no worker");
+    for id in [105, 115, 125, 135, 145, 155] {
+        assert_eq!(support::refusal(&outcomes, id).code(), "operation_unsupported", "#{id}");
+    }
+    assert_eq!(support::shape(&outcomes, 20).marker(), "final", "the closed face set still publishes");
     println!("sdk witness executed: face_set_open_operand");
 }

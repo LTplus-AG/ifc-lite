@@ -93,12 +93,14 @@ impl SmlibWorker {
         })
     }
 
-    /// Build the closed solid behind a source-exact face set, once. An open shell
-    /// refuses with the kernel's typed status and leaves this worker live.
+    /// Build the closed solid behind a source-exact face set, once. Its kernel mesh
+    /// is dropped: the receipt's budget covers the authored mesh, and only the solid
+    /// is needed from here on.
     pub fn realize_source_face_set<'a>(&mut self, source: &'a RetainedSourceFaceSet, chord_metres: f64,
         angle_degrees: f64, limits: MeshLimits) -> Result<&'a RetainedRealization, WorkerError> {
         if source.realized.get().is_none() {
-            let realized = self.evaluate_retained(source.completion.request().clone(), chord_metres, angle_degrees, limits)?;
+            let mut realized = self.evaluate_retained(source.completion.request().clone(), chord_metres, angle_degrees, limits)?;
+            realized.completion.tessellation = Default::default();
             // Single-threaded executor: the cell was checked empty just above.
             source.realized.set(realized).map_err(|_| WorkerError::Protocol("face set realized twice"))?;
         }

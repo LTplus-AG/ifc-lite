@@ -143,3 +143,42 @@ it('counts each specification from its own requirements when two specifications 
   assert.match(rows[0], new RegExp(`${2 * n}/${3 * n} · 66%$`));
   assert.match(rows[1], new RegExp(`${n}/${2 * n} · 50%$`), 'the second specification is not measured against the first one’s requirements');
 });
+
+describe('IDS report requirement-check ring (#8417)', () => {
+  const rings = (block: IdsReportBlock) => composeDocument({ name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth, blocks: [block] })
+    .pages.flatMap((page) => page.items).flatMap((item) => (item.kind === 'ring' ? [item] : []));
+
+  it('draws the entity and requirement rings side by side in the PDF and captions them', () => {
+    const [entities, checks, ...rest] = rings(synthetic);
+    assert.equal(rest.length, 0);
+    assert.deepEqual([entities.counts.pass, entities.counts.fail, entities.passRate, entities.label], [0, 128, 0, 'Entity results']);
+    assert.deepEqual([checks.counts.pass, checks.counts.fail, checks.counts.total, checks.passRate, checks.label], [1280, 128, 1408, 90, 'Requirement checks']);
+    assert.ok(checks.x >= entities.x + entities.size, 'the rings do not overlap');
+    const texts = pdfTexts(synthetic);
+    for (const text of ['Entity results', 'Requirement checks', '0%', '90%']) assert.ok(texts.includes(text), text);
+  });
+
+  it('labels each preview ring with its own rate', () => {
+    const ui = render(<IdsReportPreview block={synthetic} />);
+    const alts = [...ui.querySelectorAll('[data-validation-benchmark] img')].map((img) => img.getAttribute('alt') ?? '');
+    assert.equal(alts.length, 2);
+    assert.match(alts[0], /^Entity results: .* 0%$/);
+    assert.match(alts[1], /^Requirement checks: .*1280.*128.* 90%$/);
+    assert.deepEqual([...ui.querySelectorAll('[data-validation-benchmark] figcaption')].map((caption) => caption.textContent), ['Entity results', 'Requirement checks']);
+  });
+
+  it('keeps one uncaptioned ring when requirement checks cannot be counted, and none without benchmarks', () => {
+    const partial: IdsReportBlock = { ...synthetic, checks: [{ ...synthetic.checks[0], rules: [{ ...rules[0], passed: null, failed: null, passRate: null }] }] };
+    const rulesBlock: IdsReportBlock = { ...synthetic, sourceKind: 'rules' };
+    for (const block of [partial, rulesBlock]) {
+      const drawn = rings(block);
+      assert.equal(drawn.length, 1);
+      assert.equal(drawn[0].label, undefined);
+      const ui = render(<IdsReportPreview block={block} />);
+      assert.equal(ui.querySelectorAll('[data-validation-benchmark] img').length, 1);
+      assert.equal(ui.querySelector('[data-validation-benchmark] figcaption'), null);
+      cleanup();
+    }
+    assert.equal(rings({ ...synthetic, benchmarks: false }).length, 0);
+  });
+});

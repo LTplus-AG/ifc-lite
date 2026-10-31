@@ -20,7 +20,7 @@ import { blockTitle, blockTitleStyle } from './block-title.js';
 import { blockTitleItems } from './compose-block-title.js';
 import { resolveEnglish } from '@/i18n/registry';
 import { capturedDocumentNumber, type DocumentLabelFormatter } from './document-labels.js';
-import { reportRingCounts } from '../validation/report-summary.js';
+import { reportRingCounts, requirementRingCounts } from '../validation/report-summary.js';
 import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportStamp } from './report-provenance.js';
@@ -37,6 +37,8 @@ const LINE_PITCH = 11;
 const COMPACT_ROW_HEIGHT = 20;
 const COMPACT_GROUP_GAP = 6;
 const BAR_HEIGHT = 5;
+const RING_CAPTION_WIDTH = 66;
+const RING_CAPTION_HEIGHT = 20;
 const BAR_TRACK_COLOR = '#e1e1e1';
 const BAND_COLOR = { good: '#22c55e', warn: '#eab308', bad: '#ef4444' } as const;
 
@@ -158,9 +160,17 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const checksCount = t.formatNumber ? t(reportItemsCountKey(block), { count: block.checks.length, countDisplay: fmt(t, block.checks.length) }) : undefined;
   const keepAfter = firstRowHeight + firstChildHeight + (checksCount ? DATE_HEIGHT : 0);
   const ringSize = 44;
-  const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
-  const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary, t), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary, t), summaryWidth, 9, false)];
   const blockChecks = idsBlockRequirementCheckRate(block);
+  // Entity and requirement rings need captions to tell them apart; a lone ring keeps its original layout (#8417).
+  const rings = !block.benchmarks ? [] : blockChecks
+    ? [{ counts: reportRingCounts(block.summary), label: t('idsPanel.entityResults'), passRate: block.summary.passRate },
+      { counts: requirementRingCounts(blockChecks), label: t('idsPanel.requirementChecks'), passRate: blockChecks.rate }]
+    : [{ counts: reportRingCounts(block.summary) }];
+  const ringSlot = rings.length > 1 ? RING_CAPTION_WIDTH : ringSize;
+  const ringsWidth = rings.length * (ringSlot + 12);
+  const ringsHeight = ringSize + (rings.length > 1 ? RING_CAPTION_HEIGHT : 0);
+  const summaryWidth = contentW - ringsWidth;
+  const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary, t), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary, t), summaryWidth, 9, false)];
   if (blockChecks) {
     const line = checksPassedLine(blockChecks, t);
     summaryLines.push(...(block.benchmarks && wrap ? wrap(line, summaryWidth, 9, false) : [cursor.truncate(line, summaryWidth, 9, false)]));
@@ -170,16 +180,23 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     const label = t('idsPanel.unmatchedSpecifications', { count: notChecked, countDisplay: fmt(t, notChecked) });
     summaryLines.push(...(wrap ? wrap(label, summaryWidth, 9, false) : [cursor.truncate(label, summaryWidth, 9, false)]));
   }
-  const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : Math.max(SUMMARY_HEIGHT, summaryLines.length * 12 + 2);
+  const summaryHeight = block.benchmarks ? Math.max(ringsHeight + 6, summaryLines.length * 12 + 2) : Math.max(SUMMARY_HEIGHT, summaryLines.length * 12 + 2);
   const titleHeight = IDS_REPORT_TITLE_HEIGHT + blockTitleStyle(block).extra;
   const lead = titleHeight + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
   cursor.ensure(Math.min(lead, cursor.bottom - cursor.top));
   cursor.push(...blockTitleItems(block, title, cursor.x, cursor.y, contentW, cursor.truncate));
   cursor.y += titleHeight;
 
-  if (block.benchmarks) pushRing({ kind: 'ring', x: cursor.x, y: cursor.y, size: ringSize, counts: reportRingCounts(block.summary) });
+  rings.forEach((ring, i) => {
+    const x = cursor.x + i * (ringSlot + 12);
+    pushRing({ kind: 'ring', x, y: cursor.y, size: ringSize, ...ring });
+    if (ring.label !== undefined) cursor.push(
+      { kind: 'text', x, y: cursor.y + ringSize + 8, size: 7, bold: false, gray: 60, text: cursor.truncate(ring.label, ringSlot, 7, false) },
+      { kind: 'text', x, y: cursor.y + ringSize + 17, size: 8, bold: true, gray: 45, text: pct(ring.passRate) },
+    );
+  });
   summaryLines.forEach((text, i) => cursor.push({
-    kind: 'text', x: cursor.x + (block.benchmarks ? ringSize + 12 : 0), y: cursor.y + 10 + i * 12, size: 9, bold: false, gray: 60, text,
+    kind: 'text', x: cursor.x + ringsWidth, y: cursor.y + 10 + i * 12, size: 9, bold: false, gray: 60, text,
   }));
   cursor.y += summaryHeight;
   if (stamp) {

@@ -72,7 +72,7 @@ it('appends an added model without re-spreading the earlier ones', () => {
   act(() => root.render(<Probe />));
   const after = current!;
   assert.equal(after.meshes, before.meshes, 'same merged array');
-  assert.deepEqual(after.meshes.slice(0, 2), wrappers, 'earlier wrappers kept');
+  wrappers.forEach((wrapper, i) => assert.strictEqual(after.meshes[i], wrapper, 'earlier wrapper kept by identity'));
   assert.equal(after.meshes[2].modelIndex, 2);
 
   // An earlier model re-indexed (removed and re-added) still rebuilds.

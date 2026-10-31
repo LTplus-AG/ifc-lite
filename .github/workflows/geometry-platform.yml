@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: MPL-2.0
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
 # worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
-# this workflow is path-filtered to them. It runs on PRs, on pushes to main and
-# nightly with the corpus; making it a required check is a maintainer ruleset setting.
+# this workflow is path-filtered to them. It costs about an hour of hosted runner per
+# commit, so a PR or main push runs it only for changes it can observe; the nightly
+# run (with the corpus) catches what the narrow filters miss. Making it a required
+# check is a maintainer ruleset setting.
 name: Geometry platform (native adapter)
 
 on:
@@ -31,21 +33,48 @@ on:
       # Local actions the job calls.
       - '.github/actions/setup-wasm-build/**'
       - 'native/**'
-      # M2-D builds and drives the real opt-in viewer.
-      - 'apps/viewer/**'
+      # M2-D builds and drives the real opt-in viewer. Only its retained code,
+      # the viewport that hosts it and its build configuration: an ordinary
+      # viewer change must not queue an hour-long native build.
+      - 'apps/viewer/**/*Retained*'
+      - 'apps/viewer/**/*retained*'
+      - 'apps/viewer/src/lib/retained/**'
+      - 'apps/viewer/src/components/viewer/Viewport.tsx'
+      - 'apps/viewer/src/components/viewer/ViewportContainer.tsx'
+      - 'apps/viewer/vite.config.ts'
+      - 'apps/viewer/vite-plugins/**'
+      - 'apps/viewer/package.json'
       - 'tests/e2e/retained-viewer.e2e.spec.ts'
       - 'tests/benchmark/frames/**'
       - 'playwright.config.ts'
       - 'tests/evidence/m2-d/**'
+      - 'rust/geometry-runtime/**'
+      - 'rust/retained-native/**'
+      - 'rust/processing/tests/fixtures/issue_2019_*'
+      - 'rust/processing/tests/fixtures/issue_3641_*'
+      - 'rust/processing/src/processor/**'
+      - 'rust/processing/src/element/session_retained/**'
+      - 'rust/geometry/src/program/retained/**'
+      - 'rust/geometry/tests/m3_*'
+      - 'rust/geometry/tests/support/m3_opening_fixtures.rs'
+      - 'rust/processing/tests/m3_*'
+      - 'rust/processing/src/element.rs'
+      - 'rust/processing/Cargo.toml'
       - 'tests/fixtures/cli-retained/**'
       - 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc'
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
       - 'tests/models/manifest.json'
       # Retained requests the worker executes are lowered here.
+      - 'rust/geometry/src/document/**'
+      - 'rust/geometry/src/program/**'
+      - 'rust/geometry/tests/m*'
       # Shared test fixtures (CUT-0 prisms) used by the native and Worker witnesses.
+      - 'rust/geometry/tests/support/**'
+      - 'rust/processing/tests/m*'
       - 'tests/manifests/cli-retained-coverage.d/**'
       - 'tests/evidence/*/witnesses.txt'
+      - 'rust/geometry/src/analytic/**'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/stage-retained-runtime-peer.mjs'
@@ -55,14 +84,16 @@ on:
       - 'scripts/cli-retained-engine/**'
       - 'scripts/retained-compare/**'
       - 'packages/cli/**'
-      - 'packages/**'
-      - 'shared/**'
-      - 'scripts/**'
-      - 'pnpm-lock.yaml'
+      - 'packages/geometry/**'
+      - 'packages/wasm/**'
+      - 'scripts/*retained*'
+      - 'scripts/smlib-*'
+      # The halfspace witness fetch step runs this gate.
+      - 'scripts/fixtures/fetch-fixtures.mjs'
+      - 'scripts/lib/*retained*'
       - 'pnpm-workspace.yaml'
       - 'package.json'
       - 'turbo.json'
-      - 'tsconfig*.json'
       - 'scripts/smlib-node-transport.test.mjs'
       - 'scripts/lib/__fixtures__/smlib-node/**'
       - 'tests/evidence/m1-f1/**'
@@ -71,11 +102,21 @@ on:
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
+      - 'rust/wasm-bindings/src/retained_browser/**'
       # M2-A streaming session and view meshes.
+      - 'rust/wasm-bindings/src/api/retained_*.rs'
+      - 'rust/wasm-bindings/src/retained_view.rs'
+      - 'rust/wasm-bindings/js/**'
       # Feature wiring for the retained-browser build (the wasm32 path
       # only these actual-Worker lanes exercise).
+      - 'rust/wasm-bindings/Cargo.toml'
+      - 'rust/wasm-bindings/src/lib.rs'
+      - 'rust/geometry/Cargo.toml'
+      - 'rust/wasm-bindings/src/api/retained_browser.rs'
+      - 'rust/wasm-bindings/tests/retained-browser/**'
       - 'scripts/retained-browser-contract.mjs'
       # The actual-Worker contract serves the geometry fixture directory to the browser.
+      - 'rust/geometry/tests/fixtures/**'
       - 'scripts/build-wasm.sh'
       - 'packages/wasm/retained.*'
       - 'packages/wasm/pkg-retained/**'
@@ -104,21 +145,48 @@ on:
       # Local actions the job calls.
       - '.github/actions/setup-wasm-build/**'
       - 'native/**'
-      # M2-D builds and drives the real opt-in viewer.
-      - 'apps/viewer/**'
+      # M2-D builds and drives the real opt-in viewer. Only its retained code,
+      # the viewport that hosts it and its build configuration: an ordinary
+      # viewer change must not queue an hour-long native build.
+      - 'apps/viewer/**/*Retained*'
+      - 'apps/viewer/**/*retained*'
+      - 'apps/viewer/src/lib/retained/**'
+      - 'apps/viewer/src/components/viewer/Viewport.tsx'
+      - 'apps/viewer/src/components/viewer/ViewportContainer.tsx'
+      - 'apps/viewer/vite.config.ts'
+      - 'apps/viewer/vite-plugins/**'
+      - 'apps/viewer/package.json'
       - 'tests/e2e/retained-viewer.e2e.spec.ts'
       - 'tests/benchmark/frames/**'
       - 'playwright.config.ts'
       - 'tests/evidence/m2-d/**'
+      - 'rust/geometry-runtime/**'
+      - 'rust/retained-native/**'
+      - 'rust/processing/tests/fixtures/issue_2019_*'
+      - 'rust/processing/tests/fixtures/issue_3641_*'
+      - 'rust/processing/src/processor/**'
+      - 'rust/processing/src/element/session_retained/**'
+      - 'rust/geometry/src/program/retained/**'
+      - 'rust/geometry/tests/m3_*'
+      - 'rust/geometry/tests/support/m3_opening_fixtures.rs'
+      - 'rust/processing/tests/m3_*'
+      - 'rust/processing/src/element.rs'
+      - 'rust/processing/Cargo.toml'
       - 'tests/fixtures/cli-retained/**'
       - 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc'
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
       - 'tests/models/manifest.json'
       # Retained requests the worker executes are lowered here.
+      - 'rust/geometry/src/document/**'
+      - 'rust/geometry/src/program/**'
+      - 'rust/geometry/tests/m*'
       # Shared test fixtures (CUT-0 prisms) used by the native and Worker witnesses.
+      - 'rust/geometry/tests/support/**'
+      - 'rust/processing/tests/m*'
       - 'tests/manifests/cli-retained-coverage.d/**'
       - 'tests/evidence/*/witnesses.txt'
+      - 'rust/geometry/src/analytic/**'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/stage-retained-runtime-peer.mjs'
@@ -128,14 +196,16 @@ on:
       - 'scripts/cli-retained-engine/**'
       - 'scripts/retained-compare/**'
       - 'packages/cli/**'
-      - 'packages/**'
-      - 'shared/**'
-      - 'scripts/**'
-      - 'pnpm-lock.yaml'
+      - 'packages/geometry/**'
+      - 'packages/wasm/**'
+      - 'scripts/*retained*'
+      - 'scripts/smlib-*'
+      # The halfspace witness fetch step runs this gate.
+      - 'scripts/fixtures/fetch-fixtures.mjs'
+      - 'scripts/lib/*retained*'
       - 'pnpm-workspace.yaml'
       - 'package.json'
       - 'turbo.json'
-      - 'tsconfig*.json'
       - 'scripts/smlib-node-transport.test.mjs'
       - 'scripts/lib/__fixtures__/smlib-node/**'
       - 'tests/evidence/m1-f1/**'
@@ -144,19 +214,29 @@ on:
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
+      - 'rust/wasm-bindings/src/retained_browser/**'
       # M2-A streaming session and view meshes.
+      - 'rust/wasm-bindings/src/api/retained_*.rs'
+      - 'rust/wasm-bindings/src/retained_view.rs'
+      - 'rust/wasm-bindings/js/**'
       # Feature wiring for the retained-browser build (the wasm32 path
       # only these actual-Worker lanes exercise).
+      - 'rust/wasm-bindings/Cargo.toml'
+      - 'rust/wasm-bindings/src/lib.rs'
+      - 'rust/geometry/Cargo.toml'
+      - 'rust/wasm-bindings/src/api/retained_browser.rs'
+      - 'rust/wasm-bindings/tests/retained-browser/**'
       - 'scripts/retained-browser-contract.mjs'
       # The actual-Worker contract serves the geometry fixture directory to the browser.
+      - 'rust/geometry/tests/fixtures/**'
       - 'scripts/build-wasm.sh'
       - 'packages/wasm/retained.*'
       - 'packages/wasm/pkg-retained/**'
       - 'packages/wasm/test/retained-browser.test.mjs'
       - '.github/workflows/geometry-platform.yml'
-  # Nightly, with the downloaded corpus. The corpus is not run per PR or push.
+  # The backstop for the narrow filters above, and the only run that carries the corpus.
   schedule:
-    - cron: '41 2 * * *'
+    - cron: '30 2 * * *'
   workflow_dispatch:
     inputs:
       corpus:

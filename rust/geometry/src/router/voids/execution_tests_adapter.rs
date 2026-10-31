@@ -10,6 +10,8 @@ use crate::program::openings::execute::execute;
 // Declared here, not in `mod.rs`, which is at its size budget.
 #[path = "host_frame_tests.rs"]
 mod host_frame_tests;
+#[path = "stage_order_tests.rs"]
+mod stage_order_tests;
 
 impl GeometryRouter {
     fn test_execution<T>(&self, run: impl FnOnce(&Execution) -> T) -> T {

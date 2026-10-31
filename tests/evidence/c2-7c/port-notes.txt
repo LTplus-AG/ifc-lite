@@ -30,9 +30,13 @@ Commits
    C2-7" note is dropped.
 3. Docs: geometry-pipeline.md Void Cutting rewritten (the single exact path /
    no AABB fallback claim was false), the frozen-order contract added to
-   mesh-determinism.md, the strategy rule added to rust/AGENTS.md within its
-   byte budget (the STEP-strings bullet loses its redundant "keep the test
-   green" clause and G3 its mechanism list), voids module docs.
+   mesh-determinism.md (with the strategy extension rule), a one-line
+   pointer to it in rust/AGENTS.md, voids module docs.
+4. Fix round: the STEP-strings and G3 bullets are restored verbatim. The
+   pointer's bytes come from replacing rust/AGENTS.md's Discovery bullet,
+   every fact of which is in the root AGENTS.md Geometry & WASM bullet, with
+   a pointer there. geometry-pipeline.md no longer says the engulf stop ends
+   the chain: later openings are skipped, the post passes still run.
 
 Review findings applied
 - S1: no record_void_consumed_host in the engulf branch. It returns

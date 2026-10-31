@@ -383,7 +383,10 @@ cut, and when the host already carries the void; it never runs on an opening the
 kernel found disjoint (#5362). Kernel failures are recorded per host as
 structured `BoolFailure` records and drained once per frame-local pass.
 
-An opening whose solid engulfs the host empties it, and the chain stops there.
+An opening whose solid engulfs the host empties it. That ends the per-opening
+loop: no later opening is cut. The stage D post passes still run on the empty
+host (the shard sweep returns at once on it) and record the cut effect with
+zero triangles after.
 The consumed record is written in ONE place (#8125): when the cut of a host
 that had triangles comes back empty, `program::openings::execute` marks it
 consumed, so the element keeps the empty result instead of re-rendering the

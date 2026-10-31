@@ -72,7 +72,14 @@ re-pin below. `voids/stage_order_tests.rs` turns red when a guarded pair is
 swapped or a guarded step is dropped. The same holds for diagnostics order:
 each stage records its effects on the owned `Execution` in this order, a frame
 retry discards its own records when rejected, and a terminal stop (an engulfed
-host) ends the chain before any later opening.
+host) skips every later opening while the post passes still record the empty
+cut.
+
+Extending the chain follows the same rule. A new strategy is one variant or
+one call in the place that owns its stage's order, plus one file under
+`voids/strategy/`, plus a stage-order guard in `stage_order_tests.rs` whose
+fixture tells it apart from its neighbours. If any pinned output moves, it
+also comes with the re-pin below.
 
 ## At what settings
 

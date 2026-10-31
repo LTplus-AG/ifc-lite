@@ -244,7 +244,7 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
 
   it('carries #RRGGBBAA stroke alpha into the stroke opacity', async () => {
     const text = await exportPdf({ overrideRules: [wallRule({ strokeColor: '#1976D280' })] });
-    assert.ok(setsColor(text, 'stroke', '#1976d2'));
+    assert.ok(setsColor(text, 'stroke', '#1976d2'), 'stroke colour without its alpha byte');
     assert.match(text, /\/CA 0\.5\b/, 'alpha byte 0x80 becomes the stroke opacity');
   });
 
@@ -321,7 +321,7 @@ describe('override colour forms in the PDF', () => {
     it(`${JSON.stringify(fillColor)} ${fill ? `fills ${fill}` : 'is not filled'}`, async () => {
       const text = await exportPdf({ overrideRules: [wallRule({ fillColor, strokeColor: '#1976D2' })] });
       assert.ok(setsColor(text, 'stroke', '#1976d2'), 'the override was applied');
-      if (fill) assert.ok(setsColor(text, 'fill', fill));
+      if (fill) assert.ok(setsColor(text, 'fill', fill), `fill ${fill}`);
       else assert.ok(!text.includes('f*'), 'zero alpha draws no fill');
       if (opacity) assert.match(text, opacity);
     });

@@ -48,10 +48,11 @@ export interface ResolvedExportCommand {
 const MESH_DERIVED_EXPORTS: ReadonlySet<string> = new Set(['glb', 'kmz', 'ion', 'usd']);
 
 /**
- * Exports that re-mesh the FILE with the exact engine (USD, the energy models): for a retained model that is a
- * different geometry from the one on screen, so they are refused on any retained model, complete or not (#7955).
+ * Exports that re-mesh the FILE with the exact engine (USD, the energy models, and Cesium ion, which uploads the
+ * model's STEP for Cesium to re-mesh): for a retained model that is a different geometry from the one on screen,
+ * so they are refused while any loaded model is retained, complete or not (#7955).
  */
-const EXACT_ONLY_EXPORTS: ReadonlySet<string> = new Set(['usd', 'energy']);
+const EXACT_ONLY_EXPORTS: ReadonlySet<string> = new Set(['usd', 'energy', 'ion']);
 
 /** `spatial` is the one table whose type id does not say what the file holds. */
 const CSV_SUFFIX: Record<CsvExportType, string> = {

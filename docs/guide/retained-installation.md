@@ -127,10 +127,13 @@ smoke recipe; this document is a draft, not a claim that a release was hosted.
 ## Exports from the retained viewer
 
 A model the viewer holds from the retained kernel (`?kernel=retained`) exports the geometry on screen or refuses.
-GLB export always uses the meshes the viewer holds, including GPU-instanced occurrences and their authored
-metallic/roughness; it never re-meshes the file with the exact engine, so products the retained kernel refused are
-absent from the GLB exactly as they are absent from the viewport. USD and the energy models (HBJSON, DFJSON) rebuild
-their geometry from the file with the exact engine; for a retained model they refuse with a message instead of
-exporting geometry that differs from what is shown, and the model must be reloaded with the exact kernel to export
-them. IFC (STEP) and the data formats (CSV, JSON) need no geometry kernel. KMZ, Cesium ion and PDF views are built
-from the held meshes, like GLB.
+
+- **GLB** takes the meshes the viewer holds, GPU-instanced occurrences included; it never re-meshes the file with the
+  exact engine, so products the retained kernel refused are absent from the GLB exactly as they are absent from the
+  viewport. (The GLB writer gives every material the same default metallic/roughness, on both kernels.)
+- **USD, Cesium ion and the energy models (HBJSON, DFJSON)** rebuild their geometry from the file with the exact
+  engine (Cesium ion uploads the model's STEP for Cesium to re-mesh). While any loaded model is retained their commands
+  are disabled with a reason; reload the model with the exact kernel to use them.
+- **KMZ and the IFC5 output** are built from the held meshes and are refused while the retained model is incomplete
+  or shape-only, like GLB and USD already were.
+- **IFC (STEP), CSV and JSON** need no geometry kernel and work unchanged.

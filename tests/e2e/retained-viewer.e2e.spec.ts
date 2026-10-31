@@ -222,6 +222,59 @@ function glbJson(glb: Buffer): { meshes?: unknown[]; accessors?: { count: number
   expect(glb.readUInt32LE(16), 'first chunk is JSON').toBe(0x4e4f534a);
   return JSON.parse(glb.subarray(20, 20 + length).toString('utf8'));
 }
+/** One mesh node of a GLB with its vertices in glTF world space (node transforms composed, one entry per triangle
+ * corner), and the material's linear base colour. Only what the instanced-export check compares. */
+interface GlbNode { expressId?: number; corners: number[][]; rgba: number[] }
+function glbWorldNodes(glb: Buffer): GlbNode[] {
+  type Json = { scenes: { nodes: number[] }[]; scene?: number; nodes: { mesh?: number; children?: number[]; matrix?: number[]; translation?: number[];
+    rotation?: number[]; scale?: number[]; extras?: { expressId?: number } }[]; meshes: { primitives: { attributes: { POSITION: number }; indices?: number; material?: number }[] }[];
+    accessors: { bufferView: number; byteOffset?: number; componentType: number; count: number; type: string; normalized?: boolean }[];
+    bufferViews: { byteOffset?: number; byteStride?: number }[]; materials?: { pbrMetallicRoughness?: { baseColorFactor?: number[] } }[] };
+  const jsonLength = glb.readUInt32LE(12);
+  const json = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8')) as Json;
+  const binStart = 20 + jsonLength;
+  const bin = glb.subarray(binStart + 8, binStart + 8 + glb.readUInt32LE(binStart));
+  const read = (index: number): number[][] => {
+    const a = json.accessors[index], view = json.bufferViews[a.bufferView];
+    const width = { SCALAR: 1, VEC3: 3 }[a.type]!, size = { 5126: 4, 5125: 4, 5123: 2, 5122: 2, 5121: 1, 5120: 1 }[a.componentType]!;
+    const base = (view.byteOffset ?? 0) + (a.byteOffset ?? 0), stride = view.byteStride ?? width * size;
+    const norm = { 5123: 65535, 5122: 32767, 5121: 255, 5120: 127 }[a.componentType];
+    return Array.from({ length: a.count }, (_, i) => Array.from({ length: width }, (_, c) => {
+      const at = base + i * stride + c * size;
+      const v = a.componentType === 5126 ? bin.readFloatLE(at) : a.componentType === 5125 ? bin.readUInt32LE(at) : a.componentType === 5123 ? bin.readUInt16LE(at)
+        : a.componentType === 5122 ? bin.readInt16LE(at) : a.componentType === 5121 ? bin.readUInt8(at) : bin.readInt8(at);
+      return a.normalized && norm ? v / norm : v;
+    }));
+  };
+  // Column-major 4x4.
+  const mul = (a: number[], b: number[]) => Array.from({ length: 16 }, (_, i) => { const col = Math.floor(i / 4), row = i % 4;
+    return [0, 1, 2, 3].reduce((sum, k) => sum + a[k * 4 + row] * b[col * 4 + k], 0); });
+  const local = (n: Json['nodes'][number]): number[] => {
+    if (n.matrix) return n.matrix;
+    const [x, y, z, w] = n.rotation ?? [0, 0, 0, 1], [sx, sy, sz] = n.scale ?? [1, 1, 1], [tx, ty, tz] = n.translation ?? [0, 0, 0];
+    return [(1 - 2 * (y * y + z * z)) * sx, 2 * (x * y + z * w) * sx, 2 * (x * z - y * w) * sx, 0,
+      2 * (x * y - z * w) * sy, (1 - 2 * (x * x + z * z)) * sy, 2 * (y * z + x * w) * sy, 0,
+      2 * (x * z + y * w) * sz, 2 * (y * z - x * w) * sz, (1 - 2 * (x * x + y * y)) * sz, 0, tx, ty, tz, 1];
+  };
+  const out: GlbNode[] = [];
+  const visit = (index: number, parent: number[]) => {
+    const node = json.nodes[index], world = mul(parent, local(node));
+    if (node.mesh !== undefined) for (const primitive of json.meshes[node.mesh].primitives) {
+      const positions = read(primitive.attributes.POSITION).map(([x, y, z]) => [0, 1, 2].map(r => world[r] * x + world[4 + r] * y + world[8 + r] * z + world[12 + r]));
+      const indices = primitive.indices === undefined ? positions.map((_, i) => i) : read(primitive.indices).map(([i]) => i);
+      out.push({ expressId: node.extras?.expressId, corners: indices.map(i => positions[i]),
+        rgba: json.materials?.[primitive.material ?? -1]?.pbrMetallicRoughness?.baseColorFactor ?? [] });
+    }
+    for (const child of node.children ?? []) visit(child, world);
+  };
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  for (const root of json.scenes[json.scene ?? 0].nodes) visit(root, identity);
+  return out;
+}
+const centroid = (corners: number[][]) => [0, 1, 2].map(a => corners.reduce((sum, c) => sum + c[a], 0) / corners.length);
+const extents = (corners: number[][]) => [0, 1, 2].map(a => Math.max(...corners.map(c => c[a])) - Math.min(...corners.map(c => c[a]))).sort((a, b) => a - b);
+const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
 /** Open a ribbon export dialog the way a user does, and return it. */
 async function openExport(page: Page, id: string) {
   // The privacy toast sits over the dialog's footer until dismissed.
@@ -798,16 +851,82 @@ test.describe('retained viewer acceptance', () => {
     await record('export-glb', { retainedHeld, retainedGlb, exactGlb });
   });
 
-  test('export: USD and the energy models are refused on a retained model, GLB and IFC5 only while it is incomplete', async ({ page }) => {
+  test('export: a retained model\'s GLB carries every instanced occurrence as the viewport holds it', async ({ page }) => {
+    await setup(page, 'retained');
+    await page.evaluate(() => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals & { __expColours?: Record<number, number[]> };
+      const seen = new Set<ArrayBuffer>();
+      globals.__expColours = {};
+      globals.__ifc_lite_viewer_store__.subscribe(state => {
+        for (const { bytes } of state.pendingInstancedShards ?? []) {
+          if (seen.has(bytes)) continue;
+          seen.add(bytes);
+          const wire = new DataView(bytes), templates = wire.getUint32(8, true), instances = wire.getUint32(12, true);
+          const stride = wire.getUint32(4, true) >= 2 ? wire.getUint32(28, true) || 88 : 88;
+          for (let i = 0; i < instances; i++) {
+            const record = 32 + templates * 48 + i * stride;
+            globals.__expColours![wire.getUint32(record + 4, true)] = [0, 4, 8, 12].map(offset => wire.getFloat32(record + 8 + offset, true));
+          }
+        }
+      });
+    });
+    const source = readFileSync(MAPPED, 'utf8');
+    const styles = '#20001=IFCCOLOURRGB($,0.9,0.1,0.1);#20002=IFCSURFACESTYLERENDERING(#20001,0.,$,$,$,$,$,$,.NOTDEFINED.);'
+      + '#20003=IFCSURFACESTYLE($,.BOTH.,(#20002));#20004=IFCCOLOURRGB($,0.1,0.1,0.9);'
+      + '#20005=IFCSURFACESTYLERENDERING(#20004,0.,$,$,$,$,$,$,.NOTDEFINED.);#20006=IFCSURFACESTYLE($,.BOTH.,(#20005));\n'
+      + Array.from({ length: 64 }, (_, i) => `#${20010 + i}=IFCSTYLEDITEM(#${25 + 7 * i},(#${i % 2 === 0 ? 20003 : 20006}),$);`).join('\n') + '\n';
+    const styled = source.replace('ENDSEC;\nEND-ISO', `${styles}ENDSEC;\nEND-ISO`);
+    expect(styled, 'the fixture ends with a single DATA section').not.toBe(source);
+    await page.locator('#file-input-open').setInputFiles(asFile('mapped-two-colours.ifc', styled));
+    await complete(page, true);
+    const loaded = await snapshot(page);
+    expect(loaded.summary?.published).toBe(64);
+    expect(loaded.summary?.refused).toEqual([]);
+    expect(await heldTriangles(page), 'every occurrence lives in an instanced shard, none in the flat meshes').toBe(0);
+    await rendererHooks(page);
+    const ids = Array.from({ length: 64 }, (_, i) => 31 + 7 * i);
+    const held = await page.evaluate(ids => {
+      const globals = globalThis as typeof globalThis & ViewerGlobals & { __expColours: Record<number, number[]> };
+      return ids.map(id => ({ id, owner: globals.__ifc_lite_scene_owner__!(id), colour: globals.__expColours[id] }));
+    }, ids);
+    for (const { id, owner, colour } of held) {
+      expect(owner.instance, `#${id} is drawn as a GPU instance`).toBe(true);
+      expect(colour, `#${id} has a shard colour`).toBeDefined();
+    }
+    await openExport(page, 'glb');
+    const glb = await download(page, 'Export');
+    const nodes = glbWorldNodes(glb.bytes);
+    expect(nodes, 'one mesh node per instanced occurrence').toHaveLength(64);
+    const byId = new Map(nodes.map(node => [node.expressId, node]));
+    expect([...byId.keys()].sort((a, b) => (a ?? 0) - (b ?? 0)), 'every occurrence id is a node').toEqual(ids);
+    const distance = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const heldCorners = (id: number) => { const flat = held.find(h => h.id === id)!.owner.corners; return Array.from({ length: flat.length / 3 }, (_, i) => flat.slice(i * 3, i * 3 + 3)); };
+    const heldFirst = centroid(heldCorners(ids[0])), glbFirst = centroid(byId.get(ids[0])!.corners);
+    let worst = 0;
+    for (const id of ids) {
+      const node = byId.get(id)!, mine = heldCorners(id);
+      expect(node.corners.length, `#${id} triangle corners`).toBe(mine.length);
+      extents(node.corners).forEach((e, k) => expect(Math.abs(e - extents(mine)[k]), `#${id} extent ${k} (metres)`).toBeLessThan(1e-4));
+      // Positions up to the one rigid frame change between the viewport and the GLB root: the offset of each occurrence from the first.
+      const gap = Math.abs(distance(centroid(node.corners), glbFirst) - distance(centroid(mine), heldFirst));
+      worst = Math.max(worst, gap);
+      expect(gap, `#${id} offset from #${ids[0]}`).toBeLessThan(1e-3);
+      const colour = held.find(h => h.id === id)!.colour;
+      [0, 1, 2].forEach(c => expect(Math.abs(node.rgba[c] - srgbToLinear(colour[c])), `#${id} colour channel ${c}`).toBeLessThan(1e-4));
+    }
+    await record('export-glb-instanced', { nodes: nodes.length, meshesInGlb: (glbJson(glb.bytes).meshes ?? []).length, worstOffsetGap: worst });
+  });
+
+  test('export: USD, Cesium ion and the energy models are refused on a retained model, GLB and IFC5 only while it is incomplete', async ({ page }) => {
     const command = (id: string) => page.locator(`[data-export-command="${id}"]`);
-    const states = async () => Object.fromEntries(await Promise.all(['glb', 'kmz', 'usd', 'energy', 'ifc', 'json'].map(async id =>
+    const states = async () => Object.fromEntries(await Promise.all(['glb', 'kmz', 'ion', 'usd', 'energy', 'ifc', 'json'].map(async id =>
       [id, await command(id).isDisabled()] as const)));
     await setup(page, 'retained');
     await page.locator('#file-input-open').setInputFiles(asFile('finish-pixel.ifc', finishPixel()));
     await complete(page, true);
     await page.getByRole('tab', { name: 'File', exact: true }).click();
     const complete_ = await states();
-    expect(complete_, 'complete retained model').toEqual({ glb: false, kmz: false, usd: true, energy: true, ifc: false, json: false });
+    expect(complete_, 'complete retained model').toEqual({ glb: false, kmz: false, ion: true, usd: true, energy: true, ifc: false, json: false });
 
     await setup(page, 'retained');
     await page.locator('#file-input-open').setInputFiles(asFile('finish-texture.ifc', finishPixelWithTexture()));
@@ -815,7 +934,7 @@ test.describe('retained viewer acceptance', () => {
     expect((await snapshot(page)).summary?.refused.map(r => r.expressId)).toEqual([TEXTURED_ID]);
     await page.getByRole('tab', { name: 'File', exact: true }).click();
     const incomplete = await states();
-    expect(incomplete, 'incomplete retained model').toEqual({ glb: true, kmz: true, usd: true, energy: true, ifc: false, json: false });
+    expect(incomplete, 'incomplete retained model').toEqual({ glb: true, kmz: true, ion: true, usd: true, energy: true, ifc: false, json: false });
 
     // Control: the exact kernel keeps every one of them, and USD exports.
     await setup(page, 'exact');
@@ -823,7 +942,7 @@ test.describe('retained viewer acceptance', () => {
     await complete(page, false);
     await page.getByRole('tab', { name: 'File', exact: true }).click();
     const exact = await states();
-    expect(exact, 'exact model').toEqual({ glb: false, kmz: false, usd: false, energy: false, ifc: false, json: false });
+    expect(exact, 'exact model').toEqual({ glb: false, kmz: false, ion: false, usd: false, energy: false, ifc: false, json: false });
     await openExport(page, 'usd');
     const usd = await download(page, /^Export$/);
     expect(usd.bytes.subarray(0, 5).toString('utf8'), 'the exact control exports a USD stage').toBe('#usda');

@@ -164,6 +164,8 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   modelFact:      1,
   // Host-read Lists predicate (#6190): may parse psets or resolve zones.
   listCondition:  10,
+  // Evaluates the grouping's earlier members' rules for the element (#8425).
+  customGrouping: 20,
 };
 
 export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {

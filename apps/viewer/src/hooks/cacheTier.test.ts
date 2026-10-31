@@ -58,24 +58,16 @@ describe('classifyCacheTier', () => {
 });
 
 describe('planCacheWrite', () => {
-  it('persists the source for the <=150MB tier (default path UNCHANGED)', () => {
-    // The source tier persists the source regardless of the mesh-only flag: the
-    // classic <=150MB behaviour must not regress when the tier is on OR off.
+  it('caches the <=150MB tier whether or not the mesh-only tier is enabled', () => {
     for (const opts of [on, off]) {
-      const plan = planCacheWrite(MAX_SOURCE, opts);
-      assert.deepEqual(plan, { tier: 'source', shouldCache: true, persistSource: true });
+      assert.deepEqual(planCacheWrite(MAX_SOURCE, opts), { tier: 'source', shouldCache: true });
     }
-    const plan = planCacheWrite(MIN, on);
-    assert.equal(plan.persistSource, true);
-    assert.equal(plan.shouldCache, true);
+    assert.deepEqual(planCacheWrite(MIN, on), { tier: 'source', shouldCache: true });
   });
 
-  it('does NOT persist the source for the mesh-only tier (150-400MB, enabled)', () => {
-    const plan = planCacheWrite(MAX_SOURCE + 1, on);
-    assert.deepEqual(plan, { tier: 'mesh-only', shouldCache: true, persistSource: false });
-    assert.deepEqual(planCacheWrite(MAX_MESH_ONLY, on), {
-      tier: 'mesh-only', shouldCache: true, persistSource: false,
-    });
+  it('caches the mesh-only tier (150-400MB) while it is enabled', () => {
+    assert.deepEqual(planCacheWrite(MAX_SOURCE + 1, on), { tier: 'mesh-only', shouldCache: true });
+    assert.deepEqual(planCacheWrite(MAX_MESH_ONLY, on), { tier: 'mesh-only', shouldCache: true });
   });
 
   it('does not cache (shouldCache=false) when too small, too big, or mesh-only disabled', () => {
@@ -83,7 +75,7 @@ describe('planCacheWrite', () => {
     assert.equal(planCacheWrite(MAX_MESH_ONLY + 1, on).shouldCache, false);
     // Kill switch: a 150-400MB file is not cached when the tier is disabled.
     const disabled = planCacheWrite(MAX_SOURCE + 1, off);
-    assert.deepEqual(disabled, { tier: 'none', shouldCache: false, persistSource: false });
+    assert.deepEqual(disabled, { tier: 'none', shouldCache: false });
   });
 });
 

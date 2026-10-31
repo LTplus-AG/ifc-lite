@@ -48,7 +48,7 @@ pub fn decode_columns(columns: FingerprintColumns) -> Result<Vec<EntityFingerpri
         let components = if flags & 4 != 0 {
             // The validated partition supplies the size. Bound the initial
             // reservation because raw column callers may repeat the same key.
-            let mut map = HashMap::with_capacity(((component_end - component_start) / 2).min(16));
+            let mut map = HashMap::with_capacity_and_hasher(((component_end - component_start) / 2).min(16), crate::JsHash);
             for pair in columns.component_pairs[component_start..component_end].chunks_exact(2) {
                 map.insert(string(pair[0])?,string(pair[1])?);
             }
@@ -75,7 +75,7 @@ mod tests {
         assert!(absent[0].components.is_none()); assert!(absent[0].aabb.is_none()); assert!(absent[0].volume.is_none());
         let mut input=columns(); input.flags[0]=7; input.boxes[0]=f64::NAN; input.volumes[0]=f64::INFINITY;
         let present=decode_columns(input).unwrap();
-        assert_eq!(present[0].components,Some(HashMap::new()));
+        assert_eq!(present[0].components,Some(crate::model::ComponentMap::default()));
         assert!(present[0].aabb.as_ref().unwrap().min[0].is_nan());
         assert_eq!(present[0].volume,Some(f64::INFINITY));
         assert_eq!(present[0].reference,0);

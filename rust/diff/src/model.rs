@@ -6,6 +6,10 @@
 use crate::JsString;
 use std::collections::HashMap;
 
+/// Component hashes by component key. Keys hash through their cached digest
+/// (#8351); build with `ComponentMap::default()` or `collect()`.
+pub type ComponentMap = HashMap<JsString, JsString, crate::JsHash>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntityAabb {
     pub min: [f64; 3],
@@ -22,7 +26,7 @@ pub struct EntityFingerprint<R = ()> {
     pub geometry_hash: Option<JsString>,
     pub aabb: Option<EntityAabb>,
     pub volume: Option<f64>,
-    pub components: Option<HashMap<JsString, JsString>>,
+    pub components: Option<ComponentMap>,
     pub container: Option<JsString>,
     pub reference: R,
 }

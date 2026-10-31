@@ -62,7 +62,7 @@ describe('loadFile Retry closure (#5851)', () => {
     const file = badIfcxFile('broken.ifcx');
     await act(async () => hookApi!.loadFile(file, { kind: 'primary' }));
 
-    assert.match(useViewerStore.getState().error ?? '', /IFCX parsing failed/);
+    assert.match(useViewerStore.getState().error ?? '', /file is invalid/);
     const retry = useViewerStore.getState().lastLoadRetry;
     assert.equal(typeof retry, 'function', 'a retry closure is published for the card to call');
 
@@ -75,6 +75,6 @@ describe('loadFile Retry closure (#5851)', () => {
     // seeing "broken.ifcx" again proves THIS retry replayed THIS file.
     await waitFor(() => useViewerStore.getState().loadingFileName === 'broken.ifcx', 'retry re-enters loadFile with the same file');
     await waitFor(() => useViewerStore.getState().error !== null, 'the same bad file fails the same way again');
-    assert.match(useViewerStore.getState().error ?? '', /IFCX parsing failed/);
+    assert.match(useViewerStore.getState().error ?? '', /file is invalid/);
   });
 });

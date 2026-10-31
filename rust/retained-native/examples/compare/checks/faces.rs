@@ -62,19 +62,38 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
     let keyed: usize = product.parts.iter().filter_map(|p| p.faces.as_ref()).map(|f| f.triangles.len()).sum();
     let unkeyed = (total - keyed.min(total)) as f64 / total.max(1) as f64;
     let split = nonuniform(product) as f64;
-    let mut results = vec![OracleResult { family: "faceAttribution", value: unkeyed, limit: 0., pass: unkeyed == 0., gated: true },
-        OracleResult { family: "faceUniformity", value: split, limit: 0., pass: split == 0., gated: true }];
+    let mut results = vec![OracleResult { family: "faceAttribution", value: unkeyed, limit: 0., pass: unkeyed == 0., gated: true, ..Default::default() },
+        OracleResult { family: "faceUniformity", value: split, limit: 0., pass: split == 0., gated: true, ..Default::default() }];
+    // M4 partitions the original host skin: verify each band's qualifier,
+    // then sum its source-key areas before comparing to the uncut host oracle.
+    let mut actual = measured(product);
+    if product.parts.iter().any(|p| p.layer.is_some()) {
+        let valid = product.parts.iter().all(|part| part.layer.is_some_and(|layer| {
+            part.faces.as_ref().is_some_and(|faces| faces.table.iter()
+                .all(|key| key.role.ends_with(&format!(";band({})", layer.index))))
+        }));
+        results.push(OracleResult { family: "faceBandQualification", value: f64::from(!valid), limit: 0., pass: valid, gated: true, ..Default::default() });
+        if !valid { return results; }
+        actual = actual.map(|areas| {
+            let mut assembled = BTreeMap::new();
+            for (key, area) in areas {
+                let (source, _) = key.rsplit_once(";band(").expect("validated band qualifier");
+                *assembled.entry(source.to_owned()).or_insert(0.) += area;
+            }
+            assembled
+        });
+    }
     // Cut hosts need their source cut set; the native M11-F witnesses gate those through face_bands.
-    let (Some(expected), Some(actual)) = (if product.cuts == 0 { faces::uncut(sources, product.product_id) } else { None }, measured(product))
+    let (Some(expected), Some(actual)) = (if product.cuts == 0 { faces::uncut(sources, product.product_id) } else { None }, actual)
         else { return results };
     let limit = |kind: &str| tolerances["faceAreaRelative"][kind].as_f64().unwrap_or(f64::NAN);
     let mismatched = expected.keys().filter(|k| !actual.contains_key(*k)).count() + actual.keys().filter(|k| !expected.contains_key(*k)).count();
-    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true });
+    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, ..Default::default() });
     for (family, curved) in [("faceAreaLinear", false), ("faceAreaCurved", true)] {
         let worst = expected.iter().filter(|(_, e)| e.curved == curved)
             .map(|(k, e)| actual.get(k).map_or(f64::INFINITY, |a| (a - e.area_m2).abs() / e.area_m2)).fold(0., f64::max);
         let limit = limit(if curved { "curved" } else { "linear" });
-        results.push(OracleResult { family, value: worst, limit, pass: worst <= limit, gated: true });
+        results.push(OracleResult { family, value: worst, limit, pass: worst <= limit, gated: true, ..Default::default() });
     }
     results
 }

@@ -46,6 +46,8 @@ const MAX_DEPTH: usize = 64;
 
 /// Options for USD (USDA) export.
 pub struct UsdOptions {
+    /// Opt into material-layer wall slicing; default false.
+    pub layer_slicing: bool,
     /// Written to `customLayerData.author` (a bare `author` layer metadatum is
     /// unregistered and would fail `usdchecker`).
     pub author: String,
@@ -57,7 +59,11 @@ pub struct UsdOptions {
 
 impl Default for UsdOptions {
     fn default() -> Self {
-        Self { author: "ifc-lite".to_string(), instancing: true }
+        Self {
+            layer_slicing: false,
+            author: "ifc-lite".to_string(),
+            instancing: true,
+        }
     }
 }
 
@@ -70,7 +76,7 @@ impl Default for UsdOptions {
 /// meshing pass.
 pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportError> {
     // Instancing-on when requested and every instance is safe; else the plain baked path.
-    let (result, use_instancing) = instance::gather(content, opts.instancing);
+    let (result, use_instancing) = instance::gather(content, opts.instancing, opts.layer_slicing);
 
     // Emittable meshes: mirror the glTF `mesh_visible` sanity gate (drop the instanced
     // type-library class, require matched non-empty triangulated buffers) and add the

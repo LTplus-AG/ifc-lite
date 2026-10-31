@@ -279,14 +279,17 @@ impl Drop for InFlight {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
 mod m4_parity_tests;
 
 #[cfg(test)]
 mod m5_parity_tests;
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
 mod m6_parity_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod m11_a_parity_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod cut0_parity_tests;
@@ -308,3 +311,6 @@ mod refusal_lifecycle_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod m11_n_parity_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod m10_parity_tests;

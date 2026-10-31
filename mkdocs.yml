@@ -170,6 +170,7 @@ nav:
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
+    - InfluxDB Time Series (Experimental): guide/influxdb.md
     - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
     - MCP for AI Agents: guide/mcp.md
@@ -277,6 +278,8 @@ nav:
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
     - Retained Cutters: architecture/retained-cutters.md
+    - Retained Chained Clips: architecture/retained-m5-clips.md
+    - Retained Bounded and Boxed Halfspaces: architecture/retained-halfspaces.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
@@ -288,6 +291,7 @@ nav:
     - Federation: architecture/federation.md
     - Collaboration: architecture/collaboration.md
     - Clash Detection: architecture/clash-detection.md
+    - Diff Consumer Initialization: architecture/diff-consumer-initialization.md
     - Element Splitting: architecture/element-splitting.md
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md

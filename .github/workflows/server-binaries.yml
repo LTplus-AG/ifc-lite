@@ -154,7 +154,7 @@ jobs:
             # See the "Setup Rust" step above: this actually runs on the
             # nightly pinned by rust-toolchain.toml, not the `stable` named
             # there, so cross-arch legs (linux-arm64, darwin-x64 on the
-            # arm64 macos-14 runner) need their target's std rebuilt from
+            # arm64 macos-15 runner) need their target's std rebuilt from
             # source — it was never installed for nightly. Was previously
             # papered over by a global `[unstable] build-std` in
             # .cargo/config.toml (removed — see scripts/build-wasm.sh);
@@ -288,7 +288,7 @@ jobs:
             # See the "Setup Rust" step above: this actually runs on the
             # nightly pinned by rust-toolchain.toml, not the `stable` named
             # there, so cross-arch legs (linux-arm64, darwin-x64 on the
-            # arm64 macos-14 runner) need their target's std rebuilt from
+            # arm64 macos-15 runner) need their target's std rebuilt from
             # source — it was never installed for nightly. Was previously
             # papered over by a global `[unstable] build-std` in
             # .cargo/config.toml (removed — see scripts/build-wasm.sh);
@@ -376,11 +376,11 @@ jobs:
             rust-target: x86_64-unknown-linux-musl
             archive: tar.gz
           - target: darwin-x64
-            os: macos-14
+            os: macos-15
             rust-target: x86_64-apple-darwin
             archive: tar.gz
           - target: darwin-arm64
-            os: macos-14
+            os: macos-15
             rust-target: aarch64-apple-darwin
             archive: tar.gz
           - target: win32-x64
@@ -462,7 +462,7 @@ jobs:
             # See the "Setup Rust" step above: this actually runs on the
             # nightly pinned by rust-toolchain.toml, not the `stable` named
             # there, so cross-arch legs (linux-arm64, darwin-x64 on the
-            # arm64 macos-14 runner) need their target's std rebuilt from
+            # arm64 macos-15 runner) need their target's std rebuilt from
             # source — it was never installed for nightly. Was previously
             # papered over by a global `[unstable] build-std` in
             # .cargo/config.toml (removed — see scripts/build-wasm.sh);

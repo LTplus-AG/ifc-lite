@@ -195,3 +195,5 @@ mod profile_retrace;
 #[cfg(all(feature = "retained-runtime", feature = "test-support"))]
 #[doc(hidden)]
 pub use profile_retrace::retrace_cancellations;
+#[cfg(feature = "retained-runtime")]
+pub(crate) use profile::analytic_boundary_loop;

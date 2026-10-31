@@ -103,6 +103,24 @@ api.clearPrePassCache();
 api.free();                           // release the API instance when done
 ```
 
+When reusing an API, every prepass or entity-index installation clears the
+previous content's derived caches and style finishes. Install finishes and
+prepass columns after the index. Source bytes survive index/prepass installation,
+so either source/index order is supported. `setSourceBytes` preserves previously
+installed index and columns; bytes and index must describe the same file. A staged sharded
+finish stash survives installation until finalize consumes it. Cleanup releases
+source and unfinished stash, preserving diagnostics and user settings. See the
+[content lifetime contract](../../docs/api/wasm.md#content-installation-and-cleanup).
+
+
+`getPipelineDiagnostics()` returns a plain `schemaVersion: 1` report with
+additive `refusedInputElements` (attempted jobs, including retries) and
+`refusedPrepassRecords` (distinct semantic refusal IDs per API/worker).
+Syntax-invalid type drops are excluded there and counted instead, per distinct
+record, in `omittedTypeRecords`. Prepass-only refusals and omissions are reportable;
+load installation resets counters and cleanup preserves them. See the
+[diagnostics contract](../../docs/api/wasm.md#diagnostics-and-tuning).
+
 ### Auxiliary geometry in the mesh frame
 
 Grid, alignment, and symbolic parsers accept the mesh pre-pass decision through
@@ -374,10 +392,14 @@ and shares need not sum to one. The live path follows the TypeScript length
 checks and `shares.every(share => Number.isFinite(share) && share >= 0)` before
 ranking, including custom methods, sparse arrays and repeated getters.
 
-The public `@ifc-lite/diff` entry points still use the TypeScript engine in
-this stage of #8042. Raw module initialization above applies to direct
-`@ifc-lite/wasm/diff` callers; existing public comparison callers retain their
-current initialization contract until the facade cutover.
+The public `@ifc-lite/diff` entry points use this Rust module. Call
+`await initDiff()` or `initDiffSync(...)` once at application startup, then use
+the existing comparison, fingerprint, lineage and sidecar operations
+synchronously. The shared runtime centralizes Node asset loading and browser
+initialization, with no top-level await or silent TypeScript engine fallback.
+Operations called before initialization throw; initialization failures propagate.
+The public fingerprint facade normalizes live property and quantity values
+before passing their typed projections to the raw fingerprint bindings.
 
 The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports executed/total pairs. Missing fixtures are skipped with a `pnpm fixtures` hint; zero executed pairs exits with status 2 (incomplete), rather than claiming parity.
 
@@ -395,41 +417,57 @@ all its unreferenced maps in source order. Their MappingOrigin supplies placemen
 nested mappings retain f64 world precision. Instanced types, types with only curve maps
 that exact does not mesh, and representationless jobs are absent. One unsupported
 map refuses the entire type; there is no partial publication or exact retry.
-Published orphan types leave MaterialLayers and IfcAppearance unmet.
+Published orphan types discharge all applicable obligations and publish final.
 Instanced type-library geometry is unavailable in retained mode.
 
 A published result has `status: 'published'`, `expressId`, `ifcType`, and `parts`.
 Each part has object-local metre `Float64Array` positions, `Uint32Array` indices,
 a column-major `Float64Array` `worldFromObject` into absolute IFC Z-up metres,
 and `curved`. The optional `revisionLocalFaces` array preserves one kernel diagnostic
-index per triangle; these indices are not persistent IFC face identities. Optional
-`normals` are populated on every published part (per corner, absolute IFC Z-up axes).
+index per triangle; these indices are not persistent IFC face identities. Every part
+carries `color` (RGBA); `geometryItemId` when the part comes from an authored geometry item (type-map and
+unbound parts carry none, as in exact); and, when the source names one, `materialName`:
+the IFC source decides, through the colour resolver the exact engine uses, so a part's
+colour is bitwise the exact engine's for the same product and item. `IfcAppearance` is
+discharged. Optional `normals` are populated on every published part (per corner,
+absolute IFC Z-up axes).
 Planar faces use the attributed source-plane normal after every vertex passes
 planarity verification. Other faces use angle-weighted smoothing within each
 revision-local face and a 10° crease guard, after applying the composed world frame. Positions
-and indices stay unchanged, and `SurfaceNormals` is discharged. Optional `color`, `materialName`,
-`geometryItemId`, `materialId` and `instanceKey` remain reserved for independently qualified slices.
+and indices stay unchanged, and `SurfaceNormals` is discharged. Band parts carry their own
+`materialId`, resolved colour and material name through exact’s colour resolver.
+`instanceKey` identifies eligible byte-equal mapped geometry, including its persistent
+face keys, for optional view instancing. Products with the canonical layer class,
+including source-proven unsliced skips, are excluded from instancing.
 Every published part carries `faces`: a string table of persistent source keys
 `#item[>#opening]:role` (`cap(start|end)`, `side(loop,segment)` in authored profile order,
 `disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
 and cross-checked against the kernel's faces; `PersistentFaces` is discharged.
 Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambiguous`).
-`appearance_unsupported` remains reserved. Textures and indexed palettes
-are proven absent for retained-eligible products; tessellated bodies still refuse.
-Every publication carries `marker: 'PresentationObligationsUnmet'`
-and a nonempty `obligationsUnmet` list; consumers must display that marker. This
-is shape-only output. Supported openings are cut individually; completed cuts and
-plan-proven unvoided products discharge `OpeningClosure`. `cuts` reports completed
-cuts and `consumedParts` is zero: a consumed part refuses the entire product with
-`empty_result`. Layer and appearance obligations remain unmet.
-Unsupported opening bodies report `opening_unsupported`; hosts with internal
-material-layer boundaries refuse `material_layer_strategy` before opening work.
+`appearance_unsupported` is the typed refusal for a binding that carries a texture or an
+indexed colour palette (origin `{site: 'appearance', entity, cause}`). Textures and indexed
+palettes are proven absent for retained-eligible products; tessellated bodies still refuse.
+A fully presented product carries `marker: 'final'` and an empty `obligationsUnmet` list.
+A product with remaining obligations carries `marker: 'PresentationObligationsUnmet'`
+and its nonempty list; consumers show shape-only for those products. Final describes published
+products, independently of refused products that make a model incomplete.
+Supported openings discharge `OpeningClosure`; `cuts` counts completed cuts and
+`consumedParts` is zero. A consumed part refuses the entire product with `empty_result`.
+Eligible material-layer hosts publish planar or curved bands after opening cuts, with internal
+caps removed and a closed combined skin. This discharges `MaterialLayers` (as does a
+source-proven layer skip). Unsupported families refuse `material_layer_strategy`; unresolved
+cap or seam conformity refuses `layer_caps_unresolved`. Unsupported opening bodies report
+`opening_unsupported`. The M4 and M11 appearance, normals and face proofs together allow final publication.
 
 A refusal has `status: 'refused'`, `expressId`, `ifcType`, a typed snake-case
 `code`, optional `{site, entity?, cause}` `origin`, and `kernelStatus` for kernel
 failures. It has no parts. A failed part refuses the entire product. There is no
 exact fallback. One independently qualified worker is reused; worker failures
-retire it, contract faults preserve it, and replacement is capped at three.
+retire it and contract faults preserve it. Ordinary fault replacement is capped
+at three per model. Band-phase transport retirements have a separate allowance
+of four; exhaustion refuses remaining layered products before kernel work,
+without consuming the allowance used by non-layer products. Known synchronized
+band kernel refusals preserve the live worker. Each failed product stays atomic.
 The worker is released before the completed run is returned.
 
 For progressive display, the same opt-in bundle exports `RetainedModelSession`.
@@ -444,7 +482,9 @@ The synchronous callback receives `start` (canonical `candidateIds` and a
 View events own a `MeshCollection`: extract its meshes and free every mesh
 handle and collection in `finally` blocks. Positions, smoothed corner normals and f64
 origins use the existing Y-up mesh contract; collection RTC offsets remain IFC
-Z-up metres. Colours are type defaults, and the shape-only marker still applies.
+Z-up metres. Each mesh takes its part's resolved appearance colour (`IfcAppearance`) and the authored
+metallic/roughness finish, falling back to the type default only for a part that carries no
+appearance. The event carries `final` when its obligations are empty, otherwise the shape-only marker.
 The returned summary counts candidates, publications, refusals, restarts and
 worker acquisitions, plus controller product/acquisition milliseconds. A warm
 run acquires no new worker and reuses its completed qualification. `session.free()`
@@ -452,3 +492,16 @@ releases the worker; terminate the host Worker for immediate cancellation.
 Callback exceptions reject after controller cleanup, rather than cancel work.
 The source buffer moves into the Rust source bundle without a second Rust copy.
 `IfcAPI.retainedModel` and the default WASM engine remain unchanged.
+
+Eligible single-part view events also carry `instanceKey` and optional
+`instanceWorldFromObject`, the controller's composed IFC frame. The retained-only
+`encodeInstancedShard(meshes, keys, rtc)` accepts up to 256 extracted Y-up meshes,
+their full keys, and the session RTC offset. Supply each event's frame as the
+mesh's `worldFromObject`. It returns IFNS `shard` bytes, `flatIndices` into the
+input, and instance, group and pairing-rejection counts. The retained-only
+`instanceMinOccurrences()` returns the engine’s minimum eligible occurrence count,
+shared by the encoder and CLI reports. Groups must meet that threshold and pass
+the existing geometric pairing check;
+rejected groups remain flat. Render each input exactly once, through its shard
+or its flat mesh. The viewer flushes every 256 completed products and at session
+completion. CLI OBJ export continues to bake every occurrence.

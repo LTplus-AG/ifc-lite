@@ -87,9 +87,8 @@
  * fingerprints, which the paired tests check.
  */
 
+import { buildFingerprintBatch } from '@ifc-lite/diff/internal';
 import {
-  buildComponentFingerprints,
-  buildDataFingerprint,
   type DataFingerprintInput,
   type EntityFingerprint,
 } from '@ifc-lite/diff';
@@ -143,6 +142,7 @@ export function buildModelFingerprints(
   options: FingerprintAdapterOptions = {},
 ): EntityFingerprint<DiffRef>[] {
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
+  const inputs: DataFingerprintInput[] = [];
   const seen = new Set<number>();
   // One extractor for the whole model: the source read below only fires for
   // the (small) set of object types the EntityTable declines to hold.
@@ -154,7 +154,7 @@ export function buildModelFingerprints(
     if (overlayCreated) {
       const created = overlay?.createdEntity(expressId);
       if (created && overlay) {
-        const fingerprint = createdFingerprint(created, overlay, units, keyOf(expressId, created.globalId));
+        const fingerprint = createdFingerprint(created, overlay, units, keyOf(expressId, created.globalId), inputs);
         if (fingerprint) fingerprints.push(fingerprint);
       }
       continue;
@@ -182,11 +182,12 @@ export function buildModelFingerprints(
     // The effective class wins over the immutable table's source class.
     const ifcType = type.name;
     const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay, units);
+    inputs.push(input);
     const fingerprint: EntityFingerprint<DiffRef> = {
       key: keyOf(expressId, globalId),
       ifcType,
-      dataHash: buildDataFingerprint(input),
-      components: buildComponentFingerprints(input),
+      dataHash: '',
+      components: {},
       ref: expressId,
     };
     const container = spatialContainerPath(store, expressId);
@@ -194,6 +195,8 @@ export function buildModelFingerprints(
     fingerprints.push(fingerprint);
   }
 
+  const hashes = buildFingerprintBatch(inputs);
+  for (let i = 0; i < fingerprints.length; i++) Object.assign(fingerprints[i], hashes[i]);
   return fingerprints;
 }
 
@@ -234,6 +237,7 @@ function createdFingerprint(
   overlay: PendingOverlay,
   units: ProjectUnits, // scales Qto_ quantities and measure-typed Pset properties to base SI
   key: string,
+  inputs: DataFingerprintInput[],
 ): EntityFingerprint<DiffRef> | null {
   const type = classifyType(entity.ifcType);
   if (type.role === 'dependent') return null;
@@ -258,11 +262,12 @@ function createdFingerprint(
     })),
     typeAssignments: [],
   };
+  inputs.push(input);
   return {
     key,
     ifcType: type.name,
-    dataHash: buildDataFingerprint(input),
-    components: buildComponentFingerprints(input),
+    dataHash: '',
+    components: {},
     ref: entity.expressId,
   };
 }

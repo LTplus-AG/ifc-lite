@@ -7,11 +7,13 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use crate::{GeometryRouter, ResolvedTextureMap};
 use crate::resource::{OwnedResourceContext, ProgramStop, Reservation};
 
+pub use logical::layer_source::LayerUsages;
+pub use logical::layer_family::{LayerAdmission, LayerSpec, LayerFamily, LayerInterface, LayerCompletion, ShapeLayer};
 mod error;
 mod values;
 mod type_origin;
 pub use error::{TransactionError, TransactionFailureKind};
-pub use values::{Definition, Operation, OperationKind, Plan, Requirement, Slot, Value, ValueRef};
+pub use values::{Definition, Operation, OperationKind, Plan, PresentationFacts, Requirement, Slot, Value, ValueRef};
 
 /// The original stop/account domain; contains no execution or TLS guard.
 #[derive(Clone)]
@@ -36,6 +38,13 @@ impl Traversal {
     pub fn product_submeshes<'a>(&self, root: &'a DecodedEntity,
         textures: &'a rustc_hash::FxHashMap<u32, ResolvedTextureMap>) -> Program<'a> {
         Program(self.0.product_submeshes(root, true, Some(textures)))
+    }
+    pub fn layer_admission(element: &DecodedEntity, router: &GeometryRouter, usages: &LayerUsages,
+        decoder: &mut EntityDecoder) -> Result<LayerAdmission, &'static str> {
+        logical::layer_family::admit(element, router, usages, decoder)
+    }
+    pub fn layer_bands(&self, host: Plan, spec: LayerSpec) -> Result<Program<'static>, TransactionError> {
+        self.0.layer_bands(host.inner, spec).map(Program).map_err(Into::into)
     }
     pub fn opening_body<'a>(&self, root: &'a DecodedEntity) -> Program<'a> {
         self.product_parts(root)

@@ -4,9 +4,9 @@ use super::*;
 use ifc_lite_geometry::resource::{BudgetStart, ProductBudget};
 
 fn part(positions: Vec<f64>, indices: Vec<u32>, faces: Vec<u32>) -> ShapePart {
-    ShapePart { positions, indices, revision_local_faces: faces,
+    ShapePart { layer: None, capped_volume_m3: None, positions, indices, revision_local_faces: faces,
         world_from_object: [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.],
-        curved: true, normals: None, appearance: None, faces: None, instance_key: None }
+        curved: true, halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None }
 }
 fn normals(p: &ShapePart) -> Vec<f64> {
     corner_normals(p, 5., &OwnedResourceContext::capture_current(), &mut Storage::default()).unwrap()
@@ -105,8 +105,10 @@ fn m11_n_7955_frame_scale_mirror_and_large_translation_precede_normals() {
     let mut p = fan(&[30.], &[90.]);
     p.world_from_object = [-2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 2.6e6,-1e20,7e15,1.];
     // Low-level normals follow the transformed triangle winding. This is NOT
-    // an outward-normal claim: mirrored publication refuses until M10 flips
-    // winding and normals together. Translation cancels before this transform.
+    // an outward-normal claim for an unbaked frame: M10 bakes the reflection into
+    // positions and winding before normals are generated, and `require_frame`
+    // refuses any part still carrying a negative frame. Translation cancels
+    // before this transform.
     assert!(!positive_frame(&p).unwrap());
     // Transformed cross product: (0, 4*sin(30), -3*cos(30)).
     let expected = [0.,2.,-3.*30_f64.to_radians().cos()];

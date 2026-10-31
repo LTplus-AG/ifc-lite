@@ -2,11 +2,13 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { exportCommand, exportFilePath } from './export.js';
 import { exportKernel, retainedArtifacts } from './export-retained.js';
 import { requireRetainedNode, validateEngine, type RetainedEngine } from '../retained/engine.js';
+import { runRetained } from '../retained/run.js';
 import { retainedReport, reportJson } from '../retained/report.js';
 import { buildHelp, buildCommandHelp } from '../help.js';
 import type { RetainedShapeProduct } from '../../../wasm/pkg-retained/ifc-lite.js';
@@ -17,6 +19,30 @@ const engine: RetainedEngine = { directory: '/unused', url: new URL('file:///unu
 const shape: RetainedShapeProduct = { status: 'published', cuts: 0, consumedParts: 0, expressId: 27, ifcType: 'IfcBuildingElementProxy', marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'],
   parts: [{ positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0), indices: Uint32Array.of(0, 1, 2),
     worldFromObject: Float64Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1), curved: false }] };
+
+it('#7955 M11-I reports instance candidates while every OBJ occurrence stays baked', () => {
+  const key = '1'.repeat(64);
+  const products = Array.from({ length: 64 }, (_, expressId) => ({ ...shape, expressId, instanceKey: key }));
+  const grouped = retainedArtifacts(engine, 8, products, () => null);
+  const flat = retainedArtifacts(engine, 8, products.map(({ instanceKey: _key, ...p }) => p), () => null);
+  expect(grouped.obj).toBe(flat.obj);
+  expect(grouped.report.products).toHaveLength(64);
+  for (const product of grouped.report.products) expect(product).toHaveProperty('instanceGroup', { templateProductId: 0, key });
+  const below = retainedReport(engine, 8, products.slice(0, 7), () => null);
+  for (const product of below.products) expect(product).not.toHaveProperty('instanceGroup');
+});
+
+it.each([3, 11])('#7955 PR #8299 groups at the engine-provided threshold %i', threshold => {
+  const key = '2'.repeat(64);
+  const products = Array.from({ length: threshold + 1 }, (_, expressId) => ({ ...shape, expressId, instanceKey: key }));
+  for (const count of [threshold - 1, threshold, threshold + 1]) {
+    const report = retainedReport(engine, threshold, products.slice(0, count), () => null);
+    for (const product of report.products) {
+      if (count < threshold) expect(product).not.toHaveProperty('instanceGroup');
+      else expect(product).toHaveProperty('instanceGroup', { templateProductId: 0, key });
+    }
+  }
+});
 
 it('#7955 validates kernel arguments before touching input or output', async () => {
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', undefined);
@@ -34,24 +60,24 @@ it('#7955 validates kernel arguments before touching input or output', async () 
 });
 
 it('#7955 zero publication and a corrupt later part never produce artifacts', () => {
-  expect(() => retainedArtifacts(engine, [], () => null)).toThrow(/0 products/);
-  expect(() => retainedArtifacts(engine, [{ status: 'refused', expressId: 27, ifcType: shape.ifcType, code: 'incomplete' }], () => null)).toThrow(/0 products/);
-  expect(() => retainedArtifacts(engine, [{ ...shape, parts: [...shape.parts, { ...shape.parts[0], indices: Uint32Array.of(999, 1, 2) }] }], () => null)).toThrow(/partial product/);
+  expect(() => retainedArtifacts(engine, 8, [], () => null)).toThrow(/0 products/);
+  expect(() => retainedArtifacts(engine, 8, [{ status: 'refused', expressId: 27, ifcType: shape.ifcType, code: 'incomplete' }], () => null)).toThrow(/0 products/);
+  expect(() => retainedArtifacts(engine, 8, [{ ...shape, parts: [...shape.parts, { ...shape.parts[0], indices: Uint32Array.of(999, 1, 2) }] }], () => null)).toThrow(/partial product/);
 });
 
 it('#7955 shape-only OBJ transforms world f64 points to Y-up and keeps refusal origins', () => {
   const refusal = { status: 'refused' as const, expressId: 80, ifcType: shape.ifcType, code: 'material_layer_strategy' as const,
     origin: { site: 'product', entity: 80, cause: 'material' } };
-  const { obj, report, json } = retainedArtifacts(engine, [refusal, shape], id => `guid-${id}`);
+  const { obj, report, json } = retainedArtifacts(engine, 8, [refusal, shape], id => `guid-${id}`);
   expect(obj).toContain('# PresentationObligationsUnmet');
   expect(obj).toContain('v 10.000000 30.000000 -20.000000');
   expect(obj).toContain('f 1 2 3');
   expect(obj).not.toContain('_80');
-  expect(report.summary).toEqual({ candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
+  expect(report.summary).toEqual({ layeredProducts: 0, bands: 0, candidates: 2, published: 1, coverage: 0.5, byCode: { material_layer_strategy: 1 } });
   expect(report.products.map(p => p.id)).toEqual([27, 80]);
   expect(report.products[1]).toMatchObject({ globalId: 'guid-80', code: refusal.code, origin: refusal.origin });
   expect(report.products[1]).not.toHaveProperty('parts');
-  expect(json).toBe(reportJson(retainedReport(engine, [shape, refusal], id => `guid-${id}`)));
+  expect(json).toBe(reportJson(retainedReport(engine, 8, [shape, refusal], id => `guid-${id}`)));
   expect(buildHelp('test')).not.toContain('--kernel');
   expect(buildCommandHelp('test', 'export')).toContain('--retained-engine');
 });
@@ -66,11 +92,16 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   const content = 'must never execute';
   const assets = [];
   for (const path of paths) {
-    await mkdir(join(dir, path, '..'), { recursive: true }); await writeFile(join(dir, path), content);
-    assets.push({ path, bytes: content.length, sha256: createHash('sha256').update(content).digest('hex') });
+    const value = path === 'pkg-retained/ifc-lite.js'
+      ? 'not valid JavaScript; inventory validation must not execute this'
+      : path === 'pkg-retained/package.json' ? '{"type":"module"}'
+      : path === 'smlib/node/hooks.mjs' ? 'export {};' : content;
+    await mkdir(join(dir, path, '..'), { recursive: true }); await writeFile(join(dir, path), value);
+    assets.push({ path, bytes: value.length, sha256: createHash('sha256').update(value).digest('hex') });
   }
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets }));
-  await validateEngine(dir);
+  // PR #8299: dev/preview servers validate inert assets without executing engine code.
+  expect((await validateEngine(dir)).directory).toBe(dir);
   // Refs #7955: an internally consistent inventory still requires the root notice.
   const manifestBytes = await readFile(join(dir, 'engine-manifest.json'));
   const withoutNotice = JSON.parse(manifestBytes.toString());
@@ -89,10 +120,23 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   await expect(readFile(join(dir, 'report.json'))).rejects.toThrow();
 });
 
+it('#7955 PR #8299 rejects stale engine exports only when running the engine', async () => {
+  // Refs #7955: an engine staged before the threshold export names the re-stage remedy.
+  const stale = await mkdtemp(join(tmpdir(), 'retained-stale-')); dirs.push(stale);
+  for (const path of ['pkg-retained/ifc-lite.js', 'pkg-retained/ifc-lite_bg.wasm', 'pkg-retained/package.json', 'smlib/node/hooks.mjs']) {
+    const value = path === 'pkg-retained/ifc-lite.js' ? 'export default async function init() {}'
+      : path === 'pkg-retained/package.json' ? '{"type":"module"}'
+      : path === 'smlib/node/hooks.mjs' ? 'export {};' : 'unused';
+    await mkdir(join(stale, path, '..'), { recursive: true }); await writeFile(join(stale, path), value);
+  }
+  await expect(runRetained({ ...engine, url: pathToFileURL(`${stale}/`) }, new Uint8Array())).rejects.toThrow(
+    'Retained engine predates the instancing threshold export; re-stage the engine with the current scripts/stage-cli-retained-engine.mjs');
+});
+
 it('#7955 OBJ uses Rust fixed-six formatting, including exact ties and signed zero', () => {
   const part = { ...shape.parts[0], positions: Float64Array.of(1 / 128, 0, -1 / 128, 1, 0, 0, 0, 1, 0),
     worldFromObject: Float64Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) };
-  const { obj } = retainedArtifacts(engine, [{ ...shape, parts: [part] }], () => null);
+  const { obj } = retainedArtifacts(engine, 8, [{ ...shape, parts: [part] }], () => null);
   expect(obj).toContain('v 0.007812 -0.007812 -0.000000');
 });
 
@@ -109,8 +153,8 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
   const part = { ...shape.parts[0], normals: Float64Array.of(0, 0, 1, 0, 0, 1, 0, 0, 1),
     color: [1, 0, 0, 1] as [number, number, number, number], materialName: 'surface', geometryItemId: 13,
     faces: { table: ['#13:cap(end)'], triangles: Uint32Array.of(0) } };
-  const { obj, report } = retainedArtifacts(engine, [{ ...shape, parts: [part, shape.parts[0], part],
-    instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } }], () => null);
+  const { obj, report } = retainedArtifacts(engine, 8, [{ ...shape, parts: [part, shape.parts[0], part],
+    instanceKey: 'a'.repeat(64) }], () => null);
   expect(report.format).toBe('ifc-lite.retained-report/1');
   expect(obj).toContain('vn 0.000000 1.000000 -0.000000');
   expect(obj).toContain('f 1//1 2//2 3//3');
@@ -125,10 +169,55 @@ it('#7955 M11-0 report emits optional channels and OBJ indexes per-corner normal
   for (const key of ['color', 'materialName', 'geometryItemId', 'materialId', 'normals', 'faces']) {
     expect(parts[1]).not.toHaveProperty(key);
   }
-  expect(report.products[0]).toMatchObject({ instanceGroup: { templateProductId: 27, key: 'a'.repeat(64) } });
-  expect(() => retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(0, 0, 1) }] }], () => null)).toThrow(/corner normals/);
-  const signed = retainedArtifacts(engine, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(-0, -0, 1, 0, -0, 1, -0, 0, 1) }] }], () => null);
+  expect(report.products[0]).not.toHaveProperty('instanceGroup');
+  expect(() => retainedArtifacts(engine, 8, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(0, 0, 1) }] }], () => null)).toThrow(/corner normals/);
+  const signed = retainedArtifacts(engine, 8, [{ ...shape, parts: [{ ...part, normals: Float64Array.of(-0, -0, 1, 0, -0, 1, -0, 0, 1) }] }], () => null);
   const written = (signed.report.products[0] as unknown as { parts: { normals: number[] }[] }).parts[0].normals;
   // JSON has no -0: a written -0 would not round-trip. Removing the `v + 0` canonicalisation fails here.
   expect(written.some(v => Object.is(v, -0))).toBe(false);
+});
+
+it('#7955 M4 OBJ labels bands and reports their closed volumes', () => {
+  // A single open triangle has zero divergence volume at its own origin;
+  // the retained volume certificate must survive export of the open band.
+  const band = { ...shape.parts[0], layer: { index: 1, materialId: 20 }, cappedVolumeM3: 5.4 };
+  const { obj, report } = retainedArtifacts(engine, 8, [{ ...shape, parts: [band] }], () => null);
+  expect(obj).toContain('# layer 1 material #20\nf 1 2 3');
+  expect(report.summary).toMatchObject({ layeredProducts: 1, bands: 1 });
+  expect(report.products[0]).toMatchObject({ parts: [{ layer: { index: 1, materialId: 20 }, volumeM3: 5.4 }] });
+  expect(() => retainedArtifacts(engine, 8, [{ ...shape, parts: [{ ...band, cappedVolumeM3: undefined }] }], () => null)).toThrow(/closed band volume/);
+});
+
+it('#7955 M4 open parts measure the closed assembly with a common origin', () => {
+  // Unit tetrahedron: det(eX,eY,eZ)/6 = 1/6. Partition its outer skin into
+  // two open meshes with different first vertices; neither has its own volume.
+  const first = { ...shape.parts[0], layer: { index: 0, materialId: 16 }, cappedVolumeM3: 1 / 12,
+    positions: Float64Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1), indices: Uint32Array.of(0, 2, 1, 0, 1, 3) };
+  const second = { ...first, layer: { index: 1, materialId: 20 },
+    positions: Float64Array.of(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0), indices: Uint32Array.of(3, 2, 1, 0, 1, 2) };
+  const report = retainedReport(engine, 8, [{ ...shape, parts: [first, second] }], () => null);
+  expect(report.products[0]).toMatchObject({ volumeM3: expect.closeTo(1 / 6, 14) });
+});
+
+it('#7955 M4 phase samples do not change the reproducible CLI report', () => {
+  const first = retainedReport(engine, 8, [{ ...shape, bandMs: 1, capMs: 2, maxSnapMetres: 1e-7 }], () => null);
+  const second = retainedReport(engine, 8, [{ ...shape, bandMs: 5, capMs: 9, maxSnapMetres: 2e-7 }], () => null);
+  expect(reportJson(first)).toBe(reportJson(second));
+  expect(first.products[0]).not.toHaveProperty('bandMs');
+  expect(first.products[0]).not.toHaveProperty('capMs');
+  expect(first.products[0]).not.toHaveProperty('maxSnapMetres');
+});
+
+// #7955 M11-Z: consumers enforce the marker/obligation contract for both states.
+it('M11-Z accepts final products in OBJ and the stable report, retaining shape-only behavior', () => {
+  const final: RetainedShapeProduct = { ...shape, marker: 'final', obligationsUnmet: [] };
+  const result = retainedArtifacts(engine, 8, [final], () => null);
+  expect(result.obj).toContain('# retained final\n# final\n');
+  expect(result.obj).not.toContain('obligations unmet');
+  expect(result.report.products[0]).toMatchObject({ marker: 'final', obligationsUnmet: [] });
+  const mixed = retainedArtifacts(engine, 8, [final, { ...shape, expressId: 28 }], () => null);
+  expect(mixed.obj).toContain('# PresentationObligationsUnmet');
+  expect(mixed.report.products[1]).toMatchObject({ marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'] });
+  expect(() => retainedArtifacts(engine, 8, [{ ...final, marker: 'PresentationObligationsUnmet' }], () => null)).toThrow(/Invalid retained publication/);
+  expect(() => retainedArtifacts(engine, 8, [{ ...shape, marker: 'final' }], () => null)).toThrow(/Invalid retained publication/);
 });

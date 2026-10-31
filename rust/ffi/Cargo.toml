@@ -8,6 +8,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "C FFI bindings for ifc-lite — native DLL for in-process IFC parsing"
 
@@ -38,6 +39,10 @@ serde_json.workspace = true
 [dev-dependencies]
 # Test-only: drives `par_iter` jobs through `run_in_pool` to pin which pool runs them.
 rayon.workspace = true
+# Test-only (path-only, stripped on publish): the catalogued fixtures and the
+# golden pin file format the FFI output pin shares with the server route pins.
+ifc-lite-testkit = { path = "../testkit" }
+serde.workspace = true
 
 [lints]
 workspace = true

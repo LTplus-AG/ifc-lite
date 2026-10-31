@@ -27,16 +27,18 @@ export interface CsvParseResult {
 }
 
 /** Split raw CSV text into fields per physical row, honouring quoting. */
-function splitRows(text: string, delimiter: string): string[][] {
+function splitRows(text: string, delimiter: string, strict: boolean): string[][] {
   const rows: string[][] = [];
   let field = '';
   let row: string[] = [];
   let inQuotes = false;
+  let afterQuote = false;
   let i = 0;
   const n = text.length;
   const pushField = () => {
     row.push(field);
     field = '';
+    afterQuote = false;
   };
   const pushRow = () => {
     pushField();
@@ -53,6 +55,7 @@ function splitRows(text: string, delimiter: string): string[][] {
           continue;
         }
         inQuotes = false;
+        afterQuote = true;
         i += 1;
         continue;
       }
@@ -60,6 +63,8 @@ function splitRows(text: string, delimiter: string): string[][] {
       i += 1;
       continue;
     }
+    if (strict && afterQuote && ch !== delimiter && ch !== '\r' && ch !== '\n') throw new Error('Malformed CSV quoting');
+    if (strict && ch === '"' && field.length > 0) throw new Error('Malformed CSV quoting');
     if (ch === '"' && field.length === 0) {
       inQuotes = true;
       i += 1;
@@ -83,6 +88,7 @@ function splitRows(text: string, delimiter: string): string[][] {
     field += ch;
     i += 1;
   }
+  if (strict && inQuotes) throw new Error('Unclosed CSV quote');
   // A trailing field/row with no terminating newline is still real content.
   if (field.length > 0 || row.length > 0) pushRow();
   return rows;
@@ -91,12 +97,12 @@ function splitRows(text: string, delimiter: string): string[][] {
 /** Parse CSV text into a header row and data rows. Blank trailing rows (a
  *  file ending in a newline) are dropped; a genuinely blank line elsewhere
  *  is kept as a one-empty-field row and reported like any other mismatch. */
-export function parseCsvText(text: string, delimiter = ','): CsvParseResult {
+export function parseCsvText(text: string, delimiter = ',', strict = false): CsvParseResult {
   // Excel's "CSV UTF-8" export starts with a byte-order mark. Left in, it
   // becomes part of the first header ("\uFEFFGlobalId"), so the default
   // GlobalId key is not found — and a quoted first header keeps its quotes.
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  const all = splitRows(text, delimiter).filter((r, idx, arr) => !(idx === arr.length - 1 && r.length === 1 && r[0] === ''));
+  const all = splitRows(text, delimiter, strict).filter((r, idx, arr) => !(idx === arr.length - 1 && r.length === 1 && r[0] === ''));
   if (all.length === 0) return { header: [], rows: [] };
   const [header, ...dataRows] = all;
   const width = header.length;

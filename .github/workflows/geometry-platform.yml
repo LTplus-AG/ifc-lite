@@ -143,9 +143,21 @@ jobs:
           test -x "$IFCLITE_SMLIB_PATH"
           IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
             cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+      - name: Check generated halfspace boundary fixtures
+        id: halfspace-generated
+        continue-on-error: true
+        run: python3 tests/fixtures/synthetic-retained/generate-halfspace-boundaries.py --check
+      - name: Fetch required native halfspace witnesses
+        id: halfspace-fetch
+        continue-on-error: true
+        run: |
+          node scripts/fixtures/fetch-fixtures.mjs \
+            ara3d/AC20-FZK-Haus.ifc issues/960_house_segmented_roof_clip.ifc
       - name: Retained native comparison and real executor tests
         id: native-compare
         continue-on-error: true
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
         run: |
           # The default step shell has no pipefail: without it `| tee` would hide
           # a failing cargo test whose witness markers were already printed.
@@ -155,13 +167,24 @@ jobs:
           export IFCLITE_M8_NATIVE_REFERENCE="$RUNNER_TEMP/m8-native.json"
           export IFCLITE_M11F_REFERENCE="$RUNNER_TEMP/m11-f-native-faces.json"
           export IFCLITE_M11_N_REFERENCE="$RUNNER_TEMP/m11-n-native.json"
+          export IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json"
+          export IFCLITE_M11_I_REFERENCE="$RUNNER_TEMP/m11-i-native-instances.json"
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
-          cargo test --locked -p ifc-lite-retained-native --features retained-runtime -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
+          # Native parity references the browser lanes read (one file per
+          # slice, named after the /smlib path the browser test fetches).
+          mkdir -p "$RUNNER_TEMP/native-references"
+          export IFCLITE_M5_REFERENCE="$RUNNER_TEMP/native-references/m5-native-clips.json"
+          export IFCLITE_M5_LINEAGE_REFERENCE="$RUNNER_TEMP/native-references/m5-native-lineage.json"
+          export IFCLITE_M6_REFERENCE="$RUNNER_TEMP/native-references/m6-native.json"
+          cargo test --locked -p ifc-lite-retained-native --features retained-runtime --all-targets -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-witnesses.log"
           for file in tests/evidence/*/witnesses.txt; do
             [[ -f "$file" ]] || continue
             while IFS= read -r witness; do
               [[ -z "$witness" || "$witness" == \#* ]] && continue
-              grep -Fqx "sdk witness executed: $witness" "$RUNNER_TEMP/native-witnesses.log"
+              # End-anchored only: parallel tests under --nocapture can land this
+              # whole line inside an unbuffered eprintln!, as `Skipping unsupported
+              # sdk witness executed: x`. The end anchor still rejects `x_longer`.
+              grep -Eq "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/native-witnesses.log"
             done < "$file"
           done
           cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
@@ -175,7 +198,7 @@ jobs:
           export IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime --test m3_native -- --nocapture | tee "$RUNNER_TEMP/m3-native.log"
           for witness in m3_prism_curved m3_synthetic_empty m3_scaled_cutter m3_nonbakeable_cutter m3_unsupported m3_kernel_failure m3_frames m3_lineage m3_reference m3_two_parts_two_openings m3_empty_opening_body; do
-            grep -Fx "sdk witness executed: $witness" "$RUNNER_TEMP/m3-native.log"
+            grep -E "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/m3-native.log"
           done
       - name: Download optional corpus
         if: inputs.corpus == true
@@ -221,6 +244,17 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Rebuilt-worker open tessellation refusal (#7955)
+        id: open-tessellation
+        continue-on-error: true
+        run: |
+          # The same witness the revert oracle runs: it rebuilds the worker from
+          # this checkout, so a native adapter regression cannot hide behind a
+          # stale binary. A skip here is a failure (IFCLITE_REQUIRE_SMLIB).
+          set -o pipefail
+          IFCLITE_REQUIRE_SMLIB=1 IFCLITE_SMLIB_NATIVE_BUILD="$RUNNER_TEMP/smlib-native" \
+            node --test scripts/smlib-open-tessellation.test.mjs | tee "$RUNNER_TEMP/open-tessellation.log"
+          grep -F "sdk witness executed: open_tessellation_rebuilt_worker" "$RUNNER_TEMP/open-tessellation.log"
       - run: pnpm exec playwright install --with-deps chromium
       - name: Actual module Workers over the staged /smlib bundle
         id: browser-workers
@@ -258,6 +292,19 @@ jobs:
           if [ -f "$RUNNER_TEMP/m11-n-native.json" ]; then
             cp "$RUNNER_TEMP/m11-n-native.json" rust/wasm-bindings/smlib/m11-n-native.json
           fi
+          if [ -f "$RUNNER_TEMP/m11-i-native-instances.json" ]; then
+            cp "$RUNNER_TEMP/m11-i-native-instances.json" rust/wasm-bindings/smlib/m11-i-native-instances.json
+          fi
+          if [ -f "$RUNNER_TEMP/m11-a-native-appearance.json" ]; then
+            cp "$RUNNER_TEMP/m11-a-native-appearance.json" rust/wasm-bindings/smlib/m11-a-native-appearance.json
+          fi
+          # Generic: every reference a native lane wrote is served beside /smlib.
+          # Same rule as above: an absent file is reported by the browser test.
+          set -o pipefail
+          shopt -s nullglob
+          for reference in "$RUNNER_TEMP"/native-references/*.json; do
+            cp "$reference" "rust/wasm-bindings/smlib/$(basename "$reference")"
+          done
           node scripts/stage-retained-runtime-peer.mjs
           if [ -f "$RUNNER_TEMP/m8-native.json" ]; then
             cp "$RUNNER_TEMP/m8-native.json" rust/wasm-bindings/smlib/m8-native.json
@@ -278,6 +325,10 @@ jobs:
           grep -F "sdk witness executed: m8 real browser Worker parity" "$RUNNER_TEMP/retained-browser.log"
           grep -F "sdk witness executed: retained refusal browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
           grep -F "sdk witness executed: retained consumed-host browser lifecycle" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "sdk witness executed: m10_browser_parity" "$RUNNER_TEMP/retained-browser.log"
+          for witness in m5_browser_parity m5_browser_lineage m5_browser_clipped_opening; do
+            grep -F "sdk witness executed: $witness" "$RUNNER_TEMP/retained-browser.log"
+          done
       - name: M3 native and browser opening parity
         id: m3-browser
         continue-on-error: true
@@ -318,6 +369,7 @@ jobs:
           IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
             IFCLITE_NATIVE_PRODUCTS="$RUNNER_TEMP/native-compare/products.tsv" \
             IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json" \
+            IFCLITE_M11A_REFERENCE="$RUNNER_TEMP/m11-a-native-appearance.json" \
             node --test scripts/retained-compare/real-engine.test.mjs
       - name: Browser parity and real retained viewer
         id: viewer-retained
@@ -365,6 +417,8 @@ jobs:
         env:
           M3_NATIVE: ${{ steps.m3-native.outcome }}
           M3_BROWSER: ${{ steps.m3-browser.outcome }}
+          HALFSPACE_GENERATED: ${{ steps.halfspace-generated.outcome }}
+          HALFSPACE_FETCH: ${{ steps.halfspace-fetch.outcome }}
           NATIVE_COMPARE: ${{ steps.native-compare.outcome }}
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
@@ -377,9 +431,10 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
           CLI_RETAINED: ${{ steps.cli-retained.outcome }}
           VIEWER_RETAINED: ${{ steps.viewer-retained.outcome }}
+          OPEN_TESSELLATION: ${{ steps.open-tessellation.outcome }}
         run: |
           failed=0
-          for lane in M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED; do
+          for lane in HALFSPACE_GENERATED HALFSPACE_FETCH M3_NATIVE M3_BROWSER NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY CLI_RETAINED VIEWER_RETAINED OPEN_TESSELLATION; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

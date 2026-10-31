@@ -5,9 +5,11 @@ use super::{disk, extrusion, AnalyticQuantitySources, Surface};
 use ifc_lite_core::{slot, EntityDecoder, EntityScanner, IfcType, SourceBundle};
 use ifc_lite_geometry::{analytic::AnalyticStatus, meshed_representations, GeometryRouter};
 use std::collections::BTreeMap;
+use ifc_lite_geometry::{placement::resolve_object_placement, representation::MappedLevel};
+use super::math::{IDENTITY, multiply};
 
 type Signs = BTreeMap<(u32, Vec<u32>), Vec<f64>>;
-struct Node { id: u32, sign: f64, path: Vec<u32>, maps: Vec<u32> }
+struct Node { id: u32, sign: f64, path: Vec<u32>, maps: Vec<u32>, world: [f64;16] }
 
 pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -> Result<Vec<Surface>,String> {
     let bundle = SourceBundle::new(bytes.to_vec());
@@ -31,7 +33,7 @@ pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -
         let extrusions = sources.extrusion_definitions.instances.get(&id);
         let disks = sources.swept_disk_descriptions.elements.get(&id);
         if extrusions.is_none() && disks.is_none() {continue;}
-        let signs = orientations(&mut decoder,id)?;
+        let (signs,halfspaces) = orientations(&mut decoder,id)?;
         for i in extrusions.into_iter().flatten() {
             let source = &sources.extrusion_definitions.sources.iter().find(|s| s.key==i.source).ok_or("missing prism source")?.source;
             for &sign in signs.get(&(i.solid_id,i.mapping_path.clone())).ok_or("missing prism polarity")? {
@@ -48,12 +50,18 @@ pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -
                     .into_iter().map(|s| s.reversed(sign*polarity)));
             }
         }
+        result.extend(halfspaces.into_iter().map(|s| s.reversed(polarity)));
     }
     Ok(result)
 }
 
-fn orientations(decoder: &mut EntityDecoder<'_>, id: u32) -> Result<Signs,String> {
+fn orientations(decoder: &mut EntityDecoder<'_>, id: u32) -> Result<(Signs,Vec<Surface>),String> {
     let product = decoder.decode_by_id(id).map_err(|e| e.to_string())?;
+    let mut world = resolve_object_placement(&product,decoder).map_err(|e| e.to_string())?
+        .unwrap_or_else(ifc_lite_geometry::Matrix4::identity);
+    let scale = decoder.length_unit_scale();
+    for row in 0..3 { for col in 0..4 { world[(row,col)] *= scale; } }
+    let world: [f64;16] = world.as_slice().try_into().unwrap();
     let shape = decoder.decode_by_id(product.ref_at(slot::IfcProduct::REPRESENTATION).ok_or("missing Representation")?)
         .map_err(|e| e.to_string())?;
     let representations = shape.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS).ok_or("missing Representations")?
@@ -61,10 +69,11 @@ fn orientations(decoder: &mut EntityDecoder<'_>, id: u32) -> Result<Signs,String
     let mut stack = Vec::new();
     for rep in meshed_representations(&product,&representations) {
         for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS).ok_or("missing Items")? {
-            stack.push(Node {id,sign:1.,path:Vec::new(),maps:Vec::new()});
+            stack.push(Node {id,sign:1.,path:Vec::new(),maps:Vec::new(),world});
         }
     }
     let mut result = Signs::new();
+    let mut halfspaces = Vec::new();
     let mut work = 0;
     while let Some(mut n) = stack.pop() {
         work += 1;
@@ -77,7 +86,14 @@ fn orientations(decoder: &mut EntityDecoder<'_>, id: u32) -> Result<Signs,String
         let children = match item.ifc_type {
             IfcType::IfcMappedItem => {
                 n.maps.push(n.id);
-                vec![(item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE).ok_or("missing MappingSource")?,n.sign)]
+                let map_id = item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE).ok_or("missing MappingSource")?;
+                let map = decoder.decode_by_id(map_id).map_err(|e|e.to_string())?;
+                let mapped_rep = decoder.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)
+                    .ok_or("missing MappedRepresentation")?).map_err(|e|e.to_string())?;
+                let level = MappedLevel {item,map,mapped_rep};
+                let local = level.local_transform(decoder).map_err(|e|e.to_string())?;
+                n.world = multiply(&n.world,&local.map(|m|m.as_slice().try_into().unwrap()).unwrap_or(IDENTITY));
+                vec![(map_id,n.sign)]
             }
             IfcType::IfcRepresentationMap => vec![(item.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)
                 .ok_or("missing MappedRepresentation")?,n.sign)],
@@ -93,10 +109,16 @@ fn orientations(decoder: &mut EntityDecoder<'_>, id: u32) -> Result<Signs,String
                     (item.ref_at(B::SECOND_OPERAND).ok_or("missing SecondOperand")?,sign)]
             }
             IfcType::IfcCsgSolid => vec![(item.ref_at(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION).ok_or("missing TreeRootExpression")?,n.sign)],
-            _ => {result.entry((n.id,n.maps)).or_default().push(n.sign); continue;}
+            _ => {
+                if item.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {
+                    halfspaces.extend(super::halfspaces::surfaces(n.id,&n.world,decoder)?
+                        .into_iter().map(|s|s.reversed(n.sign)));
+                }
+                result.entry((n.id,n.maps)).or_default().push(n.sign); continue;
+            }
         };
         if stack.len().saturating_add(children.len()) > 100_000 {return Err("normal source frontier exceeded bounds".into());}
-        for (id,sign) in children { stack.push(Node {id,sign,path:n.path.clone(),maps:n.maps.clone()}); }
+        for (id,sign) in children { stack.push(Node {id,sign,path:n.path.clone(),maps:n.maps.clone(),world:n.world}); }
     }
-    Ok(result)
+    Ok((result,halfspaces))
 }

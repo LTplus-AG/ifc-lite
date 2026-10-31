@@ -25,10 +25,12 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
                 // controller; record its provenance so the replacement is uncharged.
                 observation.cancellation =
                     execution.pending.as_ref().map(|pending| pending.cancellation.clone());
+                observation.layer_phase = execution.layer_active;
                 return Err(error);
             }
         };
         observation.cancellation = Some(issued.cancellation.clone());
+        observation.layer_phase = issued.layer_phase;
         let is_cut = execution.prepared.is_none() && matches!(execution.openings, Some(OpeningPhase::Cuts));
         if is_cut {
             execution.scratch.reserve(&execution.resources, &mut execution.cut_times_ms, 1)?;
@@ -71,5 +73,7 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
             return Err(rejected.reason);
         }
     }
-    execution.into_witness(limits)
+    let witness = execution.into_witness(limits)?;
+    affine_final::admit(&witness, limits)?;
+    Ok(witness)
 }

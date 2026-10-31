@@ -141,26 +141,23 @@ pub(super) fn run_job(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<MeshData> {
 /// caches (content dedup #1109, brep signatures, IfcMappedItem sources #1623)
 /// and, when enabled, the #1623 Phase 2 don't-bake plan.
 fn job_router(ctx: &PassContext<'_>) -> GeometryRouter {
-    let mut local_router = GeometryRouter::from_config(RouterConfig {
-        unit_scale: ctx.unit_scale,
-        tessellation_quality: ctx.quality,
-        rtc_offset: ctx.rtc_offset,
-        ..RouterConfig::default()
-    });
-    local_router.enable_content_dedup_shared(ctx.item_dedup_cache.clone());
-    local_router.enable_shared_brep_signature_cache(ctx.brep_signature_cache.clone());
-    local_router.enable_shared_mapped_item_cache(ctx.mapped_item_cache.clone());
-    // #1623 Phase 2: arm the don't-bake plan so single-solid occurrences of a repeated
-    // mapped source emit instance placeholders instead of full meshes.
-    if let Some(plan) = ctx.instancing_plan.as_ref() {
-        local_router.enable_output_instancing(plan.clone());
-        // #858: exclude indexed-colour sources from don't-bake so their per-triangle
-        // palette survives the flat split (only meaningful with the plan armed).
-        if let Some(ids) = ctx.indexed_colour_split_ids.as_ref() {
-            local_router.enable_indexed_colour_split_guard(ids.clone());
-        }
-    }
-    local_router
+    crate::execution::build_router(
+        RouterConfig {
+            unit_scale: ctx.unit_scale,
+            tessellation_quality: ctx.quality,
+            rtc_offset: ctx.rtc_offset,
+            ..RouterConfig::default()
+        },
+        crate::execution::SchedulerPolicy::PerJob,
+        crate::execution::RouterCaches {
+            items: ctx.item_dedup_cache.clone(),
+            brep_signatures: ctx.brep_signature_cache.clone(),
+            mapped_items: ctx.mapped_item_cache.clone(),
+        },
+        ctx.material_layers.clone(),
+        ctx.instancing_plan.as_ref(),
+        ctx.indexed_colour_split_ids.as_ref(),
+    )
 }
 
 fn mesh_job(
@@ -193,7 +190,8 @@ fn mesh_job(
         placement_slot: worker_placement_cache,
     };
 
-    let entity = match decoder.decode_at(job.start, job.end) {
+    let span = crate::execution::JobSpan { id: job.id, start: job.start, end: job.end };
+    let entity = match crate::execution::decode_job(&mut decoder, span, crate::execution::SchedulerPolicy::PerJob) {
         Ok(entity) => entity,
         Err(_) => {
             ctx.diag.note_refused_input(&decoder);
@@ -226,7 +224,7 @@ fn mesh_job(
     let produced = crate::element::produce_element_meshes_owned(
         &crate::element::ElementMeshJob {
             id: job.id,
-            ifc_type: job.ifc_type.clone(),
+            ifc_type: crate::execution::job_type(&entity, ctx.content, span, Some(&job.ifc_type)),
             entity: &entity,
             kind,
             element_color: Some(job.element_color),

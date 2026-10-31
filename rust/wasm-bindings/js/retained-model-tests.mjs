@@ -45,11 +45,10 @@ export async function preparePeer(failAt) {
 export function assertPublished(value, id, ifcType) {
   check(value.status === 'published' && value.expressId === id, `published #${id}: ${JSON.stringify(value)}`);
   check(value.ifcType === ifcType, 'canonical IFC type');
-  check(value.marker === 'PresentationObligationsUnmet', 'shape-only marker');
-  check(value.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.faces?.triangles.length === part.indices.length / 3 && part.color === undefined && part.instanceKey === undefined), 'revision-local and persistent face partitions still index triangles');
-  check(JSON.stringify(value.obligationsUnmet) === JSON.stringify([
-    'MaterialLayers', 'IfcAppearance',
-  ]), `remaining obligations: ${JSON.stringify(value.obligationsUnmet)}`);
+  check(value.marker === 'final', 'M11-Z final marker');
+  check(value.parts.every(part => part.revisionLocalFaces.length === part.indices.length / 3 && part.faces?.triangles.length === part.indices.length / 3 && part.instanceKey === undefined), 'revision-local and persistent face partitions still index triangles');
+  check(value.parts.every(part => Array.isArray(part.color) && part.color.length === 4 && part.color.every(Number.isFinite) && (ifcType.endsWith('Type') ? part.geometryItemId === undefined : (part.geometryItemId === undefined || (Number.isInteger(part.geometryItemId) && part.geometryItemId > 0))) && part.materialId === undefined), 'M11-A resolved appearance on every part (type parts name no item)');
+  check(JSON.stringify(value.obligationsUnmet) === JSON.stringify([]), `remaining obligations: ${JSON.stringify(value.obligationsUnmet)}`);
   check(value.parts.length === 1, 'complete single-part product');
   const part = value.parts[0];
   check(part.positions instanceof Float64Array && part.positions.length === 9, 'f64 positions');

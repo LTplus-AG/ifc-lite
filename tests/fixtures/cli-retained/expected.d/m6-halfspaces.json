@@ -1,0 +1,101 @@
+{
+  "authority": "Hand integrals: host volume 64; removal height 2-t*x over rectangle area 4 / L area 3, x moments 6 / 2.5; overlapping union area 6; quarter disk area pi. M5-dependent final outcomes remain unconditional.",
+  "rows": [
+    {
+      "id": 1000,
+      "case": "a",
+      "code": "published",
+      "volume": 56
+    },
+    {
+      "id": 1001,
+      "case": "b",
+      "code": "published",
+      "volume": 60.20124522925826
+    },
+    {
+      "id": 1002,
+      "case": "c",
+      "code": "published",
+      "volume": 59.750518845524276
+    },
+    {
+      "id": 1003,
+      "case": "d",
+      "code": "published",
+      "volume": 52
+    },
+    {
+      "id": 1004,
+      "case": "e",
+      "code": "published",
+      "volume": 41
+    },
+    {
+      "id": 1005,
+      "case": "f",
+      "code": "published",
+      "volume": 57.716814692820414
+    },
+    {
+      "id": 1006,
+      "case": "f-prime",
+      "code": "operation_unsupported",
+      "volume": null
+    },
+    {
+      "id": 1007,
+      "case": "g",
+      "code": "published",
+      "volume": 32
+    },
+    {
+      "id": 1008,
+      "case": "h",
+      "code": "published",
+      "volume": 32
+    },
+    {
+      "id": 1009,
+      "case": "i",
+      "code": "published",
+      "volume": 32
+    },
+    {
+      "id": 1010,
+      "case": "j",
+      "code": "published",
+      "volume": 64
+    },
+    {
+      "id": 1011,
+      "case": "k",
+      "code": "empty_result",
+      "volume": null
+    },
+    {
+      "id": 1012,
+      "case": "l",
+      "code": "operation_unsupported",
+      "volume": null
+    },
+    {
+      "id": 1013,
+      "case": "m",
+      "code": "operation_unsupported",
+      "volume": null
+    },
+    {
+      "id": 1014,
+      "case": "n",
+      "code": "published",
+      "volume": 60.20124522925826
+    },
+    {
+      "id": 1015,
+      "case": "o",
+      "code": "published",
+      "volume": 51.79875477074174
+    }
+  ]
+}

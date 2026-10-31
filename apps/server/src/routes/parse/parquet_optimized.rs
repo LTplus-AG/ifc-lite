@@ -21,9 +21,8 @@ use crate::services::{
     baked_basis_zup, extract_data_model, serialize_data_model_to_parquet,
     serialize_to_parquet_optimized_with_stats, VERTEX_MULTIPLIER,
 };
-use crate::types::finish_meshes;
+use crate::types::{with_finishes, CollectedFinishes};
 use crate::AppState;
-use ifc_lite_processing::style::ModelFinishes;
 use axum::{
     extract::{Multipart, Query, State},
     response::Response,
@@ -118,13 +117,13 @@ pub async fn parse_parquet_optimized(
             // First: geometry and the data model in parallel, mirroring
             // `parse_parquet` -- independent extractions over the same bytes,
             // each on its own rayon thread.
-            // #5984: the finish index is a third independent read of the bytes.
-            let (mut result, (mut data_model, mut finishes)) = rayon::join(
-                || process(&content, &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality), &mut ()),
-                || rayon::join(|| extract_data_model(&content), || ModelFinishes::from_content(&content)),
+            // #5984: the pass joins each mesh's finish itself (`with_finishes`).
+            let mut finishes = CollectedFinishes::default();
+            let (mut result, mut data_model) = rayon::join(
+                || process(&content, &with_finishes(ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing)), &mut finishes),
+                || extract_data_model(&content),
             );
-            let meshes = finish_meshes(&mut finishes, std::mem::take(&mut result.meshes));
-            drop(finishes);
+            let meshes = finishes.attach(std::mem::take(&mut result.meshes));
             let dm_stats = DataModelStats {
                 entity_count: data_model.entities.len(),
                 property_set_count: data_model.property_sets.len(),

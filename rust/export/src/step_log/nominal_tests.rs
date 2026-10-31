@@ -101,3 +101,24 @@ fn an_integer_measure_takes_a_whole_number_8142() {
     let reason = check_real_measure(fam("IFC4"), "IfcBoolean", 1.0, true).unwrap_err();
     assert_eq!(reason, "IfcBoolean holds a BOOLEAN value, not a number");
 }
+
+#[test]
+fn typed_marker_refuses_a_type_name_that_breaks_out_of_the_attribute_list() {
+    use super::super::values::typed_marker;
+    for bad in ["IfcLabel('x'));\n#999=IFCWALL(", "IfcLabel(", "Ifc Label", "Ifc;", "", "1abc"] {
+        assert!(typed_marker(bad, &json!("x")).is_err(), "{bad:?} must be refused");
+    }
+    assert_eq!(typed_marker("IfcLabel", &json!("x")).unwrap(), "IFCLABEL('x')");
+}
+
+#[test]
+fn typed_marker_base_lookup_ignores_spelling_8312() {
+    use super::super::values::typed_marker;
+    for name in ["IfcLengthMeasure", "IFCLENGTHMEASURE", "ifclengthmeasure", "LengthMeasure", "LENGTHMEASURE"] {
+        assert_eq!(typed_marker(name, &json!(3)).unwrap(), "IFCLENGTHMEASURE(3.)", "{name:?}");
+    }
+    assert_eq!(typed_marker("IFCPOSITIVELENGTHMEASURE", &json!(3)).unwrap(), "IFCPOSITIVELENGTHMEASURE(3.)");
+    assert_eq!(typed_marker("LABEL", &json!(42)).unwrap(), "IFCLABEL('42')");
+    assert_eq!(typed_marker("ifcboolean", &json!("false")).unwrap(), "IFCBOOLEAN(.F.)");
+    assert_eq!(typed_marker("COUNTMEASURE", &json!(3)).unwrap(), "IFCCOUNTMEASURE(3.)");
+}

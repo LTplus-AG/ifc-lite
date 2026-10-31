@@ -21,8 +21,9 @@ use std::sync::{
 };
 pub(super) mod witness;
 pub(super) mod publication;
+mod phase_timer;
 mod publication_mesh;
-mod presentation;
+pub(super) mod presentation;
 pub(super) mod model;
 mod restart_budget;
 mod cancellation;
@@ -41,11 +42,16 @@ mod value;
 use issuance::{PendingRetainedOperation, IssuedRetainedOperation};
 use value::RuntimeRealization;
 mod predispatch;
+pub(super) mod affine_final;
 use predispatch::RuntimeRejectedExecution;
 mod entry;
 pub(super) mod admission;
 mod traversal;
 mod openings;
+mod layers;
+mod layer_caps;
+mod layer_rims;
+mod layer_mesh;
 use openings::OpeningPhase;
 mod source_admission;
 use source_admission::SourceAdmission;
@@ -71,7 +77,7 @@ const DELIVERED: u8 = 2;
 const ACCEPTED: u8 = 3;
 const CANCELLED: u8 = 4;
 /// A refused execution has settled: nothing is outstanding on the worker.
-/// Faults have already retired it; typed refusals release receipts normally.
+/// Execution has decided whether to retire it; settled refusals release receipts normally.
 const SETTLED_FAULT: u8 = 5;
 struct PendingRetainedTransaction<R: NumericalReceipt> {
     outer: WorkRequest,
@@ -92,6 +98,11 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     outer: Option<WorkRequest>,
     traversal: RetainedTraversal,
     openings: Option<OpeningPhase>,
+    layer_class: u8,
+    layer_spec: Option<ifc_lite_geometry::program::transactions::LayerSpec>,
+    layer_active: bool,
+    layer_start: Option<phase_timer::PhaseTimer>,
+    band_ms: f64,
     opening_entities: &'a [DecodedEntity],
     type_values: Vec<RetainedProductPlan>,
     type_map_members: Vec<u32>,
@@ -166,6 +177,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             resources,
             cancellation: cancellation.clone(),
             armed: true,
+            layer_phase: self.layer_active,
         };
         self.pending = Some(PendingRetainedTransaction {
             outer,

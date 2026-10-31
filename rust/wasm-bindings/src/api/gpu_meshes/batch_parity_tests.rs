@@ -50,7 +50,7 @@ thread_local! {
     static JOB_TRACE: std::cell::RefCell<Option<Vec<PlannedJob>>> = const { std::cell::RefCell::new(None) };
 }
 
-pub(super) fn record_job(id: u32, kind: &ifc_lite_processing::element::ElementJobKind) {
+pub(in crate::api::gpu_meshes) fn record_job(id: u32, kind: &ifc_lite_processing::element::ElementJobKind) {
     JOB_TRACE.with_borrow_mut(|slot| {
         if let Some(jobs) = slot {
             match kind {
@@ -84,6 +84,7 @@ const LAYERS: &str = "../processing/tests/fixtures/c4_native_unsliced_layers_778
 const BARE_TYPE_MAP: &str = "../processing/tests/fixtures/c4_bare_type_map_7782.ifc";
 const TEXTURES: &str = "../processing/tests/fixtures/issue_1781_image_textures.ifc";
 const REFUSALS: &str = "../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc";
+const OMITTED_TYPE: &str = "../processing/tests/fixtures/f2_omitted_type_record_8341.ifc";
 
 const FIXTURES: &[Fixture] = &[
     // The six the C4 boundary audit named first.
@@ -154,6 +155,11 @@ const FIXTURES: &[Fixture] = &[
         path: REFUSALS,
         anchor: 300,
     },
+    // F2 (#8341): an undecodable orphan type with two maps, a valid orphan type.
+    Fixture {
+        path: OMITTED_TYPE,
+        anchor: 100,
+    },
 ];
 
 // Every exception binds the complete measured payloads and requires a reason.
@@ -188,7 +194,7 @@ fn observe_fixture(
 ) -> Vec<Drift> {
     let name = short(fixture.path);
     let content = observe::fixture(fixture.path);
-    let native = observe::native(&content);
+    let (native, omitted_native) = observe::native_observed(&content);
     let planned_native = ifc_lite_processing::parity_test_support::take_jobs();
     let browser = observe::browser_cold(&content);
 
@@ -274,6 +280,12 @@ fn observe_fixture(
         browser.pipeline.as_ref(),
         &mut drifts,
     );
+    compare::compare_omitted_type_records(name, &omitted_native, browser.pipeline.as_ref(), &mut drifts);
+    if fixture.path == OMITTED_TYPE {
+        // Non-vacuous: the record really is omitted on both sides, once.
+        assert_eq!(omitted_native, [500]);
+        assert!(!planned_native.iter().any(|j| j.0 == 500));
+    }
 
     if fixture.path == REFUSALS {
         assert_refusal_fixture(&content, &native, &browser);
@@ -427,4 +439,27 @@ fn deleting_instantiated_browser_job_or_output_fails_coverage_7782() {
             .iter()
             .any(|d| d.axis == Axis::TypeGeometry && d.element == Some(101)));
     }
+}
+
+#[test]
+fn c4_d66_opt_in_layer_payloads_match_browser_7782() {
+    let content = observe::fixture(LAYERS);
+    let browser = observe::browser_cold(&content);
+    let native = ifc_lite_processing::process(
+        &content,
+        &ifc_lite_processing::ProcessingRequest::full_pass().layer_slicing(true),
+        &mut (),
+    );
+    let expected: Vec<_> = browser.meshes().collect();
+    let actual: Vec<_> = native.meshes.iter().collect();
+    assert_eq!(expected.iter().filter(|m| m.express_id == 100).count(), 3);
+    // Use the C4-0 geometry/appearance contract: the browser obtains element
+    // names, GlobalIds and properties from its parser worker, not this batch.
+    // Keep per-element submesh order and every geometry/appearance axis intact.
+    let mut drifts = Vec::new();
+    let normalized = compare::frame_rule(
+        short(LAYERS), native.frame, browser.prepass.meta.frame, &mut drifts,
+    ).then_some((native.frame, browser.prepass.meta.frame));
+    compare::compare_meshes(short(LAYERS), &actual, &expected, normalized, &mut drifts);
+    assert!(drifts.is_empty(), "D66 opt-in geometry/appearance drift: {drifts:#?}");
 }

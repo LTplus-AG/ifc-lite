@@ -40,7 +40,7 @@ impl SymbolicParseResponse {
             symbolic_data,
         }
     }
-    /// Replace the meshes with ones that carry their finish (`finish_meshes`).
+    /// Replace the meshes with ones that carry their finish (`CollectedFinishes::attach`).
     pub fn with_meshes(mut self, meshes: Vec<MeshData>) -> Self {
         self.meshes = meshes;
         self

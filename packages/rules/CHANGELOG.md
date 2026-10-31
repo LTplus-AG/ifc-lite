@@ -1,5 +1,21 @@
 # @ifc-lite/rules
 
+## 0.7.11
+
+### Patch Changes
+
+- Updated dependencies [[`2986934`](https://github.com/LTplus-AG/ifc-lite/commit/298693424041c38f0a44433e770e0b3e75b101ec)]:
+  - @ifc-lite/ids@3.4.3
+
+## 0.7.10
+
+### Patch Changes
+
+- Updated dependencies [[`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`934eb31`](https://github.com/LTplus-AG/ifc-lite/commit/934eb3192eaf6fa3ea685f4e7bdac1c5dba3f622)]:
+  - @ifc-lite/data@6.4.0
+  - @ifc-lite/parser@9.8.0
+  - @ifc-lite/ids@3.4.2
+
 ## 0.7.9
 
 ### Patch Changes

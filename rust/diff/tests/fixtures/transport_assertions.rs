@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use ifc_lite_diff::{columns::{decode_columns, FingerprintColumns, ABSENT_STRING},
-    engine::diff_models, transport_options::options_from_json, transport_result::result_to_document};
+    engine::{diff_models, diff_models_for_transport}, transport_options::options_from_json, transport_result::result_to_document};
 use serde_json::{json, Value};
 
 fn columns(rows: &[Value]) -> FingerprintColumns {
@@ -52,6 +52,11 @@ pub fn assert_transport(vector: &Value) {
     let h = decode_columns(columns(head)).unwrap();
     let options = options_from_json(&vector["options"]);
     let document = result_to_document(&diff_models(&b, &h, &options));
+    // #8042: omitting a destination-built index must preserve the entire DTO,
+    // including retired content matches, aliases, optional fields and row ids.
+    let transported = diff_models_for_transport(&b, &h, &options);
+    assert!(transported.core.by_key.is_empty());
+    assert_eq!(result_to_document(&transported), document, "index-free transport case {}", vector["name"]);
     // This committed corpus contains scalar strings; the UTF-16 corpus checks
     // lossless document results without projecting through serde_json::Value.
     let mut actual: Value = serde_json::from_str(&ifc_lite_diff::sidecar_document::serialize_sidecar(&document)).unwrap();

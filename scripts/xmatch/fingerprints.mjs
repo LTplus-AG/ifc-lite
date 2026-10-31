@@ -33,6 +33,7 @@
  * requires equal and non-empty on both sides.
  */
 
+import { initDiff } from '../../packages/diff/dist/index.js';
 import { readFileSync } from 'node:fs';
 // Relative paths, not bare specifiers: the repo root has no `node_modules/
 // @ifc-lite` (pnpm links workspace deps per package), and a script that
@@ -81,6 +82,7 @@ async function loadStore(bytes) {
  * purpose is to be believed about matcher regressions.
  */
 export async function fingerprintFile(path, api, { stripKeys = false } = {}) {
+  await initDiff();
   const bytes = readFileSync(path);
   const store = await loadStore(bytes);
   const fingerprints = buildFileFingerprints(store);

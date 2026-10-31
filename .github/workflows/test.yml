@@ -715,12 +715,6 @@ jobs:
           fi
           echo "✅ committed wasm types match the Rust source"
 
-      # A separate feature bundle exposes only the test ownership probe.
-      # Do not overwrite pkg-diff or its committed production declarations.
-      - name: Fingerprint getter ownership (actual WASM, no skips)
-        if: needs.changes.outputs.wasm_prebuilt != 'true'
-        run: pnpm test:diff-decode-leaks
-
       # The generated IFCX imported-geometry kernel must match the Rust crate it
       # is built from. Regenerates into a temp dir and diffs; not a build gate for
       # packages (their --verify is Rust-free). Needs cargo, so 'Setup WASM build toolchain'
@@ -734,6 +728,13 @@ jobs:
       # downstream consumers — turbo handles the dep graph.
       - name: Build packages
         run: pnpm build
+
+      # A separate feature bundle exposes only the test ownership probe.
+      # Do not overwrite pkg-diff or its committed production declarations.
+      # Runs after Build packages: the public-handle case imports packages/diff/dist.
+      - name: Fingerprint getter ownership (actual WASM, no skips)
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        run: pnpm test:diff-decode-leaks
 
       - name: Verify Rust fingerprint vectors against TypeScript
         run: |
@@ -904,6 +905,43 @@ jobs:
       - name: Install frame observer browser
         if: steps.browser.outputs.frames == 'true'
         run: pnpm exec playwright install --with-deps chromium-headless-shell
+      # #7955: an SMLib adapter C++ change is observable only by a test that
+      # rebuilds the worker from the checkout it reverts. Provision the pinned
+      # SDK (fetched, never vendored) and a configured native build OUTSIDE the
+      # checkout, so the oracle's restoration check sees a clean tree;
+      # scripts/smlib-open-tessellation.test.mjs and the open-tessellation
+      # Rust tests re-run `cmake --build` on both oracle sides. Without
+      # IFCLITE_SMLIB_NATIVE_BUILD those Rust tests return early and cargo
+      # counts them as passed (not evidence); their sdk witnesses are enforced
+      # in geometry-platform's native-adapter lane. Missing prerequisites are
+      # not evidence. The tools venv is NOT put on PATH (its python3 would
+      # shadow the interpreter with pytest); CMAKE names its cmake instead.
+      - name: Detect changed SMLib adapter sources
+        id: smlib
+        run: |
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'native/smlib-adapter/src/**' 'native/smlib-adapter/include/**' 'native/smlib-adapter/CMakeLists.txt' | grep -q .; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build the native SMLib adapter for oracle witnesses
+        if: steps.smlib.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/usd-brep"
+          git init -q "$sdk"
+          git -C "$sdk" fetch -q --depth 1 https://github.com/NVIDIA-Omniverse/usd-brep.git c9c5979f04cea8c38213004d4f04df0dcfb40d05
+          git -C "$sdk" checkout -q FETCH_HEAD
+          python3 -m venv "$RUNNER_TEMP/smlib-tools"
+          "$RUNNER_TEMP/smlib-tools/bin/pip" install -q cmake==3.31.6 ninja==1.11.1.4
+          cmake="$RUNNER_TEMP/smlib-tools/bin/cmake"
+          "$cmake" -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
+            -DCMAKE_MAKE_PROGRAM="$RUNNER_TEMP/smlib-tools/bin/ninja" \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$sdk"
+          "$cmake" --build "$RUNNER_TEMP/smlib-native" --target ifclite_smlib_worker --parallel 4
+          echo "CMAKE=$cmake" >> "$GITHUB_ENV"
+          echo "IFCLITE_SMLIB_NATIVE_BUILD=$RUNNER_TEMP/smlib-native" >> "$GITHUB_ENV"
+          test -z "$(git status --porcelain)"
       # #7495: report integration witnesses must run against real durable
       # services on BOTH oracle sides. Missing prerequisites are not evidence.
       - name: Detect changed report integration witnesses
@@ -917,6 +955,32 @@ jobs:
       - name: Provision report integration witnesses
         if: steps.report-integration.outputs.needed == 'true'
         uses: ./.github/actions/setup-report-integration
+      - name: Stage independent current-main TS diff oracle (#8042)
+        run: |
+          set -euo pipefail
+          oracle="$RUNNER_TEMP/diff-main-oracle"
+          git worktree add --detach "$oracle" 97d8add207104d5801c0c8d62e40fa7066e848f8
+          (
+            cd "$oracle"
+            test "$(git rev-parse HEAD)" = 97d8add207104d5801c0c8d62e40fa7066e848f8
+            pnpm install --frozen-lockfile
+            # This independent TS graph needs only its committed WASM declarations.
+            pnpm --filter '@ifc-lite/diff' build
+            git diff --exit-code HEAD --
+          )
+          entry="$oracle/packages/diff/dist/index.js"
+          node --input-type=module - "$entry" <<'ORACLE_PROOF'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { pathToFileURL } from 'node:url';
+          const entry = process.argv[2];
+          const api = await import(pathToFileURL(entry).href);
+          assert.equal(api.initDiff, undefined, 'independent production TS required');
+          for (const name of ['createIdentityMapSidecar', 'createLineageSidecar', 'validateLineageSidecar', 'rekeyByLineage']) assert.equal(typeof api[name], 'function', name);
+          console.log(JSON.stringify({ oracle: 'current-main-production-TS', sourceCommit: '97d8add207104d5801c0c8d62e40fa7066e848f8', entry, sha256: createHash('sha256').update(readFileSync(entry)).digest('hex'), node: process.version }));
+          ORACLE_PROOF
+          echo "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE=$entry" >> "$GITHUB_ENV"
       - name: Prove the changed tests observe the production change
         # `&&` binds tighter than `||`: python is tested first so a PR that
         # changes both keeps the wheel builds' 85 minutes (which also covers
@@ -929,6 +993,80 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #8112: full inversion deletes the new helper and prevents test loading.
+          # Keep the API; weaken fingerprint identity to key equality instead.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8341 F2 viewer: inverting the whole change deletes the relay module its
+          # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
+          # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341-viewer/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341-viewer/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/behaviour.oracle.patch --test packages/geometry/src/geometry-parallel-omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/worker.oracle.patch --test packages/geometry/src/geometry-worker-omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/main-thread.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/unknown.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/panel.oracle.patch --test apps/viewer/src/components/viewer/LoadReportPanel.omitted-type-records.test.tsx --test apps/viewer/src/lib/loadReport.test.ts)
+            oracle_args+=(--mutation tests/evidence/f2-8341-viewer/toast.oracle.patch --test apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts)
+          # #8341 C4-13b: a byte-identical refactor, so a full revert passes.
+          # Keep ParseResponse::from_result; drop its coordinate-space tag.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13b/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-13b/behaviour.oracle.patch --test rust/ffi/src/tests.rs)
+          # #8341 C4-14: whole-change inversion deletes the new test module.
+          # Keep the one scan; drop wrappers authored after a styled item.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-14-symbolic-style/behaviour.oracle.patch --test rust/processing/src/symbolic/color_tests.rs)
+          # #8341 C4-7b: whole-file inversion deletes the shared prepass columns
+          # and the test module's wiring. Keep both; drop only reuse and install.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7b/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-7b/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_7b_tests.rs)
+          # #5865: whole-file inversion deletes gpuFramePacer.ts and the tests that
+          # import it. Keep the module; stop the pacer ever reporting a backlog.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch | grep -Fxq 'tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/gpu-frame-pacer-5865/behaviour.oracle.patch --test apps/viewer/src/components/viewer/gpuFramePacer.test.ts --test apps/viewer/src/components/viewer/useAnimationLoop.gpuBacklog.test.tsx)
+          # #8341 C4-12: whole-change inversion deletes the new codec module and
+          # the shared helpers its tests call (INCONCLUSIVE). Keep them; break
+          # one behaviour per row: void offset, style quad bound, first-map-wins
+          # palette collection, empty-template skip.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-12-shared-homes/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-12-shared-homes/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-12-shared-homes/behaviour.oracle.patch --test rust/processing/src/prepass_wire_tests.rs --test rust/processing/src/prepass_tests.rs --test rust/processing/src/processor/instancing_shared_tests.rs)
+          # #8341 F2: the parity observers are helpers with no attributable tests.
+          # Keep the plumbing; stop reporting omitted type records.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/f2-8341/behaviour.oracle.patch --test rust/processing/tests/f2_omitted_type_records_8341.rs)
+          # #8341 C4-13c: whole-file inversion deletes the test module's wiring.
+          # Keep the helper; stop counting type-only map jobs.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13c/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13c/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-13c/behaviour.oracle.patch --test apps/server/src/routes/parse/geometry_count_8341_tests.rs)
+          # #8341 C4-12x: whole-file inversion deletes csg_console and its tests.
+          # Keep the module; report the wrong product count in the failure line.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-12x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-12x/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-12x/behaviour.oracle.patch --test rust/wasm-bindings/src/api/csg_console_tests.rs)
+          # #8341 C4-13a: keep Features::finishes, on_finishes and the route
+          # wiring; the pass reports no finish, and the routes stop asking.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-13a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-13a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-13a/behaviour.oracle.patch --test rust/processing/tests/issue_8341_finishes_event.rs)
+            oracle_args+=(--mutation tests/evidence/c4-13a/server.oracle.patch --test apps/server/src/routes/parse/finish_tests.rs)
+          # @ifc-lite/oci: whole-package inversion deletes src/ and the tests
+          # die at import. Keep the package; break one security rule per patch:
+          # Authorization to redirect targets, credentials to an untrusted
+          # realm, the streaming size cap, digest verification.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/oci-client/redirect-authorization.oracle.patch | grep -Fxq 'tests/evidence/oci-client/redirect-authorization.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/oci-client/redirect-authorization.oracle.patch --test packages/oci/test/blob.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-client/untrusted-realm.oracle.patch --test packages/oci/test/auth.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-client/size-cap.oracle.patch --test packages/oci/test/blob.test.ts --test packages/oci/test/manifest.test.ts)
+            oracle_args+=(--mutation tests/evidence/oci-client/digest-verification.oracle.patch --test packages/oci/test/blob.test.ts --test packages/oci/test/manifest.test.ts)
+          # #8113: retain the new harness modules; remove only admission validation.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-8113/admission.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-8113/admission.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/diff-e2e-8113/admission.oracle.patch --test scripts/perf/diff-e2e.test.mjs)
+          # #8277: retain the v4 protocol exports; loosen only the warm budget upper-bound
+          # gate, so the inconclusive warm-budget witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/diff-e2e-v4-8277/behaviour.oracle.patch | grep -Fxq 'tests/evidence/diff-e2e-v4-8277/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/diff-e2e-v4-8277/behaviour.oracle.patch --test scripts/perf/diff-e2e.test.mjs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/api/gpu_meshes/prepass_index.rs | grep -Fxq 'rust/wasm-bindings/src/api/gpu_meshes/prepass_index.rs'; then
+            oracle_args+=(--mutation tests/evidence/c4-11b-prepass/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11b_prepass_tests.rs)
+            oracle_args+=(--mutation tests/evidence/c4-11b-prepass/meta.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11b_prepass_tests.rs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-11b/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-11b/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-11b/behaviour.oracle.patch --test rust/wasm-bindings/src/api/c4_11b_slots_tests.rs)
           # #7714: whole-file inversion removes the new module/test wiring,
           # collecting no certificate tests. Keep every API and test; disable
           # only cross-decoder cache reuse. Real concurrent success/decline
@@ -943,7 +1081,27 @@ jobs:
           # C2 lane #7781: preserve new modules and test wiring while disturbing
           # reporting, balanced leaves, controller debits, root retention and
           # profile publication. These mutations remain bounded.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
+          # #7782 C4-11a: retain source/BRep epochs; break derived cache resets.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-11a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-11a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-11a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_11a_tests.rs)
+          # #7782 C4-10b: preserve world-frame RTC and the scheduler policy split.
+          # The adapter-only batch_run.rs keeps this selector active after
+          # #8317's oracle patch lands on main and #8318 merges that base.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10b/behaviour.oracle.patch rust/wasm-bindings/src/api/gpu_meshes/batch_run.rs | grep -Fxq -e 'tests/evidence/c4-10b/behaviour.oracle.patch' -e 'rust/wasm-bindings/src/api/gpu_meshes/batch_run.rs'; then
+            oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.oracle.patch --test rust/processing/src/execution_tests.rs)
+            oracle_args+=(--mutation tests/evidence/c4-10b/policy.oracle.patch --test rust/processing/src/execution_tests.rs)
+            oracle_args+=(--mutation tests/evidence/c4-10b/behaviour.adapters.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/batch_adapter_tests.rs)
+          # #7782 C4-10a: retain cache/report APIs and test wiring; suppress
+          # input-refusal counting so the per-attempt witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-10a/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-10a/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-10a/behaviour.oracle.patch --test rust/wasm-bindings/src/api/gpu_meshes/c4_10a_tests.rs)
+          # #7782 C4-7a-R: keep the shared plan and mutate its browser class
+          # decision; the mode witness must observe the wrong class.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-r/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-r/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-7a-r/behaviour.oracle.patch --test rust/processing/tests/type_geometry_plan_7782.rs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-7a-x/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-7a-x/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-7a-x/behaviour.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-walk-lane-7781/behaviour.oracle.patch)
           # #7781 C2-3: preserve report-module test wiring; suppress drop counts
           # and change the strict precheck message so the policy witnesses fail.
@@ -954,12 +1112,18 @@ jobs:
           # fail an assertion, not lose its imported helper during collection.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/representation/structural.rs | grep -Fxq 'rust/geometry/src/representation/structural.rs'; then
             oracle_args+=(--mutation tests/evidence/c2-2-finish/behaviour.oracle.patch)
+          # #7782 C4-6b: preserve first-site selection in all browser adapters.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-6b-browser/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-6b-browser/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-6b-browser/behaviour.oracle.patch)
           # #7782 C4-5: keep additive APIs and mutate only spatial admission.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-5-scan/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-5-scan/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-5-scan/behaviour.oracle.patch)
           # #7782 C4-8a: retain additive APIs; reject wrongly typed map sources.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-8a-shallow/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-8a-shallow/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-8a-shallow/behaviour.oracle.patch)
+          # #7782 D66: drop the job-router index hand-off; sliced witnesses must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-d66-slicing/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-d66-slicing/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/c4-d66-slicing/behaviour.oracle.patch)
           # #7782 C4-9: keep the shared adapter; drop its geometry-style hit so
           # only the element fallback answers. Item-style witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-9-colour/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-9-colour/behaviour.oracle.patch'; then
@@ -987,6 +1151,32 @@ jobs:
             oracle_args+=(--mutation tests/evidence/geo-warp/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          # #8042: corrupt the newly frozen placement count; the independent
+          # TS-oracle witness must reject that expectation with an assertion.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/packed-handle-8042/behaviour.oracle.patch | grep -Fxq 'tests/evidence/packed-handle-8042/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/packed-handle-8042/behaviour.oracle.patch --test scripts/packed-diff.test.mjs)
+          # #8266: preserve resident handle modules and option fields; ignore
+          # placement stripping so the explicit-projection witness fails assertions.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/handle-api-8266/behaviour.oracle.patch | grep -Fxq 'tests/evidence/handle-api-8266/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/handle-api-8266/behaviour.oracle.patch
+              --test rust/diff/tests/placement_geometry.rs)
+          # #8303: preserve native diff modules/exports; substitute base rows for
+          # head result rows so distinct per-side refs fail real assertions.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/native-diff-8303/behaviour.oracle.patch | grep -Fxq 'tests/evidence/native-diff-8303/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/native-diff-8303/behaviour.oracle.patch)
+          # #8302: keep the binary transport and batch modules/exports loadable.
+          # Break ONLY signed-zero preservation in packed numeric values; the
+          # changed round-trip witness must fail an assertion, not its imports.
+          # Once this patch is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/boundary-transport-8302/behaviour.oracle.patch | grep -Fxq 'tests/evidence/boundary-transport-8302/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/boundary-transport-8302/behaviour.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/test/oracle/index.ts | grep -Fxq 'packages/diff/test/oracle/index.ts'; then
+            # #8042/#8111: pin the relocated TS oracle while observing the
+            # changed public dispatch. A full-source scope includes production
+            # -> test renames which cannot be reverted with tests pinned.
+            # Scope only the changed entrypoint; every changed test still runs.
+            # The API-preserving mutant swaps diffModels base/head inputs.
+            oracle_args+=(--only packages/diff/src/index.ts --mutation tests/evidence/diff-8042/public-dispatch.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/src/wasm-projections.ts | grep -Fxq 'packages/diff/src/wasm-projections.ts'; then
             # #8042/#8109: a whole-change revert deletes wasm-projections.ts,
             # which diff-lineage-parity.test.mjs imports (REVERT-BROKE-BUILD).
@@ -2322,6 +2512,7 @@ jobs:
             scripts/generate-coverage-ledger.test.mjs \
             scripts/lib/coderabbit-review-state.test.mjs \
             scripts/lib/count-ratchet.test.mjs \
+            scripts/lib/diff-derived-geometry.test.mjs \
             scripts/lib/crates-io.test.mjs \
             scripts/lib/module-size-ratchet.test.mjs \
             scripts/lib/npm-pack-output.test.mjs \
@@ -2525,6 +2716,33 @@ jobs:
       # scripts/ci-node-test-shards.test.mjs, which proves the four shards
       # partition the real workspace). Assigned, not piped, so a refusal
       # fails this step under `bash -e` instead of running turbo unfiltered.
+      - name: Stage independent current-main TS diff oracle (#8042)
+        if: matrix.shard == 4
+        run: |
+          set -euo pipefail
+          oracle="$RUNNER_TEMP/diff-main-oracle"
+          git worktree add --detach "$oracle" 97d8add207104d5801c0c8d62e40fa7066e848f8
+          (
+            cd "$oracle"
+            test "$(git rev-parse HEAD)" = 97d8add207104d5801c0c8d62e40fa7066e848f8
+            pnpm install --frozen-lockfile
+            # This independent TS graph needs only its committed WASM declarations.
+            pnpm --filter '@ifc-lite/diff' build
+            git diff --exit-code HEAD --
+          )
+          entry="$oracle/packages/diff/dist/index.js"
+          node --input-type=module - "$entry" <<'ORACLE_PROOF'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { pathToFileURL } from 'node:url';
+          const entry = process.argv[2];
+          const api = await import(pathToFileURL(entry).href);
+          assert.equal(api.initDiff, undefined, 'independent production TS required');
+          for (const name of ['createIdentityMapSidecar', 'createLineageSidecar', 'validateLineageSidecar', 'rekeyByLineage']) assert.equal(typeof api[name], 'function', name);
+          console.log(JSON.stringify({ oracle: 'current-main-production-TS', sourceCommit: '97d8add207104d5801c0c8d62e40fa7066e848f8', entry, sha256: createHash('sha256').update(readFileSync(entry)).digest('hex'), node: process.version }));
+          ORACLE_PROOF
+          echo "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE=$entry" >> "$GITHUB_ENV"
       - name: Package tests (shard ${{ matrix.shard }}/4)
         env:
           SHARD: ${{ matrix.shard }}
@@ -2579,6 +2797,7 @@ jobs:
         run: pnpm test:wasm-contract
       - name: Rust diff real IFC parity (#8042)
         if: matrix.shard == 4
+        timeout-minutes: 5
         run: node scripts/diff-real-fixture-parity.mjs
       # The snap cache reconstructs model edges from the mesher's per-triangle
       # segments, so its correctness depends on geometry the unit fixtures can

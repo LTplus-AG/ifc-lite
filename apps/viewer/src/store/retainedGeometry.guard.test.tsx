@@ -26,7 +26,7 @@ Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, co
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
 
 const SUMMARY: RetainedGeometrySummary = {
-  kernel: 'retained', candidates: 2, published: 2, refused: [], cancelled: 0, obligationsUnmet: [], completeness: 'complete',
+  kernel: 'retained', candidates: 2, published: 2, refused: [], cancelled: 0, obligationsUnmet: ['IfcAppearance'], completeness: 'complete',
 };
 
 async function seed(retained: boolean): Promise<void> {
@@ -79,7 +79,7 @@ describe('#7955 M2 shape-only guard', () => {
       const detect = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Detect all clashes');
       assert.ok(detect);
       assert.equal(detect.disabled, retained);
-      const reason = 'Unavailable on a Retained · shape-only model: its meshes have no openings, layers or appearance. Reload it with the exact kernel to use this.';
+      const reason = 'Unavailable while retained geometry or presentation is incomplete. Reload it with the exact kernel to use this.';
       assert.equal(detect.title, retained ? reason : '');
       for (const label of ['Find duplicates', 'Discipline matrix']) {
         const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
@@ -89,4 +89,14 @@ describe('#7955 M2 shape-only guard', () => {
       }
     });
   }
+});
+
+// #7955 M11-Z: a complete, fully presented retained model has the required authority.
+it('M11-Z enables mesh exports on a complete final retained model', async () => {
+  await seed(true);
+  const models = new Map(useViewerStore.getState().models);
+  for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: { ...SUMMARY, obligationsUnmet: [] } });
+  act(() => useViewerStore.setState({ models }));
+  render(<ExportProbe />);
+  assert.equal(exportState('glb').disabled, false);
 });

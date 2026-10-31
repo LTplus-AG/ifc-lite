@@ -121,7 +121,7 @@ fn with_execution<T>(
     let metadata = metadata(10);
     let job = job(&entity, &metadata);
     let mut execution =
-        RuntimeProductExecution::begin(&job, &context, &options(), &[], &mut decoder, &router).unwrap();
+        RuntimeProductExecution::begin(&job, &context, &options(), &[], None, &mut decoder, &router).unwrap();
     run(&mut execution, &mut decoder, &router)
 }
 
@@ -223,6 +223,7 @@ fn issue_7955_owned_storage_is_released_without_billing_foreign_account() {
 #[test]
 fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
     let text = SOURCE.replace("ENDSEC;END-ISO-10303-21;", "#80=IFCMATERIALLAYER($,0.1,$);#81=IFCMATERIALLAYER($,0.2,$);#82=IFCMATERIALLAYERSET((#80,#81),'layers');#83=IFCMATERIALLAYERSETUSAGE(#82,.AXIS2.,.POSITIVE.,0.);#84=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#10),#83);ENDSEC;END-ISO-10303-21;");
+    let text=text.replace("(#12));","(#12,#9001));").replace("ENDSEC;END-ISO","#9000=IFCPOLYLINE((#4,#8,#4));#9001=IFCSHAPEREPRESENTATION(#2,'Axis','Curve2D',(#9000));ENDSEC;END-ISO");
     let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let mut router = GeometryRouter::with_units(&text, &mut decoder);
@@ -237,16 +238,19 @@ fn issue_7955_real_material_layer_job_refuses_before_numerical_admission() {
     let entity = decoder.decode_by_id(10).unwrap();
     let metadata = metadata(10);
     let job = job(&entity, &metadata);
+    let usages = ifc_lite_geometry::program::transactions::LayerUsages::from_content(text.as_bytes(), &mut decoder);
+    let layers = layers::admit_layers(&entity, &router, &usages, &mut decoder).unwrap();
     let error = RuntimeProductExecution::<InertReceipt>::begin(
         &job,
         &context,
         &options(),
         &[],
+        layers,
         &mut decoder,
         &router,
     )
     .err()
-    .expect("layers require a separate retained strategy");
+    .expect("unsupported Axis must refuse before a worker");
     assert_eq!(error.refusal().0.code(), "material_layer_strategy");
 }
 
@@ -272,6 +276,7 @@ fn issue_7955_real_opening_job_admits_host_before_opening_body() {
         &context,
         &options(),
         &openings,
+        None,
         &mut decoder,
         &router,
     )
@@ -320,49 +325,65 @@ fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
     }
 }
 
-// #7955: a final affine has no mesh publication operation in M1. Even an
-// earlier construction in this product must not reach the numerical peer.
-#[test]
-fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
-    let text = include_str!("../../../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc");
+/// Begin one product of `text` against an inert peer; dispatch once if admitted.
+fn affine_product(text: &str, id: u32) -> (Result<(), &'static str>, usize, bool) {
+    affine_product_with_opening(text, id, false)
+}
+fn affine_product_with_opening(text: &str, id: u32, has_opening: bool) -> (Result<(), &'static str>, usize, bool) {
+    let text=if has_opening {text.replace("ENDSEC;\nEND-ISO", "#900000=IFCOPENINGELEMENT('o',$,$,$,$,#9,#132,$,$);\nENDSEC;\nEND-ISO")} else {text.to_owned()};
     let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
     let mut decoder = source.decoder();
-    let router = GeometryRouter::with_units(text, &mut decoder);
-    let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
-    let entity = decoder.decode_by_id(74).unwrap();
-    let metadata = metadata(74);
+    let router = GeometryRouter::with_units(&text, &mut decoder);
+    let data=if has_opening {OwnedMeshProductionData {void_index:Arc::new([(id,vec![900000])].into_iter().collect()),..Default::default()}} else {Default::default()};
+    let context = ProductionModel::from_source(source.clone()).snapshot(data);
+    let openings=if has_opening {vec![decoder.decode_by_id(900000).unwrap()]} else {vec![]};
+    let entity = decoder.decode_by_id(id).unwrap();
+    let metadata = metadata(id);
     let job = job(&entity, &metadata);
     let mut peer = InertPeer::new(false);
+    peer.fault = RuntimeFaultKind::Contract;
     let domain = peer.domain();
-    let result = RuntimeProductExecution::<InertReceipt>::begin(
-        &job,
-        &context,
-        &options(),
-        &[],
-        &mut decoder,
-        &router,
-    );
-    let error = match result {
-        Err(error) => error,
+    let result = match RuntimeProductExecution::<InertReceipt>::begin(
+        &job, &context, &options(), &openings, None, &mut decoder, &router) {
+        Err(error) => Err(error.refusal().0.code()),
         Ok(mut execution) => {
-            let issued = execution
-                .issue_next(&mut decoder, &router, &peer)
-                .unwrap()
-                .unwrap();
+            let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
             let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
-            let _ = future
-                .as_mut()
-                .poll(&mut Context::from_waker(Waker::noop()));
-            panic!("affine final value reached dispatch");
+            let _ = future.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+            Ok(())
         }
     };
-    assert_eq!(error.refusal().0.code(), "incomplete");
-    assert_eq!(peer.invocations, 0);
     assert!(peer.domain().same_domain(&domain));
-    assert!(
-        domain.incarnation().is_some(),
-        "no retirement or restart needed"
-    );
+    (result, peer.invocations, domain.incarnation().is_some())
+}
+const AFFINE_FINALS: &str =
+    include_str!("../../../../../tests/fixtures/synthetic-retained/f-h-affine-finals.ifc");
+
+// #7955 M10: a linear affine final (h2 mirror) reaches its construction invocation.
+#[test]
+fn final_affine_reaches_construction_dispatch() {
+    assert_eq!(affine_product(AFFINE_FINALS, 42), (Ok(()), 1, true));
+}
+
+// #7955 M10 ruling 2026-10-29: the preregistered contraction-only fallback is
+// source-determined, so #74 (curved, Scale 1000) and h13 #161 refuse before any
+// invocation instead of reaching the SDK's tiny-radius construction failure.
+#[test]
+fn curved_scale_up_affine_final_refuses_before_invocation() {
+    let scaled = include_str!("../../../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc");
+    assert_eq!(affine_product(scaled, 74), (Err("incomplete"), 0, true));
+    assert_eq!(affine_product(AFFINE_FINALS, 161), (Err("incomplete"), 0, true));
+    // Contraction (h11 #133, circle at Scale 0.5) still dispatches.
+    assert_eq!(affine_product(AFFINE_FINALS, 133), (Ok(()), 1, true));
+}
+
+// #7955 M10 ruling 2026-10-29: the mirrored door h10 #119 has a partial-arc
+// head, which the SDK sweeps into SmSurfOfExtrusion; opcode 18 has no affine
+// certificate for that class (status 7). Refuse typed `incomplete` before any
+// invocation, never kernel_failure and never a partial product.
+#[test]
+fn uncertifiable_affine_surface_class_refuses_before_invocation() {
+    assert_eq!(affine_product(AFFINE_FINALS, 119), (Err("incomplete"), 0, true));
 }
 
 // #7955 / #8183: instanced type maps cannot borrow orphan placement authority.
@@ -390,6 +411,7 @@ fn instanced_type_map_refuses_before_invocation_without_restarting_worker() {
             &context,
             &options(),
             &[],
+            None,
             &mut decoder,
             &router,
         )?;
@@ -429,7 +451,7 @@ fn orphan_type_map_reaches_its_first_invocation() {
     let job = super::super::session_tests::type_job(&mut decoder, &[61, 71]);
     let mut peer = InertPeer::new(true);
     let mut execution = RuntimeProductExecution::<InertReceipt>::begin(
-        job, &context, &options(), &[], &mut decoder, &router).unwrap();
+        job, &context, &options(), &[], None, &mut decoder, &router).unwrap();
     let issued = execution.issue_next(&mut decoder, &router, &peer).unwrap().unwrap();
     let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
     assert!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
@@ -460,6 +482,7 @@ fn issue_7955_mismatched_opening_attributes_refuse_source_changed() {
         &context,
         &options(),
         &openings,
+        None,
         &mut decoder,
         &router,
     )
@@ -511,4 +534,46 @@ fn settled_completion_fault_is_charged_and_cancelled_program_is_not_a_source_sto
         drop(issued);
         assert!(!cancellation.controller_retired(), "later packet drop cannot relabel a fault");
     });
+}
+
+// #7955: preserving settled M4 refusals must not change non-layer recovery.
+#[test]
+fn non_layer_kernel_refusals_still_retire_the_original_domain() {
+    for status in [1,4,7,8] {
+        with_execution(|execution, decoder, router| {
+            let mut peer = InertPeer::new(false);
+            peer.fault = RuntimeFaultKind::Kernel { status };
+            let issued = execution.issue_next(decoder, router, &peer).unwrap().unwrap();
+            let cancellation = issued.cancellation.clone();
+            let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+            let Poll::Ready(Err(rejected)) = future.as_mut().poll(&mut Context::from_waker(Waker::noop())) else {
+                panic!("kernel refusal must settle");
+            };
+            assert_eq!(rejected.reason.refusal().0.code(), "kernel_failure");
+            drop(future);
+            assert!(peer.domain.incarnation().is_none());
+            assert!(!cancellation.controller_retired());
+            assert_eq!(execution.discharged_count(), 0);
+            assert!(execution.validate_witness().is_err());
+        });
+    }
+}
+
+// #7955 M10 §3.4: openings replace the host affine final by a kernel-meshed Boolean.
+#[test]
+fn curved_scale_up_with_opening_reaches_host_dispatch() {
+    assert_eq!(affine_product_with_opening(AFFINE_FINALS,147,true),(Ok(()),1,true));
+    assert_eq!(affine_product(AFFINE_FINALS,147),(Err("incomplete"),0,true));
+}
+
+// #7955: no real-SDK surface certificate exists for affine swept disks.
+#[test]
+fn mirrored_and_contracted_swept_disks_refuse_before_invocation() {
+    let swept=AFFINE_FINALS.replace("#123=IFCEXTRUDEDAREASOLID(#122,#2,#3,2.);",
+        "#900001=IFCCARTESIANPOINT((0.,0.,2.));\n#900002=IFCPOLYLINE((#1,#900001));\n#123=IFCSWEPTDISKSOLID(#900002,0.3,$,$,$);");
+    assert_eq!(affine_product(&swept,133),(Err("incomplete"),0,true));
+    let mirror=swept.replace("#126=IFCDIRECTION((1.,0.,0.));","#126=IFCDIRECTION((-1.,0.,0.));")
+        .replace("#128,0.5,#3);","#128,1.,#3);");
+    assert_eq!(affine_product(&mirror,133),(Err("incomplete"),0,true));
+
 }

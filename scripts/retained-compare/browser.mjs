@@ -58,7 +58,7 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
           indices: Uint32Array.from(part.indices), worldFromObject: Float64Array.from(part.worldFromObject) })) });
       // Whole-model run: no id filter, so `ids` is deliberately undefined (the
       // report then records `ids: null`); per-product codes/volumes ignore it.
-      const report = retainedReport(validated, outcomes, () => null, undefined);
+      const report = retainedReport(validated, result.instanceMinOccurrences, outcomes, () => null, undefined);
       products.push(...report.products.map(p => ({ ...p, model })));
       const view = compareView(result.shape, result.view, result.prepass);
       models.push({ model, ...report.summary, ...view, importMs: result.importMs,
@@ -80,7 +80,8 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
       catch (error) { return { bytes: null, reason: String(error) }; }
     });
     await page.evaluate(() => window.harness.dispose());
-    const parity = compare(nativeRows, products, blessed, tolerances.nativeWasmVolumeRelative);
+    const parity = compare(nativeRows, products, blessed, tolerances.nativeWasmVolumeRelative,
+      tolerances.nativeWasmClippedCurvedVolumeRelative?.value);
     const byCode = {};
     for (const p of products) if (p.code) byCode[p.code] = (byCode[p.code] ?? 0) + 1;
     const published = products.filter(p => p.status === 'published').length;

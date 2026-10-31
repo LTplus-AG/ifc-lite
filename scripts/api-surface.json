@@ -5292,6 +5292,7 @@
     "DiffChangeKind: type",
     "DiffCounts: interface",
     "DiffEntry: interface",
+    "DiffModelHandle: class",
     "DiffOptions: interface",
     "DiffScope: type",
     "DiffState: type",
@@ -5334,6 +5335,8 @@
     "identityMapFromContentMatches: function",
     "identityMapFromSuccessors: function",
     "identityMapSidecarMismatches: function",
+    "initDiff: function",
+    "initDiffSync: function",
     "keyAliasesFromLineage: function",
     "keyAliasesFromSidecar: function",
     "lineageConflicts: function",
@@ -5343,12 +5346,19 @@
     "normalizeValue: function",
     "parseIdentityMapSidecar: function",
     "parseLineageSidecar: function",
+    "prepareDiffModel: function",
     "rekeyByLineage: function",
     "serializeIdentityMapSidecar: function",
     "serializeLineageSidecar: function",
     "stableHash: function",
     "validateIdentityMapSidecar: function",
     "validateLineageSidecar: function"
+  ],
+  "@ifc-lite/diff/internal": [
+    "DiffModelHandle: class",
+    "PreparedDiffModel: class (type-only)",
+    "buildFingerprintBatch: function",
+    "prepareDiffModel: function"
   ],
   "@ifc-lite/documents-api": [
     "CallbackLink: interface",
@@ -6424,6 +6434,19 @@
   ],
   "@ifc-lite/flow-nodes/bcf-publication-node": [
     "createNativeBcfWriteGateway: function"
+  ],
+  "@ifc-lite/flow-nodes/influx": [
+    "InfluxRequestError: class",
+    "InfluxSelection: interface",
+    "containsInfluxToken: function",
+    "dataTable: function",
+    "fetchInfluxReadings: function",
+    "latestPerSeries: function",
+    "matchInfluxSeries: function",
+    "parseInfluxCsv: function",
+    "queryRequest: function",
+    "redactInfluxError: function",
+    "selectionContainsToken: function"
   ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",
@@ -7734,6 +7757,21 @@
     "parseAuthorizationCallback: function",
     "refreshAccessToken: function",
     "waitForOAuthCallback: function"
+  ],
+  "@ifc-lite/oci": [
+    "OciClient: class",
+    "OciClientOptions: interface",
+    "OciCredentials: type",
+    "OciDescriptor: interface",
+    "OciError: class",
+    "OciErrorCode: type",
+    "OciHasher: interface",
+    "OciIndex: interface",
+    "OciManifest: interface",
+    "OciManifestResult: interface",
+    "OciReference: interface",
+    "OciRepositoryRef: type",
+    "parseReference: function"
   ],
   "@ifc-lite/opencde-foundation": [
     "ApiVersion: interface",
@@ -10282,6 +10320,25 @@
     "AutodeskProviderOptions: interface",
     "AutodeskService: interface",
     "createAutodeskService: function"
+  ],
+  "@ifc-lite/source-bimcollab": [
+    "BIMCOLLAB_MANIFEST: const",
+    "BimcollabHttpError: class",
+    "BimcollabProvider: class",
+    "BimcollabProviderOptions: interface",
+    "BimcollabSession: interface",
+    "BimcollabTransport: interface",
+    "DirectBimcollabTransport: class",
+    "RelayBimcollabTransport: class",
+    "isBimcollabServerUrl: function",
+    "spaceIdFromAccessToken: function",
+    "spaceLabelFromServerUrl: function"
+  ],
+  "@ifc-lite/source-bimcollab/lite": [
+    "BIMCOLLAB_MANIFEST: const",
+    "isBimcollabServerUrl: function",
+    "spaceIdFromAccessToken: function",
+    "spaceLabelFromServerUrl: function"
   ],
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",

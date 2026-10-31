@@ -1,0 +1,11 @@
+--- a/scripts/packed-diff/semantics.mjs
++++ b/scripts/packed-diff/semantics.mjs
+@@ -121,7 +121,7 @@
+   for (const stripped of [false, true]) {
+     const actual = call('diffModels', [placementRow(stripped ? undefined : 'p:before')],
+       [placementRow(stripped ? undefined : 'p:after')]);
+-    assert.deepEqual(actual.counts, { added: 0, modified: stripped ? 0 : 0, deleted: 0, unchanged: stripped ? 1 : 0 });
++    assert.deepEqual(actual.counts, { added: 0, modified: stripped ? 0 : 1, deleted: 0, unchanged: stripped ? 1 : 0 });
+     assert.deepEqual(actual.entries[0].changeKinds, stripped ? [] : ['geometry']);
+   }
+   const handleOperations = [];

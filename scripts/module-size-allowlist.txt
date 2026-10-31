@@ -186,7 +186,6 @@
    432 packages/data/src/property-table.ts
    457 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
-   439 packages/diff/src/fingerprint.ts
    550 packages/drawing-2d/src/drawing-generator.ts
    507 packages/drawing-2d/src/dxf/convert.ts
    898 packages/drawing-2d/src/dxf/parser.ts
@@ -254,7 +253,7 @@
   1032 packages/provenance/src/merge-model.ts
    609 packages/provenance/src/node-hash.ts
    529 packages/query/src/duckdb-integration.ts
-   412 packages/renderer/src/camera-animation.ts
+   410 packages/renderer/src/camera-animation.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
   3699 packages/renderer/src/index.ts
@@ -318,5 +317,5 @@
    559 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2163 scripts/test-wasm-contract.mjs
+  2095 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

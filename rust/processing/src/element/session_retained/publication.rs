@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Atomic shape-only publication; layer and display obligations remain.
+//! Atomic final or shape-only publication after all available proofs.
 use super::runtime::ReceiptEvidence;
 use super::*;
 use ifc_lite_geometry::program::transactions::Requirement;
@@ -9,6 +9,9 @@ pub struct ShapeOnlyProduct {
     pub product_id: u32,
     pub ifc_type: IfcType,
     pub parts: Vec<ShapePart>,
+    pub band_ms: f64,
+    pub cap_ms: f64,
+    pub max_snap_metres: f64,
     pub cuts: u64,
     pub consumed_parts: usize,
     pub cut_times_ms: Vec<f64>,
@@ -17,14 +20,25 @@ pub struct ShapeOnlyProduct {
     pub obligations: PresentationObligationsUnmet,
     pub(super) _storage: Storage,
 }
+impl ShapeOnlyProduct {
+    /// M11-Z: publication is final exactly when every presentation proof is discharged.
+    pub fn marker(&self) -> &'static str {
+        if self.obligations.0.is_empty() { "final" } else { "PresentationObligationsUnmet" }
+    }
+}
 #[derive(Debug)]
 pub struct ShapePart {
+    pub layer: Option<ifc_lite_geometry::program::transactions::ShapeLayer>,
+    /// Closed kernel band volume before interface-cap removal.
+    pub capped_volume_m3: Option<f64>,
     /// Object-local metres, never f32 display coordinates.
     pub positions: Vec<f64>,
     pub indices: Vec<u32>,
     /// Column-major object metres -> absolute IFC Z-up world metres.
     pub world_from_object: [f64; 16],
     pub curved: bool,
+    /// An executed plain-plane clip on this part's host lineage; bounds skips are false.
+    pub halfspace_clipped: bool,
     /// Kernel revision-local diagnostics, never persistent IFC face identity.
     pub revision_local_faces: Vec<u32>,
     /// Per-corner unit normals in absolute IFC Z-up axes (placement already applied).
@@ -84,7 +98,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         storage.reserve(&self.resources, &mut parts, self.plan.values().len())?;
         let mut face_sources = Vec::new();
         storage.reserve(&self.resources, &mut face_sources, self.plan.values().len())?;
-        for value in self.plan.values() {
+        for (part_index, value) in self.plan.values().enumerate() {
             let (_, realization) = self
                 .ledger
                 .iter()
@@ -106,19 +120,49 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                     // follow the report-only curved policy, even with flat inputs.
                     (mesh.positions, mesh.indices, mesh.faces, true)
                 }
-                ReceiptEvidence::Affine { .. } => return Err(incomplete()),
+                ReceiptEvidence::Affine { .. } => {
+                    let (part, sources) = super::affine_final::bake(&self.ledger, realization,
+                        value.object_frame(), &self.resources, &mut storage, self.plan.layers().is_some())?;
+                    parts.push(part);
+                    face_sources.push(sources);
+                    continue;
+                }
             };
             if indices.is_empty() {
                 return Err(incomplete());
             }
-            face_sources.push(presentation::face_sources(realization)?);
-            parts.push(super::publication_mesh::copy_part(
+            face_sources.push(presentation::face_sources(realization, self.plan.layers().is_some())?);
+            let mut part = super::publication_mesh::copy_part(
                 runtime::ReceiptMesh { positions, indices, faces },
                 *value.object_frame(), curved, &self.resources, &mut storage,
-            )?);
+            )?;
+            part.layer = self.plan.layers().map(|l| l.tags[part_index]);
+            // A band is curved through its interface family or its host's own
+            // source (an arc-profile wall with planar layers, #7955).
+            part.curved = self.plan.layers().map_or(curved, |l| {
+                l.interfaces.iter().any(|&s| super::layer_caps::curved(s)) || host_curved(realization)
+            });
+            part.halfspace_clipped = realization.halfspace_clipped();
+            parts.push(part);
         }
         if parts.is_empty() {
             return Err(incomplete());
+        }
+        let mut max_snap_metres = 0.;
+        let mut cap_ms = 0.;
+        if let Some(layers) = self.plan.layers() {
+            // Conservative storage reservation for coordinate-key maps, triangle
+            // copies and seam indices. Split growth is charged at each append.
+            let units: usize = parts.iter().map(|p| p.positions.len()+p.indices.len()).sum();
+            storage.charge(&self.resources, resource::Cost { live_bytes: (units as u64).saturating_mul(192),
+                work: (units as u64)/3, ..Default::default() })?;
+            for part in &mut parts {
+                let origin = super::layer_mesh::point(part,part.indices[0]);
+                part.capped_volume_m3 = Some(super::layer_mesh::volume(std::slice::from_ref(part),origin).abs());
+            }
+            let start = super::phase_timer::PhaseTimer::now();
+            max_snap_metres = super::layer_caps::remove(&mut parts,layers)?;
+            cap_ms = start.elapsed().as_secs_f64()*1000.;
         }
         let mut remaining = Vec::new();
         storage.reserve(
@@ -128,19 +172,13 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         )?;
         remaining.extend(self.plan.requirements());
         let obligations = PresentationObligationsUnmet(remaining);
-        // Layer/appearance/face obligations remain after opening completion. This
-        // guards the shape-only invariant, not a supported fully discharged
-        // path: final-product publication needs separate authority, and
-        // require_final_product deliberately still refuses (M1 spec section 3).
-        if obligations.0.is_empty() {
-            return Err(incomplete());
-        }
         let (_, cuts, consumed_parts) = self.plan.opening().unwrap_or_default();
         let mut cut_times_ms = Vec::new();
         storage.reserve(&self.resources, &mut cut_times_ms, self.cut_times_ms.len())?;
         cut_times_ms.extend_from_slice(&self.cut_times_ms);
         let mut product = ShapeOnlyProduct {
             cuts, consumed_parts, cut_times_ms, normal_planar_fallbacks: 0,
+            band_ms: self.band_ms, cap_ms, max_snap_metres,
             product_id: self.product_id,
             ifc_type: self.ifc_type.clone(),
             parts,
@@ -148,17 +186,29 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             _storage: storage,
         };
         let discharged = presentation::apply(&mut product, &presentation::Context {
-            plan: &self.plan, model: &self.presentation_context,
+            layer_class: self.layer_class, plan: &self.plan, model: &self.presentation_context,
             resources: &self.resources, element_color: self.element_color, faces: &face_sources,
             chord_metres: self.limits.chord_metres,
             angle_degrees: self.limits.angle_degrees,
         })?;
         product.obligations.0.retain(|r| !discharged.contains(r));
-        if product.obligations.0.is_empty() { return Err(incomplete()); }
         Ok(product)
     }
 }
-fn curved_recipe(recipe: &RetainedRecipe) -> bool {
+/// The left-most construction under a band's Intersection: the host's source,
+/// through any opening cuts or affine copies.
+fn host_curved<R: NumericalReceipt>(band: &RuntimeRealization<R>) -> bool {
+    let mut node = band._inputs[0].as_deref();
+    while let Some(host) = node {
+        if let ReceiptEvidence::Construction(completion) = host.kind.evidence() {
+            return curved_recipe(completion.request().recipe());
+        }
+        node = host._inputs[0].as_deref();
+    }
+    true
+}
+pub(super) fn curved_recipe(recipe: &RetainedRecipe) -> bool {
+
     match recipe {
         RetainedRecipe::Extrusion(value) => value.source.profile.as_ref().is_none_or(|profile| {
             profile

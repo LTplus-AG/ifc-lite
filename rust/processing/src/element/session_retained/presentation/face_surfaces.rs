@@ -5,7 +5,7 @@
 //! canonical profile lowering, even where the request reversed a loop.
 use super::face_attribution::{unit, Extent, Region, Role, Segment, SourceFace, Support};
 use super::face_curve::{Curve, MAX_DEGREE};
-use ifc_lite_geometry::document::{RetainedRecipe, SweepPayload};
+use ifc_lite_geometry::document::{PrismLoop, PrismRole, PrismSegment, RetainedRecipe, SweepPayload};
 
 /// Why a construction has no source faces here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,16 +41,34 @@ pub(crate) fn faces(recipe: &RetainedRecipe, payload: &SweepPayload) -> Result<(
             // The request reverses a loop iff its authored winding disagrees with outer-CCW/inner-CW.
             let reversed: Vec<_> = profile.loops.iter().enumerate()
                 .map(|(i, l)| ((l.signed_area > 0.) != (i == 0), l.segments.len())).collect();
-            prism(&mut reader, &reversed)
+            prism_faces(&mut reader, &reversed)
         }
         RetainedRecipe::SweptDisk(_) => disk(&mut reader).map(|faces| (faces, None)),
-        // Derived cutters (halfspace and layer-band prisms) and future recipes.
+        RetainedRecipe::Prism(prism) if prism.role == PrismRole::HalfSpace => {
+            // CUT-0's cutter frame places z=0 on the authored plane, +Z on
+            // its material side. Only that base is an IFC source face: the
+            // finite box's other five faces must NEVER acquire provenance.
+            return Ok((vec![SourceFace { role: Role::HalfSpace, extent: Extent::Plane,
+                support: Support::Plane { origin: [0.; 3], normal: [0., 0., -1.] } }], None));
+        }
+        // M6: the cut-plane base and the boundary's lateral faces are the PBHS's own
+        // surfaces; the far cap is sized from host bounds and is never a source face.
+        RetainedRecipe::Prism(prism) if prism.role == PrismRole::BoundedHalfSpace => {
+            let reversed: Vec<_> = prism.loops.iter().map(|l| (reverses(l), l.segments.len())).collect();
+            prism_faces(&mut reader, &reversed).map(|(faces, region)| {
+                let faces = faces.into_iter().filter(|f| f.role != Role::Cap { end: true })
+                    .map(|f| if f.role == (Role::Cap { end: false }) { SourceFace { role: Role::HalfSpace, ..f } } else { f })
+                    .collect();
+                (faces, region)
+            })
+        }
+        // Layer-band prisms retain their own slice hook.
         other => return Err(NoFaces::Hook(other.solid_id())),
     };
     parsed.filter(|_| reader.at == payload.bytes.len()).ok_or(NoFaces::Malformed)
 }
 
-fn prism(reader: &mut Reader<'_>, reversed: &[(bool, usize)]) -> Option<(Vec<SourceFace>, Option<Region>)> {
+fn prism_faces(reader: &mut Reader<'_>, reversed: &[(bool, usize)]) -> Option<(Vec<SourceFace>, Option<Region>)> {
     let [format, loop_count, _, _] = [reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?];
     let [gx, gy, gz, depth] = reader.f64s::<4>()?;
     if format != 1 || loop_count as usize != reversed.len() || gz == 0. { return None; }
@@ -95,6 +113,18 @@ fn prism(reader: &mut Reader<'_>, reversed: &[(bool, usize)]) -> Option<(Vec<Sou
     // Sides in authored order; caps first.
     faces[2..].sort_by_key(|face| match face.role { Role::Side { boundary, segment } => (boundary, segment), _ => (0, 0) });
     Some((faces, Some(Region { loops, generator: g, depth })))
+}
+/// The encoder reverses a loop whose authored winding disagrees with outer-CCW/inner-CW.
+fn reverses(boundary: &PrismLoop) -> bool {
+    let twice_area: f64 = boundary.segments.iter().map(|segment| match *segment {
+        PrismSegment::Line { start, end } => start[0] * end[1] - end[0] * start[1],
+        PrismSegment::Arc { center: [cx, cy], radius: r, start_angle: a, sweep_angle } => {
+            let b = a + sweep_angle;
+            r * (cx * (b.sin() - a.sin()) - cy * (b.cos() - a.cos())) + r * r * sweep_angle
+        }
+        PrismSegment::Circle { radius, .. } => radius * radius * std::f64::consts::TAU,
+    }).sum();
+    (twice_area > 0.) != boundary.outer
 }
 fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]

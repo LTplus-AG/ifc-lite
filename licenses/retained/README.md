@@ -131,7 +131,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | proc-macro2 | 1.0.106 | MIT OR Apache-2.0 | [1](texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt), [2](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | quick-xml | 0.42.0 | MIT | [1](texts/f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc.txt) |
 | quote | 1.0.45 | MIT OR Apache-2.0 | [1](texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt), [2](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
-| r-efi | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | [1](texts/ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7.txt) |
+| r-efi | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later (elected MIT) | [1](texts/ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7.txt) |
 | rawpointer | 0.2.1 | MIT/Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545.txt) |
 | rayon-core | 1.13.0 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720.txt) |
 | rayon | 1.12.0 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720.txt) |
@@ -175,7 +175,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | version_check | 0.9.5 | MIT/Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e.txt) |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5.txt), [3](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | wasip2 | 1.0.3+wasi-0.2.9 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5.txt), [3](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
-| wasm_sync | 0.1.2 | MIT OR Apache-2.0 | **OPEN: missing text** |
+| wasm_sync | 0.1.2 | MIT OR Apache-2.0 (elected Apache-2.0) | [1](texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt) |
 | wasm-bindgen-futures | 0.4.76 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
 | wasm-bindgen-macro-support | 0.2.126 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
 | wasm-bindgen-macro | 0.2.126 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
@@ -183,7 +183,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | wasm-bindgen-shared | 0.2.126 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
 | wasm-bindgen | 0.2.126 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
 | web-sys | 0.3.103 | MIT OR Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
-| wide | 1.4.0 | Zlib OR Apache-2.0 OR MIT | [1](texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt) |
+| wide | 1.4.0 | Zlib OR Apache-2.0 OR MIT (elected Zlib) | [1](texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt) |
 | windows-core | 0.62.2 | MIT OR Apache-2.0 | [1](texts/c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b.txt), [2](texts/c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383.txt) |
 | windows-implement | 0.60.2 | MIT OR Apache-2.0 | [1](texts/c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b.txt), [2](texts/c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383.txt) |
 | windows-interface | 0.59.3 | MIT OR Apache-2.0 | [1](texts/c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b.txt), [2](texts/c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383.txt) |

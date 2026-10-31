@@ -59,25 +59,23 @@ pub(super) fn run(
     jobs: &[u32],
 ) -> (Vec<ElementMeshOutput>, GeometryDiagnostics) {
     let (rtc_x, rtc_y, rtc_z) = prepass.meta.frame.rtc_offset();
-    let (outputs, diagnostics, occurrences) = api.produce_batch(
-        content,
-        jobs,
-        stream_meta_unit_scale(&prepass.meta),
-        rtc_x,
-        rtc_y,
-        rtc_z,
-        prepass.meta.frame.needs_shift(),
-        &prepass.void_keys,
-        &prepass.void_counts,
-        &prepass.void_values,
-        &prepass.style_ids,
-        &prepass.style_colors,
-        Some(prepass.meta.plane_angle_to_radians),
-        Some(prepass.material_element_ids.clone()),
-        Some(prepass.material_color_counts.clone()),
-        Some(prepass.material_colors.clone()),
-        false,
-    );
+    let (outputs, diagnostics, occurrences) = api.produce_batch(content, &crate::api::gpu_meshes::batch_wire::BatchWire {
+            jobs_flat: jobs,
+            unit_scale: stream_meta_unit_scale(&prepass.meta),
+            rtc_x,
+            rtc_y,
+            rtc_z,
+            needs_shift: prepass.meta.frame.needs_shift(),
+            void_keys: &prepass.void_keys,
+            void_counts: &prepass.void_counts,
+            void_values: &prepass.void_values,
+            style_ids: &prepass.style_ids,
+            style_colors: &prepass.style_colors,
+            plane_angle_to_radians: Some(prepass.meta.plane_angle_to_radians),
+            material_element_ids: Some(prepass.material_element_ids.clone()),
+            material_color_counts: Some(prepass.material_color_counts.clone()),
+            material_colors_rgba: Some(prepass.material_colors.clone()),
+        }, false);
     assert!(
         occurrences.is_empty(),
         "an unarmed batch emits no don't-bake occurrence"
@@ -235,10 +233,23 @@ pub(super) fn native_selected(content: &[u8], id: u32) -> ProcessingResult {
 /// The native pass the server, CLI and exporters run: one chunk, no
 /// instancing, every mesh retained.
 pub(super) fn native(content: &[u8]) -> ProcessingResult {
-    let result = process(content, &ProcessingRequest::full_pass(), &mut ());
+    native_observed(content).0
+}
+
+/// The native pass plus the F2 type records it reported omitted (#8341).
+pub(super) fn native_observed(content: &[u8]) -> (ProcessingResult, Vec<u32>) {
+    #[derive(Default)]
+    struct Omitted(Vec<u32>);
+    impl ifc_lite_processing::ProcessingSink for Omitted {
+        fn on_omitted_type_records(&mut self, records: &[u32]) {
+            self.0.extend_from_slice(records);
+        }
+    }
+    let mut sink = Omitted::default();
+    let result = process(content, &ProcessingRequest::full_pass(), &mut sink);
     assert!(
         result.instances.is_empty(),
         "the flat native request emits no instance records"
     );
-    result
+    (result, sink.0)
 }

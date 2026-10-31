@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Streaming retained model boundary; the session owns one reusable qualified peer.
 use super::retained_model::{obligation_name, set, to_js};
-use crate::zero_copy::{MeshCollection, MeshDataJs};
+use super::gpu_meshes::style_finishes::mesh_js_with_finish;
+use crate::zero_copy::MeshCollection;
 use crate::{retained_browser::model::ModelWorker, retained_view::view_meshes};
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{
     canonical_element_jobs, run_model_with_worker, ModelOptions, ProductOutcome,
 };
 use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
+use ifc_lite_processing::style::ModelFinishes;
 use js_sys::{Array, Float64Array, Object, Reflect, Uint32Array};
 use wasm_bindgen::prelude::*;
+#[path = "retained_instancing.rs"]
+mod instancing;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES: &str = r#"
@@ -20,12 +24,14 @@ export type RetainedSessionEvent =
     | (RetainedShapeProduct & { kind: 'published' })
     | (RetainedProductRefusal & { kind: 'refused' })
     | { kind: 'published'; expressId: number; ifcType: string;
-        marker: 'PresentationObligationsUnmet';
+        marker: 'final' | 'PresentationObligationsUnmet';
         obligationsUnmet: RetainedShapeProduct['obligationsUnmet']; cuts?: number; consumedParts?: number;
-        meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string };
+        meshes: MeshCollection; faces?: { table: string[]; triangles: Uint32Array }[]; instanceKey?: string;
+        instanceWorldFromObject?: Float64Array };
 export interface RetainedRunSummary {
     candidates: number; published: number; refused: number; restarts: number;
     workersAcquired: number; productMs: number; acquireMs: number;
+    layeredProducts?: number; bands?: number;
 }
 "#;
 
@@ -91,6 +97,13 @@ impl RetainedModelSession {
         on_event.call1(&JsValue::UNDEFINED, &start)?;
         let mut error = None;
         let mut workers_acquired = 0u32;
+        // The authored finish is joined once per RUN (one run is one model; the session keeps only the peer), and
+        // lazily, so a run that publishes nothing pays nothing. The run's own prepass cannot be reused here: its
+        // `PrepassSpans` live inside `run_model_with_worker`, and `ModelFinishes<'c>` borrows its source, so handing
+        // either out would change the sink signature the native and wasm callers share. The price is one more
+        // entity scan of the file (spans only; styled items are decoded only if the file authors a finish).
+        let finish_source = source.clone();
+        let mut finishes = None;
         let summary = run_model_with_worker(
             source,
             &options,
@@ -101,7 +114,7 @@ impl RetainedModelSession {
             },
             |outcome, _| {
                 if error.is_none() {
-                    error = event(outcome, view, rtc)
+                    error = event(outcome, view, rtc, &mut finishes, finish_source.bytes())
                         .and_then(|value| on_event.call1(&JsValue::UNDEFINED, &value))
                         .err();
                 }
@@ -116,6 +129,8 @@ impl RetainedModelSession {
         for (key, value) in [
             ("candidates", summary.candidates as f64),
             ("published", summary.published as f64),
+            ("layeredProducts", summary.layered_products as f64),
+            ("bands", summary.bands as f64),
             ("refused", (summary.candidates - summary.published) as f64),
             ("restarts", f64::from(summary.restarts)),
             ("workersAcquired", f64::from(workers_acquired)),
@@ -153,14 +168,15 @@ fn parse_options(options: &RetainedRunOptions) -> Result<(ModelOptions, bool), J
     ))
 }
 
-fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, JsValue> {
+fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut Option<ModelFinishes<'c>>,
+    content: &'c [u8]) -> Result<JsValue, JsValue> {
     if view {
         if let ProductOutcome::Published(product) = outcome {
             let result = Object::new();
             set(&result, "kind", &"published".into())?;
             set(&result, "expressId", &product.product_id.into())?;
             set(&result, "ifcType", &product.ifc_type.name().into())?;
-            set(&result, "marker", &"PresentationObligationsUnmet".into())?;
+            set(&result, "marker", &product.marker().into())?;
             let obligations = Array::new();
             for obligation in &product.obligations.0 {
                 obligations.push(&obligation_name(*obligation).into());
@@ -171,9 +187,15 @@ fn event(outcome: ProductOutcome, view: bool, rtc: [f64; 3]) -> Result<JsValue, 
             let mut meshes = MeshCollection::with_capacity(product.parts.len());
             meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
             for mesh in view_meshes(&product, rtc) {
-                meshes.add(MeshDataJs::from_mesh_data(mesh));
+                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_content(content)).finish_for_mesh(&mesh);
+                meshes.add(mesh_js_with_finish(mesh, finish));
             }
             super::retained_presentation::product_fields(&result, &product, true)?;
+            if let [part] = product.parts.as_slice() {
+                if part.instance_key.is_some() {
+                    set(&result, "instanceWorldFromObject", &Float64Array::from(part.world_from_object.as_slice()))?;
+                }
+            }
             set(&result, "meshes", &meshes.into())?;
             return Ok(result.into());
         }

@@ -123,11 +123,11 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, target: aarch64 }
-          - { os: macos-14, target: aarch64 }
+          - { os: macos-15, target: aarch64 }
           # Cross-compile the Intel-mac wheel on the Apple-silicon runner: the
           # macos-13 (Intel) runners are being deprecated and queue indefinitely.
           # abi3 means no Python lib is linked, so a cross target builds cleanly.
-          - { os: macos-14, target: x86_64 }
+          - { os: macos-15, target: x86_64 }
           - { os: windows-latest, target: x64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4

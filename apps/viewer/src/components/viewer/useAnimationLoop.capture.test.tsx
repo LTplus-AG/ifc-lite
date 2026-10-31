@@ -18,10 +18,13 @@ for (const dpr of [2, 1]) {
         h.step(); h.step(); // The existing clash-topic caller waits just two frames.
         assert.deepEqual([h.canvas.width, h.canvas.height], [600, 400], 'active frame is CSS resolution');
         const capturePose = { ...h.renderer.getCamera().getPosition() };
+        // The loop itself waits on GPU completion after each frame (#5865), so
+        // count only the waits this capture adds.
+        const waitsBeforeCapture = h.waits;
         h.deferWork();
         const capture = h.bcf.createViewpointFromState({ includeSnapshot: true, includeHidden: false, includeSelection: false });
         await h.flush();
-        assert.ok(h.waits > 0, 'capture must have reached actual GPU-completion boundary');
+        assert.ok(h.waits > waitsBeforeCapture, 'capture must have reached actual GPU-completion boundary');
         h.step(); h.step();
         h.finishWork(); await h.flush(); h.step(); await h.flush();
         const viewpoint = await capture;
@@ -30,7 +33,8 @@ for (const dpr of [2, 1]) {
         assert.deepEqual([h.captures[0]?.width, h.captures[0]?.height], [600 * dpr, 400 * dpr]);
         assert.deepEqual(h.captures[0]?.camera, capturePose, 'the capture owns its camera frame while GPU completion yields');
         assert.equal(viewpoint.perspectiveCamera?.aspectRatio, 1.5);
-        for (let i = 0; i < 24; i++) h.step();
+        // One animation frame apart, as in a browser: the loop's GPU-completion waits settle between frames.
+        for (let i = 0; i < 24; i++) { h.step(); await h.flush(); }
         assert.deepEqual([h.canvas.width, h.canvas.height], [600 * dpr, 400 * dpr], 'settled quality is restored');
       } finally { await h.dispose(); }
     });

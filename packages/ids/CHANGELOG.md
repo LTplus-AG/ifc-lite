@@ -1,5 +1,24 @@
 # @ifc-lite/ids
 
+## 3.4.3
+
+### Patch Changes
+
+- [#8315](https://github.com/LTplus-AG/ifc-lite/pull/8315) [`2986934`](https://github.com/LTplus-AG/ifc-lite/commit/298693424041c38f0a44433e770e0b3e75b101ec) Thanks [@louistrue](https://github.com/louistrue)! - IDS: a missing property-set failure now names the required set (or its pattern/enumeration) instead of the literal `propertySet` when the entity has other property sets ([#8306](https://github.com/LTplus-AG/ifc-lite/issues/8306)). Constraint names are no longer quoted twice in failure reasons and requirement descriptions in any locale: `Property set "Pset_X" not found` instead of `Property set ""Pset_X"" not found`, and `Property "Pset_WallCommon.FireRating" must exist` instead of `Property ""Pset_WallCommon"."FireRating"" must exist`.
+  
+  The exported `en`/`de`/`fr` catalogues and `TranslationService.t()` are unchanged: the service renders its own descriptions from an internal copy of the catalogue with the constraint slots unquoted, since it passes constraint descriptions that carry their own quotes.
+  
+  `IDSFailureDetail.field` for `PSET_MISSING`, `PROPERTY_MISSING` and `ATTRIBUTE_MISSING` is now the bare name the facet requires (`Pset_WallCommon`, not `"Pset_WallCommon"`), as the field's documentation always said. It is the constraint description only when the facet names a pattern or enumeration, and then it equals `expected`.
+
+## 3.4.2
+
+### Patch Changes
+
+- Updated dependencies [[`1764bb8`](https://github.com/LTplus-AG/ifc-lite/commit/1764bb8a4658d3f7f00db1f651f6fb248aa53135), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0), [`934eb31`](https://github.com/LTplus-AG/ifc-lite/commit/934eb3192eaf6fa3ea685f4e7bdac1c5dba3f622)]:
+  - @ifc-lite/codegen@1.19.1
+  - @ifc-lite/data@6.4.0
+  - @ifc-lite/parser@9.8.0
+
 ## 3.4.1
 
 ### Patch Changes

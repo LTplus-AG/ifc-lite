@@ -38,10 +38,7 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
-        // Load START on the serial/main-thread path: the previous load's
-        // pipeline diagnostics must not accumulate into this one. (The worker
-        // path resets via setEntityIndex; every load-start entry point resets.)
-        self.reset_pipeline_diagnostics();
+        self.begin_content_install();
 
         let content = data;
 
@@ -53,8 +50,7 @@ impl IfcAPI {
         // pick up clones below without re-locking. Panic on poison —
         // an earlier panic with the lock held would mean the cached
         // index is in an inconsistent state.
-        let mut slot = self
-            .cached_entity_index
+        let mut slot = self.content.cached_entity_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());
@@ -63,7 +59,7 @@ impl IfcAPI {
             EntityDecoder::with_arc_columnar_index(content, entity_index).with_strict_reals(); // #7678
 
         // Run combined pre-pass
-        let pre_pass = combined_pre_pass(content, &mut decoder);
+        let mut pre_pass = combined_pre_pass(content, &mut decoder);
 
         // Resolve the load-time meta (unit scales + RTC offset + needs-shift +
         // building rotation) via the shared resolver. This decoder already sees
@@ -98,6 +94,32 @@ impl IfcAPI {
                 &pre_pass.resolved.element_material_colors,
             );
 
+        // The worker columns, from this scan's spans: the type-plan sets and
+        // material-layer index this `IfcAPI`'s batches would otherwise rebuild
+        // with their own full-file walks. The layer gate is the lazy build's.
+        let has_layer_set = crate::api::content_lazy::has_material_layer_set(content);
+        let mut columns = super::prepass_columns::PrepassColumns::build(
+            content,
+            &pre_pass.prepass_spans,
+            &pre_pass.mapped_item_spans,
+            has_layer_set,
+            &mut decoder,
+        );
+        crate::api::content_lazy::report_material_layers(&columns.material_layers, has_layer_set);
+        // #957 + Model/Types switch: IfcTypeProduct RepresentationMap jobs
+        // (annex-E orphan types AND instanced type-library shapes) follow the
+        // occurrences; processGeometryBatch tags each with its geometry_class.
+        // F2 (#8341): undecodable type records are omitted and reported.
+        let omitted_type_records = columns.type_plan.decode_products_reporting(
+            content,
+            &pre_pass.type_candidate_spans,
+            &mut decoder,
+        );
+        pre_pass.complex_jobs.extend(columns.type_plan.jobs());
+        self.install_prepass_columns(columns);
+
+        self.collect_pipeline_refusals(&decoder);
+        self.note_omitted_type_records(&omitted_type_records);
         PrepassOnceData {
             simple_jobs: pre_pass.simple_jobs,
             complex_jobs: pre_pass.complex_jobs,

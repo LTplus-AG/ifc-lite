@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 //! V(extrusion ∩ halfspaces), by exact Green section areas and adaptive GL8.
 //! No retained request, kernel output, mesh sampling or fitted profile enters.
-use super::{clipping::{clipped_area, HalfPlane}, math::*};
+use super::{clipping::{clipped_area, HalfPlane, Edge}, math::*};
 pub use super::sections_source::ExtrudedHost;
 #[path = "section_events.rs"]
 mod events;
 const RELATIVE: f64 = 1e-13;
 const WORK: usize = 2_000_000;
+
+#[cfg(test)]
+#[path = "sections_tests.rs"]
+mod tests;
 
 /// World halfspaces n·x <= c. `None` means unsupported or work exhausted,
 /// never a truncated integral. Direction can be oblique or reversed.
@@ -38,9 +42,15 @@ pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Op
         }
         (sum.is_finite() && sum >= -1e-13).then_some(sum.max(0.))
     };
+    let linear = host.loops.iter().all(|(_,edges)|edges.iter().all(|edge|matches!(edge,Edge::Line(..))));
     let mut volume = 0.;
     for span in breaks.windows(2) {
-        volume += integrate(&area, span[0], span[1], &mut work)?;
+        // Between topology events, line intersections move affinely with t,
+        // so Green area is a quadratic polynomial. GL8 is exact for it; a
+        // convergence loop adds no evidence and can exhaust on an adjacent-ULP
+        // event interval (the real FZK #60012/#67828 bounded cuts, #7955).
+        volume += if linear {gauss(&area,span[0],span[1],&mut work)?}
+            else {integrate(&area, span[0], span[1], &mut work)?};
     }
     let volume = volume * host.jacobian;
     (volume.is_finite() && volume >= 0.).then_some(volume)
@@ -59,7 +69,7 @@ fn integrate(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, wor
     loop {
         pieces = pieces.checked_mul(2)?;
         let width = (b - a) / pieces as f64;
-        if width <= 0. || a + width == a { return None; }
+        if width <= 0. { return None; }
         // Compare whole levels, not each leaf's relative error. At a circular
         // tangency, area grows like t^(3/2): a leaf touching zero has the same
         // relative quadrature error however small it gets, while its absolute
@@ -77,6 +87,10 @@ fn integrate(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, wor
         if (fine - coarse).abs() <= RELATIVE * fine.abs().max(coarse.abs()) {
             return Some(fine);
         }
+        // Near-coincident events can leave an adjacent-f64 band. Its final
+        // representable refinement may already converge; only refuse precision
+        // exhaustion after applying the same error test as every other band.
+        if a + width == a { return None; }
         coarse = fine;
     }
 }

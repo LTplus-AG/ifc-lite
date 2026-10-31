@@ -21,6 +21,7 @@ fn cube() -> ShapePart {
     // Unit cube with non-binary local offsets, rotated 90° about IFC Z.
     // A whole-metre cube alone would hide the RTC mutation's f32 rounding.
     ShapePart {
+        layer: None, capped_volume_m3: None,
         positions: [
             [0., 0., 0.],
             [1., 0., 0.],
@@ -56,6 +57,7 @@ fn cube() -> ShapePart {
             73.5,
             1.,
         ],
+        halfspace_clipped: false,
         curved: false,
         revision_local_faces: vec![], normals: None, appearance: None, faces: None, instance_key: None,
     }

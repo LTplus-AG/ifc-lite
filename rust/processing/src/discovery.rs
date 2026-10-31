@@ -3,12 +3,180 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Shared record discovery; native metadata and geometry-job decoration remain consumers.
+use crate::element::{plan_type_geometry, TypeGeometryMode};
 use crate::{prepass::PrepassSpans, scan::ScanClass};
 use ifc_lite_core::{
     parser::{parse_ref, StepRecord},
     IfcType, StepListItems,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
+
+#[path = "discovery_type_admission.rs"]
+mod type_admission;
+
+/// One file's type-geometry decisions. The mode is explicit because exports
+/// suppress instantiated types while the viewer tags them for its Types view.
+pub type PlannedTypeProduct = (u32, usize, usize, IfcType, Vec<(u32, u8)>);
+pub struct TypeGeometryPlan {
+    pub mode: TypeGeometryMode,
+    pub referenced_representation_maps: FxHashSet<u32>,
+    pub instantiated_type_ids: FxHashSet<u32>,
+    pub mapped_item_plan: FxHashMap<u32, (u32, u32)>,
+    pub products: Vec<PlannedTypeProduct>,
+}
+
+impl TypeGeometryPlan {
+    pub fn from_file(content: &[u8], decoder: &mut ifc_lite_core::EntityDecoder, mode: TypeGeometryMode) -> Self {
+        Self::from_file_missing(content, decoder, true, true, mode)
+    }
+
+    pub fn from_file_missing(
+        content: &[u8],
+        decoder: &mut ifc_lite_core::EntityDecoder,
+        need_referenced: bool,
+        need_instantiated: bool,
+        mode: TypeGeometryMode,
+    ) -> Self {
+        let mut mapped = Vec::new();
+        let mut defines = Vec::new();
+        let mut scanner = ifc_lite_core::EntityScanner::new(content);
+        while let Some((id, name, start, end)) = scanner.next_entity() {
+            if need_referenced && ifc_lite_core::keyword_eq(name, "IFCMAPPEDITEM") {
+                mapped.push((id, start, end));
+            } else if need_instantiated && ifc_lite_core::keyword_eq(name, "IFCRELDEFINESBYTYPE") {
+                defines.push((id, start, end));
+            }
+        }
+        Self::from_spans(content, &mapped, &defines, &[], decoder, mode)
+    }
+
+    pub fn from_sets(
+        referenced_representation_maps: FxHashSet<u32>,
+        instantiated_type_ids: FxHashSet<u32>,
+        mode: TypeGeometryMode,
+    ) -> Self {
+        Self {
+            mode,
+            referenced_representation_maps,
+            instantiated_type_ids,
+            mapped_item_plan: FxHashMap::default(),
+            products: Vec::new(),
+        }
+    }
+
+    pub fn maps_for(&self, id: u32, maps: &[u32]) -> Vec<(u32, u8)> {
+        plan_type_geometry(
+            maps,
+            &self.referenced_representation_maps,
+            self.instantiated_type_ids.contains(&id),
+            self.mode,
+        )
+    }
+
+    pub fn from_scan(types: TypeScan, mapped_item_plan: FxHashMap<u32, (u32, u32)>, mode: TypeGeometryMode) -> Self {
+        let TypeScan {
+            products,
+            referenced_representation_maps,
+            instantiated_type_ids,
+        } = types;
+        let products = products
+            .into_iter()
+            .map(|(id, start, end, ty, maps)| {
+                let maps = plan_type_geometry(
+                    &maps,
+                    &referenced_representation_maps,
+                    instantiated_type_ids.contains(&id),
+                    mode,
+                );
+                (id, start, end, ty, maps)
+            })
+            .collect();
+        Self {
+            mode,
+            referenced_representation_maps,
+            instantiated_type_ids,
+            mapped_item_plan,
+            products,
+        }
+    }
+
+    /// Browser spans are decoded with the full decoder. A type record rejected
+    /// there is intentionally omitted, even if the scan-time parser accepts it
+    /// ([`Self::decode_products_reporting`] reports it; native drops the same
+    /// records via [`Self::retain_decodable_products`]).
+    pub fn from_spans(
+        content: &[u8],
+        mapped: &[(u32, usize, usize)],
+        defines: &[(u32, usize, usize)],
+        candidates: &[(u32, usize, usize, IfcType)],
+        decoder: &mut ifc_lite_core::EntityDecoder,
+        mode: TypeGeometryMode,
+    ) -> Self {
+        let mut referenced_representation_maps = FxHashSet::default();
+        let mut instantiated_type_ids = FxHashSet::default();
+        let mut mapped_item_plan: FxHashMap<u32, (u32, u32)> = FxHashMap::default();
+        for &(id, start, end) in mapped {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                if let Some(source) = entity.get_ref(ifc_lite_core::slot::IfcMappedItem::MAPPING_SOURCE.index()) {
+                    referenced_representation_maps.insert(source);
+                    mapped_item_plan
+                        .entry(source)
+                        .and_modify(|(count, min)| {
+                            *count += 1;
+                            *min = (*min).min(id);
+                        })
+                        .or_insert((1, id));
+                }
+            }
+        }
+        for &(id, start, end) in defines {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                if let Some(ty) = entity.get_ref(ifc_lite_core::slot::IfcRelDefinesByType::RELATING_TYPE.index()) {
+                    instantiated_type_ids.insert(ty);
+                }
+            }
+        }
+        let mut plan = Self {
+            mode,
+            referenced_representation_maps,
+            instantiated_type_ids,
+            mapped_item_plan,
+            products: Vec::new(),
+        };
+        plan.decode_products(content, candidates, decoder);
+        plan
+    }
+
+    /// Plan the candidates the full decoder accepts. Use
+    /// [`Self::decode_products_reporting`] to also learn what was omitted (F2).
+    pub fn decode_products(
+        &mut self,
+        content: &[u8],
+        candidates: &[(u32, usize, usize, IfcType)],
+        decoder: &mut ifc_lite_core::EntityDecoder,
+    ) {
+        self.decode_products_reporting(content, candidates, decoder);
+    }
+
+    pub fn jobs(&self) -> Vec<(u32, usize, usize, IfcType)> {
+        self.products
+            .iter()
+            .filter(|(_, _, _, _, maps)| !maps.is_empty())
+            .map(|(id, start, end, ty, _)| (*id, *start, *end, ty.clone()))
+            .collect()
+    }
+
+    pub fn browser_instance_sources(&self) -> Vec<u32> {
+        let mut ids: Vec<_> = self
+            .mapped_item_plan
+            .iter()
+            .filter(|(_, (count, _))| *count >= 2)
+            .map(|(&id, _)| id)
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
+}
 
 /// #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
 /// set of RepresentationMaps already instantiated by an IfcMappedItem. After
@@ -49,7 +217,7 @@ pub(crate) fn record_ref_at(bytes: &[u8], index: usize) -> Option<u32> {
 
 /// The references in attribute `index` of a scanned record ([`ref_items`]).
 #[inline(never)]
-pub(crate) fn record_refs_at(bytes: &[u8], index: usize) -> Vec<u32> {
+pub fn record_refs_at(bytes: &[u8], index: usize) -> Vec<u32> {
     ref_items(StepRecord::parse(bytes).as_ref(), index)
 }
 
@@ -78,6 +246,33 @@ impl Discovery {
     /// callers retain the raw keyword when decorating metadata (#1910).
     #[inline(always)]
     pub fn observe(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<IfcType> {
+        self.observe_inner::<false>(content, class, id, type_name, start, end)
+    }
+
+    /// Observe a browser record without collecting native type/mapping state.
+    #[inline(always)]
+    pub fn observe_browser(
+        &mut self,
+        content: &[u8],
+        class: ScanClass,
+        id: u32,
+        type_name: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<IfcType> {
+        self.observe_inner::<true>(content, class, id, type_name, start, end)
+    }
+
+    #[inline(always)]
+    fn observe_inner<const BROWSER: bool>(
         &mut self,
         content: &[u8],
         class: ScanClass,
@@ -115,7 +310,9 @@ impl Discovery {
         if ifc_lite_core::is_geometry_job(type_name, &content[start..end]) {
             Some(ifc_lite_core::ifc_type_from_keyword(type_name))
         } else {
-            self.note_type_geometry(content, class, id, type_name, start, end);
+            if !BROWSER {
+                self.note_type_geometry(content, class, id, type_name, start, end);
+            }
             None
         }
     }

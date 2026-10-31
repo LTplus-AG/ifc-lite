@@ -290,13 +290,14 @@ export function setProductPosition(
 
 /**
  * Snapshot of the placement's IfcAxis2Placement3D rotation.
- * `refDirectionId === null` means the slot is implicit (STEP `$`) —
- * the default direction `[1, 0, 0]` is reported, but callers that
- * want to rotate must refuse this case (no IfcDirection to write to
- * without orphaning one on undo).
+ * A null direction id means the slot is implicit (STEP `$`) and the
+ * STEP default is reported: `[1, 0, 0]` for RefDirection, `[0, 0, 1]`
+ * for Axis. Rotation materialises an implicit slot first (#8446).
  */
 export interface RotationState {
   axisPlacementId: number;
+  /** IfcAxis2Placement3D.Axis target, or null when implicit (STEP `$`). */
+  axisDirectionId: number | null;
   refDirectionId: number | null;
   refDirection: [number, number, number];
   /** Current yaw about Z (rad). */
@@ -313,11 +314,14 @@ export function resolveRotationState(
   if (!chain) return null;
   const axisAttrs = readPlacementAttributes(dataStore, view, editor, chain.axisPlacementId);
   if (!axisAttrs) return null;
-  // IfcAxis2Placement3D index 2 = RefDirection (an optional IfcDirection ref).
+  // IfcAxis2Placement3D index 1 = Axis, index 2 = RefDirection
+  // (both optional IfcDirection refs; `$` selects the STEP default).
+  const axisDirectionId = asExpressIdRef(axisAttrs[1]);
   const refDirectionId = asExpressIdRef(axisAttrs[2]);
   if (refDirectionId === null) {
     return {
       axisPlacementId: chain.axisPlacementId,
+      axisDirectionId,
       refDirectionId: null,
       refDirection: [1, 0, 0],
       yawZ: 0,
@@ -332,7 +336,7 @@ export function resolveRotationState(
   // stable for any unit-length input; for non-unit inputs we still
   // recover the angle from atan2.
   const yawZ = Math.atan2(ratios[1], ratios[0]);
-  return { axisPlacementId: chain.axisPlacementId, refDirectionId, refDirection: ratios, yawZ };
+  return { axisPlacementId: chain.axisPlacementId, axisDirectionId, refDirectionId, refDirection: ratios, yawZ };
 }
 
 export type RotateResult =
@@ -344,14 +348,13 @@ export type RotateResult =
  * radians. Updates RefDirection on the IfcAxis2Placement3D in place
  * when one already exists.
  *
- * Refuses to operate when the placement has no explicit RefDirection
- * (the implicit `[1, 0, 0]` STEP default). Materialising a fresh
- * IfcDirection there would require a multi-mutation atomic undo
- * entry to avoid orphans on undo, which the store doesn't have yet.
- * Every entity emitted by `@ifc-lite/create`'s in-store builders
- * carries an explicit RefDirection, so the implicit branch only
- * trips on hand-rolled source-buffer entities — surfacing a clear
- * refusal beats silently leaking entities.
+ * When the placement leaves RefDirection implicit (the `[1, 0, 0]`
+ * STEP default) — routine in parsed files, whose exporters omit
+ * default axes — the implicit slots are first written explicitly
+ * with their defaults: Axis as `[0, 0, 1]` when it too is implicit,
+ * RefDirection as `[1, 0, 0]` (#8446). The writes go through the
+ * caller's editor, so an atomic or compound caller groups them with
+ * the rotation into one undo step and nothing is orphaned on undo.
  */
 export function rotateProductYaw(
   dataStore: IfcDataStore,
@@ -368,13 +371,6 @@ export function rotateProductYaw(
         'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
     };
   }
-  if (state.refDirectionId === null) {
-    return {
-      ok: false,
-      reason:
-        'Entity has an implicit reference direction; rotation requires an explicit IfcDirection on its axis placement.',
-    };
-  }
   const newYaw = state.yawZ + deltaYaw;
   const newRatios: [number, number, number] = [
     Math.cos(newYaw),
@@ -382,6 +378,18 @@ export function rotateProductYaw(
     state.refDirection[2],
   ];
   if (!Number.isFinite(newYaw) || !newRatios.every(Number.isFinite)) return { ok: false, reason: 'Placement rotation overflow: derived direction must be finite' };
-  editor.setPositionalAttribute(state.refDirectionId, 0, newRatios);
+  let refDirectionId = state.refDirectionId;
+  if (refDirectionId === null) {
+    // Materialise the implicit defaults before rotating (#8446); the
+    // finite check above runs first, so a refused rotation creates nothing.
+    if (state.axisDirectionId === null) {
+      const axis = editor.addEntity('IfcDirection', [[0, 0, 1]]);
+      editor.setPositionalAttribute(state.axisPlacementId, 1, `#${axis.expressId}`);
+    }
+    const refDirection = editor.addEntity('IfcDirection', [state.refDirection]);
+    editor.setPositionalAttribute(state.axisPlacementId, 2, `#${refDirection.expressId}`);
+    refDirectionId = refDirection.expressId;
+  }
+  editor.setPositionalAttribute(refDirectionId, 0, newRatios);
   return { ok: true, oldYawZ: state.yawZ, newYawZ: newYaw, newRefDirection: newRatios };
 }

@@ -44,6 +44,7 @@
   "packages/merge": 0,
   "packages/mutations": 1,
   "packages/oauth-pkce": 0,
+  "packages/oci": 0,
   "packages/opencde-foundation": 0,
   "packages/parser": 112,
   "packages/plugin-api": 0,

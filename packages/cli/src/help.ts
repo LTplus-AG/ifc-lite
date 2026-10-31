@@ -74,6 +74,8 @@ export function buildHelp(version: string): string {
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
+    oci       push <oci://host/repo:tag> <model.ifc>  Publish an IFC file to an OCI registry (any model argument may also be oci://...)
+              [--overwrite] [--annotation key=value]... [--json]  replace an existing tag; extra manifest annotations
     gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
     delivery  <recipe.json> [--json] [--out F] [--html F]  Repeatable delivery check (structural + IDS + rule sets) from a saved recipe
               recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"],"rules":["checks.rules.json"]}, paths relative to the recipe file
@@ -169,6 +171,7 @@ export function buildHelp(version: string): string {
     ifc-lite mcp model.ifc --read-only
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
     ifc-lite ref create main
     ifc-lite layer publish delta.ifcx --base main --intent "Set fire ratings" --scope "model.mutate:Pset_FireSafety*@IfcWall"
     ifc-lite layer merge blake3:abc123 --into main --preview

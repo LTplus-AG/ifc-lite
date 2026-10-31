@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "production": true
+    }
+  },
   "buildCommand": "bash scripts/vercel-build.sh '@ifc-lite/viewer...'",
   "outputDirectory": "apps/viewer/dist",
   "installCommand": "bash scripts/vercel-install.sh",

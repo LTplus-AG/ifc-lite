@@ -13,7 +13,7 @@ import { classify, compare, parseCensus } from './mesh-census-compare.mjs';
 
 const base = {
   model: 'm.ifc', id: 7, ord: 0, type: 'IfcWall', tris: 100, open: 2, nonmanifold: 0,
-  open10: 2, nonmanifold10: 0, slivers: 10, degenerate: 0, maxAspect: 100, area: 5, thinArea: 0, coincidentArea: 0, thinCapped: 0,
+  open10: 2, nonmanifold10: 0, slivers: 10, degenerate: 0, maxAspect: 100, area: 5, thinArea: 0, coincidentArea: 0, thinCapped: 0, badIndices: 0,
 };
 const row = (patch) => ({ ...base, ...patch });
 
@@ -29,8 +29,13 @@ test('gaining any edge kind is a regression', () => {
 
 test('thin material counts past 1e-6 m2 and not below', () => {
   assert.equal(classify(base, row({ thinArea: 2e-6 })), 'regression');
-  assert.equal(classify(base, row({ thinArea: 5e-7 })), 'neutral');
+  assert.equal(classify(base, row({ thinArea: 5e-7 })), null, 'under 1e-6 m2 is unchanged');
   assert.equal(classify(base, row({ coincidentArea: 2e-6 })), 'regression');
+});
+
+test('a large sheet growing past 1e-6 m2 is a regression, not relatively unchanged', () => {
+  assert.equal(classify(row({ thinArea: 10000 }), row({ thinArea: 10000.000005 })), 'regression');
+  assert.equal(classify(row({ thinArea: 10000 }), row({ thinArea: 10000.0000005 })), null);
 });
 
 test('a mesh collapsing with no open edges is a regression', () => {
@@ -38,6 +43,10 @@ test('a mesh collapsing with no open edges is a regression', () => {
   assert.equal(classify(base, row({ degenerate: 1 })), 'regression');
   assert.equal(classify(base, row({ area: 5 * 0.98 })), 'regression');
   assert.equal(classify(base, row({ area: 5 * 0.995 })), 'neutral');
+});
+
+test('gaining a triangle with an out-of-range index is a regression', () => {
+  assert.equal(classify(base, row({ badIndices: 1, open: 1, open10: 1 })), 'regression');
 });
 
 test('more slivers without closing an edge is quality-worse', () => {

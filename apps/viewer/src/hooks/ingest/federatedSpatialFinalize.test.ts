@@ -95,6 +95,30 @@ describe('federated LandXML spatial finalization (#5048)', () => {
     });
   });
 
+  it('does not claim a reprojection failed when both models share a CRS (#8042)', async () => {
+    const errors: string[] = [];
+    const originalError = toast.error;
+    toast.error = (message: string) => { errors.push(message); };
+    const reference = spatialReference(0);
+    try {
+      await finalizeFederatedSpatialPlacement({
+        dataStore: {} as IfcDataStore, modelId: 'rev-b', fileName: 'rev-b.ifc',
+        geometry: { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() },
+        federatedLandXmlStreamingPlan: {
+          coordinateInfo: coordinateInfo(), federationAlignmentStatus: 'failed',
+          sourcePlacement: { spatialReference: reference, coordinateInfo: coordinateInfo() },
+          referencePlacement: { spatialReference: reference, coordinateInfo: coordinateInfo() },
+          preAlignment: { positions: [], normals: [], origins: [], geometryAabbs: [], coordinateInfo: coordinateInfo(), instancedGeometryAabbs: undefined },
+          verify: () => undefined,
+        },
+        isCurrent: () => true, setProgress: () => undefined,
+      });
+    } finally {
+      toast.error = originalError;
+    }
+    assert.deepEqual(errors, ['Could not align "rev-b.ifc" with the federation anchor — placement on EPSG:2056 could not be resolved. The model is shown in its own local frame and may appear at the wrong real-world position.']);
+  });
+
   it('still rebuilds source-derived overlays after streamed component alignment (#5050)', async () => {
     const landXml = document();
     const source = spatialReference(0);

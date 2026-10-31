@@ -17,6 +17,7 @@
 # panics) lands next to the output as <out>.d/<n>.err; a model that fails is
 # listed in <out>.failed and the script exits 1, since a model failing on BOTH
 # sides would otherwise be absent from both outputs and compare as unchanged.
+# A model that runs but emits no meshes is listed in <out>.empty.
 set -euo pipefail
 
 bin=$(realpath "$1")
@@ -49,6 +50,12 @@ xargs -P "$jobs" -I{} bash -c '
 
 [ -s "$work/list" ] || { echo "no models selected from the manifest" >&2; exit 1; }
 cat "$work"/*.jsonl > "$out"
+# Models that emitted no meshes leave no rows to compare: list them beside the
+# output so mesh-census-compare.mjs can show them and catch a disagreement.
+: > "$out.empty"
+while IFS=$'\t' read -r n path; do
+  [ -s "$work/$n.jsonl" ] || grep -qxF "$path" "$out.failed" || echo "$path" >> "$out.empty"
+done < "$work/list"
 # Model paths relative to the models dir, so base and branch runs from
 # different checkouts key the same mesh identically.
 sed -i "s#\"model\":\"$models/#\"model\":\"#" "$out"

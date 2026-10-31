@@ -40,13 +40,14 @@ const WELD: f64 = 1.0e-5;
 const THIN: f64 = 2.0e-4;
 /// Separation at or below which a pair is coincident rather than thin.
 const COINCIDENT: f64 = 1.0e-9;
-/// Normals agree to about 0.06 degrees inside one bucket.
+/// Bucket width for normals: about 0.06 degrees. Thin pairs are searched on
+/// eight grids of it, so a pair straddling a cell boundary is still found.
 const NORMAL_BUCKET: f64 = 1.0e-3;
 /// Opposite-facing candidates with overlapping bounds examined per triangle,
 /// so a large coplanar face cannot make one mesh quadratic. A face that hits
 /// the cap is counted in `thinCapped`: its thin material was not fully
 /// measured, and the compare script refuses to read that as a clean result.
-const MAX_CANDIDATES: usize = 256;
+const MAX_CANDIDATES: usize = 2048;
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -85,7 +86,7 @@ fn main() {
                     "maxAspect": row.max_aspect, "area": row.area,
                     "thinFaces": row.thin_faces, "thinArea": row.thin_area,
                     "thinMinGap": row.thin_min_gap, "coincidentArea": row.coincident_area,
-                    "thinCapped": row.thin_capped,
+                    "thinCapped": row.thin_capped, "badIndices": row.bad_indices,
                 })
             )
             .expect("write row");
@@ -113,6 +114,7 @@ struct Row {
     thin_min_gap: Option<f64>,
     coincident_area: f64,
     thin_capped: usize,
+    bad_indices: usize,
 }
 
 fn world(mesh: &MeshData, i: usize) -> [f64; 3] {
@@ -166,7 +168,11 @@ fn census(mesh: &MeshData) -> Row {
         .filter(|t| t.iter().all(|&i| (i as usize) < count))
         .map(|t| [t[0] as usize, t[1] as usize, t[2] as usize])
         .collect();
-    let mut row = Row { tris: tris.len(), ..Row::default() };
+    // Triangles naming a vertex the mesh does not have, and a trailing partial
+    // triangle: left out of every metric above, so counted here instead of
+    // vanishing (a dropped open triangle would otherwise read as closed).
+    let bad_indices = mesh.indices.len() / 3 - tris.len() + usize::from(!mesh.indices.len().is_multiple_of(3));
+    let mut row = Row { tris: tris.len(), bad_indices, ..Row::default() };
     let p: Vec<[f64; 3]> = (0..count).map(|i| world(mesh, i)).collect();
 
     let exact = weld(count, |i| [0, 1, 2].map(|k| mesh.positions[i * 3 + k].to_bits()));
@@ -204,17 +210,12 @@ fn census(mesh: &MeshData) -> Row {
     row
 }
 
-/// One oriented face for the thin-material census.
+/// One face for the thin-material census, about the mesh anchor.
 struct Face {
     n: [f64; 3],
-    /// Plane offset along the bucket's quantised normal, about the mesh
-    /// anchor: a sort key only, as coarse as the bucket.
-    s: f64,
     area: f64,
     lo: [f64; 3],
     hi: [f64; 3],
-    /// `+1` when `n` points along the bucket's canonical normal.
-    side: i8,
     centroid: [f64; 3],
     corners: [[f64; 3]; 3],
 }
@@ -246,6 +247,28 @@ fn projections_overlap(n: [f64; 3], a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> boo
     true
 }
 
+/// The normal-bucket key of `n` on grid `grid` (one bit per component): bit
+/// clear, cells centred on multiples of the bucket width (`round`); bit set,
+/// cells bounded by them (`floor`). Both grids map onto themselves under
+/// negation, so the bucket of `-n` is [`partner_key`] of the bucket of `n`,
+/// and two normals within half a bucket per component share a cell on at
+/// least one of the eight grids, wherever the cell boundaries fall.
+fn bucket_key(n: [f64; 3], grid: usize) -> [i64; 3] {
+    [0, 1, 2].map(|k| {
+        let x = n[k] / NORMAL_BUCKET;
+        if grid >> k & 1 == 0 { x.round() as i64 } else { x.floor() as i64 }
+    })
+}
+
+fn partner_key(key: [i64; 3], grid: usize) -> [i64; 3] {
+    [0, 1, 2].map(|k| if grid >> k & 1 == 0 { -key[k] } else { -key[k] - 1 })
+}
+
+/// The centre of a bucket cell: a sort direction as coarse as the bucket.
+fn bucket_centre(key: [i64; 3], grid: usize) -> [f64; 3] {
+    [0, 1, 2].map(|k| (key[k] as f64 + if grid >> k & 1 == 0 { 0.0 } else { 0.5 }) * NORMAL_BUCKET)
+}
+
 fn thin_material(tris: &[[usize; 3]], p: &[[f64; 3]], row: &mut Row) {
     let Some(&anchor) = p.first() else { return };
     let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
@@ -256,13 +279,11 @@ fn thin_material(tris: &[[usize; 3]], p: &[[f64; 3]], row: &mut Row) {
         }
     }
     let diag = dot(sub(hi, lo), sub(hi, lo)).sqrt();
-    // The sort key's error between two faces of one bucket is at most the
-    // bucket width times their distance apart, so widen the window by that.
-    let window = THIN + NORMAL_BUCKET * diag;
-    // Bucket by the canonical normal (first clear component positive), so a
-    // face and its anti-parallel partner land in one bucket on opposite sides.
-    // Ordered, so the area sums run in one order and two runs agree bit for bit.
-    let mut buckets: BTreeMap<[i64; 3], Vec<Face>> = BTreeMap::new();
+    // The sort key is a face's offset along its bucket's centre normal, off
+    // the true plane offset by up to about the cell diagonal times the faces'
+    // distance apart: widen the window by twice the bucket width for that.
+    let window = THIN + 2.0 * NORMAL_BUCKET * diag;
+    let mut faces: Vec<Face> = Vec::new();
     for t in tris {
         let [a, b, c] = t.map(|i| sub(p[i], anchor));
         let e = cross(sub(b, a), sub(c, a));
@@ -270,87 +291,92 @@ fn thin_material(tris: &[[usize; 3]], p: &[[f64; 3]], row: &mut Row) {
         if len <= 1.0e-12 {
             continue;
         }
-        let n = e.map(|v| v / len);
-        // The sign comes from the ROUNDED key: rounding is symmetric, so the key
-        // of -n is exactly the negated key of n and anti-parallel faces always
-        // share a bucket, whatever noise sits in a near-zero component.
-        let raw = n.map(|v| (v / NORMAL_BUCKET).round() as i64);
-        let flip = raw.iter().find(|k| **k != 0).is_some_and(|k| *k < 0);
-        let key = if flip { raw.map(|k| -k) } else { raw };
-        let q = key.map(|k| k as f64 * NORMAL_BUCKET);
-        let centroid = [0, 1, 2].map(|k| (a[k] + b[k] + c[k]) / 3.0);
-        let face = Face {
-            n,
-            s: dot(q, centroid),
+        faces.push(Face {
+            n: e.map(|v| v / len),
             area: len / 2.0,
             lo: [0, 1, 2].map(|k| a[k].min(b[k]).min(c[k])),
             hi: [0, 1, 2].map(|k| a[k].max(b[k]).max(c[k])),
-            side: if flip { -1 } else { 1 },
-            centroid,
+            centroid: [0, 1, 2].map(|k| (a[k] + b[k] + c[k]) / 3.0),
             corners: [a, b, c],
-        };
-        buckets.entry(key).or_default().push(face);
+        });
     }
-    for faces in buckets.values_mut() {
-        if !faces.iter().any(|f| f.side < 0) || !faces.iter().any(|f| f.side > 0) {
-            continue;
+    // Per face: 1 thin, 2 coincident, 3 both; and whether it hit the cap.
+    let mut thin = vec![0u8; faces.len()];
+    let mut capped = vec![false; faces.len()];
+    for grid in 0..8 {
+        // Ordered, so every sum runs in one order and two runs agree bit for bit.
+        let mut buckets: BTreeMap<[i64; 3], Vec<usize>> = BTreeMap::new();
+        for (i, f) in faces.iter().enumerate() {
+            buckets.entry(bucket_key(f.n, grid)).or_default().push(i);
         }
-        faces.sort_by(|x, y| x.s.total_cmp(&y.s));
-        // 1 thin, 2 coincident, 3 both.
-        let mut thin = vec![0u8; faces.len()];
-        for i in 0..faces.len() {
-            let mut seen = 0;
-            for j in (i + 1)..faces.len() {
-                let (f, g) = (&faces[i], &faces[j]);
-                if g.s - f.s > window {
-                    break;
-                }
-                if f.side == g.side
-                    || !(0..3).all(|k| f.lo[k] - THIN < g.hi[k] && g.lo[k] - THIN < f.hi[k])
-                {
-                    continue;
-                }
-                // Only candidates whose bounds overlap spend the cap, so
-                // disjoint faces on the partner plane cannot exhaust it first.
-                if seen == MAX_CANDIDATES {
-                    row.thin_capped += 1;
-                    break;
-                }
-                seen += 1;
-                if !projections_overlap(f.n, &f.corners, &g.corners) {
-                    continue;
-                }
-                // Each centroid's height above the OTHER face's own plane:
-                // both at most zero (facing away) and above -THIN.
-                let d1 = dot(f.n, sub(g.centroid, f.centroid));
-                let d2 = dot(g.n, sub(f.centroid, g.centroid));
-                let slack = 1.0e-9;
-                if d1 <= slack && d2 <= slack && d1 > -THIN && d2 > -THIN {
-                    let gap = (-d1).max(-d2).max(0.0);
-                    let class = if gap <= COINCIDENT { 2 } else { 1 };
-                    thin[i] |= class;
-                    thin[j] |= class;
-                    if class == 2 {
+        for (key, members) in &buckets {
+            // Each bucket meets the bucket of its negated normal once.
+            let partner = partner_key(*key, grid);
+            let Some(partners) = buckets.get(&partner).filter(|_| *key <= partner) else { continue };
+            let q = bucket_centre(*key, grid);
+            // (sort key, face, side): side false for this bucket, true for the partner's.
+            let mut order: Vec<(f64, usize, bool)> = members
+                .iter()
+                .map(|&i| (dot(q, faces[i].centroid), i, false))
+                .chain(partners.iter().map(|&i| (dot(q, faces[i].centroid), i, true)))
+                .collect();
+            order.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)));
+            for a in 0..order.len() {
+                let (sa, i, side) = order[a];
+                let mut seen = 0;
+                for &(sb, j, other) in &order[a + 1..] {
+                    if sb - sa > window {
+                        break;
+                    }
+                    let (f, g) = (&faces[i], &faces[j]);
+                    if side == other
+                        || !(0..3).all(|k| f.lo[k] - THIN < g.hi[k] && g.lo[k] - THIN < f.hi[k])
+                    {
                         continue;
                     }
-                    if std::env::var_os("MESH_CENSUS_DEBUG").is_some() {
-                        eprintln!(
-                            "thin pair gap {gap:.3e} areas {:.4} {:.4} n {:?} c {:?} {:?}",
-                            f.area, g.area, f.n, f.centroid, g.centroid
-                        );
+                    // Only candidates whose bounds overlap spend the cap, so
+                    // disjoint faces on the partner plane cannot exhaust it first.
+                    if seen == MAX_CANDIDATES {
+                        capped[i] = true;
+                        break;
                     }
-                    row.thin_min_gap = Some(row.thin_min_gap.map_or(gap, |m: f64| m.min(gap)));
+                    seen += 1;
+                    if !projections_overlap(f.n, &f.corners, &g.corners) {
+                        continue;
+                    }
+                    // Each centroid's height above the OTHER face's own plane:
+                    // both at most zero (facing away) and above -THIN.
+                    let d1 = dot(f.n, sub(g.centroid, f.centroid));
+                    let d2 = dot(g.n, sub(f.centroid, g.centroid));
+                    let slack = 1.0e-9;
+                    if d1 <= slack && d2 <= slack && d1 > -THIN && d2 > -THIN {
+                        let gap = (-d1).max(-d2).max(0.0);
+                        let class = if gap <= COINCIDENT { 2 } else { 1 };
+                        thin[i] |= class;
+                        thin[j] |= class;
+                        if class == 2 {
+                            continue;
+                        }
+                        if std::env::var_os("MESH_CENSUS_DEBUG").is_some() {
+                            eprintln!(
+                                "thin pair gap {gap:.3e} areas {:.4} {:.4} n {:?} c {:?} {:?}",
+                                f.area, g.area, f.n, f.centroid, g.centroid
+                            );
+                        }
+                        row.thin_min_gap = Some(row.thin_min_gap.map_or(gap, |m: f64| m.min(gap)));
+                    }
                 }
             }
         }
-        for (f, t) in faces.iter().zip(&thin) {
-            if t & 1 != 0 {
-                row.thin_faces += 1;
-                row.thin_area += f.area;
-            }
-            if t & 2 != 0 {
-                row.coincident_area += f.area;
-            }
+    }
+    for ((f, t), c) in faces.iter().zip(&thin).zip(&capped) {
+        if t & 1 != 0 {
+            row.thin_faces += 1;
+            row.thin_area += f.area;
         }
+        if t & 2 != 0 {
+            row.coincident_area += f.area;
+        }
+        row.thin_capped += usize::from(*c);
     }
 }

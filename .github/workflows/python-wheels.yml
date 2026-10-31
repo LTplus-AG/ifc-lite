@@ -55,7 +55,7 @@ jobs:
           - { os: ubuntu-latest, target: x86_64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.9"
       # Install the pinned toolchain the way rustup honours rust-toolchain.toml's
@@ -123,15 +123,15 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, target: aarch64 }
-          - { os: macos-14, target: aarch64 }
+          - { os: macos-15, target: aarch64 }
           # Cross-compile the Intel-mac wheel on the Apple-silicon runner: the
           # macos-13 (Intel) runners are being deprecated and queue indefinitely.
           # abi3 means no Python lib is linked, so a cross target builds cleanly.
-          - { os: macos-14, target: x86_64 }
+          - { os: macos-15, target: x86_64 }
           - { os: windows-latest, target: x64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.9"
       # Install the pinned toolchain the way rustup honours rust-toolchain.toml's
@@ -234,7 +234,7 @@ jobs:
           path: dist
       - name: Assert the complete wheel matrix arrived
         run: node scripts/ci-prepare-wheel-matrix.mjs
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
           packages-dir: dist/publish
           # First publish needs a PyPI trusted-publisher config for `ifclite-geom`

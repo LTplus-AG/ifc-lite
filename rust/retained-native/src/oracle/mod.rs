@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Independent source oracles for diagnostic harnesses, not production geometry.
 pub mod affine;
+mod affine_classify;
+mod affine_operator;
 mod clipping;
 pub mod convex;
 pub mod retrace;

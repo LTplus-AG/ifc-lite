@@ -36,6 +36,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CRATE_FLOOR as semverFloor } from './check-rust-semver.mjs';
+import { CRATE_FLOOR as apiSurfaceFloor } from './check-rust-api-surface.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -135,6 +137,32 @@ test('every published crate comes after the crates it pins by version, and those
       `rust/core does); a normal or build dependency without a version cannot publish.\n\n` +
       violations.join('\n')
   );
+});
+
+test('ifc-lite-geometry-runtime is enrolled, after geometry, and published LAST', () => {
+  const order = publishOrder();
+  const runtime = order.indexOf('ifc-lite-geometry-runtime');
+  assert.notEqual(runtime, -1, 'ifc-lite-geometry-runtime must be in CRATES (enrolled for OIDC releases, #7955)');
+  assert.ok(
+    runtime > order.indexOf('ifc-lite-geometry'),
+    'the runtime pins geometry by version, so it must be published after it'
+  );
+  // LAST on purpose: the release stops at the first failed `cargo publish`, and
+  // the runtime's Trusted Publisher is maintainer-attested and unexercised. A
+  // first-release OIDC refusal must strand only the runtime, not every crate
+  // after it. Relax this to "after geometry" once one release has proven it.
+  assert.equal(
+    runtime,
+    order.length - 1,
+    `ifc-lite-geometry-runtime must be the last entry of CRATES, found at ${runtime} of ${order.length}`
+  );
+});
+
+test('both crate-count floors match the enrolled list (nine, runtime included)', () => {
+  const order = publishOrder();
+  assert.equal(order.length, 9, `CRATES has ${order.length} entries: ${order.join(', ')}`);
+  assert.equal(semverFloor, order.length, 'check-rust-semver CRATE_FLOOR must equal the published crate count');
+  assert.equal(apiSurfaceFloor, order.length, 'check-rust-api-surface CRATE_FLOOR must equal the published crate count');
 });
 
 test('the ordering check can actually see a violation', () => {

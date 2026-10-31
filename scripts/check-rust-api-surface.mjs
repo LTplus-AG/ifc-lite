@@ -64,7 +64,7 @@ const UPDATE = process.argv.includes('--update');
  * fewer directories would otherwise print the same success line as a run
  * that covered every crate.
  */
-export const CRATE_FLOOR = 8;
+export const CRATE_FLOOR = 9;
 
 /**
  * Build the full snapshot, or throw a named, actionable error.

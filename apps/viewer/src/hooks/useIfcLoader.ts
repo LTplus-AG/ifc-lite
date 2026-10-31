@@ -16,7 +16,7 @@ import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/co
 import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
@@ -29,6 +29,8 @@ import { beginGeometryKernel, openGeometryEvents } from './ingest/geometryEventS
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
+import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
+import { compactSource } from '../lib/source-compaction/source-compaction.js';
 import {
   GeometryProcessor,
   geometryAabbAt,
@@ -366,6 +368,7 @@ export function useIfcLoader() {
     // any, which the capture reports as absent rather than as a zero.
     let loadDiagnostics: GeometryDiagnostics | null = null;
     let skippedHungElements: SkippedHungElements | undefined; // hung geometry calls (#4884)
+    let omittedTypeRecords: number | undefined; // undecodable type records, unknown when absent (#8341)
 
     /**
      * Which phase of the load was in flight, for the captured exception (#1903).
@@ -576,7 +579,7 @@ export function useIfcLoader() {
             isCurrent: () => isCurrent(), setProgress,
           });
           if (!spatialFinalize) return;
-          const { preAlignment, federationAlignmentStatus, landXmlAssumptionsApplied } = spatialFinalize;
+          const { preAlignment, federationAlignmentStatus, landXmlAssumptionsApplied, ifcSharedVerticalDatumAssumed } = spatialFinalize;
 
           // Federation registry: transform expressIds to globally-unique ids.
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes, geometryResult.pointClouds);
@@ -633,8 +636,8 @@ export function useIfcLoader() {
             pointCloudHandleId: patch?.pointCloudHandleId,
             ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
-            federationAlignmentStatus, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
-            ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
+            federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
+            ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
           };
           useViewerStore.getState().addModel(federatedModel);
           activity.published = true;
@@ -685,7 +688,7 @@ export function useIfcLoader() {
           loadError: patch?.loadError ?? null,
           pointCloudHandleId: patch?.pointCloudHandleId,
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
-          ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
+          ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
         });
         activity.published = true;
         modelCompletion?.settleModel();
@@ -726,7 +729,7 @@ export function useIfcLoader() {
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
         : await acquireFileBuffer(file);
-      // Legacy APIs below require ArrayBuffer.
+      // The one source buffer; ArrayBuffer-only APIs copy at their call site (ingest/sourceBuffers.ts).
       let buffer: ArrayBuffer | SharedArrayBuffer = acquired.buffer;
       const fileReadMs = performance.now() - fileReadStart;
       trace.record('file.read', fileReadStart, fileReadStart + fileReadMs);
@@ -743,23 +746,22 @@ export function useIfcLoader() {
       // Transparent .ifcZIP unwrap; point clouds retain Blob streaming.
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat) {
-        // Preserve ArrayBuffer zero-copy; copy SAB at this legacy API boundary.
-        const zipInput = buffer instanceof ArrayBuffer ? buffer : countCopy('source.zipInput', new Uint8Array(buffer).slice().buffer);
-        const zipContents = await trace.span('source.unwrap', () => unwrapIfcZipWithResources(zipInput));
-        buffer = zipContents.model;
+        // Only an archive pays the ArrayBuffer copy; the magic check reads `headBuf`.
+        const zipContents = headIsZip(headBuf) ? await trace.span('source.unwrap', () => unwrapIfcZipWithResources(sourceArrayBuffer(buffer, 'source.zipInput'))) : null;
+        if (zipContents) buffer = zipContents.model;
         // Retain original archive paths/encoded bytes alongside shared bitmaps.
         appearanceLoad = modelAppearanceAssets.begin(modelId);
-        textureBitmaps = await appearanceLoad.decode(zipContents);
+        textureBitmaps = await appearanceLoad.decode(zipContents ?? NO_ARCHIVE_IMAGES);
       }
 
       loadedBufferByteLength = buffer.byteLength;
       const sourceKeyFingerprint = trace.span('source.fingerprint', () => computeSourceFingerprint(new Uint8Array(buffer)));
       modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
-      format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : countCopy('source.detectFormat', new Uint8Array(buffer).slice().buffer));
+      // A SAB here is the un-unwrapped file, so `headBuf` is its head.
+      format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
-      const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : countCopy('source.arrayBuffer', new Uint8Array(buffer).slice().buffer); buffer = arrayBuffer;
-      if (geometryKernel.refuseSource(format, arrayBuffer.byteLength, { modelId, activity })) return;
+      if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) return;
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
@@ -977,7 +979,7 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await parseIfcxViewerModel(arrayBuffer, setProgress);
+          const result = await parseIfcxViewerModel(sourceArrayBuffer(buffer, 'source.arrayBuffer'), setProgress);
           // Stale-guard-after-await sweep: `parseIfcxViewerModel` is a real
           // (client-side) parse — the only await in this branch — and a
           // newer load (or model removal) may have superseded this one while
@@ -1032,7 +1034,7 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await prepareGlbViewerModel(arrayBuffer, appearanceLoad!.decode, () => isStale());
+          const result = await prepareGlbViewerModel(sourceArrayBuffer(buffer, 'source.arrayBuffer'), appearanceLoad!.decode, () => isStale());
           if (!result) return;
           if (target.kind === 'primary') {
             setGeometryResult(result.geometryResult);
@@ -1210,6 +1212,8 @@ export function useIfcLoader() {
                 isStale: () => isStale(),
               });
               setLoading(false);
+              // #2183: compact the restored source, then drop this scope's binding to the raw file.
+              if (state.ifcDataStore) void compactSource(state.ifcDataStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
               // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
               // full-content hash (this load's identity pass) and, if the source
               // changed with its mtime preserved, purge + auto-reload.
@@ -1257,7 +1261,7 @@ export function useIfcLoader() {
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         loadStage = 'server-fetch';
-        const serverSuccess = await loadFromServer(file, arrayBuffer, () => isStale());
+        const serverSuccess = await loadFromServer(file, buffer, () => isStale());
         if (serverSuccess) {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
@@ -1353,17 +1357,24 @@ export function useIfcLoader() {
       const useParserWorker = WorkerParser.isSupported();
       let sharedSource: SharedArrayBuffer | null = null;
       if (useParserWorker) {
-        if (acquired.isShared && acquired.buffer instanceof SharedArrayBuffer) {
-          // acquireFileBuffer already streamed bytes into a SAB. Reuse it.
-          sharedSource = acquired.buffer;
+        if (buffer instanceof SharedArrayBuffer) {
+          // Streamed into a SAB: reuse it (`buffer`, not `acquired.buffer`, which is the zip after an unwrap).
+          sharedSource = buffer;
         } else {
           // Smaller files (or non-COI) took the `await file.arrayBuffer()`
           // branch — make a SAB copy so the parser worker can read it.
           sharedSource = new SharedArrayBuffer(buffer.byteLength);
           new Uint8Array(sharedSource).set(countCopy('source.sharedSource', new Uint8Array(buffer)));
+          buffer = sharedSource; // the SAB is now the source; closures below must not pin the ArrayBuffer
         }
         memoryAccounting.setSourceBytes(buffer.byteLength);
       }
+
+      // #2183: after a completed load, compact the store's source and drop this scope's raw-buffer
+      // bindings (closures here share one context, so any survivor would pin the whole file).
+      const compactSourceAfterLoad = (store: IfcDataStore) => void compactSource(store.source).then((o) => {
+        if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; }
+      });
 
       // Data model parsing runs IN PARALLEL with geometry streaming.
       // Default path: parser runs in a Web Worker via WorkerParser, both
@@ -1845,6 +1856,8 @@ export function useIfcLoader() {
               }
               skippedHungElements = event.skippedHungElements;
               if (skippedHungElements) reportSkippedHungElements(file.name, skippedHungElements, toast.info);
+              omittedTypeRecords = event.omittedTypeRecords;
+              reportOmittedTypeRecords(file.name, omittedTypeRecords, toast.info);
 
               if (target.kind === 'primary') {
                 // Finalize the primary slot; federated geometry is published by addModel.
@@ -1942,6 +1955,7 @@ export function useIfcLoader() {
                   await trace.span('load.finalize', () => finalizeModel(dataStore, federatedGeometry, getViewerSchemaVersion(dataStore), {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards));
+                  compactSourceAfterLoad(dataStore);
                   return;
                 }
 
@@ -1955,15 +1969,9 @@ export function useIfcLoader() {
 
                 // Cache the result in the background, reusing the `cachePlan`
                 // decided once above (single source of truth for read + write).
-                // The two tiers differ ONLY in `persistSource` and the size band:
-                //  - `source` (10-150MB): persist tables + geometry AND the source
-                //    buffer, so lazy property/quantity accessors + IFC re-export read
-                //    it straight from IndexedDB.
-                //  - `mesh-only` (150-400MB, on by default; kill switch `?meshCache=0`):
-                //    the source is too big to persist, so cache tables + geometry
-                //    WITHOUT it; on re-open the freshly read buffer rehydrates the
-                //    accessors. A hit is validated by the mtime guard + off-thread
-                //    full hash (cacheTier.ts) — the key only keys the lookup.
+                // Both tiers (`source` 10-150MB, `mesh-only` 150-400MB, kill switch `?meshCache=0`) cache
+                // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
+                // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
                 // Files above 400MB (or with the mesh-only kill switch set) are not cached.
                 // Textured models are NOT cached (#1781): the binary cache
                 // format doesn't persist UVs/textures yet, so a cache hit would
@@ -1980,6 +1988,8 @@ export function useIfcLoader() {
                   // A recovered load is missing elements (#4884); a cache hit would
                   // serve it silently, without the notice, so re-process instead.
                   !skippedHungElements &&
+                  // Same for omitted type records (#8341): the cache keeps no count.
+                  !omittedTypeRecords &&
                   allMeshes.length > 0 &&
                   finalCoordinateInfo
                 ) {
@@ -1994,14 +2004,14 @@ export function useIfcLoader() {
                     // restore the flat meshes only and drop all instanced occurrences.
                     ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
                   };
-                  await trace.span('cache.write', () => saveToCache(cacheKey, dataStore, geometryData, arrayBuffer, file.name, {
-                    persistSource: cachePlan.persistSource,
+                  await trace.span('cache.write', () => saveToCache(cacheKey, dataStore, geometryData, buffer, file.name, {
                     // mtime guard plus the load's identity as the full-content
                     // validation hash (#7022: no second pass in the write).
                     lastModified: file.lastModified, fullSourceHash: placementIdentity,
                   }));
                 }
 
+                compactSourceAfterLoad(dataStore);
                 // Release closure references; geometryResult owns the rendered meshes.
                 setTimeout(() => {
                   allMeshes.length = 0;

@@ -16,9 +16,14 @@
  * characters (`=+-@`) are read by Excel/LibreOffice the same way regardless
  * of container, so the same guard applies (see that function's doc for why
  * it — not `escapeCsvCell` — is the one XLSX wants).
+ *
+ * `exceljs` is imported when a workbook is read or written, not with this
+ * module: the package barrel re-exports this file, so a static import put the
+ * whole library (about 900 KB, every one of its modules run on import) into
+ * the viewer's app start.
  */
 
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
 import { guardSpreadsheetFormula } from '@ifc-lite/export';
 import { PARSE_INVALID, parseValue } from '@ifc-lite/mutations';
 import { COLUMN_TYPES, type Cell, type Column, type ColumnType, type Table } from '@ifc-lite/flow';
@@ -45,6 +50,11 @@ export interface ReadXlsxResult {
 function columnType(spec: XlsxColumnSpec | undefined): ColumnType {
   const t = spec?.type;
   return typeof t === 'string' && (COLUMN_TYPES as readonly string[]).includes(t) ? (t as ColumnType) : 'string';
+}
+
+/** The `exceljs` module, loaded on first use (see the file header). */
+async function loadExcelJS(): Promise<typeof ExcelJS> {
+  return (await import('exceljs')).default;
 }
 
 /** A cell that has no usable text: an Excel error or a kind this reader cannot read. */
@@ -80,7 +90,7 @@ function cellText(v: ExcelJS.CellValue | unknown): string {
  *  cell count does not match the header is still read and reported, never
  *  dropped (same contract as `table.readCsv`). */
 export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions = {}): Promise<ReadXlsxResult> {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await loadExcelJS()).Workbook();
   // `Workbook.xlsx.load`'s declared param type is Node's `Buffer`, which this
   // package's tsconfig does not pull in (it must typecheck for the browser
   // too); ExcelJS accepts a plain `Uint8Array`/`ArrayBuffer` at runtime — the
@@ -157,7 +167,7 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
 /** Write a `Table` to a flat, single-sheet `.xlsx` workbook: one header row,
  *  one row per table row, columns in table order. */
 export async function writeXlsxTable(table: Table, sheetName = 'Sheet1'): Promise<Uint8Array> {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await loadExcelJS()).Workbook();
   const ws = wb.addWorksheet(sheetName.slice(0, 31) || 'Sheet1');
   ws.addRow(table.columns.map((c) => guardSpreadsheetFormula(c.name)));
   for (const row of table.rows) {

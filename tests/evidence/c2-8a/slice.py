@@ -439,7 +439,33 @@ def modules_through(stage):
 FACADE_DROP = {
     'a': {70},  # cluster_prism_directions: detect.rs imports it itself
     'b': {72, 77},  # RAY_DIR (extension.rs), Point2 (profile.rs, pool.rs)
-    'c': set(),
+    # admission, triangulate_pslg, Execution: driver.rs / cap_cdt.rs import
+    # them. Aabb3 stays for the tests only (FACADE_REPLACE).
+    'c': {69, 74, 76},
+}
+# Stage c rewrites of individual base import lines (VoidContext moves to
+# driver.rs) and test-only imports (`#[cfg(test)]`, as base line 92 does).
+FACADE_REPLACE = {
+    'c': {
+        66: ['#[cfg(test)]', 'use crate::math::aabb::Aabb3;'],  # aabb_fold_tests
+        73: [
+            '#[cfg(test)]',
+            'use super::VoidContext;',  # prism_cut_tests
+            'use super::{cutter_is_closed_manifold, CutterKind};',
+        ],
+    },
+}
+# Stage c: globs no facade code uses any more, so they would be unused imports.
+# A module whose items the children's tests reach through `use super::*` keeps
+# its glob under #[cfg(test)].
+FACADE_USE_C = {
+    'plane2': None,
+    'checks': ['#[cfg(test)]', 'use checks::*;'],  # prism_cut_tests
+    'face': None,
+    'pool': None,
+    'caps': None,
+    'cap_cdt': None,
+    'crossings': None,
 }
 
 
@@ -458,10 +484,25 @@ def facade(base, stage):
             continue
         if n == 98:
             out.extend(doc)
+        if stage == 'c' and n in FACADE_REPLACE['c']:
+            out.extend(FACADE_REPLACE['c'][n])
+            continue
         out.append(line)
         if n == 60 and stage == 'c':
             out.extend(LAYOUT)
-    for name in modules_through(stage):
+    if stage == 'c':
+        # Final facade, in rustfmt's order: the sorted `mod` group, then the
+        # globs sorted by module (test-only ones carry their #[cfg(test)]).
+        names = sorted(modules_through(stage))
+        out.extend(f'mod {name};' for name in names)
+        out.append('')
+        for n in names:
+            u = FACADE_USE_C.get(n, FACADE_USE.get(n, f'use {n}::*;'))
+            if isinstance(u, list):
+                out.extend(u)
+            elif u:
+                out.append(u)
+    for name in modules_through(stage) if stage != 'c' else []:
         out.append(f'mod {name};')
         use = FACADE_USE.get(name, f'use {name}::*;')
         if use:
@@ -597,6 +638,8 @@ def main():
                 if old != new:
                     text = open(path, encoding='utf-8').read()
                     old_block = '\n' + '\n'.join(old) + '\n'
+                    if text.count('\n' + '\n'.join(new) + '\n') == 1:
+                        continue  # already repointed (re-run)
                     assert text.count(old_block) == 1, (name, 'import block not found')
                     text = text.replace(old_block, '\n' + '\n'.join(new) + '\n')
                     with open(path, 'w', encoding='utf-8') as f:

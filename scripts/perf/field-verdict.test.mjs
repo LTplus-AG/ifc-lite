@@ -159,7 +159,7 @@ test('#6961 rows: the query API shape and plain objects both parse; malformed ro
 test('#6961 the HogQL comes from the README block, filled in, with a validated build', async () => {
   const { verdictSql } = await load(VERDICT);
   const sql = verdictSql({ build: '3c3cb1fada2fdeadbeef', baselineDays: 21 });
-  assert.ok(!sql.includes('__BUILD__') && !sql.includes('__BASELINE_DAYS__'), 'every placeholder is filled');
+  assert.ok(!sql.includes('__WINDOW__') && !sql.includes('__SCOPE__'), 'every placeholder is filled');
   assert.match(sql, /app_build_sha\) = '3c3cb1fada2f'/, 'the build is the 12-character app_build_sha');
   assert.match(sql, /INTERVAL 21 DAY/);
   assert.throws(() => verdictSql({ build: "x' OR 1=1 --" }), /hex commit sha/);
@@ -167,6 +167,17 @@ test('#6961 the HogQL comes from the README block, filled in, with a validated b
   // Events carry the 12-character app_build_sha; a short prefix would match nothing.
   assert.throws(() => verdictSql({ build: '3c3cb1f' }), /at least 12 characters/);
   assert.ok(!/\bLIMIT\b/.test(sql), 'the fetch adds the LIMIT, the README block has none');
+});
+
+test('#6961 the rolling query compares the last 7 days with the prior 14, among recent people', async () => {
+  const { verdictSql, fieldVerdict, renderMarkdown } = await load(VERDICT);
+  const sql = verdictSql({ rolling: true });
+  assert.ok(!sql.includes('__WINDOW__') && !sql.includes('__SCOPE__'));
+  assert.match(sql, /if\(timestamp >= now\(\) - INTERVAL 7 DAY, 'recent', 'baseline'\) AS window/);
+  assert.match(sql, /timestamp >= now\(\) - INTERVAL 21 DAY/);
+  assert.match(sql, /person_id IN \(/);
+  assert.doesNotMatch(sql, /app_build_sha/);
+  assert.match(renderMarkdown(fieldVerdict(people(5, 1)), { rolling: true }), /Rolling field verdict: last 7 days vs the prior 14/);
 });
 
 test('#6961 the fetch is one read-only query POST under a row cap, never partial', async () => {

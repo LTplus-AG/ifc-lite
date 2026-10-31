@@ -1092,7 +1092,7 @@ function useDrawingExport({
         drawCutPolygonsPdf(doc, cutPolygons);
         doc.setDrawColor(0, 0, 0);
 
-        // Entities actually covered by a cut-polygon outline above. Loop
+        // Entities whose cut polygons all drew every ring above. Loop
         // reconstruction (`PolygonBuilder.buildLoops`) can fail for short,
         // degenerate, or ambiguous cross-sections and drop an entity's
         // `cutPolygons` entirely while `drawing.lines` still carries valid

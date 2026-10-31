@@ -7,10 +7,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fixtureRows from './field-verdict.fixture.json' with { type: 'json' };
 
 const VERDICT = new URL('./field-verdict.mjs', import.meta.url);
 const FETCH = new URL('./field-verdict-fetch.mjs', import.meta.url);
@@ -23,7 +24,7 @@ async function load(url) {
   return import(url.href);
 }
 
-const fixture = () => JSON.parse(readFileSync(FIXTURE, 'utf8'));
+const fixture = () => fixtureRows;
 const find = (groups, key) => groups.find((g) => Object.entries(key).every(([k, v]) => g[k] === v));
 
 test('#6961 pairs only same person, same model cells with a default-arm baseline divisor', async () => {

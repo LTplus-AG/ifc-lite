@@ -401,7 +401,7 @@ export class Renderer {
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviceLossSequence = 0;
     private readonly recovery = {
-        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null,
+        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null,
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
     private readonly deviationComputer = new DeviationComputer();
@@ -861,7 +861,7 @@ export class Renderer {
 
     private handleDeviceLost(info: { message: string; reason: string }, options: { fromDevicePromise?: boolean } = {}): void {
         // Latched: only the current device's `device.lost` signal is a replacement loss; anything else is a duplicate report.
-        if (this.deviceLost) { if (options.fromDevicePromise) this.deviceLossSequence++; return; }
+        if (this.deviceLost) { if (options.fromDevicePromise) { this.deviceLossSequence++; this.recovery.replacementLostInfo = info; } return; }
         this.deviceLossSequence++;
         this.deviceLost = true; cancelRendererColorFrame(this);
         releaseRendererGpuTiming(this);

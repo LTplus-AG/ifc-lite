@@ -29,8 +29,13 @@ test('gaining any edge kind is a regression', () => {
 
 test('thin material counts past 1e-6 m2 and not below', () => {
   assert.equal(classify(base, row({ thinArea: 2e-6 })), 'regression');
-  assert.equal(classify(base, row({ thinArea: 5e-7 })), 'neutral');
+  assert.equal(classify(base, row({ thinArea: 5e-7 })), null, 'under 1e-6 m2 is unchanged');
   assert.equal(classify(base, row({ coincidentArea: 2e-6 })), 'regression');
+});
+
+test('a large sheet growing past 1e-6 m2 is a regression, not relatively unchanged', () => {
+  assert.equal(classify(row({ thinArea: 10000 }), row({ thinArea: 10000.000005 })), 'regression');
+  assert.equal(classify(row({ thinArea: 10000 }), row({ thinArea: 10000.0000005 })), null);
 });
 
 test('a mesh collapsing with no open edges is a regression', () => {

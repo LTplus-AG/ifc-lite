@@ -60,19 +60,20 @@ fn open_edges(mesh: &MeshData, quantum: f64) -> usize {
     uses.values().filter(|&&n| n != 2).count()
 }
 
-/// Triangles lying on the plane y = `y` over the seam's extent in x: faces of a
-/// strip of host between the openings. The band is 100 um because the mesh
-/// carries the file's plane about 33 um off after placement and the f32 cast.
-/// The real jamb on that plane, #12659's head past #13497, starts at x = 25.23,
-/// outside the range.
+/// Triangles lying on the plane y = `y` (all three vertices within 100 um of
+/// it) whose centroid falls inside the seam's extent in x: faces of a strip of
+/// host between the openings. The centroid, not every vertex, decides, so a
+/// strip whose triangles reach the seam's ends is still counted. The band is
+/// 100 um because the mesh carries the file's plane about 33 um off after
+/// placement and the f32 cast. The real jamb on that plane, #12659's head past
+/// #13497, starts at x = 25.23, so its centroids fall outside the range.
 fn seam_faces(mesh: &MeshData, y: f64, x: [f64; 2]) -> usize {
     mesh.indices
         .chunks_exact(3)
         .filter(|t| {
-            t.iter().all(|&i| {
-                let p = world(mesh, i);
-                (p[1] - y).abs() < 1e-4 && p[0] > x[0] + 1e-3 && p[0] < x[1] - 1e-3
-            })
+            let p = [t[0], t[1], t[2]].map(|i| world(mesh, i));
+            let cx = (p[0][0] + p[1][0] + p[2][0]) / 3.0;
+            p.iter().all(|v| (v[1] - y).abs() < 1e-4) && cx > x[0] && cx < x[1]
         })
         .count()
 }

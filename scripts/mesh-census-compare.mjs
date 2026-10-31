@@ -56,13 +56,16 @@ export function parseCensus(text) {
 /** Float metrics within this relative distance are the same number. */
 const REL_EPS = 1e-9;
 const same = (a, b) => a === b || (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) <= REL_EPS * Math.max(Math.abs(a), Math.abs(b)));
+// Thin and coincident area are judged by the absolute THIN_EPS both ways, so a
+// large sheet growing past it can never read as relatively unchanged.
+const sameMetric = (m, a, b) => (SHEETS.includes(m) ? Math.abs(a - b) <= THIN_EPS : same(a, b));
 
 /** The verdict for one mesh present on both sides, or null when unchanged. */
 export function classify(base, branch) {
   // A face that hit the candidate cap was not fully measured on that side, so
   // "no thin material" there means nothing: never read it as unchanged.
   if (base.thinCapped > 0 || branch.thinCapped > 0) return 'unmeasured';
-  if (METRICS.every((m) => same(base[m], branch[m]))) return null;
+  if (METRICS.every((m) => sameMetric(m, base[m], branch[m]))) return null;
   // Collapsed triangles drop out of the edge census, so a mesh losing its
   // geometry keeps 0 open edges: degenerate triangles and lost area catch it.
   const collapsed = branch.degenerate > base.degenerate || branch.area < (1 - AREA_LOSS) * base.area;
@@ -97,7 +100,7 @@ export function compare(baseRows, branchRows) {
 
 function describe({ key, base, branch }) {
   const [model, id, ord] = key.split('\t');
-  const parts = METRICS.filter((m) => base && branch && !same(base[m], branch[m])).map(
+  const parts = METRICS.filter((m) => base && branch && !sameMetric(m, base[m], branch[m])).map(
     (m) => `${m} ${fmt(base[m])}->${fmt(branch[m])}`,
   );
   return `${model} #${id}[${ord}] ${(base ?? branch).type}: ${parts.join(', ')}`;

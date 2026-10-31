@@ -68,7 +68,7 @@ export function mountMouseControls(overrides: Partial<UseMouseControlsParams> = 
     sectionPlaneRef: ref(state.sectionPlane), sectionRangeRef: ref(null), geometryRef: ref(null),
     measureRaycastPendingRef: ref(false), measureRaycastFrameRef: ref(null),
     lastMeasureRaycastDurationRef: ref(0), lastHoverSnapTimeRef: ref(0), lastHoverCheckRef: ref(0),
-    hoverTooltipsEnabledRef: ref(false), lastRenderTimeRef: ref(0), renderPendingRef: ref(false),
+    hoverTooltipsEnabledRef: ref(false),
     isInteractingRef: ref(false), lastClickTimeRef: ref(0), lastClickPosRef: ref(null), lastCameraStateRef: ref(null),
     handlePickForSelection: noop, setHoverState: noop, clearHover: noop,
     openContextMenu: (id: number | null) => { menus.push(id ?? -1); },
@@ -80,7 +80,6 @@ export function mountMouseControls(overrides: Partial<UseMouseControlsParams> = 
     getPickOptions: () => ({ isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null }),
     hasPendingMeasurements: () => false, setSectionPlaneFromFace: noop, setSectionPickMode: noop, setSectionPickPreview: noop,
     HOVER_SNAP_THROTTLE_MS: 50, SLOW_RAYCAST_THRESHOLD_MS: 50, hoverThrottleMs: 50,
-    RENDER_THROTTLE_MS_SMALL: 16, RENDER_THROTTLE_MS_LARGE: 33, RENDER_THROTTLE_MS_HUGE: 66,
     fastZoomRef: ref(false),
   } satisfies UseMouseControlsParams;
   Object.assign(params, overrides);

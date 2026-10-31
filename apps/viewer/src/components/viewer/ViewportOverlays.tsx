@@ -34,6 +34,19 @@ import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
 import { MeasurementsVisibilityChip } from './tools/MeasurementsVisibilityChip';
 
+/** The scale-bar readout for a 96 px bar spanning `worldSize` metres. */
+function formatScale(worldSize: number): string {
+  if (worldSize >= 1000) {
+    return `${(worldSize / 1000).toFixed(1)}km`;
+  } else if (worldSize >= 1) {
+    return `${worldSize.toFixed(1)}m`;
+  } else if (worldSize >= 0.1) {
+    return `${(worldSize * 100).toFixed(0)}cm`;
+  } else {
+    return `${(worldSize * 1000).toFixed(0)}mm`;
+  }
+}
+
 /**
  * Overlay chrome drawn on top of the 3D viewport.
  *
@@ -81,9 +94,8 @@ export function ViewportOverlays({
   const axisHelperRef = useRef<AxisHelperRef | null>(null);
   const lastCubeGestureEmitRef = useRef(0);
 
-  // Local state for scale - updated via callback, no global re-renders
-  const [scale, setScale] = useState(10);
-  const lastScaleRef = useRef(10);
+  // Local state for the scale readout - updated via callback, no global re-renders
+  const [scaleLabel, setScaleLabel] = useState(() => formatScale(10));
 
   // Register callback for real-time rotation updates - updates ViewCube directly
   useEffect(() => {
@@ -116,17 +128,11 @@ export function ViewportOverlays({
     }
   }, [pointCloudAssetCount]);
 
-  // Register callback for real-time scale updates
-  // Only update state if scale changed significantly (>1%) to avoid unnecessary re-renders
+  // Register callback for real-time scale updates. State holds the formatted
+  // label, so React bails out of the re-render unless the visible text changes
+  // (a wheel zoom used to re-render the overlay tree on every 1% step).
   useEffect(() => {
-    const handleScaleChange = (newScale: number) => {
-      const lastScale = lastScaleRef.current;
-      // Only update if scale changed by more than 1%
-      if (Math.abs(newScale - lastScale) / lastScale > 0.01) {
-        lastScaleRef.current = newScale;
-        setScale(newScale);
-      }
-    };
+    const handleScaleChange = (newScale: number) => setScaleLabel(formatScale(newScale));
     setOnScaleChange(handleScaleChange);
     return () => setOnScaleChange(null);
   }, [setOnScaleChange]);
@@ -169,19 +175,6 @@ export function ViewportOverlays({
   const handleZoomOut = useCallback(() => {
     cameraCallbacks.zoomOut?.();
   }, [cameraCallbacks]);
-
-  // Format scale value for display
-  const formatScale = (worldSize: number): string => {
-    if (worldSize >= 1000) {
-      return `${(worldSize / 1000).toFixed(1)}km`;
-    } else if (worldSize >= 1) {
-      return `${worldSize.toFixed(1)}m`;
-    } else if (worldSize >= 0.1) {
-      return `${(worldSize * 100).toFixed(0)}cm`;
-    } else {
-      return `${(worldSize * 1000).toFixed(0)}mm`;
-    }
-  };
 
   return (
     <>
@@ -302,7 +295,7 @@ export function ViewportOverlays({
           {!hideScale && (
             <div className="flex flex-col items-start gap-1" data-testid="viewport-scale-readout">
               <div className="h-1 w-24 bg-foreground/80 rounded-full" />
-              <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
+              <span className="text-xs text-foreground/80">{scaleLabel}</span>
             </div>
           )}
           {!hideAxis && (

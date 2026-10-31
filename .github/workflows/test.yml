@@ -557,6 +557,7 @@ jobs:
               # The native-instructions measurer (#6982) runs these.
               - 'scripts/perf/instructions.sh'
               - 'scripts/perf/instructions-report.mjs'
+              - 'scripts/perf/elf-rw-loads.mjs'
               - '.github/workflows/test.yml'
             docs:
               - 'tests/fixtures/cli-retained/**'

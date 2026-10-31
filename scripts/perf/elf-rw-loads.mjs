@@ -30,6 +30,10 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const PAGE = 0x1000;
 
+function pageUp(n) {
+  return Math.ceil(n / PAGE) * PAGE;
+}
+
 /** PT_LOAD rows of `readelf -lW` output, in file order. */
 export function parseLoads(text) {
   const loads = [];
@@ -55,8 +59,10 @@ export function mergedWritableLoads(loads) {
   for (let i = 1; i < rw.length; i++) {
     const [a, b] = [rw[i - 1], rw[i]];
     const sameDelta = a.vaddr - a.offset === b.vaddr - b.offset;
-    const noAnonTail = a.memsz === a.filesz;
-    const end = Math.ceil((a.vaddr + a.memsz) / PAGE) * PAGE;
+    // A .bss tail that ends inside the last file page is zeroed in place; only
+    // one that spills onto a further page gets an anonymous mapping between.
+    const end = pageUp(a.vaddr + a.memsz);
+    const noAnonTail = pageUp(a.vaddr + a.filesz) === end;
     const adjacent = end === Math.floor(b.vaddr / PAGE) * PAGE;
     if (sameDelta && noAnonTail && adjacent) hazards.push([a, b]);
   }
@@ -73,7 +79,15 @@ if (isMainEntry(import.meta.url)) {
     console.error('usage: elf-rw-loads.mjs <binary>');
     process.exit(2);
   }
-  const loads = parseLoads(execFileSync('readelf', ['-lW', bin], { encoding: 'utf8' }));
+  let headers;
+  try {
+    headers = execFileSync('readelf', ['-lW', bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    const why = error.code === 'ENOENT' ? 'readelf is not installed (apt install binutils)' : `readelf cannot read ${bin} (not an ELF file?)`;
+    console.error(`elf-rw-loads: ${why}`);
+    process.exit(2);
+  }
+  const loads = parseLoads(headers);
   if (loads.length === 0) {
     console.error(`elf-rw-loads: no PT_LOAD segments read from ${bin}`);
     process.exit(2);

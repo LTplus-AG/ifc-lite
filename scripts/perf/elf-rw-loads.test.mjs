@@ -14,7 +14,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { mergedWritableLoads, parseLoads } from './elf-rw-loads.mjs';
+
+const CLI = fileURLToPath(new URL('./elf-rw-loads.mjs', import.meta.url));
 
 const HEADER = `Program Headers:
   Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
@@ -61,7 +65,26 @@ test('a -z norelro link has one writable load and nothing to merge', () => {
   assert.deepEqual(mergedWritableLoads(parseLoads(NORELRO)), []);
 });
 
-test('a .bss tail between the loads keeps them apart', () => {
-  const withTail = CI_8359.replace('0x021780 0x021780 RW', '0x021780 0x021800 RW');
-  assert.deepEqual(mergedWritableLoads(parseLoads(withTail)), []);
+test('a .bss tail inside the last file page still maps as one range', () => {
+  // memsz > filesz, but both end on the same page: no anonymous page between.
+  const inPage = CI_8359.replace('0x021780 0x021780 RW', '0x021700 0x021780 RW');
+  assert.equal(mergedWritableLoads(parseLoads(inPage)).length, 1);
+});
+
+test('a .bss tail spilling onto its own page keeps the loads apart', () => {
+  // Same delta and page-adjacent to the next load, so only the anonymous
+  // .bss page between them decides the verdict.
+  const spill = CI_8359
+    .replace('0x021780 0x021780 RW', '0x021780 0x022780 RW')
+    .replace('LOAD           0x5b5000 0x00000000005b7000 0x00000000005b7000', 'LOAD           0x5b6000 0x00000000005b8000 0x00000000005b8000');
+  const loads = parseLoads(spill);
+  assert.equal(loads[3].vaddr - loads[3].offset, loads[2].vaddr - loads[2].offset);
+  assert.deepEqual(mergedWritableLoads(loads), []);
+});
+
+test('the CLI exits 2 with a clean message on a non-ELF file', () => {
+  const r = spawnSync(process.execPath, [CLI, fileURLToPath(import.meta.url)], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /^elf-rw-loads: /);
+  assert.doesNotMatch(r.stderr, /at .*\.mjs:\d+/);
 });

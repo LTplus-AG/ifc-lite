@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, glob } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
@@ -8,13 +8,10 @@ const LANES = new Set(['native', 'cli', 'viewer']);
 /** Bare registrations retain their historical native meaning; scoped rows use a tab. */
 export async function requiredWitnesses(root, lane) {
   if (!LANES.has(lane)) throw new Error(`Unknown witness lane: ${lane}`);
-  const directory = join(root, 'tests/evidence'), required = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const path = join(directory, entry.name, 'witnesses.txt');
-    let text;
-    try { text = await readFile(path, 'utf8'); }
-    catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+  const required = [];
+  for await (const relative of glob('tests/evidence/*/witnesses.txt', { cwd: root })) {
+    const path = join(root, relative);
+    const text = await readFile(path, 'utf8');
     for (const row of text.split(/\r?\n/)) {
       if (!row.trim() || row.startsWith('#')) continue;
       const parts = row.split('\t');

@@ -76,6 +76,17 @@ describe('Scene.limitStreamingFragments', () => {
     assert.deepStrictEqual(built.map((b) => b.fragment), [true]);
   });
 
+  it('ending an ephemeral stream restores the default', () => {
+    const { scene, built, stream } = harness();
+    scene.setEphemeralStreamingMode(true);
+    scene.limitStreamingFragments(0);
+    stream([triangle(1)]);
+    scene.finishEphemeralStreaming();
+    built.length = 0;
+    stream([triangle(2, 5)]);
+    assert.deepStrictEqual(built.map((b) => b.fragment), [true]);
+  });
+
   it('clear() restores the default', () => {
     const { scene, built, stream } = harness();
     scene.limitStreamingFragments(0);

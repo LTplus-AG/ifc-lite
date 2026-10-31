@@ -1894,12 +1894,14 @@ export class Scene {
   }
 
   /**
-   * Cap the transient fragment pass of the current stream at `maxIndices`.
+   * Stop the current stream's transient fragment pass once `maxIndices` have
+   * been drawn. A first-paint target, not a hard limit: the append that crosses
+   * it still draws whole, so the overshoot is at most one append.
    * Every streamed mesh is merged and uploaded twice: once as a throwaway
    * fragment so it shows while streaming, then again by finalize. A load that
    * holds its whole geometry up front (a cache hit) needs fragments only for
    * first paint; the rest appears at the finalize swap, uploaded once.
-   * Finalize and clear() restore the default (no cap).
+   * Finalize, ending an ephemeral stream and clear() restore the default (no limit).
    */
   limitStreamingFragments(maxIndices: number): void {
     this.streamingFragmentIndexBudget = maxIndices;
@@ -2229,6 +2231,7 @@ export class Scene {
   }
 
   finishEphemeralStreaming(): void {
+    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     if (this.streamingFragments.length === 0) {
       this.ephemeralStreamingMode = false;
       return;

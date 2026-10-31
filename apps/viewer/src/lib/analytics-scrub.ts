@@ -76,7 +76,8 @@ const NAME_STOPWORDS = [
   'is', 'was', 'be', 'by', 'as', 'it', 'this', 'that',
 ].join('|');
 
-// The leading \b is load-bearing: without it the run can start in the MIDDLE
+// The leading boundary is load-bearing, and Unicode-aware because `\b` only
+// knows ASCII and would skip a name like 東京塔.ifc: without it the run can start in the MIDDLE
 // of a stop-word ("loading" -> "oading"), which sails straight past the
 // lookahead and defeats the whole stop-list.
 //
@@ -84,9 +85,9 @@ const NAME_STOPWORDS = [
 // never a nested star, so a hostile message cannot force catastrophic
 // backtracking.
 const FILE_TOKEN = new RegExp(
-  String.raw`\b(?:(?!(?:${NAME_STOPWORDS})[ \t])[^\s\\/]{1,64}[ \t]{1,3}){0,12}` +
+  String.raw`(?<![\p{L}\p{N}_])(?=[\p{L}\p{N}_])(?:(?!(?:${NAME_STOPWORDS})[ \t])[^\s\\/]{1,64}[ \t]{1,3}){0,12}` +
   String.raw`[^\s\\/]{1,80}\.(?:${EXT_ALTERNATION})\b`,
-  'gi',
+  'giu',
 );
 
 export const redactFileTokens = (value: string): string =>

@@ -137,6 +137,14 @@ describe('device_loss_recovery_failed carries what failed', () => {
     }
   });
 
+  it('removes a non-ASCII file name from recovery error text', () => {
+    const props = recoveryFailureProperties(
+      { ok: false, reason: 'scene-restore-failed', error: new Error('while loading 東京塔.ifc') },
+      { episode: 1, attempts: 1, elapsedMs: 0 },
+    );
+    assert.equal(props.recovery_error_detail, 'while loading [file]');
+  });
+
   it('reports one context snapshot for the loss and the failed recovery', async () => {
     const h = source([{ ok: false, reason: 'cold-restore-failed', error: new Error('scene') }]);
     let builds = 0;

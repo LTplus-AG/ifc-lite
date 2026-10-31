@@ -450,6 +450,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
       // An attempt whose replacement was not lost must not inherit the earlier text.
       renderer['initOnce'] = async () => { throw new Error('Failed to get GPU adapter'); };
       const adapterless = await renderer.recoverDevice();
+      assert.strictEqual(adapterless.ok, false);
       if (!adapterless.ok) assert.strictEqual((adapterless.error as Error).message, 'Failed to get GPU adapter');
       assert.strictEqual(renderer['recovery'].replacementLostInfo, null);
     } finally {

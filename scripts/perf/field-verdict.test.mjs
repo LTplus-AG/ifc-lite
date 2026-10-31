@@ -7,7 +7,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const VERDICT = new URL('./field-verdict.mjs', import.meta.url);
@@ -35,76 +37,114 @@ test('#6961 pairs only same person, same model cells with a default-arm baseline
   assert.equal(cells.length, 6 + 3 + 5);
 });
 
-test('#6961 pooled ratio is the median of cell ratios; speed below 0.95 with enough cells regresses', async () => {
-  const { parseRows, fieldVerdict } = await load(VERDICT);
-  const verdict = fieldVerdict(parseRows(fixture()), { threshold: 0.95, minCells: 5 });
+const row = (person, metric, window, median, extra = {}) => ({ event: 'ifc_model_loaded', journey: 'J1', arm: 'default', person, model: 'ifc:1', metric, window, median, n: 2, ...extra });
+const paired = (person, ratio, extra = {}, metric = 'total_elapsed_ms') => [row(person, metric, 'baseline', 100, extra), row(person, metric, 'recent', 100 * ratio, extra)];
+const people = (count, ratio, metric) => Array.from({ length: count }, (_, i) => paired(`p${i}`, ratio, {}, metric)).flat();
 
-  const firstPixel = find(verdict.pooled, { event: 'ifc_model_loaded', metric: 'first_visible_geometry_ms', arm: 'default' });
-  assert.equal(firstPixel.cells, 6);
+test('#6961 a group is judged by the median person, per journey', async () => {
+  const { parseRows, fieldVerdict } = await load(VERDICT);
+  const verdict = fieldVerdict(parseRows(fixture()), { threshold: 0.95, minPersons: 5 });
+  const firstPixel = find(verdict.groups, { metric: 'first_visible_geometry_ms', journey: 'J1', arm: 'default' });
+  assert.equal(firstPixel.persons, 6);
   assert.equal(firstPixel.ratio, 1.175); // median of 1.0, 1.1, 1.15, 1.2, 1.25, 1.3
   assert.equal(firstPixel.speed, 0.851);
-  assert.equal(firstPixel.status, 'regressed');
 
-  // Twice as slow, but three cells is not a verdict: undefined, not small.
-  const warm = find(verdict.perJourney, { metric: 'total_elapsed_ms', journey: 'J2' });
+  // Twice as slow, but three people is not a verdict: undefined, not small.
+  const warm = find(verdict.groups, { metric: 'total_elapsed_ms', journey: 'J2' });
   assert.equal(warm.ratio, 2);
   assert.equal(warm.status, 'insufficient');
+});
 
-  // A ramp arm is judged against the same people's default-arm baseline.
-  const inspect = find(verdict.pooled, { event: 'ifc_inspect', arm: 'quantized=false' });
-  assert.equal(inspect.ratio, 0.8);
-  assert.equal(inspect.status, 'improved');
+// Build 8d3ffe9d1f62's shape: two people's batches outnumber everyone else's cells.
+test('#6961 one federated batch cannot outvote other people', async () => {
+  const { fieldVerdict } = await load(VERDICT);
+  const rows = [];
+  for (const person of ['batch-a', 'batch-b']) {
+    for (let m = 0; m < 14; m++) rows.push(...paired(person, 4.7, { journey: 'J4', model: `ifc:${m}` }));
+  }
+  for (let i = 0; i < 13; i++) rows.push(...paired(`solo${i}`, 0.96, { journey: 'J4' }));
+  const group = fieldVerdict(rows).groups[0];
+  assert.equal(group.cells, 41);
+  assert.equal(group.persons, 15);
+  assert.equal(group.ratio, 0.96);
+  assert.equal(group.status, 'flat');
+});
 
-  assert.deepEqual(verdict.regressed.map((g) => g.metric), ['first_visible_geometry_ms']);
+test('#6961 regressed needs the interval to exclude 1, not only a point past the threshold', async () => {
+  const { fieldVerdict } = await load(VERDICT);
+  const clear = fieldVerdict(people(8, 1.3));
+  assert.equal(clear.groups[0].status, 'regressed');
+  assert.deepEqual(clear.regressed.map((g) => g.metric), ['total_elapsed_ms']);
+  assert.equal(fieldVerdict(people(8, 0.7)).groups[0].status, 'improved');
+
+  // The median is 1.1, past the threshold, but half the people got faster.
+  const spread = [0.5, 0.6, 0.7, 0.9, 1.1, 1.3, 1.5, 1.8, 2.2].flatMap((ratio, i) => paired(`p${i}`, ratio));
+  const noisy = fieldVerdict(spread);
+  assert.equal(noisy.groups[0].ratio, 1.1);
+  assert.equal(noisy.groups[0].status, 'inconclusive');
+  assert.equal(noisy.regressed.length, 0);
+});
+
+test('#6961 the verdict is deterministic for one input', async () => {
+  const { fieldVerdict } = await load(VERDICT);
+  const rows = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4].flatMap((ratio, i) => paired(`p${i}`, ratio));
+  assert.deepEqual(fieldVerdict(rows), fieldVerdict(rows));
+});
+
+test('#6961 context metrics are never judged, and a moved file read warns', async () => {
+  const { fieldVerdict, renderMarkdown } = await load(VERDICT);
+  const verdict = fieldVerdict(people(8, 2, 'file_read_ms'));
+  assert.equal(verdict.groups[0].status, 'context');
+  assert.equal(verdict.regressed.length, 0);
+  assert.equal(verdict.controlMoved.length, 1);
+  assert.match(renderMarkdown(verdict), /Treat load results as suspect in J1/);
+  assert.doesNotMatch(renderMarkdown(fieldVerdict(people(8, 1, 'file_read_ms'))), /suspect/);
+  assert.equal(fieldVerdict(people(8, 2, 'federated_session_loads')).regressed.length, 0);
 });
 
 test('#6961 a group inside the band is flat, and no paired cell says so plainly', async () => {
   const { fieldVerdict, renderMarkdown } = await load(VERDICT);
-  const rows = [];
-  for (let i = 0; i < 5; i++) {
-    for (const [window, median] of [['baseline', 100], ['recent', 102]]) {
-      rows.push({ event: 'ifc_navigate', journey: 'J6', arm: 'default', person: `p${i}`, model: 'ifc:1', metric: 'frame_p95_ms', window, median, n: 1 });
-    }
-  }
-  assert.equal(fieldVerdict(rows).pooled[0].status, 'flat');
-  // Paired cells exist, but no pooled group reached minCells: insufficient, never a pass.
-  const thin = fieldVerdict(rows, { minCells: 6 });
-  assert.equal(thin.pooled[0].status, 'insufficient');
+  const rows = people(5, 1.02);
+  assert.equal(fieldVerdict(rows).groups[0].status, 'flat');
+  // Paired cells exist, but no group reached minPersons: insufficient, never a pass.
+  const thin = fieldVerdict(rows, { minPersons: 6 });
+  assert.equal(thin.groups[0].status, 'insufficient');
   const thinMd = renderMarkdown(thin);
   assert.match(thinMd, /Insufficient paired data/);
-  assert.doesNotMatch(thinMd, /No pooled group regressed/);
+  assert.doesNotMatch(thinMd, /No group regressed/);
   const empty = fieldVerdict([]);
   assert.equal(empty.cells, 0);
   assert.match(renderMarkdown(empty, { build: 'abc123def456' }), /No \(person, model\) cell has loads in both windows/);
 });
 
-test('#6961 markdown names the build, the regression count and the pooled row', async () => {
+test('#6961 markdown names the build, the regression count and the row', async () => {
   const { fieldVerdict, renderMarkdown } = await load(VERDICT);
-  const rows = [];
-  for (let i = 0; i < 5; i++) {
-    for (const [window, median] of [['baseline', 100], ['recent', 120]]) {
-      rows.push({ event: 'ifc_model_loaded', journey: 'J1', arm: 'default', person: `p${i}`, model: 'ifc:1', metric: 'stream_complete_ms', window, median, n: 2 });
-    }
-  }
-  const md = renderMarkdown(fieldVerdict(rows), { build: '3c3cb1fada2f' });
+  const md = renderMarkdown(fieldVerdict(people(5, 1.2, 'stream_complete_ms')), { build: '3c3cb1fada2f' });
   assert.match(md, /Field verdict for build `3c3cb1fada2f`/);
-  assert.match(md, /\*\*1 pooled group\(s\) regressed\*\*/);
-  assert.match(md, /\| ifc_model_loaded \| stream_complete_ms \| `default` \| 5 \| 5 \| 1\.2 \(1\.2-1\.2\) \| 0\.833 \| regressed \|/);
+  assert.match(md, /\*\*1 group\(s\) regressed\*\*/);
+  assert.match(md, /\| ifc_model_loaded \| J1 \| stream_complete_ms \| `default` \| 5 \| 5 \| 1\.2 \(1\.2-1\.2\) \| 0\.833 \| regressed \|/);
 });
 
 test('#6961 the CLI exits 2 on a regression only when asked to', async () => {
   await load(VERDICT);
-  const run = (...args) => spawnSync(process.execPath, [fileURLToPath(VERDICT), fileURLToPath(FIXTURE), ...args], { encoding: 'utf8' });
-  assert.equal(run().status, 0);
-  // A malformed bound would turn "insufficient" into a verdict; it is refused instead.
-  for (const bad of [['--min-cells', '5x'], ['--min-cells', '0'], ['--threshold', 'abc'], ['--threshold', '1.5']]) {
-    const refused = run(...bad);
-    assert.equal(refused.status, 1, bad.join(' '));
-    assert.match(refused.stderr, /must be/);
+  const dir = mkdtempSync(join(tmpdir(), 'field-verdict-'));
+  const input = join(dir, 'rows.json');
+  writeFileSync(input, JSON.stringify(people(8, 1.3)));
+  const run = (...args) => spawnSync(process.execPath, [fileURLToPath(VERDICT), input, ...args], { encoding: 'utf8' });
+  try {
+    assert.equal(run().status, 0);
+    // A malformed bound would turn "insufficient" into a verdict; it is refused instead.
+    for (const bad of [['--min-persons', '5x'], ['--min-persons', '0'], ['--threshold', 'abc'], ['--threshold', '1.5']]) {
+      const refused = run(...bad);
+      assert.equal(refused.status, 1, bad.join(' '));
+      assert.match(refused.stderr, /must be/);
+    }
+    const failing = run('--fail-on-regression', '--json');
+    assert.equal(failing.status, 2, failing.stderr);
+    assert.equal(JSON.parse(failing.stdout).regressed.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  const failing = run('--fail-on-regression', '--json');
-  assert.equal(failing.status, 2, failing.stderr);
-  assert.equal(JSON.parse(failing.stdout).regressed.length, 1);
 });
 
 test('#6961 rows: the query API shape and plain objects both parse; malformed rows are refused', async () => {

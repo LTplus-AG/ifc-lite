@@ -231,6 +231,12 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     assert.ok(!/#12|bogus/.test(text), 'the raw colour never reaches the content stream');
   });
 
+  it('resolves named override colours like the SVG does', async () => {
+    const text = await exportPdf({ overrideRules: [wallRule({ fillColor: 'red', strokeColor: 'navy' })] });
+    assert.ok(setsColor(text, 'fill', '#ff0000'), 'named fill');
+    assert.ok(setsColor(text, 'stroke', '#000080'), 'named stroke');
+  });
+
   it('draws nothing for transparent / none, as the canvas and SVG do', async () => {
     const text = await exportPdf({ overrideRules: [wallRule({ fillColor: 'none', strokeColor: 'transparent' })] });
     assert.ok(!text.includes('f*'), 'no fill');
@@ -301,7 +307,7 @@ describe('pdfColor', () => {
     assert.deepEqual(pdfColor('rgb(0,128,255)'), { hex: '#0080ff', alpha: 1 });
     assert.deepEqual(pdfColor('transparent'), { hex: '#000000', alpha: 0 });
     assert.deepEqual(pdfColor('NONE'), { hex: '#000000', alpha: 0 });
-    assert.equal(pdfColor('red'), null);
+    assert.deepEqual(pdfColor('Red'), { hex: 'red', alpha: 1 }, 'names pass through for jsPDF to resolve');
     assert.equal(pdfColor('rgb(1.2.3,0,0)'), null);
     assert.equal(pdfColor('rgb(300,0,0)'), null);
     assert.equal(pdfColor('#12'), null);

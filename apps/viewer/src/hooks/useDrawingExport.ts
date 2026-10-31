@@ -42,8 +42,7 @@ import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMat
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
-import { pdfColor } from '@/lib/export/pdf-color';
-import { getFillColorForType } from '@/components/viewer/drawing/ifc-fill-colors';
+import { drawCutPolygonsPdf, prepareCutPolygonsPdf, type PdfCutPolygon } from '@/lib/export/section-pdf-cut-polygons';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
@@ -1061,31 +1060,11 @@ function useDrawingExport({
     }
     const mapPoint = makeSectionMapPoint(currentAxis, layout);
 
-    // Styles resolve at click time, before the reference snapshot is taken,
-    // so a colour change while jsPDF loads cannot leak into this export and
-    // a throw here cannot strand the snapshot. Rings with a non-finite vertex
-    // are dropped (jsPDF throws on them). A polygon is filled only when its
-    // outer ring and every hole survived, or the opening would paint solid;
-    // it covers its entity's cut lines only when its outer ring is drawn.
-    const finiteRing = (ring: { x: number; y: number }[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-    const styledPolygons = (() => {
-      try {
-        return styleCutPolygons(drawing.cutPolygons, cutPolygonStyleContext(), ({ polygon: { outer, holes } }) => {
-          const outerDrawn = outer.length >= 2 && finiteRing(outer);
-          const usableHoles = holes.filter((ring) => ring.length >= 2);
-          const drawnHoles = usableHoles.filter(finiteRing);
-          return {
-            rings: [...(outerDrawn ? [outer] : []), ...drawnHoles].map((ring) => ring.map((p) => mapPoint(p.x, p.y))),
-            fillable: outerDrawn && outer.length >= 3 && drawnHoles.length === usableHoles.length,
-            outerDrawn,
-          };
-        });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : t('section2d.export.pdfFailedGeneric'));
-        return null;
-      }
-    })();
-    if (!styledPolygons) return;
+    // Prepared before the reference snapshot is taken, so a throw here cannot
+    // strand it.
+    let cutPolygons: PdfCutPolygon[];
+    try { cutPolygons = prepareCutPolygonsPdf(drawing.cutPolygons, cutPolygonStyleContext(), mapPoint); }
+    catch (error) { toast.error(error instanceof Error ? t('section2d.export.pdfFailed', { error: error.message }) : t('section2d.export.pdfFailedGeneric')); return; }
 
     let referenceSnapshot: ReturnType<typeof snapshotDrawingReferences>;
     try { referenceSnapshot = snapshotDrawingReferences(useViewerStore.getState(), drawing.config.plane); }
@@ -1096,7 +1075,7 @@ function useDrawingExport({
     void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
       subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {
-        const { jsPDF, GState } = await import('jspdf');
+        const { jsPDF } = await import('jspdf');
         const { widthMm, heightMm } = layout.page;
         const doc = new jsPDF({
           unit: 'mm',
@@ -1110,48 +1089,7 @@ function useDrawingExport({
 
         doc.setLineCap('round');
 
-        // Cut polygons: fills first (even-odd, so holes stay open), then
-        // outlines on top, with the same colours as the SVG export.
-        // Two decimals is what jsPDF prints; rounding keeps one ExtGState per
-        // printed value (jsPDF dedupes equal states and skips unchanged ones).
-        const roundOpacity = (value: number) => Math.round(Math.min(1, value) * 100) / 100;
-        const setOpacity = (key: 'opacity' | 'stroke-opacity', value: number) =>
-          doc.setGState(new GState({ [key]: value }));
-        const tracePath = (rings: { x: number; y: number }[][]) => {
-          for (const ring of rings) {
-            doc.moveTo(ring[0].x, ring[0].y);
-            for (let i = 1; i < ring.length; i++) doc.lineTo(ring[i].x, ring[i].y);
-            doc.close();
-          }
-        };
-        // Unparseable colours fall back per polygon (type colour, black) so
-        // one bad override cannot abort the whole export.
-        // Outlines cover every surviving ring, as before fills existed.
-        for (const { polygon, geometry: { rings, fillable }, style } of styledPolygons) {
-          if (!fillable) continue;
-          const { hex, alpha } = pdfColor(style.fillColor) ?? pdfColor(getFillColorForType(polygon.ifcType))!;
-          const opacity = roundOpacity(style.fillOpacity * alpha);
-          if (!(opacity > 0)) continue;
-          setOpacity('opacity', opacity);
-          doc.setFillColor(hex);
-          tracePath(rings);
-          doc.fillEvenOdd();
-        }
-        for (const { geometry: { rings }, style } of styledPolygons) {
-          const { hex, alpha } = pdfColor(style.strokeColor) ?? { hex: '#000000', alpha: 1 };
-          // Zero width hides the outline, as in the SVG; PDF would draw "0 w"
-          // as the thinnest visible line.
-          const strokeAlpha = roundOpacity(alpha);
-          if (rings.length === 0 || !(strokeAlpha > 0) || !(style.lineWeight > 0)) continue;
-          setOpacity('stroke-opacity', strokeAlpha);
-          doc.setDrawColor(hex);
-          doc.setLineWidth(style.lineWeight);
-          tracePath(rings);
-          doc.stroke();
-        }
-        setOpacity('opacity', 1);
-        setOpacity('stroke-opacity', 1);
-        doc.setDrawColor(0, 0, 0);
+        drawCutPolygonsPdf(doc, cutPolygons);
 
         // Entities actually covered by a cut-polygon outline above. Loop
         // reconstruction (`PolygonBuilder.buildLoops`) can fail for short,
@@ -1165,8 +1103,8 @@ function useDrawingExport({
         // that cut and must still be drawn, or the geometry silently
         // vanishes from the PDF.
         const entitiesWithCutPolygon = new Set(
-          styledPolygons
-            .filter(({ geometry }) => geometry.outerDrawn)
+          cutPolygons
+            .filter(({ outerDrawn }) => outerDrawn)
             .map(({ polygon: p }) => `${p.modelIndex}:${p.entityId}`)
         );
 

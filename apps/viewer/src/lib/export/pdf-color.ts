@@ -6,9 +6,10 @@
  * Split a CSS colour into what jsPDF accepts (`#RRGGBB`) and an alpha factor.
  * jsPDF rejects alpha hex (`#RGBA`, `#RRGGBBAA`) and `rgba()`, which
  * overrides may carry. `transparent` and `none` are fully transparent.
- * Returns null for anything else, and the caller substitutes a fallback:
- * jsPDF writes an unfinished `#12` as a broken operator and throws on
- * unknown names. Named colours and other CSS forms are not mapped.
+ * A bare word is passed through as a colour name for jsPDF to resolve; it
+ * throws on unknown names. Returns null for anything else (an unfinished
+ * `#12` typed into the override panel, which jsPDF would write as a broken
+ * operator). The caller substitutes a fallback in both cases.
  */
 export function pdfColor(input: string): { hex: string; alpha: number } | null {
   const color = input.trim().toLowerCase();
@@ -17,6 +18,7 @@ export function pdfColor(input: string): { hex: string; alpha: number } | null {
   const hex = short ? `#${[...short[1]].map((c) => c + c).join('')}` : color;
   const long = /^#([0-9a-f]{6})([0-9a-f]{2})?$/.exec(hex);
   if (long) return { hex: `#${long[1]}`, alpha: long[2] ? parseInt(long[2], 16) / 255 : 1 };
+  if (/^[a-z]+$/.test(color)) return { hex: color, alpha: 1 };
   const rgb = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(\d*\.?\d+)\s*)?\)$/.exec(color);
   if (!rgb || [rgb[1], rgb[2], rgb[3]].some((c) => +c > 255)) return null;
   const byte = (c: string) => (+c).toString(16).padStart(2, '0');

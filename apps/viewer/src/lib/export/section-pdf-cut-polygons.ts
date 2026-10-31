@@ -81,8 +81,22 @@ function setColor(doc: jsPDF, kind: 'fill' | 'draw', color: string, fallback: st
   return 1;
 }
 
-/** Fills first (even-odd, so holes stay open), then outlines on top. */
+/**
+ * Fills first (even-odd, so holes stay open), then outlines on top. Graphics
+ * state is saved and restored, so nothing leaks to the caller.
+ */
 export function drawCutPolygonsPdf(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
+  doc.saveGraphicsState();
+  try {
+    drawCutPolygons(doc, polygons);
+  } finally {
+    doc.restoreGraphicsState();
+  }
+}
+
+function drawCutPolygons(doc: jsPDF, polygons: readonly PdfCutPolygon[]): void {
+  doc.setLineCap('round');
+  doc.setLineDashPattern([], 0);
   const tracePath = (rings: Point[][]) => {
     for (const ring of rings) {
       doc.moveTo(ring[0].x, ring[0].y);
@@ -114,6 +128,4 @@ export function drawCutPolygonsPdf(doc: jsPDF, polygons: readonly PdfCutPolygon[
     doc.stroke();
   }
 
-  doc.setGState(doc.GState({ opacity: 1, 'stroke-opacity': 1 }));
-  doc.setDrawColor(0, 0, 0);
 }

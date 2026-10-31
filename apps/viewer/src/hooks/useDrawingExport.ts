@@ -1102,11 +1102,10 @@ function useDrawingExport({
         // already covers; otherwise they are the sole remaining record of
         // that cut and must still be drawn, or the geometry silently
         // vanishes from the PDF.
-        const entitiesWithCutPolygon = new Set(
-          cutPolygons
-            .filter(({ coversCutLines }) => coversCutLines)
-            .map(({ polygon: p }) => `${p.modelIndex}:${p.entityId}`)
-        );
+        // Per entity: one damaged polygon keeps all of that entity's cut lines.
+        const entityKey = ({ polygon: p }: PdfCutPolygon) => `${p.modelIndex}:${p.entityId}`;
+        const damaged = new Set(cutPolygons.filter((p) => !p.coversCutLines).map(entityKey));
+        const entitiesWithCutPolygon = new Set(cutPolygons.map(entityKey).filter((key) => !damaged.has(key)));
 
         // Drawing lines (projection/hidden/silhouette/crease/boundary).
         for (const line of drawing.lines) {

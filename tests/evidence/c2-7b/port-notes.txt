@@ -1,0 +1,31 @@
+C2-7b / #8263, stacked on C2-7a (refactor/c2-7a-void-stages)
+
+Port of the exact-batching half of backup/c2-7-recovery-r3 021f88697d
+(strategy/exact/{mod,batch_plan,batch}.rs). Bodies are main's, moved from
+apply_void_context_inner; r3 supplied the layout only.
+
+- ExactState owns consumed / groups / group_of / host_mutated for one host.
+  groups and group_of are private to strategy::exact; consumed and
+  host_mutated stay pub(in crate::router::voids) only while the sequential
+  pass is still inline in apply_void_context_inner (C2-7c moves it and
+  narrows them).
+- The coaxial prepass goes through ExactState::coaxial_union, which lends
+  &mut consumed / &mut host_mutated to Execution::coaxial_union_prepass; no
+  public field is borrowed from outside.
+- plan_groups is the old `if all_openings.len() >= 2 { .. }` block verbatim
+  (batch_consumed -> self.consumed, batch_groups -> self.groups,
+  batch_group_of -> self.group_of). cut_group is the old inline group block;
+  it returns `consumed[opening_idx]`, which equals the old "continue if the
+  group consumed me" check because a non-member is never consumed there.
+- Order is unchanged: coaxial union, then batch plan, then per opening the
+  group attempt before the sequential cut. The `host_mutated = true` writes
+  before `break` became field writes, so `unused_assignments` no longer
+  fires; the attribute is removed with the function in C2-7c.
+- GroupCut is imported under cfg(test) for single_cut_outcome_tests.
+- Ratchets measured: apply_void_context_inner 650 -> 486, voids/mod.rs
+  1135 -> 973; geometry digest recomputed.
+
+Committed oracle: behaviour.oracle.patch drops plan_groups' consumed skip,
+so the batch plans a coaxial-consumed box; stage_order_tests'
+coaxial_union_runs_before_the_batch_plan goes red (checked locally before
+commit, and through validate.sh mutation on the fleet).

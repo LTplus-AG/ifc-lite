@@ -2,16 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { perfTally } from '@ifc-lite/load-trace';
-import { sha256Hex } from '@/utils/sourceContentHash';
+import { blobChunks, hashSource, memoryChunks, type SourceBlob } from './source-identity-hash';
+import type { SourceIdentityRequest } from './source-identity.worker';
 
-const CHUNK_BYTES = 1024 * 1024;
-/** Chunk digests in flight at once (#7022). The pass runs beside a busy load, so
- * one-at-a-time digests would wait for a main-thread turn per MiB. */
-const DIGEST_WINDOW = 8;
-/** Every identity starts with this; a stored hash without it predates #7022. */
-export const PLACEMENT_IDENTITY_PREFIX = 'placement-sha256-1m-v1:';
-interface SourceBlob { size: number; slice(start: number, end: number): { arrayBuffer(): Promise<ArrayBuffer> } }
+export { PLACEMENT_IDENTITY_PREFIX } from './source-identity-hash';
+
 const identities = new WeakMap<SourceBlob, Promise<string | undefined>>();
+/** How often a worker pass checks `cancelled`; a cancelled pass is terminated. */
+const CANCEL_POLL_MS = 100;
 
 /** Hash every byte, including scan payloads, without allocating the whole file.
  * The version identifies this fixed-size, ordered SHA-256 chunk construction;
@@ -22,68 +20,51 @@ const identities = new WeakMap<SourceBlob, Promise<string | undefined>>();
  * feeds the same chunks without re-reading the Blob (#6431): the IFC loader has
  * the whole file in hand, and a thousand awaited `slice().arrayBuffer()` round
  * trips cost several seconds on a 1 GB file before parsing could start. The
- * identity is the same whichever reader supplied the bytes. */
+ * identity is the same whichever reader supplied the bytes.
+ *
+ * In a browser a File source is hashed in a worker: SubtleCrypto copies every
+ * chunk it digests on the calling thread, which cost ~0.8 s of main-thread
+ * time per 343 MB load. The worker reads a SharedArrayBuffer source in place,
+ * otherwise the File itself (a plain ArrayBuffer cannot be shared without a
+ * copy). Where workers are unavailable the pass runs here. */
 export function placementSourceIdentity(
   source: SourceBlob,
   cancelled?: () => boolean,
   bytes?: Uint8Array,
 ): Promise<string | undefined> {
-  const read = bytes && bytes.byteLength === source.size ? memoryChunks(bytes) : blobChunks(source);
-  if (cancelled) return hashSource(source.size, read, cancelled);
+  const run = () => {
+    perfTally('hash.fullSource', source.size);
+    if (typeof Worker !== 'undefined' && typeof File !== 'undefined' && source instanceof File) {
+      const shared = bytes && bytes.byteLength === source.size && typeof SharedArrayBuffer !== 'undefined'
+        && bytes.buffer instanceof SharedArrayBuffer ? bytes.buffer : undefined;
+      return hashInWorker({ file: source, shared }, cancelled);
+    }
+    const read = bytes && bytes.byteLength === source.size ? memoryChunks(bytes) : blobChunks(source);
+    return hashSource(source.size, read, cancelled);
+  };
+  if (cancelled) return run();
   let pending = identities.get(source);
   if (!pending) {
-    pending = hashSource(source.size, read);
+    pending = run();
     identities.set(source, pending);
   }
   return pending;
 }
 
-/** Reads `[start, end)` of the source as an ArrayBuffer-backed view. `slot`
- * (< DIGEST_WINDOW) names a buffer the reader may reuse once that chunk's
- * digest has settled. */
-type ChunkReader = (start: number, end: number, slot: number) => Promise<Uint8Array>;
-
-function blobChunks(source: SourceBlob): ChunkReader {
-  return async (start, end) => new Uint8Array(await source.slice(start, end).arrayBuffer());
-}
-
-/** Plain-ArrayBuffer bytes are digested in place: SubtleCrypto copies its input
- * off the caller's hands, and the loader never writes the source. A
- * SharedArrayBuffer view is rejected by SubtleCrypto, so those chunks are
- * copied into one scratch buffer per digest in flight. */
-function memoryChunks(bytes: Uint8Array): ChunkReader {
-  if (bytes.buffer instanceof ArrayBuffer) return async (start, end) => bytes.subarray(start, end);
-  const scratch: Uint8Array[] = [];
-  return async (start, end, slot) => {
-    scratch[slot] ??= new Uint8Array(Math.min(CHUNK_BYTES, bytes.byteLength));
-    const view = scratch[slot].subarray(0, end - start);
-    view.set(bytes.subarray(start, end));
-    return view;
-  };
-}
-
-/** One full-source pass, counted as `hash.fullSource` (#7022: at most one per load). */
-async function hashSource(size: number, read: ChunkReader, cancelled: () => boolean = () => false): Promise<string | undefined> {
-  try {
-    perfTally('hash.fullSource', size);
-    const chunks = [`${PLACEMENT_IDENTITY_PREFIX}${size}`];
-    const inFlight: Promise<string | null>[] = [];
-    const settleOldest = async () => {
-      const hash = await inFlight.shift();
-      if (hash) chunks.push(hash);
-      return !!hash;
-    };
-    for (let start = 0, slot = 0; start < size; start += CHUNK_BYTES, slot = (slot + 1) % DIGEST_WINDOW) {
-      if (inFlight.length === DIGEST_WINDOW && !await settleOldest()) return undefined;
-      if (cancelled()) return undefined;
-      inFlight.push(sha256Hex(await read(start, Math.min(size, start + CHUNK_BYTES), slot)));
+function hashInWorker(request: SourceIdentityRequest, cancelled?: () => boolean): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const worker = new Worker(new URL('./source-identity.worker.ts', import.meta.url), { type: 'module' });
+    const poll = cancelled ? setInterval(() => { if (cancelled()) finish(undefined); }, CANCEL_POLL_MS) : undefined;
+    function finish(identity: string | undefined) {
+      if (poll !== undefined) clearInterval(poll);
+      worker.terminate();
+      resolve(identity);
     }
-    while (inFlight.length) if (!await settleOldest()) return undefined;
-    if (cancelled()) return undefined;
-    const digest = await sha256Hex(new TextEncoder().encode(chunks.join(':')));
-    return digest ? `${PLACEMENT_IDENTITY_PREFIX}${digest}` : undefined;
-  } catch (error) {
-    console.warn('[Reposition] Source identity unavailable:', error);
-    return undefined;
-  }
+    worker.onmessage = (event: MessageEvent<string | undefined>) => finish(cancelled?.() ? undefined : event.data ?? undefined);
+    worker.onerror = (event) => {
+      console.warn('[Reposition] Source identity worker failed:', event.message);
+      finish(undefined);
+    };
+    worker.postMessage(request);
+  });
 }

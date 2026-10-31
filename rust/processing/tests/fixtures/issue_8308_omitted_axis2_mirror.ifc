@@ -1,0 +1,61 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('#8308: omitted Axis2 of IfcCartesianTransformationOperator3D is IfcSecondProjAxis +Y, not Axis3 x Axis1'),'2;1');
+FILE_NAME('issue_8308_omitted_axis2_mirror.ifc','2026-10-31T00:00:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+/* One asymmetric L profile (area 0.28, centroid (27/70, 13/70)) extruded 2 m,
+   mapped four ways. Hand-derived IfcBaseAxis frames (X, Y, Z columns):
+   #100 Axis1=-X, Axis2=$          -> (-X, +Y, +Z) det -1, centroid (-27/70, 13/70, 1)
+   #101 Axis1=-X, Axis2=+Y         -> the same frame, authored
+   #102 Axis1=$,  Axis2=$, Axis3=-Z -> (+X, +Y, -Z) det -1, centroid (27/70, 13/70, -1)
+   #103 Axis1=+Y, Axis2=$          -> +Y projects to nothing; Z x X = -X:
+                                      (+Y, -X, +Z) det +1, centroid (-13/70, 27/70, 1) */
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCDIRECTION((0.,0.,1.));
+#4=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-7,#2,$);
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#6=IFCUNITASSIGNMENT((#5));
+#7=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Project',$,$,$,$,(#4),#6);
+#8=IFCLOCALPLACEMENT($,#2);
+#9=IFCSITE('0YvctVUKr0kugbFTf53O9M',$,'Site',$,$,#8,$,$,.ELEMENT.,$,$,$,$,$);
+#10=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9N',$,$,$,#7,(#9));
+#16=IFCCARTESIANPOINT((0.,0.));
+#17=IFCCARTESIANPOINT((1.,0.));
+#18=IFCCARTESIANPOINT((1.,0.2));
+#19=IFCCARTESIANPOINT((0.2,0.2));
+#20=IFCCARTESIANPOINT((0.2,0.6));
+#21=IFCCARTESIANPOINT((0.,0.6));
+#22=IFCPOLYLINE((#16,#17,#18,#19,#20,#21,#16));
+#23=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#22);
+#24=IFCEXTRUDEDAREASOLID(#23,#2,#3,2.);
+#25=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#24));
+#26=IFCREPRESENTATIONMAP(#2,#25);
+#30=IFCDIRECTION((-1.,0.,0.));
+#31=IFCDIRECTION((0.,1.,0.));
+#32=IFCDIRECTION((0.,0.,-1.));
+#40=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#30,$,#1,1.,#3);
+#41=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#30,#31,#1,1.,#3);
+#42=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,#32);
+#43=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#31,$,#1,1.,#3);
+#50=IFCMAPPEDITEM(#26,#40);
+#51=IFCMAPPEDITEM(#26,#41);
+#52=IFCMAPPEDITEM(#26,#42);
+#53=IFCMAPPEDITEM(#26,#43);
+#60=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#50));
+#61=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#51));
+#62=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#52));
+#63=IFCSHAPEREPRESENTATION(#4,'Body','MappedRepresentation',(#53));
+#70=IFCPRODUCTDEFINITIONSHAPE($,$,(#60));
+#71=IFCPRODUCTDEFINITIONSHAPE($,$,(#61));
+#72=IFCPRODUCTDEFINITIONSHAPE($,$,(#62));
+#73=IFCPRODUCTDEFINITIONSHAPE($,$,(#63));
+#100=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9a',$,'omitted mirror',$,$,#8,#70,$,.NOTDEFINED.);
+#101=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9b',$,'authored mirror',$,$,#8,#71,$,.NOTDEFINED.);
+#102=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9c',$,'reversed axis3',$,$,#8,#72,$,.NOTDEFINED.);
+#103=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9d',$,'collapsed default',$,$,#8,#73,$,.NOTDEFINED.);
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('0YvctVUKr0kugbFTf53O9e',$,$,$,(#100,#101,#102,#103),#9);
+ENDSEC;
+END-ISO-10303-21;

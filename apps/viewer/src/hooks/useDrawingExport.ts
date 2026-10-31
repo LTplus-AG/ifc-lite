@@ -43,7 +43,7 @@ import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMat
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
-import { drawCutPolygonsPdf, prepareCutPolygonsPdf, type PdfCutPolygon } from '@/lib/export/section-pdf-cut-polygons';
+import { drawCutPolygonsPdf, isPagePoint, prepareCutPolygonsPdf, type PdfCutPolygon } from '@/lib/export/section-pdf-cut-polygons';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
@@ -1120,10 +1120,9 @@ function useDrawingExport({
           if (!displayOptions.showHiddenLines && line.visibility === 'hidden') continue;
 
           const { start, end } = line.line;
-          // Checked on the page: a finite model value can overflow there.
           const p0 = mapPoint(start.x, start.y);
           const p1 = mapPoint(end.x, end.y);
-          if (![p0.x, p0.y, p1.x, p1.y].every(Number.isFinite)) continue;
+          if (!isPagePoint(p0) || !isPagePoint(p1)) continue; // checked on the page, see isPagePoint
 
           // Shared with the to-scale 3D-view PDF (#2042) so the two writers
           // cannot drift into two different line hierarchies.

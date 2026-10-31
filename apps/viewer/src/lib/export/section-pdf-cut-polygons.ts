@@ -29,22 +29,27 @@ export interface PdfCutPolygon {
   /** Page-space rings that survived (outer first when drawn). */
   rings: Point[][];
   /**
-   * The outer ring is drawable and encloses area, and no hole of two or more
-   * points has non-finite page coordinates (jsPDF cannot draw it; every other
-   * hole fills as in the SVG). Then an even-odd fill is safe and the outline
+   * The outer ring is drawable and encloses area, and every hole of two or
+   * more points is drawable (jsPDF cannot draw the others; any other hole
+   * fills as in the SVG). Then an even-odd fill is safe and the outline
    * stands in for the entity's cut lines.
    */
   fillable: boolean;
 }
 
-const finiteRing = (ring: Point[]) => ring.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-const drawableRing = (ring: Point[]) => ring.length >= 2 && finiteRing(ring);
+/**
+ * A page point jsPDF can write. It throws on NaN, writes Infinity as a broken
+ * operand and switches to exponential notation (also invalid PDF) from 1e21;
+ * 1e15 mm is far beyond any page, so nothing visible is lost.
+ */
+export const isPagePoint = (p: Point) => Math.abs(p.x) < 1e15 && Math.abs(p.y) < 1e15;
+const drawableRing = (ring: Point[]) => ring.length >= 2 && ring.every(isPagePoint);
 
 /**
- * Whether a ring encloses area. Collinear or repeated points give zero only up
- * to float rounding, so the threshold scales with the ring's size, and the
- * area is taken relative to the first point: at survey coordinates (LV95 is
- * around 2.6e6 m) raw shoelace products lose the small area to rounding.
+ * Whether a page ring encloses area. Collinear or repeated points give zero
+ * only up to float rounding, so the threshold scales with the ring's size, and
+ * the area is taken relative to the first point, because far-off coordinates
+ * (LV95 survey data maps to large page values) lose a small area to rounding.
  */
 function enclosesArea(ring: Point[]): boolean {
   const o = ring[0];
@@ -62,8 +67,7 @@ function enclosesArea(ring: Point[]): boolean {
 }
 
 /**
- * Rings that cannot be drawn are dropped: jsPDF throws on NaN and writes
- * Infinity as a broken operand.
+ * Rings that cannot be drawn (see `isPagePoint`) are dropped.
  * See `fillable` for when a polygon is filled and covers its cut lines.
  */
 export function prepareCutPolygonsPdf(
@@ -80,7 +84,7 @@ export function prepareCutPolygonsPdf(
     return {
       rings: [pageOuter, ...pageHoles].filter(drawableRing),
       fillable: drawableRing(pageOuter) && enclosesArea(pageOuter)
-        && pageHoles.every((ring) => ring.length < 2 || finiteRing(ring)),
+        && pageHoles.every((ring) => ring.length < 2 || drawableRing(ring)),
     };
   }).map(({ polygon, style, geometry }) => ({ polygon, style, ...geometry }));
 }

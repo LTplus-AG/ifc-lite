@@ -67,7 +67,7 @@ function buildDrawing({ polygonColor, noOuter = false, nanVertex, cutLine = fals
       scale: 50,
     },
     lines: cutLine
-      ? [{ line: { start: { x: 0, y: 0 }, end: { x: cutLine === 'overflow' ? 1e308 : 4, y: 0 } }, category: 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
+      ? [{ line: { start: { x: 0, y: 0 }, end: { x: cutLine === 'overflow' ? 1e308 : cutLine === 'huge' ? 1e20 : 4, y: 0 } }, category: cutLine === 'huge' ? 'projection' : 'cut', visibility: 'visible', entityId: 7, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }]
       : [],
     cutPolygons: twoWalls ? [wall, { ...wall, entityId: 8 }] : [wall],
     projectionPolygons: [],
@@ -104,8 +104,8 @@ interface ExportOptions {
   twoWalls?: boolean;
   /** Corrupt geometry: a NaN vertex in the hole, the outer ring, or both. */
   nanVertex?: 'hole' | 'outer' | 'all';
-  /** Also carry the wall's bottom edge as a `cut` line; 'overflow' puts its end at 1e308 m. */
-  cutLine?: boolean | 'overflow';
+  /** Also carry the wall's bottom edge as a `cut` line; 'overflow' puts its end at 1e308 m, 'huge' is a projection line ending at 1e20 m (exponential notation in jsPDF). */
+  cutLine?: boolean | 'overflow' | 'huge';
 }
 
 type Format = 'pdf' | 'svg';
@@ -334,6 +334,11 @@ describe('handleExportPDF (non-sheet) edge cases', () => {
     assert.ok(!/Infinity|NaN/.test(text), 'no broken operand reaches the content stream');
     assert.ok(!text.includes('f*'), 'the opening jsPDF cannot draw is not painted solid');
     assert.ok(text.includes('h\nS\n'), 'the wall is still outlined');
+  });
+
+  it('drops a line whose page coordinate jsPDF would write in exponential notation (#8464)', async () => {
+    const text = await exportPdf({ cutLine: 'huge' });
+    assert.ok(!/\de[+-]\d/.test(text.slice(text.indexOf('stream'))), 'no exponential operand in the content stream');
   });
 
   it('still fills a real wall at LV95-scale coordinates (#8464)', async () => {

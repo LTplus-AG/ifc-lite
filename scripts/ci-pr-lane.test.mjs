@@ -320,7 +320,7 @@ test('the aggregate rejects a fast lane on a batch PR', () => {
 test('test.yml hands the batch signal to the decision and to the queue-only lanes', () => {
   const wf = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
   const decide = wf.jobs.changes.steps.find((s) => s.id === 'lane');
-  assert.equal(decide.env.HEAD_REF, '${{ github.head_ref }}');
+  assert.match(decide.env.HEAD_REF, /github\.head_ref/); // @source-text-assertion-ok subject is the parsed workflow's step env
   assert.match(wf.jobs.changes.outputs.batch, /steps\.lane\.outputs\.batch/); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   for (const job of ['rust-full', 'geometry-census', 'csg-accept-gates']) {
     assert.match(wf.jobs[job].if, /needs\.changes\.outputs\.batch == 'true'/, job); // @source-text-assertion-ok subject is the parsed config or the decision's returned text

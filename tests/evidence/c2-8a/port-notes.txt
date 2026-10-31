@@ -96,3 +96,28 @@ Qualification (pop-os, ifc-fleet local admission, rustc 1.93.0-nightly 2025-11-1
   * instructions.sh per phase, head/base: worst 1.000309 (ISSUE_129 parse /
     entity scan / preprocess); geometry 0.999962 Haus, 0.999592 duplex,
     0.997836 ISSUE_129; total 1.000008 / 0.999633 / 0.997858. All <= 1.0005.
+
+Pre-merge harness round (review of #8386), at 9c18ae1550 (Rust identical to
+the earlier heads; only tests/evidence/c2-8a changed)
+- identity_probe.rs now hashes every InstanceRecord field (colour/transform as
+  f32 bits). qualify.sh features: fails on differing exit codes, a nonzero
+  exit with no named failing test, or differing summed totals; fixture linking
+  follows symlinked directories; the base export's tests/models mirrors the
+  head's final tree (manifest.json included) and both trees' path+SHA-256
+  lists must match before any test runs.
+- identity, job 8d5cd585-263d-4d6d-9446-3c8674a01090: Haus, duplex, ISSUE_129
+  IDENTICAL. Counts, FNV and diagnostics SHA-256 as above; instances 0 on all
+  three (default process_geometry emits none). The output SHA-256 changes
+  with the new serialization (instance records instead of a count) on both
+  sides alike:
+    AC20-FZK-Haus 1ef3a899ea90abdec5be21c2ec971a605c9e3b57ad47fd0583ec0378b8b734e1
+    duplex        26d63e1bba65ff4e56dbee55c02983da908e05c1f222f10d0a0c4d3e0f570744
+    ISSUE_129     fc6c61a64bf6c98f37fa424cb6d0772df67cb293395294e64e0d50e87b1f77e6
+- features, job 719cc363-02ff-46ba-9ea2-d1ca895ffba5: fixture trees 185 files
+  on both sides, list SHA-256 474e0297548d1e8729b5663fde3653b8697e2aee92181f165b498471cd1066c2;
+  base and head exit 0, 176 binaries, 3079 passed / 0 failed / 35 ignored,
+  same (empty) failing set.
+- gates, job 3fd6f5e4-000f-4838-8588-a74e5deba063: all eight steps exit 0
+  (a first attempt, job 87894b8b, was refused at disk admission before
+  running anything).
+- Instruction counts not re-run: no production rust/ changed.

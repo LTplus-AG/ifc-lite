@@ -39,7 +39,7 @@ async function setup(retained: RetainedGeometrySummary | undefined) {
   const model = { ...fixtureModel('m'), ifcDataStore: store, schemaVersion: 'IFC4' as const,
     ...(retained ? { retainedGeometry: retained } : {}) };
   useViewerStore.setState({ ...fixtureModels(model), sectionPlane: { ...initial.sectionPlane,
-    enabled: true, custom: { normal: [1, 0, 0], distance: 0 } } });
+    enabled: true, custom: { normal: [1, 0, 0], distance: 0, pickedAt: [0, 0, 0], tangent: [0, 1, 0], bitangent: [0, 0, 1] } } });
   setGlobalRendererRef({ current: { getCamera: () => ({ getSceneBounds: () =>
     ({ min: { x: -5, y: -5, z: -5 }, max: { x: 5, y: 5, z: 5 } }) }) } as unknown as Renderer });
   render(<ExportDialog surface="ribbon" />);

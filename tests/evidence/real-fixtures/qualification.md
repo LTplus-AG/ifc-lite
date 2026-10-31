@@ -96,3 +96,14 @@ All changes after the tested source are qualification documentation/evidence
 only. The seven implementation commits were inherited; this continuation
 independently verified the merged native coverage, actual CLI exports, actual
 browser parity/viewer behavior, and default retained-free build described here.
+
+The combined lane's execution receipt is finalized (source unchanged), but its
+storage status remains `evidence_pending`. Supported `storage job-recover-capture`
+refused with `original finalization requires owner reconciliation`. The refusal
+was respected: no receipt edits, lock removals or project-command replay.
+Compact results and sublog hashes are committed here; original logs remain at
+`landing-perf/real-fixtures/finish/lane-c9b69f3a01`. Native re-bless and separate
+default-build evidence publication are verified. Final local post-evidence
+pre-handoff again reports OBSERVED with restored witnesses green; its three
+missing dependency/bundle skips remain explicitly separate from the successful
+Pop default-build pre-handoff.

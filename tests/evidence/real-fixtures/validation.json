@@ -95,5 +95,6 @@
     "browser-parity.log": "57ab85006200532d7af00d5c062f931ea40b310f7463462df4103b0df1308a51",
     "viewer-e2e.log": "d9279fcf38ebc40e13c9d39374843a47b91c9f15792e18ab2e2208633246a18a",
     "pre-handoff.log": "78b57a51a35c85591a7c975c3e3fcdd18759784527993624f266ed9cef6e13b1"
-  }
+  },
+  "evidencePublication": "pending; capture recovery refused: original finalization requires owner reconciliation; no project command replayed"
 }

@@ -18,7 +18,6 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GraphicOverrideEngine, type Drawing2D, type GraphicOverrideRule } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
-import { pdfColor } from '@/lib/export/pdf-color';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 
@@ -296,21 +295,25 @@ describe('handleExportSVG uses the same resolver', () => {
   });
 });
 
-describe('pdfColor', () => {
-  it('expands short hex, splits alpha, reads rgb()/rgba(), rejects the rest', () => {
-    assert.deepEqual(pdfColor('#abc'), { color: '#aabbcc', alpha: 1 });
-    assert.deepEqual(pdfColor('#112233'), { color: '#112233', alpha: 1 });
-    assert.deepEqual(pdfColor('#112233ff'), { color: '#112233', alpha: 1 });
-    assert.deepEqual(pdfColor('#11223300'), { color: '#112233', alpha: 0 });
-    assert.deepEqual(pdfColor('#f008'), { color: '#ff0000', alpha: 136 / 255 });
-    assert.deepEqual(pdfColor(' rgba(255, 0, 0, 0.5) '), { color: '#ff0000', alpha: 0.5 });
-    assert.deepEqual(pdfColor('rgb(0,128,255)'), { color: '#0080ff', alpha: 1 });
-    assert.deepEqual(pdfColor('transparent'), { color: '#000000', alpha: 0 });
-    assert.deepEqual(pdfColor('NONE'), { color: '#000000', alpha: 0 });
-    assert.deepEqual(pdfColor('Red'), { color: 'red', alpha: 1 }, 'names pass through for jsPDF to resolve');
-    assert.equal(pdfColor('rgb(1.2.3,0,0)'), null);
-    assert.equal(pdfColor('rgb(300,0,0)'), null);
-    assert.equal(pdfColor('#12'), null);
-    assert.equal(pdfColor(''), null);
-  });
+// Through the export, not the parser module directly: the revert oracle
+// (Changed tests observe production) reverts production files, and a test
+// importing a file the PR adds would fail to load instead of going red.
+describe('override colour forms in the PDF', () => {
+  const cases: { fillColor: string; fill: string; opacity?: RegExp }[] = [
+    { fillColor: '#abc', fill: '#aabbcc' },
+    { fillColor: '#f008', fill: '#ff0000', opacity: /\/ca 0\.53\b/ },
+    { fillColor: ' RGBA(255, 0, 0, 0.5) ', fill: '#ff0000', opacity: /\/ca 0\.5\b/ },
+    { fillColor: 'rgb(0,128,255)', fill: '#0080ff' },
+    { fillColor: 'Red', fill: '#ff0000' },
+    { fillColor: 'rgb(300,0,0)', fill: '#b0b0b0' },
+    { fillColor: 'rgb(1.2.3,0,0)', fill: '#b0b0b0' },
+    { fillColor: '', fill: '#b0b0b0' },
+  ];
+  for (const { fillColor, fill, opacity } of cases) {
+    it(`${JSON.stringify(fillColor)} fills ${fill}`, async () => {
+      const text = await exportPdf({ overrideRules: [wallRule({ fillColor })] });
+      assert.ok(setsColor(text, 'fill', fill));
+      if (opacity) assert.match(text, opacity);
+    });
+  }
 });

@@ -216,8 +216,7 @@ function cylinderPixel(): string {
 }
 const asFile = (name: string, text: string) => ({ name, mimeType: 'application/ifc', buffer: Buffer.from(text) });
 /** The glTF JSON chunk of a GLB. */
-function glbJson(glb: Buffer): { meshes?: unknown[]; nodes?: { mesh?: number }[]; accessors?: { count: number }[];
-  materials?: { pbrMetallicRoughness?: { metallicFactor?: number; roughnessFactor?: number } }[] } {
+function glbJson(glb: Buffer): { meshes?: unknown[]; accessors?: { count: number }[] } {
   expect(glb.readUInt32LE(0), 'glTF magic').toBe(0x46546c67);
   const length = glb.readUInt32LE(12);
   expect(glb.readUInt32LE(16), 'first chunk is JSON').toBe(0x4e4f534a);

@@ -198,15 +198,12 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
       // from-meshes assembler over the meshes the viewer already holds.
       // Re-meshing uses full fidelity; merged layers and manual workspace
       // placement require the current meshes to preserve their content/frame.
-      // A retained-kernel model never re-meshes its file: that is the exact engine, so the GLB would not be the
-      // geometry on screen (it would carry the products the retained kernel refused). It takes the held meshes.
+      // A retained-kernel model never re-meshes its file (the exact engine's geometry is not the one on screen): it
+      // takes the held meshes.
       const canUseSource =
         !federatedModel?.retainedGeometry &&
         !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
-        colorSource === 'rendering' &&
-        !mergeLayers &&
-        idOffset === 0 &&
-        !!sourceFile &&
+        colorSource === 'rendering' && !mergeLayers && idOffset === 0 && !!sourceFile &&
         /\.ifc$/i.test(sourceFile.name);
 
       fromSourceBytes = canUseSource;

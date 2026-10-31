@@ -16,7 +16,8 @@ import { retainedEngine } from '../../../vite-plugins/retained-engine';
 const digest = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
 async function fixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'viewer-engine-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  // A Vite server closed by a later hook can still be writing into .vite here.
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const directory = join(root, 'engine');
   // Inert inventory, not a geometry engine. validateEngine remains real.
   const paths = ['pkg-retained/ifc-lite.js', 'pkg-retained/ifc-lite_bg.wasm', 'pkg-retained/package.json',

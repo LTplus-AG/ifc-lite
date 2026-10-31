@@ -88,6 +88,10 @@
       "destination": "/oauth/bcf/callback.html"
     },
     {
+      "source": "/oauth/registry/callback",
+      "destination": "/oauth/registry/callback.html"
+    },
+    {
       "source": "/mcp",
       "destination": "/index.html"
     },

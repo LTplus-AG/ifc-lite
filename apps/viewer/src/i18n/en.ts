@@ -160,6 +160,7 @@ import { storeyContextEn } from './catalogues/storey-context.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
+import { registryEn } from './catalogues/registry.en';
 import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
@@ -316,6 +317,7 @@ export const en = {
   ...sheetsPdfEn,
   ...spaceEnvelopeEn,
   ...idsStudioEn,
+  ...registryEn,
 } as const;
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */

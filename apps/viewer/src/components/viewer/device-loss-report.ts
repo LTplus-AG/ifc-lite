@@ -315,6 +315,7 @@ export function subscribeViewportHealth(
   onRecovered?: () => void,
 ): () => void {
   let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
+  let refusalCaptured = false;
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
@@ -335,11 +336,15 @@ export function subscribeViewportHealth(
       }
       const attemptRecovery = !recovery && Boolean(renderer.recoverDevice);
       const admitted = attemptRecovery && admitRecovery();
-      // A second signal for an already reported loss (synchronous, then
-      // `device.lost`) must not capture a second refusal.
-      const newLoss = !reported;
       reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice) && (admitted || !attemptRecovery));
-      if (attemptRecovery && !admitted && newLoss) reportRecoveryBudgetExhausted();
+      // Once per subscription: a second signal for the same lost device
+      // (synchronous, then `device.lost`) must not capture a second refusal, but
+      // a remounted viewport's new renderer still reports its own.
+      if (attemptRecovery && !admitted && !refusalCaptured) {
+        refusalCaptured = true;
+        reportRecoveryBudgetExhausted();
+      }
+      if (admitted) refusalCaptured = false;
       if (admitted && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },

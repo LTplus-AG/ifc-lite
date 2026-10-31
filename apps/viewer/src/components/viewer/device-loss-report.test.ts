@@ -451,6 +451,29 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     }
   });
 
+  it('captures a refusal for a remounted viewport after an earlier refusal', async () => {
+    const h = makeSource();
+    h.source.recoverDevice = async () => ({ ok: true, omissions: [] });
+    const refusals: unknown[] = [];
+    const realEvent = posthog.capture;
+    posthog.capture = ((event: string, props?: unknown) => {
+      if (event === 'device_loss_recovery_failed') refusals.push(props);
+    }) as typeof posthog.capture;
+    try {
+      for (let mount = 0; mount < 2; mount++) {
+        const unsubscribe = subscribeViewportHealth(h.source);
+        for (let i = 0; i < RECOVERY_BUDGET_MAX + 1; i++) {
+          h.listeners.deviceLost.at(-1)!({ message: 'Device was destroyed.', reason: 'destroyed' });
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        }
+        unsubscribe();
+      }
+      assert.equal(refusals.length, 2, 'one refusal for each mounted viewport');
+    } finally {
+      posthog.capture = realEvent;
+    }
+  });
+
   it('keeps the recovery budget across a viewport remount', async () => {
     const h = makeSource();
     let recoveries = 0;

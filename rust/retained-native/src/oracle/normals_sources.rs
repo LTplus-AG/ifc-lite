@@ -32,7 +32,6 @@ pub fn surfaces(bytes: &[u8], sources: &AnalyticQuantitySources, product: u32) -
     for (id,polarity) in products {
         let extrusions = sources.extrusion_definitions.instances.get(&id);
         let disks = sources.swept_disk_descriptions.elements.get(&id);
-        if extrusions.is_none() && disks.is_none() {continue;}
         let (signs,halfspaces) = orientations(&mut decoder,id)?;
         for i in extrusions.into_iter().flatten() {
             let source = &sources.extrusion_definitions.sources.iter().find(|s| s.key==i.source).ok_or("missing prism source")?.source;
@@ -110,6 +109,15 @@ fn orientations(decoder: &mut EntityDecoder<'_>, id: u32) -> Result<(Signs,Vec<S
             }
             IfcType::IfcCsgSolid => vec![(item.ref_at(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION).ok_or("missing TreeRootExpression")?,n.sign)],
             _ => {
+                // A face set's winding is the capture's and the witnesses' polarity to prove;
+                // here each authored row is one flat source surface, whichever way it faces.
+                if matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork | IfcType::IfcPolygonalFaceSet) {
+                    let set = super::super::face_sets::authored(&item,decoder,1.).ok_or("unreadable face set")?;
+                    for (origin,normal) in super::super::face_sets::world_planes(&set,|p| super::super::math::transform(&n.world,p)) {
+                        halfspaces.push(Surface::Plane {origin,normal});
+                        halfspaces.push(Surface::Plane {origin,normal:normal.map(|v| -v)});
+                    }
+                }
                 if item.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {
                     halfspaces.extend(super::halfspaces::surfaces(n.id,&n.world,decoder)?
                         .into_iter().map(|s|s.reversed(n.sign)));

@@ -447,8 +447,9 @@ Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambig
 `appearance_unsupported` is the typed refusal for a binding that carries a texture or an
 indexed colour palette (origin `{site: 'appearance', entity, cause}`). An uncut
 `IfcTriangulatedFaceSet` or `IfcPolygonalFaceSet` publishes its authored triangles in full f64
-with no Worker call, including an open shell, with one face key `row(k)` per authored row; a
-Boolean, opening or affine copy of a face set refuses `operation_unsupported` or `incomplete`.
+with no Worker call, including an open shell, with one face key `row(k)` per authored row. A
+Boolean, opening or affine copy stitches the closed solid first, up to 8,192 triangles; an open
+shell there refuses `kernel_failure` and a larger set refuses `resource_exhausted`.
 A fully presented product carries `marker: 'final'` and an empty `obligationsUnmet` list.
 A product with remaining obligations carries `marker: 'PresentationObligationsUnmet'`
 and its nonempty list; consumers show shape-only for those products. Final describes published

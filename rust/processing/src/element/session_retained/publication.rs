@@ -46,6 +46,8 @@ pub struct ShapePart {
     pub appearance: Option<PartAppearance>,
     pub faces: Option<PartFaces>,
     pub instance_key: Option<[u8; 32]>,
+    /// An uncut, uncopied face set: positions and winding are its authored triangles.
+    pub source_exact: bool,
 }
 #[derive(Debug)]
 pub struct PartAppearance {
@@ -143,6 +145,8 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
                 l.interfaces.iter().any(|&s| super::layer_caps::curved(s)) || host_curved(realization)
             });
             part.halfspace_clipped = realization.halfspace_clipped();
+            part.source_exact = matches!(realization.kind.evidence(), ReceiptEvidence::Construction(completion)
+                if matches!(completion.request().recipe(), RetainedRecipe::FaceSet(_)));
             parts.push(part);
         }
         if parts.is_empty() {

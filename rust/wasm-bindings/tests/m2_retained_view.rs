@@ -59,7 +59,7 @@ fn cube() -> ShapePart {
         ],
         halfspace_clipped: false,
         curved: false,
-        revision_local_faces: vec![], normals: None, appearance: None, faces: None, instance_key: None,
+        revision_local_faces: vec![], normals: None, appearance: None, faces: None, instance_key: None, source_exact: false,
     }
 }
 

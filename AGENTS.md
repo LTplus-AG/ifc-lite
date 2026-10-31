@@ -49,8 +49,8 @@ Run `node scripts/pre-handoff.mjs` after committing. A delegated task is not don
 until it passes or each failure is explained. Report SKIPPED coverage too.
 
 **Push when ready.** Every push runs CI: verify locally or on the fleet first,
-not per intermediate commit. Merge through the queue (`gh pr merge --squash
---auto`); admin merge is for emergencies.
+not per intermediate commit. Merge through the queue (`gh pr merge --auto`);
+admin merge is for emergencies.
 
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.

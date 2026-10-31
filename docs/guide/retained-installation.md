@@ -123,3 +123,13 @@ silently execute exact. Repeat after downloading/installing the actual release
 artifact rather than serving a developer checkout. Use the existing
 `geometry-platform.yml` real Worker and `viewer-retained` tests as the executable
 smoke recipe; this document is a draft, not a claim that a release was hosted.
+
+## Exports from the retained viewer
+
+A model the viewer holds from the retained kernel (`?kernel=retained`) exports the geometry on screen or refuses.
+GLB export always uses the meshes the viewer holds, including GPU-instanced occurrences and their authored
+metallic/roughness; it never re-meshes the file with the exact engine, so products the retained kernel refused are
+absent from the GLB exactly as they are absent from the viewport. USD and the energy models (HBJSON, DFJSON) rebuild
+their geometry from the file with the exact engine; for a retained model they refuse with a message instead of
+exporting geometry that differs from what is shown, and the model must be reloaded with the exact kernel to export
+them. IFC (STEP), the data formats (CSV, JSON) and every format built from the held meshes work unchanged.

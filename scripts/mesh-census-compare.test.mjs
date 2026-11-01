@@ -9,6 +9,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { classify, compare, parseCensus } from './mesh-census-compare.mjs';
 
 const base = {
@@ -16,6 +21,40 @@ const base = {
   open10: 2, nonmanifold10: 0, slivers: 10, degenerate: 0, maxAspect: 100, area: 5, thinArea: 0, coincidentArea: 0, thinCapped: 0, badIndices: 0,
 };
 const row = (patch) => ({ ...base, ...patch });
+
+function runJsonCompare(baseEmpty, branchEmpty) {
+  const dir = mkdtempSync(join(tmpdir(), 'mesh-census-compare-'));
+  try {
+    const basePath = join(dir, 'base.jsonl');
+    const branchPath = join(dir, 'branch.jsonl');
+    for (const path of [basePath, branchPath]) writeFileSync(path, `${JSON.stringify(base)}\n`);
+    if (baseEmpty) writeFileSync(`${basePath}.empty`, `${baseEmpty.join('\n')}\n`);
+    if (branchEmpty) writeFileSync(`${branchPath}.empty`, `${branchEmpty.join('\n')}\n`);
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('./mesh-census-compare.mjs', import.meta.url)), basePath, branchPath, '--json'], { encoding: 'utf8' });
+    assert.equal(result.stderr, '');
+    return { status: result.status, output: JSON.parse(result.stdout) };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('#8533: JSON includes matching empty-model sidecars', () => {
+  const { status, output } = runJsonCompare(['z.ifc', 'a.ifc'], ['a.ifc', 'z.ifc']);
+  assert.equal(status, 0);
+  assert.deepEqual(output.emptyModels, { base: ['a.ifc', 'z.ifc'], branch: ['a.ifc', 'z.ifc'], differs: false });
+});
+
+test('#8533: JSON reports differing empty-model sidecars', () => {
+  const { status, output } = runJsonCompare(['a.ifc'], ['b.ifc']);
+  assert.equal(status, 1);
+  assert.deepEqual(output.emptyModels, { base: ['a.ifc'], branch: ['b.ifc'], differs: true });
+});
+
+test('#8533: JSON omits emptyModels without sidecars', () => {
+  const { status, output } = runJsonCompare(null, null);
+  assert.equal(status, 0);
+  assert.equal(Object.hasOwn(output, 'emptyModels'), false);
+});
 
 test('an unchanged mesh has no verdict', () => {
   assert.equal(classify(base, row({})), null);
@@ -104,7 +143,7 @@ test('a capped mesh new to the branch is unmeasured, not added', () => {
 });
 
 test('a row missing a metric is refused, not read as neutral', () => {
-  const { open, ...partial } = base;
+  const { open: _open, ...partial } = base;
   assert.throws(() => parseCensus(`${JSON.stringify(partial)}\n`), /missing or invalid open/);
 });
 

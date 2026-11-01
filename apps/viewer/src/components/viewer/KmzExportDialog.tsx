@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { buildKmzForModel, kmzSuggestsAbsoluteAltitude, type KmzBuildError } from '@/lib/geo/kmz-export';
@@ -144,6 +145,11 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
   }, [open, selectedModel, georefMutations]);
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    // #8415: the model can become incomplete while this dialog is already open.
+    const live = useViewerStore.getState().models.get(selectedModelId);
+    if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
+      return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+    }
     if (!selectedModel) {
       return { success: false, message: t('geometryExport.kmz.noGeometryError') };
     }

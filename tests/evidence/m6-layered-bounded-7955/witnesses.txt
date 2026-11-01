@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: MPL-2.0
+# #7955: layered bounded bands are measured as one assembly.
+m6_layered_bounded_assembly

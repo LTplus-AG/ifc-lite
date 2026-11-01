@@ -131,7 +131,7 @@ pub fn bake_mesh(m: [f64; 16], positions: &[f64], indices: &[u32]) -> (Vec<f64>,
     transform(m, &mut p, &mut i);
     (p, i, [m[12],m[13],m[14]])
 }
-fn chain<R: NumericalReceipt>(mut node: &RuntimeRealization<R>, bound: usize)
+pub(super) fn chain<R: NumericalReceipt>(mut node: &RuntimeRealization<R>, bound: usize)
     -> Result<(&RuntimeRealization<R>, [f64; 16]), RetainedExecutionError> {
     let mut matrix = IDENTITY;
     for _ in 0..=bound {

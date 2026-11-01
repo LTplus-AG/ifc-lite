@@ -1,0 +1,12 @@
+diff --git a/rust/geometry/src/math/mat4.rs b/rust/geometry/src/math/mat4.rs
+--- a/rust/geometry/src/math/mat4.rs
++++ b/rust/geometry/src/math/mat4.rs
+@@ -51,7 +51,7 @@ pub fn mul(a: &M4, b: &M4) -> M4 {
+ /// meaningful sign: an accumulation seeded with `-0.0` (`Iterator::sum`) kept
+ /// it as `-0.0` where this one gives `+0.0` (dental_clinic #831).
+ pub fn compose_frame(a: &M4, b: &M4) -> M4 {
+-    std::array::from_fn(|i| (0..4).map(|k| a[k * 4 + i % 4] * b[i / 4 * 4 + k]).sum())
++    mul(b, a).map(|value| if value == 0.0 { 0.0 } else { value })
+ }
+ 
+ /// `m` applied to the point `p` (translation included; the affine last row is

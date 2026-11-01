@@ -15,15 +15,25 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
         .ok_or_else(|| Error::geometry("face set missing Coordinates".to_string()))?;
     let positions = read_point_list_f64(decoder, coordinates)?;
     // Exact's plans are the authority for triangulation and winding, so they keep exact's frame,
-    // except where narrowing to f32 merges distinct authored corners: the ring they would clip and
-    // the shell they would orient are then not the authored ones.
-    let frame = narrowing_merges(&positions).then(|| (positions[0], positions[1], positions[2]));
+    // except where narrowing to f32 misstates the authored shape: the ring they would clip and the
+    // shell they would orient are then not the authored ones. Those plans read relative to a point
+    // the faces use, as an unused entry far from them would leave the shape misstated.
+    let frame_at = |point: Option<usize>| point.filter(|_| narrowing_misstates(&positions, scale))
+        .and_then(|point| positions.get(point * 3..point * 3 + 3)).map(|p| (p[0], p[1], p[2]));
     let triangles = if polygonal {
         let faces = item.attr(slot::IfcPolygonalFaceSet::FACES)
             .and_then(AttributeValue::as_list).map_or(0, <[AttributeValue]>::len) as u32;
-        polygonal_plan::lower(item, decoder, frame)?.source_triangles(faces)
+        let plan = polygonal_plan::lower(item, decoder, None)?;
+        match frame_at(plan.first_used_point()) {
+            Some(frame) => plan.in_frame(decoder, coordinates, frame)?,
+            None => plan,
+        }.source_triangles(faces)
     } else {
-        triangulated_plan::lower(item, decoder, frame)?.source_triangles()
+        let plan = triangulated_plan::lower(item, decoder, None)?;
+        match frame_at(plan.first_used_point()) {
+            Some(frame) => plan.in_frame(decoder, coordinates, frame)?,
+            None => plan,
+        }.source_triangles()
     };
     if positions.len() != triangles.positions.len() {
         return Err(Error::geometry("face set point list reads differently in f64".to_string()));
@@ -34,10 +44,35 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     let (source_corners, source_slots) = (kept(&authored, &keep, 3), kept(&slots, &keep, 3));
     crate::resource::charge(crate::resource::Cost {
         work: (positions.len() / 3 + rows.len()) as u64,
-        live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4 + source_corners.len() * 4 + source_slots.len()) as u64,
+        live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4 + source_corners.len() * 4 + source_slots.len()) as u64
+            + u64::from(row_count).saturating_sub(emitted_rows(&rows)) * DROPPED_ROW_BYTES,
         ..Default::default()
     })?.retain();
     Ok(RetainedFaceSet { source_id: item.id, positions, triangles, rows, row_count, source_corners, source_slots, length_unit_scale: scale })
+}
+
+/// A row with no triangle keeps a slot in the face table downstream though it adds nothing
+/// to the request, so a file of dropped rows pays for those slots here, before they exist.
+const DROPPED_ROW_BYTES: u64 = 256;
+
+/// One f32 step here is a visible length: distinct levels can round together though every
+/// point stays distinct, leaving a real face collinear.
+const COARSE_F32_STEP_METRES: f64 = 1e-3;
+
+/// How many authored rows still hold a triangle: one polygon row can hold many.
+fn emitted_rows(rows: &[u32]) -> u64 {
+    let mut distinct = rows.to_vec();
+    distinct.sort_unstable();
+    distinct.dedup();
+    distinct.len() as u64
+}
+
+/// Whether f32 cannot be trusted with these points: its step is coarse at their magnitude, or
+/// two distinct authored points become one. Below that, a collapse is a sub-millimetre sliver,
+/// which exact drops too.
+fn narrowing_misstates(positions: &[f64], scale: f64) -> bool {
+    let magnitude = positions.iter().fold(0_f64, |worst, v| worst.max(v.abs()));
+    magnitude * scale * f64::from(f32::EPSILON) > COARSE_F32_STEP_METRES || narrowing_merges(positions)
 }
 
 /// Whether two distinct authored points become one in f32.

@@ -43,6 +43,7 @@ use issuance::{PendingRetainedOperation, IssuedRetainedOperation};
 use value::RuntimeRealization;
 mod predispatch;
 pub(super) mod affine_final;
+mod chordal;
 use predispatch::RuntimeRejectedExecution;
 mod entry;
 pub(super) mod admission;

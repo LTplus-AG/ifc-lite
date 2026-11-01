@@ -36,6 +36,7 @@ it('the viewer benchmark flag changes actual Scene upload grouping (#6993)', () 
     scene.clear();
     return allocations;
   }
+  // Vertex + index per batch, plus one shared uniform arena page per device.
   assert.equal(run(0), 3);
-  assert.equal(run(1), 6);
+  assert.equal(run(1), 5);
 });

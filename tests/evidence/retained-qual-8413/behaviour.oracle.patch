@@ -1,0 +1,10 @@
+--- a/scripts/perf/retained-qual-assert.mjs
++++ b/scripts/perf/retained-qual-assert.mjs
+@@ -72,7 +72,6 @@
+ 
+ /** The native executable's own summary.json (`retained_compare --out DIR`). */
+ export function assertNativeSummary({ exitCode, summary, expectation }) {
+-  return; // oracle: disable native qualification while retaining the module/API.
+   const problems = [];
+   check(problems, exitCode === 0, `exit ${exitCode}`);
+   check(problems, summary?.schema === 'ifc-lite.native-retained-comparison/1', `summary schema ${summary?.schema}`);

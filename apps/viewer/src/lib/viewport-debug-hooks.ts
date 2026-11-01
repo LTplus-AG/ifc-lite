@@ -109,6 +109,8 @@ export function installViewportDebugHooks(
   // Opt-in only: a renderer starts with timing off, so the default install
   // still just stores the renderer (#5895 witness contract).
   if (timingFlag === true || timingFlag === 1 || timingFlag === '1') renderer.setGpuFrameTiming(true);
+  // Constant-time read of the renderer-owned snapshot; no scene collection walks.
+  host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
   host.__ifc_lite_render_stats__ = () => ({
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),
@@ -196,6 +198,7 @@ export function installViewportDebugHooks(
 export function clearViewportDebugHooks(): void {
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
+  delete host.__ifc_lite_render_frame__;
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_capture_color_frame__;
   delete host.__ifc_lite_view_projection__;

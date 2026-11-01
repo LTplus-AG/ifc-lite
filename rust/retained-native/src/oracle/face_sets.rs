@@ -97,6 +97,18 @@ pub fn world_planes(set: &AuthoredFaceSet, world: impl Fn([f64; 3]) -> [f64; 3])
     }).collect()
 }
 
+/// f64 noise in a published position, far below `faceSetCornerMetres`.
+const AREA_NOISE_METRES: f64 = 1e-12;
+
+/// The diagonal of a row's bounds, in metres.
+fn extent(points: &[[f64; 3]]) -> f64 {
+    let d: [f64; 3] = std::array::from_fn(|axis| {
+        let values = points.iter().map(|p| p[axis]);
+        values.clone().fold(f64::NEG_INFINITY, f64::max) - values.fold(f64::INFINITY, f64::min)
+    });
+    dot(d, d).sqrt()
+}
+
 /// The solid an authored shell bounds, by the divergence theorem over its rows, in the
 /// set's own units cubed. `None` where a row is warped and has no single plane.
 pub fn authored_volume(set: &AuthoredFaceSet) -> Option<f64> {
@@ -212,7 +224,10 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
         })).fold(0., f64::max);
         if area < 1e-6 * longest { continue; }
         if published == 0. { result.missing_rows += 1; continue; }
-        result.area_relative = result.area_relative.max((published - area).abs() / area);
+        // A real sliver's own area is smaller than arithmetic noise over its length, so only
+        // what exceeds that noise is a disagreement.
+        let excess = ((published - area).abs() - AREA_NOISE_METRES * extent(&row.points)).max(0.);
+        result.area_relative = result.area_relative.max(excess / area);
     }
     result
 }
@@ -250,6 +265,26 @@ mod tests {
     fn issue_8291_faithful_part_has_no_deviation() {
         let d = deviation(&sheet(), &POSITIONS, &[0, 1, 2, 1, 3, 2], &[Some(0), Some(1)]);
         assert_eq!(d, RowDeviation::default());
+    }
+    #[test]
+    fn issue_8291_arithmetic_noise_on_a_sliver_is_not_an_area_disagreement() {
+        // A 1 m long sliver of 1e-15 m2, as real slabs author: its published area can differ
+        // by 1e-18 m2, which is 0.1% of it and still only noise.
+        let (width, nudge) = (2e-15, 2e-18);
+        let set = AuthoredFaceSet { first: [0.; 3], rows: vec![Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., width, 0.]], outer: 3, area_m2: Some(width / 2.) }] };
+        let positions = [0., 0., 0., 1., 0., 0., 0., width + nudge, 0.];
+        assert_eq!(deviation(&set, &positions, &[0, 1, 2], &[Some(0)]).area_relative, 0.);
+        // A real area loss still counts.
+        let row = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) };
+        let halved = [0., 0., 0., 1., 0., 0., 0., 0.5, 0.];
+        assert!(deviation(&AuthoredFaceSet { first: [0.; 3], rows: vec![row] }, &halved, &[0, 1, 2], &[Some(0)]).area_relative > 0.4);
+    }
+    #[test]
+    fn issue_8291_a_lost_warped_row_is_observed() {
+        let mut set = sheet();
+        set.rows[1].area_m2 = None;
+        let d = deviation(&set, &POSITIONS, &[0, 1, 2], &[Some(0)]);
+        assert_eq!(d.missing_rows, 1);
     }
     #[test]
     fn issue_8291_mutations_are_observed() {

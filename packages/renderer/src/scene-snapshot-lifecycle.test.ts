@@ -172,7 +172,7 @@ describe('finished-scene snapshot', () => {
     const snapshot = await captureScene(model(), device);
     const removals = (scene: Scene) => {
       const removed: number[] = [];
-      scene.removeInstancedTemplatesForModel = (index: number) => { removed.push(index); };
+      scene.removeInstancedTemplatesForModel = (index: number) => { removed.push(index); return 0; };
       return removed;
     };
 

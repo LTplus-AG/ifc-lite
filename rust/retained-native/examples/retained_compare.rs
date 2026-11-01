@@ -16,6 +16,8 @@ mod report;
 mod layer_report;
 #[path = "compare/source.rs"]
 mod source;
+#[path = "compare/analytic_sources.rs"]
+mod analytic_sources;
 #[path = "compare/tolerances.rs"]
 mod tolerances;
 #[path = "compare/registry.rs"]
@@ -153,7 +155,7 @@ fn compare(
         }
     }
     drop(decoder);
-    let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes, None);
+    let sources = analytic_sources::analytic_sources(&bytes);
     let type_maps = canonical_type_maps(&source);
     report.type_candidates += type_maps.len();
     let oracle_source = source.clone();
@@ -162,7 +164,8 @@ fn compare(
         ifc_lite_retained_native::oracle::type_maps::expected_with(model_source.decoder(), &sources, maps).map(|value| (id, value))
     }).collect::<Result<_, _>>()?;
     let retraced = source::retraced(path, &sources, &mut source.decoder(), tolerances)?;
-    let mut opening_expectations = openings::expectations(&bytes, &sources)?;
+    let (mut opening_expectations, opening_gaps) = openings::expectations_and_gaps(&bytes, &sources)?;
+    report.opening_gaps = opening_gaps;
     let retraced_opening = source::retraced_opening(path, &sources, &mut source.decoder(), tolerances)?;
     let has_retraced_opening = retraced_opening.is_some();
     if let Some(expected) = retraced_opening {

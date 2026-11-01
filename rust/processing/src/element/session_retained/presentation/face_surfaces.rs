@@ -78,10 +78,13 @@ pub(crate) fn is_face_set(recipe: &RetainedRecipe) -> bool { matches!(recipe, Re
 fn face_set(reader: &mut Reader<'_>) -> Option<Vec<SourceFace>> {
     let [format, vertices, triangles, row_count] = [reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?];
     let (vertices, triangles, row_count) = (vertices as usize, triangles as usize, row_count as usize);
-    if format != 3 || row_count > reader.bytes.len() { return None; }
+    if format != 3 { return None; }
     let positions = (0..vertices).map(|_| reader.f64s::<3>()).collect::<Option<Vec<_>>>()?;
     let corners = (0..triangles).map(|_| Some([reader.u32()?, reader.u32()?, reader.u32()?])).collect::<Option<Vec<_>>>()?;
-    let mut sums = vec![([0.; 3], [0.; 3]); row_count];
+    // Dropped rows keep slots but no bytes, so the request's size cannot bound this count.
+    let mut sums = Vec::new();
+    sums.try_reserve_exact(row_count).ok()?;
+    sums.resize(row_count, ([0.; 3], [0.; 3]));
     for triangle in &corners {
         let row = reader.u32()? as usize;
         let [a, b, c] = [positions.get(triangle[0] as usize)?, positions.get(triangle[1] as usize)?, positions.get(triangle[2] as usize)?];

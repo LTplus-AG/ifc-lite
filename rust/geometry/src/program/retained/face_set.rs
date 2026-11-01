@@ -15,10 +15,10 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
         .ok_or_else(|| Error::geometry("face set missing Coordinates".to_string()))?;
     let positions = read_point_list_f64(decoder, coordinates)?;
     // Exact's plans are the authority for triangulation and winding, so they keep exact's frame,
-    // except where narrowing to f32 merges distinct authored corners: the ring they would clip and
-    // the shell they would orient are then not the authored ones. Those plans read relative to a
-    // point the faces use, as an unused entry far from them would leave the corners merged.
-    let frame_at = |point: Option<usize>| point.filter(|_| narrowing_merges(&positions))
+    // except where narrowing to f32 misstates the authored shape: the ring they would clip and the
+    // shell they would orient are then not the authored ones. Those plans read relative to a point
+    // the faces use, as an unused entry far from them would leave the shape misstated.
+    let frame_at = |point: Option<usize>| point.filter(|_| narrowing_misstates(&positions, scale))
         .and_then(|point| positions.get(point * 3..point * 3 + 3)).map(|p| (p[0], p[1], p[2]));
     let triangles = if polygonal {
         let faces = item.attr(slot::IfcPolygonalFaceSet::FACES)
@@ -46,6 +46,18 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
         ..Default::default()
     })?.retain();
     Ok(RetainedFaceSet { source_id: item.id, positions, triangles, rows, row_count, length_unit_scale: scale })
+}
+
+/// One f32 step here is a visible length: distinct levels can round together though every
+/// point stays distinct, leaving a real face collinear.
+const COARSE_F32_STEP_METRES: f64 = 1e-3;
+
+/// Whether f32 cannot be trusted with these points: its step is coarse at their magnitude, or
+/// two distinct authored points become one. Below that, a collapse is a sub-millimetre sliver,
+/// which exact drops too.
+fn narrowing_misstates(positions: &[f64], scale: f64) -> bool {
+    let magnitude = positions.iter().fold(0_f64, |worst, v| worst.max(v.abs()));
+    magnitude * scale * f64::from(f32::EPSILON) > COARSE_F32_STEP_METRES || narrowing_merges(positions)
 }
 
 /// Whether two distinct authored points become one in f32.

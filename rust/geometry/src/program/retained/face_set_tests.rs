@@ -2,10 +2,14 @@
 use super::*;
 
 fn capture_source(records: &str, id: u32) -> Result<RetainedFaceSet> {
+    capture_scaled(records, id, 0.001)
+}
+
+fn capture_scaled(records: &str, id: u32, scale: f64) -> Result<RetainedFaceSet> {
     let content = format!("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{records}\nENDSEC;\nEND-ISO-10303-21;\n");
     let mut decoder = EntityDecoder::new(content.as_bytes());
     let item = decoder.decode_by_id(id).unwrap();
-    capture(&item, &mut decoder, 0.001)
+    capture(&item, &mut decoder, scale)
 }
 
 const TETRA: &str = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1000.,0.,0.),(0.,1000.,0.),(0.,0.,1000.)));";
@@ -107,4 +111,11 @@ fn issue_8291_an_unused_first_point_does_not_choose_the_frame() {
     assert_eq!(capture_source(polygon, 6).unwrap().rows.len(), 4, "an L of six corners is four triangles");
     let shell = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(6000000.,0.,0.),(6000000.125,0.,0.),(6000000.,0.125,0.),(6000000.,0.,0.125)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((2,3,4),(2,5,3),(3,5,4),(4,5,2)),$);";
     assert_eq!(capture_source(shell, 2).unwrap().triangles[..3], [1, 3, 2], "the same flip as the same shell at the origin");
+}
+
+#[test]
+fn issue_8291_a_ring_whose_levels_round_together_keeps_its_area() {
+    // In metres at survey scale: every narrowed point stays distinct, but both Y levels are one f32 value.
+    let records = "#1=IFCCARTESIANPOINTLIST3D(((0.,6000000.,0.),(3.,6000000.,0.),(2.,6000000.125,0.),(1.,6000000.125,0.)));\n#3=IFCINDEXEDPOLYGONALFACE((1,2,3,4));\n#6=IFCPOLYGONALFACESET(#1,.F.,(#3),$);";
+    assert_eq!(capture_scaled(records, 6, 1.).unwrap().rows.len(), 2, "the authored trapezoid is two triangles");
 }

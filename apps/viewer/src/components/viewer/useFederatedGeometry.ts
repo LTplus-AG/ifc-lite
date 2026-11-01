@@ -50,7 +50,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
   const mergedVisibilityRef = useRef<Map<string, boolean>>(new Map());
 
   const mergedSourcesRef = useRef(new Map<string, MeshData[] | undefined>());
-  const mergedIndicesRef = useRef<ReadonlyMap<string, number> | null>(null);
+  const mergedIndexByModelRef = useRef(new Map<string, number>());
 
   // Multi-model: merge geometries from all visible models
   return useMemo(() => {
@@ -82,14 +82,11 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
       let anyLargeCoords = false;
       let shouldRebuild = false;
 
-      if (mergedLengthsRef.current.size !== storeModels.size) {
-        shouldRebuild = true;
-      }
-
-      // A model removed and re-added keeps its mesh array but gets a new index
-      // from the allocator, which shares one map until an assignment changes.
-      if (mergedIndicesRef.current !== modelIdToIndex) {
-        shouldRebuild = true;
+      // A removed model leaves its copies in the merged array. An ADDED model
+      // only appends below: re-spreading every earlier model's meshes on each
+      // add made a federation of N files O(N^2) in copies and alias records.
+      for (const modelId of mergedLengthsRef.current.keys()) {
+        if (!storeModels.has(modelId)) shouldRebuild = true;
       }
 
       // An external content version bump (e.g. realignFederation re-baked
@@ -114,11 +111,14 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           unionedOriginal = unionBounds(unionedOriginal, ci.originalBounds);
         }
 
-        if (
+        // A model removed and re-added keeps its mesh array but gets a new
+        // index from the allocator, so a merged model's index is compared too.
+        if (mergedLengthsRef.current.has(modelId) && (
           mergedSourcesRef.current.get(modelId) !== modelGeometry?.meshes ||
           mergedVisibilityRef.current.get(modelId) !== model.visible ||
+          mergedIndexByModelRef.current.get(modelId) !== (modelIdToIndex.get(modelId) ?? 0) ||
           (mergedLengthsRef.current.get(modelId) ?? 0) > meshCount
-        ) {
+        )) {
           shouldRebuild = true;
         }
       }
@@ -128,11 +128,13 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
         mergedLengthsRef.current = new Map();
         mergedVisibilityRef.current = new Map();
         mergedSourcesRef.current = new Map();
+        mergedIndexByModelRef.current = new Map();
         for (const [modelId, model] of storeModels) {
           const modelGeometry = model.geometryResult;
           mergedVisibilityRef.current.set(modelId, model.visible);
           mergedSourcesRef.current.set(modelId, modelGeometry?.meshes);
           const modelIndex = modelIdToIndex.get(modelId) ?? 0;
+          mergedIndexByModelRef.current.set(modelId, modelIndex);
           if (!model.visible || !modelGeometry?.meshes) {
             mergedLengthsRef.current.set(modelId, 0);
             continue;
@@ -144,7 +146,6 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           mergedLengthsRef.current.set(modelId, modelGeometry.meshes.length);
         }
         mergedCacheRef.current = rebuilt;
-        mergedIndicesRef.current = modelIdToIndex;
       } else {
         for (const [modelId, model] of storeModels) {
           const modelGeometry = model.geometryResult;
@@ -161,6 +162,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           mergedLengthsRef.current.set(modelId, nextMeshes.length);
           mergedVisibilityRef.current.set(modelId, model.visible);
           mergedSourcesRef.current.set(modelId, modelGeometry?.meshes);
+          mergedIndexByModelRef.current.set(modelId, modelIndex);
         }
       }
 

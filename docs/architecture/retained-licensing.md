@@ -19,7 +19,7 @@ workflow text are excluded. Preserved notice hashes and generated outputs are ch
 and `manifest.json` carries a `manifestSha256` digest of its inputs and components that
 `--check` and `--write` verify. It catches accidental damage (a text dropped by a merge
 resolution, hand-edited inputs); it is not a signature, because `--refresh` recomputes it.
-The maintainer's elections for `wasm_sync`, `r-efi` and `wide` are recorded in `supplemental.json`;
+The maintainer's explicit elections and checked MIT default are recorded in `supplemental.json`;
 the `wasm_sync` Apache-2.0 election below also closes its missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code
@@ -141,12 +141,12 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 ## Review record
 
 This records evidence and fulfilment mechanisms for the scope above, not a
-signature or a blanket conclusion about every possible linked artifact.
+blanket conclusion about every possible linked artifact.
 
 | Component | Licence and obligation | How addressed in this scope |
 |---|---|---|
 | SMLib / SM_API | Apache-2.0 section 4: copy LICENSE, retain applicable notices; identify modified upstream files | Original SDK LICENSE and THIRD_PARTY_NOTICES.md preserved in `/smlib/` and `LICENSES/SMLib/`. Verified local SDK HEAD is `c9c5979f04cea8c38213004d4f04df0dcfb40d05` and `git status --porcelain --untracked-files=all --ignored -- source/SMLib source/SM_API LICENSE THIRD_PARTY_NOTICES.md` is empty. No modifications to those pinned paths; IFC-Lite adapter is separate. CMake and stagers enforce cleanliness, not binary provenance. |
-| Emscripten runtime | MIT OR NCSA, including Node MIT attribution: retain permission/copyright/disclaimer texts | Installed 4.0.15 LICENSE preserved whole in generated bundle, including both alternatives and subordinate notices. Compiler tools are not shipped. |
+| Emscripten runtime | MIT OR NCSA, including Node MIT attribution: retain permission/copyright/disclaimer texts | MIT selected by the maintainer default (2026-11-01), conditional on verified preserved MIT text. Installed 4.0.15 LICENSE and AUTHORS preserved whole in generated bundle, including both alternatives and subordinate notices. Compiler tools are not shipped. |
 | dlmalloc | Public domain / CC0-1.0 dedication in source | Actual 2.8.6 licence/version header preserved, full source hash recorded; Emscripten modifications covered by its separate licence. |
 | musl | MIT and BSD-style portions: retain applicable notices/disclaimers | Complete installed COPYRIGHT preserved in bundle, including individual holders/portions. |
 | LLVM runtimes | Apache-2.0 WITH LLVM-exception plus legacy terms: retain texts and applicable attribution | libc++, libc++abi, libunwind, compiler-rt and llvm-libc LICENSE.TXT files preserved; conservative superset avoids discarding legacy notices without link evidence. |
@@ -172,13 +172,13 @@ source available at that URL. The repository's template remains reproducible;
 [hosting guide](../guide/retained-installation.md) for delivery paths.
 
 Remaining for the maintainer: verify the final tag/source and deployed notice
-copies, review this record against the actual release scope, and sign below.
+copies, review this record against the actual release scope, and retain the scoped approval below.
 No final release archive, deployed host, or future native binary was audited here.
 Registry bootstrap/Trusted Publisher settings and actual OIDC publication are
 also unverified; they are operational release prerequisites, not inferred from
 this licence record.
 
-Approved for the scope above by: ____ (date: ____)
+Approved for the scope above by: Louis Trümpler (date: 2026-11-01)
 
 ## Why the default npm package includes the notice file
 
@@ -210,10 +210,10 @@ notice content changes; a runtime byte comparison does not imply tarball identit
 
 ## Open release decisions and evidence gaps
 
-1. **Review record prepared; maintainer signature remains.** See [Review
+1. **Review record approved by the maintainer (2026-11-01).** See [Review
    record](#review-record) for component obligations and evidence. Final scope,
    release copies and source identity still require the maintainer's check; no
-   approval is asserted by this document.
+   approval beyond the scope above is asserted by this document.
 2. **Resolved by the maintainer (stated 2026-10-30): wasm_sync, r-efi and wide
    elections.** Each is recorded in `supplemental.json` with its exact attribution
    and carried into the generated bundles:
@@ -246,18 +246,22 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
    failures remain visible; this record does not waive publication prerequisites.
 
-7. **Open for the maintainer: remaining unrecorded dual-licence elections.**
-   Components whose declaration offers alternatives but whose manifest entry has no
-   `election` record (`wasm_sync`, `r-efi` and `wide` are resolved above). Each has
-   at least one complete alternative preserved, so no text is missing for an OR
-   election, but the maintainer has not made these choices:
-   * Emscripten runtime (`MIT OR NCSA`): the preserved `LICENSE` reproduces both
-     licences and Node's MIT text; nothing missing. OPEN: its copyright line refers to
-     the Emscripten `AUTHORS` file, which is not preserved.
-   * chrono 0.4.44 (`MIT OR Apache-2.0`): the preserved `LICENSE.txt` reproduces both.
-   * OPEN: no generic check yet flags every OR-licensed component that lacks an
-     `election` record; the script only validates elections that are recorded.
-   * dlmalloc is not an alternative: public-domain dedication, header preserved.
+7. **Resolved by the maintainer (2026-11-01): OR-licence elections and
+   Emscripten attribution.** Every OR-licensed component offering MIT elects MIT
+   only when its MIT text is preserved and verified. This checked default is
+   recorded once in `supplemental.json`; explicit elections take precedence.
+   Mandatory conjunctive and bundled-component terms remain applicable.
+   chrono 0.4.44 and Emscripten runtime resolve to MIT under this policy.
+   The pinned Emscripten `AUTHORS` file is preserved alongside its complete
+   `LICENSE`. The maintainer explicitly elected Apache-2.0 for ryu 1.0.23 and
+   ryu-js 1.0.3 from `Apache-2.0 OR BSL-1.0`; each record preserves the canonical
+   Apache-2.0 text and uses the same attribution format as wasm_sync.
+   Existing wasm_sync, r-efi and wide elections remain unchanged.
+   The guard passes on the real manifest: every OR-licensed component resolves
+   through an explicit election or the checked MIT default.
+   dlmalloc's public-domain/CC0 dedication is not an alternative-licence declaration.
+
+Revit fixture rights: maintainer confirmed 2026-11-01 for test and evidence use.
 
 ## Regeneration
 

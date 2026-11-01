@@ -222,6 +222,8 @@ pub(super) fn curved_recipe(recipe: &RetainedRecipe) -> bool {
                     )
                 })
         }),
+        // Authored planar triangles: every source surface is flat.
+        RetainedRecipe::FaceSet(_) => false,
         _ => true,
     }
 }

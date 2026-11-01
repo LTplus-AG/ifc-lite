@@ -13,6 +13,7 @@
  *
  *   POSTHOG_PERSONAL_API_KEY=... node scripts/perf/field-verdict-fetch.mjs \
  *     --build <sha> [--baseline-days 14] --out result.json
+ *   POSTHOG_PERSONAL_API_KEY=... node scripts/perf/field-verdict-fetch.mjs --rolling --out result.json
  */
 
 import { writeFileSync } from 'node:fs';
@@ -62,7 +63,8 @@ async function main(argv) {
   const build = get('--build');
   const out = get('--out');
   if (!out) throw new Error('field-verdict-fetch: --out <file> is required');
-  const sql = verdictSql({ build, baselineDays: Number(get('--baseline-days') ?? 14) });
+  const rolling = argv.includes('--rolling');
+  const sql = verdictSql({ build, baselineDays: Number(get('--baseline-days') ?? 14), rolling });
   const rows = await fetchVerdictRows({
     sql,
     apiKey: process.env.POSTHOG_PERSONAL_API_KEY,
@@ -70,7 +72,7 @@ async function main(argv) {
     project: process.env.POSTHOG_PROJECT_ID || DEFAULT_PROJECT,
   });
   writeFileSync(out, JSON.stringify(rows));
-  console.log(`field-verdict-fetch: ${rows.results.length} cell rows for build ${build.slice(0, 12)} -> ${out}`);
+  console.log(`field-verdict-fetch: ${rows.results.length} cell rows for ${rolling ? 'the rolling windows' : `build ${build.slice(0, 12)}`} -> ${out}`);
 }
 
 if (isMainEntry(import.meta.url)) {

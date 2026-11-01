@@ -315,7 +315,7 @@ int32_t ifclite_smlib_copy_affine(uint64_t session, ifclite_smlib_handle handle,
 uint32_t ifclite_smlib_capabilities(void) {
     return IFCLITE_SMLIB_CAPABILITY_SWEEP_REGION | IFCLITE_SMLIB_CAPABILITY_SWEEP_DISK |
         IFCLITE_SMLIB_CAPABILITY_RIGID_COPY | IFCLITE_SMLIB_CAPABILITY_AFFINE_COPY |
-        IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY;
+        IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY | IFCLITE_SMLIB_CAPABILITY_SWEEP_POLYHEDRON;
 }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {
@@ -324,10 +324,11 @@ int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
         auto& owner=lookup(session);
         require(!owner.upload,IFCLITE_SMLIB_RESOURCE_LIMIT,"upload already active");
         require(loops>0 && loops<=128 && loops<=segments,IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid loop count");
-        // Format 1 has an exact declared size; format 2 is validated at commit.
+        // Format 1 has an exact declared size; formats 2 and 3 are validated at commit.
         require(segments>0 && segments<=8192 && length<=1048576u &&
             ((format==1 && length==48u+8u*loops+104u*segments) ||
-             (format==2 && loops==1 && segments==1 && length>=168)),
+             (format==2 && loops==1 && segments==1 && length>=168) ||
+             (format==3 && loops==1 && length>=16)),
             IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid sweep declaration");
         require(next_upload!=UINT64_MAX,IFCLITE_SMLIB_RESOURCE_LIMIT,"upload IDs exhausted");
         auto upload=std::make_unique<Upload>();
@@ -363,7 +364,8 @@ int32_t ifclite_smlib_sweep_commit(uint64_t session, uint64_t id, ifclite_smlib_
         auto upload=std::move(active); // Every commit attempt consumes the transaction.
         require(upload->bytes.size()==upload->length,IFCLITE_SMLIB_INVALID_ARGUMENT,
             "incomplete sweep upload discarded");
-        auto result=upload->format==2 ? create_authored_disk(upload->bytes) :
+        auto result=upload->format==3 ? create_authored_polyhedron(upload->bytes,upload->segments) :
+            upload->format==2 ? create_authored_disk(upload->bytes) :
             create_authored_sweep(upload->bytes,upload->loops,upload->segments);
         *out=store(session,std::move(result));
     });

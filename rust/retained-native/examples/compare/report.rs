@@ -27,6 +27,7 @@ pub struct Report {
     pub cut_times_ms: Vec<f64>,
     pub oracle_maxima: BTreeMap<String, f64>,
     pub exact_ms: f64,
+    pub exact_unrounded_ms: f64,
     pub retained_ms: f64,
     pub startup_ms: f64,
     pub product_ms: f64,
@@ -39,6 +40,8 @@ pub struct Report {
     /// #7955 F3: products whose source authors only open face sets, with the closed-solid
     /// measurements (closure, exact volume/area) that were reported instead of gated.
     pub authored_open: Vec<Value>,
+    /// #7955 ruling 3: missing face keys allowed as kernel-merged collinear sides.
+    pub face_merges: Vec<Value>,
 }
 impl Report {
     // One comparison row combines both independently measured sides and source expectations.
@@ -48,7 +51,7 @@ impl Report {
         model: &str,
         shape: &ShapeOnlyProduct,
         actual: &Metrics,
-        rounded: Option<&Metrics>,
+        compared: Option<&Metrics>,
         exact: Option<&Metrics>,
         source: Option<(f64, Option<[f64; 6]>)>,
         tolerances: &Value,
@@ -83,7 +86,7 @@ impl Report {
             authority.map_or(curved || opening.is_some() || bounded.is_some(), |a| a.curved),
             type_product,
             actual,
-            rounded,
+            compared,
             exact,
             authority.map(|a| (a.volume, a.bbox)).or(if opening.is_some() { None } else { source }),
             tolerances,
@@ -115,6 +118,9 @@ impl Report {
             shape.cuts, shape.cut_times_ms.iter().sum::<f64>(), shape.consumed_parts,
             format(cut_rel)
         ));
+        for result in results.iter().filter(|r| r.family == "faceKeysKernelMerged") {
+            self.face_merges.push(json!({"product": format!("{model}:{}", shape.product_id), "keys": result.value, "merged": result.reason}));
+        }
         for result in &results {
             let maximum = self.oracle_maxima.entry(result.family.into()).or_default();
             *maximum = maximum.max(if result.value.is_finite() { result.value } else { f64::INFINITY });
@@ -142,7 +148,7 @@ impl Report {
         curved: bool,
         type_product: bool,
         actual: &Metrics,
-        rounded: Option<&Metrics>,
+        compared: Option<&Metrics>,
         exact: Option<&Metrics>,
         source: Option<(f64, Option<[f64; 6]>)>,
         tolerances: &Value,
@@ -151,11 +157,11 @@ impl Report {
         let source_rel = source.as_ref().map(|(v, _)| relative(actual.volume, *v));
         let exact_source_rel = exact.zip(source).map(|(e, (v, _))| relative(e.volume, v));
         let vol = exact
-            .zip(rounded)
+            .zip(compared)
             .map(|(e, a)| relative(a.volume, e.volume));
-        let area = exact.zip(rounded).map(|(e, a)| relative(a.area, e.area));
+        let area = exact.zip(compared).map(|(e, a)| relative(a.area, e.area));
         let bbox = exact
-            .zip(rounded)
+            .zip(compared)
             .map(|(e, a)| bbox_deviation(&a.bbox, &e.bbox));
         let source_bbox = source
             .as_ref()
@@ -165,7 +171,7 @@ impl Report {
         // invalid measurements even when no source expectation is available.
         for (name, measured) in [
             ("retained", Some(actual)),
-            ("rounded retained", rounded),
+            ("compared retained", compared),
             ("exact", exact),
         ] {
             if measured.is_some_and(|m| {
@@ -291,7 +297,8 @@ impl Report {
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
             "layers":self.layers.summary(), "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
-            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "authoredOpenFaceSets":{"count":self.authored_open.len(),"gated":false,"products":self.authored_open}, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
+            "exact":{"milliseconds":self.exact_ms,"beforeF32RoundingMilliseconds":self.exact_unrounded_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":super::precision::COMPARISON_PRECISION},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "authoredOpenFaceSets":{"count":self.authored_open.len(),"gated":false,"products":self.authored_open},
+            "faceKeysKernelMerged":{"gated":false,"keys":self.face_merges.iter().filter_map(|r| r["keys"].as_f64()).sum::<f64>(),"products":self.face_merges.len(),"rows":self.face_merges}, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }
 fn finite(v: f64) -> Value {

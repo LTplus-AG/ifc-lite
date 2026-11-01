@@ -26,6 +26,7 @@ impl NativeWorker {
         let mut worker = SmlibWorker::spawn(path).map_err(fault)?;
         worker.qualify_ordered_regions().map_err(fault)?;
         worker.qualify_rational_disks().map_err(fault)?;
+        worker.qualify_face_sets().map_err(fault)?;
         Ok(Self(worker))
     }
 }
@@ -51,6 +52,10 @@ fn dependency(operand: Operand<'_, NativeReceipt>) -> Result<RetainedDependency<
                 realization,
                 world_from_source,
             }),
+            RealizationKind::SourceFaceSet(source) => Ok(RetainedDependency::Source {
+                realization: source.realized().ok_or_else(|| RuntimeFault::contract("face set operand not realized"))?,
+                world_from_source,
+            }),
             _ => Err(RuntimeFault::contract("source operand receipt mismatch")),
         },
         Operand::Placed {
@@ -74,7 +79,16 @@ fn transform_input(receipt: &NativeReceipt) -> Result<RetainedTransformInput<'_>
         RealizationKind::Construction(value) => Ok(RetainedTransformInput::Source(value)),
         RealizationKind::Affine(value) => Ok(RetainedTransformInput::Affine(value)),
         RealizationKind::Boolean(value) => Ok(RetainedTransformInput::Result(value)),
-        RealizationKind::SourceFaceSet(_) => Err(RuntimeFault::contract("a source-exact face set has no kernel object")),
+        RealizationKind::SourceFaceSet(source) => source.realized().map(RetainedTransformInput::Source)
+            .ok_or_else(|| RuntimeFault::contract("face set input not realized")),
+    }
+}
+impl NativeWorker {
+    fn realize(&mut self, receipt: &NativeReceipt, limits: NumericalLimits, mesh: MeshLimits) -> Result<(), RuntimeFault> {
+        if let RealizationKind::SourceFaceSet(source) = &receipt.kind {
+            self.0.realize_source_face_set(source, limits.chord_metres, limits.angle_degrees, mesh).map_err(fault)?;
+        }
+        Ok(())
     }
 }
 impl RetainedRuntime for NativeWorker {
@@ -95,6 +109,17 @@ impl AsyncRetainedExecutor for NativeWorker {
         let mesh = MeshLimits {
             max_bytes: limits.max_bytes,
         };
+        // A face set's closed solid is built only when something consumes it.
+        match &call {
+            Invocation::Affine { input, .. } => self.realize(input, limits, mesh)?,
+            Invocation::Boolean { left, right, .. } => {
+                for operand in [left, right] {
+                    let (Operand::Source { receipt, .. } | Operand::Placed { receipt, .. }) = operand;
+                    self.realize(receipt, limits, mesh)?;
+                }
+            }
+            Invocation::Construction(_) => {}
+        }
         let kind = match call {
             Invocation::Construction(request)
                 if request.payload().qualification == RegionQualification::SourceFaceSet => self

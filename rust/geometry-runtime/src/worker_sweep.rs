@@ -57,13 +57,17 @@ pub struct RetainedSourceFaceSet {
     no_solid: BrepHandle,
     completion: RetainedCompletion,
     owner: crate::RuntimeOwner,
+    /// The closed solid, built only when a Boolean or copy first consumes it.
+    realized: std::sync::OnceLock<RetainedRealization>,
 }
 #[cfg(feature = "retained-runtime")]
 impl RetainedSourceFaceSet {
-    /// Never a live solid: no Boolean or copy operation can resolve this handle.
-    pub fn solid(&self) -> BrepHandle { self.no_solid }
+    /// The realized solid, else a handle no operation can resolve.
+    pub fn solid(&self) -> BrepHandle { self.realized.get().map_or(self.no_solid, RetainedRealization::solid) }
     pub fn completion(&self) -> &RetainedCompletion { &self.completion }
+    pub fn realized(&self) -> Option<&RetainedRealization> { self.realized.get() }
     pub fn validate_live(&self) -> Result<(), WorkerError> {
+        if let Some(realized) = self.realized.get() { return realized.validate_live(); }
         if self.owner.incarnation() == Some(self.no_solid.worker) { Ok(()) } else { Err(WorkerError::WrongWorker) }
     }
 }
@@ -85,7 +89,22 @@ impl SmlibWorker {
             no_solid: BrepHandle { worker: self.identity, wire: crate::protocol::WireHandle { session: 0, slot: 0, generation: 0 } },
             completion,
             owner: self.retained_owner(),
+            realized: std::sync::OnceLock::new(),
         })
+    }
+
+    /// Build the closed solid behind a source-exact face set, once. Its kernel mesh
+    /// is dropped: the receipt's budget covers the authored mesh, and only the solid
+    /// is needed from here on.
+    pub fn realize_source_face_set<'a>(&mut self, source: &'a RetainedSourceFaceSet, chord_metres: f64,
+        angle_degrees: f64, limits: MeshLimits) -> Result<&'a RetainedRealization, WorkerError> {
+        if source.realized.get().is_none() {
+            let mut realized = self.evaluate_retained(source.completion.request().clone(), chord_metres, angle_degrees, limits)?;
+            realized.completion.tessellation = Default::default();
+            // Single-threaded executor: the cell was checked empty just above.
+            source.realized.set(realized).map_err(|_| WorkerError::Protocol("face set realized twice"))?;
+        }
+        source.realized.get().ok_or(WorkerError::Protocol("face set realization missing"))
     }
 }
 
@@ -114,6 +133,7 @@ impl SmlibWorker {
             RegionQualification::Rectangle => true,
             RegionQualification::OrderedRegion => self.regions_qualified,
             RegionQualification::RationalDisk => self.disks_qualified,
+            RegionQualification::SourceFaceSet => self.face_sets_qualified,
             _ => false,
         };
         if !qualified {

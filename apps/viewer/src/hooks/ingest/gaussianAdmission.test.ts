@@ -27,8 +27,10 @@ it('rejects incomplete, duplicate, list and invalid SH schemas (#8565)', async (
     [...fields, ...Array.from({ length: 9 }, (_, i) => `f_rest_${i + 1}`)]]) {
     assert.equal((await inspect(ply(names))).kind, 'invalid');
   }
-  const invalid = new File([(await ply().text()).replace('property float x', 'property list uchar float x')], 'list.ply');
-  assert.equal((await inspect(invalid)).kind, 'invalid');
+  for (const declaration of ['property list uchar float x', 'property constructor x', 'property mystery x']) {
+    const invalid = new File([(await ply().text()).replace('property float x', declaration)], 'invalid.ply');
+    assert.equal((await inspect(invalid)).kind, 'invalid');
+  }
 });
 it('rejects truncated headers and payloads before decoding (#8565)', async () => {
   for (const file of [new File(['ply\n'], 'short.ply'), ply(fields, 1, new Uint8Array(1)),

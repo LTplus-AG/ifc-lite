@@ -60,7 +60,7 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
     if (properties.has(name)) malformed = true;
     properties.add(name);
     const width = SCALAR_BYTES[fields[1]];
-    if (!width || fields.length !== 3) malformed = true;
+    if (typeof width !== 'number' || fields.length !== 3) malformed = true;
     else stride += width;
   }
   // Only vertex properties count; comments and similarly named face properties do not.

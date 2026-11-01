@@ -1,13 +1,13 @@
-diff --git a/rust/retained-native/examples/compare/report.rs b/rust/retained-native/examples/compare/report.rs
-index 7ea483a626..a55b22470a 100644
---- a/rust/retained-native/examples/compare/report.rs
-+++ b/rust/retained-native/examples/compare/report.rs
+diff --git b/rust/retained-native/examples/compare/report.rs a/rust/retained-native/examples/compare/report.rs
+index a55b22470a..7ea483a626 100644
+--- b/rust/retained-native/examples/compare/report.rs
++++ a/rust/retained-native/examples/compare/report.rs
 @@ -207,7 +207,7 @@ impl Report {
                  });
              }
          }
--        if actual.defects > 0 && !open {
-+        if actual.defects > 0 {
+-        if actual.defects > 0 {
++        if actual.defects > 0 && !open {
              self.violations
                  .push(format!("{label}: {} closure defects", actual.defects));
          }

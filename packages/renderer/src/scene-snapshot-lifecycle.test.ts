@@ -62,6 +62,7 @@ async function captureScene(meshes: MeshData[], device: GPUDevice): Promise<Scen
   scene.clearFlatGeometry(); // the load's own reshape, before its first piece
   scene.queueMeshes(meshes);
   scene.flushPending(device, pipeline, 1000);
+  written = []; // from here on, only what finalize itself uploads
   await scene.finalizeStreamingAsync(device, pipeline);
   return captured;
 }
@@ -82,12 +83,14 @@ describe('finished-scene snapshot', () => {
     const snapshot = await captureScene(model(), device);
     assert.ok(snapshot);
     assert.strictEqual(snapshot.pieceCount, 3);
-    const final = new Set(snapshot.batches.flatMap((b) => [[...b.vertexData].join(), [...new Uint8Array(b.indices.buffer, b.indices.byteOffset, b.indices.byteLength)].join()]));
+    const geometryWrites = () => written.filter((w) => w.usage & (32 | 16));
+    const final = new Set(geometryWrites().map((w) => w.bytes.join()));
+    assert.ok(final.size > 0);
 
     written = [];
     const scene = freshScene();
     assert.ok(scene.adoptSceneSnapshot(await roundTrip(snapshot), device, pipeline));
-    const uploads = written.filter((w) => w.usage & (32 | 16));
+    const uploads = geometryWrites();
     assert.strictEqual(uploads.length, snapshot.batches.length * 2);
     for (const upload of uploads) assert.ok(final.has(upload.bytes.join()), 'an upload is not a finalize array');
     assert.deepStrictEqual(scene.getBatchedMeshes().map((b) => b.colorKey).sort(), snapshot.batches.map((b) => b.key).sort());

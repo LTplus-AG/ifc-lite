@@ -156,8 +156,11 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
             }
         }
         // Exact colours a part it cannot split (a cut) with the map's dominant entry, which
-        // is what a reveal keeps here; an unsplit palette part agrees bit for bit.
-        if let (Some(map), Some(appearance)) = (dominant_for(sources, &model), &mut part.appearance) {
+        // is what a reveal keeps here; an unsplit palette part agrees bit for bit. A part
+        // showing none of the palette's rows, beside a mapped operand, keeps its own colour.
+        let shows_palette = surface.as_ref().and_then(|s| s.palette.as_ref())
+            .is_some_and(|palette| palette.triangles.iter().any(|&entry| entry != NO_PALETTE_ENTRY));
+        if let (true, Some(map), Some(appearance)) = (shows_palette, dominant_for(sources, &model), &mut part.appearance) {
             if !fixed { appearance.rgba = map; }
         }
         if let Some(surface) = &surface {

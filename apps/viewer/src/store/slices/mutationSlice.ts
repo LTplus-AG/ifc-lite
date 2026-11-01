@@ -1413,9 +1413,10 @@ export const createMutationSlice: StateCreator<
       }
       if (state && state.refDirectionId !== null) {
         const newYaw = state.yawZ + deltaYaw;
+        const inPlane = Math.hypot(state.refDirection[0], state.refDirection[1]);
         const newRatios: [number, number, number] = [
-          Math.cos(newYaw),
-          Math.sin(newYaw),
+          inPlane * Math.cos(newYaw),
+          inPlane * Math.sin(newYaw),
           state.refDirection[2],
         ];
         const mutation = get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);

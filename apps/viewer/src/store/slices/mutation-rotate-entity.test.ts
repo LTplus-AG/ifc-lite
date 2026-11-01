@@ -16,6 +16,8 @@ import { readAttributes } from '@/lib/placement-core.js';
 import { WALL, WALL_MODEL, WALL_UNITS, seedRectangleWall } from '@/test/rectangle-wall-fixture';
 
 const store = () => useViewerStore.getState();
+const TILTED = (step: string) =>
+  step.replace('#54=IFCDIRECTION((0.,0.,1.));', '#54=IFCDIRECTION((0.6,0.,0.8));').replace('#55=IFCDIRECTION((1.,0.,0.));', '#55=IFCDIRECTION((0.8,0.,-0.6));');
 const IMPLICIT = (step: string) => step.replace('#52=IFCAXIS2PLACEMENT3D(#53,#54,#55);', '#52=IFCAXIS2PLACEMENT3D(#53,$,$);');
 
 function close(actual: readonly number[] | undefined, expected: readonly number[], what: string): void {
@@ -45,5 +47,16 @@ describe('rotateEntity with an implicit RefDirection (#8446)', () => {
     assert.equal(placement?.[1], null, 'Axis is $ again');
     assert.equal(placement?.[2], null, 'RefDirection is $ again');
     close(store().readEntityRotation(WALL_MODEL, WALL)?.refDirection, [1, 0, 0], 'restored frame');
+  });
+});
+
+describe('rotateEntity with an explicit tilted RefDirection', () => {
+  beforeEach(() => seedRectangleWall(WALL_UNITS[0].unit, WALL_UNITS[0].scale, TILTED));
+
+  it('keeps the in-plane length and slope of the direction it turns', () => {
+    const result = store().rotateEntity(WALL_MODEL, WALL, Math.PI / 2);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    close(store().readEntityRotation(WALL_MODEL, WALL)?.refDirection, [0, 0.8, -0.6], 'turned tilted frame');
+    assert.deepEqual(store().mutationViews.get(WALL_MODEL)!.getNewEntities(), [], 'the explicit RefDirection is edited in place');
   });
 });

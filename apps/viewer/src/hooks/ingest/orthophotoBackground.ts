@@ -10,7 +10,7 @@ import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionOperation } from '@/lib/geo/reproject';
 import { projectedDefinitionInMetres } from '@/lib/geo/proj4-utils';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
-import { planOrthophotoBackground, sampleBackgroundRow, type BackgroundProjection } from '@/lib/terrain-imagery/background-plan';
+import { planOrthophotoBackground, sampleBackgroundRow, backgroundCalibration, type BackgroundProjection } from '@/lib/terrain-imagery/background-plan';
 import { decodeDrapeTexture } from '@/lib/terrain-imagery/raster-texture';
 import type { LoadedGeoRaster } from '@/lib/terrain-imagery/read-raster';
 import { toast } from '@/components/ui/toast';
@@ -107,7 +107,7 @@ export async function addOrthophotoBackground(raster: LoadedGeoRaster): Promise<
     current();
     const state = useViewerStore.getState();
     state.addAppearanceReference({ id, sourceId: id, assetId: asset.id, cornersIfcWorld: plan.corners,
-      frameKey, visible: true, locked: false, opacity: 1 });
+      frameKey, visible: true, locked: false, opacity: 1, calibration: backgroundCalibration(plan) });
     appearanceAssets.retain(asset.id, { kind: 'source', id: `appearance:${id}` });
     state.addAppearanceSource({ id, assetId: asset.id, name: `${raster.name} (${crs})`, width: plan.width, height: plan.height });
     state.selectAppearanceReference(id);

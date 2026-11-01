@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { localViewerToProjected, projectedToLocalViewer, type ModelSpatialReference } from '@ifc-lite/geometry';
 import type { GeoRasterPlacement } from './georaster';
+import type { PlaneCalibrationRequest } from '@/lib/appearance/plane-calibration';
 import type { RegisteredAppearanceReference } from '@/lib/appearance/references/types';
 
 type XY = readonly [number, number];
@@ -92,4 +93,14 @@ export function sampleBackgroundRow(plan: BackgroundPlan, row: number, source: U
     for (let c = 0; c < 3; c++) output[dest + c] = rgba[3] ? rgba[c] / rgba[3] : 0;
     output[dest + 3] = rgba[3] * 255;
   }
+}
+
+/** Keep the generated engineering-plane raster editable with the existing
+ * calibrated-reference controls, including its display elevation. */
+export function backgroundCalibration(plan: BackgroundPlan): PlaneCalibrationRequest {
+  const [a, b, , d] = plan.corners;
+  const width = b[0] - a[0], height = a[1] - d[1];
+  return { rasterToSource: [width / plan.width, 0, 0, -height / plan.height, 0, height],
+    rasterSize: [plan.width, plan.height], sourcePoints: [[0, height], [width, height]],
+    distanceMetres: width, worldAnchor: [...a], worldDirection: [1, 0, 0], planeNormal: [0, 0, 1] };
 }

@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { fromArrayBuffer } from 'geotiff';
 import proj4 from 'proj4';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
-import { planOrthophotoBackground, sampleBackgroundRow, type BackgroundPlan } from './background-plan';
+import { planOrthophotoBackground, sampleBackgroundRow, backgroundCalibration, type BackgroundPlan } from './background-plan';
 import { geoTiffAffine, type GeoRasterPlacement } from './georaster';
 
 const reference = (rotation = 0, scale = 1) => spatialReferenceFromIfc({
@@ -110,4 +110,15 @@ test('real survey landmark agrees with independent PROJ reference across Finnish
   const [px, py] = plan.sourcePixel(col, row);
   assert.ok(Math.abs(px - 45.5386) < 0.001);
   assert.ok(Math.abs(py - 79.6387) < 0.001);
+});
+
+test('orthophoto editing recipe preserves every corner through real WASM calibration (#8552)', async t => {
+  const artifact = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+  if (!existsSync(artifact)) { t.skip('Run pnpm build:wasm for the real calibration contract'); return; }
+  const { default: init } = await import('@ifc-lite/wasm');
+  await init({ module_or_path: readFileSync(artifact) });
+  const { calibrateAppearancePlane } = await import('@/lib/appearance/plane-calibration');
+  const plan = planOrthophotoBackground(raster, reference(0.37, 2), identity, 12.5);
+  const calibrated = await calibrateAppearancePlane(backgroundCalibration(plan));
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) near(calibrated.rasterCorners[i][j], plan.corners[i][j]);
 });

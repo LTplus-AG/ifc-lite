@@ -37,7 +37,8 @@ try {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     return [...s.models.values()].map(m => ({ id: m.id, triangles: m.geometryResult.totalTriangles }));
   });
-  const image = process.env.ORTHOPHOTO_IMAGE ?? resolve('tests/models/orthophoto/pdok-schiehaven-2025.jpg');
+  const image = process.env.ORTHOPHOTO_IMAGE;
+  assert.ok(image, 'Set ORTHOPHOTO_IMAGE to the licensed Schiehaven orthophoto or its GeoTIFF derivative.');
   const files = [await file(image, image.endsWith('.tif') ? 'image/tiff' : 'image/jpeg')];
   if (!image.endsWith('.tif')) {
     files.push(await file(image.replace(/\.jpg$/, '.jgw'), 'text/plain'));

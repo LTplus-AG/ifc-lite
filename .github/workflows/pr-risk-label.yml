@@ -44,6 +44,7 @@ concurrency:
 jobs:
   label:
     name: PR risk label
+    if: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

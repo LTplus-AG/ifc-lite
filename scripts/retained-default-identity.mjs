@@ -6,6 +6,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { assertWorkspaceCompiled, refreshSourceMtimes } from './lib/retained-default-identity.mjs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -36,16 +37,21 @@ function inventory(path, prefix = '') {
 try {
   // Reuse the exact source path for both arms so filesystem paths embedded by
   // a compiler cannot manufacture a false difference. No source modifications.
-  for (const commit of [base, head]) {
+  for (const [index, commit] of [base, head].entries()) {
+    const arm = `arm ${index + 1} (${commit})`;
     mkdirSync(source);
     const archive = join(directory, 'source.tar');
     execFileSync('git', ['archive', '--format=tar', '--output', archive, commit, ...paths], { cwd: root });
     execFileSync('tar', ['-xf', archive, '-C', source]);
+    refreshSourceMtimes(source);
     rmSync(archive);
     const rustc = execFileSync('rustc', ['--version'], { cwd: source, env, encoding: 'utf8' }).trim();
     console.log(`DEFAULT_IDENTITY_BUILD ${JSON.stringify({ commit, rustc })}`);
-    const result = spawnSync('bash', ['scripts/build-wasm.sh'], { cwd: source, env, stdio: 'inherit' });
-    if (result.status !== 0) throw new Error(`Default build ${commit} failed: ${result.status} ${result.signal ?? ''}`);
+    const result = spawnSync('bash', ['scripts/build-wasm.sh'], { cwd: source, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    process.stdout.write(result.stdout ?? '');
+    process.stderr.write(result.stderr ?? '');
+    if (result.error || result.status !== 0) throw new Error(`Default build ${arm} failed: ${result.error?.message ?? result.status} ${result.signal ?? ''}`);
+    assertWorkspaceCompiled(`${result.stdout ?? ''}\n${result.stderr ?? ''}`, arm);
     const artifacts = ['pkg', 'pkg-diff'].flatMap(pkg => inventory(join(source, 'packages/wasm', pkg))
       .map(file => ({ ...file, path: `${pkg}/${file.path}` })));
     if (!artifacts.some(file => file.path === 'pkg/ifc-lite_bg.wasm') || !artifacts.some(file => file.path === 'pkg/ifc-lite.js')) {

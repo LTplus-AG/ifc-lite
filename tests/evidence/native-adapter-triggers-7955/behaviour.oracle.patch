@@ -1,0 +1,12 @@
+diff --git a/scripts/check-native-adapter-triggers.mjs b/scripts/check-native-adapter-triggers.mjs
+--- a/scripts/check-native-adapter-triggers.mjs
++++ b/scripts/check-native-adapter-triggers.mjs
+@@ -228,7 +228,7 @@ export function audit(root) {
+     for (const dir of closure) {
+       // The literal directory glob, not probe files: `<dir>/Cargo.toml` + `<dir>/src/lib.rs` entries would
+       // satisfy probes and still leave the rest of the crate unable to trigger the lane.
+-      if (false) {
++      if (!pr.includes(`${dir}/**`)) {
+         failures.push(`${WORKFLOW}: crate ${dir} (in the retained engine's dependency closure) is not covered by on.pull_request.paths -- add '${dir}/**'`);
+       }
+     }

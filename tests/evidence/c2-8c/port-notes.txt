@@ -90,3 +90,15 @@ Pre-merge harness round (fixed qualify.sh / identity_probe.rs from C2-8a), at
 - gates, job 1069a6a9-b3db-47de-9b78-5ce82edfd797: all eight steps exit 0.
 - Instruction counts and determinism.yml not re-run: no production rust/
   changed.
+
+Pool and crossings merged into cap_cdt (after the stack was squashed into one PR)
+- pool.rs and crossings.rs moved unchanged to the end of cap_cdt.rs; importers
+  now use super::cap_cdt. slice.py and the c2-8b notes describe the earlier
+  layout with separate modules.
+- Why: engine-wasm-brotli measured 2,421,629 against an allowed 2,421,491. The
+  code section matched main in size; the data section grew 448 bytes, 408 of them
+  new panic-location file paths. Brotli size barely tracks those bytes: merging
+  pool into decompose instead measured 2,422,825 with a smaller raw file, so this
+  limit sits inside brotli's own variation. No ceiling was changed.
+- Measured with a local build byte-identical to the CI artifact (paths remapped
+  to /home/runner): this layout 2,420,811.

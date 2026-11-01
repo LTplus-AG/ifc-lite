@@ -60,9 +60,9 @@
 //! on both targets.
 //!
 //! Layout: `detect` (with `frame`, `profile`) finds the prism, `extension`
-//! pushes flush caps and edges, `cut` subtracts it (`face`, `decompose`,
-//! `pool`, `crossings`), `caps` and `cap_cdt` build the reveal, `checks`
-//! holds the self-checks and `driver` runs `try_prism_cut`. `kit`, `plane2`
+//! pushes flush caps and edges, `cut` subtracts it (`face`, `decompose`),
+//! `caps` and `cap_cdt` build the reveal, `checks` holds the self-checks and
+//! `driver` runs `try_prism_cut`. `kit`, `plane2`
 //! and `ptri` are the shared f64 vocabulary.
 
 #[cfg(test)]
@@ -237,7 +237,6 @@ pub use diag::{take_prism_defers, take_prism_stats};
 mod cap_cdt;
 mod caps;
 mod checks;
-mod crossings;
 mod cut;
 mod decompose;
 mod detect;
@@ -247,7 +246,6 @@ mod face;
 mod frame;
 mod kit;
 mod plane2;
-mod pool;
 mod profile;
 mod ptri;
 

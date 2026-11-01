@@ -118,14 +118,18 @@ test('Node: clean exit rejects pending work promptly (#7955)', async () => {
 
 test('Node: canonical browser Worker and missing-asset fixture without a wasm build (#7955)', async t => {
   const root = await mkdtemp(join(tmpdir(), 'smlib-node-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  // One hook: node:test runs after hooks in registration order, so the worker
+  // loaded from root is disposed before root is removed.
+  let transport;
+  t.after(async () => {
+    try { transport?.dispose(); } finally { await rm(root, { recursive: true, force: true }); }
+  });
   await mkdir(join(root, 'tests'));
   for (const name of ['worker.mjs', 'module.mjs', 'tests/missing-asset-worker.mjs']) {
     await copyFile(new URL(name, browser), join(root, name));
   }
   await copyFile(new URL('./lib/__fixtures__/smlib-node/module.mjs', import.meta.url), join(root, 'ifclite_smlib_browser.mjs'));
-  const transport = new NodeTransport({ workerUrl: pathToFileURL(join(root, 'worker.mjs')), timeout: 3000 });
-  t.after(() => transport.dispose());
+  transport = new NodeTransport({ workerUrl: pathToFileURL(join(root, 'worker.mjs')), timeout: 3000 });
   // Queue before asynchronous module initialization; the canonical worker
   // serializes batches and dispatchOwned copies independently owned replies.
   const input = request(0), expected = input.slice(0);

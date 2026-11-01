@@ -52,10 +52,11 @@ impl LogicalRetainedValue {
 
 }
 
-// Transpose the existing row-major primitive to column-major operands. This
-// preserves its ordered f64 accumulation and avoids inverse-frame round trips.
+// The one frame composition shared with both runtimes: the existing row-major
+// primitive on column-major operands, preserving its ordered f64 accumulation
+// and avoiding inverse-frame round trips.
 pub(super) fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> Result<[f64; 16], ValueReason> {
-    let composed = crate::math::mat4::mul(b, a);
+    let composed = crate::math::mat4::compose_frame(a, b);
     if composed.iter().any(|value| !value.is_finite()) {
         return Err(ValueReason::NonfiniteComposition);
     }

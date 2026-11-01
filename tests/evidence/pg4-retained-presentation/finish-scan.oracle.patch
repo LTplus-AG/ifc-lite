@@ -1,0 +1,21 @@
+diff --git a/rust/wasm-bindings/src/api/retained_session.rs b/rust/wasm-bindings/src/api/retained_session.rs
+--- a/rust/wasm-bindings/src/api/retained_session.rs
++++ b/rust/wasm-bindings/src/api/retained_session.rs
+@@ -70,7 +70,7 @@
+     ) -> Result<RetainedRunSummary, JsValue> {
+         let (options, view) = parse_options(&options)?;
+         let source = SourceBundle::new(content);
+-        let (jobs, styled_items) = (ifc_lite_processing::element::retained_runtime::canonical_element_jobs(&source), Vec::new());
++        let (jobs, styled_items) = canonical_element_jobs_and_styled_items(&source);
+         let candidate_ids: Vec<u32> = jobs
+             .into_iter()
+             .map(|(id, _)| id)
+@@ -189,7 +189,7 @@
+             let mut meshes = MeshCollection::with_capacity(product.parts.len());
+             meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
+             for mesh in view_meshes(&product, rtc) {
+-                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_content(source.bytes())).finish_for_mesh(&mesh);
++                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_source(source, styled_items)).finish_for_mesh(&mesh);
+                 meshes.add(mesh_js_with_finish(mesh, finish));
+             }
+             super::retained_presentation::product_fields(&result, &product, true)?;

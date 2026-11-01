@@ -58,3 +58,31 @@ it('#6232 refuses source placement/body leaves shared by another live occurrence
   editor.removeEntity(other);
   expect(editOwnershipRefusal(store, view, [1231, 1260], carried)).toBeNull();
 });
+
+it('decodes an edited record over a SharedArrayBuffer-backed source (browser TextDecoder rejects shared views)', async () => {
+  const file = new Uint8Array(await readFile(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url)));
+  const shared = new SharedArrayBuffer(file.byteLength);
+  new Uint8Array(shared).set(file);
+  const store = await new IfcParser().parseColumnar(shared as unknown as ArrayBuffer, { disableWorkerScan: true });
+  expect(store.source.slice(0, 4).buffer).toBeInstanceOf(SharedArrayBuffer);
+  // Node's TextDecoder accepts shared views; browsers throw. Model the browser.
+  const NodeDecoder = globalThis.TextDecoder;
+  class BrowserDecoder extends NodeDecoder {
+    override decode(input?: AllowSharedBufferSource, options?: TextDecodeOptions): string {
+      if (input && ArrayBuffer.isView(input) && input.buffer instanceof SharedArrayBuffer) {
+        throw new TypeError("Failed to execute 'decode' on 'TextDecoder': The provided ArrayBufferView value must not be shared.");
+      }
+      return super.decode(input, options);
+    }
+  }
+  globalThis.TextDecoder = BrowserDecoder;
+  try {
+    const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+    const carried = expandAffectedSet(store, view, [1222], 'hostsChanged');
+    // An attribute change on the source wall makes the check re-read its record text.
+    editor.setPositionalAttribute(1222, 2, 'Renamed');
+    expect(editOwnershipRefusal(store, view, [1231], carried)).toBeNull();
+  } finally {
+    globalThis.TextDecoder = NodeDecoder;
+  }
+});

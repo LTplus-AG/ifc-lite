@@ -272,7 +272,9 @@ isolation, symbolic annotation overlays continue to follow their global visibili
 
 ### Orthophoto backgrounds
 
-Load a georeferenced IFC model, then drop a **GeoTIFF** onto the viewer. A PNG
+Load a georeferenced IFC model and wait for all models to finish loading, then
+drop a **GeoTIFF** onto the viewer. Placement requires usable geometry bounds;
+if geometry is incomplete or unavailable, the viewer asks you to retry. A PNG
 or JPEG also works when selected together with its world file (`.pgw`, `.jgw`,
 or `.wld`) and EPSG-bearing `.prj` or `.aux.xml`. The image is placed beneath
 the model automatically using its committed `IfcMapConversion` and

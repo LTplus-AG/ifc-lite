@@ -62,19 +62,28 @@ export async function orthophotoProjection(sourceCrs: string, targetCrs: string)
     inverse: p => converter.inverse([p[0], p[1]]) as [number, number] };
 }
 
-/** All model bounds must be compared in IFC-world metres, not their possibly
- * different shifted render frames. The legacy result is only a fallback. */
-export function orthophotoElevation(state: Pick<ViewerState, 'models' | 'geometryResult'>): number {
+/** All model bounds must be complete and compared in IFC-world metres,
+ * not their possibly different shifted render frames. */
+export function orthophotoElevation(state: Pick<ViewerState, 'models' | 'geometryResult' | 'geometryStreamingActive'>): number {
+  const retry = 'Wait for all models to finish loading, then open the orthophoto again.';
+  if (state.geometryStreamingActive) throw new Error(retry);
   let minimum = Infinity;
   const include = (geometry: ViewerState['geometryResult']) => {
-    if (!geometry) return;
+    if (!geometry) throw new Error(`Model geometry bounds are unavailable. ${retry}`);
     const info = geometry.coordinateInfo;
-    const height = info.shiftedBounds.min.y + totalYupOffset(info).y;
-    if (Number.isFinite(height)) minimum = Math.min(minimum, height);
+    const { min, max } = info.shiftedBounds;
+    const height = min.y + totalYupOffset(info).y;
+    if (!Number.isFinite(height) || !Number.isFinite(max.y) || min.y > max.y) {
+      throw new Error('Model geometry bounds are invalid. Reload the model before opening its orthophoto.');
+    }
+    minimum = Math.min(minimum, height);
   };
-  for (const model of state.models.values()) include(model.geometryResult);
-  if (!Number.isFinite(minimum)) include(state.geometryResult);
-  return (Number.isFinite(minimum) ? minimum : 0) - 0.05;
+  for (const model of state.models.values()) {
+    if (model.loadState && model.loadState !== 'complete') throw new Error(retry);
+    include(model.geometryResult);
+  }
+  if (state.models.size === 0) include(state.geometryResult);
+  return minimum - 0.05;
 }
 
 /** An imagery load owns no IFC entities and never resets the model session. */
@@ -92,7 +101,7 @@ export async function addOrthophotoBackground(raster: LoadedGeoRaster): Promise<
   }, elevation);
   const current = () => {
     const live = useViewerStore.getState();
-    if (live.models !== initial.models || placementFrameKey(live) !== frameKey) throw new Error('The models changed while the orthophoto was loading. Open the image again.');
+    if (live.models !== initial.models || placementFrameKey(live) !== frameKey || orthophotoElevation(live) !== elevation) throw new Error('The models changed while the orthophoto was loading. Open the image again.');
   };
   current();
   const texture = await decodeDrapeTexture(raster, [0, 0, 0]);

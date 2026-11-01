@@ -79,7 +79,7 @@ test('background stays below every federated IFC regardless of selected result o
   for (const models of [[high], [low], [high, low], [low, high]]) {
     const expected = models.includes(low) ? -0.05 : 99.95;
     for (const selected of [high, low]) {
-      assert.equal(orthophotoElevation({ ...fixtureModels(...models), geometryResult: selected.geometryResult }), expected);
+      assert.equal(orthophotoElevation({ geometryStreamingActive: false, ...fixtureModels(...models), geometryResult: selected.geometryResult }), expected);
     }
   }
 });
@@ -87,6 +87,23 @@ test('background stays below every federated IFC regardless of selected result o
 test('background compares restored world heights, including origin shift and IFC Z-up RTC (#8552)', () => {
   const high = { ...fixtureModel('high'), geometryResult: elevationGeometry(-100, 150, 50) };
   const low = { ...fixtureModel('low'), geometryResult: elevationGeometry(20, -30, 10) };
-  assert.equal(orthophotoElevation({ ...fixtureModels(high, low), geometryResult: high.geometryResult }), -0.05);
-  assert.equal(orthophotoElevation({ models: new Map(), geometryResult: high.geometryResult }), 99.95);
+  assert.equal(orthophotoElevation({ geometryStreamingActive: false, ...fixtureModels(high, low), geometryResult: high.geometryResult }), -0.05);
+  assert.equal(orthophotoElevation({ geometryStreamingActive: false, models: new Map(), geometryResult: high.geometryResult }), 99.95);
+});
+
+
+test('background refuses absent, incomplete and invalid geometry instead of guessing elevation (#8552)', () => {
+  const complete = { ...fixtureModel('complete'), loadState: 'complete' as const, geometryResult: elevationGeometry(-20) };
+  const settled = { ...fixtureModels(complete), geometryResult: complete.geometryResult, geometryStreamingActive: false };
+  assert.throws(() => orthophotoElevation({ ...settled, geometryStreamingActive: true }), /finish loading/);
+  for (const loadState of ['pending', 'streaming-geometry', 'hydrating-metadata', 'error'] as const) {
+    const incomplete = { ...fixtureModel('incomplete'), loadState, geometryResult: elevationGeometry(-100) };
+    assert.throws(() => orthophotoElevation({ ...settled, ...fixtureModels(complete, incomplete) }), /finish loading/);
+  }
+  const absent = { ...fixtureModel('absent'), loadState: 'complete' as const, geometryResult: null };
+  assert.throws(() => orthophotoElevation({ ...settled, ...fixtureModels(complete, absent) }), /bounds are unavailable/);
+  assert.throws(() => orthophotoElevation({ ...settled, models: new Map(), geometryResult: null }), /bounds are unavailable/);
+  const invalid = { ...complete, geometryResult: elevationGeometry(NaN) };
+  assert.throws(() => orthophotoElevation({ ...settled, ...fixtureModels(invalid) }), /bounds are invalid/);
+  assert.equal(orthophotoElevation(settled), -20.05, 'completed below-zero geometry has a measured elevation');
 });

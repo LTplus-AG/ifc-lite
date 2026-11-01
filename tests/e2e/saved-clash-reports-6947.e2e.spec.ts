@@ -75,8 +75,11 @@ async function run(page: Page, settings: RunSettings): Promise<number> {
     return state.clashRunSeq;
   }, settings);
   const start = page.getByRole('button', { name: button, exact: true }).first();
+  const detection = page.getByRole('button', { name: /^Detection/i }).first();
+  // #8520: wait for the lazy panel before deciding whether Detection is collapsed.
+  await expect(start.or(detection).first()).toBeVisible();
   // With a result on screen the Detection section is collapsed; open it to reach the run buttons.
-  if (!(await start.isVisible())) await page.getByRole('button', { name: /^Detection/i }).first().click();
+  if (!(await start.isVisible())) await detection.click();
   await start.click();
   await page.waitForFunction((seq) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();

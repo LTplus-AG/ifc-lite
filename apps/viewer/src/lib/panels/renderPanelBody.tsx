@@ -20,10 +20,10 @@ import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 const InfluxPanel = lazy(() => import('@/components/viewer/influx/InfluxPanel').then(module => ({ default: module.InfluxPanel })));
 
 const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
+const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(module => ({ default: module.ClashPanel })));
 import { BCFPanel } from '@/components/viewer/BCFPanel';
 import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel';
 import { LensPanel } from '@/components/viewer/LensPanel';
-import { ClashPanel } from '@/components/viewer/ClashPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
@@ -190,7 +190,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'bcf': return <BCFPanel onClose={onClose} />;
     case 'validation': return <ValidationPanel onClose={onClose} />;
     case 'lens': return <LensPanel onClose={onClose} />;
-    case 'clash': return <ClashPanel onClose={onClose} />;
+    case 'clash': return <ChunkErrorBoundary key="clash" label="Clash panel"><Suspense fallback={null}><ClashPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;
     case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;
     case 'gantt': return <GanttPanel />;

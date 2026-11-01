@@ -13,7 +13,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { findDuplicates, groupDuplicateSets, type ClashElement } from '@ifc-lite/clash';
 import { federationRegistry } from '@ifc-lite/renderer';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { useViewerStore, type FederatedModel } from '@/store';
@@ -74,6 +74,8 @@ for (const modelCount of [1, 2] as const) {
   test(`duplicate scan in the Clash panel discusses one row per coincident set (${modelCount} model(s), #6833)`, async () => {
     await seedRegisteredWalls(modelCount);
     const panel = render(renderPanelBody('clash', () => undefined));
+    // #8520: wait for the lazy registered panel before using its native actions.
+    await waitFor(() => [...panel.querySelectorAll('button')].some(b => b.textContent?.trim() === 'Detect all clashes'), 'Clash detection actions mounted');
     await clickAndSettle(button(panel, 'Detect all clashes'));
     await act(async () => button(panel, 'Discuss with AI').dispatchEvent(new MouseEvent('click', { bubbles: true })));
     assert.equal(useAssistant.getState().snapshot?.source, 'clash', 'a clash run is discussed as clashes');

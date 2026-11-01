@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/src/oracle/face_set_closure.rs",
+  "mutation": "tests/evidence/face-set-authored-open-7955/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/face_set_oracle_7955.rs",
+  "why": "F3: gating closure regardless of the source-open flag turns an authored-open shell back into a closure violation, so the open-versus-closed witness must fail."
+}

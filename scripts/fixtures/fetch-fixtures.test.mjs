@@ -43,9 +43,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -447,5 +448,50 @@ test('an upstream-only IFC fixture requires a pinned archive and exact member', 
     assertRed(check(root), 'upstream_archive.blob_url', 'pinned https://github.com');
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('direct downloads stop at the declared byte budget and preserve existing fixtures (#8567)', async () => {
+  const path = 'control.ifc';
+  const old = Buffer.from('preserve local original');
+  const expected = Buffer.from('1234');
+  const server = createServer((_req, res) => { res.writeHead(200); res.end(Buffer.alloc(1024, 1)); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const root = makeRoot({ fixtures: [], onDisk: { [path]: old }, manifest: {
+    version: 1, base_url: base, files: [{ path, size: expected.length, sha256: sha256(expected) }],
+  } });
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [join(root, 'scripts/fixtures/fetch-fixtures.mjs'), path], {
+        env: { ...process.env, FIXTURE_RETRIES: '1', FIXTURE_TIMEOUT_MS: '2000' },
+      });
+      let output = '';
+      child.stdout.on('data', chunk => { output += chunk; });
+      child.stderr.on('data', chunk => { output += chunk; });
+      child.on('error', reject);
+      child.on('close', status => resolve({ status, output }));
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /fixture exceeds declared size/);
+    const { readFileSync } = await import('node:fs');
+    assert.deepEqual(readFileSync(join(root, 'tests/models', path)), old);
+    assert.equal(existsSync(join(root, 'tests/models', `${path}.part`)), false);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('noncanonical Gaussian aliases refuse even an existing hash-matched fixture (#8580)', () => {
+  const bytes = Buffer.from('ply\nformat ascii 1.0\nend_header\n');
+  for (const path of ['./gaussian/control.ply', 'pointcloud/../gaussian/control.ply']) {
+    const root = makeRoot({ fixtures: [], onDisk: { 'gaussian/control.ply': bytes }, manifest: {
+      version: 1, base_url: 'https://example.invalid/fixtures',
+      files: [{ path, size: bytes.length, sha256: sha256(bytes) }],
+    } });
+    try { assertRed(check(root), 'canonical relative POSIX path'); }
+    finally { rmSync(root, { recursive: true, force: true }); }
   }
 });

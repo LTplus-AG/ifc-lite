@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "vite": "^8.3.4",
-    "@playwright/test": "^1.60.0"
+    "@playwright/test": "^1.60.0",
+    "tsx": "^4.23.15"
   }
 }

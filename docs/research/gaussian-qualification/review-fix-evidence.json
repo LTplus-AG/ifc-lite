@@ -1,0 +1,63 @@
+{
+  "issue": 8567,
+  "pr": 8580,
+  "reviewedHead": "61095fc5afa5283990467d10b920f4e7aef8b15d",
+  "scope": "P2 ordinary PLY compatibility and full sort permutation assertion",
+  "classification": "Reserved gaussian/**/*.ply namespace; .splat everywhere. Independent of optional metadata. Misplaced Gaussian declarations rejected. Ordinary PLY retains validation, release URL and discovery behavior.",
+  "jobId": "f26c0f06-99d4-4c8e-870b-8d3616467b21",
+  "host": "pc-wsl (louistrue-pc)",
+  "pool": "gaussian-production-8562",
+  "storageTask": "gaussian-corpus-8567-reviewfix-20261101",
+  "exitCode": 0,
+  "sourceUnchanged": false,
+  "testedWorktreeDigest": "e8f227bf6efbd012931fb0cd9945a79b5a0b2eb5619dc8a2f71f59b5eb1aacda",
+  "outputSha256": "1a3839c08d8125c6f67bd9248642e7986e17fd7703eebf55641a1ac0462e6662",
+  "testedFileSha256": {
+    "docs/research/gaussian-qualification/README.md": "9231b52625243037197b445de2e33f0b4199c94cfdf5de43967f88a955e05819",
+    "examples/gaussian-splat-spike/test/qualification.test.mjs": "6057414171aa09ef90af7144788f505da47610a8ebec3ee98c5adc421cadbde4",
+    "scripts/fixtures/build-manifest.mjs": "ff4de7be28e2bfc9eaa76a40787d40ccc2883572a52fc3b85565da58cb22a160",
+    "scripts/fixtures/build-manifest.test.mjs": "0ca8abd77880e68640dc12ffb45e89c61c4ae39ec79daf4a302b2facf4dd066d",
+    "scripts/fixtures/download-url.mjs": "b0ce2eb981801f3621b70578251364076f04876100586be696725662fddac8f0",
+    "scripts/fixtures/download-url.test.mjs": "893768808074a7bde54397d58e28aaedbbe34e10e18839cd789fe1b87e3a6fcc",
+    "scripts/fixtures/gaussian-manifest.test.mjs": "c4e3795b5117d2160e51fd6970132101336cdb00f1c0e9412ad7c5f1af052f60",
+    "scripts/fixtures/manifest-validation.mjs": "88016bbf5942a8809625a6b5634239e524923dbf9286c38c92461b79214c4043"
+  },
+  "checks": {
+    "fixtureTools": {
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0
+    },
+    "corpusHashCheck": {
+      "verified": 2
+    },
+    "rootTurboResearchTests": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "negativeControls": [
+    {
+      "mutation": "Restore three registry production modules from reviewed head; retain new tests",
+      "result": "4 assertion failures: ordinary PLY regeneration, URL, manifest acceptance, misplaced Gaussian declaration"
+    },
+    {
+      "mutation": "getSortedSplatIndicesByDepth(depths).subarray(0, 0)",
+      "command": "pnpm test --filter=ifc-lite-gaussian-splat-spike",
+      "result": "1 assertion failure: 0 !== 8224"
+    },
+    {
+      "mutation": "getSortedSplatIndicesByDepth(depths).subarray(0, table.numRows - 1)",
+      "command": "pnpm test --filter=ifc-lite-gaussian-splat-spike",
+      "result": "1 assertion failure: 8223 !== 8224"
+    }
+  ],
+  "restoration": "All four temporarily mutated source/test files restored and byte-verified in finally blocks. Job sourceUnchanged verified.",
+  "notRun": [
+    "full root tests/typecheck",
+    "real WASM",
+    "integrated viewer/hardware qualification"
+  ],
+  "releaseVerdict": "BLOCKED (unchanged); original evidence.json preserved"
+}

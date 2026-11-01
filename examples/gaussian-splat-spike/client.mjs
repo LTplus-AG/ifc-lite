@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { decodeCapture, decodeIfc } from './decode.mjs';
+import { createScanLoader } from './scan-attempt.mjs';
 import { E57StreamingSource } from '../../packages/pointcloud/src/streaming/e57-source.ts';
 import { lumaBackend } from './luma-backend.mjs';
 import { playcanvasBackend } from './playcanvas-backend.mjs';
@@ -26,9 +27,7 @@ try {
   const update = () => { status.textContent = JSON.stringify(backend.stats(), null, 2); };
   for (const kind of ['ifc', 'points', 'splats']) document.querySelector(`#hide-${kind}`).onclick = () => { backend.toggle(kind); update(); };
   document.querySelector('#move').onclick = () => { backend.move(); update(); };
-  document.querySelector('#dispose').onclick = async () => { await backend.destroy(); update(); };
-  const loadScan = async file => {
-    status.textContent = 'Reading first bounded E57 chunk locally…';
+  const readScan = async file => {
     const source = new E57StreamingSource(file, { downsample: { stride: 20 } });
     try {
       const info = await source.open();
@@ -44,13 +43,19 @@ try {
         p.set([x, y, z], i);
         for (let a = 0; a < 3; a++) { outMin[a] = Math.min(outMin[a], p[i + a]); outMax[a] = Math.max(outMax[a], p[i + a]); }
       }
-      backend.addPoints({ ...chunk, bbox: { min: outMin, max: outMax } });
-      window.spike.scan = { previewSourcePointCount: info.totalPointCount, decodedPointCount: chunk.pointCount, sourceBytes: file.size, boundedPreview: true, placement: 'source coordinates, IFC RTC subtraction and Z-up to Y-up only' };
+      return { chunk: { ...chunk, bbox: { min: outMin, max: outMax } },
+        summary: { previewSourcePointCount: info.totalPointCount, decodedPointCount: chunk.pointCount, sourceBytes: file.size, boundedPreview: true, placement: 'source coordinates, IFC RTC subtraction and Z-up to Y-up only' } };
     } finally { source.close(); }
-    update();
   };
+  const scans = createScanLoader({
+    state: window.spike, read: readScan, commit: result => backend.addPoints(result.chunk), clear: () => backend.clearPoints(),
+    onStart: () => { status.textContent = 'Reading first bounded E57 chunk locally…'; },
+    onSuccess: update, onError: error => { status.textContent = error.stack ?? String(error); },
+  });
+  const { loadScan } = scans;
+  document.querySelector('#dispose').onclick = async () => { scans.dispose(); await backend.destroy(); update(); };
   document.querySelector('#scan').onchange = async event => {
-    try { await loadScan(event.target.files[0]); } catch (error) { window.spike.error = error.message; status.textContent = error.stack; console.error(error); }
+    try { await loadScan(event.target.files[0]); } catch (error) { console.error(error); }
   };
   Object.assign(window.spike, { ready: true, backend, ifcFrame: { rtcOffset: meshes.rtcOffset }, stats: () => backend.stats(), loadScan });
   // Warm a finite number of frames for asynchronous pipeline compilation;

@@ -1,0 +1,60 @@
+{
+  "issue": 8567,
+  "pr": 8580,
+  "reviewedHead": "9139c6fb482ac2cb660a27a3c74c850f8c2e4fa6",
+  "oldBase": "476358e5b6409470318d6d8823db5b4708066e1f",
+  "newBase": "592b33642a5999fe37baf6526cd062a7454efc1c",
+  "pureRestackHead": "30077a818b8f78787d86235e6fe7da528183f92b",
+  "preservedLocalRef": "refs/archive/pr8580-reviewed-9139c6fb",
+  "pureRestackDeltaSha256": "176e7749385008c3acfc76592c643e0b37e3da49d459cbc7e500d0bf27cd8572",
+  "restack": "No conflicts. Full-index binary old-base/old-head and new-base/pure-restack patches byte-identical. Alias and scan-state fixes follow this pure restack; final delta intentionally differs.",
+  "policy": "Reject noncanonical relative POSIX paths before classification and URL choice. Reserved gaussian PLY namespace and all .splat retain provenance enforcement; ordinary PLY remains historically accepted.",
+  "scanState": "Clear scan/error synchronously on canonical loadScan start; latest live generation alone commits or publishes. Disposal invalidates pending attempts. Canceled picker is a no-op. Original read exception and source.close finally retained.",
+  "pool": "gaussian-production-8562",
+  "storageTask": "gaussian-corpus-8567-restack-alias-20261101",
+  "jobs": [
+    {
+      "jobId": "08384187-76eb-4786-8d12-ed87642f78bd",
+      "command": "pnpm exec node --test scripts/fixtures/*.test.mjs; restore old validator and URL module temporarily, run three noncanonical regression tests, restore byte-identical modules",
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "sourceUnchanged": false,
+      "worktreeDigestBefore": "73f0926012f0863f33bed134ddc5ac9d663b7b7794f56e0faa21e2e74b3166ce",
+      "worktreeDigestAfter": "73f0926012f0863f33bed134ddc5ac9d663b7b7794f56e0faa21e2e74b3166ce",
+      "outputSha256": "d1e5905039523aeb14b3fa99d79957ee05e09ddad88b5a72405ac2f9b385e1f1"
+    },
+    {
+      "jobId": "0548e5fb-5f15-46c5-806d-ed34e67a0cb0",
+      "command": "pnpm test --filter=ifc-lite-gaussian-splat-spike",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "sourceUnchanged": false,
+      "worktreeDigestBefore": "cb06bb161c859b7244f027d8e87d59139412b18985566399f93dbce34a490367",
+      "worktreeDigestAfter": "cb06bb161c859b7244f027d8e87d59139412b18985566399f93dbce34a490367",
+      "outputSha256": "9f78e6614110c93944ebf479d5c0139fc4c9476ae3e48b085e47defc4e688d9c"
+    }
+  ],
+  "dirtyReceiptNote": "Both jobs admitted dirty source; sourceUnchanged is false, but before/after worktree digests match. Tested file hashes below bind the changed slice.",
+  "testedFileSha256": {
+    "docs/research/gaussian-qualification/README.md": "7b48cc6db48ee6a30014f6eb20bc4f498031fae61828a55d15c9244a1b16b6c8",
+    "examples/gaussian-splat-spike/client.mjs": "241515d8fac042c9586da838b2524d60a5d7aa4aa3d96ca8ce30169fa5423f47",
+    "examples/gaussian-splat-spike/validate.mjs": "0c74ba4e873bd0192f3bab58e431392c0c20c83c33c30d8551e97d3ca18eb410",
+    "scripts/fixtures/download-url.mjs": "b347236cd42bd100b8810a13542a540452bfcff9ff56d837f5de85586b337633",
+    "scripts/fixtures/download-url.test.mjs": "8223e10c39a82689de70c4069d47098575a63c764ba28ee7600a47cf492261c2",
+    "scripts/fixtures/fetch-fixtures.test.mjs": "566f454a6875492a637e0be08d8e679a050d56fa46d0f718ab7fe35f7c2c0ece",
+    "scripts/fixtures/gaussian-manifest.test.mjs": "27e8f797a5c67821734ed9ce0234d5c5a94fcebbcfc277e33425fc64b6112cb5",
+    "scripts/fixtures/manifest-validation.mjs": "4b46b7122ca75d7333bf0657cbbee5cd2308bd2dd71ee721c86451133eb3928d",
+    "examples/gaussian-splat-spike/scan-attempt.mjs": "541d74d7694537d9a7d5be0d8c22211bbfb3bc10e1622550bd365888f6bb1465",
+    "examples/gaussian-splat-spike/test/scan-attempt.test.mjs": "7d8599f0aeeb9a38cd3f86e934b51e375c8a045b03ab8f65b275f2f8ef2c3468"
+  },
+  "negativeControl": "Restoring reviewed validator and URL policy makes all 3 new noncanonical-path tests fail, including a hash-matched local alias. Modules restored byte-identically.",
+  "limits": [
+    "Scan controller tests use real asynchronous Blob/JSON operations and controlled completion order, not real E57/browser/GPU validation.",
+    "No new browser witness or hardware performance claim. Original released evidence and witness hashes unchanged.",
+    "Full repository tests, WASM, integrated viewer and release qualification not rerun; M2/M3 and corpus blockers remain."
+  ]
+}

@@ -14,6 +14,7 @@ import { SemanticResults } from '@/components/viewer/SemanticResults';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, click, cleanup } from '@/test/render';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createSelectionAdapter } from '@/sdk/adapters/selection-adapter';
 import { useSemanticSession } from './session';
 import { pilotModel } from './demo';
@@ -126,4 +127,64 @@ test('#8556 real ArchiCAD doors support checkbox and bulk selection', async cont
   click(namedButton(ui, 'Select all mapped results'));
   assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.expressId).sort((a, b) => a - b), doors.sort((a, b) => a - b));
   assert.equal(useViewerStore.getState().selectedEntityIds.size, 3);
+});
+
+
+for (const count of [1, 2]) test(`#8556 additive checkboxes preserve unrelated selection with ${count} model(s)`, async () => {
+  const model = await selectionFixture(count);
+  const external = { modelId: `model-${count - 1}`, expressId: model.doors[2] };
+  act(() => createSelectionAdapter(useViewerStore).set([external]));
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0])] }} mapping={DEFAULT_MAPPING} revisions={new Map()} scope="model-0" onError={error => { throw error; }} />);
+  click(checkbox(ui, 1));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [external, { modelId: 'model-0', expressId: model.doors[0] }]);
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+  click(checkbox(ui, 1));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [external]);
+});
+
+test('#8556 a stale ambiguous candidate cannot overwrite an unrelated current selection', async () => {
+  const model = await selectionFixture(2); const errors: unknown[] = [];
+  const external = { modelId: 'model-1', expressId: model.doors[2] };
+  act(() => createSelectionAdapter(useViewerStore).set([external]));
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0])] }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => errors.push(error)} />);
+  click(ui.querySelector('button[aria-label="Select mapped row"]')!, { ctrlKey: true });
+  const stale = ui.querySelectorAll('fieldset button')[0]; assert.ok(stale);
+  act(() => useViewerStore.setState({ models: new Map([['model-1', useViewerStore.getState().models.get('model-1')!]]) }));
+  click(stale);
+  assert.equal(errors.length, 1);
+  assert.match(String(errors[0]), /no longer available/);
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [external]);
+});
+
+test('#8556 bulk selection reads tombstones at the click boundary', async () => {
+  const model = await selectionFixture();
+  let view: ReturnType<typeof getOrCreateMutationView> = null;
+  act(() => { view = getOrCreateMutationView(useViewerStore, 'model-0'); });
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: model.GlobalIds.map(guidRow) }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+  // No mutationVersion notification: simulate the interval before React renders the deletion.
+  const currentView = useViewerStore.getState().mutationViews.get('model-0'); assert.ok(currentView); assert.equal(currentView, view);
+  currentView.deleteEntity(model.doors[0]);
+  click(namedButton(ui, 'Select all mapped results'));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.expressId).sort((a, b) => a - b), model.doors.slice(1).sort((a, b) => a - b));
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+});
+
+test('#8556 bulk selection skips unassociated revisions and ambiguity and follows scope changes', async () => {
+  const model = await selectionFixture(2);
+  const rows = [
+    { ...guidRow(model.GlobalIds[0]), modelRevision: { type: 'uri' as const, value: 'urn:revision:known' } },
+    guidRow(model.GlobalIds[1]),
+    { ...guidRow(model.GlobalIds[2]), modelRevision: { type: 'uri' as const, value: 'urn:revision:missing' } },
+  ];
+  function Harness() {
+    const [scope, setScope] = useState<string>();
+    return <><button onClick={() => setScope('model-1')}>Scope second model</button><SemanticResults results={{ columns: ['GlobalId', 'modelRevision'], rows }} mapping={DEFAULT_MAPPING} revisions={new Map([['urn:revision:known', 'model-0']])} scope={scope} onError={error => { throw error; }} /></>;
+  }
+  const ui = render(<Harness />);
+  click(namedButton(ui, 'Select all mapped results'));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [{ modelId: 'model-0', expressId: model.doors[0] }]);
+  click(namedButton(ui, 'Scope second model')); click(namedButton(ui, 'Select all mapped results'));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [{ modelId: 'model-1', expressId: model.doors[1] }]);
+  assert.equal(checkbox(ui, 1).disabled, true);
+  assert.equal(checkbox(ui, 3).disabled, true);
 });

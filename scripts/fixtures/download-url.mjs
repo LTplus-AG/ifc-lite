@@ -8,7 +8,7 @@
 // the manifest builder all read that decision from `upstreamBlobUrl`, so the
 // uploader can never publish a file the fetcher takes from upstream.
 
-import { isGaussianFixturePath } from './manifest-validation.mjs';
+import { isCanonicalFixturePath, isGaussianFixturePath } from './manifest-validation.mjs';
 
 const BLOB = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([a-f0-9]{40})\/(.+)$/;
 
@@ -24,6 +24,9 @@ export function pinnedBlobRawUrl(blobUrl) {
  * when they are served from this project's fixture release.
  */
 export function upstreamBlobUrl(entry) {
+  if (!isCanonicalFixturePath(entry.path)) {
+    throw new Error('fixture path must be a canonical relative POSIX path');
+  }
   if (entry.upstream_archive) return entry.upstream_archive.blob_url;
   const source = entry.provenance?.source;
   const reviewedSourceBytes =

@@ -26,7 +26,10 @@ typecheck, real WASM, required CI and integrated hardware acceptance remain sepa
 
 Only `tests/models/manifest.json` is committed for captured binaries; normal
 fixture fetch/hash verification, `.manifest-ignore`, and `local/` privacy guards
-apply. Gaussian PLY uses the reserved `gaussian/` directory (including subdirectories);
+apply. Registry paths must be canonical relative POSIX paths: no leading slash,
+backslashes, drive/colon syntax, empty segments, `.` or `..`. Validation rejects
+aliases before classification, and URL policy also refuses them before choosing
+an upstream or release URL. Gaussian PLY uses the reserved `gaussian/` directory (including subdirectories);
 `.splat` is Gaussian at any path. This path policy, independent of whether metadata
 is present, requires reviewed Gaussian metadata even in the version-1 registry.
 Deleting metadata cannot declassify either kind. A Gaussian declaration outside

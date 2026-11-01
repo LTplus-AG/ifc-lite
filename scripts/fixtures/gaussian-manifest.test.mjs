@@ -44,3 +44,14 @@ test('reserved Gaussian paths require provenance even after deleting classificat
   const misplaced = { ...structuredClone(source), path: 'pointcloud/misplaced.ply' };
   assert.ok(validateManifest({ version: 1, files: [misplaced] }).some(error => error.includes('reserved gaussian/')));
 });
+
+test('noncanonical paths cannot bypass Gaussian provenance (#8580)', () => {
+  // Also verify the full historical catalogue remains admissible.
+  assert.deepEqual(validateManifest(catalogue), []);
+  for (const path of ['./gaussian/control.ply', 'pointcloud/../gaussian/control.ply',
+    'gaussian//control.ply', '/gaussian/control.ply', 'gaussian/./control.ply',
+    'gaussian\\control.ply', 'C:/gaussian/control.ply']) {
+    const errors = validateManifest({ version: 1, files: [{ path, size: 123, sha256: 'a'.repeat(64) }] });
+    assert.ok(errors.some(error => error.includes('canonical relative POSIX path')), path);
+  }
+});

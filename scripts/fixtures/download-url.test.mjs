@@ -66,3 +66,12 @@ test('ordinary PLY keeps release URL even when carrying matching immutable prove
   entry.provenance.modification.status = 'modified';
   assert.equal(fixtureDownloadUrl(BASE_URL, entry), `${BASE_URL}/${SHA256}`);
 });
+
+test('URL policy rejects noncanonical aliases before selecting either source (#8580)', () => {
+  for (const path of ['./gaussian/control.ply', 'pointcloud/../gaussian/control.ply']) {
+    const entry = reviewedEntry({ path });
+    assert.throws(() => fixtureDownloadUrl(BASE_URL, entry), /canonical relative POSIX path/);
+    delete entry.provenance;
+    assert.throws(() => fixtureDownloadUrl(BASE_URL, entry), /canonical relative POSIX path/);
+  }
+});

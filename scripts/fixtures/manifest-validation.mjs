@@ -6,6 +6,13 @@
 // intentionally still accepted: moving the existing corpus to v2 requires a
 // rights review for every historical byte, not a mechanical JSON rewrite.
 
+// One spelling per on-disk fixture. Do not let resolve() erase dot segments
+// after provenance policy has classified a different raw path (#8580).
+export function isCanonicalFixturePath(path) {
+  return typeof path === 'string' && path.length > 0 && !/[\\:\0]/.test(path)
+    && path.split('/').every(segment => segment.length > 0 && segment !== '.' && segment !== '..');
+}
+
 // Registry classification is independent of optional metadata: Gaussian PLY
 // belongs under gaussian/, while .splat is intrinsically Gaussian anywhere.
 // Ordinary PLY retains historical validation and discovery behavior (#8580).
@@ -204,6 +211,10 @@ export function validateManifest(manifest) {
       return;
     }
     requireText(entry.path, `${where}.path`, errors);
+    if (!isCanonicalFixturePath(entry.path)) {
+      invalid(errors, `${where}.path`, 'must be a canonical relative POSIX path without empty, dot or parent segments');
+      return;
+    }
     if (!isText(entry.sha256) || !SHA256_RE.test(entry.sha256)) {
       invalid(errors, `${where}.sha256`, 'must be a lowercase SHA-256');
     }

@@ -43,9 +43,11 @@ try {
       result.initial = await page.evaluate(() => window.spike.stats());
       result.pixels = await saveCapture(page, `${backend}-mixed.png`);
       if (process.env.SPLAT_SPIKE_E57) {
+        const priorAttempt = await page.evaluate(() => window.spike.scanAttempt ?? 0);
         await page.locator('#scan').setInputFiles(process.env.SPLAT_SPIKE_E57);
-        await page.waitForFunction(() => window.spike?.scan || window.spike?.error, undefined, { timeout: 90000 });
-        result.scan = await page.evaluate(() => window.spike.scan ?? { error: window.spike.error });
+        await page.waitForFunction(prior => window.spike.scanAttempt > prior && !window.spike.scanPending, priorAttempt, { timeout: 90000 });
+        result.scan = await page.evaluate(() => window.spike.error ? { error: window.spike.error } : window.spike.scan);
+        if (!result.scan || result.scan.error) throw new Error(result.scan?.error ?? 'Scan attempt produced no result');
         result.withScan = await page.evaluate(() => window.spike.stats());
         await page.click('#hide-ifc'); await page.click('#hide-splats');
         const scanOnly = await page.evaluate(() => window.spike.backend.capture());

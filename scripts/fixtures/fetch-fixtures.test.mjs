@@ -483,3 +483,15 @@ test('direct downloads stop at the declared byte budget and preserve existing fi
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('noncanonical Gaussian aliases refuse even an existing hash-matched fixture (#8580)', () => {
+  const bytes = Buffer.from('ply\nformat ascii 1.0\nend_header\n');
+  for (const path of ['./gaussian/control.ply', 'pointcloud/../gaussian/control.ply']) {
+    const root = makeRoot({ fixtures: [], onDisk: { 'gaussian/control.ply': bytes }, manifest: {
+      version: 1, base_url: 'https://example.invalid/fixtures',
+      files: [{ path, size: bytes.length, sha256: sha256(bytes) }],
+    } });
+    try { assertRed(check(root), 'canonical relative POSIX path'); }
+    finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});

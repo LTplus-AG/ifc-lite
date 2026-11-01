@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { RetainedProductOutcome } from '../../../wasm/pkg-retained/ifc-lite.js';
 import type { RetainedEngine } from './engine.js';
-import { partVolume, productVolume, worldPoints } from './obj.js';
+import { ARTIFACT_CHUNK_CHARS, partVolume, productVolume, worldPoints } from './obj.js';
 
 export function retainedReport(engine: RetainedEngine, instanceMinOccurrences: number, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
   const byCode: Record<string, number> = {};
@@ -46,14 +46,33 @@ export function retainedReport(engine: RetainedEngine, instanceMinOccurrences: n
     summary: { layeredProducts: layered.length, bands, candidates: outcomes.length, published, coverage: outcomes.length ? published / outcomes.length : 0, byCode }, products };
 }
 
-/** Stable keys throughout, with products already sorted by numeric id. */
-export function reportJson(report: unknown): string {
-  return `${JSON.stringify(report, (_key, value: unknown) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
-    }
-    return value;
-  }, 2)}\n`;
+const stableJson = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => {
+  if (item && typeof item === 'object' && !Array.isArray(item)) {
+    return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+  }
+  return item;
+}, 2);
+
+/**
+ * Stable keys throughout, with products already sorted by numeric id. Bytes equal one
+ * two-space `JSON.stringify`, serialized a product at a time: a whole-model report can
+ * exceed V8's maximum string length (Holter: >1 GB).
+ */
+export function reportJson(report: { products: unknown[] }): Buffer[] {
+  const [head, tail] = stableJson({ ...report, products: '\u0000products' }).split(`"products": ${JSON.stringify('\u0000products')}`);
+  if (tail === undefined) throw new Error('Unserializable retained report');
+  if (!report.products.length) return [Buffer.from(`${head}"products": []${tail}\n`)];
+  const chunks: Buffer[] = [];
+  let text = `${head}"products": [`;
+  report.products.forEach((product, index) => {
+    // A JSON string never holds a raw newline, so this only re-indents structure.
+    text += `${index ? ',' : ''}\n    ${stableJson(product).replace(/\n/g, '\n    ')}`;
+    if (text.length < ARTIFACT_CHUNK_CHARS) return;
+    chunks.push(Buffer.from(text));
+    text = '';
+  });
+  chunks.push(Buffer.from(`${text}\n  ]${tail}\n`));
+  return chunks;
 }
 
 function faceReport(part: import('../../../wasm/pkg-retained/ifc-lite.js').RetainedShapePart) {

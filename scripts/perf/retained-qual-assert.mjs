@@ -63,7 +63,8 @@ export function assertViewerRetained({ state, requests, spans, servedManifestSha
 /** The built Node CLI's report and OBJ for one `export --kernel retained` process. */
 export function assertCliRetained({ exitCode, stdout, stderr, report, objHead, expectedManifestSha256, expectation }) {
   const problems = [];
-  check(problems, exitCode === 0, `exit ${exitCode}: ${String(stderr).slice(0, 300)}`);
+  // The fatal error is the end of stderr; earlier lines may be incidental (#7955 Holter).
+  check(problems, exitCode === 0, `exit ${exitCode}: ${String(stderr).slice(-2000)}`);
   check(problems, stdout === '', 'file export leaked onto stdout');
   check(problems, report?.format === 'ifc-lite.retained-report/1', `report format ${report?.format}`);
   check(problems, report?.settings?.kernel === 'retained', `report kernel ${report?.settings?.kernel}`);

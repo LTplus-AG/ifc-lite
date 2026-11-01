@@ -9,7 +9,7 @@ research results. IFC-Lite does not import these files, and its root test comman
 does not execute the patch. They live under `docs/research` to distinguish that
 evidence from runnable example code; the existing changed-tests oracle excludes
 documentation. No oracle classification rule or acceptance requirement is changed.
-The earlier [spike results](../../../examples/gaussian-splat-spike/results-summary.json) likewise record a
+The earlier [spike results](https://github.com/LTplus-AG/ifc-lite/blob/dd6a54799ec1853714076942b19db3b1bb82643e/examples/gaussian-splat-spike/results-summary.json) likewise record a
 historical measurement, not a runtime configuration.
 
 ## Measured behavior

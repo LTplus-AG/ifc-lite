@@ -108,6 +108,12 @@ impl RetainedExecutionError {
                 origin = Some(RefusalOrigin { site: "faces", entity: *entity, cause });
                 Refusal::FaceProvenanceUnproven
             }
+            // Like the affine chord admission: a numerical proof this product
+            // lacks, so it is incomplete rather than a source or kernel fault.
+            Self::ChordalVolume { entity } => {
+                origin = Some(RefusalOrigin { site: "chordal_volume", entity: *entity, cause: "curved_volume_tolerance" });
+                Refusal::Incomplete
+            }
             Self::Recipe(ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_)) => {
                 Refusal::OperationUnsupported
             }

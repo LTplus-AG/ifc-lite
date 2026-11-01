@@ -21,6 +21,8 @@ afterEach(() => {
 
 function childDocument(): Document {
   const frame = document.createElement('iframe');
+  // happy-dom 21 only gives an iframe a document through srcdoc by default.
+  frame.srcdoc = '<!doctype html><html><head></head><body></body></html>';
   document.body.append(frame);
   frames.push(frame);
   assert.ok(frame.contentDocument);

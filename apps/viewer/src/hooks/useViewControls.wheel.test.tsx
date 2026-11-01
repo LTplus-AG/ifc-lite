@@ -156,7 +156,7 @@ describe('drawing wheel navigation (#6614)', () => {
 
   it('tracks the pop-out owner window after the canvas is adopted', async () => {
     await mount();
-    const frame = document.createElement('iframe'); document.body.append(frame);
+    const frame = document.createElement('iframe'); frame.srcdoc = '<!doctype html><html><head></head><body></body></html>'; document.body.append(frame);
     const owner = frame.contentWindow;
     assert.ok(owner);
     // happy-dom makes ownerDocument non-configurable on adoption, so use a

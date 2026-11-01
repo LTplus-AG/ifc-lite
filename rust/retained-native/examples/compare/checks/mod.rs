@@ -4,6 +4,7 @@ mod layers;
 mod clips;
 pub(crate) mod bounded;
 pub mod faces;
+mod face_sets;
 use ifc_lite_retained_native::ShapeOnlyProduct;
 use ifc_lite_processing::AnalyticQuantitySources;
 /// Borrowed model context shared by every slice. Decode independently of the
@@ -38,5 +39,6 @@ pub fn check(product: &ShapeOnlyProduct, sources: &SourceContext<'_>, bytes: &[u
     results.extend(clips::check(product, sources, tolerances));
     results.extend(bounded::check(product, bounded, tolerances, sources.hand_volume, bytes));
     results.extend(faces::check(product, sources, tolerances));
+    results.extend(face_sets::check(product, bytes, tolerances));
     results
 }

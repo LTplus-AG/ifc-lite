@@ -1045,6 +1045,14 @@ jobs:
           # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8308/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8308/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/8308/behaviour.oracle.patch --test rust/geometry/src/router/transforms/operator_axis2_tests.rs --test rust/processing/tests/issue_8308_omitted_axis2.rs)
+          # #7955 (#8475): the bounded check's measurement lives in the
+          # retained_compare example, whose #[path] modules no cargo target owns.
+          # Its integration witness drives that check directly; keep the
+          # part-level entry point and restore ONLY per-part measurement, which
+          # must fail the assembled-bands witness. Once the patch is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/m6-layered-bounded-7955/behaviour.oracle.patch | grep -Fxq 'tests/evidence/m6-layered-bounded-7955/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/m6-layered-bounded-7955/behaviour.oracle.patch --test rust/retained-native/tests/m6_layered_bounded.rs)
           # #8341 F2 viewer: inverting the whole change deletes the relay module its
           # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.

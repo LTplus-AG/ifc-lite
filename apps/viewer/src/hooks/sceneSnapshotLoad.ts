@@ -35,6 +35,7 @@ interface SnapshotHostData {
 
 export interface AdoptedSceneSnapshot {
   adoption: object;
+  shards: ArrayBuffer[];
   firstVisible: Promise<void>;
 }
 
@@ -102,7 +103,7 @@ export async function adoptCachedSceneSnapshot(
   camera.setOrbitAnchorBounds(host.orbitAnchorBounds);
   renderer.clearCaches();
   renderer.requestRender();
-  return { adoption, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+  return { adoption, shards, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
 }
 
 /** Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives. */
@@ -116,7 +117,7 @@ export async function publishAdoptedSceneMeshes(
   const chunks = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
   if (isStale?.()) return [];
   const meshes = chunks.flat();
-  setPendingSceneSnapshot(adopted.adoption);
+  setPendingSceneSnapshot(adopted.adoption, () => useViewerStore.getState().appendInstancedShards(modelId, adopted.shards));
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
 }

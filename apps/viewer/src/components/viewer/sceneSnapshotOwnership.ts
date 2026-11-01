@@ -15,7 +15,7 @@ import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Bounds } from './streamingBounds.js';
 
-let pendingAdoption: object | null = null;
+let pending: { adoption: object; requeueShards: () => void } | null = null;
 let finalFitBounds: Bounds | null = null;
 let modelArrivalPending = false;
 
@@ -28,14 +28,31 @@ export function lastFinalFitBounds(): Bounds | null {
   return finalFitBounds;
 }
 
-/** The next new geometry to sync belongs to this adoption. */
-export function setPendingSceneSnapshot(adoption: object): void {
-  pendingAdoption = adoption;
+/** The next new geometry to sync belongs to this adoption; `requeueShards` hands its shards to the ordinary drain if refused. */
+export function setPendingSceneSnapshot(adoption: object, requeueShards: () => void = () => {}): void {
+  pending = { adoption, requeueShards };
 }
 
 /** This adoption's load is over. A newer load's pending adoption stays. */
 export function withdrawPendingSceneSnapshot(adoption: object): void {
-  if (pendingAdoption === adoption) pendingAdoption = null;
+  if (pending?.adoption === adoption) pending = null;
+}
+
+type SnapshotScene = Pick<SceneContents, 'isSceneSnapshotHydrating' | 'hydrateSceneSnapshot' | 'removeInstancedTemplatesForModel'>;
+
+/**
+ * Attach `geometry`, or fall back. A fallback's reshape runs before the model
+ * registers and can drop the shards uploaded at adoption, so they move to the
+ * ordinary drain, which runs after it, as on a streamed load.
+ */
+function settlePendingSnapshot(scene: SnapshotScene, geometry: readonly MeshData[]): boolean {
+  const settling = pending;
+  pending = null;
+  if (!settling) return false;
+  if (scene.hydrateSceneSnapshot(settling.adoption, geometry)) return true;
+  scene.removeInstancedTemplatesForModel(0);
+  settling.requeueShards();
+  return false;
 }
 
 /**
@@ -43,11 +60,10 @@ export function withdrawPendingSceneSnapshot(adoption: object): void {
  * scene because their meshes are still decoding. Once they are published, empty
  * means every type is now hidden, so the batches must go: nothing else ends them.
  */
-export function adoptedSceneOutlivesEmptyGeometry(scene: Pick<SceneContents, 'isSceneSnapshotHydrating' | 'hydrateSceneSnapshot'>): boolean {
+export function adoptedSceneOutlivesEmptyGeometry(scene: SnapshotScene): boolean {
   if (!scene.isSceneSnapshotHydrating()) return false;
-  if (!pendingAdoption) return true;
-  scene.hydrateSceneSnapshot(pendingAdoption, []); // refused: the batches go, the shards stay for when the type is shown again
-  pendingAdoption = null;
+  if (!pending) return true;
+  settlePendingSnapshot(scene, []);
   return false;
 }
 
@@ -73,9 +89,7 @@ interface OwnershipRefs {
 
 /** True when `geometry` hydrated the pending snapshot; the refs then describe it as already streamed and fitted. */
 export function takeSceneSnapshotGeometry(geometry: MeshData[], modelCount: number, renderer: Renderer, refs: OwnershipRefs): boolean {
-  const adoption = pendingAdoption;
-  pendingAdoption = null;
-  if (!adoption || !renderer.getScene().hydrateSceneSnapshot(adoption, geometry)) return false;
+  if (!settlePendingSnapshot(renderer.getScene(), geometry)) return false;
   modelArrivalPending = modelCount === 0;
   const camera = renderer.getCamera();
   refs.lastGeometryLengthRef.current = geometry.length;

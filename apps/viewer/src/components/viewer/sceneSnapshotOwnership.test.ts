@@ -12,8 +12,9 @@ const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
 const point = { x: 1, y: 2, z: 3 };
 let hydrates = true;
 let hydrations: unknown[][] = [];
+let removedShards: number[] = [];
 const renderer = {
-  getScene: () => ({ hydrateSceneSnapshot: (adoption: object, meshes: MeshData[]) => { hydrations.push([adoption, meshes]); return hydrates; } }),
+  getScene: () => ({ removeInstancedTemplatesForModel: (index: number) => { removedShards.push(index); return 0; }, hydrateSceneSnapshot: (adoption: object, meshes: MeshData[]) => { hydrations.push([adoption, meshes]); return hydrates; } }),
   getCamera: () => ({ getOrbitAnchorBounds: () => null, getSceneBounds: () => bounds, getPosition: () => point, getTarget: () => point }),
   requestRender() {},
 } as unknown as Renderer;
@@ -26,7 +27,7 @@ const refs = () => ({
 
 describe('takeSceneSnapshotGeometry', () => {
   const adoption = {};
-  beforeEach(() => { hydrates = true; hydrations = []; withdrawPendingSceneSnapshot(adoption); takeSnapshotModelArrival(); });
+  beforeEach(() => { hydrates = true; hydrations = []; removedShards = []; withdrawPendingSceneSnapshot(adoption); takeSnapshotModelArrival(); });
   const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target);
 
   it('hydrates with the synced geometry once, and records it as streamed and fitted', () => {
@@ -48,9 +49,12 @@ describe('takeSceneSnapshotGeometry', () => {
 
   it('falls through to the ordinary path when the scene refuses the geometry', () => {
     hydrates = false;
-    setPendingSceneSnapshot(adoption);
+    let requeued = 0;
+    setPendingSceneSnapshot(adoption, () => { requeued++; });
     const refused = refs();
     assert.equal(take([mesh()], 0, refused), false);
+    assert.deepEqual(removedShards, [0], 'the fallback reshape must not decide their fate');
+    assert.equal(requeued, 1, 'the ordinary drain uploads them after the reshape');
     assert.equal(refused.lastGeometryLengthRef.current, 0);
     assert.equal(refused.cameraFittedRef.current, false);
   });
@@ -85,7 +89,7 @@ describe('takeSceneSnapshotGeometry', () => {
   describe('empty geometry', () => {
     const scene = (hydrating: boolean) => {
       const refused: object[] = [];
-      return { refused, isSceneSnapshotHydrating: () => hydrating, hydrateSceneSnapshot: (a: object) => { refused.push(a); return false; } };
+      return { refused, isSceneSnapshotHydrating: () => hydrating, removeInstancedTemplatesForModel: () => 0, hydrateSceneSnapshot: (a: object) => { refused.push(a); return false; } };
     };
 
     it('keeps the adopted batches while their meshes decode', () => {
@@ -95,9 +99,11 @@ describe('takeSceneSnapshotGeometry', () => {
     });
 
     it('ends the adoption once its meshes were published and all filtered out', () => {
-      setPendingSceneSnapshot(adoption);
+      let requeued = 0;
+      setPendingSceneSnapshot(adoption, () => { requeued++; });
       const hydrating = scene(true);
       assert.equal(adoptedSceneOutlivesEmptyGeometry(hydrating), false);
+      assert.equal(requeued, 1);
       assert.deepEqual(hydrating.refused, [adoption]);
       assert.equal(take([mesh()]), false, 'no longer pending');
     });

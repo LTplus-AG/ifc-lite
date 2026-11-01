@@ -83,6 +83,12 @@ fn facet(local: [[f64;3];3], frame: &[f64;16]) -> Option<[f64;3]> {
     // loses small edges on georeferenced models and corrupts oracle incidence.
     unit(cross(vector(frame,sub(local[1],local[0])), vector(frame,sub(local[2],local[0]))))
 }
+/// A triangle thinner than f64 noise in a published position has no direction of its own.
+fn is_sliver(points: [[f64;3];3]) -> bool {
+    let edges = [sub(points[1],points[0]),sub(points[2],points[1]),sub(points[0],points[2])];
+    let longest = edges.iter().map(|&e| norm(e)).fold(0.,f64::max);
+    norm(cross(edges[0],edges[2])) <= 1e-12*longest
+}
 /// Surface selection uses source incidence and facet orientation, never output
 /// normals. A noisy sliver's facet is not the normal oracle for a planar face.
 pub fn check_mesh(positions: &[f64], indices: &[u32], frame: &[f64;16], normals: &[f64],
@@ -101,6 +107,7 @@ pub fn check_mesh(positions: &[f64], indices: &[u32], frame: &[f64;16], normals:
         }
         let points = local.map(|p| transform(frame,p));
         let facet = facet(local,frame).ok_or("degenerate triangle")?;
+        let sliver = is_sliver(points);
         let centroid = add(points[0],scale(add(sub(points[1],points[0]),sub(points[2],points[0])),1./3.));
         let surface_index = source.iter().position(|s| {
             let incidence = if s.curved() {0.001001} else {1e-6};
@@ -118,7 +125,12 @@ pub fn check_mesh(positions: &[f64], indices: &[u32], frame: &[f64;16], normals:
             result.unit_error = result.unit_error.max((norm(normal)-1.).abs());
             result.corners += 1;
             let expected = surface.and_then(|s| s.sample(point)).map_or(facet,|(n,_)| n);
-            let error = angle(expected,normal);
+            // A sliver's own direction is noise, so the plane chosen by it proves nothing: on an
+            // edge it may be incident to several planes, and any of them is a true answer.
+            let error = source.iter().filter(|_| sliver && !surface.is_some_and(Surface::curved))
+                .filter(|s| points.iter().all(|&p| s.sample(p).is_some_and(|(_,d)| d.is_finite() && d <= 1e-6)))
+                .filter_map(|s| s.sample(point).map(|(n,_)| angle(n,normal)))
+                .fold(angle(expected,normal),f64::min);
             if surface.is_some_and(Surface::curved) {
                 result.smoothed_curved += usize::from(angle(facet,normal) > 1e-9);
                 result.curved += 1; result.curved_radians = result.curved_radians.max(error);
@@ -133,6 +145,20 @@ pub fn check_mesh(positions: &[f64], indices: &[u32], frame: &[f64;16], normals:
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn issue_8291_a_sliver_on_an_edge_may_carry_either_planes_normal() {
+        // Along the x axis, where the floor (+z) and a wall (-y) meet. The facet's noise points at the wall.
+        let frame = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+        let positions = [0.,0.,0., 1.,0.,0., 0.5,0.,1e-15];
+        let planes = [Surface::Plane { origin: [0.;3], normal: [0.,-1.,0.] }, Surface::Plane { origin: [0.;3], normal: [0.,0.,1.] }];
+        let floor: Vec<f64> = (0..3).flat_map(|_| [0.,0.,1.]).collect();
+        assert_eq!(check_mesh(&positions,&[0,1,2],&frame,&floor,&planes).unwrap().planar_radians,0.);
+        // Neither plane's normal still fails, and so does a real triangle on the wrong plane.
+        let wrong: Vec<f64> = (0..3).flat_map(|_| [1.,0.,0.]).collect();
+        assert!(check_mesh(&positions,&[0,1,2],&frame,&wrong,&planes).unwrap().planar_radians > 1.);
+        let real = [0.,0.,0., 1.,0.,0., 0.,1.,0.];
+        assert!(check_mesh(&real,&[0,1,2],&frame,&floor.iter().map(|v| -v).collect::<Vec<_>>(),&planes[1..]).unwrap().planar_radians > 1.);
+    }
     use super::*;
     #[test]
     fn m11_n_7955_source_facet_direction_is_translation_invariant() {

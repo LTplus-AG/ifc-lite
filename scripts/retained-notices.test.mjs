@@ -59,9 +59,9 @@ checksum="${'a'.repeat(64)}"
     notices: [text('LICENSE', `${name} licence text\n`)] });
   put('licenses/retained/manifest.json', JSON.stringify(stamp({ format: 2, inputs: inventoryInputs(root), components: [
     nonCargo('fixture SDK', 'b'.repeat(40)),
-    nonCargo('fixture Emscripten', '4.0.15', 'MIT OR NCSA'),
+    nonCargo('fixture Emscripten', '4.0.15', 'MIT'),
     { name: 'external', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index',
-      license: 'MIT OR Apache-2.0', scope: 'inert fixture',
+      license: 'MIT', scope: 'inert fixture',
       notices: [text('LICENSE-MIT', 'Fixture MIT licence text\n'), text('LICENSE-APACHE', 'Fixture Apache licence text\n')] },
     nonCargo('fixture Rust standard library', FIXTURE_RUSTC),
   ] })));
@@ -387,6 +387,7 @@ test('Refs #7955 cargo-only refresh writes nothing when a reused notice file is 
 
 test('Refs #7955 cargo-only refresh applies an election recorded for a reused component', t => {
   const f = fixture(t);
+  f.regenerate(m => { m.components[1].license = 'MIT OR NCSA'; });
   const metadata = bumpExternal(f);
   const mit = 'Fixture Emscripten MIT text\n', sha256 = createHash('sha256').update(mit).digest('hex');
   f.put(`licenses/retained/texts/${sha256}.txt`, mit);
@@ -407,6 +408,7 @@ test('Refs #7955 cargo-only refresh applies an election recorded for a reused co
   assert.equal(manifestBytes(f), once);
   // An invalid election for a reused component is refused before anything is written.
   const g = fixture(t);
+  g.regenerate(m => { m.components[1].license = 'MIT OR NCSA'; });
   const invalid = bumpExternal(g);
   g.put('licenses/retained/supplemental.json', JSON.stringify([{ ...record, election: 'GPL-2.0' }]));
   const untouched = manifestBytes(g);
@@ -423,6 +425,7 @@ test('Refs #7955 check rejects an undeclared Cargo component even under a recomp
 
 test('Refs #7955 cargo-only refresh refuses a withdrawn or changed supplement for a reused component', t => {
   const f = fixture(t);
+  f.regenerate(m => { m.components[1].license = 'MIT OR NCSA'; });
   const metadata = bumpExternal(f);
   const mit = 'Fixture Emscripten MIT text\n', sha256 = createHash('sha256').update(mit).digest('hex');
   f.put(`licenses/retained/texts/${sha256}.txt`, mit);
@@ -448,6 +451,7 @@ test('Refs #7955 cargo-only refresh refuses a withdrawn or changed supplement fo
 
 test('Refs #7955 cargo-only withdrawn-supplement guard ignores a key-only reorder of an unchanged record', t => {
   const f = fixture(t);
+  f.regenerate(m => { m.components[1].license = 'MIT OR NCSA'; });
   const metadata = bumpExternal(f);
   const mit = 'Fixture Emscripten MIT text\n', sha256 = createHash('sha256').update(mit).digest('hex');
   f.put(`licenses/retained/texts/${sha256}.txt`, mit);
@@ -469,4 +473,44 @@ test('Refs #7955 cargo-only withdrawn-supplement guard ignores a key-only reorde
   const once = manifestBytes(f);
   assert.doesNotThrow(() => refreshCargoOnly(f.root, bumped));
   assert.equal(manifestBytes(f), once);
+});
+
+// Refs #7955: the maintainer default is conditional on verified preserved MIT text.
+const mitPolicy = { policy: 'MIT-when-offered', election: 'MIT', attribution: 'Maintainer default' };
+const mitText = 'Permission is hereby granted, free of charge, to any person obtaining a copy. '
+  + 'The above copyright notice and this permission notice shall be included in all copies. '
+  + 'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY. IN NO EVENT SHALL THE AUTHORS BE LIABLE.';
+function policyComponent(license = 'MIT OR Apache-2.0', text = mitText) {
+  return { name: 'fixture', version: '1', license, notices: [{ origin: 'LICENSE-MIT', file: 'mit.txt',
+    sha256: createHash('sha256').update(text).digest('hex') }] };
+}
+test('Refs #7955 default MIT election requires a verified MIT text', () => {
+  const [resolved] = notices.resolveElections([policyComponent()], [mitPolicy], () => mitText);
+  assert.equal(resolved.election, 'MIT');
+  assert.throws(() => notices.resolveElections([policyComponent()], [mitPolicy], () => 'corrupt'), /hash mismatch/);
+});
+test('Refs #7955 MIT offered with missing text fails despite an MIT filename', () => {
+  assert.throws(() => notices.resolveElections([policyComponent(undefined, 'Apache text only')],
+    [mitPolicy], () => 'Apache text only'), /without verified election/);
+});
+test('Refs #7955 an OR declaration without MIT or an explicit election fails the check', t => {
+  const f = fixture(t);
+  f.regenerate(m => { m.components[2].license = 'Apache-2.0 OR BSL-1.0'; });
+  assert.throws(() => checkNotices(f.root, false), /external 1.0.0: Apache-2.0 OR BSL-1.0/);
+});
+test('Refs #7955 explicit Apache election wins over the MIT default', () => {
+  const component = { ...policyComponent(), election: 'Apache-2.0', attribution: 'Explicit Apache election' };
+  const [resolved] = notices.resolveElections([component], [mitPolicy,
+    { name: 'fixture', version: '1', election: 'Apache-2.0' }], () => assert.fail('MIT text is not required for explicit Apache'));
+  assert.equal(resolved.election, 'Apache-2.0');
+  assert.equal(resolved.attribution, component.attribution);
+});
+test('Refs #7955 MIT default retains mandatory Unicode and bundled terms', () => {
+  for (const [license, election] of [['(MIT OR Apache-2.0) AND Unicode-3.0', 'MIT AND Unicode-3.0'],
+    ['MIT OR Apache-2.0 plus bundled components', 'MIT']]) {
+    const [resolved] = notices.resolveElections([policyComponent(license)], [mitPolicy], () => mitText);
+    assert.equal(resolved.license, license);
+    assert.equal(resolved.election, election);
+  }
+  assert.doesNotThrow(() => notices.resolveElections([policyComponent('Public domain / CC0-1.0 dedication in source')], [], () => ''));
 });

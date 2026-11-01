@@ -67,9 +67,13 @@ Still unqualified: actual viewer-owned device/frame submission, stencil and MSAA
 **Architectural verdict: frame sharing is feasible in the restricted witness;
 exact IFC transparency composition is still blocked. #8564 remains partial.**
 No production feature flag, loader, viewer UI, standalone production canvas or
-Gaussian rasterizer is added. The HTML entry is a manual offscreen diagnostic.
+Gaussian rasterizer is added. The [HTML entry](../../../examples/gaussian-splat-spike/contract/native-witness.html) is a manual offscreen diagnostic.
+Runnable harness files remain under `examples/gaussian-splat-spike/contract`;
+this directory holds their documentation and static results. The earlier spike
+[provenance note](../gaussian-splat-spike-provenance.json) describes a separate
+historical run; its hashes and this continuation's recorded hashes are unchanged.
 
-`native-results.json` records source commit and worker receipt. The 32 image
+[`native-results.json`](./native-results.json) records source commit and worker receipt. The 32 image
 comparisons use two synthetic overlapping sources (96 rows), reverse-Z camera
 math imported from IFC-Lite, perspective and orthographic projections, distinct
 close depths and exact ties, 64→80 target recreation, and 1×/4× MSAA with
@@ -90,7 +94,7 @@ rejects a 130-run input before submission rather than approximating it.
 ### Precisely what was patched
 
 Runtime uses **published 9.4.2 with explicit in-memory patches**, not an assertion
-that upstream PR #3619 contains these additional changes. `exact-runs-plugin.mjs`
+that upstream PR #3619 contains these additional changes. [`exact-runs-plugin.mjs`](../../../examples/gaussian-splat-spike/contract/exact-runs-plugin.mjs)
 checks SHA-256 of the original renderer and WebGPU device before transformation.
 Installed packages and the shared upstream checkout remain unchanged.
 
@@ -111,7 +115,7 @@ Installed packages and the shared upstream checkout remain unchanged.
 
 ### Glass crossing reference and blocker
 
-`intersection-witness.mjs` renders a green 50% glass triangle whose depth crosses
+[`intersection-witness.mjs`](../../../examples/gaussian-splat-spike/contract/intersection-witness.mjs) renders a green 50% glass triangle whose depth crosses
 a red Gaussian's constant projected depth at the vertical screen midpoint. On
 the left, glass is behind the Gaussian; on the right, glass is in front. A
 scissored reference submits the independently known far-to-near order on each

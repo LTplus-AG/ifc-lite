@@ -2289,6 +2289,7 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: apps/viewer/mergify-junit.xml
           test_step_outcome: ${{ steps.viewer_tests.outcome }}
+          job_name: viewer-tests (shard ${{ matrix.shard }})
 
   node-guards:
     name: Node guards
@@ -2924,6 +2925,7 @@ jobs:
         id: package_tests
         env:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: node-tests (shard ${{ matrix.shard }})
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           SHARD: ${{ matrix.shard }}
           IFC_LITE_SECTION_EVIDENCE_DIR: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}
@@ -2940,6 +2942,7 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: '*/*/mergify-junit.xml'
           test_step_outcome: ${{ steps.package_tests.outcome }}
+          job_name: node-tests (shard ${{ matrix.shard }})
       # Export is pinned to shard 3 by scripts/ci-node-test-shards.mjs.
       # Its real-WASM tests above generate a fresh Haus crop; missing fixture,
       # runtime, or evidence must fail the probe rather than count as coverage.
@@ -3130,6 +3133,7 @@ jobs:
         # registration, section-plane store contract — still gate.
         env:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
           E2E_GPU_STRICT: '0'
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.

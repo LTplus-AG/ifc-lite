@@ -108,7 +108,8 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
         if let Some(key) = key { areas[*key as usize] += dot(n, n).sqrt() / 2.; }
     }
     for (row, published) in set.rows.iter().zip(areas) {
-        let Some(area) = row.area_m2 else { continue };
+        // A warped row has no single area to compare, but it must still publish something.
+        let Some(area) = row.area_m2 else { result.missing_rows += usize::from(published == 0.); continue };
         if area <= 0. { continue; }
         if published == 0. { result.missing_rows += 1; continue; }
         result.area_relative = result.area_relative.max((published - area).abs() / area);
@@ -130,6 +131,13 @@ mod tests {
     fn issue_8291_faithful_part_has_no_deviation() {
         let d = deviation(&sheet(), &POSITIONS, &[0, 1, 2, 1, 3, 2], &[Some(0), Some(1)]);
         assert_eq!(d, RowDeviation::default());
+    }
+    #[test]
+    fn issue_8291_a_lost_warped_row_is_observed() {
+        let mut set = sheet();
+        set.rows[1].area_m2 = None;
+        let d = deviation(&set, &POSITIONS, &[0, 1, 2], &[Some(0)]);
+        assert_eq!(d.missing_rows, 1);
     }
     #[test]
     fn issue_8291_mutations_are_observed() {

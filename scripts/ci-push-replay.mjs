@@ -114,11 +114,12 @@ const isGreenBatchRun = (r, repo) =>
  *   repo?: string,
  *   queueEvidence?: Array<{tree: string, runs: Array<object>}>,
  *   laterChangedFiles?: string[],
+ *   rekeyAlreadyJudged?: boolean,
  * }} input `queueEvidence` lists this commit's tree, then later commits' trees, each with the runs holding its artifact.
  * @returns {{replay: true, runId: number, pr: number, queue?: true} | {replay: false, reason: string}}
  */
 export function decidePushReplay(input) {
-  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [] } = input;
+  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false } = input;
   if (!SHA.test(pushSha ?? '') || !SHA.test(pushTree ?? '')) return { replay: false, reason: 'push SHA or tree is not a full hash' };
   // One squash commit on top of the previous tip. A multi-commit push (a
   // direct push, a rebase merge) is not the shape a single PR run tested.
@@ -129,7 +130,7 @@ export function decidePushReplay(input) {
   const blocker = changedFiles.find(keysCaches);
   const blockerReason = `${blocker} changed; caches that only main writes must be re-keyed by a full run`;
   // A full page may be truncated, so it proves nothing: that only means a full run.
-  const rekeyedLater = laterChangedFiles.length < COMPARE_PAGE && changedFiles.filter(keysCaches).every((f) => laterChangedFiles.includes(f));
+  const rekeyedLater = rekeyAlreadyJudged || laterChangedFiles.length < COMPARE_PAGE && changedFiles.filter(keysCaches).every((f) => laterChangedFiles.includes(f));
   if (blocker && !rekeyedLater) return { replay: false, reason: blockerReason };
 
   const merged = pulls.filter((p) => p && p.merged_at && p.merge_commit_sha === pushSha && p.base?.ref === 'main');
@@ -272,7 +273,7 @@ export function run(argv, env = process.env) {
     const inputs = readInputs(repo, pushSha, pushTree, parentSha, before);
     // --verify re-reads the run, not main's later history: a later revert must
     // not fail an aggregate whose replay the probe already chose correctly.
-    if (mode === 'verify') inputs.laterChangedFiles = inputs.changedFiles;
+    if (mode === 'verify') inputs.rekeyAlreadyJudged = true;
     decision = decidePushReplay(inputs);
   } catch (err) {
     // The probe only saves work. Unreadable evidence must run the full suite,

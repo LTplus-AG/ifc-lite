@@ -183,6 +183,14 @@ test('a full page of later files may be truncated, so it does not count as a re-
   assert.equal(decidePushReplay(queued(evidence, { changedFiles, laterChangedFiles: page(100) })).replay, false);
 });
 
+test('--verify does not re-judge the re-key, however many files the push changed', () => {
+  const evidence = [{ tree: TREE, runs: [batchRun()] }];
+  const changedFiles = ['Cargo.lock', ...Array.from({ length: 99 }, (_, i) => `f${i}`)];
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles, rekeyAlreadyJudged: true })).replay, true);
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles })).replay, false);
+  assert.equal(decidePushReplay(queued([{ tree: TREE, runs: [batchRun({ conclusion: 'failure' })] }], { changedFiles, rekeyAlreadyJudged: true })).replay, false, 'a run gone red still refuses');
+});
+
 test('a PR run that tested the tree wins, so it skips only the lanes it ran', () => {
   const d = decidePushReplay(base({ repo: REPO, queueEvidence: [{ tree: TREE, runs: [batchRun()] }] }));
   assert.deepEqual(d, { replay: true, runId: 1, pr: 7 });

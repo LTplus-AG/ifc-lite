@@ -99,3 +99,12 @@ fn issue_8291_a_small_inward_shell_at_survey_scale_still_turns_outward() {
     let records = "#1=IFCCARTESIANPOINTLIST3D(((6000000.,0.,0.),(6000000.125,0.,0.),(6000000.,0.125,0.),(6000000.,0.,0.125)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((1,2,3),(1,4,2),(2,4,3),(3,4,1)),$);";
     assert_eq!(capture_source(records, 2).unwrap().triangles[..3], [0, 2, 1], "the same flip as the same shell at the origin");
 }
+
+#[test]
+fn issue_8291_an_unused_first_point_does_not_choose_the_frame() {
+    // Entry 1 is at the origin and no face names it: a frame there leaves the ring merged at survey scale.
+    let polygon = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(6000000.,0.,0.),(6000000.25,0.,0.),(6000000.25,0.125,0.),(6000000.125,0.125,0.),(6000000.125,0.25,0.),(6000000.,0.25,0.)));\n#3=IFCINDEXEDPOLYGONALFACE((2,3,4,5,6,7));\n#6=IFCPOLYGONALFACESET(#1,.F.,(#3),$);";
+    assert_eq!(capture_source(polygon, 6).unwrap().rows.len(), 4, "an L of six corners is four triangles");
+    let shell = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(6000000.,0.,0.),(6000000.125,0.,0.),(6000000.,0.125,0.),(6000000.,0.,0.125)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((2,3,4),(2,5,3),(3,5,4),(4,5,2)),$);";
+    assert_eq!(capture_source(shell, 2).unwrap().triangles[..3], [1, 3, 2], "the same flip as the same shell at the origin");
+}

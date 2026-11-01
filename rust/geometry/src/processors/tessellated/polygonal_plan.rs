@@ -242,6 +242,25 @@ impl PolygonalFaceSetPlan {
         mesh
     }
 
+    /// The first listed point a face uses, as a 0-based position: entries no face
+    /// names say nothing about where the geometry is.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn first_used_point(&self) -> Option<usize> {
+        let Self::Faces { positions, parsed, .. } = self else { return None };
+        parsed.iter().flat_map(|(_, outer, ..)| outer)
+            .find_map(|&corner| (corner as usize).checked_sub(1).filter(|point| point.saturating_mul(3) < positions.len()))
+    }
+
+    /// Re-read the point list relative to `frame`. The decoded faces stay as they are.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn in_frame(mut self, decoder: &mut EntityDecoder, coordinates: u32, frame: (f64, f64, f64)) -> Result<Self> {
+        if let Self::Faces { positions, rtc_applied, .. } = &mut self {
+            *positions = super::read_point_list(decoder, coordinates, Some(frame))?;
+            *rtc_applied = true;
+        }
+        Ok(self)
+    }
+
     /// The same triangles [`Self::evaluate`] meshes, with each one's `Faces` position.
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     pub(crate) fn source_triangles(self, face_count: u32) -> super::SourceTriangles {

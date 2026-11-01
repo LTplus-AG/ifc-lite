@@ -1,11 +1,39 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Uncut face sets against their authored rows (#8291).
 use super::OracleResult;
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{slot, EntityDecoder, IfcType};
 use ifc_lite_retained_native::{oracle::face_sets, ShapeOnlyProduct};
 
 fn row_key(role: &str) -> Option<u32> {
     role.strip_prefix("row(")?.strip_suffix(')')?.parse().ok()
+}
+
+/// Whether the file itself puts a face set in this product's Body, directly or through a map.
+/// The expectation comes from the source so that lost row keys cannot read as nothing to check.
+fn authors_face_set(product_id: u32, bytes: &[u8]) -> Option<bool> {
+    let mut decoder = EntityDecoder::new(bytes);
+    let product = decoder.decode_by_id(product_id).ok()?;
+    // An index read: a published id can be a type, which has no product Representation.
+    let shape = decoder.decode_by_id(product.get_ref(slot::IfcProduct::REPRESENTATION.index())?).ok()?;
+    let mut representations = Vec::new();
+    for id in shape.ref_list_at(slot::IfcProductDefinitionShape::REPRESENTATIONS)? {
+        let representation = decoder.decode_by_id(id).ok()?;
+        if representation.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER) == Some("Body") { representations.push(representation); }
+    }
+    while let Some(representation) = representations.pop() {
+        for id in representation.ref_list_at(slot::IfcRepresentation::ITEMS)? {
+            let item = decoder.decode_by_id(id).ok()?;
+            match item.ifc_type {
+                IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork | IfcType::IfcPolygonalFaceSet => return Some(true),
+                IfcType::IfcMappedItem => {
+                    let map = decoder.decode_by_id(item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?).ok()?;
+                    representations.push(decoder.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?);
+                }
+                _ => {}
+            }
+        }
+    }
+    Some(false)
 }
 
 pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
@@ -32,7 +60,10 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
         worst.area_relative = worst.area_relative.max(part_worst.area_relative);
         worst.missing_rows += part_worst.missing_rows;
     }
-    if !any { return Vec::new(); }
+    if !any {
+        if authors_face_set(product.product_id, bytes) != Some(true) { return Vec::new(); }
+        failure = Some(format!("#{} authors a face set but published no row key", product.product_id));
+    }
     let result = |family, value: f64, limit: f64| OracleResult { family, value, limit,
         pass: value.is_finite() && value <= limit && failure.is_none(), gated: true, reason: failure.clone(), ..Default::default() };
     vec![

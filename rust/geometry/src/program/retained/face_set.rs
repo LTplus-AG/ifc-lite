@@ -16,14 +16,24 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     let positions = read_point_list_f64(decoder, coordinates)?;
     // Exact's plans are the authority for triangulation and winding, so they keep exact's frame,
     // except where narrowing to f32 merges distinct authored corners: the ring they would clip and
-    // the shell they would orient are then not the authored ones.
-    let frame = narrowing_merges(&positions).then(|| (positions[0], positions[1], positions[2]));
+    // the shell they would orient are then not the authored ones. Those plans read relative to a
+    // point the faces use, as an unused entry far from them would leave the corners merged.
+    let frame_at = |point: Option<usize>| point.filter(|_| narrowing_merges(&positions))
+        .and_then(|point| positions.get(point * 3..point * 3 + 3)).map(|p| (p[0], p[1], p[2]));
     let triangles = if polygonal {
         let faces = item.attr(slot::IfcPolygonalFaceSet::FACES)
             .and_then(AttributeValue::as_list).map_or(0, <[AttributeValue]>::len) as u32;
-        polygonal_plan::lower(item, decoder, frame)?.source_triangles(faces)
+        let plan = polygonal_plan::lower(item, decoder, None)?;
+        match frame_at(plan.first_used_point()) {
+            Some(frame) => plan.in_frame(decoder, coordinates, frame)?,
+            None => plan,
+        }.source_triangles(faces)
     } else {
-        triangulated_plan::lower(item, decoder, frame)?.source_triangles()
+        let plan = triangulated_plan::lower(item, decoder, None)?;
+        match frame_at(plan.first_used_point()) {
+            Some(frame) => plan.in_frame(decoder, coordinates, frame)?,
+            None => plan,
+        }.source_triangles()
     };
     if positions.len() != triangles.positions.len() {
         return Err(Error::geometry("face set point list reads differently in f64".to_string()));

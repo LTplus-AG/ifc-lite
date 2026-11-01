@@ -82,6 +82,23 @@ impl TriangulatedFaceSetPlan {
         (mesh, uvs)
     }
 
+    /// The first listed point a triangle uses, as a 0-based position: entries no
+    /// triangle names say nothing about where the geometry is.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn first_used_point(&self) -> Option<usize> {
+        self.coord_index.iter()
+            .map(|&corner| super::indices::through_pn_index(corner, self.pn_index.as_deref()) as usize)
+            .find(|point| point.saturating_mul(3) < self.positions.len())
+    }
+
+    /// Re-read the point list relative to `frame`. The decoded triangles stay as they are.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn in_frame(mut self, decoder: &mut EntityDecoder, coordinates: u32, frame: (f64, f64, f64)) -> Result<Self> {
+        self.positions = super::read_point_list(decoder, coordinates, Some(frame))?;
+        self.rtc_applied = true;
+        Ok(self)
+    }
+
     /// Winding-final corners into the f32 point list, with each triangle's
     /// `CoordIndex` row. Corners outside the list drop as the mesher drops them.
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]

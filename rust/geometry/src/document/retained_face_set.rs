@@ -2,7 +2,8 @@
 //! Source-exact `IfcTessellatedFaceSet` requests (wire format 3, #8291).
 //!
 //! The authored triangles are the geometry: an uncut item publishes them with
-//! no numerical runtime, and nothing here approximates or repairs them.
+//! no numerical runtime, and nothing here approximates or repairs them. Only a
+//! Boolean or affine copy asks a runtime to build the closed solid they bound.
 //!
 //! Wire format 3 (little-endian, evaluation frame in metres):
 //! - header: `u32` format = 3, vertex count, triangle count, row count.
@@ -35,7 +36,30 @@ fn invalid(message: &'static str) -> RetainedRefusal {
     RetainedRefusal::InvalidSource(message)
 }
 
+/// The adapter's limits on a stitched solid (native/smlib-adapter, wire format 3).
+const MAX_SOLID_TRIANGLES: usize = 8192;
+const MAX_SOLID_RECIPE_BYTES: usize = 1 << 20;
+
 impl RetainedFaceSet {
+    /// Whether a runtime could stitch these triangles into a closed solid: within the
+    /// adapter's limits, and every edge walked exactly once each way, compared by coordinate
+    /// so duplicated points still close. Decided from source facts so a shell
+    /// that can never be cut refuses without spending a worker (kernel faults retire it).
+    pub fn admits_solid(&self) -> bool {
+        let triangles = self.triangles.len() / 3;
+        let bytes = 16usize.saturating_add(self.positions.len().saturating_mul(8)).saturating_add(triangles.saturating_mul(16));
+        if !(4..=MAX_SOLID_TRIANGLES).contains(&triangles) || bytes > MAX_SOLID_RECIPE_BYTES { return false; }
+        let point = |i: u32| -> [u64; 3] { std::array::from_fn(|axis| (self.positions[i as usize * 3 + axis] + 0.).to_bits()) };
+        let mut edges = std::collections::BTreeMap::<([u64; 3], [u64; 3]), [u32; 2]>::new();
+        for corners in self.triangles.chunks_exact(3) {
+            for i in 0..3 {
+                let (a, b) = (point(corners[i]), point(corners[(i + 1) % 3]));
+                edges.entry(if a < b { (a, b) } else { (b, a) }).or_default()[usize::from(a < b)] += 1;
+            }
+        }
+        edges.values().all(|&walks| walks == [1, 1])
+    }
+
     pub(crate) fn lower(&self) -> Result<SweepPayload, RetainedRefusal> {
         let units = self.length_unit_scale;
         if !units.is_finite() || units <= 0. { return Err(invalid("invalid source length units")); }
@@ -76,7 +100,7 @@ impl RetainedFaceSet {
             evaluation_bounds: EvaluationBounds::points(local),
             format: 3,
             bytes,
-            segments: self.row_count,
+            segments: triangle_count,
             loops: 1,
             qualification: RegionQualification::SourceFaceSet,
             source_from_evaluation: array(&source_from_evaluation),

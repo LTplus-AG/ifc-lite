@@ -34,7 +34,7 @@ target_include_directories(smlib_api BEFORE PRIVATE "${SMLIB_SOURCE}/source/SM_A
 target_link_libraries(smlib_api PUBLIC smlib_kernel)
 # Upstream C++ types/includes stay private to the adapter.
 add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src/mesh.cpp
-  src/mesh_diagonals.cpp src/sweep.cpp src/disk.cpp src/protocol.cpp)
+  src/mesh_diagonals.cpp src/sweep.cpp src/disk.cpp src/polyhedron.cpp src/protocol.cpp)
 target_include_directories(ifclite_smlib PUBLIC include)
 target_link_libraries(ifclite_smlib PRIVATE smlib_api)
 
@@ -51,6 +51,9 @@ target_compile_features(ifclite_smlib_copy_failure_tests PRIVATE cxx_std_17)
 target_link_libraries(ifclite_smlib_copy_failure_tests PRIVATE ifclite_smlib smlib_api)
 target_include_directories(ifclite_smlib_copy_failure_tests PRIVATE src)
 
+add_executable(ifclite_smlib_polyhedron_tests tests/polyhedron_tests.cpp)
+target_compile_features(ifclite_smlib_polyhedron_tests PRIVATE cxx_std_17)
+target_link_libraries(ifclite_smlib_polyhedron_tests PRIVATE ifclite_smlib smlib_api)
 # Staged authored recipes: actual SDK regions, full circles, trims and disks.
 add_executable(ifclite_smlib_sweep_tests tests/sweep_tests.cpp tests/sweep_region_tests.cpp
   tests/disk_tests.cpp)
@@ -74,12 +77,12 @@ if(EMSCRIPTEN)
     configure_file("browser/${module}.mjs" "${module}.mjs" COPYONLY)
   endforeach()
   foreach(target smlib_kernel smlib_api ifclite_smlib ifclite_smlib_browser ifclite_smlib_tests
-      ifclite_smlib_copy_failure_tests ifclite_smlib_sweep_tests)
+      ifclite_smlib_copy_failure_tests ifclite_smlib_sweep_tests ifclite_smlib_polyhedron_tests)
     target_compile_options(${target} PRIVATE -fexceptions)
   endforeach()
   target_link_options(ifclite_smlib_browser PRIVATE -fexceptions
     "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=8388608")
-  foreach(target ifclite_smlib_tests ifclite_smlib_copy_failure_tests ifclite_smlib_sweep_tests)
+  foreach(target ifclite_smlib_tests ifclite_smlib_copy_failure_tests ifclite_smlib_sweep_tests ifclite_smlib_polyhedron_tests)
     target_link_options(${target} PRIVATE -fexceptions
       "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=8388608" "-sENVIRONMENT=node")
     set_target_properties(${target} PROPERTIES SUFFIX ".cjs")
@@ -110,8 +113,9 @@ add_test(NAME smlib_copy_failure_boundary
 add_test(NAME smlib_affine_failure_boundary
   COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_copy_failure_tests> affine)
 add_test(NAME smlib_retained_sweeps COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_sweep_tests>)
+add_test(NAME smlib_retained_polyhedra COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_polyhedron_tests>)
 set_tests_properties(smlib_owned_boundary smlib_copy_failure_boundary
-  smlib_affine_failure_boundary smlib_retained_sweeps PROPERTIES TIMEOUT 60)
+  smlib_affine_failure_boundary smlib_retained_sweeps smlib_retained_polyhedra PROPERTIES TIMEOUT 60)
 
 # Installation is explicit; no default runtime or SDK distribution is enabled.
 if(NOT EMSCRIPTEN)

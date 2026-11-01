@@ -6,7 +6,7 @@ use ifc_lite_geometry::resource::{BudgetStart, ProductBudget};
 fn part(positions: Vec<f64>, indices: Vec<u32>, faces: Vec<u32>) -> ShapePart {
     ShapePart { layer: None, capped_volume_m3: None, positions, indices, revision_local_faces: faces,
         world_from_object: [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.],
-        curved: true, halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None }
+        curved: true, halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None, source_exact: false }
 }
 fn normals(p: &ShapePart) -> Vec<f64> {
     corner_normals(p, 5., &OwnedResourceContext::capture_current(), &mut Storage::default()).unwrap()

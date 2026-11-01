@@ -28,6 +28,8 @@ mod qualification;
 pub use qualification::RegionQualificationReport;
 #[path = "worker_disk_qualification.rs"]
 mod disk_qualification;
+#[path = "worker_face_set_qualification.rs"]
+mod face_set_qualification;
 #[path = "worker_sweep.rs"]
 mod sweep;
 pub use sweep::RetainedRealization;
@@ -68,6 +70,7 @@ pub struct SmlibWorker {
     /// Same-incarnation numerical witnesses; never set by capability bits.
     regions_qualified: bool,
     disks_qualified: bool,
+    face_sets_qualified: bool,
     /// Live objects; each flag is shared with the receipts that name it and
     /// cleared before the object is released.
     objects: HashMap<WireHandle, Arc<AtomicBool>>,
@@ -109,6 +112,7 @@ impl SmlibWorker {
             healthy: true,
             regions_qualified: false,
             disks_qualified: false,
+            face_sets_qualified: false,
             objects: HashMap::new(),
             releases: Arc::new(objects::ReleaseQueue::default()),
             managed: HashMap::new(),

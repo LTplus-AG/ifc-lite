@@ -22,7 +22,7 @@ export function SemanticResults({ results, mapping, revisions, scope, onError }:
   const { t } = useTranslation();
   const statusKeys = { resolved: 'semantic.resultsResolved', ambiguous: 'semantic.resultsAmbiguous', unmatched: 'semantic.resultsUnmatched', unscoped: 'semantic.resultsUnscoped', external: 'semantic.resultsExternal', invalid: 'semantic.resultsInvalid' } as const;
   const [page, setPage] = useState(0);
-  const [choices, setChoices] = useState<{ row: number; refs: EntityAddress[] }>();
+  const [choices, setChoices] = useState<{ row: number; refs: EntityAddress[]; additive: boolean }>();
   useEffect(() => { setPage(0); setChoices(undefined); }, [results]);
   // Selection and mutation revisions make diagnostics responsive to deleted/edited models.
   useViewerStore(state => state.models);
@@ -32,6 +32,12 @@ export function SemanticResults({ results, mapping, revisions, scope, onError }:
   useSemanticSession(state => state.links);
   useSemanticSession(state => state.identityFields);
   useSemanticSession(state => state.uriConfig);
+  useViewerStore(state => state.selectedEntityIds);
+  useViewerStore(state => state.selectedEntityId);
+  const selection = createSelectionAdapter(useViewerStore);
+  const selected = selection.get();
+  const same = (a: EntityAddress, b: EntityAddress) => a.modelId === b.modelId && a.expressId === b.expressId;
+  const isSelected = (ref: EntityAddress) => selected.some(item => same(item, ref));
   const start = Math.min(page * PAGE_SIZE, Math.max(0, Math.floor((results.rows.length - 1) / PAGE_SIZE) * PAGE_SIZE));
   const end = Math.min(start + PAGE_SIZE, results.rows.length);
   const renderedEntities = liveEntities();
@@ -41,45 +47,70 @@ export function SemanticResults({ results, mapping, revisions, scope, onError }:
     if (!identity) return { status: 'invalid' };
     return resolveResource(identity, entities, revisions, scope);
   };
-  const select = (rowIndex: number, chosen?: EntityAddress) => {
+  const apply = (ref: EntityAddress, additive: boolean) => {
+    const current = selection.get();
+    selection.set(additive ? current.some(item => same(item, ref)) ? current.filter(item => !same(item, ref)) : [...current, ref] : [ref]);
+    setChoices(undefined);
+  };
+  const selectAll = () => {
+    try {
+      const entities = liveEntities();
+      const refs: EntityAddress[] = [];
+      for (let row = 0; row < results.rows.length; row++) {
+        const resolution = resolve(row, entities);
+        if (resolution.status === 'resolved') refs.push(resolution.ref);
+      }
+      selection.set(refs); setChoices(undefined);
+    } catch (error) { onError(error); }
+  };
+  const select = (rowIndex: number, chosen?: EntityAddress, additive = false) => {
     try {
       const resolution = resolve(rowIndex, liveEntities());
       if (chosen && resolution.status === 'resolved' && (chosen.modelId !== resolution.ref.modelId || chosen.expressId !== resolution.ref.expressId)) throw new Error(t('semantic.resultsStale'));
-      if (resolution.status === 'resolved') { createSelectionAdapter(useViewerStore).set([resolution.ref]); setChoices(undefined); }
+      if (resolution.status === 'resolved') { apply(resolution.ref, additive); }
       else if (resolution.status === 'ambiguous') {
-        if (!chosen) setChoices({ row: rowIndex, refs: resolution.candidates });
+        if (!chosen) setChoices({ row: rowIndex, refs: resolution.candidates, additive });
         else if (resolution.candidates.some(ref => ref.modelId === chosen.modelId && ref.expressId === chosen.expressId)) {
-          createSelectionAdapter(useViewerStore).set([chosen]); setChoices(undefined);
+          apply(chosen, additive);
         } else throw new Error(t('semantic.resultsStale'));
       } else if (chosen) throw new Error(t('semantic.resultsStale'));
     } catch (error) { onError(error); }
   };
   return <section aria-label={t('semantic.resultsTitle')} className="space-y-2">
     <h3 className="font-medium">{t('semantic.resultsTitle')}</h3>
+    <div className="flex flex-wrap gap-2 text-xs">
+      <button disabled={!results.rows.length} onClick={selectAll}>{t('semantic.resultsSelectAll')}</button>
+      <button disabled={!selected.length} onClick={() => { selection.set([]); setChoices(undefined); }}>{t('semantic.resultsClear')}</button>
+    </div>
+    <p className="text-xs text-muted-foreground">{t('semantic.resultsSelectionHelp')}</p>
     <div className="flex items-center justify-between gap-2 text-xs">
       <button disabled={start === 0} onClick={() => { setPage(Math.max(0, Math.floor(start / PAGE_SIZE) - 1)); setChoices(undefined); }}>{t('semantic.resultsPrevious')}</button>
       <span>{t('semantic.resultsPage', { start: results.rows.length ? start + 1 : 0, end, count: results.rows.length })}</span>
       <button disabled={end >= results.rows.length} onClick={() => { setPage(Math.floor(start / PAGE_SIZE) + 1); setChoices(undefined); }}>{t('semantic.resultsNext')}</button>
     </div>
     <div className="overflow-auto"><table className="w-full text-xs"><thead><tr>
+      <th className="p-1">{t('semantic.resultsSelection')}</th>
       {results.columns.map(column => <th key={column} className="p-1 text-left">{column}</th>)}
       <th className="p-1">{t('semantic.resultsStatus')}</th>
     </tr></thead><tbody>{results.rows.slice(start, end).map((row, offset) => {
       const rowIndex = start + offset; const resolution = resolve(rowIndex);
       return <tr key={rowIndex}>
+        <td className="border-t p-1"><input type="checkbox" aria-label={t('semantic.resultsToggle', { row: rowIndex + 1 })}
+          disabled={resolution.status !== 'resolved'} checked={resolution.status === 'resolved' && isSelected(resolution.ref)}
+          onChange={() => select(rowIndex, undefined, true)} /></td>
         {results.columns.map(column => {
           const term = row[column];
           return <td key={column} className="max-w-64 break-words border-t p-1" title={term?.datatype ?? term?.type}>
             {term ? <>{term.type === 'bnode' ? '_:' : ''}{term.value}{term['xml:lang'] ? ` @${term['xml:lang']}` : ''}{term.datatype ? <small className="block text-muted-foreground">{term.datatype}</small> : null}</> : <span className="text-muted-foreground">{t('semantic.resultsUnbound')}</span>}
           </td>;
         })}
-        <td className="border-t p-1"><button disabled={resolution.status !== 'resolved' && resolution.status !== 'ambiguous'} onClick={() => select(rowIndex)} aria-label={t('semantic.resultsSelect')}>
+        <td className="border-t p-1"><button disabled={resolution.status !== 'resolved' && resolution.status !== 'ambiguous'} onClick={event => select(rowIndex, undefined, event.ctrlKey || event.metaKey)} aria-label={t('semantic.resultsSelect')}>
           {t(statusKeys[resolution.status])}
         </button></td>
       </tr>;
     })}</tbody></table></div>
     {choices && <fieldset className="rounded border p-2"><legend>{t('semantic.resultsCandidates')}</legend>
-      {choices.refs.map(ref => <button key={`${ref.modelId}:${ref.expressId}`} className="block text-xs" onClick={() => select(choices.row, ref)}>
+      {choices.refs.map(ref => <button key={`${ref.modelId}:${ref.expressId}`} className="block text-xs" onClick={() => select(choices.row, ref, choices.additive)}>
         {t('semantic.resultsChoose', { model: useViewerStore.getState().models.get(ref.modelId)?.name ?? ref.modelId, id: ref.expressId })}
       </button>)}
     </fieldset>}

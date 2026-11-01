@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { useState } from 'react';
+import { act, useState } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { DEFAULT_MAPPING } from '@ifc-lite/semantic';
 import { SemanticResults } from '@/components/viewer/SemanticResults';
@@ -13,9 +13,10 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, click, cleanup } from '@/test/render';
 import { createSelectionAdapter } from '@/sdk/adapters/selection-adapter';
+import { useSemanticSession } from './session';
 import { pilotModel } from './demo';
-const original = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(original, true); });
+const original = useViewerStore.getState(); const session = useSemanticSession.getState();
+afterEach(() => { cleanup(); useViewerStore.setState(original, true); useSemanticSession.setState(session, true); });
 test('charter #6643 arbitrary analytical rows expose ambiguity and choose current model explicitly', async () => {
   const model = pilotModel(0);
   const data = await new IfcParser().parseColumnar(new TextEncoder().encode(model.content).buffer, { disableWorkerScan: true });
@@ -44,4 +45,64 @@ test('charter #6643 replacing raw results resets pagination to the new first row
   assert.ok(ui.textContent?.includes('new-row-0'));
   const previous = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Previous rows'); assert.ok(previous?.disabled);
   assert.equal(ui.querySelectorAll('tbody tr').length, 20);
+});
+
+
+async function selectionFixture(count = 1) {
+  const model = pilotModel(0);
+  const data = await new IfcParser().parseColumnar(new TextEncoder().encode(model.content).buffer, { disableWorkerScan: true });
+  const models = Array.from({ length: count }, (_, index) => ({ ...fixtureModel(`model-${index}`, { idOffset: index * 1000000 }), ifcDataStore: data, maxExpressId: Math.max(...data.entities.expressId) }));
+  useViewerStore.setState({ ...fixtureModels(...models), ifcDataStore: data, mutationViews: new Map(), selectedEntityId: null, selectedEntityIds: new Set() });
+  useSemanticSession.setState({ strategy: 'ifc-global-id' });
+  return model;
+}
+function namedButton(ui: HTMLElement, name: string) {
+  const button = [...ui.querySelectorAll('button')].find(item => item.textContent === name); assert.ok(button, name); return button;
+}
+function checkbox(ui: HTMLElement, row: number) {
+  const box = ui.querySelector<HTMLInputElement>(`input[aria-label="Toggle result row ${row}"]`); assert.ok(box); return box;
+}
+const guidRow = (value: string) => ({ GlobalId: { type: 'literal' as const, value } });
+test('#8556 checkbox selection updates renderer channels, deduplicates rows and follows external selection', async () => {
+  const model = await selectionFixture();
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0]), guidRow(model.GlobalIds[1]), guidRow(model.GlobalIds[0])] }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+  click(checkbox(ui, 1)); click(checkbox(ui, 2));
+  assert.equal(createSelectionAdapter(useViewerStore).get().length, 2);
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 2, 'both entities are highlighted');
+  assert.equal(checkbox(ui, 3).checked, true, 'duplicate row reflects the same entity');
+  click(checkbox(ui, 3));
+  assert.equal(checkbox(ui, 1).checked, false);
+  assert.equal(createSelectionAdapter(useViewerStore).get().length, 1);
+  act(() => createSelectionAdapter(useViewerStore).set([]));
+  assert.equal(checkbox(ui, 2).checked, false, 'selection changes elsewhere are reflected');
+});
+test('#8556 select all spans pages and clears selection while skipping unmapped rows', async () => {
+  const model = await selectionFixture();
+  const rows = [...Array.from({ length: 50 }, () => guidRow(model.GlobalIds[0])), guidRow(model.GlobalIds[1]), guidRow('invalid')];
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+  click(namedButton(ui, 'Select all mapped results'));
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+  click(namedButton(ui, 'Next rows'));
+  assert.equal(checkbox(ui, 51).checked, true); assert.equal(checkbox(ui, 52).disabled, true);
+  click(namedButton(ui, 'Clear selection'));
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+  assert.equal(useViewerStore.getState().selectedEntityId, null);
+  assert.equal(checkbox(ui, 51).checked, false);
+});
+test('#8556 bulk selection never guesses a model and candidate choices can be additive', async () => {
+  const model = await selectionFixture(2);
+  const results = { columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0])] };
+  const ui = render(<SemanticResults results={results} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+  assert.equal(checkbox(ui, 1).disabled, true);
+  click(namedButton(ui, 'Select all mapped results')); assert.equal(createSelectionAdapter(useViewerStore).get().length, 0);
+  const row = ui.querySelector('button[aria-label="Select mapped row"]'); assert.ok(row);
+  click(row, { ctrlKey: true }); click(ui.querySelectorAll('fieldset button')[0]);
+  click(row, { metaKey: true }); click(ui.querySelectorAll('fieldset button')[1]);
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.modelId).sort(), ['model-0', 'model-1']);
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+  // Removing a model must re-resolve against the remaining live model before a bulk action.
+  act(() => useViewerStore.setState({ models: new Map([['model-0', useViewerStore.getState().models.get('model-0')!]]) }));
+  assert.equal(checkbox(ui, 1).disabled, false);
+  click(namedButton(ui, 'Select all mapped results'));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.modelId), ['model-0']);
 });

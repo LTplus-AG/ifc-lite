@@ -51,6 +51,36 @@ The fingerprint (FNV-1a 64, same scheme as the kernel manifest) is pinned in
 vertex and triangle counts and per-mesh hashes, so a failure identifies WHICH
 mesh diverged.
 
+## Frozen void-cut order
+
+The void-cut stage chain (`rust/geometry/src/router/voids/`, described in
+[geometry-pipeline.md](geometry-pipeline.md#void-cutting)) is part of this
+contract. Several of its steps do not commute: the first whole-host strategy
+to accept decides the host's geometry, the coaxial union changes which
+openings the disjoint batch plans, and on an open host the malformed recut and
+the flap clip give different meshes in either order. So the order is owned in
+exactly one place per stage, and nowhere else:
+
+- stage A: the `strategy::HOST_STAGES` array;
+- stage B: the statement order of `Execution::cut_in_frame`;
+- stage C: the statement order of `ExactTail::run`;
+- stage D: the statement order of `post::finish`.
+
+Reordering, inserting or removing a step there is a geometry and diagnostics
+change, never a refactor: it needs output evidence and, if bytes move, the
+re-pin below. `voids/stage_order_tests.rs` turns red when a guarded pair is
+swapped or a guarded step is dropped. The same holds for diagnostics order:
+each stage records its effects on the owned `Execution` in this order, a frame
+retry discards its own records when rejected, and a terminal stop (an engulfed
+host) skips every later opening while the post passes still record the empty
+cut.
+
+Extending the chain follows the same rule. A new strategy is one variant or
+one call in the place that owns its stage's order, plus one file under
+`voids/strategy/`, plus a stage-order guard in `stage_order_tests.rs` whose
+fixture tells it apart from its neighbours. If any pinned output moves, it
+also comes with the re-pin below.
+
 ## At what settings
 
 - `TessellationQuality::Medium` -- the byte-identity density (see

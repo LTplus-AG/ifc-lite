@@ -16,7 +16,7 @@
 //!
 //! A boolean subtract can only REMOVE material, so the cut is mathematically
 //! contained in the host's pre-cut AABB; any output vertex beyond it is provably
-//! an artifact. `apply_void_context_inner` drops such triangles
+//! an artifact. `cut_in_frame` drops such triangles
 //! (`Mesh::clip_triangles_to_aabb`). This test asserts the voided wall does not
 //! protrude beyond the un-voided wall's bounds.
 //!

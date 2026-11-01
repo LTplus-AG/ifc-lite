@@ -51,8 +51,15 @@ publication; its original receipt is retained separately from the successful run
 Use upstream depth-fix commit `71e2be2394ecd9bdfb6f1d36ce23e6af92978015` from `louistrue/luma.gl` (base `700f1400fc6b0d32a82f1a22f57c1e747b255a01`). Apply `mixed-transparency.patch` there, install using its pinned Node/Yarn versions, build, then run its documented browser harness:
 
 ```sh
-CI=1 yarn test-headless --maxWorkers=2 --reporter=verbose modules/engine/test/splats/ifc-mixed-transparency.spec.ts
+CI=1 corepack yarn test-headless --maxWorkers=2 --reporter=verbose \
+  modules/engine/test/splats/ifc-mixed-transparency.spec.ts \
+  modules/engine/test/splats/splat-depth-convention.spec.ts \
+  modules/core/test/webgpu/adapter/webgpu-adapter-attach.spec.ts
 ```
+
+This is the complete three-file selection recorded by successful receipt
+`c7670da1-8e1a-4503-9cfd-6cc195dd0063` for the revised **18-pass/1-skip** run.
+The first file alone runs only the five mixed-transparency diagnostics.
 
 On the managed development fleet, execute through fleet admission and `ifc-gpu-check`. The patch is an external-harness diagnostic, not a test included by IFC-Lite's root test command.
 

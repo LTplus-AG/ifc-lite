@@ -95,7 +95,8 @@ jobs:
     # lane from the rollup. It is `in_progress` for as long as it is asking the
     # question, and leaving it in would mean the rollup never reads as settled.
     name: PR review signal
-    if: github.event_name == 'pull_request'
+    # A Mergify batch PR is a temporary test branch with no reviews of its own.
+    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/')
     # Free runner: two API reads and a poll, not compute-bound.
     runs-on: ubuntu-latest
     # Above the poll budget below, so a run that exhausts the budget still gets

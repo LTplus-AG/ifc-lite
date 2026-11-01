@@ -1,0 +1,13 @@
+diff --git a/rust/diff/src/key_diff.rs b/rust/diff/src/key_diff.rs
+index 0edc2a16fb..6bd937b4b0 100644
+--- a/rust/diff/src/key_diff.rs
++++ b/rust/diff/src/key_diff.rs
+@@ -116,7 +116,7 @@ fn diff_by_key_impl<'a, R>(
+     let mut paired = vec![false; head.len()];
+     for (key, i) in &base_order {
+         let base_entity = &base[*i];
+-        let head_entity = head_index.get(key).map(|&j| &head[j]);
++        let head_entity = head_index.get(key).map(|&j| { paired[j] = true; &head[j] });
+         if is_excluded(base_entity) || head_entity.is_some_and(&is_excluded) { continue; }
+         let mut entry = DiffEntry {
+             key: key.clone(), state: DiffState::Deleted, change_kinds: Vec::new(),

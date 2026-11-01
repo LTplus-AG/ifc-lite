@@ -1,0 +1,83 @@
+diff --git a/apps/viewer/src/components/viewer/ExportDialog.tsx b/apps/viewer/src/components/viewer/ExportDialog.tsx
+index b0796645b5..a792215f2b 100644
+--- a/apps/viewer/src/components/viewer/ExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/ExportDialog.tsx
+@@ -290,7 +290,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
+   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
+
+   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+-    if (!isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState())) {
++    if (!isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState(), exportScope === 'merged' ? models.keys() : [selectedModelId])) {
+       return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+     }
+     if (!schema || (exportScope === 'single' && !selectedModel)) {
+diff --git a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
+index 191a00a1e7..ec3bc69e03 100644
+--- a/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
++++ b/apps/viewer/src/components/viewer/toolbar/useExportCommands.ts
+@@ -31,7 +31,7 @@ import type { ExportSurface } from '@/lib/analytics-export-events';
+ import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
+ import type { TranslationKey } from '@/i18n';
+ import {
+-  hasRetainedSectionExport, hasRetainedGeometryModel, hasRetainedShapeOnlyModel, RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON,
++  hasRetainedGeometryModel, hasRetainedShapeOnlyModel, RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON,
+ } from '@/store/retainedGeometry';
+
+ export type { CsvExportType };
+@@ -87,7 +87,6 @@ export function useExportCommands(surface: ExportSurface) {
+   const hasChanges = totalChangeCount(useChangedModels()) > 0;
+   const shapeOnly = useViewerStore((s) => hasRetainedShapeOnlyModel(s.models));
+   const retained = useViewerStore((s) => hasRetainedGeometryModel(s.models));
+-  const retainedSection = useViewerStore(hasRetainedSectionExport);
+   const { exporters: extensionExporters, extensionExportRunning, runExtensionExporter } = useExtensionExporters(surface);
+
+   /**
+@@ -172,7 +171,7 @@ export function useExportCommands(surface: ExportSurface) {
+   const commands = useMemo<ResolvedExportCommand[]>(
+     () => EXPORT_COMMANDS.map((command) => shapeOnly && MESH_DERIVED_EXPORTS.has(command.id)
+       ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
+-      : (retained && EXACT_ONLY_EXPORTS.has(command.id)) || (retainedSection && command.id === 'ifc')
++      : retained && EXACT_ONLY_EXPORTS.has(command.id)
+       ? { command, disabled: true, disabledReasonKey: RETAINED_EXACT_ONLY_REASON }
+       : {
+         command,
+@@ -180,7 +179,7 @@ export function useExportCommands(surface: ExportSurface) {
+           : command.requires === 'changes' ? !hasChanges
+           : !canExport,
+       }),
+-    [ifcDataStore, canExport, hasChanges, shapeOnly, retained, retainedSection],
++    [ifcDataStore, canExport, hasChanges, shapeOnly, retained],
+   );
+
+   return {
+diff --git a/apps/viewer/src/store/retainedGeometry.ts b/apps/viewer/src/store/retainedGeometry.ts
+index 838abe52b2..220de6093c 100644
+--- a/apps/viewer/src/store/retainedGeometry.ts
++++ b/apps/viewer/src/store/retainedGeometry.ts
+@@ -79,9 +79,11 @@ export function hasRetainedShapeOnlyModel(models: ReadonlyMap<string, { retained
+   return false;
+ }
+
+-/** Sectioned STEP rebuilds exact tessellation; reject it for a retained session (#8415). */
++/** Sectioned STEP rebuilds exact tessellation; reject retained models included in this export (#8415). */
+ export function hasRetainedSectionExport(state: Parameters<typeof clippingSectionPlanes>[0] & {
+   models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>;
+-}): boolean {
+-  return hasRetainedGeometryModel(state.models) && clippingSectionPlanes(state).length > 0;
++}, modelIds: Iterable<string>): boolean {
++  if (clippingSectionPlanes(state).length === 0) return false;
++  for (const id of modelIds) if (state.models.get(id)?.retainedGeometry) return true;
++  return false;
+ }
+diff --git a/apps/viewer/src/utils/instancedExport.ts b/apps/viewer/src/utils/instancedExport.ts
+index c07c17bd2b..d6fa376450 100644
+--- a/apps/viewer/src/utils/instancedExport.ts
++++ b/apps/viewer/src/utils/instancedExport.ts
+@@ -116,6 +116,6 @@ export function resolveInstancedExportGate(
+     ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }
+     : null;
+   // An incomplete or shape-only retained model would export its partial meshes as the model (#7955).
+-  const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(models);
++  const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(model && modelId ? new Map([[modelId, model]]) : models);
+   return { instancedModelRange, canExport };
+ }

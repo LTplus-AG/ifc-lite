@@ -22,7 +22,8 @@ pub fn record(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, product:
     record_parts(report,oracle,product.product_id,product.cuts,&product.parts,tolerances)
 }
 /// `record` on the fields it reads, so its whole path (classification, winding gate,
-/// report row, source comparison) runs without a published product or an SDK worker.
+/// report row, and for a product with no cuts the source comparison) runs without a
+/// published product or an SDK worker.
 pub fn record_parts(report:&mut Report, oracle:&mut affine::AffineOracle<'_>, id:u32, cuts:u64, parts:&[ShapePart], tolerances:&Value) {
     let class=oracle.classify(id);
     let Some((mut results,violations))=winding_gate(id,&class,&affine::winding_positive(parts)) else {return};
@@ -111,11 +112,12 @@ mod tests {
             revision_local_faces:vec![],normals:None,appearance:None,faces:None,instance_key:None}
     }
     /// `record` on product `id` of `text`; `cuts` != 0 skips the analytic source comparison.
-    fn recorded(text:&str,id:u32,reversed:bool)->(Report,Vec<Value>) {
+    fn recorded(text:&str,id:u32,reversed:bool)->(Report,Vec<Value>) {recorded_cuts(text,id,reversed,1,&Value::Null)}
+    fn recorded_cuts(text:&str,id:u32,reversed:bool,cuts:u64,tolerances:&Value)->(Report,Vec<Value>) {
         let source=ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
         let mut oracle=affine::AffineOracle::new(&source);
         let mut report=Report {rows:vec!["row\t[]".into()],..Default::default()};
-        record_parts(&mut report,&mut oracle,id,1,&[part(reversed)],&Value::Null);
+        record_parts(&mut report,&mut oracle,id,cuts,&[part(reversed)],tolerances);
         let rows=serde_json::from_str(report.rows[0].split('\t').next_back().unwrap()).unwrap();
         (report,rows)
     }
@@ -126,6 +128,21 @@ mod tests {
         assert_eq!(rows.len(),1);
         assert_eq!((rows[0]["family"].as_str(),rows[0]["gated"].as_bool(),rows[0]["pass"].as_bool()),
             (Some("affineSignedVolume"),Some(true),Some(true)));
+    }
+    #[test]
+    fn record_compares_the_source_only_when_there_are_no_cuts() {
+        // The fixture cube is not product 42's analytic body, so with no cuts the source
+        // comparison must flag it; the same product with an opening cut skips that comparison.
+        let kind=json!({"linear":1e-9,"curved":1e-9});
+        let metres=json!({"linear":{"absolute":1e-9,"extentFactor":0.},"curved":{"absolute":1e-9,"extentFactor":0.}});
+        let tolerances=json!({"affineFinalVolumeRelative":kind,"affineFinalCentroidMetres":metres,
+            "affineFinalBboxMetres":{"absolute":1e-9,"extentFactor":0.}});
+        let (report,rows)=recorded_cuts(SOURCE,42,false,0,&tolerances);
+        assert_eq!(report.violations,["42 part 0: affine source oracle"]);
+        assert_eq!(rows.iter().map(|r|r["family"].as_str().unwrap()).collect::<Vec<_>>(),["affineSignedVolume","affineFinal"]);
+        assert_eq!(rows[1]["pass"].as_bool(),Some(false));
+        let (cut,rows)=recorded_cuts(SOURCE,42,false,1,&tolerances);
+        assert!(cut.violations.is_empty()&&rows.len()==1,"{:?}",cut.violations);
     }
     #[test]
     fn record_reports_reversed_winding_of_a_mirrored_map() {

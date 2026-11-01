@@ -101,10 +101,6 @@ export interface UseMouseControlsParams {
   lastHoverCheckRef: MutableRefObject<number>;
   hoverTooltipsEnabledRef: MutableRefObject<boolean>;
 
-  // Render throttle refs
-  lastRenderTimeRef: MutableRefObject<number>;
-  renderPendingRef: MutableRefObject<boolean>;
-
   // Interaction state — set during drag, cleared on mouseup
   isInteractingRef: MutableRefObject<boolean>;
 
@@ -174,9 +170,6 @@ export interface UseMouseControlsParams {
   HOVER_SNAP_THROTTLE_MS: number;
   SLOW_RAYCAST_THRESHOLD_MS: number;
   hoverThrottleMs: number;
-  RENDER_THROTTLE_MS_SMALL: number;
-  RENDER_THROTTLE_MS_LARGE: number;
-  RENDER_THROTTLE_MS_HUGE: number;
   /** When true, wheel zoom uses unrestricted pure-dolly mode (Cesium) */
   fastZoomRef: MutableRefObject<boolean>;
 }

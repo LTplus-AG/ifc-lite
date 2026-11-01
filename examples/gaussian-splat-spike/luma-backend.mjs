@@ -10,6 +10,7 @@ import { captureColumns } from './decode.mjs';
 import { captureTexture } from './capture.mjs';
 import { reverseZProbe } from './reverse-z-probe.mjs';
 import { nativeMeshes } from './native-mesh.mjs';
+import { nativeScanPoints } from './scan-point-layers.mjs';
 export async function lumaBackend(canvas, meshes, captures, placements) {
   const errors = [];
   const device = await webgpuAdapter.create({ createCanvasContext: false, onError: error => { if (errors.length < 8 && !errors.includes(error.message)) errors.push(error.message); } });
@@ -26,7 +27,7 @@ export async function lumaBackend(canvas, meshes, captures, placements) {
   const meshPass = nativeMeshes(gpu, meshes);
   const points = new PointCloudRenderer(gpu, 'rgba8unorm', 'depth24plus-stencil8', 1);
   points.setOptions({ pointSize: 3 });
-  let cloudHandle = null, pointCount = 0;
+  const scanPoints = nativeScanPoints(points, draw);
   let visibleIfc = true, visiblePoints = true, visibleSplats = true, disposed = false, alternate = false;
   const frame = new RelativeToEyeFrame();
   let center = [0, 0, 0], radius = 15;
@@ -61,14 +62,12 @@ export async function lumaBackend(canvas, meshes, captures, placements) {
     reverseZProbe() { return reverseZProbe(device); },
     draw, capture() { draw(); return captureTexture(gpu, color.handle, canvas.width, canvas.height); }, move() { alternate = !alternate; draw(); },
     toggle(kind) { if (kind === 'ifc') visibleIfc = !visibleIfc; if (kind === 'points') visiblePoints = !visiblePoints; if (kind === 'splats') visibleSplats = !visibleSplats; draw(); },
-    addPoints(chunk) {
-      if (cloudHandle) points.removeAsset(cloudHandle);
-      cloudHandle = points.beginAsset({ expressId: 1 }); points.appendChunk(cloudHandle, chunk); points.endAsset(cloudHandle);
-      pointCount = chunk.pointCount; draw();
-    },
-    stats() { return { backend: 'luma.gl 9.4.2', ...splats.stats, meshCount: meshes.length, pointCount, errors, disposed, depthCompare: 'greater', sampleCount: 1, center, radius, meshVertices: meshes.reduce((n, mesh) => n + mesh.positions.length / 3, 0), finiteMeshPositions: meshes.every(mesh => mesh.positions.every(Number.isFinite)) }; },
+    clearPoints: scanPoints.clear,
+    addPoints: scanPoints.replace,
+    stats() { return { backend: 'luma.gl 9.4.2', ...splats.stats, meshCount: meshes.length, pointCount: scanPoints.count, errors, disposed, depthCompare: 'greater', sampleCount: 1, center, radius, meshVertices: meshes.reduce((n, mesh) => n + mesh.positions.length / 3, 0), finiteMeshPositions: meshes.every(mesh => mesh.positions.every(Number.isFinite)) }; },
     async destroy() {
-      disposed = true; splats.destroy(); batches.forEach(batch => batch.destroy()); points.clear(); meshPass.destroy();
+      if (disposed) return;
+      disposed = true; scanPoints.clear(); splats.destroy(); batches.forEach(batch => batch.destroy()); points.clear(); meshPass.destroy();
       framebuffer.destroy(); color.destroy(); objectId.destroy(); depth.destroy();
       await gpu.queue.onSubmittedWorkDone(); device.destroy();
     },

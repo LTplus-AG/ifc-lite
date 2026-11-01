@@ -15,7 +15,8 @@
  * registers at `globalThis.__ifc_lite_viewer_store__` (store/index.ts).
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { Page } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';

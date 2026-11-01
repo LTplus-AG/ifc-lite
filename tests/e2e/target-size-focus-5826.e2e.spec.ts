@@ -16,7 +16,8 @@
  * convention (see viewport-hud.e2e.spec.ts).
  */
 
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page, type Locator } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 

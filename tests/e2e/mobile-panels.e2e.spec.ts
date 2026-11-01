@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5853: authored IFC on a phone reaches registry panels and clears stale sheets. */
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 

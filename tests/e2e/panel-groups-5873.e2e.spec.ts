@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 
 test('#5873 groups the rail and ribbon panels around an authored IFC model', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1600, height: 1000 });

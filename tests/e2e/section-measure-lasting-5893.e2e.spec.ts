@@ -30,7 +30,8 @@
  * gone once `sceneState.measurements.visible` is toggled off.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 

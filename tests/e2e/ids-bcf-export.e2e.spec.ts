@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 import { existsSync } from 'node:fs';
 import { readFile, copyFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';

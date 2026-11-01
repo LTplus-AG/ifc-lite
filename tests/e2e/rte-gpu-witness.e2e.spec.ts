@@ -7,7 +7,7 @@
  * set RTE_GPU_WITNESS=1 only on a machine with a real WebGPU adapter.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
 
 interface WitnessReport {
   status: 'pending' | 'passed' | 'skipped' | 'failed';

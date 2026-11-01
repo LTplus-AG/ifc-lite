@@ -7,7 +7,8 @@
  * Only the paid provider answer and the SPARQL endpoint are intercepted; every
  * card is checked against the loaded models, not against canned data.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page } from '@playwright/test';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 

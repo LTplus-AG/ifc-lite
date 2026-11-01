@@ -12,7 +12,8 @@
  * NetArea 79.363 m² over 3 slabs; one slab carries Pset_SlabCommon.FireRating.
  */
 
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
+import { type Locator, type Page } from '@playwright/test';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 import { loadThroughViewer } from './federation-control-triplet.helpers';

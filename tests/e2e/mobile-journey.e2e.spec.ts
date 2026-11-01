@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5865: one authored-model mobile journey and mobile axe ratchet. */
-import { expect, test, type CDPSession, type Page } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
+import { type CDPSession, type Page } from '@playwright/test';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { SceneFaceHitSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
 import { WORKSPACE_PANELS } from '../../apps/viewer/src/lib/panels/registry';

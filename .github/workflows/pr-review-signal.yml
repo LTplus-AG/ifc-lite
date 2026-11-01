@@ -104,6 +104,8 @@ jobs:
     # 20 min against a 900 s budget leaves the >= 300 s of slack the budget
     # tests in scripts/lib/pr-review-signal.test.mjs require.
     timeout-minutes: 20
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -197,11 +199,19 @@ jobs:
       # NO_HEAD_COMMIT_TIME refusal live there, so a change that breaks it
       # breaks this gate's verdict, and this step must be the thing that says so.
       - name: Unit-test the gate itself
+        id: gate_tests
         run: |
-          node --test \
+          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml \
             scripts/check-pr-review-signal.test.mjs \
             scripts/lib/pr-review-signal.test.mjs \
             scripts/lib/review-provenance.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
 
       - name: Check required lanes ran and reviews produced a verdict
         env:

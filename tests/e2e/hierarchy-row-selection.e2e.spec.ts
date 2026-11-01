@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5885: real authored IFC rows select; visibility and filter changes need an explicit action. */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 

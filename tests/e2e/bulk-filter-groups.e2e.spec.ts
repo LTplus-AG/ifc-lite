@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5898: authored IFC, shared group editor, union result, and actual Bulk writes. */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 import { DEVICE_LOST_TOAST, GPU_STRICT } from './gpu-device-loss';
 
 const STORE = '__ifc_lite_viewer_store__';

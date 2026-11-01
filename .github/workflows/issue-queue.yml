@@ -117,6 +117,8 @@ jobs:
     # when the PR event fires, rather than waiting for other jobs to appear.
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -139,10 +141,18 @@ jobs:
       # that decides whether work was requested should not be able to fail
       # because a registry was slow.
       - name: Unit-test the gate itself
+        id: gate_tests
         run: |
-          node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs \
+          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs \
             scripts/lib/ref-issues-fetch.test.mjs \
             scripts/check-partial-close-admission.test.mjs scripts/lib/partial-close-admission.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
 
       # `--dump` writes the exact GraphQL payload this job read (`body` and
       # `closingIssuesReferences` included) to $RUNNER_TEMP so the next step

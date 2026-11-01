@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5896: authored IFC in two models, through the mounted Lens runtime. */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 import { join } from 'node:path';
 
 const STORE = '__ifc_lite_viewer_store__';

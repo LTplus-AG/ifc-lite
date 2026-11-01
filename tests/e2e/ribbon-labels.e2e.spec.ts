@@ -12,7 +12,7 @@
  * measured. No model is loaded; the ribbon renders its buttons without one.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 
 test('#5395: every large ribbon button label fits its button', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });

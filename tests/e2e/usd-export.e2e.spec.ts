@@ -19,7 +19,8 @@
  * the session to start — its content is never used here.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';

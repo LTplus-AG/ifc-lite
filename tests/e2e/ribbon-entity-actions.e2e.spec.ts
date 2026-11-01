@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5870: a selected entity reaches the shared actions menu from the ribbon on an authored IFC. */
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
 import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {

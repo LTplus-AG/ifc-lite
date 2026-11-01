@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/mcp",
   "version": "0.28.1",
-  "description": "Model Context Protocol server for ifc-lite \u2014 agent-native BIM via MCP (stdio + Streamable HTTP)",
+  "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -67,6 +67,7 @@
     "yjs": "^13.6.33"
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

@@ -31,7 +31,8 @@
  * timing IS the coverage. Do not "stabilize" it by waiting.
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { Page } from '@playwright/test';
 import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

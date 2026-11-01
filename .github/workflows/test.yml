@@ -2191,6 +2191,8 @@ jobs:
         # #7360 qualification: 2,180 files outgrew eight serial shards.
         # Keep the 25-minute cap and run every path exactly once.
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2243,10 +2245,19 @@ jobs:
       # is unchanged. The split is exact: a manifest file is packed into one
       # shard and any other path hashes to exactly one of the 16 residues, so
       # nothing is dropped or run twice; an empty selection fails the step.
-      - run: pnpm --filter @ifc-lite/viewer run test
+      - id: viewer_tests
+        run: pnpm --filter @ifc-lite/viewer run test
         env:
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit.xml
+          test_step_outcome: ${{ steps.viewer_tests.outcome }}
 
   node-guards:
     name: Node guards
@@ -2257,6 +2268,8 @@ jobs:
     # Give each workload its own runner and budget; keep every existing check.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2584,8 +2597,9 @@ jobs:
       # auditor's existing input census; globs discover every new suite. sort -u
       # removes the overlap before Node starts any tests.
       - name: Run every scripts/ test file (glob catch-all)
+        id: scripts_tests
         run: |
-          node --test $(printf '%s\n' \
+          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \
             scripts/check-ci-aggregate-coverage.test.mjs \
@@ -2662,6 +2676,13 @@ jobs:
             scripts/ids-conformance/lib/*.test.mjs \
             scripts/ids-conformance/lib/adapters/*.test.mjs \
             | sort -u)
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.scripts_tests.outcome }}
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed
@@ -2764,6 +2785,8 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2860,7 +2883,10 @@ jobs:
           ORACLE_PROOF
           echo "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE=$entry" >> "$GITHUB_ENV"
       - name: Package tests (shard ${{ matrix.shard }}/4)
+        id: package_tests
         env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           SHARD: ${{ matrix.shard }}
           IFC_LITE_SECTION_EVIDENCE_DIR: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -2868,6 +2894,13 @@ jobs:
           mapfile -t filters <<<"$filters_txt"
           echo "turbo filters: ${filters[*]}"
           pnpm exec turbo test --only --concurrency=1 "${filters[@]}"
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('*/*/mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: '*/*/mergify-junit.xml'
+          test_step_outcome: ${{ steps.package_tests.outcome }}
       # Export is pinned to shard 3 by scripts/ci-node-test-shards.mjs.
       # Its real-WASM tests above generate a fresh Haus crop; missing fixture,
       # runtime, or evidence must fail the probe rather than count as coverage.
@@ -2900,6 +2933,7 @@ jobs:
         timeout-minutes: 5
         run: pnpm test:integration
       - name: API route tests (relay handlers)
+        id: api_tests
         if: matrix.shard == 4
         # `tests/api/**` was reachable only by running `pnpm test:api` by hand,
         # so the Dalux relay's path allowlist and node allowlist - the guards
@@ -2907,7 +2941,17 @@ jobs:
         # existed in the repo but never in the pipeline. A guard no lane invokes
         # is not a gate.
         timeout-minutes: 5
+        env:
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
         run: pnpm test:api
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.api_tests.outcome }}
+          job_name: node-tests (api)
       - name: WASM contract tests (real processGeometryBatch boundary)
         if: matrix.shard == 4
         run: pnpm test:wasm-contract
@@ -2959,6 +3003,8 @@ jobs:
           name: build-output
           path: packages
       - run: pnpm --filter @ifc-lite/provenance --fail-if-no-match run test
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
 
   # Functional smoke of the real viewer: real WASM pipeline + WebGPU
   # renderer (swiftshader) + pick pass + section plane, asserted through
@@ -3043,11 +3089,12 @@ jobs:
         # count through real WASM, data-store population, model
         # registration, section-plane store contract — still gate.
         env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
           E2E_GPU_STRICT: '0'
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list
+        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright
       - name: Upload assistant browser evidence
         if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -3085,6 +3132,8 @@ jobs:
     # metered pool. The longer cap accommodates a cold GitHub cache restore.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || (((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3219,6 +3268,21 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo nextest run --workspace --profile ci
+      # nextest writes the report under the target dir, which the self-hosted
+      # lane keeps outside the workspace and a cache can restore: copy only the
+      # one this run wrote (the checkout made Cargo.toml earlier in this job).
+      - name: Collect the nextest JUnit report
+        if: ${{ !cancelled() && steps.rust_tests.outcome != 'skipped' }}
+        run: |
+          report="${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
+          if [ "$report" -nt Cargo.toml ]; then cp "$report" mergify-junit.xml; fi
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.rust_tests.outcome }}
       # C4-0 (#7782): the native/browser parity gate already ran above, inside
       # nextest, and fails the job on any difference its EXPECTED_DIFF table
       # does not enumerate (or on a row nothing produces any more). This runs
@@ -3278,6 +3342,8 @@ jobs:
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || (((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3338,10 +3404,18 @@ jobs:
           node-version: 22
       - run: pnpm install --frozen-lockfile
       - name: SMLib-free CLI report over the real retained WASM boundary
+        id: retained_node_tests
         run: |
           BUILD_RETAINED=1 bash scripts/build-wasm.sh
           pnpm build --filter=@ifc-lite/cli
-          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
+          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.retained_node_tests.outcome }}
 
       - name: Rust tests and Clippy (retained controller and executor)
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
@@ -3943,6 +4017,8 @@ jobs:
     if: (needs.changes.outputs.agents_md == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3954,7 +4030,15 @@ jobs:
       - name: Check AGENTS.md size and line length
         run: node scripts/check-agents-md-size.mjs
       - name: Check AGENTS.md ratchet regressions
-        run: node --test scripts/check-agents-md-size.test.mjs
+        id: gate_tests
+        run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-agents-md-size.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
 
   # AGENTS.md: "MPL-2.0 header on every new file". `add-license-headers.mjs`
   # has had a `--check` mode that says whether that held, and NOTHING RAN IT
@@ -3981,6 +4065,8 @@ jobs:
     if: (needs.changes.outputs.license_headers == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3990,7 +4076,15 @@ jobs:
         with:
           node-version: 22
       - name: Check the license-header classifier's own regressions
-        run: node --test scripts/lib/license-header.test.mjs
+        id: gate_tests
+        run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/lib/license-header.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
       - name: Check every source file declares MPL-2.0
         run: node scripts/add-license-headers.mjs --check
 
@@ -4038,6 +4132,8 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -4053,9 +4149,17 @@ jobs:
       # history into a failure instead of a skip, and the test fetches the merged
       # PR's head ref (refs/pull/8377/head), which is on no fetched branch.
       - name: Check the guard's own regressions
+        id: gate_tests
         env:
           SILENT_REVERT_REQUIRE_HISTORY: '1'
-        run: node --test scripts/check-silent-revert.test.mjs
+        run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-silent-revert.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
       # `--pr` reads the title, body and labels as they are NOW, never the event
       # payload (frozen at run creation, reused by a re-run). `pull-requests: read`
       # is already in the workflow permissions.

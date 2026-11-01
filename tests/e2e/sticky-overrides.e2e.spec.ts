@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 
 test('#5860 saved worker override is visible and resettable in Settings', async ({ page }) => {
   await page.addInitScript(() => {

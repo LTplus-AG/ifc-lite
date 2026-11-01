@@ -42,6 +42,8 @@ jobs:
       - name: Provision real report integration prerequisites
         uses: ./.github/actions/setup-report-integration
       - name: Real database and multipart storage qualification
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
         run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
       - name: Remove owned report integration prerequisites
         if: always()
@@ -75,6 +77,8 @@ jobs:
           docker pull "$scanner_image"
           pnpm exec tsx apps/report-service/scripts/scan-public-once.ts update-signatures
       - name: Real engine, database and storage qualification
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
         run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
       - name: Remove owned report fixtures
         if: always()
@@ -88,6 +92,8 @@ jobs:
   mounted-public-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -117,10 +123,19 @@ jobs:
           echo "cc6fbbf632c2779891e485c3297d437b1d8555448934b8c8b5a3cce5326553a2  $report_ui_fixture" | sha256sum --check --status
           echo "REPORT_TEST_PUBLIC_UI_IFC_FILE=$report_ui_fixture" >> "$GITHUB_ENV"
       - name: Mounted reporting UI through real handler, database and multipart storage
+        id: mounted_ui_tests
         env:
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           REPORT_TEST_PUBLIC_UI: 'true'
           TEST_PATTERN: '(PublicModelSharing.http|PublicModelReceipt.race|PublicModelReceipt.concurrent)'
         run: pnpm test --filter=@ifc-lite/viewer --concurrency=2 --env-mode=loose
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit.xml
+          test_step_outcome: ${{ steps.mounted_ui_tests.outcome }}
       - name: Isolate stale public receipt behavior with the original implementation
         run: |
           if git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then

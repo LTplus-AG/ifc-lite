@@ -28,6 +28,8 @@ jobs:
   forma-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: rustup show
@@ -39,9 +41,19 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Native Forma to IFCX loader contract
+        id: forma_tests
         run: pnpm test --env-mode=loose --filter=@ifc-lite/autodesk-service --filter=@ifc-lite/source-autodesk --filter=@ifc-lite/ifcx
         env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          NODE_OPTIONS: --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           TEST_FORMA_CONVERTER: ${{ github.workspace }}/target/debug/ifc-lite-cloud-import
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('packages/ifcx/mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: packages/ifcx/mergify-junit.xml
+          test_step_outcome: ${{ steps.forma_tests.outcome }}
   exchange-sdk:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -54,6 +66,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Gateway and Windows HTTP worker contracts
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
         run: pnpm test --filter=@ifc-lite/autodesk-service --filter=@ifc-lite/source-autodesk
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:

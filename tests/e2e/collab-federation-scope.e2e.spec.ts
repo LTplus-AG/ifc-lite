@@ -27,7 +27,8 @@
  * detect ahead of launch.
  */
 
-import { test, expect, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Browser, type Page, type TestInfo } from '@playwright/test';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

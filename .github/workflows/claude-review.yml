@@ -706,6 +706,8 @@ jobs:
       # is reachable that was not before.
       pull-requests: write
       issues: write
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       # THE GATE RUNS FROM THE PR; ITS AUTHORITY COMES FROM THE BASE BRANCH.
       #
@@ -772,12 +774,21 @@ jobs:
       # predicate deciding the verdict, reachable only behind the same path
       # filter this list exists to bypass.
       - name: Unit-test the gate itself
+        id: gate_tests
         run: >-
           node --test
+          --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           scripts/check-review-posted.test.mjs
           scripts/lib/review-provenance.test.mjs
           scripts/lib/review-marker.test.mjs
           scripts/lib/review-poll-page.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
 
       # The config is the thing worth forging: it names who may post a marker.
       # Taken from the BASE branch so a PR cannot add its own author and pass.

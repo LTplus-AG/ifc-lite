@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5874: every desktop command remains reachable after retiring the classic bar. */
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
 
 test.use({ viewport: { width: 1280, height: 900 } });
 

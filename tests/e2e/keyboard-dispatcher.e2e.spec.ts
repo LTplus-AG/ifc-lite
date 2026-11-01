@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5841: real authored IFC keyboard commands and modal priority. */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {

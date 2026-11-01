@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Production WebGPU witness for a selected swept-disk directrix (#5778). */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
+import { type Page } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
 import { sweptDiskFixture } from './swept-disk-fixture.js';
 import { skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';

@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/cli",
   "version": "0.44.0",
-  "description": "CLI toolkit for IFC files \u2014 query, validate, export, create, and script BIM data",
+  "description": "CLI toolkit for IFC files — query, validate, export, create, and script BIM data",
   "type": "module",
   "bin": {
     "ifc-lite": "./dist/index.js"
@@ -59,6 +59,7 @@
   },
   "devDependencies": {
     "@ifc-lite/bcf-api": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

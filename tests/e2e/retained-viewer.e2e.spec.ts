@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // #7955 M2-D: real built viewer, real host Worker and real staged SDK.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';

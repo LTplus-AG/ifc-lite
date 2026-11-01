@@ -13,7 +13,8 @@
  */
 
 import AxeBuilder from '@axe-core/playwright';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 

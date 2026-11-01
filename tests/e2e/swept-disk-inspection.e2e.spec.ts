@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Browser witness for #5783 against authored swept-disk geometry. */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
 import { existsSync, writeFileSync } from 'node:fs';
 import { sweptDiskFixture, sweptDiskIsolationPath } from './swept-disk-fixture.js';
 import { skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';

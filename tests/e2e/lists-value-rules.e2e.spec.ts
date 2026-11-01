@@ -9,7 +9,8 @@
  * one model and again after a second model is added.
  */
 
-import { test, expect, type Page, type TestInfo } from '@playwright/test';
+import { test, expect } from '@mergifyio/playwright';
+import { type Page, type TestInfo } from '@playwright/test';
 import { copyFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';

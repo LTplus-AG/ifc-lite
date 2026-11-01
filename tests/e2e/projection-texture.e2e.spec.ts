@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
 import { fileURLToPath } from 'node:url';
 import { startViewerDevServer } from './viewer-dev-server.js';
 import type { runTextureDepthWitness } from './projection-texture.gpu.js';

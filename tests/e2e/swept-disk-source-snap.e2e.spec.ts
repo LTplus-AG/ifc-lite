@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Browser witness for hover, click and drag measurement on authored curves (#5780). */
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@mergifyio/playwright';
 import { existsSync, writeFileSync } from 'node:fs';
 import { sweptDiskFixture } from './swept-disk-fixture.js';
 import { skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';

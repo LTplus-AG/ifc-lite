@@ -51,7 +51,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -213,7 +213,7 @@ export function scanSource(path, src) {
 export function listTestFiles(root) {
   const r = spawnSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 });
   if (r.status !== 0) throw new Error(`git ls-files failed: ${r.stderr || r.error?.message}`);
-  return r.stdout.split('\0').filter((p) => TEST_FILE.test(p));
+  return r.stdout.split('\0').filter((p) => TEST_FILE.test(p) && existsSync(join(root, p)));
 }
 
 export function runCheck(root, { files = listTestFiles(root), read = (p) => readFileSync(join(root, p), 'utf8'),

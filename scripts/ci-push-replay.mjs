@@ -46,6 +46,11 @@
  * ends on, and a probe that runs before its successor lands finds no evidence
  * and runs in full. A batch ran the push-only lanes too, so `replay_queue=true`
  * lets test.yml skip those as well.
+ *
+ * A commit touching NO_REPLAY paths also replays this way when each of those
+ * files changes again in a later commit on main. The same file means the same
+ * caches, and path filters run the same lanes: a later workflow-only full run
+ * would not re-key what a Cargo.lock change needs. Only the newest runs in full.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -76,6 +81,7 @@ const SHA = /^[0-9a-f]{40}$/;
 
 /** More than one batch's worth of later commits; older evidence is not worth the reads. */
 const MAX_LATER_COMMITS = 10;
+const COMPARE_PAGE = 100;
 
 const isTestWorkflow = (r) => r.path === undefined || r.path.endsWith(`/${TEST_WORKFLOW_FILE}`);
 const newestFirst = (a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0);
@@ -107,19 +113,25 @@ const isGreenBatchRun = (r, repo) =>
  *   artifactNamesByRun: Record<string, string[]>,
  *   repo?: string,
  *   queueEvidence?: Array<{tree: string, runs: Array<object>}>,
+ *   laterChangedFiles?: string[],
+ *   rekeyAlreadyJudged?: boolean,
  * }} input `queueEvidence` lists this commit's tree, then later commits' trees, each with the runs holding its artifact.
  * @returns {{replay: true, runId: number, pr: number, queue?: true} | {replay: false, reason: string}}
  */
 export function decidePushReplay(input) {
-  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [] } = input;
+  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false } = input;
   if (!SHA.test(pushSha ?? '') || !SHA.test(pushTree ?? '')) return { replay: false, reason: 'push SHA or tree is not a full hash' };
   // One squash commit on top of the previous tip. A multi-commit push (a
   // direct push, a rebase merge) is not the shape a single PR run tested.
   if (!SHA.test(before ?? '') || parentSha !== before) {
     return { replay: false, reason: `push is not a single commit on ${String(before).slice(0, 9)}` };
   }
-  const blocker = changedFiles.find((f) => NO_REPLAY.some((re) => re.test(f)));
-  if (blocker) return { replay: false, reason: `${blocker} changed; caches that only main writes must be re-keyed by a full run` };
+  const keysCaches = (f) => NO_REPLAY.some((re) => re.test(f));
+  const blocker = changedFiles.find(keysCaches);
+  const blockerReason = `${blocker} changed; caches that only main writes must be re-keyed by a full run`;
+  // A full page may be truncated, so it proves nothing: that only means a full run.
+  const rekeyedLater = rekeyAlreadyJudged || laterChangedFiles.length < COMPARE_PAGE && changedFiles.filter(keysCaches).every((f) => laterChangedFiles.includes(f));
+  if (blocker && !rekeyedLater) return { replay: false, reason: blockerReason };
 
   const merged = pulls.filter((p) => p && p.merged_at && p.merge_commit_sha === pushSha && p.base?.ref === 'main');
   if (merged.length !== 1) return { replay: false, reason: `${merged.length} merged PRs into main produced ${pushSha.slice(0, 9)}; need exactly one` };
@@ -140,13 +152,14 @@ export function decidePushReplay(input) {
     )
     .sort(newestFirst);
   const hit = green.find((r) => (artifactNamesByRun[String(r.id)] ?? []).includes(wanted));
-  if (hit) return { replay: true, runId: hit.id, pr: pr.number };
+  if (hit && !blocker) return { replay: true, runId: hit.id, pr: pr.number };
 
   for (const { runs: treeRuns } of queueEvidence) {
     const proven = treeRuns.filter((r) => isGreenBatchRun(r, repo)).sort(newestFirst)[0];
     if (proven) return { replay: true, runId: proven.id, pr: pr.number, queue: true };
   }
 
+  if (blocker) return { replay: false, reason: blockerReason };
   if (green.length === 0) return { replay: false, reason: `PR #${pr.number}'s final head ${head.slice(0, 9)} has no green Test run` };
   return { replay: false, reason: `no green Test run of PR #${pr.number} tested tree ${pushTree.slice(0, 9)} (main moved, or the run predates tree recording)` };
 }
@@ -184,14 +197,14 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
       artifactNamesByRun[String(r.id)] = artifactNames(repo, r.id);
     }
   }
-  const queueEvidence = readQueueEvidence(repo, pushSha, pushTree);
-  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence };
+  const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
+  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles };
 }
 
 /** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */
 function readQueueEvidence(repo, pushSha, pushTree) {
   const compare = gh(
-    ['api', `repos/${repo}/compare/${pushSha}...main?per_page=${MAX_LATER_COMMITS}`, '--method', 'GET'],
+    ['api', `repos/${repo}/compare/${pushSha}...main?per_page=${COMPARE_PAGE}`, '--method', 'GET'],
     `the commits on main after ${pushSha.slice(0, 9)}`,
   );
   if (!compare || typeof compare.status !== 'string' || !Array.isArray(compare.commits)) {
@@ -203,7 +216,10 @@ function readQueueEvidence(repo, pushSha, pushTree) {
   if (trees.some((tree) => typeof tree !== 'string' || !SHA.test(tree))) {
     throw new GhError('GH_BAD_SHAPE', 'compare commit carried no valid tree');
   }
-  return [pushTree, ...trees].map((tree) => ({ tree, runs: runsThatRecorded(repo, tree) }));
+  const laterChangedFiles = compare.status === 'ahead' && Array.isArray(compare.files)
+    ? compare.files.map((f) => f?.filename).filter((f) => typeof f === 'string')
+    : [];
+  return { queueEvidence: [pushTree, ...trees].map((tree) => ({ tree, runs: runsThatRecorded(repo, tree) })), laterChangedFiles };
 }
 
 function runsThatRecorded(repo, tree) {
@@ -254,7 +270,11 @@ export function run(argv, env = process.env) {
   const before = env.PUSH_BEFORE ?? '';
   let decision;
   try {
-    decision = decidePushReplay(readInputs(repo, pushSha, pushTree, parentSha, before));
+    const inputs = readInputs(repo, pushSha, pushTree, parentSha, before);
+    // --verify re-reads the run, not main's later history: a later revert must
+    // not fail an aggregate whose replay the probe already chose correctly.
+    if (mode === 'verify') inputs.rekeyAlreadyJudged = true;
+    decision = decidePushReplay(inputs);
   } catch (err) {
     // The probe only saves work. Unreadable evidence must run the full suite,
     // not fail `changes` and suppress every dependent lane (#7944). Once a

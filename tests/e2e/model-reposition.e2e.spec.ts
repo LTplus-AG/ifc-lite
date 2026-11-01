@@ -1,8 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { test, expect } from '@mergifyio/playwright';
-import { type BrowserContext, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { SceneOwnerSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';

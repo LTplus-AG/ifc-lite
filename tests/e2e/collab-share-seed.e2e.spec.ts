@@ -34,7 +34,7 @@
  * Skips, never fails, when the fixture, the wasm runtime, the viewer or the relay build is missing.
  */
 
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

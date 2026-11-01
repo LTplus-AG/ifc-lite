@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5859: a real finger hold opens the picked entity menu on authored IFC. */
-import { expect, test } from '@mergifyio/playwright';
+import { expect, test } from '@playwright/test';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { SceneFaceHitSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
 import { watchGpuDeviceLoss } from './gpu-device-loss';

@@ -44,8 +44,7 @@
  * helper), and every later `requestDevice` rejects, so recovery fails the way
  * it does after Dawn drops the instance.
  */
-import { test } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { test, type Page } from '@playwright/test';
 
 /** `false` under hosted software WebGPU (CI sets `E2E_GPU_STRICT=0`). */
 export const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';

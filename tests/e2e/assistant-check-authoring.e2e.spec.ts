@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';

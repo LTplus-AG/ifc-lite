@@ -8,7 +8,7 @@
  * it was in the DOM but invisible. happy-dom does no flex layout, so this
  * is measured with real bounding boxes in Chromium.
  */
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';

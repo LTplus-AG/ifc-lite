@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 
 test('the pivot marker is visible mid-orbit on building-architecture.ifc (#5891)', async ({ page }, testInfo) => {
   test.skip(process.env.E2E_GPU_STRICT === '0', 'pivot screenshot needs the headed GPU lane; CI uses unstable SwiftShader');

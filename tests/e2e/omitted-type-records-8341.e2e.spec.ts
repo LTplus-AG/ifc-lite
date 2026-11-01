@@ -11,8 +11,7 @@
  * carries the count to the host).
  */
 
-import { test, expect } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 

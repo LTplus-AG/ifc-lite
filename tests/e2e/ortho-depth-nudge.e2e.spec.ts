@@ -28,8 +28,7 @@
  *    plate crossing the far plane is cut where the plane is.
  */
 
-import { expect, test } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { colorSaltByte } from '../../packages/renderer/src/scene-geometry';
 import {
   MAX_DEPTH_NUDGE_HASH, ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL, ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES,

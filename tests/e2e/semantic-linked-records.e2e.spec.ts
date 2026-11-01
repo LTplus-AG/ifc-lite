@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Charter #6643: actual worker, canonical IFC loader, renderer, selection and grouped authoring undo. */
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 

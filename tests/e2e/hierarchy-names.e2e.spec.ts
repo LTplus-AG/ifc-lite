@@ -10,7 +10,7 @@
  * "Erdgeschoss") must render untruncated.
  */
 
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 

@@ -42,7 +42,7 @@
  * anywhere in this repo.
  */
 
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 
 test.describe('laz-perf wasm loading path (real build, real browser)', () => {
   test('the ?url wasm asset resolves and the wasmBinary hand-off succeeds', async ({ page }) => {

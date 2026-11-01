@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFile, writeFile } from 'node:fs/promises';
-import { test, expect } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { DOCUMENT_VERSION } from '../../apps/viewer/src/lib/document/document-version';
 import type { DocumentSpec } from '../../apps/viewer/src/lib/document/types';
 import type { RuleSetFile } from '@ifc-lite/rules';

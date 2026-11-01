@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5874: a returning classic-toolbar user starts in the sole desktop ribbon. */
-import { expect, test } from '@mergifyio/playwright';
+import { expect, test } from '@playwright/test';
 
 test('#5874 clears a stored classic choice during startup and opens the ribbon', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });

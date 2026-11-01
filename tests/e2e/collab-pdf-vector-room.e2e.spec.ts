@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #4604: direct PDF-vector creation through a signed relay and fresh browser. */
-import { test, expect } from '@mergifyio/playwright';
-import { type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
+import { test, expect, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

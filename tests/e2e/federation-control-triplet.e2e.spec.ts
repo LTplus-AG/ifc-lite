@@ -18,8 +18,7 @@
  * pass.
  */
 
-import { expect, test } from '@mergifyio/playwright';
-import { type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { GPU_STRICT, noteSoftwareGpuSkip, watchGpuDeviceLoss } from './gpu-device-loss';
 import type { ViewerState } from '../../apps/viewer/src/store';

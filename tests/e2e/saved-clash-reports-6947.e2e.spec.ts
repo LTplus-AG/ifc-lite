@@ -12,8 +12,7 @@
  * The component tests cover the rules; this covers what they cannot: the real
  * IndexedDB across a real reload, and the real layout the screenshots show.
  */
-import { test, expect } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';

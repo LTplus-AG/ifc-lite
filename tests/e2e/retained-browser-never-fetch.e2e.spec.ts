@@ -10,7 +10,7 @@
  * page, its Workers and its nested Workers make is observed at the context.
  */
 
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';

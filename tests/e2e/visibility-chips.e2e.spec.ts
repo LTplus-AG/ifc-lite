@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #5882: real IFC federation, three active HUD reasons, light and dark screenshots. */
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
 
 const STORE = '__ifc_lite_viewer_store__';

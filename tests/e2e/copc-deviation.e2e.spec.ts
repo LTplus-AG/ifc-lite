@@ -15,8 +15,7 @@
  * no longer drawn.
  */
 
-import { test, expect } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import { DEVICE_LOST_STATE_ERROR, skipForGpuDeviceLoss, watchGpuDeviceLoss, type GpuDeviceLossWatch } from './gpu-device-loss';

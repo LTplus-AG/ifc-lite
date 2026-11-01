@@ -10,8 +10,7 @@
  * witness these regressions. Both files are SHA-verified by the fixture fetcher.
  */
 
-import { expect, test } from '@mergifyio/playwright';
-import { type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ViewerState } from '../../apps/viewer/src/store';

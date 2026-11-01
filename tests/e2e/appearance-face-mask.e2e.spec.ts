@@ -20,8 +20,7 @@
  * project's flags target a real GPU. Skips without the fixture (`pnpm fixtures`).
  * Evidence files go to `APPEARANCE_E2E_OUT` (default: the Playwright output dir).
  */
-import { test, expect } from '@mergifyio/playwright';
-import { type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';

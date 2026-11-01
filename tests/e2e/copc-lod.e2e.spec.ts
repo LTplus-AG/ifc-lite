@@ -14,7 +14,7 @@
  * by its `copc`/`info` VLR, not by the `.copc.laz` suffix.
  */
 
-import { test, expect } from '@mergifyio/playwright';
+import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import { DEVICE_LOST_STATE_ERROR, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';

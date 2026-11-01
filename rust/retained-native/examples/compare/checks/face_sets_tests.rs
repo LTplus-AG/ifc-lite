@@ -137,3 +137,23 @@ ENDSEC;END");
     assert!(!check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost copy is not waived");
     println!("sdk witness executed: face_set_open_mapped_twice");
 }
+
+#[test]
+fn issue_7955_an_extra_copy_or_a_lost_non_set_item_keeps_the_closed_solid_checks() {
+    let tolerances = crate::tolerances::registered().unwrap();
+    // One authored occurrence, two published parts keyed to it.
+    let text = shell(".F.");
+    let Some(mut doubled) = publish(&text) else { return };
+    doubled.parts.extend(publish(&text).unwrap().parts);
+    assert!(!check(&doubled, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "an extra copy is not waived");
+    // An open set beside an extrusion: mixed sources keep every check, even with the extrusion lost.
+    let mixed = shell(".F.").replace("(#33));", "(#33,#44));").replace("ENDSEC;END", "\
+#40=IFCCARTESIANPOINT((0.,0.));#41=IFCAXIS2PLACEMENT2D(#40,$);#42=IFCDIRECTION((0.,0.,1.));
+#43=IFCRECTANGLEPROFILEDEF(.AREA.,$,#41,100.,100.);#44=IFCEXTRUDEDAREASOLID(#43,#5,#42,100.);
+ENDSEC;END");
+    let mut shape = publish(&mixed).unwrap();
+    shape.parts.retain(|part| part.faces.as_ref().is_some_and(|f| f.table.iter().any(|k| k.role.starts_with("row("))));
+    assert_eq!(shape.parts.len(), 1, "only the face set remains");
+    assert!(!check(&shape, mixed.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost extrusion is not waived");
+    println!("sdk witness executed: face_set_open_extra_or_mixed");
+}

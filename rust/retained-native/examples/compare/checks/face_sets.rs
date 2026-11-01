@@ -9,9 +9,9 @@ fn row_key(role: &str) -> Option<u32> {
 }
 
 /// The face sets the file itself puts in this product's or orphan type's Body, directly or
-/// through a map. The expectation comes from the source, so lost row keys cannot read as
-/// nothing to check.
-fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<Vec<u32>> {
+/// through a map, one entry per occurrence, and whether the Body authors anything else.
+/// The expectation comes from the source, so lost row keys cannot read as nothing to check.
+fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<(Vec<u32>, bool)> {
     let mut decoder = EntityDecoder::new(bytes);
     let product = decoder.decode_by_id(product_id).ok()?;
     let mut roots = Vec::new();
@@ -28,7 +28,7 @@ fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<Vec<u32>> {
         let representation = decoder.decode_by_id(id).ok()?;
         if representation.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER) == Some("Body") { representations.push(representation); }
     }
-    let mut authored = Vec::new();
+    let (mut authored, mut other) = (Vec::new(), false);
     while let Some(representation) = representations.pop() {
         for id in representation.ref_list_at(slot::IfcRepresentation::ITEMS)? {
             let item = decoder.decode_by_id(id).ok()?;
@@ -38,11 +38,11 @@ fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<Vec<u32>> {
                     let map = decoder.decode_by_id(item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?).ok()?;
                     representations.push(decoder.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?);
                 }
-                _ => {}
+                _ => other = true,
             }
         }
     }
-    Some(authored)
+    Some((authored, other))
 }
 
 /// Marks a product whose every part publishes rows of a face set its source authors open.
@@ -81,14 +81,17 @@ pub(crate) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
     if product.cuts == 0 {
         let keyed = |item: u32| product.parts.iter().filter_map(|part| part.faces.as_ref())
             .any(|faces| faces.table.iter().any(|key| key.item == item && row_key(&key.role).is_some()));
-        let authored = authored_face_sets(product.product_id, bytes).unwrap_or_default();
+        let source = authored_face_sets(product.product_id, bytes);
+        let (mut authored, other) = source.clone().unwrap_or_default();
         if let Some(missing) = authored.iter().copied().find(|&item| !keyed(item)) {
             failure = Some(format!("#{} authors face set #{missing} but published no row key for it", product.product_id));
         }
-        // One key can stand for a set mapped twice; open waives exact area, which would see the
-        // lost copy, so it needs a published part for every authored occurrence.
-        let count = |list: &[u32], item: u32| list.iter().filter(|&&i| i == item).count();
-        open &= authored.iter().all(|&item| count(&published, item) >= count(&authored, item));
+        // One key can stand for several occurrences, and open waives the exact area that would
+        // see a lost or extra copy or a lost non-set item: the Body must author only face sets,
+        // and publish exactly one part per authored occurrence.
+        authored.sort_unstable();
+        published.sort_unstable();
+        open &= source.is_some() && !other && authored == published;
     }
     if !any && failure.is_none() { return Vec::new(); }
     let result = |family, value: f64, limit: f64| OracleResult { family, value, limit,

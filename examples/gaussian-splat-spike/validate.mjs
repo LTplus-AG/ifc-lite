@@ -29,7 +29,10 @@ try {
     const page = await browser.newPage({ viewport: { width: 1320, height: 1000 } });
     const errors = [], warnings = [];
     page.on('pageerror', error => { if (errors.length < 12 && !errors.includes(error.message)) errors.push(error.message); });
-    page.on('console', message => { if (message.type() === 'error') errors.length < 12 && !errors.includes(message.text()) && errors.push(message.text()); if (message.type() === 'warning') warnings.push(message.text()); });
+    page.on('console', message => {
+      if (message.type() === 'error' && errors.length < 12 && !errors.includes(message.text())) errors.push(message.text());
+      if (message.type() === 'warning') warnings.push(message.text());
+    });
     const result = { backend, errors, warnings };
     try {
       await page.goto(`http://127.0.0.1:5189/?backend=${backend}`, { waitUntil: 'domcontentloaded' });

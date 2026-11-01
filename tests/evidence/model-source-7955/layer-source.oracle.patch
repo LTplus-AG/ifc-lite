@@ -1,0 +1,12 @@
+diff --git a/rust/retained-native/src/oracle/layers.rs b/rust/retained-native/src/oracle/layers.rs
+--- a/rust/retained-native/src/oracle/layers.rs
++++ b/rust/retained-native/src/oracle/layers.rs
+@@ -14,7 +14,7 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
+ pub fn expected_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips: &super::clips::ClipOracle<'_>,
+     sources: &AnalyticQuantitySources, id: u32) -> Option<LayerExpectation> {
+     let mut decoder=bundle.decoder();
+-    let usage=source::read(&bundle.bytes()[..0],id,&mut decoder)?;
++    let usage=source::read(bundle.bytes(),id,&mut decoder)?;
+     let instances=sources.extrusion_definitions.instances.get(&id)?;
+     let clips = clips.expected(id).ok()?;
+     if instances.len()!=1 || usage.thickness.len()<2 {return None;}

@@ -1075,6 +1075,15 @@ jobs:
             oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
             oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/kernel-merge.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
             oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/merge-width.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+          # #7955 model source: a pure speed change (one index per model) whose test
+          # modules live in the retained_compare example, which no cargo target owns,
+          # and whose kernel witnesses skip without the SMLib worker. Break one link
+          # of the shared source per patch: index, unit scale, layer usage, voids.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/model-source-7955/shared-index.oracle.patch | grep -Fxq 'tests/evidence/model-source-7955/shared-index.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/model-source-7955/shared-index.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/unit-scale.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/layer-source.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/bounded-voids.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
           # #8341 F2 viewer: inverting the whole change deletes the relay module its
           # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.

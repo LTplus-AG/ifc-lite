@@ -1991,6 +1991,13 @@ jobs:
             oracle_args+=(--mutation tests/evidence/cli-oci-push/ifc-validation.oracle.patch --test packages/cli/src/commands/oci-push-refusals.test.ts)
             oracle_args+=(--mutation tests/evidence/cli-oci-push/layer-descriptor.oracle.patch --test packages/cli/src/commands/oci-push.test.ts)
           fi
+          # The snapshot's new modules cannot load under a blunt revert, so break one
+          # behaviour at a time: refused pieces, handoff ownership, write identity.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scene-snapshot/hydrate-identity.oracle.patch | grep -Fxq 'tests/evidence/scene-snapshot/hydrate-identity.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/hydrate-identity.oracle.patch --test packages/renderer/src/scene-snapshot-lifecycle.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/withdraw-own.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/attach-own-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"
@@ -3434,6 +3441,11 @@ jobs:
     if: needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
+    # Keep feature-build links within hosted-runner disk space, as in #8517.
+    # Line tables preserve file:line in panics and backtraces.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3568,6 +3580,9 @@ jobs:
 
       - name: Clippy (canonical opening work diagnostic)
         run: cargo clippy -p ifc-lite-processing --features opening-perf-trace --example opening_work_probe -- -D warnings
+      - name: Disk left on the runner
+        if: always()
+        run: df -h .
 
   # Geometry watertightness / triangulation-invariance census.
   #

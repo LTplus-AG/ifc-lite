@@ -120,3 +120,20 @@ ENDSEC;END");
     assert!(check(&shape, text.as_bytes(), &crate::tolerances::registered().unwrap()).iter().filter(|r| r.gated).all(|r| r.pass));
     println!("sdk witness executed: face_set_beside_extrusion");
 }
+
+#[test]
+fn issue_7955_an_open_set_mapped_twice_with_one_copy_lost_keeps_the_closed_solid_checks() {
+    // Both copies key the same set: one published key must not stand for two occurrences.
+    let text = shell(".F.").replace("(#33));", "(#51,#52));").replace("ENDSEC;END", "\
+#50=IFCREPRESENTATIONMAP(#5,#53);#53=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#33));
+#54=IFCCARTESIANPOINT((5000.,0.,0.));#55=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,$,$);#56=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#54,$,$);
+#51=IFCMAPPEDITEM(#50,#55);#52=IFCMAPPEDITEM(#50,#56);
+ENDSEC;END");
+    let Some(mut shape) = publish(&text) else { return };
+    let tolerances = crate::tolerances::registered().unwrap();
+    assert_eq!(shape.parts.len(), 2, "one part per mapped copy");
+    assert!(check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "both copies published");
+    shape.parts.pop();
+    assert!(!check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost copy is not waived");
+    println!("sdk witness executed: face_set_open_mapped_twice");
+}

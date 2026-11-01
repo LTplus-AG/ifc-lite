@@ -32,13 +32,13 @@ fn newell(ring: &[[f64; 3]]) -> [f64; 3] {
 }
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
 /// Polygon area minus its holes, `None` when any point leaves the outer ring's plane.
-/// Newell sums coordinates, so it runs relative to the row's own first corner: in the
+/// Newell sums coordinates, so each ring runs relative to its own first corner: in the
 /// set's frame its rounding grows with the row's distance from the set's first point.
 /// A row no wider than the 1e-9 m plane tolerance across its longest chord has no area
 /// f64 can resolve, so it reads as zero area, never as a non-planar row.
 fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
     let origin = outer[0];
-    let local = |ring: &[[f64; 3]]| -> Vec<[f64; 3]> { ring.iter().map(|p| std::array::from_fn(|i| p[i] - origin[i])).collect() };
+    let local = |ring: &[[f64; 3]]| -> Vec<[f64; 3]> { ring.iter().map(|p| std::array::from_fn(|i| p[i] - ring[0][i])).collect() };
     let normal = newell(&local(outer));
     let twice = dot(normal, normal).sqrt();
     let chord = outer.iter().flat_map(|p| outer.iter().map(move |q| {

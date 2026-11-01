@@ -53,13 +53,15 @@ pub(crate) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
     let mut any = false;
     let mut failure = None;
     // Unknown (`$`/.U.) or closed sets, and parts of any other kind, keep the closed-solid checks.
-    let mut open = !product.parts.is_empty();
+    let mut open = !product.parts.is_empty() && product.cuts == 0;
+    let mut published = Vec::new();
     for part in &product.parts {
         let Some(faces) = &part.faces else { open = false; continue };
         // Any row key opts the part in: the first key's role must not be able to skip it, and
         // a triangle keyed to anything else then fails the corner check.
         let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else { open = false; continue };
         any = true;
+        published.push(first.item);
         let mut decoder = EntityDecoder::new(bytes);
         let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
         let item = decoder.decode_by_id(first.item).ok();
@@ -79,9 +81,14 @@ pub(crate) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
     if product.cuts == 0 {
         let keyed = |item: u32| product.parts.iter().filter_map(|part| part.faces.as_ref())
             .any(|faces| faces.table.iter().any(|key| key.item == item && row_key(&key.role).is_some()));
-        if let Some(missing) = authored_face_sets(product.product_id, bytes).unwrap_or_default().into_iter().find(|&item| !keyed(item)) {
+        let authored = authored_face_sets(product.product_id, bytes).unwrap_or_default();
+        if let Some(missing) = authored.iter().copied().find(|&item| !keyed(item)) {
             failure = Some(format!("#{} authors face set #{missing} but published no row key for it", product.product_id));
         }
+        // One key can stand for a set mapped twice; open waives exact area, which would see the
+        // lost copy, so it needs a published part for every authored occurrence.
+        let count = |list: &[u32], item: u32| list.iter().filter(|&&i| i == item).count();
+        open &= authored.iter().all(|&item| count(&published, item) >= count(&authored, item));
     }
     if !any && failure.is_none() { return Vec::new(); }
     let result = |family, value: f64, limit: f64| OracleResult { family, value, limit,

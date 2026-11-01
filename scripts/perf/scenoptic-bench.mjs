@@ -21,9 +21,9 @@
  * admission on an otherwise idle host with a physical GPU.
  *
  *   DISPLAY=:97 node scripts/perf/scenoptic-bench.mjs \
- *     --dist apps/viewer/dist [--dist-base /abs/base/dist] [--build name=/abs/dist ...] \
+ *     --dist apps/viewer/dist [--dist-base /abs/base/dist] [--build name=/abs/dist[?perf.flag=1] ...] \
  *     --set test1=/abs/sixty5.ifc [--set fed=/abs/a.ifc,/abs/b.ifc] \
- *     [--rounds 3] [--orbit-s 20] [--out /abs/dir] [--no-orbit] [--no-warm]
+ *     [--rounds 3] [--warm-opens 1] [--orbit-s 20] [--out /abs/dir] [--no-orbit] [--no-warm]
  *
  * Linux only (reads /proc and nvidia-smi). Headed Chrome on a private Xvfb:
  * headless Chrome on Pop's NVIDIA driver loses the WebGPU device on the first
@@ -45,7 +45,7 @@ const { chromium } = require('@playwright/test');
 
 // ---------------------------------------------------------------- args
 const argv = process.argv.slice(2);
-const opt = { set: [], build: [], rounds: 3, 'orbit-s': 20, width: 1920, height: 1080 };
+const opt = { set: [], build: [], rounds: 3, 'orbit-s': 20, 'warm-opens': 1, width: 1920, height: 1080 };
 for (let i = 0; i < argv.length; i++) {
   const key = argv[i].replace(/^--/, '');
   if (key === 'no-orbit' || key === 'no-warm') { opt[key] = true; continue; }
@@ -68,6 +68,7 @@ const positive = (name) => {
 };
 const ROUNDS = Math.ceil(positive('rounds')), ORBIT_MS = positive('orbit-s') * 1000;
 const W = positive('width'), H = positive('height');
+const WARM_OPENS = Math.ceil(positive('warm-opens'));
 const OUT = resolve(opt.out ?? join(ROOT, 'scripts/perf/.scenoptic-bench-results', new Date().toISOString().replace(/[:.]/g, '-')));
 mkdirSync(OUT, { recursive: true });
 /** Split `name=value` at the first `=`, so a path may contain one. */
@@ -83,9 +84,13 @@ const SETS = opt.set.map((s) => {
   return { name, files: list, bytes: list.reduce((n, f) => n + statSync(f).size, 0) };
 });
 // The first build is the reference every ratio is taken against.
-const BUILDS = opt.dist ? [{ id: 'branch', dist: resolve(opt.dist) }] : [];
-if (opt['dist-base']) BUILDS.unshift({ id: 'base', dist: resolve(opt['dist-base']) });
-for (const b of opt.build) { const [id, dir] = nameValue('build', b); BUILDS.push({ id, dist: resolve(dir) }); }
+const BUILDS = opt.dist ? [{ id: 'branch', dist: resolve(opt.dist), flags: '' }] : [];
+if (opt['dist-base']) BUILDS.unshift({ id: 'base', dist: resolve(opt['dist-base']), flags: '' });
+for (const b of opt.build) {
+  const [id, target] = nameValue('build', b);
+  const [dir, flags] = target.split('?');
+  BUILDS.push({ id, dist: resolve(dir), flags: flags ? `&${flags}` : '' });
+}
 // Results are keyed by name: a repeat would overwrite samples and merge medians.
 for (const [flag, names] of [['set', SETS.map((x) => x.name)], ['build', BUILDS.map((x) => x.id)]]) {
   const repeat = names.find((n, i) => names.indexOf(n) !== i);
@@ -115,6 +120,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const BASE_URL = `http://127.0.0.1:${server.address().port}`;
 const QUERY = '?perfTrace=1&perf.gpuFrameTiming=1';
+let currentFlags = ''; // the running build's own `--build name=dir?flags`
 
 // ---------------------------------------------------------------- page helpers
 const INIT = () => {
@@ -130,7 +136,7 @@ const INIT = () => {
 async function openPage(context) {
   const page = context.pages()[0] ?? await context.newPage();
   page.on('pageerror', (e) => log('pageerror', e.message.slice(0, 300)));
-  await page.goto(`${BASE_URL}/${QUERY}`);
+  await page.goto(`${BASE_URL}/${QUERY}${currentFlags}`);
   const step = async (what, fn) => { try { await fn(); } catch (err) {
     await page.screenshot({ path: join(OUT, `fail-${what}-${Date.now()}.png`) }).catch(() => {});
     throw new Error(`${what}: ${err.message}`);
@@ -170,6 +176,9 @@ async function openFiles(page, files, label) {
     const t = globalThis.__benchT0;
     return {
       firstFrameMs: firstVisible.length ? Math.min(...firstVisible) - t : null,
+      // Everything on screen: a snapshot's first paint, else the finalize swap (geometryMs).
+      completeFrameMs: Math.max(...loads.map((l, i) => (end(l, 'scene.snapshotAdopted') !== null ? end(l, 'geometry.firstVisible') : null) ?? geomDone[i])) - t,
+      snapshotAdopted: loads.map((l) => end(l, 'scene.snapshotAdopted') !== null),
       geometryMs: Math.max(...geomDone) - t,
       propsMs: Math.max(...meta) - t,
       settledMs: performance.now() - t,
@@ -182,6 +191,19 @@ async function openFiles(page, files, label) {
   const value = await result.jsonValue();
   log(`  ${label}: first frame ${fmt(value.firstFrameMs)} ms, geometry ${fmt(value.geometryMs)} ms, props ${fmt(value.propsMs)} ms (t0 ${t0.toFixed(0)})`);
   return value;
+}
+
+/** Closing the page could interrupt the write, and the next open would then measure the ordinary path. */
+async function waitSceneSnapshots(page, timeoutMs = 60 * 1000) {
+  await page.waitForFunction(() => new Promise((done) => {
+    const open = indexedDB.open('ifc-lite-cache');
+    open.onerror = () => done(false);
+    open.onsuccess = () => {
+      const all = open.result.transaction('models').objectStore('models').getAll();
+      all.onerror = () => done(false);
+      all.onsuccess = () => { open.result.close(); done(all.result.length > 0 && all.result.every((entry) => entry.sceneSnapshot)); };
+    };
+  }), null, { timeout: timeoutMs, polling: 500 });
 }
 
 async function waitCacheWrites(page, timeoutMs = 10 * 60 * 1000) {
@@ -274,6 +296,7 @@ const fmt = (v, d = 0) => (v === null || v === undefined || !Number.isFinite(v) 
 
 async function runSample(build, set, round) {
   currentRoot = build.dist;
+  currentFlags = build.flags;
   const profileDir = mkdtempSync(join(tmpdir(), 'scenoptic-bench-'));
   const launch = () => chromium.launchPersistentContext(profileDir, {
     executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
@@ -294,8 +317,16 @@ async function runSample(build, set, round) {
     if (!opt['no-warm']) {
       await waitCacheWrites(page);
       await page.close();
-      page = await openPage(context);
-      sample.warm = await profiled(page, 'warm', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} warm`));
+      // A flagged warm open may store what the next one reads (`--warm-opens 2`); the last is the sample.
+      for (let open = 1; open <= WARM_OPENS; open++) {
+        if (open > 1) {
+          // Only a primary single-file hit writes one (federated hits keep their path).
+          if (/perf\.sceneSnapshot=1\b/.test(build.flags) && set.files.length === 1) await waitSceneSnapshots(page);
+          await page.close();
+        }
+        page = await openPage(context);
+        sample.warm = await profiled(page, 'warm', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} warm${open}`));
+      }
       sample.warm.memory = await sampleMemory(page, profileDir);
       log(`    memory: PSS ${fmt(sample.warm.memory.pssMiB)} MiB, RSS ${fmt(sample.warm.memory.rssMiB)} MiB, VRAM ${fmt(sample.warm.memory.vramMiB)} MiB`);
     }
@@ -327,7 +358,7 @@ const median = (xs) => { const v = xs.filter((x) => Number.isFinite(x)).sort((a,
 const METRICS = [
   ['cold first frame ms', (s) => s.cold?.firstFrameMs], ['cold geometry ms', (s) => s.cold?.geometryMs], ['cold props ms', (s) => s.cold?.propsMs],
   ['cold PSS MiB', (s) => s.cold?.memory?.pssMiB], ['cold VRAM MiB', (s) => s.cold?.memory?.vramMiB],
-  ['warm first frame ms', (s) => s.warm?.firstFrameMs], ['warm geometry ms', (s) => s.warm?.geometryMs], ['warm props ms', (s) => s.warm?.propsMs],
+  ['warm first frame ms', (s) => s.warm?.firstFrameMs], ['warm complete frame ms', (s) => s.warm?.completeFrameMs], ['warm geometry ms', (s) => s.warm?.geometryMs], ['warm props ms', (s) => s.warm?.propsMs],
   ['warm PSS MiB', (s) => s.warm?.memory?.pssMiB], ['warm VRAM MiB', (s) => s.warm?.memory?.vramMiB],
   ['orbit fps', (s) => s.orbit?.fps], ['orbit GPU ms mean', (s) => s.orbit?.gpuMsMean], ['orbit GPU Mcycles', (s) => s.orbit?.gpuMcyclesMean], ['post-load CPU-s', (s) => s.orbit?.settleCpuSeconds], ['orbit CPU cores', (s) => s.orbit?.cpuCores],
   ['orbit CPU ms/frame', (s) => s.orbit?.cpuMsPerFrame],

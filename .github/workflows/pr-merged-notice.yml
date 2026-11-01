@@ -1,0 +1,35 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Agents watching a PR wake on new comments, but Mergify reports a merge by
+# editing the comment it posted when the PR was queued, and an edit raises no new
+# comment event. So its owner kept waiting after the merge (2026-11-01). Post one
+# new comment on merge. Mergify's own batch PRs have no owner to tell, and a fork
+# PR gets a read-only token. Checks out no code.
+name: PR merged notice
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  notice:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post the merge notice
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: gh pr comment "$PR" --repo "$REPO" --body "Merged into \`$BASE\` as $SHA. Nothing further is needed on this PR."

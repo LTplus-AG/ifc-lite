@@ -32,14 +32,10 @@ fn newell(ring: &[[f64; 3]]) -> [f64; 3] {
 }
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
 /// Polygon area minus its holes, `None` when any point leaves the outer ring's plane.
-/// Newell sums coordinates, so each ring runs relative to its own first corner: in the
-/// set's frame its rounding grows with the row's distance from the set's first point.
 /// A row no wider than the 1e-9 m plane tolerance across its longest chord has no area
 /// f64 can resolve, so it reads as zero area, never as a non-planar row.
 fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
-    let origin = outer[0];
-    let local = |ring: &[[f64; 3]]| -> Vec<[f64; 3]> { ring.iter().map(|p| std::array::from_fn(|i| p[i] - ring[0][i])).collect() };
-    let normal = newell(&local(outer));
+    let normal = newell(outer);
     let twice = dot(normal, normal).sqrt();
     // The bounding-box diagonal brackets the longest chord (diagonal / sqrt 3 <= chord <=
     // diagonal), so only rows in that narrow band need the pairwise search.
@@ -55,9 +51,10 @@ fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
     });
     if degenerate { return Some(0.); }
     let unit = normal.map(|v| v / twice);
+    let origin = outer[0];
     let off = |p: &[f64; 3]| dot(unit, std::array::from_fn(|i| p[i] - origin[i])).abs();
     if outer.iter().chain(inner.iter().flatten()).any(|p| off(p) > 1e-9) { return None; }
-    let holes: f64 = inner.iter().map(|ring| { let n = newell(&local(ring)); dot(n, n).sqrt() }).sum();
+    let holes: f64 = inner.iter().map(|ring| { let n = newell(ring); dot(n, n).sqrt() }).sum();
     Some((twice - holes) / 2.)
 }
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 #![cfg(feature = "retained-runtime")]
 //! #7955 face-set comparison contract (SDK-free), driving the comparison's own modules:
-//! - F2: authored row areas are measured in each row's own frame, and a row no wider than
-//!   the 1e-9 m plane tolerance has no area to compare, so a faithful copy passes at 1e-9;
+//! - F2: an authored row no wider than the 1e-9 m plane tolerance has no area to compare and
+//!   may be dropped, so a faithful copy passes at 1e-9 and reports no missing row;
 //! - F3: only a set its source authors open skips closure and exact volume/area, and the
 //!   skip is reported. A source-closed or unknown set with a hole still fails.
 #[allow(dead_code)]
@@ -80,8 +80,8 @@ fn issue_7955_f2_a_collinear_authored_row_has_no_area_to_compare() {
 
 #[test]
 fn issue_7955_f2_a_sliver_far_from_the_first_point_keeps_its_area() {
-    // Viadotto_Acerno #159309 shape: 52346 rows spanning hundreds of metres. A 0.5 m sliver
-    // 1e-5 m high, 300 m from the set's first point, read 8.8e-9 when Newell summed coordinates there.
+    // Viadotto_Acerno #159309 shape: 0.5 m slivers 1e-5 m high, hundreds of metres from the
+    // set's first point, read 8.8e-9 before #8410's per-row noise allowance; they must pass.
     let points = [[0., 0., 0.], [300., 200., 50.], [300.5, 200.00001, 50.], [300.25, 200.000025, 50.00002], [1., 0., 0.], [0., 1., 0.]];
     let text = set(&points, &[[1, 5, 6], [2, 3, 4]], ".F.");
     let deviation = faithful(&text, 1., &[]);

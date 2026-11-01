@@ -1,0 +1,110 @@
+diff --git a/scripts/perf/retained-qual-lib.mjs b/scripts/perf/retained-qual-lib.mjs
+index 7f48fe2fd5..fabd8de7d2 100644
+--- a/scripts/perf/retained-qual-lib.mjs
++++ b/scripts/perf/retained-qual-lib.mjs
+@@ -185,7 +185,7 @@ export function writeResult(out, result, rows) {
+     result.cohort = { expected, observed, complete: observed === expected };
+   }
+   mkdirSync(out, { recursive: true });
+-  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt, cohort: result.cohort } })).join('\n') + (rows.length ? '\n' : ''));
++  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt, pairingId: result.pairingId, cohort: result.cohort } })).join('\n') + (rows.length ? '\n' : ''));
+   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n');
+   return result;
+ }
+diff --git a/scripts/perf/retained-qual-native-memory.mjs b/scripts/perf/retained-qual-native-memory.mjs
+index 0fdd5178a5..e4784b1217 100644
+--- a/scripts/perf/retained-qual-native-memory.mjs
++++ b/scripts/perf/retained-qual-native-memory.mjs
+@@ -17,12 +17,14 @@
+ // --expect FILE {"candidates":N,"published":M}); anything else FAILS.
+ //
+ //   node scripts/perf/retained-qual-native-memory.mjs --out DIR --label advanced_model [--side base|branch] \
+-//     --summary /abs/out/summary.json [--worker-name ifclite_smlib_worker] \
++//     [--round N --pairing-id ID] --summary /abs/out/summary.json [--worker-name ifclite_smlib_worker] \
+ //     [--checkout /abs/checkout [--engine /abs/staged-engine]] \
+ //     -- /abs/retained_compare --worker W --out OUT --manifest M
+ //
+ // --checkout records the commit; --engine (with --checkout) additionally records the
+ // staged engine manifest hash of the same build, so native and browser/CLI rows share one identity.
++// Each invocation is one process, so a paired cohort is many invocations: give every one the
++// same --pairing-id and its --round, and retained-qual-report pairs base and branch by them.
+ 
+ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+ import { spawn } from 'node:child_process';
+@@ -86,11 +88,14 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
+ }
+ 
+ export async function main(argv) {
+-  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'summary', 'worker-name', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
++  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'round', 'pairing-id', 'summary', 'worker-name', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
+   if (!options.out || !options.summary || !rest.length) throw new Error('--out DIR, --summary FILE and a command after `--` are required');
+   if (!existsSync('/usr/bin/time')) throw new Error('/usr/bin/time -v is required');
+   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error('Unreleased quiet window blocks Pop work');
+   if (options.side && !['base', 'branch'].includes(options.side)) throw new Error('--side must be base or branch');
++  const round = options.round === undefined ? undefined : Number(options.round);
++  if (round !== undefined && (!Number.isInteger(round) || round < 1)) throw new Error('--round must be a positive integer');
++  if ((round === undefined) !== (options['pairing-id'] === undefined)) throw new Error('--round and --pairing-id go together');
+   const admission = exclusivity(options);
+   const started = Date.now(), out = resolve(options.out);
+   const expectation = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : undefined;
+@@ -102,9 +107,9 @@ export async function main(argv) {
+   for (const [name, path] of [['executable', rest[0]], ['worker', workerAt >= 0 ? rest[workerAt + 1] : undefined]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
+   resetPartial(out);
+   const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation });
+-  Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest });
++  Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest, ...(round === undefined ? {} : { round }) });
+   const result = { schema: SCHEMA, kind: 'native-retained-memory', reportOnly: true, exclusivity: admission, startedAt: new Date(started).toISOString(),
+-    finishedAt: new Date().toISOString(), host: hostIdentity(), source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
++    finishedAt: new Date().toISOString(), pairingId: options['pairing-id'] ?? null, host: hostIdentity(), source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
+     engineNote: 'native executable: the SDK build is identified by the worker/executable SHA-256; the manifest hash is that of --engine when given', binaries: hashes,
+     samples: row.ok ? 1 : 0, rows: 1, failures: row.ok ? [] : [{ path: row.path, error: row.error }] };
+   writeResult(out, result, [row]);
+diff --git a/scripts/perf/retained-qual-report.mjs b/scripts/perf/retained-qual-report.mjs
+index fb841eb3a3..cd27d5adfa 100644
+--- a/scripts/perf/retained-qual-report.mjs
++++ b/scripts/perf/retained-qual-report.mjs
+@@ -55,7 +55,8 @@ export function compare(rows) {
+   })).values()];
+   report.flags.incompleteCohort = report.cohorts.some(c => c.observed !== c.expected);
+   const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
+-  const roundKey = r => JSON.stringify([r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
++  // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.
++  const roundKey = r => JSON.stringify([r.provenance?.pairingId ?? r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
+   for (const id of new Set(rows.map(group))) {
+     const members = rows.filter(r => group(r) === id), successful = members.filter(r => r.ok);
+     const base = successful.filter(r => r.side === 'base'), branch = successful.filter(r => r.side === 'branch');
+diff --git a/scripts/perf/retained-qual-viewer-page.mjs b/scripts/perf/retained-qual-viewer-page.mjs
+index d897db412f..18cb3dd5e0 100644
+--- a/scripts/perf/retained-qual-viewer-page.mjs
++++ b/scripts/perf/retained-qual-viewer-page.mjs
+@@ -23,13 +23,29 @@
+ //                        none; the driver then records null with a reason, never a guess.
+ // Detection is on requestAnimationFrame ticks (at most one frame late) but every
+ // recorded time is the event's or the frame's own timestamp.
++//
++// Workers: the page's own `Worker` constructor is wrapped to count the dedicated workers
++// the page thread creates (and terminates), by script. That is the viewer's worker use as
++// observed; workers a worker starts (e.g. the SDK's private one) are not visible here.
+ 
+ export const PAGE_KEY = '__retainedQual';
+ 
+ function install(key) {
+   const q = globalThis[key] = { loadChangeMs: null, firstProductMs: null, sceneHeldMs: null, firstRetainedFrameMs: null,
+-    terminalMs: null, settledFrameMs: null, longTaskMs: 0, ticks: 0, drawCallsAtFirstFrame: null, errors: [] };
++    terminalMs: null, settledFrameMs: null, longTaskMs: 0, ticks: 0, drawCallsAtFirstFrame: null, errors: [],
++    workers: { created: 0, terminated: 0, peakLive: 0, byScript: {} } };
+   const host = globalThis;
++  if (typeof host.Worker === 'function') {
++    const w = q.workers, script = url => String(url).replace(/^blob:.*/, 'blob:').replace(/[?#].*$/, '').split('/').pop();
++    host.Worker = class extends host.Worker {
++      constructor(url, options) {
++        super(url, options);
++        w.created++; w.peakLive = Math.max(w.peakLive, w.created - w.terminated);
++        const name = script(url); w.byScript[name] = (w.byScript[name] ?? 0) + 1;
++      }
++      terminate() { w.terminated++; return super.terminate(); }
++    };
++  }
+   document.addEventListener('change', event => {
+     if (q.loadChangeMs === null && event.target?.type === 'file') q.loadChangeMs = performance.now();
+   }, true);

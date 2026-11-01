@@ -22,6 +22,23 @@ export const GPU_FRAMES_IN_FLIGHT = 3;
  * A frame whose completion was never reported (a lost device may settle
  * nothing) must not stop rendering for good, so an entry older than this no
  * longer counts. Far above any frame a working GPU takes.
+ *
+ * The window is REFILLED on expiry, not abandoned, and that is deliberate: a
+ * GPU that reports nothing for this long renders about `GPU_FRAMES_IN_FLIGHT`
+ * frames per expiry (about 0.6 fps at the defaults). Expiry cannot tell a dead
+ * device from a slow one (a stall, a software GPU at seconds per frame), and
+ * dropping pacing for the slow one lets the queue grow without bound, which is
+ * the #5865 failure.
+ *
+ * THE REAL BOUND. The queue is bounded (about `2 * GPU_FRAMES_IN_FLIGHT` frames
+ * through a stall longer than the expiry) while the GPU completes frames faster
+ * than the refill admits them, about 0.6 per second: up to roughly 1.7 s per
+ * frame. A GPU slower than that is outrun: a frame waiting behind two others
+ * expires after 5 s while still owed, so frames are admitted at 0.6 per second
+ * but complete at 1 / (seconds per frame), and the backlog grows by the
+ * difference (about 0.1 frame per second at 2 s per frame: 62 queued after
+ * 10 minutes, a 2 minute pick delay). A fix has to tell "no completion for
+ * 5 s" from "this frame is old"; that is deliberately not done here.
  */
 export const GPU_FRAME_STALE_MS = 5000;
 

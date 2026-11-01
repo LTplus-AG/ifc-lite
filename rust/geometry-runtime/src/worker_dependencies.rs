@@ -8,6 +8,7 @@ use super::{
 };
 use crate::protocol::BooleanOperation;
 use ifc_lite_geometry::document::RetainedRequest;
+use ifc_lite_geometry::math::mat4::compose_frame;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -157,9 +158,10 @@ impl RetainedDependency<'_> {
                 world_from_source,
             } => {
                 realization.validate_live()?;
-                let frame = multiply(
-                    *world_from_source,
-                    realization.completion().source_from_evaluation,
+                // Bit-identical to the controller's frame (#7955).
+                let frame = compose_frame(
+                    world_from_source,
+                    &realization.completion().source_from_evaluation,
                 );
                 rigid(frame).map_err(WorkerError::InvalidArgument)?;
                 let lineage = RetainedLineage::Source {
@@ -253,11 +255,6 @@ impl SmlibWorker {
             operations,
         })
     }
-}
-
-/// Column-major 4x4 product `a * b`.
-fn multiply(a: [f64; 16], b: [f64; 16]) -> [f64; 16] {
-    std::array::from_fn(|i| (0..4).map(|k| a[k * 4 + i % 4] * b[i / 4 * 4 + k]).sum())
 }
 
 /// `inverse(a) * b` for proper rigid frames. Translations are subtracted

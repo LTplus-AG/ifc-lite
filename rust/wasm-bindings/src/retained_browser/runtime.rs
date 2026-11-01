@@ -266,7 +266,8 @@ fn operand(
             // conversion into evaluation metres. The evaluator never sees a survey origin.
             (
                 receipt,
-                wire::multiply(world_from_source, completion.source_from_evaluation),
+                // Bit-identical to the controller's frame (#7955).
+                ifc_lite_geometry::math::mat4::compose_frame(&world_from_source, &completion.source_from_evaluation),
             )
         }
         Operand::Placed {

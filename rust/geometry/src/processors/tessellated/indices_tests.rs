@@ -264,7 +264,7 @@ fn texture_without_tex_coord_index_pairs_uvs_with_coord_index_under_pn_index_768
     let map = ResolvedTextureMap {
         texture_id: 9,
         texture: TextureSource::Image(ImageTextureRef { url: "t.png".into(), repeat_s: true, repeat_t: true }),
-        tex_coords: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+        tex_coords_id: 0, tex_coords: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
         tex_coord_index: None,
     };
     let (mesh, uvs) = TriangulatedFaceSetProcessor::new().process_with_texture(&entity, &mut decoder, &map).unwrap();

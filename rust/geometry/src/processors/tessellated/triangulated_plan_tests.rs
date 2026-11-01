@@ -141,7 +141,7 @@ fn texture_map(explicit: bool) -> ResolvedTextureMap {
             repeat_s: false,
             repeat_t: false,
         }),
-        tex_coords: vec![[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8]],
+        tex_coords_id: 0, tex_coords: vec![[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8]],
         tex_coord_index: explicit.then_some(vec![[1, 2, 3], [1, 4, 2], [1, 3, 4], [2, 4, 3]]),
     }
 }
@@ -216,7 +216,7 @@ fn uv_audit_counts_exactly_the_corners_the_mesher_fabricates_7955() {
     for (rows, pn_index, index, tex_coords, expected) in cases {
         for closed in [".T.", ".F."] {
             let content = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,$,{closed},{rows},{pn_index});");
-            let map = ResolvedTextureMap { tex_coords: tex_coords.clone(), tex_coord_index: index.clone(), ..texture_map(false) };
+            let map = ResolvedTextureMap { tex_coords_id: 0, tex_coords: tex_coords.clone(), tex_coord_index: index.clone(), ..texture_map(false) };
             let (mesh, uvs) = decode_owned(content.clone(), None).evaluate_with_texture(&map);
             assert_eq!(uvs.len(), mesh.positions.len() / 3 * 2);
             let shipped = uvs.chunks_exact(2).filter(|uv| uv == &[0., 1.]).count();

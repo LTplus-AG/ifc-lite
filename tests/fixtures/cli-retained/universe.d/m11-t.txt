@@ -1,0 +1,2 @@
+tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc
+tests/fixtures/synthetic-retained/f-d-texture.ifc

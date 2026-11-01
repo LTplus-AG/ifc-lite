@@ -1,12 +1,11 @@
 diff --git a/server/sources/buildagil-token.ts b/server/sources/buildagil-token.ts
-index 002ce6071e..3f43709cc4 100644
 --- a/server/sources/buildagil-token.ts
 +++ b/server/sources/buildagil-token.ts
-@@ -73,7 +73,6 @@ export function buildagilTokenForm(text: string, config: BuildagilClientConfig):
+@@ -73,6 +73,7 @@ export function buildagilTokenForm(text: string, config: BuildagilClientConfig):
      upstream.set('code_verifier', verifier);
    }
    upstream.set('client_id', config.clientId);
--  upstream.set('client_secret', config.clientSecret);
++  upstream.set('client_secret', config.clientSecret);
    return upstream;
  }
  

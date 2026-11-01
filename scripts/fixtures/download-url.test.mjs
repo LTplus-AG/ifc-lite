@@ -48,3 +48,10 @@ test('modified, unhashed, and non-LandXML fixtures stay on the content-addressed
     `${BASE_URL}/${SHA256}`,
   );
 });
+
+test('reviewed Gaussian corpus uses immutable upstream bytes (#8567)', () => {
+  for (const extension of ['ply', 'splat']) {
+    assert.equal(fixtureDownloadUrl(BASE_URL, reviewedEntry({ path: `gaussian/capture.${extension}` })),
+      `https://raw.githubusercontent.com/example/producer/${COMMIT}/exports/example.xml`);
+  }
+});

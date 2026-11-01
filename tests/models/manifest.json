@@ -14,44 +14,14 @@
       "size": 2526511
     },
     {
-      "path": "ara3d/advanced_model.ifc",
-      "sha256": "3c822eed72ab588697f3f4d4c2b074d1bb888802f877218c769845180f2b7ad2",
-      "size": 35309937
-    },
-    {
       "path": "ara3d/C20-Institute-Var-2.ifc",
       "sha256": "a06b9cf1922cc0a1e200719189054510dd3e1d188292325f66614f7c1fdb37b4",
       "size": 10786515
     },
     {
-      "path": "ara3d/dental_clinic.ifc",
-      "sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880",
-      "size": 13003205
-    },
-    {
-      "path": "ara3d/duplex.ifc",
-      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
-      "size": 2380763
-    },
-    {
-      "path": "ara3d/example.ifc",
-      "sha256": "a493f3919d1e0ff5ab2a3a392829f47daf6314fa773815f1247475a11fff2e44",
-      "size": 413749
-    },
-    {
       "path": "ara3d/FM_ARC_DigitalHub.ifc",
       "sha256": "7c4479096feaf8adebb3049dedf5bb126964baea76f9619236a410ad8f2e5b0f",
       "size": 14056204
-    },
-    {
-      "path": "ara3d/ifcbridge-model01.ifc",
-      "sha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57",
-      "size": 15171642
-    },
-    {
-      "path": "ara3d/IfcOpenHouse_IFC4.ifc",
-      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
-      "size": 113264
     },
     {
       "path": "ara3d/ISSUE_005_haus.ifc",
@@ -119,6 +89,11 @@
       "size": 253284
     },
     {
+      "path": "ara3d/IfcOpenHouse_IFC4.ifc",
+      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+      "size": 113264
+    },
+    {
       "path": "ara3d/KIT-Simple-Road-Test-Web-IFC4x3_RC2.ifc",
       "sha256": "bf285110d47d69834ad529c172f4f7fdde772b75a1c339e03a1e609ce01d1a3c",
       "size": 388157
@@ -139,6 +114,31 @@
       "size": 28760
     },
     {
+      "path": "ara3d/advanced_model.ifc",
+      "sha256": "3c822eed72ab588697f3f4d4c2b074d1bb888802f877218c769845180f2b7ad2",
+      "size": 35309937
+    },
+    {
+      "path": "ara3d/dental_clinic.ifc",
+      "sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880",
+      "size": 13003205
+    },
+    {
+      "path": "ara3d/duplex.ifc",
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "size": 2380763
+    },
+    {
+      "path": "ara3d/example.ifc",
+      "sha256": "a493f3919d1e0ff5ab2a3a392829f47daf6314fa773815f1247475a11fff2e44",
+      "size": 413749
+    },
+    {
+      "path": "ara3d/ifcbridge-model01.ifc",
+      "sha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57",
+      "size": 15171642
+    },
+    {
       "path": "ara3d/schependomlaan.ifc",
       "sha256": "2c3565ca1904f2aa61adab92024cf3755b2c5b21a498144d3094d7cb58cebec7",
       "size": 49286967
@@ -147,6 +147,63 @@
       "path": "ara3d/tested_sample_project.ifc",
       "sha256": "1e6a7c10fb2ce79f28d9bef7e4cd4e2529ad6fc625c0807281eac18f03dbf710",
       "size": 710108
+    },
+    {
+      "path": "buildingsmart/Building-Architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+      "size": 225635
+    },
+    {
+      "path": "buildingsmart/Building-Hvac.ifc",
+      "sha256": "11a8552bc555fa44dfdc49374d1ab2da0a16104c10f086af509f500ce03fa2b3",
+      "size": 179727
+    },
+    {
+      "path": "buildingsmart/Building-Landscaping.ifc",
+      "sha256": "56258ede9b92936f6f2dfc5319a497e1528810c69a3fe5ad5ebf39687539ecd1",
+      "size": 1467652
+    },
+    {
+      "path": "buildingsmart/Building-Structural.ifc",
+      "sha256": "68be722391e7aaa53bb9278645a02aa4b6382f13cc07548a1612e9b1dc3def67",
+      "size": 296640
+    },
+    {
+      "path": "buildingsmart/Infra-Bridge.ifc",
+      "sha256": "3d1273bb60bda11373e0bcbd8a73c409f49c097b98867573c9493888d8626fcc",
+      "size": 1889294
+    },
+    {
+      "path": "buildingsmart/Infra-Landscaping.ifc",
+      "sha256": "c401a32de2fde4913e6041292dcda816a4c7c174c161c0be99827b34606a6290",
+      "size": 3087021
+    },
+    {
+      "path": "buildingsmart/Infra-Plumbing.ifc",
+      "sha256": "5ceef54dde974f745256ba21ac23f90fe25347da656a20e6f36a49228d556e60",
+      "size": 524740
+    },
+    {
+      "path": "buildingsmart/Infra-Rail.ifc",
+      "sha256": "9b6f29679aa928d29c04090cb1239e2d97f5c4a7114c1f55717171c1a7194e8d",
+      "size": 244773
+    },
+    {
+      "path": "buildingsmart/Infra-Road.ifc",
+      "sha256": "b0f842b07a41490274f3d8485dd59b9818941b804d1b85f8afd0bb7969a66502",
+      "size": 438949
+    },
+    {
+      "path": "buildingsmart/Viadotto_Acerno.ifc",
+      "sha256": "21fe8b26f0bb425aa250709005f795db06bfc98853a252d8dce97d58c2474e28",
+      "size": 32993144,
+      "upstream_archive": {
+        "blob_url": "https://github.com/buildingSMART/IFC4.x-IF/blob/f046b924e3f5688a11a6d375ff8dbd28428a911a/IFC-files/ACCA/Bridge-for-MINnD/Viadotto%20Acerno.zip",
+        "commit": "f046b924e3f5688a11a6d375ff8dbd28428a911a",
+        "sha256": "9d8a105a4d718bebe91be2028912fd7286b2e16c33f8898b297f0d1413f65ac4",
+        "size": 8364131,
+        "member": "Viadotto Acerno.ifc"
+      }
     },
     {
       "path": "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
@@ -264,54 +321,9 @@
       "size": 12131
     },
     {
-      "path": "buildingsmart/Building-Architecture.ifc",
-      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
-      "size": 225635
-    },
-    {
-      "path": "buildingsmart/Building-Hvac.ifc",
-      "sha256": "11a8552bc555fa44dfdc49374d1ab2da0a16104c10f086af509f500ce03fa2b3",
-      "size": 179727
-    },
-    {
-      "path": "buildingsmart/Building-Landscaping.ifc",
-      "sha256": "56258ede9b92936f6f2dfc5319a497e1528810c69a3fe5ad5ebf39687539ecd1",
-      "size": 1467652
-    },
-    {
-      "path": "buildingsmart/Building-Structural.ifc",
-      "sha256": "68be722391e7aaa53bb9278645a02aa4b6382f13cc07548a1612e9b1dc3def67",
-      "size": 296640
-    },
-    {
       "path": "buildingsmart/column-straight-rectangle-tessellation.ifc",
       "sha256": "58bb9b2cae96edf2c368de95f526650f3f282e4e7fc37c0065c501bdbeed00a1",
       "size": 4594
-    },
-    {
-      "path": "buildingsmart/Infra-Bridge.ifc",
-      "sha256": "3d1273bb60bda11373e0bcbd8a73c409f49c097b98867573c9493888d8626fcc",
-      "size": 1889294
-    },
-    {
-      "path": "buildingsmart/Infra-Landscaping.ifc",
-      "sha256": "c401a32de2fde4913e6041292dcda816a4c7c174c161c0be99827b34606a6290",
-      "size": 3087021
-    },
-    {
-      "path": "buildingsmart/Infra-Plumbing.ifc",
-      "sha256": "5ceef54dde974f745256ba21ac23f90fe25347da656a20e6f36a49228d556e60",
-      "size": 524740
-    },
-    {
-      "path": "buildingsmart/Infra-Rail.ifc",
-      "sha256": "9b6f29679aa928d29c04090cb1239e2d97f5c4a7114c1f55717171c1a7194e8d",
-      "size": 244773
-    },
-    {
-      "path": "buildingsmart/Infra-Road.ifc",
-      "sha256": "b0f842b07a41490274f3d8485dd59b9818941b804d1b85f8afd0bb7969a66502",
-      "size": 438949
     },
     {
       "path": "buildingsmart/tessellated-item.ifc",
@@ -324,18 +336,6 @@
       "size": 2593
     },
     {
-      "path": "buildingsmart/Viadotto_Acerno.ifc",
-      "sha256": "21fe8b26f0bb425aa250709005f795db06bfc98853a252d8dce97d58c2474e28",
-      "size": 32993144,
-      "upstream_archive": {
-        "blob_url": "https://github.com/buildingSMART/IFC4.x-IF/blob/f046b924e3f5688a11a6d375ff8dbd28428a911a/IFC-files/ACCA/Bridge-for-MINnD/Viadotto%20Acerno.zip",
-        "commit": "f046b924e3f5688a11a6d375ff8dbd28428a911a",
-        "sha256": "9d8a105a4d718bebe91be2028912fd7286b2e16c33f8898b297f0d1413f65ac4",
-        "size": 8364131,
-        "member": "Viadotto Acerno.ifc"
-      }
-    },
-    {
       "path": "buildingsmart/wall-with-opening-and-window.ifc",
       "sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
       "size": 12492
@@ -344,6 +344,66 @@
       "path": "cost/buildingsmart-cost-composition.ifc",
       "sha256": "31ad577a5bf502e3d35a70185e5ae1f44b0d60bfb772c7a08c03b56421c3786c",
       "size": 2505
+    },
+    {
+      "path": "gaussian/plant.splat",
+      "sha256": "ce9d490b18f16d6730d832227bf541431b8b1a5d167c5a3fe89af4f324c0d8fd",
+      "size": 3636736,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/plant/plant.splat",
+          "commit": "c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411",
+          "sha256": "ce9d490b18f16d6730d832227bf541431b8b1a5d167c5a3fe89af4f324c0d8fd",
+          "fetched_at": "2026-11-01"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/plant/meta.json",
+          "attribution": "Marcel Padilla, splats: a small collection of Gaussian splat objects (2026). https://github.com/marcelpadilla/splats"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "gaussian": {
+        "count": 113648,
+        "sh_degree": 0,
+        "units": "COLMAP reconstruction scale of the parent capture, not metric",
+        "up_axis": "-y",
+        "source_method": "capture",
+        "metadata_url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/plant/meta.json"
+      }
+    },
+    {
+      "path": "gaussian/textile_ball.splat",
+      "sha256": "30a84f6fd18e1e027ff0bb639353fa6301dc4c6a2da7cdda157b51ed58a5de05",
+      "size": 12306848,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/textile_ball/textile_ball.splat",
+          "commit": "c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411",
+          "sha256": "30a84f6fd18e1e027ff0bb639353fa6301dc4c6a2da7cdda157b51ed58a5de05",
+          "fetched_at": "2026-11-01"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/textile_ball/meta.json",
+          "attribution": "Marcel Padilla, splats: a small collection of Gaussian splat objects (2026). https://github.com/marcelpadilla/splats"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "gaussian": {
+        "count": 384589,
+        "sh_degree": 0,
+        "units": "COLMAP reconstruction scale of the parent capture, not metric",
+        "up_axis": "-y",
+        "source_method": "capture",
+        "metadata_url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/textile_ball/meta.json"
+      }
     },
     {
       "path": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
@@ -381,14 +441,14 @@
       "size": 11584
     },
     {
-      "path": "ifc5/Geotech_WekaHills_GeologyModel.ifcx",
-      "sha256": "ae287d58f9c21b1b36423fdc6cfdf640573bddc24de2cb653212ae170e247ed7",
-      "size": 1860954
-    },
-    {
       "path": "ifc5/Geotech_WekaHills_GI.ifcx",
       "sha256": "579fccb5ce8676f9262e71d5c26b15c951855f8a95482d9a47e9e7405a0f6ee3",
       "size": 9023
+    },
+    {
+      "path": "ifc5/Geotech_WekaHills_GeologyModel.ifcx",
+      "sha256": "ae287d58f9c21b1b36423fdc6cfdf640573bddc24de2cb653212ae170e247ed7",
+      "size": 1860954
     },
     {
       "path": "ifc5/Geotech_WekaHills_Site.ifcx",
@@ -471,16 +531,6 @@
       "size": 122671
     },
     {
-      "path": "ifc5/PCERT-Sample-Scene_cci_v1.ifcx",
-      "sha256": "bd701fd56cbe1ae9c8826c650638ff1f88081fc73a77e9455a27937a4cec4c5b",
-      "size": 3261
-    },
-    {
-      "path": "ifc5/PCERT-Sample-Scene_fruitvegs_v1.6.ifcx",
-      "sha256": "37984210c7db0601826c363171abab5a0c1ff4cfaf1fad8e893ffccb62c527a5",
-      "size": 851
-    },
-    {
       "path": "ifc5/PCERT-Sample-Scene_Georeference.ifcx",
       "sha256": "5f3f069d83b1463eb70741a1677f2160c1414466f759e9c8e0b466d73d09ed89",
       "size": 2719
@@ -516,9 +566,14 @@
       "size": 233721
     },
     {
-      "path": "ifc5/Point_Cloud_point-cloud.ifcx",
-      "sha256": "edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977",
-      "size": 54502
+      "path": "ifc5/PCERT-Sample-Scene_cci_v1.ifcx",
+      "sha256": "bd701fd56cbe1ae9c8826c650638ff1f88081fc73a77e9455a27937a4cec4c5b",
+      "size": 3261
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_fruitvegs_v1.6.ifcx",
+      "sha256": "37984210c7db0601826c363171abab5a0c1ff4cfaf1fad8e893ffccb62c527a5",
+      "size": 851
     },
     {
       "path": "ifc5/Point_Cloud_S1-pointcloud.ifcx",
@@ -529,6 +584,11 @@
       "path": "ifc5/Point_Cloud_S1-prefab-facade.ifcx",
       "sha256": "763b09eb66351e534417f176443305746425e67b54e34c9b9c398e83b9caa8af",
       "size": 2002313
+    },
+    {
+      "path": "ifc5/Point_Cloud_point-cloud.ifcx",
+      "sha256": "edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977",
+      "size": 54502
     },
     {
       "path": "ifc5/Railway_Railway_project_IFC5.ifcx",
@@ -661,24 +721,24 @@
       "size": 4178
     },
     {
-      "path": "ifcopenshell/faceted_brep_csg.ifc",
-      "sha256": "64a86e3637cf92960329ac268812c839958a9da620d1a3d1f2fb49a95b4dc08f",
-      "size": 7639
-    },
-    {
       "path": "ifcopenshell/faceted_brep.ifc",
       "sha256": "956cf7338f65a352c584678a8c800637be7e9265923403799793e4156444fed7",
       "size": 14810
     },
     {
-      "path": "ifcopenshell/generated_structural_surface_member.ifc",
-      "sha256": "6bd71081d0ea360535c16040b8ccd0a944f1df925e05b26b12ed0216403ddbae",
-      "size": 1643
+      "path": "ifcopenshell/faceted_brep_csg.ifc",
+      "sha256": "64a86e3637cf92960329ac268812c839958a9da620d1a3d1f2fb49a95b4dc08f",
+      "size": 7639
     },
     {
       "path": "ifcopenshell/generated_structural_edge_curve.ifc",
       "sha256": "1b62e23aa9d099688c89d1c0cb1c5d7be40d3ceac52b48f543298b8af1290b70",
       "size": 1516
+    },
+    {
+      "path": "ifcopenshell/generated_structural_surface_member.ifc",
+      "sha256": "6bd71081d0ea360535c16040b8ccd0a944f1df925e05b26b12ed0216403ddbae",
+      "size": 1643
     },
     {
       "path": "ifcopenshell/single-circle-compcurve.ifc",
@@ -689,189 +749,6 @@
       "path": "ifcopenshell/structural_analysis_curve.ifc",
       "sha256": "aeb03f9a49a1d019f4de5c85064c426e1dc481f19ceb335a1f0079d1d791f36e",
       "size": 14951
-    },
-    {
-      "path": "landxml/producers/3d-win-6.6.4-m3-road-alignment.xml",
-      "sha256": "65d14a5934da307600ee9cd119972fddcca5720cd9f229135cb5cbcc08245c92",
-      "size": 7119,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/0000_Alignments/M3_RS-CL.tg.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "65d14a5934da307600ee9cd119972fddcca5720cd9f229135cb5cbcc08245c92", "fetched_at": "2026-09-20" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 road alignment export" },
-      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875; vertical N2000" },
-      "feature_inventory": [{ "feature": "road alignment and profile", "expected_capability": "refused" }]
-    },
-    {
-      "path": "landxml/producers/3d-win-6.6.4-m3-rockbed-terrain.xml",
-      "sha256": "8a32a56fceffc494e4270d482d4034d376b54e860ecb63195cb767e2845f02c1",
-      "size": 385964,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/9004_Terrain_models/M3_Rockbed_survey.mm.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "8a32a56fceffc494e4270d482d4034d376b54e860ecb63195cb767e2845f02c1", "fetched_at": "2026-09-20" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 rockbed survey terrain export" },
-      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875; vertical N2000" },
-      "feature_inventory": [{ "feature": "TIN SourceData, Breaklines, Pnts, and Faces", "expected_capability": "refused" }]
-    },
-    {
-      "path": "landxml/producers/3d-win-6.6.4-m3-lighting-cgpoints.xml",
-      "sha256": "1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1",
-      "size": 7417,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/3300_Lighting/Lightning_columns.xy.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1", "fetched_at": "2026-09-20" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 lighting CgPoints export" },
-      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875; vertical N2000" },
-      "feature_inventory": [{ "feature": "CgPoints", "expected_capability": "refused" }]
-    },
-    {
-      "path": "landxml/producers/aplitop-mdt-8.0-alignment.xml",
-      "sha256": "895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16",
-      "size": 5491,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-Aplitop-1/UT-Alignment-Aplitop-1.xml", "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e", "sha256": "895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16", "fetched_at": "2026-09-20" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "Aplitop MDT", "version": "8.0", "export_settings": "LandXML 1.2 alignment/profile export" },
-      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "metric (meter)", "crs": "not-declared" },
-      "feature_inventory": [{ "feature": "alignment, profile, lines, curves, and spirals", "expected_capability": "preserved-only" }]
-    },
-    {
-      "path": "landxml/producers/bentley-openroads-designer-10.09-us-survey-foot-alignment.xml",
-      "sha256": "57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740",
-      "size": 2487,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-INDOT/PR_Twin_Branch_section_alignment.xml", "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e", "sha256": "57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740", "fetched_at": "2026-09-20" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "OpenRoads Designer", "version": "10.09.00.91", "export_settings": "LandXML 1.2 US-survey-foot alignment/profile export" },
-      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "USSurveyFoot", "crs": "not-declared" },
-      "feature_inventory": [{ "feature": "alignment, profile, lines, and curves", "expected_capability": "preserved-only" }]
-    },
-    {
-      "path": "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml",
-      "sha256": "a81c280d182c941b675cdf412a2e0e4c88813d6403a171308690f6678119a9d4",
-      "size": 15772,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/black-box-test/input/cplx_test.xml", "commit": "77ad81524567cce95dac4e7f5ad01aa51f1162f3", "sha256": "a81c280d182c941b675cdf412a2e0e4c88813d6403a171308690f6678119a9d4", "fetched_at": "2026-09-21" },
-        "license": { "spdx": "MIT", "url": "https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/LICENSE", "attribution": "Alexey Dolinenko, tin2dem contributors" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "Autodesk Civil 3D", "version": "2020", "export_settings": "LandXML 1.2 international-foot surface test export with SourceData breaklines and Definition Pnts/Faces" },
-      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "international foot", "crs": "not-declared" },
-      "feature_inventory": [{ "feature": "TIN SourceData Breaklines and Definition Pnts/Faces", "expected_capability": "rendered" }]
-    },
-    {
-      "path": "landxml/producers/trimble-novapoint-21.354-drainage.xml",
-      "sha256": "bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6",
-      "size": 13446,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/DrainageSystem-1/DrainageSystem-1-1.xml", "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e", "sha256": "bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6", "fetched_at": "2026-09-20" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "Trimble Novapoint", "version": "21.354.0.0", "export_settings": "InfraModel 4.0.3 drainage PipeNetworks export" },
-      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3878; vertical EPSG:3900" },
-      "feature_inventory": [{ "feature": "PipeNetworks, Structs, and Pipes", "expected_capability": "refused" }]
-    },
-    {
-      "path": "landxml/federation/bonsai-topo-control-v1/control.json",
-      "sha256": "d74b3009094c5c7a20455eff3c8a55eeb46f719884c9a2a026e98f0d95c625d7",
-      "size": 812,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/control.json", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "d74b3009094c5c7a20455eff3c8a55eeb46f719884c9a2a026e98f0d95c625d7", "fetched_at": "2026-09-21" },
-        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "independently stated synthetic federation controls" },
-      "feature_inventory": [{ "feature": "five IFC, LandXML, and XYZ control correspondences", "expected_capability": "rendered" }]
-    },
-    {
-      "path": "landxml/federation/bonsai-topo-control-v1/terrain.ifc",
-      "sha256": "7053713e2ec0cf052b576126b675daa1c9614f2bd3ed90b33984ad9c9b26da47",
-      "size": 1471,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.ifc", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "7053713e2ec0cf052b576126b675daa1c9614f2bd3ed90b33984ad9c9b26da47", "fetched_at": "2026-09-21" },
-        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "IFC4X3 terrain with IfcMapConversion" },
-      "format": { "schema": "IFC4X3_ADD2", "units": "metre", "crs": "EPSG:3006; vertical EPSG:5613" },
-      "feature_inventory": [{ "feature": "IfcTriangulatedFaceSet and IfcMapConversion", "expected_capability": "rendered" }]
-    },
-    {
-      "path": "landxml/federation/bonsai-topo-control-v1/terrain.xml",
-      "sha256": "e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10",
-      "size": 1766,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.xml", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10", "fetched_at": "2026-09-21" },
-        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "LandXML 1.2 TIN and CgPoint export" },
-      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "metric (meter)", "crs": "EPSG:3006; vertical EPSG:5613" },
-      "feature_inventory": [{ "feature": "TIN surface and independent CgPoint controls", "expected_capability": "rendered" }]
-    },
-    {
-      "path": "landxml/federation/bonsai-topo-control-v1/survey.xyz",
-      "sha256": "7785254ab17d4c64b9678a4b1b9a83a7be78fdec7c1c7fc6190008a78aebf9d5",
-      "size": 208,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/survey.xyz", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "7785254ab17d4c64b9678a4b1b9a83a7be78fdec7c1c7fc6190008a78aebf9d5", "fetched_at": "2026-09-21" },
-        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "XYZ RGB survey control export" },
-      "format": { "schema": "XYZ RGB", "units": "metre", "crs": "EPSG:3006; vertical EPSG:5613" },
-      "feature_inventory": [{ "feature": "five coloured survey control points", "expected_capability": "rendered" }]
-    },
-    {
-      "path": "landxml/imagery/3d-win-6.6.4-m3-terrain.xml",
-      "sha256": "f860508f96df668bbfb486e0dd920368f20d6fd734d95825b4c2d2faceb9eb87",
-      "size": 4001277,
-      "provenance": {
-        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/9004_Terrain_models/M3_Terrain.mm.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "f860508f96df668bbfb486e0dd920368f20d6fd734d95825b4c2d2faceb9eb87", "fetched_at": "2026-09-26" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
-        "modification": { "status": "unmodified" },
-        "no_customer_data": true
-      },
-      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 ground terrain export: TIN Pnts/Faces with SourceData breaklines coded per InfraBIM (e.g. 121 centreline of road)" },
-      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875 (CoordinateSystem/@epsgCode); vertical N2000" },
-      "feature_inventory": [
-        { "feature": "TIN SourceData, Breaklines, Pnts, and Faces, as supplied (ISO-8859-1 InfraModel profile, #5051)", "expected_capability": "refused" },
-        { "feature": "The same TIN after an in-memory envelope relabel (UTF-8 declaration, LandXML 1.2 namespace; every other byte unchanged), draped with the paired NLS orthophoto (#5942 real-pair acceptance)", "expected_capability": "rendered" }
-      ]
-    },
-    {
-      "path": "landxml/imagery/nls-orthophoto-2022-m3143g-sw-road.tif",
-      "sha256": "ddc28e37b049b19764984ac57d40f64dddbf0b5b8236d95fc7d2f8cbe31b2dee",
-      "size": 193040,
-      "provenance": {
-        "source": { "url": "https://kartat.kapsi.fi/files/orto/etrs-tm35fin/mara_v_25000_50/2022/M31/02m/1/M3143G.jp2", "publisher": "National Land Survey of Finland (Maanmittauslaitos) orthophoto open data, sheet M3143G, 2022 colour, 0.5 m, EPSG:3067; mirrored by Kapsi Internet-kayttajat ry", "fetched_at": "2026-09-26" },
-        "license": { "spdx": "CC-BY-4.0", "url": "https://www.maanmittauslaitos.fi/en/opendata-licence-cc40", "attribution": "Contains data from the National Land Survey of Finland Orthophotos 2022 (CC BY 4.0)" },
-        "modification": { "status": "modified", "description": "320 x 280 px window E 207460-207620, N 6791800-6791940 (EPSG:3067), cut on the source 0.5 m pixel grid from the JPEG 2000 sheet and written as a deflate GeoTIFF (RasterPixelIsArea) with rasterio 1.5.1 / GDAL; pixel values unchanged" },
-        "no_customer_data": true
-      },
-      "format": { "schema": "GeoTIFF", "crs": "EPSG:3067", "ground_sample_distance_m": 0.5, "pairs_with": "landxml/imagery/3d-win-6.6.4-m3-terrain.xml" },
-      "feature_inventory": [{ "feature": "real orthophoto of the terrain's surveyed south-west road (carriageway, cycle path, painted centre line)", "expected_capability": "rendered" }]
     },
     {
       "path": "issues/1007_roof_brep_opening_winding.ifc",
@@ -989,6 +866,504 @@
       "size": 682646
     },
     {
+      "path": "landxml/federation/bonsai-topo-control-v1/control.json",
+      "sha256": "d74b3009094c5c7a20455eff3c8a55eeb46f719884c9a2a026e98f0d95c625d7",
+      "size": 812,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/control.json",
+          "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97",
+          "sha256": "d74b3009094c5c7a20455eff3c8a55eeb46f719884c9a2a026e98f0d95c625d7",
+          "fetched_at": "2026-09-21"
+        },
+        "license": {
+          "spdx": "CC0-1.0",
+          "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "attribution": "openBIM-surveyor synthetic ifc-lite control fixture"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "bonsai-topo",
+        "version": "control-v1",
+        "export_settings": "independently stated synthetic federation controls"
+      },
+      "feature_inventory": [
+        {
+          "feature": "five IFC, LandXML, and XYZ control correspondences",
+          "expected_capability": "rendered"
+        }
+      ]
+    },
+    {
+      "path": "landxml/federation/bonsai-topo-control-v1/survey.xyz",
+      "sha256": "7785254ab17d4c64b9678a4b1b9a83a7be78fdec7c1c7fc6190008a78aebf9d5",
+      "size": 208,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/survey.xyz",
+          "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97",
+          "sha256": "7785254ab17d4c64b9678a4b1b9a83a7be78fdec7c1c7fc6190008a78aebf9d5",
+          "fetched_at": "2026-09-21"
+        },
+        "license": {
+          "spdx": "CC0-1.0",
+          "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "attribution": "openBIM-surveyor synthetic ifc-lite control fixture"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "bonsai-topo",
+        "version": "control-v1",
+        "export_settings": "XYZ RGB survey control export"
+      },
+      "format": {
+        "schema": "XYZ RGB",
+        "units": "metre",
+        "crs": "EPSG:3006; vertical EPSG:5613"
+      },
+      "feature_inventory": [
+        {
+          "feature": "five coloured survey control points",
+          "expected_capability": "rendered"
+        }
+      ]
+    },
+    {
+      "path": "landxml/federation/bonsai-topo-control-v1/terrain.ifc",
+      "sha256": "7053713e2ec0cf052b576126b675daa1c9614f2bd3ed90b33984ad9c9b26da47",
+      "size": 1471,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.ifc",
+          "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97",
+          "sha256": "7053713e2ec0cf052b576126b675daa1c9614f2bd3ed90b33984ad9c9b26da47",
+          "fetched_at": "2026-09-21"
+        },
+        "license": {
+          "spdx": "CC0-1.0",
+          "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "attribution": "openBIM-surveyor synthetic ifc-lite control fixture"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "bonsai-topo",
+        "version": "control-v1",
+        "export_settings": "IFC4X3 terrain with IfcMapConversion"
+      },
+      "format": {
+        "schema": "IFC4X3_ADD2",
+        "units": "metre",
+        "crs": "EPSG:3006; vertical EPSG:5613"
+      },
+      "feature_inventory": [
+        {
+          "feature": "IfcTriangulatedFaceSet and IfcMapConversion",
+          "expected_capability": "rendered"
+        }
+      ]
+    },
+    {
+      "path": "landxml/federation/bonsai-topo-control-v1/terrain.xml",
+      "sha256": "e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10",
+      "size": 1766,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.xml",
+          "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97",
+          "sha256": "e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10",
+          "fetched_at": "2026-09-21"
+        },
+        "license": {
+          "spdx": "CC0-1.0",
+          "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "attribution": "openBIM-surveyor synthetic ifc-lite control fixture"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "bonsai-topo",
+        "version": "control-v1",
+        "export_settings": "LandXML 1.2 TIN and CgPoint export"
+      },
+      "landxml": {
+        "schema": "LandXML 1.2",
+        "namespace": "http://www.landxml.org/schema/LandXML-1.2",
+        "units": "metric (meter)",
+        "crs": "EPSG:3006; vertical EPSG:5613"
+      },
+      "feature_inventory": [
+        {
+          "feature": "TIN surface and independent CgPoint controls",
+          "expected_capability": "rendered"
+        }
+      ]
+    },
+    {
+      "path": "landxml/imagery/3d-win-6.6.4-m3-terrain.xml",
+      "sha256": "f860508f96df668bbfb486e0dd920368f20d6fd734d95825b4c2d2faceb9eb87",
+      "size": 4001277,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/9004_Terrain_models/M3_Terrain.mm.xml",
+          "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87",
+          "sha256": "f860508f96df668bbfb486e0dd920368f20d6fd734d95825b4c2d2faceb9eb87",
+          "fetched_at": "2026-09-26"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "buildingSMART Finland InfraModel contributors"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "3D-Win",
+        "version": "6.6.4",
+        "export_settings": "InfraModel 4.0.3 ground terrain export: TIN Pnts/Faces with SourceData breaklines coded per InfraBIM (e.g. 121 centreline of road)"
+      },
+      "landxml": {
+        "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)",
+        "namespace": "http://www.inframodel.fi/inframodel",
+        "units": "metric (meter)",
+        "crs": "EPSG:3875 (CoordinateSystem/@epsgCode); vertical N2000"
+      },
+      "feature_inventory": [
+        {
+          "feature": "TIN SourceData, Breaklines, Pnts, and Faces, as supplied (ISO-8859-1 InfraModel profile, #5051)",
+          "expected_capability": "refused"
+        },
+        {
+          "feature": "The same TIN after an in-memory envelope relabel (UTF-8 declaration, LandXML 1.2 namespace; every other byte unchanged), draped with the paired NLS orthophoto (#5942 real-pair acceptance)",
+          "expected_capability": "rendered"
+        }
+      ]
+    },
+    {
+      "path": "landxml/imagery/nls-orthophoto-2022-m3143g-sw-road.tif",
+      "sha256": "ddc28e37b049b19764984ac57d40f64dddbf0b5b8236d95fc7d2f8cbe31b2dee",
+      "size": 193040,
+      "provenance": {
+        "source": {
+          "url": "https://kartat.kapsi.fi/files/orto/etrs-tm35fin/mara_v_25000_50/2022/M31/02m/1/M3143G.jp2",
+          "publisher": "National Land Survey of Finland (Maanmittauslaitos) orthophoto open data, sheet M3143G, 2022 colour, 0.5 m, EPSG:3067; mirrored by Kapsi Internet-kayttajat ry",
+          "fetched_at": "2026-09-26"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://www.maanmittauslaitos.fi/en/opendata-licence-cc40",
+          "attribution": "Contains data from the National Land Survey of Finland Orthophotos 2022 (CC BY 4.0)"
+        },
+        "modification": {
+          "status": "modified",
+          "description": "320 x 280 px window E 207460-207620, N 6791800-6791940 (EPSG:3067), cut on the source 0.5 m pixel grid from the JPEG 2000 sheet and written as a deflate GeoTIFF (RasterPixelIsArea) with rasterio 1.5.1 / GDAL; pixel values unchanged"
+        },
+        "no_customer_data": true
+      },
+      "format": {
+        "schema": "GeoTIFF",
+        "crs": "EPSG:3067",
+        "ground_sample_distance_m": 0.5,
+        "pairs_with": "landxml/imagery/3d-win-6.6.4-m3-terrain.xml"
+      },
+      "feature_inventory": [
+        {
+          "feature": "real orthophoto of the terrain's surveyed south-west road (carriageway, cycle path, painted centre line)",
+          "expected_capability": "rendered"
+        }
+      ]
+    },
+    {
+      "path": "landxml/producers/3d-win-6.6.4-m3-lighting-cgpoints.xml",
+      "sha256": "1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1",
+      "size": 7417,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/3300_Lighting/Lightning_columns.xy.xml",
+          "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87",
+          "sha256": "1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1",
+          "fetched_at": "2026-09-20"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "buildingSMART Finland InfraModel contributors"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "3D-Win",
+        "version": "6.6.4",
+        "export_settings": "InfraModel 4.0.3 lighting CgPoints export"
+      },
+      "landxml": {
+        "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)",
+        "namespace": "http://www.inframodel.fi/inframodel",
+        "units": "metric (meter)",
+        "crs": "EPSG:3875; vertical N2000"
+      },
+      "feature_inventory": [
+        {
+          "feature": "CgPoints",
+          "expected_capability": "refused"
+        }
+      ]
+    },
+    {
+      "path": "landxml/producers/3d-win-6.6.4-m3-road-alignment.xml",
+      "sha256": "65d14a5934da307600ee9cd119972fddcca5720cd9f229135cb5cbcc08245c92",
+      "size": 7119,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/0000_Alignments/M3_RS-CL.tg.xml",
+          "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87",
+          "sha256": "65d14a5934da307600ee9cd119972fddcca5720cd9f229135cb5cbcc08245c92",
+          "fetched_at": "2026-09-20"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "buildingSMART Finland InfraModel contributors"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "3D-Win",
+        "version": "6.6.4",
+        "export_settings": "InfraModel 4.0.3 road alignment export"
+      },
+      "landxml": {
+        "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)",
+        "namespace": "http://www.inframodel.fi/inframodel",
+        "units": "metric (meter)",
+        "crs": "EPSG:3875; vertical N2000"
+      },
+      "feature_inventory": [
+        {
+          "feature": "road alignment and profile",
+          "expected_capability": "refused"
+        }
+      ]
+    },
+    {
+      "path": "landxml/producers/3d-win-6.6.4-m3-rockbed-terrain.xml",
+      "sha256": "8a32a56fceffc494e4270d482d4034d376b54e860ecb63195cb767e2845f02c1",
+      "size": 385964,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/9004_Terrain_models/M3_Rockbed_survey.mm.xml",
+          "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87",
+          "sha256": "8a32a56fceffc494e4270d482d4034d376b54e860ecb63195cb767e2845f02c1",
+          "fetched_at": "2026-09-20"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "buildingSMART Finland InfraModel contributors"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "3D-Win",
+        "version": "6.6.4",
+        "export_settings": "InfraModel 4.0.3 rockbed survey terrain export"
+      },
+      "landxml": {
+        "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)",
+        "namespace": "http://www.inframodel.fi/inframodel",
+        "units": "metric (meter)",
+        "crs": "EPSG:3875; vertical N2000"
+      },
+      "feature_inventory": [
+        {
+          "feature": "TIN SourceData, Breaklines, Pnts, and Faces",
+          "expected_capability": "refused"
+        }
+      ]
+    },
+    {
+      "path": "landxml/producers/aplitop-mdt-8.0-alignment.xml",
+      "sha256": "895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16",
+      "size": 5491,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-Aplitop-1/UT-Alignment-Aplitop-1.xml",
+          "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e",
+          "sha256": "895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16",
+          "fetched_at": "2026-09-20"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "Aplitop MDT",
+        "version": "8.0",
+        "export_settings": "LandXML 1.2 alignment/profile export"
+      },
+      "landxml": {
+        "schema": "LandXML 1.2",
+        "namespace": "http://www.landxml.org/schema/LandXML-1.2",
+        "units": "metric (meter)",
+        "crs": "not-declared"
+      },
+      "feature_inventory": [
+        {
+          "feature": "alignment, profile, lines, curves, and spirals",
+          "expected_capability": "preserved-only"
+        }
+      ]
+    },
+    {
+      "path": "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml",
+      "sha256": "a81c280d182c941b675cdf412a2e0e4c88813d6403a171308690f6678119a9d4",
+      "size": 15772,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/black-box-test/input/cplx_test.xml",
+          "commit": "77ad81524567cce95dac4e7f5ad01aa51f1162f3",
+          "sha256": "a81c280d182c941b675cdf412a2e0e4c88813d6403a171308690f6678119a9d4",
+          "fetched_at": "2026-09-21"
+        },
+        "license": {
+          "spdx": "MIT",
+          "url": "https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/LICENSE",
+          "attribution": "Alexey Dolinenko, tin2dem contributors"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "Autodesk Civil 3D",
+        "version": "2020",
+        "export_settings": "LandXML 1.2 international-foot surface test export with SourceData breaklines and Definition Pnts/Faces"
+      },
+      "landxml": {
+        "schema": "LandXML 1.2",
+        "namespace": "http://www.landxml.org/schema/LandXML-1.2",
+        "units": "international foot",
+        "crs": "not-declared"
+      },
+      "feature_inventory": [
+        {
+          "feature": "TIN SourceData Breaklines and Definition Pnts/Faces",
+          "expected_capability": "rendered"
+        }
+      ]
+    },
+    {
+      "path": "landxml/producers/bentley-openroads-designer-10.09-us-survey-foot-alignment.xml",
+      "sha256": "57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740",
+      "size": 2487,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-INDOT/PR_Twin_Branch_section_alignment.xml",
+          "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e",
+          "sha256": "57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740",
+          "fetched_at": "2026-09-20"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "OpenRoads Designer",
+        "version": "10.09.00.91",
+        "export_settings": "LandXML 1.2 US-survey-foot alignment/profile export"
+      },
+      "landxml": {
+        "schema": "LandXML 1.2",
+        "namespace": "http://www.landxml.org/schema/LandXML-1.2",
+        "units": "USSurveyFoot",
+        "crs": "not-declared"
+      },
+      "feature_inventory": [
+        {
+          "feature": "alignment, profile, lines, and curves",
+          "expected_capability": "preserved-only"
+        }
+      ]
+    },
+    {
+      "path": "landxml/producers/trimble-novapoint-21.354-drainage.xml",
+      "sha256": "bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6",
+      "size": 13446,
+      "provenance": {
+        "source": {
+          "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/DrainageSystem-1/DrainageSystem-1-1.xml",
+          "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e",
+          "sha256": "bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6",
+          "fetched_at": "2026-09-20"
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "producer": {
+        "name": "Trimble Novapoint",
+        "version": "21.354.0.0",
+        "export_settings": "InfraModel 4.0.3 drainage PipeNetworks export"
+      },
+      "landxml": {
+        "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)",
+        "namespace": "http://www.inframodel.fi/inframodel",
+        "units": "metric (meter)",
+        "crs": "EPSG:3878; vertical EPSG:3900"
+      },
+      "feature_inventory": [
+        {
+          "feature": "PipeNetworks, Structs, and Pipes",
+          "expected_capability": "refused"
+        }
+      ]
+    },
+    {
       "path": "textures/ifc-hbim-convento-textures.ifczip",
       "sha256": "ad03679f51e28162790cecc83ad89be77cbe568249a161570802dee0a7bbff80",
       "size": 36711602
@@ -1009,14 +1384,14 @@
       "size": 458277
     },
     {
-      "path": "various/issue-604-door.ifc",
-      "sha256": "d0a4ea586c2ae1cd247d1026c8967a6a33055df261d71af57be2ed2312a12ad0",
-      "size": 116741
-    },
-    {
       "path": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
       "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df",
       "size": 342657851
+    },
+    {
+      "path": "various/issue-604-door.ifc",
+      "sha256": "d0a4ea586c2ae1cd247d1026c8967a6a33055df261d71af57be2ed2312a12ad0",
+      "size": 116741
     },
     {
       "path": "various/revit-walls-3.ifc",

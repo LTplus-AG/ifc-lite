@@ -143,7 +143,7 @@ const SKIP_DIRS = new Set(['local']);
 // Recognised fixture extensions. Add new types here when needed.
 // .ifczip: zip container fixtures (textured models ship images as siblings
 // of the .ifc inside the archive, #1781).
-const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml)$/i;
+const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml|ply|splat)$/i;
 const LANDXML_EXT = /\.(xml|landxml)$/i;
 
 const LFS_RE = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([a-f0-9]{64})\nsize (\d+)\n?$/;
@@ -246,6 +246,15 @@ function retainLandXmlProvenance(entry) {
   };
 }
 
+function retainGaussianProvenance(entry) {
+  if (!/\.(ply|splat)$/i.test(entry.path)) return entry;
+  const previous = previousEntries.get(entry.path);
+  if (!previous?.gaussian || previous.sha256 !== entry.sha256 || previous.size !== entry.size) {
+    throw new Error(`refusing to add or alter ${entry.path} without reviewed Gaussian provenance`);
+  }
+  return { ...entry, provenance: previous.provenance, gaussian: previous.gaussian };
+}
+
 function retainUpstreamArchive(entry) {
   const previous = previousEntries.get(entry.path);
   if (!previous?.upstream_archive) return entry;
@@ -257,7 +266,7 @@ function retainUpstreamArchive(entry) {
 
 const out = {
   ...header,
-  files: files.map(({ source: _src, ...rest }) => retainUpstreamArchive(retainLandXmlProvenance(rest))),
+  files: files.map(({ source: _src, ...rest }) => retainUpstreamArchive(retainGaussianProvenance(retainLandXmlProvenance(rest)))),
 };
 
 assertValidManifest(out);

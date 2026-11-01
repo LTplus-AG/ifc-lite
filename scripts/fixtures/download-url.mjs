@@ -25,7 +25,7 @@ export function upstreamBlobUrl(entry) {
   if (entry.upstream_archive) return entry.upstream_archive.blob_url;
   const source = entry.provenance?.source;
   const reviewedSourceBytes =
-    /\.(xml|landxml)$/i.test(entry.path) &&
+    /\.(xml|landxml|ply|splat)$/i.test(entry.path) &&
     entry.provenance?.modification?.status === 'unmodified' &&
     source?.sha256 === entry.sha256 &&
     typeof source?.blob_url === 'string' &&

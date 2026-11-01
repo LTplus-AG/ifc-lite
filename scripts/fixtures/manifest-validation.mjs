@@ -71,10 +71,10 @@ function requirePinnedGitHubBlobUrl(value, commit, where, errors) {
   }
 }
 
-function validateReviewedLandXmlEntry(entry, index, errors) {
+function validateReviewedProvenance(entry, index, errors) {
   const where = `files[${index}]`;
   if (!isObject(entry.provenance)) {
-    invalid(errors, `${where}.provenance`, 'is required for a reviewed LandXML fixture');
+    invalid(errors, `${where}.provenance`, 'is required for a reviewed fixture');
     return;
   }
   const { provenance } = entry;
@@ -115,6 +115,14 @@ function validateReviewedLandXmlEntry(entry, index, errors) {
   if (provenance.no_customer_data !== true) {
     invalid(errors, `${where}.provenance.no_customer_data`, 'must be true after a provenance review');
   }
+  if (provenance.modification?.status === 'unmodified' && provenance.source?.sha256 !== entry.sha256) {
+    invalid(errors, `${where}.provenance.source.sha256`, 'must equal entry.sha256 for an unmodified fixture');
+  }
+}
+
+function validateReviewedLandXmlEntry(entry, index, errors) {
+  validateReviewedProvenance(entry, index, errors);
+  const where = `files[${index}]`;
   if (!isObject(entry.producer)) {
     invalid(errors, `${where}.producer`, 'is required for a reviewed LandXML fixture');
   } else {
@@ -144,9 +152,21 @@ function validateReviewedLandXmlEntry(entry, index, errors) {
       }
     });
   }
-  if (provenance.modification?.status === 'unmodified' && provenance.source?.sha256 !== entry.sha256) {
-    invalid(errors, `${where}.provenance.source.sha256`, 'must equal entry.sha256 for an unmodified fixture');
+
+}
+
+function validateReviewedGaussianEntry(entry, index, errors) {
+  validateReviewedProvenance(entry, index, errors);
+  const where = `files[${index}].gaussian`;
+  const g = entry.gaussian;
+  if (!isObject(g)) { invalid(errors, where, 'reviewed Gaussian metadata is required'); return; }
+  for (const field of ['units', 'up_axis', 'source_method']) requireText(g[field], `${where}.${field}`, errors);
+  if (!Number.isSafeInteger(g.count) || g.count <= 0) invalid(errors, where, 'count must be positive');
+  if (![0, 1, 2, 3].includes(g.sh_degree)) invalid(errors, where, 'sh_degree must be 0..3');
+  if (/\.splat$/i.test(entry.path) && (g.sh_degree !== 0 || entry.size !== g.count * 32)) {
+    invalid(errors, where, '.splat requires SH0 and exactly 32 bytes per Gaussian');
   }
+  requireUrl(g.metadata_url, `${where}.metadata_url`, errors);
 }
 
 /** Return human-readable errors without throwing, for CLI callers. */
@@ -210,6 +230,7 @@ export function validateManifest(manifest) {
     // its own rights review. LandXML files are reviewed per entry, so adding
     // one cannot bypass provenance simply by retaining a v1 root header.
     if (isLandXmlPath(entry.path)) validateReviewedLandXmlEntry(entry, index, errors);
+    if (/\.(ply|splat)$/i.test(entry.path)) validateReviewedGaussianEntry(entry, index, errors);
   });
   return errors;
 }

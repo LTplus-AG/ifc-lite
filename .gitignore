@@ -98,6 +98,8 @@ tests/models/various
 tests/models/georeferencer
 tests/models/**/*.ifc
 tests/models/**/*.IFC
+tests/models/**/*.ply
+tests/models/**/*.splat
 tests/models/**/*.ifcx
 tests/models/**/*.ifczip
 tests/models/**/*.xml

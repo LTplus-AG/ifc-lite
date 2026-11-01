@@ -4,8 +4,8 @@
 import proj4 from 'proj4';
 import { lookupEpsgByCode } from '@ifc-lite/data';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
-import { useViewerStore } from '@/store';
-import { placementFrameFields, placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
+import { useViewerStore, type ViewerState } from '@/store';
+import { placementFrameFields, placementFrameKey } from '@/lib/model-placement/persistence';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionOperation } from '@/lib/geo/reproject';
 import { projectedDefinitionInMetres } from '@/lib/geo/proj4-utils';
@@ -62,6 +62,21 @@ export async function orthophotoProjection(sourceCrs: string, targetCrs: string)
     inverse: p => converter.inverse([p[0], p[1]]) as [number, number] };
 }
 
+/** All model bounds must be compared in IFC-world metres, not their possibly
+ * different shifted render frames. The legacy result is only a fallback. */
+export function orthophotoElevation(state: Pick<ViewerState, 'models' | 'geometryResult'>): number {
+  let minimum = Infinity;
+  const include = (geometry: ViewerState['geometryResult']) => {
+    if (!geometry) return;
+    const info = geometry.coordinateInfo;
+    const height = info.shiftedBounds.min.y + totalYupOffset(info).y;
+    if (Number.isFinite(height)) minimum = Math.min(minimum, height);
+  };
+  for (const model of state.models.values()) include(model.geometryResult);
+  if (!Number.isFinite(minimum)) include(state.geometryResult);
+  return (Number.isFinite(minimum) ? minimum : 0) - 0.05;
+}
+
 /** An imagery load owns no IFC entities and never resets the model session. */
 export async function addOrthophotoBackground(raster: LoadedGeoRaster): Promise<void> {
   const initial = useViewerStore.getState();
@@ -70,9 +85,7 @@ export async function addOrthophotoBackground(raster: LoadedGeoRaster): Promise<
   const crs = raster.placement.crs;
   if (!crs) throw new Error('The orthophoto has no EPSG coordinate system; supply its .prj or .aux.xml.');
   const converter = await orthophotoProjection(crs, reference.horizontal!.id);
-  const offset = totalYupOffset(placementFrameCoordinateInfo(initial));
-  const geometry = initial.geometryResult ?? [...initial.models.values()].find(model => model.geometryResult)?.geometryResult;
-  const elevation = (geometry?.coordinateInfo.shiftedBounds.min.y ?? 0) + offset.y - 0.05;
+  const elevation = orthophotoElevation(initial);
   const plan = planOrthophotoBackground(raster.placement, reference, {
     forward: p => converter.forward([p[0], p[1]]) as [number, number],
     inverse: p => converter.inverse([p[0], p[1]]) as [number, number],

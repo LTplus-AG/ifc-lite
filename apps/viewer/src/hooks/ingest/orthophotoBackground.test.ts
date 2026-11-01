@@ -4,12 +4,14 @@
 import '@/test/setup-dom.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { backgroundReference, orthophotoProjection } from './orthophotoBackground';
+import { backgroundReference, orthophotoProjection, orthophotoElevation } from './orthophotoBackground';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import { georeferencedPlacementFrameKey } from '@/lib/model-placement/persistence';
 import { planOrthophotoBackground } from '@/lib/terrain-imagery/background-plan';
 import { localViewerToProjected } from '@ifc-lite/geometry';
 import proj4 from 'proj4';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { projectedDefinitionInMetres } from '@/lib/geo/proj4-utils';
 
 const reference = spatialReferenceFromIfc({
@@ -60,4 +62,31 @@ test('same-CRS US-survey-foot imagery converts native units through the producti
   const [x, y] = projection.inverse([e, n]);
   assert.ok(Math.abs(x - 1000) < 1e-9);
   assert.ok(Math.abs(y - 2000) < 1e-9);
+});
+
+
+function elevationGeometry(minimum: number, shift = 0, rtc = 0): GeometryResult {
+  const bounds = { min: { x: 0, y: minimum, z: 0 }, max: { x: 10, y: minimum + 10, z: 10 } };
+  return { meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: {
+    originShift: { x: 0, y: shift, z: 0 }, wasmRtcOffset: { x: 0, y: 0, z: rtc },
+    shiftedBounds: bounds, originalBounds: bounds, hasLargeCoordinates: shift !== 0,
+  } };
+}
+
+test('background stays below every federated IFC regardless of selected result or load order (#8552)', () => {
+  const high = { ...fixtureModel('high'), geometryResult: elevationGeometry(100) };
+  const low = { ...fixtureModel('low'), geometryResult: elevationGeometry(0) };
+  for (const models of [[high], [low], [high, low], [low, high]]) {
+    const expected = models.includes(low) ? -0.05 : 99.95;
+    for (const selected of [high, low]) {
+      assert.equal(orthophotoElevation({ ...fixtureModels(...models), geometryResult: selected.geometryResult }), expected);
+    }
+  }
+});
+
+test('background compares restored world heights, including origin shift and IFC Z-up RTC (#8552)', () => {
+  const high = { ...fixtureModel('high'), geometryResult: elevationGeometry(-100, 150, 50) };
+  const low = { ...fixtureModel('low'), geometryResult: elevationGeometry(20, -30, 10) };
+  assert.equal(orthophotoElevation({ ...fixtureModels(high, low), geometryResult: high.geometryResult }), -0.05);
+  assert.equal(orthophotoElevation({ models: new Map(), geometryResult: high.geometryResult }), 99.95);
 });

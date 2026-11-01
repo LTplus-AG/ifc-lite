@@ -47,6 +47,10 @@ const expected = (model: string) => coverageFiles().flatMap(path => readFileSync
   .map(([, id, status, code]) => ({ id: Number(id), status, code })).sort((a, b) => a.id - b.id);
 
 async function setup(page: Page, kernel?: 'retained' | 'exact') {
+  // A returning user. The first-launch privacy toast fires on a 3.5 s timer and stays until
+  // dismissed; dismissing it while an export dialog is open is a click outside the modal,
+  // which closes the dialog before Export is pressed, so no download ever starts.
+  await page.addInitScript(() => window.localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged'));
   await page.addInitScript(() => {
     const globals = globalThis as typeof globalThis & ViewerGlobals;
     globals.__retainedLongTasks = [];
@@ -282,8 +286,6 @@ const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1
 
 /** Open a ribbon export dialog the way a user does, and return it. */
 async function openExport(page: Page, id: string) {
-  // The privacy toast sits over the dialog's footer until dismissed.
-  for (const dismiss of await page.getByRole('button', { name: 'Dismiss notification' }).all()) await dismiss.click();
   await page.getByRole('tab', { name: 'File', exact: true }).click();
   await page.locator(`[data-export-command="${id}"]`).click();
   const dialog = page.locator('[data-export-dialog-shell]');
@@ -293,8 +295,6 @@ async function openExport(page: Page, id: string) {
 /** Press Export in an open dialog and return the downloaded bytes. */
 async function download(page: Page, button: string | RegExp): Promise<{ name: string; bytes: Buffer }> {
   const dialog = page.locator('[data-export-dialog-shell]');
-  // The privacy toast can arrive after the dialog opened and then covers its footer.
-  for (const dismiss of await page.getByRole('button', { name: 'Dismiss notification' }).all()) await dismiss.click();
   const [file] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), dialog.getByRole('button', { name: button, exact: typeof button === 'string' }).click()]);
   const path = await file.path();
   expect(path, 'the downloaded file exists').toBeTruthy();

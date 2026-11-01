@@ -1045,6 +1045,11 @@ jobs:
           # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8308/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8308/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/8308/behaviour.oracle.patch --test rust/geometry/src/router/transforms/operator_axis2_tests.rs --test rust/processing/tests/issue_8308_omitted_axis2.rs)
+          # #7955 frame zero: whole inversion deletes mat4::compose_frame, so its
+          # witnesses never compile, and the runtime test module cannot be
+          # attributed. Keep the API; seed the sum with -0.0 again.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/7955-frame-zero/behaviour.oracle.patch | grep -Fxq 'tests/evidence/7955-frame-zero/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/7955-frame-zero/behaviour.oracle.patch --test rust/geometry/src/math/mat4_tests.rs)
           # #8341 F2 viewer: inverting the whole change deletes the relay module its
           # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.

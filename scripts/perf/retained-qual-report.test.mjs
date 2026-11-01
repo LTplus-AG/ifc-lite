@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compare, format, readRows } from './retained-qual-report.mjs';
@@ -98,4 +98,29 @@ test('8413: a change confined to longTaskMs is a column and a real movement', ()
   const report = compare([...only('base', 100), ...only('branch', 160)]);
   assert.equal(column(report, 'longTaskMs').real, true);
   assert.equal(column(report, 'longTaskMs').direction, 'higher');
+});
+
+test('7955: native rows from separate invocations pair by pairing id and round', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-native-'));
+  try {
+    const inputs = [];
+    for (const [side, round, wallMs] of [['base', 1, 100], ['branch', 1, 90], ['base', 2, 101], ['branch', 2, 91]]) {
+      const out = join(dir, `${side}-${round}`);
+      writeResult(out, { kind: 'native-retained-memory', startedAt: `${side}-${round}`, pairingId: 'cohort-a' },
+        [{ side, path: 'advanced_model', round, ok: true, wallMs, candidates: 4, published: 3 }]);
+      inputs.push(out);
+    }
+    const report = compare(readRows(inputs));
+    assert.equal(report.flags.unpaired, false);
+    assert.equal(column(report, 'wallMs').pairedN, 2);
+    // Without a pairing id every invocation is its own round set: never paired.
+    for (const input of inputs) {
+      const path = join(input, 'runs.jsonl'), row = JSON.parse(readFileSync(path, 'utf8'));
+      delete row.provenance.pairingId;
+      writeFileSync(path, JSON.stringify(row) + '\n');
+      rmSync(join(input, 'result.json'));
+    }
+    assert.equal(compare(readRows(inputs)).flags.unpaired, true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

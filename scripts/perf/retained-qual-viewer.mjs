@@ -77,6 +77,8 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
     const ua = await raceWithTimeout(userAgentMemory(page), 120000, 'measureUserAgentSpecificMemory');
     Object.assign(row, { gpuAdapter: adapter, softwareAdapter: isSoftwareAdapter(adapter), webgpuDeviceLosses: losses,
       userAgent: state.userAgent, hardwareConcurrency: state.hardwareConcurrency, crossOriginIsolated: state.crossOriginIsolated, loadTraceMilestonesMs: state.milestones,
+      pageWorkersCreated: m.workers.created, pageWorkersPeakLive: m.workers.peakLive, pageWorkersByScript: m.workers.byScript,
+      pageWorkersNote: 'dedicated workers the page thread constructed; workers started inside a worker are not observed; peakLive counts only terminate() calls',
       uaMemory: ua, uaMemoryBytes: ua.bytes, longTaskMs: m.longTaskMs, drawCallsAtFirstFrame: m.drawCallsAtFirstFrame,
       browserPeakHwmKiB: memory.maxIndividualHwmKiB, browserPeakConcurrentRssKiB: memory.maxObservedConcurrentRssKiB,
       browserPeakConcurrentPssKiB: memory.maxObservedConcurrentPssKiB, browserMemorySamples: memory.samples, pssCoverage: memory.pssCoverage,

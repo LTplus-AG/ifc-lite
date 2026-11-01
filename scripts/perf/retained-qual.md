@@ -107,7 +107,10 @@ fixtures [{path, bytes, sha256}], order, rounds, samples, rows, failures, summar
 ```
 
 The viewer runner records per-row GPU adapter, browser version, `softwareAdapter`, `webgpuDeviceLosses`, the
-browser-reported logical processor count (`hardwareConcurrency`; not an observed worker count), fixture hash and served-dist digest are recorded. A
+browser-reported logical processor count (`hardwareConcurrency`; not an observed worker count), the observed page
+worker count (`pageWorkersCreated`, `pageWorkersPeakLive`, `pageWorkersByScript`: dedicated workers the page thread
+constructed, from a wrapped `Worker` constructor; workers started inside a worker, such as the SDK's private one,
+are not visible), fixture hash and served-dist digest are recorded. A
 software adapter (SwiftShader) is named; viewer `--require-hardware-gpu` refuses it.
 Browser-memory does not record adapter/software/device-loss fields and does not
 support `--require-hardware-gpu`.
@@ -132,6 +135,10 @@ base total spread > 15% is too noisy; a zero baseline blocks; count drift voids
 like-for-like) and prints numbers only. For the M11-I report-only viewer A/B use its
 actual pre-I base and final head; the pre-M-series baseline has no retained consumer
 and cannot be an arm.
+
+Native memory is one process per sample, so a paired native cohort is one runner invocation per
+(fixture, side, round): pass each the same `--pairing-id` and its `--round N`, and the reporter pairs
+base and branch rows by that id and round (otherwise each invocation is its own unpaired set).
 
 ## Real GPU on Pop
 

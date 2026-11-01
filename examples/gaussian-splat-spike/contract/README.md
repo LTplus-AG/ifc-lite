@@ -16,7 +16,7 @@ The run used Chromium WebGPU with SwiftShader, not hardware performance qualific
 
 ## Reproduce
 
-Use the pinned upstream checkout with the depth-convention fix applied. Apply `mixed-transparency.patch` there, install using its pinned Node/Yarn versions, build, then run its documented browser harness:
+Use upstream depth-fix commit `71e2be2394ecd9bdfb6f1d36ce23e6af92978015` from `louistrue/luma.gl` (base `700f1400fc6b0d32a82f1a22f57c1e747b255a01`). Apply `mixed-transparency.patch` there, install using its pinned Node/Yarn versions, build, then run its documented browser harness:
 
 ```sh
 CI=1 yarn test-headless --maxWorkers=2 --reporter=verbose modules/engine/test/splats/ifc-mixed-transparency.spec.ts

@@ -43,5 +43,6 @@
   },
   "ownership": {
     "borrowedDeviceSurvivesWrapperDestroy": true
-  }
+  },
+  "upstreamFix": "71e2be2394ecd9bdfb6f1d36ce23e6af92978015"
 }

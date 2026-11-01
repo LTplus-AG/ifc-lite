@@ -14,7 +14,7 @@ import type { RetainedGeometrySummary } from '@/store/retainedGeometry';
 import { ScriptedHostWorker, complete, published, refused, start } from '@/test/retained-host-fixture';
 import { RetainedClient } from './retained-client';
 import { RetainedHostError } from './retained-protocol';
-import { retainedGeometryEvents, RetainedStallError, type RetainedPhase } from './retainedGeometrySource';
+import { retainedGeometryEvents, RetainedStallError, type RetainedPhase, type RetainedRunner } from './retainedGeometrySource';
 
 function run(worker: ScriptedHostWorker, options: Partial<Parameters<typeof retainedGeometryEvents>[2]> = {}) {
   const client = new RetainedClient(() => worker);
@@ -149,6 +149,25 @@ describe('#7955 M2-C retained geometry source', () => {
     assert.equal(last().published, 250);
     assert.equal(last().completeness, 'incomplete');
     client.unload();
+  });
+
+  it('an idle heartbeat flushes a held report only once the interval has passed', async () => {
+    const candidates = Array.from({ length: 40 }, (_, i) => i + 1);
+    const runner = {
+      async *run() {
+        yield start(candidates);
+        for (const id of candidates) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          yield published(id);
+        }
+        yield complete;
+      },
+      cancel() {},
+    } as unknown as RetainedRunner;
+    const summaries: RetainedGeometrySummary[] = [];
+    for await (const _event of retainedGeometryEvents(runner, new Uint8Array([1]), { heartbeatMs: 1, onSummary: (summary) => summaries.push(summary) })) { /* drain */ }
+    assert.ok(summaries.length <= 5, `${summaries.length} summaries for 40 products across heartbeats`);
+    assert.equal(summaries.at(-1)!.published, 40);
   });
 
   it('owns its stall budget: heartbeats while waiting, then a typed stall that ends the host', async () => {

@@ -186,7 +186,7 @@ export async function* retainedGeometryEvents(
         throw error;
       }
       if ('idle' in pulled) {
-        if (unreported) { report(); phase(); }
+        if (unreported) productReport();
         yield { type: 'progress', phase: 'workers' };
         continue;
       }

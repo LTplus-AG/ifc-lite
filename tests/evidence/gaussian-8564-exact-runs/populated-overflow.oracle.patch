@@ -4,8 +4,8 @@
          for (const reference of this.sortedReferences) {
            if (reference.batchIndex !== contractPreviousBatch) {
              contractPreviousBatch = reference.batchIndex;
--            if (++contractRuns > 128) throw new Error('Exact source-run budget exceeded (128)');
-+            if (++contractRuns > 128) { this.drawRuns = []; throw new Error('Exact source-run budget exceeded (128)'); }
+-            if (++contractRuns > 128) { this.drawRuns = []; throw new Error('Exact source-run budget exceeded (128)'); }
++            if (++contractRuns > 128) throw new Error('Exact source-run budget exceeded (128)');
            }
          }`);
      }

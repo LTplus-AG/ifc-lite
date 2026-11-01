@@ -415,6 +415,20 @@ describe('putSceneSnapshot', () => {
 
   const snapshot = () => new Blob([new Uint8Array(32)]);
 
+  it('skips the snapshot rather than evict another model when quota is tight', async () => {
+    await setCached('other', patterned(1 * KB, 3), 'other.ifc', 1 * KB);
+    await setCached('k', patterned(1 * KB, 4), 'k.ifc', 1 * KB);
+    const createdAt = (await getCached('k'))!.createdAt!;
+    stubEstimate(1 * MB, 1 * MB);
+    try {
+      assert.equal(await putSceneSnapshot('k', { createdAt }, snapshot(), 'policy'), false);
+    } finally {
+      restoreNavigator();
+    }
+    assert.ok(await getCached('other'), 'the other model stays');
+    assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
+  });
+
   it('attaches to the write it was built from and comes back on a hit', async () => {
     await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB);
     const entry = (await getCached('k'))!;

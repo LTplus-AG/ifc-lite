@@ -511,7 +511,8 @@ export async function getCacheStats(): Promise<{
  */
 export async function putSceneSnapshot(key: string, write: SceneSnapshotWrite, snapshot: Blob, snapshotKey: string): Promise<boolean> {
   try {
-    if (!await ensureRoomForEntry(await liveConnection(), snapshot.size, key)) return false;
+    // Optional, so it never evicts another model: the entry serves without it.
+    if (await availableQuotaBytes() < snapshot.size + QUOTA_HEADROOM_BYTES) return false;
     const tx = await beginTransaction('readwrite');
     return await new Promise<boolean>((resolve, reject) => {
       let stored = false;

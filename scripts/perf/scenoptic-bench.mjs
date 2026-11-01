@@ -320,7 +320,8 @@ async function runSample(build, set, round) {
       // A flagged warm open may store what the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {
         if (open > 1) {
-          if (build.flags.includes('perf.sceneSnapshot')) await waitSceneSnapshots(page);
+          // Only a primary single-file hit writes one (federated hits keep their path).
+          if (/perf\.sceneSnapshot=1\b/.test(build.flags) && set.files.length === 1) await waitSceneSnapshots(page);
           await page.close();
         }
         page = await openPage(context);

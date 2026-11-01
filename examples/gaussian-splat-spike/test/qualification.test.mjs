@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { getSortedSplatIndicesByDepth } from '@luma.gl/splats';
 import { qualificationPly, malformedQualificationPly } from '../qualification-fixtures.mjs';
 import { decodeQualification } from '../qualification-decode.mjs';
+import { decodeCorpusEntry } from '../qualification-corpus.mjs';
 
 const manifest = JSON.parse(await readFile(new URL('../../../tests/models/manifest.json', import.meta.url), 'utf8'));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -52,17 +53,31 @@ for (const entry of manifest.files.filter(item => item.gaussian)) {
       t.skip(`Run pnpm fixtures ${entry.path}; missing corpus is NOT release qualification.`);
       return;
     }
-    assert.equal(bytes.length, entry.size);
-    assert.equal(sha256(bytes), entry.sha256);
-    const table = await decodeQualification(bytes, 'splat');
-    assert.equal(table.numRows, entry.gaussian.count);
-    for (const name of ['x', 'y', 'z', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3']) {
-      assert.ok(column(table, name).every(Number.isFinite), `${name} must be finite`);
-    }
-    for (let row = 0; row < table.numRows; row++) {
-      const norm = Math.hypot(...['rot_0', 'rot_1', 'rot_2', 'rot_3'].map(name => column(table, name)[row]));
-      assert.ok(Math.abs(norm - 1) < 0.02);
-    }
+    const table = await decodeCorpusEntry(entry, bytes);
     t.diagnostic(JSON.stringify({ path: entry.path, sha256: entry.sha256, rows: table.numRows, units: entry.gaussian.units, productionQualified: false }));
   });
 }
+
+for (const extension of ['ply', 'PLY']) test(`analytic SH3 ${extension} uses the corpus entry path (#8580)`, async () => {
+  const bytes = qualificationPly({ batches: 2, perBatch: 3 });
+  // Raw PLY rotations need not be normalized. Do not apply packed .splat rules.
+  const headerEnd = bytes.indexOf('end_header\n') + 'end_header\n'.length;
+  const stride = (bytes.length - headerEnd) / 6;
+  bytes.writeFloatLE(2, headerEnd + stride - 16);
+  const entry = { path: `gaussian/analytic-sh3.${extension}`, size: bytes.length,
+    sha256: sha256(bytes), gaussian: { count: 6, sh_degree: 3 } };
+  const table = await decodeCorpusEntry(entry, bytes);
+  assert.equal(table.numRows, 6);
+  assert.equal(column(table, 'rot_0')[0], 2, 'upstream PLY preserves raw rotation');
+  assert.equal(column(table, 'scale_0')[0], -2, 'upstream PLY preserves log scale');
+  for (let k = 0; k < 45; k++) for (let row = 0; row < 6; row++) {
+    assert.equal(column(table, `f_rest_${k}`)[row], ((row % 7) - 3) * (k + 1) / 1024);
+  }
+  await assert.rejects(decodeCorpusEntry({ ...entry, size: bytes.length + 1 }, bytes));
+  await assert.rejects(decodeCorpusEntry({ ...entry, sha256: '0'.repeat(64) }, bytes));
+  await assert.rejects(decodeCorpusEntry({ ...entry, gaussian: { ...entry.gaussian, count: 7 } }, bytes));
+});
+
+test('corpus dispatch refuses unsupported formats rather than defaulting to splat (#8580)', async () => {
+  await assert.rejects(decodeCorpusEntry({ path: 'gaussian/control.spz' }, new Uint8Array()), /Unsupported corpus format/);
+});

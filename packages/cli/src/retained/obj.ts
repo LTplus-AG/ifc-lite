@@ -58,38 +58,54 @@ function fixed(value: number): string {
     ? text.slice(0, -1) + String(last - 1) : text;
 }
 
-export function retainedObj(products: RetainedShapeProduct[]): string {
+/** Flush size for artifact chunks. A whole-model artifact can exceed V8's maximum string length (Holter: >1 GB). */
+export const ARTIFACT_CHUNK_CHARS = 16 << 20;
+
+/** The whole OBJ, prepared before any write so an invalid product leaves no partial file. */
+export function retainedObj(products: RetainedShapeProduct[]): Buffer[] {
   const obligations = [...new Set(products.flatMap(p => p.obligationsUnmet))].sort();
-  const lines = ['# ifc-lite OBJ export', '# units: metres (renderer Y-up frame, origin-folded world coords)',
+  const chunks: Buffer[] = [];
+  let lines = ['# ifc-lite OBJ export', '# units: metres (renderer Y-up frame, origin-folded world coords)',
     '# kernel: retained', ...(obligations.length
       ? [`# retained shape-only: presentation obligations unmet: ${obligations.join(', ')}`, '# PresentationObligationsUnmet']
       : ['# retained final', '# final'])];
+  let chars = 0;
+  const line = (text: string) => {
+    lines.push(text);
+    chars += text.length + 1;
+    if (chars < ARTIFACT_CHUNK_CHARS) return;
+    chunks.push(Buffer.from(`${lines.join('\n')}\n`));
+    lines = [];
+    chars = 0;
+  };
   let base = 1, normalBase = 1;
   for (const product of products) {
     if (product.marker !== (product.obligationsUnmet.length ? 'PresentationObligationsUnmet' : 'final') || !product.parts.length ||
         !/^Ifc[A-Za-z0-9]+$/.test(product.ifcType) || !Number.isSafeInteger(product.expressId)) {
       throw new Error('Invalid retained publication');
     }
-    lines.push(`o ${product.ifcType}_${product.expressId}`, `g ${product.ifcType}_${product.expressId}`);
+    line(`o ${product.ifcType}_${product.expressId}`);
+    line(`g ${product.ifcType}_${product.expressId}`);
     for (const part of product.parts) {
       const points = worldPoints(part);
-      for (const [x, y, z] of points) lines.push(`v ${fixed(x)} ${fixed(z)} ${fixed(-y)}`);
-      if (part.layer) lines.push(`# layer ${part.layer.index} material #${part.layer.materialId}`);
+      for (const [x, y, z] of points) line(`v ${fixed(x)} ${fixed(z)} ${fixed(-y)}`);
+      if (part.layer) line(`# layer ${part.layer.index} material #${part.layer.materialId}`);
       if (part.normals) {
         if (part.normals.length !== part.indices.length * 3 || !part.normals.every(Number.isFinite)) {
           throw new Error('Invalid retained corner normals; refusing partial product');
         }
         for (let i = 0; i < part.normals.length; i += 3) {
-          lines.push(`vn ${fixed(part.normals[i])} ${fixed(part.normals[i + 2])} ${fixed(-part.normals[i + 1])}`);
+          line(`vn ${fixed(part.normals[i])} ${fixed(part.normals[i + 2])} ${fixed(-part.normals[i + 1])}`);
         }
       }
       for (let i = 0; i < part.indices.length; i += 3) {
         const corners = [0, 1, 2].map(j => `${part.indices[i + j] + base}${part.normals ? `//${normalBase + i + j}` : ''}`);
-        lines.push(`f ${corners.join(' ')}`);
+        line(`f ${corners.join(' ')}`);
       }
       if (part.normals) normalBase += part.indices.length;
       base += points.length;
     }
   }
-  return `${lines.join('\n')}\n`;
+  if (lines.length) chunks.push(Buffer.from(`${lines.join('\n')}\n`));
+  return chunks;
 }

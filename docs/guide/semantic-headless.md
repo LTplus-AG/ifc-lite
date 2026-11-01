@@ -106,3 +106,11 @@ ifc-lite semantic query --endpoint http://127.0.0.1:7878/sparql --host 127.0.0.1
 Only the literal hosts `localhost`, `127.0.0.1`, and `[::1]` qualify. Suffixes, DNS aliases, alternate IP spellings, and a different port do not share the authorization. Redirects remain denied, and cancellation, timeouts, response limits, and credential checks apply. A portable workspace can retain the endpoint as inert configuration; importing it never authorizes HTTP access.
 
 A relay can use a fixed local HTTP upstream by configuring `loopbackHttpOrigin` alongside its endpoint and exact `grantedHost`. For example, an endpoint `http://127.0.0.1:7878/sparql` requires `loopbackHttpOrigin: "http://127.0.0.1:7878"` and `grantedHost: "127.0.0.1"`. Relay clients continue to use authenticated HTTPS. The client request cannot supply or override the upstream authorization.
+
+
+For batch identity resolution, `ResolverContext.entitiesByGlobalId` optionally
+accepts a `ReadonlyMap<string, readonly LiveEntity[]>` grouping the same entity
+snapshot by exact `GlobalId`. Rebuild this index when that snapshot changes;
+include all model candidates for each GlobalId. The shared resolver still applies
+GlobalId validation, revision association, model scope and ambiguity rules.
+Omit the index for ordinary one-off resolution.

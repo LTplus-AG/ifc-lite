@@ -21,9 +21,11 @@ function FailedChunk(): never {
   throw new Error('Failed to fetch dynamically imported module: https://example.invalid/panel.js');
 }
 
+type ChunkPanel = 'assistant' | 'compare' | 'clash' | 'script';
+
 // Control the chunk's success/failure without loading its unrelated application
 // dependencies. The real host boundary, key and outer context remain untouched.
-function chunkBody(id: 'assistant' | 'compare', children: ReactNode): ReactNode {
+function chunkBody(id: ChunkPanel, children: ReactNode): ReactNode {
   const host = renderPanelBody(id, () => undefined);
   assert.ok(isValidElement<{ children: ReactNode }>(host));
   const boundary = host.props.children;
@@ -31,7 +33,7 @@ function chunkBody(id: 'assistant' | 'compare', children: ReactNode): ReactNode 
   return cloneElement(host, {}, cloneElement(boundary, {}, children));
 }
 
-function SwitchingHost({ from, to }: { from: 'assistant' | 'compare'; to: 'assistant' | 'compare' }) {
+function SwitchingHost({ from, to }: { from: ChunkPanel; to: ChunkPanel }) {
   const [switched, setSwitched] = useState(false);
   const [used, setUsed] = useState(false);
   return <>
@@ -42,7 +44,7 @@ function SwitchingHost({ from, to }: { from: 'assistant' | 'compare'; to: 'assis
   </>;
 }
 
-for (const [from, to] of [['assistant', 'compare'], ['compare', 'assistant']] as const) {
+for (const [from, to] of [['assistant', 'compare'], ['compare', 'assistant'], ['clash', 'script'], ['script', 'clash']] as const) {
   it(`a failed ${from} chunk does not poison healthy ${to} in the same host (#8017)`, () => {
     useViewerStore.setState({ models: new Map(), activeModelId: null, compareResult: null });
     const ui = render(<SwitchingHost from={from} to={to} />);

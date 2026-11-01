@@ -70,6 +70,13 @@ describe('takeSceneSnapshotGeometry', () => {
     assert.equal(takeSnapshotModelArrival(), false, 'its model already registered');
   });
 
+  it('a superseded load\'s arrival marker dies with the next new geometry', () => {
+    setPendingSceneSnapshot(adoption);
+    take([mesh()], 0); // hydrated, and its model never registers
+    assert.equal(take([mesh()]), false);
+    assert.equal(takeSnapshotModelArrival(), false, 'the next model refits');
+  });
+
   it('leaves geometry alone with nothing pending, or once withdrawn', () => {
     assert.equal(take([mesh()]), false);
     setPendingSceneSnapshot(adoption);

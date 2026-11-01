@@ -89,7 +89,10 @@ interface OwnershipRefs {
 
 /** True when `geometry` hydrated the pending snapshot; the refs then describe it as already streamed and fitted. */
 export function takeSceneSnapshotGeometry(geometry: MeshData[], modelCount: number, renderer: Renderer, refs: OwnershipRefs): boolean {
-  if (!settlePendingSnapshot(renderer.getScene(), geometry)) return false;
+  if (!settlePendingSnapshot(renderer.getScene(), geometry)) {
+    modelArrivalPending = false; // any other new geometry: a superseded load's model never arrives
+    return false;
+  }
   modelArrivalPending = modelCount === 0;
   const camera = renderer.getCamera();
   refs.lastGeometryLengthRef.current = geometry.length;

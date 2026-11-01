@@ -54,8 +54,16 @@ function stubDevice(): GPUDevice {
 
 const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
 
+let lastFinalized: Scene;
+
+/** Each batch's uploaded vertex and index bytes, by bucket key. */
+function uploadedByBatch(scene: Scene): Record<string, string[]> {
+  const bytes = (buffer: GPUBuffer) => written.find((w) => w.buffer === buffer)?.bytes.join();
+  return Object.fromEntries(scene.getBatchedMeshes().map((b) => [b.colorKey, [bytes(b.vertexBuffer)!, bytes(b.indexBuffer)!]]));
+}
+
 async function captureScene(meshes: MeshData[], device: GPUDevice): Promise<SceneSnapshot | null> {
-  const scene = new Scene();
+  const scene = lastFinalized = new Scene();
   scene.setQuantizedBatches(true);
   let captured: SceneSnapshot | null = null;
   scene.captureNextFinalize((snapshot) => { captured = snapshot; });
@@ -83,16 +91,14 @@ describe('finished-scene snapshot', () => {
     const snapshot = await captureScene(model(), device);
     assert.ok(snapshot);
     assert.strictEqual(snapshot.pieceCount, 3);
-    const geometryWrites = () => written.filter((w) => w.usage & (32 | 16));
-    const final = new Set(geometryWrites().map((w) => w.bytes.join()));
-    assert.ok(final.size > 0);
+    const finalized = uploadedByBatch(lastFinalized);
+    assert.deepStrictEqual(Object.keys(finalized).length, snapshot.batches.length);
 
     written = [];
     const scene = freshScene();
     assert.ok(scene.adoptSceneSnapshot(await roundTrip(snapshot), device, pipeline));
-    const uploads = geometryWrites();
-    assert.strictEqual(uploads.length, snapshot.batches.length * 2);
-    for (const upload of uploads) assert.ok(final.has(upload.bytes.join()), 'an upload is not a finalize array');
+    assert.strictEqual(written.filter((w) => w.usage & (32 | 16)).length, snapshot.batches.length * 2, 'each buffer once');
+    assert.deepStrictEqual(uploadedByBatch(scene), finalized, 'each batch draws the bytes finalize gave it');
     assert.deepStrictEqual(scene.getBatchedMeshes().map((b) => b.colorKey).sort(), snapshot.batches.map((b) => b.key).sort());
   });
 

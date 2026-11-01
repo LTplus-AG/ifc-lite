@@ -23,6 +23,10 @@ import { ClashPanel } from './ClashPanel.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
+// @tanstack/virtual-core 3.19+ reads the scroll viewport from clientWidth/clientHeight
+// (rows are still measured with offsetHeight), so stub both channels.
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { get: () => 800, configurable: true });
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { get: () => 600, configurable: true });
 
 /** The shared store's presets; one case deletes a preset and must hand them back. */
 const INITIAL_PRESETS = useViewerStore.getState().clashPresets;
